@@ -596,19 +596,35 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       m_Builder.CreateUnreachable();
     }
   }
-  if (func->Effect == EffectKind::Async && m_CurrentCoroSuspendRetBB) {
-      f->insert(f->end(), m_CurrentCoroSuspendRetBB);
-      llvm::IRBuilder<> tmpB(m_CurrentCoroSuspendRetBB);
+  llvm::BasicBlock *coroEndSharedBB = nullptr;
+  if (func->Effect == EffectKind::Async) {
+      coroEndSharedBB = llvm::BasicBlock::Create(m_Context, "coro.end.shared", f);
+      llvm::IRBuilder<> tmpB(coroEndSharedBB);
       llvm::Function *endFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_end);
       tmpB.CreateCall(endFn, {m_CurrentCoroHandle, tmpB.getInt1(false), llvm::ConstantTokenNone::get(m_Context)});
       tmpB.CreateRet(m_CurrentCoroHandle);
   }
+
+  if (func->Effect == EffectKind::Async && m_CurrentCoroSuspendRetBB) {
+      f->insert(f->end(), m_CurrentCoroSuspendRetBB);
+      llvm::IRBuilder<> tmpB(m_CurrentCoroSuspendRetBB);
+      tmpB.CreateBr(coroEndSharedBB);
+  }
   if (func->Effect == EffectKind::Async && m_CurrentCoroCleanupBB) {
       f->insert(f->end(), m_CurrentCoroCleanupBB);
       llvm::IRBuilder<> tmpB(m_CurrentCoroCleanupBB);
-      llvm::Function *endFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_end);
-      tmpB.CreateCall(endFn, {m_CurrentCoroHandle, tmpB.getInt1(true), llvm::ConstantTokenNone::get(m_Context)});
-      tmpB.CreateRet(m_CurrentCoroHandle);
+      
+      llvm::Function *freeIdFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_free);
+      llvm::Value *memToFree = tmpB.CreateCall(freeIdFn, {m_CurrentCoroId, m_CurrentCoroHandle});
+      llvm::Function *freeFn = m_Module->getFunction("free");
+      if (!freeFn) {
+        std::vector<llvm::Type*> freeArgs = {tmpB.getPtrTy()};
+        llvm::FunctionType *freeFt = llvm::FunctionType::get(tmpB.getVoidTy(), freeArgs, false);
+        freeFn = llvm::Function::Create(freeFt, llvm::Function::ExternalLinkage, "free", m_Module.get());
+      }
+      tmpB.CreateCall(freeFn, memToFree);
+      
+      tmpB.CreateBr(coroEndSharedBB);
   }
 
   // Ensure all basic blocks have a terminator to satisfy LLVM verifier

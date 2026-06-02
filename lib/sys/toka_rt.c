@@ -216,6 +216,11 @@ void toka_panic_impl(const char* msg_buf, size_t msg_len, const char* file_buf, 
     abort();
 }
 
+void* __toka_get_coro_handle(void* task_handle_ptr) {
+    if (!task_handle_ptr) return NULL;
+    return *(void**)task_handle_ptr;
+}
+
 
 
 

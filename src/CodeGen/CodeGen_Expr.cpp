@@ -3642,11 +3642,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       sw->addCase(m_Builder.getInt8(1), cleanupBB);
       
       m_Builder.SetInsertPoint(cleanupBB);
-      llvm::Function *freeIdFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_free);
-      llvm::Value *memToFree = m_Builder.CreateCall(freeIdFn, {m_CurrentCoroId, m_CurrentCoroHandle});
-      llvm::Function *freeFn = m_Module->getFunction("free");
-      m_Builder.CreateCall(freeFn, memToFree);
-      m_Builder.CreateUnreachable();
+      m_Builder.CreateBr(m_CurrentCoroCleanupBB);
       
       m_Builder.SetInsertPoint(resumeBB);
       return PhysEntity(llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0), "i32", m_Builder.getInt32Ty(), false);
@@ -3703,16 +3699,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       sw->addCase(m_Builder.getInt8(1), cleanupBB);
       
       m_Builder.SetInsertPoint(cleanupBB);
-      llvm::Function *freeIdFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_free);
-      llvm::Value *memToFree = m_Builder.CreateCall(freeIdFn, {m_CurrentCoroId, m_CurrentCoroHandle});
-      llvm::Function *freeFn = m_Module->getFunction("free");
-      if (!freeFn) {
-        std::vector<llvm::Type*> freeArgs = {m_Builder.getPtrTy()};
-        llvm::FunctionType *freeFt = llvm::FunctionType::get(m_Builder.getVoidTy(), freeArgs, false);
-        freeFn = llvm::Function::Create(freeFt, llvm::Function::ExternalLinkage, "free", m_Module.get());
-      }
-      m_Builder.CreateCall(freeFn, memToFree);
-      m_Builder.CreateUnreachable();
+      m_Builder.CreateBr(m_CurrentCoroCleanupBB);
       
       m_Builder.SetInsertPoint(resumeBB);
       return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", m_Builder.getVoidTy(), false);
@@ -6161,7 +6148,7 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     sw->addCase(m_Builder.getInt8(1), cleanupContBB);
     
     m_Builder.SetInsertPoint(cleanupContBB);
-    m_Builder.CreateUnreachable();
+    m_Builder.CreateBr(m_CurrentCoroCleanupBB);
     
     m_Builder.SetInsertPoint(resumeContBB);
     m_Builder.CreateBr(readyBB);

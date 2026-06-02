@@ -99,6 +99,32 @@ impl TimerHeap {
             } else { break }
         }
     }
+
+    pub fn remove(self#, handle_addr: usize) -> bool {
+        auto temp_vec# = Vec<TimerEntry>::new()
+        auto found# = false
+        auto idx# = 0:usize
+        auto len = self.data.len()
+        loop idx < len {
+            auto entry = self.data.get(idx)
+            if entry.addr as usize == handle_addr {
+                found = true
+            } else {
+                temp_vec#.push(entry)
+            }
+            idx += 1
+        }
+        if found {
+            self.data#.clear()
+            auto j# = 0:usize
+            auto temp_len = temp_vec.len()
+            loop j < temp_len {
+                self#.push(temp_vec.get(j))
+                j += 1
+            }
+        }
+        return found
+    }
 }
 
 // ==========================================
@@ -106,7 +132,7 @@ impl TimerHeap {
 // ==========================================
 auto g_task_queue# = Vec<TaskPtr>(*buf=null, len=0, cap=0)
 auto g_timer_queue# = TimerHeap(data=Vec<TimerEntry>(*buf=null, len=0, cap=0))
-auto g_detached_tasks# = Vec<usize>(*buf=null, len=0, cap=0)
+
 auto g_mutex_ptr#: Addr = 0:Addr
 auto g_mutex_init#: bool = false
 auto g_reactor_fd#: i32 = -1
@@ -139,21 +165,67 @@ pub fn __toka_spawn(*task: void) {
 }
 
 pub fn __toka_detach_task(*task: void) {
-    if *task != null {
-        lock_queue()
-        g_detached_tasks#.push(*task as usize)
-        unlock_queue()
-    }
+    // Detached task lifecycles are automatically managed by LLVM native coroutine frame splits.
 }
 
 pub fn __toka_register_timer(*task: void, ms: i32) {
     if *task != null {
+        println("  [register_timer] task: {}, ms: {}", *task as usize, ms)
         auto expire_time = current_time_ms() + (ms as i64)
         lock_queue()
         g_timer_queue#.push(TimerEntry(addr=*task as Addr, expire_at=expire_time))
         unlock_queue()
     }
 }
+
+pub fn dequeue_task_handle(handle_addr: usize) -> bool {
+    lock_queue()
+    auto idx# = 0:usize
+    auto len = g_task_queue.len()
+    auto found# = false
+    loop idx < len {
+        auto item = g_task_queue.get(idx)
+        if item.addr as usize == handle_addr {
+            auto k# = idx + 1
+            loop k < len {
+                g_task_queue#.set(k - 1, g_task_queue.get(k))
+                k += 1
+            }
+            g_task_queue#.pop()
+            found = true
+            break
+        }
+        idx += 1
+    }
+    unlock_queue()
+    return found
+}
+
+pub fn dequeue_timer_handle(handle_addr: usize) -> bool {
+    lock_queue()
+    auto temp_vec# = Vec<TimerEntry>::new()
+    auto found# = false
+    auto idx# = 0:usize
+    auto len = g_timer_queue.data.len()
+    loop idx < len {
+        auto entry = g_timer_queue.data.get(idx)
+        if entry.addr as usize == handle_addr {
+            found = true
+        } else {
+            temp_vec#.push(entry)
+        }
+        idx += 1
+    }
+    if found {
+        auto new_heap# = TimerHeap(data=temp_vec)
+        g_timer_queue = new_heap
+        println("  [dequeue_timer] found and rebuilt! new len: {}", g_timer_queue.data.len())
+    }
+    unlock_queue()
+    return found
+}
+
+
 
 // Spawn loop for blocking environments
 pub fn __toka_spawn_blocking(*task: void) {
@@ -209,34 +281,7 @@ pub fn __toka_spawn_blocking(*task: void) {
         unlock_queue()
         
         // Garbage Collector for dropped TaskHandles
-        lock_queue()
-        auto d_i#: usize = 0
-        auto keep_d#: usize = 0
-        auto d_len = g_detached_tasks.len()
-        if d_len > 0 {
-            println("  [scheduler] Garbage collection starting for {} detached tasks", d_len)
-        }
-        loop d_i < d_len {
-            auto detached_val = g_detached_tasks.get(d_i)
-            println("  [scheduler] Checking detached task: {}", detached_val)
-            if __toka_coro_done(detached_val as *void) {
-                println("  [scheduler] Detached task is done, destroying it: {}", detached_val)
-                __toka_coro_destroy(detached_val as *void)
-                println("  [scheduler] Detached task destroyed successfully")
-            } else {
-                println("  [scheduler] Detached task is not done, keeping it: {}", detached_val)
-                g_detached_tasks#.set(keep_d, detached_val)
-                keep_d += 1
-            }
-            d_i += 1
-        }
-        auto pop_count = g_detached_tasks.len() - keep_d
-        auto p_i# = 0:usize
-        loop p_i < pop_count {
-            g_detached_tasks#.pop()
-            p_i += 1
-        }
-        unlock_queue()
+
         
         if g_reactor_fd == -1 {
             g_reactor_fd = sysnet::reactor_create_impl()
@@ -281,6 +326,7 @@ pub fn __toka_spawn_blocking(*task: void) {
 }
 
 // === Thread & Time Utilities ===
+extern fn __toka_get_coro_handle(*handle: void) -> *void
 extern fn __builtin_coro_current_handle() -> *void
 extern fn __builtin_coro_suspend()
 
@@ -304,3 +350,54 @@ pub fn block_on<T>(handle#: TaskHandle<T>) -> T {
 pub fn detach_forget<T>(handle#: TaskHandle<T>) {
     handle.*coro_handle = null as *void
 }
+
+pub shape TaskGroup (
+    child_handles#: Vec<usize> = Vec<usize>::new(),
+    cancelled#: bool = false
+)
+
+impl TaskGroup {
+    pub fn new() -> TaskGroup {
+        return TaskGroup(
+            child_handles = Vec<usize>::new(),
+            cancelled = false
+        )
+    }
+
+    pub fn cancel_all(self#) {
+        if self.cancelled { return }
+        self.cancelled = true
+
+        auto i# = 0:usize
+        auto len = self.child_handles.len()
+        loop i < len {
+            auto handle_addr = self.child_handles.get(i)
+            if handle_addr != 0:usize {
+                dequeue_task_handle(handle_addr)
+                dequeue_timer_handle(handle_addr)
+                
+                __toka_coro_destroy(handle_addr as *void)
+                println("cancel_all: after __toka_coro_destroy")
+            }
+            i += 1
+        }
+        self.child_handles#.clear()
+    }
+}
+
+pub fn spawn_task<T>(group#: TaskGroup, handle#: TaskHandle<T>) {
+    auto *coro = __toka_get_coro_handle(*handle)
+    if *coro != null {
+        group.child_handles#.push(*coro as usize)
+        handle.*coro_handle = null as *void
+    }
+}
+
+pub fn get_handle_addr<T>(handle: TaskHandle<T>) -> usize {
+    auto *coro = __toka_get_coro_handle(*handle)
+    println("  [get_handle_addr] handle.*coro_handle = {}, *coro = {}", handle.*coro_handle as usize, *coro as usize)
+    return *coro as usize
+}
+
+// TaskGroup is a pure container shape that is manually controlled via cancel_all.
+// The @encap drop is omitted to prevent compiler coroutine-suspend scope-destruction bugs.
