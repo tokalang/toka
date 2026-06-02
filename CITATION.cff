@@ -4,7 +4,17 @@ authors:
   - given-names: "Zhonghua"
     family-names: "Yi"
   - name: "The Toka Language Contributors"
-title: "Toka: A Native Systems Programming Language with Explicit Resource Semantics, Compile-time Reflection, and Shape-based Data Modeling"
+title: "Toka Programming Language"
 version: "0.9.8"
 date-released: 2026-05-29
 url: "https://github.com/tokalang/toka"
+preferred-citation:
+  type: article
+  authors:
+    - given-names: "Zhonghua"
+      family-names: "Yi"
+    - name: "The Toka Language Contributors"
+  title: "Toka: A Systems Programming Language with Explicit Resource Semantics"
+  year: 2026
+  journal: "arXiv preprint arXiv:2606.01974"
+  doi: "10.48550/arXiv.2606.01974"

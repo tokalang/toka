@@ -190,18 +190,32 @@ Programming language design is an endless exploration across a vast universe of 
 
 ## Citation
 
-If you reference the design of the Toka language, including its explicit Hat-Soul resource model, PAL borrowing discipline, compile-time reflection facilities, and Shape-based data model, please cite the repository as follows:
+If you reference the design of the Toka language, including its explicit Hat-Soul resource model, PAL borrowing discipline, compile-time reflection facilities, and Shape-based data model, please cite both our paper and repository as follows:
 
-### BibTeX
+### Academic Paper (arXiv)
 
 ```bibtex
-@software{toka_language,
+@article{yi2026toka,
+  title={{Toka}: A Systems Programming Language with Explicit Resource Semantics},
+  author={Yi, Zhonghua},
+  journal={arXiv preprint arXiv:2606.01974},
+  year={2026},
+  eprint={2606.01974},
+  archivePrefix={arXiv},
+  primaryClass={cs.PL},
+  doi={10.48550/arXiv.2606.01974}
+}
+```
+
+### Software Repository
+
+```bibtex
+@misc{toka_language,
   author       = {Yi, Zhonghua and {Toka Language Contributors}},
-  title        = {Toka: A Native Systems Programming Language with Explicit Resource Semantics, Compile-time Reflection, and Shape-based Data Modeling},
-  month        = may,
-  year         = {2026},
-  publisher    = {GitHub},
-  howpublished = {\url{https://github.com/tokalang/toka}},
-  version      = {0.9.8}
+  title        = {{Toka} Programming Language},
+  howpublished = {GitHub repository},
+  url          = {https://github.com/tokalang/toka},
+  year         = {2025--2026},
+  note         = {Version 0.9.8}
 }
 ```

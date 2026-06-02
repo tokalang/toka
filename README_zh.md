@@ -190,18 +190,32 @@ Toka 致力于将脚本语言的开发体验带入系统编程，力求让系统
 
 ## 学术引用
 
-如果您在学术工作中引用了 Toka 语言的设计（包括其显式的 Hat-Soul 资源模型、PAL 借用安全机制、编译期反射能力与基于 Shape 的统一数据模型），请按照以下格式引用我们的仓库：
+如果您在学术工作中引用了 Toka 语言的设计（包括其显式的 Hat-Soul 资源模型、PAL 借用安全机制、编译期反射能力与基于 Shape 的统一数据模型），请按照以下格式引用我们的论文与仓库：
 
-### BibTeX
+### 学术论文 (arXiv)
 
 ```bibtex
-@software{toka_language,
+@article{yi2026toka,
+  title={{Toka}: A Systems Programming Language with Explicit Resource Semantics},
+  author={Yi, Zhonghua},
+  journal={arXiv preprint arXiv:2606.01974},
+  year={2026},
+  eprint={2606.01974},
+  archivePrefix={arXiv},
+  primaryClass={cs.PL},
+  doi={10.48550/arXiv.2606.01974}
+}
+```
+
+### 软件仓库
+
+```bibtex
+@misc{toka_language,
   author       = {Yi, Zhonghua and {Toka Language Contributors}},
-  title        = {Toka: A Native Systems Programming Language with Explicit Resource Semantics, Compile-time Reflection, and Shape-based Data Modeling},
-  month        = may,
-  year         = {2026},
-  publisher    = {GitHub},
-  howpublished = {\url{https://github.com/tokalang/toka}},
-  version      = {0.9.8}
+  title        = {{Toka} Programming Language},
+  howpublished = {GitHub repository},
+  url          = {https://github.com/tokalang/toka},
+  year         = {2025--2026},
+  note         = {Version 0.9.8}
 }
 ```
