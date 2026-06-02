@@ -1,8 +1,10 @@
-[中文官网 (tokalang.dev/zh)](https://tokalang.dev/zh) | [在线运行体验 (Playground)](https://tokalang.dev/playground) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
-**Toka 是一门无 GC 的现代系统级编程语言。它结合了接近 C 的性能与底层掌控力、受 Rust 启发的强内存安全纪律，并追求如脚本语言般清爽高效的开发体验。**
+**Toka 是一门无需垃圾回收（GC）的现代系统级编程语言。它融合了类 C 的极致物理性能与底层控制权，吸纳了源自 Rust 的内存安全纪律，并致力于提供如同脚本语言般清晰、高效的开发体验。**
+
+📖 **学术论文：** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
 ## 🚀 "Show, Don't Tell"
 
@@ -145,7 +147,6 @@ Toka 目前已经具备了完整的语言核心特性与标准库，我们正在
 看到社区用 Toka 构建出各种有趣的项目，我们感到非常兴奋！以下是一些值得一看的社区驱动项目：
 
 - [**toka-book**](https://github.com/lumicore-dev/toka-book) ([在线阅读](https://lumicore-dev.github.io/toka-book))：一本详尽的、由社区驱动的 Toka 学习指南（灵感来源于“The Rust Book”）。
-- [**toka-ink**](https://github.com/lumicore-dev/toka-ink)：一个强大的、零依赖的终端 UI 组件库，完全使用 Toka 原生的字符串格式化能力构建。
 
 *(用 Toka 做了好玩的项目？欢迎提交 PR 把你的项目展示在这里！)*
 

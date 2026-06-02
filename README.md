@@ -1,8 +1,10 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
 **Toka is a modern systems programming language without GC. It combines C-style performance and low-level control with Rust-inspired memory-safety discipline, while aiming for a clean and productive developer experience reminiscent of scripting languages.**
+
+📖 **Academic Paper:** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
 ## 🚀 "Show, Don't Tell"
 
@@ -145,7 +147,6 @@ Toka currently possesses a complete language core and standard library. We are a
 We are thrilled to see the community building awesome things with Toka! Check out some of these community-driven projects:
 
 - [**toka-book**](https://github.com/lumicore-dev/toka-book) ([Read Online](https://lumicore-dev.github.io/toka-book)): A comprehensive, community-driven guide to learning Toka, inspired by "The Rust Book".
-- [**toka-ink**](https://github.com/lumicore-dev/toka-ink): A powerful, zero-dependency Terminal UI component library built entirely with Toka's string formatting capabilities.
 
 *(Built something cool with Toka? Open a PR to add your project here!)*
 
