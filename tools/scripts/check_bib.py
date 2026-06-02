@@ -8,7 +8,9 @@ PROPER_NOUNS = [
     r'Rust', r'C\+\+', r'Cyclone', r'CLU', r'Toka', r'Coq', r'System\s+F', 
     r'Typed\s+Assembly\s+Language', r'ML', r'ALGOL', r'BCPL', r'CHERI', 
     r'RISC', r'ISCA', r'POPL', r'PLDI', r'OOPSLA', r'ESOP', r'TOPLAS', 
-    r'LICS', r'HILT', r'PACMPL', r'Datalog', r'Vale', r'Swift', r'NLL'
+    r'LICS', r'HILT', r'PACMPL', r'Datalog', r'Vale', r'Swift', r'NLL',
+    r'Separation\s+Logic', r'Alias\s+Types', r'Ownership\s+Types', 
+    r'Flexible\s+Alias\s+Protection', r'System\s+Programming'
 ]
 
 # Compile regular expressions to find unprotected proper nouns
