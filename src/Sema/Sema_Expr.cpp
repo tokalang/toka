@@ -352,8 +352,6 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   E->ResolvedType = T;
 
   if (!dynamic_cast<UnsetExpr *>(E) && !dynamic_cast<InitStructExpr *>(E) &&
-      !dynamic_cast<NewExpr *>(E) && !dynamic_cast<CastExpr *>(E) &&
-      !dynamic_cast<CallExpr *>(E) && !dynamic_cast<MethodCallExpr *>(E) &&
       !dynamic_cast<ArrayInitExpr *>(E)) {
     m_LastInitMask = ~0ULL;
   }
