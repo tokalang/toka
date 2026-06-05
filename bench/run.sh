@@ -15,10 +15,19 @@ BASE_PATH="${INPUT_FILE%.*}"
 FILE_NAME=$(basename "$BASE_PATH")
 
 TK_FILE="${BASE_PATH}.tk"
-CPP_FILE="${BASE_PATH}.cpp"
 LL_FILE="${BASE_PATH}.ll"
 TOKA_BIN="${BASE_PATH}_toka_native.bin"
-CPP_BIN="${BASE_PATH}_cpp.bin"
+
+# Detect whether it is .cpp or .c
+if [[ -f "${BASE_PATH}.cpp" ]]; then
+    C_FILE="${BASE_PATH}.cpp"
+    C_BIN="${BASE_PATH}_cpp.bin"
+    COMPILER="/usr/bin/clang++-20"
+else
+    C_FILE="${BASE_PATH}.c"
+    C_BIN="${BASE_PATH}_c.bin"
+    COMPILER="/usr/bin/clang-20"
+fi
 
 # 检查两个必要文件是否存在
 if [[ ! -f "$TK_FILE" ]]; then
@@ -26,8 +35,8 @@ if [[ ! -f "$TK_FILE" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$CPP_FILE" ]]; then
-    echo "错误: 找不到 C++ 文件 '$CPP_FILE'"
+if [[ ! -f "$C_FILE" ]]; then
+    echo "错误: 找不到 C/C++ 文件 '$C_FILE'"
     exit 1
 fi
 
@@ -40,21 +49,21 @@ build/bin/tokac "$TK_FILE" > "$LL_FILE"
 echo "--- Step 2: 编译 LLVM IR 到 Native 二进制 ---"
 if [ "$(uname)" == "Darwin" ]; then
     SDK_PATH=$(xcrun --show-sdk-path)
-    /usr/bin/clang -x ir "$LL_FILE" -O3 -o "$TOKA_BIN" -isysroot "$SDK_PATH" # -mllvm # -opaque-pointers
+    /usr/bin/clang lib/sys/toka_rt.o -x ir "$LL_FILE" -O3 -o "$TOKA_BIN" -isysroot "$SDK_PATH" # -mllvm # -opaque-pointers
 else
-    /usr/bin/clang -x ir "$LL_FILE" -O3 -o "$TOKA_BIN"
+    /usr/bin/clang-20 lib/sys/toka_rt.o -x ir "$LL_FILE" -O3 -o "$TOKA_BIN"
 fi
 
 echo "=== 运行 Toka (Native) ==="
 time "./$TOKA_BIN"
 echo ""
 
-# --- C++ 编译流程 ---
-echo "--- Step 3: 编译 C++ ($FILE_NAME.cpp) ---"
-c++ -O3 -o "$CPP_BIN" "$CPP_FILE"
+# --- C/C++ 编译流程 ---
+echo "--- Step 3: 编译 C/C++ ($C_FILE) ---"
+"$COMPILER" -O3 -o "$C_BIN" "$C_FILE"
 
-echo "=== 运行 C++ (Native -O3) ==="
-time "./$CPP_BIN"
+echo "=== 运行 C/C++ (Native -O3) ==="
+time "./$C_BIN"
 
 echo ""
 echo "=== 测试完成 ==="

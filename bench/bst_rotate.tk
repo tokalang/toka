@@ -1,0 +1,133 @@
+// Benchmark BST Rotate in Toka (Pure Computational Version)
+import core/traits::{@encap}
+
+shape TreeNode (
+    val: i32,
+    nul *#left: TreeNode = null as *TreeNode,
+    nul *#right: TreeNode = null as *TreeNode
+)
+
+impl TreeNode@encap {
+    fn drop(self#) {
+        // Handled manually
+    }
+    pub fn clone(self) = delete
+}
+
+fn left_rotate(nul *x_in: TreeNode) -> nul *#TreeNode {
+    unsafe {
+        auto x_addr = *x_in as usize
+        if x_addr != 0:usize {
+            auto *#x = *x_in as *#TreeNode
+            auto nul *y = x.*right
+            auto y_addr = *y as usize
+            if y_addr != 0:usize {
+                auto *#y_node = *y as *#TreeNode
+                x.*right = y_node.*left
+                y_node.*left = *x
+                return *y as nul *#TreeNode
+            }
+        }
+    }
+    return *x_in as nul *#TreeNode
+}
+
+fn right_rotate(nul *y_in: TreeNode) -> nul *#TreeNode {
+    unsafe {
+        auto y_addr = *y_in as usize
+        if y_addr != 0:usize {
+            auto *#y = *y_in as *#TreeNode
+            auto nul *x = y.*left
+            auto x_addr = *x as usize
+            if x_addr != 0:usize {
+                auto *#x_node = *x as *#TreeNode
+                y.*left = x_node.*right
+                x_node.*right = *y
+                return *x as nul *#TreeNode
+            }
+        }
+    }
+    return *y_in as nul *#TreeNode
+}
+
+fn sum_tree(nul *root_in: TreeNode) -> i64 {
+    auto sum# = 0:i64
+    unsafe {
+        auto root_addr = *root_in as usize
+        if root_addr != 0:usize {
+            auto *root = *root_in as *TreeNode
+            sum += root.val:i64
+            sum += sum_tree(root.*left)
+            sum += sum_tree(root.*right)
+        }
+    }
+    return sum
+}
+
+fn free_tree(nul *root_in: TreeNode) {
+    unsafe {
+        auto root_addr = *root_in as usize
+        if root_addr != 0:usize {
+            auto *root = *root_in as *TreeNode
+            auto nul *l = root.*left
+            auto nul *r = root.*right
+            unsafe free *root
+            free_tree(*l)
+            free_tree(*r)
+        }
+    }
+}
+
+pub fn main() -> i32 {
+    auto count = 200000000 // 2亿次旋转
+    auto nul *#root# = null as *#TreeNode
+
+    unsafe {
+        // Manually allocate and link a 10-node tree to avoid compiler parameter ref bugs
+        auto *#n5 = unsafe alloc TreeNode(val=5, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n3 = unsafe alloc TreeNode(val=3, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n8 = unsafe alloc TreeNode(val=8, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n2 = unsafe alloc TreeNode(val=2, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n4 = unsafe alloc TreeNode(val=4, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n7 = unsafe alloc TreeNode(val=7, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n9 = unsafe alloc TreeNode(val=9, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n1 = unsafe alloc TreeNode(val=1, *left=null as *TreeNode, *right=null as *TreeNode)
+        auto *#n6 = unsafe alloc TreeNode(val=6, *left=null as *TreeNode, *right=null as *TreeNode)
+
+        n5.*left = *n3
+        n5.*right = *n8
+        n3.*left = *n2
+        n3.*right = *n4
+        n8.*left = *n7
+        n8.*right = *n9
+        n2.*left = *n1
+        n7.*left = *n6
+
+        *root = *n5 as nul *#TreeNode
+    }
+
+    // 1. In-place rotation stress test
+    {
+        auto i# = 1
+        loop {
+            *root = left_rotate(*root)
+            *root = right_rotate(*root)
+            if i == count {
+                break
+            }
+            i += 1
+        }
+    }
+
+    // 2. Sum elements
+    auto total_sum = sum_tree(*root)
+
+    // 3. Clean up
+    free_tree(*root)
+
+    // Check sum (5+3+8+2+4+7+9+1+6 = 45)
+    if total_sum == 45:i64 {
+        return 0
+    }
+    return 1
+}

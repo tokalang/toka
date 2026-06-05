@@ -1,0 +1,110 @@
+// Benchmark raw pointer list performance in Toka (Pure Computational Version)
+import core/traits::{@encap}
+
+shape Node (
+    val: i32,
+    nul *#next: Node = null as *Node
+)
+
+impl Node@encap {
+    fn drop(self#) {
+        // Handled manually
+    }
+    pub fn clone(self) = delete
+}
+
+pub fn main() -> i32 {
+    auto count = 10000000 // 1000万个节点
+
+    auto nul *#head = null as *#Node
+    unsafe {
+        auto i# = 1
+        loop {
+            auto *#node = unsafe alloc Node(val=i, *next=*head as nul *#Node)
+            *head = *node
+            if i == count {
+                break
+            }
+            i += 1
+        }
+    }
+
+    // 1. Sum original list
+    auto sum1# = 0:i64
+    unsafe {
+        auto head_addr = *head as usize
+        if head_addr != 0:usize {
+            auto *#curr# = *head as *#Node
+            loop {
+                sum1 += curr.val:i64
+                auto next_addr = curr.*next as usize
+                if next_addr == 0:usize {
+                    break
+                }
+                *curr = curr.*next as *#Node
+            }
+        }
+    }
+
+    // 2. Reverse list in-place
+    auto nul *#prev = null as *#Node
+    unsafe {
+        auto head_addr = *head as usize
+        if head_addr != 0:usize {
+            auto *#curr# = *head as *#Node
+            loop {
+                auto nul *#next = curr.*next
+                curr.*next = *prev
+                *prev = *curr
+                
+                auto next_addr = *next as usize
+                if next_addr == 0:usize {
+                    break
+                }
+                *curr = *next as *#Node
+            }
+            *head = *prev as nul *#Node
+        }
+    }
+
+    // 3. Sum reversed list
+    auto sum2# = 0:i64
+    unsafe {
+        auto head_addr = *head as usize
+        if head_addr != 0:usize {
+            auto *#curr# = *head as *#Node
+            loop {
+                sum2 += curr.val:i64
+                auto next_addr = curr.*next as usize
+                if next_addr == 0:usize {
+                    break
+                }
+                *curr = curr.*next as *#Node
+            }
+        }
+    }
+
+    // 4. Free list manually
+    unsafe {
+        auto head_addr = *head as usize
+        if head_addr != 0:usize {
+            auto *#curr# = *head as *#Node
+            loop {
+                auto nul *#next = curr.*next
+                unsafe free *curr
+                
+                auto next_addr = *next as usize
+                if next_addr == 0:usize {
+                    break
+                }
+                *curr = *next as *#Node
+            }
+        }
+    }
+
+    // Return 0 if validation matches to avoid DCE, while keeping exit code 0
+    if sum1 + sum2 == 100000010000000:i64 {
+        return 0
+    }
+    return 1
+}

@@ -375,6 +375,8 @@ uint64_t CodeGen::estimateTypeSize(std::shared_ptr<Type> type, std::set<std::str
 bool CodeGen::shouldReturnSRet(std::shared_ptr<Type> retTypeObj) {
   if (!retTypeObj)
     return false;
+  if (retTypeObj->isPointer())
+    return false;
   auto soul = retTypeObj->getSoulType();
   if (soul->isShape() || soul->isArray()) {
     std::set<std::string> visited;
