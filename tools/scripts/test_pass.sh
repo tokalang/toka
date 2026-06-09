@@ -2,7 +2,7 @@
 # tool/test_pass.sh - Parallel Test Runner
 
 # --- Configuration ---
-TOKAC="./build/bin/tokac"
+TOKAC="${TOKAC:-./build/bin/tokac}"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # Add common Homebrew LLVM paths to PATH to support macOS Intel / Apple Silicon custom builds

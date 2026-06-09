@@ -151,8 +151,8 @@ impl string {
             
             return string(
                 *buf = *p,
-                len = slen,
-                cap = slen + 1
+                len = slen as usize,
+                cap = (slen + 1) as usize
             )
         }
     }
@@ -357,7 +357,7 @@ impl string {
     }
 
     pub fn push_str(self#, s: str) {
-        auto slen = s.byte_count()
+        auto slen = s.byte_count() as usize
         if slen == 0 { return }
         self#.ensure_capacity(self.len + slen)
         unsafe {
@@ -574,7 +574,7 @@ impl string {
     }
 
     pub fn replace_str(self, old_s: str, new_s: str) -> string {
-        auto old_len = old_s.byte_count()
+        auto old_len = old_s.byte_count() as usize
         if old_len == 0 { return self.clone() }
         
         auto res# = string::from("")
@@ -685,16 +685,16 @@ impl str {
         return string::from_str(self)
     }
     pub fn repeat(self, n: i32) -> string {
-        auto self_len = self.byte_count()
+        auto self_len = self.byte_count() as usize
         if n <= 0 || self_len == 0 { return string::from("") }
         unsafe {
-            auto l = self_len * n
+            auto l = self_len * (n as usize)
             auto *p# = unsafe alloc [l + 1] char as *[char]
             auto *src = self.raw_ptr() as *void
             
             auto i# = 0
             loop i < n {
-                auto offset = i * self_len
+                auto offset = (i as usize) * self_len
                 libc_memcpy((*p as usize + offset) as *void, *src, self_len)
                 i = i + 1
             }
@@ -832,7 +832,7 @@ impl Addr {
 
 pub fn _format_i64(val: i64, fmt: str) -> string {
     unsafe {
-        auto fmt_len = fmt.byte_count()
+        auto fmt_len = fmt.byte_count() as usize
         if fmt_len == 0 {
             return string::from_i64(val)
         }
@@ -876,7 +876,7 @@ pub fn _format_i64(val: i64, fmt: str) -> string {
 
 pub fn _format_f64(val: f64, fmt: str) -> string {
     unsafe {
-        auto fmt_len = fmt.byte_count()
+        auto fmt_len = fmt.byte_count() as usize
         if fmt_len == 0 {
             return string::from_f64(val)
         }

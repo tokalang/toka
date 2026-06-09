@@ -47,7 +47,7 @@ impl Cursor {
         unsafe {
             auto b0 = self.buf[self.pos] as u8
             if b0 < 0x80 { // 1-byte ASCII (0xxxxxxx)
-                auto cp_ret: Char32 = b0
+                auto cp_ret = b0 as Char32
                 return Utf8Char(cp=cp_ret, bytes=1)
             }
             
@@ -58,8 +58,8 @@ impl Cursor {
                 auto m1_1 = b1 band 0xC0:u8
                 if m1_1 != 0x80:u8 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1) }
                 
-                auto cp1: Char32 = b0 band 0x1F:u8
-                auto cp2: Char32 = b1 band 0x3F:u8
+                auto cp1 = (b0 band 0x1F:u8) as Char32
+                auto cp2 = (b1 band 0x3F:u8) as Char32
                 auto cp = (cp1 bshl 6) bor cp2
                 if cp < 0x80 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1) } // Reject overlong encoding
                 return Utf8Char(cp=cp, bytes=2)
@@ -74,9 +74,9 @@ impl Cursor {
                 auto m2_2 = b2 band 0xC0:u8
                 if m2_1 != 0x80:u8 || m2_2 != 0x80:u8 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1) }
                 
-                auto cp1: Char32 = b0 band 0x0F:u8
-                auto cp2: Char32 = b1 band 0x3F:u8
-                auto cp3: Char32 = b2 band 0x3F:u8
+                auto cp1 = (b0 band 0x0F:u8) as Char32
+                auto cp2 = (b1 band 0x3F:u8) as Char32
+                auto cp3 = (b2 band 0x3F:u8) as Char32
                 auto cp = ((cp1 bshl 12) bor (cp2 bshl 6)) bor cp3
                 if cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF) { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1) } // Reject overlong and surrogates
                 return Utf8Char(cp=cp, bytes=3)
@@ -93,10 +93,10 @@ impl Cursor {
                 auto m3_3 = b3 band 0xC0:u8
                 if m3_1 != 0x80:u8 || m3_2 != 0x80:u8 || m3_3 != 0x80:u8 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1) }
                 
-                auto cp1: Char32 = b0 band 0x07:u8
-                auto cp2: Char32 = b1 band 0x3F:u8
-                auto cp3: Char32 = b2 band 0x3F:u8
-                auto cp4: Char32 = b3 band 0x3F:u8
+                auto cp1 = (b0 band 0x07:u8) as Char32
+                auto cp2 = (b1 band 0x3F:u8) as Char32
+                auto cp3 = (b2 band 0x3F:u8) as Char32
+                auto cp4 = (b3 band 0x3F:u8) as Char32
                 auto cp = (((cp1 bshl 18) bor (cp2 bshl 12)) bor (cp3 bshl 6)) bor cp4
                 if cp < 0x10000 || cp > 0x10FFFF { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1) } // Reject overlong and out of bounds
                 return Utf8Char(cp=cp, bytes=4)

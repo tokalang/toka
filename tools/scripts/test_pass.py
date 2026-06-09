@@ -23,7 +23,7 @@ else:
     GREEN = RED = YELLOW = GRAY = NC = ""
 
 # Configuration & Paths
-TOKAC = "./build/bin/tokac"
+TOKAC = os.environ.get("TOKAC", "./build/bin/tokac")
 if sys.platform == "win32":
     TOKAC += ".exe"
 
