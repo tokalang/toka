@@ -17,6 +17,7 @@
 #include "toka/Type.h"
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <functional> // [NEW] Added for std::function
 #include <iostream>
 #include <map>
@@ -247,40 +248,69 @@ void Sema::registerGlobals(Module &M) {
   // Case B: Handle Imports
   for (auto &Imp : M.Imports) {
     ModuleScope *target = nullptr;
-    // We need to resolve PhysicalPath to what's in ModuleMap
-    // The ModuleMap is keyed by whatever FileName was set in main.cpp
+    
+    // 1. Try absolute normalized path matching (for relative imports)
+    std::string importPath = Imp->PhysicalPath;
+    if (importPath.rfind("./", 0) == 0 || importPath.rfind("../", 0) == 0) {
+        size_t lastSlash = M.SourcePath.find_last_of('/');
+        std::string parentDir = (lastSlash == std::string::npos) ? "." : M.SourcePath.substr(0, lastSlash);
+        importPath = parentDir + "/" + importPath;
+    }
+    std::string normImport = std::filesystem::path(importPath).lexically_normal().string();
+    std::vector<std::string> normTries = {
+        normImport,
+        normImport + ".tk",
+        normImport + ".tki",
+        normImport + "/mod.tk",
+        normImport + "/mod.tki"
+    };
+    
     for (auto &[path, scope] : ModuleMap) {
       if (path == M.SourcePath) continue;
-      
-      if (path == Imp->PhysicalPath) {
-        target = &scope;
-        break;
-      }
-      
-      std::string p = Imp->PhysicalPath;
-      std::vector<std::string> suffixes = {
-        "/" + p,
-        "/" + p + ".tk",
-        "/" + p + ".tki",
-        "/" + p + "/mod.tk",
-        "/" + p + "/mod.tki",
-        p,
-        p + ".tk",
-        p + ".tki",
-        p + "/mod.tk",
-        p + "/mod.tki"
-      };
-      
-      bool matched = false;
-      for (const auto &suffix : suffixes) {
-        if (path.length() >= suffix.length() &&
-            path.compare(path.length() - suffix.length(), suffix.length(), suffix) == 0) {
+      for (const auto &tryPath : normTries) {
+        if (path == tryPath) {
           target = &scope;
-          matched = true;
           break;
         }
       }
-      if (matched) break;
+      if (target) break;
+    }
+    
+    // 2. Fallback to suffix matching (for global library imports)
+    if (!target) {
+      for (auto &[path, scope] : ModuleMap) {
+        if (path == M.SourcePath) continue;
+        
+        if (path == Imp->PhysicalPath) {
+          target = &scope;
+          break;
+        }
+        
+        std::string p = Imp->PhysicalPath;
+        std::vector<std::string> suffixes = {
+          "/" + p,
+          "/" + p + ".tk",
+          "/" + p + ".tki",
+          "/" + p + "/mod.tk",
+          "/" + p + "/mod.tki",
+          p,
+          p + ".tk",
+          p + ".tki",
+          p + "/mod.tk",
+          p + "/mod.tki"
+        };
+        
+        bool matched = false;
+        for (const auto &suffix : suffixes) {
+          if (path.length() >= suffix.length() &&
+              path.compare(path.length() - suffix.length(), suffix.length(), suffix) == 0) {
+            target = &scope;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
     }
 
     if (!target) {

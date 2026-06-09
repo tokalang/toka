@@ -35,6 +35,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 #include <set>
 #include <list>
 #include <sstream>
@@ -128,13 +129,14 @@ extern "C" const char *__asan_default_options() {
 bool verboseMode = false;
 bool g_JsonDiagnostics = false;
 
-void parseSource(const std::string &filename,
+void parseSource(const std::string &rawFilename,
                  std::vector<std::unique_ptr<toka::Module>> &astModules,
                  std::set<std::string> &visited,
                  std::vector<std::string> &recursionStack,
                  toka::SourceManager &sm,
                  const std::vector<std::string> &searchPaths,
                  const std::map<std::string, std::string> &pkgMap) {
+  std::string filename = std::filesystem::path(rawFilename).lexically_normal().string();
   // Check recursion stack for circular dependency
   for (const auto &f : recursionStack) {
     if (f == filename) {
