@@ -5008,6 +5008,25 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   std::string fname = call->Callee;
 
   if (!fname.empty()) {
+    if (fname == "__toka_str_raw_ptr" || fname == "__toka_bytes_raw_ptr") {
+        llvm::Value *structPtr = argsV[0];
+        if (!structPtr->getType()->isPointerTy()) {
+            llvm::AllocaInst *tmp = createEntryBlockAlloca(structPtr->getType());
+            m_Builder.CreateStore(structPtr, tmp);
+            structPtr = tmp;
+        }
+        std::string structName = (fname == "__toka_str_raw_ptr" ? "str" : "bytes");
+        llvm::StructType *structTy = nullptr;
+        if (m_StructTypes.count(structName)) {
+            structTy = m_StructTypes[structName];
+        }
+        if (!structTy) {
+            structTy = llvm::StructType::get(m_Context, {m_Builder.getPtrTy(), llvm::Type::getInt64Ty(m_Context)});
+        }
+        llvm::Value *gep = m_Builder.CreateStructGEP(structTy, structPtr, 0, "raw_ptr.gep");
+        llvm::Value *ptr = m_Builder.CreateLoad(m_Builder.getPtrTy(), gep, "raw_ptr.load");
+        return PhysEntity(ptr, fname == "__toka_str_raw_ptr" ? "*char" : "*byte", m_Builder.getPtrTy(), false);
+    }
     if (fname == "__toka_coro_resume") {
         llvm::Function *resFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_resume);
         m_Builder.CreateCall(resFn->getFunctionType(), resFn, argsV);

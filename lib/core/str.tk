@@ -23,6 +23,12 @@ import core/internal/runtime::__toka_panic_handler
 
 extern fn libc_strlen(*s: char) -> usize
 
+// Intrinsic hooks for retrieving the raw pointer of slice types.
+// These are intercepted by the compiler codegen to emit zero-cost LLVM GEP instructions.
+extern fn __toka_str_raw_ptr(s: str) -> *char
+extern fn __toka_bytes_raw_ptr(b: bytes) -> *byte
+
+
 // A memory-safe, zero-allocation reference to a string view
 pub shape str(
     &buf$: [char], //$ inner immutable
@@ -81,10 +87,9 @@ impl ViewStrSplitIterator {
     pub fn raw_ptr(self) -> *char {
         if self.len == 0 { return null as *char }
         unsafe {
-            auto cpy = self.clone()
-            auto ret_val: usize = 0
-            copy_memory(&ret_val as Addr, &cpy as Addr, 8)
-            return ret_val as *char
+            // Retrieve the pointer by taking the address of the first element of the slice.
+            // This is safe because self.len > 0.
+            return &(self.buf[0]) as *char
         }
     }
 
@@ -579,13 +584,8 @@ impl str {
     }
 
     pub fn raw_ptr(self) -> *char {
-        if self.len == 0 { return null as *char }
-        unsafe {
-            auto cpy = self.clone()
-            auto ret_val: usize = 0
-            copy_memory(&ret_val as Addr, &cpy as Addr, 8)
-            return ret_val as *char
-        }
+        // Delegate to the compiler intrinsic to obtain the raw pointer with zero overhead.
+        return __toka_str_raw_ptr(self)
     }
 
     pub fn as_cstr(self) -> cstr {
@@ -667,13 +667,8 @@ impl bytes {
     }
 
     pub fn raw_ptr(self) -> *byte {
-        if self.len == 0 { return null as *byte }
-        unsafe {
-            auto cpy = self.clone()
-            auto ret_val: usize = 0
-            copy_memory(&ret_val as Addr, &cpy as Addr, 8)
-            return ret_val as *byte
-        }
+        // Delegate to the compiler intrinsic to obtain the raw pointer with zero overhead.
+        return __toka_bytes_raw_ptr(self)
     }
 
     pub fn is_empty(self) -> bool {
