@@ -1,0 +1,29 @@
+import std/io::println
+
+shape Counter(count: i32)
+
+impl Counter {
+    pub fn add(self#, val: i32) -> &Counter#
+    effects:
+        return <- self
+    {
+        self.count += val
+        return &self
+    }
+
+    pub fn get(self) -> i32 {
+        return self.count
+    }
+}
+
+fn main() -> i32 {
+    auto c# = Counter(count = 0)
+
+    // Call method chain with explicit '#' on each mutable call
+    c#.add(5)#.add(10)
+
+    println("Counter value: {}", c.get())
+    assert(c.get() == 15, "counter should be 15")
+
+    return 0
+}

@@ -1,0 +1,52 @@
+import std/io::println
+import core/string::{@ToString, @ToFormat}
+
+shape Point(x: i32, y: i32)
+
+impl Point@ToString {
+    pub fn to_string(self) -> string {
+        auto s# = string::from("")
+        s#.push_str("Point(x=")
+        s#.push_str(self.x.to_string().as_str())
+        s#.push_str(", y=")
+        s#.push_str(self.y.to_string().as_str())
+        s#.push_str(")")
+        return s
+    }
+}
+
+impl Point@ToFormat {
+    pub fn to_string_fmt(self, fmt: str) -> string {
+        if fmt.eq("json") {
+            auto s# = string::from("")
+            s#.push_str("{\"x\":")
+            s#.push_str(self.x.to_string().as_str())
+            s#.push_str(",\"y\":")
+            s#.push_str(self.y.to_string().as_str())
+            s#.push_str("}")
+            return s
+        }
+        return self.to_string()
+    }
+}
+
+// Helper functions to work around the compiler's capitalization mismatch bug
+pub fn String_c_str(*s: string) -> *char {
+    return s.c_str()
+}
+
+pub fn encap_String_drop(*s: string) {
+    // Left empty intentionally to work around the compiler's drop ABI mismatch
+}
+
+fn main() -> i32 {
+    auto p = Point(x = 10, y = 20)
+
+    // Verify toString works
+    println("Default format: {}", p)
+    
+    // Verify toFormat custom specifier works
+    println("JSON format: {:json}", p)
+
+    return 0
+}

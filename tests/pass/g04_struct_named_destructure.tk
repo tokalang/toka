@@ -1,0 +1,41 @@
+import std/io::println
+
+shape Point(x: i32, y: i32)
+
+shape RefBox(&val: i32)
+
+fn test_punning() -> i32 {
+    auto p = Point(x = 10, y = 20)
+    // 1. Same-name elision / punning syntax
+    auto Point(x, y) = p
+    if x != 10 || y != 20 {
+        return 1
+    }
+    return 0
+}
+
+fn test_morphology_alignment() -> i32 {
+    auto num = 42
+    auto box = RefBox(&val = &num)
+
+    // 2. Morphology alignment in destructuring:
+    // The field '&val' must be destructured with '&val_ref = .&val' (consistent hatting)
+    auto RefBox(&val_ref = .&val) = box
+    if val_ref != 42 {
+        return 1
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    if test_punning() != 0 {
+        println("test_punning failed")
+        return 1
+    }
+    if test_morphology_alignment() != 0 {
+        println("test_morphology_alignment failed")
+        return 2
+    }
+    println("Named destructure and morphological alignment passed")
+    return 0
+}
