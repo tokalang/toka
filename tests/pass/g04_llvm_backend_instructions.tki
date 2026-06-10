@@ -1,0 +1,6 @@
+import std/io :: {println}
+import core/result :: {Result}
+import toolchain/llvm :: {LLVMContext, LLVMModule, LLVMType, LLVMValue, LLVMBasicBlock, LLVMBuilder, LLVMPredicate, LLVMRealPredicate}
+
+fn main() -> i32
+

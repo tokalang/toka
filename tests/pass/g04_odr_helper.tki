@@ -1,0 +1,4 @@
+import ./odr_test_lib :: *
+
+pub fn helper_call() -> i32
+

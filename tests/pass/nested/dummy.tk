@@ -1,4 +1,4 @@
-import ../dummy2::{get_zero}
+import ../g01_dummy2::{get_zero}
 
 pub fn hello() -> i32 {
     return get_zero()

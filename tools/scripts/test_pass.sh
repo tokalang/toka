@@ -105,7 +105,7 @@ run_worker() {
     }
     
     # Step 1: Compile Native
-    if [ "$file_name" = "llvm_shim_test.tk" ] || [ "$file_name" = "llvm_backend_instructions.tk" ]; then
+    if [[ "$file_name" == *llvm_shim_test.tk ]] || [[ "$file_name" == *llvm_backend_instructions.tk ]]; then
         tmp_obj="${exe_file}.o"
         if ! "$TOKAC" --emit-obj "$test_path" -o "$tmp_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
@@ -126,11 +126,18 @@ run_worker() {
             exit 1
         fi
         rm -f "$tmp_obj"
-    elif [ "$file_name" = "odr_main.tk" ]; then
+    elif [[ "$file_name" == *odr_main.tk ]]; then
         lib_obj="${out_dir}/tests_pass_odr_test_lib.o"
         helper_obj="${out_dir}/tests_pass_odr_helper.o"
+        
+        lib_path=$(find tests/pass -name "*odr_test_lib.tk_lib" | head -n 1)
+        helper_path=$(find tests/pass -name "*odr_helper.tk_lib" | head -n 1)
+        
+        if [ -z "$lib_path" ]; then lib_path="tests/pass/odr_test_lib.tk_lib"; fi
+        if [ -z "$helper_path" ]; then helper_path="tests/pass/odr_helper.tk_lib"; fi
+
         # Compile lib
-        if ! "$TOKAC" -c "tests/pass/odr_test_lib.tk_lib" -o "$lib_obj" > /dev/null 2> "$log_file"; then
+        if ! "$TOKAC" -c "$lib_path" -o "$lib_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compiling odr_test_lib failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -139,7 +146,7 @@ run_worker() {
             exit 1
         fi
         # Compile helper
-        if ! "$TOKAC" -c "tests/pass/odr_helper.tk_lib" -o "$helper_obj" > /dev/null 2> "$log_file"; then
+        if ! "$TOKAC" -c "$helper_path" -o "$helper_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compiling odr_helper failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -335,7 +342,7 @@ else
 fi
 
 # Run parallel tests based on available cores
-find tests/pass -name "*.tk" -print0 | xargs -0 -P $CORES -n 1 "$SCRIPT_PATH" --worker | tee "$RESULTS_FILE"
+find tests/pass -name "*.tk" | sort | tr '\n' '\0' | xargs -0 -P $CORES -n 1 "$SCRIPT_PATH" --worker | tee "$RESULTS_FILE"
 
 # Stats
 # Strip ANSI codes for accurate counting
