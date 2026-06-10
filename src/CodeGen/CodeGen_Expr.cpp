@@ -2614,9 +2614,13 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 }
 
 PhysEntity CodeGen::genIfExpr(const IfExpr *ie) {
-  llvm::AllocaInst *resultAddr =
-      createEntryBlockAlloca(m_Builder.getInt32Ty(), nullptr, "if_result_addr");
-  m_Builder.CreateStore(m_Builder.getInt32(0), resultAddr);
+  llvm::AllocaInst *resultAddr = nullptr;
+  llvm::Type *resTy = nullptr;
+  if (ie->ResolvedType && !ie->ResolvedType->isVoid()) {
+    resTy = getLLVMType(ie->ResolvedType);
+    resultAddr = createEntryBlockAlloca(resTy, nullptr, "if_result_addr");
+    m_Builder.CreateStore(llvm::Constant::getNullValue(resTy), resultAddr);
+  }
 
   if (ie->IsComptime) {
       llvm::Function *f = m_Builder.GetInsertBlock()->getParent();
@@ -2646,7 +2650,10 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie) {
           mergeBB->insertInto(f);
           m_Builder.SetInsertPoint(mergeBB);
       }
-      return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr, "if_result");
+      if (resultAddr) {
+        return m_Builder.CreateLoad(resTy, resultAddr, "if_result");
+      }
+      return PhysEntity();
   }
 
   // Track result via alloca if this if yields a value (determined by
@@ -2691,13 +2698,20 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie) {
 
   mergeBB->insertInto(f);
   m_Builder.SetInsertPoint(mergeBB);
-  return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr, "if_result");
+  if (resultAddr) {
+    return m_Builder.CreateLoad(resTy, resultAddr, "if_result");
+  }
+  return PhysEntity();
 }
 
 PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
-  llvm::AllocaInst *resultAddr =
-      createEntryBlockAlloca(m_Builder.getInt32Ty(), nullptr, "guard_result_addr");
-  m_Builder.CreateStore(m_Builder.getInt32(0), resultAddr);
+  llvm::AllocaInst *resultAddr = nullptr;
+  llvm::Type *resTy = nullptr;
+  if (guard->ResolvedType && !guard->ResolvedType->isVoid()) {
+    resTy = getLLVMType(guard->ResolvedType);
+    resultAddr = createEntryBlockAlloca(resTy, nullptr, "guard_result_addr");
+    m_Builder.CreateStore(llvm::Constant::getNullValue(resTy), resultAddr);
+  }
 
   llvm::Value *condVal = nullptr;
   if (auto *unary = dynamic_cast<const UnaryExpr *>(guard->Condition.get())) {
@@ -2824,7 +2838,10 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
 
   mergeBB->insertInto(f);
   m_Builder.SetInsertPoint(mergeBB);
-  return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr, "guard_result");
+  if (resultAddr) {
+    return m_Builder.CreateLoad(resTy, resultAddr, "guard_result");
+  }
+  return PhysEntity();
 }
 
 PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {

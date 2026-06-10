@@ -92,4 +92,5 @@ promo/
 
 # Self-hosted compiler repository
 /tokac/
+/toka_bootstrap/
 

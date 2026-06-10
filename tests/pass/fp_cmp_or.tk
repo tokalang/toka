@@ -1,0 +1,52 @@
+import std/io::println
+
+fn check_fp(op_ty: str) -> bool {
+    if op_ty == "double" || op_ty == "float" || op_ty == "f64" {
+        return true
+    } else {
+        return false
+    }
+}
+
+pub fn test_fp_expr_returns(cond: bool, a: f64, b: f64) -> f64 {
+    auto res = if cond {
+        pass a
+    } else {
+        pass b
+    }
+    return res
+}
+
+pub fn main() -> i32 {
+    auto a = 1.0
+    auto b = 2.0
+
+    auto r1 = test_fp_expr_returns(true, a, b)
+    auto r2 = test_fp_expr_returns(false, a, b)
+    if r1 == 1.0 && r2 == 2.0 {
+        println("IfExpr expression returns f64 OK")
+    } else {
+        println("IfExpr expression returns f64 FAILED")
+        return 1
+    }
+
+    auto op_ty_double = "double"
+    auto op_ty_float = "float"
+    auto op_ty_other = "i32"
+
+    if check_fp(op_ty_double) && check_fp(op_ty_float) && !check_fp(op_ty_other) {
+        println("Float string classification with short-circuit OR OK")
+    } else {
+        println("Float string classification with short-circuit OR FAILED")
+        return 1
+    }
+
+    if a == b {
+        println("equal FAILED")
+        return 1
+    } else {
+        println("not equal OK")
+    }
+
+    return 0
+}
