@@ -38,17 +38,17 @@ When building a library for other Toka developers to use, the organization must 
 
 > [!WARNING]
 > **Anti-Pattern: The Microservice Layout**
-> Avoid creating a deeply nested directory for every single component and naming the file `main.tk`.
-> 
-> **Bad Example:**
-> ```text
-> lib/
-> ├── mylib_button/
-> │   └── main.tk    ❌ Do not use main.tk for library components!
-> ├── mylib_chart/
-> │   └── main.tk    ❌ Requires: import lib/mylib_chart/main
-> ```
-> This structure is overly fragmented and creates a miserable import experience for users.
+> Avoid creating a deeply nested directory for every single component and naming the file `main.tk`. This structure is overly fragmented and creates a miserable import experience for users.
+
+### Bad Example (Avoid this)
+
+```text
+lib/
+├── mylib_button/
+│   └── main.tk    ❌ Do not use main.tk for library components!
+├── mylib_chart/
+│   └── main.tk    ❌ Requires: import lib/mylib_chart/main
+```
 
 ### Standard Layout
 

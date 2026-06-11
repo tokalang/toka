@@ -28,20 +28,22 @@ For Windows users, Toka provides native `.exe` pre-compiled binaries:
 > 💡 **Tip:** The Windows version has been deeply refactored and adapted to the underlying Win32 API, supporting a native development and debugging experience!
 
 > [!WARNING]
-> **Compiler Dependency & Environment setup (Important):** On Windows, the core compiler `tokac.exe` relies on the **LLVM/Clang compiler infrastructure** to perform compilation and generate machine code.
-> If you execute `toka build` or `toka run` on a pure Windows machine without the required LLVM DLLs, `tokac.exe` will fail to start and crash with a system error code `0xC0000135` (STATUS_DLL_NOT_FOUND).
-> **Resolution:** You must configure the **MSYS2** compilation environment on your system:
-> 1. Download and install [MSYS2](https://www.msys2.org) (typically to `C:\msys64`).
-> 2. Depending on your chosen terminal environment, run the corresponding command to install the required compiler tools (we recommend using the modern **UCRT64 terminal**):
->    * **MSYS2 UCRT64 Terminal** (Recommended):
->      ```bash
->      pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
->      ```
->    * **MSYS2 MinGW64 Terminal**:
->      ```bash
->      pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
->      ```
-> 3. Add the corresponding binary directory (e.g., `C:\msys64\ucrt64\bin` for UCRT64 or `C:\msys64\mingw64\bin` for MinGW64) to your Windows system `PATH` environment variable.
+> **Compiler Dependency & Environment setup (Important):** On Windows, the core compiler `tokac.exe` relies on the **LLVM/Clang compiler infrastructure** to perform compilation and generate machine code. If you execute `toka build` or `toka run` on a pure Windows machine without the required LLVM DLLs, `tokac.exe` will fail to start and crash with a system error code `0xC0000135` (STATUS_DLL_NOT_FOUND).
+
+### Resolution
+
+You must configure the **MSYS2** compilation environment on your system:
+1. Download and install [MSYS2](https://www.msys2.org) (typically to `C:\msys64`).
+2. Depending on your chosen terminal environment, run the corresponding command to install the required compiler tools (we recommend using the modern **UCRT64 terminal**):
+   * **MSYS2 UCRT64 Terminal** (Recommended):
+     ```bash
+     pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
+     ```
+   * **MSYS2 MinGW64 Terminal**:
+     ```bash
+     pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
+     ```
+3. Add the corresponding binary directory (e.g., `C:\msys64\ucrt64\bin` for UCRT64 or `C:\msys64\mingw64\bin` for MinGW64) to your Windows system `PATH` environment variable.
 
 
 ## Quick Start (Hello World)

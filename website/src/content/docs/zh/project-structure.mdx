@@ -38,17 +38,17 @@ my-app/
 
 > [!WARNING]
 > **反模式 (Anti-Pattern)：过度碎片的假微服务布局**
-> 绝对不要为库中的每一个组件都建立一个极深的文件夹，并且在里面塞满 `main.tk`。
-> 
-> **错误示范：**
-> ```text
-> lib/
-> ├── mylib_button/
-> │   └── main.tk    ❌ 库文件绝对不要命名为 main.tk！
-> ├── mylib_chart/
-> │   └── main.tk    ❌ 导致外部导入极度恶心：import lib/mylib_chart/main
-> ```
-> 这种“伪微服务式”的布局不仅让目录树极度碎片化，还会让使用者的 `import` 语句变得冗长且毫无逻辑。
+> 绝对不要为库中的每一个组件都建立一个极深的文件夹，并且在里面塞满 `main.tk`。这种“伪微服务式”的布局不仅让目录树极度碎片化，还会让使用者的 `import` 语句变得冗长且毫无逻辑。
+
+### 错误示范（避免使用）
+
+```text
+lib/
+├── mylib_button/
+│   └── main.tk    ❌ 库文件绝对不要命名为 main.tk！
+├── mylib_chart/
+│   └── main.tk    ❌ 导致外部导入极度恶心：import lib/mylib_chart/main
+```
 
 ### 标准库布局
 

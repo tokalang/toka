@@ -28,20 +28,22 @@ curl -fsSL https://tokalang.dev/install.sh | bash
 > 💡 **提示:** Windows 版本基于底层的 Win32 API 进行了深度重构和适配，支持原生开发和调试体验！
 
 > [!WARNING]
-> **编译器依赖与环境准备 (重要)**：在 Windows 平台下，核心编译器 `tokac.exe` 依赖 **LLVM/Clang 编译器基础设施** 来完成源代码的翻译与最终链接。
-> 如果您的 Windows 系统是纯净裸机，在运行 `toka build` 或 `toka run` 时，后台拉起 `tokac.exe` 会因为找不到 LLVM 动态库而报错崩溃（系统错误码为 `0xC0000135`，显示为 STATUS_DLL_NOT_FOUND 或提示找不到 DLL）。
-> **解决方法**：您必须在系统中配置 **MSYS2** 编译环境：
-> 1. 下载并安装 [MSYS2](https://www.msys2.org)（默认安装到 `C:\msys64`）。
-> 2. 根据您所选择的终端环境，运行以下对应命令以装齐底层编译与链接工具链（推荐使用更现代的 **UCRT64 终端**）：
->    * **MSYS2 UCRT64 终端**（推荐）：
->      ```bash
->      pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
->      ```
->    * **MSYS2 MinGW64 终端**：
->      ```bash
->      pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
->      ```
-> 3. 将对应环境的二进制目录（如 UCRT64 对应的 `C:\msys64\ucrt64\bin` 或 MinGW64 对应的 `C:\msys64\mingw64\bin`）添加至您的 Windows 系统环境变量 `PATH` 中。
+> **编译器依赖与环境准备 (重要)**：在 Windows 平台下，核心编译器 `tokac.exe` 依赖 **LLVM/Clang 编译器基础设施** 来完成源代码的翻译与最终链接。如果您的 Windows 系统是纯净裸机，在运行 `toka build` 或 `toka run` 时，后台拉起 `tokac.exe` 会因为找不到 LLVM 动态库而报错崩溃（系统错误码为 `0xC0000135`，显示为 STATUS_DLL_NOT_FOUND 或提示找不到 DLL）。
+
+### 解决方案
+
+您必须在系统中配置 **MSYS2** 编译环境：
+1. 下载并安装 [MSYS2](https://www.msys2.org)（默认安装到 `C:\msys64`）。
+2. 根据您所选择的终端环境，运行以下对应命令以装齐底层编译与链接工具链（推荐使用更现代的 **UCRT64 终端**）：
+   * **MSYS2 UCRT64 终端**（推荐）：
+     ```bash
+     pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
+     ```
+   * **MSYS2 MinGW64 终端**：
+     ```bash
+     pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
+     ```
+3. 将对应环境的二进制目录（如 UCRT64 对应的 `C:\msys64\ucrt64\bin` 或 MinGW64 对应的 `C:\msys64\mingw64\bin`）添加至您的 Windows 系统环境变量 `PATH` 中。
 
 
 ## 快速体验 (Hello World)
