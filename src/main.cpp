@@ -33,6 +33,7 @@
 
 #include "toka/Version.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -129,6 +130,12 @@ extern "C" const char *__asan_default_options() {
 bool verboseMode = false;
 bool g_JsonDiagnostics = false;
 
+static std::string normalizePath(const std::string &path) {
+  std::string p = std::filesystem::path(path).lexically_normal().string();
+  std::replace(p.begin(), p.end(), '\\', '/');
+  return p;
+}
+
 void parseSource(const std::string &rawFilename,
                  std::vector<std::unique_ptr<toka::Module>> &astModules,
                  std::set<std::string> &visited,
@@ -136,12 +143,12 @@ void parseSource(const std::string &rawFilename,
                  toka::SourceManager &sm,
                  const std::vector<std::string> &searchPaths,
                  const std::map<std::string, std::string> &pkgMap) {
-  std::string filename = std::filesystem::path(rawFilename).lexically_normal().string();
+  std::string filename = normalizePath(rawFilename);
   // Check recursion stack for circular dependency
   for (const auto &f : recursionStack) {
     if (f == filename) {
-      std::string dir1 = std::filesystem::absolute(filename).parent_path().lexically_normal().string();
-      std::string dir2 = std::filesystem::absolute(f).parent_path().lexically_normal().string();
+      std::string dir1 = normalizePath(std::filesystem::absolute(filename).parent_path().string());
+      std::string dir2 = normalizePath(std::filesystem::absolute(f).parent_path().string());
       if (dir1 == dir2) {
         // Allow circular imports within the same physical directory to allow modular file splitting
         return;
@@ -310,6 +317,7 @@ void parseSource(const std::string &rawFilename,
   toka::Lexer lexer(code.c_str(), startLoc);
   auto tokens = lexer.tokenize();
 
+  resolvedPath = normalizePath(resolvedPath);
   toka::Parser parser(tokens, resolvedPath);
   auto module = parser.parseModule();
   if (module) {

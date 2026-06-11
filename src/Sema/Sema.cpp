@@ -311,12 +311,14 @@ void Sema::registerGlobals(Module &M) {
     
     // 1. Try absolute normalized path matching (for relative imports)
     std::string importPath = Imp->PhysicalPath;
+    std::replace(importPath.begin(), importPath.end(), '\\', '/');
     if (importPath.rfind("./", 0) == 0 || importPath.rfind("../", 0) == 0) {
         size_t lastSlash = M.SourcePath.find_last_of('/');
         std::string parentDir = (lastSlash == std::string::npos) ? "." : M.SourcePath.substr(0, lastSlash);
         importPath = parentDir + "/" + importPath;
     }
     std::string normImport = std::filesystem::path(importPath).lexically_normal().string();
+    std::replace(normImport.begin(), normImport.end(), '\\', '/');
     std::vector<std::string> normTries = {
         normImport,
         normImport + ".tk",

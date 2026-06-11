@@ -38,34 +38,40 @@ void SourceManager::FileInfo::calculateLineOffsets() {
 }
 
 SourceLocation SourceManager::loadFile(const std::string &Path) {
+  std::string NormPath = Path;
+  std::replace(NormPath.begin(), NormPath.end(), '\\', '/');
+
   // Check if already loaded
   for (const auto &File : Files) {
-    if (File.FileName == Path) {
+    if (File.FileName == NormPath) {
       return SourceLocation(File.GlobalStartOffset);
     }
   }
 
-  std::ifstream Input(Path);
+  std::ifstream Input(NormPath);
   if (!Input) {
-    std::cerr << "Error: Could not open file " << Path << "\n";
+    std::cerr << "Error: Could not open file " << NormPath << "\n";
     // Return empty content on failure? Or preserve existing behavior (exit)?
     // For now, let's create an empty file entry to avoid crashes in locating
-    return addFile(Path, "");
+    return addFile(NormPath, "");
   }
 
   std::stringstream Buffer;
   Buffer << Input.rdbuf();
-  return addFile(Path, Buffer.str());
+  return addFile(NormPath, Buffer.str());
 }
 
 SourceLocation SourceManager::addFile(const std::string &Path,
                                       std::string Content) {
+  std::string NormPath = Path;
+  std::replace(NormPath.begin(), NormPath.end(), '\\', '/');
+
   // Check if already loaded to avoid duplicates?
   // We allow re-adding for "addFile" if it's explicitly called, but usually
   // only loadFile does checking. Actually, let's check duplicates for safety to
   // keep offsets unique per path.
   for (const auto &File : Files) {
-    if (File.FileName == Path) {
+    if (File.FileName == NormPath) {
       // Re-loading same path? We can't overwrite easily in global space.
       // Return existing.
       return SourceLocation(File.GlobalStartOffset);
@@ -73,7 +79,7 @@ SourceLocation SourceManager::addFile(const std::string &Path,
   }
 
   uint32_t Start = NextOffset;
-  Files.emplace_back(Path, std::move(Content), Start);
+  Files.emplace_back(NormPath, std::move(Content), Start);
   NextOffset = Files.back().GlobalEndOffset +
                1; // +1 to leave a gap between files? Or just adjacent.
   // Let's keep them adjacent.
