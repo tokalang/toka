@@ -52,6 +52,7 @@ jobs:
             ../src/DiagnosticEngine.cpp \
             ../src/Basic/SourceManager.cpp \
             ../src/Type.cpp \
+            ../src/AST/ASTEvaluator.cpp \
             -s WASM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "stringToUTF8", "lengthBytesUTF8", "UTF8ToString"]' \
@@ -60,6 +61,11 @@ jobs:
             -o tokacheck.js
           cp tokacheck.js ../playground/
           cp tokacheck.wasm ../playground/
+          
+          # Run self-test to ensure compiler behavior is correct and all playground samples pass
+          cd ../playground
+          node self_test.js
+          cd ../build_wasm
           
           # Move playground to Astro public directory so it gets served under /playground
           mkdir -p ../website/public/playground
