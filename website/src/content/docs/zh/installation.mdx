@@ -43,7 +43,6 @@ curl -fsSL https://tokalang.dev/install.sh | bash
 >      ```
 > 3. 将对应环境的二进制目录（如 UCRT64 对应的 `C:\msys64\ucrt64\bin` 或 MinGW64 对应的 `C:\msys64\mingw64\bin`）添加至您的 Windows 系统环境变量 `PATH` 中。
 
-> ⚠️ **功能限制提示:** 当前版本的 Windows **暂不支持原生的底层网络开发**（例如 `std/net`、`stdx/net/http`），任何网络监听或连接操作都会直接返回失败。未来版本将引入基于 IOCP 的完整异步网络支持。如果您的项目重度依赖网络，请暂时使用 WSL2、Linux 或 macOS 环境进行开发。
 
 ## 快速体验 (Hello World)
 
