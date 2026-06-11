@@ -195,6 +195,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
       int idx = 0;
       while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
         ShapeMember m;
+        Token nameTok;
         bool isExplicitBound = false;
         if (kind == ShapeKind::Struct) {
           if (match(TokenType::Backtick)) {
@@ -240,7 +241,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
             error(previous(), DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
           }
 
-          Token nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
+          nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           m.Name = nameTok.Text;
           if (!m.Name.empty() && m.Name[0] == '\'') {
               m.IsMorphicExempt = true;
@@ -261,7 +262,23 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           // If we didn't have a prefix, initiate empty
           m.Type = "";
         }
-        m.Type += parseTypeString();
+        std::string rawType = parseTypeString();
+        if (kind == ShapeKind::Struct) {
+          std::string trimmed = rawType;
+          size_t start = trimmed.find_first_not_of(" \t\r\n");
+          if (start != std::string::npos) {
+            trimmed = trimmed.substr(start);
+          }
+          if (!trimmed.empty() && (trimmed[0] == '&' || trimmed[0] == '^' || trimmed[0] == '~' || trimmed[0] == '*')) {
+            char sigil = trimmed[0];
+            std::string suggestion = std::string(1, sigil) + m.Name + ": " + trimmed.substr(1);
+            std::string msg = "Pointer morphology sigil ('" + std::string(1, sigil) + 
+                              "') must prefix the member name, not the type name. Did you mean '" + 
+                              suggestion + "'?";
+            error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);
+          }
+        }
+        m.Type += rawType;
         m.IsExplicitBound = isExplicitBound;
         if (match(TokenType::Equal)) {
           m.DefaultValue = parseExpr();

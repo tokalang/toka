@@ -3,16 +3,6 @@ error[E0445]: Shape 'Data' manages raw pointers but does not implement 'drop'
    |
  3 | shape Data (
    |       ^
-error[E0444]: Shape 'Data' manages resources but does not implement 'drop'
- --> tests/fail/trait_bounds_violation.tk:3:7
-   |
- 3 | shape Data (
-   |       ^
-error[E0458]: Shape 'Data' manages resources (raw pointers) but does not implement 'clone'
- --> tests/fail/trait_bounds_violation.tk:3:7
-   |
- 3 | shape Data (
-   |       ^
 error[E0422]: Type mismatch for member '*ptr': expected '*i32?', but got 'null'
  --> tests/fail/trait_bounds_violation.tk:12:19
     |

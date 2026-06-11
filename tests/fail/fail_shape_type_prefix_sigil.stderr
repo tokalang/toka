@@ -1,0 +1,5 @@
+error[E0105]: Parse error: Pointer morphology sigil ('&') must prefix the member name, not the type name. Did you mean '&source_file: SourceFile'?
+ --> tests/fail/fail_shape_type_prefix_sigil.tk:8:5
+   |
+ 8 |     source_file: &SourceFile
+   |     ^

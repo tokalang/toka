@@ -1,0 +1,23 @@
+// Copyright (c) 2026 YiZhonghua <zhyi@dpai.com>. All rights reserved.
+//
+// Verify that accessing a reference member without its pointer morphology prefix
+// to initialize a reference variable causes a morphology mismatch error.
+// EXPECT: error[E0448]
+
+shape Resource(
+    x: i32
+)
+
+shape Engine(
+    &source: Resource
+)
+
+pub fn main() -> i32 {
+    auto res = Resource(x = 10)
+    auto eng = Engine(&source = &res)
+    
+    // Invalid: eng.source lacks '&' morphology prefix, but LHS expects reference '&'
+    auto &ptr = eng.source
+    
+    return 0
+}

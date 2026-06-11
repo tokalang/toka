@@ -1,0 +1,5 @@
+error[E0448]: Pointer morphology mismatch: expected explicit '&' (from LHS/Target), found 'value' (from RHS/Source)
+ --> tests/fail/member_morphology_mismatch.tk:20:11
+    |
+ 20 |     auto &ptr = eng.source
+    |           ^

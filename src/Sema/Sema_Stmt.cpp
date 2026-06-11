@@ -654,6 +654,44 @@ void Sema::checkStmt(Stmt *S) {
       InitTypeObj = checkExpr(Var->Init.get(), declTargetTy);
       m_ExpectedWritability = oldExpectedWritability;
       InitType = InitTypeObj->toString();
+      
+      if (Var->IsReference && Var->Init) {
+        Expr *initExpr = Var->Init.get();
+        while (true) {
+          if (auto *cast = dynamic_cast<CastExpr *>(initExpr)) {
+            initExpr = cast->Expression.get();
+          } else if (auto *unsafe = dynamic_cast<UnsafeExpr *>(initExpr)) {
+            initExpr = unsafe->Expression.get();
+          } else {
+            break;
+          }
+        }
+        if (auto *memb = dynamic_cast<MemberExpr *>(initExpr)) {
+          auto objType = memb->Object->ResolvedType;
+          if (objType) {
+            std::shared_ptr<Type> soulType = objType->getSoulType();
+            std::string soulName = Type::stripMorphology(resolveType(soulType, true)->toString());
+            if (ShapeMap.count(soulName)) {
+              ShapeDecl *SD = ShapeMap[soulName];
+              if (memb->Index >= 0 && memb->Index < (int)SD->Members.size()) {
+                const auto &field = SD->Members[memb->Index];
+                bool fieldIsPointer = field.IsReference || field.IsUnique || field.IsShared || field.IsRawPointer;
+                if (fieldIsPointer) {
+                  bool hasPrefix = !memb->Member.empty() && 
+                                   (memb->Member[0] == '&' || memb->Member[0] == '^' || 
+                                    memb->Member[0] == '~' || memb->Member[0] == '*');
+                  if (!hasPrefix) {
+                    DiagnosticEngine::report(Var->Loc, DiagID::ERR_MORPHOLOGY_MISMATCH,
+                                             "&", "value");
+                    HasError = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
       m_AllowUnsetUsage = false;
     }
 

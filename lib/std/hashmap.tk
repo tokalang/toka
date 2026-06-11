@@ -340,8 +340,8 @@ impl<'K, 'V> HashMap<'K, 'V> {
 }
 
 pub shape Entry<'K, 'V> (
-    key: *'K,
-    val: *'V
+    *key: 'K,
+    *val: 'V
 )
 
 impl<'K, 'V> Entry<'K, 'V> {
