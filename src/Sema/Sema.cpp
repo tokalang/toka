@@ -1722,6 +1722,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
       }
       constInfo.HasConstValue = true;
       constInfo.ConstValue = val;
+      constInfo.ConstValObj = ComptimeValue(val);
 
       // NOTE: We don't set IsTypeAlias. Semantically it's a value.
       // But we need CodeGen to see it.

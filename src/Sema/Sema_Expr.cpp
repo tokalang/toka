@@ -16,6 +16,8 @@
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
+#include "toka/ASTEvaluator.h"
+#include "toka/ComptimeValue.h"
 #include <algorithm>
 #include <iostream>
 #include <map>
@@ -214,135 +216,7 @@ std::string Sema::checkUnaryExprStr(UnaryExpr *Unary) {
 }
 
 std::unique_ptr<Expr> Sema::foldGenericConstant(std::unique_ptr<Expr> E) {
-  if (auto *Var = dynamic_cast<VariableExpr *>(E.get())) {
-    SymbolInfo Info;
-    // Look up symbol. If explicit Const Generic, substitute.
-    if (CurrentScope->lookup(Var->Name, Info) && Info.HasConstValue && !Info.IsDeclaredVariable) {
-      // Create replacement NumberExpr
-      // Note: We use default i32/u64 typing logic or explicit usize?
-      // User suggested Type::usize(). Assuming AST supports it or just Value.
-      // If NumberExpr only takes Value, use that.
-      // Checking existing usage: Parser creates NumberExpr(val).
-      // Let's assume (val) constructor exists.
-      auto Num = std::make_unique<NumberExpr>(Info.ConstValue);
-      Num->Loc = Var->Loc;
-
-      // [Fix] Enforce Declared Type via Cast
-      // Generic parameters like <N: usize> must resolve to 'usize' typed
-      // expressions, not default 'i32' NumberExprs.
-      if (Info.TypeObj) {
-        std::string typeStr = Info.TypeObj->toString();
-        if (typeStr != "unknown" && typeStr != "auto") {
-          auto Cast = std::make_unique<CastExpr>(std::move(Num), typeStr);
-          Cast->Loc = Var->Loc;
-          return Cast;
-        }
-      }
-      return Num;
-    } else if (Info.IsComptimeField) {
-      // Setup replacement for compiled static unrolled Macro fields
-      auto Field = std::make_unique<ComptimeFieldExpr>(
-          Info.ComptimeFieldName, Info.ComptimeFieldTypeStr,
-          Info.ComptimeFieldOffset, Info.ComptimeFieldSize);
-      Field->Loc = Var->Loc;
-      return Field;
-    }
-  } else if (auto *Call = dynamic_cast<CallExpr *>(E.get())) {
-    if (Call->Callee == "core/comptime::is_pointer" || Call->Callee == "is_pointer") {
-      if (!Call->GenericArgs.empty()) {
-        std::string targetTyStr = Call->GenericArgs[0];
-        auto targetObj = toka::Type::fromString(targetTyStr);
-        auto resolvedObj = resolveType(targetObj, true);
-        bool isPtr = resolvedObj && (resolvedObj->isPointer() || resolvedObj->isRawPointer() || resolvedObj->isReference() || resolvedObj->isSmartPointer());
-        
-        auto boolExpr = std::make_unique<BoolExpr>(isPtr);
-        boolExpr->Loc = Call->Loc;
-        return boolExpr;
-      }
-    } else if (Call->Callee == "core/comptime::reflect" || Call->Callee == "reflect") {
-      if (!Call->GenericArgs.empty()) {
-          auto reflectExpr = std::make_unique<ComptimeReflectExpr>(Call->GenericArgs[0]);
-          reflectExpr->Loc = Call->Loc;
-          return reflectExpr;
-      }
-    }
-  } else if (auto *Memb = dynamic_cast<MemberExpr *>(E.get())) {
-    Memb->Object = foldGenericConstant(std::move(Memb->Object));
-    if (auto *CFE = dynamic_cast<ComptimeFieldExpr *>(Memb->Object.get())) {
-      if (Memb->Member == "name") {
-        auto str = std::make_unique<ViewStringExpr>(CFE->FieldName);
-        str->Loc = Memb->Loc;
-        return str;
-      } else if (Memb->Member == "type_name") {
-        auto str = std::make_unique<ViewStringExpr>(CFE->FieldTypeName);
-        str->Loc = Memb->Loc;
-        return str;
-      } else if (Memb->Member == "offset") {
-        auto num = std::make_unique<NumberExpr>(CFE->FieldOffset);
-        num->Loc = Memb->Loc;
-        return num;
-      } else if (Memb->Member == "size") {
-        auto num = std::make_unique<NumberExpr>(CFE->FieldSize);
-        num->Loc = Memb->Loc;
-        return num;
-      }
-    }
-  } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E.get())) {
-    Met->Object = foldGenericConstant(std::move(Met->Object));
-    if (auto *CFE = dynamic_cast<ComptimeFieldExpr *>(Met->Object.get())) {
-      if (Met->Method == "get" && Met->Args.size() == 1) {
-        // Fold format: field.get(obj) -> obj.FieldName
-        Met->Args[0] = foldGenericConstant(std::move(Met->Args[0]));
-        auto replacement = std::make_unique<MemberExpr>(std::move(Met->Args[0]), CFE->FieldName);
-        replacement->Loc = Met->Loc;
-        return replacement;
-      } else if (Met->Method == "set" && Met->Args.size() == 2) {
-        // Fold format: field.set(obj, val) -> obj.FieldName = val
-        // Wait, MethodCallExpr doesn't model assignment natively. 
-        // Toka assignment is usually BinaryExpr("=")! Wait... if the user calls set, we need to return an assignment expression.
-        Met->Args[0] = foldGenericConstant(std::move(Met->Args[0]));
-        Met->Args[1] = foldGenericConstant(std::move(Met->Args[1]));
-        auto dest = std::make_unique<MemberExpr>(std::move(Met->Args[0]), CFE->FieldName);
-        dest->Loc = Met->Loc;
-        auto assign = std::make_unique<BinaryExpr>("=", std::move(dest), std::move(Met->Args[1]));
-        assign->Loc = Met->Loc;
-        return assign;
-      }
-    }
-  } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E.get())) {
-    Bin->LHS = foldGenericConstant(std::move(Bin->LHS));
-    Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
-    if (Bin->Op == "==" || Bin->Op == "!=") {
-        std::string lhsVal;
-        bool lhsIsStr = false;
-        if (auto *s = dynamic_cast<StringExpr *>(Bin->LHS.get())) {
-            lhsVal = s->Value;
-            lhsIsStr = true;
-        } else if (auto *vs = dynamic_cast<ViewStringExpr *>(Bin->LHS.get())) {
-            lhsVal = vs->Value;
-            lhsIsStr = true;
-        }
-
-        std::string rhsVal;
-        bool rhsIsStr = false;
-        if (auto *s = dynamic_cast<StringExpr *>(Bin->RHS.get())) {
-            rhsVal = s->Value;
-            rhsIsStr = true;
-        } else if (auto *vs = dynamic_cast<ViewStringExpr *>(Bin->RHS.get())) {
-            rhsVal = vs->Value;
-            rhsIsStr = true;
-        }
-
-        if (lhsIsStr && rhsIsStr) {
-            bool matches = (lhsVal == rhsVal);
-            bool result = (Bin->Op == "==") ? matches : !matches;
-            auto boolExpr = std::make_unique<BoolExpr>(result);
-            boolExpr->Loc = Bin->Loc;
-            return boolExpr;
-        }
-    }
-  }
-  return E;
+  return ASTEvaluator::foldExpression(std::move(E), CurrentScope, this);
 }
 
 std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
@@ -1044,6 +918,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
       ve->HasConstantValue = true;
       ve->ConstantValue = Info.ConstValue;
+      ve->ConstantValObj = Info.ConstValObj;
       ve->ResolvedType = Info.TypeObj; // Ensure type is known (e.g. usize)
     }
 
@@ -2667,6 +2542,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Annotated AST] Propagate for CodeGen
         Var->HasConstantValue = true;
         Var->ConstantValue = size;
+        Var->ConstantValObj = info.ConstValObj;
       } else {
         error(Repeat, DiagID::ERR_SEMA_ARRAY_REPEAT_COUNT_MUST_BE_A_NUMERIC_LITE);
       }

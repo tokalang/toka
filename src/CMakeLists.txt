@@ -1,6 +1,7 @@
 add_executable(tokac main.cpp Basic/SourceManager.cpp Lexer/Lexer.cpp 
 DiagnosticEngine.cpp
 AST/TKIExporter.cpp
+AST/ASTEvaluator.cpp
 Parser/Parser.cpp 
 Parser/Parser_Decl.cpp
 Parser/Parser_Stmt.cpp

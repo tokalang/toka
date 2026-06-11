@@ -15,6 +15,7 @@
 
 #include "toka/Token.h"
 #include "toka/Type.h" // Added for ResolvedType
+#include "toka/ComptimeValue.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -194,6 +195,7 @@ public:
   bool IsImplicitDeref = false; // [Fix] Indicates Sema applied an implicit deref
   bool HasConstantValue = false;
   uint64_t ConstantValue = 0;
+  ComptimeValue ConstantValObj;
 
   VariableExpr(const std::string &name) : Name(name) {}
   std::string toString() const override {
@@ -211,6 +213,7 @@ public:
     n->IsImplicitDeref = IsImplicitDeref;
     n->HasConstantValue = HasConstantValue;
     n->ConstantValue = ConstantValue;
+    n->ConstantValObj = ConstantValObj;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

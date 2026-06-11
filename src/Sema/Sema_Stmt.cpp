@@ -975,6 +975,7 @@ void Sema::checkStmt(Stmt *S) {
       if (auto *Num = dynamic_cast<NumberExpr *>(Var->Init.get())) {
         Info.HasConstValue = true;
         Info.ConstValue = Num->Value;
+        Info.ConstValObj = ComptimeValue(Num->Value);
       }
       // Or if initialized with ANOTHER const variable (like N = M)
       else if (auto *RefVar = dynamic_cast<VariableExpr *>(Var->Init.get())) {
@@ -983,6 +984,7 @@ void Sema::checkStmt(Stmt *S) {
             RefInfo.HasConstValue) {
           Info.HasConstValue = true;
           Info.ConstValue = RefInfo.ConstValue;
+          Info.ConstValObj = RefInfo.ConstValObj;
         }
       }
     }

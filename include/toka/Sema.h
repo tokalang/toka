@@ -17,6 +17,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/Type.h"
 #include "toka/PAL_Checker.h"
+#include "toka/ComptimeValue.h"
 #include <map>
 #include <set>
 #include <string>
@@ -82,6 +83,7 @@ struct SymbolInfo {
 
   bool HasConstValue = false;
   uint64_t ConstValue = 0;
+  ComptimeValue ConstValObj;
   bool IsDeclaredMutable = false;
   bool HasBeenMutated = false;
   bool HasBeenUsed = false;
