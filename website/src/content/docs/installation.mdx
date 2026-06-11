@@ -32,11 +32,16 @@ For Windows users, Toka provides native `.exe` pre-compiled binaries:
 > If you execute `toka build` or `toka run` on a pure Windows machine without the required LLVM DLLs, `tokac.exe` will fail to start and crash with a system error code `0xC0000135` (STATUS_DLL_NOT_FOUND).
 > **Resolution:** You must configure the **MSYS2** compilation environment on your system:
 > 1. Download and install [MSYS2](https://www.msys2.org) (typically to `C:\msys64`).
-> 2. Open the **MSYS2 MinGW64 terminal** and run the following command to install the required compiler tools:
->    ```bash
->    pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
->    ```
-> 3. Add MSYS2's binary directory `C:\msys64\mingw64\bin` to your Windows system `PATH` environment variable.
+> 2. Depending on your chosen terminal environment, run the corresponding command to install the required compiler tools (we recommend using the modern **UCRT64 terminal**):
+>    * **MSYS2 UCRT64 Terminal** (Recommended):
+>      ```bash
+>      pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
+>      ```
+>    * **MSYS2 MinGW64 Terminal**:
+>      ```bash
+>      pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
+>      ```
+> 3. Add the corresponding binary directory (e.g., `C:\msys64\ucrt64\bin` for UCRT64 or `C:\msys64\mingw64\bin` for MinGW64) to your Windows system `PATH` environment variable.
 
 > ⚠️ **Limitation Notice:** Native Windows networking via Winsock2 (e.g., `std/net`, `stdx/net/http`) is currently **NOT implemented** in this release and will immediately return connection failures. Full IOCP and asynchronous networking support for Windows is planned for a future update. If networking is required, please use WSL2, Linux, or macOS.
 
@@ -65,9 +70,11 @@ If you wish to contribute to the compiler's C++ core, you can easily build the t
 - **LLVM 20 & LLD 20**: The Toka framework statically links against LLVM 20 and its integrated linker (LLD) to achieve zero-dependency native builds. You must install the corresponding development headers.
   - **Ubuntu/Debian**: Install `llvm-20-dev` and `liblld-20-dev` (often packaged with the LLVM 20 toolchain).
   - **macOS**: Install via Homebrew: `brew install llvm@20` (which includes both LLVM and LLD).
-  - **Windows**: Install via MSYS2 (MINGW64 environment): `pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-lld`.
-- **CMake**: Version 3.15 or higher (On Windows MSYS2, install `mingw-w64-x86_64-cmake` and `mingw-w64-x86_64-ninja`).
-- A C++ build toolchain for your OS (e.g., MSVC, GCC, Clang. On Windows MSYS2, use `mingw-w64-x86_64-clang`).
+  - **Windows**: Install via MSYS2:
+    * **UCRT64 Terminal** (Recommended): `pacman -S mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld`
+    * **MinGW64 Terminal**: `pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-lld`
+- **CMake**: Version 3.15 or higher (For UCRT64, install `mingw-w64-ucrt-x86_64-cmake` and `mingw-w64-ucrt-x86_64-ninja`; for MinGW64, install `mingw-w64-x86_64-cmake` and `mingw-w64-x86_64-ninja`).
+- A C++ build toolchain for your OS (e.g., MSVC, GCC, Clang. For UCRT64, use `mingw-w64-ucrt-x86_64-clang`; for MinGW64, use `mingw-w64-x86_64-clang`).
 
 ### Compiling
 

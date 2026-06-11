@@ -21,12 +21,17 @@ On Windows, the core compiler `tokac.exe` relies on the **LLVM/Clang backend inf
 1. **Install MSYS2**:
    - Download the installer from the [official MSYS2 website](https://www.msys2.org) and install it (typically to `C:\msys64`).
 2. **Install compiler toolchain**:
-   - Open the MSYS2 MinGW64 terminal and run the following command to install the required compiler tools:
-     ```bash
-     pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
-     ```
+   - Open your MSYS2 terminal and run the corresponding command to install the required compiler tools (we recommend the modern **UCRT64 environment**):
+     * **MSYS2 UCRT64 Terminal** (Recommended):
+       ```bash
+       pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
+       ```
+     * **MSYS2 MinGW64 Terminal**:
+       ```bash
+       pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
+       ```
 3. **Configure Environment Variables**:
-   - Add `C:\msys64\mingw64\bin` to your system `PATH` so `tokac.exe` can access the necessary LLVM DLLs (e.g. `libwinpthread-1.dll`, `libclang.dll`, etc.) and tools (`clang`, `lld`, `make`).
+   - Add the bin folder of your chosen environment (e.g. `C:\msys64\ucrt64\bin` for UCRT64 or `C:\msys64\mingw64\bin` for MinGW64) to your system `PATH` so `tokac.exe` can access the necessary LLVM DLLs (e.g. `libwinpthread-1.dll`, `libclang.dll`, etc.) and tools (`clang`, `lld`, `make`).
    - If this environment variable is missing, running `tokac.exe` will fail with system error code `0xC0000135` (STATUS_DLL_NOT_FOUND).
 
 ## Commands
