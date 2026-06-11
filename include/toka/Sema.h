@@ -179,6 +179,12 @@ public:
   /// \return true if success, false if errors found.
   bool checkModule(Module &M);
   
+  /// \brief Declare all globals in a module for multi-pass resolution.
+  void declareGlobals(Module &M);
+
+  /// \brief Run global shape safety checks.
+  void checkShapeSovereignty();
+  
   std::unique_ptr<toka::Module> extractGenericRegistry() {
     return std::move(GenericInstancesModule);
   }
@@ -194,6 +200,7 @@ public:
   }
 
   // [NEW] Trait  // Concurrency type bounds
+  bool hasDrop(const std::string &shapeName);
   bool isShapeSend(const std::string &shapeName);
   bool isShapeSync(const std::string &shapeName);
   std::string resolveType(const std::string &Type, bool force = false);
@@ -233,7 +240,6 @@ private:
   int RecursionDepth = 0;
 
   void analyzeShapes(Module &M);
-  void checkShapeSovereignty();
   void computeShapeProperties(const std::string &shapeName, Module &M);
 
   bool HasError = false;
@@ -341,6 +347,7 @@ private:
   void registerGlobals(Module &M);
   void checkFunction(FunctionDecl *Fn);
   void registerImpl(ImplDecl *Impl);
+  void declareImpl(ImplDecl *Impl);
   void checkImpl(ImplDecl *Impl);
   void checkStmt(Stmt *S);
 

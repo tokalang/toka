@@ -992,7 +992,7 @@ void Sema::checkStmt(Stmt *S) {
         bool memberIsResource = InitTypeObj->isUniquePtr();
         if (!memberIsResource && InitTypeObj->isShape()) {
             std::string rhsSoul = toka::Type::stripMorphology(InitTypeObj->getSoulName());
-            if (m_ShapeProps.count(rhsSoul) && m_ShapeProps[rhsSoul].HasDrop) {
+            if (hasDrop(rhsSoul)) {
                 memberIsResource = true;
             }
         }
@@ -1001,7 +1001,7 @@ void Sema::checkStmt(Stmt *S) {
           auto objType = checkExpr(Memb->Object.get());
           std::shared_ptr<toka::Type> soulType = objType->getSoulType();
           std::string soul = toka::Type::stripMorphology(soulType->getSoulName());
-          if (m_ShapeProps.count(soul) && m_ShapeProps[soul].HasDrop) {
+          if (hasDrop(soul)) {
             error(Var, DiagID::ERR_MOVE_MEMBER_DROP, Memb->Member, soul);
             HasError = true;
           }

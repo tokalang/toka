@@ -1,0 +1,7 @@
+import ./a.tk_lib::*
+import ./b.tk_lib::*
+
+pub fn main() -> i32 {
+    a_func()
+    return 0
+}

@@ -202,6 +202,10 @@ bool Sema::isLValue(const Expr *expr) {
     if (ue->Op == TokenType::Star)
       return true;
   }
+  if (auto *pe = dynamic_cast<const PostfixExpr *>(expr)) {
+    if (pe->Op == TokenType::TokenWrite)
+      return isLValue(pe->LHS.get());
+  }
   return false;
 }
 
@@ -2249,11 +2253,22 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Rule] Prevent Implicit Resource Copy during Auto-Deref
         if (!FD->Args.empty() && FD->Args[0].Name == "self") {
             bool selfIsValue = !FD->Args[0].IsRawPointer && !FD->Args[0].IsReference && 
-                               !FD->Args[0].IsUnique && !FD->Args[0].IsShared;
+                               !FD->Args[0].IsUnique && !FD->Args[0].IsShared &&
+                               !FD->Args[0].IsValueMutable;
             bool receiverIsIndirection = ObjTypeObj->isPointer() || ObjTypeObj->isReference() || ObjTypeObj->isSmartPointer();
             if (selfIsValue && receiverIsIndirection) {
-                if (m_ShapeProps.count(soulType) && m_ShapeProps[soulType].HasDrop) {
-                    error(Met, DiagID::ERR_IMPLICIT_RESOURCE_COPY, soulType, Met->Method);
+                if (hasDrop(soulType)) {
+                    if (Met->Method != "clone") {
+                        tryInjectAutoClone(Met->Object);
+                        bool oldAllow = m_AllowPermissionSuffix;
+                        m_AllowPermissionSuffix = true;
+                        auto newObjType = checkExpr(Met->Object.get());
+                        m_AllowPermissionSuffix = oldAllow;
+                        bool newReceiverIsIndirection = newObjType->isPointer() || newObjType->isReference() || newObjType->isSmartPointer();
+                        if (newReceiverIsIndirection) {
+                            error(Met, DiagID::ERR_IMPLICIT_RESOURCE_COPY, soulType, Met->Method);
+                        }
+                    }
                 }
             }
             

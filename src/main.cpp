@@ -140,6 +140,12 @@ void parseSource(const std::string &rawFilename,
   // Check recursion stack for circular dependency
   for (const auto &f : recursionStack) {
     if (f == filename) {
+      std::string dir1 = std::filesystem::absolute(filename).parent_path().lexically_normal().string();
+      std::string dir2 = std::filesystem::absolute(f).parent_path().lexically_normal().string();
+      if (dir1 == dir2) {
+        // Allow circular imports within the same physical directory to allow modular file splitting
+        return;
+      }
       std::string chain;
       for (const auto &s : recursionStack)
         chain += s + " -> ";
@@ -499,11 +505,25 @@ int main(int argc, char **argv) {
 
   toka::Sema sema;
   sema.setBorrowCheckEnabled(!disableBorrowCheck);
+  
+  // Pass 1: Declare all global symbols across all modules to build the global module map
+  for (const auto &ast : astModules) {
+    sema.declareGlobals(*ast);
+  }
+
+  // Pass 2: Run full semantic analysis on all modules
   for (const auto &ast : astModules) {
     if (!sema.checkModule(*ast) || toka::DiagnosticEngine::hasErrors()) {
       llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to previous semantic errors.\n";
       return 1;
     }
+  }
+
+  // Pass 3: Run global shape sovereignty checks once all modules are resolved
+  sema.checkShapeSovereignty();
+  if (toka::DiagnosticEngine::hasErrors()) {
+    llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to previous semantic errors.\n";
+    return 1;
   }
 
   if (emitInterface) {

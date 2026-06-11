@@ -11,7 +11,7 @@ import sys/libc::{libc_access}
 import sys/thread::{sys_alloc_thread_env, sys_free_thread_env}
 
 fn submit_ready_tasks(*graph#: DependencyGraph, *pool#: WorkerPool, *exec_boxes#: Vec<u64>) {
-    graph = graph // Satisfy W0401
+    auto *_read_graph = *graph
     auto idx#: u64 = 0
     loop idx < graph.registered_ids.len() {
         auto id = graph.registered_ids.get(idx)

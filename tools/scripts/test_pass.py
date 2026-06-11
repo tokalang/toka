@@ -169,7 +169,7 @@ def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
     errors = []
     
     # 1. Compilation Step
-    if file_name in ["llvm_shim_test.tk", "llvm_backend_instructions.tk"]:
+    if "llvm_shim_test.tk" in file_name or "llvm_backend_instructions.tk" in file_name:
         tmp_obj = exe_file + ".o"
         comp_cmd = [TOKAC, "--emit-obj", test_path, "-o", tmp_obj]
         comp_res = subprocess.run(comp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -197,18 +197,18 @@ def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
             link_err = link_res.stderr.decode("utf-8", errors="ignore")
             return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Linking failed{NC}\n" + "\n".join("    | " + l for l in link_err.splitlines()[-5:])
             
-    elif file_name == "odr_main.tk":
+    elif "odr_main.tk" in file_name:
         lib_obj = os.path.join(out_dir, "tests_pass_odr_test_lib.o")
         helper_obj = os.path.join(out_dir, "tests_pass_odr_helper.o")
         
         # Compile lib
-        comp_lib = [TOKAC, "-c", "tests/pass/odr_test_lib.tk_lib", "-o", lib_obj]
+        comp_lib = [TOKAC, "-c", "tests/pass/g04_odr_test_lib.tk_lib", "-o", lib_obj]
         res_lib = subprocess.run(comp_lib, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res_lib.returncode != 0:
             return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compiling odr_test_lib failed{NC}"
             
         # Compile helper
-        comp_helper = [TOKAC, "-c", "tests/pass/odr_helper.tk_lib", "-o", helper_obj]
+        comp_helper = [TOKAC, "-c", "tests/pass/g04_odr_helper.tk_lib", "-o", helper_obj]
         res_helper = subprocess.run(comp_helper, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res_helper.returncode != 0:
             return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compiling odr_helper failed{NC}"

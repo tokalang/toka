@@ -75,33 +75,44 @@ void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
   auto type = expr->ResolvedType;
   if (!type) {
     // Should not happen in typical check* flow, but safe fallback
+    bool oldAllow = m_AllowPermissionSuffix;
+    m_AllowPermissionSuffix = true;
     type = checkExpr(expr.get());
+    m_AllowPermissionSuffix = oldAllow;
   }
 
   // 3. Filter Types
-  if (type->isPointer() || type->isReference())
-    return; // Pointers/Refs copy identity
-  if (!type->isShape())
+  if (type->isRawPointer())
+    return; // Raw pointers copy identity, no ownership
+  
+  auto soulType = type->getSoulType();
+  if (!soulType || !soulType->isShape())
     return; // Only Shapes can have clone
 
   // 4. Check for 'clone' method existence
-  std::string typeName = type->getSoulName();
+  std::string typeName = soulType->getSoulName();
+  std::string resolvedTypeName = resolveType(typeName);
   bool hasClone = false;
 
   // Inherent methods
-  if (MethodDecls.count(typeName) && MethodDecls[typeName].count("clone")) {
+  if ((MethodDecls.count(typeName) && MethodDecls[typeName].count("clone")) ||
+      (MethodDecls.count(resolvedTypeName) && MethodDecls[resolvedTypeName].count("clone"))) {
     hasClone = true;
   }
   // Trait methods (specifically @encap or similar)
   if (!hasClone) {
     // Check @encap (most common)
-    if (ImplMap.count(typeName + "@encap") &&
-        ImplMap[typeName + "@encap"].count("clone")) {
+    if ((ImplMap.count(typeName + "@encap") &&
+         ImplMap[typeName + "@encap"].count("clone")) ||
+        (ImplMap.count(resolvedTypeName + "@encap") &&
+         ImplMap[resolvedTypeName + "@encap"].count("clone"))) {
       hasClone = true;
     }
     // Check potential @Clone trait if added in future
-    else if (ImplMap.count(typeName + "@Clone") &&
-             ImplMap[typeName + "@Clone"].count("clone")) {
+    else if ((ImplMap.count(typeName + "@Clone") &&
+              ImplMap[typeName + "@Clone"].count("clone")) ||
+             (ImplMap.count(resolvedTypeName + "@Clone") &&
+              ImplMap[resolvedTypeName + "@Clone"].count("clone"))) {
       hasClone = true;
     }
   }
@@ -109,8 +120,19 @@ void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
   // 5. Inject
   if (hasClone) {
     auto loc = expr->Loc;
+    
+    std::unique_ptr<Expr> targetExpr;
+    if (auto *pe = dynamic_cast<PostfixExpr *>(expr.get())) {
+      if (pe->Op == TokenType::TokenWrite) {
+        targetExpr = std::move(pe->LHS);
+      }
+    }
+    if (!targetExpr) {
+      targetExpr = std::move(expr);
+    }
+
     std::vector<std::unique_ptr<Expr>> args;
-    auto cloneCall = std::make_unique<MethodCallExpr>(std::move(expr), "clone",
+    auto cloneCall = std::make_unique<MethodCallExpr>(std::move(targetExpr), "clone",
                                                       std::move(args));
     cloneCall->Loc = loc;
     cloneCall->IsCompilerInternal =

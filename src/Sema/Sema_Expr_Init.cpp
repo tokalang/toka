@@ -881,7 +881,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
 
           bool isResource = memberTypeObj->isUniquePtr();
           std::string fieldSoul = toka::Type::stripMorphology(memberTypeObj->getSoulName());
-          if (!isResource && m_ShapeProps.count(fieldSoul) && m_ShapeProps[fieldSoul].HasDrop) {
+          if (!isResource && hasDrop(fieldSoul)) {
             isResource = true;
           }
 

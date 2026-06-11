@@ -1,0 +1,9 @@
+import ./b.tk_lib::*
+
+pub fn a_func() {
+    b_func()
+}
+
+pub fn a_helper() {
+    // Called by b
+}

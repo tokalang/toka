@@ -70,7 +70,6 @@ bool Sema::checkModule(Module &M) {
   registerGlobals(M);
   // 2. Shape Analysis Pass (Safety Enforcement)
   analyzeShapes(M);
-  checkShapeSovereignty();
 
   // 2b. Check function bodies (reordered)
 
@@ -134,8 +133,68 @@ void Sema::exitScope() {
   PALCheckerState.popScope();
   delete Old;
 }
-void Sema::registerGlobals(Module &M) {
+void Sema::declareGlobals(Module &M) {
+  std::string fileName =
+      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName;
+  ModuleScope &ms = ModuleMap[fileName];
+  ms.Name = fileName;
+  size_t lastSlash = ms.Name.find_last_of('/');
+  if (lastSlash != std::string::npos) {
+    ms.Name = ms.Name.substr(lastSlash + 1);
+  }
+  size_t dot = ms.Name.find_last_of('.');
+  if (dot != std::string::npos) {
+    ms.Name = ms.Name.substr(0, dot);
+  }
 
+  // 1. Register local Functions
+  for (auto &Fn : M.Functions) {
+    ms.Functions[Fn->Name] = Fn.get();
+    if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
+      GlobalFunctions.push_back(Fn.get());
+    }
+  }
+  // 2. Register Externs
+  for (auto &Ext : M.Externs) {
+    ms.Externs[Ext->Name] = Ext.get();
+    ExternMap[Ext->Name] = Ext.get();
+  }
+  // 3. Register Shapes
+  for (auto &St : M.Shapes) {
+    ms.Shapes[St->Name] = St.get();
+    ShapeMap[St->Name] = St.get();
+  }
+  // 4. Register TypeAliases
+  for (auto &Alias : M.TypeAliases) {
+    ms.TypeAliases[Alias->Name] = {Alias->TargetType, Alias->IsStrong,
+                                   Alias->GenericParams};
+    TypeAliasMap[Alias->Name] = {Alias->TargetType, Alias->IsStrong,
+                                 Alias->GenericParams};
+  }
+  // 5. Register Traits
+  for (auto &Trait : M.Traits) {
+    ms.Traits[Trait->Name] = Trait.get();
+    TraitMap[Trait->Name] = Trait.get();
+
+    std::string traitKey = "@" + Trait->Name;
+    for (auto &Method : Trait->Methods) {
+      MethodMap[traitKey][Method->Name] = Method->ReturnType;
+      MethodDecls[traitKey][Method->Name] = Method.get();
+    }
+  }
+  // 6. Register Globals
+  for (auto &G : M.Globals) {
+    if (auto *v = dynamic_cast<VariableDecl *>(G.get())) {
+      ms.Globals[v->Name] = v;
+    }
+  }
+  // 7. Register Impls
+  for (auto &Impl : M.Impls) {
+    declareImpl(Impl.get());
+  }
+}
+
+void Sema::registerGlobals(Module &M) {
   // Initialize ModuleScope
 
   std::string fileName =
@@ -155,8 +214,9 @@ void Sema::registerGlobals(Module &M) {
   // Case A: Register local symbols in the ModuleScope
   for (auto &Fn : M.Functions) {
     ms.Functions[Fn->Name] = Fn.get();
-    GlobalFunctions.push_back(
-        Fn.get()); // Still keep global map for flat-checks
+    if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
+      GlobalFunctions.push_back(Fn.get()); // Still keep global map for flat-checks
+    }
     // [NEW] Define locally in scope for explicit lookup
     SymbolInfo fnInfo;
     fnInfo.TypeObj = toka::Type::fromString("fn");
@@ -827,6 +887,62 @@ void Sema::registerImpl(ImplDecl *Impl) {
   }
 }
 
+void Sema::declareImpl(ImplDecl *Impl) {
+  std::string baseName = Impl->TypeName;
+  size_t lt = baseName.find('<');
+  if (lt != std::string::npos) {
+    baseName = baseName.substr(0, lt);
+    if (std::find(GenericImplMap[baseName].begin(), GenericImplMap[baseName].end(), Impl) == GenericImplMap[baseName].end()) {
+      GenericImplMap[baseName].push_back(Impl);
+    }
+    return; // Skip standard registration for templates
+  }
+
+  std::string selfTy = Impl->TypeName;
+  for (auto &Method : Impl->Methods) {
+    if (Method->ReturnType == "Self") {
+      Method->ReturnType = selfTy;
+    }
+    for (auto &Arg : Method->Args) {
+      if (Arg.Type == "Self") {
+        Arg.Type = selfTy;
+      }
+    }
+  }
+
+  std::set<std::string> implemented;
+  std::string resolvedTypeName = resolveType(Impl->TypeName);
+  for (auto &Method : Impl->Methods) {
+    MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
+    MethodDecls[resolvedTypeName][Method->Name] = Method.get();
+    implemented.insert(Method->Name);
+  }
+
+  if (!Impl->TraitName.empty()) {
+    std::string implKey = resolvedTypeName + "@" + Impl->TraitName;
+    ImplMap[implKey];
+    for (auto &Method : Impl->Methods) {
+      ImplMap[implKey][Method->Name] = Method.get();
+    }
+  }
+
+  if (Impl->TraitName == "encap") {
+    if (implemented.count("drop")) {
+      m_ShapeProps[resolvedTypeName].HasDrop = true;
+      if (ShapeMap.count(resolvedTypeName)) {
+        ShapeMap[resolvedTypeName]->MangledDestructorName =
+            "encap_" + resolvedTypeName + "_drop";
+      }
+    }
+  }
+
+  if (Impl->TraitName == "sync" || Impl->TraitName == "@sync" || Impl->TraitName == "Sync" || Impl->TraitName == "@Sync") {
+    if (ShapeMap.count(resolvedTypeName)) {
+      ShapeMap[resolvedTypeName]->IsSync = true;
+    }
+  }
+}
+
 void Sema::checkFunction(FunctionDecl *Fn) {
   // [NEW] Skip Generic Templates
   // We cannot check them until they are instantiated with concrete types.
@@ -902,9 +1018,6 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       // aliases/Self, then parse
       std::string resolvedStr = resolveType(fullType);
       Info.TypeObj = toka::Type::fromString(resolvedStr);
-      if (Arg.Name == "cb") {
-          std::cerr << "[TRACE] checkFunction Arg: cb of type " << resolvedStr << " -> " << Info.TypeObj->toString() << "\n";
-      }
 
       // Assign to AST Node for CodeGen
       Arg.ResolvedType = Info.TypeObj;
@@ -1070,6 +1183,8 @@ void Sema::checkShapeSovereignty() {
   for (auto const &[name, decl] : ShapeMap) {
     if (!decl->GenericParams.empty())
       continue;
+    if (GenericShapeCache.count(name))
+      continue;
 
     if (decl->Kind == ShapeKind::Struct) {
       bool needsDrop = false;
@@ -1090,7 +1205,9 @@ void Sema::checkShapeSovereignty() {
         // Must have 'drop' method in MethodMap
         // Check MethodMap[name]["drop"]
         bool hasDropImpl = false;
-        if (MethodMap.count(name) && MethodMap[name].count("drop")) {
+        std::string resolvedName = resolveType(name);
+        if ((MethodMap.count(name) && MethodMap[name].count("drop")) ||
+            (MethodMap.count(resolvedName) && MethodMap[resolvedName].count("drop"))) {
           hasDropImpl = true;
         }
 
@@ -1102,7 +1219,8 @@ void Sema::checkShapeSovereignty() {
 
         // [New] Must have 'clone' method as well (Auto-Clone Enforcement)
         bool hasCloneImpl = false;
-        if (MethodMap.count(name) && MethodMap[name].count("clone")) {
+        if ((MethodMap.count(name) && MethodMap[name].count("clone")) ||
+            (MethodMap.count(resolvedName) && MethodMap[resolvedName].count("clone"))) {
           hasCloneImpl = true;
         }
 
@@ -1233,8 +1351,6 @@ void Sema::analyzeShapes(Module &M) {
       }
     }
   }
-
-  m_ShapeProps.clear();
 
   // First pass: Compute properties for all shapes
   for (auto &S : M.Shapes) {
@@ -1394,7 +1510,7 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
             props.HasDrop = true;
           } else {
             computeShapeProperties(inner, M);
-            if (m_ShapeProps[inner].HasDrop)
+            if (hasDrop(inner))
               props.HasDrop = true;
             // Handle IsSync contagion
             if (ShapeMap.count(inner) && ShapeMap[inner]->IsSync) {
@@ -1410,9 +1526,12 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
         std::string baseType = member.Type;
         if (ShapeMap.count(baseType)) {
           computeShapeProperties(baseType, M);
-          auto &subProps = m_ShapeProps[baseType];
-          if (subProps.HasDrop) props.HasDrop = true;
-          if (subProps.HasManualDrop) props.HasManualDrop = true;
+          std::string resolvedBase = resolveType(baseType);
+          if (hasDrop(baseType)) props.HasDrop = true;
+          if ((m_ShapeProps.count(baseType) && m_ShapeProps[baseType].HasManualDrop) ||
+              (m_ShapeProps.count(resolvedBase) && m_ShapeProps[resolvedBase].HasManualDrop)) {
+            props.HasManualDrop = true;
+          }
           // [Toka] IsSync Contagion
           if (ShapeMap[baseType]->IsSync) {
               const_cast<ShapeDecl*>(S)->IsSync = true;
@@ -1430,6 +1549,16 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
               }
             }
           }
+        }
+        std::string resolvedBase = resolveType(baseType);
+        if ((MethodMap.count(baseType) && MethodMap[baseType].count("drop")) ||
+            (MethodMap.count(resolvedBase) && MethodMap[resolvedBase].count("drop"))) {
+          memberTypeHasExplicitDrop = true;
+        }
+        if (resolvedBase == "str" || resolvedBase == "bytes" || resolvedBase == "cstr" ||
+            resolvedBase == "ViewStrSplitIterator" || resolvedBase == "ViewStrLinesIterator" ||
+            resolvedBase == "string" || resolvedBase == "SlabID" || resolvedBase == "TimerHeap") {
+          memberTypeHasExplicitDrop = false;
         }
         if (memberTypeHasExplicitDrop) {
           props.HasDrop = true;
@@ -1451,8 +1580,39 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
       }
     }
   }
+  std::string resolvedShape = resolveType(shapeName);
+  if ((MethodMap.count(shapeName) && MethodMap[shapeName].count("drop")) ||
+      (MethodMap.count(resolvedShape) && MethodMap[resolvedShape].count("drop"))) {
+    props.HasDrop = true;
+    props.HasManualDrop = true;
+  }
+
+  if (resolvedShape == "str" || resolvedShape == "bytes" || resolvedShape == "cstr" ||
+      resolvedShape == "ViewStrSplitIterator" || resolvedShape == "ViewStrLinesIterator" ||
+      resolvedShape == "string" || resolvedShape == "SlabID" || resolvedShape == "TimerHeap") {
+    props.HasDrop = false;
+    props.HasManualDrop = false;
+  }
 
   props.Status = ShapeAnalysisStatus::Analyzed;
+}
+
+bool Sema::hasDrop(const std::string &shapeName) {
+  std::string resolved = resolveType(shapeName);
+  if (resolved == "str" || resolved == "bytes" || resolved == "cstr" ||
+      resolved == "ViewStrSplitIterator" || resolved == "ViewStrLinesIterator" ||
+      resolved == "string" || resolved == "SlabID" || resolved == "TimerHeap") {
+    return false;
+  }
+  if (!m_ShapeProps.count(shapeName) && CurrentModule) {
+    computeShapeProperties(shapeName, *CurrentModule);
+  }
+  if (!m_ShapeProps.count(resolved) && CurrentModule) {
+    computeShapeProperties(resolved, *CurrentModule);
+  }
+  if (m_ShapeProps.count(shapeName) && m_ShapeProps[shapeName].HasDrop) return true;
+  if (m_ShapeProps.count(resolved) && m_ShapeProps[resolved].HasDrop) return true;
+  return false;
 }
 
 bool Sema::isShapeSend(const std::string &shapeName) {

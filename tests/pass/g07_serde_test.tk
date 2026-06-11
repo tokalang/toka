@@ -39,7 +39,7 @@ fn main() -> i32 {
     // Test deserialization
     auto u_res = deserialize_shape<User>(json.as_view())
     match u_res {
-        auto Result<User, str>::Ok(u2) => {
+        auto Result<User, str>::Ok(&u2) => {
             println("Deserialized ID: {}", u2.id)
             println("Deserialized Name: {}", u2.name)
             println("Deserialized Tags len: {}", u2.tags.len() as i32)

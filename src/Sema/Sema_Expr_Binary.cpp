@@ -233,7 +233,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       bool memberIsResource = rhsType->isUniquePtr();
       if (!memberIsResource && rhsType->isShape()) {
           std::string rhsSoul = toka::Type::stripMorphology(rhsType->getSoulName());
-          if (m_ShapeProps.count(rhsSoul) && m_ShapeProps[rhsSoul].HasDrop) {
+          if (hasDrop(rhsSoul)) {
               memberIsResource = true;
           }
       }
@@ -242,7 +242,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         auto objType = checkExpr(Memb->Object.get());
         std::shared_ptr<toka::Type> soulType = objType->getSoulType();
         std::string soul = toka::Type::stripMorphology(soulType->getSoulName());
-        if (m_ShapeProps.count(soul) && m_ShapeProps[soul].HasDrop) {
+        if (hasDrop(soul)) {
           error(Bin, DiagID::ERR_MOVE_MEMBER_DROP, Memb->Member, soul);
           HasError = true;
         }

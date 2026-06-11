@@ -1,0 +1,5 @@
+import ./a.tk_lib::*
+
+pub fn b_func() {
+    a_helper()
+}
