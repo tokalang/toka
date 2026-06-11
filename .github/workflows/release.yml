@@ -20,6 +20,10 @@ jobs:
             display_os: Linux (x64)
             name: linux-x64
             pkg_cmd: OS=linux ARCH=x64 ./tools/scripts/package_release.sh ${{ github.ref_name }}
+          - os: ubuntu-24.04-arm64
+            display_os: Linux (ARM64)
+            name: linux-arm64
+            pkg_cmd: OS=linux ARCH=arm64 ./tools/scripts/package_release.sh ${{ github.ref_name }}
           - os: macos-latest
             display_os: macOS (Intel)
             name: macos-x64
