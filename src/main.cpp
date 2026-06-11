@@ -37,6 +37,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <cstdlib>
 #include <set>
 #include <list>
 #include <sstream>
@@ -582,6 +583,9 @@ int main(int argc, char **argv) {
   llvm::InitializeAllAsmPrinters();
 
   auto TargetTriple = llvm::sys::getDefaultTargetTriple();
+  if (const char* envTriple = std::getenv("TOKA_TARGET_TRIPLE")) {
+    TargetTriple = envTriple;
+  }
   std::string Error;
   llvm::Triple TheTriple(TargetTriple);
   auto Target = llvm::TargetRegistry::lookupTarget("", TheTriple, Error);
