@@ -34,11 +34,36 @@ function activate(context) {
     }
 
     let tokalspPath = 'tokalsp';
+    let binExists = false;
+
+    // 1. Try workspace local build path
     if (projectRoot !== '') {
-        tokalspPath = path.join(projectRoot, 'build', 'bin', 'tokalsp');
+        const localPath = path.join(projectRoot, 'build', 'bin', 'tokalsp');
+        if (fs.existsSync(localPath)) {
+            tokalspPath = localPath;
+            binExists = true;
+        }
     }
 
-    // Only start if the binary exists, or if we assume it's in PATH
+    // 2. If not found in workspace, check system PATH
+    if (!binExists) {
+        const pathDirs = (process.env.PATH || '').split(path.delimiter);
+        for (const dir of pathDirs) {
+            const fullPath = path.join(dir, os.platform() === 'win32' ? 'tokalsp.exe' : 'tokalsp');
+            if (fs.existsSync(fullPath)) {
+                tokalspPath = fullPath;
+                binExists = true;
+                break;
+            }
+        }
+    }
+
+    // Only start if the binary actually exists to avoid connection failure dialogs
+    if (!binExists) {
+        console.warn('Toka Language Server (tokalsp) binary not found. Language support features will be limited.');
+        return;
+    }
+
     const serverOptions = {
         run: { command: tokalspPath, transport: TransportKind.stdio },
         debug: { command: tokalspPath, transport: TransportKind.stdio }

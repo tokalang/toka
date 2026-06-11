@@ -2,7 +2,7 @@
   "name": "toka-vscode",
   "displayName": "Toka",
   "description": "Syntax highlighting and language support for Toka",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "tokalang",
   "repository": {
     "type": "git",
