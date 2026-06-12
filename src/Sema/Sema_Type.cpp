@@ -17,7 +17,6 @@
 #include "toka/Sema.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
-#include "llvm/TargetParser/Triple.h"
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -915,8 +914,12 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
     if (name == "i64" || name == "u64" || name == "f64") return 64;
     if (name == "usize" || name == "isize" || name == "Addr" || name == "OAddr") {
       if (!toka::Parser::TargetTriple.empty()) {
-        llvm::Triple triple(toka::Parser::TargetTriple);
-        if (triple.isArch32Bit()) return 32;
+        std::string triple = toka::Parser::TargetTriple;
+        bool is32 = (triple.find("wasm32") != std::string::npos ||
+                     triple.find("i386") != std::string::npos ||
+                     triple.find("i686") != std::string::npos ||
+                     (triple.find("arm") != std::string::npos && triple.find("64") == std::string::npos && triple.find("armv8") == std::string::npos));
+        if (is32) return 32;
       }
       return 64;
     }
@@ -1133,8 +1136,12 @@ uint64_t Sema::getTypeSize(std::shared_ptr<toka::Type> t) {
     
   uint64_t ptrSize = 8;
   if (!toka::Parser::TargetTriple.empty()) {
-    llvm::Triple triple(toka::Parser::TargetTriple);
-    if (triple.isArch32Bit()) {
+    std::string triple = toka::Parser::TargetTriple;
+    bool is32 = (triple.find("wasm32") != std::string::npos ||
+                 triple.find("i386") != std::string::npos ||
+                 triple.find("i686") != std::string::npos ||
+                 (triple.find("arm") != std::string::npos && triple.find("64") == std::string::npos && triple.find("armv8") == std::string::npos));
+    if (is32) {
       ptrSize = 4;
     }
   }

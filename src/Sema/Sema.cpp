@@ -16,7 +16,6 @@
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
-#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -170,8 +169,12 @@ void Sema::declareGlobals(Module &M) {
   for (auto &Alias : M.TypeAliases) {
     std::string target = Alias->TargetType;
     if (!toka::Parser::TargetTriple.empty()) {
-      llvm::Triple triple(toka::Parser::TargetTriple);
-      if (triple.isArch32Bit()) {
+      std::string triple = toka::Parser::TargetTriple;
+      bool is32 = (triple.find("wasm32") != std::string::npos ||
+                   triple.find("i386") != std::string::npos ||
+                   triple.find("i686") != std::string::npos ||
+                   (triple.find("arm") != std::string::npos && triple.find("64") == std::string::npos && triple.find("armv8") == std::string::npos));
+      if (is32) {
         if (Alias->Name == "usize" || Alias->Name == "Addr" || Alias->Name == "OAddr") {
           target = "u32";
         } else if (Alias->Name == "isize") {
@@ -266,8 +269,12 @@ void Sema::registerGlobals(Module &M) {
   for (auto &Alias : M.TypeAliases) {
     std::string target = Alias->TargetType;
     if (!toka::Parser::TargetTriple.empty()) {
-      llvm::Triple triple(toka::Parser::TargetTriple);
-      if (triple.isArch32Bit()) {
+      std::string triple = toka::Parser::TargetTriple;
+      bool is32 = (triple.find("wasm32") != std::string::npos ||
+                   triple.find("i386") != std::string::npos ||
+                   triple.find("i686") != std::string::npos ||
+                   (triple.find("arm") != std::string::npos && triple.find("64") == std::string::npos && triple.find("armv8") == std::string::npos));
+      if (is32) {
         if (Alias->Name == "usize" || Alias->Name == "Addr" || Alias->Name == "OAddr") {
           target = "u32";
         } else if (Alias->Name == "isize") {

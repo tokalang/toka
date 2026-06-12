@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/Parser.h"
-#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -750,14 +749,14 @@ std::unique_ptr<ImportDecl> Parser::parseImport(bool isPub) {
   if (physicalPath == "sys/os" || physicalPath.rfind("sys/os/", 0) == 0) {
     std::string targetOS = "linux";
     if (!Parser::TargetTriple.empty()) {
-      llvm::Triple triple(Parser::TargetTriple);
-      if (triple.isOSLinux()) {
+      std::string triple = Parser::TargetTriple;
+      if (triple.find("linux") != std::string::npos) {
         targetOS = "linux";
-      } else if (triple.isOSDarwin() || triple.isiOS()) {
+      } else if (triple.find("apple") != std::string::npos || triple.find("darwin") != std::string::npos || triple.find("ios") != std::string::npos) {
         targetOS = "macos";
-      } else if (triple.isOSWindows()) {
+      } else if (triple.find("windows") != std::string::npos || triple.find("mingw") != std::string::npos || triple.find("msvc") != std::string::npos || triple.find("win32") != std::string::npos) {
         targetOS = "windows";
-      } else if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
+      } else if (triple.find("wasi") != std::string::npos || triple.find("wasm32") != std::string::npos || triple.find("wasm64") != std::string::npos) {
         targetOS = "wasi";
       }
     } else {
