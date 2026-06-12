@@ -241,6 +241,30 @@ const char* toka_wasi_argv(int index) {
     }
     return "";
 }
+
+
+// WASI thread stubs
+int pthread_create(void *thread, const void *attr, void *(*start_routine)(void*), void *arg) { return -1; }
+int pthread_join(void *thread, void **retval) { return -1; }
+int pthread_detach(void *thread) { return -1; }
+int pthread_mutex_init(void *mutex, const void *attr) { return 0; }
+int pthread_mutex_destroy(void *mutex) { return 0; }
+int pthread_mutex_lock(void *mutex) { return 0; }
+int pthread_mutex_unlock(void *mutex) { return 0; }
+
+// WASI compiler builtin __muloti4 stub
+typedef int ti_int __attribute__((mode(TI)));
+ti_int __muloti4(ti_int a, ti_int b, int *overflow) {
+    long long al = (long long)a;
+    long long bl = (long long)b;
+    long long result_l = al * bl;
+    if (al != 0 && result_l / al != bl) {
+        *overflow = 1;
+    } else {
+        *overflow = 0;
+    }
+    return (ti_int)result_l;
+}
 #endif
 
 

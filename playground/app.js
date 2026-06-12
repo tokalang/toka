@@ -303,31 +303,60 @@ async function runCode() {
             terminal.innerHTML = terminalHtml;
         };
 
-        const stdout = new Fd({
-            fd_write(iovs) {
+        class TerminalFd extends Fd {
+            constructor(isError = false) {
+                super();
+                this.isError = isError;
+            }
+            fd_fdstat_get() {
+                return {
+                    ret: 0,
+                    fdstat: {
+                        write_bytes(view, offset) {
+                            view.setUint8(offset, 2); // FILETYPE_CHARACTER_DEVICE
+                            view.setUint16(offset + 2, 0, true);
+                            view.setBigUint64(offset + 8, 64n, true); // RIGHTS_FD_WRITE
+                            view.setBigUint64(offset + 16, 0n, true);
+                        }
+                    }
+                };
+            }
+            fd_write(buffer, iovs) {
                 let nwritten = 0;
+                const dec = new TextDecoder("utf-8");
                 for (const iov of iovs) {
-                    const dec = new TextDecoder("utf-8");
-                    appendOutput(dec.decode(iov.data));
-                    nwritten += iov.data.byteLength;
+                    const data = buffer.slice(iov.buf, iov.buf + iov.buf_len);
+                    appendOutput(dec.decode(data), this.isError ? "diag-error" : "");
+                    nwritten += iov.buf_len;
                 }
                 return { ret: 0, nwritten };
             }
-        });
+        }
 
-        const stderr = new Fd({
-            fd_write(iovs) {
-                let nwritten = 0;
-                for (const iov of iovs) {
-                    const dec = new TextDecoder("utf-8");
-                    appendOutput(dec.decode(iov.data), "diag-error");
-                    nwritten += iov.data.byteLength;
-                }
-                return { ret: 0, nwritten };
+        class DummyStdin extends Fd {
+            fd_fdstat_get() {
+                return {
+                    ret: 0,
+                    fdstat: {
+                        write_bytes(view, offset) {
+                            view.setUint8(offset, 2); // FILETYPE_CHARACTER_DEVICE
+                            view.setUint16(offset + 2, 0, true);
+                            view.setBigUint64(offset + 8, 2n, true); // RIGHTS_FD_READ
+                            view.setBigUint64(offset + 16, 0n, true);
+                        }
+                    }
+                };
             }
-        });
+            fd_read(buffer, iovs) {
+                return { ret: 0, nread: 0 };
+            }
+        }
 
-        const wasi = new WASI([], [], [null, stdout, stderr]);
+        const stdin = new DummyStdin();
+        const stdout = new TerminalFd(false);
+        const stderr = new TerminalFd(true);
+
+        const wasi = new WASI([], [], [stdin, stdout, stderr]);
         const wasmModule = await WebAssembly.compile(wasmBytes);
         const instance = await WebAssembly.instantiate(wasmModule, {
             wasi_snapshot_preview1: wasi.wasiImport
@@ -339,7 +368,8 @@ async function runCode() {
         
         appendOutput("--- Program Execution Start ---\n", "diag-note");
         const exitCode = wasi.start(instance);
-        appendOutput(`\n--- Program Exited with Code ${exitCode} ---`, exitCode === 0 ? "diag-note" : "diag-error");
+        const displayExitCode = exitCode !== undefined ? exitCode : 0;
+        appendOutput(`\n--- Program Exited with Code ${displayExitCode} ---`, displayExitCode === 0 ? "diag-note" : "diag-error");
 
     } catch (e) {
         status.textContent = "Runner Error";
