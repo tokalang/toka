@@ -126,11 +126,20 @@ document.addEventListener("DOMContentLoaded", () => {
         runCheck();
     });
 
+    // Handle Run Button
+    document.getElementById("run-btn").addEventListener("click", () => {
+        runCode();
+    });
+
     // Auto-check on type (debounce)
     editor.on("change", () => {
         clearTimeout(checkTimeout);
         checkTimeout = setTimeout(runCheck, 500);
     });
+
+    // Check Runner Status
+    checkRunnerStatus();
+    setInterval(checkRunnerStatus, 5000);
 });
 
 // The Module object is populated by Emscripten
@@ -174,7 +183,7 @@ function runCheck() {
             return true;
         });
         
-        const hasRealErrors = validDiagnostics.some(diag => diag.level === 0);
+        const hasRealErrors = validDiagnostics.some(diag => diag.level === 0 && !diag.code.startsWith("W"));
         
         if (res.status === "ok" || (!hasRealErrors && validDiagnostics.length === 0)) {
             status.textContent = "Syntax OK";
@@ -225,5 +234,116 @@ function runCheck() {
         status.textContent = "Compiler Error";
         status.className = "status-indicator status-error";
         terminal.textContent = "Failed to parse compiler output:\n" + resultJson;
+    }
+}
+
+async function checkRunnerStatus() {
+    const runner = document.getElementById("runner-indicator");
+    const runBtn = document.getElementById("run-btn");
+    try {
+        const res = await fetch("http://localhost:3000/status");
+        if (res.ok) {
+            runner.textContent = "Runner: Online";
+            runner.className = "status-indicator status-connected";
+            runBtn.disabled = false;
+        } else {
+            throw new Error();
+        }
+    } catch (e) {
+        runner.textContent = "Runner: Offline";
+        runner.className = "status-indicator status-disconnected";
+        runBtn.disabled = true;
+    }
+}
+
+async function runCode() {
+    const code = editor.getValue();
+    const terminal = document.getElementById("terminal");
+    const status = document.getElementById("status-indicator");
+    
+    status.textContent = "Running...";
+    status.className = "status-indicator status-loading";
+    terminal.innerHTML = "<span class='diag-note'>Compiling and linking Wasm...</span>";
+
+    try {
+        const compileRes = await fetch("http://localhost:3000/compile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code })
+        });
+
+        if (!compileRes.ok) {
+            const errText = await compileRes.text();
+            status.textContent = "Compile Error";
+            status.className = "status-indicator status-error";
+            
+            // Render compile errors nicely
+            const formattedErr = errText
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/\n/g, "<br>")
+                .replace(/error\[E\d+\]:/g, match => `<span class="diag-error">${match}</span>`)
+                .replace(/warning\[W\d+\]:/g, match => `<span class="diag-warning">${match}</span>`);
+            terminal.innerHTML = formattedErr;
+            return;
+        }
+
+        const wasmBytes = await compileRes.arrayBuffer();
+        
+        // Dynamically import WASI shim
+        const { WASI, Fd } = await import("https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.2.17/+esm");
+        
+        let terminalHtml = "";
+        const appendOutput = (text, className = "") => {
+            const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+            if (className) {
+                terminalHtml += `<span class="${className}">${safeText}</span>`;
+            } else {
+                terminalHtml += safeText;
+            }
+            terminal.innerHTML = terminalHtml;
+        };
+
+        const stdout = new Fd({
+            fd_write(iovs) {
+                let nwritten = 0;
+                for (const iov of iovs) {
+                    const dec = new TextDecoder("utf-8");
+                    appendOutput(dec.decode(iov.data));
+                    nwritten += iov.data.byteLength;
+                }
+                return { ret: 0, nwritten };
+            }
+        });
+
+        const stderr = new Fd({
+            fd_write(iovs) {
+                let nwritten = 0;
+                for (const iov of iovs) {
+                    const dec = new TextDecoder("utf-8");
+                    appendOutput(dec.decode(iov.data), "diag-error");
+                    nwritten += iov.data.byteLength;
+                }
+                return { ret: 0, nwritten };
+            }
+        });
+
+        const wasi = new WASI([], [], [null, stdout, stderr]);
+        const wasmModule = await WebAssembly.compile(wasmBytes);
+        const instance = await WebAssembly.instantiate(wasmModule, {
+            wasi_snapshot_preview1: wasi.wasiImport
+        });
+
+        status.textContent = "Success";
+        status.className = "status-indicator status-ok";
+        terminal.innerHTML = "";
+        
+        appendOutput("--- Program Execution Start ---\n", "diag-note");
+        const exitCode = wasi.start(instance);
+        appendOutput(`\n--- Program Exited with Code ${exitCode} ---`, exitCode === 0 ? "diag-note" : "diag-error");
+
+    } catch (e) {
+        status.textContent = "Runner Error";
+        status.className = "status-indicator status-error";
+        terminal.textContent = "Failed to run program:\n" + e.message;
     }
 }

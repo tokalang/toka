@@ -26,6 +26,7 @@
                     <option value="async_demo">Async Coroutines</option>
                 </select>
                 <button id="check-btn" class="glow-btn">Check Syntax</button>
+                <button id="run-btn" class="glow-btn run-btn" disabled>Run Code</button>
             </div>
         </header>
 
@@ -36,7 +37,10 @@
             <div class="output-pane">
                 <div class="output-header">
                     <h3>Diagnostics</h3>
-                    <div id="status-indicator" class="status-indicator">Loading Compiler...</div>
+                    <div class="status-group" style="display: flex; gap: 8px;">
+                        <div id="status-indicator" class="status-indicator">Loading Compiler...</div>
+                        <div id="runner-indicator" class="status-indicator status-disconnected">Runner: Offline</div>
+                    </div>
                 </div>
                 <div id="terminal" class="terminal-view">
                     <!-- Errors will be injected here -->

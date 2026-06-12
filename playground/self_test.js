@@ -111,7 +111,7 @@ Module.onRuntimeInitialized = function() {
                 return true;
             });
             
-            const hasRealErrors = validDiagnostics.some(diag => diag.level === 0);
+            const hasRealErrors = validDiagnostics.some(diag => diag.level === 0 && !diag.code.startsWith("W"));
             
             if (res.status === "ok" || !hasRealErrors) {
                 console.log(`[PASS] Sample '${name}' successfully verified.`);

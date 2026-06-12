@@ -176,3 +176,15 @@ h1 span {
 .diag-warning { color: #f59e0b; font-weight: bold; }
 .diag-note { color: var(--accent); font-weight: bold; }
 .diag-file { color: #94a3b8; }
+
+.glow-btn:disabled {
+    background: #4b5563;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    opacity: 0.6;
+}
+
+.status-connected { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+.status-disconnected { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+
