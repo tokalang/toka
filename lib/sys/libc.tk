@@ -1,7 +1,7 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 // lib/sys/libc.tk
 // System/OS-level libc declarations.
-import core/types::{char, usize, Addr}
+import core/types::{char, usize, isize, Addr}
 
 // Memory management
 extern fn libc_malloc(size: usize) -> *void
@@ -89,8 +89,8 @@ extern fn libc_isfinite(x: f64) -> i32
 extern fn libc_exit(status: i32) -> void
 extern fn libc_abort() -> void
 
-extern fn libc_read(fd: i32, *buf: u8, count: i64) -> i64
-extern fn libc_write(fd: i32, *buf: u8, count: i64) -> i64
+extern fn libc_read(fd: i32, *buf: u8, count: usize) -> isize
+extern fn libc_write(fd: i32, *buf: u8, count: usize) -> isize
 extern fn libc_close(fd: i32) -> i32
 
 // I/O (FILE*)
@@ -102,8 +102,8 @@ extern fn libc_remove(*filename: char) -> i32
 extern fn libc_rename(*old_path: char, *new_path: char) -> i32
 extern fn libc_fread(*ptr: void, size: usize, nmemb: usize, *stream: void) -> usize
 extern fn libc_fwrite(*ptr: void, size: usize, nmemb: usize, *stream: void) -> usize
-extern fn libc_fseek(*stream: void, offset: i64, whence: i32) -> i32
-extern fn libc_ftell(*stream: void) -> i64
+extern fn libc_fseek(*stream: void, offset: isize, whence: i32) -> i32
+extern fn libc_ftell(*stream: void) -> isize
 extern fn libc_rewind(*stream: void) -> void
 extern fn libc_fgetc(*stream: void) -> i32
 extern fn libc_fgets(*s: char, n: i32, *stream: void) -> *char

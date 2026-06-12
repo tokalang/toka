@@ -1,0 +1,93 @@
+// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+import sys/libc::*
+import sys/os/abi::*
+
+// === Networking (Stubbed for WASI) ===
+
+pub fn get_last_error() -> i32 {
+    unsafe {
+        auto addr = __errno_location()
+        if addr == 0:Addr { return 0 }
+        auto *val = addr as *i32
+        return val
+    }
+}
+
+pub fn net_socket_impl() -> i32 {
+    return -1
+}
+
+pub fn net_socket_udp_impl() -> i32 {
+    return -1
+}
+
+pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
+    return -1
+}
+
+pub fn get_errno_impl() -> i32 {
+    return get_last_error()
+}
+
+pub fn net_getsockopt_error_impl(fd: i32) -> i32 {
+    return -1
+}
+
+pub fn net_bind_impl(fd: i32, host: usize, port: i32) -> i32 {
+    return -1
+}
+
+pub fn net_listen_impl(fd: i32) -> i32 {
+    return -1
+}
+
+pub fn net_connect_impl(fd: i32, host: usize, port: i32) -> i32 {
+    return -1
+}
+
+pub fn net_accept_impl(fd: i32) -> i32 {
+    return -1
+}
+
+pub fn net_close_impl(fd: i32) {
+}
+
+pub fn net_read_impl(fd: i32, *buf: u8, len: usize) -> i64 {
+    return -1
+}
+
+pub fn net_write_impl(fd: i32, *buf: u8, len: usize) -> i64 {
+    return -1
+}
+
+pub fn net_sendto_impl(fd: i32, *buf: u8, len: usize, host: usize, port: i32) -> i64 {
+    return -1
+}
+
+pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_port: i32) -> i64 {
+    return -1
+}
+
+pub fn get_eagain_impl() -> i32 {
+    return 11 // EAGAIN
+}
+
+pub fn net_set_nonblocking_impl(fd: i32) -> bool {
+    return false
+}
+
+pub fn reactor_create_impl() -> i32 {
+    return -1
+}
+
+pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+    return false
+}
+
+pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+    return false
+}
+
+pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32 {
+    return 0
+}

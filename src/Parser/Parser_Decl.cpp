@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/Parser.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -746,22 +747,34 @@ std::unique_ptr<ImportDecl> Parser::parseImport(bool isPub) {
       break;
   }
 
-  if (physicalPath == "sys/os") {
+  if (physicalPath == "sys/os" || physicalPath.rfind("sys/os/", 0) == 0) {
+    std::string targetOS = "linux";
+    if (!Parser::TargetTriple.empty()) {
+      llvm::Triple triple(Parser::TargetTriple);
+      if (triple.isOSLinux()) {
+        targetOS = "linux";
+      } else if (triple.isOSDarwin() || triple.isiOS()) {
+        targetOS = "macos";
+      } else if (triple.isOSWindows()) {
+        targetOS = "windows";
+      } else if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
+        targetOS = "wasi";
+      }
+    } else {
 #if defined(__linux__)
-    physicalPath = "sys/linux";
+      targetOS = "linux";
 #elif defined(__APPLE__)
-    physicalPath = "sys/macos";
+      targetOS = "macos";
 #elif defined(_WIN32)
-    physicalPath = "sys/windows";
+      targetOS = "windows";
 #endif
-  } else if (physicalPath.rfind("sys/os/", 0) == 0) {
-#if defined(__linux__)
-    physicalPath = "sys/linux/" + physicalPath.substr(7);
-#elif defined(__APPLE__)
-    physicalPath = "sys/macos/" + physicalPath.substr(7);
-#elif defined(_WIN32)
-    physicalPath = "sys/windows/" + physicalPath.substr(7);
-#endif
+    }
+    
+    if (physicalPath == "sys/os") {
+      physicalPath = "sys/" + targetOS;
+    } else {
+      physicalPath = "sys/" + targetOS + "/" + physicalPath.substr(7);
+    }
   }
 
   std::vector<ImportItem> items;

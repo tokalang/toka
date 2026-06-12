@@ -72,8 +72,49 @@ LLD_HAS_DRIVER(coff)
 LLD_HAS_DRIVER(elf)
 LLD_HAS_DRIVER(macho)
 LLD_HAS_DRIVER(mingw)
+LLD_HAS_DRIVER(wasm)
 
 bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::string outputFile) {
+    llvm::Triple triple(toka::Parser::TargetTriple);
+    if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
+        std::vector<std::string> searchPaths = {
+            "/usr/lib/wasm32-wasi",
+            "/usr/share/wasi-sysroot/lib/wasm32-wasi",
+            "/opt/homebrew/share/wasi-sysroot/lib/wasm32-wasi",
+            "/usr/local/share/wasi-sysroot/lib/wasm32-wasi"
+        };
+        std::string libDir = "";
+        for (const auto &path : searchPaths) {
+            if (std::filesystem::exists(path + "/crt1.o")) {
+                libDir = path;
+                break;
+            }
+        }
+        if (libDir.empty()) {
+            llvm::errs() << "Linker error: WASI sysroot library directory not found. Please install wasi-libc.\n";
+            return false;
+        }
+
+        std::vector<const char *> args;
+        args.push_back("toka-lld");
+
+        // Keep strings alive during LLD invocation
+        std::string crtPath = libDir + "/crt1.o";
+        std::string libDirArg = "-L" + libDir;
+
+        args.push_back(crtPath.c_str());
+        args.push_back(objFile.c_str());
+        for (const auto &extra : extraObjs) {
+            args.push_back(extra.c_str());
+        }
+        args.push_back("-o");
+        args.push_back(outputFile.c_str());
+        args.push_back(libDirArg.c_str());
+        args.push_back("-lc");
+
+        return lld::wasm::link(args, llvm::outs(), llvm::errs(), false, false);
+    }
+
     std::vector<const char *> args;
     args.push_back("toka-lld"); // dummy argv[0]
 
@@ -404,9 +445,17 @@ int main(int argc, char **argv) {
   bool emitInterface = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
+  std::string cliTargetTriple = "";
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
-    if (arg == "-I") {
+    if (arg == "-target" || arg == "--target") {
+      if (i + 1 < argc) {
+        cliTargetTriple = argv[++i];
+      } else {
+        llvm::errs() << "-target requires an argument\n";
+        return 1;
+      }
+    } else if (arg == "-I") {
       if (i + 1 < argc) {
         searchPaths.push_back(argv[++i]);
       } else {
@@ -493,6 +542,14 @@ int main(int argc, char **argv) {
     llvm::errs() << "Usage: tokac [options] <source.tk> [objects...]\n";
     return 1;
   }
+
+  std::string resolvedTargetTriple = llvm::sys::getDefaultTargetTriple();
+  if (!cliTargetTriple.empty()) {
+    resolvedTargetTriple = cliTargetTriple;
+  } else if (const char* envTriple = std::getenv("TOKA_TARGET_TRIPLE")) {
+    resolvedTargetTriple = envTriple;
+  }
+  toka::Parser::TargetTriple = resolvedTargetTriple;
 
   toka::SourceManager sm;
   toka::DiagnosticEngine::init(sm);
@@ -582,10 +639,7 @@ int main(int argc, char **argv) {
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllAsmPrinters();
 
-  auto TargetTriple = llvm::sys::getDefaultTargetTriple();
-  if (const char* envTriple = std::getenv("TOKA_TARGET_TRIPLE")) {
-    TargetTriple = envTriple;
-  }
+  auto TargetTriple = toka::Parser::TargetTriple;
   std::string Error;
   llvm::Triple TheTriple(TargetTriple);
   auto Target = llvm::TargetRegistry::lookupTarget("", TheTriple, Error);
@@ -643,7 +697,7 @@ int main(int argc, char **argv) {
   }
 
   if (!compileOnly && emitObj) {
-    if (!codegen.getModule()->getFunction("main")) {
+    if (!codegen.getModule()->getFunction("main") && !codegen.getModule()->getFunction("__main_void") && !codegen.getModule()->getFunction("__main_argc_argv")) {
       llvm::errs() << "\033[1;31merror[E0601]\033[0m: Entry function 'main' not found.\n"
                    << "  \033[1;34m|\033[0m\n"
                    << "  \033[1;34m=\033[0m note: Are you trying to compile a library? Try using the '-c' flag to skip linking.\n\n";
@@ -741,8 +795,12 @@ int main(int argc, char **argv) {
       if (verboseMode) fprintf(stderr, "Linking executable (internal LLD): %s\n", finalOutput.c_str());
       fflush(stderr);
       
-      std::string rtExtension = (llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSWindows()) ? ".obj" : ".o";
+      llvm::Triple triple(toka::Parser::TargetTriple);
+      std::string rtExtension = (triple.isOSWindows()) ? ".obj" : ".o";
       std::string rtFileName = "toka_rt" + rtExtension;
+      if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
+          rtFileName = "toka_rt.wasm.o";
+      }
       std::string tokaRtPath;
       
       // 1. Prioritize local relative paths to ensure local development overrides global installations

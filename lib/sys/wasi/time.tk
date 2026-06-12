@@ -1,0 +1,12 @@
+// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+import sys/libc::*
+
+pub fn sys_clock_monotonic(ts_addr: Addr) -> bool {
+    // CLOCK_MONOTONIC (1)
+    unsafe { return libc_clock_gettime(1, ts_addr) == 0 }
+}
+
+pub fn sys_clock_realtime(ts_addr: Addr) -> bool {
+    // CLOCK_REALTIME (0)
+    unsafe { return libc_clock_gettime(0, ts_addr) == 0 }
+}

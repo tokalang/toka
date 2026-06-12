@@ -15,6 +15,8 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
+#include "toka/Parser.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -166,9 +168,20 @@ void Sema::declareGlobals(Module &M) {
   }
   // 4. Register TypeAliases
   for (auto &Alias : M.TypeAliases) {
-    ms.TypeAliases[Alias->Name] = {Alias->TargetType, Alias->IsStrong,
+    std::string target = Alias->TargetType;
+    if (!toka::Parser::TargetTriple.empty()) {
+      llvm::Triple triple(toka::Parser::TargetTriple);
+      if (triple.isArch32Bit()) {
+        if (Alias->Name == "usize" || Alias->Name == "Addr" || Alias->Name == "OAddr") {
+          target = "u32";
+        } else if (Alias->Name == "isize") {
+          target = "i32";
+        }
+      }
+    }
+    ms.TypeAliases[Alias->Name] = {target, Alias->IsStrong,
                                    Alias->GenericParams};
-    TypeAliasMap[Alias->Name] = {Alias->TargetType, Alias->IsStrong,
+    TypeAliasMap[Alias->Name] = {target, Alias->IsStrong,
                                  Alias->GenericParams};
   }
   // 5. Register Traits
@@ -251,9 +264,20 @@ void Sema::registerGlobals(Module &M) {
     }
   }
   for (auto &Alias : M.TypeAliases) {
-    ms.TypeAliases[Alias->Name] = {Alias->TargetType, Alias->IsStrong,
+    std::string target = Alias->TargetType;
+    if (!toka::Parser::TargetTriple.empty()) {
+      llvm::Triple triple(toka::Parser::TargetTriple);
+      if (triple.isArch32Bit()) {
+        if (Alias->Name == "usize" || Alias->Name == "Addr" || Alias->Name == "OAddr") {
+          target = "u32";
+        } else if (Alias->Name == "isize") {
+          target = "i32";
+        }
+      }
+    }
+    ms.TypeAliases[Alias->Name] = {target, Alias->IsStrong,
                                    Alias->GenericParams};
-    TypeAliasMap[Alias->Name] = {Alias->TargetType, Alias->IsStrong,
+    TypeAliasMap[Alias->Name] = {target, Alias->IsStrong,
                                  Alias->GenericParams};
 
     // [NEW] Define locally in scope

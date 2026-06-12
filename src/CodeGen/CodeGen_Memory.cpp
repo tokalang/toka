@@ -39,7 +39,7 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
   }
   if (!allocHook) {
     // Declare malloc if neither is present
-    llvm::Type *sizeTy = llvm::Type::getInt64Ty(m_Context);
+    llvm::Type *sizeTy = getIntPtrTy();
     llvm::Type *retTy = m_Builder.getPtrTy();
     llvm::FunctionType *ft = llvm::FunctionType::get(retTy, {sizeTy}, false);
     allocHook = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
@@ -60,13 +60,13 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
   const llvm::DataLayout &dl = m_Module->getDataLayout();
   uint64_t size = dl.getTypeAllocSize(elemTy);
   llvm::Value *sizeVal =
-      llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), size);
+      llvm::ConstantInt::get(getIntPtrTy(), size);
 
   llvm::Value *arrayCount = nullptr;
 
   if (ae->IsArray && ae->ArraySize) {
     llvm::Value *count = genExpr(ae->ArraySize.get()).load(m_Builder);
-    count = m_Builder.CreateIntCast(count, llvm::Type::getInt64Ty(m_Context),
+    count = m_Builder.CreateIntCast(count, getIntPtrTy(),
                                     false);
     arrayCount = count;
     sizeVal = m_Builder.CreateMul(sizeVal, count);
@@ -93,9 +93,9 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
       m_Builder.SetInsertPoint(loopBB);
 
       llvm::PHINode *iVar =
-          m_Builder.CreatePHI(llvm::Type::getInt64Ty(m_Context), 2, "i");
+          m_Builder.CreatePHI(getIntPtrTy(), 2, "i");
       iVar->addIncoming(
-          llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 0),
+          llvm::ConstantInt::get(getIntPtrTy(), 0),
           preHeaderBB);
 
       // GEP to element
@@ -104,7 +104,7 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
       m_Builder.CreateStore(initVal, elemPtr);
 
       llvm::Value *nextI = m_Builder.CreateAdd(
-          iVar, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 1));
+          iVar, llvm::ConstantInt::get(getIntPtrTy(), 1));
       llvm::Value *cond = m_Builder.CreateICmpULT(nextI, arrayCount);
       iVar->addIncoming(nextI, loopBB);
 
@@ -387,13 +387,13 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
 
         llvm::Value *countVal = dynamicCount;
         if (!countVal) {
-          countVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context),
+          countVal = llvm::ConstantInt::get(getIntPtrTy(),
                                             arraySize);
         }
 
-        if (countVal->getType() != llvm::Type::getInt64Ty(m_Context)) {
+        if (countVal->getType() != getIntPtrTy()) {
           countVal = m_Builder.CreateIntCast(
-              countVal, llvm::Type::getInt64Ty(m_Context), false,
+              countVal, getIntPtrTy(), false,
               "count_cast");
         }
 
@@ -408,9 +408,9 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
         m_Builder.SetInsertPoint(loopBB);
 
         llvm::PHINode *iVar =
-            m_Builder.CreatePHI(llvm::Type::getInt64Ty(m_Context), 2, "i");
+            m_Builder.CreatePHI(getIntPtrTy(), 2, "i");
         iVar->addIncoming(
-            llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 0),
+            llvm::ConstantInt::get(getIntPtrTy(), 0),
             preHeaderBB);
 
         // GEP to element
@@ -424,7 +424,7 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
 
         llvm::Value *nextI = m_Builder.CreateAdd(
             iVar,
-            llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 1));
+            llvm::ConstantInt::get(getIntPtrTy(), 1));
         llvm::Value *cond = m_Builder.CreateICmpULT(nextI, countVal);
         iVar->addIncoming(nextI, loopBB);
 
@@ -1013,15 +1013,15 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
             llvm::Value *shStruct = arrEnt.load(m_Builder);
             if (shStruct) {
                 llvm::Value *cbPtr = m_Builder.CreateExtractValue(shStruct, {1}, "slice.cb");
-                llvm::Type *cbTy = llvm::StructType::get(m_Context, {llvm::Type::getInt32Ty(m_Context), llvm::Type::getInt64Ty(m_Context)});
+                llvm::Type *cbTy = llvm::StructType::get(m_Context, {llvm::Type::getInt32Ty(m_Context), getIntPtrTy()});
                 llvm::Value *lenAddr = m_Builder.CreateStructGEP(cbTy, cbPtr, 1, "slice.len.addr");
-                lenValue = m_Builder.CreateLoad(llvm::Type::getInt64Ty(m_Context), lenAddr, "slice.len");
+                lenValue = m_Builder.CreateLoad(getIntPtrTy(), lenAddr, "slice.len");
             }
         } 
         // 3. Static Array (Local/Global)
         else if (arrayTypeObj->isArray()) {
             auto arr = std::static_pointer_cast<ArrayType>(arrayTypeObj);
-            lenValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), arr->Size);
+            lenValue = llvm::ConstantInt::get(getIntPtrTy(), arr->Size);
         }
 
         // Generate the runtime assertion block if lenValue exists

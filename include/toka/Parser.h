@@ -25,6 +25,8 @@ namespace toka {
 
 class Parser {
 public:
+  static std::string TargetTriple;
+
   Parser(const std::vector<Token> &tokens, const std::string &fileName = "")
       : m_Tokens(tokens), m_Pos(0), m_CurrentFile(fileName) {
     std::replace(m_CurrentFile.begin(), m_CurrentFile.end(), '\\', '/');

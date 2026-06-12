@@ -22,7 +22,7 @@ extern fn print_legacy(fmt: str, ...) -> void
 extern fn println_legacy(fmt: str, ...) -> void
 
 // Low-level physical streaming output C functions
-extern fn toka_print_str(s: str) -> void
+extern fn toka_print_str(s: *char) -> void
 extern fn toka_print_i32(val: i32) -> void
 extern fn toka_print_f64(val: f64) -> void
 
@@ -266,13 +266,13 @@ pub fn get_stderr() -> File {
     }
 }
 
-pub fn stdout() -> File {
+pub fn stdout_file() -> File {
     return get_stdout()
 }
-pub fn stdin() -> File {
+pub fn stdin_file() -> File {
     return get_stdin()
 }
-pub fn stderr() -> File {
+pub fn stderr_file() -> File {
     return get_stderr()
 }
 

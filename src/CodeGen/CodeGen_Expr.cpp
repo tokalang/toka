@@ -147,7 +147,7 @@ llvm::Value *CodeGen::emitPromotion(llvm::Value *rawPtr,
 
   llvm::Function *mallocFn = m_Module->getFunction("malloc");
   if (!mallocFn) {
-    std::vector<llvm::Type *> args = {llvm::Type::getInt64Ty(m_Context)};
+    std::vector<llvm::Type *> args = {getIntPtrTy()};
     llvm::FunctionType *ft =
         llvm::FunctionType::get(m_Builder.getPtrTy(), args, false);
     mallocFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
@@ -155,7 +155,7 @@ llvm::Value *CodeGen::emitPromotion(llvm::Value *rawPtr,
   }
 
   llvm::Value *rcSz =
-      llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 4);
+      llvm::ConstantInt::get(getIntPtrTy(), 4);
   llvm::Value *rawRC =
       m_Builder.CreateCall(mallocFn, rcSz, "sh.prom_rc_malloc");
   llvm::Value *refPtr = m_Builder.CreateBitCast(
@@ -510,10 +510,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
         llvm::Type *elemTy = nullptr;
         elemTy = llvm::Type::getInt8Ty(m_Context);
 
-        if (rhsTy->getIntegerBitWidth() < 64) {
-          rhsVal = m_Builder.CreateSExt(
-              rhsVal, llvm::Type::getInt64Ty(m_Context), "idx_ext");
-        }
+        rhsVal = m_Builder.CreateIntCast(rhsVal, getIntPtrTy(), true);
         if (bin->Op == "-=")
           rhsVal = m_Builder.CreateNeg(rhsVal);
 
@@ -997,13 +994,11 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
     if (lhs->getType()->isPointerTy()) {
       llvm::Type *elemTy = llvm::Type::getInt8Ty(m_Context);
 
-      // Ensure RHS is 64-bit integer for GEP
+      // Ensure RHS matches pointer size for GEP
       if (rhs->getType()->isPointerTy()) {
-        rhs = m_Builder.CreatePtrToInt(rhs, llvm::Type::getInt64Ty(m_Context), "idx_ptr2int");
-      } else if (rhs->getType()->isIntegerTy() &&
-                 rhs->getType()->getIntegerBitWidth() < 64) {
-        rhs = m_Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(m_Context),
-                                   "idx_ext");
+        rhs = m_Builder.CreatePtrToInt(rhs, getIntPtrTy(), "idx_ptr2int");
+      } else {
+        rhs = m_Builder.CreateIntCast(rhs, getIntPtrTy(), true);
       }
       return m_Builder.CreateGEP(elemTy, lhs, {rhs}, "ptradd");
     }
@@ -1013,16 +1008,14 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
   if (bin->Op == "-") {
     if (lhs->getType()->isPointerTy()) {
       if (rhs->getType()->isPointerTy()) {
-        llvm::Value *lhsInt = m_Builder.CreatePtrToInt(lhs, llvm::Type::getInt64Ty(m_Context));
-        llvm::Value *rhsInt = m_Builder.CreatePtrToInt(rhs, llvm::Type::getInt64Ty(m_Context));
+        llvm::Value *lhsInt = m_Builder.CreatePtrToInt(lhs, getIntPtrTy());
+        llvm::Value *rhsInt = m_Builder.CreatePtrToInt(rhs, getIntPtrTy());
         llvm::Value *diff = m_Builder.CreateSub(lhsInt, rhsInt, "ptrdiff");
         // Maintain the same type as lhs (which is a pointer, fulfilling Addr expectations)
         return m_Builder.CreateIntToPtr(diff, lhs->getType(), "ptrdiff_ptr");
       } else {
         llvm::Type *elemTy = llvm::Type::getInt8Ty(m_Context);
-        if (rhs->getType()->isIntegerTy() && rhs->getType()->getIntegerBitWidth() < 64) {
-          rhs = m_Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(m_Context), "idx_ext");
-        }
+        rhs = m_Builder.CreateIntCast(rhs, getIntPtrTy(), true);
         llvm::Value *negR = m_Builder.CreateNeg(rhs, "neg_idx");
         return m_Builder.CreateGEP(elemTy, lhs, {negR}, "ptrsub");
       }
@@ -1299,14 +1292,14 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
       
       llvm::Function *mallocFn = m_Module->getFunction("malloc");
       if (!mallocFn) {
-        llvm::Type *sizeTy = llvm::Type::getInt64Ty(m_Context);
+        llvm::Type *sizeTy = getIntPtrTy();
         llvm::Type *ptrTy = m_Builder.getPtrTy();
         mallocFn = llvm::Function::Create(
             llvm::FunctionType::get(ptrTy, {sizeTy}, false),
             llvm::Function::ExternalLinkage, "malloc", m_Module.get());
       }
       
-      llvm::Value *sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), size);
+      llvm::Value *sizeVal = llvm::ConstantInt::get(getIntPtrTy(), size);
       llvm::Value *heapAddr = m_Builder.CreateCall(mallocFn, {sizeVal}, "heap.promoted");
       
       // Copy the value from stack to heap
@@ -1749,7 +1742,7 @@ PhysEntity CodeGen::genLiteralExpr(const Expr *expr) {
         fatVal = m_Builder.CreateInsertValue(fatVal, ptr, {0});
         fatVal = m_Builder.CreateInsertValue(
             fatVal,
-            llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context),
+            llvm::ConstantInt::get(getIntPtrTy(),
                                    str->Value.size()),
             {1});
         return PhysEntity(fatVal, "str", fatVal->getType(), false);
@@ -1770,7 +1763,7 @@ PhysEntity CodeGen::genLiteralExpr(const Expr *expr) {
     fatVal = m_Builder.CreateInsertValue(fatVal, ptr, {0});
     fatVal = m_Builder.CreateInsertValue(
         fatVal,
-        llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context),
+        llvm::ConstantInt::get(getIntPtrTy(),
                                vstr->Value.size()),
         {1});
     return PhysEntity(fatVal, "str", fatVal->getType(), false);
@@ -1809,7 +1802,7 @@ llvm::Value *CodeGen::genNullCheck(llvm::Value *val, const ASTNode *node,
     // Declare if not found (happens during early codegen stages or if not
     // imported)
     llvm::Type *strTy = llvm::StructType::get(
-        m_Context, {m_Builder.getPtrTy(), m_Builder.getInt64Ty()});
+        m_Context, {m_Builder.getPtrTy(), getIntPtrTy()});
     llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
     std::vector<llvm::Type *> panicArgs = {ptrTy, ptrTy,
                                            m_Builder.getInt32Ty()};
@@ -1831,17 +1824,17 @@ llvm::Value *CodeGen::genNullCheck(llvm::Value *val, const ASTNode *node,
   }
 
   llvm::Type *strTy = llvm::StructType::get(
-      m_Context, {m_Builder.getPtrTy(), m_Builder.getInt64Ty()});
+      m_Context, {m_Builder.getPtrTy(), getIntPtrTy()});
 
   llvm::Value *msgPtr = m_Builder.CreateGlobalString(msg, "panic_msg");
   llvm::Value *msgStr = llvm::UndefValue::get(strTy);
   msgStr = m_Builder.CreateInsertValue(msgStr, msgPtr, 0);
-  msgStr = m_Builder.CreateInsertValue(msgStr, m_Builder.getInt64(msg.length()), 1);
+  msgStr = m_Builder.CreateInsertValue(msgStr, llvm::ConstantInt::get(getIntPtrTy(), msg.length()), 1);
 
   llvm::Value *filePtr = m_Builder.CreateGlobalString(fileName, "panic_file");
   llvm::Value *fileStr = llvm::UndefValue::get(strTy);
   fileStr = m_Builder.CreateInsertValue(fileStr, filePtr, 0);
-  fileStr = m_Builder.CreateInsertValue(fileStr, m_Builder.getInt64(fileName.length()), 1);
+  fileStr = m_Builder.CreateInsertValue(fileStr, llvm::ConstantInt::get(getIntPtrTy(), fileName.length()), 1);
 
   // Toka ABI passes aggregates (shapes) by pointer.
   llvm::IRBuilder<> tmpB(&f->getEntryBlock(), f->getEntryBlock().begin());
@@ -2253,12 +2246,12 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 m_Builder.SetInsertPoint(MemcmpBB);
                 llvm::FunctionCallee memcmpFn = m_Module->getOrInsertFunction(
                     "memcmp",
-                    llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy(), m_Builder.getPtrTy(), m_Builder.getInt64Ty()}, false)
+                    llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy(), m_Builder.getPtrTy(), getIntPtrTy()}, false)
                 );
                 llvm::Value *memcmpRes = m_Builder.CreateCall(memcmpFn, {
                     currBuf,
                     rawPtr,
-                    llvm::ConstantInt::get(m_Builder.getInt64Ty(), litSize)
+                    llvm::ConstantInt::get(getIntPtrTy(), litSize)
                 });
                 llvm::Value *contentMatch = m_Builder.CreateICmpEQ(memcmpRes, m_Builder.getInt32(0));
                 m_Builder.CreateBr(MergeBB);
@@ -3987,7 +3980,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                               llvm::Value *ptrGEP = m_Builder.CreateStructGEP(viewStrTy, argVal, 0);
                               ptrVal = m_Builder.CreateLoad(m_Builder.getPtrTy(), ptrGEP);
                               llvm::Value *lenGEP = m_Builder.CreateStructGEP(viewStrTy, argVal, 1);
-                              lenVal = m_Builder.CreateLoad(m_Builder.getInt64Ty(), lenGEP);
+                              lenVal = m_Builder.CreateLoad(getIntPtrTy(), lenGEP);
                           } else {
                               ptrVal = m_Builder.CreateExtractValue(argVal, 0);
                               lenVal = m_Builder.CreateExtractValue(argVal, 1);
@@ -4066,10 +4059,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                       llvm::Value *tmpStr = nullptr;
                       if (isFmt && toStrFn->arg_size() > (isSRet ? 2 : 1)) {
                           llvm::Value *fmtStr = m_Builder.CreateGlobalString(formatSpecifier);
-                          llvm::StructType *viewStrTy = llvm::StructType::get(m_Context, std::vector<llvm::Type*>{m_Builder.getPtrTy(), m_Builder.getInt64Ty()});
+                          llvm::StructType *viewStrTy = llvm::StructType::get(m_Context, std::vector<llvm::Type*>{m_Builder.getPtrTy(), getIntPtrTy()});
                           llvm::Value *viewStrVal = llvm::UndefValue::get(viewStrTy);
                           viewStrVal = m_Builder.CreateInsertValue(viewStrVal, fmtStr, 0);
-                          viewStrVal = m_Builder.CreateInsertValue(viewStrVal, m_Builder.getInt64(formatSpecifier.size()), 1);
+                          viewStrVal = m_Builder.CreateInsertValue(viewStrVal, llvm::ConstantInt::get(getIntPtrTy(), formatSpecifier.size()), 1);
 
                           llvm::AllocaInst *viewStrAlloca = createEntryBlockAlloca(viewStrTy);
                           m_Builder.CreateStore(viewStrVal, viewStrAlloca);
@@ -4289,10 +4282,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                     
                     if (isFmt && toStrFn->arg_size() > (isSRet ? 2 : 1)) {
                         llvm::Value *fmtStr = m_Builder.CreateGlobalString(formatSpecifier);
-                        llvm::StructType *viewStrTy = llvm::StructType::get(m_Context, std::vector<llvm::Type*>{m_Builder.getPtrTy(), m_Builder.getInt64Ty()});
+                        llvm::StructType *viewStrTy = llvm::StructType::get(m_Context, std::vector<llvm::Type*>{m_Builder.getPtrTy(), getIntPtrTy()});
                         llvm::Value *viewStrVal = llvm::UndefValue::get(viewStrTy);
                         viewStrVal = m_Builder.CreateInsertValue(viewStrVal, fmtStr, 0);
-                        viewStrVal = m_Builder.CreateInsertValue(viewStrVal, m_Builder.getInt64(formatSpecifier.size()), 1);
+                        viewStrVal = m_Builder.CreateInsertValue(viewStrVal, llvm::ConstantInt::get(getIntPtrTy(), formatSpecifier.size()), 1);
                         
                         llvm::AllocaInst *viewStrAlloca = createEntryBlockAlloca(viewStrTy);
                         m_Builder.CreateStore(viewStrVal, viewStrAlloca);
@@ -4812,10 +4805,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                
                llvm::Function *mallocFn = m_Module->getFunction("malloc");
                if (!mallocFn) {
-                   mallocFn = llvm::Function::Create(llvm::FunctionType::get(m_Builder.getPtrTy(), {llvm::Type::getInt64Ty(m_Context)}, false), llvm::Function::ExternalLinkage, "malloc", m_Module.get());
+                   mallocFn = llvm::Function::Create(llvm::FunctionType::get(m_Builder.getPtrTy(), {getIntPtrTy()}, false), llvm::Function::ExternalLinkage, "malloc", m_Module.get());
                }
                uint64_t size = m_Module->getDataLayout().getTypeAllocSize(objTy);
-               llvm::Value *heapMem = m_Builder.CreateCall(mallocFn, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), size)});
+               llvm::Value *heapMem = m_Builder.CreateCall(mallocFn, {llvm::ConstantInt::get(getIntPtrTy(), size)});
                envPtrAddr = m_Builder.CreatePointerCast(heapMem, llvm::PointerType::getUnqual(m_Context));
                
                if (envTy->isPointerTy()) {
@@ -5038,7 +5031,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             structTy = m_StructTypes[structName];
         }
         if (!structTy) {
-            structTy = llvm::StructType::get(m_Context, {m_Builder.getPtrTy(), llvm::Type::getInt64Ty(m_Context)});
+            structTy = llvm::StructType::get(m_Context, {m_Builder.getPtrTy(), getIntPtrTy()});
         }
         llvm::Value *gep = m_Builder.CreateStructGEP(structTy, structPtr, 0, "raw_ptr.gep");
         llvm::Value *ptr = m_Builder.CreateLoad(m_Builder.getPtrTy(), gep, "raw_ptr.load");
@@ -5725,7 +5718,7 @@ PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
   llvm::Function *mallocFn = m_Module->getFunction("malloc");
   if (!mallocFn) {
     // Attempt lib_malloc or just declare malloc
-    llvm::Type *sizeTy = llvm::Type::getInt64Ty(m_Context);
+    llvm::Type *sizeTy = getIntPtrTy();
     llvm::Type *ptrTy = m_Builder.getPtrTy();
     mallocFn = llvm::Function::Create(
         llvm::FunctionType::get(ptrTy, {sizeTy}, false),
@@ -5733,13 +5726,13 @@ PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
   }
 
   llvm::Value *sizeVal =
-      llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), size);
+      llvm::ConstantInt::get(getIntPtrTy(), size);
 
   llvm::Value *arrayCount = nullptr;
   if (newExpr->ArraySize) {
     llvm::Value *count = genExpr(newExpr->ArraySize.get()).load(m_Builder);
-    if (count->getType() != llvm::Type::getInt64Ty(m_Context)) {
-      count = m_Builder.CreateIntCast(count, llvm::Type::getInt64Ty(m_Context), false);
+    if (count->getType() != getIntPtrTy()) {
+      count = m_Builder.CreateIntCast(count, getIntPtrTy(), false);
     }
     arrayCount = count;
     sizeVal = m_Builder.CreateMul(sizeVal, count);
@@ -5771,14 +5764,14 @@ PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
         m_Builder.CreateBr(loopBB);
         m_Builder.SetInsertPoint(loopBB);
 
-        llvm::PHINode *iVar = m_Builder.CreatePHI(llvm::Type::getInt64Ty(m_Context), 2, "i");
-        iVar->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 0), preHeaderBB);
+        llvm::PHINode *iVar = m_Builder.CreatePHI(getIntPtrTy(), 2, "i");
+        iVar->addIncoming(llvm::ConstantInt::get(getIntPtrTy(), 0), preHeaderBB);
 
         // GEP to element
         llvm::Value *elemPtr = m_Builder.CreateInBoundsGEP(type, heapPtr, iVar);
         m_Builder.CreateStore(initVal, elemPtr);
 
-        llvm::Value *nextI = m_Builder.CreateAdd(iVar, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 1));
+        llvm::Value *nextI = m_Builder.CreateAdd(iVar, llvm::ConstantInt::get(getIntPtrTy(), 1));
         llvm::Value *cond = m_Builder.CreateICmpULT(nextI, arrayCount);
         iVar->addIncoming(nextI, loopBB);
 
@@ -5794,7 +5787,7 @@ PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
     llvm::Type *fatTy = getLLVMType(newExpr->ResolvedType);
     llvm::Value *fatVal = llvm::UndefValue::get(fatTy);
     fatVal = m_Builder.CreateInsertValue(fatVal, heapPtr, {0});
-    llvm::Value *lenVal = arrayCount ? arrayCount : llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 1);
+    llvm::Value *lenVal = arrayCount ? arrayCount : llvm::ConstantInt::get(getIntPtrTy(), 1);
     fatVal = m_Builder.CreateInsertValue(fatVal, lenVal, {1});
     return fatVal;
   }
@@ -6020,7 +6013,7 @@ PhysEntity CodeGen::genRepeatedArrayExpr(const RepeatedArrayExpr *expr) {
     llvm::Value *ptr = m_Builder.CreateInBoundsGEP(
         arrTy, alloca,
         {m_Builder.getInt32(0),
-         llvm::ConstantInt::get(m_Builder.getInt64Ty(), i)});
+         llvm::ConstantInt::get(getIntPtrTy(), i)});
     m_Builder.CreateStore(val, ptr);
   }
   std::string arrayTypeName =
@@ -6269,21 +6262,22 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
       llvm::Type *fatTy = getLLVMType(toka::Type::fromString("str"));
       llvm::Value *nameFat = llvm::UndefValue::get(fatTy);
       nameFat = m_Builder.CreateInsertValue(nameFat, namePtr, {0});
-      nameFat = m_Builder.CreateInsertValue(nameFat, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), member.Name.size()), {1});
+      nameFat = m_Builder.CreateInsertValue(nameFat, llvm::ConstantInt::get(getIntPtrTy(), member.Name.size()), {1});
       m_Builder.CreateStore(nameFat, m_Builder.CreateStructGEP(fieldInfoTy, fieldPtr, 0));
 
       // type_name: str
       llvm::Value *tyNamePtr = m_Builder.CreateGlobalString(member.Type);
       llvm::Value *tyNameFat = llvm::UndefValue::get(fatTy);
       tyNameFat = m_Builder.CreateInsertValue(tyNameFat, tyNamePtr, {0});
-      tyNameFat = m_Builder.CreateInsertValue(tyNameFat, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), member.Type.size()), {1});
+      tyNameFat = m_Builder.CreateInsertValue(tyNameFat, llvm::ConstantInt::get(getIntPtrTy(), member.Type.size()), {1});
       m_Builder.CreateStore(tyNameFat, m_Builder.CreateStructGEP(fieldInfoTy, fieldPtr, 1));
 
       // offset: usize
-      m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), currentOffset), m_Builder.CreateStructGEP(fieldInfoTy, fieldPtr, 2));
+      m_Builder.CreateStore(llvm::ConstantInt::get(getIntPtrTy(), currentOffset), m_Builder.CreateStructGEP(fieldInfoTy, fieldPtr, 2));
       // size: usize
-      m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 8), m_Builder.CreateStructGEP(fieldInfoTy, fieldPtr, 3));
-      currentOffset += 8;
+      uint64_t ptrSize = (getIntPtrTy() == llvm::Type::getInt32Ty(m_Context) ? 4 : 8);
+      m_Builder.CreateStore(llvm::ConstantInt::get(getIntPtrTy(), ptrSize), m_Builder.CreateStructGEP(fieldInfoTy, fieldPtr, 3));
+      currentOffset += ptrSize;
   }
 
   // TypeInfo allocation
@@ -6294,7 +6288,7 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
   llvm::Type *fatTy = getLLVMType(toka::Type::fromString("str"));
   llvm::Value *nameFat = llvm::UndefValue::get(fatTy);
   nameFat = m_Builder.CreateInsertValue(nameFat, namePtr, {0});
-  nameFat = m_Builder.CreateInsertValue(nameFat, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), targetSoul.size()), {1});
+  nameFat = m_Builder.CreateInsertValue(nameFat, llvm::ConstantInt::get(getIntPtrTy(), targetSoul.size()), {1});
   m_Builder.CreateStore(nameFat, m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 0));
 
   // set kind
@@ -6307,13 +6301,14 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
   }
   llvm::Value *fieldsFat = llvm::UndefValue::get(fatFieldInfoTy);
   fieldsFat = m_Builder.CreateInsertValue(fieldsFat, m_Builder.CreateBitCast(fieldArrayAlloc, llvm::PointerType::getUnqual(m_Context)), {0});
-  fieldsFat = m_Builder.CreateInsertValue(fieldsFat, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), SD->Members.size()), {1});
+  fieldsFat = m_Builder.CreateInsertValue(fieldsFat, llvm::ConstantInt::get(getIntPtrTy(), SD->Members.size()), {1});
   m_Builder.CreateStore(fieldsFat, m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 2));
 
   // set size
-  m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), currentOffset), m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 3));
+  m_Builder.CreateStore(llvm::ConstantInt::get(getIntPtrTy(), currentOffset), m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 3));
   // set align
-  m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 8), m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 4));
+  uint64_t ptrSize = (getIntPtrTy() == llvm::Type::getInt32Ty(m_Context) ? 4 : 8);
+  m_Builder.CreateStore(llvm::ConstantInt::get(getIntPtrTy(), ptrSize), m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 4));
 
   llvm::Value *typeInfoVal = m_Builder.CreateLoad(typeInfoTy, typeInfoAlloc);
   return PhysEntity(typeInfoVal, "TypeInfo", typeInfoTy, false);

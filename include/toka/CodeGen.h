@@ -112,6 +112,7 @@ public:
   void importParenthesizedRecordTypes(const std::map<std::string, std::shared_ptr<toka::Type>>& recordTypes) {
     m_ParenthesizedRecordTypes = recordTypes;
   }
+  llvm::IntegerType *getIntPtrTy();
 
 private:
   int m_ErrorCount = 0;

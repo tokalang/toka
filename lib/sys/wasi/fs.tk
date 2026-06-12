@@ -1,0 +1,80 @@
+// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+import core/option::{Option}
+
+import sys/libc::*
+import sys/os/abi::*
+
+pub fn opendir_impl(path: Addr) -> Addr {
+    unsafe {
+        return toka_opendir_impl(path)
+    }
+}
+
+pub fn readdir_impl(dir_handle: Addr) -> Option<string> {
+    unsafe {
+        auto entry = toka_readdir_impl(dir_handle)
+        if entry == ADDR0 {
+            return Option<string>::None
+        }
+        
+        auto *name_ptr = toka_readdir_name(entry) as *char
+        return Option<string>::Some(string::from_cstr(*name_ptr))
+    }
+}
+
+pub fn closedir_impl(dir_handle: Addr) {
+    unsafe {
+        toka_closedir_impl(dir_handle)
+    }
+}
+
+pub fn mkdir_impl(path: Addr) -> bool {
+    unsafe {
+        // 0755 = 493 in decimal
+        return libc_mkdir(path as *char, 493) == 0
+    }
+}
+
+pub fn rmdir_impl(path: Addr) -> bool {
+    unsafe {
+        return libc_rmdir(path as *char) == 0
+    }
+}
+
+pub fn path_exists(path: Addr) -> bool {
+    unsafe {
+        // Use access(path, F_OK=0)
+        return libc_access(path as *char, 0) == 0
+    }
+}
+
+pub fn stat_impl(path: Addr) -> Addr {
+    unsafe { return toka_stat_impl(path) }
+}
+
+pub fn stat_free_impl(handle: Addr) {
+    unsafe { toka_stat_free(handle) }
+}
+
+pub fn stat_get_mode_impl(handle: Addr) -> u32 {
+    unsafe { return toka_stat_mode(handle) }
+}
+
+pub fn stat_get_size_impl(handle: Addr) -> u64 {
+    unsafe { return toka_stat_size(handle) }
+}
+
+pub fn stat_get_mtime_impl(handle: Addr) -> i64 {
+    unsafe { return toka_stat_mtime(handle) }
+}
+
+// 0xF000 = 61440
+// 0x4000 = 16384 (DIR)
+// 0x8000 = 32768 (REG)
+pub fn stat_is_dir_impl(mode: u32) -> bool {
+    return (mode band 61440:u32) == 16384:u32
+}
+
+pub fn stat_is_file_impl(mode: u32) -> bool {
+    return (mode band 61440:u32) == 32768:u32
+}

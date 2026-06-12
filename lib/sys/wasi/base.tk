@@ -1,0 +1,81 @@
+// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+import core/option::{Option}
+
+import sys/libc::*
+import sys/os/abi::*
+
+pub fn path_sep() -> char {
+    return 47:char
+}
+
+// Returns the number of command-line arguments.
+pub fn args_impl() -> i32 {
+    unsafe {
+        return toka_wasi_argc()
+    }
+}
+
+// Retrieves a specific command-line argument by index.
+pub fn get_arg_impl(index: i32) -> string {
+    unsafe {
+        auto *ptr = toka_wasi_argv(index)
+        if *ptr == null {
+            return string::from("")
+        }
+        return string::from_cstr(*ptr)
+    }
+}
+
+// === Environment ===
+
+pub fn getcwd_impl() -> string {
+    unsafe {
+        auto *buf = unsafe alloc [1024] byte as *char
+        auto res_addr = libc_getcwd(*buf, 1024)
+        if res_addr == ADDR0 {
+             libc_free(*buf as *void)
+             return string::from("")
+        }
+        return string::from_take(*buf)
+    }
+}
+
+pub fn chdir_impl(path: Addr) -> bool {
+    unsafe {
+        return libc_chdir(path as *char) == 0
+    }
+}
+
+pub fn getenv_impl(name: string) -> Option<string> {
+    unsafe {
+        auto *val = libc_getenv(name.c_str())
+        
+        if *val == null {
+            return Option<string>::None
+        }
+        
+        return Option<string>::Some(string::from_cstr(*val))
+    }
+}
+
+pub fn setenv_impl(name: string, value: string) -> bool {
+    unsafe {
+        return libc_setenv(name.c_str(), value.c_str(), 1) == 0
+    }
+}
+
+pub fn unsetenv_impl(name: string) -> bool {
+    unsafe {
+        return libc_unsetenv(name.c_str()) == 0
+    }
+}
+
+pub fn __toka_panic_handler(msg: str) {
+    unsafe { toka_panic(msg.raw_ptr() as Addr, msg.len() as i32) }
+}
+
+pub fn get_last_error() -> i32 {
+    unsafe {
+        return toka_get_last_error()
+    }
+}

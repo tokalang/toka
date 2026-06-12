@@ -13,6 +13,8 @@
 // limitations under the License.
 #include "toka/CodeGen.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/Parser.h"
+#include "llvm/TargetParser/Triple.h"
 #include "toka/SourceManager.h"
 #include <cctype>
 #include <iostream>
@@ -22,6 +24,14 @@
 extern bool verboseMode;
 
 namespace toka {
+
+llvm::IntegerType* CodeGen::getIntPtrTy() {
+  llvm::Triple triple(m_Module->getTargetTriple());
+  if (triple.isArch32Bit()) {
+    return llvm::Type::getInt32Ty(m_Context);
+  }
+  return llvm::Type::getInt64Ty(m_Context);
+}
 
 // Inside the genExpr function of src/CodeGen/CodeGen.cpp
 PhysEntity CodeGen::genExpr(const Expr *expr) {
@@ -76,12 +86,12 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
     llvm::Type *targetTy = getLLVMType(toka::Type::fromString(e->TypeStr));
     if (!targetTy) {
       error(e, DiagID::ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, e->TypeStr);
-      return PhysEntity(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 0), "usize", llvm::Type::getInt64Ty(m_Context), false);
+      return PhysEntity(llvm::ConstantInt::get(getIntPtrTy(), 0), "usize", getIntPtrTy(), false);
     }
     llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(m_Context));
     llvm::Value *gep = m_Builder.CreateGEP(targetTy, nullPtr, m_Builder.getInt32(1));
-    llvm::Value *size = m_Builder.CreatePtrToInt(gep, m_Builder.getInt64Ty());
-    return PhysEntity(size, "usize", m_Builder.getInt64Ty(), false);
+    llvm::Value *size = m_Builder.CreatePtrToInt(gep, getIntPtrTy());
+    return PhysEntity(size, "usize", getIntPtrTy(), false);
   }
   if (auto e = dynamic_cast<const GuardExpr *>(expr))
     return genGuardExpr(e);
@@ -215,8 +225,18 @@ void CodeGen::discover(const Module &ast) {
     m_Shapes[sh->Name] = sh.get();
 
   }
-  for (const auto &alias : ast.TypeAliases)
-    m_TypeAliases[alias->Name] = alias->TargetType;
+  for (const auto &alias : ast.TypeAliases) {
+    std::string target = alias->TargetType;
+    llvm::Triple triple(m_Module->getTargetTriple());
+    if (triple.isArch32Bit()) {
+      if (alias->Name == "usize" || alias->Name == "Addr" || alias->Name == "OAddr") {
+        target = "u32";
+      } else if (alias->Name == "isize") {
+        target = "i32";
+      }
+    }
+    m_TypeAliases[alias->Name] = target;
+  }
   for (const auto &func : ast.Functions)
     m_Functions[func->Name] = func.get();
   for (const auto &ext : ast.Externs)
@@ -287,11 +307,16 @@ void CodeGen::print(llvm::raw_ostream &os) { m_Module->print(os, nullptr); }
 uint64_t CodeGen::estimateTypeSize(std::shared_ptr<Type> type, std::set<std::string> &visited) {
   if (!type) return 0;
 
+  uint64_t ptrSize = 8;
+  if (getIntPtrTy() == llvm::Type::getInt32Ty(m_Context)) {
+    ptrSize = 4;
+  }
+
   // Handle nullable wrapper: { T, bool } aligned
   if (type->IsNullable && !type->isPointer() && !type->isSmartPointer() &&
       !type->isReference() && !type->isVoid()) {
     auto baseTyObj = type->withAttributes(type->IsWritable, false, type->IsBlocked);
-    return estimateTypeSize(baseTyObj, visited) + 8;
+    return estimateTypeSize(baseTyObj, visited) + ptrSize;
   }
 
   if (type->typeKind == Type::Primitive) {
@@ -302,24 +327,26 @@ uint64_t CodeGen::estimateTypeSize(std::shared_ptr<Type> type, std::set<std::str
       return 2;
     if (prim->Name == "i32" || prim->Name == "u32" || prim->Name == "int" || prim->Name == "f32" || prim->Name == "float")
       return 4;
-    return 8; // i64, u64, usize, isize, double, cstring, Addr, OAddr, null, etc.
+    if (prim->Name == "usize" || prim->Name == "isize" || prim->Name == "cstring" || prim->Name == "Addr" || prim->Name == "OAddr" || prim->Name == "null")
+      return ptrSize;
+    return 8; // i64, u64, double, etc.
   }
 
   if (type->typeKind == Type::Void) return 0;
 
   if (type->typeKind == Type::RawPtr || type->typeKind == Type::UniquePtr || type->typeKind == Type::Reference) {
-    if (type->isFatPointer()) return 16;
-    return 8;
+    if (type->isFatPointer()) return ptrSize * 2;
+    return ptrSize;
   }
 
-  if (type->typeKind == Type::SharedPtr) return 16;
+  if (type->typeKind == Type::SharedPtr) return ptrSize * 2;
 
   if (type->typeKind == Type::UninitWrapper) {
     auto uninit = std::static_pointer_cast<UninitType>(type);
     return estimateTypeSize(uninit->InnerType, visited);
   }
 
-  if (type->typeKind == Type::Slice) return 16; // passed by fat pointer reference or similar
+  if (type->typeKind == Type::Slice) return ptrSize * 2; // passed by fat pointer reference or similar
 
   if (type->typeKind == Type::Array) {
     auto arrType = std::static_pointer_cast<ArrayType>(type);

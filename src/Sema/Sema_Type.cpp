@@ -16,6 +16,8 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
+#include "toka/Parser.h"
+#include "llvm/TargetParser/Triple.h"
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -910,7 +912,14 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
     if (name == "i8" || name == "u8" || name == "char") return 8;
     if (name == "i16" || name == "u16") return 16;
     if (name == "i32" || name == "u32" || name == "f32") return 32;
-    if (name == "i64" || name == "u64" || name == "f64" || name == "usize" || name == "isize" || name == "Addr" || name == "OAddr") return 64; 
+    if (name == "i64" || name == "u64" || name == "f64") return 64;
+    if (name == "usize" || name == "isize" || name == "Addr" || name == "OAddr") {
+      if (!toka::Parser::TargetTriple.empty()) {
+        llvm::Triple triple(toka::Parser::TargetTriple);
+        if (triple.isArch32Bit()) return 32;
+      }
+      return 64;
+    }
     return 0;
   };
 
@@ -1122,14 +1131,23 @@ uint64_t Sema::getTypeSize(std::shared_ptr<toka::Type> t) {
   if (t->isBoolean())
     return 1;
     
+  uint64_t ptrSize = 8;
+  if (!toka::Parser::TargetTriple.empty()) {
+    llvm::Triple triple(toka::Parser::TargetTriple);
+    if (triple.isArch32Bit()) {
+      ptrSize = 4;
+    }
+  }
+
   if (auto prim = std::dynamic_pointer_cast<toka::PrimitiveType>(t)) {
     if (prim->Name == "u8" || prim->Name == "i8") return 1;
     if (prim->Name == "u16" || prim->Name == "i16") return 2;
     if (prim->Name == "u32" || prim->Name == "i32" || prim->Name == "f32" || prim->Name == "char") return 4;
-    if (prim->Name == "u64" || prim->Name == "i64" || prim->Name == "f64" || prim->Name == "usize" || prim->Name == "isize") return 8;
+    if (prim->Name == "u64" || prim->Name == "i64" || prim->Name == "f64") return 8;
+    if (prim->Name == "usize" || prim->Name == "isize") return ptrSize;
   }
   if (t->isPointer() || t->isReference())
-    return 8; // 64-bit assumption
+    return ptrSize;
   if (t->isArray()) {
     auto arr = std::dynamic_pointer_cast<toka::ArrayType>(t);
     return arr->Size * getTypeSize(arr->ElementType);

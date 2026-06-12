@@ -15,6 +15,7 @@
 #include "toka/CodeGen.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/Type.h"
+#include "toka/Parser.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/IR/Comdat.h"
 #include "llvm/TargetParser/Triple.h"
@@ -38,6 +39,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     return nullptr;
 
   std::string funcName = overrideName.empty() ? func->Name : overrideName;
+  if (funcName == "main") {
+    llvm::Triple triple(toka::Parser::TargetTriple);
+    if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
+      funcName = "__main_void";
+    }
+  }
   if (verboseMode) {
     std::cerr << "[DEBUG] genFunction funcName=" << funcName << " declOnly=" << declOnly << std::endl;
   }
@@ -237,12 +244,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(m_Context));
       m_CurrentCoroId = m_Builder.CreateCall(idFn, {zero, m_CurrentCoroPromise, nullPtr, nullPtr});
       
-      llvm::Function *sizeFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_size, {llvm::Type::getInt64Ty(m_Context)});
+      llvm::Function *sizeFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_size, {getIntPtrTy()});
       llvm::Value *size = m_Builder.CreateCall(sizeFn);
       
       llvm::Function *mallocFn = m_Module->getFunction("malloc");
       if (!mallocFn) {
-          std::vector<llvm::Type*> args = {llvm::Type::getInt64Ty(m_Context)};
+          std::vector<llvm::Type*> args = {getIntPtrTy()};
           llvm::FunctionType *ft = llvm::FunctionType::get(llvm::PointerType::getUnqual(m_Context), args, false);
           mallocFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "malloc", m_Module.get());
       }
@@ -934,7 +941,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
           llvm::Function *mallocFn = m_Module->getFunction("malloc");
           if (!mallocFn) {
             std::vector<llvm::Type *> args;
-            args.push_back(llvm::Type::getInt64Ty(m_Context));
+            args.push_back(getIntPtrTy());
             llvm::FunctionType *ft =
                 llvm::FunctionType::get(m_Builder.getPtrTy(), args, false);
             mallocFn = llvm::Function::Create(
@@ -943,7 +950,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
           if (mallocFn) {
             // 1. Allocate RefCount
             llvm::Value *rcSize =
-                llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 4);
+                llvm::ConstantInt::get(getIntPtrTy(), 4);
             llvm::Value *refPtr = m_Builder.CreateCall(mallocFn, rcSize);
             refPtr = m_Builder.CreateBitCast(
                 refPtr, llvm::PointerType::getUnqual(m_Context));
@@ -963,7 +970,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
               const llvm::DataLayout &dl = m_Module->getDataLayout();
               uint64_t dataSz = dl.getTypeAllocSize(elemTy);
               llvm::Value *valSize = llvm::ConstantInt::get(
-                  llvm::Type::getInt64Ty(m_Context), dataSz);
+                  getIntPtrTy(), dataSz);
               dataPtr = m_Builder.CreateCall(mallocFn, valSize);
               dataPtr = m_Builder.CreateBitCast(
                   dataPtr, llvm::PointerType::getUnqual(m_Context));
@@ -1086,13 +1093,13 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                  // Heap Allocation for `dyn fn`
                  llvm::Type *objTy = getLLVMType(var->Init->ResolvedType);
                  
-                 llvm::Function *mallocFn = m_Module->getFunction("malloc");
-                 if (!mallocFn) {
-                     mallocFn = llvm::Function::Create(llvm::FunctionType::get(m_Builder.getPtrTy(), {llvm::Type::getInt64Ty(m_Context)}, false), llvm::Function::ExternalLinkage, "malloc", m_Module.get());
-                 }
-                 uint64_t size = m_Module->getDataLayout().getTypeAllocSize(objTy);
-                 llvm::Value *heapMem = m_Builder.CreateCall(mallocFn, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), size)});
-                 envPtrAddr = m_Builder.CreatePointerCast(heapMem, llvm::PointerType::getUnqual(m_Context));
+                  llvm::Function *mallocFn = m_Module->getFunction("malloc");
+                  if (!mallocFn) {
+                      mallocFn = llvm::Function::Create(llvm::FunctionType::get(m_Builder.getPtrTy(), {getIntPtrTy()}, false), llvm::Function::ExternalLinkage, "malloc", m_Module.get());
+                  }
+                  uint64_t size = m_Module->getDataLayout().getTypeAllocSize(objTy);
+                  llvm::Value *heapMem = m_Builder.CreateCall(mallocFn, {llvm::ConstantInt::get(getIntPtrTy(), size)});
+                  envPtrAddr = m_Builder.CreatePointerCast(heapMem, llvm::PointerType::getUnqual(m_Context));
                  
                  if (envTy->isPointerTy()) {
                      llvm::Value *loadedEnv = m_Builder.CreateLoad(objTy, initVal);
@@ -2165,7 +2172,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
                     // We must generate the raw i8* pointer directly
                     llvm::Value *rawStr = genExpr(expr->Args[i].get()).load(m_Builder);
                     m_Builder.CreateStore(rawStr, bufPtr);
-                    m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), literalLen), lenPtr);
+                    m_Builder.CreateStore(llvm::ConstantInt::get(getIntPtrTy(), literalLen), lenPtr);
                     if (isCaptured) {
                         argVal = alloca;
                     } else {
@@ -2364,9 +2371,10 @@ llvm::Type *CodeGen::resolveType(const std::string &baseType, bool hasPointer) {
     type = llvm::Type::getInt16Ty(m_Context);
   else if (baseType == "i32" || baseType == "u32" || baseType == "int")
     type = llvm::Type::getInt32Ty(m_Context);
-  else if (baseType == "i64" || baseType == "u64" || baseType == "long" ||
-           baseType == "usize" || baseType == "isize")
+  else if (baseType == "i64" || baseType == "u64" || baseType == "long")
     type = llvm::Type::getInt64Ty(m_Context);
+  else if (baseType == "usize" || baseType == "isize")
+    type = getIntPtrTy();
   else if (baseType == "f32" || baseType == "float")
     type = llvm::Type::getFloatTy(m_Context);
   else if (baseType == "f64" || baseType == "double")
@@ -2431,10 +2439,11 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
     auto prim = std::static_pointer_cast<PrimitiveType>(type);
     if (prim->Name == "i32" || prim->Name == "u32" || prim->Name == "int")
       return llvm::Type::getInt32Ty(m_Context);
-    if (prim->Name == "i64" || prim->Name == "u64" || prim->Name == "long" ||
-        prim->Name == "usize" || prim->Name == "isize" ||
-        prim->Name == "Addr" || prim->Name == "OAddr")
+    if (prim->Name == "i64" || prim->Name == "u64" || prim->Name == "long")
       return llvm::Type::getInt64Ty(m_Context);
+    if (prim->Name == "usize" || prim->Name == "isize" ||
+        prim->Name == "Addr" || prim->Name == "OAddr")
+      return getIntPtrTy();
     if (prim->Name == "i8" || prim->Name == "u8" || prim->Name == "byte" ||
         prim->Name == "char")
       return llvm::Type::getInt8Ty(m_Context);
@@ -2472,7 +2481,7 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
       // DO NOT eagerly evaluate PointeeType layout since LLVM 15+ opaque pointers do not need it!
       // This trivially breaks the cyclic layout sizing dependency.
       llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
-      return llvm::StructType::get(m_Context, {ptrTy, llvm::Type::getInt64Ty(m_Context)});
+      return llvm::StructType::get(m_Context, {ptrTy, getIntPtrTy()});
     }
 
     return llvm::PointerType::getUnqual(m_Context);

@@ -140,14 +140,19 @@ void toka_ensure_wsa_initialized() {
     }
 }
 #else
+#ifndef __wasi__
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#endif
 void toka_ensure_wsa_initialized() {}
 #endif
 
 unsigned int toka_resolve_ipv4(const char* host) {
+#ifdef __wasi__
+    return 0;
+#else
     toka_ensure_wsa_initialized();
     struct addrinfo hints = {0};
     hints.ai_family = AF_INET;
@@ -158,6 +163,7 @@ unsigned int toka_resolve_ipv4(const char* host) {
     unsigned int ip = addr->sin_addr.s_addr;
     freeaddrinfo(res);
     return ip;
+#endif
 }
 
 void toka_print_str(const char* s) {
@@ -220,6 +226,22 @@ void* __toka_get_coro_handle(void* task_handle_ptr) {
     if (!task_handle_ptr) return NULL;
     return *(void**)task_handle_ptr;
 }
+
+#ifdef __wasi__
+extern int __wasm_argc;
+extern char **__wasm_argv;
+
+int toka_wasi_argc() {
+    return __wasm_argc;
+}
+
+const char* toka_wasi_argv(int index) {
+    if (index >= 0 && index < __wasm_argc) {
+        return __wasm_argv[index];
+    }
+    return "";
+}
+#endif
 
 
 
