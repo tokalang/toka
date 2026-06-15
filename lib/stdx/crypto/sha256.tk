@@ -49,7 +49,7 @@ fn sig1(x: u32) -> u32 {
 }
 
 impl Sha256 {
-    fn process_block(self#, k: *[u32; 64]) {
+    fn process_block(self#, *k: [u32; 64]) {
         auto w#: [u32; 64] = [0; 64]
         
         // Initialize first 16 words from data block
