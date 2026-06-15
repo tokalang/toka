@@ -521,6 +521,12 @@ private:
     return MorphKind::None;
   }
 
+  static MorphKind morphKindFromTypeString(const std::string &TypeName) {
+    if (TypeName.empty())
+      return MorphKind::None;
+    return morphKindFromType(toka::Type::fromString(TypeName));
+  }
+
   MorphKind getSyntacticMorphology(Expr *E);
   bool checkStrictMorphology(ASTNode *Node, MorphKind Target, MorphKind Source,
                              const std::string &TargetName);

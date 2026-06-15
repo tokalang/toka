@@ -529,18 +529,8 @@ void Sema::checkStmt(Stmt *S) {
       }
     } else if (!HasError) {
 
-      MorphKind targetMorph = MorphKind::None;
-      if (!CurrentFunctionReturnType.empty()) {
-        char c = CurrentFunctionReturnType[0];
-        if (c == '*')
-          targetMorph = MorphKind::Raw;
-        else if (c == '^')
-          targetMorph = MorphKind::Unique;
-        else if (c == '~')
-          targetMorph = MorphKind::Shared;
-        else if (c == '&')
-          targetMorph = MorphKind::Ref;
-      }
+      MorphKind targetMorph =
+          morphKindFromTypeString(CurrentFunctionReturnType);
       MorphKind sourceMorph = getSyntacticMorphology(Ret->ReturnValue.get());
       
       bool exempt = false;
