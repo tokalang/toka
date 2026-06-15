@@ -564,28 +564,14 @@ void Sema::registerGlobals(Module &M) {
           }
           // Import all globals (constants)
           for (auto const &[name, v] : target->Globals) {
-            std::string morph = "";
-            if (v->IsRawPointer)
-              morph = "*";
-            else if (v->IsUnique)
-              morph = "^";
-            else if (v->IsShared)
-              morph = "~";
-            else if (v->IsReference)
-              morph = "&";
-
-            std::string fullType = morph;
-            if (v->IsRebindable)
-              fullType += "#";
-            if (v->IsPointerNullable)
-              fullType = "nul " + fullType;
-              
-            fullType += v->TypeName;
-            
-            if (v->IsValueMutable)
-              fullType += "#";
-            if (v->IsValueNullable)
-              fullType += "?";
+            BindingPermission Permission = v->Permission;
+            // Keep imported globals behavior-identical to the previous path:
+            // existing TypeName prefixes are preserved and blocked markers were
+            // not part of this import signature synthesis.
+            Permission.IdentityBlocked = false;
+            Permission.SoulBlocked = false;
+            std::string fullType =
+                Sema::synthesizePhysicalType(Permission, v->TypeName, false);
 
             SymbolInfo globalInfo;
             globalInfo.TypeObj = toka::Type::fromString(fullType);
@@ -707,28 +693,14 @@ void Sema::registerGlobals(Module &M) {
             found = true;
           } else if (target->Globals.count(item.Symbol)) {
             auto *v = target->Globals[item.Symbol];
-            std::string morph = "";
-            if (v->IsRawPointer)
-              morph = "*";
-            else if (v->IsUnique)
-              morph = "^";
-            else if (v->IsShared)
-              morph = "~";
-            else if (v->IsReference)
-              morph = "&";
-
-            std::string fullType = morph;
-            if (v->IsRebindable)
-              fullType += "#";
-            if (v->IsPointerNullable)
-              fullType = "nul " + fullType;
-              
-            fullType += v->TypeName;
-            
-            if (v->IsValueMutable)
-              fullType += "#";
-            if (v->IsValueNullable)
-              fullType += "?";
+            BindingPermission Permission = v->Permission;
+            // Keep imported globals behavior-identical to the previous path:
+            // existing TypeName prefixes are preserved and blocked markers were
+            // not part of this import signature synthesis.
+            Permission.IdentityBlocked = false;
+            Permission.SoulBlocked = false;
+            std::string fullType =
+                Sema::synthesizePhysicalType(Permission, v->TypeName, false);
 
             SymbolInfo globalInfo;
             globalInfo.TypeObj = toka::Type::fromString(fullType);
@@ -1048,34 +1020,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
 
     SymbolInfo Info;
-    std::string fullType = "";
-    // 1. Morphology Sigil (Constitutional 1.3 - Leading)
-    if (Arg.IsUnique)
-      fullType += "^";
-    else if (Arg.IsShared)
-      fullType += "~";
-    else if (Arg.IsReference)
-      fullType += "&";
-    else if (Arg.IsRawPointer)
-      fullType += "*";
-
-    // 2. Identity Attributes (Prefix Zone)
-    if (Arg.IsRebindable && fullType.find('#') == std::string::npos)
-      fullType += "#";
-    if (Arg.IsPointerNullable && fullType.find("nul") == std::string::npos)
-      fullType = "nul " + fullType;
-
-    // [Constitution Fix] Generic Substitution inserts full types like "&i32" into Arg.Type.
-    // If we strip morphology, we lose the pointer!
-    // Instead of stripping, we just append Arg.Type exactly as it is.
-    // If Parser sets Arg.IsReference=true, it correctly gets "&" + Arg.Type.
-    fullType += Arg.Type;
-
-    // 3. Soul Attributes (Suffix Zone)
-    if (Arg.IsValueNullable)
-      fullType += "?";
-    if (Arg.IsValueMutable)
-      fullType += "#";
+    // Preserve full generic-substituted Arg.Type values like "&i32".
+    std::string fullType = Sema::synthesizePhysicalType(Arg, false);
 
     // [Fix] Preserve pre-resolved Types (e.g. Synthetic Closures)
     if (Arg.ResolvedType) {

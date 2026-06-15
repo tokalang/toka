@@ -938,21 +938,40 @@ void Sema::checkStmt(Stmt *S) {
     m_LastBorrowSource = ""; // Clear for next var
 
     // [Constitution 1.3] Dual-Attribute Synthesis
-    std::string fullType = "";
-    // 1. Morphology sigil (Constitutional 1.3 - Leading)
-    fullType += morph;
+    BindingPermission LocalPermission;
+    if (!morph.empty()) {
+      std::string normalizedMorph = morph;
+      if (normalizedMorph.rfind("nul ", 0) == 0)
+        normalizedMorph = normalizedMorph.substr(4);
 
-    // 2. Identity/Handle prefix attributes
-    // (Already handled in morph string construction)
+      switch (normalizedMorph.empty() ? '\0' : normalizedMorph[0]) {
+      case '^':
+        LocalPermission.Morphology = BindingMorphology::Unique;
+        break;
+      case '~':
+        LocalPermission.Morphology = BindingMorphology::Shared;
+        break;
+      case '&':
+        LocalPermission.Morphology = BindingMorphology::Reference;
+        break;
+      case '*':
+        LocalPermission.Morphology = BindingMorphology::Raw;
+        break;
+      default:
+        break;
+      }
 
-    // 3. Base Type Name
-    fullType += baseType;
+      LocalPermission.IdentityRebindable = Var->IsRebindable;
+      LocalPermission.IdentityNullable = Var->IsPointerNullable || hadNul;
+    }
+    // Preserve the legacy local rule: without a handle morphology, # acts on
+    // the soul/value rather than as a rebindable identity marker.
+    LocalPermission.SoulWritable =
+        Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
+    LocalPermission.SoulNullable = Var->IsValueNullable;
 
-    // 4. Soul/Value suffix attributes
-    if (Var->IsValueNullable)
-      fullType += "?";
-    if (Var->IsValueMutable || (morph.empty() && Var->IsRebindable))
-      fullType += "#";
+    std::string fullType =
+        Sema::synthesizePhysicalType(LocalPermission, baseType, false);
 
     Info.TypeObj = resolveType(toka::Type::fromString(fullType), false);
     if (!Info.TypeObj) {

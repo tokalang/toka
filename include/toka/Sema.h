@@ -416,79 +416,59 @@ private:
   // [NEW] Helper to substitute GenericConst variables with NumberExpr
   std::unique_ptr<Expr> foldGenericConstant(std::unique_ptr<Expr> E);
 
-  // Helper for type synthesis from AST nodes with morphology flags
-  // Helper for type synthesis from AST nodes with morphology flags
-  template <typename T>
-  static std::string synthesizePhysicalType(const T &Arg) {
+  static std::string synthesizePhysicalType(const BindingPermission &Permission,
+                                            const std::string &SoulType,
+                                            bool stripSoulPrefixes = true) {
     std::string Signature = "";
 
     // 1. Morphologies (Prefix Zone)
-    if (Arg.IsUnique) {
+    switch (Permission.Morphology) {
+    case BindingMorphology::Unique:
       Signature += "^";
-    } else if (Arg.IsShared) {
+      break;
+    case BindingMorphology::Shared:
       Signature += "~";
-    } else if (Arg.IsReference) {
+      break;
+    case BindingMorphology::Reference:
       Signature += "&";
-    } else if (Arg.IsRawPointer) {
+      break;
+    case BindingMorphology::Raw:
       Signature += "*";
+      break;
+    case BindingMorphology::None:
+      break;
     }
 
     // 2. Identity Attributes (Prefix Zone)
-    if (Arg.IsRebindable)
+    if (Permission.IdentityRebindable)
       Signature += "#";
-    if (Arg.IsRebindBlocked)
+    if (Permission.IdentityBlocked)
       Signature += "$";
-    if (Arg.IsPointerNullable)
+    if (Permission.IdentityNullable)
       Signature = "nul " + Signature;
 
-    // 3. Soul Type (Base Name) - Strip prefixes to avoid double-hatting
-    Signature += toka::Type::stripPrefixes(getTypeName(Arg));
+    // 3. Soul Type (Base Name)
+    Signature += stripSoulPrefixes ? toka::Type::stripPrefixes(SoulType)
+                                   : SoulType;
 
-    // 4. Soul/Object Attributes (Suffix Zone)
-    if (Arg.IsValueMutable)
-      Signature += "#";
-    if (Arg.IsValueNullable)
-      Signature += "?";
-    if (Arg.IsValueBlocked)
+    // 4. Soul/Object Attributes (Suffix Zone). Match Type::toString() and
+    // docs/syntax_zh.md canonical spelling: T?# when both flags are present.
+    if (Permission.SoulBlocked)
       Signature += "$";
+    if (Permission.SoulNullable)
+      Signature += "?";
+    if (Permission.SoulWritable)
+      Signature += "#";
 
     return Signature;
   }
 
-  // Specialization for ShapeMember to include morphology flags
-  static std::string synthesizePhysicalType(const ShapeMember &Arg) {
-    std::string Signature = "";
-
-    // 1. Morphologies (Prefix Zone)
-    if (Arg.IsUnique)
-      Signature += "^";
-    else if (Arg.IsShared)
-      Signature += "~";
-    else if (Arg.IsReference)
-      Signature += "&";
-    else if (Arg.IsRawPointer)
-      Signature += "*";
-
-    // 2. Identity Attributes (Prefix Zone)
-    if (Arg.IsRebindable)
-      Signature += "#";
-    if (Arg.IsRebindBlocked)
-      Signature += "$";
-    if (Arg.IsPointerNullable)
-      Signature = "nul " + Signature;
-
-    // 3. Soul Type (Base Name)
-    Signature += toka::Type::stripPrefixes(Arg.Type);
-
-    // 4. Soul/Object Attributes (Suffix Zone)
-    if (Arg.IsValueMutable)
-      Signature += "#";
-    if (Arg.IsValueNullable)
-      Signature += "?";
-    if (Arg.IsValueBlocked)
-      Signature += "$";
-
-    return Signature;
+  // Helper for type synthesis from AST nodes with binding/path permissions.
+  template <typename T>
+  static std::string synthesizePhysicalType(const T &Arg,
+                                            bool stripSoulPrefixes = true) {
+    return synthesizePhysicalType(Arg.Permission, getTypeName(Arg),
+                                  stripSoulPrefixes);
   }
 
   // Pointer Morphology Strictness
