@@ -1365,18 +1365,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       break;
 
     // Morphology Check for Argument
-    MorphKind targetMorph = MorphKind::None;
-    if (paramType) {
-      if (paramType->isRawPointer())
-        targetMorph = MorphKind::Raw;
-      else if (paramType->isUniquePtr())
-        targetMorph = MorphKind::Unique;
-      else if (paramType->isSharedPtr())
-        targetMorph = MorphKind::Shared;
-      else if (paramType->isReference())
-        targetMorph = MorphKind::Ref;
-    }
-
+    MorphKind targetMorph = morphKindFromType(paramType);
     MorphKind sourceMorph = getSyntacticMorphology(Call->Args[i].get());
     std::string ctx = "arg " + std::to_string(i + 1);
     checkStrictMorphology(Call->Args[i].get(), targetMorph, sourceMorph, ctx);

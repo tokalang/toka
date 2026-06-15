@@ -484,6 +484,43 @@ private:
     Any      // Wildcard
   };
 
+  static MorphKind morphKindFromBindingMorphology(
+      BindingMorphology Morphology) {
+    switch (Morphology) {
+    case BindingMorphology::Raw:
+      return MorphKind::Raw;
+    case BindingMorphology::Unique:
+      return MorphKind::Unique;
+    case BindingMorphology::Shared:
+      return MorphKind::Shared;
+    case BindingMorphology::Reference:
+      return MorphKind::Ref;
+    case BindingMorphology::None:
+      return MorphKind::None;
+    }
+    return MorphKind::None;
+  }
+
+  static MorphKind morphKindFromPermission(
+      const BindingPermission &Permission) {
+    return morphKindFromBindingMorphology(Permission.Morphology);
+  }
+
+  static MorphKind morphKindFromType(
+      const std::shared_ptr<toka::Type> &Type) {
+    if (!Type)
+      return MorphKind::None;
+    if (Type->isRawPointer())
+      return MorphKind::Raw;
+    if (Type->isUniquePtr())
+      return MorphKind::Unique;
+    if (Type->isSharedPtr())
+      return MorphKind::Shared;
+    if (Type->isReference())
+      return MorphKind::Ref;
+    return MorphKind::None;
+  }
+
   MorphKind getSyntacticMorphology(Expr *E);
   bool checkStrictMorphology(ASTNode *Node, MorphKind Target, MorphKind Source,
                              const std::string &TargetName);

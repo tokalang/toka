@@ -809,17 +809,9 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     // 5. Strict Morphology Check
-    if (Var->Init && !Var->IsReference) {
-      MorphKind lhsMorph = MorphKind::None;
-      if (Var->IsUnique)
-        lhsMorph = MorphKind::Unique;
-      else if (Var->IsShared)
-        lhsMorph = MorphKind::Shared;
-      else if (Var->IsReference)
-        lhsMorph = MorphKind::Ref;
-      else if (Var->IsRawPointer)
-        lhsMorph = MorphKind::Raw;
-
+    if (Var->Init &&
+        Var->Permission.Morphology != BindingMorphology::Reference) {
+      MorphKind lhsMorph = morphKindFromPermission(Var->Permission);
       MorphKind rhsMorph = getSyntacticMorphology(Var->Init.get());
 
       checkStrictMorphology(Var, lhsMorph, rhsMorph, Var->Name);
@@ -1218,12 +1210,9 @@ void Sema::checkStmt(Stmt *S) {
 
           // Morphic validation
           if (!SD->Members[memberIndex].IsMorphicExempt) {
-            MorphKind expectedMorph = MorphKind::None;
-            auto memberTypeObj = toka::Type::fromString(SD->Members[memberIndex].Type);
-            if (memberTypeObj->isRawPointer()) expectedMorph = MorphKind::Raw;
-            else if (memberTypeObj->isUniquePtr()) expectedMorph = MorphKind::Unique;
-            else if (memberTypeObj->isSharedPtr()) expectedMorph = MorphKind::Shared;
-            else if (memberTypeObj->isReference()) expectedMorph = MorphKind::Ref;
+            auto memberTypeObj =
+                toka::Type::fromString(SD->Members[memberIndex].Type);
+            MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
             bool isMorphicExempt = (!Destruct->Variables[i].Name.empty() && Destruct->Variables[i].Name[0] == '\'');
             if (!isMorphicExempt) {

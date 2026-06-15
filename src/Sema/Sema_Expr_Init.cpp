@@ -502,12 +502,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
             size_t memberIndex = memberIndices[i];
             if (memberIndex != (size_t)-1) {
               if (!SD->Members[memberIndex].IsMorphicExempt) {
-                MorphKind expectedMorph = MorphKind::None;
-                auto memberTypeObj = toka::Type::fromString(SD->Members[memberIndex].Type);
-                if (memberTypeObj->isRawPointer()) expectedMorph = MorphKind::Raw;
-                else if (memberTypeObj->isUniquePtr()) expectedMorph = MorphKind::Unique;
-                else if (memberTypeObj->isSharedPtr()) expectedMorph = MorphKind::Shared;
-                else if (memberTypeObj->isReference()) expectedMorph = MorphKind::Ref;
+                auto memberTypeObj =
+                    toka::Type::fromString(SD->Members[memberIndex].Type);
+                MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
                 bool subIsMorphicExempt = false;
                 MorphKind subMorph = MorphKind::None;
@@ -958,11 +955,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       else if (pair.first.find('&') != std::string::npos) providedMorph = MorphKind::Ref;
       else if (pair.first.find('*') != std::string::npos) providedMorph = MorphKind::Raw;
 
-      MorphKind expectedMorph = MorphKind::None;
-      if (memberTypeObj->isRawPointer()) expectedMorph = MorphKind::Raw;
-      else if (memberTypeObj->isUniquePtr()) expectedMorph = MorphKind::Unique;
-      else if (memberTypeObj->isSharedPtr()) expectedMorph = MorphKind::Shared;
-      else if (memberTypeObj->isReference()) expectedMorph = MorphKind::Ref;
+      MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
       checkStrictMorphology(Init, expectedMorph, providedMorph, pDefMember->Name);
     }
@@ -1153,11 +1146,7 @@ Sema::checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
       else if (pair.first.find('&') != std::string::npos) providedMorph = MorphKind::Ref;
       else if (pair.first.find('*') != std::string::npos) providedMorph = MorphKind::Raw;
 
-      MorphKind expectedMorph = MorphKind::None;
-      if (memberTypeObj->isRawPointer()) expectedMorph = MorphKind::Raw;
-      else if (memberTypeObj->isUniquePtr()) expectedMorph = MorphKind::Unique;
-      else if (memberTypeObj->isSharedPtr()) expectedMorph = MorphKind::Shared;
-      else if (memberTypeObj->isReference()) expectedMorph = MorphKind::Ref;
+      MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
       checkStrictMorphology(Init, expectedMorph, providedMorph, pDefMember->Name);
     }
