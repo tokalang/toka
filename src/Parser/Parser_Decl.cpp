@@ -428,7 +428,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       arg.Type = argType;
       arg.IsRawPointer = hasPointer;
       arg.IsReference = isRef;
-      arg.IsMorphicExempt = nameIsMorphic || typeIsMorphic;
+      arg.IsMorphicExempt = nameIsMorphic;
       // arg.IsMutable = argName.HasWrite; // Deprecated
       // arg.IsNullable = argName.HasNull; // Deprecated
 
@@ -716,7 +716,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       arg.IsPointerNullable = isPtrNullable;
       arg.IsValueMutable = argName.HasWrite;
       arg.IsValueNullable = argName.HasNull;
-      arg.IsMorphicExempt = nameIsMorphic || typeIsMorphic;
+      arg.IsMorphicExempt = nameIsMorphic;
       arg.Permission = BindingPermission::fromLegacy(
           arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
           arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,
