@@ -158,6 +158,10 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
           v.IsValueNullable = varTok.HasNull;
           v.IsValueBlocked = varTok.IsBlocked;
           v.IsReference = isRef;
+          v.Permission = BindingPermission::fromLegacy(
+              varPrefix == "*", varPrefix == "^", varPrefix == "~", isRef,
+              false, false, false, varTok.HasWrite, varTok.HasNull,
+              varTok.IsBlocked);
           vars.push_back(v);
         } else {
           hasPositional = true;
@@ -184,6 +188,10 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
           v.IsValueNullable = varTok.HasNull;
           v.IsValueBlocked = varTok.IsBlocked;
           v.IsReference = isRef;
+          v.Permission = BindingPermission::fromLegacy(
+              varPrefix == "*", varPrefix == "^", varPrefix == "~", isRef,
+              false, false, false, varTok.HasWrite, varTok.HasNull,
+              varTok.IsBlocked);
           vars.push_back(v);
         }
       }
@@ -246,6 +254,11 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   node->IsRebindable = isRebindable;
   node->IsPointerNullable = isPtrNullable;
   node->IsRebindBlocked = isRebindBlocked;
+  node->Permission = BindingPermission::fromLegacy(
+      node->IsRawPointer, node->IsUnique, node->IsShared, node->IsReference,
+      node->IsRebindable, node->IsPointerNullable, node->IsRebindBlocked,
+      node->IsValueMutable, node->IsValueNullable, node->IsValueBlocked,
+      node->IsMorphicExempt);
   node->TypeName = typeName;
 
   expectEndOfStatement();

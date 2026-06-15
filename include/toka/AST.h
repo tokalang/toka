@@ -13,6 +13,7 @@
 // limitations under the License.
 #pragma once
 
+#include "toka/BindingPermission.h"
 #include "toka/Token.h"
 #include "toka/Type.h" // Added for ResolvedType
 #include "toka/ComptimeValue.h"
@@ -193,6 +194,7 @@ public:
   bool IsValueNullable = false;
   bool IsValueBlocked = false; // "$" identifier attribute
   bool IsImplicitDeref = false; // [Fix] Indicates Sema applied an implicit deref
+  BindingPermission Permission;
   bool HasConstantValue = false;
   uint64_t ConstantValue = 0;
   ComptimeValue ConstantValObj;
@@ -211,6 +213,7 @@ public:
     n->IsValueNullable = IsValueNullable;
     n->IsValueBlocked = IsValueBlocked;
     n->IsImplicitDeref = IsImplicitDeref;
+    n->Permission = Permission;
     n->HasConstantValue = HasConstantValue;
     n->ConstantValue = ConstantValue;
     n->ConstantValObj = ConstantValObj;
@@ -310,6 +313,7 @@ public:
   bool IsValueNullable = false; // For identifier?
   bool IsRebindBlocked = false; // For ^$ or *$
   bool IsValueBlocked = false;  // For identifier$
+  BindingPermission Permission;
   // Actually UnaryExpr covers ^, *, ~, etc.
 
   UnaryExpr(TokenType op, std::unique_ptr<Expr> rhs)
@@ -326,6 +330,7 @@ public:
     n->IsValueNullable = IsValueNullable;
     n->IsRebindBlocked = IsRebindBlocked;
     n->IsValueBlocked = IsValueBlocked;
+    n->Permission = Permission;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -839,6 +844,7 @@ public:
     bool IsValueMutable = false;
     bool IsValueBlocked = false;
     bool IsInclusive = false; // For Range (true for ..=, false for ..<)
+    BindingPermission Permission;
     std::vector<std::unique_ptr<Pattern>> SubPatterns; // For Decons, Or, and Range (SubPatterns[0] = Start, SubPatterns[1] = End)
     std::vector<std::string> SubPatternNames;          // [NEW] For named deconstruction/matching (parallel to SubPatterns)
 
@@ -897,6 +903,7 @@ public:
       n->IsValueMutable = IsValueMutable;
       n->IsValueBlocked = IsValueBlocked;
       n->IsInclusive = IsInclusive;
+      n->Permission = Permission;
       for (auto& sp : SubPatterns) {
           n->SubPatterns.push_back(sp->clonePattern());
       }
@@ -1162,6 +1169,7 @@ public:
   std::string MorphologyPrefix;
   bool IsReference = false;
   bool IsMutable = false;
+  BindingPermission Permission;
   std::unique_ptr<Expr> Collection;
   std::unique_ptr<Stmt> Body;
   std::unique_ptr<Stmt> ElseBody;
@@ -1185,6 +1193,7 @@ public:
                                        cloneNode(ElseBody));
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
+    n->Permission = Permission;
       n->IterElementType = IterElementType;
     return n;
   }
@@ -1202,6 +1211,7 @@ struct DestructuredVar {
   bool IsValueNullable = false;
   bool IsValueBlocked = false;
   bool IsReference = false;
+  BindingPermission Permission;
 };
 
 class DestructuringDecl : public Stmt {
@@ -1243,6 +1253,7 @@ public:
   bool IsRebindBlocked = false;   // Pointer Attribute $ (^$p)
   bool IsValueBlocked = false;    // Identifier Attribute $ (p$)
   bool IsMorphicExempt = false;   // [NEW] Exempt from strict hat rules
+  BindingPermission Permission;
 
   VariableDecl(const std::string &name, std::unique_ptr<Expr> init)
       : Name(name), Init(std::move(init)) {}
@@ -1261,6 +1272,7 @@ public:
     n->IsValueMutable = IsValueMutable; // VariableDecl has this field
     n->IsValueBlocked = IsValueBlocked;
     n->IsMorphicExempt = IsMorphicExempt;
+    n->Permission = Permission;
     n->IsPointerNullable = IsPointerNullable;
     n->IsValueNullable = IsValueNullable;
     n->IsRebindBlocked = IsRebindBlocked;
@@ -1332,6 +1344,7 @@ struct ShapeMember {
   bool IsValueBlocked = false;    // "$" identifier attribute
   bool IsExplicitBound = false;   // "`" explicit lifetime binding attribute
   bool IsMorphicExempt = false;   // [NEW] Exempt from strict hat rules
+  BindingPermission Permission;
 
   // For Bare Union (as ...)
   std::vector<ShapeMember> SubMembers;
@@ -1361,6 +1374,7 @@ struct ShapeMember {
     IsValueBlocked = other.IsValueBlocked;
     IsExplicitBound = other.IsExplicitBound;
     IsMorphicExempt = other.IsMorphicExempt;
+    Permission = other.Permission;
     SubMembers = other.SubMembers;
     SubKind = other.SubKind;
     ResolvedType = other.ResolvedType;
@@ -1388,6 +1402,7 @@ struct ShapeMember {
     IsValueBlocked = other.IsValueBlocked;
     IsExplicitBound = other.IsExplicitBound;
     IsMorphicExempt = other.IsMorphicExempt;
+    Permission = other.Permission;
     SubMembers = other.SubMembers;
     SubKind = other.SubKind;
     ResolvedType = other.ResolvedType;
@@ -1508,6 +1523,7 @@ public:
     bool IsValueBlocked = false;  // "$" identifier attribute
     bool IsMorphicExempt = false; // [NEW] Exempt from strict hat rules
     bool IsCeded = false;         // [NEW] Ownership consumed by callee
+    BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
     std::unique_ptr<Expr> DefaultValue;
@@ -1528,6 +1544,7 @@ public:
       a.IsValueBlocked = IsValueBlocked;
       a.IsMorphicExempt = IsMorphicExempt;
       a.IsCeded = IsCeded;
+      a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);
       return a;
@@ -1664,6 +1681,7 @@ public:
     bool IsValueBlocked = false;
     bool IsMorphicExempt = false;
     bool IsCeded = false;
+    BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
     std::unique_ptr<Expr> DefaultValue;
@@ -1684,6 +1702,7 @@ public:
       a.IsValueBlocked = IsValueBlocked;
       a.IsMorphicExempt = IsMorphicExempt;
       a.IsCeded = IsCeded;
+      a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);
       return a;

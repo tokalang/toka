@@ -17,6 +17,7 @@
 #include "toka/Type.h"
 #include "toka/Parser.h"
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <filesystem>
 #include <functional> // [NEW] Added for std::function
@@ -27,6 +28,28 @@
 #include <vector>
 
 namespace toka {
+
+#ifdef TOKA_DEBUG_BINDING_PERMISSION
+template <typename NodeT>
+static void debugCheckBindingPermission(const NodeT &node) {
+  assert(node.Permission.matchesLegacy(
+      node.IsRawPointer, node.IsUnique, node.IsShared, node.IsReference,
+      node.IsRebindable, node.IsPointerNullable, node.IsRebindBlocked,
+      node.IsValueMutable, node.IsValueNullable, node.IsValueBlocked,
+      node.IsMorphicExempt));
+}
+
+static void debugCheckShapeMemberPermissions(const ShapeMember &member) {
+  debugCheckBindingPermission(member);
+  for (const auto &subMember : member.SubMembers) {
+    debugCheckShapeMemberPermissions(subMember);
+  }
+}
+#else
+template <typename NodeT>
+static void debugCheckBindingPermission(const NodeT &) {}
+static void debugCheckShapeMemberPermissions(const ShapeMember &) {}
+#endif
 
 static bool isUnsafeType(const std::shared_ptr<toka::Type>& T) {
   if (!T) return false;
@@ -150,6 +173,9 @@ void Sema::declareGlobals(Module &M) {
 
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
+    for (const auto &Arg : Fn->Args) {
+      debugCheckBindingPermission(Arg);
+    }
     ms.Functions[Fn->Name] = Fn.get();
     if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
       GlobalFunctions.push_back(Fn.get());
@@ -157,6 +183,9 @@ void Sema::declareGlobals(Module &M) {
   }
   // 2. Register Externs
   for (auto &Ext : M.Externs) {
+    for (const auto &Arg : Ext->Args) {
+      debugCheckBindingPermission(Arg);
+    }
     ms.Externs[Ext->Name] = Ext.get();
     ExternMap[Ext->Name] = Ext.get();
   }
@@ -249,6 +278,9 @@ void Sema::registerGlobals(Module &M) {
     CurrentScope->define(Ext->Name, extInfo);
   }
   for (auto &St : M.Shapes) {
+    for (const auto &Member : St->Members) {
+      debugCheckShapeMemberPermissions(Member);
+    }
     if (!St->GenericParams.empty()) {
       // [NEW] Generic Template Registration
       // Do NOT generate TypeLayout or simple ShapeMap entry yet.
@@ -305,6 +337,7 @@ void Sema::registerGlobals(Module &M) {
   }
   for (auto &G : M.Globals) {
     if (auto *v = dynamic_cast<VariableDecl *>(G.get())) {
+      debugCheckBindingPermission(*v);
 
       ms.Globals[v->Name] = v;
       // In-line inference for global constants if TypeName is missing
@@ -1002,6 +1035,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   // Register arguments
   for (auto &Arg : Fn->Args) {
+    debugCheckBindingPermission(Arg);
     if (Arg.IsValueBlocked || Arg.IsRebindBlocked) {
       DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_REDUNDANT_BLOCK,
                                Arg.Name);

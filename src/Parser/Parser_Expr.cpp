@@ -95,6 +95,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     p->Name = "";
     p->SubPatterns = std::move(subs);
     p->IsReference = isRef;
+    p->Permission = BindingPermission::fromLegacy(
+        isPointer, isUnique, isShared, isRef, false, false, false, false,
+        false, false);
     return p;
   }
 
@@ -266,6 +269,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
       p->SubPatterns = std::move(subs);
       p->SubPatternNames = std::move(subNames);
       p->IsReference = isRef;
+      p->Permission = BindingPermission::fromLegacy(
+          isPointer, isUnique, isShared, isRef, false, false, false, false,
+          false, false);
       return p;
     }
 
@@ -275,6 +281,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     p->IsReference = isRef;
     p->IsValueMutable = nameTok.HasWrite;
     p->IsValueBlocked = nameTok.IsBlocked;
+    p->Permission = BindingPermission::fromLegacy(
+        isPointer, isUnique, isShared, isRef, false, false, false,
+        nameTok.HasWrite, false, nameTok.IsBlocked);
     return p;
   }
 
@@ -428,6 +437,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     node->IsValueNullable = tok.HasNull;
     node->IsRebindBlocked = tok.IsBlocked;
     node->IsValueBlocked = tok.IsBlocked;
+    node->Permission = BindingPermission::fromLegacy(
+        op == TokenType::Star, op == TokenType::Caret, op == TokenType::Tilde,
+        op == TokenType::Ampersand, node->IsRebindable, node->HasNull,
+        node->IsRebindBlocked, node->IsValueMutable, node->IsValueNullable,
+        node->IsValueBlocked);
     node->setLocation(tok, m_CurrentFile);
     
     // [NEW] Enforce Hat Principle for references on member chains
@@ -569,6 +583,10 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     node->IsValueMutable = tok.HasWrite;
     node->IsValueNullable = tok.HasNull;
     node->IsValueBlocked = tok.IsBlocked;
+    node->Permission = BindingPermission::fromLegacy(
+        node->IsRawPointer, node->IsUnique, node->IsShared, false, false,
+        false, false, node->IsValueMutable, node->IsValueNullable,
+        node->IsValueBlocked);
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
   } else if (match(TokenType::KwUnsafe)) {
@@ -1031,6 +1049,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           expr = std::move(node);
         } else {
           auto obj = std::make_unique<VariableExpr>(name.Text + genericSuffix);
+          obj->IsValueMutable = name.HasWrite;
+          obj->IsValueNullable = name.HasNull;
+          obj->IsValueBlocked = name.IsBlocked;
+          obj->Permission = BindingPermission::fromLegacy(
+              obj->IsRawPointer, obj->IsUnique, obj->IsShared, false, false,
+              false, false, obj->IsValueMutable, obj->IsValueNullable,
+              obj->IsValueBlocked);
           obj->setLocation(name, m_CurrentFile);
           auto node = std::make_unique<MemberExpr>(std::move(obj), member.Text, true);
           node->setLocation(name, m_CurrentFile);
@@ -1042,6 +1067,10 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         var->IsValueMutable = name.HasWrite;
         var->IsValueNullable = name.HasNull;
         var->IsValueBlocked = name.IsBlocked;
+        var->Permission = BindingPermission::fromLegacy(
+            var->IsRawPointer, var->IsUnique, var->IsShared, false, false,
+            false, false, var->IsValueMutable, var->IsValueNullable,
+            var->IsValueBlocked);
         expr = std::move(var);
       }
     }
@@ -1445,6 +1474,9 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
                                         std::move(collection), std::move(body),
                                         std::move(elseBody));
   node->MorphologyPrefix = morphologyPrefix;
+  node->Permission = BindingPermission::fromLegacy(
+      morphologyPrefix == "*", morphologyPrefix == "^", morphologyPrefix == "~",
+      isRef, false, false, false, isMut, false, false);
   node->setLocation(tok, m_CurrentFile);
   return node;
 }

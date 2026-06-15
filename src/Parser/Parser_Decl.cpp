@@ -280,6 +280,11 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
         }
         m.Type += rawType;
         m.IsExplicitBound = isExplicitBound;
+        m.Permission = BindingPermission::fromLegacy(
+            m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
+            m.IsRebindable, m.IsPointerNullable, m.IsRebindBlocked,
+            m.IsValueMutable, m.IsValueNullable, m.IsValueBlocked,
+            m.IsMorphicExempt);
         if (match(TokenType::Equal)) {
           m.DefaultValue = parseExpr();
         }
@@ -356,6 +361,11 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         if (match(TokenType::Colon)) {
           arg.Type = parseTypeString();
         }
+        arg.Permission = BindingPermission::fromLegacy(
+            arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
+            arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,
+            arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked,
+            arg.IsMorphicExempt);
 
         args.push_back(std::move(arg));
         firstArg = false;
@@ -426,6 +436,11 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       arg.IsValueMutable = argName.HasWrite;
       arg.IsValueNullable = argName.HasNull;
       arg.IsValueBlocked = argName.IsBlocked;
+      arg.Permission = BindingPermission::fromLegacy(
+          arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
+          arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,
+          arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked,
+          arg.IsMorphicExempt);
 
       if (match(TokenType::Equal)) {
         arg.DefaultValue = parseExpr();
@@ -682,6 +697,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       arg.IsValueMutable = argName.HasWrite;
       arg.IsValueNullable = argName.HasNull;
       arg.IsMorphicExempt = (!arg.Type.empty() && arg.Type[0] == '\'');
+      arg.Permission = BindingPermission::fromLegacy(
+          arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
+          arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,
+          arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked,
+          arg.IsMorphicExempt);
       if (match(TokenType::Equal)) {
         arg.DefaultValue = parseExpr();
       }
