@@ -317,20 +317,8 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
   }
 
   // Cast: Check target type string
-  if (auto *C = dynamic_cast<CastExpr *>(E)) {
-    if (C->TargetType.empty())
-      return MorphKind::None;
-    char c = C->TargetType[0];
-    if (c == '*')
-      return MorphKind::Raw;
-    if (c == '^')
-      return MorphKind::Unique;
-    if (c == '~')
-      return MorphKind::Shared;
-    if (c == '&')
-      return MorphKind::Ref;
-    return MorphKind::None;
-  }
+  if (auto *C = dynamic_cast<CastExpr *>(E))
+    return morphKindFromTypeString(C->TargetType);
 
   if (auto *Aw = dynamic_cast<AwaitExpr *>(E)) {
     return getSyntacticMorphology(Aw->Expression.get());

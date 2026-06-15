@@ -643,14 +643,12 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
         prefix += "*";
 
       std::string fullTypeStr = m.Type;
-      bool hasMorphology = false;
-      if (!fullTypeStr.empty()) {
-        char first = fullTypeStr[0];
-        if (first == '^' || first == '*' || first == '&' || first == '~')
-          hasMorphology = true;
-        else if (fullTypeStr.rfind("nul ", 0) == 0)
-          hasMorphology = true;
-      }
+      bool hasMorphology =
+          morphKindFromTypeString(fullTypeStr) != MorphKind::None;
+      // Preserve legacy behavior: a leading nul marker means the type string
+      // already carries its own outer spelling and should not be prefixed.
+      if (!hasMorphology && fullTypeStr.rfind("nul ", 0) == 0)
+        hasMorphology = true;
       if (!hasMorphology) {
         fullTypeStr = prefix + m.Type;
       }
