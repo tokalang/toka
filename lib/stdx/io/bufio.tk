@@ -7,7 +7,7 @@ import std/io::{@Reader, @Writer}
 
 /// BufferedReader wraps a reader and buffers its input.
 pub shape BufferedReader<'R: @Reader> (
-    reader: 'R,
+    'reader: R,
     buf: [u8; 4096],
     pos: usize,
     cap: usize
@@ -144,7 +144,7 @@ impl<'R: @Reader> BufferedReader<'R>@Reader {
 
 /// BufferedWriter wraps a writer and buffers its output.
 pub shape BufferedWriter<'W: @Writer> (
-    writer: 'W,
+    'writer: W,
     buf: [u8; 4096],
     pos: usize
 )

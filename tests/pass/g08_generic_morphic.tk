@@ -1,6 +1,6 @@
 // Test Morphic Generics ('T) bypass of explicit hat
 shape Box<'T>(
-  'data: 'T
+  'data#: T
 )
 
 fn test_morphic_unique() -> i32 {

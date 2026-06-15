@@ -6,7 +6,7 @@ import std/error::{Error}
 /// A mutual exclusion primitive useful for protecting shared data
 pub shape Mutex<'T: @Send>(
     handle#: Addr,
-    data#: 'T
+    'data#: T
 )
 
 impl<'T: @Send> Mutex<'T>@Sync {}
@@ -93,7 +93,7 @@ impl<'T: @Send> Mutex<'T>@encap {
 
 pub shape MutexLock<'T: @Send>(
     handle: Addr,
-    *data#: 'T
+    *'data#: T
 )
 
 impl<'T: @Send> MutexLock<'T>@Send {}
@@ -121,7 +121,7 @@ impl<'T: @Send> MutexLock<'T> {
 /// A reader-writer lock
 pub shape RwMutex<'T: {@Send, @Sync}>(
     handle#: Addr,
-    data#: 'T
+    'data#: T
 )
 
 impl<'T: {@Send, @Sync}> RwMutex<'T>@Sync {}
@@ -208,7 +208,7 @@ impl<'T: {@Send, @Sync}> RwMutex<'T>@encap {
 
 pub shape RwReadLock<'T: {@Send, @Sync}>(
     handle: Addr,
-    *data: 'T
+    *'data: T
 )
 
 impl<'T: {@Send, @Sync}> RwReadLock<'T>@Send {}
@@ -235,7 +235,7 @@ impl<'T: {@Send, @Sync}> RwReadLock<'T> {
 
 pub shape RwWriteLock<'T: {@Send, @Sync}>(
     handle: Addr,
-    *data#: 'T
+    *'data#: T
 )
 
 impl<'T: {@Send, @Sync}> RwWriteLock<'T>@Send {}

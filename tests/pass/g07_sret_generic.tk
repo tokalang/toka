@@ -1,8 +1,8 @@
 import std/io::println
 
 shape Pair<'T, 'U>(
-    first: 'T,
-    second: 'U
+    'first: T,
+    'second: U
 )
 
 fn make_pair<'T, 'U>(f: 'T, s: 'U) -> Pair<'T, 'U> {

@@ -509,7 +509,13 @@ Token Lexer::punctuation() {
         while (isAlpha(peek()) || isDigit(peek()) || peek() == '_') {
           text += advance();
         }
-        return Token{TokenType::Identifier, text, line, col};
+        Token t{TokenType::Identifier, text, line, col};
+        if (match('#')) {
+          t.HasWrite = true;
+        } else if (match('$')) {
+          t.IsBlocked = true;
+        }
+        return t;
       }
     }
     return charLiteral();

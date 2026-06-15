@@ -70,7 +70,7 @@ pub shape CancelState(
 )
 
 pub shape CancelContext<'C: @Context> (
-    parent: 'C,
+    'parent: C,
     ~state: Mutex<CancelState>
 )
 
@@ -376,7 +376,7 @@ pub fn with_deadline<'C: @Context>(parent#: 'C, deadline: Instant) -> TimeoutRes
 // ------------------------------------------------------
 
 pub shape ValueContext<'C: @Context> (
-    parent: 'C,
+    'parent: C,
     key: string,
     value: string
 )

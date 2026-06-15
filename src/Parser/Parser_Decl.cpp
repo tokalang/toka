@@ -263,6 +263,10 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.Type = "";
         }
         std::string rawType = parseTypeString();
+        if (kind == ShapeKind::Struct && m.IsMorphicExempt &&
+            !rawType.empty() && rawType[0] == '\'') {
+          rawType = rawType.substr(1);
+        }
         if (kind == ShapeKind::Struct) {
           std::string trimmed = rawType;
           size_t start = trimmed.find_first_not_of(" \t\r\n");
