@@ -249,7 +249,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
                   if (ShapeMap.count(sName)) {
                       ShapeDecl *SD = ShapeMap[sName];
                       for (const auto &m : SD->Members) {
-                          auto mT = toka::Type::fromString(m.Type);
+                          auto mT = getPhysicalType(m);
                           if (checkType(mT)) return true;
                       }
                   }
@@ -551,6 +551,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       ShapeMember sm;
       sm.Name = f.first;
       sm.Type = fieldT;
+      sm.ResolvedType = fieldTypeObj;
       members.push_back(sm);
     }
 
@@ -1155,9 +1156,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       } else if (srcIsUnion) {
         bool found = false;
         for (const auto &M : st->Decl->Members) {
-          auto mType = M.ResolvedType
-                           ? M.ResolvedType
-                           : toka::Type::fromString(resolveType(M.Type));
+          auto mType = getPhysicalType(M);
           if (mType && targetType->equals(*mType)) {
             found = true;
             break;
@@ -2219,7 +2218,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         if (ShapeMap.count(sName)) {
                             ShapeDecl *SD = ShapeMap[sName];
                             for (const auto &m : SD->Members) {
-                                auto mT = toka::Type::fromString(m.Type);
+                                auto mT = getPhysicalType(m);
                                 if (checkType(mT)) return true;
                             }
                         }
@@ -2684,13 +2683,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
                   if (i == elisionIndex) continue;
                   size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
-                  if (!isPatternExhaustive(pat->SubPatterns[i].get(), SD->Members[memberIndex].Type)) return false;
+                  if (!isPatternExhaustive(pat->SubPatterns[i].get(), getPhysicalTypeName(SD->Members[memberIndex]))) return false;
                 }
                 return true;
               } else {
                 if (pat->SubPatterns.size() != SD->Members.size()) return false;
                 for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
-                  if (!isPatternExhaustive(pat->SubPatterns[i].get(), SD->Members[i].Type)) return false;
+                  if (!isPatternExhaustive(pat->SubPatterns[i].get(), getPhysicalTypeName(SD->Members[i]))) return false;
                 }
                 return true;
               }
@@ -2744,7 +2743,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
                     if (i == elisionIndex) continue;
                     size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
-                    if (!isPatternExhaustive(pat->SubPatterns[i].get(), foundMemb->SubMembers[memberIndex].Type)) {
+                    if (!isPatternExhaustive(pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]))) {
                       subExhaustive = false;
                       break;
                     }
@@ -2755,7 +2754,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   subExhaustive = false;
                 } else {
                   for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
-                    if (!isPatternExhaustive(pat->SubPatterns[i].get(), foundMemb->SubMembers[i].Type)) {
+                    if (!isPatternExhaustive(pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[i]))) {
                       subExhaustive = false;
                       break;
                     }

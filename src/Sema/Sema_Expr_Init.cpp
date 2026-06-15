@@ -502,8 +502,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
             size_t memberIndex = memberIndices[i];
             if (memberIndex != (size_t)-1) {
               if (!SD->Members[memberIndex].IsMorphicExempt) {
-                auto memberTypeObj =
-                    toka::Type::fromString(SD->Members[memberIndex].Type);
+                auto memberTypeObj = getPhysicalType(SD->Members[memberIndex]);
                 MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
                 bool subIsMorphicExempt = false;
@@ -549,7 +548,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                 }
               }
 
-              checkPattern(Pat->SubPatterns[i].get(), SD->Members[memberIndex].Type, SourceIsMutable, TargetPath);
+              checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(SD->Members[memberIndex]), SourceIsMutable, TargetPath);
             }
           }
         }
@@ -595,7 +594,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       if (i == elisionIndex) continue;
                       size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
-                      checkPattern(Pat->SubPatterns[i].get(), foundMemb->SubMembers[memberIndex].Type, SourceIsMutable, TargetPath);
+                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceIsMutable, TargetPath);
                     }
                   }
                 } else {
@@ -607,7 +606,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                   } else {
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       checkPattern(Pat->SubPatterns[i].get(),
-                                   foundMemb->SubMembers[i].Type, SourceIsMutable, TargetPath);
+                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceIsMutable, TargetPath);
                     }
                   }
                 }
@@ -865,7 +864,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
             !explicitlyProvided.count("&" + defField.Name) &&
             !explicitlyProvided.count("^?" + defField.Name)) {
           
-          auto memberTypeObj = defField.ResolvedType ? defField.ResolvedType : toka::Type::fromString(defField.Type);
+          auto memberTypeObj = getPhysicalType(defField);
 
           std::string prefix = "";
           if (memberTypeObj->isUniquePtr()) prefix = "^";
@@ -1036,7 +1035,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
 
       auto memberTypeObj = defField.ResolvedType;
       if (!memberTypeObj)
-          memberTypeObj = toka::Type::fromString(defField.Type);
+          memberTypeObj = getPhysicalType(defField);
 
         std::shared_ptr<toka::Type> exprTypeObj =
             checkExpr(cloned.get(), memberTypeObj);
@@ -1077,8 +1076,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       if (toka::Type::stripMorphology(pair.first) ==
           toka::Type::stripMorphology(memName)) {
         m_LastInitMask = memberMasks[pair.first];
-        std::shared_ptr<Type> memTypeObj =
-            toka::Type::fromString(SD->Members[i].Type);
+        std::shared_ptr<Type> memTypeObj = getPhysicalType(SD->Members[i]);
         uint64_t expected = 1;
         if (memTypeObj->isShape()) {
           std::string sName = memTypeObj->getSoulName();
@@ -1169,8 +1167,7 @@ Sema::checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
     // Ensure initialized member covers the full size of the Union.
     uint64_t unionSize = 0;
     for (auto &m : SD->Members) {
-      auto mT = m.ResolvedType ? m.ResolvedType
-                               : toka::Type::fromString(resolveType(m.Type));
+      auto mT = getPhysicalType(m);
       uint64_t s = getTypeSize(mT);
       if (s > unionSize)
         unionSize = s;

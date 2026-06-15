@@ -595,7 +595,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                     if (ShapeMap.count(sName)) {
                         ShapeDecl *SD = ShapeMap[sName];
                         for (const auto &m : SD->Members) {
-                            auto mT = toka::Type::fromString(m.Type);
+                            auto mT = getPhysicalType(m);
                             if (checkType(mT)) return true;
                         }
                     }

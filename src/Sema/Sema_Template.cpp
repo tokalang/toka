@@ -78,6 +78,7 @@ public:
     for (auto &Arg : Fn->Args) {
       if (MorphicParams.count(Arg.Type)) {
         Arg.IsMorphicExempt = true;
+        Arg.Permission.MorphicExempt = true;
       }
       Arg.Type = sub(Arg.Type);
       // Reset ResolvedType to allow Sema to re-resolve it

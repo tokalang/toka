@@ -471,6 +471,17 @@ private:
                                   stripSoulPrefixes);
   }
 
+  static std::string getPhysicalTypeName(const ShapeMember &Member) {
+    return Member.ResolvedType ? Member.ResolvedType->toString()
+                               : synthesizePhysicalType(Member);
+  }
+
+  static std::shared_ptr<toka::Type> getPhysicalType(const ShapeMember &Member) {
+    if (Member.ResolvedType)
+      return Member.ResolvedType;
+    return toka::Type::fromString(synthesizePhysicalType(Member));
+  }
+
   // Pointer Morphology Strictness
   enum class MorphKind {
     None,    // No pointer (value type)

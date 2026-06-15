@@ -1200,8 +1200,7 @@ void Sema::checkStmt(Stmt *S) {
 
           // Morphic validation
           if (!SD->Members[memberIndex].IsMorphicExempt) {
-            auto memberTypeObj =
-                toka::Type::fromString(SD->Members[memberIndex].Type);
+            auto memberTypeObj = getPhysicalType(SD->Members[memberIndex]);
             MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
             bool isMorphicExempt = (!Destruct->Variables[i].Name.empty() && Destruct->Variables[i].Name[0] == '\'');
@@ -1233,7 +1232,7 @@ void Sema::checkStmt(Stmt *S) {
           }
 
           {
-            auto memberTypeObj = toka::Type::fromString(SD->Members[memberIndex].Type);
+            auto memberTypeObj = getPhysicalType(SD->Members[memberIndex]);
             bool isMorphicExempt = (!Destruct->Variables[i].Name.empty() && Destruct->Variables[i].Name[0] == '\'');
             if (memberTypeObj->isReference() && !Destruct->Variables[i].IsReference && !isMorphicExempt) {
               DiagnosticEngine::report(getLoc(Destruct), DiagID::ERR_SEMA_CANNOT_BIND_REFERENCE_MEMBER_TO_A_NON_REF, SD->Members[memberIndex].Name, Destruct->Variables[i].Name);
@@ -1242,7 +1241,7 @@ void Sema::checkStmt(Stmt *S) {
           }
 
           SymbolInfo Info;
-          std::string fullType = SD->Members[memberIndex].Type;
+          std::string fullType = getPhysicalTypeName(SD->Members[memberIndex]);
           auto baseTypeObj = toka::Type::fromString(fullType);
           auto soulType = baseTypeObj->withAttributes(
               Destruct->Variables[i].IsValueMutable,

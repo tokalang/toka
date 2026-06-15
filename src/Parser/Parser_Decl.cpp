@@ -203,40 +203,29 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           }
 
           bool isPtrNullable = match(TokenType::KwNul);
-          std::string prefixType = "";
-          if (isPtrNullable) prefixType += "nul ";
-          
           if (match(TokenType::Star)) {
             m.IsRawPointer = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
-            prefixType += "*";
-            if (previous().IsSwappablePtr) prefixType += "#";
           } else if (match(TokenType::Caret)) {
             m.IsUnique = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
-            prefixType += "^";
-            if (previous().IsSwappablePtr) prefixType += "#";
           } else if (match(TokenType::Tilde)) {
             m.IsShared = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
-            prefixType += "~";
-            if (previous().IsSwappablePtr) prefixType += "#";
           } else if (match(TokenType::Ampersand)) {
             m.IsReference = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
-            prefixType += "&";
             if (isPtrNullable) {
               error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
             }
-            if (previous().IsSwappablePtr) prefixType += "#";
           } else if (isPtrNullable) {
             error(previous(), DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
           }
@@ -252,16 +241,12 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.IsValueBlocked = nameTok.IsBlocked;
           consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
 
-          m.Type = prefixType; // Start with prefix
+          m.Type = "";
         } else {
           m.Name = std::to_string(idx++);
           m.Type = "";
         }
 
-        if (kind == ShapeKind::Struct && m.Type.empty()) {
-          // If we didn't have a prefix, initiate empty
-          m.Type = "";
-        }
         std::string rawType = parseTypeString();
         if (kind == ShapeKind::Struct && m.IsMorphicExempt &&
             !rawType.empty() && rawType[0] == '\'') {
@@ -282,7 +267,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
             error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);
           }
         }
-        m.Type += rawType;
+        m.Type = rawType;
         m.IsExplicitBound = isExplicitBound;
         m.Permission = BindingPermission::fromLegacy(
             m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,

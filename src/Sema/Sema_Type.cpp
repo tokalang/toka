@@ -61,8 +61,8 @@ bool areStructsStructurallyCompatible(Sema *sema, const std::string &targetName,
       return false;
     }
     
-    auto tType = tMem.ResolvedType ? tMem.ResolvedType : sema->resolveType(toka::Type::fromString(tMem.Type));
-    auto sType = sMem.ResolvedType ? sMem.ResolvedType : sema->resolveType(toka::Type::fromString(sMem.Type));
+    auto tType = Sema::getPhysicalType(tMem);
+    auto sType = Sema::getPhysicalType(sMem);
     
     if (!sema->isTypeCompatible(tType, sType)) {
       return false;
@@ -632,27 +632,8 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       if (m.ResolvedType)
         return;
 
-      std::string prefix = "";
-      if (m.IsShared)
-        prefix += "~";
-      else if (m.IsUnique)
-        prefix += "^";
-      else if (m.IsReference)
-        prefix += "&";
-      else if (m.IsRawPointer)
-        prefix += "*";
+      std::string fullTypeStr = Sema::synthesizePhysicalType(m);
 
-      std::string fullTypeStr = m.Type;
-      bool hasMorphology =
-          morphKindFromTypeString(fullTypeStr) != MorphKind::None;
-      // Preserve legacy behavior: a leading nul marker means the type string
-      // already carries its own outer spelling and should not be prefixed.
-      if (!hasMorphology && fullTypeStr.rfind("nul ", 0) == 0)
-        hasMorphology = true;
-      if (!hasMorphology) {
-        fullTypeStr = prefix + m.Type;
-      }
-      
       // [NEW] Structural Substitution
       auto memberTypeObj = toka::Type::fromString(fullTypeStr);
       auto subObj = memberTypeObj->substitute(substMap);
@@ -1165,9 +1146,7 @@ uint64_t Sema::getTypeSize(std::shared_ptr<toka::Type> t) {
       if (Decl->Kind == ShapeKind::Union) {
         uint64_t maxS = 0;
         for (auto &m : Decl->Members) {
-          uint64_t s = getTypeSize(
-              m.ResolvedType ? m.ResolvedType
-                             : toka::Type::fromString(resolveType(m.Type)));
+          uint64_t s = getTypeSize(getPhysicalType(m));
           if (s > maxS)
             maxS = s;
         }

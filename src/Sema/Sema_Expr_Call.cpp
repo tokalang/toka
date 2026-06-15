@@ -1037,7 +1037,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           auto &M = Sh->Members[memberIdx];
           providedFields.insert(M.Name);
 
-          auto expectedType = M.ResolvedType ? M.ResolvedType : toka::Type::fromString(M.Type);
+          auto expectedType = getPhysicalType(M);
           auto valType = checkExpr(arg.get());
           if (!isTypeCompatible(expectedType, valType)) {
             error(arg.get(), DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_FIELD_EXPECTED_GOT, M.Name, expectedType->toString(), valType->toString());
@@ -1052,7 +1052,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (!providedFields.count(M.Name)) {
           if (elisionIndex != -1 && M.DefaultValue) {
             auto cloned = std::unique_ptr<Expr>(static_cast<Expr *>(M.DefaultValue->clone().release()));
-            auto expectedType = M.ResolvedType ? M.ResolvedType : toka::Type::fromString(M.Type);
+            auto expectedType = getPhysicalType(M);
             auto valType = checkExpr(cloned.get(), expectedType);
 
             if (isTypeCompatible(expectedType, valType) && !expectedType->equals(*valType)) {
@@ -1150,10 +1150,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           return toka::Type::fromString("unknown");
         }
 
-        auto memType = Sh->Members[matchedIdx].ResolvedType
-                           ? Sh->Members[matchedIdx].ResolvedType
-                           : toka::Type::fromString(
-                                 resolveType(Sh->Members[matchedIdx].Type));
+        auto memType = getPhysicalType(Sh->Members[matchedIdx]);
         if (!isTypeCompatible(memType, argType)) {
           error(valExpr, DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_UNION_VARIANT_EXPECTED, fieldName, memType->toString(), argType->toString());
         }
@@ -1161,9 +1158,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         // 1. Calculate Union Size
         uint64_t unionSize = 0;
         for (auto &m : Sh->Members) {
-          auto mT = m.ResolvedType
-                        ? m.ResolvedType
-                        : toka::Type::fromString(resolveType(m.Type));
+          auto mT = getPhysicalType(m);
           uint64_t s = getTypeSize(mT);
           if (s > unionSize)
             unionSize = s;
@@ -1188,10 +1183,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         int fitMatchCount = 0;
 
         for (int i = 0; i < (int)Sh->Members.size(); ++i) {
-          auto memType =
-              Sh->Members[i].ResolvedType
-                  ? Sh->Members[i].ResolvedType
-                  : toka::Type::fromString(resolveType(Sh->Members[i].Type));
+          auto memType = getPhysicalType(Sh->Members[i]);
           if (!memType)
             continue;
 
@@ -1413,7 +1405,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   if (ShapeMap.count(sName)) {
                       ShapeDecl *SD = ShapeMap[sName];
                       for (const auto &m : SD->Members) {
-                          auto mT = toka::Type::fromString(m.Type);
+                          auto mT = getPhysicalType(m);
                           if (checkType(mT)) return true;
                       }
                   }
