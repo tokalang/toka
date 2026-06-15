@@ -69,6 +69,9 @@ private:
     DiagnosticEngine::report(tok.Loc, id, std::forward<Args>(args)...);
   }
   void synchronize();
+  void errorTypeSideMorphicBinding(const Token &nameTok,
+                                   const std::string &bindingPrefix,
+                                   const std::string &typeName);
 
   bool HasError = false;
   bool PanicMode = false;

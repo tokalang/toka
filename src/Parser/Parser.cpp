@@ -136,6 +136,25 @@ void Parser::error(const Token &tok, DiagID id) {
   DiagnosticEngine::report(tok.Loc, id);
 }
 
+void Parser::errorTypeSideMorphicBinding(const Token &nameTok,
+                                         const std::string &bindingPrefix,
+                                         const std::string &typeName) {
+  std::string suggestedName = nameTok.Text;
+  if (suggestedName.empty() || suggestedName[0] != '\'')
+    suggestedName = "'" + suggestedName;
+
+  std::string suggestedType = typeName;
+  if (!suggestedType.empty() && suggestedType[0] == '\'')
+    suggestedType = suggestedType.substr(1);
+
+  std::string suggestion = bindingPrefix + suggestedName + ": " + suggestedType;
+  std::string msg =
+      "Morphic generic marker (') must prefix the binding name, not the type "
+      "name. Did you mean '" +
+      suggestion + "'?";
+  error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);
+}
+
 void Parser::synchronize() {
   size_t startPos = m_Pos;
   PanicMode = false;

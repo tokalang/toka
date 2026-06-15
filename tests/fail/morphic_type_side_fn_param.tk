@@ -1,0 +1,9 @@
+// EXPECT: error[E0105]:
+
+fn id<'T>(x: 'T) -> 'T {
+    return x
+}
+
+fn main() -> i32 {
+    return 0
+}

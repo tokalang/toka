@@ -197,6 +197,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
         ShapeMember m;
         Token nameTok;
         bool isExplicitBound = false;
+        std::string memberPrefix = "";
         if (kind == ShapeKind::Struct) {
           if (match(TokenType::Backtick)) {
             isExplicitBound = true;
@@ -204,21 +205,25 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
 
           bool isPtrNullable = match(TokenType::KwNul);
           if (match(TokenType::Star)) {
+            memberPrefix = "*";
             m.IsRawPointer = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
           } else if (match(TokenType::Caret)) {
+            memberPrefix = "^";
             m.IsUnique = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
           } else if (match(TokenType::Tilde)) {
+            memberPrefix = "~";
             m.IsShared = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
             m.IsRebindBlocked = previous().IsBlocked;
           } else if (match(TokenType::Ampersand)) {
+            memberPrefix = "&";
             m.IsReference = true;
             m.IsRebindable = previous().IsSwappablePtr;
             m.IsPointerNullable = isPtrNullable;
@@ -248,15 +253,15 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
         }
 
         std::string rawType = parseTypeString();
-        if (kind == ShapeKind::Struct && m.IsMorphicExempt &&
-            !rawType.empty() && rawType[0] == '\'') {
-          rawType = rawType.substr(1);
-        }
         if (kind == ShapeKind::Struct) {
           std::string trimmed = rawType;
           size_t start = trimmed.find_first_not_of(" \t\r\n");
           if (start != std::string::npos) {
             trimmed = trimmed.substr(start);
+          }
+          if (!trimmed.empty() && trimmed[0] == '\'') {
+            errorTypeSideMorphicBinding(nameTok, memberPrefix, trimmed);
+            rawType = trimmed.substr(1);
           }
           if (!trimmed.empty() && (trimmed[0] == '&' || trimmed[0] == '^' || trimmed[0] == '~' || trimmed[0] == '*')) {
             char sigil = trimmed[0];
@@ -364,6 +369,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
 
       bool isPtrNullable = match(TokenType::KwNul);
       bool isRef = match(TokenType::Ampersand);
+      std::string argPrefix = isRef ? "&" : "";
       bool hasPointer = false;
       bool isUnique = false;
       bool isShared = false;
@@ -379,16 +385,19 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           error(t, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
         }
       } else if (match(TokenType::Caret)) {
+        argPrefix = "^";
         isUnique = true;
         Token t = previous();
         isRebindable = t.IsSwappablePtr;
         isRebindBlocked = t.IsBlocked;
       } else if (match(TokenType::Star)) {
+        argPrefix = "*";
         Token t = previous();
         hasPointer = true;
         isRebindable = t.IsSwappablePtr;
         isRebindBlocked = t.IsBlocked;
       } else if (match(TokenType::Tilde)) {
+        argPrefix = "~";
         isShared = true;
         Token t = previous();
         isRebindable = t.IsSwappablePtr;
@@ -408,8 +417,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
       bool typeIsMorphic = !argType.empty() && argType[0] == '\'';
-      if (typeIsMorphic)
+      if (typeIsMorphic) {
+        errorTypeSideMorphicBinding(argName, argPrefix, argType);
         argType = argType.substr(1);
+      }
 
       FunctionDecl::Arg arg;
       arg.IsCeded = isCeded;
@@ -676,7 +687,15 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         break;
       bool isCeded = match(TokenType::KwCede);
       bool isPtrNullable = match(TokenType::KwNul);
-      bool hasPointer = match(TokenType::Caret) || match(TokenType::Star);
+      bool hasPointer = false;
+      std::string argPrefix = "";
+      if (match(TokenType::Caret)) {
+        hasPointer = true;
+        argPrefix = "^";
+      } else if (match(TokenType::Star)) {
+        hasPointer = true;
+        argPrefix = "*";
+      }
       Token argName = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
       std::string argType = "i64";
       if (match(TokenType::Colon)) {
@@ -684,8 +703,10 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
       bool typeIsMorphic = !argType.empty() && argType[0] == '\'';
-      if (typeIsMorphic)
+      if (typeIsMorphic) {
+        errorTypeSideMorphicBinding(argName, argPrefix, argType);
         argType = argType.substr(1);
+      }
 
       ExternDecl::Arg arg;
       arg.IsCeded = isCeded;

@@ -226,8 +226,9 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   if (match(TokenType::Colon)) {
     typeName = parseTypeString();
     if (!typeName.empty() && typeName[0] == '\'') {
-        isMorphicExempt = true; // [NEW] Generic Morphology Encapsulation
-        typeName = typeName.substr(1);
+      errorTypeSideMorphicBinding(name, morphologyPrefix, typeName);
+      isMorphicExempt = true; // [NEW] Generic Morphology Encapsulation
+      typeName = typeName.substr(1);
     }
   }
 

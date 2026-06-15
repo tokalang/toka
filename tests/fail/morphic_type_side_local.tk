@@ -1,0 +1,6 @@
+// EXPECT: error[E0105]:
+
+fn main() -> i32 {
+    auto x: 'T = 1
+    return 0
+}
