@@ -18,6 +18,10 @@ fn test_morphic_raw() -> i32 {
   return val - 100
 }
 
+fn morphic_identity<'T>('value: T) -> 'T {
+  return 'value
+}
+
 fn test_morphic_nohat() -> i32 {
   auto local = 100
   auto ptr = Box<i32>(data=local)
@@ -34,6 +38,10 @@ fn main() -> i32 {
   
   auto r3 = test_morphic_nohat()
   if r3 != 0 { return 3 }
+
+  auto local = 77
+  auto &r4 = morphic_identity<&i32>(&local)
+  if r4 != 77 { return 4 }
   
   return 0
 }

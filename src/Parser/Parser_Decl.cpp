@@ -406,13 +406,18 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       if (match(TokenType::Colon)) {
         argType = parseTypeString();
       }
+      bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
+      bool typeIsMorphic = !argType.empty() && argType[0] == '\'';
+      if (typeIsMorphic)
+        argType = argType.substr(1);
+
       FunctionDecl::Arg arg;
       arg.IsCeded = isCeded;
       arg.Name = argName.Text;
       arg.Type = argType;
       arg.IsRawPointer = hasPointer;
       arg.IsReference = isRef;
-      arg.IsMorphicExempt = (!arg.Type.empty() && arg.Type[0] == '\'');
+      arg.IsMorphicExempt = nameIsMorphic || typeIsMorphic;
       // arg.IsMutable = argName.HasWrite; // Deprecated
       // arg.IsNullable = argName.HasNull; // Deprecated
 
@@ -677,6 +682,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       if (match(TokenType::Colon)) {
         argType = parseTypeString();
       }
+      bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
+      bool typeIsMorphic = !argType.empty() && argType[0] == '\'';
+      if (typeIsMorphic)
+        argType = argType.substr(1);
+
       ExternDecl::Arg arg;
       arg.IsCeded = isCeded;
       arg.Name = argName.Text;
@@ -685,7 +695,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       arg.IsPointerNullable = isPtrNullable;
       arg.IsValueMutable = argName.HasWrite;
       arg.IsValueNullable = argName.HasNull;
-      arg.IsMorphicExempt = (!arg.Type.empty() && arg.Type[0] == '\'');
+      arg.IsMorphicExempt = nameIsMorphic || typeIsMorphic;
       arg.Permission = BindingPermission::fromLegacy(
           arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
           arg.IsRebindable, arg.IsPointerNullable, arg.IsRebindBlocked,

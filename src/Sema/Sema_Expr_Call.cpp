@@ -779,11 +779,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           PType = PType.substr(1);
         }
 
-        // Check if PType is a generic param
+        // Check if PType is a generic param. Morphic params keep their
+        // source name as 'T, but canonical binding positions use T.
         bool isGeneric = false;
+        std::string genericKey;
         for (const auto &gp : Fn->GenericParams) {
-          if (gp.Name == PType) {
+          if (gp.Name == PType ||
+              (gp.IsMorphic && !gp.Name.empty() && gp.Name[0] == '\'' &&
+               gp.Name.substr(1) == PType)) {
             isGeneric = true;
+            genericKey = gp.Name;
             break;
           }
         }
@@ -830,13 +835,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           candidate = candidate->withAttributes(false, candidate->IsNullable, candidate->IsBlocked);
 
           // Deduce
-          if (Deduced.count(PType)) {
-            if (!Deduced[PType]->equals(*candidate)) {
-              error(Call, DiagID::ERR_SEMA_TYPE_DEDUCTION_CONFLICT_FOR_VS, PType, Deduced[PType]->toString(), candidate->toString());
+          if (Deduced.count(genericKey)) {
+            if (!Deduced[genericKey]->equals(*candidate)) {
+              error(Call, DiagID::ERR_SEMA_TYPE_DEDUCTION_CONFLICT_FOR_VS, genericKey, Deduced[genericKey]->toString(), candidate->toString());
               deductionFailed = true;
             }
           } else {
-            Deduced[PType] = candidate;
+            Deduced[genericKey] = candidate;
           }
         }
       }
@@ -1357,10 +1362,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       break;
 
     // Morphology Check for Argument
-    MorphKind targetMorph = morphKindFromType(paramType);
-    MorphKind sourceMorph = getSyntacticMorphology(Call->Args[i].get());
-    std::string ctx = "arg " + std::to_string(i + 1);
-    checkStrictMorphology(Call->Args[i].get(), targetMorph, sourceMorph, ctx);
+    bool paramIsMorphicExempt = false;
+    if (Fn && i < Fn->Args.size()) {
+      paramIsMorphicExempt = Fn->Args[i].IsMorphicExempt;
+    } else if (Ext && i < Ext->Args.size()) {
+      paramIsMorphicExempt = Ext->Args[i].IsMorphicExempt;
+    }
+    if (!paramIsMorphicExempt) {
+      MorphKind targetMorph = morphKindFromType(paramType);
+      MorphKind sourceMorph = getSyntacticMorphology(Call->Args[i].get());
+      std::string ctx = "arg " + std::to_string(i + 1);
+      checkStrictMorphology(Call->Args[i].get(), targetMorph, sourceMorph, ctx);
+    }
 
     bool bypassNull = false;
     if (Ext != nullptr && m_InUnsafeContext && paramType && paramType->isRawPointer() && argType && argType->isNullType()) {

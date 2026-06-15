@@ -87,6 +87,8 @@ static void debugCheckBindingTypeString(const char *nodeKind,
   bool typeHasIdentityNull = typeName.rfind("nul ", 0) == 0;
   if (!typeHasMorphology && !typeHasIdentityNull)
     return;
+  if (permission.MorphicExempt)
+    return;
 
   bool permissionHasHandle =
       permission.Morphology != BindingMorphology::None ||
@@ -1825,6 +1827,8 @@ FunctionDecl *Sema::instantiateGenericFunction(
       // Strategy: Inject a synthetic variable declaration at the start of the
       // body.
       CurrentScope->define(GP.Name, constInfo);
+      if (GP.IsMorphic && !GP.Name.empty() && GP.Name[0] == '\'')
+        CurrentScope->define(GP.Name.substr(1), constInfo);
 
       // We will inject `auto N = 10;` into the body later.
     } else {
@@ -1832,6 +1836,8 @@ FunctionDecl *Sema::instantiateGenericFunction(
       aliasInfo.TypeObj = resolveType(Args[i]);
       aliasInfo.IsTypeAlias = true;
       CurrentScope->define(GP.Name, aliasInfo);
+      if (GP.IsMorphic && !GP.Name.empty() && GP.Name[0] == '\'')
+        CurrentScope->define(GP.Name.substr(1), aliasInfo);
     }
   }
 
@@ -1840,8 +1846,11 @@ FunctionDecl *Sema::instantiateGenericFunction(
   // (e.g. i32 instead of T)
   std::map<std::string, std::string> substMap;
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
-    substMap[Template->GenericParams[i].Name] =
-        resolveType(Args[i])->toString();
+    const auto &GP = Template->GenericParams[i];
+    std::string substValue = resolveType(Args[i])->toString();
+    substMap[GP.Name] = substValue;
+    if (GP.IsMorphic && !GP.Name.empty() && GP.Name[0] == '\'')
+      substMap[GP.Name.substr(1)] = substValue;
   }
 
   auto applySubst = [&](std::string &s) {
@@ -1862,8 +1871,25 @@ FunctionDecl *Sema::instantiateGenericFunction(
     }
   };
 
+  auto refersToMorphicParam = [&](const std::string &typeName) {
+    for (const auto &GP : Template->GenericParams) {
+      if (!GP.IsMorphic)
+        continue;
+      if (GP.Name == typeName)
+        return true;
+      if (!GP.Name.empty() && GP.Name[0] == '\'' &&
+          GP.Name.substr(1) == typeName)
+        return true;
+    }
+    return false;
+  };
+
   // Substitute types in signature
   for (auto &Arg : Instance->Args) {
+    if (refersToMorphicParam(Arg.Type)) {
+      Arg.IsMorphicExempt = true;
+      Arg.Permission.MorphicExempt = true;
+    }
     applySubst(Arg.Type);
     Arg.ResolvedType = nullptr;
   }

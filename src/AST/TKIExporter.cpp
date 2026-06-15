@@ -42,7 +42,8 @@ static std::string reconstructVar(
     }
     
     std::string name = toka::Type::stripMorphology(rawName);
-    if (isMorphicExempt) {
+    bool nameHasMorphicPrefix = !name.empty() && name[0] == '\'';
+    if (isMorphicExempt && !nameHasMorphicPrefix) {
         result += "'";
     }
     result += name;

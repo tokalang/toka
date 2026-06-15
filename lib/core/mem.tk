@@ -14,9 +14,9 @@
 
 // core/mem.tk
 
-pub fn bit_cast<'To, 'From>('val: 'From) -> 'To {
+pub fn bit_cast<'To, 'From>('val: From) -> 'To {
     unsafe {
-        auto 'dummy: 'To
+        auto 'dummy: To
         return 'dummy
     }
 }
