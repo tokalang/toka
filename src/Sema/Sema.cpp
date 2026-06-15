@@ -39,16 +39,93 @@ static void debugCheckBindingPermission(const NodeT &node) {
       node.IsMorphicExempt));
 }
 
-static void debugCheckShapeMemberPermissions(const ShapeMember &member) {
+static const char *debugMorphologyName(BindingMorphology morphology) {
+  switch (morphology) {
+  case BindingMorphology::Raw:
+    return "raw";
+  case BindingMorphology::Unique:
+    return "unique";
+  case BindingMorphology::Shared:
+    return "shared";
+  case BindingMorphology::Reference:
+    return "reference";
+  case BindingMorphology::None:
+    return "none";
+  }
+  return "none";
+}
+
+static bool debugTypeStringHasOuterMorphology(const std::string &typeName) {
+  if (typeName.empty())
+    return false;
+  auto parsed = toka::Type::fromString(typeName);
+  return parsed && (parsed->isRawPointer() || parsed->isUniquePtr() ||
+                    parsed->isSharedPtr() || parsed->isReference());
+}
+
+static void debugPrintLocation(SourceLocation loc) {
+  if (!DiagnosticEngine::SrcMgr || loc.isInvalid())
+    return;
+
+  auto fullLoc = DiagnosticEngine::SrcMgr->getFullSourceLoc(loc);
+  if (!fullLoc.isValid())
+    return;
+
+  std::cerr << " at " << fullLoc.FileName << ":" << fullLoc.Line << ":"
+            << fullLoc.Column;
+}
+
+static void debugCheckBindingTypeString(const char *nodeKind,
+                                        const std::string &name,
+                                        const std::string &typeName,
+                                        const BindingPermission &permission,
+                                        SourceLocation loc) {
+  if (typeName.empty())
+    return;
+
+  bool typeHasMorphology = debugTypeStringHasOuterMorphology(typeName);
+  bool typeHasIdentityNull = typeName.rfind("nul ", 0) == 0;
+  if (!typeHasMorphology && !typeHasIdentityNull)
+    return;
+
+  bool permissionHasHandle =
+      permission.Morphology != BindingMorphology::None ||
+      permission.IdentityNullable || permission.IdentityRebindable ||
+      permission.IdentityBlocked;
+
+  std::cerr << "[TOKA_DEBUG_BINDING_PERMISSION] " << nodeKind << " '"
+            << name << "'";
+  debugPrintLocation(loc);
+  std::cerr << (permissionHasHandle
+                    ? " has both binding permission and type-string "
+                      "handle morphology"
+                    : " has type-string handle morphology without binding "
+                      "permission")
+            << ": type='" << typeName
+            << "', morphology=" << debugMorphologyName(permission.Morphology)
+            << ", identityNullable=" << permission.IdentityNullable
+            << ", identityRebindable=" << permission.IdentityRebindable
+            << ", identityBlocked=" << permission.IdentityBlocked << "\n";
+}
+
+static void debugCheckShapeMemberPermissions(const ShapeMember &member,
+                                             SourceLocation loc) {
   debugCheckBindingPermission(member);
+  debugCheckBindingTypeString("shape member", member.Name, member.Type,
+                              member.Permission, loc);
   for (const auto &subMember : member.SubMembers) {
-    debugCheckShapeMemberPermissions(subMember);
+    debugCheckShapeMemberPermissions(subMember, loc);
   }
 }
 #else
 template <typename NodeT>
 static void debugCheckBindingPermission(const NodeT &) {}
-static void debugCheckShapeMemberPermissions(const ShapeMember &) {}
+static void debugCheckBindingTypeString(const char *, const std::string &,
+                                        const std::string &,
+                                        const BindingPermission &,
+                                        SourceLocation) {}
+static void debugCheckShapeMemberPermissions(const ShapeMember &,
+                                             SourceLocation) {}
 #endif
 
 static bool isUnsafeType(const std::shared_ptr<toka::Type>& T) {
@@ -175,6 +252,8 @@ void Sema::declareGlobals(Module &M) {
   for (auto &Fn : M.Functions) {
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
+      debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
+                                  Arg.Permission, Fn->Loc);
     }
     ms.Functions[Fn->Name] = Fn.get();
     if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
@@ -185,6 +264,8 @@ void Sema::declareGlobals(Module &M) {
   for (auto &Ext : M.Externs) {
     for (const auto &Arg : Ext->Args) {
       debugCheckBindingPermission(Arg);
+      debugCheckBindingTypeString("extern argument", Arg.Name, Arg.Type,
+                                  Arg.Permission, Ext->Loc);
     }
     ms.Externs[Ext->Name] = Ext.get();
     ExternMap[Ext->Name] = Ext.get();
@@ -279,7 +360,7 @@ void Sema::registerGlobals(Module &M) {
   }
   for (auto &St : M.Shapes) {
     for (const auto &Member : St->Members) {
-      debugCheckShapeMemberPermissions(Member);
+      debugCheckShapeMemberPermissions(Member, St->Loc);
     }
     if (!St->GenericParams.empty()) {
       // [NEW] Generic Template Registration
@@ -359,6 +440,8 @@ void Sema::registerGlobals(Module &M) {
           }
         }
       }
+      debugCheckBindingTypeString("global variable", v->Name, v->TypeName,
+                                  v->Permission, v->Loc);
       // [NEW] Define local global in scope
       std::string fullT = synthesizePhysicalType(*v);
       SymbolInfo globalInfo;
@@ -1008,6 +1091,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   // Register arguments
   for (auto &Arg : Fn->Args) {
     debugCheckBindingPermission(Arg);
+    debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
+                                Arg.Permission, Fn->Loc);
     if (Arg.IsValueBlocked || Arg.IsRebindBlocked) {
       DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_REDUNDANT_BLOCK,
                                Arg.Name);
