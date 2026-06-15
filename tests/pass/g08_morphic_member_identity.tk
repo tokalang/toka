@@ -1,0 +1,26 @@
+shape Box<'T>(
+  'data: T
+)
+
+fn take_identity<'T>(cede box: Box<'T>) -> 'T {
+  return cede box.'data
+}
+
+fn main() -> i32 {
+  unsafe {
+    auto owned = Box<^i32>(^data=new i32(5))
+    auto ^p = take_identity<^i32>(cede owned)
+    if p != 5 { return 1 }
+  }
+
+  auto local = 9
+  auto borrowed = Box<&i32>(&data=&local)
+  auto &r = take_identity<&i32>(cede borrowed)
+  if r != 9 { return 2 }
+
+  auto value = Box<i32>(data=7)
+  auto v = take_identity<i32>(cede value)
+  if v != 7 { return 3 }
+
+  return 0
+}

@@ -28,6 +28,22 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static std::string stripMemberAccessMarkers(std::string name) {
+  if (name.size() >= 2 && name.substr(0, 2) == "??")
+    name = name.substr(2);
+  while (!name.empty() &&
+         (name[0] == '*' || name[0] == '^' || name[0] == '~' ||
+          name[0] == '&' || name[0] == '?' || name[0] == '#' ||
+          name[0] == '!'))
+    name = name.substr(1);
+  if (!name.empty() && name[0] == '\'')
+    name = name.substr(1);
+  while (!name.empty() &&
+         (name.back() == '#' || name.back() == '?' || name.back() == '!'))
+    name.pop_back();
+  return toka::Type::stripMorphology(name);
+}
+
 static std::string getStringifyPath(Expr *E) {
   if (!E)
     return "";
@@ -35,7 +51,7 @@ static std::string getStringifyPath(Expr *E) {
     return ve->Name;
   }
   if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
+    std::string member = stripMemberAccessMarkers(me->Member);
     return getStringifyPath(me->Object.get()) + "." + member;
   }
   if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
@@ -173,6 +189,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     ShapeDecl *SD = ShapeMap[ObjType];
     std::string requestedMember = Memb->Member;
     std::string requestedPrefix = "";
+    bool requestedMorphicIdentity = false;
     if (!requestedMember.empty()) {
       size_t prefixEnd = 0;
       if (requestedMember.size() >= 2 && requestedMember.substr(0, 2) == "??") {
@@ -191,6 +208,10 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
       }
       requestedPrefix = requestedMember.substr(0, prefixEnd);
       requestedMember = requestedMember.substr(prefixEnd);
+      if (!requestedMember.empty() && requestedMember[0] == '\'') {
+        requestedMorphicIdentity = true;
+        requestedMember = requestedMember.substr(1);
+      }
     }
 
     // [Ch 5] Single Hat & Terminal Audit: Except for ?? assertion
@@ -202,6 +223,10 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     for (int i = 0; i < (int)SD->Members.size(); ++i) {
       const auto &Field = SD->Members[i];
       if (toka::Type::stripMorphology(Field.Name) == requestedMember) {
+        if (requestedMorphicIdentity && !Field.IsMorphicExempt) {
+          error(Memb, DiagID::ERR_NO_SUCH_MEMBER, ObjType, Memb->Member);
+          return toka::Type::fromString("unknown");
+        }
         Memb->Index = i; // [FIX] Set index for CodeGen
         Memb->IsMorphicExempt = Field.IsMorphicExempt; // [NEW]
         // Visibility Check: God-eye view (same file)
@@ -261,9 +286,13 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         }
 
         // Return type based on Toka 1.3 Pointer-Value Duality
-        std::string fullType = Sema::synthesizePhysicalType(Field);
-        std::shared_ptr<toka::Type> fieldType =
-            toka::Type::fromString(fullType);
+        std::shared_ptr<toka::Type> fieldType;
+        if (requestedMorphicIdentity && Field.ResolvedType) {
+          fieldType = Field.ResolvedType;
+        } else {
+          std::string fullType = Sema::synthesizePhysicalType(Field);
+          fieldType = toka::Type::fromString(fullType);
+        }
 
         // [Ch 5.4] Insulation: Pointers physically break permission
         // inheritance
@@ -311,12 +340,13 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             fieldType->IsWritable = true;
         }
 
-        if (requestedPrefix.empty() && !m_DisableSoulCollapse) {
+        if (requestedPrefix.empty() && !requestedMorphicIdentity &&
+            !m_DisableSoulCollapse) {
           // obj.field (Hat-Off) -> Soul Collapse.
           return fieldType->getSoulType()->withAttributes(
               finalSoulWritable, isNarrowed ? false : fieldType->IsNullable);
         } else {
-          // Hatted Access (Identity Access) Or disabled soul collapse (e.g. valid terminal assignment base)
+          // Hatted access, morphic identity access, or disabled soul collapse.
           // Use fieldType directly as the base (preserving its
           // morphologies)
           std::shared_ptr<toka::Type> result = fieldType;

@@ -32,6 +32,22 @@ static int getTypeHatCount(std::shared_ptr<toka::Type> type) {
   return count;
 }
 
+static std::string stripMemberAccessMarkers(std::string name) {
+  if (name.size() >= 2 && name.substr(0, 2) == "??")
+    name = name.substr(2);
+  while (!name.empty() &&
+         (name[0] == '^' || name[0] == '*' || name[0] == '&' ||
+          name[0] == '#' || name[0] == '~' || name[0] == '!' ||
+          name[0] == '?'))
+    name = name.substr(1);
+  if (!name.empty() && name[0] == '\'')
+    name = name.substr(1);
+  while (!name.empty() &&
+         (name.back() == '#' || name.back() == '?' || name.back() == '!'))
+    name.pop_back();
+  return name;
+}
+
 PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
   llvm::Function *allocHook = m_Module->getFunction("__toka_alloc");
   if (!allocHook) {
@@ -654,29 +670,13 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     }
   }
 
-  std::string memberName = mem->Member;
-  if (memberName.substr(0, 2) == "??")
-    memberName = memberName.substr(2);
-  while (!memberName.empty() && (memberName[0] == '^' || memberName[0] == '*' ||
-                                 memberName[0] == '&' || memberName[0] == '#' ||
-                                 memberName[0] == '~' || memberName[0] == '!'))
-    memberName = memberName.substr(1);
-  while (!memberName.empty() &&
-         (memberName.back() == '#' || memberName.back() == '?' ||
-          memberName.back() == '!'))
-    memberName.pop_back();
+  std::string memberName = stripMemberAccessMarkers(mem->Member);
 
   if (!st) {
     std::string foundStruct;
     for (const auto &pair : m_StructFieldNames) {
       for (int i = 0; i < (int)pair.second.size(); ++i) {
-        std::string fn = pair.second[i];
-        while (!fn.empty() && (fn[0] == '^' || fn[0] == '*' || fn[0] == '&' ||
-                               fn[0] == '#' || fn[0] == '~' || fn[0] == '!'))
-          fn = fn.substr(1);
-        while (!fn.empty() &&
-               (fn.back() == '#' || fn.back() == '?' || fn.back() == '!'))
-          fn.pop_back();
+        std::string fn = stripMemberAccessMarkers(pair.second[i]);
 
         if (fn == memberName) {
           foundStruct = pair.first;
@@ -709,10 +709,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     if (!stName.empty()) {
       auto &fields = m_StructFieldNames[stName];
       for (int i = 0; i < (int)fields.size(); ++i) {
-        std::string fn = fields[i];
-        // scrub logic...
-        while (!fn.empty() && (fn[0] == '#' || fn[0] == '*' || fn[0] == '&'))
-          fn = fn.substr(1);                            // minimal scrub
+        std::string fn = stripMemberAccessMarkers(fields[i]);
         if (fn.find(memberName) != std::string::npos) { // simplistic
           idx = i;
           break;
@@ -720,7 +717,8 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
       }
       // Use stricter match if possible, matching genAddr logic
       for (int i = 0; i < (int)fields.size(); ++i) {
-        if (fields[i].find(memberName) != std::string::npos) {
+        if (stripMemberAccessMarkers(fields[i]).find(memberName) !=
+            std::string::npos) {
           idx = i;
           break;
         }

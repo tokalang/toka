@@ -348,6 +348,9 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
       if (M->Member.size() >= 2 && M->Member.substr(0, 2) == "??") {
         return MorphKind::Valid; // Assertion bypasses strict checking
       }
+      if (M->Member[0] == '\'' && M->IsMorphicExempt && M->ResolvedType) {
+        return morphKindFromType(M->ResolvedType);
+      }
       char c = M->Member[0];
       if (c == '*')
         return MorphKind::Raw;

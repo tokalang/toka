@@ -1763,16 +1763,14 @@ FunctionDecl *Sema::instantiateGenericFunction(
     }
   }
 
-  // Magnling: Name_M_Arg1_Arg2
+  // Mangling: Name_M_Arg1_Arg2
   std::string mangledName = Template->Name + "_M";
   for (auto &Arg : Args) {
     if (!Arg)
       continue;
-    std::string argStr = resolveType(Arg)->toString();
-    for (char &c : argStr) {
-      if (!std::isalnum(c) && c != '_')
-        c = '_';
-    }
+    auto resolvedArg = resolveType(Arg);
+    std::string argStr =
+        resolvedArg ? resolvedArg->getMangledName() : Arg->getMangledName();
     mangledName += "_" + argStr;
   }
 
