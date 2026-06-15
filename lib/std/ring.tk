@@ -83,24 +83,24 @@ impl<'T> RingCore<'T> {
         }
     }
 
-    pub fn push_back(self#, val: 'T) {
+    pub fn push_back(self#, 'val: T) {
         if self.len == self.cap {
             self#.grow()
         }
         unsafe {
             auto idx = (self.head + self.len) & self.mask
-            self.buf[idx] = cede val
+            self.buf[idx] = cede 'val
             self.len += 1
         }
     }
 
-    pub fn push_front(self#, val: 'T) {
+    pub fn push_front(self#, 'val: T) {
         if self.len == self.cap {
             self#.grow()
         }
         unsafe {
             self.head = (self.head + self.cap - 1) & self.mask
-            self.buf[self.head] = cede val
+            self.buf[self.head] = cede 'val
             self.len += 1
         }
     }
@@ -111,9 +111,9 @@ impl<'T> RingCore<'T> {
         }
         unsafe {
             auto idx = (self.head + self.len - 1) & self.mask
-            auto val: 'T = cede self.buf[idx]
+            auto 'val: T = cede self.buf[idx]
             self.len -= 1
-            return Option<'T>::Some(cede val)
+            return Option<'T>::Some(cede 'val)
         }
     }
 
@@ -122,10 +122,10 @@ impl<'T> RingCore<'T> {
             return Option<'T>::None
         }
         unsafe {
-            auto val: 'T = cede self.buf[self.head]
+            auto 'val: T = cede self.buf[self.head]
             self.head = (self.head + 1) & self.mask
             self.len -= 1
-            return Option<'T>::Some(cede val)
+            return Option<'T>::Some(cede 'val)
         }
     }
 

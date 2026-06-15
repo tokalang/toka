@@ -28,12 +28,12 @@ impl<'T> HashSet<'T> {
         )
     }
 
-    pub fn insert(self#, val: 'T) {
-        self.map#.insert(val, true)
+    pub fn insert(self#, 'val: T) {
+        self.map#.insert('val, true)
     }
 
-    pub fn contains(self, val: 'T) -> bool {
-        match self.map.get(val) {
+    pub fn contains(self, 'val: T) -> bool {
+        match self.map.get('val) {
             auto Option<bool>::Some(_) => return true
             auto Option<bool>::None => return false
         }
@@ -51,8 +51,8 @@ impl<'T> HashSet<'T> {
         self.map#.clear()
     }
 
-    pub fn remove(self#, val: 'T) -> bool {
-        auto opt = self.map#.remove(val)
+    pub fn remove(self#, 'val: T) -> bool {
+        auto opt = self.map#.remove('val)
         return opt.is_some()
     }
 

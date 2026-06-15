@@ -98,7 +98,7 @@ impl string@ToJson {
 }
 
 // Reflection-based serializer for structural Shapes
-pub fn serialize_shape<'T>(obj: 'T, buf#: string) -> string {
+pub fn serialize_shape<'T>('obj: T, buf#: string) -> string {
     buf#.push_str("{")
     auto first# = true
     for auto f in reflect<'T>().fields {
@@ -109,7 +109,7 @@ pub fn serialize_shape<'T>(obj: 'T, buf#: string) -> string {
         buf#.push_view(f.name)
         buf#.push_str("\":")
         
-        auto val = f.get(obj)
+        auto val = f.get('obj)
         buf = val.write_json(buf)
     }
     buf#.push_str("}")
@@ -184,9 +184,9 @@ impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
     }
 }
 
-pub fn to_json<'T: @ToJson>(obj: 'T) -> string {
+pub fn to_json<'T: @ToJson>('obj: T) -> string {
     auto res# = string::from("")
-    res = obj.write_json(res)
+    res = 'obj.write_json(res)
     return res
 }
 
@@ -457,9 +457,9 @@ impl<'T: @FromJson> Option<'T>@FromJson {
         unsafe {
             auto ^buf = new [1]Uninit<'T>()
             libc_memset(*buf as *void, 0, sizeof('T))
-            auto *val#: 'T = (*buf + 0) as *'T
-            rem = val#.parse_json(rem)!
-            self = Option<'T>::Some(cede val)
+            auto *'val#: T = (*buf + 0) as *'T
+            rem = 'val#.parse_json(rem)!
+            self = Option<'T>::Some(cede 'val)
             return JsonRes::Ok(rem)
         }
     }
@@ -482,15 +482,15 @@ impl<'T: @FromJson, 'E: @FromJson> Result<'T, 'E>@FromJson {
             if key.equals("Ok") {
                 auto ^buf = new [1]Uninit<'T>()
                 libc_memset(*buf as *void, 0, sizeof('T))
-                auto *val#: 'T = (*buf + 0) as *'T
-                rem = val#.parse_json(rem)!
-                self = Result<'T, 'E>::Ok(cede val)
+                auto *'val#: T = (*buf + 0) as *'T
+                rem = 'val#.parse_json(rem)!
+                self = Result<'T, 'E>::Ok(cede 'val)
             } else if key.equals("Err") {
                 auto ^buf = new [1]Uninit<'E>()
                 libc_memset(*buf as *void, 0, sizeof('E))
-                auto *e#: 'E = (*buf + 0) as *'E
-                rem = e#.parse_json(rem)!
-                self = Result<'T, 'E>::Err(cede e)
+                auto *'e#: E = (*buf + 0) as *'E
+                rem = 'e#.parse_json(rem)!
+                self = Result<'T, 'E>::Err(cede 'e)
             } else {
                 return JsonRes::Err("Invalid key for Result")
             }
@@ -522,8 +522,8 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
             unsafe {
                 auto ^k_buf = new [1]Uninit<'K>()
                 libc_memset(*k_buf as *void, 0, sizeof('K))
-                auto *key#: 'K = (*k_buf + 0) as *'K
-                res = key#.parse_json(res)!
+                auto *'key#: K = (*k_buf + 0) as *'K
+                res = 'key#.parse_json(res)!
                 
                 res = json_skip_whitespace(res)
                 if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
@@ -531,10 +531,10 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
                 
                 auto ^v_buf = new [1]Uninit<'V>()
                 libc_memset(*v_buf as *void, 0, sizeof('V))
-                auto *val#: 'V = (*v_buf + 0) as *'V
-                res = val#.parse_json(res)!
+                auto *'val#: V = (*v_buf + 0) as *'V
+                res = 'val#.parse_json(res)!
                 
-                self#.insert(cede key, cede val)
+                self#.insert(cede 'key, cede 'val)
             }
         }
         return JsonRes::Ok(res)
@@ -559,9 +559,9 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
             unsafe {
                 auto ^item_buf = new [1]Uninit<'T>()
                 libc_memset(*item_buf as *void, 0, sizeof('T))
-                auto *item#: 'T = (*item_buf + 0) as *'T
-                res = item#.parse_json(res)!
-                self#.push(cede item)
+                auto *'item#: T = (*item_buf + 0) as *'T
+                res = 'item#.parse_json(res)!
+                self#.push(cede 'item)
             }
         }
         return JsonRes::Ok(res)

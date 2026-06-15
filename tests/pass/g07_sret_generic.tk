@@ -5,8 +5,8 @@ shape Pair<'T, 'U>(
     'second: U
 )
 
-fn make_pair<'T, 'U>(f: 'T, s: 'U) -> Pair<'T, 'U> {
-    return Pair<'T, 'U>(first=f, second=s)
+fn make_pair<'T, 'U>('f: T, 's: U) -> Pair<'T, 'U> {
+    return Pair<'T, 'U>(first='f, second='s)
 }
 
 fn main() -> i32 {

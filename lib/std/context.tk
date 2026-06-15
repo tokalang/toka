@@ -231,7 +231,7 @@ pub shape CancelResult<'C: @Context> (
     canceler: Canceler
 )
 
-pub fn with_cancel<'C: @Context>(parent#: 'C) -> CancelResult<'C> {
+pub fn with_cancel<'C: @Context>('parent#: C) -> CancelResult<'C> {
     auto waiters = Vec<Sender<bool>>::new()
     auto dummy_pair = channel<bool>()
     auto dummy_rx = cede dummy_pair.rx
@@ -252,7 +252,7 @@ pub fn with_cancel<'C: @Context>(parent#: 'C) -> CancelResult<'C> {
     
     auto canceler_fn = Canceler(~state = ~shared_state_clone)
     
-    auto parent_done = parent#.done()
+    auto parent_done = 'parent#.done()
     if parent_done.is_some() {
         auto rx = parent_done.unwrap()
         auto lock_res = shared_state.lock()
@@ -270,7 +270,7 @@ pub fn with_cancel<'C: @Context>(parent#: 'C) -> CancelResult<'C> {
     }
     
     auto ctx = CancelContext<'C>(
-        parent = cede parent,
+        parent = cede 'parent,
         ~state = cede ~shared_state
     )
     
@@ -342,8 +342,8 @@ fn timer_helper(ms: i32, raw_addr: Addr) -> async i32 {
     return 0
 }
 
-pub fn with_timeout<'C: @Context>(parent#: 'C, timeout_ms: i32) -> TimeoutResult<'C> {
-    auto res = with_cancel<'C>(cede parent)
+pub fn with_timeout<'C: @Context>('parent#: C, timeout_ms: i32) -> TimeoutResult<'C> {
+    auto res = with_cancel<'C>(cede 'parent)
     auto deadline_val = Instant::now().add(Duration::from_millis(timeout_ms as u64))
     
     auto raw_addr = res.canceler.~state as Addr
@@ -361,14 +361,14 @@ pub fn with_timeout<'C: @Context>(parent#: 'C, timeout_ms: i32) -> TimeoutResult
     )
 }
 
-pub fn with_deadline<'C: @Context>(parent#: 'C, deadline: Instant) -> TimeoutResult<'C> {
+pub fn with_deadline<'C: @Context>('parent#: C, deadline: Instant) -> TimeoutResult<'C> {
     auto now = Instant::now()
     auto dur = deadline.duration_since(now)
     auto ms# = dur.as_millis() as i32
     if ms < 0 {
         ms = 0
     }
-    return with_timeout<'C>(cede parent, ms)
+    return with_timeout<'C>(cede 'parent, ms)
 }
 
 // ------------------------------------------------------

@@ -1,8 +1,8 @@
 import core/traits::{@PartialOrd}
 import core/primitives
 
-pub fn cmp_val<'T: @PartialOrd>(a: 'T, b: 'T) -> i32 {
-    return a.cmp(b)
+pub fn cmp_val<'T: @PartialOrd>('a: T, 'b: T) -> i32 {
+    return 'a.cmp('b)
 }
 
 pub fn main() -> i32 {

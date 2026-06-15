@@ -27,12 +27,12 @@ impl<'T: @PartialOrd> BTreeSet<'T>@encap {
         return self.map.is_empty()
     }
 
-    pub fn insert(self#, val: 'T) {
-        self.map#.insert(cede val, true)
+    pub fn insert(self#, 'val: T) {
+        self.map#.insert(cede 'val, true)
     }
 
-    pub fn contains(self, val: 'T) -> bool {
-        return self.map.contains_key(val)
+    pub fn contains(self, 'val: T) -> bool {
+        return self.map.contains_key('val)
     }
 
     pub fn clear(self#) {

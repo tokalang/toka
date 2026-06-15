@@ -64,7 +64,7 @@ impl<'T> Slab<'T> {
         self.len = 0
     }
 
-    pub fn insert(self#, val: 'T) -> SlabID {
+    pub fn insert(self#, 'val: T) -> SlabID {
         auto head = self.free_head
         auto idx# = 0:usize
         auto gen# = 0:usize
@@ -90,7 +90,7 @@ impl<'T> Slab<'T> {
         
         unsafe {
             auto *#target# = self.entries.unsafe_get(idx)
-            target.val = Option<'T>::Some(cede val)
+            target.val = Option<'T>::Some(cede 'val)
         }
         
         self.len = self.len + 1
