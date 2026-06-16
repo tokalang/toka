@@ -572,6 +572,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   }
 
   llvm::Type *objType = nullptr;
+  std::string objShapeName;
   if (mem->Object->ResolvedType) {
     auto base = mem->Object->ResolvedType;
     // Unwrap pointers/references to get the underlying Shape/Struct type
@@ -584,6 +585,9 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     }
     if (base) {
       objType = getLLVMType(base);
+      if (base->isShape()) {
+        objShapeName = base->getSoulName();
+      }
     }
   }
 
@@ -609,6 +613,9 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
         baseName = baseName.substr(1);
       if (m_Symbols.count(baseName)) {
         objType = m_Symbols[baseName].soulType;
+        if (m_Symbols[baseName].soulTypeObj) {
+          objShapeName = m_Symbols[baseName].soulTypeObj->getSoulName();
+        }
       }
     }
   }
@@ -617,6 +624,9 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   llvm::StructType *st = nullptr;
   if (objType && objType->isStructTy()) {
     st = llvm::cast<llvm::StructType>(objType);
+  }
+  if (!st && !objShapeName.empty() && m_StructTypes.count(objShapeName)) {
+    st = m_StructTypes[objShapeName];
   }
 
   // [Fix] Handle Auto-Dereference (Identity -> Soul) for Deref Expressions
@@ -659,27 +669,45 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   if (!st) {
     std::string foundStruct;
+    int foundIdx = -1;
+    bool ambiguousStruct = false;
     for (const auto &pair : m_StructFieldNames) {
       for (int i = 0; i < (int)pair.second.size(); ++i) {
         std::string fn = stripMemberAccessMarkers(pair.second[i]);
 
         if (fn == memberName) {
+          if (!foundStruct.empty()) {
+            ambiguousStruct = true;
+            break;
+          }
           foundStruct = pair.first;
-          idx = i;
+          foundIdx = i;
           break;
         }
       }
-      if (!foundStruct.empty()) {
-        st = m_StructTypes[foundStruct];
+      if (ambiguousStruct)
         break;
-      }
+    }
+    if (!ambiguousStruct && !foundStruct.empty()) {
+      st = m_StructTypes[foundStruct];
+      idx = foundIdx;
     }
   }
 
   if (!st)
     return nullptr;
 
-  std::string stName = m_TypeToName[st];
+  std::string stName;
+  if (!objShapeName.empty() && m_StructTypes.count(objShapeName) &&
+      m_StructTypes[objShapeName] == st) {
+    stName = objShapeName;
+  }
+  if (stName.empty()) {
+    auto it = m_TypeToName.find(st);
+    if (it != m_TypeToName.end()) {
+      stName = it->second;
+    }
+  }
   if (stName.empty()) {
     for (const auto &pair : m_StructTypes) {
       if (pair.second == st) {
