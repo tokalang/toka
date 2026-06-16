@@ -28,6 +28,7 @@
 #include <set>
 
 namespace toka {
+struct MemberAccessIntent;
 class Type;
 class ASTNode;
 class Module;
@@ -199,6 +200,63 @@ private:
   llvm::Type *resolveType(const std::string &baseType, bool hasPointer);
   llvm::Type *getLLVMType(std::shared_ptr<Type> type);
 
+  // --- Member Access CodeGen Refactoring Helpers ---
+  struct MemberObjectInfo {
+    llvm::Type *ObjectType = nullptr;
+    llvm::StructType *StructTy = nullptr;
+    std::string ShapeName;
+  };
+
+  struct MemberFieldInfo {
+    llvm::StructType *StructTy = nullptr;
+    int Index = -1;
+    std::string StructName;
+  };
+
+  struct MemberShapeContext {
+    const ShapeDecl *NamedShape = nullptr;
+    const ShapeDecl *ObjectShape = nullptr;
+    const ShapeDecl *MemberShape = nullptr;
+    bool IsLegacyBareUnion = false;
+  };
+
+  struct MemberFieldStorage {
+    llvm::Value *Addr = nullptr;
+    std::string TypeName;
+    llvm::Type *IrTy = nullptr;
+  };
+
+  struct MemberHatPlan {
+    int DefHats = 0;
+    int AccessHats = 0;
+    int DerefCount = 0;
+    bool IsHatOn = false;
+    bool IsIdentityAssertion = false;
+  };
+
+  struct MemberMaterialization {
+    llvm::Value *Addr = nullptr;
+    llvm::Type *IrTy = nullptr;
+  };
+
+  llvm::Value *peelNestedMemberBaseAddress(const Expr *object, llvm::Value *addr);
+  MemberObjectInfo resolveMemberObject(const Expr *object, llvm::Value *addr);
+  llvm::Value *peelDerefObjectToSoulAddress(const Expr *object, llvm::Value *addr);
+  int findMemberIndexInFields(const std::vector<std::string> &fields, const std::string &name, bool allowPartialMatch);
+  MemberFieldInfo findUniqueStructForMember(const std::string &name);
+  std::string resolveStructName(llvm::StructType *structTy, const std::string &shapeName);
+  MemberFieldInfo resolveMemberField(llvm::StructType *structTy, const std::string &shapeName, int initialIndex, const std::string &name);
+  const ShapeDecl *shapeDeclFromType(std::shared_ptr<Type> type);
+  const ShapeDecl *findNamedShape(const std::string &name);
+  MemberShapeContext resolveMemberShapeContext(const std::string &stName, const Expr *objectExpr);
+  llvm::Value *emitLegacyBareUnionMemberAddress(const MemberShapeContext &context, llvm::Value *objAddr, int idx);
+  MemberFieldStorage resolveMemberFieldStorage(const MemberShapeContext &context, llvm::StructType *structTy, llvm::Value *objAddr, int idx, const std::string &memberName);
+  int countLeadingMemberHats(const std::string &s);
+  MemberHatPlan resolveMemberHatPlan(const ShapeDecl *namedShape, int idx, const MemberAccessIntent &access, const std::shared_ptr<Type> &resolvedType);
+  llvm::Value *applyMemberHatOffLoads(llvm::Value *addr, const MemberHatPlan &plan);
+  llvm::Type *resolveMemberResultType(llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
+  MemberMaterialization materializeMemberValue(llvm::Value *addr, llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
+
   // Deprecated/Legacy version
   void fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
                           bool hasPointer, bool isUnique, bool isShared,
@@ -239,6 +297,7 @@ private:
   PhysEntity genBinaryExpr(const BinaryExpr *expr);
   PhysEntity genAllocExpr(const AllocExpr *expr);
   PhysEntity genStaticMemberExpr(const MemberExpr *expr);
+  PhysEntity genDynamicMemberExpr(const MemberExpr *expr);
   PhysEntity genMemberExpr(const MemberExpr *expr);
   PhysEntity genIndexExpr(const ArrayIndexExpr *expr);
   PhysEntity genVariableExpr(const VariableExpr *expr);
