@@ -898,6 +898,41 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   MemberAccessIntent memberAccess = parseMemberAccess(mem->Member);
   MemberHatPlan hatPlan = resolveMemberHatPlan(memberAccess);
 
+  struct MemberMaterialization {
+    llvm::Value *Addr = nullptr;
+    llvm::Type *IrTy = nullptr;
+  };
+
+  auto applyMemberHatOffLoads = [&](llvm::Value *addr,
+                                    const MemberHatPlan &plan) {
+    for (int i = 0; i < plan.DerefCount; ++i) {
+      // Current address is the address of the pointer. Load it to get the
+      // target address.
+      addr = m_Builder.CreateLoad(m_Builder.getPtrTy(), addr, "hat_off_deref");
+    }
+    return addr;
+  };
+
+  auto resolveMemberResultType = [&](llvm::Type *baseIrTy,
+                                     const MemberHatPlan &plan) {
+    llvm::Type *resultTy = baseIrTy;
+    if (mem->ResolvedType) {
+      auto soul = mem->ResolvedType;
+      if (plan.DerefCount > 0) {
+        soul = soul->getSoulType();
+      }
+      resultTy = getLLVMType(soul);
+    }
+    return resultTy;
+  };
+
+  auto materializeMemberValue =
+      [&](llvm::Value *addr, llvm::Type *baseIrTy,
+          const MemberHatPlan &plan) -> MemberMaterialization {
+    return {applyMemberHatOffLoads(addr, plan),
+            resolveMemberResultType(baseIrTy, plan)};
+  };
+
   if (hatPlan.IsHatOn) {
     // Hat-On: We are taking the address of the member.
     llvm::Type *finalIrTy = m_Builder.getPtrTy();
@@ -907,30 +942,19 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     return PhysEntity(finalAddr, memberTypeName, finalIrTy, false);
   }
 
-  for (int i = 0; i < hatPlan.DerefCount; ++i) {
-    // Current finalAddr is the address of the pointer.
-    // Load it to get the target address.
-    finalAddr =
-        m_Builder.CreateLoad(m_Builder.getPtrTy(), finalAddr, "hat_off_deref");
-  }
-
-  llvm::Type *finalIrTy = irTy;
-  if (mem->ResolvedType) {
-    auto soul = mem->ResolvedType;
-    if (hatPlan.DerefCount > 0) {
-      soul = soul->getSoulType();
-    }
-    finalIrTy = getLLVMType(soul);
-  }
+  MemberMaterialization materialized =
+      materializeMemberValue(finalAddr, irTy, hatPlan);
 
   if (hatPlan.IsIdentityAssertion) {
     // Identity Assertion (Ch 6.1)
-    llvm::Value *ptrVal = m_Builder.CreateLoad(finalIrTy, finalAddr, "nn.load");
+    llvm::Value *ptrVal =
+        m_Builder.CreateLoad(materialized.IrTy, materialized.Addr, "nn.load");
     genNullCheck(ptrVal, mem);
-    return PhysEntity(ptrVal, memberTypeName, finalIrTy, false); // R-Value
+    return PhysEntity(ptrVal, memberTypeName, materialized.IrTy,
+                      false); // R-Value
   }
 
-  return PhysEntity(finalAddr, memberTypeName, finalIrTy, true);
+  return PhysEntity(materialized.Addr, memberTypeName, materialized.IrTy, true);
 }
 
 PhysEntity CodeGen::genIndexExpr(const ArrayIndexExpr *idxExpr) {
