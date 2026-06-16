@@ -646,7 +646,7 @@ public:
   FunctionDecl *ResolvedFn = nullptr;
   ExternDecl *ResolvedExtern = nullptr;
   ShapeDecl *ResolvedShape = nullptr;
-  int MatchedMemberIdx = -1; // For Union variant selection
+  int MatchedMemberIdx = -1; // For enum variant selection
   bool IsIsomorphicCopy = false; // [NEW] Copy/Move constructor intercept
 
   CallExpr(const std::string &callee, std::vector<std::unique_ptr<Expr>> args,
@@ -1331,7 +1331,7 @@ enum class ShapeKind { Struct, Tuple, Array, Enum, Union };
 struct ShapeMember {
   std::string Name; // Member or Variant name
   std::string Type;
-  int64_t TagValue = -1; // Specific value for Tagged Union variants (= 1)
+  int64_t TagValue = -1; // Specific value for tagged enum variants (= 1)
   bool IsRawPointer = false;
   bool IsUnique = false;
   bool IsShared = false;
@@ -1346,7 +1346,7 @@ struct ShapeMember {
   bool IsMorphicExempt = false;   // [NEW] Exempt from strict hat rules
   BindingPermission Permission;
 
-  // For Bare Union (as ...)
+  // For enum variant payloads and legacy bare unions.
   std::vector<ShapeMember> SubMembers;
   ShapeKind SubKind = ShapeKind::Struct;
 
@@ -1427,7 +1427,7 @@ public:
   std::vector<std::string> LifeDependencies; // [NEW] e.g. <- val
   std::vector<ShapeMember> Members;
   int64_t ArraySize = 0; // For Array kind
-  uint64_t MaxAlign = 1; // For Union/Enum alignment persistence
+  uint64_t MaxAlign = 1; // For enum/legacy union alignment persistence
   bool IsSync = false;   // [NEW] Indication for thread-safe/atomic reference bounds
 
   ShapeDecl(bool isPub, const std::string &name,

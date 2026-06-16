@@ -11,7 +11,7 @@ shape Pair<T, U> (
     second: U
 )
 
-// 3. Generic Enum (Tagged Union)
+// 3. Generic Enum (tagged payload)
 shape Option<T> (
     None |
     Some(T)
@@ -31,10 +31,10 @@ fn test_struct() {
     assert(b_f.val < 3.15, "Struct<f64> val too high")
 }
 
-fn test_tuple() {
+fn test_pair() {
     auto p = Pair<i32, f64>(first = 10, second = 2.5)
-    assert(p.first == 10, "Tuple.0 failed")
-    assert(p.second == 2.5, "Tuple.1 failed")
+    assert(p.first == 10, "Pair.first failed")
+    assert(p.second == 2.5, "Pair.second failed")
 }
 
 fn test_enum() {
@@ -71,7 +71,7 @@ fn main() -> i32 {
     println("Testing Generic Shapes...")
     
     test_struct()
-    test_tuple()
+    test_pair()
     test_enum()
     test_array_wrapper()
     

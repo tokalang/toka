@@ -1344,7 +1344,7 @@ void Sema::analyzeShapes(Module &M) {
     if (!S->GenericParams.empty())
       continue;
 
-    // We only resolve members for Struct, Tuple, Union (Not Enum variants
+    // We only resolve members for structs, enum payload records, and legacy bare unions (not enum variants).
     // purely yet? Enums have members too) Actually ShapeMember is used for
     // all.
     for (auto &member : S->Members) {
@@ -1372,7 +1372,7 @@ void Sema::analyzeShapes(Module &M) {
         }
       };
 
-      // Resolve the member itself (could be Struct field or Union variant)
+      // Resolve the member itself (struct field or legacy union variant)
       resolveShapeMemberType(member);
       
       // Resolve SubMembers (mostly payloads for Enum variants)
@@ -1385,7 +1385,7 @@ void Sema::analyzeShapes(Module &M) {
         // ... (keep existing comments if any, or just ignore unknown)
       }
 
-      // [Rule] Union Type Blacklist: Check Underlying Physics
+      // [Legacy] Bare union type blacklist: check underlying physics
       if (S->Kind == ShapeKind::Union) {
         auto underlying = getDeepestUnderlyingType(member.ResolvedType);
         bool invalid = false;
@@ -1520,12 +1520,12 @@ void Sema::analyzeShapes(Module &M) {
       m_ShapeProps[S->Name].HasDrop = true;
     }
 
-    // [Rule] Union Safety: No Resource Types (HasDrop)
+    // [Legacy] Bare union safety: no resource types (HasDrop)
     if (S->Kind == ShapeKind::Union) {
       for (auto &memb : S->Members) {
         bool isResource = false;
         // 1. Check for ANY pointer morphology (&^~*) on the member itself
-        // (Rule: no pointer morphology is allowed in the 'as' members of a union)
+        // (Rule: no pointer morphology is allowed in legacy bare union members)
         if (memb.IsUnique || memb.IsShared || memb.IsRawPointer ||
             memb.IsReference) {
           isResource = true;
@@ -1533,7 +1533,7 @@ void Sema::analyzeShapes(Module &M) {
 
         // [Rule Update] "but it does not restrict what members of members contain"
         // We no longer perform recursive check for resource types / drop
-        // impls within value-type members of a Bare Union.
+        // impls within value-type members of a legacy bare union.
 
         if (isResource) {
           DiagnosticEngine::report(getLoc(S.get()),

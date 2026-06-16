@@ -12,8 +12,10 @@ import core/types::*
 pub shape TypeKind(
     Primitive |
     Struct |
+    // Legacy/internal compiler kind; bare union syntax is removed from Toka source.
     Union |
     Enum |
+    // Internal enum payload/legacy reflection kind; source tuple syntax is removed.
     Tuple |
     Pointer |
     Array

@@ -17,7 +17,7 @@ fn test_struct_destruct() -> i32 {
     return 0
 }
 
-fn test_tuple_destruct() -> i32 {
+fn test_pair_destruct() -> i32 {
     auto t = Pair(v0 = 100, v1 = 200, v2 = 300)
     auto Pair(a = .v0, c = .v2, ..) = t
     if a != 100 || c != 300 {
@@ -88,8 +88,8 @@ fn main() -> i32 {
         println("test_struct_destruct failed")
         return 1
     }
-    if test_tuple_destruct() != 0 {
-        println("test_tuple_destruct failed")
+    if test_pair_destruct() != 0 {
+        println("test_pair_destruct failed")
         return 2
     }
     if test_match_struct() != 0 {

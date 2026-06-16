@@ -943,7 +943,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
       }
     }
   }
-  // [Fix] Zero-Payload Union Equality (Stage 0 Enums)
+  // [Fix] Zero-payload enum equality
   // If the types are simple structs with exactly one integer field (discriminant), extract them for comparison.
   if (lhsType->isStructTy() && rhsType->isStructTy() && (bin->Op == "==" || bin->Op == "!=")) {
     if (lhsType->getStructNumElements() == 1 && rhsType->getStructNumElements() == 1) {
@@ -1437,7 +1437,7 @@ PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
     srcEnt = genExpr(cast->Expression.get());
   }
 
-  // Rule: Union L-Value Reinterpretation
+  // Legacy bare union L-value reinterpretation
   std::shared_ptr<Type> srcTypeObj = cast->Expression->ResolvedType;
   if (srcEnt.isAddress && srcTypeObj && srcTypeObj->isShape()) {
     auto st = std::dynamic_pointer_cast<ShapeType>(srcTypeObj);
@@ -3602,7 +3602,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         }
       }
     } else if (!pat->SubPatterns.empty()) {
-      // Single payload case (not wrapped in tuple/struct)
+      // Single payload case (not wrapped in a payload record/struct)
       genPatternBinding(pat->SubPatterns[0].get(), targetAddr, targetType, targetTypeObj);
     }
   }
@@ -3848,7 +3848,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
           llvm::Value *ptr = nullptr;
           if (sh->Kind == ShapeKind::Union) {
-            // [CRITICAL] Union physically has only one element: the storage
+            // [CRITICAL] Legacy bare union physically has only one element: the storage
             // array. We bitcast the base address to the actual member type we
             // matched.
             ptr = m_Builder.CreateBitCast(alloca,
@@ -4557,7 +4557,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                   payloadAddr, llvm::PointerType::getUnqual(m_Context));
 
               if (!targetVar->SubMembers.empty()) {
-                // Multi-field Tuple Payload
+                // Multi-field enum payload record
                 for (size_t i = 0; i < args.size() && i < fieldTypes.size();
                      ++i) {
                   llvm::Value *fPtr =
@@ -5655,11 +5655,11 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
     if (m_Shapes.count(shapeName)) {
       auto kind = m_Shapes[shapeName]->Kind;
       if (kind == ShapeKind::Union) {
-        // Bare Union: bitcast base to member pointer type
+        // Legacy bare union: bitcast base to member pointer type
         fieldAddr = m_Builder.CreateBitCast(
             alloca, llvm::PointerType::getUnqual(m_Context));
       } else if (kind == ShapeKind::Enum) {
-        // Tagged Union: Store tag and payload
+        // Tagged enum: store tag and payload
         // 1. Tag
         llvm::Value *tagAddr =
             m_Builder.CreateStructGEP(st, alloca, 0, "tag_addr");

@@ -507,7 +507,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   std::vector<std::string> lifeDeps;
 
   // [NEW] Scan implicitly parsing dependencies from return type string (e.g.
-  // Tuple fields) Pattern: "<-" [whitespace] [&] Identifier
+  // Variant payload fields) Pattern: "<-" [whitespace] [&] Identifier
   size_t pos = 0;
   while ((pos = retType.find("<-", pos)) != std::string::npos) {
     pos += 2; // skip "<-"

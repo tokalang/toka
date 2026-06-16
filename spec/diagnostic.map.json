@@ -161,8 +161,8 @@
     "E0420": {
       "id": "ERR_TUPLE_INDEX_OOB",
       "level": "Error",
-      "message": "Tuple index '{}' out of range (size {})",
-      "description": "Tuple index '{}' out of range (size {})"
+      "message": "Positional payload index '{}' out of range (size {})",
+      "description": "Positional payload index '{}' out of range (size {})"
     },
     "E0421": {
       "id": "ERR_NOT_A_STRUCT",
@@ -221,26 +221,26 @@
     "E0425": {
       "id": "ERR_UNION_PARTIAL_INIT",
       "level": "Error",
-      "message": "Partial initialization of Union '{}': variant '{}' size {} is smaller than Union size {}",
-      "description": "Partial initialization of Union '{}': variant '{}' size {} is smaller than Union size {}"
+      "message": "Partial initialization of legacy bare union '{}': member '{}' size {} is smaller than union storage size {}",
+      "description": "Partial initialization of legacy bare union '{}': member '{}' size {} is smaller than union storage size {}"
     },
     "E0426": {
       "id": "ERR_UNION_INVALID_MEMBER",
       "level": "Error",
-      "message": "Union member '{}' has restricted type '{}' (underlying '{}')",
-      "description": "Union member '{}' has restricted type '{}' (underlying '{}')"
+      "message": "Legacy bare union member '{}' has restricted type '{}' (underlying '{}')",
+      "description": "Legacy bare union member '{}' has restricted type '{}' (underlying '{}')"
     },
     "E0427": {
       "id": "ERR_UNION_RESOURCE_TYPE",
       "level": "Error",
-      "message": "Union member '{}' has type '{}' which manages resources (HasDrop); unions must be data-only",
-      "description": "Union member '{}' has type '{}' which manages resources (HasDrop); unions must be data-only"
+      "message": "Legacy bare union member '{}' has type '{}' which manages resources (HasDrop); legacy unions must be data-only",
+      "description": "Legacy bare union member '{}' has type '{}' which manages resources (HasDrop); legacy unions must be data-only"
     },
     "N0002": {
       "id": "NOTE_UNION_RESOURCE_TIP",
       "level": "Note",
-      "message": "Unions cannot track active variants to drop resources safely; consider using a raw pointer '*{}' or 'ManuallyDrop<T>'",
-      "description": "Unions cannot track active variants to drop resources safely; consider using a raw pointer '*{}' or 'ManuallyDrop<T>'"
+      "message": "Legacy bare unions cannot track active variants to drop resources safely; consider using a raw pointer '*{}' or an explicit wrapper type",
+      "description": "Legacy bare unions cannot track active variants to drop resources safely; consider using a raw pointer '*{}' or an explicit wrapper type"
     },
     "E0470": {
       "id": "ERR_UNION_DEPRECATED",
@@ -1864,8 +1864,8 @@
     "E04538": {
       "id": "ERR_SEMA_UNION_INITIALIZATION_MUST_SPECIFY_EXACTLY",
       "level": "Error",
-      "message": "Union '{}' initialization must specify exactly one variant, but {} were provided.",
-      "description": "Union '{}' initialization must specify exactly one variant, but {} were provided."
+      "message": "Variant initializer for '{}' must specify exactly one member, but {} were provided.",
+      "description": "Variant initializer for '{}' must specify exactly one member, but {} were provided."
     },
     "E04539": {
       "id": "ERR_SEMA_COMPILE_TIME_ERROR",
@@ -1996,38 +1996,38 @@
     "E04560": {
       "id": "ERR_SEMA_UNION_REQUIRES_EXACTLY_ONE_ARGUMENT",
       "level": "Error",
-      "message": "Union '{}' requires exactly one argument",
-      "description": "Union '{}' requires exactly one argument"
+      "message": "Legacy union '{}' requires exactly one argument",
+      "description": "Legacy union '{}' requires exactly one argument"
     },
     "E04561": {
       "id": "ERR_SEMA_UNION_HAS_NO_VARIANT_NAMED",
       "level": "Error",
-      "message": "Union '{}' has no variant named '{}'",
-      "description": "Union '{}' has no variant named '{}'"
+      "message": "Legacy union '{}' has no member named '{}'",
+      "description": "Legacy union '{}' has no member named '{}'"
     },
     "E04562": {
       "id": "ERR_SEMA_TYPE_MISMATCH_FOR_UNION_VARIANT_EXPECTED",
       "level": "Error",
-      "message": "Type mismatch for Union variant '{}': expected {}, got {}",
-      "description": "Type mismatch for Union variant '{}': expected {}, got {}"
+      "message": "Type mismatch for legacy union member '{}': expected {}, got {}",
+      "description": "Type mismatch for legacy union member '{}': expected {}, got {}"
     },
     "E04563": {
       "id": "ERR_SEMA_AMBIGUOUS_UNION_CONSTRUCTOR_MULTIPLE_EXAC",
       "level": "Error",
-      "message": "Ambiguous Union constructor: multiple exact matches found for type {}",
-      "description": "Ambiguous Union constructor: multiple exact matches found for type {}"
+      "message": "Ambiguous legacy union constructor: multiple exact matches found for type {}",
+      "description": "Ambiguous legacy union constructor: multiple exact matches found for type {}"
     },
     "E04564": {
       "id": "ERR_SEMA_AMBIGUOUS_UNION_CONSTRUCTOR_MULTIPLE_SAFE",
       "level": "Error",
-      "message": "Ambiguous Union constructor: multiple safe-fit matches found for type {}. Use explicit cast.",
-      "description": "Ambiguous Union constructor: multiple safe-fit matches found for type {}. Use explicit cast."
+      "message": "Ambiguous legacy union constructor: multiple safe-fit matches found for type {}. Use explicit cast.",
+      "description": "Ambiguous legacy union constructor: multiple safe-fit matches found for type {}. Use explicit cast."
     },
     "E04565": {
       "id": "ERR_SEMA_NO_MATCHING_MEMBER_FOUND_IN_UNION_FOR_TYP",
       "level": "Error",
-      "message": "No matching member found in Union '{}' for type {}",
-      "description": "No matching member found in Union '{}' for type {}"
+      "message": "No matching member found in legacy union '{}' for type {}",
+      "description": "No matching member found in legacy union '{}' for type {}"
     },
     "E04566": {
       "id": "ERR_SEMA_FUNCTION_CALL_ELISION_MUST_STRICTLY_BE_TH",
@@ -2296,8 +2296,8 @@
     "E0741": {
       "id": "ERR_CODEGEN_POSITIONAL_DESTRUCTURING_REQUIRES_A_ST",
       "level": "Error",
-      "message": "Positional destructuring requires a struct or tuple type",
-      "description": "Positional destructuring requires a struct or tuple type"
+      "message": "Positional destructuring requires an enum payload or record-like shape",
+      "description": "Positional destructuring requires an enum payload or record-like shape"
     },
     "E0742": {
       "id": "ERR_CODEGEN_INVALID_MEMBER_IN_DESTRUCTURING_OF",
@@ -2344,8 +2344,8 @@
     "E0749": {
       "id": "ERR_CODEGEN_UNRESOLVED_UNION_MEMBER_TYPE_IN_SHAPE",
       "level": "Error",
-      "message": "Unresolved union member type '{}' in shape '{}'",
-      "description": "Unresolved union member type '{}' in shape '{}'"
+      "message": "Unresolved legacy union member type '{}' in shape '{}'",
+      "description": "Unresolved legacy union member type '{}' in shape '{}'"
     },
     "E0750": {
       "id": "ERR_CODEGEN_UNRESOLVED_VARIANT_FIELD_TYPE_IN_ENUM",

@@ -3,7 +3,7 @@ fn simple_life(a: i32) -> &i32 <- a {
     return &a
 }
 
-fn tuple_life(a: i32, b: i32) -> res: (first: &i32, second: &i32)
+fn record_life(a: i32, b: i32) -> res: (first: &i32, second: &i32)
 effects:
     res.first <- a
     res.second <- b
@@ -17,15 +17,15 @@ fn main() -> i32 {
     if (y != 10) return 1
 
     auto z = 20
-    auto t = tuple_life(x, z)
-    // t is (first: &i32, second: &i32). t.first is &i32.
+    auto rec = record_life(x, z)
+    // rec is an anonymous record with first/second reference fields.
     // Auto-deref should work for record members if they are refs?
     // Let's test explicit deref if needed, or implicit.
     // Based on previous simple_life, 'y' (ref) auto-derefs.
-    // 't.first' is an access expression returning a reference.
-    // So 't.first' should evaluate to i32 value.
-    auto &v1 = t.&first
-    auto &v2 = t.&second
+    // 'rec.first' is an access expression returning a reference.
+    // So 'rec.first' should evaluate to i32 value.
+    auto &v1 = rec.&first
+    auto &v2 = rec.&second
     if (v1 != 10) return 2
     if (v2 != 20) return 3
     

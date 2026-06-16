@@ -19,9 +19,9 @@ shape Point (
     z: i32,
 )
 
-type PointTup = (x: i32, y: i32)
+type PointRecord = (x: i32, y: i32)
 
-fn processPoint(p: PointTup) {
+fn processPoint(p: PointRecord) {
     println("Point is ({}, {})", p.x, p.y)
     return
 }

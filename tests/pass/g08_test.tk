@@ -19,11 +19,10 @@ shape Point (
     z: i32
 )
 
-shape PointTup (x: i32, y: i32)
-//or alias for a tuple
-//type PointTup = (i32, i32)
+shape PointPair (x: i32, y: i32)
+// Former tuple-style examples are now named shapes or anonymous records.
 
-fn processPoint(p: PointTup) {
+fn processPoint(p: PointPair) {
     println("Point is ({}, {})", p.x, p.y)
     return
 }
@@ -89,21 +88,21 @@ fn main() -> i32 {
     assert(arr[0] == 10, "arr[0] mismatch")
     assert(arr[2] == 40, "arr[2] mismatch")
 
-    auto tup = (a = 1, b = "tuple", c = 1.1)
-    println("[{}]tup.0 is {}", logi++, tup.a)
-    println("[{}]tup.1 is {}", logi++, tup.b)
-    println("[{}]tup.2 is {}", logi++, tup.c)
-    assert(tup.a == 1, "tup.0 mismatch")
-    assert(tup.c == 1.1, "tup.2 mismatch")
+    auto rec = (a = 1, b = "record", c = 1.1)
+    println("[{}]rec.a is {}", logi++, rec.a)
+    println("[{}]rec.b is {}", logi++, rec.b)
+    println("[{}]rec.c is {}", logi++, rec.c)
+    assert(rec.a == 1, "rec.a mismatch")
+    assert(rec.c == 1.1, "rec.c mismatch")
 
-    auto pt: PointTup = PointTup(x = 100, y = 200)
+    auto pt: PointPair = PointPair(x = 100, y = 200)
     processPoint(pt)
 
-    auto PointTup(tup0 = .x, tup1 = .y) = pt
-    println("[{}]tup0 is {}", logi++, tup0)
-    println("[{}]tup1 is {}", logi++, tup1)
-    assert(tup0 == 100, "destructuring tup0 mismatch")
-    assert(tup1 == 200, "destructuring tup1 mismatch")
+    auto PointPair(pair_x = .x, pair_y = .y) = pt
+    println("[{}]pair_x is {}", logi++, pair_x)
+    println("[{}]pair_y is {}", logi++, pair_y)
+    assert(pair_x == 100, "destructuring pair_x mismatch")
+    assert(pair_y == 200, "destructuring pair_y mismatch")
 
     auto Point(v0 = .x, v1 = .y, v2 = .z) = p
     println("[{}]v0 is {}", logi++, v0)

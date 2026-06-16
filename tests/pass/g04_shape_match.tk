@@ -16,7 +16,7 @@ import std/io::println
 shape RawBytes [u8; 4]
 shape Point (v0: u8, v1: u8, v2: u8, v3: u8)
 
-// --- Tagged Union Test ---
+// --- Tagged Enum Payload Test ---
 shape MyResult(
     Ok(u32) = 0 | 
     Err(u32) = 1

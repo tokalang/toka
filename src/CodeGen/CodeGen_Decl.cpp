@@ -131,7 +131,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       // New logic: `typeObj` already wraps Reference/Pointer if AST had them.
       // So if `typeObj` is ALREADY a Pointer/Reference/Unique/Shared, `t` is a
       // pointer (or {ptr,ptr}). We only want to capture if it is a DIRECT value
-      // (Primitive, Shape, Array, Tuple) that needs to be passed by ptr.
+      // (Primitive, Shape, Array, enum payload) that needs to be passed by ptr.
 
       bool isDirectValue = !typeObj->isPointer() && !typeObj->isReference();
       // isPointer() covers Raw, Unique, Shared, Reference in Type.h?
@@ -372,7 +372,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::AllocaInst *alloca =
           createEntryBlockAlloca(allocaType, nullptr, argName + ".addr");
 
-      // [Fix] Union Alignment
+      // [Legacy] Bare union alignment
       if (argDecl.ResolvedType) {
         auto soul = argDecl.ResolvedType;
         while (soul && (soul->isPointer() || soul->isReference() ||
@@ -489,7 +489,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       if (m_Shapes.count(typeName)) {
         const ShapeDecl *S = m_Shapes[typeName];
         if (S->Kind == ShapeKind::Union) {
-          // Bare Union: No recursive drop for individual members (reinterpreted
+          // Legacy bare union: no recursive drop for individual members (reinterpreted
           // memory)
           return f;
         }
@@ -1002,7 +1002,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     alloca = createEntryBlockAlloca(type, nullptr, varName);
   }
 
-  // [Fix] Union Alignment
+  // [Legacy] Bare union alignment
   if (alloca && var->ResolvedType) {
     auto soul = var->ResolvedType;
     while (soul && (soul->isPointer() || soul->isReference() ||
@@ -1357,7 +1357,7 @@ llvm::Value *CodeGen::genDestructuringDecl(const DestructuringDecl *dest) {
 
     std::string vName = Type::stripMorphology(v.Name);
 
-    // [Fix] Union safety for destructuring
+    // [Legacy] Bare union safety for destructuring
     llvm::Type *memberTy = nullptr;
     if (st->isOpaque() || st->getNumElements() <= memberIndex) {
       memberTy = llvm::Type::getInt8Ty(m_Context);
@@ -1630,7 +1630,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
     body.push_back(arrTy);
     st->setBody(body, sh->IsPacked);
   } else if (sh->Kind == ShapeKind::Union) {
-    // Bare Union: find max size and alignment
+    // Legacy bare union: find max size and alignment
     uint64_t maxSize = 0;
     uint64_t maxAlign = 1;
     for (const auto &member : sh->Members) {
@@ -1666,7 +1666,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
     }
     m_StructFieldNames[sh->Name] = fieldNames;
   } else if (sh->Kind == ShapeKind::Enum) {
-    // Tagged Union: { i8 tag, [Payload] }
+    // Tagged enum: { i8 tag, [Payload] }
     uint64_t maxPayloadSize = 0;
     for (const auto &variant : sh->Members) {
       uint64_t variantSize = 0;

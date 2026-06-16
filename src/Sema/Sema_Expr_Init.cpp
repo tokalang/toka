@@ -570,7 +570,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
               HasError = true;
             } else {
               if (!foundMemb->SubMembers.empty()) {
-                // Multi-field tuple variant
+                // Multi-field enum payload variant
                 size_t elisionIndex = -1;
                 size_t elisionCount = 0;
                 for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
@@ -759,7 +759,7 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
 
     std::shared_ptr<toka::Type> ResultType;
     if (SD->Kind == ShapeKind::Union || SD->Kind == ShapeKind::Enum) {
-      ResultType = checkUnionInit(Init, SD, resolvedName, memberMasks);
+      ResultType = checkVariantInit(Init, SD, resolvedName, memberMasks);
     } else {
       ResultType = checkStructInit(Init, SD, resolvedName, memberMasks);
     }
@@ -1006,7 +1006,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     HasError = true;
   }
 
-  // Missing fields check for Struct/Tuple
+  // Missing fields check for struct and enum-payload records
   for (const auto &defField : SD->Members) {
     if (!providedFields.count(defField.Name) &&
         !providedFields.count("^" + defField.Name) &&
@@ -1103,7 +1103,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
 }
 
 std::shared_ptr<toka::Type>
-Sema::checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
+Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
                      const std::string &resolvedName,
                      std::map<std::string, uint64_t> &memberMasks) {
   if (Init->Members.empty()) {
@@ -1136,7 +1136,7 @@ Sema::checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
     if (!memberTypeObj)
       memberTypeObj = toka::Type::fromString(pDefMember->Type);
 
-    // [New] Morphic Exemption: Validating Caller Transparency for Unions
+    // [New] Morphic Exemption: validate caller transparency for variants
     if (!pDefMember->IsMorphicExempt) {
       MorphKind providedMorph = MorphKind::None;
       if (pair.first.find('^') != std::string::npos) providedMorph = MorphKind::Unique;
@@ -1151,7 +1151,7 @@ Sema::checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
 
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
-    m_LastInitMask = ~0ULL; // Union is fully initialized if one field is set
+    m_LastInitMask = ~0ULL; // Variant initializer is complete if one field is set
 
     bool bypassNullStruct = false;
     if (m_InUnsafeContext && memberTypeObj && memberTypeObj->isRawPointer() && exprTypeObj && exprTypeObj->isNullType()) {
@@ -1163,8 +1163,7 @@ Sema::checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
             memberTypeObj->toString(), exprTypeObj->toString());
     }
 
-    // [Rule] Strict Union Initialization Size Check
-    // Ensure initialized member covers the full size of the Union.
+    // [Legacy] Retain historical storage-size validation for variant initializers.
     uint64_t unionSize = 0;
     for (auto &m : SD->Members) {
       auto mT = getPhysicalType(m);

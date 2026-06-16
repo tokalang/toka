@@ -380,7 +380,7 @@ private:
                   const std::string &resolvedName,
                   std::map<std::string, uint64_t> &memberMasks);
   std::shared_ptr<toka::Type>
-  checkUnionInit(InitStructExpr *Init, ShapeDecl *SD,
+  checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
                  const std::string &resolvedName,
                  std::map<std::string, uint64_t> &memberMasks);
 

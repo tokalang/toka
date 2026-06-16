@@ -14,9 +14,9 @@
 
 import std/io::println
 
-// Define shapes representing structs, tuples, and enums
+// Define shapes representing named structs and enums
 shape Coord(x: i32, y: i32)
-shape DataTuple(v0: i32, v1: bool)
+shape DataRecord(v0: i32, v1: bool)
 
 shape SearchResult(
     Found(string) |
@@ -44,9 +44,9 @@ fn handle_search(res: SearchResult) -> i32 {
     return code
 }
 
-fn test_struct_tuple_destructuring() {
+fn test_struct_record_destructuring() {
     auto c = Coord(x = 10, y = 20)
-    auto t = DataTuple(v0 = 100, v1 = true)
+    auto rec = DataRecord(v0 = 100, v1 = true)
 
     // 2. Destructuring a plain struct in an assignment statement
     auto Coord(cx = .x, cy = .y) = c
@@ -54,7 +54,7 @@ fn test_struct_tuple_destructuring() {
     assert(cy == 20, "cy must be 20")
 
     // 3. Destructuring a struct in an assignment statement
-    auto DataTuple(val = .v0, flag = .v1) = t
+    auto DataRecord(val = .v0, flag = .v1) = rec
     assert(val == 100, "val must be 100")
     assert(flag == true, "flag must be true")
 
@@ -69,7 +69,7 @@ fn test_struct_tuple_destructuring() {
 }
 
 fn main() -> i32 {
-    test_struct_tuple_destructuring()
+    test_struct_record_destructuring()
 
     auto res1 = SearchResult::Found(string::from("Toka Engine"))
     auto code1 = handle_search(res1)

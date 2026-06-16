@@ -48,9 +48,9 @@ effects:
     return &(n2.left)
 }
 
-// Function splitting distinct borrows via Tuples
+// Function splitting distinct borrows via anonymous records
 
-// Function splitting distinct borrows via Tuples using explicit structural effects
+// Function splitting distinct borrows via anonymous records using explicit structural effects
 
 // Struct capturing lifetime dependencies
 shape EngineView <- target (

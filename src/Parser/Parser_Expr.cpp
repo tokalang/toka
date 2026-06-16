@@ -887,13 +887,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       node->setLocation(tok, m_CurrentFile);
       expr = std::move(node);
     } else {
-      // Grouping or Tuple
+      // Grouping or deprecated positional tuple literal
       std::vector<std::unique_ptr<Expr>> elements;
-      bool isTuple = false;
+      bool isDeprecatedTuple = false;
       if (!check(TokenType::RParen)) {
         elements.push_back(parseExpr());
         if (match(TokenType::Comma)) {
-          isTuple = true;
+          isDeprecatedTuple = true;
           while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
             elements.push_back(parseExpr());
             match(TokenType::Comma);
@@ -901,7 +901,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         }
       }
       consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
-      if (isTuple) {
+      if (isDeprecatedTuple) {
         error(tok, DiagID::ERR_TUPLE_DEPRECATED);
         return nullptr;
       } else if (elements.empty()) {

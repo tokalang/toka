@@ -760,7 +760,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     return nullptr;
 
   if (idx == -1) {
-    std::string typeDesc = stName.empty() ? "anonymous struct or tuple"
+    std::string typeDesc = stName.empty() ? "anonymous record"
                                           : ("struct '" + stName + "'");
     error(mem, DiagID::ERR_CODEGEN_FAILED_TO_RESOLVE_MEMBER_IN, mem->Member,
           typeDesc);
@@ -790,18 +790,20 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   // Resolve Metadata & IR Type safely
   std::string memberTypeName = "";
   llvm::Type *irTy = nullptr;
-  bool isUnion = objectShape && objectShape->Kind == ShapeKind::Union;
+  bool isLegacyBareUnion =
+      objectShape && objectShape->Kind == ShapeKind::Union;
 
-  if (!isUnion && namedShape) {
-    isUnion = (namedShape->Kind == ShapeKind::Union);
+  if (!isLegacyBareUnion && namedShape) {
+    isLegacyBareUnion = (namedShape->Kind == ShapeKind::Union);
   }
 
   llvm::Value *fieldAddr = nullptr;
-  if (!isUnion) {
+  if (!isLegacyBareUnion) {
     fieldAddr = m_Builder.CreateStructGEP(st, objAddr, idx, memberName);
   } else {
-    // Union: bitcast base address to the desired member's type.
-    // The physical struct 'st' has only one element: [maxSize x i8].
+    // Legacy bare union: bitcast base address to the desired member type.
+    // Parser rejects this syntax for normal .tk source; keep this path for
+    // imported or older IR that can still carry ShapeKind::Union.
     llvm::Type *destTy = nullptr;
     const ShapeDecl *sh = memberShape;
 
@@ -831,7 +833,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   }
 
   if (!irTy) {
-    if (isUnion && idx > 0) {
+    if (isLegacyBareUnion && idx > 0) {
       irTy = llvm::Type::getInt8Ty(m_Context);
     } else {
       irTy = st->getElementType(idx);

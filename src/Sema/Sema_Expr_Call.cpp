@@ -504,7 +504,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           CallName = shapeT->Name;     // Update local var for verification
                                        // logic below
 
-          // [NEW] Union Constructor: Check member name if provided
+          // [Legacy] Bare union constructor: check member name if provided
           if (Sh->Kind == ShapeKind::Union) {
             if (Call->Args.size() == 1) {
               // Check if the argument is a named argument
@@ -1160,7 +1160,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           error(valExpr, DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_UNION_VARIANT_EXPECTED, fieldName, memType->toString(), argType->toString());
         }
 
-        // 1. Calculate Union Size
+        // 1. Calculate legacy union storage size
         uint64_t unionSize = 0;
         for (auto &m : Sh->Members) {
           auto mT = getPhysicalType(m);

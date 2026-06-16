@@ -658,10 +658,9 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   auto instance = std::make_shared<ShapeType>(mangledName);
   instance->resolve(storedDecl);
 
-  // [NEW] Late Validation for Generic Union Instantiation
-  // We must re-run the union safety checks ("Latent Blacklist Check")
-  // because T might have been substituted with a forbidden type (e.g.
-  // Union<bool>).
+  // [Legacy] Late validation for generic bare union instantiation.
+  // Parser rejects new bare union syntax, but imported/older IR may still need
+  // the latent blacklist check after generic substitution.
   if (storedDecl->Kind == ShapeKind::Union) {
     for (const auto &memb : storedDecl->Members) {
       if (!memb.ResolvedType)

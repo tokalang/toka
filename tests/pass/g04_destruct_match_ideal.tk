@@ -16,9 +16,9 @@
 // and destructuring features once our compiler enhancements are implemented.
 //
 // Features demonstrated:
-// 1. Direct matching & destructuring of plain structs & tuples in 'match' expressions.
+// 1. Direct matching and destructuring of plain structs in match expressions.
 // 2. Or-patterns with shared variable bindings in 'match' arms.
-// 3. Strict compiler-level resource copy safety checks in positional destructuring.
+// 3. Strict compiler-level resource copy safety checks in named destructuring.
 // 4. Comprehensive recursive nested exhaustiveness checks.
 
 import std/io::println
@@ -32,7 +32,7 @@ shape ASTNode(
     LiteralExpr(i32)
 )
 
-fn test_struct_tuple_in_match(p: Point, t: Pair) -> i32 {
+fn test_struct_pair_in_match(p: Point, t: Pair) -> i32 {
     // [Goal 1] Direct matching & destructuring of plain Struct in match expression
     auto x_val = match p {
         auto Point(x = .x, y = .y) => {
@@ -41,8 +41,8 @@ fn test_struct_tuple_in_match(p: Point, t: Pair) -> i32 {
         }
     }
 
-    // [Goal 3] Strict resource safety checks on positional destructuring
-    // 't' contains a string. A bare destructuring `auto Pair(a, s) = t` must be blocked by the compiler
+    // [Goal 3] Strict resource safety checks on named destructuring
+    // 't' contains a string. A by-value destructuring of the string field must be blocked by the compiler
     // to prevent shallow copy. The developer MUST explicitly borrow the resource:
     auto Pair(a = .v0, &s = .&v1) = t
     println("Pair string: {}", s.c_str())
@@ -68,7 +68,7 @@ fn test_or_pattern_bindings(node: ASTNode) -> Point {
 fn main() -> i32 {
     auto p = Point(x = 100, y = 200)
     auto t = Pair(v0 = 42, v1 = string::from("Hello Resource"))
-    test_struct_tuple_in_match(p, t)
+    test_struct_pair_in_match(p, t)
 
     auto node1 = ASTNode::BinaryExpr(string::from("+"), Point(x = 1, y = 2))
     auto pt1 = test_or_pattern_bindings(node1)

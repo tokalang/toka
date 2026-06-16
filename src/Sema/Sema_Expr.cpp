@@ -643,7 +643,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
       if (ve->IsValueMutable || ve->IsValueNullable || ve->IsValueBlocked) {
         // [Rule] Intermediate permission symbols ONLY allowed for
-        // pointers/unions as bases
+        // pointers/legacy unions as bases
         bool allowed = false;
         if (m_IsMemberBase) {
           SymbolInfo info;
@@ -922,7 +922,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (Info.InitMask == 0) {
         isFullyInit = false;
       } else if (Info.TypeObj && Info.TypeObj->isShape()) {
-        // Check all bits for struct/tuple shapes
+        // Check all bits for struct and enum-payload record shapes
         std::string soul = Info.TypeObj->getSoulName();
         if (ShapeMap.count(soul)) {
           ShapeDecl *SD = ShapeMap[soul];
@@ -1142,7 +1142,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               Cast->TargetType);
       }
     } else if (!srcType->equals(*targetType)) {
-      // Rule: Union Reinterpretation & Enum Casting
+      // Legacy union reinterpretation and enum casting
       auto srcTypeResolved = resolveType(srcType);
       bool srcIsUnion = false;
       bool srcIsEnum = false;
