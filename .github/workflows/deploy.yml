@@ -51,6 +51,7 @@ jobs:
             ../src/Sema/PAL_Checker.cpp \
             ../src/DiagnosticEngine.cpp \
             ../src/Basic/SourceManager.cpp \
+            ../src/Basic/ModuleResolver.cpp \
             ../src/Type.cpp \
             ../src/AST/ASTEvaluator.cpp \
             -s WASM=1 \
