@@ -7,7 +7,7 @@ TOKAC="${TOKAC:-./build/bin/tokac}"
 # Resolve TOKAC to absolute path
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
-elif [[ "$TOKAC" = *.* || "$TOKAC" = */* ]]; then
+elif [[ "$TOKAC" = */* ]]; then
     TOKAC_ABS="$(cd "$(dirname "$TOKAC")" && pwd)/$(basename "$TOKAC")"
 else
     TOKAC_ABS="$(command -v "$TOKAC" 2>/dev/null || echo "$TOKAC")"
