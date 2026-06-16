@@ -595,13 +595,25 @@ int main(int argc, char **argv) {
   if (emitInterface) {
     for (const auto &ast : astModules) {
       if (ast->IsRootModule) {
-        std::string sourcePath = ast->SourcePath;
-        std::string outPath = sourcePath;
-        size_t dotPos = outPath.find_last_of('.');
-        if (dotPos != std::string::npos && (outPath.substr(dotPos) == ".tk" || outPath.substr(dotPos) == ".tk_lib")) {
-          outPath = outPath.substr(0, dotPos) + ".tki";
+        std::string outPath;
+        if (!outputFile.empty()) {
+          outPath = outputFile;
+          size_t dotPos = outPath.find_last_of('.');
+          if (dotPos != std::string::npos) {
+            outPath = outPath.substr(0, dotPos) + ".tki";
+          } else {
+            outPath += ".tki";
+          }
         } else {
-          outPath += ".tki";
+          std::string sourcePath = ast->SourcePath;
+          size_t lastSlash = sourcePath.find_last_of("/\\");
+          std::string baseName = (lastSlash == std::string::npos) ? sourcePath : sourcePath.substr(lastSlash + 1);
+          size_t dotPos = baseName.find_last_of('.');
+          if (dotPos != std::string::npos && (baseName.substr(dotPos) == ".tk" || baseName.substr(dotPos) == ".tk_lib")) {
+            outPath = baseName.substr(0, dotPos) + ".tki";
+          } else {
+            outPath = baseName + ".tki";
+          }
         }
         
         if (verboseMode) llvm::errs() << "Exporting TKI Interface to " << outPath << "...\n";

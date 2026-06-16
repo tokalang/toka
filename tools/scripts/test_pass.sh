@@ -301,6 +301,11 @@ if [ "$1" == "--worker" ]; then
     run_worker "$2"
 fi
 
+# Clean up all untracked/ignored .tki files in the workspace to avoid polluting relative imports
+if command -v git &> /dev/null && [ -d .git ]; then
+    git status --ignored --porcelain | grep -E "\.tki$" | cut -c4- | xargs rm -f 2>/dev/null || true
+fi
+
 # Determine core count dynamically for CI and local optimizations
 if [ -n "$CORES" ]; then
     # Respect pre-defined CORES environment variable
