@@ -17,6 +17,7 @@
 #include <iostream>
 #include <set>
 #include <typeinfo>
+#include <vector>
 
 namespace toka {
 
@@ -29,6 +30,73 @@ static int getTypeHatCount(std::shared_ptr<toka::Type> type) {
          (cur->isPointer() || cur->isReference() || cur->isSmartPointer())) {
     count++;
     cur = cur->getPointeeType();
+  }
+  return count;
+}
+
+struct MemberObjectInfo {
+  llvm::Type *ObjectType = nullptr;
+  llvm::StructType *StructTy = nullptr;
+  std::string ShapeName;
+};
+
+struct MemberFieldInfo {
+  llvm::StructType *StructTy = nullptr;
+  std::string StructName;
+  int Index = -1;
+};
+
+struct MemberShapeContext {
+  const ShapeDecl *NamedShape = nullptr;
+  const ShapeDecl *ObjectShape = nullptr;
+  const ShapeDecl *MemberShape = nullptr;
+  bool IsLegacyBareUnion = false;
+};
+
+struct MemberFieldStorage {
+  llvm::Value *Addr = nullptr;
+  std::string TypeName;
+  llvm::Type *IrTy = nullptr;
+};
+
+struct MemberHatPlan {
+  int DefHats = 0;
+  int AccessHats = 0;
+  int DerefCount = 0;
+  bool IsHatOn = false;
+  bool IsIdentityAssertion = false;
+};
+
+struct MemberMaterialization {
+  llvm::Value *Addr = nullptr;
+  llvm::Type *IrTy = nullptr;
+};
+
+static std::shared_ptr<toka::Type>
+peelMemberObjectType(std::shared_ptr<toka::Type> type) {
+  while (type &&
+         (type->isPointer() || type->isReference() || type->isSmartPointer())) {
+    auto next = type->getPointeeType();
+    if (!next)
+      break;
+    type = next;
+  }
+  return type;
+}
+
+static bool isDerefObjectForMemberAccess(const UnaryExpr *ue) {
+  return ue && (ue->Op == TokenType::Star || ue->Op == TokenType::Caret ||
+                ue->Op == TokenType::Tilde ||
+                ue->Op == TokenType::TokenNull);
+}
+
+static int countLeadingMemberHats(const std::string &s) {
+  int count = 0;
+  for (char c : s) {
+    if (c == '^' || c == '*' || c == '~' || c == '&')
+      count++;
+    else
+      break;
   }
   return count;
 }
@@ -543,29 +611,12 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   objAddr = peelNestedMemberBaseAddress(mem->Object.get(), objAddr);
 
-  struct MemberObjectInfo {
-    llvm::Type *ObjectType = nullptr;
-    llvm::StructType *StructTy = nullptr;
-    std::string ShapeName;
-  };
-
-  auto peelObjectType = [](std::shared_ptr<toka::Type> type) {
-    while (type &&
-           (type->isPointer() || type->isReference() || type->isSmartPointer())) {
-      auto next = type->getPointeeType();
-      if (!next)
-        break;
-      type = next;
-    }
-    return type;
-  };
-
   auto resolveMemberObject = [&](const Expr *object,
                                  llvm::Value *addr) -> MemberObjectInfo {
     MemberObjectInfo info;
 
     if (object->ResolvedType) {
-      auto base = peelObjectType(object->ResolvedType);
+      auto base = peelMemberObjectType(object->ResolvedType);
       if (base) {
         info.ObjectType = getLLVMType(base);
         if (base->isShape()) {
@@ -614,12 +665,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   MemberObjectInfo objInfo = resolveMemberObject(mem->Object.get(), objAddr);
 
-  auto isDerefObjectForMemberAccess = [](const UnaryExpr *ue) {
-    return ue && (ue->Op == TokenType::Star || ue->Op == TokenType::Caret ||
-                  ue->Op == TokenType::Tilde ||
-                  ue->Op == TokenType::TokenNull);
-  };
-
   auto peelDerefObjectToSoulAddress = [&](const Expr *object,
                                           llvm::Value *addr) -> llvm::Value * {
     // (*p.x) If the object expression is a Dereference (*p), genAddr returned
@@ -654,10 +699,17 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   std::string memberName = stripMemberAccessMarkers(mem->Member);
 
-  struct MemberFieldInfo {
-    llvm::StructType *StructTy = nullptr;
-    std::string StructName;
-    int Index = -1;
+  auto findMemberIndexInFields = [&](const std::vector<std::string> &fields,
+                                       const std::string &name,
+                                       bool allowPartialMatch) {
+    for (int i = 0; i < (int)fields.size(); ++i) {
+      std::string fieldName = stripMemberAccessMarkers(fields[i]);
+      if (allowPartialMatch ? fieldName.find(name) != std::string::npos
+                            : fieldName == name) {
+        return i;
+      }
+    }
+    return -1;
   };
 
   auto findUniqueStructForMember =
@@ -667,20 +719,15 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     bool ambiguousStruct = false;
 
     for (const auto &pair : m_StructFieldNames) {
-      for (int i = 0; i < (int)pair.second.size(); ++i) {
-        std::string fieldName = stripMemberAccessMarkers(pair.second[i]);
-        if (fieldName == name) {
-          if (!foundStruct.empty()) {
-            ambiguousStruct = true;
-            break;
-          }
-          foundStruct = pair.first;
-          foundIdx = i;
-          break;
-        }
-      }
-      if (ambiguousStruct)
+      int idx = findMemberIndexInFields(pair.second, name, false);
+      if (idx == -1)
+        continue;
+      if (!foundStruct.empty()) {
+        ambiguousStruct = true;
         break;
+      }
+      foundStruct = pair.first;
+      foundIdx = idx;
     }
 
     if (ambiguousStruct || foundStruct.empty())
@@ -740,23 +787,9 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
       return info;
 
     const auto &fields = fieldsIt->second;
-    for (int i = 0; i < (int)fields.size(); ++i) {
-      std::string fieldName = stripMemberAccessMarkers(fields[i]);
-      if (fieldName == name) {
-        info.Index = i;
-        break;
-      }
-    }
-
-    if (info.Index == -1) {
-      for (int i = 0; i < (int)fields.size(); ++i) {
-        if (stripMemberAccessMarkers(fields[i]).find(name) !=
-            std::string::npos) {
-          info.Index = i;
-          break;
-        }
-      }
-    }
+    info.Index = findMemberIndexInFields(fields, name, false);
+    if (info.Index == -1)
+      info.Index = findMemberIndexInFields(fields, name, true);
     return info;
   };
 
@@ -780,7 +813,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   auto shapeDeclFromType =
       [&](std::shared_ptr<toka::Type> type) -> const ShapeDecl * {
-    auto soul = peelObjectType(type);
+    auto soul = peelMemberObjectType(type);
     if (!soul || !soul->isShape())
       return nullptr;
     auto shapeType = std::dynamic_pointer_cast<ShapeType>(soul);
@@ -792,13 +825,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
       return nullptr;
     auto shapeIt = m_Shapes.find(name);
     return shapeIt == m_Shapes.end() ? nullptr : shapeIt->second;
-  };
-
-  struct MemberShapeContext {
-    const ShapeDecl *NamedShape = nullptr;
-    const ShapeDecl *ObjectShape = nullptr;
-    const ShapeDecl *MemberShape = nullptr;
-    bool IsLegacyBareUnion = false;
   };
 
   auto resolveMemberShapeContext = [&]() {
@@ -814,12 +840,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
           (context.NamedShape->Kind == ShapeKind::Union);
     }
     return context;
-  };
-
-  struct MemberFieldStorage {
-    llvm::Value *Addr = nullptr;
-    std::string TypeName;
-    llvm::Type *IrTy = nullptr;
   };
 
   auto emitLegacyBareUnionMemberAddress =
@@ -884,25 +904,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   // [Constitution] Hat Rule: "Pointer must be hatted; de-hatting is dereferencing"
   // If the member is defined as a pointer/reference (hatted) but accessed
   // without hats, we must perform implicit dereferences.
-  struct MemberHatPlan {
-    int DefHats = 0;
-    int AccessHats = 0;
-    int DerefCount = 0;
-    bool IsHatOn = false;
-    bool IsIdentityAssertion = false;
-  };
-
-  auto countLeadingHats = [](const std::string &s) {
-    int count = 0;
-    for (char c : s) {
-      if (c == '^' || c == '*' || c == '~' || c == '&')
-        count++;
-      else
-        break;
-    }
-    return count;
-  };
-
   auto resolveMemberHatPlan = [&](const MemberAccessIntent &access) {
     MemberHatPlan plan;
     plan.IsIdentityAssertion = access.IsIdentityAssertion;
@@ -912,14 +913,14 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
       if (member.ResolvedType) {
         plan.DefHats = getTypeHatCount(member.ResolvedType);
       } else {
-        plan.DefHats = countLeadingHats(member.Name);
+        plan.DefHats = countLeadingMemberHats(member.Name);
         if (plan.DefHats == 0) {
-          plan.DefHats = countLeadingHats(member.Type);
+          plan.DefHats = countLeadingMemberHats(member.Type);
         }
       }
     }
 
-    plan.AccessHats = countLeadingHats(access.Original);
+    plan.AccessHats = countLeadingMemberHats(access.Original);
     plan.IsHatOn = (plan.AccessHats > plan.DefHats);
 
     const bool isIdentityOperator =
@@ -938,11 +939,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   MemberAccessIntent memberAccess = parseMemberAccess(mem->Member);
   MemberHatPlan hatPlan = resolveMemberHatPlan(memberAccess);
-
-  struct MemberMaterialization {
-    llvm::Value *Addr = nullptr;
-    llvm::Type *IrTy = nullptr;
-  };
 
   auto applyMemberHatOffLoads = [&](llvm::Value *addr,
                                     const MemberHatPlan &plan) {
