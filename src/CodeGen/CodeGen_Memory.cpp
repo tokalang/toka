@@ -843,7 +843,15 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   // [Constitution] Hat Rule: "Pointer must be hatted; de-hatting is dereferencing"
   // If the member is defined as a pointer/reference (hatted) but accessed
   // without hats, we must perform implicit dereferences.
-  auto getHatCount = [](const std::string &s) {
+  struct MemberHatPlan {
+    int DefHats = 0;
+    int AccessHats = 0;
+    int DerefCount = 0;
+    bool IsHatOn = false;
+    bool IsIdentityAssertion = false;
+  };
+
+  auto countLeadingHats = [](const std::string &s) {
     int count = 0;
     for (char c : s) {
       if (c == '^' || c == '*' || c == '~' || c == '&')
@@ -854,22 +862,44 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     return count;
   };
 
-  int defHats = 0;
-  if (!stName.empty() && m_Shapes.count(stName)) {
-    if (m_Shapes[stName]->Members[idx].ResolvedType) {
-      defHats = getTypeHatCount(m_Shapes[stName]->Members[idx].ResolvedType);
-    } else {
-      defHats = getHatCount(m_Shapes[stName]->Members[idx].Name);
-      if (defHats == 0) {
-        defHats = getHatCount(m_Shapes[stName]->Members[idx].Type);
+  auto resolveMemberHatPlan = [&](const MemberAccessIntent &access) {
+    MemberHatPlan plan;
+    plan.IsIdentityAssertion = access.IsIdentityAssertion;
+
+    if (namedShape && idx >= 0 && idx < (int)namedShape->Members.size()) {
+      const ShapeMember &member = namedShape->Members[idx];
+      if (member.ResolvedType) {
+        plan.DefHats = getTypeHatCount(member.ResolvedType);
+      } else {
+        plan.DefHats = countLeadingHats(member.Name);
+        if (plan.DefHats == 0) {
+          plan.DefHats = countLeadingHats(member.Type);
+        }
       }
     }
-  }
-  int accessHats = getHatCount(mem->Member);
-  bool isHatOn = (accessHats > defHats);
-  if (isHatOn) {
-    // Hat-On: We are taking the address of the member!
-    // Return it directly as an R-Value (isAddress = false) of Pointer type
+
+    plan.AccessHats = countLeadingHats(access.Original);
+    plan.IsHatOn = (plan.AccessHats > plan.DefHats);
+
+    const bool isIdentityOperator =
+        access.IsIdentityAssertion || access.Prefix == "?!";
+    if (!isIdentityOperator) {
+      if (mem->ResolvedType) {
+        plan.DerefCount = plan.DefHats - getTypeHatCount(mem->ResolvedType);
+      } else {
+        plan.DerefCount = plan.DefHats - plan.AccessHats;
+      }
+      if (plan.DerefCount < 0)
+        plan.DerefCount = 0;
+    }
+    return plan;
+  };
+
+  MemberAccessIntent memberAccess = parseMemberAccess(mem->Member);
+  MemberHatPlan hatPlan = resolveMemberHatPlan(memberAccess);
+
+  if (hatPlan.IsHatOn) {
+    // Hat-On: We are taking the address of the member.
     llvm::Type *finalIrTy = m_Builder.getPtrTy();
     if (mem->ResolvedType) {
       finalIrTy = getLLVMType(mem->ResolvedType);
@@ -877,21 +907,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     return PhysEntity(finalAddr, memberTypeName, finalIrTy, false);
   }
 
-  // If definition has more hats than access, we are "Hat-Off", so dereference.
-  int derefCount = 0;
-  if (mem->Member.size() >= 2 && (mem->Member.substr(0, 2) == "??" || mem->Member.substr(0, 2) == "?!")) {
-    derefCount = 0; /* Force 0 for Identity operators */
-  } else
-  if (mem->ResolvedType) {
-    derefCount = defHats - getTypeHatCount(mem->ResolvedType);
-  } else {
-    derefCount = defHats - accessHats;
-  }
-  
-  if (derefCount < 0)
-    derefCount = 0;
-
-  for (int i = 0; i < derefCount; ++i) {
+  for (int i = 0; i < hatPlan.DerefCount; ++i) {
     // Current finalAddr is the address of the pointer.
     // Load it to get the target address.
     finalAddr =
@@ -901,13 +917,13 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   llvm::Type *finalIrTy = irTy;
   if (mem->ResolvedType) {
     auto soul = mem->ResolvedType;
-    if (derefCount > 0) {
-        soul = soul->getSoulType();
+    if (hatPlan.DerefCount > 0) {
+      soul = soul->getSoulType();
     }
     finalIrTy = getLLVMType(soul);
   }
 
-  if (mem->Member.size() >= 2 && mem->Member.substr(0, 2) == "??") {
+  if (hatPlan.IsIdentityAssertion) {
     // Identity Assertion (Ch 6.1)
     llvm::Value *ptrVal = m_Builder.CreateLoad(finalIrTy, finalAddr, "nn.load");
     genNullCheck(ptrVal, mem);
