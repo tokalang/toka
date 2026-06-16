@@ -783,29 +783,41 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     return shapeIt == m_Shapes.end() ? nullptr : shapeIt->second;
   };
 
-  const ShapeDecl *namedShape = findNamedShape(stName);
-  const ShapeDecl *objectShape = shapeDeclFromType(mem->Object->ResolvedType);
-  const ShapeDecl *memberShape = namedShape ? namedShape : objectShape;
+  struct MemberShapeContext {
+    const ShapeDecl *NamedShape = nullptr;
+    const ShapeDecl *ObjectShape = nullptr;
+    const ShapeDecl *MemberShape = nullptr;
+    bool IsLegacyBareUnion = false;
+  };
 
-  // Resolve Metadata & IR Type safely
-  std::string memberTypeName = "";
-  llvm::Type *irTy = nullptr;
-  bool isLegacyBareUnion =
-      objectShape && objectShape->Kind == ShapeKind::Union;
+  auto resolveMemberShapeContext = [&]() {
+    MemberShapeContext context;
+    context.NamedShape = findNamedShape(stName);
+    context.ObjectShape = shapeDeclFromType(mem->Object->ResolvedType);
+    context.MemberShape =
+        context.NamedShape ? context.NamedShape : context.ObjectShape;
+    context.IsLegacyBareUnion =
+        context.ObjectShape && context.ObjectShape->Kind == ShapeKind::Union;
+    if (!context.IsLegacyBareUnion && context.NamedShape) {
+      context.IsLegacyBareUnion =
+          (context.NamedShape->Kind == ShapeKind::Union);
+    }
+    return context;
+  };
 
-  if (!isLegacyBareUnion && namedShape) {
-    isLegacyBareUnion = (namedShape->Kind == ShapeKind::Union);
-  }
+  struct MemberFieldStorage {
+    llvm::Value *Addr = nullptr;
+    std::string TypeName;
+    llvm::Type *IrTy = nullptr;
+  };
 
-  llvm::Value *fieldAddr = nullptr;
-  if (!isLegacyBareUnion) {
-    fieldAddr = m_Builder.CreateStructGEP(st, objAddr, idx, memberName);
-  } else {
+  auto emitLegacyBareUnionMemberAddress =
+      [&](const MemberShapeContext &context) {
     // Legacy bare union: bitcast base address to the desired member type.
     // Parser rejects this syntax for normal .tk source; keep this path for
     // imported or older IR that can still carry ShapeKind::Union.
     llvm::Type *destTy = nullptr;
-    const ShapeDecl *sh = memberShape;
+    const ShapeDecl *sh = context.MemberShape;
 
     if (sh && idx >= 0 && idx < (int)sh->Members.size()) {
       if (sh->Members[idx].ResolvedType) {
@@ -817,28 +829,46 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     if (!destTy)
       destTy = llvm::Type::getInt8Ty(m_Context);
 
-    fieldAddr =
-        m_Builder.CreateBitCast(objAddr, llvm::PointerType::getUnqual(m_Context));
-  }
+    return m_Builder.CreateBitCast(
+        objAddr, llvm::PointerType::getUnqual(m_Context));
+  };
 
-  llvm::Value *finalAddr = fieldAddr;
-
-  if (memberShape && idx >= 0 && idx < (int)memberShape->Members.size()) {
-    memberTypeName = memberShape->Members[idx].Type;
-    if (memberShape->Members[idx].ResolvedType) {
-      irTy = getLLVMType(memberShape->Members[idx].ResolvedType);
-    } else if (namedShape) {
-      irTy = resolveType(memberTypeName, false);
-    }
-  }
-
-  if (!irTy) {
-    if (isLegacyBareUnion && idx > 0) {
-      irTy = llvm::Type::getInt8Ty(m_Context);
+  auto resolveMemberFieldStorage =
+      [&](const MemberShapeContext &context) -> MemberFieldStorage {
+    MemberFieldStorage storage;
+    if (context.IsLegacyBareUnion) {
+      storage.Addr = emitLegacyBareUnionMemberAddress(context);
     } else {
-      irTy = st->getElementType(idx);
+      storage.Addr = m_Builder.CreateStructGEP(st, objAddr, idx, memberName);
     }
-  }
+
+    if (context.MemberShape && idx >= 0 &&
+        idx < (int)context.MemberShape->Members.size()) {
+      const ShapeMember &member = context.MemberShape->Members[idx];
+      storage.TypeName = member.Type;
+      if (member.ResolvedType) {
+        storage.IrTy = getLLVMType(member.ResolvedType);
+      } else if (context.NamedShape) {
+        storage.IrTy = resolveType(storage.TypeName, false);
+      }
+    }
+
+    if (!storage.IrTy) {
+      if (context.IsLegacyBareUnion && idx > 0) {
+        storage.IrTy = llvm::Type::getInt8Ty(m_Context);
+      } else {
+        storage.IrTy = st->getElementType(idx);
+      }
+    }
+    return storage;
+  };
+
+  MemberShapeContext shapeContext = resolveMemberShapeContext();
+  const ShapeDecl *namedShape = shapeContext.NamedShape;
+  MemberFieldStorage fieldStorage = resolveMemberFieldStorage(shapeContext);
+  llvm::Value *finalAddr = fieldStorage.Addr;
+  std::string memberTypeName = fieldStorage.TypeName;
+  llvm::Type *irTy = fieldStorage.IrTy;
 
   // [Constitution] Hat Rule: "Pointer must be hatted; de-hatting is dereferencing"
   // If the member is defined as a pointer/reference (hatted) but accessed
