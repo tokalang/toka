@@ -1,19 +1,33 @@
 shape Point(
     x: i32,
-    y: i32
+    y#: i32
 )
 
 shape Container(
     ^ptr: Point
 )
 
+shape Box<'T>(
+    'data: T
+)
+
 fn main() -> i32 {
     unsafe {
         auto c = Container(^ptr=new Point(x=10, y=20))
 
-        // Test ?? assertion
+        // 1. Test ?? assertion
         auto p2 = c.??ptr.x
         assert(p2 == 10, "?? assertion failed")
+
+        // 2. Test suffix # in shape definition
+        auto pt = Point(x=5, y=6)
+        pt.y = 7
+        assert(pt.y == 7, "suffix # failed")
+
+        // 3. Test morphic identity '
+        auto box = Box<i32>(data=8)
+        auto v = box.'data
+        assert(v == 8, "morphic identity ' failed")
     }
     return 0
 }

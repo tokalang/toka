@@ -202,36 +202,11 @@ private:
 
   // --- Member Access CodeGen Refactoring Helpers ---
 private:
-  struct MemberObjectInfo {
-    llvm::Type *ObjectType = nullptr;
-    llvm::StructType *StructTy = nullptr;
-    std::string ShapeName;
-  };
-
-  struct MemberFieldInfo {
-    llvm::StructType *StructTy = nullptr;
-    int Index = -1;
-    std::string StructName;
-  };
-
-  struct MemberFieldStorage {
-    llvm::Value *Addr = nullptr;
-    std::string TypeName;
-    llvm::Type *IrTy = nullptr;
-  };
-
-  struct MemberHatPlan {
-    int DefHats = 0;
-    int AccessHats = 0;
-    int DerefCount = 0;
-    bool IsHatOn = false;
-    bool IsIdentityAssertion = false;
-  };
-
-  struct MemberMaterialization {
-    llvm::Value *Addr = nullptr;
-    llvm::Type *IrTy = nullptr;
-  };
+  struct MemberObjectInfo;
+  struct MemberFieldInfo;
+  struct MemberFieldStorage;
+  struct MemberHatPlan;
+  struct MemberMaterialization;
 
   llvm::Value *peelNestedMemberBaseAddress(const Expr *object, llvm::Value *addr);
   MemberObjectInfo resolveMemberObject(const Expr *object, llvm::Value *addr);

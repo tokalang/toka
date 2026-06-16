@@ -21,6 +21,37 @@
 
 namespace toka {
 
+struct CodeGen::MemberObjectInfo {
+  llvm::Type *ObjectType = nullptr;
+  llvm::StructType *StructTy = nullptr;
+  std::string ShapeName;
+};
+
+struct CodeGen::MemberFieldInfo {
+  llvm::StructType *StructTy = nullptr;
+  int Index = -1;
+  std::string StructName;
+};
+
+struct CodeGen::MemberFieldStorage {
+  llvm::Value *Addr = nullptr;
+  std::string TypeName;
+  llvm::Type *IrTy = nullptr;
+};
+
+struct CodeGen::MemberHatPlan {
+  int DefHats = 0;
+  int AccessHats = 0;
+  int DerefCount = 0;
+  bool IsHatOn = false;
+  bool IsIdentityAssertion = false;
+};
+
+struct CodeGen::MemberMaterialization {
+  llvm::Value *Addr = nullptr;
+  llvm::Type *IrTy = nullptr;
+};
+
 static int getTypeHatCount(std::shared_ptr<toka::Type> type) {
   if (!type)
     return 0;

@@ -55,19 +55,49 @@ static std::string getStringifyPath(Expr *E) {
 std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   MemberAccessIntent intent = parseMemberAccess(Memb->Member);
   bool hasInvalidMix = false;
+
+  // 1. 空断言排他性 (Null Assertion Exclusivity)
   if (intent.IsIdentityAssertion || intent.IsIdentityOperator) {
+    if (intent.AccessHats > 0 || intent.HasRebindMarker) {
+      hasInvalidMix = true;
+    }
     if (!intent.MemberName.empty() && intent.MemberName[0] != '\'' && isMemberAccessPrefixChar(intent.MemberName[0])) {
       hasInvalidMix = true;
     }
   }
-  int rebindCount = 0;
-  for (char c : intent.Prefix) {
+
+  // 2. 重绑定去重 (Rebind Suffix/Prefix Uniqueness)
+  int hashCount = 0;
+  for (char c : Memb->Member) {
     if (c == '#') {
-      rebindCount++;
+      hashCount++;
     }
   }
-  if (hasInvalidMix || rebindCount > 1) {
-    DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_GENERIC_SEMA, "Invalid member access prefix combination: '" + Memb->Member + "'");
+  if (hashCount > 1) {
+    hasInvalidMix = true;
+  }
+
+  // 3. 顺序与连续性合法性 (Prefix Ordering & Hats Adjacency)
+  bool seenHash = false;
+  for (char c : intent.Prefix) {
+    if (c == '#') {
+      seenHash = true;
+    } else if (isMemberAccessHatChar(c)) {
+      if (seenHash) {
+        hasInvalidMix = true; // Hat after Hash is invalid
+      }
+    }
+  }
+
+  // 5. Morphic Identity 排他性 (Morphic Identity Exclusivity)
+  if (intent.IsMorphicIdentity) {
+    if (intent.HasExplicitPrefix || intent.HasRebindMarker) {
+      hasInvalidMix = true;
+    }
+  }
+
+  if (hasInvalidMix) {
+    DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_GENERIC_SEMA, "Invalid member access modifier combination: '" + Memb->Member + "'");
     HasError = true;
     return nullptr;
   }
