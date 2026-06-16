@@ -403,7 +403,11 @@ void parseSource(const std::string &rawFilename,
     
     // Resolve canonical absolute path and populate ResolvedPath
     std::string subResolved = resolveSourcePath(importPath, localSearchPaths, pkgMap, recursionStack);
-    imp->ResolvedPath = toka::PathUtils::canonicalize(subResolved);
+    if (!subResolved.empty()) {
+        imp->ResolvedPath = toka::PathUtils::canonicalize(subResolved);
+    } else {
+        imp->ResolvedPath = "";
+    }
     
     parseSource(subResolved.empty() ? importPath : subResolved, astModules, visited, recursionStack, sm, localSearchPaths, pkgMap);
   }

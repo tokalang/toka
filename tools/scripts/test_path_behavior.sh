@@ -4,6 +4,12 @@
 set -e
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
+# Resolve TOKAC to absolute path if it is relative
+if [[ "$TOKAC" = /* ]]; then
+    TOKAC_ABS="$TOKAC"
+else
+    TOKAC_ABS="$(cd "$(dirname "$TOKAC")" && pwd)/$(basename "$TOKAC")"
+fi
 TEST_DIR="./tmp/path_test"
 
 # Recreate test directory
@@ -31,7 +37,7 @@ fn main() -> i32 {
 EOF
 
 echo "Test 1: Output .tki next to -o target"
-$TOKAC -c "$TEST_DIR/src/helper.tk" -o "$TEST_DIR/build/helper_custom.o"
+"$TOKAC_ABS" -c "$TEST_DIR/src/helper.tk" -o "$TEST_DIR/build/helper_custom.o"
 if [ ! -f "$TEST_DIR/build/helper_custom.tki" ]; then
     echo "FAIL: helper_custom.tki not found in build directory"
     exit 1
@@ -44,7 +50,7 @@ echo "PASS: Test 1"
 
 echo "Test 1b: Output .tki next to -o target with dotted directory in path"
 mkdir -p "$TEST_DIR/build.v1"
-$TOKAC -c "$TEST_DIR/src/helper.tk" -o "$TEST_DIR/build.v1/app"
+"$TOKAC_ABS" -c "$TEST_DIR/src/helper.tk" -o "$TEST_DIR/build.v1/app"
 if [ ! -f "$TEST_DIR/build.v1/app.tki" ]; then
     echo "FAIL: app.tki not found in build.v1 directory"
     exit 1
@@ -58,7 +64,7 @@ echo "PASS: Test 1b"
 echo "Test 2: Output .tki in CWD when -o is not specified"
 cd "$TEST_DIR"
 rm -f *.tki
-../../build/bin/tokac -I ../../lib --emit-interface --emit-llvm src/helper.tk
+"$TOKAC_ABS" -I ../../lib --emit-interface --emit-llvm src/helper.tk
 if [ ! -f "helper.tki" ]; then
     echo "FAIL: helper.tki not found in CWD"
     exit 1
@@ -73,7 +79,7 @@ echo "PASS: Test 2"
 echo "Test 3: Relative import does not change behavior when .tki exists in source folder (and no .o is linked)"
 # If helper.tki exists in src, compiling main.tk should STILL succeed and compile helper's body, because helper.o is not linked
 cp "$TEST_DIR/build/helper_custom.tki" "$TEST_DIR/src/helper.tki"
-$TOKAC "$TEST_DIR/src/main.tk" -o "$TEST_DIR/build/main_app"
+"$TOKAC_ABS" "$TEST_DIR/src/main.tk" -o "$TEST_DIR/build/main_app"
 "$TEST_DIR/build/main_app"
 echo "PASS: Test 3"
 

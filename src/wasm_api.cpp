@@ -4,6 +4,7 @@
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/PathUtils.h"
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -27,19 +28,14 @@ public:
 #include <set>
 #include <memory>
 
-void parseSource(const std::string &filename,
-                 std::vector<std::unique_ptr<toka::Module>> &astModules,
-                 std::set<std::string> &visited,
-                 std::vector<std::string> &recursionStack,
-                 toka::SourceManager &sm,
-                 const std::vector<std::string> &searchPaths,
-                 const std::string &code_cstr = "") {
-  if (visited.count(filename)) return;
-  visited.insert(filename);
-  recursionStack.push_back(filename);
+static std::string resolveSourcePath(const std::string &rawFilename,
+                                     const std::vector<std::string> &searchPaths,
+                                     const std::vector<std::string> &recursionStack) {
+  std::string filename = toka::PathUtils::normalize(rawFilename);
 
-  std::string resolvedPath = filename;
-  bool found = false;
+  auto fileExists = [](const std::string &p) {
+    return std::ifstream(p).good();
+  };
 
   auto getBasename = [](const std::string &path) -> std::string {
     size_t lastSlash = path.find_last_of("/\\");
@@ -63,56 +59,132 @@ void parseSource(const std::string &filename,
     }
   }
 
-  if (!code_cstr.empty()) {
+  bool hasExt = toka::PathUtils::hasTokaSourceExtension(filename);
+
+  std::string resolvedPath = filename;
+  bool found = false;
+
+  // 1. Try exact filename
+  if (fileExists(filename)) {
+    bool shouldPoison = false;
+    if (isCompilingBuildSystem && recursionStack.size() > 1) {
+      std::string resBasename = getBasename(filename);
+      if (resBasename == "build.tk" || resBasename == "Project.tk") {
+        shouldPoison = true;
+      }
+    }
+    if (!isStdOrCore && !shouldPoison) {
       found = true;
+    }
+  }
+  // 2. Try adding .tk or .tki if no extension
+  else if (!hasExt && !isStdOrCore) {
+    std::string resolvedTki = filename + ".tki";
+    std::string resolvedTk = filename + ".tk";
+    
+    bool canUseTki = fileExists(resolvedTki);
+    bool canUseTk = fileExists(resolvedTk);
+    
+    if (isCompilingBuildSystem && recursionStack.size() > 1) {
+      if (getBasename(resolvedTki) == "build.tk" || getBasename(resolvedTki) == "Project.tk") {
+        canUseTki = false;
+      }
+      if (getBasename(resolvedTk) == "build.tk" || getBasename(resolvedTk) == "Project.tk") {
+        canUseTk = false;
+      }
+    }
+    
+    if (canUseTk) {
+      resolvedPath = resolvedTk;
+      found = true;
+    } else if (canUseTki) {
+      resolvedPath = resolvedTki;
+      found = true;
+    }
+  }
+
+  // 3. Try search paths and lib/ paths
+  if (!found) {
+    std::vector<std::string> pathsToTry;
+    pathsToTry.push_back("lib/");
+    pathsToTry.push_back("../lib/");
+    for (const auto &p : searchPaths) {
+      if (!p.empty() && p.back() != '/' && p.back() != '\\') {
+        pathsToTry.push_back(p + "/");
+      } else {
+        pathsToTry.push_back(p);
+      }
+    }
+    for (const auto &p : pathsToTry) {
+      std::string libPath = p + filename;
+      if (fileExists(libPath)) {
+        resolvedPath = libPath;
+        found = true;
+        break;
+      }
+      if (!hasExt) {
+        if (fileExists(libPath + ".tk")) {
+          resolvedPath = libPath + ".tk";
+          found = true;
+          break;
+        }
+        if (fileExists(libPath + ".tki")) {
+          resolvedPath = libPath + ".tki";
+          found = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (found) {
+    return toka::PathUtils::normalize(resolvedPath);
+  }
+  return "";
+}
+
+void parseSource(const std::string &filename,
+                 std::vector<std::unique_ptr<toka::Module>> &astModules,
+                 std::set<std::string> &visited,
+                 std::vector<std::string> &recursionStack,
+                 toka::SourceManager &sm,
+                 const std::vector<std::string> &searchPaths,
+                 const std::string &code_cstr = "") {
+  std::string resolvedPath = filename;
+  if (code_cstr.empty()) {
+      resolvedPath = resolveSourcePath(filename, searchPaths, recursionStack);
+      if (resolvedPath.empty()) {
+          toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO, "Could not open file: " + toka::PathUtils::normalize(filename));
+          return;
+      }
   } else {
-      bool tryExact = std::ifstream(filename).good();
-      bool tryTk = (filename.find(".tk") == std::string::npos && std::ifstream(filename + ".tk").good());
-      
-      if (isStdOrCore) {
-          tryExact = false;
-          tryTk = false;
-      }
-      if (isCompilingBuildSystem && recursionStack.size() > 1) {
-          if (getBasename(filename) == "build.tk" || getBasename(filename) == "Project.tk") {
-              tryExact = false;
-          }
-          if (getBasename(filename + ".tk") == "build.tk" || getBasename(filename + ".tk") == "Project.tk") {
-              tryTk = false;
-          }
-      }
-      
-      if (tryExact) {
-          found = true;
-      } else if (tryTk) {
-          resolvedPath = filename + ".tk";
-          found = true;
-      }
+      resolvedPath = toka::PathUtils::normalize(filename);
   }
 
-  if (!found) {
-      std::vector<std::string> pathsToTry = {"lib/", "../lib/"};
-      for (const auto &p : searchPaths) {
-          pathsToTry.push_back(p.back() == '/' ? p : p + "/");
-      }
-      for (const auto &p : pathsToTry) {
-          std::string libPath = p + filename;
-          if (std::ifstream(libPath).good()) {
-              resolvedPath = libPath; found = true; break;
-          }
-          if (filename.find(".tk") == std::string::npos) {
-              libPath += ".tk";
-              if (std::ifstream(libPath).good()) {
-                  resolvedPath = libPath; found = true; break;
-              }
-          }
-      }
-  }
+  std::string canonicalPath = toka::PathUtils::canonicalize(resolvedPath);
 
-  if (!found) {
-      toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO, "Could not open file: " + filename);
+  // Check recursion stack for circular dependency
+  for (const auto &f : recursionStack) {
+    if (f == canonicalPath) {
+      std::string dir1 = toka::PathUtils::normalize(std::filesystem::absolute(canonicalPath).parent_path().string());
+      std::string dir2 = toka::PathUtils::normalize(std::filesystem::absolute(f).parent_path().string());
+      if (dir1 == dir2) {
+        // Allow circular imports within the same physical directory to allow modular file splitting
+        return;
+      }
+      std::string chain;
+      for (const auto &s : recursionStack)
+        chain += s + " -> ";
+      chain += canonicalPath;
+      toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO,
+                                     "Circular dependency detected: " + chain);
       return;
+    }
   }
+
+  if (visited.count(canonicalPath)) return;
+  visited.insert(canonicalPath);
+  recursionStack.push_back(canonicalPath);
 
   toka::SourceLocation startLoc = code_cstr.empty() ? sm.loadFile(resolvedPath) : sm.addFile(resolvedPath, code_cstr);
   if (startLoc.isInvalid()) return;
@@ -133,7 +205,15 @@ void parseSource(const std::string &filename,
           std::string parentDir = (lastSlash == std::string::npos) ? "." : resolvedPath.substr(0, lastSlash);
           importPath = parentDir + "/" + importPath;
       }
-      parseSource(importPath, astModules, visited, recursionStack, sm, searchPaths);
+      
+      std::string subResolved = resolveSourcePath(importPath, searchPaths, recursionStack);
+      if (!subResolved.empty()) {
+          imp->ResolvedPath = toka::PathUtils::canonicalize(subResolved);
+      } else {
+          imp->ResolvedPath = "";
+      }
+      
+      parseSource(subResolved.empty() ? importPath : subResolved, astModules, visited, recursionStack, sm, searchPaths);
   }
 
   astModules.push_back(std::move(module));

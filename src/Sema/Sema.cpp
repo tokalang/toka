@@ -456,6 +456,7 @@ void Sema::registerGlobals(Module &M) {
   }
 
   // Case B: Handle Imports
+  std::string currentModuleKey = toka::PathUtils::canonicalize(M.SourcePath);
   for (auto &Imp : M.Imports) {
     ModuleScope *target = nullptr;
     
@@ -486,7 +487,7 @@ void Sema::registerGlobals(Module &M) {
       };
       
       for (auto &[path, scope] : ModuleMap) {
-        if (path == M.SourcePath) continue;
+        if (path == currentModuleKey) continue;
         for (const auto &tryPath : normTries) {
           if (path == tryPath) {
             target = &scope;
@@ -500,7 +501,7 @@ void Sema::registerGlobals(Module &M) {
     // 2. Fallback to suffix matching (for global library imports)
     if (!target) {
       for (auto &[path, scope] : ModuleMap) {
-        if (path == M.SourcePath) continue;
+        if (path == currentModuleKey) continue;
         
         if (path == Imp->PhysicalPath) {
           target = &scope;
