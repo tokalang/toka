@@ -238,6 +238,7 @@ private:
   PhysEntity genStartExpr(const StartExpr *E);
   PhysEntity genBinaryExpr(const BinaryExpr *expr);
   PhysEntity genAllocExpr(const AllocExpr *expr);
+  PhysEntity genStaticMemberExpr(const MemberExpr *expr);
   PhysEntity genMemberExpr(const MemberExpr *expr);
   PhysEntity genIndexExpr(const ArrayIndexExpr *expr);
   PhysEntity genVariableExpr(const VariableExpr *expr);
