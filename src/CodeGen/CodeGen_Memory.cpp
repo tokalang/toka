@@ -528,11 +528,20 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   if (!objAddr)
     return nullptr;
 
-  if (auto *baseMem = dynamic_cast<const MemberExpr *>(mem->Object.get())) {
-    if (baseMem->ResolvedType && (baseMem->ResolvedType->isPointer() || baseMem->ResolvedType->isReference())) {
-      objAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), objAddr, "member.peel_base");
+  auto peelNestedMemberBaseAddress = [&](const Expr *object,
+                                           llvm::Value *addr) -> llvm::Value * {
+    if (auto *baseMem = dynamic_cast<const MemberExpr *>(object)) {
+      if (baseMem->ResolvedType &&
+          (baseMem->ResolvedType->isPointer() ||
+           baseMem->ResolvedType->isReference())) {
+        return m_Builder.CreateLoad(m_Builder.getPtrTy(), addr,
+                                    "member.peel_base");
+      }
     }
-  }
+    return addr;
+  };
+
+  objAddr = peelNestedMemberBaseAddress(mem->Object.get(), objAddr);
 
   struct MemberObjectInfo {
     llvm::Type *ObjectType = nullptr;
@@ -605,41 +614,43 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   MemberObjectInfo objInfo = resolveMemberObject(mem->Object.get(), objAddr);
 
-  // [Fix] Handle Auto-Dereference (Identity -> Soul) for Deref Expressions
-  // (*p.x) If the object expression is a Dereference (*p), genAddr returned the
-  // Identity (Handle Address). We need the Soul (Data Address) to access
-  // members.
-  const Expr *baseExpr = mem->Object.get();
-  if (auto *ue = dynamic_cast<const UnaryExpr *>(baseExpr)) {
-    if (ue->Op == TokenType::Star || ue->Op == TokenType::Caret ||
-        ue->Op == TokenType::Tilde || ue->Op == TokenType::TokenNull) {
+  auto isDerefObjectForMemberAccess = [](const UnaryExpr *ue) {
+    return ue && (ue->Op == TokenType::Star || ue->Op == TokenType::Caret ||
+                  ue->Op == TokenType::Tilde ||
+                  ue->Op == TokenType::TokenNull);
+  };
 
-      bool isShared = false;
-      if (ue->RHS->ResolvedType && ue->RHS->ResolvedType->isSharedPtr()) {
-        isShared = true;
-      }
+  auto peelDerefObjectToSoulAddress = [&](const Expr *object,
+                                          llvm::Value *addr) -> llvm::Value * {
+    // (*p.x) If the object expression is a Dereference (*p), genAddr returned
+    // the Identity (Handle Address). We need the Soul (Data Address) to access
+    // members.
+    auto *ue = dynamic_cast<const UnaryExpr *>(object);
+    if (!isDerefObjectForMemberAccess(ue))
+      return addr;
 
-      if (isShared) {
-        // Shared Pointer Identity is { T*, Ref* }*
-        // We want T*.
-        // 1. GEP to data ptr (index 0)
-        llvm::Value *dataAddr = m_Builder.CreateStructGEP(
-            llvm::StructType::get(
-                m_Context,
-                {llvm::PointerType::getUnqual(m_Context),
-                 llvm::PointerType::getUnqual(m_Context)}),
-            objAddr, 0, "member.sh_data_gep");
-        // 2. Load T*
-        objAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), dataAddr,
-                                       "member.sh_soul");
-      } else {
-        // Raw/Unique Pointer Identity is T**.
-        // We want T*.
-        objAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), objAddr,
-                                       "member.peel_soul");
-      }
+    bool isShared = false;
+    if (ue->RHS->ResolvedType && ue->RHS->ResolvedType->isSharedPtr()) {
+      isShared = true;
     }
-  }
+
+    if (isShared) {
+      // Shared Pointer Identity is { T*, Ref* }*. We want T*.
+      llvm::Value *dataAddr = m_Builder.CreateStructGEP(
+          llvm::StructType::get(m_Context,
+                                {llvm::PointerType::getUnqual(m_Context),
+                                 llvm::PointerType::getUnqual(m_Context)}),
+          addr, 0, "member.sh_data_gep");
+      return m_Builder.CreateLoad(m_Builder.getPtrTy(), dataAddr,
+                                  "member.sh_soul");
+    }
+
+    // Raw/Unique Pointer Identity is T**. We want T*.
+    return m_Builder.CreateLoad(m_Builder.getPtrTy(), addr,
+                                "member.peel_soul");
+  };
+
+  objAddr = peelDerefObjectToSoulAddress(mem->Object.get(), objAddr);
 
   std::string memberName = stripMemberAccessMarkers(mem->Member);
 
