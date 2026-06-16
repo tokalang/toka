@@ -695,17 +695,18 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
       auto &fields = m_StructFieldNames[stName];
       for (int i = 0; i < (int)fields.size(); ++i) {
         std::string fn = stripMemberAccessMarkers(fields[i]);
-        if (fn.find(memberName) != std::string::npos) { // simplistic
+        if (fn == memberName) {
           idx = i;
           break;
         }
       }
-      // Use stricter match if possible, matching genAddr logic
-      for (int i = 0; i < (int)fields.size(); ++i) {
-        if (stripMemberAccessMarkers(fields[i]).find(memberName) !=
-            std::string::npos) {
-          idx = i;
-          break;
+      if (idx == -1) {
+        for (int i = 0; i < (int)fields.size(); ++i) {
+          if (stripMemberAccessMarkers(fields[i]).find(memberName) !=
+              std::string::npos) {
+            idx = i;
+            break;
+          }
         }
       }
     }
