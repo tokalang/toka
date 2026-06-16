@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/MemberAccess.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -345,10 +346,11 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
   // Member Access: Check if Member string carries pointer sigil (e.g. .*name)
   if (auto *M = dynamic_cast<MemberExpr *>(E)) {
     if (!M->Member.empty()) {
-      if (M->Member.size() >= 2 && M->Member.substr(0, 2) == "??") {
+      MemberAccessIntent access = parseMemberAccess(M->Member);
+      if (access.IsIdentityAssertion) {
         return MorphKind::Valid; // Assertion bypasses strict checking
       }
-      if (M->Member[0] == '\'' && M->IsMorphicExempt && M->ResolvedType) {
+      if (access.IsMorphicIdentity && M->IsMorphicExempt && M->ResolvedType) {
         return morphKindFromType(M->ResolvedType);
       }
       char c = M->Member[0];

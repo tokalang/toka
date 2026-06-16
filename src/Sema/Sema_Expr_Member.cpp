@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/MemberAccess.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -28,22 +29,6 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string stripMemberAccessMarkers(std::string name) {
-  if (name.size() >= 2 && name.substr(0, 2) == "??")
-    name = name.substr(2);
-  while (!name.empty() &&
-         (name[0] == '*' || name[0] == '^' || name[0] == '~' ||
-          name[0] == '&' || name[0] == '?' || name[0] == '#' ||
-          name[0] == '!'))
-    name = name.substr(1);
-  if (!name.empty() && name[0] == '\'')
-    name = name.substr(1);
-  while (!name.empty() &&
-         (name.back() == '#' || name.back() == '?' || name.back() == '!'))
-    name.pop_back();
-  return toka::Type::stripMorphology(name);
-}
-
 static std::string getStringifyPath(Expr *E) {
   if (!E)
     return "";
@@ -51,7 +36,8 @@ static std::string getStringifyPath(Expr *E) {
     return ve->Name;
   }
   if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = stripMemberAccessMarkers(me->Member);
+    std::string member =
+        toka::Type::stripMorphology(stripMemberAccessMarkers(me->Member));
     return getStringifyPath(me->Object.get()) + "." + member;
   }
   if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
@@ -187,32 +173,10 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
   if (ShapeMap.count(ObjType)) {
     ShapeDecl *SD = ShapeMap[ObjType];
-    std::string requestedMember = Memb->Member;
-    std::string requestedPrefix = "";
-    bool requestedMorphicIdentity = false;
-    if (!requestedMember.empty()) {
-      size_t prefixEnd = 0;
-      if (requestedMember.size() >= 2 && requestedMember.substr(0, 2) == "??") {
-        prefixEnd = 2;
-      } else {
-        while (prefixEnd < requestedMember.size() &&
-               (requestedMember[prefixEnd] == '*' ||
-                requestedMember[prefixEnd] == '^' ||
-                requestedMember[prefixEnd] == '~' ||
-                requestedMember[prefixEnd] == '&' ||
-                requestedMember[prefixEnd] == '?' ||
-                requestedMember[prefixEnd] == '#' ||
-                requestedMember[prefixEnd] == '!')) {
-          prefixEnd++;
-        }
-      }
-      requestedPrefix = requestedMember.substr(0, prefixEnd);
-      requestedMember = requestedMember.substr(prefixEnd);
-      if (!requestedMember.empty() && requestedMember[0] == '\'') {
-        requestedMorphicIdentity = true;
-        requestedMember = requestedMember.substr(1);
-      }
-    }
+    MemberAccessIntent access = parseMemberAccess(Memb->Member);
+    std::string requestedMember = access.MemberName;
+    std::string requestedPrefix = access.Prefix;
+    bool requestedMorphicIdentity = access.IsMorphicIdentity;
 
     // [Ch 5] Single Hat & Terminal Audit: Except for ?? assertion
     if (m_InIntermediatePath && !requestedPrefix.empty() &&

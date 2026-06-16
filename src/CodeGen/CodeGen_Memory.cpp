@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/CodeGen.h"
+#include "toka/MemberAccess.h"
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -30,22 +31,6 @@ static int getTypeHatCount(std::shared_ptr<toka::Type> type) {
     cur = cur->getPointeeType();
   }
   return count;
-}
-
-static std::string stripMemberAccessMarkers(std::string name) {
-  if (name.size() >= 2 && name.substr(0, 2) == "??")
-    name = name.substr(2);
-  while (!name.empty() &&
-         (name[0] == '^' || name[0] == '*' || name[0] == '&' ||
-          name[0] == '#' || name[0] == '~' || name[0] == '!' ||
-          name[0] == '?'))
-    name = name.substr(1);
-  if (!name.empty() && name[0] == '\'')
-    name = name.substr(1);
-  while (!name.empty() &&
-         (name.back() == '#' || name.back() == '?' || name.back() == '!'))
-    name.pop_back();
-  return name;
 }
 
 PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
