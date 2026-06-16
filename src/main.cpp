@@ -330,10 +330,12 @@ void parseSource(const std::string &rawFilename,
     return;
   }
 
-  // Check recursion stack for circular dependency
+  std::string canonicalPath = toka::PathUtils::canonicalize(resolvedPath);
+
+  // Check recursion stack for circular dependency using absolute physical canonicalPath
   for (const auto &f : recursionStack) {
-    if (f == resolvedPath) {
-      std::string dir1 = toka::PathUtils::normalize(std::filesystem::absolute(resolvedPath).parent_path().string());
+    if (f == canonicalPath) {
+      std::string dir1 = toka::PathUtils::normalize(std::filesystem::absolute(canonicalPath).parent_path().string());
       std::string dir2 = toka::PathUtils::normalize(std::filesystem::absolute(f).parent_path().string());
       if (dir1 == dir2) {
         // Allow circular imports within the same physical directory to allow modular file splitting
@@ -342,17 +344,17 @@ void parseSource(const std::string &rawFilename,
       std::string chain;
       for (const auto &s : recursionStack)
         chain += s + " -> ";
-      chain += resolvedPath;
+      chain += canonicalPath;
       toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO,
                                      "Circular dependency detected: " + chain);
       return;
     }
   }
 
-  if (visited.count(resolvedPath))
+  if (visited.count(canonicalPath))
     return;
-  visited.insert(resolvedPath);
-  recursionStack.push_back(resolvedPath);
+  visited.insert(canonicalPath);
+  recursionStack.push_back(canonicalPath);
 
   if (verboseMode) llvm::errs() << "Parsing " << resolvedPath << "...\n";
 
@@ -399,7 +401,11 @@ void parseSource(const std::string &rawFilename,
         localSearchPaths.push_back(pkgRoot);
     }
     
-    parseSource(importPath, astModules, visited, recursionStack, sm, localSearchPaths, pkgMap);
+    // Resolve canonical absolute path and populate ResolvedPath
+    std::string subResolved = resolveSourcePath(importPath, localSearchPaths, pkgMap, recursionStack);
+    imp->ResolvedPath = toka::PathUtils::canonicalize(subResolved);
+    
+    parseSource(subResolved.empty() ? importPath : subResolved, astModules, visited, recursionStack, sm, localSearchPaths, pkgMap);
   }
 
   astModules.push_back(std::move(module));

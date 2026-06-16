@@ -1472,6 +1472,7 @@ class ImportDecl : public ASTNode {
 public:
   bool IsPub = false;
   std::string PhysicalPath;
+  std::string ResolvedPath;      // Pre-resolved canonical absolute path
   std::string Alias;             // Module alias (e.g. import path as alias)
   std::vector<ImportItem> Items; // If empty, it's a module import (import path)
   bool HasBeenUsed = false;

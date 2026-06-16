@@ -15,6 +15,19 @@ inline std::string normalize(const std::string &path) {
   return p;
 }
 
+// Canonicalize path: weakly_canonical (physical absolute path) with absolute fallback
+inline std::string canonicalize(const std::string &path) {
+  try {
+    std::string p = std::filesystem::weakly_canonical(path).string();
+    std::replace(p.begin(), p.end(), '\\', '/');
+    return p;
+  } catch (...) {
+    std::string p = std::filesystem::absolute(path).lexically_normal().string();
+    std::replace(p.begin(), p.end(), '\\', '/');
+    return p;
+  }
+}
+
 // Check if a path is an interface file (.tki)
 inline bool isInterfaceFile(const std::string &path) {
   return path.length() > 4 && path.substr(path.length() - 4) == ".tki";

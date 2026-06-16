@@ -3,7 +3,7 @@
 
 set -e
 
-TOKAC="./build/bin/tokac"
+TOKAC="${TOKAC:-./build/bin/tokac}"
 TEST_DIR="./tmp/path_test"
 
 # Recreate test directory
@@ -49,7 +49,7 @@ if [ ! -f "$TEST_DIR/build.v1/app.tki" ]; then
     echo "FAIL: app.tki not found in build.v1 directory"
     exit 1
 fi
-if [ -f "$TEST_DIR/build.v1/build.tki" ]; then
+if [ -f "$TEST_DIR/build.tki" ]; then
     echo "FAIL: Incorrectly generated build.tki due to dotted directory"
     exit 1
 fi

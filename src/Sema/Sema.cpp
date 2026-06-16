@@ -238,8 +238,8 @@ void Sema::exitScope() {
   delete Old;
 }
 void Sema::declareGlobals(Module &M) {
-  std::string fileName =
-      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName;
+  std::string fileName = toka::PathUtils::canonicalize(
+      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
   ms.Name = fileName;
   size_t lastSlash = ms.Name.find_last_of('/');
@@ -326,8 +326,8 @@ void Sema::declareGlobals(Module &M) {
 void Sema::registerGlobals(Module &M) {
   // Initialize ModuleScope
 
-  std::string fileName =
-      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName;
+  std::string fileName = toka::PathUtils::canonicalize(
+      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
   ms.Name = fileName;
   // Simple name extraction (e.g. std/io.tk -> io)
@@ -459,32 +459,42 @@ void Sema::registerGlobals(Module &M) {
   for (auto &Imp : M.Imports) {
     ModuleScope *target = nullptr;
     
-    // 1. Try absolute normalized path matching (for relative imports)
-    std::string importPath = Imp->PhysicalPath;
-    std::replace(importPath.begin(), importPath.end(), '\\', '/');
-    if (importPath.rfind("./", 0) == 0 || importPath.rfind("../", 0) == 0) {
-        size_t lastSlash = M.SourcePath.find_last_of('/');
-        std::string parentDir = (lastSlash == std::string::npos) ? "." : M.SourcePath.substr(0, lastSlash);
-        importPath = parentDir + "/" + importPath;
-    }
-    std::string normImport = toka::PathUtils::normalize(importPath);
-    std::vector<std::string> normTries = {
-        normImport,
-        normImport + ".tk",
-        normImport + ".tki",
-        normImport + "/mod.tk",
-        normImport + "/mod.tki"
-    };
-    
-    for (auto &[path, scope] : ModuleMap) {
-      if (path == M.SourcePath) continue;
-      for (const auto &tryPath : normTries) {
-        if (path == tryPath) {
-          target = &scope;
-          break;
-        }
+    // 0. Try ResolvedPath first (canonical absolute physical path resolved during parseSource)
+    if (!Imp->ResolvedPath.empty()) {
+      auto it = ModuleMap.find(Imp->ResolvedPath);
+      if (it != ModuleMap.end()) {
+        target = &it->second;
       }
-      if (target) break;
+    }
+    
+    // 1. Try absolute normalized path matching (for relative imports)
+    if (!target) {
+      std::string importPath = Imp->PhysicalPath;
+      std::replace(importPath.begin(), importPath.end(), '\\', '/');
+      if (importPath.rfind("./", 0) == 0 || importPath.rfind("../", 0) == 0) {
+          size_t lastSlash = M.SourcePath.find_last_of('/');
+          std::string parentDir = (lastSlash == std::string::npos) ? "." : M.SourcePath.substr(0, lastSlash);
+          importPath = parentDir + "/" + importPath;
+      }
+      std::string normImport = toka::PathUtils::normalize(importPath);
+      std::vector<std::string> normTries = {
+          normImport,
+          normImport + ".tk",
+          normImport + ".tki",
+          normImport + "/mod.tk",
+          normImport + "/mod.tki"
+      };
+      
+      for (auto &[path, scope] : ModuleMap) {
+        if (path == M.SourcePath) continue;
+        for (const auto &tryPath : normTries) {
+          if (path == tryPath) {
+            target = &scope;
+            break;
+          }
+        }
+        if (target) break;
+      }
     }
     
     // 2. Fallback to suffix matching (for global library imports)
@@ -2059,8 +2069,8 @@ FunctionDecl *Sema::instantiateGenericFunction(
     GenericInstancesModule->Functions.push_back(std::move(InstancePtr));
     Instance = GenericInstancesModule->Functions.back().get();
 
-    std::string fileName =
-        DiagnosticEngine::SrcMgr->getFullSourceLoc(CurrentModule->Loc).FileName;
+    std::string fileName = toka::PathUtils::canonicalize(
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(CurrentModule->Loc).FileName);
     ModuleMap[fileName].Functions[mangledName] = Instance;
 
     GlobalFunctions.push_back(Instance);
@@ -2087,8 +2097,9 @@ FunctionDecl *Sema::instantiateGenericFunction(
 }
 
 Sema::ModuleScope *Sema::getModule(const std::string &Path) {
-  if (ModuleMap.count(Path))
-    return &ModuleMap[Path];
+  std::string canonicalPath = toka::PathUtils::canonicalize(Path);
+  if (ModuleMap.count(canonicalPath))
+    return &ModuleMap[canonicalPath];
   return nullptr;
 }
 
