@@ -604,9 +604,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
   };
 
   MemberObjectInfo objInfo = resolveMemberObject(mem->Object.get(), objAddr);
-  int idx = mem->Index;
-  llvm::StructType *st = objInfo.StructTy;
-  const std::string &objShapeName = objInfo.ShapeName;
 
   // [Fix] Handle Auto-Dereference (Identity -> Soul) for Deref Expressions
   // (*p.x) If the object expression is a Dereference (*p), genAddr returned the
@@ -646,15 +643,22 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   std::string memberName = stripMemberAccessMarkers(mem->Member);
 
-  if (!st) {
+  struct MemberFieldInfo {
+    llvm::StructType *StructTy = nullptr;
+    std::string StructName;
+    int Index = -1;
+  };
+
+  auto findUniqueStructForMember =
+      [&](const std::string &name) -> MemberFieldInfo {
     std::string foundStruct;
     int foundIdx = -1;
     bool ambiguousStruct = false;
+
     for (const auto &pair : m_StructFieldNames) {
       for (int i = 0; i < (int)pair.second.size(); ++i) {
-        std::string fn = stripMemberAccessMarkers(pair.second[i]);
-
-        if (fn == memberName) {
+        std::string fieldName = stripMemberAccessMarkers(pair.second[i]);
+        if (fieldName == name) {
           if (!foundStruct.empty()) {
             ambiguousStruct = true;
             break;
@@ -667,62 +671,99 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
       if (ambiguousStruct)
         break;
     }
-    if (!ambiguousStruct && !foundStruct.empty()) {
-      st = m_StructTypes[foundStruct];
-      idx = foundIdx;
+
+    if (ambiguousStruct || foundStruct.empty())
+      return {};
+
+    auto structIt = m_StructTypes.find(foundStruct);
+    if (structIt == m_StructTypes.end())
+      return {};
+
+    MemberFieldInfo info;
+    info.StructTy = structIt->second;
+    info.Index = foundIdx;
+    return info;
+  };
+
+  auto resolveStructName = [&](llvm::StructType *structTy,
+                               const std::string &shapeName) {
+    if (!shapeName.empty() && m_StructTypes.count(shapeName) &&
+        m_StructTypes[shapeName] == structTy) {
+      return shapeName;
     }
-  }
+
+    auto typeIt = m_TypeToName.find(structTy);
+    if (typeIt != m_TypeToName.end()) {
+      return typeIt->second;
+    }
+
+    for (const auto &pair : m_StructTypes) {
+      if (pair.second == structTy) {
+        return pair.first;
+      }
+    }
+    return std::string();
+  };
+
+  auto resolveMemberField = [&](llvm::StructType *structTy,
+                                const std::string &shapeName,
+                                int initialIndex,
+                                const std::string &name) -> MemberFieldInfo {
+    MemberFieldInfo info;
+    info.StructTy = structTy;
+    info.Index = initialIndex;
+
+    if (!info.StructTy) {
+      info = findUniqueStructForMember(name);
+    }
+
+    if (!info.StructTy)
+      return info;
+
+    info.StructName = resolveStructName(info.StructTy, shapeName);
+    if (info.Index != -1 || info.StructName.empty())
+      return info;
+
+    auto fieldsIt = m_StructFieldNames.find(info.StructName);
+    if (fieldsIt == m_StructFieldNames.end())
+      return info;
+
+    const auto &fields = fieldsIt->second;
+    for (int i = 0; i < (int)fields.size(); ++i) {
+      std::string fieldName = stripMemberAccessMarkers(fields[i]);
+      if (fieldName == name) {
+        info.Index = i;
+        break;
+      }
+    }
+
+    if (info.Index == -1) {
+      for (int i = 0; i < (int)fields.size(); ++i) {
+        if (stripMemberAccessMarkers(fields[i]).find(name) !=
+            std::string::npos) {
+          info.Index = i;
+          break;
+        }
+      }
+    }
+    return info;
+  };
+
+  MemberFieldInfo fieldInfo =
+      resolveMemberField(objInfo.StructTy, objInfo.ShapeName, mem->Index,
+                         memberName);
+  llvm::StructType *st = fieldInfo.StructTy;
+  int idx = fieldInfo.Index;
+  std::string stName = fieldInfo.StructName;
 
   if (!st)
     return nullptr;
 
-  std::string stName;
-  if (!objShapeName.empty() && m_StructTypes.count(objShapeName) &&
-      m_StructTypes[objShapeName] == st) {
-    stName = objShapeName;
-  }
-  if (stName.empty()) {
-    auto it = m_TypeToName.find(st);
-    if (it != m_TypeToName.end()) {
-      stName = it->second;
-    }
-  }
-  if (stName.empty()) {
-    for (const auto &pair : m_StructTypes) {
-      if (pair.second == st) {
-        stName = pair.first;
-        break;
-      }
-    }
-  }
-
-  // Try to find index in st if still -1
-  if (idx == -1) {
-    if (!stName.empty()) {
-      auto &fields = m_StructFieldNames[stName];
-      for (int i = 0; i < (int)fields.size(); ++i) {
-        std::string fn = stripMemberAccessMarkers(fields[i]);
-        if (fn == memberName) {
-          idx = i;
-          break;
-        }
-      }
-      if (idx == -1) {
-        for (int i = 0; i < (int)fields.size(); ++i) {
-          if (stripMemberAccessMarkers(fields[i]).find(memberName) !=
-              std::string::npos) {
-            idx = i;
-            break;
-          }
-        }
-      }
-    }
-  }
-
   if (idx == -1) {
     std::string typeDesc = stName.empty() ? "anonymous struct or tuple"
                                           : ("struct '" + stName + "'");
-    error(mem, DiagID::ERR_CODEGEN_FAILED_TO_RESOLVE_MEMBER_IN, mem->Member, typeDesc);
+    error(mem, DiagID::ERR_CODEGEN_FAILED_TO_RESOLVE_MEMBER_IN, mem->Member,
+          typeDesc);
     return nullptr;
   }
 
