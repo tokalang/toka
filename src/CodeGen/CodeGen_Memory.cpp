@@ -534,63 +534,79 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     }
   }
 
-  llvm::Type *objType = nullptr;
-  std::string objShapeName;
-  if (mem->Object->ResolvedType) {
-    auto base = mem->Object->ResolvedType;
-    // Unwrap pointers/references to get the underlying Shape/Struct type
-    while (base && (base->isPointer() || base->isReference() ||
-                    base->isSmartPointer())) {
-      auto next = base->getPointeeType();
+  struct MemberObjectInfo {
+    llvm::Type *ObjectType = nullptr;
+    llvm::StructType *StructTy = nullptr;
+    std::string ShapeName;
+  };
+
+  auto peelObjectType = [](std::shared_ptr<toka::Type> type) {
+    while (type &&
+           (type->isPointer() || type->isReference() || type->isSmartPointer())) {
+      auto next = type->getPointeeType();
       if (!next)
         break;
-      base = next;
+      type = next;
     }
-    if (base) {
-      objType = getLLVMType(base);
-      if (base->isShape()) {
-        objShapeName = base->getSoulName();
-      }
-    }
-  }
+    return type;
+  };
 
-  // Fallback for cases without ResolvedType (unlikely in modern Toka Sema)
-  if (!objType) {
-    if (auto *ptrTy = llvm::dyn_cast<llvm::PointerType>(objAddr->getType())) {
-      if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(objAddr)) {
-        objType = alloca->getAllocatedType();
-      } else if (auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(objAddr)) {
-        objType = gep->getResultElementType();
-      } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objAddr)) {
-        objType = load->getType();
-      }
-    }
-  }
+  auto resolveMemberObject = [&](const Expr *object,
+                                 llvm::Value *addr) -> MemberObjectInfo {
+    MemberObjectInfo info;
 
-  // Final fallback: Contextual Symbol Table (for 'self', globals, etc)
-  if (!objType || !objType->isStructTy()) {
-    if (auto *ve = dynamic_cast<const VariableExpr *>(mem->Object.get())) {
-      std::string baseName = ve->Name;
-      while (!baseName.empty() &&
-             (baseName[0] == '*' || baseName[0] == '&' || baseName[0] == '#'))
-        baseName = baseName.substr(1);
-      if (m_Symbols.count(baseName)) {
-        objType = m_Symbols[baseName].soulType;
-        if (m_Symbols[baseName].soulTypeObj) {
-          objShapeName = m_Symbols[baseName].soulTypeObj->getSoulName();
+    if (object->ResolvedType) {
+      auto base = peelObjectType(object->ResolvedType);
+      if (base) {
+        info.ObjectType = getLLVMType(base);
+        if (base->isShape()) {
+          info.ShapeName = base->getSoulName();
         }
       }
     }
-  }
 
+    // Fallback for cases without ResolvedType (unlikely in modern Toka Sema).
+    if (!info.ObjectType) {
+      if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(addr)) {
+        info.ObjectType = alloca->getAllocatedType();
+      } else if (auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(addr)) {
+        info.ObjectType = gep->getResultElementType();
+      } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(addr)) {
+        info.ObjectType = load->getType();
+      }
+    }
+
+    // Final fallback: contextual symbol table for self/globals.
+    if (!info.ObjectType || !info.ObjectType->isStructTy()) {
+      if (auto *ve = dynamic_cast<const VariableExpr *>(object)) {
+        std::string baseName = ve->Name;
+        while (!baseName.empty() &&
+               (baseName[0] == '*' || baseName[0] == '&' || baseName[0] == '#'))
+          baseName = baseName.substr(1);
+        if (m_Symbols.count(baseName)) {
+          const TokaSymbol &sym = m_Symbols[baseName];
+          info.ObjectType = sym.soulType;
+          if (sym.soulTypeObj) {
+            info.ShapeName = sym.soulTypeObj->getSoulName();
+          }
+        }
+      }
+    }
+
+    if (info.ObjectType && info.ObjectType->isStructTy()) {
+      info.StructTy = llvm::cast<llvm::StructType>(info.ObjectType);
+    }
+    if (!info.StructTy && !info.ShapeName.empty() &&
+        m_StructTypes.count(info.ShapeName)) {
+      info.StructTy = m_StructTypes[info.ShapeName];
+    }
+    return info;
+  };
+
+  MemberObjectInfo objInfo = resolveMemberObject(mem->Object.get(), objAddr);
   int idx = mem->Index;
-  llvm::StructType *st = nullptr;
-  if (objType && objType->isStructTy()) {
-    st = llvm::cast<llvm::StructType>(objType);
-  }
-  if (!st && !objShapeName.empty() && m_StructTypes.count(objShapeName)) {
-    st = m_StructTypes[objShapeName];
-  }
+  llvm::StructType *st = objInfo.StructTy;
+  const std::string &objShapeName = objInfo.ShapeName;
 
   // [Fix] Handle Auto-Dereference (Identity -> Soul) for Deref Expressions
   // (*p.x) If the object expression is a Dereference (*p), genAddr returned the
