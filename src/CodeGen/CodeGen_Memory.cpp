@@ -767,27 +767,33 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     return nullptr;
   }
 
+  auto shapeDeclFromType =
+      [&](std::shared_ptr<toka::Type> type) -> const ShapeDecl * {
+    auto soul = peelObjectType(type);
+    if (!soul || !soul->isShape())
+      return nullptr;
+    auto shapeType = std::dynamic_pointer_cast<ShapeType>(soul);
+    return shapeType ? shapeType->Decl : nullptr;
+  };
+
+  auto findNamedShape = [&](const std::string &name) -> const ShapeDecl * {
+    if (name.empty())
+      return nullptr;
+    auto shapeIt = m_Shapes.find(name);
+    return shapeIt == m_Shapes.end() ? nullptr : shapeIt->second;
+  };
+
+  const ShapeDecl *namedShape = findNamedShape(stName);
+  const ShapeDecl *objectShape = shapeDeclFromType(mem->Object->ResolvedType);
+  const ShapeDecl *memberShape = namedShape ? namedShape : objectShape;
+
   // Resolve Metadata & IR Type safely
   std::string memberTypeName = "";
   llvm::Type *irTy = nullptr;
-  bool isUnion = false;
+  bool isUnion = objectShape && objectShape->Kind == ShapeKind::Union;
 
-  if (mem->Object->ResolvedType) {
-    auto soul = mem->Object->ResolvedType;
-    while (soul && (soul->isPointer() || soul->isReference() ||
-                    soul->isSmartPointer())) {
-      soul = soul->getPointeeType();
-    }
-    if (soul && soul->isShape()) {
-      auto stType = std::dynamic_pointer_cast<ShapeType>(soul);
-      if (stType->Decl && stType->Decl->Kind == ShapeKind::Union) {
-        isUnion = true;
-      }
-    }
-  }
-
-  if (!isUnion && !stName.empty() && m_Shapes.count(stName)) {
-    isUnion = (m_Shapes[stName]->Kind == ShapeKind::Union);
+  if (!isUnion && namedShape) {
+    isUnion = (namedShape->Kind == ShapeKind::Union);
   }
 
   llvm::Value *fieldAddr = nullptr;
@@ -797,19 +803,7 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     // Union: bitcast base address to the desired member's type.
     // The physical struct 'st' has only one element: [maxSize x i8].
     llvm::Type *destTy = nullptr;
-    const ShapeDecl *sh = nullptr;
-    if (!stName.empty() && m_Shapes.count(stName)) {
-      sh = m_Shapes[stName];
-    } else if (mem->Object->ResolvedType) {
-      auto soul = mem->Object->ResolvedType;
-      while (soul && (soul->isPointer() || soul->isReference() ||
-                      soul->isSmartPointer())) {
-        soul = soul->getPointeeType();
-      }
-      if (soul && soul->isShape()) {
-        sh = std::dynamic_pointer_cast<ShapeType>(soul)->Decl;
-      }
-    }
+    const ShapeDecl *sh = memberShape;
 
     if (sh && idx >= 0 && idx < (int)sh->Members.size()) {
       if (sh->Members[idx].ResolvedType) {
@@ -827,28 +821,12 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
 
   llvm::Value *finalAddr = fieldAddr;
 
-  if (!stName.empty() && m_Shapes.count(stName)) {
-    const ShapeDecl *sh = m_Shapes[stName];
-    if (idx >= 0 && idx < (int)sh->Members.size()) {
-      memberTypeName = sh->Members[idx].Type;
-      if (sh->Members[idx].ResolvedType)
-        irTy = getLLVMType(sh->Members[idx].ResolvedType);
-      else
-        irTy = resolveType(memberTypeName, false);
-    }
-  } else if (mem->Object->ResolvedType) {
-    auto soul = mem->Object->ResolvedType;
-    while (soul && (soul->isPointer() || soul->isReference() ||
-                    soul->isSmartPointer())) {
-      soul = soul->getPointeeType();
-    }
-    if (soul && soul->isShape()) {
-      auto sh = std::dynamic_pointer_cast<ShapeType>(soul)->Decl;
-      if (sh && idx >= 0 && idx < (int)sh->Members.size()) {
-        memberTypeName = sh->Members[idx].Type;
-        if (sh->Members[idx].ResolvedType)
-          irTy = getLLVMType(sh->Members[idx].ResolvedType);
-      }
+  if (memberShape && idx >= 0 && idx < (int)memberShape->Members.size()) {
+    memberTypeName = memberShape->Members[idx].Type;
+    if (memberShape->Members[idx].ResolvedType) {
+      irTy = getLLVMType(memberShape->Members[idx].ResolvedType);
+    } else if (namedShape) {
+      irTy = resolveType(memberTypeName, false);
     }
   }
 
