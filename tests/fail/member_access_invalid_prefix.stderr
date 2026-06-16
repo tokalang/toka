@@ -1,0 +1,15 @@
+error[E01175]: Expected member name or index after '.'
+ --> tests/fail/member_access_invalid_prefix.tk:15:23
+    |
+ 15 |         auto p1 = c.??^ptr.x
+    |                       ^
+error[E01175]: Expected member name or index after '.'
+ --> tests/fail/member_access_invalid_prefix.tk:18:23
+    |
+ 18 |         auto p2 = c.??#ptr.x
+    |                       ^
+error[E01175]: Expected member name or index after '.'
+ --> tests/fail/member_access_invalid_prefix.tk:21:23
+    |
+ 21 |         auto p3 = c.^##ptr.x
+    |                       ^

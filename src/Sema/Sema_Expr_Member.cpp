@@ -37,7 +37,7 @@ static std::string getStringifyPath(Expr *E) {
   }
   if (auto *me = dynamic_cast<MemberExpr *>(E)) {
     std::string member =
-        toka::Type::stripMorphology(stripMemberAccessMarkers(me->Member));
+        toka::Type::stripMorphology(parseMemberAccess(me->Member).StrippedName);
     return getStringifyPath(me->Object.get()) + "." + member;
   }
   if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
@@ -53,6 +53,25 @@ static std::string getStringifyPath(Expr *E) {
 }
 
 std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
+  MemberAccessIntent intent = parseMemberAccess(Memb->Member);
+  bool hasInvalidMix = false;
+  if (intent.IsIdentityAssertion || intent.IsIdentityOperator) {
+    if (!intent.MemberName.empty() && intent.MemberName[0] != '\'' && isMemberAccessPrefixChar(intent.MemberName[0])) {
+      hasInvalidMix = true;
+    }
+  }
+  int rebindCount = 0;
+  for (char c : intent.Prefix) {
+    if (c == '#') {
+      rebindCount++;
+    }
+  }
+  if (hasInvalidMix || rebindCount > 1) {
+    DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_GENERIC_SEMA, "Invalid member access prefix combination: '" + Memb->Member + "'");
+    HasError = true;
+    return nullptr;
+  }
+
   std::string path = getStringifyPath(Memb);
   bool isNarrowed = m_NarrowedPaths.count(path);
 

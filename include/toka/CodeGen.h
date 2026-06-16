@@ -214,13 +214,6 @@ private:
     std::string StructName;
   };
 
-  struct MemberShapeContext {
-    const ShapeDecl *NamedShape = nullptr;
-    const ShapeDecl *ObjectShape = nullptr;
-    const ShapeDecl *MemberShape = nullptr;
-    bool IsLegacyBareUnion = false;
-  };
-
   struct MemberFieldStorage {
     llvm::Value *Addr = nullptr;
     std::string TypeName;
@@ -243,12 +236,8 @@ private:
   llvm::Value *peelNestedMemberBaseAddress(const Expr *object, llvm::Value *addr);
   MemberObjectInfo resolveMemberObject(const Expr *object, llvm::Value *addr);
   llvm::Value *peelDerefObjectToSoulAddress(const Expr *object, llvm::Value *addr);
-  MemberFieldInfo findUniqueStructForMember(const std::string &name);
   MemberFieldInfo resolveMemberField(llvm::StructType *structTy, const std::string &shapeName, int initialIndex, const std::string &name);
-  const ShapeDecl *findNamedShape(const std::string &name);
-  MemberShapeContext resolveMemberShapeContext(const std::string &stName, const Expr *objectExpr);
-  llvm::Value *emitLegacyBareUnionMemberAddress(const MemberShapeContext &context, llvm::Value *objAddr, int idx);
-  MemberFieldStorage emitMemberFieldStorage(const MemberShapeContext &context, llvm::StructType *structTy, llvm::Value *objAddr, int idx, const std::string &memberName);
+  MemberFieldStorage emitMemberFieldStorage(const ShapeDecl *memberShape, const ShapeDecl *namedShape, llvm::StructType *structTy, llvm::Value *objAddr, int idx, const std::string &memberName);
   llvm::Value *emitMemberHatOffLoads(llvm::Value *addr, const MemberHatPlan &plan);
   llvm::Type *resolveMemberResultType(llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
   MemberMaterialization emitMaterializedMemberValue(llvm::Value *addr, llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);

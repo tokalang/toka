@@ -1,0 +1,19 @@
+shape Point(
+    x: i32,
+    y: i32
+)
+
+shape Container(
+    ^ptr: Point
+)
+
+fn main() -> i32 {
+    unsafe {
+        auto c = Container(^ptr=new Point(x=10, y=20))
+
+        // Test ?? assertion
+        auto p2 = c.??ptr.x
+        assert(p2 == 10, "?? assertion failed")
+    }
+    return 0
+}

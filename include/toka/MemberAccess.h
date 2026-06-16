@@ -23,10 +23,13 @@ struct MemberAccessIntent {
   std::string MemberName;
   std::string StrippedName;
   int AccessHats = 0;
-  bool IsMorphicIdentity = false;
+  bool HasRebindMarker = false;
   bool IsIdentityAssertion = false;
+  bool IsIdentityOperator = false;
+  bool IsMorphicIdentity = false;
+  bool HasExplicitPrefix = false;
 
-  bool hasExplicitPrefix() const { return !Prefix.empty(); }
+  bool hasExplicitPrefix() const { return HasExplicitPrefix; }
 };
 
 inline bool isMemberAccessPrefixChar(char c) {
@@ -34,10 +37,14 @@ inline bool isMemberAccessPrefixChar(char c) {
          c == '#' || c == '!';
 }
 
+inline bool isMemberAccessHatChar(char c) {
+  return c == '^' || c == '*' || c == '~' || c == '&';
+}
+
 inline int countLeadingMemberHats(const std::string &s) {
   int count = 0;
   for (char c : s) {
-    if (c == '^' || c == '*' || c == '~' || c == '&')
+    if (isMemberAccessHatChar(c))
       count++;
     else
       break;
@@ -53,15 +60,24 @@ inline MemberAccessIntent parseMemberAccess(const std::string &rawName) {
   if (rawName.size() >= 2 && rawName.substr(0, 2) == "??") {
     prefixEnd = 2;
     intent.IsIdentityAssertion = true;
+  } else if (rawName.size() >= 2 && rawName.substr(0, 2) == "?!") {
+    prefixEnd = 2;
+    intent.IsIdentityOperator = true;
   } else {
     while (prefixEnd < rawName.size() &&
            isMemberAccessPrefixChar(rawName[prefixEnd])) {
+      char c = rawName[prefixEnd];
+      if (isMemberAccessHatChar(c)) {
+        intent.AccessHats++;
+      } else if (c == '#') {
+        intent.HasRebindMarker = true;
+      }
       prefixEnd++;
     }
   }
 
   intent.Prefix = rawName.substr(0, prefixEnd);
-  intent.AccessHats = countLeadingMemberHats(rawName);
+  intent.HasExplicitPrefix = !intent.Prefix.empty();
 
   intent.MemberName = rawName.substr(prefixEnd);
   if (!intent.MemberName.empty() && intent.MemberName[0] == '\'') {
