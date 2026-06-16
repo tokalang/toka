@@ -197,6 +197,8 @@ void parseSource(const std::string &filename,
   auto module = parser.parseModule();
 
   if (!module) return;
+  module->SourcePath = resolvedPath;
+  module->IsRootModule = (recursionStack.size() == 1);
 
   for (const auto &imp : module->Imports) {
       std::string importPath = imp->PhysicalPath;
@@ -206,14 +208,24 @@ void parseSource(const std::string &filename,
           importPath = parentDir + "/" + importPath;
       }
       
-      std::string subResolved = resolveSourcePath(importPath, searchPaths, recursionStack);
+      std::vector<std::string> localSearchPaths = searchPaths;
+      size_t libPos = resolvedPath.find("/lib/");
+      if (libPos == std::string::npos) {
+          libPos = resolvedPath.find("\\lib\\");
+      }
+      if (libPos != std::string::npos) {
+          std::string pkgRoot = resolvedPath.substr(0, libPos);
+          localSearchPaths.push_back(pkgRoot);
+      }
+      
+      std::string subResolved = resolveSourcePath(importPath, localSearchPaths, recursionStack);
       if (!subResolved.empty()) {
           imp->ResolvedPath = toka::PathUtils::canonicalize(subResolved);
       } else {
           imp->ResolvedPath = "";
       }
       
-      parseSource(subResolved.empty() ? importPath : subResolved, astModules, visited, recursionStack, sm, searchPaths);
+      parseSource(subResolved.empty() ? importPath : subResolved, astModules, visited, recursionStack, sm, localSearchPaths);
   }
 
   astModules.push_back(std::move(module));

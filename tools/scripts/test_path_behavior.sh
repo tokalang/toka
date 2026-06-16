@@ -4,11 +4,16 @@
 set -e
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
-# Resolve TOKAC to absolute path if it is relative
+# Resolve TOKAC to absolute path
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
-else
+elif [[ "$TOKAC" = *.* || "$TOKAC" = */* ]]; then
     TOKAC_ABS="$(cd "$(dirname "$TOKAC")" && pwd)/$(basename "$TOKAC")"
+else
+    TOKAC_ABS="$(command -v "$TOKAC" 2>/dev/null || echo "$TOKAC")"
+    if [[ "$TOKAC_ABS" != /* ]]; then
+        TOKAC_ABS="./$TOKAC"
+    fi
 fi
 TEST_DIR="./tmp/path_test"
 
