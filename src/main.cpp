@@ -177,40 +177,11 @@ static std::string normalizePath(const std::string &path) {
   return toka::PathUtils::normalize(path);
 }
 
-void parseSource(const std::string &rawFilename,
-                 std::vector<std::unique_ptr<toka::Module>> &astModules,
-                 std::set<std::string> &visited,
-                 std::vector<std::string> &recursionStack,
-                 toka::SourceManager &sm,
-                 const std::vector<std::string> &searchPaths,
-                 const std::map<std::string, std::string> &pkgMap) {
-  std::string filename = normalizePath(rawFilename);
-  // Check recursion stack for circular dependency
-  for (const auto &f : recursionStack) {
-    if (f == filename) {
-      std::string dir1 = normalizePath(std::filesystem::absolute(filename).parent_path().string());
-      std::string dir2 = normalizePath(std::filesystem::absolute(f).parent_path().string());
-      if (dir1 == dir2) {
-        // Allow circular imports within the same physical directory to allow modular file splitting
-        return;
-      }
-      std::string chain;
-      for (const auto &s : recursionStack)
-        chain += s + " -> ";
-      chain += filename;
-      toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO,
-                                     "Circular dependency detected: " + chain);
-      return;
-    }
-  }
-
-  if (visited.count(filename))
-    return;
-  visited.insert(filename);
-  recursionStack.push_back(filename);
-
-  std::string resolvedPath = filename;
-  bool found = false;
+static std::string resolveSourcePath(const std::string &rawFilename,
+                                     const std::vector<std::string> &searchPaths,
+                                     const std::map<std::string, std::string> &pkgMap,
+                                     const std::vector<std::string> &recursionStack) {
+  std::string filename = toka::PathUtils::normalize(rawFilename);
 
   auto fileExists = [](const std::string &p) {
     return std::ifstream(p).good();
@@ -238,15 +209,16 @@ void parseSource(const std::string &rawFilename,
     }
   }
 
-  bool hasExt = (filename.find(".tk") != std::string::npos) || 
-                (filename.find(".tki") != std::string::npos);
+  bool hasExt = toka::PathUtils::hasTokaSourceExtension(filename);
+
+  std::string resolvedPath = filename;
+  bool found = false;
 
   // 0. Check package aliases
   auto pkgIt = pkgMap.find(filename);
   if (pkgIt != pkgMap.end()) {
     std::string mapped = pkgIt->second;
-    bool mappedHasExt = (mapped.find(".tk") != std::string::npos) || 
-                        (mapped.find(".tki") != std::string::npos);
+    bool mappedHasExt = toka::PathUtils::hasTokaSourceExtension(mapped);
     if (!mappedHasExt) {
       if (fileExists(mapped + ".tk")) {
         resolvedPath = mapped + ".tk";
@@ -338,11 +310,49 @@ void parseSource(const std::string &rawFilename,
     }
   }
 
-  if (!found) {
+  if (found) {
+    return toka::PathUtils::normalize(resolvedPath);
+  }
+  return "";
+}
+
+void parseSource(const std::string &rawFilename,
+                 std::vector<std::unique_ptr<toka::Module>> &astModules,
+                 std::set<std::string> &visited,
+                 std::vector<std::string> &recursionStack,
+                 toka::SourceManager &sm,
+                 const std::vector<std::string> &searchPaths,
+                 const std::map<std::string, std::string> &pkgMap) {
+  std::string resolvedPath = resolveSourcePath(rawFilename, searchPaths, pkgMap, recursionStack);
+  if (resolvedPath.empty()) {
     toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO,
-                                   "Could not open file: " + filename);
+                                   "Could not open file: " + toka::PathUtils::normalize(rawFilename));
     return;
   }
+
+  // Check recursion stack for circular dependency
+  for (const auto &f : recursionStack) {
+    if (f == resolvedPath) {
+      std::string dir1 = toka::PathUtils::normalize(std::filesystem::absolute(resolvedPath).parent_path().string());
+      std::string dir2 = toka::PathUtils::normalize(std::filesystem::absolute(f).parent_path().string());
+      if (dir1 == dir2) {
+        // Allow circular imports within the same physical directory to allow modular file splitting
+        return;
+      }
+      std::string chain;
+      for (const auto &s : recursionStack)
+        chain += s + " -> ";
+      chain += resolvedPath;
+      toka::DiagnosticEngine::report(toka::DiagLoc{}, toka::DiagID::ERR_FILE_IO,
+                                     "Circular dependency detected: " + chain);
+      return;
+    }
+  }
+
+  if (visited.count(resolvedPath))
+    return;
+  visited.insert(resolvedPath);
+  recursionStack.push_back(resolvedPath);
 
   if (verboseMode) llvm::errs() << "Parsing " << resolvedPath << "...\n";
 
@@ -358,7 +368,6 @@ void parseSource(const std::string &rawFilename,
   toka::Lexer lexer(code.c_str(), startLoc);
   auto tokens = lexer.tokenize();
 
-  resolvedPath = normalizePath(resolvedPath);
   toka::Parser parser(tokens, resolvedPath);
   auto module = parser.parseModule();
   if (module) {

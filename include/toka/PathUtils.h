@@ -20,18 +20,18 @@ inline bool isInterfaceFile(const std::string &path) {
   return path.length() > 4 && path.substr(path.length() - 4) == ".tki";
 }
 
+// Check if a path has a Toka source file extension (.tk or .tki or .tk_lib)
+inline bool hasTokaSourceExtension(const std::string &path) {
+  std::string ext = std::filesystem::path(path).extension().string();
+  return ext == ".tk" || ext == ".tki" || ext == ".tk_lib";
+}
+
 // Get interface path next to outputFile (same directory, same stem, replace suffix with .tki)
 // or CWD if outputFile is empty.
 inline std::string getInterfacePath(const std::string &outputFile, const std::string &sourcePath) {
   std::string outPath;
   if (!outputFile.empty()) {
-    outPath = outputFile;
-    size_t dotPos = outPath.find_last_of('.');
-    if (dotPos != std::string::npos) {
-      outPath = outPath.substr(0, dotPos) + ".tki";
-    } else {
-      outPath += ".tki";
-    }
+    outPath = normalize(std::filesystem::path(outputFile).replace_extension(".tki").string());
   } else {
     // Write to CWD, avoiding source directory pollution
     size_t lastSlash = sourcePath.find_last_of("/\\");

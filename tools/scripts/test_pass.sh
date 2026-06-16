@@ -376,3 +376,10 @@ echo -e "  Passed: ${GREEN}$pass_count${NC}"
 echo -e "  Failed: ${RED}$fail_count${NC}"
 
 [ $fail_count -eq 0 ] || exit 1
+
+echo ""
+echo "Running ODR Path & Interface Behavior lock tests..."
+if ! bash tools/scripts/test_path_behavior.sh; then
+    echo -e "${RED}Path behavior lock tests failed!${NC}"
+    exit 1
+fi

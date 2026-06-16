@@ -42,6 +42,19 @@ if [ -f "$TEST_DIR/src/helper.tki" ]; then
 fi
 echo "PASS: Test 1"
 
+echo "Test 1b: Output .tki next to -o target with dotted directory in path"
+mkdir -p "$TEST_DIR/build.v1"
+$TOKAC -c "$TEST_DIR/src/helper.tk" -o "$TEST_DIR/build.v1/app"
+if [ ! -f "$TEST_DIR/build.v1/app.tki" ]; then
+    echo "FAIL: app.tki not found in build.v1 directory"
+    exit 1
+fi
+if [ -f "$TEST_DIR/build.v1/build.tki" ]; then
+    echo "FAIL: Incorrectly generated build.tki due to dotted directory"
+    exit 1
+fi
+echo "PASS: Test 1b"
+
 echo "Test 2: Output .tki in CWD when -o is not specified"
 cd "$TEST_DIR"
 rm -f *.tki
