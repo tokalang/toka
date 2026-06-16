@@ -19,6 +19,7 @@
 #include "toka/TKIExporter.h"
 #include "toka/SourceLocation.h"
 #include "toka/SourceManager.h"
+#include "toka/PathUtils.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -173,9 +174,7 @@ bool verboseMode = false;
 bool g_JsonDiagnostics = false;
 
 static std::string normalizePath(const std::string &path) {
-  std::string p = std::filesystem::path(path).lexically_normal().string();
-  std::replace(p.begin(), p.end(), '\\', '/');
-  return p;
+  return toka::PathUtils::normalize(path);
 }
 
 void parseSource(const std::string &rawFilename,
@@ -249,11 +248,11 @@ void parseSource(const std::string &rawFilename,
     bool mappedHasExt = (mapped.find(".tk") != std::string::npos) || 
                         (mapped.find(".tki") != std::string::npos);
     if (!mappedHasExt) {
-      if (fileExists(mapped + ".tki")) {
-        resolvedPath = mapped + ".tki";
-        found = true;
-      } else if (fileExists(mapped + ".tk")) {
+      if (fileExists(mapped + ".tk")) {
         resolvedPath = mapped + ".tk";
+        found = true;
+      } else if (fileExists(mapped + ".tki")) {
+        resolvedPath = mapped + ".tki";
         found = true;
       } else if (fileExists(mapped)) {
         resolvedPath = mapped;
@@ -296,11 +295,11 @@ void parseSource(const std::string &rawFilename,
       }
     }
     
-    if (canUseTki) {
-      resolvedPath = resolvedTki;
-      found = true;
-    } else if (canUseTk) {
+    if (canUseTk) {
       resolvedPath = resolvedTk;
+      found = true;
+    } else if (canUseTki) {
+      resolvedPath = resolvedTki;
       found = true;
     }
   }
@@ -325,13 +324,13 @@ void parseSource(const std::string &rawFilename,
         break;
       }
       if (!hasExt) {
-        if (fileExists(libPath + ".tki")) {
-          resolvedPath = libPath + ".tki";
+        if (fileExists(libPath + ".tk")) {
+          resolvedPath = libPath + ".tk";
           found = true;
           break;
         }
-        if (fileExists(libPath + ".tk")) {
-          resolvedPath = libPath + ".tk";
+        if (fileExists(libPath + ".tki")) {
+          resolvedPath = libPath + ".tki";
           found = true;
           break;
         }
@@ -595,26 +594,7 @@ int main(int argc, char **argv) {
   if (emitInterface) {
     for (const auto &ast : astModules) {
       if (ast->IsRootModule) {
-        std::string outPath;
-        if (!outputFile.empty()) {
-          outPath = outputFile;
-          size_t dotPos = outPath.find_last_of('.');
-          if (dotPos != std::string::npos) {
-            outPath = outPath.substr(0, dotPos) + ".tki";
-          } else {
-            outPath += ".tki";
-          }
-        } else {
-          std::string sourcePath = ast->SourcePath;
-          size_t lastSlash = sourcePath.find_last_of("/\\");
-          std::string baseName = (lastSlash == std::string::npos) ? sourcePath : sourcePath.substr(lastSlash + 1);
-          size_t dotPos = baseName.find_last_of('.');
-          if (dotPos != std::string::npos && (baseName.substr(dotPos) == ".tk" || baseName.substr(dotPos) == ".tk_lib")) {
-            outPath = baseName.substr(0, dotPos) + ".tki";
-          } else {
-            outPath = baseName + ".tki";
-          }
-        }
+        std::string outPath = toka::PathUtils::getInterfacePath(outputFile, ast->SourcePath);
         
         if (verboseMode) llvm::errs() << "Exporting TKI Interface to " << outPath << "...\n";
         

@@ -15,6 +15,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
+#include "toka/PathUtils.h"
 #include "toka/Parser.h"
 #include <algorithm>
 #include <cassert>
@@ -466,8 +467,7 @@ void Sema::registerGlobals(Module &M) {
         std::string parentDir = (lastSlash == std::string::npos) ? "." : M.SourcePath.substr(0, lastSlash);
         importPath = parentDir + "/" + importPath;
     }
-    std::string normImport = std::filesystem::path(importPath).lexically_normal().string();
-    std::replace(normImport.begin(), normImport.end(), '\\', '/');
+    std::string normImport = toka::PathUtils::normalize(importPath);
     std::vector<std::string> normTries = {
         normImport,
         normImport + ".tk",

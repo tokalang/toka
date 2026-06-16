@@ -16,6 +16,7 @@
 #include "toka/Parser.h"
 #include "llvm/TargetParser/Triple.h"
 #include "toka/SourceManager.h"
+#include "toka/PathUtils.h"
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -278,7 +279,7 @@ void CodeGen::resolveSignatures(const Module &ast) {
 
 void CodeGen::generate(const Module &ast) {
   m_AST = &ast;
-  bool declOnly = !ast.IsRootModule && (ast.SourcePath.length() > 4 && ast.SourcePath.substr(ast.SourcePath.length() - 4) == ".tki");
+  bool declOnly = toka::PathUtils::isDeclOnly(ast.IsRootModule, ast.SourcePath);
 
   // Generate Globals (Emission)
   for (const auto &glob : ast.Globals) {

@@ -16,6 +16,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
+#include "toka/PathUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/IR/Comdat.h"
 #include "llvm/TargetParser/Triple.h"
@@ -1478,7 +1479,7 @@ void CodeGen::genGlobal(const Stmt *stmt) {
       type = llvm::Type::getInt32Ty(m_Context);
     }
 
-    bool declOnly = !m_AST->IsRootModule && (m_AST->SourcePath.length() > 4 && m_AST->SourcePath.substr(m_AST->SourcePath.length() - 4) == ".tki");
+    bool declOnly = toka::PathUtils::isDeclOnly(m_AST->IsRootModule, m_AST->SourcePath);
     llvm::Constant *finalConstInit = constInit;
     if (declOnly && !var->IsConst) {
       finalConstInit = nullptr;
