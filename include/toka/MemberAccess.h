@@ -21,6 +21,8 @@ struct MemberAccessIntent {
   std::string Original;
   std::string Prefix;
   std::string MemberName;
+  std::string StrippedName;
+  int AccessHats = 0;
   bool IsMorphicIdentity = false;
   bool IsIdentityAssertion = false;
 
@@ -30,6 +32,17 @@ struct MemberAccessIntent {
 inline bool isMemberAccessPrefixChar(char c) {
   return c == '*' || c == '^' || c == '~' || c == '&' || c == '?' ||
          c == '#' || c == '!';
+}
+
+inline int countLeadingMemberHats(const std::string &s) {
+  int count = 0;
+  for (char c : s) {
+    if (c == '^' || c == '*' || c == '~' || c == '&')
+      count++;
+    else
+      break;
+  }
+  return count;
 }
 
 inline MemberAccessIntent parseMemberAccess(const std::string &rawName) {
@@ -48,21 +61,26 @@ inline MemberAccessIntent parseMemberAccess(const std::string &rawName) {
   }
 
   intent.Prefix = rawName.substr(0, prefixEnd);
+  intent.AccessHats = countLeadingMemberHats(rawName);
+
   intent.MemberName = rawName.substr(prefixEnd);
   if (!intent.MemberName.empty() && intent.MemberName[0] == '\'') {
     intent.IsMorphicIdentity = true;
     intent.MemberName = intent.MemberName.substr(1);
   }
-  return intent;
-}
 
-inline std::string stripMemberAccessMarkers(const std::string &rawName) {
-  std::string name = parseMemberAccess(rawName).MemberName;
+  std::string name = intent.MemberName;
   while (!name.empty() &&
          (name.back() == '#' || name.back() == '?' || name.back() == '!')) {
     name.pop_back();
   }
-  return name;
+  intent.StrippedName = name;
+
+  return intent;
+}
+
+inline std::string stripMemberAccessMarkers(const std::string &rawName) {
+  return parseMemberAccess(rawName).StrippedName;
 }
 
 } // namespace toka

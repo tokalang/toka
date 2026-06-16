@@ -94,3 +94,15 @@ promo/
 /tokac/
 /toka_bootstrap/
 
+# Local temp binaries, test index files, and package archives
+/my_tokac
+/xx_tokac
+/toka_bootc
+*.tki
+*.tar.gz
+
+# Local WebAssembly playground build assets
+/playground/tokacheck.js
+/playground/tokacheck.wasm
+/website/public/playground/
+

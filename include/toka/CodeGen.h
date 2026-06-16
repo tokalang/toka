@@ -201,6 +201,7 @@ private:
   llvm::Type *getLLVMType(std::shared_ptr<Type> type);
 
   // --- Member Access CodeGen Refactoring Helpers ---
+private:
   struct MemberObjectInfo {
     llvm::Type *ObjectType = nullptr;
     llvm::StructType *StructTy = nullptr;
@@ -242,20 +243,16 @@ private:
   llvm::Value *peelNestedMemberBaseAddress(const Expr *object, llvm::Value *addr);
   MemberObjectInfo resolveMemberObject(const Expr *object, llvm::Value *addr);
   llvm::Value *peelDerefObjectToSoulAddress(const Expr *object, llvm::Value *addr);
-  int findMemberIndexInFields(const std::vector<std::string> &fields, const std::string &name, bool allowPartialMatch);
   MemberFieldInfo findUniqueStructForMember(const std::string &name);
-  std::string resolveStructName(llvm::StructType *structTy, const std::string &shapeName);
   MemberFieldInfo resolveMemberField(llvm::StructType *structTy, const std::string &shapeName, int initialIndex, const std::string &name);
-  const ShapeDecl *shapeDeclFromType(std::shared_ptr<Type> type);
   const ShapeDecl *findNamedShape(const std::string &name);
   MemberShapeContext resolveMemberShapeContext(const std::string &stName, const Expr *objectExpr);
   llvm::Value *emitLegacyBareUnionMemberAddress(const MemberShapeContext &context, llvm::Value *objAddr, int idx);
-  MemberFieldStorage resolveMemberFieldStorage(const MemberShapeContext &context, llvm::StructType *structTy, llvm::Value *objAddr, int idx, const std::string &memberName);
-  int countLeadingMemberHats(const std::string &s);
-  MemberHatPlan resolveMemberHatPlan(const ShapeDecl *namedShape, int idx, const MemberAccessIntent &access, const std::shared_ptr<Type> &resolvedType);
-  llvm::Value *applyMemberHatOffLoads(llvm::Value *addr, const MemberHatPlan &plan);
+  MemberFieldStorage emitMemberFieldStorage(const MemberShapeContext &context, llvm::StructType *structTy, llvm::Value *objAddr, int idx, const std::string &memberName);
+  llvm::Value *emitMemberHatOffLoads(llvm::Value *addr, const MemberHatPlan &plan);
   llvm::Type *resolveMemberResultType(llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
-  MemberMaterialization materializeMemberValue(llvm::Value *addr, llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
+  MemberMaterialization emitMaterializedMemberValue(llvm::Value *addr, llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
+  MemberHatPlan resolveMemberHatPlan(const ShapeDecl *namedShape, int idx, int accessHats, bool isIdentityAssertion, bool isIdentityOperator, const std::shared_ptr<Type> &resolvedType);
 
   // Deprecated/Legacy version
   void fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,

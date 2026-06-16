@@ -54,6 +54,50 @@ static bool isDerefObjectForMemberAccess(const UnaryExpr *ue) {
 }
 
 
+static const ShapeDecl *shapeDeclFromType(std::shared_ptr<toka::Type> type) {
+  auto soul = peelMemberObjectType(type);
+  if (!soul || !soul->isShape())
+    return nullptr;
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(soul);
+  return shapeType ? shapeType->Decl : nullptr;
+}
+
+static std::string resolveStructName(llvm::StructType *structTy,
+                                     const std::string &shapeName,
+                                     const std::map<llvm::Type *, std::string> &typeToName,
+                                     const std::map<std::string, llvm::StructType *> &structTypes) {
+  if (!shapeName.empty() && structTypes.count(shapeName) &&
+      structTypes.at(shapeName) == structTy) {
+    return shapeName;
+  }
+  auto typeIt = typeToName.find(structTy);
+  if (typeIt != typeToName.end()) {
+    return typeIt->second;
+  }
+  for (const auto &pair : structTypes) {
+    if (pair.second == structTy) {
+      return pair.first;
+    }
+  }
+  return std::string();
+}
+
+static int findMemberIndexInFields(const std::vector<std::string> &fields,
+                                   const std::string &name,
+                                   bool allowPartialMatch) {
+  for (size_t i = 0; i < fields.size(); i++) {
+    std::string fieldName = stripMemberAccessMarkers(fields[i]);
+    if (allowPartialMatch ? fieldName.find(name) != std::string::npos
+                          : fieldName == name) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+
+
+
 PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
   llvm::Function *allocHook = m_Module->getFunction("__toka_alloc");
   if (!allocHook) {
@@ -637,20 +681,10 @@ llvm::Value *CodeGen::peelDerefObjectToSoulAddress(const Expr *object,
                               "member.peel_soul");
 }
 
-int CodeGen::findMemberIndexInFields(const std::vector<std::string> &fields,
-                                    const std::string &name,
-                                    bool allowPartialMatch) {
-  for (int i = 0; i < (int)fields.size(); ++i) {
-    std::string fieldName = stripMemberAccessMarkers(fields[i]);
-    if (allowPartialMatch ? fieldName.find(name) != std::string::npos
-                          : fieldName == name) {
-      return i;
-    }
-  }
-  return -1;
-}
-
 CodeGen::MemberFieldInfo CodeGen::findUniqueStructForMember(const std::string &name) {
+  // --- Legacy Fallback Block ---
+  // When Sema fails to resolve StructType (lack of type propagation in older ASTs),
+  // we globally lookup all structures to find a unique shape having this member name.
   std::string foundStruct;
   int foundIdx = -1;
   bool ambiguousStruct = false;
@@ -680,26 +714,6 @@ CodeGen::MemberFieldInfo CodeGen::findUniqueStructForMember(const std::string &n
   return info;
 }
 
-std::string CodeGen::resolveStructName(llvm::StructType *structTy,
-                                      const std::string &shapeName) {
-  if (!shapeName.empty() && m_StructTypes.count(shapeName) &&
-      m_StructTypes[shapeName] == structTy) {
-    return shapeName;
-  }
-
-  auto typeIt = m_TypeToName.find(structTy);
-  if (typeIt != m_TypeToName.end()) {
-    return typeIt->second;
-  }
-
-  for (const auto &pair : m_StructTypes) {
-    if (pair.second == structTy) {
-      return pair.first;
-    }
-  }
-  return std::string();
-}
-
 CodeGen::MemberFieldInfo CodeGen::resolveMemberField(llvm::StructType *structTy,
                                                     const std::string &shapeName,
                                                     int initialIndex,
@@ -709,13 +723,14 @@ CodeGen::MemberFieldInfo CodeGen::resolveMemberField(llvm::StructType *structTy,
   info.Index = initialIndex;
 
   if (!info.StructTy) {
+    // Attempt fallback if type resolution is absent
     info = findUniqueStructForMember(name);
   }
 
   if (!info.StructTy)
     return info;
 
-  info.StructName = resolveStructName(info.StructTy, shapeName);
+  info.StructName = resolveStructName(info.StructTy, shapeName, m_TypeToName, m_StructTypes);
   if (info.Index != -1 || info.StructName.empty())
     return info;
 
@@ -725,17 +740,11 @@ CodeGen::MemberFieldInfo CodeGen::resolveMemberField(llvm::StructType *structTy,
 
   const auto &fields = fieldsIt->second;
   info.Index = findMemberIndexInFields(fields, name, false);
-  if (info.Index == -1)
+  if (info.Index == -1) {
+    // Fallback: allow partial match if exact match fails (e.g. name-mangling or anonymous records)
     info.Index = findMemberIndexInFields(fields, name, true);
+  }
   return info;
-}
-
-const ShapeDecl *CodeGen::shapeDeclFromType(std::shared_ptr<toka::Type> type) {
-  auto soul = peelMemberObjectType(type);
-  if (!soul || !soul->isShape())
-    return nullptr;
-  auto shapeType = std::dynamic_pointer_cast<ShapeType>(soul);
-  return shapeType ? shapeType->Decl : nullptr;
 }
 
 const ShapeDecl *CodeGen::findNamedShape(const std::string &name) {
@@ -784,11 +793,11 @@ llvm::Value *CodeGen::emitLegacyBareUnionMemberAddress(const MemberShapeContext 
       objAddr, llvm::PointerType::getUnqual(m_Context));
 }
 
-CodeGen::MemberFieldStorage CodeGen::resolveMemberFieldStorage(const MemberShapeContext &context,
-                                                              llvm::StructType *structTy,
-                                                              llvm::Value *objAddr,
-                                                              int idx,
-                                                              const std::string &memberName) {
+CodeGen::MemberFieldStorage CodeGen::emitMemberFieldStorage(const MemberShapeContext &context,
+                                                           llvm::StructType *structTy,
+                                                           llvm::Value *objAddr,
+                                                           int idx,
+                                                           const std::string &memberName) {
   MemberFieldStorage storage;
   if (context.IsLegacyBareUnion) {
     storage.Addr = emitLegacyBareUnionMemberAddress(context, objAddr, idx);
@@ -817,55 +826,8 @@ CodeGen::MemberFieldStorage CodeGen::resolveMemberFieldStorage(const MemberShape
   return storage;
 }
 
-int CodeGen::countLeadingMemberHats(const std::string &s) {
-  int count = 0;
-  for (char c : s) {
-    if (c == '^' || c == '*' || c == '~' || c == '&')
-      count++;
-    else
-      break;
-  }
-  return count;
-}
-
-CodeGen::MemberHatPlan CodeGen::resolveMemberHatPlan(const ShapeDecl *namedShape,
-                                                     int idx,
-                                                     const MemberAccessIntent &access,
-                                                     const std::shared_ptr<Type> &resolvedType) {
-  MemberHatPlan plan;
-  plan.IsIdentityAssertion = access.IsIdentityAssertion;
-
-  if (namedShape && idx >= 0 && idx < (int)namedShape->Members.size()) {
-    const ShapeMember &member = namedShape->Members[idx];
-    if (member.ResolvedType) {
-      plan.DefHats = getTypeHatCount(member.ResolvedType);
-    } else {
-      plan.DefHats = countLeadingMemberHats(member.Name);
-      if (plan.DefHats == 0) {
-        plan.DefHats = countLeadingMemberHats(member.Type);
-      }
-    }
-  }
-
-  plan.AccessHats = countLeadingMemberHats(access.Original);
-  plan.IsHatOn = (plan.AccessHats > plan.DefHats);
-
-  const bool isIdentityOperator =
-      access.IsIdentityAssertion || access.Prefix == "?!";
-  if (!isIdentityOperator) {
-    if (resolvedType) {
-      plan.DerefCount = plan.DefHats - getTypeHatCount(resolvedType);
-    } else {
-      plan.DerefCount = plan.DefHats - plan.AccessHats;
-    }
-    if (plan.DerefCount < 0)
-      plan.DerefCount = 0;
-  }
-  return plan;
-}
-
-llvm::Value *CodeGen::applyMemberHatOffLoads(llvm::Value *addr,
-                                            const MemberHatPlan &plan) {
+llvm::Value *CodeGen::emitMemberHatOffLoads(llvm::Value *addr,
+                                           const MemberHatPlan &plan) {
   for (int i = 0; i < plan.DerefCount; ++i) {
     // Current address is the address of the pointer. Load it to get the
     // target address.
@@ -888,19 +850,55 @@ llvm::Type *CodeGen::resolveMemberResultType(llvm::Type *baseIrTy,
   return resultTy;
 }
 
-CodeGen::MemberMaterialization CodeGen::materializeMemberValue(llvm::Value *addr,
-                                                              llvm::Type *baseIrTy,
-                                                              const MemberHatPlan &plan,
-                                                              const std::shared_ptr<Type> &resolvedType) {
-  return {applyMemberHatOffLoads(addr, plan),
+CodeGen::MemberMaterialization CodeGen::emitMaterializedMemberValue(llvm::Value *addr,
+                                                                   llvm::Type *baseIrTy,
+                                                                   const MemberHatPlan &plan,
+                                                                   const std::shared_ptr<Type> &resolvedType) {
+  return {emitMemberHatOffLoads(addr, plan),
           resolveMemberResultType(baseIrTy, plan, resolvedType)};
+}
+
+CodeGen::MemberHatPlan CodeGen::resolveMemberHatPlan(const ShapeDecl *namedShape,
+                                                     int idx,
+                                                     int accessHats,
+                                                     bool isIdentityAssertion,
+                                                     bool isIdentityOperator,
+                                                     const std::shared_ptr<Type> &resolvedType) {
+  MemberHatPlan plan;
+  plan.IsIdentityAssertion = isIdentityAssertion;
+
+  if (namedShape && idx >= 0 && idx < (int)namedShape->Members.size()) {
+    const ShapeMember &member = namedShape->Members[idx];
+    if (member.ResolvedType) {
+      plan.DefHats = getTypeHatCount(member.ResolvedType);
+    } else {
+      plan.DefHats = countLeadingMemberHats(member.Name);
+      if (plan.DefHats == 0) {
+        plan.DefHats = countLeadingMemberHats(member.Type);
+      }
+    }
+  }
+
+  plan.AccessHats = accessHats;
+  plan.IsHatOn = (plan.AccessHats > plan.DefHats);
+
+  if (!isIdentityOperator) {
+    if (resolvedType) {
+      plan.DerefCount = plan.DefHats - getTypeHatCount(resolvedType);
+    } else {
+      plan.DerefCount = plan.DefHats - plan.AccessHats;
+    }
+    if (plan.DerefCount < 0)
+      plan.DerefCount = 0;
+  }
+  return plan;
 }
 
 PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
   // --- Dynamic Member Access (Sovereign Logic) ---
   const Expr *objectExpr = mem->Object.get();
   MemberAccessIntent memberAccess = parseMemberAccess(mem->Member);
-  std::string memberName = stripMemberAccessMarkers(memberAccess.Original);
+  std::string memberName = memberAccess.StrippedName;
 
   llvm::Value *objAddr = emitEntityAddr(objectExpr);
   if (!objAddr)
@@ -930,12 +928,15 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
 
   MemberShapeContext shapeContext = resolveMemberShapeContext(stName, objectExpr);
   const ShapeDecl *namedShape = shapeContext.NamedShape;
-  MemberFieldStorage fieldStorage = resolveMemberFieldStorage(shapeContext, st, objAddr, idx, memberName);
+  MemberFieldStorage fieldStorage = emitMemberFieldStorage(shapeContext, st, objAddr, idx, memberName);
   llvm::Value *finalAddr = fieldStorage.Addr;
   std::string memberTypeName = fieldStorage.TypeName;
   llvm::Type *irTy = fieldStorage.IrTy;
 
-  MemberHatPlan hatPlan = resolveMemberHatPlan(namedShape, idx, memberAccess, mem->ResolvedType);
+  MemberHatPlan hatPlan = resolveMemberHatPlan(
+      namedShape, idx, memberAccess.AccessHats, memberAccess.IsIdentityAssertion,
+      memberAccess.IsIdentityAssertion || memberAccess.Prefix == "?!",
+      mem->ResolvedType);
 
   if (hatPlan.IsHatOn) {
     // Hat-On: We are taking the address of the member.
@@ -947,7 +948,7 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
   }
 
   MemberMaterialization materialized =
-      materializeMemberValue(finalAddr, irTy, hatPlan, mem->ResolvedType);
+      emitMaterializedMemberValue(finalAddr, irTy, hatPlan, mem->ResolvedType);
 
   if (hatPlan.IsIdentityAssertion) {
     // Identity Assertion (Ch 6.1)
