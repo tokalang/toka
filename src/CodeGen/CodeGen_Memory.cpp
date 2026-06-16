@@ -534,43 +534,6 @@ PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
     }
   }
 
-  // [Fix] Shared Pointer Auto-Dereference for Member Access
-  // If the object is a Shared Pointer (~T), it is physically { T*, RefCount* }.
-  // We must unwrap it to get T* before accessing members of T.
-
-  // Helper to peel decorators to find the VariableExpr
-  const Expr *inner = mem->Object.get();
-  while (true) {
-    if (auto *pe = dynamic_cast<const PostfixExpr *>(inner)) {
-      inner = pe->LHS.get();
-    } else if (auto *ue = dynamic_cast<const UnaryExpr *>(inner)) {
-      inner = ue->RHS.get();
-    } else {
-      break;
-    }
-  }
-
-  if (auto *ve = dynamic_cast<const VariableExpr *>(inner)) {
-    std::string baseName = ve->Name;
-    while (!baseName.empty() &&
-           (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
-            baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!'))
-      baseName = baseName.substr(1);
-    while (!baseName.empty() &&
-           (baseName.back() == '#' || baseName.back() == '?' ||
-            baseName.back() == '!'))
-      baseName.pop_back();
-
-    if (m_Symbols.count(baseName)) {
-      TokaSymbol &sym = m_Symbols[baseName];
-      if (sym.morphology == Morphology::Shared) {
-        // Shared Pointer ~T is { T*, RC* }
-        // getEntityAddr has ALREADY unwrapped this to T* (Data Pointer).
-        // So objAddr is T*. We do not need to unwrap again.
-      }
-    }
-  }
-
   llvm::Type *objType = nullptr;
   std::string objShapeName;
   if (mem->Object->ResolvedType) {
