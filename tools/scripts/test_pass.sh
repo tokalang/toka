@@ -3,6 +3,7 @@
 
 # --- Configuration ---
 TOKAC="${TOKAC:-./build/bin/tokac}"
+TOKA="${TOKA:-./build/bin/toka}"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # Add common Homebrew LLVM paths to PATH to support macOS Intel / Apple Silicon custom builds
@@ -166,30 +167,38 @@ run_worker() {
         fi
         rm -f "$lib_obj" "$helper_obj"
     else
-        if ! "$TOKAC" "$test_path" -o "$exe_file" > /dev/null 2> "$log_file"; then
-            append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
-            append "    ${RED}$test_path:1: error: Compilation failed${NC}"
-            # Tail logs
-            LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
-            append "$LOGS"
-            echo -ne "$OUTPUT"
-            rm -f "$log_file" "$exe_file"
-            exit 1
+        if [ "$USE_TOKA" = "1" ]; then
+            "$TOKA" run "$test_path" > "$log_file" 2>&1
+            exit_code=$?
+            run_skipped=1
+        else
+            if ! "$TOKAC" "$test_path" -o "$exe_file" > /dev/null 2> "$log_file"; then
+                append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
+                append "    ${RED}$test_path:1: error: Compilation failed${NC}"
+                # Tail logs
+                LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
+                append "$LOGS"
+                echo -ne "$OUTPUT"
+                rm -f "$log_file" "$exe_file"
+                exit 1
+            fi
         fi
     fi
 
     # Step 2: Run Native
-    {
-        "$exe_file" >> "$log_file" 2>&1 &
-        pid=$!
-        ( sleep 30; kill -9 $pid 2>/dev/null; echo "TIMEOUT" >> "$log_file" ) >/dev/null 2>&1 < /dev/null &
-        killer=$!
-        wait $pid
-        sub_exit=$?
-        kill -9 $killer 2>/dev/null
-        exit $sub_exit
-    } 2>&1 | grep -v "Abort trap"
-    exit_code=${PIPESTATUS[0]}
+    if [ "$run_skipped" != "1" ]; then
+        {
+            "$exe_file" >> "$log_file" 2>&1 &
+            pid=$!
+            ( sleep 30; kill -9 $pid 2>/dev/null; echo "TIMEOUT" >> "$log_file" ) >/dev/null 2>&1 < /dev/null &
+            killer=$!
+            wait $pid
+            sub_exit=$?
+            kill -9 $killer 2>/dev/null
+            exit $sub_exit
+        } 2>&1 | grep -v "Abort trap"
+        exit_code=${PIPESTATUS[0]}
+    fi
 
     # Step 3: Extract & Verify
     errors=()
@@ -296,6 +305,18 @@ run_worker() {
 }
 
 # --- Entry Point ---
+
+# Parse options
+USE_TOKA=0
+NEW_ARGS=()
+for arg in "$@"; do
+    if [ "$arg" == "--toka" ]; then
+        export USE_TOKA=1
+    else
+        NEW_ARGS+=("$arg")
+    fi
+done
+set -- "${NEW_ARGS[@]}"
 
 if [ "$1" == "--worker" ]; then
     run_worker "$2"
