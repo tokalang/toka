@@ -196,8 +196,8 @@ if ! grep -q "lib.tk" "$TEST_DIR/deps.txt"; then
 fi
 echo "PASS: Test 6"
 
-# 7. Test case 7: JSON dependency graph dumping
-echo "Test 7: JSON dependency graph dumping"
+# 7. Test case 7: JSON dependency graph dumping and protocol validation
+echo "Test 7: JSON dependency graph dumping and protocol validation"
 cat << 'EOF' > "$TEST_DIR/lib.tk"
 pub fn get_num() -> i32 {
     return 100
@@ -209,33 +209,232 @@ fn main() -> i32 {
     return 0
 }
 EOF
-# Run with --dump-dependencies=json
-"$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/main.tk" > "$TEST_DIR/deps.json"
-if ! grep -q '"root":' "$TEST_DIR/deps.json"; then
-    echo "FAIL: JSON dependency output missing 'root'"
-    cat "$TEST_DIR/deps.json"
+cat << 'EOF' > "$TEST_DIR/main2.tk"
+import ./lib::{get_num}
+fn main() -> i32 {
+    return 1
+}
+EOF
+
+# 7.1 Test Multi-root outputs and roots array
+"$TOKAC_ABS" --dump-dependencies=json --emit-interface "$TEST_DIR/main.tk" "$TEST_DIR/main2.tk" > "$TEST_DIR/multi_roots.json"
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+roots = data.get("roots", [])
+modules = data.get("modules", {})
+
+# Check roots
+assert len(roots) == 2, f"Expected 2 roots, got {roots}"
+assert any(r.endswith("main.tk") for r in roots), "roots missing main.tk"
+assert any(r.endswith("main2.tk") for r in roots), "roots missing main2.tk"
+
+# Check modules
+assert any(k.endswith("main.tk") for k in modules), "modules missing main.tk"
+assert any(k.endswith("main2.tk") for k in modules), "modules missing main2.tk"
+assert any(k.endswith("lib.tk") for k in modules), "modules missing lib.tk"
+
+main_key = next(k for k in modules if k.endswith("main.tk"))
+main2_key = next(k for k in modules if k.endswith("main2.tk"))
+lib_key = next(k for k in modules if k.endswith("lib.tk"))
+
+# Verify root outputs
+main_outputs = modules[main_key]["outputs"]
+assert main_outputs["interface"].endswith("main.tki"), f"Unexpected interface output: {main_outputs}"
+assert main_outputs["executable"] == "", f"Executable output should be empty: {main_outputs}"
+assert main_outputs["object"] == "", f"Object output should be empty: {main_outputs}"
+
+main2_outputs = modules[main2_key]["outputs"]
+assert main2_outputs["interface"].endswith("main2.tki"), f"Unexpected interface output: {main2_outputs}"
+assert main2_outputs["executable"] == "", f"Executable output should be empty: {main2_outputs}"
+assert main2_outputs["object"] == "", f"Object output should be empty: {main2_outputs}"
+
+# Verify non-root output (lib.tk)
+lib_outputs = modules[lib_key]["outputs"]
+assert lib_outputs["interface"] == "", f"Lib interface should be empty: {lib_outputs}"
+assert lib_outputs["object"] == "", f"Lib object should be empty: {lib_outputs}"
+assert lib_outputs["executable"] == "", f"Lib executable should be empty: {lib_outputs}"
+
+# Verify hashes are populated and identical for source files
+for k in [main_key, main2_key, lib_key]:
+    m = modules[k]
+    assert m["source_hash"] != "", f"source_hash empty for {k}"
+    assert m["content_hash"] != "", f"content_hash empty for {k}"
+    assert m["source_hash"] == m["content_hash"], f"hashes differ for source file {k}"
+' < "$TEST_DIR/multi_roots.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 7.1 Python validation failed"
+    cat "$TEST_DIR/multi_roots.json"
     exit 1
 fi
-if ! grep -q '"modules":' "$TEST_DIR/deps.json"; then
-    echo "FAIL: JSON dependency output missing 'modules'"
-    cat "$TEST_DIR/deps.json"
+
+# 7.2 Test fallback triggering & status validation
+# Compile lib.tk to lib.tki
+"$TOKAC_ABS" --emit-interface -c -o "$TEST_DIR/lib.o" "$TEST_DIR/lib.tk"
+
+# Corrupt lib.tki metadata (compiler version mismatch) to trigger fallback to lib.tk
+python3 -c "
+import re
+p = '$TEST_DIR/lib.tki'
+c = open(p).read()
+c = re.sub(r'compiler_version:\s*\S+', 'compiler_version: 0.0.0', c)
+open(p, 'w').write(c)
+"
+
+"$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/main.tk" > "$TEST_DIR/fallback.json"
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+modules = data.get("modules", {})
+
+lib_key = next((k for k in modules if k.endswith("lib.tk")), None)
+assert lib_key is not None, "Fallback should resolve to lib.tk"
+lib_module = modules[lib_key]
+assert lib_module["fallback_triggered"] is True, "fallback_triggered should be true"
+assert lib_module["cache_status"] == "CompilerVersionMismatch", f"Unexpected cache_status: {lib_module}"
+' < "$TEST_DIR/fallback.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 7.2 Python validation failed"
+    cat "$TEST_DIR/fallback.json"
     exit 1
 fi
-if ! grep -q '"compiler_version":' "$TEST_DIR/deps.json"; then
-    echo "FAIL: JSON dependency output missing 'compiler_version'"
-    cat "$TEST_DIR/deps.json"
+
+# 7.3 Test dual hashes distinction without fallback (remove .tk source)
+# Create a fresh, valid lib.tki from lib.tk
+"$TOKAC_ABS" --emit-interface -c -o "$TEST_DIR/lib.o" "$TEST_DIR/lib.tk"
+
+# Move lib.tk away to prevent fallback
+mv "$TEST_DIR/lib.tk" "$TEST_DIR/lib.tk.bak"
+
+# Append spaces to lib.tki to change its physical content hash but keep original source_hash metadata
+echo "   " >> "$TEST_DIR/lib.tki"
+
+# Dump dependencies. Since lib.tk is not present, it will successfully load lib.tki as interface file
+"$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/main.tk" > "$TEST_DIR/dual_hashes.json"
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+modules = data.get("modules", {})
+
+lib_key = next((k for k in modules if k.endswith("lib.tki")), None)
+assert lib_key is not None, "Should resolve to lib.tki"
+lib_module = modules[lib_key]
+assert lib_module["kind"] == "interface", "kind should be interface"
+assert lib_module["fallback_triggered"] is False, "fallback should not trigger"
+assert lib_module["cache_status"] == "Ok", f"cache_status should be Ok: {lib_module}"
+
+# source_hash is original source hash, content_hash is modified tki physical hash
+assert lib_module["source_hash"] != "", "source_hash empty"
+assert lib_module["content_hash"] != "", "content_hash empty"
+assert lib_module["source_hash"] != lib_module["content_hash"], f"hashes should differ: {lib_module}"
+' < "$TEST_DIR/dual_hashes.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 7.3 Python validation failed"
+    cat "$TEST_DIR/dual_hashes.json"
     exit 1
 fi
-if ! grep -q '"source_hash":' "$TEST_DIR/deps.json"; then
-    echo "FAIL: JSON dependency output missing 'source_hash'"
-    cat "$TEST_DIR/deps.json"
+
+# 7.4 Test multi-root interface output clash rejection
+echo "Test 7.4: Multi-root single output interface emission clash rejection"
+if "$TOKAC_ABS" --emit-interface -o "$TEST_DIR/out" "$TEST_DIR/main.tk" "$TEST_DIR/main2.tk" 2> "$TEST_DIR/clash_err.txt"; then
+    echo "FAIL: Expected multi-root single output interface emission to fail, but it succeeded"
     exit 1
 fi
-if ! grep -q '"fallback_triggered":' "$TEST_DIR/deps.json"; then
-    echo "FAIL: JSON dependency output missing 'fallback_triggered'"
-    cat "$TEST_DIR/deps.json"
+if ! grep -q "cannot emit multiple interfaces to a single output path" "$TEST_DIR/clash_err.txt"; then
+    echo "FAIL: Expected clash error message, but got:"
+    cat "$TEST_DIR/clash_err.txt"
     exit 1
 fi
+echo "PASS: Test 7.4"
+
+# 7.4.2 Test multi-root interface output clash rejection without -o
+echo "Test 7.4.2: Multi-root single output interface emission clash rejection without -o"
+mkdir -p "$TEST_DIR/a" "$TEST_DIR/b"
+touch "$TEST_DIR/a/main.tk"
+touch "$TEST_DIR/b/main.tk"
+if "$TOKAC_ABS" --emit-interface "$TEST_DIR/a/main.tk" "$TEST_DIR/b/main.tk" 2> "$TEST_DIR/clash_err_no_o.txt"; then
+    echo "FAIL: Expected multi-root no-o interface emission to fail, but it succeeded"
+    exit 1
+fi
+if ! grep -q "cannot emit multiple interfaces to a single output path" "$TEST_DIR/clash_err_no_o.txt"; then
+    echo "FAIL: Expected clash error message, but got:"
+    cat "$TEST_DIR/clash_err_no_o.txt"
+    exit 1
+fi
+echo "PASS: Test 7.4.2"
+
+# 7.5 Test package alias preferSource alignment
+echo "Test 7.5: Package alias preferSource alignment"
+# Recover lib.tk source
+cat << 'EOF' > "$TEST_DIR/lib.tk"
+pub fn get_num() -> i32 {
+    return 100
+}
+EOF
+# Re-create fresh, valid lib.tki from lib.tk
+"$TOKAC_ABS" --emit-interface -c -o "$TEST_DIR/lib.o" "$TEST_DIR/lib.tk"
+
+# Corrupt lib.tki metadata (compiler version mismatch) to trigger fallback to lib.tk
+python3 -c "
+import re
+p = '$TEST_DIR/lib.tki'
+c = open(p).read()
+c = re.sub(r'compiler_version:\s*\S+', 'compiler_version: 0.0.0', c)
+open(p, 'w').write(c)
+"
+
+# Create main_pkg.tk importing via mylib alias
+cat << 'EOF' > "$TEST_DIR/main_pkg.tk"
+import mylib::{get_num}
+fn main() -> i32 {
+    if (get_num() == 100) {
+        return 0
+    }
+    return 1
+}
+EOF
+
+# 7.5.1 In standard compile/link mode: should preferSource = true (ignore stale lib.tki, use lib.tk directly, link successfully)
+"$TOKAC_ABS" --pkg "mylib=$TEST_DIR/lib" "$TEST_DIR/main_pkg.tk" -o "$TEST_DIR/out_pkg"
+if [ ! -f "$TEST_DIR/out_pkg" ]; then
+    echo "FAIL: Test 7.5.1 compilation link failed"
+    exit 1
+fi
+# Run out_pkg to verify it executes successfully and returns 0
+if ! "$TEST_DIR/out_pkg"; then
+    echo "FAIL: Test 7.5.1 execution failed or returned non-zero status"
+    exit 1
+fi
+echo "PASS: Test 7.5.1"
+
+# 7.5.2 In dependency dump mode: should preferSource = false (read lib.tki, trigger fallback to lib.tk)
+"$TOKAC_ABS" --dump-dependencies=json --pkg "mylib=$TEST_DIR/lib" "$TEST_DIR/main_pkg.tk" > "$TEST_DIR/pkg_fallback.json"
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+modules = data.get("modules", {})
+
+lib_key = next((k for k in modules if k.endswith("lib.tk")), None)
+assert lib_key is not None, "Alias fallback should resolve to lib.tk"
+lib_module = modules[lib_key]
+assert lib_module["fallback_triggered"] is True, "fallback_triggered should be true for alias"
+assert lib_module["cache_status"] == "CompilerVersionMismatch", f"Unexpected cache_status: {lib_module}"
+' < "$TEST_DIR/pkg_fallback.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 7.5.2 Python validation failed"
+    cat "$TEST_DIR/pkg_fallback.json"
+    exit 1
+fi
+echo "PASS: Test 7.5.2"
+
 echo "PASS: Test 7"
 
 # Clean up

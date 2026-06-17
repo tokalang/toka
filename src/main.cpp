@@ -343,11 +343,25 @@ int main(int argc, char **argv) {
   toka::DiagnosticEngine::init(sm);
 
   std::vector<std::unique_ptr<toka::Module>> astModules;
-  toka::ModuleResolver resolver(sm, searchPaths, pkgMap);
+  bool preferSource = !dumpDependencies && !compileOnly;
+  toka::ModuleResolver resolver(sm, searchPaths, pkgMap, preferSource);
   bool parseSuccess = true;
-  for (const auto &file : sourceFiles) {
-    if (!resolver.resolveAndParse(file, astModules)) {
+  for (size_t i = 0; i < sourceFiles.size(); ++i) {
+    if (!resolver.resolveAndParse(sourceFiles[i], astModules, "", i > 0)) {
       parseSuccess = false;
+    }
+  }
+
+  const std::vector<std::string> &roots = resolver.getRoots();
+  if (emitInterface) {
+    std::set<std::string> interfacePaths;
+    for (const auto &r : roots) {
+      std::string outPath = toka::PathUtils::canonicalize(toka::PathUtils::getInterfacePath(outputFile, r));
+      if (interfacePaths.count(outPath)) {
+        llvm::errs() << "error: cannot emit multiple interfaces to a single output path: " << outPath << "\n";
+        return 1;
+      }
+      interfacePaths.insert(outPath);
     }
   }
 
@@ -356,13 +370,6 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (dumpJson) {
-      std::string rootPath = "";
-      for (const auto &ast : astModules) {
-        if (ast->IsRootModule) {
-          rootPath = toka::PathUtils::canonicalize(ast->SourcePath);
-          break;
-        }
-      }
 
       auto escapeJsonString = [](const std::string &s) -> std::string {
           std::string res;
@@ -393,26 +400,17 @@ int main(int argc, char **argv) {
           return "Unknown";
       };
 
-      auto calculateFNV1a = [](const std::string &content) -> std::string {
-          uint64_t hash = 14695981039346656037ULL;
-          for (char c : content) {
-              hash ^= static_cast<uint8_t>(c);
-              hash *= 1099511628211ULL;
-          }
-          char buf[17];
-          snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
-          return std::string(buf);
-      };
-
-      auto getFileHash = [&](const std::string &filePath) -> std::string {
-          std::ifstream ifs(filePath, std::ios::binary);
-          if (!ifs) return "";
-          std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-          return calculateFNV1a(content);
-      };
-
       llvm::outs() << "{\n";
-      llvm::outs() << "  \"root\": \"" << escapeJsonString(rootPath) << "\",\n";
+      llvm::outs() << "  \"roots\": [";
+      bool firstRoot = true;
+      for (const auto &r : roots) {
+        if (!firstRoot) {
+          llvm::outs() << ", ";
+        }
+        firstRoot = false;
+        llvm::outs() << "\"" << escapeJsonString(r) << "\"";
+      }
+      llvm::outs() << "],\n";
       llvm::outs() << "  \"modules\": {\n";
 
       bool firstModule = true;
@@ -434,17 +432,31 @@ int main(int argc, char **argv) {
         llvm::outs() << "      \"target_triple\": \"" << escapeJsonString(toka::Parser::TargetTriple) << "\",\n";
         llvm::outs() << "      \"compiler_version\": \"" << TOKA_COMPILER_INTERFACE_VERSION << "\",\n";
         llvm::outs() << "      \"interface_version\": \"" << TOKA_INTERFACE_FORMAT_VERSION << "\",\n";
-        llvm::outs() << "      \"source_hash\": \"" << getFileHash(info.CanonicalPath) << "\",\n";
-        llvm::outs() << "      \"outputs\": {\n";
-        llvm::outs() << "        \"interface\": \"" << escapeJsonString(toka::PathUtils::getInterfacePath(outputFile, info.CanonicalPath)) << "\",\n";
+        llvm::outs() << "      \"source_hash\": \"" << escapeJsonString(info.SourceHash) << "\",\n";
+        llvm::outs() << "      \"content_hash\": \"" << escapeJsonString(info.ContentHash) << "\",\n";
 
-        std::string objPath;
-        if (info.CanonicalPath == rootPath && !outputFile.empty()) {
-            objPath = outputFile;
-        } else {
-            objPath = toka::PathUtils::normalize(std::filesystem::path(info.CanonicalPath).replace_extension(".o").string());
+        bool isRoot = (std::find(roots.begin(), roots.end(), info.CanonicalPath) != roots.end());
+        std::string interfaceOut = "";
+        std::string objectOut = "";
+        std::string executableOut = "";
+
+        if (isRoot) {
+            if (emitInterface) {
+                interfaceOut = toka::PathUtils::canonicalize(toka::PathUtils::getInterfacePath(outputFile, info.CanonicalPath));
+            }
+            if (emitObj) {
+                if (compileOnly) {
+                    objectOut = outputFile.empty() ? "" : toka::PathUtils::canonicalize(outputFile);
+                } else {
+                    executableOut = outputFile.empty() ? toka::PathUtils::canonicalize("a.out") : toka::PathUtils::canonicalize(outputFile);
+                }
+            }
         }
-        llvm::outs() << "        \"object\": \"" << escapeJsonString(objPath) << "\"\n";
+
+        llvm::outs() << "      \"outputs\": {\n";
+        llvm::outs() << "        \"interface\": \"" << escapeJsonString(interfaceOut) << "\",\n";
+        llvm::outs() << "        \"object\": \"" << escapeJsonString(objectOut) << "\",\n";
+        llvm::outs() << "        \"executable\": \"" << escapeJsonString(executableOut) << "\"\n";
         llvm::outs() << "      },\n";
         llvm::outs() << "      \"dependencies\": [";
 
@@ -510,7 +522,9 @@ int main(int argc, char **argv) {
 
   if (emitInterface) {
     for (const auto &ast : astModules) {
-      if (ast->IsRootModule) {
+      std::string canonicalPath = toka::PathUtils::canonicalize(ast->SourcePath);
+      bool isRoot = (std::find(roots.begin(), roots.end(), canonicalPath) != roots.end());
+      if (isRoot) {
         std::string outPath = toka::PathUtils::getInterfacePath(outputFile, ast->SourcePath);
         
         if (verboseMode) llvm::errs() << "Exporting TKI Interface to " << outPath << "...\n";

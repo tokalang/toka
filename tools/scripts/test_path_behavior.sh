@@ -69,7 +69,7 @@ echo "PASS: Test 1b"
 echo "Test 2: Output .tki in CWD when -o is not specified"
 cd "$TEST_DIR"
 rm -f *.tki
-"$TOKAC_ABS" -I ../../lib --emit-interface --emit-llvm src/helper.tk
+"$TOKAC_ABS" -I ../../lib --emit-interface --emit-llvm src/helper.tk >/dev/null
 if [ ! -f "helper.tki" ]; then
     echo "FAIL: helper.tki not found in CWD"
     exit 1

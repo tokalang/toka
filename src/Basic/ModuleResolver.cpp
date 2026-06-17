@@ -10,17 +10,33 @@
 
 namespace toka {
 
+static std::string calculateFNV1a(const std::string &str);
+
 ModuleResolver::ModuleResolver(SourceManager &sm,
                                std::vector<std::string> searchPaths,
-                               std::map<std::string, std::string> pkgMap)
-    : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)), m_PkgMap(std::move(pkgMap)) {}
+                               std::map<std::string, std::string> pkgMap,
+                               bool preferSource)
+    : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)), m_PkgMap(std::move(pkgMap)), m_PreferSource(preferSource) {}
 
 bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
                                      std::vector<std::unique_ptr<Module>> &astModules,
-                                     const std::string &overrideSourceCode) {
+                                     const std::string &overrideSourceCode,
+                                     bool accumulate) {
+    if (!accumulate) {
+        m_Visited.clear();
+        m_ResolutionRecords.clear();
+        m_Dependencies.clear();
+        m_Roots.clear();
+    }
     m_RecursionStack.clear();
-    m_ResolutionRecords.clear();
-    return parseRecursive(rawFilename, astModules, overrideSourceCode);
+    std::string actualPath;
+    bool ok = parseRecursive(rawFilename, astModules, overrideSourceCode, &actualPath);
+    if (ok && !actualPath.empty()) {
+        if (std::find(m_Roots.begin(), m_Roots.end(), actualPath) == m_Roots.end()) {
+            m_Roots.push_back(actualPath);
+        }
+    }
+    return ok;
 }
 
 std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
@@ -64,15 +80,33 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
     std::string mapped = pkgIt->second;
     bool mappedHasExt = PathUtils::hasTokaSourceExtension(mapped);
     if (!mappedHasExt) {
-      if (fileExists(mapped + ".tk")) {
-        resolvedPath = mapped + ".tk";
-        found = true;
-      } else if (fileExists(mapped + ".tki")) {
-        resolvedPath = mapped + ".tki";
-        found = true;
-      } else if (fileExists(mapped)) {
-        resolvedPath = mapped;
-        found = true;
+      std::string mappedTk = mapped + ".tk";
+      std::string mappedTki = mapped + ".tki";
+      bool canUseTk = fileExists(mappedTk);
+      bool canUseTki = fileExists(mappedTki);
+
+      if (m_PreferSource) {
+        if (canUseTk) {
+          resolvedPath = mappedTk;
+          found = true;
+        } else if (canUseTki) {
+          resolvedPath = mappedTki;
+          found = true;
+        } else if (fileExists(mapped)) {
+          resolvedPath = mapped;
+          found = true;
+        }
+      } else {
+        if (canUseTki) {
+          resolvedPath = mappedTki;
+          found = true;
+        } else if (canUseTk) {
+          resolvedPath = mappedTk;
+          found = true;
+        } else if (fileExists(mapped)) {
+          resolvedPath = mapped;
+          found = true;
+        }
       }
     } else {
       if (fileExists(mapped)) {
@@ -111,12 +145,22 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
       }
     }
 
-    if (canUseTk) {
-      resolvedPath = resolvedTk;
-      found = true;
-    } else if (canUseTki) {
-      resolvedPath = resolvedTki;
-      found = true;
+    if (m_PreferSource) {
+      if (canUseTk) {
+        resolvedPath = resolvedTk;
+        found = true;
+      } else if (canUseTki) {
+        resolvedPath = resolvedTki;
+        found = true;
+      }
+    } else {
+      if (canUseTki) {
+        resolvedPath = resolvedTki;
+        found = true;
+      } else if (canUseTk) {
+        resolvedPath = resolvedTk;
+        found = true;
+      }
     }
   }
 
@@ -140,15 +184,28 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
         break;
       }
       if (!hasExt) {
-        if (fileExists(libPath + ".tk")) {
-          resolvedPath = libPath + ".tk";
-          found = true;
-          break;
-        }
-        if (fileExists(libPath + ".tki")) {
-          resolvedPath = libPath + ".tki";
-          found = true;
-          break;
+        if (m_PreferSource) {
+          if (fileExists(libPath + ".tk")) {
+            resolvedPath = libPath + ".tk";
+            found = true;
+            break;
+          }
+          if (fileExists(libPath + ".tki")) {
+            resolvedPath = libPath + ".tki";
+            found = true;
+            break;
+          }
+        } else {
+          if (fileExists(libPath + ".tki")) {
+            resolvedPath = libPath + ".tki";
+            found = true;
+            break;
+          }
+          if (fileExists(libPath + ".tk")) {
+            resolvedPath = libPath + ".tk";
+            found = true;
+            break;
+          }
         }
       }
     }
@@ -181,8 +238,13 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   bool fallbackTriggered = false;
   TKICacheStatus cacheStatus = TKICacheStatus::Ok;
   std::string cacheStatusReason = "";
+  std::string sourceHash = "";
 
   if (isTki) {
+      TKIMetadata meta;
+      if (readTKIMetadata(resolvedPath, meta)) {
+          sourceHash = meta.SourceHash;
+      }
       std::string reason;
       TKICacheStatus status = validateTKIMetadata(resolvedPath, reason);
       cacheStatus = status;
@@ -206,12 +268,27 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       *outActualPath = canonicalPath;
   }
 
+  auto getFileHash = [&](const std::string &filePath) -> std::string {
+      std::ifstream ifs(filePath, std::ios::binary);
+      if (!ifs) return "";
+      std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+      return calculateFNV1a(content);
+  };
+
+  bool finalIsInterface = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
+  std::string contentHash = getFileHash(resolvedPath);
+  if (!finalIsInterface) {
+      sourceHash = contentHash;
+  }
+
   ModuleResolutionInfo info;
   info.CanonicalPath = canonicalPath;
-  info.IsInterface = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
+  info.IsInterface = finalIsInterface;
   info.FallbackTriggered = fallbackTriggered;
   info.CacheStatus = cacheStatus;
   info.CacheStatusReason = cacheStatusReason;
+  info.SourceHash = sourceHash;
+  info.ContentHash = contentHash;
   m_ResolutionRecords[canonicalPath] = info;
 
   // Check recursion stack for circular dependency
