@@ -401,6 +401,7 @@ int main(int argc, char **argv) {
       };
 
       llvm::outs() << "{\n";
+      llvm::outs() << "  \"manifest_version\": \"1.0.0\",\n";
       llvm::outs() << "  \"roots\": [";
       bool firstRoot = true;
       for (const auto &r : roots) {

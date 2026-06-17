@@ -411,3 +411,10 @@ if ! bash tools/scripts/test_tki_cache_validation.sh; then
     echo -e "${RED}TKI Cache Validation tests failed!${NC}"
     exit 1
 fi
+
+echo ""
+echo "Running Incremental Build tests..."
+if ! bash tools/scripts/test_incremental_build.sh; then
+    echo -e "${RED}Incremental Build tests failed!${NC}"
+    exit 1
+fi
