@@ -69,6 +69,26 @@ extern "C" int toka_setmode(int fd, int mode) { return _setmode(fd, mode); }
 extern "C" int toka_fileno(FILE *f) { return _fileno(f); }
 #endif
 
+static std::string calculateFNV1a(const std::string &str) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (char c : str) {
+        hash ^= static_cast<uint8_t>(c);
+        hash *= 1099511628211ULL;
+    }
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
+    return std::string(buf);
+}
+
+static std::string getFinalInterfacePath(const std::string &outputFile, const std::string &sourcePath) {
+    const char *envBuildDir = std::getenv("TOKA_BUILD_DIR");
+    if (envBuildDir) {
+        std::string canonical = toka::PathUtils::canonicalize(sourcePath);
+        return toka::PathUtils::canonicalize(std::string(envBuildDir) + "/interfaces/" + calculateFNV1a(canonical) + ".tki");
+    }
+    return toka::PathUtils::getInterfacePath(outputFile, sourcePath);
+}
+
 #include "lld/Common/Driver.h"
 
 LLD_HAS_DRIVER(coff)
@@ -123,7 +143,7 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
 
 #ifdef _WIN32
     // Windows builds using MSYS2 or MinGW. LLD doesn't resolve default C libraries without explicit paths.
-    // Since MSYS2 paths can be dynamic (e.g., D:/a/_temp/msys64 on GitHub Actions), 
+    // Since MSYS2 paths can be dynamic (e.g., D:/a/_temp/msys64 on GitHub Actions),
     // we shell out to gcc which acts as the linker driver and knows all implicit library paths.
     std::string cmd = "gcc \"" + objFile + "\"";
     for (const auto &extra : extraObjs) {
@@ -143,10 +163,10 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     args.push_back("macos");
     args.push_back("12.0.0");
     args.push_back("12.0.0");
-    
+
     args.push_back("-syslibroot");
     args.push_back("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk");
-    
+
     args.push_back(objFile.c_str());
     for (const auto &extra : extraObjs) {
         args.push_back(extra.c_str());
@@ -157,8 +177,8 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     return lld::macho::link(args, llvm::outs(), llvm::errs(), false, false);
 #else
     // Linux and other Unix-like systems.
-    // Use the system 'cc' as the linker driver to automatically correctly resolve 
-    // crt1.o, crti.o, crtbegin.o, crtend.o, and crtn.o which are absolutely required 
+    // Use the system 'cc' as the linker driver to automatically correctly resolve
+    // crt1.o, crti.o, crtbegin.o, crtend.o, and crtn.o which are absolutely required
     // for proper .init_array (global constructors) execution.
     std::string cmd = "cc \"" + objFile + "\"";
     for (const auto &extra : extraObjs) {
@@ -192,13 +212,13 @@ int main(int argc, char **argv) {
           searchPaths.push_back(item);
         }
       }
-      
+
       // Dual-Separator Fallback for MSYS2/MinGW mixed environments on Windows
       if (llvm::sys::EnvPathSeparator == ';' && searchPaths.size() <= 1) {
         std::string singlePath = searchPaths.empty() ? envStr : searchPaths[0];
         size_t colonCount = 0;
         for (char c : singlePath) if (c == ':') colonCount++;
-        
+
         // If it contains colons and doesn't look like a standard Windows drive letter path (like C:\)
         if (colonCount > 0 && (singlePath.size() < 2 || singlePath[1] != ':')) {
           searchPaths.clear();
@@ -343,8 +363,9 @@ int main(int argc, char **argv) {
   toka::DiagnosticEngine::init(sm);
 
   std::vector<std::unique_ptr<toka::Module>> astModules;
-  bool preferSource = !dumpDependencies && !compileOnly;
+  bool preferSource = !compileOnly;
   toka::ModuleResolver resolver(sm, searchPaths, pkgMap, preferSource);
+  resolver.setProvidedObjects(objectFiles);
   bool parseSuccess = true;
   for (size_t i = 0; i < sourceFiles.size(); ++i) {
     if (!resolver.resolveAndParse(sourceFiles[i], astModules, "", i > 0)) {
@@ -356,7 +377,7 @@ int main(int argc, char **argv) {
   if (emitInterface) {
     std::set<std::string> interfacePaths;
     for (const auto &r : roots) {
-      std::string outPath = toka::PathUtils::canonicalize(toka::PathUtils::getInterfacePath(outputFile, r));
+      std::string outPath = toka::PathUtils::canonicalize(getFinalInterfacePath(outputFile, r));
       if (interfacePaths.count(outPath)) {
         llvm::errs() << "error: cannot emit multiple interfaces to a single output path: " << outPath << "\n";
         return 1;
@@ -392,6 +413,7 @@ int main(int argc, char **argv) {
               case toka::TKICacheStatus::MissingFormatVersion: return "MissingFormatVersion";
               case toka::TKICacheStatus::MissingTargetTriple: return "MissingTargetTriple";
               case toka::TKICacheStatus::MissingSourceHash: return "MissingSourceHash";
+              case toka::TKICacheStatus::MissingSourcePath: return "MissingSourcePath";
               case toka::TKICacheStatus::CompilerVersionMismatch: return "CompilerVersionMismatch";
               case toka::TKICacheStatus::FormatVersionMismatch: return "FormatVersionMismatch";
               case toka::TKICacheStatus::TargetTripleMismatch: return "TargetTripleMismatch";
@@ -443,7 +465,7 @@ int main(int argc, char **argv) {
 
         if (isRoot) {
             if (emitInterface) {
-                interfaceOut = toka::PathUtils::canonicalize(toka::PathUtils::getInterfacePath(outputFile, info.CanonicalPath));
+                interfaceOut = toka::PathUtils::canonicalize(getFinalInterfacePath(outputFile, info.CanonicalPath));
             }
             if (emitObj) {
                 if (compileOnly) {
@@ -500,7 +522,7 @@ int main(int argc, char **argv) {
 
   toka::Sema sema;
   sema.setBorrowCheckEnabled(!disableBorrowCheck);
-  
+
   // Pass 1: Declare all global symbols across all modules to build the global module map
   for (const auto &ast : astModules) {
     sema.declareGlobals(*ast);
@@ -526,17 +548,17 @@ int main(int argc, char **argv) {
       std::string canonicalPath = toka::PathUtils::canonicalize(ast->SourcePath);
       bool isRoot = (std::find(roots.begin(), roots.end(), canonicalPath) != roots.end());
       if (isRoot) {
-        std::string outPath = toka::PathUtils::getInterfacePath(outputFile, ast->SourcePath);
-        
+        std::string outPath = getFinalInterfacePath(outputFile, ast->SourcePath);
+
         if (verboseMode) llvm::errs() << "Exporting TKI Interface to " << outPath << "...\n";
-        
+
         std::error_code EC;
         llvm::raw_fd_ostream os(outPath, EC, llvm::sys::fs::OF_None);
         if (EC) {
           llvm::errs() << "Error writing TKI file " << outPath << ": " << EC.message() << "\n";
           return 1;
         }
-        
+
         toka::TKIExporter exporter(os);
         exporter.exportModule(*ast);
       }
@@ -591,7 +613,7 @@ int main(int argc, char **argv) {
   // ----------------------------------------------------------------------------
 
   std::unique_ptr<toka::Module> genericModule = sema.extractGenericRegistry();
-  
+
   if (verboseMode) fprintf(stderr, "Pass 1: Discovery (Registration)...\n");
   fflush(stderr);
   for (const auto &ast : astModules) {
@@ -612,7 +634,7 @@ int main(int argc, char **argv) {
     codegen.generate(*ast);
   }
   if (genericModule) codegen.generate(*genericModule);
-  
+
   codegen.finalizeGlobals();
 
   if (codegen.hasErrors() || toka::DiagnosticEngine::hasErrors()) {
@@ -635,7 +657,7 @@ int main(int argc, char **argv) {
     llvm::errs() << "Fatal Error: LLVM IR Verification Failed!\n";
     return 1;
   }
-  
+
   if (verboseMode) fprintf(stderr, "Pass 4: Optimization (Coroutines & O2)...\n");
   fflush(stderr);
 
@@ -651,7 +673,7 @@ int main(int argc, char **argv) {
   PB.registerFunctionAnalyses(FAM);
   PB.registerLoopAnalyses(LAM);
   PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-  
+
   PB.registerPipelineStartEPCallback(
       [](llvm::ModulePassManager &MPM, llvm::OptimizationLevel Level) {
         MPM.addPass(llvm::CoroEarlyPass());
@@ -718,7 +740,7 @@ int main(int argc, char **argv) {
     if (!compileOnly) {
       if (verboseMode) fprintf(stderr, "Linking executable (internal LLD): %s\n", finalOutput.c_str());
       fflush(stderr);
-      
+
       llvm::Triple triple(toka::Parser::TargetTriple);
       std::string rtExtension = (triple.isOSWindows()) ? ".obj" : ".o";
       std::string rtFileName = "toka_rt" + rtExtension;
@@ -726,7 +748,7 @@ int main(int argc, char **argv) {
           rtFileName = "toka_rt.wasm.o";
       }
       std::string tokaRtPath;
-      
+
       // 1. Prioritize local relative paths to ensure local development overrides global installations
       {
         llvm::SmallString<128> localPath1("lib");
@@ -741,7 +763,7 @@ int main(int argc, char **argv) {
           }
         }
       }
-      
+
       // 2. Search in searchPaths (including TOKA_LIB and -I)
       if (tokaRtPath.empty()) {
         for (const auto &p : searchPaths) {
@@ -772,7 +794,7 @@ int main(int argc, char **argv) {
       for (char &c : tokaRtPath) {
         if (c == '\\') c = '/';
       }
-      
+
       bool hasRt = false;
       for (const auto &obj : objectFiles) {
         if (obj.find("toka_rt") != std::string::npos) {
@@ -780,7 +802,7 @@ int main(int argc, char **argv) {
           break;
         }
       }
-      
+
       if (!hasRt) {
         objectFiles.push_back(tokaRtPath);
       }

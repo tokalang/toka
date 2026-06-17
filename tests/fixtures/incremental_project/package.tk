@@ -1,0 +1,6 @@
+pub const PACKAGE = (
+    name = "incremental_project",
+    version = "0.1.0",
+    dependencies = (
+    )
+)

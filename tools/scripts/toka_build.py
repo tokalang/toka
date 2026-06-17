@@ -28,10 +28,10 @@ def calculate_file_hash(path: str) -> str:
     except Exception:
         return ""
 
-def run_tokac_dump(tokac_path: str, compiler_args: list, entry_files: list) -> dict:
+def run_tokac_dump(tokac_path: str, compiler_args: list, entry_files: list, env: dict = None) -> dict:
     cmd = [tokac_path, "--dump-dependencies=json"] + compiler_args + entry_files
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True, env=env)
         return json.loads(res.stdout)
     except subprocess.CalledProcessError as e:
         sys.stderr.write(f"Error calling tokac dump-dependencies:\n{e.stderr}\n")
@@ -40,10 +40,10 @@ def run_tokac_dump(tokac_path: str, compiler_args: list, entry_files: list) -> d
         sys.stderr.write(f"Failed to parse tokac dependency JSON output: {e}\n")
         sys.exit(1)
 
-def run_tokac_compile(tokac_path: str, compiler_args: list, entry_files: list) -> int:
-    cmd = [tokac_path] + compiler_args + entry_files
+def run_tokac_compile(tokac_path: str, compiler_args: list, files_and_objs: list, env: dict = None) -> int:
+    cmd = [tokac_path] + compiler_args + files_and_objs
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
         if res.returncode != 0:
             sys.stderr.write(f"Compilation Failed:\n{res.stderr}\n")
             sys.stdout.write(res.stdout)
@@ -67,6 +67,112 @@ def save_manifest(path: str, data: dict):
         os.makedirs(dir_name)
     with open(path, 'w') as f:
         json.dump(data, f, indent=2)
+
+def filter_args_for_submodule(args_list: list) -> list:
+    res = []
+    skip = False
+    for arg in args_list:
+        if skip:
+            skip = False
+            continue
+        if arg == "-o":
+            skip = True
+            continue
+        if arg == "-c" or arg == "--emit-interface" or arg == "--emit-obj":
+            continue
+        res.append(arg)
+    return res
+
+def is_std_or_core(path: str) -> bool:
+    path_norm = os.path.realpath(path).replace('\\', '/')
+    std_paths = ["/usr/local/lib/toka"]
+    toka_lib = os.environ.get("TOKA_LIB")
+    if toka_lib:
+        std_paths.append(os.path.realpath(toka_lib))
+
+    for std_p in std_paths:
+        std_p_norm = std_p.replace('\\', '/')
+        if path_norm.startswith(std_p_norm):
+            return True
+
+    std_folders = ["/lib/core/", "/lib/std/", "/lib/sys/", "/lib/stdx/", "/lib/prim/", "/lib/hal/", "/lib/toolchain/"]
+    if any(f in path_norm for f in std_folders) or path_norm.endswith("/lib/build.tk"):
+        return True
+    return False
+
+def populate_submodule_outputs(graph: dict, build_dir: str):
+    # Dynamically inject unique, stable objects/interfaces paths for all non-root source modules
+    roots = graph.get("roots", [])
+    for m_path, info in graph.get("modules", {}).items():
+        if m_path not in roots and info.get("kind") == "source":
+            if is_std_or_core(m_path):
+                continue
+            h = fnv1a_64(m_path.encode())
+            obj_path = canonicalize(f"{build_dir}/objects/{h}.o")
+            tki_path = canonicalize(f"{build_dir}/interfaces/{h}.tki")
+            info["outputs"] = {
+                "interface": tki_path,
+                "object": obj_path,
+                "executable": ""
+            }
+
+def get_transitive_dependencies(root: str, current_graph: dict) -> list:
+    curr_roots = current_graph.get("roots", [])
+    modules = current_graph.get("modules", {})
+    visited = set()
+    deps = []
+
+    def dfs(node):
+        if node in visited:
+            return
+        visited.add(node)
+        info = modules.get(node)
+        if not info:
+            return
+        for dep in info.get("dependencies", []):
+            dfs(dep)
+            dep_info = modules.get(dep)
+            if dep_info and dep_info.get("kind") == "source" and dep not in curr_roots:
+                deps.append(dep)
+
+    dfs(root)
+    # Deduplicate while preserving order
+    seen = set()
+    res = []
+    for d in deps:
+        if d not in seen:
+            seen.add(d)
+            res.append(d)
+    return res
+
+def topological_sort_submodules(dirty_submodules: dict, current_graph: dict) -> list:
+    modules = current_graph.get("modules", {})
+    roots = current_graph.get("roots", [])
+    visited = set()
+    temp_visited = set()
+    order = []
+
+    def dfs(node):
+        if node in temp_visited:
+            return
+        if node in visited:
+            return
+        temp_visited.add(node)
+
+        info = modules.get(node, {})
+        for dep in info.get("dependencies", []):
+            dfs(dep)
+
+        temp_visited.remove(node)
+        visited.add(node)
+
+        if node in dirty_submodules and node not in roots and not is_std_or_core(node):
+            order.append(node)
+
+    for m_path in dirty_submodules:
+        dfs(m_path)
+
+    return order
 
 def generate_rebuild_plan(current_graph: dict, old_manifest: dict) -> dict:
     plan = {
@@ -127,7 +233,7 @@ def generate_rebuild_plan(current_graph: dict, old_manifest: dict) -> dict:
             dirty_map[m_path] = {"reason": "version/target changed", "dirty_deps": []}
             continue
 
-        # 2. Outputs verification
+        # 2. Outputs verification (outputs changed check and current output existence check)
         curr_outputs = curr_info.get("outputs", {})
         old_outputs = old_info.get("outputs", {})
         if curr_outputs != old_outputs:
@@ -199,7 +305,7 @@ def generate_rebuild_plan(current_graph: dict, old_manifest: dict) -> dict:
     return plan
 
 def main():
-    parser = argparse.ArgumentParser(description="Toka Incremental Build Manager (External Consumer Demo)")
+    parser = argparse.ArgumentParser(description="Toka Incremental Build Manager (Distributed Compile & Link)")
     parser.add_argument('entry_files', nargs='+', help='Entry file paths')
     parser.add_argument('--manifest', '-m', default='.toka/build/manifest.json', help='Manifest store path')
     parser.add_argument('--tokac', default='build/bin/tokac', help='Path to tokac compiler')
@@ -213,13 +319,21 @@ def main():
     # Parse compiler arguments
     c_args = shlex.split(args.compiler_args)
 
-    # 1. Run compiler dependency dump to get current graph
-    current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files)
+    # Resolve build directory and construct environment
+    build_dir = canonicalize(os.path.dirname(args.manifest))
+    env = os.environ.copy()
+    env["TOKA_BUILD_DIR"] = build_dir
 
-    # 2. Load old manifest
+    # 1. Run compiler dependency dump to get current graph
+    current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
+
+    # 2. Inject stable module-level objects/interfaces outputs for all submodules
+    populate_submodule_outputs(current_graph, build_dir)
+
+    # 3. Load old manifest
     old_manifest = load_manifest(args.manifest)
 
-    # 3. Generate rebuild plan
+    # 4. Generate rebuild plan
     plan = generate_rebuild_plan(current_graph, old_manifest)
 
     if args.plan:
@@ -232,15 +346,54 @@ def main():
             print("All targets are clean. Nothing to compile!")
             return
 
-        print(f"Compiling {len(plan['dirty_roots'])} dirty targets...")
-        ret = run_tokac_compile(args.tokac, c_args, args.entry_files)
-        if ret == 0:
-            # Re-generate dependencies graph to record final success state
-            success_graph = run_tokac_dump(args.tokac, c_args, args.entry_files)
-            save_manifest(args.manifest, success_graph)
-            print("Build successful!")
-        else:
-            sys.exit(ret)
+        print(f"Compiling {len(plan['dirty_modules'])} dirty modules...")
+
+        # 1. Build all dirty non-root modules separately
+        sub_c_args = filter_args_for_submodule(c_args)
+
+        # Create build directories for objects and interfaces
+        obj_dir = os.path.join(build_dir, "objects")
+        if not os.path.exists(obj_dir):
+            os.makedirs(obj_dir)
+        int_dir = os.path.join(build_dir, "interfaces")
+        if not os.path.exists(int_dir):
+            os.makedirs(int_dir)
+
+        sorted_submodules = topological_sort_submodules(plan["dirty_modules"], current_graph)
+        for m_path in sorted_submodules:
+            # This is a dirty submodule, compile it separately
+            curr_info = current_graph["modules"][m_path]
+            expected_obj = curr_info.get("outputs", {}).get("object", "")
+            if not expected_obj:
+                continue
+
+            print(f"Compiling dependency submodule: {m_path}")
+            ret = run_tokac_compile(args.tokac, ["-c", "-o", expected_obj] + sub_c_args, [m_path], env=env)
+            if ret != 0:
+                sys.exit(ret)
+
+        # 2. Compile and link all dirty root modules
+        for root in plan["dirty_roots"]:
+            # Collect all compiled/cached dependency objects (.o) transitive to this root
+            dep_paths = get_transitive_dependencies(root, current_graph)
+            dep_objs = []
+            for dep in dep_paths:
+                dep_info = current_graph["modules"][dep]
+                obj = dep_info.get("outputs", {}).get("object")
+                if obj:
+                    dep_objs.append(obj)
+
+            print(f"Linking root module with dependencies: {root}")
+            # Compile root and link everything in a single driver call
+            ret = run_tokac_compile(args.tokac, c_args + dep_objs, [root], env=env)
+            if ret != 0:
+                sys.exit(ret)
+
+        # 3. Re-generate dependencies graph to record final success state
+        success_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
+        populate_submodule_outputs(success_graph, build_dir)
+        save_manifest(args.manifest, success_graph)
+        print("Build successful!")
 
 if __name__ == "__main__":
     main()

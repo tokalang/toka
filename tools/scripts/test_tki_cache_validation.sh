@@ -283,7 +283,7 @@ c = re.sub(r'compiler_version:\s*\S+', 'compiler_version: 0.0.0', c)
 open(p, 'w').write(c)
 "
 
-"$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/main.tk" > "$TEST_DIR/fallback.json"
+"$TOKAC_ABS" --dump-dependencies=json -c "$TEST_DIR/main.tk" > "$TEST_DIR/fallback.json"
 
 python3 -c '
 import json, sys
@@ -414,7 +414,7 @@ fi
 echo "PASS: Test 7.5.1"
 
 # 7.5.2 In dependency dump mode: should preferSource = false (read lib.tki, trigger fallback to lib.tk)
-"$TOKAC_ABS" --dump-dependencies=json --pkg "mylib=$TEST_DIR/lib" "$TEST_DIR/main_pkg.tk" > "$TEST_DIR/pkg_fallback.json"
+"$TOKAC_ABS" --dump-dependencies=json -c --pkg "mylib=$TEST_DIR/lib" "$TEST_DIR/main_pkg.tk" > "$TEST_DIR/pkg_fallback.json"
 
 python3 -c '
 import json, sys
@@ -436,6 +436,58 @@ fi
 echo "PASS: Test 7.5.2"
 
 echo "PASS: Test 7"
+
+# 7.6 Test source_path metadata used for source_hash verification in hash-cached .tki
+echo "Test 7.6: Using source_path in validateTKIMetadata for source_hash verification"
+cat << 'EOF' > "$TEST_DIR/dep.tk"
+pub fn get_val() -> i32 { return 42 }
+EOF
+cat << 'EOF' > "$TEST_DIR/main_cache.tk"
+import ./dep::{get_val}
+fn main() -> i32 { return 0 }
+EOF
+
+# Ensure clean build dir
+rm -rf "$TEST_DIR/build"
+mkdir -p "$TEST_DIR/build/objects" "$TEST_DIR/build/interfaces"
+
+# Compile first to generate expected .tki in custom TOKA_BUILD_DIR
+TOKA_BUILD_DIR="$TEST_DIR/build" "$TOKAC_ABS" -c "$TEST_DIR/dep.tk" --emit-interface -o "$TEST_DIR/build/objects/dep.o"
+TOKA_BUILD_DIR="$TEST_DIR/build" "$TOKAC_ABS" -c "$TEST_DIR/main_cache.tk" --emit-interface -o "$TEST_DIR/build/objects/main_cache.o"
+
+# Verify the .tki was indeed created in custom build directory
+TKI_COUNT=$(find "$TEST_DIR/build/interfaces" -name "*.tki" | wc -l)
+if [ "$TKI_COUNT" -ne 2 ]; then
+    echo "FAIL: Expected 2 cached .tki in custom build dir, found $TKI_COUNT"
+    exit 1
+fi
+
+# Modify the source file dep.tk to invalidate the cached source_hash
+cat << 'EOF' > "$TEST_DIR/dep.tk"
+pub fn get_val() -> i32 { return 43 }
+EOF
+
+# Dump dependencies in compile-only mode (preferSource = false) to trigger interface check
+TOKA_BUILD_DIR="$TEST_DIR/build" "$TOKAC_ABS" --dump-dependencies=json -c "$TEST_DIR/main_cache.tk" > "$TEST_DIR/source_hash_mismatch.json"
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+modules = data.get("modules", {})
+
+dep_key = next((k for k in modules if k.endswith("dep.tk")), None)
+assert dep_key is not None, "Should resolve and fallback to dep.tk"
+dep_module = modules[dep_key]
+assert dep_module["fallback_triggered"] is True, "fallback_triggered should be true for changed source"
+assert dep_module["cache_status"] == "SourceHashMismatch", f"Unexpected cache_status: {dep_module}"
+' < "$TEST_DIR/source_hash_mismatch.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 7.6 Python validation failed"
+    cat "$TEST_DIR/source_hash_mismatch.json"
+    exit 1
+fi
+echo "PASS: Test 7.6"
 
 # Clean up
 rm -rf "$TEST_DIR"

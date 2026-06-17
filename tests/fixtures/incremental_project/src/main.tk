@@ -1,0 +1,6 @@
+import ./lib::{get_val}
+
+fn main() -> i32 {
+    auto v = get_val()
+    return 0
+}

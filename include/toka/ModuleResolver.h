@@ -18,6 +18,7 @@ enum class TKICacheStatus {
     MissingFormatVersion,
     MissingTargetTriple,
     MissingSourceHash,
+    MissingSourcePath,
     CompilerVersionMismatch,
     FormatVersionMismatch,
     TargetTripleMismatch,
@@ -29,6 +30,7 @@ struct TKIMetadata {
     std::string FormatVersion;
     std::string TargetTriple;
     std::string SourceHash;
+    std::string SourcePath;
 };
 
 struct ModuleResolutionInfo {
@@ -39,6 +41,7 @@ struct ModuleResolutionInfo {
     std::string CacheStatusReason;
     std::string SourceHash;
     std::string ContentHash;
+    std::string SourcePath;
 };
 
 class ModuleResolver {
@@ -68,6 +71,8 @@ public:
         return m_Roots;
     }
 
+    void setProvidedObjects(const std::vector<std::string> &objs);
+
 private:
     SourceManager &m_SourceManager;
     std::vector<std::string> m_SearchPaths;
@@ -75,6 +80,7 @@ private:
     bool m_PreferSource;
     std::vector<std::string> m_Roots;
 
+    std::set<std::string> m_ProvidedObjects;
     std::set<std::string> m_Visited;
     std::vector<std::string> m_RecursionStack;
     std::map<std::string, std::vector<std::string>> m_Dependencies;

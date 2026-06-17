@@ -7,6 +7,7 @@
 #include <fstream>
 #include <algorithm>
 #include <iostream>
+#include <cstdlib>
 
 namespace toka {
 
@@ -30,10 +31,26 @@ bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
     }
     m_RecursionStack.clear();
     std::string actualPath;
+    if (overrideSourceCode.empty()) {
+        actualPath = resolveSourcePath(rawFilename, m_SearchPaths);
+    } else {
+        actualPath = PathUtils::normalize(rawFilename);
+    }
+    std::string initialCanonical;
+    if (!actualPath.empty()) {
+        initialCanonical = PathUtils::canonicalize(actualPath);
+        if (std::find(m_Roots.begin(), m_Roots.end(), initialCanonical) == m_Roots.end()) {
+            m_Roots.push_back(initialCanonical);
+        }
+    }
     bool ok = parseRecursive(rawFilename, astModules, overrideSourceCode, &actualPath);
-    if (ok && !actualPath.empty()) {
-        if (std::find(m_Roots.begin(), m_Roots.end(), actualPath) == m_Roots.end()) {
-            m_Roots.push_back(actualPath);
+    if (!actualPath.empty()) {
+        std::string finalCanonical = PathUtils::canonicalize(actualPath);
+        if (finalCanonical != initialCanonical) {
+            auto it = std::find(m_Roots.begin(), m_Roots.end(), initialCanonical);
+            if (it != m_Roots.end()) {
+                *it = finalCanonical;
+            }
         }
     }
     return ok;
@@ -44,7 +61,8 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
   std::string filename = PathUtils::normalize(rawFilename);
 
   auto fileExists = [](const std::string &p) {
-    return std::ifstream(p).good();
+    std::error_code ec;
+    return std::filesystem::is_regular_file(p, ec);
   };
 
   auto getBasename = [](const std::string &path) -> std::string {
@@ -118,10 +136,17 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
   // 1. Try exact filename
   else if (fileExists(filename)) {
     bool shouldPoison = false;
-    if (isCompilingBuildSystem && m_RecursionStack.size() > 1) {
+    if (isCompilingBuildSystem && m_RecursionStack.size() >= 1) {
       std::string resBasename = getBasename(filename);
-      if (resBasename == "build.tk" || resBasename == "Project.tk") {
-        shouldPoison = true;
+      if (resBasename == "build.tk" || resBasename == "Project.tk" ||
+          resBasename == "build.tki" || resBasename == "Project.tki") {
+        std::string tkFromFile = filename;
+        if (tkFromFile.length() >= 4 && tkFromFile.substr(tkFromFile.length() - 4) == ".tki") {
+          tkFromFile.replace(tkFromFile.length() - 4, 4, ".tk");
+        }
+        if (PathUtils::canonicalize(tkFromFile) == m_RecursionStack[0]) {
+          shouldPoison = true;
+        }
       }
     }
     if (!isStdOrCore && !shouldPoison) {
@@ -136,12 +161,18 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
     bool canUseTki = fileExists(resolvedTki);
     bool canUseTk = fileExists(resolvedTk);
 
-    if (isCompilingBuildSystem && m_RecursionStack.size() > 1) {
-      if (getBasename(resolvedTki) == "build.tk" || getBasename(resolvedTki) == "Project.tk") {
-        canUseTki = false;
+    if (isCompilingBuildSystem && m_RecursionStack.size() >= 1) {
+      if (getBasename(resolvedTki) == "build.tki" || getBasename(resolvedTki) == "Project.tki") {
+        std::string tkFromTki = resolvedTki;
+        tkFromTki.replace(tkFromTki.length() - 4, 4, ".tk");
+        if (PathUtils::canonicalize(tkFromTki) == m_RecursionStack[0]) {
+          canUseTki = false;
+        }
       }
       if (getBasename(resolvedTk) == "build.tk" || getBasename(resolvedTk) == "Project.tk") {
-        canUseTk = false;
+        if (PathUtils::canonicalize(resolvedTk) == m_RecursionStack[0]) {
+          canUseTk = false;
+        }
       }
     }
 
@@ -212,7 +243,8 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
   }
 
   if (found) {
-    return PathUtils::normalize(resolvedPath);
+    std::string norm = PathUtils::normalize(resolvedPath);
+    return norm;
   }
   return "";
 }
@@ -222,6 +254,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
                                     const std::string &overrideSourceCode,
                                     std::string *outActualPath) {
   std::string resolvedPath = filename;
+  std::string originalTkPath = "";
   if (overrideSourceCode.empty()) {
       resolvedPath = resolveSourcePath(filename, m_SearchPaths);
       if (resolvedPath.empty()) {
@@ -229,8 +262,23 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
                                    "Could not open file: " + PathUtils::normalize(filename));
           return false;
       }
+      originalTkPath = PathUtils::canonicalize(resolvedPath);
+      std::string canonical = originalTkPath;
+      const char *envBuildDir = std::getenv("TOKA_BUILD_DIR");
+      std::string buildDir = envBuildDir ? envBuildDir : ".toka/build";
+      std::string expectedObj = buildDir + "/objects/" + calculateFNV1a(canonical) + ".o";
+      std::string expectedTki = buildDir + "/interfaces/" + calculateFNV1a(canonical) + ".tki";
+      bool isObjProvided = (m_ProvidedObjects.find(PathUtils::canonicalize(expectedObj)) != m_ProvidedObjects.end());
+      bool cacheTkiExists = (std::ifstream(expectedTki).good());
+      bool isRoot = (std::find(m_Roots.begin(), m_Roots.end(), canonical) != m_Roots.end());
+      if (!isRoot && (isObjProvided || (!m_PreferSource && cacheTkiExists))) {
+          if (cacheTkiExists) {
+              resolvedPath = expectedTki;
+          }
+      }
   } else {
       resolvedPath = PathUtils::normalize(filename);
+      originalTkPath = resolvedPath;
   }
 
   // Validate TKI metadata and potentially fallback to .tk
@@ -239,9 +287,9 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   TKICacheStatus cacheStatus = TKICacheStatus::Ok;
   std::string cacheStatusReason = "";
   std::string sourceHash = "";
+  TKIMetadata meta;
 
   if (isTki) {
-      TKIMetadata meta;
       if (readTKIMetadata(resolvedPath, meta)) {
           sourceHash = meta.SourceHash;
       }
@@ -250,8 +298,16 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       cacheStatus = status;
       cacheStatusReason = reason;
       if (status != TKICacheStatus::Ok) {
-          std::string tkPath = resolvedPath;
-          tkPath.replace(tkPath.length() - 4, 4, ".tk");
+          std::string tkPath = meta.SourcePath;
+          if (tkPath.empty()) {
+              if (originalTkPath.length() >= 4 && originalTkPath.substr(originalTkPath.length() - 4) != ".tki") {
+                  tkPath = originalTkPath;
+              }
+          }
+          if (tkPath.empty()) {
+              tkPath = resolvedPath;
+              tkPath.replace(tkPath.length() - 4, 4, ".tk");
+          }
           if (std::ifstream(tkPath).good()) {
               resolvedPath = tkPath;
               fallbackTriggered = true;
@@ -289,6 +345,11 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   info.CacheStatusReason = cacheStatusReason;
   info.SourceHash = sourceHash;
   info.ContentHash = contentHash;
+  if (finalIsInterface) {
+      info.SourcePath = meta.SourcePath;
+  } else {
+      info.SourcePath = canonicalPath;
+  }
   m_ResolutionRecords[canonicalPath] = info;
 
   // Check recursion stack for circular dependency
@@ -354,8 +415,13 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
 
     std::string importPath = imp->PhysicalPath;
     if (importPath.rfind("./", 0) == 0 || importPath.rfind("../", 0) == 0) {
-        size_t lastSlash = resolvedPath.find_last_of('/');
-        std::string parentDir = (lastSlash == std::string::npos) ? "." : resolvedPath.substr(0, lastSlash);
+        std::string baseSourcePath = canonicalPath;
+        auto recIt = m_ResolutionRecords.find(canonicalPath);
+        if (recIt != m_ResolutionRecords.end() && !recIt->second.SourcePath.empty()) {
+            baseSourcePath = recIt->second.SourcePath;
+        }
+        size_t lastSlash = baseSourcePath.find_last_of("/\\");
+        std::string parentDir = (lastSlash == std::string::npos) ? "." : baseSourcePath.substr(0, lastSlash);
         importPath = parentDir + "/" + importPath;
     }
 
@@ -430,6 +496,7 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
                 else if (key == "format_version") meta.FormatVersion = val;
                 else if (key == "target_triple") meta.TargetTriple = val;
                 else if (key == "source_hash") meta.SourceHash = val;
+                else if (key == "source_path") meta.SourcePath = val;
             }
         } else if (line.rfind("//", 0) == 0 || line.empty()) {
             continue;
@@ -462,6 +529,10 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(const std::string &path, std:
         reason = "Missing source_hash metadata";
         return TKICacheStatus::MissingSourceHash;
     }
+    if (meta.SourceHash != "any" && meta.SourcePath.empty()) {
+        reason = "Missing source_path metadata";
+        return TKICacheStatus::MissingSourcePath;
+    }
 
     if (meta.CompilerVersion != "any" && meta.CompilerVersion != TOKA_COMPILER_INTERFACE_VERSION) {
         reason = "Compiler version mismatch (expected " + std::string(TOKA_COMPILER_INTERFACE_VERSION) + ", got " + meta.CompilerVersion + ")";
@@ -478,9 +549,12 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(const std::string &path, std:
 
     // Check source hash if corresponding .tk file exists
     if (meta.SourceHash != "any") {
-        std::string tkPath = path;
-        if (tkPath.length() >= 4 && tkPath.substr(tkPath.length() - 4) == ".tki") {
-            tkPath.replace(tkPath.length() - 4, 4, ".tk");
+        std::string tkPath = meta.SourcePath;
+        if (tkPath.empty()) {
+            tkPath = path;
+            if (tkPath.length() >= 4 && tkPath.substr(tkPath.length() - 4) == ".tki") {
+                tkPath.replace(tkPath.length() - 4, 4, ".tk");
+            }
         }
         std::ifstream tkFile(tkPath, std::ios::binary);
         if (tkFile.good()) {
@@ -493,6 +567,12 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(const std::string &path, std:
         }
     }
     return TKICacheStatus::Ok;
+}
+
+void ModuleResolver::setProvidedObjects(const std::vector<std::string> &objs) {
+    for (const auto &obj : objs) {
+        m_ProvidedObjects.insert(PathUtils::canonicalize(obj));
+    }
 }
 
 } // namespace toka

@@ -2,6 +2,7 @@
 #include "toka/Type.h"
 #include "toka/InterfaceVersion.h"
 #include "toka/Parser.h"
+#include "toka/PathUtils.h"
 #include <sstream>
 #include <fstream>
 
@@ -37,7 +38,7 @@ static std::string reconstructVar(
     if (isPointerNullable) {
         result += "nul ";
     }
-    
+
     if (isUnique) {
         result += "^";
     } else if (isShared) {
@@ -47,20 +48,20 @@ static std::string reconstructVar(
     } else if (hasPointer) {
         result += "*";
     }
-    
+
     if (isRebindable) {
         result += "#";
     } else if (isRebindBlocked) {
         result += "$";
     }
-    
+
     std::string name = toka::Type::stripMorphology(rawName);
     bool nameHasMorphicPrefix = !name.empty() && name[0] == '\'';
     if (isMorphicExempt && !nameHasMorphicPrefix) {
         result += "'";
     }
     result += name;
-    
+
     if (isValueMutable) {
         result += "#";
     } else if (isValueNullable) {
@@ -68,7 +69,7 @@ static std::string reconstructVar(
     } else if (isValueBlocked) {
         result += "$";
     }
-    
+
     return result;
 }
 
@@ -145,6 +146,7 @@ void TKIExporter::exportModule(const Module &module) {
     writeln("// @meta format_version: " + std::string(TOKA_INTERFACE_FORMAT_VERSION));
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
+    writeln("// @meta source_path: " + PathUtils::canonicalize(module.SourcePath));
     writeln();
 
     // 1. Export Imports

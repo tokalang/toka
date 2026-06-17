@@ -121,7 +121,7 @@
   - `interface`：输出的 `.tki` 接口物理绝对路径。仅对入口根模块输出。
   - `object`：开启 `--emit-obj` 并启用 `-c` 时输出的 `.o` 临时或目标对象物理路径。
   - `executable`：非仅编译模式下最终链接生成的可执行文件物理绝对路径。
-  - *注：对于非根模块，所有 outputs 路径均置空 `""`。*
+  - *注：在 `tokac` 编译器原始导出的依赖图 JSON 中，非根模块的所有 outputs 路径均置空 `""`。而在外部构建驱动器（如 `toka_build.py`）持久化增强的 `manifest.json` 中，非根模块的 `outputs` 会被自动注入并记录其分立编译时对应的唯一缓存 `.o`（object）与 `.tki`（interface）产物的物理绝对路径，以便于后续增量编译状态比对与依赖链接收集。*
 
 ### 11. `dependencies`
 * **类型**：`array of string`

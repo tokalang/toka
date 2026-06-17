@@ -15,6 +15,18 @@ else
     fi
 fi
 
+TOKA="${TOKA:-./build/bin/toka}"
+if [[ "$TOKA" = /* ]]; then
+    TOKA_ABS="$TOKA"
+elif [[ "$TOKA" = */* ]]; then
+    TOKA_ABS="$(cd "$(dirname "$TOKA")" && pwd)/$(basename "$TOKA")"
+else
+    TOKA_ABS="$(command -v "$TOKA" 2>/dev/null || echo "$TOKA")"
+    if [[ "$TOKA_ABS" != /* ]]; then
+        TOKA_ABS="./$TOKA"
+    fi
+fi
+
 PYTHON_BUILD_DRIVER="./tools/scripts/toka_build.py"
 chmod +x "$PYTHON_BUILD_DRIVER"
 
@@ -250,6 +262,223 @@ assert data["status"] == "clean", f"Plan should return to clean under app2 outpu
 ' < "$TEST_DIR/plan_6_clean.json"
 
 echo "PASS: Test 6"
+
+# 8. Test 7: Toka Build official entry integration and project fixture check
+echo "Test 7: Verifying toka build official integration with project fixture"
+FIXTURE_DIR="tests/fixtures/incremental_project"
+rm -rf "$FIXTURE_DIR/.toka"
+rm -rf "$FIXTURE_DIR/target"
+
+# Test 7.1: First build via toka build
+echo "Test 7.1: Performing first build via toka build"
+(cd "$FIXTURE_DIR" && TOKAC="$TOKAC_ABS" TOKA_LIB="../../../lib" "$TOKA_ABS" build) > "$TEST_DIR/toka_build_1.log"
+
+if [ ! -f "$FIXTURE_DIR/target/debug/incremental_project" ]; then
+    echo "FAIL: executable target not built via toka build"
+    cat "$TEST_DIR/toka_build_1.log"
+    exit 1
+fi
+if [ ! -f "$FIXTURE_DIR/.toka/build/manifest.json" ]; then
+    echo "FAIL: manifest.json was not created in .toka/build/"
+    exit 1
+fi
+echo "PASS: Test 7.1"
+
+# Test 7.2: Second build (zero rebuild skip)
+echo "Test 7.2: Verifying zero-rebuild clean status on second toka build"
+(cd "$FIXTURE_DIR" && TOKAC="$TOKAC_ABS" TOKA_LIB="../../../lib" "$TOKA_ABS" build) > "$TEST_DIR/toka_build_2.log"
+if ! grep -q "All targets are clean. Nothing to compile!" "$TEST_DIR/toka_build_2.log"; then
+    echo "FAIL: Expected clean bypass from toka build, got:"
+    cat "$TEST_DIR/toka_build_2.log"
+    exit 1
+fi
+echo "PASS: Test 7.2"
+
+# Test 7.3: Modify dependency module trigger rebuild
+echo "Test 7.3: Modifying dependency src/lib.tk and verifying rebuild"
+# Backup and modify src/lib.tk
+cp "$FIXTURE_DIR/src/lib.tk" "$FIXTURE_DIR/src/lib.tk.bak"
+cat << 'EOF' > "$FIXTURE_DIR/src/lib.tk"
+pub fn get_val() -> i32 {
+    return 999
+}
+EOF
+
+# Run toka build
+(cd "$FIXTURE_DIR" && TOKAC="$TOKAC_ABS" TOKA_LIB="../../../lib" "$TOKA_ABS" build) > "$TEST_DIR/toka_build_3.log"
+if grep -q "All targets are clean. Nothing to compile!" "$TEST_DIR/toka_build_3.log"; then
+    echo "FAIL: Expected rebuild to trigger on dependency change, but got clean skip"
+    cat "$TEST_DIR/toka_build_3.log"
+    exit 1
+fi
+
+# Restore lib.tk
+mv "$FIXTURE_DIR/src/lib.tk.bak" "$FIXTURE_DIR/src/lib.tk"
+# Rebuild to return to clean state
+(cd "$FIXTURE_DIR" && TOKAC="$TOKAC_ABS" TOKA_LIB="../../../lib" "$TOKA_ABS" build) >/dev/null
+
+echo "PASS: Test 7.3"
+
+# Test 7.4: Delete output trigger rebuild
+echo "Test 7.4: Deleting build output and verifying rebuild"
+rm -f "$FIXTURE_DIR/target/debug/incremental_project"
+(cd "$FIXTURE_DIR" && TOKAC="$TOKAC_ABS" TOKA_LIB="../../../lib" "$TOKA_ABS" build) > "$TEST_DIR/toka_build_4.log"
+if grep -q "All targets are clean. Nothing to compile!" "$TEST_DIR/toka_build_4.log"; then
+    echo "FAIL: Expected rebuild on missing target executable, but got clean skip"
+    exit 1
+fi
+if [ ! -f "$FIXTURE_DIR/target/debug/incremental_project" ]; then
+    echo "FAIL: Failed to compile missing output"
+    exit 1
+fi
+echo "PASS: Test 7.4"
+
+# Clean up fixture builds
+rm -rf "$FIXTURE_DIR/.toka"
+rm -rf "$FIXTURE_DIR/target"
+echo "PASS: Test 7"
+
+# 9. Test 8: Residue build.tki poisoning self-skip test
+echo "Test 8: Checking build.tki residue self-skip poisoning"
+TEST_8_DIR="$TEST_DIR/test_8_project"
+mkdir -p "$TEST_8_DIR"
+WORKSPACE_DIR="$(resolve_abs_path .)"
+
+# Generate fake stale build.tki in the root directory
+cat << 'EOF' > "$TEST_8_DIR/build.tki"
+@meta
+compiler_version: 0.0.0
+format_version: 1.0.0
+target_triple: x86_64-unknown-linux-gnu
+source_hash: 1234567890abcdef
+content_hash: 1234567890abcdef
+@symbols
+EOF
+
+# Generate actual build.tk that imports standard library build and calls its symbol
+cat << 'EOF' > "$TEST_8_DIR/build.tk"
+import build::{Executable};
+fn main() -> i32 {
+    auto e# = Executable::make(c"test", c"src/main.tk")
+    return 0
+}
+EOF
+
+# Compile build.tk using tokac under its own directory CWD
+(cd "$TEST_8_DIR" && TOKA_LIB="$WORKSPACE_DIR/lib" "$TOKAC_ABS" -o build_exe build.tk > build.log 2>&1)
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 8 compilation failed, local build.tki was not properly skipped. Log:"
+    cat "$TEST_8_DIR/build.log"
+    exit 1
+fi
+
+if [ ! -f "$TEST_8_DIR/build_exe" ]; then
+    echo "FAIL: Test 8 did not generate build_exe"
+    exit 1
+fi
+
+# Run the generated executable
+(cd "$TEST_8_DIR" && ./build_exe)
+echo "PASS: Test 8"
+
+# 10. Test 9: Three-tier topology compilation order check
+echo "Test 9: Verifying dependency compilation order matching topological sorted post-order"
+TEST_9_DIR="$TEST_DIR/test_9_project"
+mkdir -p "$TEST_9_DIR"
+
+# Create leaf.tk
+cat << 'EOF' > "$TEST_9_DIR/leaf.tk"
+pub fn leaf_func() -> i32 {
+    return 100
+}
+EOF
+
+# Create mid.tk which depends on leaf
+cat << 'EOF' > "$TEST_9_DIR/mid.tk"
+import ./leaf::{leaf_func}
+pub fn mid_func() -> i32 {
+    return leaf_func() + 50
+}
+EOF
+
+# Create root.tk which depends on mid
+cat << 'EOF' > "$TEST_9_DIR/root.tk"
+import ./mid::{mid_func}
+fn main() -> i32 {
+    auto v = mid_func()
+    return v
+}
+EOF
+
+# Resolve absolute paths
+LEAF_ABS="$(resolve_abs_path "$TEST_9_DIR/leaf.tk")"
+MID_ABS="$(resolve_abs_path "$TEST_9_DIR/mid.tk")"
+ROOT_ABS="$(resolve_abs_path "$TEST_9_DIR/root.tk")"
+
+# Perform first full build
+python3 "$PYTHON_BUILD_DRIVER" --build -m "$TEST_9_DIR/manifest.json" --tokac "$TOKAC_ABS" --compiler-args "-o $TEST_9_DIR/app" "$TEST_9_DIR/root.tk" > "$TEST_9_DIR/build_1.log" 2>&1
+if [ ! -f "$TEST_9_DIR/app" ]; then
+    echo "FAIL: Test 9 first build failed. Log:"
+    cat "$TEST_9_DIR/build_1.log"
+    exit 1
+fi
+
+# Assert run output is 150 (check exit code)
+set +e
+"$TEST_9_DIR/app"
+EXIT_CODE=$?
+set -e
+if [ $EXIT_CODE -ne 150 ]; then
+    echo "FAIL: Test 9 first run output mismatch: expected 150, got $EXIT_CODE"
+    exit 1
+fi
+
+# Modify leaf.tk to trigger incremental rebuild of leaf and mid
+# Since leaf changes, both leaf and mid are dirty.
+# Leaf should compile before mid!
+cat << 'EOF' > "$TEST_9_DIR/leaf.tk"
+pub fn leaf_func() -> i32 {
+    return 200
+}
+EOF
+
+# Run toka_build.py with --build and capture logs
+python3 "$PYTHON_BUILD_DRIVER" --build -m "$TEST_9_DIR/manifest.json" --tokac "$TOKAC_ABS" --compiler-args "-o $TEST_9_DIR/app" "$TEST_9_DIR/root.tk" > "$TEST_9_DIR/build_2.log" 2>&1
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 9 incremental build failed. Log:"
+    cat "$TEST_9_DIR/build_2.log"
+    exit 1
+fi
+
+# Validate order in the logs:
+# The log for "Compiling dependency submodule: ...leaf.tk" must appear BEFORE "Compiling dependency submodule: ...mid.tk"
+# We can check the line numbers of these messages in build_2.log
+LEAF_LINE=$(grep -n "Compiling dependency submodule:.*leaf.tk" "$TEST_9_DIR/build_2.log" | cut -d: -f1 || echo "")
+MID_LINE=$(grep -n "Compiling dependency submodule:.*mid.tk" "$TEST_9_DIR/build_2.log" | cut -d: -f1 || echo "")
+
+if [ -z "$LEAF_LINE" ] || [ -z "$MID_LINE" ]; then
+    echo "FAIL: Expected both leaf.tk and mid.tk to be recompiled as dirty dependency submodules, log:"
+    cat "$TEST_9_DIR/build_2.log"
+    exit 1
+fi
+
+if [ "$LEAF_LINE" -ge "$MID_LINE" ]; then
+    echo "FAIL: Compilation order violation. leaf.tk ($LEAF_LINE) should be compiled before mid.tk ($MID_LINE), log:"
+    cat "$TEST_9_DIR/build_2.log"
+    exit 1
+fi
+
+# Run again and assert output is 250 (check exit code)
+set +e
+"$TEST_9_DIR/app"
+EXIT_CODE=$?
+set -e
+if [ $EXIT_CODE -ne 250 ]; then
+    echo "FAIL: Test 9 run 2 output mismatch: expected 250, got $EXIT_CODE"
+    exit 1
+fi
+
+echo "PASS: Test 9"
 
 # Clean up
 rm -rf "$TEST_DIR"
