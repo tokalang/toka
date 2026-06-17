@@ -1,3 +1,8 @@
+// @meta compiler_version: any
+// @meta format_version: 1
+// @meta target_triple: any
+// @meta source_hash: any
+
 pub const MY_CONST: i32 = 42
 
 pub shape MyPoint(x: i32, y: i32)

@@ -173,6 +173,23 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       resolvedPath = PathUtils::normalize(filename);
   }
 
+  // Validate TKI metadata and potentially fallback to .tk
+  bool isTki = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
+  if (isTki) {
+      std::string reason;
+      if (!validateTKIMetadata(resolvedPath, reason)) {
+          std::string tkPath = resolvedPath;
+          tkPath.replace(tkPath.length() - 4, 4, ".tk");
+          if (std::ifstream(tkPath).good()) {
+              resolvedPath = tkPath;
+          } else {
+              DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
+                                       "Incompatible or stale interface file: " + PathUtils::normalize(resolvedPath) + " (" + reason + ")");
+              return false;
+          }
+      }
+  }
+
   std::string canonicalPath = PathUtils::canonicalize(resolvedPath);
 
   // Check recursion stack for circular dependency
@@ -198,6 +215,12 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
     return true;
   m_Visited.insert(canonicalPath);
   m_RecursionStack.push_back(canonicalPath);
+
+  struct StackGuard {
+      std::vector<std::string> &stack;
+      StackGuard(std::vector<std::string> &s) : stack(s) {}
+      ~StackGuard() { stack.pop_back(); }
+  } guard(m_RecursionStack);
 
   SourceLocation startLoc = overrideSourceCode.empty()
       ? m_SourceManager.loadFile(resolvedPath)
@@ -254,14 +277,102 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
         imp->ResolvedPath = "";
     }
 
+    std::string depPath = PathUtils::canonicalize(subResolved.empty() ? importPath : subResolved);
+    auto &deps = m_Dependencies[canonicalPath];
+    if (std::find(deps.begin(), deps.end(), depPath) == deps.end()) {
+        deps.push_back(depPath);
+    }
+
     if (!parseRecursive(subResolved.empty() ? importPath : subResolved, astModules, "")) {
         return false;
     }
   }
 
   astModules.push_back(std::move(module));
-  m_RecursionStack.pop_back();
   return true;
+}
+
+static std::string calculateFNV1a(const std::string &str) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (char c : str) {
+        hash ^= static_cast<uint8_t>(c);
+        hash *= 1099511628211ULL;
+    }
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
+    return std::string(buf);
+}
+
+bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta) {
+    std::ifstream ifs(path);
+    if (!ifs) return false;
+    std::string line;
+    while (std::getline(ifs, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.rfind("// @meta ", 0) == 0) {
+            std::string content = line.substr(9);
+            size_t colon = content.find(':');
+            if (colon != std::string::npos) {
+                std::string key = content.substr(0, colon);
+                std::string val = content.substr(colon + 1);
+                auto trim = [](std::string &s) {
+                    s.erase(0, s.find_first_not_of(" \t"));
+                    s.erase(s.find_last_not_of(" \t") + 1);
+                };
+                trim(key);
+                trim(val);
+                if (key == "compiler_version") meta.CompilerVersion = val;
+                else if (key == "format_version") meta.FormatVersion = val;
+                else if (key == "target_triple") meta.TargetTriple = val;
+                else if (key == "source_hash") meta.SourceHash = val;
+            }
+        } else if (line.rfind("//", 0) == 0 || line.empty()) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    return true;
+}
+
+bool ModuleResolver::validateTKIMetadata(const std::string &path, std::string &reason) {
+    TKIMetadata meta;
+    if (!readTKIMetadata(path, meta)) {
+        reason = "Could not read interface file";
+        return false;
+    }
+    if (meta.CompilerVersion != "any" && meta.CompilerVersion != "0.9.8") {
+        reason = "Compiler version mismatch (expected 0.9.8, got " + meta.CompilerVersion + ")";
+        return false;
+    }
+    if (meta.FormatVersion != "1") {
+        reason = "Interface format version mismatch (expected 1, got " + meta.FormatVersion + ")";
+        return false;
+    }
+    if (meta.TargetTriple != "any" && meta.TargetTriple != Parser::TargetTriple) {
+        reason = "Target triple mismatch (expected " + Parser::TargetTriple + ", got " + meta.TargetTriple + ")";
+        return false;
+    }
+
+    // Check source hash if corresponding .tk file exists
+    if (meta.SourceHash != "any") {
+        std::string tkPath = path;
+        if (tkPath.length() >= 4 && tkPath.substr(tkPath.length() - 4) == ".tki") {
+            tkPath.replace(tkPath.length() - 4, 4, ".tk");
+        }
+        std::ifstream tkFile(tkPath, std::ios::binary);
+        if (tkFile.good()) {
+            std::string content((std::istreambuf_iterator<char>(tkFile)), std::istreambuf_iterator<char>());
+            std::string currentHash = calculateFNV1a(content);
+            if (meta.SourceHash != currentHash) {
+                reason = "Source file has changed (hash mismatch)";
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 } // namespace toka

@@ -1,9 +1,22 @@
-// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 #include "toka/TKIExporter.h"
 #include "toka/Type.h"
+#include "toka/Version.h"
+#include "toka/Parser.h"
 #include <sstream>
+#include <fstream>
 
 namespace toka {
+
+static std::string calculateFNV1a(const std::string &str) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (char c : str) {
+        hash ^= static_cast<uint8_t>(c);
+        hash *= 1099511628211ULL;
+    }
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
+    return std::string(buf);
+}
 
 // Static helper to reconstruct variable names physical morphology
 static std::string reconstructVar(
@@ -119,6 +132,21 @@ void TKIExporter::writeln(const std::string &str) {
 }
 
 void TKIExporter::exportModule(const Module &module) {
+    // 0. Export Metadata Headers
+    std::string sourceHash = "";
+    if (!module.SourcePath.empty()) {
+        std::ifstream ifs(module.SourcePath, std::ios::binary);
+        if (ifs) {
+            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            sourceHash = calculateFNV1a(content);
+        }
+    }
+    writeln("// @meta compiler_version: 0.9.8");
+    writeln("// @meta format_version: 1");
+    writeln("// @meta target_triple: " + Parser::TargetTriple);
+    writeln("// @meta source_hash: " + sourceHash);
+    writeln();
+
     // 1. Export Imports
     for (const auto &decl : module.Imports) {
         if (!decl->IsImplicit) {

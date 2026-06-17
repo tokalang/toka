@@ -303,7 +303,7 @@ fi
 
 # Clean up all untracked/ignored .tki files in the workspace to avoid polluting relative imports
 if command -v git &> /dev/null && [ -d .git ]; then
-    git status --ignored --porcelain | grep -E "\.tki$" | cut -c4- | xargs rm -f 2>/dev/null || true
+    git status --ignored --porcelain | grep -E "^(!!|\?\?) " | grep -E "\.tki$" | cut -c4- | xargs rm -f 2>/dev/null || true
 fi
 
 # Determine core count dynamically for CI and local optimizations
@@ -381,5 +381,12 @@ echo ""
 echo "Running ODR Path & Interface Behavior lock tests..."
 if ! bash tools/scripts/test_path_behavior.sh; then
     echo -e "${RED}Path behavior lock tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
+echo "Running TKI Cache Validation tests..."
+if ! bash tools/scripts/test_tki_cache_validation.sh; then
+    echo -e "${RED}TKI Cache Validation tests failed!${NC}"
     exit 1
 fi

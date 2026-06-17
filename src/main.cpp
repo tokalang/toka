@@ -336,11 +336,14 @@ int main(int argc, char **argv) {
 
   std::vector<std::unique_ptr<toka::Module>> astModules;
   toka::ModuleResolver resolver(sm, searchPaths, pkgMap);
+  bool parseSuccess = true;
   for (const auto &file : sourceFiles) {
-    resolver.resolveAndParse(file, astModules);
+    if (!resolver.resolveAndParse(file, astModules)) {
+      parseSuccess = false;
+    }
   }
 
-  if (astModules.empty() || toka::DiagnosticEngine::hasErrors()) {
+  if (!parseSuccess || astModules.empty() || toka::DiagnosticEngine::hasErrors()) {
     llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to previous syntax or I/O errors.\n";
     return 1;
   }

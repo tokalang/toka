@@ -11,6 +11,13 @@
 
 namespace toka {
 
+struct TKIMetadata {
+    std::string CompilerVersion;
+    std::string FormatVersion;
+    std::string TargetTriple;
+    std::string SourceHash;
+};
+
 class ModuleResolver {
 public:
     ModuleResolver(SourceManager &sm,
@@ -23,6 +30,11 @@ public:
                          std::vector<std::unique_ptr<Module>> &astModules,
                          const std::string &overrideSourceCode = "");
 
+    // Get the recorded module dependencies
+    const std::map<std::string, std::vector<std::string>>& getDependencies() const {
+        return m_Dependencies;
+    }
+
 private:
     SourceManager &m_SourceManager;
     std::vector<std::string> m_SearchPaths;
@@ -30,6 +42,7 @@ private:
 
     std::set<std::string> m_Visited;
     std::vector<std::string> m_RecursionStack;
+    std::map<std::string, std::vector<std::string>> m_Dependencies;
 
     // Helper to search and resolve rawFilename to a lexically normalized path.
     // Returns empty string if not found.
@@ -40,6 +53,10 @@ private:
     bool parseRecursive(const std::string &filename,
                         std::vector<std::unique_ptr<Module>> &astModules,
                         const std::string &overrideSourceCode);
+
+    // Helper to read and validate metadata from a .tki file
+    bool readTKIMetadata(const std::string &path, TKIMetadata &meta);
+    bool validateTKIMetadata(const std::string &path, std::string &reason);
 };
 
 } // namespace toka
