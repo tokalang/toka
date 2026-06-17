@@ -223,6 +223,7 @@ int main(int argc, char **argv) {
   bool emitObj = false;
   bool compileOnly = false;
   bool emitInterface = false;
+  bool dumpDependencies = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
   std::string cliTargetTriple = "";
@@ -245,12 +246,14 @@ int main(int argc, char **argv) {
     } else if (arg.rfind("-I", 0) == 0 && arg.length() > 2) {
       searchPaths.push_back(arg.substr(2));
     } else if (arg == "--version" || arg == "-V") {
-      llvm::outs() << "toka version 0.9.8 (Built: " << __DATE__ << " " << __TIME__ << ")\n";
+      llvm::outs() << "toka version " << TOKA_VERSION_STRING << " (Built: " << __DATE__ << " " << __TIME__ << ")\n";
       return 0;
     } else if (arg == "--check-json") {
       g_JsonDiagnostics = true;
     } else if (arg == "--disable-borrow-check") {
       disableBorrowCheck = true;
+    } else if (arg == "--dump-dependencies") {
+      dumpDependencies = true;
     } else if (arg == "--pkg" || arg == "-P") {
       if (i + 1 < argc) {
         std::string mapping = argv[++i];
@@ -341,6 +344,20 @@ int main(int argc, char **argv) {
     if (!resolver.resolveAndParse(file, astModules)) {
       parseSuccess = false;
     }
+  }
+
+  if (dumpDependencies) {
+    if (!parseSuccess || toka::DiagnosticEngine::hasErrors()) {
+      return 1;
+    }
+    for (const auto &pair : resolver.getDependencies()) {
+      llvm::outs() << pair.first << ":";
+      for (const auto &dep : pair.second) {
+        llvm::outs() << " " << dep;
+      }
+      llvm::outs() << "\n";
+    }
+    return 0;
   }
 
   if (!parseSuccess || astModules.empty() || toka::DiagnosticEngine::hasErrors()) {

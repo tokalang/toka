@@ -11,6 +11,19 @@
 
 namespace toka {
 
+enum class TKICacheStatus {
+    Ok,
+    ReadError,
+    MissingCompilerVersion,
+    MissingFormatVersion,
+    MissingTargetTriple,
+    MissingSourceHash,
+    CompilerVersionMismatch,
+    FormatVersionMismatch,
+    TargetTripleMismatch,
+    SourceHashMismatch
+};
+
 struct TKIMetadata {
     std::string CompilerVersion;
     std::string FormatVersion;
@@ -56,7 +69,7 @@ private:
 
     // Helper to read and validate metadata from a .tki file
     bool readTKIMetadata(const std::string &path, TKIMetadata &meta);
-    bool validateTKIMetadata(const std::string &path, std::string &reason);
+    TKICacheStatus validateTKIMetadata(const std::string &path, std::string &reason);
 };
 
 } // namespace toka

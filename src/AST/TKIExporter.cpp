@@ -141,8 +141,8 @@ void TKIExporter::exportModule(const Module &module) {
             sourceHash = calculateFNV1a(content);
         }
     }
-    writeln("// @meta compiler_version: 0.9.8");
-    writeln("// @meta format_version: 1");
+    writeln("// @meta compiler_version: " + std::string(TOKA_COMPILER_INTERFACE_VERSION));
+    writeln("// @meta format_version: " + std::string(TOKA_INTERFACE_FORMAT_VERSION));
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
     writeln();

@@ -169,6 +169,33 @@ if ! grep -q "Incompatible or stale interface file" "$TEST_DIR/err5.txt"; then
 fi
 echo "PASS: Test 5"
 
+# 6. Test case 6: Dependency dumping
+echo "Test 6: Dependency dumping"
+cat << 'EOF' > "$TEST_DIR/lib.tk"
+pub fn get_num() -> i32 {
+    return 100
+}
+EOF
+cat << 'EOF' > "$TEST_DIR/main.tk"
+import ./lib::{get_num}
+fn main() -> i32 {
+    return 0
+}
+EOF
+# Run with --dump-dependencies
+"$TOKAC_ABS" --dump-dependencies "$TEST_DIR/main.tk" > "$TEST_DIR/deps.txt"
+if ! grep -q "main.tk:" "$TEST_DIR/deps.txt"; then
+    echo "FAIL: Dependency output missing main.tk"
+    cat "$TEST_DIR/deps.txt"
+    exit 1
+fi
+if ! grep -q "lib.tk" "$TEST_DIR/deps.txt"; then
+    echo "FAIL: Dependency output missing lib.tk"
+    cat "$TEST_DIR/deps.txt"
+    exit 1
+fi
+echo "PASS: Test 6"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"

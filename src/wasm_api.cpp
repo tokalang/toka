@@ -52,6 +52,7 @@ const char* check_toka_code(const char* code_cstr) {
 
     std::vector<std::unique_ptr<toka::Module>> astModules;
     std::vector<std::string> searchPaths; // Emscripten will have access to virtual /lib
+    toka::ModuleResolver resolver(sm, searchPaths);
     bool parseSuccess = resolver.resolveAndParse("playground.tk", astModules, code_cstr);
 
     if (parseSuccess && !toka::DiagnosticEngine::hasErrors()) {

@@ -3,6 +3,7 @@
 #include "toka/Parser.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/PathUtils.h"
+#include "toka/Version.h"
 #include <fstream>
 #include <algorithm>
 #include <iostream>
@@ -177,7 +178,8 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   bool isTki = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
   if (isTki) {
       std::string reason;
-      if (!validateTKIMetadata(resolvedPath, reason)) {
+      TKICacheStatus status = validateTKIMetadata(resolvedPath, reason);
+      if (status != TKICacheStatus::Ok) {
           std::string tkPath = resolvedPath;
           tkPath.replace(tkPath.length() - 4, 4, ".tk");
           if (std::ifstream(tkPath).good()) {
@@ -277,14 +279,16 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
         imp->ResolvedPath = "";
     }
 
-    std::string depPath = PathUtils::canonicalize(subResolved.empty() ? importPath : subResolved);
-    auto &deps = m_Dependencies[canonicalPath];
-    if (std::find(deps.begin(), deps.end(), depPath) == deps.end()) {
-        deps.push_back(depPath);
-    }
-
     if (!parseRecursive(subResolved.empty() ? importPath : subResolved, astModules, "")) {
         return false;
+    }
+
+    if (!subResolved.empty()) {
+        std::string depPath = PathUtils::canonicalize(subResolved);
+        auto &deps = m_Dependencies[canonicalPath];
+        if (std::find(deps.begin(), deps.end(), depPath) == deps.end()) {
+            deps.push_back(depPath);
+        }
     }
   }
 
@@ -337,23 +341,40 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
     return true;
 }
 
-bool ModuleResolver::validateTKIMetadata(const std::string &path, std::string &reason) {
+TKICacheStatus ModuleResolver::validateTKIMetadata(const std::string &path, std::string &reason) {
     TKIMetadata meta;
     if (!readTKIMetadata(path, meta)) {
         reason = "Could not read interface file";
-        return false;
+        return TKICacheStatus::ReadError;
     }
-    if (meta.CompilerVersion != "any" && meta.CompilerVersion != "0.9.8") {
-        reason = "Compiler version mismatch (expected 0.9.8, got " + meta.CompilerVersion + ")";
-        return false;
+    if (meta.CompilerVersion.empty()) {
+        reason = "Missing compiler_version metadata";
+        return TKICacheStatus::MissingCompilerVersion;
     }
-    if (meta.FormatVersion != "1") {
-        reason = "Interface format version mismatch (expected 1, got " + meta.FormatVersion + ")";
-        return false;
+    if (meta.FormatVersion.empty()) {
+        reason = "Missing format_version metadata";
+        return TKICacheStatus::MissingFormatVersion;
+    }
+    if (meta.TargetTriple.empty()) {
+        reason = "Missing target_triple metadata";
+        return TKICacheStatus::MissingTargetTriple;
+    }
+    if (meta.SourceHash.empty()) {
+        reason = "Missing source_hash metadata";
+        return TKICacheStatus::MissingSourceHash;
+    }
+
+    if (meta.CompilerVersion != "any" && meta.CompilerVersion != TOKA_COMPILER_INTERFACE_VERSION) {
+        reason = "Compiler version mismatch (expected " + std::string(TOKA_COMPILER_INTERFACE_VERSION) + ", got " + meta.CompilerVersion + ")";
+        return TKICacheStatus::CompilerVersionMismatch;
+    }
+    if (meta.FormatVersion != TOKA_INTERFACE_FORMAT_VERSION) {
+        reason = "Interface format version mismatch (expected " + std::string(TOKA_INTERFACE_FORMAT_VERSION) + ", got " + meta.FormatVersion + ")";
+        return TKICacheStatus::FormatVersionMismatch;
     }
     if (meta.TargetTriple != "any" && meta.TargetTriple != Parser::TargetTriple) {
         reason = "Target triple mismatch (expected " + Parser::TargetTriple + ", got " + meta.TargetTriple + ")";
-        return false;
+        return TKICacheStatus::TargetTripleMismatch;
     }
 
     // Check source hash if corresponding .tk file exists
@@ -368,11 +389,11 @@ bool ModuleResolver::validateTKIMetadata(const std::string &path, std::string &r
             std::string currentHash = calculateFNV1a(content);
             if (meta.SourceHash != currentHash) {
                 reason = "Source file has changed (hash mismatch)";
-                return false;
+                return TKICacheStatus::SourceHashMismatch;
             }
         }
     }
-    return true;
+    return TKICacheStatus::Ok;
 }
 
 } // namespace toka
