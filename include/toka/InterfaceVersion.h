@@ -1,0 +1,4 @@
+#pragma once
+
+#define TOKA_INTERFACE_FORMAT_VERSION "1"
+#define TOKA_COMPILER_INTERFACE_VERSION "0.9.8"

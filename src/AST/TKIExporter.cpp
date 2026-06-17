@@ -1,6 +1,6 @@
 #include "toka/TKIExporter.h"
 #include "toka/Type.h"
-#include "toka/Version.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/Parser.h"
 #include <sstream>
 #include <fstream>

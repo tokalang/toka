@@ -196,6 +196,48 @@ if ! grep -q "lib.tk" "$TEST_DIR/deps.txt"; then
 fi
 echo "PASS: Test 6"
 
+# 7. Test case 7: JSON dependency graph dumping
+echo "Test 7: JSON dependency graph dumping"
+cat << 'EOF' > "$TEST_DIR/lib.tk"
+pub fn get_num() -> i32 {
+    return 100
+}
+EOF
+cat << 'EOF' > "$TEST_DIR/main.tk"
+import ./lib::{get_num}
+fn main() -> i32 {
+    return 0
+}
+EOF
+# Run with --dump-dependencies=json
+"$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/main.tk" > "$TEST_DIR/deps.json"
+if ! grep -q '"root":' "$TEST_DIR/deps.json"; then
+    echo "FAIL: JSON dependency output missing 'root'"
+    cat "$TEST_DIR/deps.json"
+    exit 1
+fi
+if ! grep -q '"modules":' "$TEST_DIR/deps.json"; then
+    echo "FAIL: JSON dependency output missing 'modules'"
+    cat "$TEST_DIR/deps.json"
+    exit 1
+fi
+if ! grep -q '"compiler_version":' "$TEST_DIR/deps.json"; then
+    echo "FAIL: JSON dependency output missing 'compiler_version'"
+    cat "$TEST_DIR/deps.json"
+    exit 1
+fi
+if ! grep -q '"source_hash":' "$TEST_DIR/deps.json"; then
+    echo "FAIL: JSON dependency output missing 'source_hash'"
+    cat "$TEST_DIR/deps.json"
+    exit 1
+fi
+if ! grep -q '"fallback_triggered":' "$TEST_DIR/deps.json"; then
+    echo "FAIL: JSON dependency output missing 'fallback_triggered'"
+    cat "$TEST_DIR/deps.json"
+    exit 1
+fi
+echo "PASS: Test 7"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"

@@ -31,6 +31,14 @@ struct TKIMetadata {
     std::string SourceHash;
 };
 
+struct ModuleResolutionInfo {
+    std::string CanonicalPath;
+    bool IsInterface;
+    bool FallbackTriggered;
+    TKICacheStatus CacheStatus;
+    std::string CacheStatusReason;
+};
+
 class ModuleResolver {
 public:
     ModuleResolver(SourceManager &sm,
@@ -48,6 +56,10 @@ public:
         return m_Dependencies;
     }
 
+    const std::map<std::string, ModuleResolutionInfo>& getResolutionRecords() const {
+        return m_ResolutionRecords;
+    }
+
 private:
     SourceManager &m_SourceManager;
     std::vector<std::string> m_SearchPaths;
@@ -56,6 +68,7 @@ private:
     std::set<std::string> m_Visited;
     std::vector<std::string> m_RecursionStack;
     std::map<std::string, std::vector<std::string>> m_Dependencies;
+    std::map<std::string, ModuleResolutionInfo> m_ResolutionRecords;
 
     // Helper to search and resolve rawFilename to a lexically normalized path.
     // Returns empty string if not found.
@@ -65,7 +78,8 @@ private:
     // Recursively resolve imports and build AST.
     bool parseRecursive(const std::string &filename,
                         std::vector<std::unique_ptr<Module>> &astModules,
-                        const std::string &overrideSourceCode);
+                        const std::string &overrideSourceCode,
+                        std::string *outActualPath = nullptr);
 
     // Helper to read and validate metadata from a .tki file
     bool readTKIMetadata(const std::string &path, TKIMetadata &meta);

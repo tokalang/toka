@@ -34,6 +34,7 @@
 #include "llvm/Transforms/Coroutines/CoroSplit.h"
 
 #include "toka/Version.h"
+#include "toka/InterfaceVersion.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <fstream>
@@ -224,6 +225,7 @@ int main(int argc, char **argv) {
   bool compileOnly = false;
   bool emitInterface = false;
   bool dumpDependencies = false;
+  bool dumpJson = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
   std::string cliTargetTriple = "";
@@ -254,6 +256,9 @@ int main(int argc, char **argv) {
       disableBorrowCheck = true;
     } else if (arg == "--dump-dependencies") {
       dumpDependencies = true;
+    } else if (arg == "--dump-dependencies=json" || arg == "--dump-module-graph-json") {
+      dumpDependencies = true;
+      dumpJson = true;
     } else if (arg == "--pkg" || arg == "-P") {
       if (i + 1 < argc) {
         std::string mapping = argv[++i];
@@ -350,6 +355,119 @@ int main(int argc, char **argv) {
     if (!parseSuccess || toka::DiagnosticEngine::hasErrors()) {
       return 1;
     }
+    if (dumpJson) {
+      std::string rootPath = "";
+      for (const auto &ast : astModules) {
+        if (ast->IsRootModule) {
+          rootPath = toka::PathUtils::canonicalize(ast->SourcePath);
+          break;
+        }
+      }
+
+      auto escapeJsonString = [](const std::string &s) -> std::string {
+          std::string res;
+          for (char c : s) {
+              if (c == '\\') res += "\\\\";
+              else if (c == '"') res += "\\\"";
+              else if (c == '\n') res += "\\n";
+              else if (c == '\r') res += "\\r";
+              else if (c == '\t') res += "\\t";
+              else res += c;
+          }
+          return res;
+      };
+
+      auto cacheStatusToString = [](toka::TKICacheStatus status) -> std::string {
+          switch (status) {
+              case toka::TKICacheStatus::Ok: return "Ok";
+              case toka::TKICacheStatus::ReadError: return "ReadError";
+              case toka::TKICacheStatus::MissingCompilerVersion: return "MissingCompilerVersion";
+              case toka::TKICacheStatus::MissingFormatVersion: return "MissingFormatVersion";
+              case toka::TKICacheStatus::MissingTargetTriple: return "MissingTargetTriple";
+              case toka::TKICacheStatus::MissingSourceHash: return "MissingSourceHash";
+              case toka::TKICacheStatus::CompilerVersionMismatch: return "CompilerVersionMismatch";
+              case toka::TKICacheStatus::FormatVersionMismatch: return "FormatVersionMismatch";
+              case toka::TKICacheStatus::TargetTripleMismatch: return "TargetTripleMismatch";
+              case toka::TKICacheStatus::SourceHashMismatch: return "SourceHashMismatch";
+          }
+          return "Unknown";
+      };
+
+      auto calculateFNV1a = [](const std::string &content) -> std::string {
+          uint64_t hash = 14695981039346656037ULL;
+          for (char c : content) {
+              hash ^= static_cast<uint8_t>(c);
+              hash *= 1099511628211ULL;
+          }
+          char buf[17];
+          snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
+          return std::string(buf);
+      };
+
+      auto getFileHash = [&](const std::string &filePath) -> std::string {
+          std::ifstream ifs(filePath, std::ios::binary);
+          if (!ifs) return "";
+          std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+          return calculateFNV1a(content);
+      };
+
+      llvm::outs() << "{\n";
+      llvm::outs() << "  \"root\": \"" << escapeJsonString(rootPath) << "\",\n";
+      llvm::outs() << "  \"modules\": {\n";
+
+      bool firstModule = true;
+      const auto &records = resolver.getResolutionRecords();
+      const auto &dependencies = resolver.getDependencies();
+
+      for (const auto &pair : records) {
+        if (!firstModule) {
+          llvm::outs() << ",\n";
+        }
+        firstModule = false;
+
+        const auto &info = pair.second;
+        llvm::outs() << "    \"" << escapeJsonString(info.CanonicalPath) << "\": {\n";
+        llvm::outs() << "      \"kind\": \"" << (info.IsInterface ? "interface" : "source") << "\",\n";
+        llvm::outs() << "      \"fallback_triggered\": " << (info.FallbackTriggered ? "true" : "false") << ",\n";
+        llvm::outs() << "      \"cache_status\": \"" << cacheStatusToString(info.CacheStatus) << "\",\n";
+        llvm::outs() << "      \"cache_status_reason\": \"" << escapeJsonString(info.CacheStatusReason) << "\",\n";
+        llvm::outs() << "      \"target_triple\": \"" << escapeJsonString(toka::Parser::TargetTriple) << "\",\n";
+        llvm::outs() << "      \"compiler_version\": \"" << TOKA_COMPILER_INTERFACE_VERSION << "\",\n";
+        llvm::outs() << "      \"interface_version\": \"" << TOKA_INTERFACE_FORMAT_VERSION << "\",\n";
+        llvm::outs() << "      \"source_hash\": \"" << getFileHash(info.CanonicalPath) << "\",\n";
+        llvm::outs() << "      \"outputs\": {\n";
+        llvm::outs() << "        \"interface\": \"" << escapeJsonString(toka::PathUtils::getInterfacePath(outputFile, info.CanonicalPath)) << "\",\n";
+
+        std::string objPath;
+        if (info.CanonicalPath == rootPath && !outputFile.empty()) {
+            objPath = outputFile;
+        } else {
+            objPath = toka::PathUtils::normalize(std::filesystem::path(info.CanonicalPath).replace_extension(".o").string());
+        }
+        llvm::outs() << "        \"object\": \"" << escapeJsonString(objPath) << "\"\n";
+        llvm::outs() << "      },\n";
+        llvm::outs() << "      \"dependencies\": [";
+
+        auto depIt = dependencies.find(info.CanonicalPath);
+        if (depIt != dependencies.end()) {
+          bool firstDep = true;
+          for (const auto &dep : depIt->second) {
+            if (!firstDep) {
+              llvm::outs() << ", ";
+            }
+            firstDep = false;
+            llvm::outs() << "\"" << escapeJsonString(dep) << "\"";
+          }
+        }
+        llvm::outs() << "]\n";
+        llvm::outs() << "    }";
+      }
+
+      llvm::outs() << "\n  }\n";
+      llvm::outs() << "}\n";
+      return 0;
+    }
+
     for (const auto &pair : resolver.getDependencies()) {
       llvm::outs() << pair.first << ":";
       for (const auto &dep : pair.second) {

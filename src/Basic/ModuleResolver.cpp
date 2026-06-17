@@ -3,7 +3,7 @@
 #include "toka/Parser.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/PathUtils.h"
-#include "toka/Version.h"
+#include "toka/InterfaceVersion.h"
 #include <fstream>
 #include <algorithm>
 #include <iostream>
@@ -19,6 +19,7 @@ bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
                                      std::vector<std::unique_ptr<Module>> &astModules,
                                      const std::string &overrideSourceCode) {
     m_RecursionStack.clear();
+    m_ResolutionRecords.clear();
     return parseRecursive(rawFilename, astModules, overrideSourceCode);
 }
 
@@ -161,7 +162,8 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
 
 bool ModuleResolver::parseRecursive(const std::string &filename,
                                     std::vector<std::unique_ptr<Module>> &astModules,
-                                    const std::string &overrideSourceCode) {
+                                    const std::string &overrideSourceCode,
+                                    std::string *outActualPath) {
   std::string resolvedPath = filename;
   if (overrideSourceCode.empty()) {
       resolvedPath = resolveSourcePath(filename, m_SearchPaths);
@@ -176,14 +178,21 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
 
   // Validate TKI metadata and potentially fallback to .tk
   bool isTki = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
+  bool fallbackTriggered = false;
+  TKICacheStatus cacheStatus = TKICacheStatus::Ok;
+  std::string cacheStatusReason = "";
+
   if (isTki) {
       std::string reason;
       TKICacheStatus status = validateTKIMetadata(resolvedPath, reason);
+      cacheStatus = status;
+      cacheStatusReason = reason;
       if (status != TKICacheStatus::Ok) {
           std::string tkPath = resolvedPath;
           tkPath.replace(tkPath.length() - 4, 4, ".tk");
           if (std::ifstream(tkPath).good()) {
               resolvedPath = tkPath;
+              fallbackTriggered = true;
           } else {
               DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
                                        "Incompatible or stale interface file: " + PathUtils::normalize(resolvedPath) + " (" + reason + ")");
@@ -193,6 +202,17 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   }
 
   std::string canonicalPath = PathUtils::canonicalize(resolvedPath);
+  if (outActualPath) {
+      *outActualPath = canonicalPath;
+  }
+
+  ModuleResolutionInfo info;
+  info.CanonicalPath = canonicalPath;
+  info.IsInterface = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
+  info.FallbackTriggered = fallbackTriggered;
+  info.CacheStatus = cacheStatus;
+  info.CacheStatusReason = cacheStatusReason;
+  m_ResolutionRecords[canonicalPath] = info;
 
   // Check recursion stack for circular dependency
   for (const auto &f : m_RecursionStack) {
@@ -279,16 +299,18 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
         imp->ResolvedPath = "";
     }
 
-    if (!parseRecursive(subResolved.empty() ? importPath : subResolved, astModules, "")) {
+    std::string actualSubPath;
+    if (!parseRecursive(subResolved.empty() ? importPath : subResolved, astModules, "", &actualSubPath)) {
         return false;
     }
 
     if (!subResolved.empty()) {
-        std::string depPath = PathUtils::canonicalize(subResolved);
+        std::string depPath = actualSubPath.empty() ? PathUtils::canonicalize(subResolved) : actualSubPath;
         auto &deps = m_Dependencies[canonicalPath];
         if (std::find(deps.begin(), deps.end(), depPath) == deps.end()) {
             deps.push_back(depPath);
         }
+        imp->ResolvedPath = depPath;
     }
   }
 
