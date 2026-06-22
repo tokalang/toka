@@ -48,7 +48,7 @@ fn test_robin_hood() {
     }
     
     // 4. Overwrite existing
-    map#.insert(1, string::from("val_1_new"))
+    map#.insert(1, cede string::from("val_1_new"))
     auto opt3 = map.get(1)
     if opt3.is_none() {
         unsafe { libc_printf(c"FAIL: replace failed\n") }

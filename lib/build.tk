@@ -1,7 +1,851 @@
 import sys/libc::{libc_system, libc_access, libc_getenv}
-
 import core/traits::{@encap}
-import std/io::println
+import std/io::{println, remove_file, File}
+import std/fs::{read_to_string, exists, create_dir, write_string}
+import std/env
+import std/path::{join, dirname, basename, is_absolute}
+import std/vec::{Vec}
+import std/hashmap::{HashMap}
+import stdx/serde/json::{deserialize_shape, deserialize_nested_shape, FromJson, JsonRes, to_json, ToJson, serialize_shape, json_skip_whitespace, json_skip_value}
+import core/comptime::{reflect}
+
+pub fn deserialize_nested_shape_local<'T>('obj#: T, json_str: str) -> JsonRes {
+    auto res# = json_skip_whitespace(json_str)
+    if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
+    res = res.substr(1, res.len() - 1)
+
+    auto first# = true
+    loop true {
+        res = json_skip_whitespace(res)
+        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
+        if !first {
+            if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+            res = res.substr(1, res.len() - 1)
+        }
+        first = false
+        res = json_skip_whitespace(res)
+        auto key_view# = ""
+        res = key_view#.parse_json(res)!
+        res = json_skip_whitespace(res)
+        if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
+        res = res.substr(1, res.len() - 1)
+        auto found# = false
+        for auto f in reflect<'T>().fields {
+            if key_view.equals(f.name) {
+                found = true
+                auto val# = f.get('obj)
+                res = val#.parse_json(res)!
+                f.set('obj, cede val)
+                continue
+            }
+        }
+        if !found { res = json_skip_value(res)! }
+    }
+    return JsonRes::Ok(res)
+}
+
+pub fn deserialize_shape_local<'T>(json_str: str) -> Result<'T, str> {
+    auto res# = json_skip_whitespace(json_str)
+    if res.len() == 0 || res.byte_at(0) != 123 { return Result<'T, str>::Err("Expected {") }
+    res = res.substr(1, res.len() - 1)
+
+    auto 'obj# = 'T(..)
+    auto first# = true
+    loop true {
+        res = json_skip_whitespace(res)
+        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
+        if !first {
+            if res.len() == 0 || res.byte_at(0) != 44 { return Result<'T, str>::Err("Expected ,") }
+            res = res.substr(1, res.len() - 1)
+        }
+        first = false
+        res = json_skip_whitespace(res)
+        auto key_view# = ""
+        res = key_view#.parse_json(res)!
+        res = json_skip_whitespace(res)
+        if res.len() == 0 || res.byte_at(0) != 58 { return Result<'T, str>::Err("Expected :") }
+        res = res.substr(1, res.len() - 1)
+        auto found# = false
+        for auto f in reflect<'T>().fields {
+            if key_view.equals(f.name) {
+                found = true
+                auto 'val# = f.get('obj)
+                res = 'val#.parse_json(res)!
+                f.set('obj, cede 'val)
+                continue
+            }
+        }
+        if !found { res = json_skip_value(res)! }
+    }
+    return Result<'T, str>::Ok(cede 'obj)
+}
+
+fn path_normalize(path: string) -> string {
+    auto res# = string::from("")
+    auto view = path.as_str()
+    auto len = view.len()
+    auto i# = 0:usize
+    loop {
+        if i >= len { break }
+        auto c = view.byte_at(i)
+        if c == '\\' {
+            res#.push_char('/')
+        } else {
+            res#.push_char(c)
+        }
+        i = i + 1:usize
+    }
+    return res
+}
+
+fn path_canonicalize(p: string) -> string {
+    auto path_str# = p.clone()
+    if !is_absolute(path_str.clone()) {
+        auto cwd = env::current_dir()
+        path_str = join(cwd, path_str)
+    }
+
+    auto norm# = path_normalize(path_str)
+    auto parts = norm.split('/' as i32)
+    auto resolved_parts# = Vec<string>::new()
+    resolved_parts = cede resolved_parts
+
+    loop !parts.is_done() {
+        auto part = parts#.next()
+        if part.is_empty() || part == string::from(".") {
+            continue
+        }
+        if part == string::from("..") {
+            if resolved_parts.len() > 0:usize {
+                resolved_parts#.pop()
+            }
+        } else {
+            resolved_parts#.push(cede part.clone())
+        }
+    }
+
+    auto res# = string::from("")
+    if norm.starts_with("/") {
+        res#.push_str("/")
+    }
+
+    auto i#: u64 = 0
+    loop i < resolved_parts.len() {
+        if i > 0 {
+            res#.push_str("/")
+        }
+        res#.push_str(resolved_parts.get_ref(i).as_str())
+        i += 1
+    }
+    return res
+}
+
+fn u64_to_hex(val: u64) -> string {
+    auto hex_chars = "0123456789abcdef"
+    auto res# = string::from("")
+    auto i# = 0
+    auto v# = val
+    loop {
+        if i >= 16 { break }
+        auto shift = (15 - i) * 4
+        auto digit = (v >> (shift as u64)) & 15:u64
+        res#.push_char(hex_chars.byte_at(digit as usize))
+        i = i + 1
+    }
+    return res
+}
+
+fn calculate_fnv1a(str: string) -> string {
+    auto hash# = 14695981039346656037:u64
+    auto view = str.as_str()
+    auto len = view.len()
+    auto i# = 0:usize
+    loop {
+        if i >= len { break }
+        auto c = view.byte_at(i)
+        hash = hash ^ (c as u64)
+        hash = hash * 1099511628211:u64
+        i = i + 1:usize
+    }
+    return u64_to_hex(hash)
+}
+
+fn run_and_capture_stdout(cmd: string) -> string {
+    auto tmp_file# = string::from(".toka/build/tmp_stdout.txt")
+    
+    // Ensure build directory exists
+    if !exists(string::from(".toka")) {
+        create_dir(string::from(".toka"))
+    }
+    if !exists(string::from(".toka/build")) {
+        create_dir(string::from(".toka/build"))
+    }
+
+    auto full_cmd# = cmd.clone()
+    full_cmd#.push_str(" > ")
+    full_cmd#.push_str(tmp_file.as_str())
+    full_cmd#.push_str(" 2>&1")
+
+    unsafe {
+        libc_system(full_cmd.c_str())
+    }
+
+    auto content_res = read_to_string(tmp_file.clone())
+    remove_file(tmp_file)
+
+    if content_res.is_ok() {
+        return content_res.unwrap()
+    }
+    return string::from("")
+}
+
+pub shape ModuleOutputs (
+    interface: string = string::from(""),
+    object: string = string::from(""),
+    executable: string = string::from("")
+)
+
+impl ModuleOutputs@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> ModuleOutputs {
+        return ModuleOutputs(
+            interface = self.interface.clone(),
+            object = self.object.clone(),
+            executable = self.executable.clone()
+        )
+    }
+}
+
+fn json_write_string(s: str, buf#: string) {
+    buf#.push_str("\"")
+    buf#.push_str(s)
+    buf#.push_str("\"")
+}
+fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
+    buf#.push_str("{\"interface\":")
+    json_write_string(outputs.interface.as_str(), buf)
+    buf#.push_str(",\"object\":")
+    json_write_string(outputs.object.as_str(), buf)
+    buf#.push_str(",\"executable\":")
+    json_write_string(outputs.executable.as_str(), buf)
+    buf#.push_str("}")
+    return buf
+}
+impl ModuleOutputs@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes {
+        return deserialize_nested_shape_local<ModuleOutputs>(self, json)
+    }
+}
+
+pub shape ModuleSnapshot (
+    kind: string = string::from(""),
+    fallback_triggered: bool = false,
+    cache_status: string = string::from(""),
+    cache_status_reason: string = string::from(""),
+    target_triple: string = string::from(""),
+    compiler_version: string = string::from(""),
+    interface_version: string = string::from(""),
+    source_hash: string = string::from(""),
+    content_hash: string = string::from(""),
+    outputs: ModuleOutputs = ModuleOutputs(),
+    dependencies: Vec<string> = Vec<string>::new()
+)
+
+impl ModuleSnapshot@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> ModuleSnapshot {
+        auto c_dependencies# = Vec<string>::new()
+        auto i# = 0:usize
+        loop i < self.dependencies.len() {
+            c_dependencies#.push(cede self.dependencies.get_ref(i).clone())
+            i += 1
+        }
+        return ModuleSnapshot(
+            kind = self.kind.clone(),
+            fallback_triggered = self.fallback_triggered,
+            cache_status = self.cache_status.clone(),
+            cache_status_reason = self.cache_status_reason.clone(),
+            target_triple = self.target_triple.clone(),
+            compiler_version = self.compiler_version.clone(),
+            interface_version = self.interface_version.clone(),
+            source_hash = self.source_hash.clone(),
+            content_hash = self.content_hash.clone(),
+            outputs = self.outputs.clone(),
+            dependencies = c_dependencies
+        )
+    }
+}
+
+fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
+    buf#.push_str("{\"kind\":")
+    json_write_string(snapshot.kind.as_str(), buf)
+    buf#.push_str(",\"fallback_triggered\":")
+    if snapshot.fallback_triggered { buf#.push_str("true") } else { buf#.push_str("false") }
+    buf#.push_str(",\"cache_status\":")
+    json_write_string(snapshot.cache_status.as_str(), buf)
+    buf#.push_str(",\"cache_status_reason\":")
+    json_write_string(snapshot.cache_status_reason.as_str(), buf)
+    buf#.push_str(",\"target_triple\":")
+    json_write_string(snapshot.target_triple.as_str(), buf)
+    buf#.push_str(",\"compiler_version\":")
+    json_write_string(snapshot.compiler_version.as_str(), buf)
+    buf#.push_str(",\"interface_version\":")
+    json_write_string(snapshot.interface_version.as_str(), buf)
+    buf#.push_str(",\"source_hash\":")
+    json_write_string(snapshot.source_hash.as_str(), buf)
+    buf#.push_str(",\"content_hash\":")
+    json_write_string(snapshot.content_hash.as_str(), buf)
+    buf#.push_str(",\"outputs\":")
+    buf = outputs_to_json(snapshot.outputs.clone(), buf)
+    buf#.push_str(",\"dependencies\":[")
+    auto i# = 0:usize
+    loop i < snapshot.dependencies.len() {
+        if i > 0 { buf#.push_str(",") }
+        json_write_string(snapshot.dependencies.get_ref(i).as_str(), buf)
+        i += 1
+    }
+    buf#.push_str("]}")
+    return buf
+}
+
+impl ModuleSnapshot@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes {
+        return deserialize_nested_shape_local<ModuleSnapshot>(self, json)
+    }
+}
+
+pub shape DependencyManifest (
+    manifest_version: string = string::from(""),
+    roots: Vec<string> = Vec<string>::new(),
+    modules: HashMap<string, ModuleSnapshot> = HashMap<string, ModuleSnapshot>::new()
+)
+
+impl DependencyManifest@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> DependencyManifest {
+        auto c_roots# = Vec<string>::new()
+        auto i# = 0:usize
+        loop i < self.roots.len() {
+            c_roots#.push(cede self.roots.get_ref(i).clone())
+            i += 1
+        }
+        auto c_modules# = HashMap<string, ModuleSnapshot>::new()
+        auto iter# = self.modules.iter()
+        loop {
+            auto entry_opt = iter#.next()
+            if entry_opt.is_none() { break }
+            auto entry = entry_opt.unwrap()
+            c_modules#.insert(cede entry.key().clone(), cede entry.val().clone())
+        }
+        return DependencyManifest(
+            manifest_version = self.manifest_version.clone(),
+            roots = c_roots,
+            modules = c_modules
+        )
+    }
+}
+
+fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
+    buf#.push_str("{\"manifest_version\":")
+    json_write_string(manifest.manifest_version.as_str(), buf)
+    buf#.push_str(",\"roots\":[")
+    auto i# = 0:usize
+    loop i < manifest.roots.len() {
+        if i > 0 { buf#.push_str(",") }
+        json_write_string(manifest.roots.get_ref(i).as_str(), buf)
+        i += 1
+    }
+    buf#.push_str("],\"modules\":{")
+    auto iter# = manifest.modules.iter()
+    auto first# = true
+    loop {
+        auto opt = iter#.next()
+        if opt.is_none() { break }
+        auto entry = opt.unwrap()
+        if !first { buf#.push_str(",") }
+        first = false
+        json_write_string(entry.key().as_str(), buf)
+        buf#.push_str(":")
+        auto *val = entry.val()
+        buf = snapshot_to_json((*val).clone(), buf)
+    }
+    buf#.push_str("}}")
+    return buf
+}
+
+impl DependencyManifest@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes {
+        return deserialize_nested_shape_local<DependencyManifest>(self, json)
+    }
+}
+
+pub shape RebuildModuleInfo (
+    reason: string = string::from(""),
+    dirty_deps: Vec<string> = Vec<string>::new()
+)
+
+impl RebuildModuleInfo@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> RebuildModuleInfo {
+        auto c_dirty_deps# = Vec<string>::new()
+        auto i# = 0:usize
+        loop i < self.dirty_deps.len() {
+            c_dirty_deps#.push(cede self.dirty_deps.get_ref(i).clone())
+            i += 1
+        }
+        return RebuildModuleInfo(
+            reason = self.reason.clone(),
+            dirty_deps = c_dirty_deps
+        )
+    }
+}
+
+fn info_to_json(info: *RebuildModuleInfo) -> string {
+    auto buf# = string::from("")
+    buf#.push_str("{\"reason\":")
+    json_write_string(info.reason.as_str(), buf)
+    buf#.push_str(",\"dirty_deps\":[")
+    auto i# = 0:usize
+    loop i < info.dirty_deps.len() {
+        if i > 0 { buf#.push_str(",") }
+        json_write_string(info.dirty_deps.get_ref(i).as_str(), buf)
+        i += 1
+    }
+    buf#.push_str("]}")
+    return buf
+}
+
+impl RebuildModuleInfo@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes {
+        return deserialize_nested_shape_local<RebuildModuleInfo>(self, json)
+    }
+}
+
+pub shape RebuildPlan (
+    status: string = string::from(""),
+    dirty_roots: Vec<string> = Vec<string>::new(),
+    dirty_modules: HashMap<string, RebuildModuleInfo> = HashMap<string, RebuildModuleInfo>::new()
+)
+
+impl RebuildPlan@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> RebuildPlan {
+        auto c_dirty_roots# = Vec<string>::new()
+        auto i# = 0:usize
+        loop i < self.dirty_roots.len() {
+            c_dirty_roots#.push(cede self.dirty_roots.get_ref(i).clone())
+            i += 1
+        }
+        auto c_dirty_modules# = HashMap<string, RebuildModuleInfo>::new()
+        auto iter# = self.dirty_modules.iter()
+        loop {
+            auto entry_opt = iter#.next()
+            if entry_opt.is_none() { break }
+            auto entry = entry_opt.unwrap()
+            c_dirty_modules#.insert(cede entry.key().clone(), cede entry.val().clone())
+        }
+        return RebuildPlan(
+            status = self.status.clone(),
+            dirty_roots = c_dirty_roots,
+            dirty_modules = c_dirty_modules
+        )
+    }
+}
+
+fn plan_to_json('plan: RebuildPlan) -> string {
+    auto buf# = string::from("")
+    buf#.push_str("{\"status\":")
+    json_write_string('plan.status.as_str(), buf)
+    buf#.push_str(",\"dirty_roots\":[")
+    auto i# = 0:usize
+    loop i < 'plan.dirty_roots.len() {
+        if i > 0 { buf#.push_str(",") }
+        json_write_string('plan.dirty_roots.get_ref(i).as_str(), buf)
+        i += 1
+    }
+    buf#.push_str("],\"dirty_modules\":{")
+    auto iter# = 'plan.dirty_modules.iter()
+    auto first# = true
+    loop {
+        auto opt = iter#.next()
+        if opt.is_none() { break }
+        auto entry = opt.unwrap()
+        if !first { buf#.push_str(",") }
+        first = false
+        json_write_string(entry.key().as_str(), buf)
+        buf#.push_str(":")
+        auto *val = entry.val()
+        auto info_str = info_to_json(val)
+        buf#.push_str(info_str.as_str())
+    }
+    buf#.push_str("}}")
+    return buf
+}
+
+impl RebuildPlan@FromJson {
+    pub fn parse_json(self#, json: str) -> JsonRes {
+        return deserialize_nested_shape_local<RebuildPlan>(self, json)
+    }
+}
+
+pub shape DfsResult (
+    is_dirty: bool = false,
+    reason: string = string::from(""),
+    chain: Vec<string> = Vec<string>::new()
+)
+
+impl DfsResult@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> DfsResult {
+        auto c_chain# = Vec<string>::new()
+        auto i# = 0:usize
+        loop i < self.chain.len() {
+            c_chain#.push(cede self.chain.get_ref(i).clone())
+            i += 1
+        }
+        return DfsResult(
+            is_dirty = self.is_dirty,
+            reason = cede self.reason.clone(),
+            chain = c_chain
+        )
+    }
+}
+
+fn vec_contains('vec: Vec<string>, 'item: string) -> bool {
+    auto i# = 0:usize
+    loop i < 'vec.len() {
+        if 'vec.get_ref(i).as_str().equals('item.as_str()) {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+fn roots_equal('a: Vec<string>, 'b: Vec<string>) -> bool {
+    if 'a.len() != 'b.len() { return false }
+    auto i# = 0:usize
+    loop i < 'a.len() {
+        if !vec_contains('b, 'a.get_ref(i).clone()) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn is_std_or_core(path: string) -> bool {
+    auto path_norm = path_normalize(path_canonicalize(path))
+    auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
+    if toka_lib != 0:Addr {
+        auto env_lib = path_normalize(path_canonicalize(string::from_cstr(toka_lib as *char)))
+        if path_norm.starts_with(env_lib.as_str()) {
+            return true
+        }
+    }
+    auto std_usr = string::from("/usr/local/lib/toka")
+    if path_norm.starts_with(std_usr.as_str()) {
+        return true
+    }
+    if path_norm.contains("/lib/core/") ||
+       path_norm.contains("/lib/std/") ||
+       path_norm.contains("/lib/sys/") ||
+       path_norm.contains("/lib/stdx/") ||
+       path_norm.contains("/lib/prim/") ||
+       path_norm.contains("/lib/hal/") ||
+       path_norm.contains("/lib/toolchain/") ||
+       path_norm.ends_with("/lib/build.tk") {
+        return true
+    }
+    return false
+}
+
+fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
+    auto iter# = 'graph.modules.iter()
+    loop {
+        auto entry_opt = iter#.next()
+        if entry_opt.is_none() { break }
+        auto entry = entry_opt.unwrap()
+        auto m_path = entry.key().clone()
+        auto info# = entry.val().clone()
+        
+        if !vec_contains('graph.roots, m_path) && info.kind.as_str().equals("source") {
+            if is_std_or_core(m_path.clone()) {
+                continue
+            }
+            auto h = calculate_fnv1a(m_path.clone())
+            
+            auto obj_path# = build_dir.clone()
+            obj_path#.push_str("/objects/")
+            obj_path#.push_str(h.as_str())
+            obj_path#.push_str(".o")
+            auto obj_path_canon = path_canonicalize(obj_path)
+            
+            auto tki_path# = build_dir.clone()
+            tki_path#.push_str("/interfaces/")
+            tki_path#.push_str(h.as_str())
+            tki_path#.push_str(".tki")
+            auto tki_path_canon = path_canonicalize(tki_path)
+            
+            auto new_outputs = ModuleOutputs(
+                interface = tki_path_canon,
+                object = obj_path_canon,
+                executable = string::from("")
+            )
+            
+            info.outputs = new_outputs
+            'graph.modules#.insert(cede m_path.clone(), cede info)
+        }
+    }
+}
+
+fn calculate_file_hash(path: string) -> string {
+    if !exists(path.clone()) {
+        return string::from("")
+    }
+    auto content_res = read_to_string(path)
+    if content_res.is_ok() {
+        return calculate_fnv1a(content_res.unwrap())
+    }
+    return string::from("")
+}
+
+fn check_dirty_recursive(
+    node: string,
+    'current_graph: DependencyManifest,
+    'dirty_map: HashMap<string, string>,
+    memo#: HashMap<string, DfsResult>
+) -> DfsResult {
+    auto memo_opt = memo.get(&(node))
+    if memo_opt.is_none() == false {
+        return cede memo_opt.unwrap().clone()
+    }
+    
+    auto dirty_reason_opt = 'dirty_map.get(&(node))
+    if dirty_reason_opt.is_none() == false {
+        auto res = DfsResult(
+            is_dirty = true,
+            reason = cede dirty_reason_opt.unwrap().clone(),
+            chain = cede Vec<string>::new()
+        )
+        memo#.insert(cede node.clone(), cede res.clone())
+        return cede res
+    }
+    
+    auto curr_info_opt = 'current_graph.modules.get(&(node))
+    if curr_info_opt.is_none() {
+        auto res = DfsResult(
+            is_dirty = true,
+            reason = cede string::from("missing module info"),
+            chain = cede Vec<string>::new()
+        )
+        memo#.insert(cede node.clone(), cede res.clone())
+        return cede res
+    }
+    auto curr_info = curr_info_opt.unwrap()
+    
+    auto i# = 0:usize
+    loop i < curr_info.dependencies.len() {
+        auto dep = curr_info.dependencies.get_ref(i).clone()
+        auto dep_res = check_dirty_recursive(dep.clone(), 'current_graph, 'dirty_map, memo)
+        if dep_res.is_dirty {
+            auto chain# = Vec<string>::new()
+            chain#.push(cede dep.clone())
+            auto j# = 0:usize
+            loop j < dep_res.chain.len() {
+                chain#.push(cede dep_res.chain.get_ref(j).clone())
+                j += 1
+            }
+            auto res = DfsResult(
+                is_dirty = true,
+                reason = cede string::from("dependency changed"),
+                chain = cede chain
+            )
+            memo#.insert(cede node.clone(), cede res.clone())
+            return cede res
+        }
+        i += 1
+    }
+    
+    auto res = DfsResult(
+        is_dirty = false,
+        reason = cede string::from(""),
+        chain = cede Vec<string>::new()
+    )
+    memo#.insert(cede node.clone(), cede res.clone())
+    return cede res
+}
+
+fn generate_rebuild_plan(
+    'current_graph: DependencyManifest,
+    'old_manifest: DependencyManifest,
+    'plan#: RebuildPlan
+) {
+    if 'old_manifest.manifest_version.len() == 0 {
+        'plan.status = cede string::from("dirty")
+        auto i# = 0:usize
+        loop i < 'current_graph.roots.len() {
+            'plan.dirty_roots#.push(cede 'current_graph.roots.get_ref(i).clone())
+            i += 1
+        }
+        auto iter# = 'current_graph.modules.iter()
+        loop {
+            auto entry_opt = iter#.next()
+            if entry_opt.is_none() { break }
+            auto entry = entry_opt.unwrap()
+            auto *m_path = entry.key()
+            auto k# = (*m_path).clone()
+            auto info# = RebuildModuleInfo(
+                reason = cede string::from("first build"), ..
+            )
+            'plan.dirty_modules#.insert(cede k, cede info)
+        }
+        return
+    }
+
+    if !'old_manifest.manifest_version.starts_with("1.") {
+        'plan.status = cede string::from("dirty")
+        auto i# = 0:usize
+        loop i < 'current_graph.roots.len() {
+            'plan.dirty_roots#.push(cede 'current_graph.roots.get_ref(i).clone())
+            i += 1
+        }
+        auto iter# = 'current_graph.modules.iter()
+        loop {
+            auto entry_opt = iter#.next()
+            if entry_opt.is_none() { break }
+            auto entry = entry_opt.unwrap()
+            auto *m_path = entry.key()
+            auto k# = (*m_path).clone()
+            auto info# = RebuildModuleInfo(
+                reason = cede string::from("version/target changed"), ..
+            )
+            'plan.dirty_modules#.insert(cede k, cede info)
+        }
+        return
+    }
+
+    if !roots_equal('current_graph.roots, 'old_manifest.roots) {
+        'plan.status = cede string::from("dirty")
+        auto i# = 0:usize
+        loop i < 'current_graph.roots.len() {
+            'plan.dirty_roots#.push(cede 'current_graph.roots.get_ref(i).clone())
+            i += 1
+        }
+        auto iter# = 'current_graph.modules.iter()
+        loop {
+            auto entry_opt = iter#.next()
+            if entry_opt.is_none() { break }
+            auto entry = entry_opt.unwrap()
+            auto *m_path = entry.key()
+            auto k# = (*m_path).clone()
+            auto info# = RebuildModuleInfo(
+                reason = cede string::from("roots changed"), ..
+            )
+            'plan.dirty_modules#.insert(cede k, cede info)
+        }
+        return
+    }
+
+    auto dirty_map# = HashMap<string, string>::new()
+    auto iter# = 'current_graph.modules.iter()
+    loop {
+        auto entry_opt = iter#.next()
+        if entry_opt.is_none() { break }
+        auto entry = entry_opt.unwrap()
+        auto m_path = (*entry.key()).clone()
+        auto *curr_info = entry.val()
+        
+        auto old_info_opt = 'old_manifest.modules.get(&(m_path))
+        if old_info_opt.is_none() {
+            dirty_map#.insert(cede m_path.clone(), cede string::from("new module"))
+            continue
+        }
+        auto old_info = old_info_opt.unwrap()
+        
+        if !curr_info.target_triple.as_str().equals(old_info.target_triple.as_str()) ||
+           !curr_info.compiler_version.as_str().equals(old_info.compiler_version.as_str()) ||
+           !curr_info.interface_version.as_str().equals(old_info.interface_version.as_str()) {
+            dirty_map#.insert(cede m_path.clone(), cede string::from("version/target changed"))
+            continue
+        }
+        
+        if !curr_info.outputs.interface.as_str().equals(old_info.outputs.interface.as_str()) ||
+           !curr_info.outputs.object.as_str().equals(old_info.outputs.object.as_str()) ||
+           !curr_info.outputs.executable.as_str().equals(old_info.outputs.executable.as_str()) {
+            dirty_map#.insert(cede m_path.clone(), cede string::from("outputs changed"))
+            continue
+        }
+        
+        auto outputs_missing# = false
+        if curr_info.outputs.interface.len() > 0 && !exists(curr_info.outputs.interface.clone()) {
+            outputs_missing = true
+        }
+        if curr_info.outputs.object.len() > 0 && !exists(curr_info.outputs.object.clone()) {
+            outputs_missing = true
+        }
+        if curr_info.outputs.executable.len() > 0 && !exists(curr_info.outputs.executable.clone()) {
+            outputs_missing = true
+        }
+        if outputs_missing {
+            dirty_map#.insert(cede m_path.clone(), cede string::from("missing output"))
+            continue
+        }
+        
+        if !exists(m_path.clone()) {
+            dirty_map#.insert(cede m_path.clone(), cede string::from("file missing"))
+            continue
+        }
+        
+        auto curr_hash = calculate_file_hash(m_path.clone())
+        if !curr_hash.as_str().equals(old_info.content_hash.as_str()) {
+            auto reason# = string::from("")
+            if curr_info.kind.as_str().equals("source") {
+                reason = string::from("hash changed")
+            } else {
+                reason = string::from("stale interface")
+            }
+            dirty_map#.insert(cede m_path.clone(), cede reason)
+            continue
+        }
+    }
+
+    auto memo# = HashMap<string, DfsResult>::new()
+    'plan.status = cede string::from("clean")
+    
+    auto iter2# = 'current_graph.modules.iter()
+    loop {
+        auto entry_opt = iter2#.next()
+        if entry_opt.is_none() { break }
+        auto entry = entry_opt.unwrap()
+        auto m_path = (*entry.key()).clone()
+        
+        auto res = check_dirty_recursive(m_path.clone(), 'current_graph, dirty_map, memo)
+        if res.is_dirty {
+            'plan.status = cede string::from("dirty")
+            
+            auto chain# = Vec<string>::new()
+            auto j# = 0:usize
+            loop j < res.chain.len() {
+                chain#.push(cede res.chain.get_ref(j).clone())
+                j += 1
+            }
+            auto k# = m_path.clone()
+            auto info# = RebuildModuleInfo(
+                reason = cede res.reason.clone(),
+                dirty_deps = cede chain
+            )
+            'plan.dirty_modules#.insert(cede k, cede info)
+            
+            if vec_contains('current_graph.roots, m_path) {
+                if !vec_contains('plan.dirty_roots, m_path) {
+                    'plan.dirty_roots#.push(cede m_path.clone())
+                }
+            }
+        }
+    }
+    return
+}
 
 pub shape Executable (
     *name: char,
@@ -29,6 +873,83 @@ impl Executable@encap {
             include_dirs = self.include_dirs.clone(),
             ldflags = self.ldflags.clone()
         )
+    }
+}
+
+pub shape Library (
+    *name: char,
+    *version: char,
+    *src: char,
+    deps: string,
+    c_srcs: string = string::from(""),
+    lib_dirs: string = string::from(""),
+    libs: string = string::from(""),
+    include_dirs: string = string::from("")
+)
+
+impl Library@encap {
+    fn drop(self#) { }
+    pub fn clone(self) -> Library {
+        return Library(
+            *name = self.*name,
+            *version = self.*version,
+            *src = self.*src,
+            deps = self.deps.clone(),
+            c_srcs = self.c_srcs.clone(),
+            lib_dirs = self.lib_dirs.clone(),
+            libs = self.libs.clone(),
+            include_dirs = self.include_dirs.clone()
+        )
+    }
+}
+
+impl Library {
+    pub fn make(*name: char, *src: char) -> Library {
+        return Library(
+            *name = *name,
+            *version = c"0.1.0",
+            *src = *src,
+            deps = string::from(""),
+            c_srcs = string::from(""),
+            lib_dirs = string::from(""),
+            libs = string::from(""),
+            include_dirs = string::from("")
+        )
+    }
+
+    pub fn add_dep(self#, *url: char) {
+        if self.deps.len() > 0:usize {
+            self.deps#.push_str(",")
+        }
+        self.deps#.push_cstr(*url)
+    }
+
+    pub fn add_c_src(self#, path: string) {
+        if self.c_srcs.len() > 0:usize {
+            self.c_srcs#.push_str(",")
+        }
+        self.c_srcs#.push_str(path.as_str())
+    }
+
+    pub fn add_lib_dir(self#, path: string) {
+        if self.lib_dirs.len() > 0:usize {
+            self.lib_dirs#.push_str(",")
+        }
+        self.lib_dirs#.push_str(path.as_str())
+    }
+
+    pub fn add_lib(self#, name: string) {
+        if self.libs.len() > 0:usize {
+            self.libs#.push_str(",")
+        }
+        self.libs#.push_str(name.as_str())
+    }
+
+    pub fn add_include_dir(self#, path: string) {
+        if self.include_dirs.len() > 0:usize {
+            self.include_dirs#.push_str(",")
+        }
+        self.include_dirs#.push_str(path.as_str())
     }
 }
 
@@ -142,14 +1063,25 @@ fn shell_quote(s: string) -> string {
     }
 }
 
-pub fn run_build(proj: Executable) -> i32 {
+fn run_build_impl(
+    *name: char,
+    *version: char,
+    *src: char,
+    deps: string,
+    c_srcs: string,
+    lib_dirs: string,
+    libs: string,
+    include_dirs: string,
+    ldflags: string,
+    is_lib_target: bool
+) -> i32 {
     unsafe {
-        auto *n = proj.*name
-        auto *v = proj.*version
-        auto *s = proj.*src
+        auto *n = *name
+        auto *v = *version
+        auto *s = *src
 
-        if proj.deps.len() > 0:usize {
-            auto deps_iter = proj.deps.split(',' as i32)
+        if deps.len() > 0:usize {
+            auto deps_iter = deps.split(',' as i32)
             loop {
                 auto pkg_url = deps_iter#.next()
                 if pkg_url.len() == 0:usize { break }
@@ -208,7 +1140,7 @@ pub fn run_build(proj: Executable) -> i32 {
         if use_forge {
             auto forge_cmd# = forge_path.clone()
             forge_cmd#.push_str(" ")
-            auto src_str = string::from_cstr(&s)
+            auto src_str = string::from_cstr(*s)
             forge_cmd#.push_str(shell_quote(src_str).as_str())
             forge_cmd#.push_str(" -j 4 -c .forge_cache")
 
@@ -268,22 +1200,82 @@ pub fn run_build(proj: Executable) -> i32 {
         }
 
         auto is_hybrid# = false
-        if proj.c_srcs.len() > 0:usize { is_hybrid = true }
-        if proj.libs.len() > 0:usize { is_hybrid = true }
-        if proj.ldflags.len() > 0:usize { is_hybrid = true }
-        if proj.lib_dirs.len() > 0:usize { is_hybrid = true }
+        if c_srcs.len() > 0:usize { is_hybrid = true }
+        if libs.len() > 0:usize { is_hybrid = true }
+        if ldflags.len() > 0:usize { is_hybrid = true }
+        if lib_dirs.len() > 0:usize { is_hybrid = true }
 
-        if is_hybrid {
-            c_args#.push_str(" --emit-obj -o target/debug/")
-            c_args#.push_cstr(&n)
+        if is_hybrid || is_lib_target {
+            c_args#.push_str(" --emit-obj ")
+            if is_lib_target {
+                c_args#.push_str(" --emit-interface ")
+            }
+            c_args#.push_str(" -o target/debug/")
+            c_args#.push_cstr(*n)
             c_args#.push_str(".o -O3")
         } else {
             c_args#.push_str(" -o target/debug/")
-            c_args#.push_cstr(&n)
+            c_args#.push_cstr(*n)
             if is_windows {
                 c_args#.push_str(".exe")
             }
             c_args#.push_str(" -O3")
+        }
+
+        auto has_plan# = false
+        auto manifest_path# = string::from(".toka/build/manifest.json")
+        auto idx_arg#: usize = 0
+        loop idx_arg < env::args_count() as usize {
+            auto arg = env::get_arg(idx_arg)
+            if arg.eq(string::from("--plan")) {
+                has_plan = true
+            }
+            if arg.eq(string::from("-m")) || arg.eq(string::from("--manifest")) {
+                if idx_arg + 1 < env::args_count() as usize {
+                    manifest_path = env::get_arg(idx_arg + 1)
+                }
+            }
+            idx_arg += 1
+        }
+
+        if has_plan {
+            // Run compiler dependency dump to get current graph
+            auto dump_cmd# = tokac_path.clone()
+            dump_cmd#.push_str(" --dump-dependencies=json ")
+            dump_cmd#.push_str(c_args.as_str())
+            dump_cmd#.push_str(" ")
+            auto src_str = string::from_cstr(*s)
+            dump_cmd#.push_str(shell_quote(src_str).as_str())
+
+            auto build_dir = path_canonicalize(dirname(manifest_path.clone()))
+            env::set_var(string::from("TOKA_BUILD_DIR"), build_dir.clone())
+
+            println("DEBUG: dump_cmd = {}", dump_cmd.clone())
+            auto dump_json = run_and_capture_stdout(dump_cmd)
+            auto current_graph_res = deserialize_shape_local<DependencyManifest>(dump_json.as_str())
+            if current_graph_res.is_err() {
+                println("error: failed to deserialize current graph: {}", current_graph_res.unwrap_err())
+                return 1
+            }
+            auto current_graph = current_graph_res.unwrap()
+            populate_submodule_outputs(current_graph, build_dir)
+
+            auto old_manifest# = DependencyManifest(..)
+            if exists(manifest_path.clone()) {
+                auto old_json_res = read_to_string(manifest_path.clone())
+                if old_json_res.is_ok() {
+                    auto old_manifest_res = deserialize_shape_local<DependencyManifest>(old_json_res.unwrap().as_str())
+                    if old_manifest_res.is_ok() {
+                        old_manifest = old_manifest_res.unwrap()
+                    }
+                }
+            }
+
+            auto plan# = RebuildPlan(..)
+            generate_rebuild_plan(current_graph, old_manifest, plan)
+            auto plan_json = plan_to_json(plan)
+            println("{}", plan_json.as_str())
+            return 0
         }
 
         // Detect driver path
@@ -306,7 +1298,7 @@ pub fn run_build(proj: Executable) -> i32 {
         cmd1#.push_str(" --compiler-args ")
         cmd1#.push_str(shell_quote(c_args).as_str())
         cmd1#.push_str(" ")
-        auto src_str = string::from_cstr(&s)
+        auto src_str = string::from_cstr(*s)
         cmd1#.push_str(shell_quote(src_str).as_str())
 
         auto name_str = string::from_cstr(*n)
@@ -338,159 +1330,237 @@ pub fn run_build(proj: Executable) -> i32 {
                 }
             }
 
-            auto rt_path# = string::from("")
-            if is_windows {
-                if libc_access(c"lib/sys/toka_rt.obj", 0) == 0 {
-                    rt_path = string::from("lib/sys/toka_rt.obj")
-                } else if libc_access(c"lib/sys/toka_rt.o", 0) == 0 {
-                    rt_path = string::from("lib/sys/toka_rt.o")
-                } else if libc_access(c"../lib/sys/toka_rt.obj", 0) == 0 {
-                    rt_path = string::from("../lib/sys/toka_rt.obj")
-                } else if libc_access(c"../lib/sys/toka_rt.o", 0) == 0 {
-                    rt_path = string::from("../lib/sys/toka_rt.o")
-                }
-            } else {
-                if libc_access(c"lib/sys/toka_rt.o", 0) == 0 {
-                    rt_path = string::from("lib/sys/toka_rt.o")
-                } else if libc_access(c"../lib/sys/toka_rt.o", 0) == 0 {
-                    rt_path = string::from("../lib/sys/toka_rt.o")
-                }
-            }
+            if is_lib_target {
+                if c_srcs.len() > 0:usize {
+                    auto c_srcs_iter = c_srcs.split(',' as i32)
+                    loop {
+                        auto file = c_srcs_iter#.next()
+                        if file.len() == 0:usize { break }
 
-            if rt_path.len() == 0:usize {
-                auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
-                if toka_lib != 0:Addr {
-                    auto env_rt# = string::from_cstr(toka_lib as *char)
-                    if !env_rt.ends_with("/") {
-                        env_rt#.push_str("/")
-                    }
-                    if is_windows {
-                        auto env_rt_obj# = env_rt.clone()
-                        env_rt_obj#.push_str("sys/toka_rt.obj")
-                        if libc_access(env_rt_obj.c_str(), 0) == 0 {
-                            rt_path = env_rt_obj.clone()
-                        }
-                    }
-                    if rt_path.len() == 0:usize {
-                        auto env_rt_o# = env_rt.clone()
-                        env_rt_o#.push_str("sys/toka_rt.o")
-                        if libc_access(env_rt_o.c_str(), 0) == 0 {
-                            rt_path = env_rt_o.clone()
-                        }
+                        auto c_compile# = shell_quote(cxx)
+                        c_compile#.push_str(" -c ")
+                        c_compile#.push_str(shell_quote(file).as_str())
+                        c_compile#.push_str(" -o target/debug/")
+                        auto f_stem = file_stem(file)
+                        c_compile#.push_str(f_stem.as_str())
+                        c_compile#.push_str(".o")
+
+                        libc_system(c_compile.c_str())
                     }
                 }
-            }
-            if rt_path.len() == 0:usize {
+
+                auto ar_cmd# = string::from("")
                 if is_windows {
-                    if libc_access(c"/usr/local/lib/toka/sys/toka_rt.obj", 0) == 0 {
-                        rt_path = string::from("/usr/local/lib/toka/sys/toka_rt.obj")
+                    ar_cmd = string::from("lib.exe /OUT:target\\debug\\")
+                    ar_cmd#.push_cstr(*n)
+                    ar_cmd#.push_str(".lib target\\debug\\")
+                    ar_cmd#.push_cstr(*n)
+                    ar_cmd#.push_str(".o")
+                } else {
+                    ar_cmd = string::from("ar rcs target/debug/lib")
+                    ar_cmd#.push_cstr(*n)
+                    ar_cmd#.push_str(".a target/debug/")
+                    ar_cmd#.push_cstr(*n)
+                    ar_cmd#.push_str(".o")
+                }
+
+                if c_srcs.len() > 0:usize {
+                    auto c_srcs_iter = c_srcs.split(',' as i32)
+                    loop {
+                        auto file = c_srcs_iter#.next()
+                        if file.len() == 0:usize { break }
+                        auto f_stem = file_stem(file)
+                        ar_cmd#.push_str(" target/debug/")
+                        ar_cmd#.push_str(f_stem.as_str())
+                        ar_cmd#.push_str(".o")
+                    }
+                }
+                libc_system(ar_cmd.c_str())
+            } else {
+                auto rt_path# = string::from("")
+                if is_windows {
+                    if libc_access(c"lib/sys/toka_rt.obj", 0) == 0 {
+                        rt_path = string::from("lib/sys/toka_rt.obj")
+                    } else if libc_access(c"lib/sys/toka_rt.o", 0) == 0 {
+                        rt_path = string::from("lib/sys/toka_rt.o")
+                    } else if libc_access(c"../lib/sys/toka_rt.obj", 0) == 0 {
+                        rt_path = string::from("../lib/sys/toka_rt.obj")
+                    } else if libc_access(c"../lib/sys/toka_rt.o", 0) == 0 {
+                        rt_path = string::from("../lib/sys/toka_rt.o")
+                    }
+                } else {
+                    if libc_access(c"lib/sys/toka_rt.o", 0) == 0 {
+                        rt_path = string::from("lib/sys/toka_rt.o")
+                    } else if libc_access(c"../lib/sys/toka_rt.o", 0) == 0 {
+                        rt_path = string::from("../lib/sys/toka_rt.o")
+                    }
+                }
+
+                if rt_path.len() == 0:usize {
+                    auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
+                    if toka_lib != 0:Addr {
+                        auto env_rt# = string::from_cstr(toka_lib as *char)
+                        if !env_rt.ends_with("/") {
+                            env_rt#.push_str("/")
+                        }
+                        if is_windows {
+                            auto env_rt_obj# = env_rt.clone()
+                            env_rt_obj#.push_str("sys/toka_rt.obj")
+                            if libc_access(env_rt_obj.c_str(), 0) == 0 {
+                                rt_path = env_rt_obj.clone()
+                            }
+                        }
+                        if rt_path.len() == 0:usize {
+                            auto env_rt_o# = env_rt.clone()
+                            env_rt_o#.push_str("sys/toka_rt.o")
+                            if libc_access(env_rt_o.c_str(), 0) == 0 {
+                                rt_path = env_rt_o.clone()
+                            }
+                        }
                     }
                 }
                 if rt_path.len() == 0:usize {
-                    if libc_access(c"/usr/local/lib/toka/sys/toka_rt.o", 0) == 0 {
-                        rt_path = string::from("/usr/local/lib/toka/sys/toka_rt.o")
+                    if is_windows {
+                        if libc_access(c"/usr/local/lib/toka/sys/toka_rt.obj", 0) == 0 {
+                            rt_path = string::from("/usr/local/lib/toka/sys/toka_rt.obj")
+                        }
+                    }
+                    if rt_path.len() == 0:usize {
+                        if libc_access(c"/usr/local/lib/toka/sys/toka_rt.o", 0) == 0 {
+                            rt_path = string::from("/usr/local/lib/toka/sys/toka_rt.o")
+                        }
                     }
                 }
-            }
-            if rt_path.len() == 0:usize {
-                if is_windows {
-                    rt_path = string::from("lib/sys/toka_rt.obj")
-                } else {
-                    rt_path = string::from("lib/sys/toka_rt.o")
+                if rt_path.len() == 0:usize {
+                    if is_windows {
+                        rt_path = string::from("lib/sys/toka_rt.obj")
+                    } else {
+                        rt_path = string::from("lib/sys/toka_rt.o")
+                    }
                 }
-            }
 
-            auto cmd2# = shell_quote(cxx)
-            cmd2#.push_str(" ")
-            auto obj_path# = string::from("target/debug/")
-            obj_path#.push_cstr(&n)
-            obj_path#.push_str(".o")
-            cmd2#.push_str(shell_quote(obj_path).as_str())
-
-            if proj.c_srcs.len() > 0:usize {
-                auto c_srcs_iter = proj.c_srcs.split(',' as i32)
-                loop {
-                    auto file = c_srcs_iter#.next()
-                    if file.len() == 0:usize { break }
-                    cmd2#.push_str(" ")
-                    cmd2#.push_str(shell_quote(file).as_str())
-                }
-            }
-
-            cmd2#.push_str(" ")
-            cmd2#.push_str(shell_quote(rt_path).as_str())
-
-            if proj.include_dirs.len() > 0:usize {
-                auto inc_iter = proj.include_dirs.split(',' as i32)
-                loop {
-                    auto dir = inc_iter#.next()
-                    if dir.len() == 0:usize { break }
-                    cmd2#.push_str(" -I ")
-                    cmd2#.push_str(shell_quote(dir).as_str())
-                }
-            }
-
-            if proj.lib_dirs.len() > 0:usize {
-                auto lib_dir_iter = proj.lib_dirs.split(',' as i32)
-                loop {
-                    auto dir = lib_dir_iter#.next()
-                    if dir.len() == 0:usize { break }
-                    cmd2#.push_str(" -L ")
-                    cmd2#.push_str(shell_quote(dir).as_str())
-                }
-            }
-
-            if proj.libs.len() > 0:usize {
-                auto lib_iter = proj.libs.split(',' as i32)
-                loop {
-                    auto lib = lib_iter#.next()
-                    if lib.len() == 0:usize { break }
-                    cmd2#.push_str(" -l ")
-                    cmd2#.push_str(shell_quote(lib).as_str())
-                }
-            }
-
-            if proj.ldflags.len() > 0:usize {
+                auto cmd2# = shell_quote(cxx)
                 cmd2#.push_str(" ")
-                cmd2#.push_str(proj.ldflags.as_str())
-            }
+                auto obj_path# = string::from("target/debug/")
+                obj_path#.push_cstr(*n)
+                obj_path#.push_str(".o")
+                cmd2#.push_str(shell_quote(obj_path).as_str())
 
-            if is_windows {
-                cmd2#.push_str(" -lws2_32 -lshell32")
-            }
+                if c_srcs.len() > 0:usize {
+                    auto c_srcs_iter = c_srcs.split(',' as i32)
+                    loop {
+                        auto file = c_srcs_iter#.next()
+                        if file.len() == 0:usize { break }
+                        cmd2#.push_str(" ")
+                        cmd2#.push_str(shell_quote(file).as_str())
+                    }
+                }
 
-            cmd2#.push_str(" -o ")
-            auto out_path# = string::from("target/debug/")
-            out_path#.push_cstr(&n)
-            if is_windows {
-                out_path#.push_str(".exe")
-            }
-            cmd2#.push_str(shell_quote(out_path).as_str())
+                cmd2#.push_str(" ")
+                cmd2#.push_str(shell_quote(rt_path).as_str())
 
-            auto res2 = libc_system(cmd2.c_str())
-            if res2 != 0 {
-                auto fail_name = string::from_cstr(*n)
-                println("\x1b[1;31m       Error\x1b[0m linking failed for {}", fail_name)
-                return res2
-            }
+                if include_dirs.len() > 0:usize {
+                    auto inc_iter = include_dirs.split(',' as i32)
+                    loop {
+                        auto dir = inc_iter#.next()
+                        if dir.len() == 0:usize { break }
+                        cmd2#.push_str(" -I ")
+                        cmd2#.push_str(shell_quote(dir).as_str())
+                    }
+                }
 
-            // Clean up temporary .o file
-            auto rm_cmd# = string::from("")
-            if is_windows {
-                rm_cmd = string::from("del /f /q target\\debug\\")
-                rm_cmd#.push_cstr(&n)
-                rm_cmd#.push_str(".o")
-            } else {
-                rm_cmd = string::from("rm -f ")
-                auto rm_path# = string::from("target/debug/")
-                rm_path#.push_cstr(&n)
-                rm_path#.push_str(".o")
-                rm_cmd#.push_str(shell_quote(rm_path).as_str())
+                if lib_dirs.len() > 0:usize {
+                    auto lib_dir_iter = lib_dirs.split(',' as i32)
+                    loop {
+                        auto dir = lib_dir_iter#.next()
+                        if dir.len() == 0:usize { break }
+                        cmd2#.push_str(" -L ")
+                        cmd2#.push_str(shell_quote(dir).as_str())
+                    }
+                }
+
+                if libs.len() > 0:usize {
+                    auto lib_iter = libs.split(',' as i32)
+                    loop {
+                        auto lib = lib_iter#.next()
+                        if lib.len() == 0:usize { break }
+                        cmd2#.push_str(" -l ")
+                        cmd2#.push_str(shell_quote(lib).as_str())
+                    }
+                }
+
+                if ldflags.len() > 0:usize {
+                    cmd2#.push_str(" ")
+                    cmd2#.push_str(ldflags.as_str())
+                }
+
+                if is_windows {
+                    cmd2#.push_str(" -lws2_32 -lshell32")
+                }
+
+                cmd2#.push_str(" -o ")
+                auto out_path# = string::from("target/debug/")
+                out_path#.push_cstr(*n)
+                if is_windows {
+                    out_path#.push_str(".exe")
+                }
+                cmd2#.push_str(shell_quote(out_path).as_str())
+
+                auto res2 = libc_system(cmd2.c_str())
+                if res2 != 0 {
+                    auto fail_name = string::from_cstr(*n)
+                    println("\x1b[1;31m       Error\x1b[0m linking failed for {}", fail_name)
+                    return res2
+                }
+
+                // Clean up temporary .o file
+                auto rm_cmd# = string::from("")
+                if is_windows {
+                    rm_cmd = string::from("del /f /q target\\debug\\")
+                    rm_cmd#.push_cstr(*n)
+                    rm_cmd#.push_str(".o")
+                } else {
+                    rm_cmd = string::from("rm -f ")
+                    auto rm_path# = string::from("target/debug/")
+                    rm_path#.push_cstr(*n)
+                    rm_path#.push_str(".o")
+                    rm_cmd#.push_str(shell_quote(rm_path).as_str())
+                }
+                libc_system(rm_cmd.c_str())
             }
-            libc_system(rm_cmd.c_str())
         }
 
         println("\x1b[1;35m    Finished\x1b[0m release [optimized] target(s)")
         return 0
     }
+}
+
+pub fn run_build(proj: Executable) -> i32 {
+    return run_build_impl(
+        proj.*name,
+        proj.*version,
+        proj.*src,
+        proj.deps.clone(),
+        proj.c_srcs.clone(),
+        proj.lib_dirs.clone(),
+        proj.libs.clone(),
+        proj.include_dirs.clone(),
+        proj.ldflags.clone(),
+        false
+    )
+}
+
+pub fn run_build(proj: Library) -> i32 {
+    return run_build_impl(
+        proj.*name,
+        proj.*version,
+        proj.*src,
+        proj.deps.clone(),
+        proj.c_srcs.clone(),
+        proj.lib_dirs.clone(),
+        proj.libs.clone(),
+        proj.include_dirs.clone(),
+        string::from(""),
+        true
+    )
 }

@@ -1,0 +1,9 @@
+shape Data(val: i32)
+
+pub fn test_param(p: Data) {
+    auto p2 = cede p
+}
+
+pub fn main() -> i32 {
+    return 0;
+}

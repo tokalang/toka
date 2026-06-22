@@ -3,6 +3,7 @@ import std/env
 import std/io::{println, File, remove_file}
 import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, metadata}
 import sys/libc::{libc_system, libc_printf, libc_getenv}
+import std/vec::{Vec}
 import src/pkg_manager::{cmd_fetch, build_pkg_args, cmd_publish, cmd_search, resolve_package}
 
 
@@ -38,6 +39,44 @@ fn check_is_windows() -> bool {
             }
         }
         return false
+    }
+}
+
+fn shell_quote(s: string) -> string {
+    if check_is_windows() {
+        auto res# = string::from("\"")
+        auto view = s.as_str()
+        auto len = view.len()
+        auto i# = 0:usize
+        loop {
+            if i >= len { break }
+            auto c = view.byte_at(i)
+            if c == '"' {
+                res#.push_str("\\\"")
+            } else {
+                res#.push_char(c)
+            }
+            i = i + 1:usize
+        }
+        res#.push_str("\"")
+        return res
+    } else {
+        auto res# = string::from("'")
+        auto view = s.as_str()
+        auto len = view.len()
+        auto i# = 0:usize
+        loop {
+            if i >= len { break }
+            auto c = view.byte_at(i)
+            if c == '\'' {
+                res#.push_str("'\\''")
+            } else {
+                res#.push_char(c)
+            }
+            i = i + 1:usize
+        }
+        res#.push_str("'")
+        return res
     }
 }
 
@@ -377,7 +416,7 @@ fn cmd_add(pkg_url_or_name: string) -> i32 {
     }
 }
 
-fn cmd_build(use_forge: bool) -> i32 {
+fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
     if use_forge {
         env::set_var(string::from("TOKA_USE_FORGE"), string::from("1"))
     } else {
@@ -426,6 +465,13 @@ fn cmd_build(use_forge: bool) -> i32 {
             cmd#.push_str(" -o .toka_build_exe.exe -O3 && .toka_build_exe.exe")
         } else {
             cmd#.push_str(" -o .toka_build_exe -O3 && ./.toka_build_exe")
+        }
+
+        auto idx_extra# = 0:usize
+        loop idx_extra < extra_args.len() {
+            cmd#.push_str(" ")
+            cmd#.push_str(shell_quote(extra_args.get(idx_extra)).as_str())
+            idx_extra += 1
         }
 
         auto res = libc_system(cmd.c_str())
@@ -511,7 +557,8 @@ fn find_newest_executable(dir_path: string) -> string {
 }
 
 fn cmd_run(use_forge: bool) -> i32 {
-    auto res = cmd_build(use_forge)
+    auto extra_args = Vec<string>::new()
+    auto res = cmd_build(use_forge, extra_args)
     if res != 0 { return res }
     
     auto target_dir = string::from("target/debug")
@@ -767,15 +814,18 @@ fn main() -> i32 {
     
     if cmd.eq(string::from("build")) {
         auto use_forge# = false
+        auto extra_args# = Vec<string>::new()
         auto idx#: i32 = (2 + shift) as i32
         loop idx < argc {
             auto arg = env::get_arg(idx)
             if arg.eq(string::from("--forge")) || arg.eq(string::from("-f")) {
                 use_forge = true
+            } else {
+                extra_args#.push(cede arg.clone())
             }
             idx += 1
         }
-        return cmd_build(use_forge)
+        return cmd_build(use_forge, extra_args)
     }
     
     if cmd.eq(string::from("run")) {

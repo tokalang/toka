@@ -103,7 +103,7 @@ impl DependencyGraph {
         )
         
         auto real_id = self.slab#.insert(cede node)
-        self.registered_ids#.push(real_id.clone())
+        self.registered_ids#.push(cede real_id.clone())
         
         unsafe {
             auto &#n# = self.slab#.get_mut(real_id.clone()).unwrap()
@@ -112,7 +112,7 @@ impl DependencyGraph {
             auto _read = n.id
         }
         
-        self.path_to_id#.insert(path.clone(), real_id.clone())
+        self.path_to_id#.insert(cede path.clone(), cede real_id.clone())
 
         // 2. Scan file imports to establish edges
         auto file# = File::open(path.clone(), "r")
@@ -129,11 +129,11 @@ impl DependencyGraph {
                 if imp_opt.is_some() {
                     auto imp_path = imp_opt.unwrap()
                     auto dep_id = self#.register_file(imp_path)
-                    deps#.push(dep_id.clone())
+                    deps#.push(cede dep_id.clone())
                     
                     unsafe {
                         auto &#child_node# = self.slab#.get_mut(dep_id).unwrap()
-                        child_node.dependents#.push(real_id.clone())
+                        child_node.dependents#.push(cede real_id.clone())
                         child_node.in_degree = child_node.in_degree
                         auto _read = child_node.id
                     }
@@ -166,7 +166,7 @@ impl DependencyGraph {
                 auto &node = node_opt.unwrap()
                 if node.in_degree == 0 && node.state == TaskState::Pending {
                     if !cache.is_dirty(node.src_path.clone()) {
-                        ready#.push(id.clone())
+                        ready#.push(cede id.clone())
                     }
                 }
             }
@@ -193,7 +193,7 @@ impl DependencyGraph {
                 loop true {
                     match iter#.next() {
                         auto Option<SlabID>::Some(&dep_id) => {
-                            dependents#.push(dep_id.clone())
+                             dependents#.push(cede dep_id.clone())
                         }
                         _ => break
                     }
@@ -210,7 +210,7 @@ impl DependencyGraph {
                     dep_node.in_degree = dep_node.in_degree - 1
                     if dep_node.in_degree == 0 && dep_node.state == TaskState::Pending {
                         if !cache.is_dirty(dep_node.src_path.clone()) {
-                            ready#.push(dep_id.clone())
+                            ready#.push(cede dep_id.clone())
                         }
                     }
                     dep_node.in_degree = dep_node.in_degree

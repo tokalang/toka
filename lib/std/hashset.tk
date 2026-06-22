@@ -28,8 +28,8 @@ impl<'T> HashSet<'T> {
         )
     }
 
-    pub fn insert(self#, 'val: T) {
-        self.map#.insert('val, true)
+    pub fn insert(self#, cede 'val: T) {
+        self.map#.insert(cede 'val, true)
     }
 
     pub fn contains(self, 'val: T) -> bool {

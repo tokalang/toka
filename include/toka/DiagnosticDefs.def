@@ -85,6 +85,7 @@ DIAG(ERR_REDUNDANT_PARAM_BORROW,  Error,   "E0451", "Redundant parameter borrow 
 DIAG(ERR_RETURN_REBIND_DISCARDED, Error,   "E0446", "Return value binding '{}' expects a result but void was returned")
 DIAG(ERR_UNSAFE_RESOURCE,         Error,   "E0466", "Shape '{}' contains managed resources but does not implement 'drop'")
 DIAG(ERR_IMPLICIT_RESOURCE_COPY,  Error,   "E0468", "Implicit bitwise copy of resource type '{}' during auto-dereference is forbidden. Method '{}' takes 'self' by value, but the receiver is a pointer. Implement and call '.clone()' or change the method receiver to be explicitly mutable (use 'self#')")
+DIAG(ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Error,   "E0473", "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body")
 DIAG(ERR_NULL_ACCESS,             Error,   "E0447", "Accessing member of nullable type '{}' requires explicit 'is' check")
 DIAG(ERR_MORPHOLOGY_MISMATCH,     Error,   "E0448", "Pointer morphology mismatch: expected explicit '{}' (from LHS/Target), found '{}' (from RHS/Source)")
 DIAG(ERR_SMART_PTR_FROM_STACK,    Error,   "E0449", "Smart pointer sigil '{}' cannot be applied to stack variable; use 'new' or assign from existing smart pointer")

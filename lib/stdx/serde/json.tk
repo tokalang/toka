@@ -109,8 +109,8 @@ pub fn serialize_shape<'T>('obj: T, buf#: string) -> string {
         buf#.push_view(f.name)
         buf#.push_str("\":")
         
-        auto val = f.get('obj)
-        buf = val.write_json(buf)
+        auto 'val = f.get('obj)
+        buf = 'val.write_json(buf)
     }
     buf#.push_str("}")
     return buf
@@ -196,7 +196,7 @@ pub trait @FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes
 }
 
-fn json_skip_whitespace(json: str) -> str {
+pub fn json_skip_whitespace(json: str) -> str {
     auto res# = json
     loop res.len() > 0 {
         auto c = res.byte_at(0)
@@ -568,12 +568,47 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
     }
 }
 
+pub fn deserialize_nested_shape<'T>('obj#, json_str: str) -> JsonRes {
+    auto res# = json_skip_whitespace(json_str)
+    if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
+    res = res.substr(1, res.len() - 1)
+    
+    auto first# = true
+    loop true {
+        res = json_skip_whitespace(res)
+        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
+        if !first {
+            if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+            res = res.substr(1, res.len() - 1)
+        }
+        first = false
+        res = json_skip_whitespace(res)
+        auto key_view# = ""
+        res = key_view#.parse_json(res)!
+        res = json_skip_whitespace(res)
+        if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
+        res = res.substr(1, res.len() - 1)
+        auto found# = false
+        for auto f in reflect<'T>().fields {
+            if key_view.equals(f.name) {
+                found = true
+                auto 'val# = f.get('obj)
+                res = 'val#.parse_json(res)!
+                f.set('obj, cede 'val)
+                continue
+            }
+        }
+        if !found { res = json_skip_value(res)! }
+    }
+    return JsonRes::Ok(res)
+}
+
 pub fn deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
     auto res# = json_skip_whitespace(json_str)
     if res.len() == 0 || res.byte_at(0) != 123 { return Result<'T, str>::Err("Expected {") }
     res = res.substr(1, res.len() - 1)
     
-    auto obj# = 'T(..)
+    auto 'obj# = 'T(..)
     auto first# = true
     loop true {
         res = json_skip_whitespace(res)
@@ -593,15 +628,15 @@ pub fn deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
         for auto f in reflect<'T>().fields {
             if key_view.equals(f.name) {
                 found = true
-                auto val# = f.get(obj)
-                res = val#.parse_json(res)!
-                f.set(obj, cede val)
+                auto 'val# = f.get('obj)
+                res = 'val#.parse_json(res)!
+                f.set('obj, cede 'val)
                 continue
             }
         }
         if !found { res = json_skip_value(res)! }
     }
-    return Result<'T, str>::Ok(cede obj)
+    return Result<'T, str>::Ok(cede 'obj)
 }
 
 impl JsonNode@FromJson {
@@ -637,7 +672,7 @@ impl JsonNode {
                 rem = rem.substr(1, rem.len() - 1)
                 auto val#: JsonNode = JsonNode::NullNode(0)
                 rem = val#.parse_json_internal(rem, depth + 1)!
-                map#.insert(key, cede val)
+                map#.insert(cede key, cede val)
             }
             self = JsonNode::ObjectNode(cede map)
             return JsonRes::Ok(rem)

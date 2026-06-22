@@ -91,6 +91,8 @@ struct SymbolInfo {
   const ImportDecl* ImportingDecl = nullptr;
   bool IsRebindable = false; // [NEW] prefix '#' or '!' rebind permission
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption
+  bool IsCeded = false;
+  bool IsFunctionParameter = false;
 
   // [Phase 2] Comptime Field Unroll Node Information
   bool IsComptimeField = false;
@@ -203,6 +205,7 @@ public:
 
   // [NEW] Trait  // Concurrency type bounds
   bool hasDrop(const std::string &shapeName);
+  bool canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty);
   bool isShapeSend(const std::string &shapeName);
   bool isShapeSync(const std::string &shapeName);
   std::string resolveType(const std::string &Type, bool force = false);

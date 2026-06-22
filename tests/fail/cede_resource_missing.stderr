@@ -1,0 +1,6 @@
+error[E04509]: Argument must be explicitly passed with 'cede' because the method consumes it
+ --> tests/fail/cede_resource_missing.tk:7:17
+   |
+ 7 |     v_str#.push(s1)
+   |                 ^
+

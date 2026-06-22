@@ -27,7 +27,7 @@ impl<'T: @PartialOrd> BTreeSet<'T>@encap {
         return self.map.is_empty()
     }
 
-    pub fn insert(self#, 'val: T) {
+    pub fn insert(self#, cede 'val: T) {
         self.map#.insert(cede 'val, true)
     }
 

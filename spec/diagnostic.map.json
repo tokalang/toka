@@ -410,6 +410,12 @@
       "message": "Implicit bitwise copy of resource type '{}' during auto-dereference is forbidden. Method '{}' takes 'self' by value, but the receiver is a pointer. Implement and call '.clone()' or change the method receiver to be explicitly mutable (use 'self#')",
       "description": "Implicit bitwise copy of resource type '{}' during auto-dereference is forbidden. Method '{}' takes 'self' by value, but the receiver is a pointer. Implement and call '.clone()' or change the method receiver to be explicitly mutable (use 'self#')"
     },
+    "E0473": {
+      "id": "ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER",
+      "level": "Error",
+      "message": "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body",
+      "description": "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body"
+    },
     "E0447": {
       "id": "ERR_NULL_ACCESS",
       "level": "Error",

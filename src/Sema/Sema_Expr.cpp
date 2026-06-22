@@ -1693,6 +1693,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         SymbolInfo *Info = nullptr;
         std::string actualName;
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
+            if (Info->IsFunctionParameter && !Info->IsCeded) {
+                error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
+            }
             Scope *curr = CurrentScope;
             bool crossedLoop = false;
             while (curr) {
@@ -2180,7 +2183,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 if (expectedParamTy) {
                     if (FD->Args[i + 1].IsCeded) {
                         bool isCallerCeded = dynamic_cast<CedeExpr*>(Met->Args[i].get()) != nullptr;
-                        if (!isCallerCeded) {
+                        bool isPrimitive = canImplicitlyPassToCede(argTy);
+                        if (!isCallerCeded && !isPrimitive) {
                             error(Met->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C);
                         }
                     }

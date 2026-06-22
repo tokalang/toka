@@ -34,61 +34,61 @@ pub fn main() -> i32 {
     auto ~c10 = ~counter
     
 
-    auto t1# = thread_spawn<i32>({ [cede c1] =>
+    auto t1# = thread_spawn<i32>(cede { [cede c1] =>
         auto i# = 0
         auto ~local = ~c1
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t2# = thread_spawn<i32>({ [cede c2] =>
+    auto t2# = thread_spawn<i32>(cede { [cede c2] =>
         auto i# = 0
         auto ~local = ~c2
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t3# = thread_spawn<i32>({ [cede c3] =>
+    auto t3# = thread_spawn<i32>(cede { [cede c3] =>
         auto i# = 0
         auto ~local = ~c3
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t4# = thread_spawn<i32>({ [cede c4] =>
+    auto t4# = thread_spawn<i32>(cede { [cede c4] =>
         auto i# = 0
         auto ~local = ~c4
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t5# = thread_spawn<i32>({ [cede c5] =>
+    auto t5# = thread_spawn<i32>(cede { [cede c5] =>
         auto i# = 0
         auto ~local = ~c5
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t6# = thread_spawn<i32>({ [cede c6] =>
+    auto t6# = thread_spawn<i32>(cede { [cede c6] =>
         auto i# = 0
         auto ~local = ~c6
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t7# = thread_spawn<i32>({ [cede c7] =>
+    auto t7# = thread_spawn<i32>(cede { [cede c7] =>
         auto i# = 0
         auto ~local = ~c7
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t8# = thread_spawn<i32>({ [cede c8] =>
+    auto t8# = thread_spawn<i32>(cede { [cede c8] =>
         auto i# = 0
         auto ~local = ~c8
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t9# = thread_spawn<i32>({ [cede c9] =>
+    auto t9# = thread_spawn<i32>(cede { [cede c9] =>
         auto i# = 0
         auto ~local = ~c9
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }
         return cede 0
     })
-    auto t10# = thread_spawn<i32>({ [cede c10] =>
+    auto t10# = thread_spawn<i32>(cede { [cede c10] =>
         auto i# = 0
         auto ~local = ~c10
         loop i < 10000 { local.fetch_add(1, Ordering::Relaxed); i = i + 1 }

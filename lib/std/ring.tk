@@ -83,7 +83,7 @@ impl<'T> RingCore<'T> {
         }
     }
 
-    pub fn push_back(self#, 'val: T) {
+    pub fn push_back(self#, cede 'val: T) {
         if self.len == self.cap {
             self#.grow()
         }
@@ -94,7 +94,7 @@ impl<'T> RingCore<'T> {
         }
     }
 
-    pub fn push_front(self#, 'val: T) {
+    pub fn push_front(self#, cede 'val: T) {
         if self.len == self.cap {
             self#.grow()
         }

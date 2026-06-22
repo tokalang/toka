@@ -1139,6 +1139,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Info.IsDeclaredMutable = Arg.IsValueMutable;
     Info.IsDeclaredVariable = true;
     Info.DeclLoc = Fn->Loc;
+    Info.IsCeded = Arg.IsCeded;
+    Info.IsFunctionParameter = true;
+    if (Fn->Name.find("insert") != std::string::npos) {
+      std::cout << "[DEBUG] Fn=" << Fn->Name << ", Arg=" << Arg.Name << ", IsCeded=" << Arg.IsCeded << std::endl;
+    }
 
     if (!Arg.Type.empty() && Arg.Type[0] == '\'') {
       Info.IsMorphicExempt = true;
@@ -1723,6 +1728,67 @@ bool Sema::hasDrop(const std::string &shapeName) {
   }
   if (m_ShapeProps.count(shapeName) && m_ShapeProps[shapeName].HasDrop) return true;
   if (m_ShapeProps.count(resolved) && m_ShapeProps[resolved].HasDrop) return true;
+  return false;
+}
+
+bool Sema::canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty) {
+  if (!Ty) return false;
+
+  // 1. Primitive, RawPtr, Function (普通函数指针), Reference (引用) 直接豁免
+  if (Ty->typeKind == toka::Type::Primitive ||
+      Ty->typeKind == toka::Type::RawPtr ||
+      Ty->typeKind == toka::Type::Function ||
+      Ty->typeKind == toka::Type::Reference) {
+    return true;
+  }
+
+  // 2. Shape 类型判断
+  if (Ty->typeKind == toka::Type::Shape) {
+    std::string sName = Ty->toString();
+    std::string resolved = resolveType(sName);
+
+    // 如果是闭包合成类型，检查其捕获成员
+    if (resolved.rfind("__Closure_", 0) == 0 || sName.rfind("__Closure_", 0) == 0) {
+      std::string closureName = (resolved.rfind("__Closure_", 0) == 0) ? resolved : sName;
+      if (ShapeMap.count(closureName)) {
+        ShapeDecl *SD = ShapeMap[closureName];
+        for (const auto &memb : SD->Members) {
+          // 引用和借用本身不包含所有权转移，豁免
+          if (memb.IsReference || memb.Type.rfind("&", 0) == 0) {
+             continue;
+          }
+          std::shared_ptr<toka::Type> membTy = memb.ResolvedType;
+          if (!membTy) {
+             membTy = toka::Type::fromString(memb.Type);
+          }
+          if (!canImplicitlyPassToCede(membTy)) {
+             return false; // 捕获了带 Drop / 资源类型的变量，不能豁免
+          }
+        }
+        return true; // 所有捕获成员都是无所有权或无 Drop 的，豁免
+      }
+      return false; // 没找到该闭包定义，安全起见不豁免
+    }
+
+    // 内置/标准库中的有资源类型不予豁免，强制 cede
+    if (resolved == "str" || resolved == "bytes" || resolved == "cstr" ||
+        resolved == "ViewStrSplitIterator" || resolved == "ViewStrLinesIterator" ||
+        resolved == "string" || resolved == "TimerHeap") {
+      return false;
+    }
+
+    if (resolved == "SlabID") {
+      return true; // 豁免 SlabID
+    }
+
+    // 其它的 Shape 检查是否包含显式 drop
+    if (hasDrop(sName) || hasDrop(resolved)) {
+      return false;
+    }
+
+    return true; // 默认无 drop 的 Shape 豁免
+  }
+
   return false;
 }
 

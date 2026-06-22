@@ -64,7 +64,7 @@ impl<'T> Slab<'T> {
         self.len = 0
     }
 
-    pub fn insert(self#, 'val: T) -> SlabID {
+    pub fn insert(self#, cede 'val: T) -> SlabID {
         auto head = self.free_head
         auto idx# = 0:usize
         auto gen# = 0:usize

@@ -97,7 +97,7 @@ impl<'T> Vec<'T> {
         }
     }
 
-    pub fn insert(self#, index: usize, 'val: T) {
+    pub fn insert(self#, index: usize, cede 'val: T) {
         if index > self.len {
             unsafe {
                 libc_printf(c"[Vec] panic: insert index out of bounds\n")
@@ -153,7 +153,7 @@ impl<'T> Vec<'T> {
     }
 
     // Push element to end
-    pub fn push(self#, 'val: T) {
+    pub fn push(self#, cede 'val: T) {
         unsafe {
             if self.len == self.cap {
                 self#.grow()
@@ -302,7 +302,7 @@ impl<'T> Vec<'T> {
     }
 
     // Resize vector (fill with value)
-    pub fn resize(self#, new_len: usize, 'val: T) {
+    pub fn resize(self#, new_len: usize, cede 'val: T) {
         unsafe {
             if new_len > self.cap {
                  loop self.cap < new_len {
@@ -320,7 +320,7 @@ impl<'T> Vec<'T> {
     }
 
     // Set value at index
-    pub fn set(self#, index: usize, 'val: T) {
+    pub fn set(self#, index: usize, cede 'val: T) {
         unsafe {
              if index < self.len {
                  self.buf[index] = cede 'val

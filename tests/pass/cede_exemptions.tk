@@ -1,0 +1,41 @@
+import std/vec::{Vec}
+import std/ring::{RingCore}
+import std/deque::{VecDeque}
+
+shape CustomResource(val: i32)
+impl CustomResource@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+pub fn consume_res(cede r: CustomResource) {}
+
+pub fn main() -> i32 {
+    // 1. Primitive 类型豁免测试 (不写 cede)
+    auto v_i32# = Vec<i32>::new()
+    v_i32#.push(10)
+    v_i32#.push(20)
+
+    auto ring_i32# = RingCore<i32>::new()
+    ring_i32#.push_back(30)
+    ring_i32#.push_front(40)
+
+    auto deque_i32# = VecDeque<i32>::new()
+    deque_i32#.push_back(50)
+    deque_i32#.push_front(60)
+
+    // 2. 闭包字面量豁免测试 (无捕获/无 Drop 的闭包作为 thread_spawn 实参不写 cede)
+    // 我们的 canImplicitlyPassToCede 判定闭包无捕获是无 Drop 的，应该可以豁免
+    
+    // 3. 有资源类型使用 cede 测试 (正常编译)
+    auto v_str# = Vec<string>::new()
+    auto s1 = string::from("hello")
+    auto s2 = string::from("world")
+    v_str#.push(cede s1)
+    v_str#.push(cede s2)
+
+    auto r1 = CustomResource(val = 100)
+    consume_res(cede r1)
+
+    return 0
+}

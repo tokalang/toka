@@ -24,11 +24,11 @@ impl<'T> VecDeque<'T> {
         self.ring#.clear()
     }
 
-    pub fn push_back(self#, 'val: T) {
+    pub fn push_back(self#, cede 'val: T) {
         self.ring#.push_back(cede 'val)
     }
 
-    pub fn push_front(self#, 'val: T) {
+    pub fn push_front(self#, cede 'val: T) {
         self.ring#.push_front(cede 'val)
     }
 

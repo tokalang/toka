@@ -12,14 +12,14 @@ fn main() -> i32 {
     parser#.add_string(string::from("config"), 'c', string::from("config.toml"), string::from("Config file path"))
 
     auto args# = Vec<string>::new()
-    args#.push(string::from("test-server")) // argv[0]
-    args#.push(string::from("-p"))
-    args#.push(string::from("9090"))
-    args#.push(string::from("--verbose"))
-    args#.push(string::from("--timeout=2.5"))
-    args#.push(string::from("--config=custom.toml"))
-    args#.push(string::from("start"))
-    args#.push(string::from("web"))
+    args#.push(cede string::from("test-server")) // argv[0]
+    args#.push(cede string::from("-p"))
+    args#.push(cede string::from("9090"))
+    args#.push(cede string::from("--verbose"))
+    args#.push(cede string::from("--timeout=2.5"))
+    args#.push(cede string::from("--config=custom.toml"))
+    args#.push(cede string::from("start"))
+    args#.push(cede string::from("web"))
 
     auto res = parser.parse(args)
     

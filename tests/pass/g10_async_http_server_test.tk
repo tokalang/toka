@@ -26,7 +26,7 @@ fn handle_request(req#: HttpRequest) -> HttpResponse {
     return HttpResponse::not_found()
 }
 
-fn process_client(stream: TcpStream) -> async i32 {
+fn process_client(cede stream: TcpStream) -> async i32 {
     unsafe {
         auto stream# = cede stream
         auto buf: [char; 1024] = [0 as char; 1024]
@@ -77,7 +77,7 @@ fn run_server(port: u16) -> async i32 {
         if stream.is_valid() {
             if g_server_stop { break } // exit before processing if stopped
             println("[Server] Accepted Web connection natively asynchronously!")
-            process_client(stream).start // detach child HTTP handler
+            process_client(cede stream).start // detach child HTTP handler
         }
     }
     return 0

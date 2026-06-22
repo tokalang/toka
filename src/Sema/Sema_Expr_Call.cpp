@@ -1350,8 +1350,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (isCededParam) {
-        bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
-        if (!isCallerCeded) {
+         bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
+         bool isPrimitive = canImplicitlyPassToCede(argType);
+         if (!isCallerCeded && !isPrimitive) {
             error(Call->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
         }
     }

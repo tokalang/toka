@@ -107,7 +107,7 @@ impl<'K, 'V> BTreeNode<'K, 'V> {
     }
 }
 
-pub fn btree_node_insert_non_full_iterative<'K: @PartialOrd, 'V>(root_addr: Addr, 'key: K, 'val: V) -> bool {
+pub fn btree_node_insert_non_full_iterative<'K: @PartialOrd, 'V>(root_addr: Addr, cede 'key: K, cede 'val: V) -> bool {
     unsafe {
         auto key_buf# = [cede 'key]
         auto val_buf# = [cede 'val]
@@ -242,7 +242,7 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
         }
     }
 
-    pub fn insert(self#, 'key: K, 'val: V) {
+    pub fn insert(self#, cede 'key: K, cede 'val: V) {
         unsafe {
             auto key_buf# = [cede 'key]
             auto val_buf# = [cede 'val]

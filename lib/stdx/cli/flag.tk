@@ -210,7 +210,7 @@ impl Parser {
         auto i# = 0:usize
         loop i < self.defs.len() {
             auto d = self.defs.get(i)
-            parsed.values#.insert(d.name, d.default_val)
+            parsed.values#.insert(cede d.name.clone(), d.default_val)
             i = i + 1
         }
 
@@ -222,7 +222,7 @@ impl Parser {
             auto arg = args.get(arg_idx)
             
             if only_positional {
-                parsed.pos_args#.push(arg)
+                parsed.pos_args#.push(cede arg)
                 arg_idx = arg_idx + 1
                 continue
             }
@@ -268,12 +268,12 @@ impl Parser {
                         // It's a boolean flag, does not consume next
                         if has_val {
                             if val_str == string::from("true") || val_str == string::from("1") {
-                                parsed.values#.insert(def.name, FlagValue::Bool(true))
+                                parsed.values#.insert(cede def.name.clone(), FlagValue::Bool(true))
                             } else {
-                                parsed.values#.insert(def.name, FlagValue::Bool(false))
+                                parsed.values#.insert(cede def.name.clone(), FlagValue::Bool(false))
                             }
                         } else {
-                            parsed.values#.insert(def.name, FlagValue::Bool(true))
+                            parsed.values#.insert(cede def.name.clone(), FlagValue::Bool(true))
                         }
                     }
                     auto FlagValue::Int(_) => {
@@ -294,7 +294,7 @@ impl Parser {
                             err_msg#.push_str(key.as_str())
                             return Result<ParsedArgs, string>::Err(err_msg)
                         }
-                        parsed.values#.insert(def.name, FlagValue::Int(parse_res.unwrap()))
+                        parsed.values#.insert(cede def.name.clone(), FlagValue::Int(parse_res.unwrap()))
                     }
                     auto FlagValue::Float(_) => {
                         // Requires value
@@ -314,7 +314,7 @@ impl Parser {
                             err_msg#.push_str(key.as_str())
                             return Result<ParsedArgs, string>::Err(err_msg)
                         }
-                        parsed.values#.insert(def.name, FlagValue::Float(parse_res.unwrap()))
+                        parsed.values#.insert(cede def.name.clone(), FlagValue::Float(parse_res.unwrap()))
                     }
                     auto FlagValue::Str(&_s) => {
                         if !has_val {
@@ -327,7 +327,7 @@ impl Parser {
                             arg_idx = arg_idx + 1
                             val_str = args.get(arg_idx)
                         }
-                        parsed.values#.insert(def.name, FlagValue::Str(val_str))
+                        parsed.values#.insert(cede def.name.clone(), FlagValue::Str(cede val_str))
                     }
                 }
             } else if arg.starts_with("-") && arg.len() > 1 {
@@ -367,12 +367,12 @@ impl Parser {
                             if has_val && c_idx == short_block.len() - 1 {
                                 // Only allow '=' on the last short char
                                 if val_str == string::from("true") || val_str == string::from("1") {
-                                    parsed.values#.insert(def.name, FlagValue::Bool(true))
+                                    parsed.values#.insert(cede def.name.clone(), FlagValue::Bool(true))
                                 } else {
-                                    parsed.values#.insert(def.name, FlagValue::Bool(false))
+                                    parsed.values#.insert(cede def.name.clone(), FlagValue::Bool(false))
                                 }
                             } else {
-                                parsed.values#.insert(def.name, FlagValue::Bool(true))
+                                parsed.values#.insert(cede def.name.clone(), FlagValue::Bool(true))
                             }
                         }
                         auto FlagValue::Int(_) => {
@@ -399,7 +399,7 @@ impl Parser {
                                 err_msg#.push_char(c)
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
-                            parsed.values#.insert(def.name, FlagValue::Int(parse_res.unwrap()))
+                            parsed.values#.insert(cede def.name.clone(), FlagValue::Int(parse_res.unwrap()))
                         }
                         auto FlagValue::Float(_) => {
                             // requires value
@@ -425,7 +425,7 @@ impl Parser {
                                 err_msg#.push_char(c)
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
-                            parsed.values#.insert(def.name, FlagValue::Float(parse_res.unwrap()))
+                            parsed.values#.insert(cede def.name.clone(), FlagValue::Float(parse_res.unwrap()))
                         }
                         auto FlagValue::Str(&_s) => {
                             if c_idx != short_block.len() - 1:usize {
@@ -443,14 +443,14 @@ impl Parser {
                                 arg_idx = arg_idx + 1
                                 val_str = args.get(arg_idx)
                             }
-                            parsed.values#.insert(def.name, FlagValue::Str(val_str))
+                            parsed.values#.insert(cede def.name.clone(), FlagValue::Str(cede val_str))
                         }
                     }
                     c_idx = c_idx + 1
                 }
             } else {
                 // Positional
-                parsed.pos_args#.push(arg)
+                parsed.pos_args#.push(cede arg)
             }
             
             arg_idx = arg_idx + 1

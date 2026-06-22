@@ -74,7 +74,7 @@ pub fn parse_package_tk() -> Vec<DepEntry> {
                     }
                 }
                 
-                deps#.push(DepEntry(name = name_part, val = val_part))
+                deps#.push(cede DepEntry(name = name_part, val = val_part))
             }
         }
     }

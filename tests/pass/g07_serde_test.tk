@@ -30,8 +30,8 @@ fn main() -> i32 {
         status = Result<i32, string>::Err(string::from("Offline"))
     )
     
-    u.tags#.push(string::from("rust"))
-    u.tags#.push(string::from("toka"))
+    u.tags#.push(cede string::from("rust"))
+    u.tags#.push(cede string::from("toka"))
     
     auto json = to_json(u)
     println("JSON: {}", json.as_view())

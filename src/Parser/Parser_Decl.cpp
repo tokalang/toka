@@ -424,6 +424,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
 
       FunctionDecl::Arg arg;
       arg.IsCeded = isCeded;
+      if (argType.rfind("cede ", 0) == 0) {
+        arg.IsCeded = true;
+        argType = argType.substr(5);
+      }
       arg.Name = argName.Text;
       arg.Type = argType;
       arg.IsRawPointer = hasPointer;
@@ -710,6 +714,10 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
 
       ExternDecl::Arg arg;
       arg.IsCeded = isCeded;
+      if (argType.rfind("cede ", 0) == 0) {
+        arg.IsCeded = true;
+        argType = argType.substr(5);
+      }
       arg.Name = argName.Text;
       arg.Type = argType;
       arg.IsRawPointer = hasPointer;

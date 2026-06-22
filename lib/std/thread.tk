@@ -26,7 +26,7 @@ shape TrampBox(f: fn() -> Addr)
 /// Note: To capture variables from the environment safely across threads,
 /// use the `[cede ...]` capture list in the closure to consume variables
 /// by value (move semantics).
-pub fn thread_spawn<'T: @Send>(f: fn() -> cede 'T) -> JoinHandle<'T> {
+pub fn thread_spawn<'T: @Send>(cede f: fn() -> cede 'T) -> JoinHandle<'T> {
     unsafe {
         // 1. Box the closure explicitly via sys_alloc_thread_env to avoid compiler managed auto-drop
         auto f_arg = sys_alloc_thread_env(sizeof(ClosureBox<'T>) as usize)

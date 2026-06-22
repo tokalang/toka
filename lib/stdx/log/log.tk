@@ -90,23 +90,23 @@ impl Logger {
 // Global convenience functions (defaults to INFO level visibility)
 pub fn debug(msg: string) {
     auto logger = Logger::new(LOG_DEBUG)
-    logger.debug(cede msg)
+    logger.debug(msg)
 }
 
 // Global convenience functions (defaults to INFO level visibility)
 pub fn info(msg: string) {
     auto logger = Logger::new(LOG_INFO)
-    logger.info(cede msg)
+    logger.info(msg)
 }
 
 // Global convenience functions (defaults to INFO level visibility)
 pub fn warn(msg: string) {
     auto logger = Logger::new(LOG_WARN)
-    logger.warn(cede msg)
+    logger.warn(msg)
 }
 
 // Global convenience functions (defaults to INFO level visibility)
 pub fn error(msg: string) {
     auto logger = Logger::new(LOG_ERROR)
-    logger.error(cede msg)
+    logger.error(msg)
 }

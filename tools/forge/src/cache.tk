@@ -111,7 +111,7 @@ impl CacheStore {
                         size = parse_u64(size_str),
                         artifact_path = artifact
                     )
-                    store.states#.insert(path, cede state)
+                    store.states#.insert(cede path, cede state)
                 }
             }
         }
@@ -126,7 +126,7 @@ impl CacheStore {
             size = size,
             artifact_path = artifact_path.clone()
         )
-        self.states#.insert(path.clone(), cede state)
+        self.states#.insert(cede path.clone(), cede state)
         
         auto file# = File::open(self.cache_path.clone(), "a")
         if file.is_valid() {
