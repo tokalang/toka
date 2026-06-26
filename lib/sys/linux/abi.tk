@@ -27,4 +27,4 @@ extern fn __errno_location() -> Addr
 extern fn epoll_create1(flags: i32) -> i32
 extern fn epoll_ctl(epfd: i32, op: i32, fd: i32, *event: void) -> i32
 extern fn epoll_wait(epfd: i32, *events: void, maxevents: i32, timeout: i32) -> i32
-extern fn fcntl(fd: i32, cmd: i32, arg: i32) -> i32
+extern fn fcntl(fd: i32, cmd: i32, ...) -> i32
