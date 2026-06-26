@@ -2,17 +2,16 @@ import sys/libc::{libc_exit}
 
 shape Resource(val: i32)
 
-pub fn consume_resource(cede r: Resource) -> i32 {
-    auto v = r.val
-    return v
+pub fn consume_resource(cede r: Resource) -> Resource {
+    return cede r
 }
 
 pub fn main() -> i32 {
     auto r = Resource(val=42)
     // Correct usage: caller explicitly cedes
-    auto v = consume_resource(cede r)
+    auto moved = consume_resource(cede r)
     
-    if v != 42 {
+    if moved.val != 42 {
         return 1
     }
     return 0

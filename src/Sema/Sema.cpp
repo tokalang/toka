@@ -1188,6 +1188,19 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (Fn->Body) {
     checkStmt(Fn->Body.get());
 
+    for (auto &Arg : Fn->Args) {
+      if (!Arg.IsCeded)
+        continue;
+
+      SymbolInfo *Info = nullptr;
+      if (CurrentScope->findSymbol(Arg.Name, Info) && Info && !Info->Moved) {
+        SourceLocation argLoc = Arg.Loc.isValid() ? Arg.Loc : getLoc(Fn);
+        DiagnosticEngine::report(argLoc, DiagID::ERR_CEDE_PARAMETER_NOT_CONSUMED,
+                                 Arg.Name);
+        HasError = true;
+      }
+    }
+
     // Check if all paths return if return type is not void
     if (Fn->ReturnType != "void") {
       if (!allPathsReturn(Fn->Body.get())) {

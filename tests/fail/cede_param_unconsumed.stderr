@@ -1,0 +1,5 @@
+error[E0474]: Cede parameter 'r' must be explicitly consumed in the function body
+ --> tests/fail/cede_param_unconsumed.tk:3:30
+   |
+ 3 | pub fn inspect_resource(cede r: Resource) -> i32 {
+   |                              ^

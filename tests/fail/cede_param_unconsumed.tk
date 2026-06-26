@@ -1,0 +1,11 @@
+shape Resource(val: i32)
+
+pub fn inspect_resource(cede r: Resource) -> i32 {
+    return r.val
+}
+
+pub fn main() -> i32 {
+    auto r = Resource(val = 7)
+    auto v = inspect_resource(cede r)
+    return v
+}

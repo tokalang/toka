@@ -1679,6 +1679,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (!conflictPath.empty()) {
               error(ce, DiagID::ERR_MOVE_BORROWED, conflictPath);
           }
+          size_t dotPos = pathToMove.find('.');
+          if (dotPos != std::string::npos) {
+            std::string rootName = pathToMove.substr(0, dotPos);
+            SymbolInfo *RootInfo = nullptr;
+            std::string actualRootName;
+            if (CurrentScope->findVariableWithDeref(rootName, RootInfo,
+                                                    actualRootName)) {
+              if (RootInfo && RootInfo->IsFunctionParameter &&
+                  RootInfo->IsCeded) {
+                CurrentScope->markMoved(actualRootName);
+              }
+            }
+          }
       }
 
       Expr *underlying = ce->Value.get();

@@ -8,7 +8,9 @@ impl CustomResource@encap {
     pub fn clone(self) = delete
 }
 
-pub fn consume_res(cede r: CustomResource) {}
+pub fn consume_res(cede r: CustomResource) {
+    auto _sink = cede r
+}
 
 pub fn main() -> i32 {
     // 1. Primitive 类型豁免测试 (不写 cede)
