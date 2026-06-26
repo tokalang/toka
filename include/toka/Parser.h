@@ -72,6 +72,9 @@ private:
   void errorTypeSideMorphicBinding(const Token &nameTok,
                                    const std::string &bindingPrefix,
                                    const std::string &typeName);
+  bool rejectTypeSideReferenceParameter(const Token &nameTok,
+                                        const std::string &bindingPrefix,
+                                        std::string &typeName);
 
   bool HasError = false;
   bool PanicMode = false;

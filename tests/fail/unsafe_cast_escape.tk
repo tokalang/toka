@@ -1,7 +1,7 @@
 shape Data(x: i32)
 
 // ❌ 试图强转逃逸 b 的生命周期，但签名谎称只依赖 a。应当引爆 ERR_LIFETIME_UNION_REQUIRED 拦截 b！
-fn cheat(a: &Data, b: &Data) -> &res: Data
+fn cheat(a: Data, b: Data) -> &res: Data
 effects: res <- a
 {
     unsafe {

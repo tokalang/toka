@@ -403,7 +403,7 @@ impl RebuildModuleInfo@encap {
     }
 }
 
-fn info_to_json(info: &RebuildModuleInfo) -> string {
+fn info_to_json(info: RebuildModuleInfo) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"reason\":")
     json_write_string(info.reason.as_str(), buf)

@@ -1,6 +1,6 @@
 import std/io::println
 shape Foo(v: i32)
-fn read_foo(f: &Foo) { println("val: {}", f.v) }
+fn read_foo(f: Foo) { println("val: {}", f.v) }
 pub fn main() -> i32 {
     auto f = Foo(v = 42)
     read_foo(f)

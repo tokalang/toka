@@ -1,6 +1,6 @@
 import std/io::println
 shape Foo(v: i32)
-fn strict_ref(f: &Foo) { println("Inside: {}", f.v) }
+fn strict_ref(f: Foo) { println("Inside: {}", f.v) }
 pub fn main() -> i32 {
     auto f = Foo(v = 42)
     strict_ref(f)

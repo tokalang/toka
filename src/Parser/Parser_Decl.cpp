@@ -421,6 +421,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         errorTypeSideMorphicBinding(argName, argPrefix, argType);
         argType = argType.substr(1);
       }
+      rejectTypeSideReferenceParameter(argName, argPrefix, argType);
 
       FunctionDecl::Arg arg;
       arg.IsCeded = isCeded;
@@ -711,6 +712,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         errorTypeSideMorphicBinding(argName, argPrefix, argType);
         argType = argType.substr(1);
       }
+      rejectTypeSideReferenceParameter(argName, argPrefix, argType);
 
       ExternDecl::Arg arg;
       arg.IsCeded = isCeded;
