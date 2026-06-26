@@ -82,7 +82,7 @@ static std::string calculateFNV1a(const std::string &str) {
 
 static std::string getFinalInterfacePath(const std::string &outputFile, const std::string &sourcePath) {
     const char *envBuildDir = std::getenv("TOKA_BUILD_DIR");
-    if (envBuildDir) {
+    if (envBuildDir && envBuildDir[0] != '\0') {
         std::string canonical = toka::PathUtils::canonicalize(sourcePath);
         return toka::PathUtils::canonicalize(std::string(envBuildDir) + "/interfaces/" + calculateFNV1a(canonical) + ".tki");
     }
@@ -653,6 +653,7 @@ int main(int argc, char **argv) {
 
   if (verboseMode) fprintf(stderr, "Running Module Verifier...\n");
   fflush(stderr);
+  // codegen.getModule()->print(llvm::errs(), nullptr);
   if (llvm::verifyModule(*codegen.getModule(), &llvm::errs())) {
     llvm::errs() << "Fatal Error: LLVM IR Verification Failed!\n";
     return 1;
@@ -811,6 +812,11 @@ int main(int argc, char **argv) {
         llvm::errs() << "Linker error: LLD failed\n";
         return 1;
       }
+#ifdef __APPLE__
+      // macOS requires ad-hoc signing for binaries linked with LLD to avoid immediately crashing with Trace/BPT trap: 5
+      std::string signCmd = "codesign -s - \"" + finalOutput + "\" 2>/dev/null";
+      (void)std::system(signCmd.c_str());
+#endif
       std::remove(objFile.c_str());
     }
   } else {

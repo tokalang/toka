@@ -320,7 +320,7 @@ def main():
     c_args = shlex.split(args.compiler_args)
 
     # Resolve build directory and construct environment
-    build_dir = canonicalize(os.path.dirname(args.manifest))
+    build_dir = canonicalize(os.path.dirname(args.manifest) or ".")
     env = os.environ.copy()
     env["TOKA_BUILD_DIR"] = build_dir
 

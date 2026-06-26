@@ -434,47 +434,72 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
     uint64_t arraySize = 0;
     llvm::Value *dynamicCount = nullptr;
 
-    // Try to deduce type from expression
-    const Expr *rawExpr = fs->Expression.get();
-    // Peel layers (*, ?, etc.)
-    while (true) {
-      if (auto *ue = dynamic_cast<const UnaryExpr *>(rawExpr)) {
-        rawExpr = ue->RHS.get();
-      } else if (auto *pe = dynamic_cast<const PostfixExpr *>(rawExpr)) {
-        rawExpr = pe->LHS.get();
-      } else {
-        break;
+    std::shared_ptr<Type> exprTy = fs->Expression->ResolvedType;
+    if (exprTy) {
+      if (exprTy->isPointer() || exprTy->isReference()) {
+        exprTy = exprTy->getPointeeType();
+      }
+      if (exprTy) {
+        if (exprTy->isArray() || exprTy->isSlice()) {
+          auto elemTyObj = exprTy->getArrayElementType();
+          if (elemTyObj) {
+            typeName = elemTyObj->getSoulName();
+            isArray = true;
+          }
+        } else {
+          typeName = exprTy->getSoulName();
+        }
       }
     }
 
-    if (auto *ve = dynamic_cast<const VariableExpr *>(rawExpr)) {
-      std::string varName = Type::stripMorphology(ve->Name);
+    if (typeName.empty()) {
+      // Try to deduce type from expression (Fallback)
+      const Expr *rawExpr = fs->Expression.get();
+      // Peel layers (*, ?, etc.)
+      while (true) {
+        if (auto *ue = dynamic_cast<const UnaryExpr *>(rawExpr)) {
+          rawExpr = ue->RHS.get();
+        } else if (auto *pe = dynamic_cast<const PostfixExpr *>(rawExpr)) {
+          rawExpr = pe->LHS.get();
+        } else {
+          break;
+        }
+      }
 
-      if (m_Symbols.count(varName)) {
-        std::string vType = m_Symbols[varName].typeName;
-        // vType is e.g. *Data or *[10]Data
-        if (!vType.empty()) {
-          if (vType[0] == '*') {
-            typeName = vType.substr(1); // Peel pointer
-          } else {
-            typeName = vType;
+      if (auto *ve = dynamic_cast<const VariableExpr *>(rawExpr)) {
+        std::string varName = Type::stripMorphology(ve->Name);
+
+        if (m_Symbols.count(varName)) {
+          std::string vType = m_Symbols[varName].typeName;
+          // vType is e.g. *Data or *[10]Data
+          if (!vType.empty()) {
+            if (vType[0] == '*') {
+              typeName = vType.substr(1); // Peel pointer
+            } else {
+              typeName = vType;
+            }
+          }
+        }
+      }
+
+      // Handle Array Type parsing (e.g. [10]Data)
+      if (!typeName.empty() && typeName[0] == '[') {
+        size_t close = typeName.find(']');
+        if (close != std::string::npos) {
+          std::string sizeStr = typeName.substr(1, close - 1);
+          try {
+            arraySize = std::stoull(sizeStr);
+            typeName = typeName.substr(close + 1);
+            isArray = true;
+          } catch (...) {
           }
         }
       }
     }
 
-    // Handle Array Type parsing (e.g. [10]Data)
-    if (!typeName.empty() && typeName[0] == '[') {
-      size_t close = typeName.find(']');
-      if (close != std::string::npos) {
-        std::string sizeStr = typeName.substr(1, close - 1);
-        try {
-          arraySize = std::stoull(sizeStr);
-          typeName = typeName.substr(close + 1);
-          isArray = true;
-        } catch (...) {
-        }
-      }
+    if (fs->Count) {
+      dynamicCount = genExpr(fs->Count.get()).load(m_Builder);
+      isArray = true;
     }
 
     if (!typeName.empty()) {
@@ -482,51 +507,56 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
         // We need the element size
         llvm::Type *elemTy = resolveType(typeName, false);
 
-        llvm::Value *countVal = dynamicCount;
-        if (!countVal) {
-          countVal = llvm::ConstantInt::get(getIntPtrTy(),
-                                            arraySize);
+        if (elemTy) {
+          llvm::Value *countVal = dynamicCount;
+          if (!countVal) {
+            countVal = llvm::ConstantInt::get(getIntPtrTy(),
+                                              arraySize);
+          }
+
+          if (countVal->getType() != getIntPtrTy()) {
+            countVal = m_Builder.CreateIntCast(
+                countVal, getIntPtrTy(), false,
+                "count_cast");
+          }
+
+          llvm::BasicBlock *preHeaderBB = m_Builder.GetInsertBlock();
+          llvm::Function *F = preHeaderBB->getParent();
+          llvm::BasicBlock *loopBB =
+              llvm::BasicBlock::Create(m_Context, "drop_loop", F);
+          llvm::BasicBlock *afterBB =
+              llvm::BasicBlock::Create(m_Context, "drop_after", F);
+
+          llvm::Value *isZero = m_Builder.CreateICmpEQ(
+              countVal, llvm::ConstantInt::get(getIntPtrTy(), 0), "is_zero");
+          m_Builder.CreateCondBr(isZero, afterBB, loopBB);
+          m_Builder.SetInsertPoint(loopBB);
+
+          llvm::PHINode *iVar =
+              m_Builder.CreatePHI(getIntPtrTy(), 2, "i");
+          iVar->addIncoming(
+              llvm::ConstantInt::get(getIntPtrTy(), 0),
+              preHeaderBB);
+
+          // GEP to element
+          // ptrAddr is the base pointer (void* or T*). Cast to T*
+          llvm::Value *typedBase = m_Builder.CreateBitCast(
+              ptrAddr, llvm::PointerType::getUnqual(m_Context));
+          llvm::Value *elemPtr =
+              m_Builder.CreateInBoundsGEP(elemTy, typedBase, iVar);
+
+          emitDropCascade(elemPtr, typeName);
+
+          llvm::Value *nextI = m_Builder.CreateAdd(
+              iVar,
+              llvm::ConstantInt::get(getIntPtrTy(), 1));
+          llvm::Value *cond = m_Builder.CreateICmpULT(nextI, countVal);
+          llvm::BasicBlock *loopEndBB = m_Builder.GetInsertBlock();
+          iVar->addIncoming(nextI, loopEndBB);
+
+          m_Builder.CreateCondBr(cond, loopBB, afterBB);
+          m_Builder.SetInsertPoint(afterBB);
         }
-
-        if (countVal->getType() != getIntPtrTy()) {
-          countVal = m_Builder.CreateIntCast(
-              countVal, getIntPtrTy(), false,
-              "count_cast");
-        }
-
-        llvm::BasicBlock *preHeaderBB = m_Builder.GetInsertBlock();
-        llvm::Function *F = preHeaderBB->getParent();
-        llvm::BasicBlock *loopBB =
-            llvm::BasicBlock::Create(m_Context, "drop_loop", F);
-        llvm::BasicBlock *afterBB =
-            llvm::BasicBlock::Create(m_Context, "drop_after", F);
-
-        m_Builder.CreateBr(loopBB);
-        m_Builder.SetInsertPoint(loopBB);
-
-        llvm::PHINode *iVar =
-            m_Builder.CreatePHI(getIntPtrTy(), 2, "i");
-        iVar->addIncoming(
-            llvm::ConstantInt::get(getIntPtrTy(), 0),
-            preHeaderBB);
-
-        // GEP to element
-        // ptrAddr is the base pointer (void* or T*). Cast to T*
-        llvm::Value *typedBase = m_Builder.CreateBitCast(
-            ptrAddr, llvm::PointerType::getUnqual(m_Context));
-        llvm::Value *elemPtr =
-            m_Builder.CreateInBoundsGEP(elemTy, typedBase, iVar);
-
-        emitDropCascade(elemPtr, typeName);
-
-        llvm::Value *nextI = m_Builder.CreateAdd(
-            iVar,
-            llvm::ConstantInt::get(getIntPtrTy(), 1));
-        llvm::Value *cond = m_Builder.CreateICmpULT(nextI, countVal);
-        iVar->addIncoming(nextI, loopBB);
-
-        m_Builder.CreateCondBr(cond, loopBB, afterBB);
-        m_Builder.SetInsertPoint(afterBB);
 
       } else {
         // Single drop
@@ -969,7 +999,53 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
   if (auto *unary = dynamic_cast<const UnaryExpr *>(expr)) {
     if (unary->Op == TokenType::Ampersand) {
       if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
-        return getIdentityAddr(v->Name); // &v -> Box address
+        std::string baseName = v->Name;
+        while (!baseName.empty() &&
+               (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
+                baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!' ||
+                baseName[0] == '?'))
+          baseName = baseName.substr(1);
+        while (!baseName.empty() &&
+               (baseName.back() == '#' || baseName.back() == '?' ||
+                baseName.back() == '!'))
+          baseName.pop_back();
+
+        auto it = m_Symbols.find(baseName);
+        if (it != m_Symbols.end()) {
+          TokaSymbol &sym = it->second;
+          if (sym.indirectionLevel > 0) {
+            return getEntityAddr(v->Name);
+          }
+          return getIdentityAddr(v->Name);
+        }
+
+        bool isCapturedRef = false;
+        if (m_Symbols.count("self")) {
+          auto selfTy = m_Symbols["self"].soulTypeObj;
+          if (selfTy && selfTy->isReference()) {
+            auto ptrTy = std::static_pointer_cast<toka::PointerType>(selfTy);
+            selfTy = ptrTy->PointeeType;
+          }
+          if (selfTy && selfTy->isShape() && selfTy->getSoulName().find("__Closure_") == 0) {
+            auto shapeTy = std::static_pointer_cast<ShapeType>(selfTy);
+            if (shapeTy->Decl) {
+              for (const auto& member : shapeTy->Decl->Members) {
+                if (member.Name == baseName) {
+                  if (member.ResolvedType && member.ResolvedType->isReference()) {
+                    isCapturedRef = true;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        if (isCapturedRef) {
+          return getEntityAddr(v->Name);
+        } else {
+          return getIdentityAddr(v->Name);
+        }
       }
       return genAddr(unary->RHS.get());
     }

@@ -251,10 +251,14 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
 PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
   // 1. Resolve Intent
   bool hasRebind = false;
+  bool hasHandleLHS = false;
   const Expr *targetLHS = lhsExpr;
   while (auto *ue = dynamic_cast<const UnaryExpr *>(targetLHS)) {
     if (ue->IsRebindable || ue->Op == TokenType::TokenWrite)
       hasRebind = true;
+    if (ue->Op == TokenType::Ampersand || ue->Op == TokenType::Caret ||
+        ue->Op == TokenType::Tilde || ue->Op == TokenType::Star)
+      hasHandleLHS = true;
     targetLHS = ue->RHS.get();
   }
 
@@ -280,6 +284,12 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
       symLHS = &m_Symbols[baseName];
       lhsAlloca = symLHS->allocaPtr;
     }
+  }
+  if (hasHandleLHS && symLHS &&
+      (symLHS->mode == AddressingMode::Reference ||
+       symLHS->mode == AddressingMode::Pointer ||
+       symLHS->morphology != Morphology::None)) {
+    hasRebind = true;
   }
 
   // 3. Resolve RHS Value
@@ -1207,10 +1217,10 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     if (unary->RHS->ResolvedType) {
       auto t = unary->RHS->ResolvedType;
       // Note: We only treat it as a handle if it's a Top-Level pointer
-      // variable/member access. If it's an indexed access like raw[i], it's a
-      // value.
+      // variable/member access.
       if ((t->isPointer() || t->isReference() || t->isSmartPointer()) &&
-          !dynamic_cast<const ArrayIndexExpr *>(unary->RHS.get())) {
+          (dynamic_cast<const VariableExpr *>(unary->RHS.get()) ||
+           dynamic_cast<const MemberExpr *>(unary->RHS.get()))) {
         isHandle = true;
       }
     }
@@ -1229,7 +1239,7 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     } else {
       // It's a value (like raw[start] or a simple local i32). *p is the
       // address.
-      llvm::Value *addr = genAddr(unary->RHS.get());
+      llvm::Value *addr = emitEntityAddr(unary->RHS.get());
       if (!addr)
         return nullptr;
       std::string typeName = "";
@@ -4878,10 +4888,45 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     if (val && paramIdx < callee->getFunctionType()->getNumParams()) {
       llvm::Type *paramTy = callee->getFunctionType()->getParamType(paramIdx);
       if (paramTy->isPointerTy() && val->getType()->isStructTy()) {
-        llvm::AllocaInst *tmp = createEntryBlockAlloca(val->getType(), nullptr,
-                                                       "arg_fallback_byref");
-        m_Builder.CreateStore(val, tmp);
-        val = tmp;
+        llvm::Value *lvalueAddr = nullptr;
+        const Expr *rawArg = call->Args[i].get();
+        while (true) {
+          if (auto *ue = dynamic_cast<const UnaryExpr *>(rawArg))
+            rawArg = ue->RHS.get();
+          else if (auto *pe = dynamic_cast<const PostfixExpr *>(rawArg))
+            rawArg = pe->LHS.get();
+          else
+            break;
+        }
+
+        if (auto *ve = dynamic_cast<const VariableExpr *>(rawArg)) {
+          if (!ve->HasConstantValue) {
+            std::string baseName = toka::Type::stripMorphology(ve->Name);
+            if (m_Symbols.count(baseName)) {
+              auto &sym = m_Symbols[baseName];
+              if (sym.mode == AddressingMode::Reference ||
+                  (sym.mode == AddressingMode::Pointer &&
+                   sym.morphology == Morphology::None)) {
+                lvalueAddr = getEntityAddr(ve->Name);
+              } else {
+                lvalueAddr = getIdentityAddr(ve->Name);
+              }
+            } else {
+              lvalueAddr = getIdentityAddr(ve->Name);
+            }
+          }
+        } else if (dynamic_cast<const MemberExpr *>(rawArg)) {
+          lvalueAddr = genAddr(rawArg);
+        }
+
+        if (lvalueAddr) {
+          val = lvalueAddr;
+        } else {
+          llvm::AllocaInst *tmp = createEntryBlockAlloca(
+              val->getType(), nullptr, "arg_fallback_byref");
+          m_Builder.CreateStore(val, tmp);
+          val = tmp;
+        }
       }
     }
 

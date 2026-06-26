@@ -404,7 +404,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         argDecl.Type; // [Fix] Set legacy type string for Dynamic Dispatch
 
     // [HOTFIX] Exempt variables (like 'val) preserve their raw morphology!
-    if (!argName.empty() && argName[0] == '\'') {
+    if (!argName.empty() && argName[0] == '\'' && !argDecl.IsReference) {
         sym.mode = AddressingMode::Direct;
         sym.indirectionLevel = 0;
         sym.morphology = Morphology::None;

@@ -5,8 +5,10 @@ import json
 import os
 
 def main():
-    json_path = "/home/zhyi/GitDP/tokalang/spec/diagnostic.map.json"
-    def_path = "/home/zhyi/GitDP/tokalang/include/toka/DiagnosticDefs.def"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(os.path.dirname(script_dir))
+    json_path = os.path.join(root_dir, "spec", "diagnostic.map.json")
+    def_path = os.path.join(root_dir, "include", "toka", "DiagnosticDefs.def")
 
     if not os.path.exists(json_path):
         print(f"Error: {json_path} does not exist.")

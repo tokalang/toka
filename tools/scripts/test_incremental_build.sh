@@ -54,7 +54,7 @@ def compare(p1_path, p2_path):
     with open(p2_path) as f:
         p2 = json.load(f)
     if p1.get("status") != p2.get("status"):
-        raise ValueError(f"status mismatch: {p1.get(\"status\")} vs {p2.get(\"status\")}")
+        raise ValueError("status mismatch: %s vs %s" % (p1.get("status"), p2.get("status")))
     r1 = sorted(p1.get("dirty_roots", []))
     r2 = sorted(p2.get("dirty_roots", []))
     if r1 != r2:
@@ -69,7 +69,7 @@ def compare(p1_path, p2_path):
         v1 = m1[k]
         v2 = m2[k]
         if v1.get("reason") != v2.get("reason"):
-            raise ValueError(f"Module {k} reason mismatch: {v1.get(\"reason\")} vs {v2.get(\"reason\")}")
+            raise ValueError("Module %s reason mismatch: %s vs %s" % (k, v1.get("reason"), v2.get("reason")))
         d1 = sorted(v1.get("dirty_deps", []))
         d2 = sorted(v2.get("dirty_deps", []))
         if d1 != d2:

@@ -332,10 +332,12 @@ impl DependencyManifest@encap {
         auto c_modules# = HashMap<string, ModuleSnapshot>::new()
         auto iter# = self.modules.iter()
         loop {
-            auto entry_opt = iter#.next()
+            auto entry_opt = iter#.next_ref()
             if entry_opt.is_none() { break }
             auto entry = entry_opt.unwrap()
-            c_modules#.insert(cede entry.key().clone(), cede entry.val().clone())
+            auto &key = entry.key()
+            auto &val = entry.val()
+            c_modules#.insert(cede key.clone(), cede val.clone())
         }
         return DependencyManifest(
             manifest_version = self.manifest_version.clone(),
@@ -359,15 +361,16 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
     auto iter# = manifest.modules.iter()
     auto first# = true
     loop {
-        auto opt = iter#.next()
+        auto opt = iter#.next_ref()
         if opt.is_none() { break }
         auto entry = opt.unwrap()
         if !first { buf#.push_str(",") }
         first = false
-        json_write_string(entry.key().as_str(), buf)
+        auto &key = entry.key()
+        json_write_string(key.as_str(), buf)
         buf#.push_str(":")
-        auto *val = entry.val()
-        buf = snapshot_to_json((*val).clone(), buf)
+        auto &val = entry.val()
+        buf = snapshot_to_json(val.clone(), buf)
     }
     buf#.push_str("}}")
     return buf
@@ -400,7 +403,7 @@ impl RebuildModuleInfo@encap {
     }
 }
 
-fn info_to_json(info: *RebuildModuleInfo) -> string {
+fn info_to_json(info: &RebuildModuleInfo) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"reason\":")
     json_write_string(info.reason.as_str(), buf)
@@ -439,10 +442,12 @@ impl RebuildPlan@encap {
         auto c_dirty_modules# = HashMap<string, RebuildModuleInfo>::new()
         auto iter# = self.dirty_modules.iter()
         loop {
-            auto entry_opt = iter#.next()
+            auto entry_opt = iter#.next_ref()
             if entry_opt.is_none() { break }
             auto entry = entry_opt.unwrap()
-            c_dirty_modules#.insert(cede entry.key().clone(), cede entry.val().clone())
+            auto &key = entry.key()
+            auto &val = entry.val()
+            c_dirty_modules#.insert(cede key.clone(), cede val.clone())
         }
         return RebuildPlan(
             status = self.status.clone(),
@@ -467,14 +472,15 @@ fn plan_to_json('plan: RebuildPlan) -> string {
     auto iter# = 'plan.dirty_modules.iter()
     auto first# = true
     loop {
-        auto opt = iter#.next()
+        auto opt = iter#.next_ref()
         if opt.is_none() { break }
         auto entry = opt.unwrap()
         if !first { buf#.push_str(",") }
         first = false
-        json_write_string(entry.key().as_str(), buf)
+        auto &key = entry.key()
+        json_write_string(key.as_str(), buf)
         buf#.push_str(":")
-        auto *val = entry.val()
+        auto &val = entry.val()
         auto info_str = info_to_json(val)
         buf#.push_str(info_str.as_str())
     }
@@ -563,11 +569,13 @@ fn is_std_or_core(path: string) -> bool {
 fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
     auto iter# = 'graph.modules.iter()
     loop {
-        auto entry_opt = iter#.next()
+        auto entry_opt = iter#.next_ref()
         if entry_opt.is_none() { break }
         auto entry = entry_opt.unwrap()
-        auto m_path = entry.key().clone()
-        auto info# = entry.val().clone()
+        auto &key = entry.key()
+        auto &val = entry.val()
+        auto m_path = key.clone()
+        auto info# = val.clone()
         
         if !vec_contains('graph.roots, m_path) && info.kind.as_str().equals("source") {
             if is_std_or_core(m_path.clone()) {
@@ -612,16 +620,26 @@ fn calculate_file_hash(path: string) -> string {
 
 fn check_dirty_recursive(
     node: string,
-    'current_graph: DependencyManifest,
-    'dirty_map: HashMap<string, string>,
-    memo#: HashMap<string, DfsResult>
+    current_graph: DependencyManifest,
+    dirty_map: HashMap<string, string>,
+    memo#: HashMap<string, DfsResult>,
+    visiting#: HashMap<string, bool>
 ) -> DfsResult {
     auto memo_opt = memo.get(&(node))
     if memo_opt.is_none() == false {
         return cede memo_opt.unwrap().clone()
     }
+
+    auto visiting_opt = visiting.get(&(node))
+    if visiting_opt.is_none() == false {
+        return DfsResult(
+            is_dirty = false,
+            reason = cede string::from(""),
+            chain = cede Vec<string>::new()
+        )
+    }
     
-    auto dirty_reason_opt = 'dirty_map.get(&(node))
+    auto dirty_reason_opt = dirty_map.get(&(node))
     if dirty_reason_opt.is_none() == false {
         auto res = DfsResult(
             is_dirty = true,
@@ -632,7 +650,7 @@ fn check_dirty_recursive(
         return cede res
     }
     
-    auto curr_info_opt = 'current_graph.modules.get(&(node))
+    auto curr_info_opt = current_graph.modules.get_ref(&(node))
     if curr_info_opt.is_none() {
         auto res = DfsResult(
             is_dirty = true,
@@ -642,12 +660,17 @@ fn check_dirty_recursive(
         memo#.insert(cede node.clone(), cede res.clone())
         return cede res
     }
-    auto curr_info = curr_info_opt.unwrap()
+    auto &curr_info = curr_info_opt.unwrap()
+    visiting#.insert(cede node.clone(), true)
     
     auto i# = 0:usize
     loop i < curr_info.dependencies.len() {
         auto dep = curr_info.dependencies.get_ref(i).clone()
-        auto dep_res = check_dirty_recursive(dep.clone(), 'current_graph, 'dirty_map, memo)
+        if vec_contains(current_graph.roots, dep) && !vec_contains(current_graph.roots, node) {
+            i += 1
+            continue
+        }
+        auto dep_res = check_dirty_recursive(dep.clone(), current_graph, dirty_map, memo, visiting)
         if dep_res.is_dirty {
             auto chain# = Vec<string>::new()
             chain#.push(cede dep.clone())
@@ -661,6 +684,7 @@ fn check_dirty_recursive(
                 reason = cede string::from("dependency changed"),
                 chain = cede chain
             )
+            auto _removed = visiting#.remove(&(node))
             memo#.insert(cede node.clone(), cede res.clone())
             return cede res
         }
@@ -672,96 +696,98 @@ fn check_dirty_recursive(
         reason = cede string::from(""),
         chain = cede Vec<string>::new()
     )
+    auto _removed = visiting#.remove(&(node))
     memo#.insert(cede node.clone(), cede res.clone())
     return cede res
 }
 
 fn generate_rebuild_plan(
-    'current_graph: DependencyManifest,
-    'old_manifest: DependencyManifest,
-    'plan#: RebuildPlan
+    current_graph: DependencyManifest,
+    old_manifest: DependencyManifest,
+    plan#: RebuildPlan
 ) {
-    if 'old_manifest.manifest_version.len() == 0 {
-        'plan.status = cede string::from("dirty")
+    if old_manifest.manifest_version.len() == 0 {
+        plan.status = cede string::from("dirty")
         auto i# = 0:usize
-        loop i < 'current_graph.roots.len() {
-            'plan.dirty_roots#.push(cede 'current_graph.roots.get_ref(i).clone())
+        loop i < current_graph.roots.len() {
+            plan.dirty_roots#.push(cede current_graph.roots.get_ref(i).clone())
             i += 1
         }
-        auto iter# = 'current_graph.modules.iter()
+        auto iter# = current_graph.modules.iter()
         loop {
-            auto entry_opt = iter#.next()
+            auto entry_opt = iter#.next_ref()
             if entry_opt.is_none() { break }
             auto entry = entry_opt.unwrap()
-            auto *m_path = entry.key()
-            auto k# = (*m_path).clone()
+            auto &m_path = entry.key()
+            auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
                 reason = cede string::from("first build"), ..
             )
-            'plan.dirty_modules#.insert(cede k, cede info)
+            plan.dirty_modules#.insert(cede k, cede info)
         }
         return
     }
 
-    if !'old_manifest.manifest_version.starts_with("1.") {
-        'plan.status = cede string::from("dirty")
+    if !old_manifest.manifest_version.starts_with("1.") {
+        plan.status = cede string::from("dirty")
         auto i# = 0:usize
-        loop i < 'current_graph.roots.len() {
-            'plan.dirty_roots#.push(cede 'current_graph.roots.get_ref(i).clone())
+        loop i < current_graph.roots.len() {
+            plan.dirty_roots#.push(cede current_graph.roots.get_ref(i).clone())
             i += 1
         }
-        auto iter# = 'current_graph.modules.iter()
+        auto iter# = current_graph.modules.iter()
         loop {
-            auto entry_opt = iter#.next()
+            auto entry_opt = iter#.next_ref()
             if entry_opt.is_none() { break }
             auto entry = entry_opt.unwrap()
-            auto *m_path = entry.key()
-            auto k# = (*m_path).clone()
+            auto &m_path = entry.key()
+            auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
                 reason = cede string::from("version/target changed"), ..
             )
-            'plan.dirty_modules#.insert(cede k, cede info)
+            plan.dirty_modules#.insert(cede k, cede info)
         }
         return
     }
 
-    if !roots_equal('current_graph.roots, 'old_manifest.roots) {
-        'plan.status = cede string::from("dirty")
+    if !roots_equal(current_graph.roots, old_manifest.roots) {
+        plan.status = cede string::from("dirty")
         auto i# = 0:usize
-        loop i < 'current_graph.roots.len() {
-            'plan.dirty_roots#.push(cede 'current_graph.roots.get_ref(i).clone())
+        loop i < current_graph.roots.len() {
+            plan.dirty_roots#.push(cede current_graph.roots.get_ref(i).clone())
             i += 1
         }
-        auto iter# = 'current_graph.modules.iter()
+        auto iter# = current_graph.modules.iter()
         loop {
-            auto entry_opt = iter#.next()
+            auto entry_opt = iter#.next_ref()
             if entry_opt.is_none() { break }
             auto entry = entry_opt.unwrap()
-            auto *m_path = entry.key()
-            auto k# = (*m_path).clone()
+            auto &m_path = entry.key()
+            auto k# = m_path.clone()
             auto info# = RebuildModuleInfo(
                 reason = cede string::from("roots changed"), ..
             )
-            'plan.dirty_modules#.insert(cede k, cede info)
+            plan.dirty_modules#.insert(cede k, cede info)
         }
         return
     }
 
     auto dirty_map# = HashMap<string, string>::new()
-    auto iter# = 'current_graph.modules.iter()
+    auto iter# = current_graph.modules.iter()
     loop {
-        auto entry_opt = iter#.next()
+        auto entry_opt = iter#.next_ref()
         if entry_opt.is_none() { break }
         auto entry = entry_opt.unwrap()
-        auto m_path = (*entry.key()).clone()
-        auto *curr_info = entry.val()
+        auto &m_path_ref = entry.key()
+        auto m_path = m_path_ref.clone()
+        auto &curr_info = entry.val()
         
-        auto old_info_opt = 'old_manifest.modules.get(&(m_path))
+        auto old_info_opt = old_manifest.modules.get_ref(&(m_path))
         if old_info_opt.is_none() {
             dirty_map#.insert(cede m_path.clone(), cede string::from("new module"))
             continue
         }
-        auto old_info = old_info_opt.unwrap()
+        auto &old_info = old_info_opt.unwrap()
         
         if !curr_info.target_triple.as_str().equals(old_info.target_triple.as_str()) ||
            !curr_info.compiler_version.as_str().equals(old_info.compiler_version.as_str()) ||
@@ -811,18 +837,20 @@ fn generate_rebuild_plan(
     }
 
     auto memo# = HashMap<string, DfsResult>::new()
-    'plan.status = cede string::from("clean")
+    auto visiting# = HashMap<string, bool>::new()
+    plan.status = cede string::from("clean")
     
-    auto iter2# = 'current_graph.modules.iter()
+    auto iter2# = current_graph.modules.iter()
     loop {
-        auto entry_opt = iter2#.next()
+        auto entry_opt = iter2#.next_ref()
         if entry_opt.is_none() { break }
         auto entry = entry_opt.unwrap()
-        auto m_path = (*entry.key()).clone()
+        auto &m_path_ref = entry.key()
+        auto m_path = m_path_ref.clone()
         
-        auto res = check_dirty_recursive(m_path.clone(), 'current_graph, dirty_map, memo)
+        auto res = check_dirty_recursive(m_path.clone(), current_graph, dirty_map, memo, visiting)
         if res.is_dirty {
-            'plan.status = cede string::from("dirty")
+            plan.status = cede string::from("dirty")
             
             auto chain# = Vec<string>::new()
             auto j# = 0:usize
@@ -835,11 +863,11 @@ fn generate_rebuild_plan(
                 reason = cede res.reason.clone(),
                 dirty_deps = cede chain
             )
-            'plan.dirty_modules#.insert(cede k, cede info)
+            plan.dirty_modules#.insert(cede k, cede info)
             
-            if vec_contains('current_graph.roots, m_path) {
-                if !vec_contains('plan.dirty_roots, m_path) {
-                    'plan.dirty_roots#.push(cede m_path.clone())
+            if vec_contains(current_graph.roots, m_path) {
+                if !vec_contains(plan.dirty_roots, m_path) {
+                    plan.dirty_roots#.push(cede m_path.clone())
                 }
             }
         }
@@ -1224,14 +1252,14 @@ fn run_build_impl(
 
         auto has_plan# = false
         auto manifest_path# = string::from(".toka/build/manifest.json")
-        auto idx_arg#: usize = 0
-        loop idx_arg < env::args_count() as usize {
+        auto idx_arg#: i32 = 0
+        loop idx_arg < env::args_count() {
             auto arg = env::get_arg(idx_arg)
             if arg.eq(string::from("--plan")) {
                 has_plan = true
             }
             if arg.eq(string::from("-m")) || arg.eq(string::from("--manifest")) {
-                if idx_arg + 1 < env::args_count() as usize {
+                if idx_arg + 1 < env::args_count() {
                     manifest_path = env::get_arg(idx_arg + 1)
                 }
             }
@@ -1250,7 +1278,7 @@ fn run_build_impl(
             auto build_dir = path_canonicalize(dirname(manifest_path.clone()))
             env::set_var(string::from("TOKA_BUILD_DIR"), build_dir.clone())
 
-            println("DEBUG: dump_cmd = {}", dump_cmd.clone())
+
             auto dump_json = run_and_capture_stdout(dump_cmd)
             auto current_graph_res = deserialize_shape_local<DependencyManifest>(dump_json.as_str())
             if current_graph_res.is_err() {

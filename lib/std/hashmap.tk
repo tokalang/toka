@@ -52,15 +52,16 @@ impl<'K, 'V> HashMap<'K, 'V>@encap {
             auto m# = Vec<u8>::with_capacity(self.cap)
             
             auto i#: usize = 0
-            loop i < self.len {
-                k#.push(cede self.keys.get(i))
-                v#.push(cede self.vals.get(i))
-                i += 1
-            }
-            
-            i = 0
             loop i < self.cap {
-                m#.push(self.meta.get(i))
+                auto m_val = self.meta.get(i)
+                m#.push(m_val)
+                if m_val == 1 {
+                    auto 'key = self.keys.buf[i]
+                    k.buf[i] = cede 'key
+
+                    auto 'val = self.vals.buf[i]
+                    v.buf[i] = cede 'val
+                }
                 i += 1
             }
             
@@ -245,15 +246,15 @@ impl<'K, 'V> HashMap<'K, 'V> {
          if capacity == 0 { return Option<'V>::None }
          auto idx# = ('key.hash() as usize) band (capacity - 1)
          auto start_idx = idx
-         
+
          loop true {
              unsafe {
                  auto *m_ptr#: u8 = self.meta.unsafe_get(idx)
-                 
+
                  if m_ptr == 0 {
                      return Option<'V>::None
                  }
-                 
+
                  if m_ptr == 1 {
                      // Occupied, check key
                      auto *'k_ptr#: K = self.keys.unsafe_get(idx)
@@ -263,13 +264,44 @@ impl<'K, 'V> HashMap<'K, 'V> {
                      }
                  }
              }
-             
+
              idx = (idx + 1) band (capacity - 1)
              if idx == start_idx {
                  return Option<'V>::None
              }
          }
          return Option<'V>::None
+    }
+
+    pub fn get_ref(self, 'key: K) -> Option<&'V>
+    effects: return <- self {
+         auto capacity = self.cap
+         if capacity == 0 { return Option<&'V>::None }
+         auto idx# = ('key.hash() as usize) band (capacity - 1)
+         auto start_idx = idx
+
+         loop true {
+             unsafe {
+                 auto *m_ptr#: u8 = self.meta.unsafe_get(idx)
+
+                 if m_ptr == 0 {
+                     return Option<&'V>::None
+                 }
+
+                 if m_ptr == 1 {
+                     auto *'k_ptr#: K = self.keys.unsafe_get(idx)
+                     if 'k_ptr.eq('key) {
+                         return Option<&'V>::Some(&self.vals.buf[idx])
+                     }
+                 }
+             }
+
+             idx = (idx + 1) band (capacity - 1)
+             if idx == start_idx {
+                 return Option<&'V>::None
+             }
+         }
+         return Option<&'V>::None
     }
 
     pub fn contains_key(self, 'key: K) -> bool {

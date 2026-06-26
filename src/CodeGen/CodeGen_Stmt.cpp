@@ -351,7 +351,10 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                   if (!bypassDrop) {
                       llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(m_Context, "drop_loop", f);
                       llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(m_Context, "drop_after", f);
-                      m_Builder.CreateBr(loopBB);
+
+                      llvm::Value *isZero = m_Builder.CreateICmpEQ(
+                          lenVal, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 0), "is_zero");
+                      m_Builder.CreateCondBr(isZero, afterBB, loopBB);
                       m_Builder.SetInsertPoint(loopBB);
                       
                       llvm::PHINode *iVar = m_Builder.CreatePHI(llvm::Type::getInt64Ty(m_Context), 2, "i");
@@ -365,7 +368,8 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                       
                       llvm::Value *nextI = m_Builder.CreateAdd(iVar, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 1));
                       llvm::Value *cond = m_Builder.CreateICmpULT(nextI, lenVal);
-                      iVar->addIncoming(nextI, loopBB);
+                      llvm::BasicBlock *loopEndBB = m_Builder.GetInsertBlock();
+                      iVar->addIncoming(nextI, loopEndBB);
                       m_Builder.CreateCondBr(cond, loopBB, afterBB);
                       m_Builder.SetInsertPoint(afterBB);
                   }
@@ -437,7 +441,10 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                 if (!bypassDrop) {
                     llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(m_Context, "drop_loop", f);
                     llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(m_Context, "drop_after", f);
-                    m_Builder.CreateBr(loopBB);
+
+                    llvm::Value *isZero = m_Builder.CreateICmpEQ(
+                        lenVal, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 0), "is_zero");
+                    m_Builder.CreateCondBr(isZero, afterBB, loopBB);
                     m_Builder.SetInsertPoint(loopBB);
                     
                     llvm::PHINode *iVar = m_Builder.CreatePHI(llvm::Type::getInt64Ty(m_Context), 2, "i");
@@ -451,7 +458,8 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                     
                     llvm::Value *nextI = m_Builder.CreateAdd(iVar, llvm::ConstantInt::get(llvm::Type::getInt64Ty(m_Context), 1));
                     llvm::Value *cond = m_Builder.CreateICmpULT(nextI, lenVal);
-                    iVar->addIncoming(nextI, loopBB);
+                    llvm::BasicBlock *loopEndBB = m_Builder.GetInsertBlock();
+                    iVar->addIncoming(nextI, loopEndBB);
                     m_Builder.CreateCondBr(cond, loopBB, afterBB);
                     m_Builder.SetInsertPoint(afterBB);
                 }

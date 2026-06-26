@@ -1141,9 +1141,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Info.DeclLoc = Fn->Loc;
     Info.IsCeded = Arg.IsCeded;
     Info.IsFunctionParameter = true;
-    if (Fn->Name.find("insert") != std::string::npos) {
-      std::cout << "[DEBUG] Fn=" << Fn->Name << ", Arg=" << Arg.Name << ", IsCeded=" << Arg.IsCeded << std::endl;
-    }
+
 
     if (!Arg.Type.empty() && Arg.Type[0] == '\'') {
       Info.IsMorphicExempt = true;

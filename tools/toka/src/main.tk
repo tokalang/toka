@@ -474,15 +474,16 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             idx_extra += 1
         }
 
+
         auto res = libc_system(cmd.c_str())
         if res != 0 {
             println("\x1b[1;31m       Error\x1b[0m executing {} -> compile failed", build_file)
         }
-        if is_windows {
-            remove_file(string::from(".toka_build_exe.exe"))
-        } else {
-            remove_file(string::from(".toka_build_exe"))
-        }
+        // if is_windows {
+        //     remove_file(string::from(".toka_build_exe.exe"))
+        // } else {
+        //     remove_file(string::from(".toka_build_exe"))
+        // }
         if res != 0 { return 1 }
         return 0
     }
