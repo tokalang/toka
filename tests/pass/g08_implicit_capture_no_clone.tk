@@ -1,0 +1,85 @@
+shape Probe(
+    id: i32,
+    cloned: bool
+)
+
+impl Probe {
+    pub fn clone(self) -> Probe {
+        return Probe(id = self.id + 100, cloned = true)
+    }
+
+    pub fn receiver_was_cloned(self) -> bool {
+        return self.cloned
+    }
+
+    pub fn sees_arg_clone_state(self, item: Probe) -> bool {
+        return item.cloned
+    }
+}
+
+shape Locked(
+    value: i32
+)
+
+impl Locked {
+    pub fn clone(self) = delete
+
+    pub fn value_of(self) -> i32 {
+        return self.value
+    }
+
+    pub fn sees_value(self, item: Locked) -> i32 {
+        return item.value
+    }
+}
+
+fn observe(item: Probe) -> bool {
+    return item.cloned
+}
+
+fn read_locked(item: Locked) -> i32 {
+    return item.value
+}
+
+fn main() -> i32 {
+    auto original = Probe(id = 7, cloned = false)
+
+    if observe(original) {
+        return 1
+    }
+
+    if original.receiver_was_cloned() {
+        return 2
+    }
+
+    auto helper = Probe(id = 99, cloned = false)
+    if helper.sees_arg_clone_state(original) {
+        return 3
+    }
+
+    auto copied = original
+    if !copied.cloned {
+        return 4
+    }
+    if copied.id != 107 {
+        return 5
+    }
+    if original.cloned {
+        return 6
+    }
+
+    auto locked = Locked(value = 11)
+    if read_locked(locked) != 11 {
+        return 7
+    }
+    if locked.value_of() != 11 {
+        return 8
+    }
+
+    auto locked_helper = Locked(value = 0)
+    if locked_helper.sees_value(locked) != 11 {
+        return 9
+    }
+
+    return 0
+}
