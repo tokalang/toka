@@ -28,7 +28,13 @@ AST/TKIExporter.cpp
 )
 
 # Link against LLVM libraries
-llvm_map_components_to_libnames(llvm_libs Core Passes Analysis Coroutines MC MCDisassembler Target AsmPrinter AsmParser Option Object BinaryFormat TargetParser Demangle BitReader BitWriter LTO WindowsDriver WindowsManifest ProfileData LibDriver ${LLVM_TARGETS_TO_BUILD} Support)
+set(llvm_components Core Passes Analysis Coroutines MC MCDisassembler Target AsmPrinter AsmParser Option Object BinaryFormat TargetParser Demangle BitReader BitWriter LTO WindowsDriver WindowsManifest ProfileData LibDriver ${LLVM_TARGETS_TO_BUILD} Support)
+if(WIN32 AND TARGET LLVM)
+    # MSYS2 LLD archives are built against the LLVM DLL and reference __imp_ symbols.
+    set(llvm_libs LLVM)
+else()
+    llvm_map_components_to_libnames(llvm_libs ${llvm_components})
+endif()
 
 set(lld_names lldELF lldMinGW lldCOFF lldMachO lldWasm lldCommon)
 set(lld_libs "")
