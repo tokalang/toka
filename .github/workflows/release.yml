@@ -83,7 +83,7 @@ jobs:
           if [ "${{ matrix.name }}" = "macos-x64" ]; then
             # Install an independent Intel Homebrew to fetch x86_64 bottles on Apple Silicon
             git clone --depth=1 https://github.com/Homebrew/brew ~/intel-brew
-            arch -x86_64 ~/intel-brew/bin/brew install llvm@20 lld@20 || arch -x86_64 ~/intel-brew/bin/brew install llvm lld
+            arch -x86_64 ~/intel-brew/bin/brew install llvm@20 lld@20 zstd || arch -x86_64 ~/intel-brew/bin/brew install llvm lld zstd
             arch -x86_64 ~/intel-brew/bin/brew link --force llvm@20 || arch -x86_64 ~/intel-brew/bin/brew link --force llvm
           else
             brew install llvm@20 lld@20 || brew install llvm lld
@@ -115,7 +115,8 @@ jobs:
               if [ ! -d "$LLVM_PATH" ]; then export LLVM_PATH=~/intel-brew/opt/llvm; fi
               export LLD_PATH=~/intel-brew/opt/lld@20
               if [ ! -d "$LLD_PATH" ]; then export LLD_PATH=~/intel-brew/opt/lld; fi
-              CC=$LLVM_PATH/bin/clang CXX=$LLVM_PATH/bin/clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) -DCMAKE_OSX_ARCHITECTURES=x86_64 -DLLVM_DIR=$LLVM_PATH/lib/cmake/llvm -DLLD_DIR=$LLD_PATH/lib/cmake/lld -DCMAKE_EXE_LINKER_FLAGS="-L$HOME/intel-brew/lib"
+              export ZSTD_PATH=~/intel-brew/opt/zstd
+              CC=$LLVM_PATH/bin/clang CXX=$LLVM_PATH/bin/clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) -DCMAKE_OSX_ARCHITECTURES=x86_64 -DLLVM_DIR=$LLVM_PATH/lib/cmake/llvm -DLLD_DIR=$LLD_PATH/lib/cmake/lld -DZSTD_LIBRARY=$ZSTD_PATH/lib/libzstd.dylib -DCMAKE_EXE_LINKER_FLAGS="-L$HOME/intel-brew/lib -L$ZSTD_PATH/lib"
             else
               export LLVM_PATH=$(brew --prefix llvm@20 || brew --prefix llvm)
               CC=$LLVM_PATH/bin/clang CXX=$LLVM_PATH/bin/clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_EXE_LINKER_FLAGS="-L/opt/homebrew/lib -L/usr/local/lib"
@@ -166,7 +167,7 @@ jobs:
           set -e
           mkdir build && cd build
           # Use Ninja for better stability on Windows CI
-          cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="-static"
+          CC=clang CXX=clang++ cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release
           ninja
           
           cd ..
