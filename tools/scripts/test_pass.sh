@@ -340,7 +340,11 @@ elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]];
 elif command -v nproc &> /dev/null; then
     CORES=$(nproc)
 else
-    CORES=$(sysctl -n hw.ncpu)
+    CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo 1)
+fi
+
+if ! [[ "$CORES" =~ ^[0-9]+$ ]] || [ "$CORES" -lt 1 ]; then
+    CORES=1
 fi
 
 # Orchestrator

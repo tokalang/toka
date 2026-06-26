@@ -1,0 +1,5 @@
+error[E0451]: Redundant parameter borrow morphology. Toka implicitly captures arguments by reference, so the '&' morphology is unnecessary unless rebinding.
+ --> tests/fail/redundant_param_borrow.tk:3:9
+   |
+ 3 | fn bad(&info: Info) -> i32 {
+   |         ^

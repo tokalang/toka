@@ -338,6 +338,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
 
       if (firstArg && match(TokenType::KwSelf)) {
         FunctionDecl::Arg arg;
+        arg.Loc = previous().Loc;
         arg.IsCeded = isCeded;
         arg.Name = "self";
         arg.Type = "Self"; // Default
@@ -424,6 +425,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       rejectTypeSideReferenceParameter(argName, argPrefix, argType);
 
       FunctionDecl::Arg arg;
+      arg.Loc = argName.Loc;
       arg.IsCeded = isCeded;
       if (argType.rfind("cede ", 0) == 0) {
         arg.IsCeded = true;
@@ -715,6 +717,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       rejectTypeSideReferenceParameter(argName, argPrefix, argType);
 
       ExternDecl::Arg arg;
+      arg.Loc = argName.Loc;
       arg.IsCeded = isCeded;
       if (argType.rfind("cede ", 0) == 0) {
         arg.IsCeded = true;

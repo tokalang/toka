@@ -1508,6 +1508,7 @@ enum class EffectKind { None, Async, Wait };
 class FunctionDecl : public ASTNode {
 public:
   struct Arg {
+    SourceLocation Loc;
     std::string Name;
     std::string Type;
     bool IsRawPointer = false;
@@ -1531,6 +1532,7 @@ public:
 
     Arg clone() const {
       Arg a;
+      a.Loc = Loc;
       a.Name = Name;
       a.Type = Type;
       a.IsRawPointer = IsRawPointer;
@@ -1666,6 +1668,7 @@ public:
 class ExternDecl : public ASTNode {
 public:
   struct Arg {
+    SourceLocation Loc;
     std::string Name;
     std::string Type;
     bool IsRawPointer = false;
@@ -1689,6 +1692,7 @@ public:
 
     Arg clone() const {
       Arg a;
+      a.Loc = Loc;
       a.Name = Name;
       a.Type = Type;
       a.IsRawPointer = IsRawPointer;

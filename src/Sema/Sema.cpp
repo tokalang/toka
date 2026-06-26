@@ -1106,15 +1106,16 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     debugCheckBindingPermission(Arg);
     debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
                                 Arg.Permission, Fn->Loc);
+    SourceLocation argLoc = Arg.Loc.isValid() ? Arg.Loc : getLoc(Fn);
     if (Arg.IsValueBlocked || Arg.IsRebindBlocked) {
-      DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_REDUNDANT_BLOCK,
+      DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_BLOCK,
                                Arg.Name);
       HasError = true;
     }
 
     if (Arg.IsReference && !Arg.IsRebindable &&
         Type::stripMorphology(Arg.Name) != "self") {
-      DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_REDUNDANT_PARAM_BORROW);
+      DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_PARAM_BORROW);
       HasError = true;
     }
 
@@ -1139,7 +1140,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Info.IsMorphicExempt = Arg.IsMorphicExempt; // [NEW]
     Info.IsDeclaredMutable = Arg.IsValueMutable;
     Info.IsDeclaredVariable = true;
-    Info.DeclLoc = Fn->Loc;
+    Info.DeclLoc = argLoc;
     Info.IsCeded = Arg.IsCeded;
     Info.IsFunctionParameter = true;
 
@@ -1523,7 +1524,10 @@ void Sema::analyzeShapes(Module &M) {
                                          std::make_unique<BlockStmt>(), "void");
 
       std::vector<FunctionDecl::Arg> cloneArgs;
-      cloneArgs.push_back({"self", "Self"});
+      FunctionDecl::Arg cloneArg;
+      cloneArg.Name = "self";
+      cloneArg.Type = "Self";
+      cloneArgs.push_back(std::move(cloneArg));
       auto cloneFn = 
           std::make_unique<FunctionDecl>(true, "clone", std::move(cloneArgs),
                                          nullptr, "Self");

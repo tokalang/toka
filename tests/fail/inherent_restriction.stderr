@@ -1,8 +1,8 @@
 error[E0460]: Redundant inherent restriction '$' on 'a'; it is already immutable by default
- --> tests/fail/inherent_restriction.tk:6:4
+ --> tests/fail/inherent_restriction.tk:6:8
    |
  6 | fn foo(a$: i32) { // EXPECT: error[E0406]:
-   |    ^
+   |        ^
 error[E04477]: Morphology symbols (^, *, ~, &) are only allowed at the terminal of an access chain
  --> tests/fail/inherent_restriction.tk:11:15
     |
