@@ -45,10 +45,37 @@ endforeach()
 
 target_link_libraries(tokac PUBLIC ${lld_libs} ${llvm_libs})
 
+set(zstd_hints ${LLVM_LIBRARY_DIRS})
 if(APPLE)
-    target_link_libraries(tokac PUBLIC zstd z curses)
+    execute_process(
+        COMMAND brew --prefix zstd
+        OUTPUT_VARIABLE ZSTD_HOMEBREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(ZSTD_HOMEBREW_PREFIX)
+        list(APPEND zstd_hints "${ZSTD_HOMEBREW_PREFIX}/lib")
+    endif()
+    if(HOMEBREW_PREFIX)
+        list(APPEND zstd_hints "${HOMEBREW_PREFIX}/opt/zstd/lib" "${HOMEBREW_PREFIX}/lib")
+    endif()
+    list(APPEND zstd_hints
+        "/opt/homebrew/opt/zstd/lib"
+        "/opt/homebrew/lib"
+        "/usr/local/opt/zstd/lib"
+        "/usr/local/lib"
+    )
+endif()
+
+find_library(ZSTD_LIBRARY NAMES zstd libzstd HINTS ${zstd_hints})
+if(NOT ZSTD_LIBRARY)
+    message(FATAL_ERROR "zstd library not found. Install zstd or set ZSTD_LIBRARY to the libzstd path.")
+endif()
+
+if(APPLE)
+    target_link_libraries(tokac PUBLIC ${ZSTD_LIBRARY} z curses)
 elseif(UNIX)
-    target_link_libraries(tokac PUBLIC zstd z)
+    target_link_libraries(tokac PUBLIC ${ZSTD_LIBRARY} z)
 else()
-    target_link_libraries(tokac PUBLIC zstd)
+    target_link_libraries(tokac PUBLIC ${ZSTD_LIBRARY})
 endif()

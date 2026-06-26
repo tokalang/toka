@@ -322,6 +322,9 @@ if [ "$1" == "--worker" ]; then
     run_worker "$2"
 fi
 
+# Clean up known hybrid-test scratch files before enumerating tests.
+rm -f tests/pass/temp_main.tk tests/pass/temp_main.tki tests/pass/temp_shim.c target/debug/temp_main target/debug/temp_main.exe
+
 # Clean up all untracked/ignored .tki files in the workspace to avoid polluting relative imports
 if command -v git &> /dev/null && [ -d .git ]; then
     git status --ignored --porcelain | grep -E "^(!!|\?\?) " | grep -E "\.tki$" | cut -c4- | xargs rm -f 2>/dev/null || true

@@ -7,8 +7,17 @@ import std/io::{File, println, remove_file}
 import sys/libc::{libc_system, libc_getenv, libc_access}
 import lib/build::{Executable, run_build}
 
+fn cleanup_temp_artifacts() {
+    remove_file(string::from("tests/pass/temp_shim.c"))
+    remove_file(string::from("tests/pass/temp_main.tk"))
+    remove_file(string::from("tests/pass/temp_main.tki"))
+    remove_file(string::from("target/debug/temp_main"))
+    remove_file(string::from("target/debug/temp_main.exe"))
+}
+
 fn main() -> i32 {
     println("Starting Build Hybrid integration test...")
+    cleanup_temp_artifacts()
 
     // 1. Write the dynamic C FFI file
     auto c_file# = File::open(string::from("tests/pass/temp_shim.c"), "w")
@@ -23,7 +32,7 @@ fn main() -> i32 {
     auto tk_file# = File::open(string::from("tests/pass/temp_main.tk"), "w")
     if !tk_file.is_valid() {
         println("Failed to create temp_main.tk")
-        remove_file(string::from("tests/pass/temp_shim.c"))
+        cleanup_temp_artifacts()
         return 1
     }
     tk_file.write("import std/io::println\nextern fn get_magic_number() -> i32\nfn main() -> i32 {\n    auto val = get_magic_number()\n    println(\"Got value: {}\", val)\n    if val == 42 {\n        return 0\n    }\n    return 1\n}\n")
@@ -37,8 +46,7 @@ fn main() -> i32 {
     auto build_res = run_build(proj)
     if build_res != 0 {
         println("run_build failed with code: {}", build_res)
-        remove_file(string::from("tests/pass/temp_shim.c"))
-        remove_file(string::from("tests/pass/temp_main.tk"))
+        cleanup_temp_artifacts()
         return 1
     }
 
@@ -67,25 +75,13 @@ fn main() -> i32 {
 
     if run_res != 0 {
         println("Hybrid executable execution failed with code: {}", run_res)
-        remove_file(string::from("tests/pass/temp_shim.c"))
-        remove_file(string::from("tests/pass/temp_main.tk"))
-        if is_windows {
-            remove_file(string::from("target/debug/temp_main.exe"))
-        } else {
-            remove_file(string::from("target/debug/temp_main"))
-        }
+        cleanup_temp_artifacts()
         return 1
     }
 
     println("Hybrid build integration test completed successfully!")
 
     // 6. Clean up temporary files
-    remove_file(string::from("tests/pass/temp_shim.c"))
-    remove_file(string::from("tests/pass/temp_main.tk"))
-    if is_windows {
-        remove_file(string::from("target/debug/temp_main.exe"))
-    } else {
-        remove_file(string::from("target/debug/temp_main"))
-    }
+    cleanup_temp_artifacts()
     return 0
 }
