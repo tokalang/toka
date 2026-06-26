@@ -33,9 +33,9 @@ pub fn deserialize_nested_shape_local<'T>('obj#: T, json_str: str) -> JsonRes {
         for auto f in reflect<'T>().fields {
             if key_view.equals(f.name) {
                 found = true
-                auto val# = f.get('obj)
-                res = val#.parse_json(res)!
-                f.set('obj, cede val)
+                auto 'val# = f.get('obj)
+                res = 'val#.parse_json(res)!
+                f.set('obj, cede 'val)
                 continue
             }
         }
@@ -271,7 +271,7 @@ impl ModuleSnapshot@encap {
             source_hash = self.source_hash.clone(),
             content_hash = self.content_hash.clone(),
             outputs = self.outputs.clone(),
-            dependencies = c_dependencies
+            dependencies = cede c_dependencies
         )
     }
 }
@@ -341,8 +341,8 @@ impl DependencyManifest@encap {
         }
         return DependencyManifest(
             manifest_version = self.manifest_version.clone(),
-            roots = c_roots,
-            modules = c_modules
+            roots = cede c_roots,
+            modules = cede c_modules
         )
     }
 }
@@ -398,7 +398,7 @@ impl RebuildModuleInfo@encap {
         }
         return RebuildModuleInfo(
             reason = self.reason.clone(),
-            dirty_deps = c_dirty_deps
+            dirty_deps = cede c_dirty_deps
         )
     }
 }
@@ -451,8 +451,8 @@ impl RebuildPlan@encap {
         }
         return RebuildPlan(
             status = self.status.clone(),
-            dirty_roots = c_dirty_roots,
-            dirty_modules = c_dirty_modules
+            dirty_roots = cede c_dirty_roots,
+            dirty_modules = cede c_dirty_modules
         )
     }
 }
@@ -512,7 +512,7 @@ impl DfsResult@encap {
         return DfsResult(
             is_dirty = self.is_dirty,
             reason = cede self.reason.clone(),
-            chain = c_chain
+            chain = cede c_chain
         )
     }
 }
@@ -625,12 +625,12 @@ fn check_dirty_recursive(
     memo#: HashMap<string, DfsResult>,
     visiting#: HashMap<string, bool>
 ) -> DfsResult {
-    auto memo_opt = memo.get(&(node))
+    auto memo_opt = memo.get(node)
     if memo_opt.is_none() == false {
         return cede memo_opt.unwrap().clone()
     }
 
-    auto visiting_opt = visiting.get(&(node))
+    auto visiting_opt = visiting.get(node)
     if visiting_opt.is_none() == false {
         return DfsResult(
             is_dirty = false,
@@ -639,7 +639,7 @@ fn check_dirty_recursive(
         )
     }
     
-    auto dirty_reason_opt = dirty_map.get(&(node))
+    auto dirty_reason_opt = dirty_map.get(node)
     if dirty_reason_opt.is_none() == false {
         auto res = DfsResult(
             is_dirty = true,
@@ -650,7 +650,7 @@ fn check_dirty_recursive(
         return cede res
     }
     
-    auto curr_info_opt = current_graph.modules.get_ref(&(node))
+    auto curr_info_opt = current_graph.modules.get_ref(node)
     if curr_info_opt.is_none() {
         auto res = DfsResult(
             is_dirty = true,
@@ -684,7 +684,7 @@ fn check_dirty_recursive(
                 reason = cede string::from("dependency changed"),
                 chain = cede chain
             )
-            auto _removed = visiting#.remove(&(node))
+            auto _removed = visiting#.remove(node)
             memo#.insert(cede node.clone(), cede res.clone())
             return cede res
         }
@@ -696,7 +696,7 @@ fn check_dirty_recursive(
         reason = cede string::from(""),
         chain = cede Vec<string>::new()
     )
-    auto _removed = visiting#.remove(&(node))
+    auto _removed = visiting#.remove(node)
     memo#.insert(cede node.clone(), cede res.clone())
     return cede res
 }
@@ -782,7 +782,7 @@ fn generate_rebuild_plan(
         auto m_path = m_path_ref.clone()
         auto &curr_info = entry.val()
         
-        auto old_info_opt = old_manifest.modules.get_ref(&(m_path))
+        auto old_info_opt = old_manifest.modules.get_ref(m_path)
         if old_info_opt.is_none() {
             dirty_map#.insert(cede m_path.clone(), cede string::from("new module"))
             continue

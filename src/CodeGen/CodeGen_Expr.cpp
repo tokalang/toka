@@ -5319,8 +5319,23 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
       llvm::Value *srcAlloc = createEntryBlockAlloca(unionData->getType(), nullptr, "unwrap.err.src");
       m_Builder.CreateStore(unionData, srcAlloc);
       llvm::Type *dstUnionTy = targetRetTy->getStructElementType(1);
-      llvm::Value *castSrc = m_Builder.CreateBitCast(srcAlloc, llvm::PointerType::getUnqual(m_Context));
-      llvm::Value *newUnionData = m_Builder.CreateLoad(dstUnionTy, castSrc);
+      llvm::Value *newUnionData = nullptr;
+      if (unionData->getType() == dstUnionTy) {
+        newUnionData = unionData;
+      } else {
+        const llvm::DataLayout &dl = m_Module->getDataLayout();
+        uint64_t srcSize = dl.getTypeAllocSize(unionData->getType()).getFixedValue();
+        uint64_t dstSize = dl.getTypeAllocSize(dstUnionTy).getFixedValue();
+        if (srcSize <= dstSize) {
+          llvm::Value *dstAlloc = createEntryBlockAlloca(dstUnionTy, nullptr, "unwrap.err.dst");
+          m_Builder.CreateStore(llvm::Constant::getNullValue(dstUnionTy), dstAlloc);
+          m_Builder.CreateStore(unionData, dstAlloc);
+          newUnionData = m_Builder.CreateLoad(dstUnionTy, dstAlloc);
+        } else {
+          llvm::Value *castSrc = m_Builder.CreateBitCast(srcAlloc, llvm::PointerType::getUnqual(m_Context));
+          newUnionData = m_Builder.CreateLoad(dstUnionTy, castSrc);
+        }
+      }
       
       retVal = m_Builder.CreateInsertValue(retVal, newUnionData, {1});
     }
