@@ -284,8 +284,10 @@ jobs:
           # 3. 验证项目编译与执行
           echo "=== Testing toka.exe run ==="
           cd e2e_test_app
-          toka.exe run > run.log 2>&1 || true
+          set +e
+          toka.exe run > run.log 2>&1
           RUN_EXIT_CODE=$?
+          set -e
           echo "toka.exe run exit code is: $RUN_EXIT_CODE"
           
           cat run.log
@@ -306,4 +308,3 @@ jobs:
           files: build/toka-${{ matrix.version }}-${{ matrix.name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
