@@ -2070,7 +2070,9 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     }
   }
 
-  bool isStatic = (fd && (fd->Args.empty() || fd->Args[0].Name != "self"));
+  bool isStatic =
+      (fd && (fd->Args.empty() ||
+              Type::stripMorphology(fd->Args[0].Name) != "self"));
   // Type Check Self
   if (!isStatic) {
     if (callee->arg_size() > selfLlvmIdx) {

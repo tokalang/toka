@@ -1112,7 +1112,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       HasError = true;
     }
 
-    if (Arg.IsReference && !Arg.IsRebindable && Arg.Name != "self") {
+    if (Arg.IsReference && !Arg.IsRebindable &&
+        Type::stripMorphology(Arg.Name) != "self") {
       DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_REDUNDANT_PARAM_BORROW);
       HasError = true;
     }
@@ -1209,7 +1210,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (!isWarningExempt) {
     for (auto const &[name, info] : CurrentScope->Symbols) {
       if (info.IsDeclaredMutable && !info.HasBeenMutated) {
-        if (name != "self") {
+        if (Type::stripMorphology(name) != "self") {
           std::string stripped = name;
           size_t idx = 0;
           while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
@@ -1221,7 +1222,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         }
       }
       if (info.IsDeclaredVariable && !info.HasBeenUsed) {
-        if (name != "self") {
+        if (Type::stripMorphology(name) != "self") {
           std::string stripped = name;
           size_t idx = 0;
           while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
@@ -1506,7 +1507,17 @@ void Sema::analyzeShapes(Module &M) {
     if (props.HasDrop && !hasExplicitDrop) {
       // [Ch 7] Synthesize default drop impl for resource-managing shapes
       std::vector<FunctionDecl::Arg> args;
-      args.push_back({"self#", "Self"});
+      FunctionDecl::Arg dropArg;
+      dropArg.Name = "self";
+      dropArg.Type = "Self";
+      dropArg.IsValueMutable = true;
+      dropArg.Permission = BindingPermission::fromLegacy(
+          dropArg.IsRawPointer, dropArg.IsUnique, dropArg.IsShared,
+          dropArg.IsReference, dropArg.IsRebindable,
+          dropArg.IsPointerNullable, dropArg.IsRebindBlocked,
+          dropArg.IsValueMutable, dropArg.IsValueNullable,
+          dropArg.IsValueBlocked, dropArg.IsMorphicExempt);
+      args.push_back(std::move(dropArg));
       auto dropFn =
           std::make_unique<FunctionDecl>(false, "drop", std::move(args),
                                          std::make_unique<BlockStmt>(), "void");

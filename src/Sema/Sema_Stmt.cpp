@@ -220,7 +220,7 @@ void Sema::checkStmt(Stmt *S) {
     if (!isWarningExempt) {
       for (auto const &[name, info] : CurrentScope->Symbols) {
         if (info.IsDeclaredMutable && !info.HasBeenMutated) {
-          if (name != "self") {
+          if (Type::stripMorphology(name) != "self") {
             std::string stripped = name;
             size_t idx = 0;
             while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
@@ -232,7 +232,7 @@ void Sema::checkStmt(Stmt *S) {
           }
         }
         if (info.IsDeclaredVariable && !info.HasBeenUsed) {
-          if (name != "self") {
+          if (Type::stripMorphology(name) != "self") {
             std::string stripped = name;
             size_t idx = 0;
             while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {

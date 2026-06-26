@@ -2077,7 +2077,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
         // [Rule] Enforce Explicit Mutability for Method Calls
         bool requiresMutableBorrow = false;
-        if (!FD->Args.empty() && FD->Args[0].Name == "self" &&
+        if (!FD->Args.empty() &&
+            Type::stripMorphology(FD->Args[0].Name) == "self" &&
             FD->Args[0].IsValueMutable) {
           requiresMutableBorrow = true;
           // std::cerr << "[DEBUG] MutCheck: Method=" << Met->Method <<
@@ -2120,7 +2121,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
         }
 
-        if (!FD->Args.empty() && FD->Args[0].Name == "self") {
+        if (!FD->Args.empty() &&
+            Type::stripMorphology(FD->Args[0].Name) == "self") {
             // [NEW] Cede Ownership check for Method Call
             if (FD->Args[0].IsCeded) {
                 std::string objPath = getStringifyPath(Met->Object.get());
@@ -2220,7 +2222,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
 
             auto mapParamToArg = [&](const std::string &paramName) -> std::string {
-               if (paramName == "self") {
+               if (Type::stripMorphology(paramName) == "self") {
                   return getStringifyPath(Met->Object.get());
                }
                for (size_t i = 0; i < FD->Args.size(); ++i) {
