@@ -2,190 +2,212 @@
 
 # Toka 编程语言
 
-**Toka 是一门无需垃圾回收（GC）的现代系统级编程语言。它融合了类 C 的极致物理性能与底层控制权，吸纳了源自 Rust 的内存安全纪律，并致力于提供如同脚本语言般清晰、高效的开发体验。**
+**Toka 是一门以零成本性能和静态安全为底线，同时让代码更易读、易写、易维护的无 GC 系统编程语言。**
 
-📖 **学术论文：** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
+## 设计目标
 
-## 🚀 "Show, Don't Tell"
+### 双底线
 
-告别繁重的 `<'a>` 生命周期标注负担，忘记错综复杂的 CMake。在 Toka 中，高性能系统代码被设计为保持显式、清晰且有纪律：
+Toka 从两个底线出发：
+
+- **零成本性能：** 底层表示和资源成本应该保持可预测，不能把 GC 或隐藏运行时层作为默认答案。
+- **强静态安全：** 危险路径必须显式到足以让编译器检查，安全性是要求，而不是为了便利可以交换掉的特性。
+
+在守住这两个前提的情况下，Toka 追问的是：系统代码还能不能更简洁、更直接、更可维护。源码应该尽量贴近程序员的意图和程序真实发生的行为：所有权转移、可变性、重绑定、可空性、错误传播、异步挂起、底层表示这些事情，应该在真正重要的位置可见、可被静态检查，同时日常代码仍然保持相对简洁。
+
+### 关键张力
+
+在目前主流语言版图里，这个组合通常近似一个不可能三角：
+
+- 贴近机器的性能
+- 强安全性
+- 简洁、可维护的表达
+
+Toka 想挑战的正是这种张力，并尽可能逼近那个理想点。
+
+一个可能的额外红利是优化可见性。当资源流、别名关系和底层表示被更清楚地表达出来时，编译器有机会看到传统 C 或 Rust 写法中不容易暴露的优化空间。在某些性能敏感场景下，这可能体现为更好的寄存器利用、更清晰的别名边界，以及超过等价手写实现的可能性。这是设计可能带来的结果，不是泛化的性能承诺。
+
+### 实现路径
+
+Toka 组合了几类机制来接近这个目标：
+
+- 显式资源语义和确定性清理
+- PAL (Pointer Aliasing & Lifecycle) 检查
+- 用紧凑标记表达可变性、重绑定、转移、可空性和 handle 身份
+- 内建项目工具链，降低对庞大外部构建系统配置的依赖
+- payload / handle 分离：裸名操作对象 payload；只有代码确实需要 handle 层时，才用 `&`、`*`、`^`、`~` 等帽子暴露或保留 handle 身份
+
+帽子语法只是这套设计的结果之一，不是设计目的本身。它存在，是因为 Toka 需要一种紧凑且一致的方式区分 payload 操作和 handle 操作。
+
+因此，Toka 探索的位置介于 C、Rust、Go、Zig 之间：接近机器层，强调静态纪律，同时让日常系统代码保持可读。
+
+**论文：** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
+
+## 快速开始
+
+安装最新 release：
+
+```bash
+curl -fsSL https://tokalang.dev/install.sh | bash
+```
+
+从源码构建：
+
+需要 CMake、C++17 编译器，以及 LLVM 20。
+
+```bash
+git clone https://github.com/tokalang/toka.git
+cd toka
+cmake -S . -B build
+make -C build -j8
+```
+
+检查编译器和项目管理器版本：
+
+```bash
+tokac --version
+toka --version
+```
+
+## 90 秒心智模型
+
+理解 Toka，最重要的是先分清两层：
+
+| 层级 | 含义 | 典型语法 |
+| :--- | :--- | :--- |
+| Payload / Soul | 被读取、写入、传参、模式匹配的对象内容 | `x`, `x.field`, `x = value` |
+| Handle / Representation | 对象如何被访问、拥有、共享、借用或重绑定 | `&x`, `*x`, `^x`, `~x`, `*x = *y` |
+
+这与 C 里把 `*p` 理解为“p 背后的值”的习惯相反。在 Toka 中：
+
+| 意图 | Toka 写法 | 含义 |
+| :--- | :--- | :--- |
+| 读取或写入对象内容 | `p` / `p = value` | 操作 payload |
+| 观察或移动指针式身份 | `*p`, `^p`, `~p`, `&p` | 操作 handle |
+| 重绑定 handle | `*p = *q` | 让 handle 指向别处 |
+| 允许 payload 绑定可写 | `x#` | payload 可被修改 |
+| 允许 handle 绑定可重绑定 | `*#p`, `^#p` | handle 本体可被替换 |
+| 显式转移资源 | `cede x` | 调用方放弃该资源路径 |
+
+函数参数也遵循同一规则。普通对象参数使用逻辑上的原地捕获：函数需要 payload 视图时写 `x: T` 或 `x#: T`。只有当函数确实需要 handle 本体时，才在参数名侧加帽子，例如用于观察、转发或重绑定这个 handle。
 
 ```toka
-// Toka 的日常：物理级并发，极简的符号 RAII 与原生错误传播
-import std/io::println
-import std/net::TcpStream
-import stdx/net/websocket
+shape Resource(val: i32)
 
-// `async` 显式染色；`stream#` 小写变量加 `#` 表示该变量的底层状态会被操作修改
-fn handle_client(stream#: TcpStream) -> async Result<(), String> {
-    // 自动深层释放、无隐式拷贝、彻底告别 GC 暂停
-    auto ws_conn# = websocket::accept_async(stream).await!
-    
-    // .await! 中的 `!` 是 Toka 的原生异常传播符。
-    // 遇到阻塞则交出控制权 (await)，遇到报错则直接向上冒泡 (!)，抛弃繁琐的 if err 检查
-    ws_conn#.write_text_async("Hello from Toka!").await!
-    
-    // 离开作用域时，RAII 机制会静默、安全地深度回收所有的 Socket 与内存资源
-    return Ok(())
+fn keep(cede r: Resource) -> Resource {
+    return cede r
+}
+
+fn main() -> i32 {
+    auto r = Resource(val = 42)
+    auto moved = keep(cede r)
+
+    if moved.val != 42 {
+        return 1
+    }
+    return 0
 }
 ```
 
-> **只需一秒，立即体验：**
-> ```bash
-> curl -fsSL https://tokalang.dev/install.sh | bash
-> ```
+签名里的 `cede` 不只是权限标记。它也是执行义务：函数体必须显式消费、转发、存储、返回，或以其他方式完成这条资源转移。
 
----
+## Toka 为什么存在
 
-## 🎯 Toka 适合你吗？
+主流系统语言通常在几个目标之间取舍：
 
-为了尊重您的时间，在您决定深入了解前，请确认：
-
-**✅ 它是你的绝佳选择，如果：**
-*   你需要极高的运行性能与极低的内存占用（如高并发网关、游戏后端、系统级工具）。
-*   你受够了 Go/Java 的 GC 暂停（STW），但也厌倦了在 Rust 里为了过编译而**无休止地和编译器“打架”**，甚至被迫绕路去实现某些本该非常自然的代码逻辑。
-*   你希望拥有高效的开发体验，同时仍然保留接近机器层的安全边界与原生掌控力。
-
-**❌ 它可能暂不适合你，如果：**
-*   你的生产环境必须部署在纯 Windows Server 上（目前原生支持仍在开发中，暂推荐 WSL2/macOS/Linux）。
-*   你需要开箱即用的极其庞大的业务级生态（如 Spring Boot 全家桶）—— Toka 的生态目前更偏向底层和系统级。
-
----
-
-## 💎 核心支柱 (Core Pillars)
-
-### 🛡️ 无需生命周期标注的显式资源安全
-首创**单帽原则 (Single-Hat Principle)** 与 **PAL (Pointer Aliasing & Lifecycle) 检查器**。Toka 将所有权、借用、指针身份与可变意图直接暴露在源码表面，目标是在不引入显式生命周期参数的前提下提供强编译期资源安全约束。
-
-### ⚡ 零成本抽象与 C 原生互操作
-底层基于 **LLVM 20** 构建，**无垃圾回收 (No GC)**。Toka 的原生布局与面向 FFI 的设计，旨在让调用现有 C 生态（如 SQLite、OpenGL）保持直接、明确且可预测。
-
-### 🚦 物理级透明的并发模型与错误流
-拒绝隐式的“黑魔法调度器”。Toka 将函数的开销显式化：普通函数、`async` (异步挂起) 都有清晰的颜色边界。配合原生的 `!` 错误传播符，错误处理与异步调度会清楚地体现在函数签名和调用点上。
-
-### 📦 一体化现代工具链
-Toka 内置 `toka` CLI，支持 `toka run`、`toka build` 以及基于 `package.tk` / `build.tk` 的包与构建流程，让日常项目操作尽量贴近语言本身。
-
----
-
-## 🌟 深度理念：属性标记与灵身二元论
-
-Toka 通过采用**正交后缀符号**将内存属性显式化，彻底消除了隐蔽状态。开发者仅需扫一眼变量定义，就能瞬间秒懂其背后隐藏的内存结构与生命周期。
-
-### 核心革新点 (Key Innovations)
-
-**1. 原生语法的 RAII (Syntactic RAII)**
-Toka 将**智能指针提升为核心语法符号**。这意味着“生命周期管理”被内化为语言的呼吸。
-*   **^T (独占)** 和 **~T (共享)** 直接作为原生类型存在，让 RAII 成为零视觉负担的默认模式。
-
-**2. 灵-身二元论 (Soul-Identity Duality)**
-Toka 哲学性地将对象拆分为 **Soul (内涵/值)** 与 **Identity (外延/身份)**。
-*   **精确语义**：通过借用 (`&`) 访问 Soul，通过指针 (`*`) 操作 Identity。消除“引用赋值”与“内容修改”的语义模糊。
-
-**3. 变与空的彻底解耦 (Orthogonal Attributes)**
-告别 `const volatile unsigned` 的关键字堆砌。Toka 极度严谨地规定了属性的归属：
-*   **可变性是变量的属性 (`#`)**：代表身份转移或内容修改。
-*   **可空性是类型的属性 (`?`)**：代表内存中可能不存在该实体。
-*   **视觉化形态**：`auto ^p = new Node(...)`、`auto x# = 1`，以及极低频完整形态 `auto nul ^#node#: Node? = null`，都能在语法层面直接呈现所有权、可变性与可空性。
-
-**4. @encap 显式封装与资源安全 (Explicit Encapsulation)**
-Toka 默认普通的 `shape` 对外透明，但对于持有关键资源（如 File、Socket）的结构体，必须使用 `@encap` 进行严格封装。
-*   **权限与生命周期绑定**：在 `impl Type@encap` 块中，开发者必须显式暴露接口，且这是定义 `drop` (析构) 等生命周期方法的唯一合法场所。这从底层契约上防止了资源的非法篡改与内存泄漏。
-
-**5. 显式控制流与错误传播 (Explicit Control Flow & Error Propagation)**
-Toka 偏好显式的控制流契约：`match` 执行穷尽检查，`guard` 让 `null` / `none` 检查直接可见，后缀 `!` 操作符则在不隐藏提前返回路径的前提下传播 `Result` / `Option` 失败。
-
-### 符号系统表
-
-| 标记 (Token) | 内容上的含义 (Value/Content) | 身份上的含义 (Identity/Address) |
+| 语言家族 | 强项 | Toka 试图补上的缺口 |
 | :--- | :--- | :--- |
-| `#` | **可写**: 可修改字段/内容 | **可交换**: 可重定向(Reseat) |
-| `?` | **可空**: 值为 `none` | **可空**: 身份为 `null` |
-| `!` | **可写且可空** | **可交换且可空** |
-| `^` | - | **独占指针** (所有权) |
-| `~` | - | **共享指针** (引用计数) |
-| `&` | **借用**: 值的临时视图 | **引用**: Soul 的临时视图 |
-| `*` | - | **原始指针** (无所有权) |
+| C | 直接的表示控制和可预测 ABI | 安全高度依赖约定 |
+| C++ | RAII、泛型抽象、底层控制 | 许多所有权和别名规则仍然隐含 |
+| Rust | 无 GC 的强内存安全 | 生命周期和借用推理可能成为主要表层负担 |
+| Go / Java / C# | 日常开发高效，生态庞大 | GC 和运行时模型削弱底层可预测性 |
+| Zig / Odin | 简洁的系统级控制 | 资源与别名纪律更多依赖程序员维护 |
 
----
+Toka 的判断是：**访问表示本身应该成为源码里的独立维度**。与其把指针身份、所有权、共享、借用、可空、可变、资源转移全部压进一个过载的变量记法中，不如给这些概念提供小而正交的标记，并让编译器检查它们形成的契约。
 
-## ✅ 项目状态 (路线图)
+## 核心设计
 
-Toka 目前已经具备了完整的语言核心特性与标准库，我们正在积极构建编译器的自举 (Self-Hosting) 能力。
+### 显式资源语义
 
-### 🚀 已完成的核心能力 (Completed)
-- [x] **多平台原生支持** 
-    - [x] **Linux / macOS**: 已提供完善的一等公民支持。
-    - [x] **Windows**: 新增对 MinGW/MSYS2 ABI 的底层适配，已打通核心文件系统与进程调用。
-- [x] **编译器基础设施** (Lexer, Parser, LLVM 20 IR CodeGen)
-- [x] **类型系统** (基础类型, 五态 Shape 系统, ADTs, 模式匹配)
-- [x] **内存管理** (独占/共享智能指针, 移动语义 (Move), 递归式释放, 指针重绑定)
-- [x] **面向对象特性** (`impl` 块, 契约分离的 Trait 系统)
-- [x] **控制流表达式** (基于值的循环表达式, `break`/`continue` 标签)
-- [x] **模块与可见性** (物理路径与逻辑导入, 精细的 `pub` 访问控制)
-- [x] **语义分析 (Sema)**
-    - [x] 严格的可变性强制检查 (`#` 检查)
-    - [x] 所有权与借用验证 (Ownership & Borrowing Verification)
-    - [x] 显式空安全 (Explicit Null Safety)
-    - [x] 资源安全分析 (强制含资源 Shape 必须实现 `@encap/drop`)
-- [x] **高级特性**
-    - [x] **泛型 / 模板** (支持刚性与指针形态泛型推导)
-    - [x] **原生并发** (原生 OS 线程, 锁, MPSC 消息通道, `async`/`await` 协程)
-    - [x] **标准库** (系统 I/O, 网络 Socket, 以及 `String`/`Vec`/`Option`/`Result` 等基础容器)
-- [x] **开发体验 (DX) 工具链**
-    - [x] **内置构建系统** (`toka run`, `toka build`)
-    - [x] **语言服务器 (LSP)** (官方 `tokalsp` 已稳定集成至 VS Code，支持实时诊断与智能语法高亮)
-    - [x] **官方包管理器** (`toka` CLI 内置 `package.tk` 依赖解析与全局注册表网关)
-    - [x] **原生 Kebab-case 支持** (在底层词法层面完美融合 Lisp 风格连字符命名，并反向约束格式化)
+Toka 没有垃圾回收器。托管资源通过确定性析构、move / transfer 语义、`@encap` 生命周期边界，以及显式 `clone` / `drop` 契约管理。跨所有权边界的资源转移写作 `cede`。
 
-### 🚧 正在进行与未来规划 (Next Steps)
-- [ ] **Windows 平台特性补齐** (原生 Windows 底层 IOCP 异步网络栈支持)
-- [ ] **编译器自举 (Self-Hosting)** (使用 Toka 完全重写目前的 C++ 前端)
+### Payload-Handle 分离
 
-## 🌟 社区与生态 (Ecosystem & Community)
+语言区分“正在使用的对象内容”和“到达该对象的 handle”。因此 `*p = *q` 表达的是 handle 重绑定，而普通的 `p = q` 仍然是 payload 赋值。
 
-看到社区用 Toka 构建出各种有趣的项目，我们感到非常兴奋！以下是一些值得一看的社区驱动项目：
+### PAL 静态检查
 
-- [**toka-book**](https://github.com/lumicore-dev/toka-book) ([在线阅读](https://lumicore-dev.github.io/toka-book))：一本详尽的、由社区驱动的 Toka 学习指南（灵感来源于“The Rust Book”）。
+PAL 检查指针别名与生命周期约束，让借用、移动、空值检查、资源路径和重绑定意图保持显式且可审计。目标是在没有用户手写 `<'a>` 这类生命周期参数的情况下，提供编译期纪律。
 
-*(用 Toka 做了好玩的项目？欢迎提交 PR 把你的项目展示在这里！)*
+### 正交表层标记
 
-## 📚 官方文档与资源
+Toka 使用一组紧凑的标记：
 
-更多详细的**安装指引**、**教程**、**代码示例**以及**API 手册**，请访问 Toka 语言官方网站：
+| 标记 | 作用 |
+| :--- | :--- |
+| `#` | payload 绑定可变，或 handle 绑定具有重绑定权 |
+| `?` | 可空类型状态 |
+| `&` | 借用 / 引用 handle |
+| `*` | 原始指针 handle |
+| `^` | 独占所有权 handle |
+| `~` | 共享所有权 handle |
+| `'T` | 保留 handle 形态的 morphic 泛型参数 |
 
-👉 **[tokalang.dev/zh](https://tokalang.dev/zh)**
+### 显式控制流与错误传播
 
-> 注意：为了保证文档的统一性，避免信息过期，所有使用说明、最佳实践与深度技术文章均已集中迁移至官方网站。
+控制流成本应当可见。`async` 标记可挂起函数，`.await` 标记挂起点，后缀 `!` 在不隐藏提前返回路径的情况下传播 `Result` / `Option` 失败。
 
----
+### 原生工具链
 
-## 致敬与灵感来源 (Inspirations & Lineage)
+`toka` CLI 支持 `toka new`、`toka run`、`toka build`、包解析，以及基于 `package.tk` / `build.tk` 的构建编排。编译器也会导出依赖元数据，供增量构建路径使用。
 
-Toka 是一门站在巨人肩膀上的现代系统级编程语言。它的诞生并非为了重新发明轮子，而是为了在前辈们的智慧基础上，探索**高性能**与**开发体验**之间的最佳平衡。
+## 当前状态
 
-### 1. C & C++ (Modern C++)
-**核心启迪：极速的系统控制权、智能指针与 RAII (起源)**
-Toka 的内存管理机制直接从 Modern C++ (C++11/14+) 一脉相承。Toka 将 `std::unique_ptr` 和 `std::shared_ptr` 的语义直接熔铸为**核心前缀语法** (`^T` / `~T`)，让资源安全首次变成一种“零视觉负担”的默认标准。
+Toka 仍处于积极开发中。当前仓库包含：
 
-### 2. Rust
-**核心启迪：所有权与借用安全法则 (Borrowing Discipline)**
-Rust 证明了无 GC 的内存安全是可以达成的。Toka 受到 Rust 严格借用纪律的启发，但探索了另一种表层语法：通过显式资源形态、PAL 检查与依赖路由表达安全约束，而不是要求用户书写 `<'a>` 这样的生命周期参数。
+- 基于 C++ 的编译器前端与 LLVM 20 后端。
+- 面向可变性、move、借用、空访问、资源安全、morphic 泛型等规则的语义分析和诊断。
+- 包含核心容器与系统级模块的标准库。
+- `toka` 项目管理器 / 构建工具、`tokafmt`、`tokalsp`。
+- 增量构建元数据与 TKI interface cache 校验。
+- Linux 与 macOS 是主要开发路径，Windows / MSYS2 支持正在推进。
 
-### 3. Haskell / ML Family
-**核心致敬：类型类与正交设计 (Typeclasses & Orthogonality)**
-Toka 的 Trait 系统精神上继承自 Haskell 的 Typeclasses。我们推崇将“数据定义”(`shape`)与“行为实现”(`impl`)完全剥离。
+Toka 还没有自举。生态仍然年轻。近期最重要的工程工作仍然是编译器加固、标准库稳定、Windows parity，以及最终自举。
 
-### 4. Swift / Kotlin / C#
-**核心致敬：空安全 (Null Safety)**
-为了彻底解决“十亿美元的错误”，Toka 采用了**显式空安全**。通过后缀修饰符 (`?`)，我们将空指针检查强制提升到了类型系统层面。
+## Toka 适合你吗？
 
-### 5. Python
-**核心致敬：可读性与开发效率 (Readability & Productivity)**
-Toka 致力于将脚本语言的开发体验带入系统编程，力求让系统级代码拥有脚本般的清晰度与亲和力。
+如果你想要这些东西，Toka 可能值得关注：
 
-### 6. 万有引力与未尽的致敬
-编程语言的设计是一场在浩瀚星海中不断传承的探索。Toka 拥抱并崇尚开源社区汇聚的集体智慧，并对一切推动了程序设计学发展的先行者们保持着最虔诚的敬畏。
+- 无 GC 的系统编程与确定性资源清理。
+- 底层表示控制，但不把裸指针作为默认公共 API 风格。
+- 不依赖显式生命周期参数的静态资源流检查。
+- 在调用点直接看见可变、重绑定、可空与资源转移意图。
+- 适合实验、系统工具、运行时和基础设施代码的紧凑工具链。
+
+如果你需要这些东西，Toka 现在可能还不合适：
+
+- 与 Rust、Go、Java、C++ 相当的大型生产生态。
+- 长期稳定的语言规范承诺。
+- 开箱即用的原生 Windows 生产部署。
+- 直接替代现有 C/C++/Rust 代码库。
+
+## 文档与资源
+
+- 官方网站：[tokalang.dev/zh](https://tokalang.dev/zh)
+- 在线 Playground：[tokalang.dev/playground](https://tokalang.dev/playground)
+- 学术论文：[arXiv:2606.01974](https://arxiv.org/abs/2606.01974)
+- 语法参考：[docs/syntax_zh.md](docs/syntax_zh.md)
+- 构建工具说明：[docs/BUILD_TOOL.md](docs/BUILD_TOOL.md)
+
+## 社区与生态
+
+- [**toka-book**](https://github.com/lumicore-dev/toka-book) ([在线阅读](https://lumicore-dev.github.io/toka-book))：一本详尽的、由社区驱动的 Toka 学习指南。
+
+用 Toka 做了有趣的项目？欢迎提交 PR 把你的项目展示在这里。
+
+## 与其他语言的关系
+
+Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的编译期内存安全纪律、ML 家族的代数数据和 trait 风格抽象，以及脚本语言的日常简洁性影响。它的独特贡献不是声称全面替代这些语言，而是把 payload 语义与 handle 语义的显式分离作为一条源语言层面的设计原则。
 
 ---
 
@@ -196,10 +218,9 @@ Toka 致力于将脚本语言的开发体验带入系统编程，力求让系统
 ### 学术论文 (arXiv)
 
 ```bibtex
-@article{yi2026toka,
+@misc{yi2026toka,
   title={{Toka}: A Systems Programming Language with Explicit Resource Semantics},
   author={Yi, Zhonghua},
-  journal={arXiv preprint arXiv:2606.01974},
   year={2026},
   eprint={2606.01974},
   archivePrefix={arXiv},
@@ -217,6 +238,6 @@ Toka 致力于将脚本语言的开发体验带入系统编程，力求让系统
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 0.9.8}
+  note         = {Version 0.9.8-06}
 }
 ```

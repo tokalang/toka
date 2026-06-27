@@ -1,0 +1,453 @@
+# Toka Syntax Guide
+
+This guide describes the public surface syntax of the current Toka implementation. It is intentionally conservative: examples here are limited to forms used by the compiler, standard library, or test suite. Short fragments may omit surrounding declarations, but the syntax shown is meant to match current Toka.
+
+For a short project overview, see the repository [README](../README.md). For historical notes and internal pitfalls, see [syntax_notes_zh.md](syntax_notes_zh.md).
+
+## 1. Core Model
+
+Toka separates two layers that many systems languages collapse into one notation:
+
+| Layer | Meaning | Examples |
+| :--- | :--- | :--- |
+| Payload / Soul | The object content being read, written, passed, or matched | `x`, `x.field`, `x = value` |
+| Handle / Representation | The way an object is reached, owned, borrowed, shared, or rebound | `&x`, `*x`, `^x`, `~x`, `*x = *y` |
+
+Plain names operate on payload. Hats operate on handle identity. This is the key rule behind Toka's pointer and resource syntax.
+
+```toka
+auto ^p = new i32(100)
+auto value = 10
+auto &r = &value
+```
+
+In the example above, `p` is the payload view of a unique-owned object, `^p` names the unique owning handle, and `&value` creates a borrow handle.
+
+## 2. Files, Imports, And Entry Point
+
+Toka source files use `.tk`.
+
+```toka
+import std/io::println
+import core/types::{usize, Addr}
+
+fn main() -> i32 {
+    println("hello")
+    return 0
+}
+```
+
+The entry point is `main`, and it normally returns `i32`.
+
+Comments:
+
+```toka
+// line comment
+/* block comment */
+```
+
+## 3. Bindings, Mutability, And Nullability
+
+Local variables are declared with `auto`.
+
+```toka
+auto x = 1
+auto y: i64 = 10
+auto z = 10:i64
+```
+
+`#` on a binding grants mutation authority for that binding.
+
+```toka
+auto count# = 0
+count = count + 1
+```
+
+`#` appears in declarations and explicit mutable method calls. Ordinary reads and assignments use the bare name.
+
+```toka
+counter#.inc()
+counter = 3
+```
+
+Nullable payload types use `?` on the type side and `none` as the empty payload value.
+
+```toka
+auto maybe: i32? = none
+```
+
+Nullable handles use the `nul` marker and `null`.
+
+```toka
+auto nul *ptr: i32 = null
+```
+
+## 4. Hats And Handles
+
+Toka uses hats to expose handle identity:
+
+| Hat | Role |
+| :--- | :--- |
+| `&` | Borrow / reference handle |
+| `*` | Raw pointer handle |
+| `^` | Unique owning handle |
+| `~` | Shared owning handle |
+
+Examples:
+
+```toka
+auto value = 10
+auto &r = &value
+auto ^owned = new i32(5)
+```
+
+Payload assignment and handle rebinding are different operations:
+
+```toka
+p = value      // write payload
+*p = *q        // rebind a raw pointer handle
+```
+
+For a handle binding that itself may be rebound, place `#` after the hat:
+
+```toka
+shape Node(
+    val: i32,
+    nul ^next: Node
+)
+
+auto ^#head = new Node(val = 0, ^next = null)
+```
+
+## 5. Functions, Parameters, And `cede`
+
+Function parameters are explicitly typed.
+
+```toka
+fn add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+```
+
+For ordinary object parameters, Toka uses logical in-place capture. If the function wants the payload view, use forms such as `x: T` or `x#: T`.
+
+Use a hat on a parameter only when the function needs the handle itself, for example `*p: T` for a raw handle parameter or `*#p: T` when the callee must be able to rebind that handle.
+
+`cede` is an explicit resource-transfer contract.
+
+```toka
+shape Resource(val: i32)
+
+fn keep(cede r: Resource) -> Resource {
+    return cede r
+}
+```
+
+If a parameter is declared `cede`, the function body must explicitly complete that transfer by consuming, forwarding, storing, returning, or otherwise ending the resource path.
+
+Default arguments are supported. A call that chooses defaults must include `..`.
+
+```toka
+fn test_val(x: i32 = 42) -> i32 { return x }
+
+auto a = test_val(..)
+```
+
+Reference returns can be described with effect routing.
+
+```toka
+fn choose(a: i32, b: i32) -> &res: i32
+effects:
+    &res <- a | b
+{
+    if a > b {
+        return &a
+    }
+    return &b
+}
+```
+
+## 6. Shapes, Enums, And Initialization
+
+`shape` defines aggregate data and tagged enum-like variants.
+
+```toka
+shape Point(x: i32, y: i32)
+
+shape State(
+    On |
+    Off |
+    ErrCode(i32)
+)
+```
+
+Shape fields are named. Shape construction uses named arguments.
+
+```toka
+auto p = Point(x = 10, y = 20)
+```
+
+Fields may have defaults. Use `..` to accept remaining defaults.
+
+```toka
+shape Config(host: i32, port: i32 = 80, debug: i32 = 0)
+
+auto cfg = Config(host = 127, ..)
+```
+
+Position-based struct initialization is not the public style and is rejected by current diagnostics for shapes that require named fields.
+
+Aliases and new nominal types:
+
+```toka
+alias ID = i32
+type UserID = i32
+```
+
+## 7. Methods, Traits, And Encapsulation
+
+Methods are defined in `impl` blocks.
+
+```toka
+shape Rect(w: i32, h: i32)
+
+impl Rect {
+    pub fn area(self) -> i32 {
+        return self.w * self.h
+    }
+}
+```
+
+Trait implementations use `impl Type@Trait`.
+
+```toka
+trait @Shape {
+    pub fn area(self) -> i32
+}
+
+impl Rect@Shape {
+    pub fn area(self) -> i32 {
+        return self.w * self.h
+    }
+}
+```
+
+`@encap` is used for explicit resource and visibility control. Resource-owning shapes should define lifecycle behavior in an `impl Type@encap` block.
+
+Typical lifecycle methods in an `@encap` block include `fn drop(self#)` and `pub fn clone(self) = delete`.
+
+## 8. Member Access And Morphic Fields
+
+Normal member access requests the payload view.
+
+```toka
+auto x = point.x
+point.x = 3
+```
+
+For a member whose declared shape is a handle, place the hat at the member name when the handle itself is needed.
+
+```toka
+shape Data(^p#: i32)
+
+auto d# = Data(^p = new i32(100))
+d.^p = new i32(300) // rebind the member handle
+d.p = 500           // write through the payload view
+```
+
+Morphic fields preserve handle shape inside generic code. The quote is written on the binding name, not on the type side.
+
+```toka
+shape Box<'T>(
+    'data: T
+)
+
+fn take_identity<'T>(cede box: Box<'T>) -> 'T {
+    return cede box.'data
+}
+```
+
+Use `box.'data` when the generic code must preserve the abstract handle shape. Use `box.data` when the code intentionally requests the payload view.
+
+## 9. Generics
+
+Rigid generic parameters describe payload types.
+
+```toka
+shape Box<T>(data: T)
+```
+
+Morphic generic parameters preserve handle shape.
+
+```toka
+shape Box<'T>('data: T)
+```
+
+In binding positions, the quote belongs to the binding name:
+
+```toka
+fn id<'T>('x: T) -> 'T {
+    return 'x
+}
+```
+
+The same rule applies to local bindings: write `auto 'local: T = expr`, not `auto local: 'T = expr`.
+
+In pure type positions, write `'T`:
+
+```toka
+Vec<'T>
+Option<'T>
+-> 'T
+sizeof('T)
+```
+
+## 10. Control Flow
+
+Conditionals do not require parentheses.
+
+```toka
+if x > 0 {
+    return 1
+} else {
+    return 0
+}
+```
+
+Loops:
+
+```toka
+loop {
+    break
+}
+
+loop count < 10 {
+    count = count + 1
+}
+
+for auto x in [1, 2, 3] {
+    println("{}", x)
+}
+```
+
+`while` is not part of the current syntax; use `loop condition { ... }`.
+
+`match` supports literals, variants, guards, wildcards, and `default`.
+
+```toka
+auto value = match x {
+    0 => { pass 10 }
+    auto v if v > 0 => { pass v }
+    default => { pass -1 }
+}
+```
+
+`pass` yields a value from a block expression.
+
+## 11. Pattern Matching And Destructuring
+
+Named destructuring for shapes:
+
+```toka
+shape Point(x: i32, y: i32)
+
+auto p = Point(x = 10, y = 20)
+auto Point(a = .x, b = .y) = p
+```
+
+Use `..` to elide remaining fields and `_` to ignore a field.
+
+```toka
+auto Config(h = .host, ..) = cfg
+auto Config(h = .host, _ = .port, d = .debug) = cfg
+```
+
+Variant matching:
+
+```toka
+match result {
+    auto Result<i32, str>::Ok(v) => { pass v }
+    auto Result<i32, str>::Err(&e) => { pass 0 }
+}
+```
+
+When destructuring resource-carrying values, use explicit borrowing in the pattern when the original value must not be moved.
+
+## 12. Closures
+
+Closures use `{ ... => ... }` syntax.
+
+```toka
+auto add: fn(i32, i32) -> i32 = { a, b => a + b }
+auto inc: fn(i32) -> i32 = { .a + 1 }
+auto zero: fn() -> i32 = { => 0 }
+```
+
+Capture lists are written at the beginning of the closure body.
+
+```toka
+auto f: fn(i32) -> i32 = { [cede env] x => x + env }
+auto r = 10
+auto g: fn(i32) -> i32 = { [copy ~r] x => x + r }
+```
+
+## 13. Strings, Text, And Formatting
+
+String-like values appear in several layers:
+
+| Form | Role |
+| :--- | :--- |
+| `"..."` | `str` text view |
+| `c"..."` | C string literal |
+| `string::from("...")` | owned mutable `string` |
+
+Formatting uses `{}` placeholders.
+
+```toka
+println("x={}, y={}", x, y)
+```
+
+String concatenation with `+` is not part of the public syntax. Build owned strings explicitly with `string` APIs such as `push_str`.
+
+## 14. Unsafe And FFI
+
+External functions use `extern fn`.
+
+```toka
+extern fn sleep(seconds: i32) -> i32
+extern fn libc_free(*ptr: void) -> void
+```
+
+Raw allocation and deallocation are explicit and unsafe.
+
+```toka
+shape Node(val: i32)
+
+auto *node = unsafe alloc Node(val = 1)
+unsafe free *node
+```
+
+Pointer casts use `as`.
+
+```toka
+auto *ptr = addr as *i32
+auto raw = *ptr as *void
+```
+
+Unsafe code should stay at system and FFI boundaries. Public APIs should avoid exposing raw pointers unless the API is explicitly named as unsafe or raw.
+
+## 15. Common Mistakes
+
+| Avoid | Use | Reason |
+| :--- | :--- | :--- |
+| `let x = 1` / `var x = 1` | `auto x = 1` | Toka uses `auto` for local binding declarations |
+| `while cond { ... }` | `loop cond { ... }` | Conditional loops use `loop` |
+| `for x in iter { ... }` | `for auto x in iter { ... }` | Iteration bindings are explicit |
+| `Point(1, 2)` | `Point(x = 1, y = 2)` | Shape initialization is named |
+| `*p` to read the payload | `p` | Plain names operate on payload |
+| `*p = value` to write payload | `p = value` | Hat assignment operates on the handle |
+| `p = q` to rebind pointer identity | `*p = *q` | Rebinding is a handle operation |
+| `fn read(info: &Info)` | `fn read(info: Info)` | Hats belong to binding names, and ordinary parameters use the payload view |
+| `fn inspect(&info: Info)` when only reading payload | `fn inspect(info: Info)` | A hatted parameter is a handle contract, not a spelling for normal passing |
+| `fn id<'T>(x: 'T) -> 'T` | `fn id<'T>('x: T) -> 'T` | In binding positions, the quote belongs to the binding name |
+| `shape Box<'T>('data: 'T)` | `shape Box<'T>('data: T)` | The field name preserves morphology; the type side remains `T` |
