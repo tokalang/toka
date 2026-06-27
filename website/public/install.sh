@@ -33,7 +33,7 @@ if [ "$VERSION" = "latest" ]; then
   VERSION=${LATEST_URL##*/}
   if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
     # Fallback if redirect fails
-    VERSION="v0.9.8"
+    VERSION="v0.9.8-06"
     echo "Warning: Could not determine latest version. Defaulting to $VERSION"
   fi
 fi

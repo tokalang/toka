@@ -217,6 +217,6 @@ If you reference the design of the Toka language, including its explicit Hat-Sou
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 0.9.8}
+  note         = {Version 0.9.8-06}
 }
 ```

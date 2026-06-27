@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/DiagnosticEngine.h"
+#include "toka/InterfaceVersion.h"
 #include "toka/SourceManager.h"
 #include "toka/AST.h"
 #include <iostream>
@@ -97,7 +98,8 @@ void DiagnosticEngine::reportImpl(DiagLoc loc, DiagID id,
               << ", \"col\": " << loc.Col << ", \"message\": \"" << escapedMsg 
               << "\", \"code\": \"" << getCode(id) << "\", \"level\": " << (int)level
               << ", \"ast_anchor\": 0, \"semantic_id\": {\"file_id\": 0, \"node_serial\": 0, \"expansion_context\": 0}"
-              << ", \"compiler_version\": \"0.9.8-02\"}\n";
+              << ", \"compiler_version\": \"" << TOKA_COMPILER_INTERFACE_VERSION
+              << "\"}\n";
 #ifndef __EMSCRIPTEN__
     if (level == DiagLevel::Error) exit(0); // Exit 0 for LSP so it doesn't think it crashed
 #endif
@@ -178,7 +180,8 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
               << ", \"semantic_id\": {\"file_id\": " << file_id
               << ", \"node_serial\": " << node_serial
               << ", \"expansion_context\": " << expansion_context << "}"
-              << ", \"compiler_version\": \"0.9.8-02\"}\n";
+              << ", \"compiler_version\": \"" << TOKA_COMPILER_INTERFACE_VERSION
+              << "\"}\n";
 #ifndef __EMSCRIPTEN__
     if (level == DiagLevel::Error) exit(0); // Exit 0 for LSP so it doesn't think it crashed
 #endif

@@ -8,7 +8,7 @@ import src/pkg_manager::{cmd_fetch, build_pkg_args, cmd_publish, cmd_search, res
 
 
 fn print_help() {
-    println("Toka {}", "0.9.8")
+    println("Toka {}", "0.9.8-06")
     println("\nUsage: toka <command> [options]\n\nCommands:")
     println("  new <name>   Create a new Toka project (--lib for library)")
     println("  init         Initialize a new Toka project in the current directory")
@@ -870,7 +870,7 @@ fn main() -> i32 {
     }
     
     if cmd.eq(string::from("--version")) || cmd.eq(string::from("-v")) {
-        println("toka manager version 0.9.8")
+        println("toka manager version 0.9.8-06")
         return 0
     }
     

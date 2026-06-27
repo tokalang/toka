@@ -5,8 +5,8 @@ authors:
     family-names: "Yi"
   - name: "The Toka Language Contributors"
 title: "Toka Programming Language"
-version: "0.9.8"
-date-released: 2026-05-29
+version: "0.9.8-06"
+date-released: 2026-06-27
 url: "https://github.com/tokalang/toka"
 preferred-citation:
   type: article
