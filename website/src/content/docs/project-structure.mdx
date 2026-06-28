@@ -3,8 +3,6 @@ title: "Project Structure & Best Practices"
 description: "Guidelines for organizing your Toka projects and libraries."
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-
 As your Toka applications and libraries grow, maintaining a clean and intuitive directory structure becomes essential. Toka does not strictly enforce folder layouts, but following the community-driven conventions ensures that your code remains scalable, readable, and easy for other developers to integrate.
 
 ## 1. Executable Applications (Binaries)
@@ -38,7 +36,7 @@ When building a library for other Toka developers to use, the organization must 
 
 > [!WARNING]
 > **Anti-Pattern: The Microservice Layout**
-> Avoid creating a deeply nested directory for every single component and naming the file `main.tk`. This structure is overly fragmented and creates a miserable import experience for users.
+> Avoid creating a deeply nested directory for every single component and naming the file `main.tk`. This structure is overly fragmented and makes imports harder to read and maintain.
 
 ### Bad Example (Avoid this)
 
@@ -47,7 +45,7 @@ lib/
 ├── mylib_button/
 │   └── main.tk    ❌ Do not use main.tk for library components!
 ├── mylib_chart/
-│   └── main.tk    ❌ Requires: import lib/mylib_chart/main
+│   └── main.tk    ❌ Leads to verbose imports: import lib/mylib_chart/main
 ```
 
 ### Standard Layout

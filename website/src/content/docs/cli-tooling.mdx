@@ -3,48 +3,56 @@ title: "CLI & Tooling"
 description: "Master the Toka Manager CLI: project scaffolding, building, testing, formatting, and document generation."
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+Toka ships with two command-line tools:
 
-Toka ships with a powerful, zero-configuration command-line manager designed to give you a frictionless developer experience. Instead of interacting with the raw `tokac` compiler, you will primarily use the `toka` command to manage your projects.
+- `tokac`: the compiler.
+- `toka`: the project manager and build orchestration command.
+
+For day-to-day work, you usually use `toka`; it wraps compiler invocation, package resolution, generated build metadata, tests, formatting, and documentation tasks.
 
 ## Project Scaffolding
 
-Starting a new project in Toka is instantaneous and automatically enforces best practices.
-
 ### 1. `toka new <name>`
-Creates a new **Executable Application** project. It automatically generates a `src/main.tk` entry point and a `package.tk` file configured for building an executable binary.
+Creates a new executable project directory with `src/main.tk`, `package.tk`, and `build.tk`.
 
 ```bash
 toka new my_app
 ```
 
 ### 2. `toka new <name> --lib`
-Creates a new **Third-Party Library** project. It automatically skips `main.tk` and scaffolds the exact `lib/<name>/mod.tk` structure recommended by the official [Project Structure Guidelines](/project-structure).
+Creates a new library project with a `lib/<name>/mod.tk` entry module.
 
 ```bash
 toka new my_lib --lib
 ```
+
+### 3. `toka init`
+Initializes a Toka project in the current directory.
 
 ---
 
 ## Development & Build
 
 ### 1. `toka run`
-Instantly compiles and executes your project. It looks for your executable definition in `package.tk` and runs it.
+Builds the current project through `build.tk`, then runs the newest executable from `target/debug`.
 
 ### 2. `toka run <file.tk>`
-Operates as a **Single File Script Runner**. Use this if you just want to quickly test a single `.tk` file without setting up a full project directory.
+Compiles and runs a single `.tk` file without requiring a project directory.
 
 ### 3. `toka build`
-Compiles your project and outputs the final executable binary to the `target/` or `build/` directory without running it.
+Runs package resolution, compiles `build.tk`, and lets the build script produce the configured target.
+
+### Useful Options
+
+- `-v`, `--verbose`: show more compiler and build output.
+- `-f`, `--forge`: enable the experimental Forge parallel incremental build engine.
 
 ---
 
 ## Testing & Quality Assurance
 
 ### 1. `toka test`
-A fully automated, zero-configuration test runner. 
-Just place your test files inside a `tests/` directory at the root of your project. Running `toka test` will discover all `.tk` files, compile them against your project's `lib/` directory, and output a beautiful, color-coded test report.
+Discovers `.tk` files under `tests/`, compiles each test against the project and standard library paths, runs the resulting executables, and prints a compact pass/fail summary.
 
 ```bash
 toka test
@@ -55,16 +63,17 @@ toka test
 # Test Results: 1 passed, 0 failed
 ```
 
+On Windows, `toka test` currently expects a Bash-compatible shell such as MSYS2 or Git Bash.
+
 ### 2. `toka fmt`
-Automatically formats all Toka code in your project. It safely traverses `src/`, `lib/`, `tests/`, and `package.tk` to ensure your codebase strictly adheres to the official Toka Style Guide.
+Formats Toka source files in the project.
 
 ---
 
 ## Documentation
 
 ### `toka doc`
-An automated API documentation generator.
-Simply document your public functions and shapes using the `///` prefix. Running `toka doc` will extract these signatures and generate a perfectly formatted `docs/API.md` file at the root of your project.
+Generates `docs/API.md` from public declarations documented with `///` comments.
 
 ```toka
 /// Calculates the sum of two numbers.
@@ -75,13 +84,12 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 ---
 
-## Package Management & Registry (New in v0.9.7)
+## Package Management & Registry
 
-Toka v0.9.7 introduces the **Official Toka Package Manager**. All package metadata is managed cleanly via the `package.tk` file using the native TON (Toka Object Notation) format.
+Package metadata is stored in `package.tk`. The registry and package workflow are still young, but the current CLI provides the basic commands needed for package discovery, dependency records, and publishing.
 
 ### `toka search <keyword>`
-Instantly searches the official Toka Registry (`pkg.tokalang.dev`) for packages. 
-Built on a high-performance, zero-ops edge CDN, it safely parses the registry catalog directly in-memory.
+Searches the configured Toka package registry.
 
 ```bash
 toka search ink
@@ -94,15 +102,14 @@ toka search ink
 ```
 
 ### `toka publish`
-Packages your current project and publishes it to the official Toka Package Registry.
-*Note: Ensure your `package.tk` has a valid `name`, `version`, and `description` before publishing.*
+Packages the current project and publishes it to the registry. Ensure that `package.tk` has valid `name`, `version`, and `description` fields before publishing.
 
 ### `toka add <url_or_name>`
-Adds a remote Toka package dependency to your project and updates `package.tk`.
+Adds a package dependency to the current project and updates `package.tk`.
 
 ---
 
 ## Housekeeping
 
 ### `toka clean`
-Instantly removes all temporary compilation artifacts, wiping the `target/`, `build/`, `.toka_build_exe`, and dependency cache directories to free up disk space.
+Removes project build artifacts such as `target/`, `build/`, `.toka_build_exe`, and dependency cache directories.

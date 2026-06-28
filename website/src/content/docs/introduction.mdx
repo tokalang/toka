@@ -3,97 +3,95 @@ title: Introduction
 description: What is Toka?
 ---
 
-Toka is a modern systems programming language designed for **performance, safety, and conciseness**. It bridges the gap between high-level productivity and low-level control through its unique **Attribute Token System** and **Pointer Morphology**.
+Toka is a no-GC systems programming language designed around explicit resource semantics. It keeps zero-cost performance and static safety as baselines, then tries to make systems code simpler to read, write, and maintain.
 
-## Core Philosophy
+## Design Position
 
-Toka is built on a few "Hard Rules" that make code visually predictable and highly distinguishable.
+Toka does not treat performance, safety, and simplicity as three independent slogans. Performance and static safety are the floor. The design question is what kind of syntax and compiler discipline can keep that floor while reducing accidental complexity in everyday systems code.
 
-### 1. The Hat Principle (Soul & Identity)
-Unlike C or Rust, Toka treats variable names as the **Soul (Value)**. Accessing a pointer variable `p` automatically dereferences it to its data. To operate on the **Identity (Address)**, you must "put a hat on it" using a sigil like `^`, `~`, `&`, or `*`.
+That leads to a few recurring principles:
 
-- `p = value` (Modify data pointed by p - Soul operation)
-- `^p = ^q` (Rebind pointer p to a new identity - Identity operation)
+- source code should show the operation that actually matters;
+- mutation, rebinding, transfer, and nullability should not be visually ambiguous;
+- resource ownership should be explicit enough for static checking;
+- low-level representation should be available without making raw pointer style the default API shape.
 
-### 2. Conciseness with Attribute Tokens
-Toka uses concise tokens to define mutability and nullability. These are discrete dimensions:
+## Core Model
 
-- `#` (Suffix to name): **Soul Mutability** (e.g., `auto x# = 10`)
-- `?` (Suffix to type): **Entity Nullability** (e.g., `auto x: i32? = none`)
-- `nul` (Prefix to name): **Pointer Nullability** (e.g., `auto nul ^p: User = null`)
-- `^#`, `~#` (Prefix to name): **Handle Mutability/Rebindability** (e.g., `auto ^#p = new i32(10)`)
+Toka separates two layers that many systems languages collapse into one notation:
 
-### 3. Explicit Ownership
-Toka's Pointer Morphology defines ownership and lifetime:
-- `^T`: **Unique** ownership (RAII).
-- `~T`: **Shared** ownership (Reference Counting).
-- `&T`: **Borrowed** access.
+| Layer | Meaning | Examples |
+| :--- | :--- | :--- |
+| Payload / Soul | The object content being read, written, passed, or matched | `x`, `x.field`, `x = value` |
+| Handle / Representation | The way an object is reached, owned, borrowed, shared, or rebound | `&x`, `*x`, `^x`, `~x`, `*x = *y` |
 
-## Modern Features
+Plain names operate on payload. Hats operate on handle identity. That is why `p = value` and `*p = *q` are different operations: one writes object content, the other rebinds a raw handle.
 
-### Pattern Matching
-Powerful `match` expressions support Enums, Strings, Integers, and **Or-Patterns** (`|`).
+## Resource Contracts
 
-```toka
-match result {
-    Ok(val) => println("Success"),
-    Err("timeout" | "disconnected") => println("Retry required"),
-    _ => println("Fatal error")
-}
-```
+Toka uses compact markers for distinct resource facts:
 
-### Standard Bitwise Operators
-Standard C-style symbols for bitwise logic: `&`, `|`, `^`, `~`, `<<`, `>>`.
+| Marker | Role |
+| :--- | :--- |
+| `#` | Payload mutability, or handle rebinding authority when placed after a hat |
+| `?` | Nullable payload type state |
+| `nul` | Nullable handle marker |
+| `&` | Borrow/reference handle |
+| `*` | Raw pointer handle |
+| `^` | Unique owning handle |
+| `~` | Shared owning handle |
+| `cede` | Explicit resource-transfer contract |
 
-### AOT Native Compilation
-Toka is a true statically compiled language with no virtual machine or heavy runtime. It leverages LLVM 20 to generate highly optimized native machine code.
+For ordinary object parameters, Toka uses logical in-place capture. A function writes `x: T` or `x#: T` when it wants the payload view. It puts a hat on a parameter only when it needs the handle itself, for example to forward or rebind that handle.
 
-- **Zero-Cost Abstractions**: High-level language features (such as encapsulation, generics, and RAII) are fully resolved and lowered at compile-time, ensuring no additional runtime overhead.
-- **Industrial-Grade Optimization**: The compiler inherits LLVM's comprehensive optimization pipeline (supporting `-O0` to `-O3`), delivering exceptional execution efficiency.
-- **Agile Execution**: While maintaining the strict performance of AOT compilation, Toka provides an agile development workflow via the `toka run` command and transparent system-level auto-linking.
+`cede` is both permission and obligation. If a function signature requests `cede`, the body must explicitly consume, forward, store, return, or otherwise complete that transfer path.
 
-## A Quick Taste of Toka
+## Language Surface
+
+The current implementation includes named `shape` construction, enum-like variants, traits and `impl` blocks, morphic generics, deterministic cleanup, `Result` / `Option` failure propagation with postfix `!`, `async` / `.await`, pattern matching, and native compilation through LLVM 20.
+
+The language and ecosystem are still young. The near-term engineering focus is compiler hardening, standard-library stabilization, Windows parity, incremental build reliability, and eventual self-hosting.
+
+## A Quick Taste
 
 ```toka
 import std/io::println
 
-// Define a shape (struct/adt)
+shape Resource(val: i32)
+
+fn keep(cede r: Resource) -> Resource {
+    return cede r
+}
+
 shape Rect (
     width: i32,
     height: i32
 )
 
-// Implement methods
 impl Rect {
     pub fn area(self) -> i32 {
         return self.width * self.height
     }
 }
 
-pub fn main() -> i32 {
-    // Initializing a shape
+fn main() -> i32 {
     auto r = Rect(width = 10, height = 20)
     println("Area: {}", r.area())
 
-    // Arrays and for-or
-    auto list = [1, 2, 3]
-    for x in list {
-        println("Item: {}", x)
-    } or {
-        println("List is empty!")
-    }
+    auto owned = Resource(val = 42)
+    auto moved = keep(cede owned)
 
+    if moved.val != 42 {
+        return 1
+    }
     return 0
 }
 ```
 
-<p class="slogan">Toka is built for developers who want the power of C++ with the safety of Rust and the beauty of a modern syntax.</p>
----
+## Learning Toka
 
-## 📚 Learning Toka
+This website is the primary reference for installation, tooling, and the current language surface.
 
-This website serves as the primary **Reference Manual** and landing page for Toka's tooling and installation. 
+For a longer tutorial path, read the community-driven **[Toka Book](https://lumicore-dev.github.io/toka-book/)**.
 
-For a comprehensive, step-by-step tutorial on Toka's core concepts (like the Hat Principle, Ownership, and Pointer Morphology), please read the official **[Toka Book](https://lumicore-dev.github.io/toka-book/)**.
-
-The **Toka Book** is our primary educational resource, containing in-depth explanations, idioms, and hands-on projects to guide you from beginner to advanced systems programming in Toka.
+For a concise syntax reference maintained with the repository, see **[docs/syntax.md](https://github.com/tokalang/toka/blob/main/docs/syntax.md)**.

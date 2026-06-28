@@ -3,21 +3,21 @@ title: 安装指南
 description: 如何安装 Toka 编译器及构建工具。
 ---
 
-为了获取极致的开箱即用体验，Toka 提供了官方预编译的二进制安装包，目前已**全平台原生支持 Windows、macOS 与 Linux**！得益于 Toka 内部静态集成的底层链接器（LLD），您无需配置任何外部 C++ 编译环境即可完成最终可执行文件的链接编译。
+Toka 为 macOS、Linux 和 Windows 发布预构建 release 包。macOS 与 Linux 安装脚本会下载当前 release，将编译器、项目管理器和标准库安装到 `~/.toka/`，并配置 shell 环境。
 
 ## 极速安装 (macOS & Linux)
 
-如果您使用的是 macOS 或 Linux 操作系统，请直接在终端中运行以下命令：
+运行安装脚本：
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-安装脚本会自动识别您的操作系统与硬件架构，拉取最新版编译器、包管理工具及标准库组合包至 `~/.toka/`，并极其贴心地将 `PATH` 与 `TOKA_LIB` 环境变量自动注入您的配置文件。
+脚本会识别系统和 CPU 架构，下载当前 release，并为常见 shell 配置 `PATH` 和 `TOKA_LIB`。
 
 ## Windows 安装
 
-对于 Windows 用户，Toka 提供了原生的 `.exe` 预编译二进制文件：
+Windows release 包可以从 GitHub Releases 下载。当前 Windows 开发路径仍需要系统中存在 MSYS2 LLVM/Clang 环境，因为 `tokac.exe` 依赖 LLVM 工具链基础设施。
 
 1. 前往 [GitHub Releases](https://github.com/tokalang/toka/releases) 页面。
 2. 下载最新版本中带有 `Windows` 后缀的压缩包。
@@ -25,16 +25,15 @@ curl -fsSL https://tokalang.dev/install.sh | bash
 4. 将解压目录下的 `bin` 文件夹添加至您的系统环境变量 `PATH` 中。
 5. 将解压目录下的 `lib` 文件夹路径添加至名为 `TOKA_LIB` 的系统环境变量中。
 
-> 💡 **提示:** Windows 版本基于底层的 Win32 API 进行了深度重构和适配，支持原生开发和调试体验！
-
 > [!WARNING]
-> **编译器依赖与环境准备 (重要)**：在 Windows 平台下，核心编译器 `tokac.exe` 依赖 **LLVM/Clang 编译器基础设施** 来完成源代码的翻译与最终链接。如果您的 Windows 系统是纯净裸机，在运行 `toka build` 或 `toka run` 时，后台拉起 `tokac.exe` 会因为找不到 LLVM 动态库而报错崩溃（系统错误码为 `0xC0000135`，显示为 STATUS_DLL_NOT_FOUND 或提示找不到 DLL）。
+> 如果在没有 LLVM DLL 的干净 Windows 环境里运行 `toka build` 或 `toka run`，`tokac.exe` 可能会以 `0xC0000135` (`STATUS_DLL_NOT_FOUND`) 失败启动。
 
 ### 解决方案
 
-您必须在系统中配置 **MSYS2** 编译环境：
+安装与终端环境匹配的 MSYS2 工具链：
+
 1. 下载并安装 [MSYS2](https://www.msys2.org)（默认安装到 `C:\msys64`）。
-2. 根据您所选择的终端环境，运行以下对应命令以装齐底层编译与链接工具链（推荐使用更现代的 **UCRT64 终端**）：
+2. 运行对应命令：
    * **MSYS2 UCRT64 终端**（推荐）：
      ```bash
      pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
@@ -48,62 +47,57 @@ curl -fsSL https://tokalang.dev/install.sh | bash
 
 ## 快速体验 (Hello World)
 
-安装完成后，您可以直接复制以下代码一键体验 Toka 的魅力：
+安装完成后，创建并运行一个小程序：
 
 ```bash
-# 1. 快速写入一个经典的 Hello World 文件
 echo 'import std/io::{println}
 
 fn main() {
     println("Hello, Toka World!")
 }' > hello.tk
 
-# 2. 一键编译并自动执行！
 toka run hello.tk
 ```
 
 ## 从源码构建 (进阶)
 
-如果您希望参与 Toka 语言底层的 C++ 核心开发，您可以从头构建整个环境。
+如果你希望参与编译器开发，或测试尚未发布的改动，可以从源码构建。
 
 ### 前置依赖
 
- - **LLVM 20 & LLD 20**: Toka 现已通过静态链接 LLVM 20 及其内置链接器 (LLD) 来实现零外部依赖的原生编译。因此您必须安装对应的开发头文件包。
-   - **Ubuntu/Debian**: 需安装 `llvm-20-dev` 和 `liblld-20-dev`。
-   - **macOS**: 通过 Homebrew 安装：`brew install llvm@20`（自带 LLVM 及 LLD 组件）。
+- **LLVM 20 & LLD 20**: 需要安装匹配的开发头文件和库。
+   - **Ubuntu/Debian**: 安装 `llvm-20-dev`、`liblld-20-dev`，如果你的 LLVM 包依赖 zstd，也需要 `libzstd-dev`。
+   - **macOS**: 通过 Homebrew 安装：`brew install llvm@20 zstd`。
    - **Windows**: 通过 MSYS2 安装：
      * **UCRT64 终端**（推荐）：`pacman -S mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld`
      * **MinGW64 终端**：`pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-lld`
- - **CMake**: 3.15 或更高版本（UCRT64 用户请安装 `mingw-w64-ucrt-x86_64-cmake` 和 `mingw-w64-ucrt-x86_64-ninja`；MinGW64 用户请安装 `mingw-w64-x86_64-cmake` 和 `mingw-w64-x86_64-ninja`）。
- - 操作系统对应的 C++ 编译链工具（如 MSVC / GCC / Clang。UCRT64 请使用 `mingw-w64-ucrt-x86_64-clang`；MinGW64 请使用 `mingw-w64-x86_64-clang`）。
+- **CMake**: 3.15 或更高版本。
+- C++17 编译器和平台构建工具，例如 Make、Ninja、GCC 或 Clang。
 
 ### 开始构建
-
-Toka 项目内包含了一个极其方便的自动化构建脚本 `rebuild.sh`，它可以一次性为您编译好 `tokac` (核心编译器) 以及纯正原生的 `toka` (交互式包管理器命令行)。
 
 1. 克隆代码仓库：
    ```bash
    git clone https://github.com/tokalang/toka.git
-   cd tokalang
+   cd toka
    ```
 
-2. 首次运行前配置 CMake 项目（只需一次）：
+2. 配置并构建：
    ```bash
-   mkdir build && cd build
-   cmake ..
-   cd ..
+   cmake -S . -B build
+   cmake --build build
    ```
 
-3. 运行根目录下的全量编译脚本：
+3. 也可以选择运行全量重建脚本：
    ```bash
    ./rebuild.sh
    ```
 
-编译完成后，您的编译器与包管理工具会自动输出并存放在本项目的 `build/bin` 目录下。
+编译完成后，`tokac` 和 `toka` 会出现在 `build/bin` 目录下。
 
 ## 环境配置
 
-为了在任何地方都可以自由无感地使用 Toka，请将以下几行配置加入到您的 `.zshrc` 或者 `.bashrc` 中：
+如果是源码构建，请将构建产物和标准库路径加入 shell 环境：
 
 ```bash
 # 将刚刚编译出的 tokac 和 toka 所在的产物目录加入环境变量
@@ -126,11 +120,11 @@ export TOKA_CLANG="/usr/local/opt/llvm@20/bin/clang"
 
 ## 使用包管理工具开发
 
-配置好环境变量后，您可以在任意目录直接使用原生 `toka` 命令来开发应用！
+配置好环境变量后，可以用 `toka` 命令完成项目工作流。
 
 ### 1. 初始化新工程
 
-通过 `new` 命令可以快速生成带有标准化目录结构的工程包：
+创建一个新的可执行项目：
 
 ```bash
 toka new my_app
@@ -139,14 +133,16 @@ cd my_app
 
 该命令将为您生成：
 - `src/main.tk`: 项目入口文件。
-- `toka.mod`: Toka 的声明式包管理与依赖描述清单。您可以通过此文件配置依赖项目和包属性。
+- `package.tk`: 包清单。
+- `build.tk`: 构建编排脚本。
 
 ### 2. 引入文件与第三方依赖
 
-Toka 提供了一套极其直观、符合直觉的 `import` 路径模块系统：
+Toka 支持直接的模块导入：
 
 **导入本地文件（相对与绝对路径）**：
-Toka 原生支持直接将路径写进代码里（注意：无需包裹在引号中）：
+路径可以直接写在代码中，无需引号：
+
 ```toka
 // 相对路径导入当前目录的 utils.tk
 import ./utils::{foo, bar}
@@ -157,19 +153,20 @@ import /opt/shared/mylib::{baz}
 ```
 
 **导入第三方包管理依赖**：
-如果你通过包管理器 `toka add pkg.tokalang.dev/user/ansi` 安装了第三方包，那么它会被注册。随后你可以直接在代码中使用标准方式导入它：
+如果你通过 `toka add` 安装依赖，它会被记录到 `package.tk` 中，之后可以通过包别名导入：
+
 ```toka
 import ansi::{...}
 ```
 
-> **提示:** 编译器在解析裸名称（如 `ansi`）时，会依次从标准库 (`TOKA_LIB`) 以及我们刚刚配置的全局搜索路径 (`TOKA_PATH`) 中进行查找匹配。
+> **提示:** 编译器解析裸名称（如 `ansi`）时，会从标准库 (`TOKA_LIB`) 和全局搜索路径 (`TOKA_PATH`) 中查找。
 
 ### 3. 一键编译与运行
 
-在平时开发测试时，您不需要手动操作编译器，直接在由 `toka.mod` 统控的目录下执行：
+在项目目录中构建并运行当前可执行目标：
 
 ```bash
 toka run
 ```
 
-该命令将自动读取配置、下载拉取所有必须的依赖库，完成编译，并最终向您呈现可执行文件的运行输出！如果您只想编译出最终二进制文件而不运行，可以使用 `toka build`。
+如果只想编译二进制而不运行，可以使用 `toka build`。

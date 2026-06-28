@@ -3,48 +3,56 @@ title: "命令行工具与构建"
 description: "全面掌握 Toka 官方管家 (CLI)：项目脚手架、测试、格式化与自动文档生成。"
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+Toka 提供两个命令行工具：
 
-Toka 提供了一个强大且**零配置**的官方命令行管家程序。在日常开发中，你几乎不需要直接去调用底层的 `tokac` 编译器，所有的项目管理、测试与构建工作都可以通过 `toka` 指令一键完成。
+- `tokac`: 编译器。
+- `toka`: 项目管理与构建编排命令。
+
+日常开发通常使用 `toka`。它负责包装编译器调用、包解析、构建元数据生成、测试、格式化和文档任务。
 
 ## 项目脚手架 (Scaffolding)
 
-在 Toka 中创建新项目是瞬间完成的，且自动强制采用官方的最佳实践。
-
 ### 1. `toka new <name>`
-创建一个新的**可执行应用程序**项目。它会自动生成一个 `src/main.tk` 绝对入口，以及一个被配置为可执行文件 (Executable) 目标的 `package.tk`。
+创建新的可执行项目目录，包含 `src/main.tk`、`package.tk` 和 `build.tk`。
 
 ```bash
 toka new my_app
 ```
 
 ### 2. `toka new <name> --lib`
-创建一个新的**第三方库 (Library)** 项目。它会自动跳过 `main.tk`，并直接为你生成官方[项目结构规范](/zh/project-structure)中所推荐的 `lib/<name>/mod.tk` 扁平化命名空间目录树。
+创建新的库项目，入口模块为 `lib/<name>/mod.tk`。
 
 ```bash
 toka new my_lib --lib
 ```
+
+### 3. `toka init`
+在当前目录中初始化 Toka 项目。
 
 ---
 
 ## 开发与构建
 
 ### 1. `toka run`
-一键编译并立即运行当前项目。它会自动读取 `package.tk` 中的构建目标并执行。
+通过 `build.tk` 构建当前项目，然后运行 `target/debug` 下最新生成的可执行文件。
 
 ### 2. `toka run <file.tk>`
-**单文件脚本运行器**。如果你只想写一段小脚本或者快速测试一个 `.tk` 文件，无需建立整个工程目录，直接使用该指令即可编译执行。
+编译并运行单个 `.tk` 文件，不要求当前目录是完整项目。
 
 ### 3. `toka build`
-仅编译项目，不执行。最终的二进制机器码可执行文件会被输出到 `target/` 或 `build/` 目录下。
+执行包解析、编译 `build.tk`，并由构建脚本生成配置好的目标。
+
+### 常用选项
+
+- `-v`, `--verbose`: 显示更多编译和构建输出。
+- `-f`, `--forge`: 启用实验性的 Forge 并行增量构建引擎。
 
 ---
 
 ## 测试与质量保证
 
 ### 1. `toka test`
-极其强大的**零配置测试运行器**。
-你只需要在项目的根目录下建一个 `tests/` 文件夹，并把你的测试文件扔进去。运行 `toka test` 时，管家会自动发现所有的 `.tk` 测试文件，链接你当前项目的 `lib/` 目录进行编译，最后在终端输出极其漂亮的彩色测试报告。
+发现 `tests/` 目录下的 `.tk` 文件，针对项目和标准库路径逐个编译、运行，并输出简洁的通过 / 失败统计。
 
 ```bash
 toka test
@@ -55,16 +63,17 @@ toka test
 # Test Results: 1 passed, 0 failed
 ```
 
+在 Windows 上，`toka test` 当前需要 Bash 兼容环境，例如 MSYS2 或 Git Bash。
+
 ### 2. `toka fmt`
-一键格式化项目内所有的 Toka 源代码。它会自动遍历 `src/`、`lib/`、`tests/` 和 `package.tk`，确保你的整个代码库严格符合官方 Toka 编码风格规范。
+格式化项目内的 Toka 源文件。
 
 ---
 
 ## 文档生成
 
 ### `toka doc`
-**全自动 API 字典生成器**。
-只需在你的 `pub fn` (公开函数) 或 `pub shape` (公开结构) 上方使用 `///` 进行注释。运行 `toka doc` 后，管家会自动提取这些签名和注释，并在项目根目录下生成一份排版极具高级感的 `docs/API.md` 文件。
+从带有 `///` 注释的公开声明生成 `docs/API.md`。
 
 ```toka
 /// 计算两个数字的和。
@@ -75,13 +84,12 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 ---
 
-## 包管理与注册表 (v0.9.7 新特性)
+## 包管理与注册表
 
-Toka v0.9.7 正式引入了**官方包管理器**。所有的项目依赖与元数据均通过 `package.tk` 文件（采用原生的 TON - Toka Object Notation 格式）进行极简管理。
+包元数据存放在 `package.tk` 中。当前注册表和包管理工作流仍然年轻，但 CLI 已提供包搜索、依赖记录和发布所需的基础命令。
 
 ### `toka search <keyword>`
-一键检索 Toka 官方包注册表 (`pkg.tokalang.dev`)。
-基于极致轻量的 Zero-Ops CDN 架构，它会在内存中安全地拉取并反射解析云端目录，为你提供带彩色高亮的搜索体验。
+搜索配置好的 Toka 包注册表。
 
 ```bash
 toka search ink
@@ -94,15 +102,14 @@ toka search ink
 ```
 
 ### `toka publish`
-将你当前的项目打包并发布到 Toka 官方注册中心。
-*注意：发布前请确保你的 `package.tk` 中已正确配置 `name`, `version` 与 `description`。*
+将当前项目打包并发布到注册表。发布前请确保 `package.tk` 中已正确配置 `name`、`version` 和 `description`。
 
 ### `toka add <url_or_name>`
-将一个远程的 Toka 依赖包添加到当前项目中，并自动抓取源代码更新 `package.tk`。
+向当前项目添加包依赖，并更新 `package.tk`。
 
 ---
 
 ## 工程清理与依赖
 
 ### `toka clean`
-一键清理。瞬间删除项目内所有编译过程中产生的临时产物（如 `target/`, `build/`, `.toka_build_exe` 以及依赖缓存），彻底释放磁盘空间。
+清理项目构建产物，例如 `target/`、`build/`、`.toka_build_exe` 和依赖缓存目录。

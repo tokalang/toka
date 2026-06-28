@@ -3,97 +3,95 @@ title: 简介
 description: 什么是 Toka 语言？
 ---
 
-Toka 是一门为 **性能、安全和简洁** 而设计的现代系统级编程语言。它通过独特的 **属性令牌系统 (Attribute Token System)** 和 **指针构词学 (Pointer Morphology)**，在高效的底层控制与高层生产力之间架起了一座桥梁。
+Toka 是一门围绕显式资源语义设计的无 GC 系统编程语言。它以零成本性能和静态安全为底线，并在此基础上追求更易读、易写、易维护的系统代码。
 
-## 核心哲学
+## 设计定位
 
-Toka 建立在几项“铁律”之上，使代码在视觉上具有高度的可预测性和区分度。
+Toka 不把性能、安全和简洁当作三个并列口号。性能和静态安全是底线。真正的设计问题是：在守住这两个底线的前提下，语言语法和编译器纪律能否减少日常系统代码中的偶然复杂度。
 
-### 1. 戴帽原则 (灵与肉)
-与 C 或 Rust 不同，Toka 将变量名视为 **Soul (灵/值本身)**。直接访问指针变量 `p` 会自动解引用得到数据。若要操作 **Handle (肉/指针地址本身)**，你需要通过符号（如 `^`, `~`, `&` 或 `*`）为其“戴上帽子”。
+这带来几条贯穿设计的原则：
 
-- `p = value` (修改 p 指向的数据内容 - 灵魂操作)
-- `^p = ^q` (将指针 p 重绑定到一个新的地址 - 肉体操作)
+- 源码应当展示真正发生的操作；
+- 可变、重绑定、转移和可空不应在视觉上含混；
+- 资源所有权应当显式到足以被静态检查；
+- 底层表示应当可用，但不应把裸指针风格变成默认 API 形状。
 
-### 2. 语法令牌属性
-Toka 使用简洁的令牌来定义可变性和可空性。这些是离散的维度：
+## 核心模型
 
-- `#` (作为名称后缀): **灵魂可变性** (例如：`auto x# = 10`)
-- `?` (作为类型后缀): **实体可空性** (例如：`auto x: i32? = none`)
-- `nul` (作为名称前缀): **指针本身可空** (例如：`auto nul ^p: User = null`)
-- `^#`, `~#` (作为名称前缀): **Handle 可重绑定性** (例如：`auto ^#p = new i32(10)`)
+Toka 把许多系统语言混在一起表达的东西拆成两层：
 
-### 3. 显式所有权
-Toka 的指针构词学在类型层面定义了所有权关系：
-- `^T`：**独占**所有权 (RAII)。
-- `~T`：**共享**所有权 (引用计数)。
-- `&T`：**借用**访问。
+| 层级 | 含义 | 示例 |
+| :--- | :--- | :--- |
+| Payload / Soul | 被读取、写入、传参、匹配的对象内容 | `x`, `x.field`, `x = value` |
+| Handle / Representation | 对象如何被访问、拥有、借用、共享或重绑定 | `&x`, `*x`, `^x`, `~x`, `*x = *y` |
 
-## 现代特性
+裸名操作 payload。帽子操作 handle 身份。因此 `p = value` 和 `*p = *q` 是两类不同操作：前者写对象内容，后者重绑定 raw handle。
 
-### 模式匹配
-强大的 `match` 表达式支持枚举、字符串、整数以及 **或模式 (`|`)**。
+## 资源契约
 
-```toka
-match result {
-    Ok(val) => println("成功"),
-    Err("timeout" | "disconnected") => println("需要重试"),
-    _ => println("致命错误")
-}
-```
+Toka 使用紧凑标记表达不同资源事实：
 
-### 标准位运算符
-支持标准的 C 风格位逻辑符号：`&`, `|`, `^`, `~`, `<<`, `>>`。
+| 标记 | 作用 |
+| :--- | :--- |
+| `#` | payload 可变；放在帽子后时表示 handle 具有重绑定权 |
+| `?` | payload 类型可空状态 |
+| `nul` | handle 可空标记 |
+| `&` | 借用 / 引用 handle |
+| `*` | 原始指针 handle |
+| `^` | 独占所有权 handle |
+| `~` | 共享所有权 handle |
+| `cede` | 显式资源转移契约 |
 
-### AOT 原生编译与零成本抽象
-Toka 是一门纯静态预先编译（AOT）语言，无虚拟机抽象层与庞大的运行时（Runtime）依赖。它依托 LLVM 20 后端，直接生成高效的底层目标平台机器码。
+普通对象参数使用逻辑上的原地捕获。函数需要 payload 视图时写 `x: T` 或 `x#: T`；只有函数确实需要 handle 本体时，才在参数名侧加帽子，例如为了转发或重绑定该 handle。
 
-- **零成本抽象**: 语法层面的高级语言特性（如封装、泛型与 RAII）在编译期会被彻底解析并降级，确保运行时无额外的性能开销。
-- **工业级优化**: 编译器全面继承并集成 LLVM 的优化管线（支持 `-O0` 至 `-O3` 级别），提供卓越的执行效率。
-- **敏捷执行体验**: 在保持 AOT 编译极高执行性能的同时，Toka 提供了 `toka run` 指令与透明的系统级自动链接机制，实现了类似于动态脚本语言的敏捷开发工作流。
+`cede` 既是权限，也是义务。如果函数签名请求 `cede`，函数体必须显式消费、转发、存储、返回，或以其他方式完成这条资源转移路径。
+
+## 语言表面
+
+当前实现包含具名 `shape` 构造、类 enum 变体、trait 与 `impl`、morphic 泛型、确定性清理、使用后缀 `!` 的 `Result` / `Option` 失败传播、`async` / `.await`、模式匹配，以及基于 LLVM 20 的原生编译。
+
+Toka 仍然是年轻语言和年轻生态。近期工程重点是编译器加固、标准库稳定、Windows parity、增量构建可靠性，以及最终自举。
 
 ## Toka 代码初探
 
 ```toka
 import std/io::println
 
-// 定义一个 Shape (结构体) - 必须使用圆括号
+shape Resource(val: i32)
+
+fn keep(cede r: Resource) -> Resource {
+    return cede r
+}
+
 shape Rect (
     width: i32,
     height: i32
 )
 
-// 实现固有方法
 impl Rect {
     pub fn area(self) -> i32 {
         return self.width * self.height
     }
 }
 
-pub fn main() -> i32 {
-    // 初始化 Shape
+fn main() -> i32 {
     auto r = Rect(width = 10, height = 20)
     println("面积: {}", r.area())
-    
-    // 数组与 for-or 循环
-    auto list = [1, 2, 3]
-    for x in list {
-        println("项: {}", x)
-    } or {
-        println("列表为空！")
+
+    auto owned = Resource(val = 42)
+    auto moved = keep(cede owned)
+
+    if moved.val != 42 {
+        return 1
     }
-    
     return 0
 }
 ```
 
-<p class="slogan">Toka 专为那些既渴望 C++ 的强大动力，又追求 Rust 的安全性与现代语法美感的开发者而设计。</p>
----
+## 深入学习 Toka
 
-## 📚 深入学习 Toka
+当前官网主要作为安装、工具链和当前语言表面的参考入口。
 
-当前官网主要作为 Toka 的 **API 参考手册** 和工具链下载引导。
+如果希望循序渐进学习，可以阅读社区维护的 **[Toka Book](https://lumicore-dev.github.io/toka-book/)**。
 
-如果您想循序渐进地系统学习 Toka 的核心概念（例如：帽氏法则、所有权、灵与壳等），请直接阅读官方深度教程：**[《Toka Book》](https://lumicore-dev.github.io/toka-book/)**。
-
-**Toka Book** 是我们专门为开发者准备的保姆级教程，包含丰富的实战项目和底层架构剖析，是您精通 Toka 系统级编程的最佳指南。
+如果需要和仓库同步维护的精简语法参考，请阅读 **[docs/syntax_zh.md](https://github.com/tokalang/toka/blob/main/docs/syntax_zh.md)**。

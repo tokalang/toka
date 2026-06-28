@@ -3,21 +3,21 @@ title: Installation
 description: How to install the Toka compiler and build tool.
 ---
 
-For a fast and hassle-free setup, we provide pre-compiled binaries that **natively support Windows, macOS, and Linux**. Thanks to the internally integrated linker (LLD), you no longer need to configure any external C++ build environment to compile and link your executables.
+Toka publishes prebuilt release archives for macOS, Linux, and Windows. The macOS and Linux installer downloads the latest release, installs the compiler, project manager, and standard library under `~/.toka/`, and updates your shell environment.
 
 ## Quick Install (macOS & Linux)
 
-If you are using macOS or Linux, you can install Toka and all its associated tools (the compiler, package manager, and standard library) by running the following command in your terminal:
+Run the installer:
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-This script will automatically detect your OS and CPU architecture, download the latest stable release to `~/.toka/`, and append the executables to your `PATH` and `TOKA_LIB` variables.
+The script detects your OS and CPU architecture, downloads the current release, and configures `PATH` and `TOKA_LIB` for common shells.
 
 ## Windows Installation
 
-For Windows users, Toka provides native `.exe` pre-compiled binaries:
+Windows archives are available from GitHub Releases. Current Windows development expects an MSYS2 LLVM/Clang environment to be available on `PATH`, because `tokac.exe` uses the LLVM toolchain infrastructure.
 
 1. Go to the [GitHub Releases](https://github.com/tokalang/toka/releases) page.
 2. Download the latest archive with the `Windows` suffix.
@@ -25,16 +25,15 @@ For Windows users, Toka provides native `.exe` pre-compiled binaries:
 4. Add the `bin` folder inside the extracted directory to your system's `PATH` environment variable.
 5. Add the `lib` folder inside the extracted directory to a new system environment variable named `TOKA_LIB`.
 
-> 💡 **Tip:** The Windows version has been deeply refactored and adapted to the underlying Win32 API, supporting a native development and debugging experience!
-
 > [!WARNING]
-> **Compiler Dependency & Environment setup (Important):** On Windows, the core compiler `tokac.exe` relies on the **LLVM/Clang compiler infrastructure** to perform compilation and generate machine code. If you execute `toka build` or `toka run` on a pure Windows machine without the required LLVM DLLs, `tokac.exe` will fail to start and crash with a system error code `0xC0000135` (STATUS_DLL_NOT_FOUND).
+> If you run `toka build` or `toka run` on a clean Windows machine without the required LLVM DLLs, `tokac.exe` may fail to start with `0xC0000135` (`STATUS_DLL_NOT_FOUND`).
 
 ### Resolution
 
-You must configure the **MSYS2** compilation environment on your system:
+Install the MSYS2 toolchain that matches your environment:
+
 1. Download and install [MSYS2](https://www.msys2.org) (typically to `C:\msys64`).
-2. Depending on your chosen terminal environment, run the corresponding command to install the required compiler tools (we recommend using the modern **UCRT64 terminal**):
+2. Run the matching command:
    * **MSYS2 UCRT64 Terminal** (Recommended):
      ```bash
      pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
@@ -48,62 +47,57 @@ You must configure the **MSYS2** compilation environment on your system:
 
 ## Quick Start (Hello World)
 
-Once installed, you can copy the following code to instantly experience Toka:
+Once installed, create and run a small program:
 
 ```bash
-# 1. Quickly write a classic Hello World file
 echo 'import std/io::{println}
 
 fn main() {
     println("Hello, Toka World!")
 }' > hello.tk
 
-# 2. Compile and run automatically in one click!
 toka run hello.tk
 ```
 
 ## Build From Source
 
-If you wish to contribute to the compiler's C++ core, you can easily build the toolchain from source.
+If you want to contribute to the compiler or test unreleased changes, build from source.
 
 ### Prerequisites
 
-- **LLVM 20 & LLD 20**: The Toka framework statically links against LLVM 20 and its integrated linker (LLD) to achieve zero-dependency native builds. You must install the corresponding development headers.
-  - **Ubuntu/Debian**: Install `llvm-20-dev` and `liblld-20-dev` (often packaged with the LLVM 20 toolchain).
-  - **macOS**: Install via Homebrew: `brew install llvm@20` (which includes both LLVM and LLD).
+- **LLVM 20 & LLD 20**: Install the matching development headers and libraries.
+  - **Ubuntu/Debian**: Install `llvm-20-dev`, `liblld-20-dev`, and `libzstd-dev` if required by your LLVM package.
+  - **macOS**: Install via Homebrew: `brew install llvm@20 zstd`.
   - **Windows**: Install via MSYS2:
     * **UCRT64 Terminal** (Recommended): `pacman -S mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld`
     * **MinGW64 Terminal**: `pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-lld`
-- **CMake**: Version 3.15 or higher (For UCRT64, install `mingw-w64-ucrt-x86_64-cmake` and `mingw-w64-ucrt-x86_64-ninja`; for MinGW64, install `mingw-w64-x86_64-cmake` and `mingw-w64-x86_64-ninja`).
-- A C++ build toolchain for your OS (e.g., MSVC, GCC, Clang. For UCRT64, use `mingw-w64-ucrt-x86_64-clang`; for MinGW64, use `mingw-w64-x86_64-clang`).
+- **CMake**: Version 3.15 or higher.
+- A C++17 compiler and platform build tool such as Make, Ninja, GCC, or Clang.
 
 ### Compiling
-
-Toka provides a convenient automated build script `rebuild.sh` that compiles both the core compiler `tokac` and the package manager `toka`.
 
 1. Clone the repository:
    ```bash
    git clone https://github.com/tokalang/toka.git
-   cd tokalang
+   cd toka
    ```
 
-2. Configure the CMake project (for the first time):
+2. Configure and build:
    ```bash
-   mkdir build && cd build
-   cmake ..
-   cd ..
+   cmake -S . -B build
+   cmake --build build
    ```
 
-3. Run the complete rebuild script from the root directory:
+3. Optionally run the full rebuild helper:
    ```bash
    ./rebuild.sh
    ```
 
-After compilation, both binaries will be available in the `build/bin` directory.
+After compilation, `tokac` and `toka` are available in `build/bin`.
 
 ## Environment Configuration
 
-To use Toka seamlessly from any directory, add these configurations to your `.zshrc` or `.bashrc`:
+For source builds, add the build output and standard library to your shell environment:
 
 ```bash
 # Add the compiler and build tool to your PATH
@@ -126,11 +120,11 @@ export TOKA_CLANG="/usr/local/opt/llvm@20/bin/clang"
 
 ## Package Manager Workflow
 
-Once the environment variables are set up, you can use the native `toka` command from any directory!
+Once the environment variables are set up, use the `toka` command for project workflows.
 
 ### 1. Initialize a New Project
 
-Use the `new` command to quickly scaffold a project with a standardized structure:
+Create a new executable project:
 
 ```bash
 toka new my_app
@@ -139,14 +133,16 @@ cd my_app
 
 This generates:
 - `src/main.tk`: The project entry file.
-- `toka.mod`: Toka's declarative package manifest.
+- `package.tk`: The package manifest.
+- `build.tk`: The build orchestration script.
 
 ### 2. Importing Files & Dependencies
 
-Toka provides an incredibly intuitive and straightforward `import` module system:
+Toka supports direct module imports:
 
 **Importing Local Files (Relative & Absolute)**:
-Toka natively supports writing paths directly in code (Note: no quotes needed!):
+Toka supports writing paths directly in code. No quotes are needed:
+
 ```toka
 // Relative path import for utils.tk in current directory
 import ./utils::{foo, bar}
@@ -157,19 +153,20 @@ import /opt/shared/mylib::{baz}
 ```
 
 **Importing Package Manager Dependencies**:
-If you installed a 3rd-party package via `toka add pkg.tokalang.dev/user/ansi`, it gets registered. You can then import it naturally:
+If you installed a package with `toka add`, it is recorded in `package.tk` and can be imported by its package alias:
+
 ```toka
 import ansi::{...}
 ```
 
-> **Tip:** When resolving bare names like `ansi`, the compiler searches sequentially through the standard library (`TOKA_LIB`) and your configured global paths (`TOKA_PATH`)..
+> **Tip:** When resolving bare names like `ansi`, the compiler searches the standard library (`TOKA_LIB`) and configured global paths (`TOKA_PATH`).
 
 ### 3. Build and Run 
 
-For continuous testing, simply orchestrate standard builds via:
+Inside a project directory, build and run the current executable:
 
 ```bash
 toka run
 ```
 
-This ensures required packages are downloaded, compile your source files efficiently, and instantly executes your application. Use `toka build` instead if you simply wish to compile a binary.
+Use `toka build` if you only want to compile the binary.
