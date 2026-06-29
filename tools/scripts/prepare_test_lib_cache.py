@@ -11,10 +11,6 @@ from pathlib import Path
 FNV_OFFSET = 14695981039346656037
 FNV_PRIME = 1099511628211
 OBJECT_CACHE_DENYLIST = {
-    # Top-level codegen symbols are not module-qualified yet, so these two both
-    # export _exists and cannot safely coexist as separate archive members.
-    "std/fs.tk",
-    "std/io.tk",
     # Platform base modules currently define __toka_panic_handler, which
     # collides with core/internal/runtime when both objects enter the archive.
     "sys/linux/base.tk",
@@ -22,7 +18,7 @@ OBJECT_CACHE_DENYLIST = {
     "sys/wasi/base.tk",
     "sys/windows/base.tk",
 }
-CACHE_FORMAT_VERSION = 12
+CACHE_FORMAT_VERSION = 13
 CACHE_ARCHIVE_NAME = "libtoka_cache.a"
 
 

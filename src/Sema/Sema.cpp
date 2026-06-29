@@ -131,6 +131,50 @@ static void debugCheckShapeMemberPermissions(const ShapeMember &,
                                              SourceLocation) {}
 #endif
 
+static bool isModuleScopedLibFunction(const Module &M, const std::string &name) {
+  if (name == "main") {
+    return false;
+  }
+  if (name.rfind("__toka_", 0) == 0) {
+    return false;
+  }
+  std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
+  if (path.empty()) {
+    return false;
+  }
+  path = toka::PathUtils::canonicalize(path);
+  return path.find("/lib/") != std::string::npos;
+}
+
+static uint64_t fnv1a64(const std::string &text) {
+  uint64_t hash = 14695981039346656037ULL;
+  for (unsigned char c : text) {
+    hash ^= c;
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+static std::string sanitizeSymbolPart(const std::string &text) {
+  std::string out;
+  out.reserve(text.size());
+  for (unsigned char c : text) {
+    out += (std::isalnum(c) || c == '_') ? static_cast<char>(c) : '_';
+  }
+  return out.empty() ? "_" : out;
+}
+
+static std::string moduleScopedCodegenName(const Module &M,
+                                           const std::string &name) {
+  if (!isModuleScopedLibFunction(M, name)) {
+    return name;
+  }
+  std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
+  path = toka::PathUtils::canonicalize(path);
+  return "__toka_mod_" + std::to_string(fnv1a64(path)) + "_" +
+         sanitizeSymbolPart(name);
+}
+
 static std::string defaultModuleNameForImport(const std::string &importPath) {
   std::string path = toka::PathUtils::normalize(importPath);
   while (path.size() > 1 && path.back() == '/') {
@@ -547,12 +591,18 @@ void Sema::declareGlobals(Module &M) {
 
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
+    Fn->CodegenName = moduleScopedCodegenName(M, Fn->Name);
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
                                   Arg.Permission, Fn->Loc);
     }
     ms.Functions[Fn->Name] = Fn.get();
+    auto &overloads = ms.FunctionOverloads[Fn->Name];
+    if (std::find(overloads.begin(), overloads.end(), Fn.get()) ==
+        overloads.end()) {
+      overloads.push_back(Fn.get());
+    }
     if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
       GlobalFunctions.push_back(Fn.get());
     }
@@ -639,7 +689,13 @@ void Sema::registerGlobals(Module &M) {
 
   // Case A: Register local symbols in the ModuleScope
   for (auto &Fn : M.Functions) {
+    Fn->CodegenName = moduleScopedCodegenName(M, Fn->Name);
     ms.Functions[Fn->Name] = Fn.get();
+    auto &overloads = ms.FunctionOverloads[Fn->Name];
+    if (std::find(overloads.begin(), overloads.end(), Fn.get()) ==
+        overloads.end()) {
+      overloads.push_back(Fn.get());
+    }
     if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
       GlobalFunctions.push_back(Fn.get()); // Still keep global map for flat-checks
     }
@@ -2249,6 +2305,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
   std::unique_ptr<FunctionDecl> InstancePtr(Instance);
 
   Instance->Name = mangledName;
+  Instance->CodegenName = mangledName;
   Instance->GenericParams.clear(); // Mark as concrete
 
   // 2. Scope Injection Setup

@@ -489,6 +489,89 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   ExternDecl *Ext = nullptr;
   ShapeDecl *Sh = nullptr; // Constructor
 
+  auto functionAcceptsCall = [&](FunctionDecl *Candidate) -> bool {
+    if (!Candidate) {
+      return false;
+    }
+    if (!Candidate->GenericParams.empty() || !Call->GenericArgs.empty()) {
+      return false;
+    }
+
+    size_t provided = Call->Args.size();
+    size_t params = Candidate->Args.size();
+    size_t required = params;
+    while (required > 0 && Candidate->Args[required - 1].DefaultValue) {
+      --required;
+    }
+
+    if (provided < required) {
+      return false;
+    }
+    if (!Candidate->IsVariadic && provided > params) {
+      return false;
+    }
+
+    std::vector<std::pair<Scope *, std::map<std::string, bool>>> movedSnapshot;
+    for (Scope *scope = CurrentScope; scope; scope = scope->Parent) {
+      std::map<std::string, bool> moved;
+      for (const auto &entry : scope->Symbols) {
+        moved[entry.first] = entry.second.Moved;
+      }
+      movedSnapshot.push_back({scope, std::move(moved)});
+    }
+
+    auto restoreMoved = [&]() {
+      for (auto &entry : movedSnapshot) {
+        Scope *scope = entry.first;
+        for (const auto &moved : entry.second) {
+          auto it = scope->Symbols.find(moved.first);
+          if (it != scope->Symbols.end()) {
+            it->second.Moved = moved.second;
+          }
+        }
+      }
+    };
+
+    bool accepts = true;
+    size_t fixedCount = std::min(provided, params);
+    for (size_t i = 0; i < fixedCount; ++i) {
+      auto expectedType =
+          toka::Type::fromString(Sema::synthesizePhysicalType(Candidate->Args[i]));
+      auto argType = checkExpr(Call->Args[i].get());
+      if (!expectedType || !argType || expectedType->isUnknown() ||
+          argType->isUnknown()) {
+        continue;
+      }
+      if (!isTypeCompatible(expectedType, argType)) {
+        accepts = false;
+        break;
+      }
+    }
+    restoreMoved();
+    return accepts;
+  };
+
+  auto pickModuleFunction = [&](ModuleScope *Target, const std::string &Name,
+                                FunctionDecl *Fallback) -> FunctionDecl * {
+    if (!Target) {
+      return Fallback;
+    }
+    auto it = Target->FunctionOverloads.find(Name);
+    if (it == Target->FunctionOverloads.end() || it->second.empty()) {
+      return Fallback;
+    }
+
+    FunctionDecl *match = nullptr;
+    size_t matchCount = 0;
+    for (auto *Candidate : it->second) {
+      if (functionAcceptsCall(Candidate)) {
+        match = Candidate;
+        ++matchCount;
+      }
+    }
+    return matchCount == 1 ? match : Fallback;
+  };
+
   // [NEW] Generic Constructor Pre-Check
   // If CallName looks like a generic type "Box<i32>", try to resolve it
   // as a Type. This triggers monomorphization in resolveType.
@@ -540,7 +623,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (modSpec.ReferencedModule) {
         ModuleScope *target = (ModuleScope *)modSpec.ReferencedModule;
         if (target->Functions.count(FuncName))
-          Fn = target->Functions[FuncName];
+          Fn = pickModuleFunction(target, FuncName, target->Functions[FuncName]);
         else if (target->Externs.count(FuncName))
           Ext = target->Externs[FuncName];
         else if (target->Shapes.count(FuncName))
@@ -605,14 +688,25 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (symPtr->ImportingDecl) {
       const_cast<ImportDecl*>(symPtr->ImportingDecl)->HasBeenUsed = true;
     }
+    if (sym.TypeObj && sym.TypeObj->toString() == "fn" && sym.ASTPtr) {
+      auto *symFn = static_cast<FunctionDecl *>(sym.ASTPtr);
+      Fn = pickModuleFunction((ModuleScope *)sym.ReferencedModule, symFn->Name,
+                              symFn);
+    } else if (sym.TypeObj && sym.TypeObj->toString() == "extern" &&
+               sym.ASTPtr) {
+      Ext = static_cast<ExternDecl *>(sym.ASTPtr);
+    }
+
     // Find implementation based on lookup
-    for (auto *GF : GlobalFunctions) {
-      if (GF->Name == CallName) {
-        Fn = GF;
-        break;
+    if (!Fn && !Ext) {
+      for (auto *GF : GlobalFunctions) {
+        if (GF->Name == CallName) {
+          Fn = GF;
+          break;
+        }
       }
     }
-    if (!Fn) {
+    if (!Fn && !Ext) {
       for (auto &pair : ExternMap) {
         if (pair.second->Name == CallName) {
           Ext = pair.second;

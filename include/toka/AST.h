@@ -1556,6 +1556,7 @@ public:
 
   bool IsPub = false;
   std::string Name;
+  std::string CodegenName;
   std::vector<Arg> Args;
   std::string ReturnType;
   EffectKind Effect = EffectKind::None;
@@ -1598,6 +1599,7 @@ public:
     auto n = std::make_unique<FunctionDecl>(IsPub, Name, std::move(clonedArgs),
                                             std::move(clonedBody), ReturnType,
                                             GenericParams, LifeDependencies, Effect);
+    n->CodegenName = CodegenName;
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
     n->IsDeleted = IsDeleted;

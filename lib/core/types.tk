@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import core/traits::{@encap}
+
 //Defines a weak type alias: creates a symbolic synonym for an existing type. 
 //It is semantically identical and transparent to the compiler, allowing seamless interchanging with the underlying type without explicit casting.
 pub alias usize = u64

@@ -4374,7 +4374,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
   std::string calleeName = call->Callee;
   if (call->ResolvedFn) {
-    calleeName = call->ResolvedFn->Name;
+    calleeName = call->ResolvedFn->CodegenName.empty()
+                     ? call->ResolvedFn->Name
+                     : call->ResolvedFn->CodegenName;
   } else if (call->ResolvedExtern) {
     calleeName = call->ResolvedExtern->Name;
     genExtern(call->ResolvedExtern);
@@ -4387,7 +4389,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   llvm::Function *callee = m_Module->getFunction(calleeName);
   if (!callee && call->ResolvedFn) {
     genFunction(call->ResolvedFn, "", true);
-    callee = m_Module->getFunction(call->ResolvedFn->Name);
+    callee = m_Module->getFunction(calleeName);
   }
   if (!callee && call->ResolvedExtern) {
     genExtern(call->ResolvedExtern);
@@ -4595,14 +4597,17 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   }
 
   // Proceed with normal Call compilation
-  const FunctionDecl *funcDecl = nullptr;
-  if (m_Functions.count(call->Callee))
-    funcDecl = m_Functions[call->Callee];
-  else if (m_Functions.count(calleeName))
-    funcDecl = m_Functions[calleeName];
+  const FunctionDecl *funcDecl = call->ResolvedFn;
+  const ExternDecl *extDecl = call->ResolvedExtern;
+  if (!funcDecl && !extDecl) {
+    if (m_Functions.count(call->Callee)) {
+      funcDecl = m_Functions[call->Callee];
+    } else if (m_Functions.count(calleeName)) {
+      funcDecl = m_Functions[calleeName];
+    }
+  }
 
-  const ExternDecl *extDecl = nullptr;
-  if (!funcDecl && m_Externs.count(calleeName))
+  if (!funcDecl && !extDecl && m_Externs.count(calleeName))
     extDecl = m_Externs[calleeName];
 
   bool isAsync = false;

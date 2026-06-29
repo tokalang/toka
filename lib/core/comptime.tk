@@ -29,6 +29,12 @@ pub shape FieldInfo(
     size: usize 
 )
 
+impl FieldInfo@encap {
+    pub *
+    pub fn clone(self) -> FieldInfo { return self }
+    fn drop(self#) {}
+}
+
 // T
 pub shape TypeInfo(
     name: str,
@@ -37,6 +43,12 @@ pub shape TypeInfo(
     size: usize,
     align: usize
 )
+
+impl TypeInfo@encap {
+    pub *
+    pub fn clone(self) = delete
+    fn drop(self#) {}
+}
 
 // ==========================================
 // 2.  ( Sema )

@@ -60,7 +60,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   if (func->IsDeleted)
     return nullptr;
 
-  std::string funcName = overrideName.empty() ? func->Name : overrideName;
+  std::string funcName = overrideName.empty()
+                             ? (func->CodegenName.empty() ? func->Name
+                                                           : func->CodegenName)
+                             : overrideName;
   if (funcName == "main") {
     llvm::Triple triple(toka::Parser::TargetTriple);
     if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
@@ -83,6 +86,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   } guard(*this, funcName);
 
   m_Functions[funcName] = func;
+  m_Functions[func->Name] = func;
   m_Symbols.clear();
 
   llvm::Function *f = m_Module->getFunction(funcName);

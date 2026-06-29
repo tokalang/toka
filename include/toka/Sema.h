@@ -293,6 +293,7 @@ private:
   struct ModuleScope {
     std::string Name;
     std::map<std::string, FunctionDecl *> Functions;
+    std::map<std::string, std::vector<FunctionDecl *>> FunctionOverloads;
     std::map<std::string, ExternDecl *> Externs;
     std::map<std::string, ShapeDecl *> Shapes;
     std::map<std::string, AliasInfo> TypeAliases;
