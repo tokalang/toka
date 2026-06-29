@@ -642,6 +642,12 @@ rm -rf "$TEST_DIR/simple_import_build" "$TEST_DIR/simple_import"
 mkdir -p "$TEST_DIR/simple_import_build/objects" "$TEST_DIR/simple_import_build/interfaces" "$TEST_DIR/simple_import"
 
 cat << 'EOF' > "$TEST_DIR/simple_import/lib.tk"
+pub const CACHE_LIMITS = (
+    u8 = (
+        max = 255:u8
+    )
+)
+
 pub fn value() -> i32 {
     return 7
 }
@@ -679,6 +685,93 @@ if ! TOKA_BUILD_DIR="$TEST_DIR/simple_import_build" "$TOKAC_ABS" "$TEST_DIR/simp
 fi
 "$TEST_DIR/simple_import_app"
 echo "PASS: Test 7.10"
+
+# 7.11 Test archive-backed cache mode uses cached interfaces in link mode.
+echo "Test 7.11: Archive-backed cache mode uses cached interfaces"
+AR_TOOL="${AR:-$(command -v llvm-ar 2>/dev/null || command -v ar 2>/dev/null || true)}"
+if [ -z "$AR_TOOL" ]; then
+    echo "FAIL: llvm-ar or ar is required for cache archive validation"
+    exit 1
+fi
+LIB_ARCHIVE="$TEST_DIR/simple_import_build/libsimple_cache.a"
+"$AR_TOOL" rcs "$LIB_ARCHIVE" "$LIB_OBJ"
+
+cat << 'EOF' > "$TEST_DIR/simple_import/const_main.tk"
+import ./lib::{CACHE_LIMITS}
+
+fn main() -> i32 {
+    if CACHE_LIMITS.u8.max == 255:u8 {
+        return 0
+    }
+    return 1
+}
+EOF
+
+if ! TOKA_BUILD_DIR="$TEST_DIR/simple_import_build" TOKA_USE_LIB_CACHE=1 "$TOKAC_ABS" --dump-dependencies=json "$TEST_DIR/simple_import/main.tk" > "$TEST_DIR/simple_import_archive_deps.json" 2> "$TEST_DIR/simple_import_archive_deps.err"; then
+    echo "FAIL: archive-backed cache mode could not dump dependencies"
+    cat "$TEST_DIR/simple_import_archive_deps.err"
+    exit 1
+fi
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+modules = data.get("modules", {})
+assert any(path.endswith("/interfaces/'"$LIB_HASH"'.tki") for path in modules), "cached lib interface was not used in link-mode cache"
+' < "$TEST_DIR/simple_import_archive_deps.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: archive-backed cache mode did not use the cached interface"
+    cat "$TEST_DIR/simple_import_archive_deps.json"
+    exit 1
+fi
+
+if ! TOKA_BUILD_DIR="$TEST_DIR/simple_import_build" TOKA_USE_LIB_CACHE=1 "$TOKAC_ABS" "$TEST_DIR/simple_import/main.tk" "$LIB_ARCHIVE" -o "$TEST_DIR/simple_import_archive_app" 2> "$TEST_DIR/simple_import_archive.err"; then
+    echo "FAIL: archive-backed cache mode could not link the cached object"
+    cat "$TEST_DIR/simple_import_archive.err"
+    exit 1
+fi
+"$TEST_DIR/simple_import_archive_app"
+
+if ! TOKA_BUILD_DIR="$TEST_DIR/simple_import_build" TOKA_USE_LIB_CACHE=1 "$TOKAC_ABS" "$TEST_DIR/simple_import/const_main.tk" "$LIB_ARCHIVE" -o "$TEST_DIR/simple_import_const_archive_app" 2> "$TEST_DIR/simple_import_const_archive.err"; then
+    echo "FAIL: archive-backed cache mode could not link cached anonymous record constants"
+    cat "$TEST_DIR/simple_import_const_archive.err"
+    exit 1
+fi
+"$TEST_DIR/simple_import_const_archive_app"
+echo "PASS: Test 7.11"
+
+# 7.12 Test source-less standalone interfaces keep const definitions.
+echo "Test 7.12: Source-less standalone interfaces keep const definitions"
+mkdir -p "$TEST_DIR/sourceless_interface"
+
+cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
+// @meta compiler_version: any
+// @meta format_version: 1
+// @meta target_triple: any
+// @meta source_hash: any
+
+pub const SOURCELESS_CONST: i32 = 42
+EOF
+
+cat << 'EOF' > "$TEST_DIR/sourceless_interface/main.tk"
+import ./lib::{SOURCELESS_CONST}
+
+fn main() -> i32 {
+    if SOURCELESS_CONST == 42 {
+        return 0
+    }
+    return 1
+}
+EOF
+
+if ! "$TOKAC_ABS" "$TEST_DIR/sourceless_interface/main.tk" -o "$TEST_DIR/sourceless_interface_app" 2> "$TEST_DIR/sourceless_interface.err"; then
+    echo "FAIL: source-less interface const was not emitted as a definition"
+    cat "$TEST_DIR/sourceless_interface.err"
+    exit 1
+fi
+"$TEST_DIR/sourceless_interface_app"
+echo "PASS: Test 7.12"
 
 # Clean up
 rm -rf "$TEST_DIR"

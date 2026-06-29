@@ -13,7 +13,8 @@ FNV_PRIME = 1099511628211
 OBJECT_CACHE_DENYLIST = {
     "core/task.tk",
 }
-CACHE_FORMAT_VERSION = 5
+CACHE_FORMAT_VERSION = 6
+CACHE_ARCHIVE_NAME = "libtoka_cache.a"
 
 
 def fnv1a_hex(data: bytes) -> str:
@@ -146,6 +147,41 @@ def write_object_list(cache_dir: str, modules):
     return list_path
 
 
+def cached_archive_path(cache_dir: str) -> Path:
+    return Path(cache_dir) / CACHE_ARCHIVE_NAME
+
+
+def find_archive_tool() -> str:
+    candidates = []
+    if os.environ.get("AR"):
+        candidates.append(os.environ["AR"])
+    candidates.extend(["llvm-ar", "ar"])
+    for candidate in candidates:
+        path = shutil.which(candidate) or (candidate if os.path.exists(candidate) else None)
+        if path:
+            return path
+    raise SystemExit("failed to find an archive tool: llvm-ar or ar")
+
+
+def write_archive(cache_dir: str, modules):
+    archive_path = cached_archive_path(cache_dir)
+    obj_paths = [
+        cached_object_path(cache_dir, module)
+        for module in sorted(modules)
+        if cached_object_path(cache_dir, module).exists()
+    ]
+    if archive_path.exists():
+        archive_path.unlink()
+    if not obj_paths:
+        return archive_path
+
+    proc = run([find_archive_tool(), "rcs", str(archive_path)] + [str(obj) for obj in obj_paths])
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stderr)
+        raise SystemExit(f"failed to create cache archive: {archive_path}")
+    return archive_path
+
+
 def write_test_object_map(cache_dir: str, test_cached_modules):
     map_path = Path(cache_dir) / "test_objects.map"
     with open(map_path, "w") as f:
@@ -227,6 +263,9 @@ def cache_is_fresh(existing, tokac: str, tests, cache_dir: str) -> bool:
         if not cached_interface_path(cache_dir, module).exists():
             return False
 
+    if cached_modules and not cached_archive_path(cache_dir).exists():
+        return False
+
     return True
 
 
@@ -252,11 +291,13 @@ def main():
     if cache_is_fresh(existing, args.tokac, tests, cache_dir):
         write_object_list(cache_dir, existing["cached_modules"])
         map_path = write_test_object_map(cache_dir, existing["test_cached_modules"])
+        archive_path = cached_archive_path(cache_dir)
         print(f"[cache] up to date: {cache_dir}")
         print(f"[cache] modules: {len(existing['modules'])}")
         print(f"[cache] cached objects: {len(existing['cached_modules'])}")
         print(f"[cache] object list: {Path(cache_dir) / 'objects.list'}")
         print(f"[cache] test object map: {map_path}")
+        print(f"[cache] archive: {archive_path}")
         return
 
     obj_dir = Path(cache_dir) / "objects"
@@ -318,10 +359,12 @@ def main():
     test_cached_modules = fingerprint.get("test_cached_modules", {})
     list_path = write_object_list(cache_dir, cached_modules)
     map_path = write_test_object_map(cache_dir, test_cached_modules)
+    archive_path = write_archive(cache_dir, cached_modules)
     print(f"[cache] modules: {len(modules)}")
     print(f"[cache] cached objects: {len(cached_modules)}")
     print(f"[cache] object list: {list_path}")
     print(f"[cache] test object map: {map_path}")
+    print(f"[cache] archive: {archive_path}")
 
 
 if __name__ == "__main__":

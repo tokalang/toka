@@ -78,6 +78,7 @@ private:
     std::vector<std::string> m_SearchPaths;
     std::map<std::string, std::string> m_PkgMap;
     bool m_PreferSource;
+    bool m_UseBuildCache;
     std::vector<std::string> m_Roots;
 
     std::set<std::string> m_ProvidedObjects;

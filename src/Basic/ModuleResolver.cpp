@@ -17,7 +17,11 @@ ModuleResolver::ModuleResolver(SourceManager &sm,
                                std::vector<std::string> searchPaths,
                                std::map<std::string, std::string> pkgMap,
                                bool preferSource)
-    : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)), m_PkgMap(std::move(pkgMap)), m_PreferSource(preferSource) {}
+    : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)),
+      m_PkgMap(std::move(pkgMap)), m_PreferSource(preferSource) {
+    const char *useBuildCache = std::getenv("TOKA_USE_LIB_CACHE");
+    m_UseBuildCache = useBuildCache && std::string(useBuildCache) == "1";
+}
 
 bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
                                      std::vector<std::unique_ptr<Module>> &astModules,
@@ -255,6 +259,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
                                     std::string *outActualPath) {
   std::string resolvedPath = filename;
   std::string originalTkPath = "";
+  bool selectedCachedInterfaceHasBacking = false;
   if (overrideSourceCode.empty()) {
       resolvedPath = resolveSourcePath(filename, m_SearchPaths);
       if (resolvedPath.empty()) {
@@ -269,11 +274,15 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       std::string expectedObj = buildDir + "/objects/" + calculateFNV1a(canonical) + ".o";
       std::string expectedTki = buildDir + "/interfaces/" + calculateFNV1a(canonical) + ".tki";
       bool isObjProvided = (m_ProvidedObjects.find(PathUtils::canonicalize(expectedObj)) != m_ProvidedObjects.end());
+      bool cacheObjExists = (std::ifstream(expectedObj).good());
       bool cacheTkiExists = (std::ifstream(expectedTki).good());
       bool isRoot = (std::find(m_Roots.begin(), m_Roots.end(), canonical) != m_Roots.end());
-      if (!isRoot && (isObjProvided || (!m_PreferSource && cacheTkiExists))) {
+      bool shouldUseCachedInterface =
+          isObjProvided || ((!m_PreferSource || m_UseBuildCache) && cacheTkiExists);
+      if (!isRoot && shouldUseCachedInterface) {
           if (cacheTkiExists) {
               resolvedPath = expectedTki;
+              selectedCachedInterfaceHasBacking = isObjProvided || cacheObjExists;
           }
       }
   } else {
@@ -311,6 +320,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
           if (std::ifstream(tkPath).good()) {
               resolvedPath = tkPath;
               fallbackTriggered = true;
+              selectedCachedInterfaceHasBacking = false;
           } else {
               DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
                                        "Incompatible or stale interface file: " + PathUtils::normalize(resolvedPath) + " (" + reason + ")");
@@ -412,6 +422,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       : resolvedPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
   module->IsInterface = finalIsInterface;
+  module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
 
   // Recursively parse imports
   for (const auto &imp : module->Imports) {

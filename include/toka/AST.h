@@ -1800,6 +1800,7 @@ public:
   std::string SourcePath;
   bool IsRootModule = false;
   bool IsInterface = false;
+  bool HasBackingObject = false;
   std::vector<std::unique_ptr<ImportDecl>> Imports;
   std::vector<std::unique_ptr<TypeAliasDecl>> TypeAliases;
   std::vector<std::unique_ptr<ShapeDecl>> Shapes;

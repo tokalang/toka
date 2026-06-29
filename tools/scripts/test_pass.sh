@@ -86,8 +86,24 @@ YELLOW='\033[0;33m'
 NC='\033[0m'
 GRAY='\033[0;90m'
 
+format_duration() {
+    local total="$1"
+    local hours=$((total / 3600))
+    local minutes=$(((total % 3600) / 60))
+    local seconds=$((total % 60))
+    if [ "$hours" -gt 0 ]; then
+        printf "%dh %02dm %02ds (%ss)" "$hours" "$minutes" "$seconds" "$total"
+    elif [ "$minutes" -gt 0 ]; then
+        printf "%dm %02ds (%ss)" "$minutes" "$seconds" "$total"
+    else
+        printf "%ss" "$total"
+    fi
+}
+
 run_without_test_cache() (
     unset TOKA_BUILD_DIR
+    unset TOKA_USE_LIB_CACHE
+    unset TOKA_CACHED_LIB_ARCHIVE
     unset TOKA_CACHED_LIB_OBJECTS_FILE
     unset TOKA_CACHED_LIB_OBJECTS_MAP
     USE_CACHED_LIB=0 "$@"
@@ -108,7 +124,9 @@ run_worker() {
     # Capture output in a buffer to ensure atomic printing
     OUTPUT=""
     CACHED_LIB_OBJECTS=()
-    if [ "$USE_CACHED_LIB" = "1" ] && [ -n "$TOKA_CACHED_LIB_OBJECTS_MAP" ] && [ -f "$TOKA_CACHED_LIB_OBJECTS_MAP" ]; then
+    if [ "$USE_CACHED_LIB" = "1" ] && [ -n "$TOKA_CACHED_LIB_ARCHIVE" ] && [ -f "$TOKA_CACHED_LIB_ARCHIVE" ]; then
+        CACHED_LIB_OBJECTS=("$TOKA_CACHED_LIB_ARCHIVE")
+    elif [ "$USE_CACHED_LIB" = "1" ] && [ -n "$TOKA_CACHED_LIB_OBJECTS_MAP" ] && [ -f "$TOKA_CACHED_LIB_OBJECTS_MAP" ]; then
         test_key="$test_path"
         case "$test_key" in
             "$PWD"/*) test_key="${test_key#$PWD/}" ;;
@@ -404,6 +422,8 @@ if [ "$USE_CACHED_LIB" = "1" ]; then
     CACHE_DIR="${TOKA_TEST_CACHE_DIR:-tmp/toka_test_cache}"
     python3 tools/scripts/prepare_test_lib_cache.py --tokac "$TOKAC" --cache-dir "$CACHE_DIR"
     export TOKA_BUILD_DIR="$CACHE_DIR"
+    export TOKA_USE_LIB_CACHE=1
+    export TOKA_CACHED_LIB_ARCHIVE="$CACHE_DIR/libtoka_cache.a"
     export TOKA_CACHED_LIB_OBJECTS_FILE="$CACHE_DIR/objects.list"
     export TOKA_CACHED_LIB_OBJECTS_MAP="$CACHE_DIR/test_objects.map"
 fi
@@ -420,7 +440,10 @@ else
 fi
 
 # Run parallel tests based on available cores
+PASS_TK_START=$(date +%s)
 find tests/pass -name "*.tk" | sort | tr '\n' '\0' | xargs -0 -P $CORES -n 1 "$SCRIPT_PATH" --worker | tee "$RESULTS_FILE"
+PASS_TK_END=$(date +%s)
+PASS_TK_DURATION=$((PASS_TK_END - PASS_TK_START))
 
 # Stats
 # Strip ANSI codes for accurate counting
@@ -447,6 +470,7 @@ rm -f "$RESULTS_FILE"
 echo "Summary:"
 echo -e "  Passed: ${GREEN}$pass_count${NC}"
 echo -e "  Failed: ${RED}$fail_count${NC}"
+echo "  PASS tk duration: $(format_duration "$PASS_TK_DURATION")"
 
 [ $fail_count -eq 0 ] || exit 1
 
