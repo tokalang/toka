@@ -444,7 +444,7 @@ pub fn get_val() -> i32 { return 42 }
 EOF
 cat << 'EOF' > "$TEST_DIR/main_cache.tk"
 import ./dep::{get_val}
-fn main() -> i32 { return 0 }
+fn main() -> i32 { return get_val() }
 EOF
 
 # Ensure clean build dir
@@ -642,22 +642,55 @@ rm -rf "$TEST_DIR/simple_import_build" "$TEST_DIR/simple_import"
 mkdir -p "$TEST_DIR/simple_import_build/objects" "$TEST_DIR/simple_import_build/interfaces" "$TEST_DIR/simple_import"
 
 cat << 'EOF' > "$TEST_DIR/simple_import/lib.tk"
+import sys/libc::{libc_strlen}
+
 pub const CACHE_LIMITS = (
     u8 = (
         max = 255:u8
     )
 )
 
+alias LocalValue = i32
+
+shape LocalCounter(val: i32)
+
+impl LocalCounter {
+    fn inc(self#) {
+        self.val += 1
+    }
+}
+
+pub shape LocalBox<'T>(value: T)
+
+impl<'T> LocalBox<'T> {
+    pub fn marker(self) -> i32 {
+        auto c# = LocalCounter(val = 0)
+        if libc_strlen(c"cached\n") == 7:usize {
+            c#.inc()
+        }
+        return c.val
+    }
+}
+
 pub fn value() -> i32 {
     return 7
+}
+
+pub fn aliased_value() -> LocalValue {
+    if libc_strlen(c"probe\n") == 6:usize {
+        return 11
+    }
+    return 0
 }
 EOF
 
 cat << 'EOF' > "$TEST_DIR/simple_import/main.tk"
 import ./lib
+import ./lib::{LocalBox}
 
 fn main() -> i32 {
-    if lib::value() == 7 {
+    auto b = LocalBox<i32>(value = 3)
+    if lib::value() == 7 && lib::aliased_value() == 11 && b.marker() == 1 {
         return 0
     }
     return 1

@@ -15,7 +15,6 @@
 import core/types::{usize, Addr, ADDR0}
 import core/traits::{@encap}
 import sys/libc::*
-import std/io::println
 import core/option::{Option}
 
 

@@ -3,6 +3,7 @@
 #include "toka/InterfaceVersion.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
+#include <cstdio>
 #include <sstream>
 #include <fstream>
 
@@ -17,6 +18,49 @@ static std::string calculateFNV1a(const std::string &str) {
     char buf[17];
     snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
     return std::string(buf);
+}
+
+static std::string escapeLiteralContent(const std::string &value) {
+    std::string out;
+    for (unsigned char c : value) {
+        switch (c) {
+        case '\n': out += "\\n"; break;
+        case '\t': out += "\\t"; break;
+        case '\r': out += "\\r"; break;
+        case '\\': out += "\\\\"; break;
+        case '"': out += "\\\""; break;
+        case '\0': out += "\\0"; break;
+        default:
+            if (c < 0x20 || c >= 0x7f) {
+                char buf[5];
+                std::snprintf(buf, sizeof(buf), "\\x%02x", c);
+                out += buf;
+            } else {
+                out += static_cast<char>(c);
+            }
+            break;
+        }
+    }
+    return out;
+}
+
+static std::string escapeCharLiteral(char value) {
+    switch (value) {
+    case '\n': return "\\n";
+    case '\t': return "\\t";
+    case '\r': return "\\r";
+    case '\\': return "\\\\";
+    case '\'': return "\\'";
+    case '\0': return "\\0";
+    default:
+        unsigned char c = static_cast<unsigned char>(value);
+        if (c < 0x20 || c >= 0x7f) {
+            char buf[5];
+            std::snprintf(buf, sizeof(buf), "\\x%02x", c);
+            return std::string(buf);
+        }
+        return std::string(1, value);
+    }
 }
 
 // Static helper to reconstruct variable names physical morphology
@@ -225,18 +269,18 @@ void TKIExporter::exportImport(const ImportDecl &decl) {
 }
 
 void TKIExporter::exportTypeAlias(const TypeAliasDecl &decl) {
-    if (!decl.IsPub) return;
     indent();
-    m_OS << "pub " << (decl.IsStrong ? "type " : "alias ") << decl.Name;
+    if (decl.IsPub) m_OS << "pub ";
+    m_OS << (decl.IsStrong ? "type " : "alias ") << decl.Name;
     printGenericParams(decl.GenericParams);
     m_OS << " = " << decl.TargetType;
     m_OS << "\n";
 }
 
 void TKIExporter::exportShape(const ShapeDecl &decl) {
-    if (!decl.IsPub) return;
+    if (decl.Name.rfind("__Toka_Anon_Rec_", 0) == 0) return;
     indent();
-    m_OS << "pub ";
+    if (decl.IsPub) m_OS << "pub ";
     if (decl.IsPacked) m_OS << "packed ";
     m_OS << "shape " << decl.Name;
     printGenericParams(decl.GenericParams);
@@ -309,9 +353,9 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
 }
 
 void TKIExporter::exportTrait(const TraitDecl &decl) {
-    if (!decl.IsPub) return;
     indent();
-    m_OS << "pub trait @" << decl.Name;
+    if (decl.IsPub) m_OS << "pub ";
+    m_OS << "trait @" << decl.Name;
     printGenericParams(decl.GenericParams);
     bool multilineHeader = false;
     if (!decl.SelfTraitBounds.empty()) {
@@ -394,11 +438,7 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
 
     // Methods
     for (const auto &method : decl.Methods) {
-        // Export impl methods
-        bool isTraitImpl = !decl.TraitName.empty();
-        if (isTraitImpl || method->IsPub) {
-            exportFunction(*method, /*forceKeepBody=*/!decl.GenericParams.empty());
-        }
+        exportFunction(*method, /*forceKeepBody=*/!decl.GenericParams.empty());
     }
     m_Indent--;
     writeln("}");
@@ -602,11 +642,11 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         else if (var->IsValueNullable) m_OS << "?";
         else if (var->IsValueBlocked) m_OS << "$";
     } else if (auto str = dynamic_cast<const StringExpr *>(expr)) {
-        m_OS << "\"" << str->Value << "\"";
+        m_OS << "c\"" << escapeLiteralContent(str->Value) << "\"";
     } else if (auto vstr = dynamic_cast<const ViewStringExpr *>(expr)) {
-        m_OS << "v\"" << vstr->Value << "\"";
+        m_OS << "\"" << escapeLiteralContent(vstr->Value) << "\"";
     } else if (auto ch = dynamic_cast<const CharLiteralExpr *>(expr)) {
-        m_OS << "'" << ch->Value << "'";
+        m_OS << "'" << escapeCharLiteral(ch->Value) << "'";
     } else if (auto deref = dynamic_cast<const DereferenceExpr *>(expr)) {
         exportExpr(deref->Expression.get(), /*stripHats=*/true);
     } else if (auto bin = dynamic_cast<const BinaryExpr *>(expr)) {

@@ -11,9 +11,27 @@ from pathlib import Path
 FNV_OFFSET = 14695981039346656037
 FNV_PRIME = 1099511628211
 OBJECT_CACHE_DENYLIST = {
-    "core/task.tk",
+    # These modules currently replay exported generic bodies that touch private
+    # implementation fields from another cached module. Keep them source-backed
+    # until interface replay carries the original module permission context.
+    "std/btreemap.tk",
+    "std/btreeset.tk",
+    "std/deque.tk",
+    "std/hashmap.tk",
+    "std/hashset.tk",
+    "std/slab.tk",
+    # Top-level codegen symbols are not module-qualified yet, so these two both
+    # export _exists and cannot safely coexist as separate archive members.
+    "std/fs.tk",
+    "std/io.tk",
+    # Platform base modules currently define __toka_panic_handler, which
+    # collides with core/internal/runtime when both objects enter the archive.
+    "sys/linux/base.tk",
+    "sys/macos/base.tk",
+    "sys/wasi/base.tk",
+    "sys/windows/base.tk",
 }
-CACHE_FORMAT_VERSION = 6
+CACHE_FORMAT_VERSION = 9
 CACHE_ARCHIVE_NAME = "libtoka_cache.a"
 
 
