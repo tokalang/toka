@@ -1,4 +1,6 @@
 
+import sys/libc::{libc_malloc, libc_free, libc_pthread_create, libc_pthread_join, libc_pthread_detach}
+
 /// Spawns a new OS thread using the underlying POSIX API.
 /// Returns the thread ID (Addr) or 0 on failure.
 pub fn sys_thread_spawn(func_ptr: Addr, arg_ptr: Addr) -> Addr {

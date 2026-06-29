@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cstdlib>
+#include <sstream>
 
 namespace toka {
 
@@ -392,9 +393,26 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       ~StackGuard() { stack.pop_back(); }
   } guard(m_RecursionStack);
 
-  SourceLocation startLoc = overrideSourceCode.empty()
-      ? m_SourceManager.loadFile(resolvedPath)
-      : m_SourceManager.addFile(resolvedPath, overrideSourceCode);
+  std::string parserPath = (finalIsInterface && !meta.SourcePath.empty())
+      ? PathUtils::canonicalize(meta.SourcePath)
+      : resolvedPath;
+
+  SourceLocation startLoc;
+  if (!overrideSourceCode.empty()) {
+      startLoc = m_SourceManager.addFile(resolvedPath, overrideSourceCode);
+  } else if (finalIsInterface && !meta.SourcePath.empty()) {
+      std::ifstream input(resolvedPath);
+      if (!input) {
+          DiagnosticEngine::report(DiagLoc{}, DiagID::ERR_FILE_IO,
+                                   "Failed to load interface file: " + resolvedPath);
+          return false;
+      }
+      std::stringstream buffer;
+      buffer << input.rdbuf();
+      startLoc = m_SourceManager.addFile(parserPath + "#interface", buffer.str());
+  } else {
+      startLoc = m_SourceManager.loadFile(resolvedPath);
+  }
 
   if (startLoc.isInvalid()) {
     if (overrideSourceCode.empty()) {
@@ -408,9 +426,6 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   Lexer lexer(code.c_str(), startLoc);
   auto tokens = lexer.tokenize();
 
-  std::string parserPath = (finalIsInterface && !meta.SourcePath.empty())
-      ? PathUtils::canonicalize(meta.SourcePath)
-      : resolvedPath;
   Parser parser(tokens, parserPath);
   auto module = parser.parseModule();
   if (!module) {
@@ -420,6 +435,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->SourcePath = (finalIsInterface && !meta.SourcePath.empty())
       ? PathUtils::canonicalize(meta.SourcePath)
       : resolvedPath;
+  module->ResolvedPath = canonicalPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
   module->IsInterface = finalIsInterface;
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;

@@ -530,8 +530,10 @@ void Sema::exitScope() {
   delete Old;
 }
 void Sema::declareGlobals(Module &M) {
-  std::string fileName = toka::PathUtils::canonicalize(
-      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
+  std::string fileName = !M.ResolvedPath.empty()
+      ? toka::PathUtils::canonicalize(M.ResolvedPath)
+      : toka::PathUtils::canonicalize(
+            DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
   ms.Name = fileName;
   size_t lastSlash = ms.Name.find_last_of('/');
@@ -619,8 +621,10 @@ void Sema::declareGlobals(Module &M) {
 void Sema::registerGlobals(Module &M) {
   // Initialize ModuleScope
 
-  std::string fileName = toka::PathUtils::canonicalize(
-      DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
+  std::string fileName = !M.ResolvedPath.empty()
+      ? toka::PathUtils::canonicalize(M.ResolvedPath)
+      : toka::PathUtils::canonicalize(
+            DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
   ms.Name = fileName;
   // Simple name extraction (e.g. std/io.tk -> io)
@@ -750,7 +754,9 @@ void Sema::registerGlobals(Module &M) {
   }
 
   // Case B: Handle Imports
-  std::string currentModuleKey = toka::PathUtils::canonicalize(M.SourcePath);
+  std::string currentModuleKey = !M.ResolvedPath.empty()
+      ? toka::PathUtils::canonicalize(M.ResolvedPath)
+      : toka::PathUtils::canonicalize(M.SourcePath);
   for (auto &Imp : M.Imports) {
     ModuleScope *target = nullptr;
     
@@ -2507,8 +2513,10 @@ FunctionDecl *Sema::instantiateGenericFunction(
     GenericInstancesModule->Functions.push_back(std::move(InstancePtr));
     Instance = GenericInstancesModule->Functions.back().get();
 
-    std::string fileName = toka::PathUtils::canonicalize(
-        DiagnosticEngine::SrcMgr->getFullSourceLoc(CurrentModule->Loc).FileName);
+    std::string fileName = !CurrentModule->ResolvedPath.empty()
+        ? toka::PathUtils::canonicalize(CurrentModule->ResolvedPath)
+        : toka::PathUtils::canonicalize(
+              DiagnosticEngine::SrcMgr->getFullSourceLoc(CurrentModule->Loc).FileName);
     ModuleMap[fileName].Functions[mangledName] = Instance;
 
     GlobalFunctions.push_back(Instance);

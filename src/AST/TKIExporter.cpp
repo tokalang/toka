@@ -101,7 +101,9 @@ static std::string reconstructVar(
 
     std::string name = toka::Type::stripMorphology(rawName);
     bool nameHasMorphicPrefix = !name.empty() && name[0] == '\'';
-    if (isMorphicExempt && !nameHasMorphicPrefix) {
+    std::string strippedType = toka::Type::stripPrefixes(typeStr);
+    bool typeHasMorphicPrefix = !strippedType.empty() && strippedType[0] == '\'';
+    if ((isMorphicExempt || typeHasMorphicPrefix) && !nameHasMorphicPrefix) {
         result += "'";
     }
     result += name;
@@ -114,6 +116,94 @@ static std::string reconstructVar(
         result += "$";
     }
 
+    return result;
+}
+
+static std::string exportBindingType(const std::string &typeStr) {
+    std::string stripped = toka::Type::stripPrefixes(typeStr);
+    if (!stripped.empty() && stripped[0] == '\'') {
+        stripped.erase(0, 1);
+    }
+    return stripped;
+}
+
+static bool hasTypeSideMorphicPrefix(const std::string &typeStr) {
+    std::string stripped = toka::Type::stripPrefixes(typeStr);
+    return !stripped.empty() && stripped[0] == '\'';
+}
+
+static std::string exportReturnType(const std::string &returnType,
+                                    EffectKind effect) {
+    bool hasReturnType = !returnType.empty() && returnType != "void";
+    if (!hasReturnType && effect == EffectKind::None) {
+        return "";
+    }
+    std::string result = " -> ";
+    if (effect == EffectKind::Async) {
+        result += "async ";
+    } else if (effect == EffectKind::Wait) {
+        result += "wait ";
+    }
+    result += hasReturnType ? returnType : "void";
+    return result;
+}
+
+static std::string takePatternMorphologyPrefix(std::string &name) {
+    if (name.rfind("&&", 0) == 0) {
+        name.erase(0, 2);
+        return "&&";
+    }
+    if (!name.empty()) {
+        char c = name[0];
+        if (c == '&' || c == '^' || c == '~' || c == '*') {
+            name.erase(0, 1);
+            return std::string(1, c);
+        }
+    }
+    return "";
+}
+
+static std::string patternMorphologyPrefix(const MatchArm::Pattern *pat) {
+    if (!pat) return "";
+    switch (pat->Permission.Morphology) {
+    case BindingMorphology::Raw:
+        return "*";
+    case BindingMorphology::Unique:
+        return "^";
+    case BindingMorphology::Shared:
+        return "~";
+    case BindingMorphology::Reference:
+        return "&";
+    case BindingMorphology::None:
+        break;
+    }
+    return pat->IsReference ? "&" : "";
+}
+
+static std::string reconstructPatternHead(const MatchArm::Pattern *pat,
+                                          bool includeSoulSuffix) {
+    std::string name = pat ? pat->Name : "";
+    std::string prefix = takePatternMorphologyPrefix(name);
+    if (prefix.empty()) {
+        prefix = patternMorphologyPrefix(pat);
+    }
+
+    if (!prefix.empty() && pat) {
+        if (pat->Permission.IdentityRebindable) {
+            prefix += "#";
+        } else if (pat->Permission.IdentityBlocked) {
+            prefix += "$";
+        }
+    }
+
+    std::string result = prefix + name;
+    if (includeSoulSuffix && pat) {
+        if (pat->IsValueMutable || pat->Permission.SoulWritable) {
+            result += "#";
+        } else if (pat->IsValueBlocked || pat->Permission.SoulBlocked) {
+            result += "$";
+        }
+    }
     return result;
 }
 
@@ -310,7 +400,7 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
                 m.IsExplicitBound, m.IsMorphicExempt, false,
                 m.IsValueMutable, m.IsValueNullable, m.IsValueBlocked
             );
-            m_OS << varStr << ": " << toka::Type::stripPrefixes(m.Type);
+            m_OS << varStr << ": " << exportBindingType(m.Type);
             if (m.DefaultValue) {
                 m_OS << " = ";
                 exportExpr(m.DefaultValue.get());
@@ -460,11 +550,19 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     }
     m_OS << ")";
 
-    if (!decl.ReturnType.empty() && decl.ReturnType != "void") {
-        m_OS << " -> " << decl.ReturnType;
-    }
+    m_OS << exportReturnType(decl.ReturnType, decl.Effect);
 
-    if (!decl.LifeDependencies.empty() && decl.MemberDependencies.empty()) {
+    bool hasDottedLifeDependency = false;
+    for (const auto &dep : decl.LifeDependencies) {
+        if (dep.find('.') != std::string::npos) {
+            hasDottedLifeDependency = true;
+            break;
+        }
+    }
+    bool useEffectsBlock =
+        !decl.MemberDependencies.empty() || hasDottedLifeDependency;
+
+    if (!decl.LifeDependencies.empty() && !useEffectsBlock) {
         m_OS << " <- ";
         for (size_t i = 0; i < decl.LifeDependencies.size(); ++i) {
             if (i > 0) m_OS << " | ";
@@ -472,11 +570,20 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         }
     }
 
-    if (!decl.MemberDependencies.empty()) {
+    if (useEffectsBlock) {
         m_OS << "\n";
         m_Indent++;
         writeln("effects:");
         m_Indent++;
+        if (!decl.LifeDependencies.empty()) {
+            indent();
+            m_OS << "return <- ";
+            for (size_t i = 0; i < decl.LifeDependencies.size(); ++i) {
+                if (i > 0) m_OS << " | ";
+                m_OS << decl.LifeDependencies[i];
+            }
+            m_OS << "\n";
+        }
         for (const auto &pair : decl.MemberDependencies) {
             indent();
             if (pair.first.empty()) {
@@ -521,7 +628,7 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
             false, arg.IsMorphicExempt, arg.IsCeded,
             arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
         );
-        m_OS << varStr << ": " << toka::Type::stripPrefixes(arg.Type);
+        m_OS << varStr << ": " << exportBindingType(arg.Type);
         if (arg.DefaultValue) {
             m_OS << " = ";
             exportExpr(arg.DefaultValue.get());
@@ -532,9 +639,7 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
         m_OS << "...";
     }
     m_OS << ")";
-    if (!decl.ReturnType.empty() && decl.ReturnType != "void") {
-        m_OS << " -> " << decl.ReturnType;
-    }
+    m_OS << exportReturnType(decl.ReturnType, decl.Effect);
     m_OS << "\n";
 }
 
@@ -553,7 +658,7 @@ void TKIExporter::exportGlobal(const Stmt &stmt) {
         m_OS << varStr;
         if (!decl->TypeName.empty() &&
             decl->TypeName.rfind("__Toka_Anon_Rec_", 0) != 0) {
-            m_OS << ": " << toka::Type::stripPrefixes(decl->TypeName);
+            m_OS << ": " << exportBindingType(decl->TypeName);
         }
         m_OS << " = ";
         uint64_t val = 0;
@@ -598,14 +703,22 @@ void TKIExporter::printGenericParams(const std::vector<GenericParam> &params) {
 }
 
 void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
+    bool nameHasMorphicPrefix = !arg.Name.empty() && arg.Name[0] == '\'';
+    bool keepTypeSideCede =
+        arg.IsCeded && hasTypeSideMorphicPrefix(arg.Type) &&
+        !nameHasMorphicPrefix && !arg.IsMorphicExempt;
     std::string varStr = reconstructVar(
-        arg.Name, arg.Type,
+        arg.Name, keepTypeSideCede ? exportBindingType(arg.Type) : arg.Type,
         arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
         arg.IsPointerNullable, arg.IsRebindable, arg.IsRebindBlocked,
-        false, arg.IsMorphicExempt, arg.IsCeded,
+        false, arg.IsMorphicExempt, keepTypeSideCede ? false : arg.IsCeded,
         arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
     );
-    m_OS << varStr << ": " << toka::Type::stripPrefixes(arg.Type);
+    if (keepTypeSideCede) {
+        m_OS << varStr << ": cede " << toka::Type::stripPrefixes(arg.Type);
+    } else {
+        m_OS << varStr << ": " << exportBindingType(arg.Type);
+    }
     if (arg.DefaultValue) {
         m_OS << " = ";
         exportExpr(arg.DefaultValue.get());
@@ -675,18 +788,23 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         exportExpr(post->LHS.get());
         if (post->Op == TokenType::PlusPlus) m_OS << "++";
         else if (post->Op == TokenType::MinusMinus) m_OS << "--";
+        else if (post->Op == TokenType::TokenWrite) m_OS << "#";
+        else if (post->Op == TokenType::TokenNull) m_OS << "?";
+        else if (post->Op == TokenType::TokenNone) m_OS << "$";
+        else if (post->Op == TokenType::DoubleQuestion) m_OS << "??";
+        else if (post->Op == TokenType::Bang) m_OS << "!";
     } else if (auto prop = dynamic_cast<const UnwrapPropagationExpr *>(expr)) {
         exportExpr(prop->Base.get());
-        m_OS << "?";
+        m_OS << "!";
     } else if (auto aw = dynamic_cast<const AwaitExpr *>(expr)) {
-        m_OS << "await ";
         exportExpr(aw->Expression.get());
+        m_OS << ".await";
     } else if (auto wa = dynamic_cast<const WaitExpr *>(expr)) {
-        m_OS << "wait ";
         exportExpr(wa->Expression.get());
+        m_OS << ".wait";
     } else if (auto st = dynamic_cast<const StartExpr *>(expr)) {
-        m_OS << "start ";
         exportExpr(st->Expression.get());
+        m_OS << ".start";
     } else if (auto cast = dynamic_cast<const CastExpr *>(expr)) {
         exportExpr(cast->Expression.get());
         m_OS << " as " << cast->TargetType;
@@ -880,8 +998,11 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (auto clo = dynamic_cast<const ClosureExpr *>(expr)) {
         m_OS << "{\n";
         m_Indent++;
-        if (!clo->ExplicitCaptures.empty()) {
+        bool hasHeader = !clo->ExplicitCaptures.empty() || clo->HasExplicitArgs;
+        if (hasHeader) {
             indent();
+        }
+        if (!clo->ExplicitCaptures.empty()) {
             m_OS << "[";
             for (size_t i = 0; i < clo->ExplicitCaptures.size(); ++i) {
                 if (i > 0) m_OS << ", ";
@@ -893,15 +1014,16 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             m_OS << "] ";
         }
         if (clo->HasExplicitArgs) {
-            if (clo->ExplicitCaptures.empty()) indent();
-            m_OS << "|";
             for (size_t i = 0; i < clo->ArgNames.size(); ++i) {
                 if (i > 0) m_OS << ", ";
                 m_OS << clo->ArgNames[i];
             }
-            m_OS << "| ";
         }
-        m_OS << "\n";
+        if (hasHeader) {
+            m_OS << "=>\n";
+        } else {
+            m_OS << "\n";
+        }
         if (clo->Body) {
             for (const auto &stmt : clo->Body->Statements) {
                 exportStmt(stmt.get());
@@ -934,7 +1056,7 @@ void TKIExporter::exportStmt(const Stmt *stmt, bool indentStmt) {
         );
         m_OS << varStr;
         if (!decl->TypeName.empty()) {
-            m_OS << ": " << toka::Type::stripPrefixes(decl->TypeName);
+            m_OS << ": " << exportBindingType(decl->TypeName);
         }
         if (decl->Init) {
             m_OS << " = ";
@@ -1028,9 +1150,7 @@ void TKIExporter::exportPattern(const MatchArm::Pattern *pat) {
             m_OS << pat->LiteralVal;
             break;
         case MatchArm::Pattern::Variable:
-            if (pat->IsReference) m_OS << "&";
-            m_OS << pat->Name;
-            if (pat->IsValueMutable) m_OS << "#";
+            m_OS << reconstructPatternHead(pat, true);
             break;
         case MatchArm::Pattern::Wildcard:
             m_OS << "_";
@@ -1039,7 +1159,7 @@ void TKIExporter::exportPattern(const MatchArm::Pattern *pat) {
             m_OS << "..";
             break;
         case MatchArm::Pattern::Decons: {
-            m_OS << pat->Name << "(";
+            m_OS << reconstructPatternHead(pat, false) << "(";
             for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
                 if (i > 0) m_OS << ", ";
                 if (pat->SubPatternNames.size() > i && !pat->SubPatternNames[i].empty()) {

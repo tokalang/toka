@@ -52,6 +52,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
   bool isUnique = false;
   bool isShared = false;
   bool isPointer = false;
+  bool isPtrNullable = false;
+  bool isRebindable = false;
+  bool isRebindBlocked = false;
   match(TokenType::KwAuto); // skip auto if present
 
   std::string morphologyPrefix = "";
@@ -59,22 +62,48 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     if (match(TokenType::Ampersand)) {
       isRef = true;
       morphologyPrefix += "&";
+      Token tok = previous();
+      isRebindable = tok.IsSwappablePtr;
+      isPtrNullable = isPtrNullable || tok.HasNull;
+      isRebindBlocked = tok.IsBlocked;
+      if (isPtrNullable) {
+        error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      }
       if (match(TokenType::KwMut))
         isMut = true;
     } else if (match(TokenType::And)) {
       isRef = true;
       morphologyPrefix += "&&";
+      Token tok = previous();
+      isRebindable = tok.IsSwappablePtr;
+      isPtrNullable = isPtrNullable || tok.HasNull;
+      isRebindBlocked = tok.IsBlocked;
+      if (isPtrNullable) {
+        error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      }
       if (match(TokenType::KwMut))
         isMut = true;
     } else if (match(TokenType::Caret)) {
       isUnique = true;
       morphologyPrefix += "^";
+      Token tok = previous();
+      isRebindable = tok.IsSwappablePtr;
+      isPtrNullable = isPtrNullable || tok.HasNull;
+      isRebindBlocked = tok.IsBlocked;
     } else if (match(TokenType::Tilde)) {
       isShared = true;
       morphologyPrefix += "~";
+      Token tok = previous();
+      isRebindable = tok.IsSwappablePtr;
+      isPtrNullable = isPtrNullable || tok.HasNull;
+      isRebindBlocked = tok.IsBlocked;
     } else if (match(TokenType::Star)) {
       isPointer = true;
       morphologyPrefix += "*";
+      Token tok = previous();
+      isRebindable = tok.IsSwappablePtr;
+      isPtrNullable = isPtrNullable || tok.HasNull;
+      isRebindBlocked = tok.IsBlocked;
     } else {
       break;
     }
@@ -96,8 +125,8 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     p->SubPatterns = std::move(subs);
     p->IsReference = isRef;
     p->Permission = BindingPermission::fromLegacy(
-        isPointer, isUnique, isShared, isRef, false, false, false, false,
-        false, false);
+        isPointer, isUnique, isShared, isRef, isRebindable,
+        isPtrNullable, isRebindBlocked, false, false, false);
     return p;
   }
 
@@ -270,8 +299,8 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
       p->SubPatternNames = std::move(subNames);
       p->IsReference = isRef;
       p->Permission = BindingPermission::fromLegacy(
-          isPointer, isUnique, isShared, isRef, false, false, false, false,
-          false, false);
+          isPointer, isUnique, isShared, isRef, isRebindable,
+          isPtrNullable, isRebindBlocked, false, false, false);
       return p;
     }
 
@@ -282,8 +311,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     p->IsValueMutable = nameTok.HasWrite;
     p->IsValueBlocked = nameTok.IsBlocked;
     p->Permission = BindingPermission::fromLegacy(
-        isPointer, isUnique, isShared, isRef, false, false, false,
-        nameTok.HasWrite, false, nameTok.IsBlocked);
+        isPointer, isUnique, isShared, isRef, isRebindable,
+        isPtrNullable, isRebindBlocked, nameTok.HasWrite, false,
+        nameTok.IsBlocked);
     return p;
   }
 

@@ -1798,6 +1798,7 @@ public:
 class Module : public ASTNode {
 public:
   std::string SourcePath;
+  std::string ResolvedPath;
   bool IsRootModule = false;
   bool IsInterface = false;
   bool HasBackingObject = false;

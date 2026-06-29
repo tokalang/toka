@@ -1,4 +1,6 @@
 
+import sys/libc::{libc_printf, libc_abort}
+
 impl<'T> Option<'T> {
     /// Unwrap the option or panic with a custom error message
     pub fn expect(self, *msg: char) -> 'T {
