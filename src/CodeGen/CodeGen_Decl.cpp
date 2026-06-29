@@ -51,6 +51,18 @@ static std::string getTraitFamilyNameForCodeGen(std::string traitName) {
   return traitName;
 }
 
+static bool isCoreRuntimePanicFallback(const Module *module,
+                                       const FunctionDecl *func) {
+  if (!func || func->Name != "__toka_panic_handler") {
+    return false;
+  }
+  std::string file =
+      module && !module->ResolvedPath.empty() ? module->ResolvedPath
+                                              : (module ? module->SourcePath : "");
+  file = toka::PathUtils::canonicalize(file);
+  return file.find("/lib/core/internal/runtime.tk") != std::string::npos;
+}
+
 llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                                      const std::string &overrideName,
                                      bool declOnly) {
@@ -225,6 +237,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     if (triple.supportsCOMDAT()) {
       f->setComdat(m_Module->getOrInsertComdat(f->getName()));
     }
+  }
+  if (!declOnly && isCoreRuntimePanicFallback(m_AST, func)) {
+    f->setLinkage(llvm::Function::WeakAnyLinkage);
   }
 
   // [Fix] Prevent double generation of function bodies (e.g. from multiple

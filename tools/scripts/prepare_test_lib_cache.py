@@ -10,15 +10,8 @@ from pathlib import Path
 
 FNV_OFFSET = 14695981039346656037
 FNV_PRIME = 1099511628211
-OBJECT_CACHE_DENYLIST = {
-    # Platform base modules currently define __toka_panic_handler, which
-    # collides with core/internal/runtime when both objects enter the archive.
-    "sys/linux/base.tk",
-    "sys/macos/base.tk",
-    "sys/wasi/base.tk",
-    "sys/windows/base.tk",
-}
-CACHE_FORMAT_VERSION = 13
+OBJECT_CACHE_DENYLIST = set()
+CACHE_FORMAT_VERSION = 14
 CACHE_ARCHIVE_NAME = "libtoka_cache.a"
 
 
