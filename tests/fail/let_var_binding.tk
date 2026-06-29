@@ -1,0 +1,15 @@
+fn use_let() -> i32 {
+    let x = 1
+    return x
+}
+
+fn use_var() -> i32 {
+    var y = 2
+    return y
+}
+
+fn main() -> i32 {
+    return use_let() + use_var()
+}
+
+// EXPECT: error[E0101]:

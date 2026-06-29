@@ -1,0 +1,12 @@
+import tests/import_test/encap_visibility_lib::{WildcardBox, PathBox, CrateBox}
+
+fn main() -> i32 {
+    auto w = WildcardBox(open_val = 3, secret_val = 4)
+    auto p = PathBox(path_val = 5, private_val = 6)
+    auto c = CrateBox(crate_val = 7, private_val = 8)
+
+    assert(w.open_val == 3, "wildcard public field should be visible")
+    assert(p.path_val == 5, "path-visible field should be visible")
+    assert(c.crate_val == 7, "crate-visible field should be visible")
+    return 0
+}

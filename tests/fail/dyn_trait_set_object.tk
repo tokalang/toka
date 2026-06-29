@@ -1,0 +1,17 @@
+trait @Readable {
+    pub fn read(self) -> i32
+}
+
+trait @Writable {
+    pub fn write(self#, value: i32) -> void
+}
+
+fn use_object(obj: dyn @{Readable, Writable}) -> i32 {
+    return obj.read()
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E01151]:

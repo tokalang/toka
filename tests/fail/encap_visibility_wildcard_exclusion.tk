@@ -1,0 +1,8 @@
+import tests/import_test/encap_visibility_lib::WildcardBox
+
+fn main() -> i32 {
+    auto w = WildcardBox(open_val = 3, secret_val = 4)
+    auto x = w.secret_val
+    // EXPECT: error[E0418]:
+    return x
+}
