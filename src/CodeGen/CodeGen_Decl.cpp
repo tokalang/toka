@@ -1500,7 +1500,7 @@ void CodeGen::genGlobal(const Stmt *stmt) {
       type = llvm::Type::getInt32Ty(m_Context);
     }
 
-    bool declOnly = toka::PathUtils::isDeclOnly(m_AST->IsRootModule, m_AST->SourcePath);
+    bool declOnly = !m_AST->IsRootModule && m_AST->IsInterface;
     llvm::Constant *finalConstInit = constInit;
     if (declOnly && !var->IsConst) {
       finalConstInit = nullptr;

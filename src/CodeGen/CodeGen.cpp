@@ -279,7 +279,7 @@ void CodeGen::resolveSignatures(const Module &ast) {
 
 void CodeGen::generate(const Module &ast) {
   m_AST = &ast;
-  bool declOnly = toka::PathUtils::isDeclOnly(ast.IsRootModule, ast.SourcePath);
+  bool declOnly = !ast.IsRootModule && ast.IsInterface;
 
   // Generate Globals (Emission)
   for (const auto &glob : ast.Globals) {

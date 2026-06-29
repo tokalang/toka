@@ -398,7 +398,10 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   Lexer lexer(code.c_str(), startLoc);
   auto tokens = lexer.tokenize();
 
-  Parser parser(tokens, resolvedPath);
+  std::string parserPath = (finalIsInterface && !meta.SourcePath.empty())
+      ? PathUtils::canonicalize(meta.SourcePath)
+      : resolvedPath;
+  Parser parser(tokens, parserPath);
   auto module = parser.parseModule();
   if (!module) {
     return false;
@@ -408,6 +411,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       ? PathUtils::canonicalize(meta.SourcePath)
       : resolvedPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
+  module->IsInterface = finalIsInterface;
 
   // Recursively parse imports
   for (const auto &imp : module->Imports) {

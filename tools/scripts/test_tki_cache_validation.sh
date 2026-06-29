@@ -542,6 +542,51 @@ fi
 "$TEST_DIR/string_user_app"
 echo "PASS: Test 7.7"
 
+# 7.8 Test cached core interfaces keep their original parser context.
+echo "Test 7.8: Preserving core source context while parsing cached interfaces"
+rm -rf "$TEST_DIR/interface_context_build"
+mkdir -p "$TEST_DIR/interface_context_build/objects" "$TEST_DIR/interface_context_build/interfaces"
+
+OPTION_HASH=$(python3 -c '
+import os
+FNV_OFFSET = 14695981039346656037
+FNV_PRIME = 1099511628211
+path = os.path.realpath("lib/core/option.tk").replace("\\\\", "/")
+h = FNV_OFFSET
+for b in path.encode():
+    h ^= b
+    h = (h * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+print(f"{h:016x}")
+')
+OPTION_OBJ="$TEST_DIR/interface_context_build/objects/$OPTION_HASH.o"
+OPTION_TKI="$TEST_DIR/interface_context_build/interfaces/$OPTION_HASH.tki"
+
+TOKA_BUILD_DIR="$TEST_DIR/interface_context_build" "$TOKAC_ABS" -c lib/core/option.tk --emit-interface -o "$OPTION_OBJ"
+if [ ! -f "$OPTION_TKI" ]; then
+    echo "FAIL: Expected cached core/option.tki at $OPTION_TKI"
+    exit 1
+fi
+
+TOKA_BUILD_DIR="$TEST_DIR/interface_context_build" "$TOKAC_ABS" --dump-dependencies=json -c lib/core/traits.tk > "$TEST_DIR/traits_deps.json"
+
+python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+modules = data.get("modules", {})
+assert any(path.endswith("/interfaces/'"$OPTION_HASH"'.tki") for path in modules), "core/traits should use cached core/option.tki"
+assert not any(path.endswith("/lib/core/prelude.tk") for path in modules), "core interface parsing must not inject implicit prelude"
+option_key = next(path for path in modules if path.endswith("/interfaces/'"$OPTION_HASH"'.tki"))
+assert modules[option_key].get("kind") == "interface", "cached option module should remain an interface"
+assert modules[option_key].get("dependencies") == [], "core/option.tki should not gain implicit dependencies"
+' < "$TEST_DIR/traits_deps.json"
+
+if [ $? -ne 0 ]; then
+    echo "FAIL: Test 7.8 Python validation failed"
+    cat "$TEST_DIR/traits_deps.json"
+    exit 1
+fi
+echo "PASS: Test 7.8"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"
