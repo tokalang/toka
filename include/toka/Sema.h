@@ -87,6 +87,7 @@ struct SymbolInfo {
   bool IsDeclaredMutable = false;
   bool HasBeenMutated = false;
   bool HasBeenUsed = false;
+  bool HasHandleBeenUsed = false;
   bool IsDeclaredVariable = false;
   const ImportDecl* ImportingDecl = nullptr;
   bool IsRebindable = false; // [NEW] prefix '#' or '!' rebind permission

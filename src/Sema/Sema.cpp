@@ -1618,6 +1618,23 @@ void Sema::checkFunction(FunctionDecl *Fn) {
           }
         }
       }
+      if (info.IsFunctionParameter && info.TypeObj &&
+          (info.TypeObj->isPointer() || info.TypeObj->isSmartPointer() ||
+           info.TypeObj->isReference()) &&
+          !info.HasHandleBeenUsed && Type::stripMorphology(name) != "self") {
+        std::string stripped = name;
+        size_t idx = 0;
+        while (idx < stripped.size() &&
+               (stripped[idx] == '*' || stripped[idx] == '&' ||
+                stripped[idx] == '^' || stripped[idx] == '~' ||
+                stripped[idx] == '#')) {
+          idx++;
+        }
+        if (stripped.empty() || idx >= stripped.size() || stripped[idx] != '_') {
+          DiagnosticEngine::report(info.DeclLoc.isValid() ? info.DeclLoc : Fn->Loc,
+                                   DiagID::WARN_HATTED_PARAM_HANDLE_UNUSED, name);
+        }
+      }
     }
   }
 

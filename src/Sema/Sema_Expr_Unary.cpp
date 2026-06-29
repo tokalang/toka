@@ -133,6 +133,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
 
     if (CurrentScope->findSymbol(actualName, Info)) {
+      if (Unary->Op == TokenType::Star || Unary->Op == TokenType::Caret ||
+          Unary->Op == TokenType::Tilde || Unary->Op == TokenType::Ampersand) {
+        Info->HasHandleBeenUsed = true;
+      }
+
       // [Fix] Trace to Source for Borrow Registration/Check
       SymbolInfo *EffectiveInfo = Info;
       std::string EffectiveName = actualName;

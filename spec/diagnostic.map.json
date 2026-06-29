@@ -771,6 +771,16 @@
       "level": "Warning",
       "message": "Discarded Result type '{}'; errors should be explicitly handled"
     },
+    "W0407": {
+      "stage": "Sema",
+      "domain": "Ownership",
+      "kind": "Unused",
+      "confidence": "Conservative",
+      "description": "A parameter declares a handle morphology but the function body never uses the handle view. The parameter may only need a payload signature.",
+      "id": "WARN_HATTED_PARAM_HANDLE_UNUSED",
+      "level": "Warning",
+      "message": "Parameter '{}' declares a handle morphology but its handle view is never used"
+    },
     "S0401": {
       "stage": "Sema",
       "domain": "ControlFlow",

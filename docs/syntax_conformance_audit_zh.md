@@ -89,12 +89,12 @@
 
 4. hatted parameter obligation
 
-   当前已有 `param_type_side_reference.tk` 与 `redundant_param_borrow.tk`，可以拒绝 `info: &Info` 和无意义的 `&info: Info`。但更一般的规则还没有完全测试化：函数签名带帽时，函数体是否必须使用、转发、存储或重绑定该 handle。
+   当前已有 `param_type_side_reference.tk` 与 `redundant_param_borrow.tk`，可以拒绝 `info: &Info` 和无意义的 `&info: Info`。同时编译器已经增加 `W0407`，当函数参数声明了 handle morphology 但函数体没有使用 handle 视图时，会给出 warning。
 
-   建议先形成设计决议，再补测试：
+   这还不是 hard error。更一般的规则仍需形成设计决议：
 
    - 如果作为 hard error：补 `tests/fail/hatted_param_unused.tk`
-   - 如果作为 warning：补 warning snapshot
+   - 如果保持 warning：补 warning snapshot 或诊断测试工具
    - 如果仅作为风格规则：文档需要明确“不保证诊断”
 
 ### P2：适合随后补的组合测试
@@ -132,6 +132,8 @@
 `'T` / `'field` / `'param` 的规则已经比较一致：单引号属于 morphic 绑定名，不属于类型侧。`tests/pass/g08_generic_morphic.tk` 覆盖了 morphic field 与 morphic parameter 的正例，type-side 错误已有 fail case。
 
 `#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。缺口不是语义定义，而是矩阵测试仍偏分散：后续可以新增一个只覆盖 `x#`、`^#x`、`x$`、`^$x` 的小型 pass/fail 组。
+
+`W0407` 是 hatted 参数义务的第一步工程化：它只提示“签名声明了 handle，但函数体没有使用 handle 视图”，不禁止 payload 读取，也不把该规则升级为错误。这样可以先暴露可疑签名，同时避免误伤 raw buffer、FFI adapter、测试和标准库中的历史写法。
 
 ### `@encap pub(path)` 当前边界
 

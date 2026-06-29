@@ -472,6 +472,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (innerObj->isUnknown())
       return toka::Type::fromString("unknown");
 
+    if (auto *VE = dynamic_cast<VariableExpr *>(Addr->Expression.get())) {
+      std::string actualName = VE->Name;
+      SymbolInfo *InfoPtr = nullptr;
+      if (CurrentScope->findVariableWithDeref(VE->Name, InfoPtr, actualName)) {
+        InfoPtr->HasHandleBeenUsed = true;
+      }
+    }
+
     // Borrow Tracking
     Expr *scan = Addr->Expression.get();
     // Unwrap Postfix (like x#)
