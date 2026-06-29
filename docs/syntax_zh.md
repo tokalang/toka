@@ -232,6 +232,19 @@ impl Rect@Shape {
 }
 ```
 
+动态 trait 对象在类型位置使用 `dyn @Trait`。如果某个具体类型实现了该 trait，它的值可以传给期望 `dyn @Trait` 的参数；普通参数传递不需要写 `&`，因为 Toka 参数本来就是原地捕获。
+
+```toka
+fn print_area(item: dyn @Shape) -> i32 {
+    return item.area()
+}
+
+auto rect = Rect(w = 10, h = 20)
+auto area = print_area(rect)
+```
+
+通过 `dyn @Trait` 调用方法时，会经由 trait 接口动态派发。在定义模块之外，只有 trait 中的 `pub fn` 方法可以被调用。当前稳定的 trait object 语法是单个 trait facet，例如 `dyn @Shape`；`dyn @{A, B}` 不属于当前公开语法。动态闭包使用独立的 `dyn fn(...) -> T` 语法，不是 trait object。
+
 Trait 约束必须使用 `@Trait` 表示单个 facet，使用 `@{Trait1, Trait2}` 表示 trait facet set。Trait facet set 内部使用裸 trait 名称，因为前导 `@` 已经把整个集合放入 trait 语境。
 
 ```toka
@@ -260,6 +273,52 @@ where:
 `@encap` 用于显式资源与可见性控制。持有资源的 Shape 应在 `impl Type@encap` 块中定义生命周期行为。
 
 `@encap` 块中的典型生命周期方法包括 `fn drop(self#)` 和 `pub fn clone(self) = delete`。
+
+可见性有两层语法：
+
+```toka
+pub import std/io::{println}
+pub shape Device(
+    id: i32,
+    secret: i32,
+    public_config: i32,
+    crate_state: i32,
+    uart_state: i32
+)
+pub trait @Readable {
+    pub fn read(self) -> i32
+}
+```
+
+在声明层，前导 `pub` 会把 import、const、fn、shape、trait、alias、nominal type 导出到模块接口中。不写 `pub` 时，声明保持模块私有。
+
+在普通 `impl` 和 `trait` 块中，方法可见性写作 `pub fn`。没有 `pub` 的方法对定义模块 / 接口语境保持私有。
+
+`@encap` 块还负责成员可见性控制。一旦某个 shape 拥有 `@encap` 块，它的字段在定义源文件之外默认私有，除非 `@encap` 可见性条目显式授权。
+
+```toka
+impl Device@encap {
+    pub public_config
+    pub(crate) crate_state
+    pub(os/driver::uart) uart_state
+
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+```
+
+`pub field` 全局开放指定字段。`pub(crate) field` 在 crate 内开放指定字段。`pub(path) field` 授权给指定模块路径。
+
+对于宽松的数据承载型 shape，`@encap` 块也可以使用通配可见性条目：
+
+```toka
+impl PublicRecord@encap {
+    pub *
+    pub * ! secret_key, internal_id
+}
+```
+
+`pub *` 开放全部字段，`pub * ! field1, field2` 开放除列出字段以外的全部字段。通配条目通常是逐字段枚举授权的替代方案，不建议随意和更窄的授权混用。带括号的 `pub(crate)` 和 `pub(path)` 是 `@encap` 成员可见性条目，不是顶层声明修饰符。
 
 ## 8. 成员访问与 Morphic 字段
 

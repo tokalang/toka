@@ -232,6 +232,19 @@ impl Rect@Shape {
 }
 ```
 
+Dynamic trait objects use `dyn @Trait` in type positions. A concrete value whose type implements the trait may be passed to a parameter expecting `dyn @Trait`; no `&` is needed for ordinary parameter passing because Toka parameters capture in place.
+
+```toka
+fn print_area(item: dyn @Shape) -> i32 {
+    return item.area()
+}
+
+auto rect = Rect(w = 10, h = 20)
+auto area = print_area(rect)
+```
+
+Method calls through `dyn @Trait` are dynamically dispatched through the trait interface. Outside the defining module, only `pub fn` methods in the trait are callable. The stable trait-object syntax is a single trait facet such as `dyn @Shape`; `dyn @{A, B}` is not part of the current public syntax. Dynamic closures use the separate `dyn fn(...) -> T` syntax.
+
 Trait bounds must use `@Trait` for a single facet and `@{Trait1, Trait2}` for a trait facet set. The names inside a trait facet set are bare because the leading `@` places the whole set in trait context.
 
 ```toka
@@ -260,6 +273,52 @@ where:
 `@encap` is used for explicit resource and visibility control. Resource-owning shapes should define lifecycle behavior in an `impl Type@encap` block.
 
 Typical lifecycle methods in an `@encap` block include `fn drop(self#)` and `pub fn clone(self) = delete`.
+
+Visibility has two syntax layers:
+
+```toka
+pub import std/io::{println}
+pub shape Device(
+    id: i32,
+    secret: i32,
+    public_config: i32,
+    crate_state: i32,
+    uart_state: i32
+)
+pub trait @Readable {
+    pub fn read(self) -> i32
+}
+```
+
+At declaration level, leading `pub` exports imports, constants, functions, shapes, traits, aliases, and nominal types from the module interface. Omitting `pub` keeps the declaration module-private.
+
+Inside normal `impl` and `trait` blocks, method visibility is written with `pub fn`. A method without `pub` is private to its defining module/interface context.
+
+`@encap` blocks additionally control member visibility. Once a shape has an `@encap` block, its fields are private outside the defining source file unless an `@encap` visibility entry grants access.
+
+```toka
+impl Device@encap {
+    pub public_config
+    pub(crate) crate_state
+    pub(os/driver::uart) uart_state
+
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+```
+
+`pub field` exposes selected fields globally. `pub(crate) field` exposes selected fields inside the crate. `pub(path) field` grants access to a module path.
+
+For broad data carrier shapes, an `@encap` block may also use wildcard visibility entries:
+
+```toka
+impl PublicRecord@encap {
+    pub *
+    pub * ! secret_key, internal_id
+}
+```
+
+`pub *` exposes all fields, and `pub * ! field1, field2` exposes all fields except the listed fields. Wildcard entries are usually an alternative to enumerating individual fields, not something to mix casually with narrower grants. The parenthesized `pub(crate)` and `pub(path)` forms are `@encap` member-visibility entries, not top-level declaration modifiers.
 
 ## 8. Member Access And Morphic Fields
 
