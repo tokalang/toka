@@ -86,6 +86,13 @@ YELLOW='\033[0;33m'
 NC='\033[0m'
 GRAY='\033[0;90m'
 
+run_without_test_cache() (
+    unset TOKA_BUILD_DIR
+    unset TOKA_CACHED_LIB_OBJECTS_FILE
+    unset TOKA_CACHED_LIB_OBJECTS_MAP
+    USE_CACHED_LIB=0 "$@"
+)
+
 # --- Worker Logic ---
 run_worker() {
     test_path="$1"
@@ -100,6 +107,28 @@ run_worker() {
     
     # Capture output in a buffer to ensure atomic printing
     OUTPUT=""
+    CACHED_LIB_OBJECTS=()
+    if [ "$USE_CACHED_LIB" = "1" ] && [ -n "$TOKA_CACHED_LIB_OBJECTS_MAP" ] && [ -f "$TOKA_CACHED_LIB_OBJECTS_MAP" ]; then
+        test_key="$test_path"
+        case "$test_key" in
+            "$PWD"/*) test_key="${test_key#$PWD/}" ;;
+        esac
+        test_key="${test_key#./}"
+        while IFS=$'\t' read -r key objects; do
+            if [ "$key" = "$test_key" ]; then
+                if [ -n "$objects" ]; then
+                    IFS=$'\t' read -r -a CACHED_LIB_OBJECTS <<< "$objects"
+                fi
+                break
+            fi
+        done < "$TOKA_CACHED_LIB_OBJECTS_MAP"
+    elif [ "$USE_CACHED_LIB" = "1" ] && [ -n "$TOKA_CACHED_LIB_OBJECTS_FILE" ] && [ -f "$TOKA_CACHED_LIB_OBJECTS_FILE" ]; then
+        while IFS= read -r obj; do
+            if [ -n "$obj" ]; then
+                CACHED_LIB_OBJECTS+=("$obj")
+            fi
+        done < "$TOKA_CACHED_LIB_OBJECTS_FILE"
+    fi
     
     append() {
         OUTPUT="${OUTPUT}$1\n"
@@ -108,7 +137,7 @@ run_worker() {
     # Step 1: Compile Native
     if [[ "$file_name" == *llvm_shim_test.tk ]] || [[ "$file_name" == *llvm_backend_instructions.tk ]]; then
         tmp_obj="${exe_file}.o"
-        if ! "$TOKAC" --emit-obj "$test_path" -o "$tmp_obj" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" --emit-obj "$test_path" -o "$tmp_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compilation failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -138,7 +167,7 @@ run_worker() {
         if [ -z "$helper_path" ]; then helper_path="tests/pass/odr_helper.tk_lib"; fi
 
         # Compile lib
-        if ! "$TOKAC" -c "$lib_path" -o "$lib_obj" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" -c "$lib_path" -o "$lib_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compiling odr_test_lib failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -147,7 +176,7 @@ run_worker() {
             exit 1
         fi
         # Compile helper
-        if ! "$TOKAC" -c "$helper_path" -o "$helper_obj" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" -c "$helper_path" -o "$helper_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compiling odr_helper failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -156,7 +185,7 @@ run_worker() {
             exit 1
         fi
         # Compile and link main with lib and helper
-        if ! "$TOKAC" "$test_path" "$lib_obj" "$helper_obj" -o "$exe_file" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" "$test_path" "$lib_obj" "$helper_obj" -o "$exe_file" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compilation failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -172,7 +201,7 @@ run_worker() {
             exit_code=$?
             run_skipped=1
         else
-            if ! "$TOKAC" "$test_path" -o "$exe_file" > /dev/null 2> "$log_file"; then
+            if ! "$TOKAC" "$test_path" "${CACHED_LIB_OBJECTS[@]}" -o "$exe_file" > /dev/null 2> "$log_file"; then
                 append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
                 append "    ${RED}$test_path:1: error: Compilation failed${NC}"
                 # Tail logs
@@ -307,11 +336,14 @@ run_worker() {
 # --- Entry Point ---
 
 # Parse options
-USE_TOKA=0
+USE_TOKA="${USE_TOKA:-0}"
+USE_CACHED_LIB="${USE_CACHED_LIB:-0}"
 NEW_ARGS=()
 for arg in "$@"; do
     if [ "$arg" == "--toka" ]; then
         export USE_TOKA=1
+    elif [ "$arg" == "--cached-lib" ]; then
+        export USE_CACHED_LIB=1
     else
         NEW_ARGS+=("$arg")
     fi
@@ -327,7 +359,12 @@ rm -f tests/pass/temp_main.tk tests/pass/temp_main.tki tests/pass/temp_shim.c ta
 
 # Clean up all untracked/ignored .tki files in the workspace to avoid polluting relative imports
 if command -v git &> /dev/null && [ -d .git ]; then
-    git status --ignored --porcelain | grep -E "^(!!|\?\?) " | grep -E "\.tki$" | cut -c4- | xargs rm -f 2>/dev/null || true
+    if [ "$USE_CACHED_LIB" = "1" ]; then
+        CACHE_PREFIX="${TOKA_TEST_CACHE_DIR:-tmp/toka_test_cache}"
+        git status --ignored --porcelain | grep -E "^(!!|\?\?) " | grep -E "\.tki$" | cut -c4- | grep -v "^${CACHE_PREFIX%/}/" | xargs rm -f 2>/dev/null || true
+    else
+        git status --ignored --porcelain | grep -E "^(!!|\?\?) " | grep -E "\.tki$" | cut -c4- | xargs rm -f 2>/dev/null || true
+    fi
 fi
 
 # Determine core count dynamically for CI and local optimizations
@@ -362,6 +399,14 @@ if [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "cygwin"* || "$OSTYPE" == "win32"* ]]
     SHIM_CXXFLAGS="$SHIM_CXXFLAGS -DLLVM_SHARED_LIBS"
 fi
 "$CLANGXX" $SYSROOT_FLAGS -O3 -c lib/sys/llvm_shim.cpp -o lib/sys/llvm_shim.o $SHIM_CXXFLAGS || { echo "Failed to compile llvm_shim.cpp"; exit 1; }
+
+if [ "$USE_CACHED_LIB" = "1" ]; then
+    CACHE_DIR="${TOKA_TEST_CACHE_DIR:-tmp/toka_test_cache}"
+    python3 tools/scripts/prepare_test_lib_cache.py --tokac "$TOKAC" --cache-dir "$CACHE_DIR"
+    export TOKA_BUILD_DIR="$CACHE_DIR"
+    export TOKA_CACHED_LIB_OBJECTS_FILE="$CACHE_DIR/objects.list"
+    export TOKA_CACHED_LIB_OBJECTS_MAP="$CACHE_DIR/test_objects.map"
+fi
 
 echo "Starting Toka 'PASS' Test Suite (Parallel: $CORES)..."
 echo "---------------------------------"
@@ -407,21 +452,21 @@ echo -e "  Failed: ${RED}$fail_count${NC}"
 
 echo ""
 echo "Running ODR Path & Interface Behavior lock tests..."
-if ! bash tools/scripts/test_path_behavior.sh; then
+if ! run_without_test_cache bash tools/scripts/test_path_behavior.sh; then
     echo -e "${RED}Path behavior lock tests failed!${NC}"
     exit 1
 fi
 
 echo ""
 echo "Running TKI Cache Validation tests..."
-if ! bash tools/scripts/test_tki_cache_validation.sh; then
+if ! run_without_test_cache bash tools/scripts/test_tki_cache_validation.sh; then
     echo -e "${RED}TKI Cache Validation tests failed!${NC}"
     exit 1
 fi
 
 echo ""
 echo "Running Incremental Build tests..."
-if ! bash tools/scripts/test_incremental_build.sh; then
+if ! run_without_test_cache bash tools/scripts/test_incremental_build.sh; then
     echo -e "${RED}Incremental Build tests failed!${NC}"
     exit 1
 fi
