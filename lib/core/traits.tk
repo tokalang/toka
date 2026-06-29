@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import core/option::{Option}
+
 pub trait @PartialOrd {
     pub fn cmp(self, other: Self) -> i32
 }
@@ -33,6 +35,11 @@ pub trait @PartialEq {
 
 pub trait @Send {}
 pub trait @Sync {}
+
+pub trait @Iterator {
+    type Item
+    pub fn next(self#) -> Option<Item>
+}
 
 pub trait @delegate<T> {
     pub fn target(self) -> T

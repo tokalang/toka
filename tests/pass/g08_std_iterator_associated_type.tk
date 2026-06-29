@@ -1,0 +1,14 @@
+import std/fs::{ReadDir}
+import core/traits::{@Iterator}
+
+fn accept_name(name: ReadDir@Iterator::Item) -> usize {
+    return name.len()
+}
+
+fn main() -> i32 {
+    auto name = string::from("ok")
+    if accept_name(name) == 2:usize {
+        return 0
+    }
+    return 1
+}

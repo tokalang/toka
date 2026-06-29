@@ -16,6 +16,7 @@ import sys/os/fs as sys
 import std/io::{File, IoStringResult, println}
 import core/result::{Result}
 import core/option::{Option}
+import core/traits::{@Iterator}
 
 /**
  * Directory Iterator
@@ -38,6 +39,14 @@ impl ReadDir@encap {
     pub fn clone(self) = delete
 }
 
+impl ReadDir@Iterator {
+    type Item = string
+
+    pub fn next(self#) -> Option<Item> {
+        return self#.next()
+    }
+}
+
 impl ReadDir {
     /**
      * Returns the next directory entry name.
@@ -58,7 +67,7 @@ impl ReadDir {
         }
         return Option<string>::None
     }
-    
+
     pub fn close(self#) {
         if !self.finished {
             sys::closedir_impl(self.handle)
