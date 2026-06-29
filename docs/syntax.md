@@ -232,6 +232,15 @@ impl Rect@Shape {
 }
 ```
 
+Trait bounds must use `@Trait` for a single facet and `@{Trait1, Trait2}` for a trait facet set. The names inside a trait facet set are bare because the leading `@` places the whole set in trait context.
+
+```toka
+fn draw_one<T: @Drawable>(item: T) {}
+fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
+```
+
+Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
+
 `@encap` is used for explicit resource and visibility control. Resource-owning shapes should define lifecycle behavior in an `impl Type@encap` block.
 
 Typical lifecycle methods in an `@encap` block include `fn drop(self#)` and `pub fn clone(self) = delete`.

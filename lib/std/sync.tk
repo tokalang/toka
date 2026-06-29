@@ -119,15 +119,15 @@ impl<'T: @Send> MutexLock<'T> {
 }
 
 /// A reader-writer lock
-pub shape RwMutex<'T: {@Send, @Sync}>(
+pub shape RwMutex<'T: @{Send, Sync}>(
     handle#: Addr,
     'data#: T
 )
 
-impl<'T: {@Send, @Sync}> RwMutex<'T>@Sync {}
-impl<'T: {@Send, @Sync}> RwMutex<'T>@Send {}
+impl<'T: @{Send, Sync}> RwMutex<'T>@Sync {}
+impl<'T: @{Send, Sync}> RwMutex<'T>@Send {}
 
-impl<'T: {@Send, @Sync}> RwMutex<'T> {
+impl<'T: @{Send, Sync}> RwMutex<'T> {
     pub fn new(data: cede 'T) -> RwMutex<'T> {
         return RwMutex<'T>(
             handle = sys_rwlock_create(),
@@ -192,7 +192,7 @@ impl<'T: {@Send, @Sync}> RwMutex<'T> {
     }
 }
 
-impl<'T: {@Send, @Sync}> RwMutex<'T>@encap {
+impl<'T: @{Send, Sync}> RwMutex<'T>@encap {
     fn drop(self#) {
         unsafe {
             auto h: Addr = self.handle
@@ -206,15 +206,15 @@ impl<'T: {@Send, @Sync}> RwMutex<'T>@encap {
     pub fn clone(self) = delete
 }
 
-pub shape RwReadLock<'T: {@Send, @Sync}>(
+pub shape RwReadLock<'T: @{Send, Sync}>(
     handle: Addr,
     *'data: T
 )
 
-impl<'T: {@Send, @Sync}> RwReadLock<'T>@Send {}
-impl<'T: {@Send, @Sync}> RwReadLock<'T>@Sync {}
+impl<'T: @{Send, Sync}> RwReadLock<'T>@Send {}
+impl<'T: @{Send, Sync}> RwReadLock<'T>@Sync {}
 
-impl<'T: {@Send, @Sync}> RwReadLock<'T>@encap {
+impl<'T: @{Send, Sync}> RwReadLock<'T>@encap {
     fn drop(self#) {
         unsafe {
             if self.handle != 0:Addr {
@@ -227,21 +227,21 @@ impl<'T: {@Send, @Sync}> RwReadLock<'T>@encap {
     pub fn clone(self) = delete
 }
 
-impl<'T: {@Send, @Sync}> RwReadLock<'T> {
+impl<'T: @{Send, Sync}> RwReadLock<'T> {
     pub fn get_ref(self) -> *'T {
         return self.*data
     }
 }
 
-pub shape RwWriteLock<'T: {@Send, @Sync}>(
+pub shape RwWriteLock<'T: @{Send, Sync}>(
     handle: Addr,
     *'data#: T
 )
 
-impl<'T: {@Send, @Sync}> RwWriteLock<'T>@Send {}
-impl<'T: {@Send, @Sync}> RwWriteLock<'T>@Sync {}
+impl<'T: @{Send, Sync}> RwWriteLock<'T>@Send {}
+impl<'T: @{Send, Sync}> RwWriteLock<'T>@Sync {}
 
-impl<'T: {@Send, @Sync}> RwWriteLock<'T>@encap {
+impl<'T: @{Send, Sync}> RwWriteLock<'T>@encap {
     fn drop(self#) {
         unsafe {
             if self.handle != 0:Addr {
@@ -254,7 +254,7 @@ impl<'T: {@Send, @Sync}> RwWriteLock<'T>@encap {
     pub fn clone(self) = delete
 }
 
-impl<'T: {@Send, @Sync}> RwWriteLock<'T> {
+impl<'T: @{Send, Sync}> RwWriteLock<'T> {
     pub fn get_ref(self) -> *'T# {
         return self.*data
     }
@@ -414,4 +414,3 @@ impl WaitGroup {
         }
     }
 }
-

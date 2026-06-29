@@ -264,6 +264,7 @@ DIAG(ERR_PARSER_EXPECTED_TRAIT,   Error,   "E01231", "Expected 'trait'")
 DIAG(ERR_PARSER_EXPECTED_TRAIT_NAME, Error,   "E01232", "Expected trait name")
 DIAG(ERR_PARSER_EXPECTED_METHOD_PROTOTYPE_IN_TRAIT, Error,   "E01233", "Expected method prototype in trait")
 DIAG(ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX, Error,   "E01234", "Trait declarations must use '@'. Write 'trait @{}' instead of 'trait {}'.")
+DIAG(ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX, Error,   "E01235", "Trait bound sets must use '@{Trait1, Trait2}' with bare trait names.")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

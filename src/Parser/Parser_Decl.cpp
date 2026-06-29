@@ -34,17 +34,26 @@ std::vector<GenericParam> Parser::parseGenericParams() {
         // gp.Name = gp.Name.substr(1); // Leave quote attached to parameter name!
       }
       if (match(TokenType::Colon)) {
-        if (check(TokenType::At) || check(TokenType::LBrace)) {
-          // Trait bounds: <T: @Send> or <T: @{Read, Write}> or <T: {@Read, @Write}>
-          bool hasOuterAt = match(TokenType::At);
+        if (match(TokenType::At)) {
+          // Trait bounds: <T: @Send> or <T: @{Read, Write}>.
           bool unionBraces = match(TokenType::LBrace);
           do {
-            match(TokenType::At); // optional @ prefix inside the trait bound
+            if (unionBraces && match(TokenType::At)) {
+              error(previous(), DiagID::ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX);
+            }
             gp.TraitBounds.push_back(consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT).Text);
           } while (unionBraces && match(TokenType::Comma));
           if (unionBraces) {
             consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
           }
+        } else if (check(TokenType::LBrace)) {
+          error(peek(), DiagID::ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX);
+          advance();
+          do {
+            match(TokenType::At);
+            gp.TraitBounds.push_back(consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT).Text);
+          } while (match(TokenType::Comma));
+          consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
         } else {
           // Const generic type
           gp.Type = parseTypeString();

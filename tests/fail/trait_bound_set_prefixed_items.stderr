@@ -1,0 +1,5 @@
+error[E01235]: Trait bound sets must use '@{Trait1, Trait2}' with bare trait names.
+ --> tests/fail/trait_bound_set_prefixed_items.tk:4:17
+   |
+ 4 | fn process<T: @{@Send, @Sync}>(value: T) {
+   |                 ^

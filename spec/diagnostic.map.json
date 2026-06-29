@@ -1507,6 +1507,12 @@
       "message": "Trait declarations must use '@'. Write 'trait @{}' instead of 'trait {}'.",
       "description": "Trait declarations must use '@'."
     },
+    "E01235": {
+      "id": "ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX",
+      "level": "Error",
+      "message": "Trait bound sets must use '@{Trait1, Trait2}' with bare trait names.",
+      "description": "Trait bound sets must use '@{Trait1, Trait2}' with bare trait names."
+    },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",
       "level": "Error",

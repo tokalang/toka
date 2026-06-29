@@ -232,6 +232,15 @@ impl Rect@Shape {
 }
 ```
 
+Trait 约束必须使用 `@Trait` 表示单个 facet，使用 `@{Trait1, Trait2}` 表示 trait facet set。Trait facet set 内部使用裸 trait 名称，因为前导 `@` 已经把整个集合放入 trait 语境。
+
+```toka
+fn draw_one<T: @Drawable>(item: T) {}
+fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
+```
+
+`T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
+
 `@encap` 用于显式资源与可见性控制。持有资源的 Shape 应在 `impl Type@encap` 块中定义生命周期行为。
 
 `@encap` 块中的典型生命周期方法包括 `fn drop(self#)` 和 `pub fn clone(self) = delete`。

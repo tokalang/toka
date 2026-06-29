@@ -1,0 +1,9 @@
+trait @Send {}
+trait @Sync {}
+
+fn process<T: @{@Send, @Sync}>(value: T) {
+}
+
+pub fn main() -> i32 {
+    return 0
+}
