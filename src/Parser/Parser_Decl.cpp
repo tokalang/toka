@@ -67,6 +67,97 @@ std::vector<GenericParam> Parser::parseGenericParams() {
   return genericParams;
 }
 
+std::vector<std::string> Parser::parseTraitFacetTarget() {
+  std::vector<std::string> traitBounds;
+  if (!match(TokenType::At)) {
+    error(peek(), DiagID::ERR_PARSER_WHERE_IMPL_EXPECTED_TRAIT_TARGET);
+    if (!isWhereConstraintTerminator()) {
+      advance();
+    }
+    return traitBounds;
+  }
+
+  bool unionBraces = match(TokenType::LBrace);
+  do {
+    if (unionBraces && match(TokenType::At)) {
+      error(previous(), DiagID::ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX);
+    }
+    traitBounds.push_back(
+        consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT).Text);
+  } while (unionBraces && match(TokenType::Comma));
+
+  if (unionBraces) {
+    consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
+  }
+  return traitBounds;
+}
+
+bool Parser::isWhereConstraintTerminator() const {
+  if (check(TokenType::EndOfFile) || check(TokenType::LBrace) ||
+      check(TokenType::Equal) || check(TokenType::LParen) ||
+      check(TokenType::Pipe) || check(TokenType::Dependency)) {
+    return true;
+  }
+  return check(TokenType::Identifier) && peek().Text == "effects" &&
+         checkAt(1, TokenType::Colon);
+}
+
+void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
+                                   std::vector<std::string> *selfTraitBounds) {
+  if (!match(TokenType::KwWhere)) {
+    return;
+  }
+
+  consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
+  auto appendUnique = [](std::vector<std::string> &target,
+                         const std::vector<std::string> &bounds) {
+    for (const auto &bound : bounds) {
+      if (std::find(target.begin(), target.end(), bound) == target.end()) {
+        target.push_back(bound);
+      }
+    }
+  };
+
+  while (!isWhereConstraintTerminator()) {
+    if (!(check(TokenType::Identifier) || check(TokenType::KwUpperSelf))) {
+      error(peek(), DiagID::ERR_PARSER_WHERE_EXPECTED_SUBJECT);
+      advance();
+      continue;
+    }
+
+    Token subject = advance();
+    consume(TokenType::KwImpl, DiagID::ERR_PARSER_EXPECTED_IMPL);
+    std::vector<std::string> bounds = parseTraitFacetTarget();
+
+    if (subject.Text == "Self") {
+      if (selfTraitBounds) {
+        appendUnique(*selfTraitBounds, bounds);
+      } else {
+        error(subject, DiagID::ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT,
+              subject.Text);
+      }
+      continue;
+    }
+
+    auto paramIt = std::find_if(
+        genericParams.begin(), genericParams.end(),
+        [&](const GenericParam &gp) {
+          if (gp.Name == subject.Text) {
+            return true;
+          }
+          return !gp.Name.empty() && gp.Name[0] == '\'' &&
+                 gp.Name.substr(1) == subject.Text;
+        });
+
+    if (paramIt == genericParams.end()) {
+      error(subject, DiagID::ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT,
+            subject.Text);
+      continue;
+    }
+    appendUnique(paramIt->TraitBounds, bounds);
+  }
+}
+
 std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
   bool isUnion = false;
   if (match(TokenType::KwUnion)) {
@@ -85,6 +176,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
 
   // Parse Generic Parameters: Name<T, U> or Name<T, N_: usize>
   std::vector<GenericParam> genericParams = parseGenericParams();
+  parseWhereConstraints(genericParams);
 
   std::vector<std::string> lifeDeps;
   if (match(TokenType::Dependency)) {
@@ -573,6 +665,8 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
     } while (match(TokenType::Pipe) || match(TokenType::Comma));
   }
 
+  parseWhereConstraints(genericParams);
+
   std::map<std::string, std::vector<std::string>> memberDeps;
 
   if (check(TokenType::Identifier) && peek().Text == "effects" && checkAt(1, TokenType::Colon)) {
@@ -965,6 +1059,8 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
     traitName = traitName.substr(1);
   }
 
+  parseWhereConstraints(genericParams);
+
   consume(TokenType::LBrace, DiagID::ERR_EXPECTED_LBRACE);
 
   std::vector<std::unique_ptr<FunctionDecl>> methods;
@@ -1066,6 +1162,8 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
   }
   Token name = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME);
   std::vector<GenericParam> genericParams = parseGenericParams();
+  std::vector<std::string> selfTraitBounds;
+  parseWhereConstraints(genericParams, &selfTraitBounds);
   consume(TokenType::LBrace, DiagID::ERR_EXPECTED_LBRACE);
 
   std::vector<std::unique_ptr<FunctionDecl>> methods;
@@ -1081,7 +1179,9 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
     }
   }
   consume(TokenType::RBrace, DiagID::ERR_EXPECTED_RBRACE);
-  return std::make_unique<TraitDecl>(isPub, name.Text, std::move(methods), std::move(genericParams));
+  return std::make_unique<TraitDecl>(isPub, name.Text, std::move(methods),
+                                     std::move(genericParams),
+                                     std::move(selfTraitBounds));
 }
 
 } // namespace toka

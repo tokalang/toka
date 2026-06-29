@@ -1,0 +1,15 @@
+trait @Eq {}
+
+trait @Ord
+where:
+    Self impl @Eq
+{
+}
+
+shape Data(value: i32)
+
+impl Data@Ord {}
+
+pub fn main() -> i32 {
+    return 0
+}

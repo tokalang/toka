@@ -128,6 +128,7 @@ DIAG(ERR_CODEGEN,                 Error,   "E0701", "Code generation failed: {}"
 DIAG(ERR_DANGLING_EFFECT,         Error,   "E0702", "Dangling effect call rejected: '{}' must be consumed by .await, .wait or .start")
 DIAG(ERR_CONST_GENERIC_NAMING,    Error,   "E0605", "Const generic parameter '{}' must end with '_' (e.g., 'N_') to denote compile-time constant.")
 DIAG(ERR_TRAIT_BOUND_UNSATISFIED, Error,   "E0606", "Type '{}' does not satisfy trait bound '@{}' for generic parameter '{}'")
+DIAG(ERR_TRAIT_PREREQUISITE_UNSATISFIED, Error,   "E0608", "Type '{}' cannot implement '@{}' because it does not satisfy required trait '@{}'")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")
@@ -265,6 +266,9 @@ DIAG(ERR_PARSER_EXPECTED_TRAIT_NAME, Error,   "E01232", "Expected trait name")
 DIAG(ERR_PARSER_EXPECTED_METHOD_PROTOTYPE_IN_TRAIT, Error,   "E01233", "Expected method prototype in trait")
 DIAG(ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX, Error,   "E01234", "Trait declarations must use '@'. Write 'trait @{}' instead of 'trait {}'.")
 DIAG(ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX, Error,   "E01235", "Trait bound sets must use '@{Trait1, Trait2}' with bare trait names.")
+DIAG(ERR_PARSER_WHERE_EXPECTED_SUBJECT, Error,   "E01236", "Expected a generic parameter or 'Self' as the subject of a where constraint.")
+DIAG(ERR_PARSER_WHERE_IMPL_EXPECTED_TRAIT_TARGET, Error,   "E01237", "Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'.")
+DIAG(ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT, Error,   "E01238", "Where constraint subject '{}' must be a declared generic parameter or 'Self' in a trait declaration.")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

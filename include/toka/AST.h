@@ -1769,12 +1769,15 @@ public:
   bool IsPub = false;
   std::string Name;
   std::vector<GenericParam> GenericParams;
+  std::vector<std::string> SelfTraitBounds;
   std::vector<std::unique_ptr<FunctionDecl>> Methods;
 
   TraitDecl(bool isPub, const std::string &name,
             std::vector<std::unique_ptr<FunctionDecl>> methods,
-            std::vector<GenericParam> generics = {})
+            std::vector<GenericParam> generics = {},
+            std::vector<std::string> selfTraitBounds = {})
       : IsPub(isPub), Name(name), GenericParams(std::move(generics)),
+        SelfTraitBounds(std::move(selfTraitBounds)),
         Methods(std::move(methods)) {}
   std::string toString() const override {
     return std::string(IsPub ? "Pub" : "") + "Trait(" + Name + ")";

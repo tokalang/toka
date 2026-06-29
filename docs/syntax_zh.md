@@ -241,6 +241,22 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 `T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
 
+约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束。第一阶段支持的形式中，`impl` 是关系谓词：`T impl @Trait` 表示必须存在 `T@Trait` 的实现。
+
+```toka
+fn copy<T>(io: T)
+where:
+    T impl @{Reader, Writer}
+{
+}
+
+trait @Ord
+where:
+    Self impl @{Eq, PartialOrd}
+{
+}
+```
+
 `@encap` 用于显式资源与可见性控制。持有资源的 Shape 应在 `impl Type@encap` 块中定义生命周期行为。
 
 `@encap` 块中的典型生命周期方法包括 `fn drop(self#)` 和 `pub fn clone(self) = delete`。

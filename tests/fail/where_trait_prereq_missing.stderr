@@ -1,0 +1,5 @@
+error[E0608]: Type 'Data' cannot implement '@Ord' because it does not satisfy required trait '@Eq'
+ --> tests/fail/where_trait_prereq_missing.tk:11:1
+    |
+ 11 | impl Data@Ord {}
+    | ^

@@ -318,7 +318,30 @@ void TKIExporter::exportTrait(const TraitDecl &decl) {
     indent();
     m_OS << "pub trait @" << decl.Name;
     printGenericParams(decl.GenericParams);
-    m_OS << " {\n";
+    bool multilineHeader = false;
+    if (!decl.SelfTraitBounds.empty()) {
+        multilineHeader = true;
+        m_OS << "\n";
+        m_Indent++;
+        indent();
+        m_OS << "where:\n";
+        m_Indent++;
+        indent();
+        m_OS << "Self impl ";
+        if (decl.SelfTraitBounds.size() == 1) {
+            m_OS << "@" << decl.SelfTraitBounds[0] << "\n";
+        } else {
+            m_OS << "@{";
+            for (size_t i = 0; i < decl.SelfTraitBounds.size(); ++i) {
+                if (i > 0) m_OS << ", ";
+                m_OS << decl.SelfTraitBounds[i];
+            }
+            m_OS << "}\n";
+        }
+        m_Indent -= 2;
+        indent();
+    }
+    m_OS << (multilineHeader ? "{\n" : " {\n");
     m_Indent++;
     for (const auto &method : decl.Methods) {
         exportFunction(*method, /*forceKeepBody=*/false);

@@ -1,0 +1,19 @@
+trait @Send {}
+trait @Sync {}
+
+shape Data(value: i32)
+
+impl Data@Send {}
+impl Data@Sync {}
+
+fn process<T>(val: ^T)
+where:
+    T impl @{Send, Sync}
+{
+}
+
+pub fn main() -> i32 {
+    auto ^d = new Data(value = 42)
+    process<Data>(d)
+    return 0
+}

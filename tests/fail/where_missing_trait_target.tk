@@ -1,0 +1,11 @@
+trait @Send {}
+
+fn process<T>(value: T)
+where:
+    T impl Send
+{
+}
+
+pub fn main() -> i32 {
+    return 0
+}

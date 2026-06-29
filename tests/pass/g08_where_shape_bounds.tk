@@ -1,0 +1,17 @@
+trait @Send {}
+
+shape Data(value: i32)
+
+impl Data@Send {}
+
+shape Holder<T>
+where:
+    T impl @Send
+(
+    item: T
+)
+
+pub fn main() -> i32 {
+    auto h = Holder<Data>(item = Data(value = 7))
+    return h.item.value - 7
+}

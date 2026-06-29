@@ -1,0 +1,24 @@
+pub trait @Eq {}
+
+pub trait @Ord
+where:
+    Self impl @Eq
+{
+}
+
+pub shape Data(value: i32)
+
+impl Data@Eq {}
+impl Data@Ord {}
+
+fn process<T>(val: ^T)
+where:
+    T impl @Ord
+{
+}
+
+pub fn main() -> i32 {
+    auto ^d = new Data(value = 42)
+    process<Data>(d)
+    return 0
+}

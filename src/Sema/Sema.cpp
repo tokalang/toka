@@ -1270,6 +1270,30 @@ void Sema::checkImpl(ImplDecl *Impl) {
       return;
   }
 
+  if (!Impl->TraitName.empty() && TraitMap.count(Impl->TraitName)) {
+    TraitDecl *TD = TraitMap[Impl->TraitName];
+    std::string resolvedTypeName = resolveType(Impl->TypeName);
+    for (const auto &bound : TD->SelfTraitBounds) {
+      std::string implKey = resolvedTypeName + "@" + bound;
+      bool satisfied = ImplMap.count(implKey);
+
+      if (!satisfied && bound == "Send") {
+        auto typeObj = toka::Type::fromString(resolvedTypeName);
+        satisfied = typeObj && typeObj->isSend(this);
+      } else if (!satisfied && bound == "Sync") {
+        auto typeObj = toka::Type::fromString(resolvedTypeName);
+        satisfied = typeObj && typeObj->isSync(this);
+      }
+
+      if (!satisfied) {
+        DiagnosticEngine::report(getLoc(Impl),
+                                 DiagID::ERR_TRAIT_PREREQUISITE_UNSATISFIED,
+                                 Impl->TypeName, Impl->TraitName, bound);
+        HasError = true;
+      }
+    }
+  }
+
   enterScope(); // Helper Scope for Self Injection
 
   // 1. Resolve Target Type (The "Self")

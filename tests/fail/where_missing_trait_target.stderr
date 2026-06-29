@@ -1,0 +1,5 @@
+error[E01237]: Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'.
+ --> tests/fail/where_missing_trait_target.tk:5:12
+   |
+ 5 |     T impl Send
+   |            ^

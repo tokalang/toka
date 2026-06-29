@@ -620,6 +620,12 @@
       "message": "Type '{}' does not satisfy trait bound '@{}' for generic parameter '{}'",
       "description": "Type '{}' does not satisfy trait bound '@{}' for generic parameter '{}'"
     },
+    "E0608": {
+      "id": "ERR_TRAIT_PREREQUISITE_UNSATISFIED",
+      "level": "Error",
+      "message": "Type '{}' cannot implement '@{}' because it does not satisfy required trait '@{}'",
+      "description": "Type '{}' cannot implement '@{}' because it does not satisfy required trait '@{}'"
+    },
     "E0101": {
       "id": "ERR_EXPECTED_SEMI",
       "level": "Error",
@@ -1512,6 +1518,24 @@
       "level": "Error",
       "message": "Trait bound sets must use '@{Trait1, Trait2}' with bare trait names.",
       "description": "Trait bound sets must use '@{Trait1, Trait2}' with bare trait names."
+    },
+    "E01236": {
+      "id": "ERR_PARSER_WHERE_EXPECTED_SUBJECT",
+      "level": "Error",
+      "message": "Expected a generic parameter or 'Self' as the subject of a where constraint.",
+      "description": "Expected a generic parameter or 'Self' as the subject of a where constraint."
+    },
+    "E01237": {
+      "id": "ERR_PARSER_WHERE_IMPL_EXPECTED_TRAIT_TARGET",
+      "level": "Error",
+      "message": "Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'.",
+      "description": "Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'."
+    },
+    "E01238": {
+      "id": "ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT",
+      "level": "Error",
+      "message": "Where constraint subject '{}' must be a declared generic parameter or 'Self' in a trait declaration.",
+      "description": "Where constraint subject '{}' must be a declared generic parameter or 'Self' in a trait declaration."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",

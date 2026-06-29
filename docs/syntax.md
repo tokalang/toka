@@ -241,6 +241,22 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
 
+For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. In the first supported form, `impl` is a relation predicate: `T impl @Trait` means an implementation of `T@Trait` must exist.
+
+```toka
+fn copy<T>(io: T)
+where:
+    T impl @{Reader, Writer}
+{
+}
+
+trait @Ord
+where:
+    Self impl @{Eq, PartialOrd}
+{
+}
+```
+
 `@encap` is used for explicit resource and visibility control. Resource-owning shapes should define lifecycle behavior in an `impl Type@encap` block.
 
 Typical lifecycle methods in an `@encap` block include `fn drop(self#)` and `pub fn clone(self) = delete`.

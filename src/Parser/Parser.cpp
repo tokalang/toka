@@ -239,7 +239,7 @@ std::string Parser::parseTypeString() {
          check(TokenType::Equal) || isEndOfStatement() ||
          check(TokenType::LBrace) || check(TokenType::Greater) ||
          check(TokenType::Pipe) || check(TokenType::KwFor) ||
-         check(TokenType::Dependency)))
+         check(TokenType::KwWhere) || check(TokenType::Dependency)))
       break;
 
     // Special handling for @: stop only if it's not following 'dyn'
