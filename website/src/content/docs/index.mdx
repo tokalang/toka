@@ -36,7 +36,7 @@ Toka does not pursue minimal syntax for its own sake. It pursues the minimum sur
 		Toka has no garbage collector and is compiled ahead of time through LLVM. Resource and representation costs are intended to stay visible and predictable rather than being hidden behind a default runtime layer.
 	</Card>
 	<Card title="Static Safety As A Baseline" icon="shield">
-		Resource flow, borrowing, nullability, rebinding, and cleanup are checked through explicit contracts such as PAL and `cede`, without requiring user-written lifetime parameters in ordinary code.
+		Resource flow, borrowing, nullability, rebinding, and cleanup are checked through explicit contracts such as PAL and `cede`. When a relationship cannot be proven locally, Toka should be conservative rather than push a full lifetime calculus into ordinary code.
 	</Card>
 	<Card title="Payload And Handle Separation" icon="puzzle">
 		Plain names operate on object payloads. Hats such as `&`, `*`, `^`, and `~` expose handle identity only when code genuinely needs to borrow, own, share, forward, or rebind that layer.

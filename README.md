@@ -141,6 +141,8 @@ The language distinguishes the object being used from the handle by which it is 
 
 PAL checks pointer aliasing and lifecycle constraints so that borrows, moves, null checks, resource paths, and rebinding intent remain explicit and auditable. The goal is compile-time discipline without user-written lifetime parameters such as Rust's `<'a>`.
 
+PAL is intended to be conservative before it is permissive. Toka does not trade safety away for a lighter surface; when an ownership or borrowing relationship cannot be proven locally without exposing a full lifetime calculus to the user, the compiler should reject the pattern or require a more explicit structure. This may accept fewer extreme-but-safe borrowing programs than Rust, but it keeps the safety line high while reducing the proof burden in ordinary code.
+
 ### Orthogonal Surface Markers
 
 Toka uses a compact token system:

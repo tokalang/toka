@@ -18,6 +18,8 @@ That leads to a few recurring principles:
 - resource ownership should be explicit enough for static checking;
 - low-level representation should be available without making raw pointer style the default API shape.
 
+This safety posture is deliberately conservative at the edge. Toka does not trade safety away for a lighter surface; if a relationship cannot be proven locally without exposing a full lifetime calculus, the compiler should reject the pattern or require a more explicit structure.
+
 ## Core Model
 
 Toka separates two layers that many systems languages collapse into one notation:
