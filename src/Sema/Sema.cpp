@@ -131,6 +131,25 @@ static void debugCheckShapeMemberPermissions(const ShapeMember &,
                                              SourceLocation) {}
 #endif
 
+static std::string defaultModuleNameForImport(const std::string &importPath) {
+  std::string path = toka::PathUtils::normalize(importPath);
+  while (path.size() > 1 && path.back() == '/') {
+    path.pop_back();
+  }
+
+  size_t slash = path.find_last_of('/');
+  std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+  const std::string suffixes[] = {".tk_lib", ".tki", ".tk"};
+  for (const auto &suffix : suffixes) {
+    if (name.size() > suffix.size() &&
+        name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+      name.resize(name.size() - suffix.size());
+      break;
+    }
+  }
+  return name.empty() ? importPath : name;
+}
+
 static bool isUnsafeType(const std::shared_ptr<toka::Type>& T) {
   if (!T) return false;
   if (T->typeKind == toka::Type::RawPtr) return true;
@@ -824,7 +843,9 @@ void Sema::registerGlobals(Module &M) {
       info.TypeObj = toka::Type::fromString("module");
       info.ReferencedModule = target;
       info.ImportingDecl = Imp.get();
-      std::string modName = Imp->Alias.empty() ? target->Name : Imp->Alias;
+      std::string modName = Imp->Alias.empty()
+                                ? defaultModuleNameForImport(Imp->PhysicalPath)
+                                : Imp->Alias;
 
       SymbolInfo existing;
       if (CurrentScope->lookup(modName, existing)) {

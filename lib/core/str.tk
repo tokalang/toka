@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub import core/types::{str}
 import core/types::{char, byte, usize, Addr, Char32}
 import core/option::{Option}
 import core/result::{Result}
@@ -29,13 +30,9 @@ extern fn __toka_str_raw_ptr(s: str) -> *char
 extern fn __toka_bytes_raw_ptr(b: bytes) -> *byte
 
 
-// A memory-safe, zero-allocation reference to a string view
-pub shape str(
-    &buf$: [char], //$ inner immutable
-    len$: usize      ////$ inner immutable
-)
-
 impl str@encap {    
+    pub(core/str) buf, len
+
     pub fn clone(self) -> str <- self {
         return str(&buf = self.&buf, len = self.len)
     }

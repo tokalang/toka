@@ -227,14 +227,9 @@ void TKIExporter::exportImport(const ImportDecl &decl) {
 void TKIExporter::exportTypeAlias(const TypeAliasDecl &decl) {
     if (!decl.IsPub) return;
     indent();
-    m_OS << "pub alias " << decl.Name;
+    m_OS << "pub " << (decl.IsStrong ? "type " : "alias ") << decl.Name;
     printGenericParams(decl.GenericParams);
-    m_OS << " = ";
-    if (decl.IsStrong) {
-        m_OS << "[" << decl.TargetType << "]";
-    } else {
-        m_OS << decl.TargetType;
-    }
+    m_OS << " = " << decl.TargetType;
     m_OS << "\n";
 }
 
@@ -516,7 +511,8 @@ void TKIExporter::exportGlobal(const Stmt &stmt) {
             decl->IsValueMutable, decl->IsValueNullable, decl->IsValueBlocked
         );
         m_OS << varStr;
-        if (!decl->TypeName.empty()) {
+        if (!decl->TypeName.empty() &&
+            decl->TypeName.rfind("__Toka_Anon_Rec_", 0) != 0) {
             m_OS << ": " << toka::Type::stripPrefixes(decl->TypeName);
         }
         m_OS << " = ";
@@ -588,7 +584,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (auto bl = dynamic_cast<const BoolExpr *>(expr)) {
         m_OS << (bl->Value ? "true" : "false");
     } else if (dynamic_cast<const NullExpr *>(expr)) {
-        m_OS << "nullptr";
+        m_OS << "null";
     } else if (dynamic_cast<const NoneExpr *>(expr)) {
         m_OS << "none";
     } else if (dynamic_cast<const UnsetExpr *>(expr)) {

@@ -94,6 +94,12 @@ pub const LIMITS = (
     )
 )
 
+// A memory-safe, zero-allocation reference to a string view.
+pub shape str(
+    &buf$: [char],
+    len$: usize
+)
+
 pub shape SourceLoc(
     file: str,
     line: i32
@@ -120,4 +126,3 @@ pub shape RefFat<'T>(
 
 //impl str@encap {    
 //}
-

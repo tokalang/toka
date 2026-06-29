@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import core/types::{str}
+
 extern fn libc_abort() -> void
 
 pub fn __toka_panic_handler(_msg: str) {

@@ -517,6 +517,11 @@ if ! grep -q "impl string@encap" "$STRING_TKI"; then
     echo "FAIL: core/string.tki did not emit canonical Type@Trait impl syntax"
     exit 1
 fi
+if grep -q "nullptr" "$STRING_TKI"; then
+    echo "FAIL: core/string.tki emitted non-Toka null pointer syntax"
+    cat "$STRING_TKI"
+    exit 1
+fi
 
 if ! "$TOKAC_ABS" --dump-dependencies=json "$STRING_TKI" > "$TEST_DIR/string_tki_roundtrip.json" 2> "$TEST_DIR/string_tki_roundtrip.err"; then
     echo "FAIL: core/string.tki could not be parsed as an interface root"
@@ -586,6 +591,94 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 echo "PASS: Test 7.8"
+
+# 7.9 Test core type interfaces preserve strong aliases and support the string stack.
+echo "Test 7.9: Caching core type and string stack interfaces"
+rm -rf "$TEST_DIR/core_stack_build"
+mkdir -p "$TEST_DIR/core_stack_build/objects" "$TEST_DIR/core_stack_build/interfaces"
+
+TYPES_HASH=$(python3 -c '
+import os
+FNV_OFFSET = 14695981039346656037
+FNV_PRIME = 1099511628211
+path = os.path.realpath("lib/core/types.tk").replace("\\\\", "/")
+h = FNV_OFFSET
+for b in path.encode():
+    h ^= b
+    h = (h * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+print(f"{h:016x}")
+')
+TYPES_TKI="$TEST_DIR/core_stack_build/interfaces/$TYPES_HASH.tki"
+
+if ! TOKA_BUILD_DIR="$TEST_DIR/core_stack_build" "$TOKAC_ABS" -c lib/core/types.tk -o "$TEST_DIR/core_stack_build/objects/types.o" 2> "$TEST_DIR/core_stack_types.err"; then
+    echo "FAIL: core/types.tk could not be compiled as a cached module"
+    cat "$TEST_DIR/core_stack_types.err"
+    exit 1
+fi
+if ! grep -q "pub type char = i8" "$TYPES_TKI"; then
+    echo "FAIL: core/types.tki did not preserve strong type syntax for char"
+    cat "$TYPES_TKI"
+    exit 1
+fi
+if grep -q "__Toka_Anon_Rec_" "$TYPES_TKI"; then
+    echo "FAIL: core/types.tki leaked an internal anonymous record type name"
+    cat "$TYPES_TKI"
+    exit 1
+fi
+
+for module in lib/core/internal/runtime.tk lib/core/utf8.tk lib/core/str.tk lib/core/string.tk; do
+    stem=$(basename "$module" .tk)
+    if ! TOKA_BUILD_DIR="$TEST_DIR/core_stack_build" "$TOKAC_ABS" -c "$module" -o "$TEST_DIR/core_stack_build/objects/$stem.o" 2> "$TEST_DIR/core_stack_$stem.err"; then
+        echo "FAIL: $module could not be compiled using cached lower core interfaces"
+        cat "$TEST_DIR/core_stack_$stem.err"
+        exit 1
+    fi
+done
+echo "PASS: Test 7.9"
+
+# 7.10 Test cached simple imports keep the source import module name.
+echo "Test 7.10: Cached simple import preserves logical module name"
+rm -rf "$TEST_DIR/simple_import_build" "$TEST_DIR/simple_import"
+mkdir -p "$TEST_DIR/simple_import_build/objects" "$TEST_DIR/simple_import_build/interfaces" "$TEST_DIR/simple_import"
+
+cat << 'EOF' > "$TEST_DIR/simple_import/lib.tk"
+pub fn value() -> i32 {
+    return 7
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/simple_import/main.tk"
+import ./lib
+
+fn main() -> i32 {
+    if lib::value() == 7 {
+        return 0
+    }
+    return 1
+}
+EOF
+
+LIB_HASH=$(python3 -c '
+import os
+FNV_OFFSET = 14695981039346656037
+FNV_PRIME = 1099511628211
+path = os.path.realpath("'"$TEST_DIR"'/simple_import/lib.tk").replace("\\\\", "/")
+h = FNV_OFFSET
+for b in path.encode():
+    h ^= b
+    h = (h * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+print(f"{h:016x}")
+')
+LIB_OBJ="$TEST_DIR/simple_import_build/objects/$LIB_HASH.o"
+
+TOKA_BUILD_DIR="$TEST_DIR/simple_import_build" "$TOKAC_ABS" -c "$TEST_DIR/simple_import/lib.tk" -o "$LIB_OBJ"
+if ! TOKA_BUILD_DIR="$TEST_DIR/simple_import_build" "$TOKAC_ABS" "$TEST_DIR/simple_import/main.tk" "$LIB_OBJ" -o "$TEST_DIR/simple_import_app" 2> "$TEST_DIR/simple_import.err"; then
+    echo "FAIL: cached simple import did not bind the logical module name"
+    cat "$TEST_DIR/simple_import.err"
+    exit 1
+fi
+"$TEST_DIR/simple_import_app"
+echo "PASS: Test 7.10"
 
 # Clean up
 rm -rf "$TEST_DIR"
