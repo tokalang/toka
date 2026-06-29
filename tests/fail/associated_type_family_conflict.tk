@@ -1,0 +1,26 @@
+trait @Mapper<K> {
+    type Output
+    pub fn map(self) -> Output
+}
+
+shape Data(value: i32)
+
+impl Data@Mapper<i32> {
+    type Output = i32
+    pub fn map(self) -> i32 {
+        return self.value
+    }
+}
+
+impl Data@Mapper<bool> {
+    type Output = bool
+    pub fn map(self) -> bool {
+        return true
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0613]:

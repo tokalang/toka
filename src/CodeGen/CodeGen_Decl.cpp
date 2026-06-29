@@ -30,6 +30,27 @@ extern bool verboseMode;
 
 namespace toka {
 
+static std::string getTraitFamilyNameForCodeGen(std::string traitName) {
+  if (!traitName.empty() && traitName[0] == '@') {
+    traitName = traitName.substr(1);
+  }
+
+  int balance = 0;
+  for (size_t i = 0; i < traitName.size(); ++i) {
+    char c = traitName[i];
+    if (c == '<' && balance == 0) {
+      return traitName.substr(0, i);
+    }
+    if (c == '<' || c == '(' || c == '[') {
+      balance++;
+    } else if (c == '>' || c == ')' || c == ']') {
+      if (balance > 0)
+        balance--;
+    }
+  }
+  return traitName;
+}
+
 llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                                      const std::string &overrideName,
                                      bool declOnly) {
@@ -1750,8 +1771,9 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
   // Handle Trait Defaults and Missing Methods
   if (!decl->TraitName.empty()) {
     const TraitDecl *trait = nullptr;
-    if (m_Traits.count(decl->TraitName)) {
-      trait = m_Traits[decl->TraitName];
+    std::string traitLookupName = getTraitFamilyNameForCodeGen(decl->TraitName);
+    if (m_Traits.count(traitLookupName)) {
+      trait = m_Traits[traitLookupName];
     }
 
     if (trait) {
@@ -2010,6 +2032,23 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       }
       if (callee)
         break;
+    }
+  }
+
+  if (!callee) {
+    std::string traitImplSuffix = "_" + typeName + "_" + expr->Method;
+    for (const auto &[candidateName, candidateDecl] : m_Functions) {
+      if (candidateName.size() <= traitImplSuffix.size())
+        continue;
+      if (candidateName.compare(candidateName.size() - traitImplSuffix.size(),
+                                traitImplSuffix.size(),
+                                traitImplSuffix) != 0)
+        continue;
+      callee = m_Module->getFunction(candidateName);
+      if (callee) {
+        funcName = candidateName;
+        break;
+      }
     }
   }
 

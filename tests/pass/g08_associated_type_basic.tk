@@ -1,0 +1,23 @@
+pub trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+pub shape IntBox(value: i32)
+
+impl IntBox@Readable {
+    type Item = i32
+    pub fn read(self) -> Item {
+        auto tmp: Item = self.value
+        return tmp
+    }
+}
+
+fn accept_item(x: IntBox@Readable::Item) -> i32 {
+    return x
+}
+
+pub fn main() -> i32 {
+    auto box = IntBox(value = 41)
+    return accept_item(box.read()) - 41
+}

@@ -92,6 +92,10 @@ public:
     // We only substitute Impl params.
   }
 
+  void visitAssociatedType(AssociatedTypeDecl &Assoc) {
+    Assoc.Type = sub(Assoc.Type);
+  }
+
   void visitStmt(Stmt *S) {
     if (!S)
       return;
@@ -289,6 +293,12 @@ void Sema::instantiateGenericImpl(
     NewMethods.push_back(std::move(ClonedFn));
   }
 
+  std::vector<AssociatedTypeDecl> NewAssociatedTypes =
+      Template->AssociatedTypes;
+  for (auto &Assoc : NewAssociatedTypes) {
+    Instantiator.visitAssociatedType(Assoc);
+  }
+
   // 4. Create New ImplDecl
   // TypeName MUST be the mangled name (e.g. "Box_M_i32") for CodeGen lookup
   auto NewImpl = std::make_unique<ImplDecl>(
@@ -298,6 +308,7 @@ void Sema::instantiateGenericImpl(
 
   // Copy encapsulation entries if any (generics might affect them?)
   NewImpl->EncapEntries = Template->EncapEntries;
+  NewImpl->AssociatedTypes = std::move(NewAssociatedTypes);
   NewImpl->Loc = Template->Loc; // rough loc
 
   // 5. Register and Check

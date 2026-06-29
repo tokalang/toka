@@ -1,0 +1,23 @@
+pub trait @Slot<K> {
+    per type Value
+    pub fn get(self) -> Value
+}
+
+pub shape IntSlot(value: i32)
+
+impl IntSlot@Slot<i32> {
+    per type Value = i32
+    pub fn get(self) -> Value {
+        auto tmp: Value = self.value
+        return tmp
+    }
+}
+
+fn accept_slot_value(x: IntSlot@Slot<i32>::Value) -> i32 {
+    return x
+}
+
+pub fn main() -> i32 {
+    auto slot = IntSlot(value = 23)
+    return accept_slot_value(slot.get()) - 23
+}

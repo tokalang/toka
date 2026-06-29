@@ -626,6 +626,54 @@
       "message": "Type '{}' cannot implement '@{}' because it does not satisfy required trait '@{}'",
       "description": "Type '{}' cannot implement '@{}' because it does not satisfy required trait '@{}'"
     },
+    "E0609": {
+      "id": "ERR_ASSOC_TYPE_MISSING",
+      "level": "Error",
+      "message": "Implementation of '@{}' for '{}' must define associated type '{}'",
+      "description": "Implementation of '@{}' for '{}' must define associated type '{}'"
+    },
+    "E0610": {
+      "id": "ERR_ASSOC_TYPE_EXTRA",
+      "level": "Error",
+      "message": "Associated type '{}' is not declared by trait '@{}'",
+      "description": "Associated type '{}' is not declared by trait '@{}'"
+    },
+    "E0611": {
+      "id": "ERR_ASSOC_TYPE_MODE_MISMATCH",
+      "level": "Error",
+      "message": "Associated type '{}' must be declared as '{}'",
+      "description": "Associated type '{}' must be declared as '{}'"
+    },
+    "E0612": {
+      "id": "ERR_ASSOC_TYPE_DUPLICATE",
+      "level": "Error",
+      "message": "Associated type '{}' is already declared",
+      "description": "Associated type '{}' is already declared"
+    },
+    "E0613": {
+      "id": "ERR_ASSOC_TYPE_CONFLICT",
+      "level": "Error",
+      "message": "Associated type '{}@{}::{}' is already bound to '{}', cannot bind it to '{}'",
+      "description": "Associated type '{}@{}::{}' is already bound to '{}', cannot bind it to '{}'"
+    },
+    "E0614": {
+      "id": "ERR_ASSOC_TYPE_IN_INHERENT_IMPL",
+      "level": "Error",
+      "message": "Associated type '{}' can only be defined in a trait impl",
+      "description": "Associated type '{}' can only be defined in a trait impl"
+    },
+    "E0615": {
+      "id": "ERR_ASSOC_TYPE_PROJECTION_NOT_FOUND",
+      "level": "Error",
+      "message": "Associated type projection '{}' is not bound",
+      "description": "Associated type projection '{}' is not bound"
+    },
+    "E0616": {
+      "id": "ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC",
+      "level": "Error",
+      "message": "Associated type '{}' conflicts with a generic parameter of trait '@{}'",
+      "description": "Associated type '{}' conflicts with a generic parameter of trait '@{}'"
+    },
     "E0101": {
       "id": "ERR_EXPECTED_SEMI",
       "level": "Error",
@@ -1536,6 +1584,30 @@
       "level": "Error",
       "message": "Where constraint subject '{}' must be a declared generic parameter or 'Self' in a trait declaration.",
       "description": "Where constraint subject '{}' must be a declared generic parameter or 'Self' in a trait declaration."
+    },
+    "E01239": {
+      "id": "ERR_PARSER_EXPECTED_ASSOCIATED_TYPE",
+      "level": "Error",
+      "message": "Expected 'type' in associated type declaration",
+      "description": "Expected 'type' in associated type declaration"
+    },
+    "E01240": {
+      "id": "ERR_PARSER_EXPECTED_ASSOCIATED_TYPE_NAME",
+      "level": "Error",
+      "message": "Expected associated type name",
+      "description": "Expected associated type name"
+    },
+    "E01241": {
+      "id": "ERR_PARSER_ASSOCIATED_TYPE_EXPECTED_EQUAL",
+      "level": "Error",
+      "message": "Expected '=' in associated type implementation",
+      "description": "Expected '=' in associated type implementation"
+    },
+    "E01242": {
+      "id": "ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT",
+      "level": "Error",
+      "message": "Trait associated type declarations cannot define a default type",
+      "description": "Trait associated type declarations cannot define a default type"
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",

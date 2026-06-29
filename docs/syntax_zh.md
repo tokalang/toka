@@ -232,6 +232,40 @@ impl Rect@Shape {
 }
 ```
 
+Trait 可以声明关联类型。普通 `type` 关联类型对某个 shape 的整个 trait family 保持稳定：一旦 `Data@Mapper<i32>::Output` 被绑定，另一个 `Data@Mapper<bool>` 实现也必须使用相同的 `Output`。`per type` 关联类型则绑定到具体 trait 实例，因此不同 trait 参数可以选择不同输出类型。
+
+```toka
+trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+shape IntBox(value: i32)
+
+impl IntBox@Readable {
+    type Item = i32
+    pub fn read(self) -> Item {
+        return self.value
+    }
+}
+
+trait @Slot<K> {
+    per type Value
+    pub fn get(self) -> Value
+}
+
+shape IntSlot(value: i32)
+
+impl IntSlot@Slot<i32> {
+    per type Value = i32
+    pub fn get(self) -> Value {
+        return self.value
+    }
+}
+```
+
+在定义该关联类型的 trait 或 impl 块内部，方法签名和局部类型标注可以直接使用关联类型名。块外部使用投影语法：`IntBox@Readable::Item` 或 `IntSlot@Slot<i32>::Value`。
+
 动态 trait 对象在类型位置使用 `dyn @Trait`。如果某个具体类型实现了该 trait，它的值可以传给期望 `dyn @Trait` 的参数；普通参数传递不需要写 `&`，因为 Toka 参数本来就是原地捕获。
 
 ```toka

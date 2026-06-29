@@ -166,6 +166,279 @@ static bool isUnsafeType(const std::shared_ptr<toka::Type>& T) {
   return false;
 }
 
+static bool isTypeNameBoundary(char c) {
+  return !std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '\'';
+}
+
+static void replaceTypeNameToken(std::string &text, const std::string &from,
+                                 const std::string &to) {
+  if (from.empty() || from == to)
+    return;
+
+  size_t pos = 0;
+  while ((pos = text.find(from, pos)) != std::string::npos) {
+    bool startOk = pos == 0 || isTypeNameBoundary(text[pos - 1]);
+    size_t end = pos + from.size();
+    bool endOk = end == text.size() || isTypeNameBoundary(text[end]);
+    if (startOk && endOk) {
+      text.replace(pos, from.size(), to);
+      pos += to.size();
+    } else {
+      pos += from.size();
+    }
+  }
+}
+
+static size_t findTopLevelChar(const std::string &s, char target,
+                               size_t start = 0) {
+  int balance = 0;
+  for (size_t i = start; i < s.size(); ++i) {
+    char c = s[i];
+    if (balance == 0 && c == target) {
+      return i;
+    }
+    if (c == '<' || c == '(' || c == '[') {
+      balance++;
+    } else if (c == '>' || c == ')' || c == ']') {
+      if (balance > 0)
+        balance--;
+    }
+  }
+  return std::string::npos;
+}
+
+static size_t findTopLevelDoubleColon(const std::string &s,
+                                      size_t start = 0) {
+  int balance = 0;
+  for (size_t i = start; i + 1 < s.size(); ++i) {
+    char c = s[i];
+    if (c == '<' || c == '(' || c == '[') {
+      balance++;
+    } else if (c == '>' || c == ')' || c == ']') {
+      if (balance > 0)
+        balance--;
+    } else if (balance == 0 && c == ':' && s[i + 1] == ':') {
+      return i;
+    }
+  }
+  return std::string::npos;
+}
+
+static std::string trimTypeString(const std::string &s) {
+  size_t first = s.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos)
+    return "";
+  size_t last = s.find_last_not_of(" \t\r\n");
+  return s.substr(first, last - first + 1);
+}
+
+std::string Sema::getTraitFamilyName(const std::string &traitName) const {
+  std::string clean = trimTypeString(traitName);
+  if (!clean.empty() && clean[0] == '@') {
+    clean = clean.substr(1);
+  }
+  size_t lt = findTopLevelChar(clean, '<');
+  if (lt != std::string::npos) {
+    clean = clean.substr(0, lt);
+  }
+  return clean;
+}
+
+TraitDecl *Sema::findTraitDecl(const std::string &traitName) const {
+  std::string family = getTraitFamilyName(traitName);
+  auto it = TraitMap.find(family);
+  if (it == TraitMap.end())
+    return nullptr;
+  return it->second;
+}
+
+void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
+  if (!Trait || CheckedAssociatedTypeTraits.count(Trait))
+    return;
+  CheckedAssociatedTypeTraits.insert(Trait);
+
+  std::set<std::string> genericNames;
+  for (const auto &gp : Trait->GenericParams) {
+    genericNames.insert(gp.Name);
+    if (!gp.Name.empty() && gp.Name[0] == '\'') {
+      genericNames.insert(gp.Name.substr(1));
+    }
+  }
+
+  std::set<std::string> seen;
+  for (const auto &assoc : Trait->AssociatedTypes) {
+    if (seen.count(assoc.Name)) {
+      DiagnosticEngine::report(assoc.Loc, DiagID::ERR_ASSOC_TYPE_DUPLICATE,
+                               assoc.Name);
+      HasError = true;
+      continue;
+    }
+    seen.insert(assoc.Name);
+
+    if (genericNames.count(assoc.Name)) {
+      DiagnosticEngine::report(
+          assoc.Loc, DiagID::ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC,
+          assoc.Name, Trait->Name);
+      HasError = true;
+    }
+  }
+}
+
+std::map<std::string, std::string>
+Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
+                              const std::string &resolvedTypeName) {
+  std::map<std::string, std::string> replacements;
+  if (!Impl)
+    return replacements;
+
+  if (Impl->TraitName.empty()) {
+    for (const auto &assoc : Impl->AssociatedTypes) {
+      DiagnosticEngine::report(assoc.Loc, DiagID::ERR_ASSOC_TYPE_IN_INHERENT_IMPL,
+                               assoc.Name);
+      HasError = true;
+    }
+    return replacements;
+  }
+
+  if (!Trait)
+    return replacements;
+
+  validateTraitAssociatedTypes(Trait);
+
+  std::map<std::string, const AssociatedTypeDecl *> required;
+  for (const auto &assoc : Trait->AssociatedTypes) {
+    required[assoc.Name] = &assoc;
+  }
+
+  std::map<std::string, const AssociatedTypeDecl *> provided;
+  for (const auto &assoc : Impl->AssociatedTypes) {
+    if (provided.count(assoc.Name)) {
+      DiagnosticEngine::report(assoc.Loc, DiagID::ERR_ASSOC_TYPE_DUPLICATE,
+                               assoc.Name);
+      HasError = true;
+      continue;
+    }
+    provided[assoc.Name] = &assoc;
+  }
+
+  for (const auto &[name, traitAssoc] : required) {
+    if (!provided.count(name)) {
+      DiagnosticEngine::report(Impl->Loc, DiagID::ERR_ASSOC_TYPE_MISSING,
+                               getTraitFamilyName(Impl->TraitName),
+                               Impl->TypeName, name);
+      HasError = true;
+    }
+  }
+
+  for (const auto &[name, implAssoc] : provided) {
+    if (!required.count(name)) {
+      DiagnosticEngine::report(implAssoc->Loc, DiagID::ERR_ASSOC_TYPE_EXTRA,
+                               name, getTraitFamilyName(Impl->TraitName));
+      HasError = true;
+      continue;
+    }
+
+    const AssociatedTypeDecl *traitAssoc = required[name];
+    if (traitAssoc->IsPer != implAssoc->IsPer) {
+      DiagnosticEngine::report(
+          implAssoc->Loc, DiagID::ERR_ASSOC_TYPE_MODE_MISMATCH, name,
+          traitAssoc->IsPer ? "per type" : "type");
+      HasError = true;
+      continue;
+    }
+
+    std::string resolvedAssocType = implAssoc->Type;
+    replaceTypeNameToken(resolvedAssocType, "Self", resolvedTypeName);
+    for (const auto &[knownName, knownType] : replacements) {
+      replaceTypeNameToken(resolvedAssocType, knownName, knownType);
+    }
+    resolvedAssocType = resolveType(resolvedAssocType);
+    replacements[name] = resolvedAssocType;
+
+    std::string traitKey =
+        implAssoc->IsPer ? Impl->TraitName : getTraitFamilyName(Impl->TraitName);
+    if (!traitKey.empty() && traitKey[0] == '@') {
+      traitKey = traitKey.substr(1);
+    }
+    std::string assocKey =
+        resolvedTypeName + "@" + traitKey + "::" + name;
+
+    auto existing = AssociatedTypeMap.find(assocKey);
+    if (existing != AssociatedTypeMap.end() &&
+        existing->second.Type != resolvedAssocType) {
+      DiagnosticEngine::report(implAssoc->Loc, DiagID::ERR_ASSOC_TYPE_CONFLICT,
+                               resolvedTypeName, traitKey, name,
+                               existing->second.Type, resolvedAssocType);
+      HasError = true;
+      continue;
+    }
+
+    AssociatedTypeMap[assocKey] =
+        AssociatedTypeBinding{resolvedAssocType, implAssoc->IsPer, implAssoc->Loc};
+  }
+
+  return replacements;
+}
+
+void Sema::applyAssociatedTypeSubstitutions(
+    ImplDecl *Impl, const std::map<std::string, std::string> &substitutions) {
+  if (!Impl || substitutions.empty())
+    return;
+
+  for (auto &Method : Impl->Methods) {
+    for (const auto &[name, ty] : substitutions) {
+      replaceTypeNameToken(Method->ReturnType, name, ty);
+      Method->ResolvedReturnType = nullptr;
+      for (auto &Arg : Method->Args) {
+        replaceTypeNameToken(Arg.Type, name, ty);
+        Arg.ResolvedType = nullptr;
+      }
+    }
+  }
+}
+
+std::string Sema::resolveAssociatedTypeProjection(const std::string &typeName,
+                                                  bool force) {
+  std::string type = trimTypeString(typeName);
+  size_t at = findTopLevelChar(type, '@');
+  if (at == std::string::npos) {
+    return "";
+  }
+
+  size_t scope = findTopLevelDoubleColon(type, at + 1);
+  if (scope == std::string::npos) {
+    return "";
+  }
+
+  std::string selfType = trimTypeString(type.substr(0, at));
+  std::string traitName = trimTypeString(type.substr(at + 1, scope - at - 1));
+  std::string assocName = trimTypeString(type.substr(scope + 2));
+  if (selfType.empty() || traitName.empty() || assocName.empty()) {
+    return "";
+  }
+
+  std::string resolvedSelf = resolveType(selfType, force);
+  std::string exactTrait = traitName;
+  if (!exactTrait.empty() && exactTrait[0] == '@') {
+    exactTrait = exactTrait.substr(1);
+  }
+
+  std::string exactKey = resolvedSelf + "@" + exactTrait + "::" + assocName;
+  auto exact = AssociatedTypeMap.find(exactKey);
+  if (exact != AssociatedTypeMap.end()) {
+    return exact->second.Type;
+  }
+
+  std::string family = getTraitFamilyName(exactTrait);
+  std::string familyKey = resolvedSelf + "@" + family + "::" + assocName;
+  auto fam = AssociatedTypeMap.find(familyKey);
+  if (fam != AssociatedTypeMap.end()) {
+    return fam->second.Type;
+  }
+
+  return "";
+}
+
 bool Sema::checkModule(Module &M) {
 
   enterScope();       // Module-level global scope
@@ -304,6 +577,7 @@ void Sema::declareGlobals(Module &M) {
   for (auto &Trait : M.Traits) {
     ms.Traits[Trait->Name] = Trait.get();
     TraitMap[Trait->Name] = Trait.get();
+    validateTraitAssociatedTypes(Trait.get());
 
     std::string traitKey = "@" + Trait->Name;
     for (auto &Method : Trait->Methods) {
@@ -409,6 +683,7 @@ void Sema::registerGlobals(Module &M) {
   for (auto &Trait : M.Traits) {
     ms.Traits[Trait->Name] = Trait.get();
     TraitMap[Trait->Name] = Trait.get();
+    validateTraitAssociatedTypes(Trait.get());
 
     // Register Trait methods for 'dyn' dispatch checks
     std::string traitKey = "@" + Trait->Name;
@@ -917,6 +1192,13 @@ void Sema::registerGlobals(Module &M) {
 }
 
 void Sema::registerImpl(ImplDecl *Impl) {
+  std::string resolvedTypeName = resolveType(Impl->TypeName);
+  TraitDecl *traitDecl =
+      Impl->TraitName.empty() ? nullptr : findTraitDecl(Impl->TraitName);
+  std::map<std::string, std::string> associatedTypeSubstitutions =
+      registerAssociatedTypes(Impl, traitDecl, resolvedTypeName);
+  AssociatedTypeSubstitutionCache[Impl] = associatedTypeSubstitutions;
+
   // [New] Resolve 'Self' in Method Signatures for External Callers
   // We must replace 'Self' with the concrete (or generic) TypeName
   // so that callers (like main) typically don't fail to resolve 'Self'.
@@ -931,9 +1213,9 @@ void Sema::registerImpl(ImplDecl *Impl) {
       }
     }
   }
+  applyAssociatedTypeSubstitutions(Impl, associatedTypeSubstitutions);
 
   std::set<std::string> implemented;
-  std::string resolvedTypeName = resolveType(Impl->TypeName);
   for (auto &Method : Impl->Methods) {
     MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
     MethodDecls[resolvedTypeName][Method->Name] = Method.get();
@@ -951,10 +1233,11 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
   // Handle Trait Defaults
   if (!Impl->TraitName.empty()) {
-    if (TraitMap.count(Impl->TraitName)) {
-      TraitDecl *TD = TraitMap[Impl->TraitName];
-      if (ShapeImportMap.count(Impl->TraitName)) {
-        const_cast<ImportDecl*>(ShapeImportMap[Impl->TraitName])->HasBeenUsed = true;
+    if (traitDecl) {
+      TraitDecl *TD = traitDecl;
+      std::string traitFamily = getTraitFamilyName(Impl->TraitName);
+      if (ShapeImportMap.count(traitFamily)) {
+        const_cast<ImportDecl*>(ShapeImportMap[traitFamily])->HasBeenUsed = true;
       }
       for (auto &Method : TD->Methods) {
         if (implemented.count(Method->Name)) {
@@ -980,7 +1263,11 @@ void Sema::registerImpl(ImplDecl *Impl) {
         }
         if (Method->Body) {
           // Trait provides a default implementation
-          MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
+          std::string defaultReturnType = Method->ReturnType;
+          for (const auto &[name, ty] : associatedTypeSubstitutions) {
+            replaceTypeNameToken(defaultReturnType, name, ty);
+          }
+          MethodMap[resolvedTypeName][Method->Name] = defaultReturnType;
           MethodDecls[resolvedTypeName][Method->Name] = Method.get();
         } else {
           // [Fix] Optional methods for intrinsic interfaces
@@ -995,7 +1282,8 @@ void Sema::registerImpl(ImplDecl *Impl) {
       }
     } else {
       DiagnosticEngine::report(getLoc(Impl), DiagID::ERR_TRAIT_NOT_FOUND,
-                               Impl->TraitName, Impl->TypeName);
+                               getTraitFamilyName(Impl->TraitName),
+                               Impl->TypeName);
       HasError = true;
     }
   }
@@ -1270,26 +1558,28 @@ void Sema::checkImpl(ImplDecl *Impl) {
       return;
   }
 
-  if (!Impl->TraitName.empty() && TraitMap.count(Impl->TraitName)) {
-    TraitDecl *TD = TraitMap[Impl->TraitName];
-    std::string resolvedTypeName = resolveType(Impl->TypeName);
-    for (const auto &bound : TD->SelfTraitBounds) {
-      std::string implKey = resolvedTypeName + "@" + bound;
-      bool satisfied = ImplMap.count(implKey);
+  if (!Impl->TraitName.empty()) {
+    TraitDecl *TD = findTraitDecl(Impl->TraitName);
+    if (TD) {
+      std::string resolvedTypeName = resolveType(Impl->TypeName);
+      for (const auto &bound : TD->SelfTraitBounds) {
+        std::string implKey = resolvedTypeName + "@" + bound;
+        bool satisfied = ImplMap.count(implKey);
 
-      if (!satisfied && bound == "Send") {
-        auto typeObj = toka::Type::fromString(resolvedTypeName);
-        satisfied = typeObj && typeObj->isSend(this);
-      } else if (!satisfied && bound == "Sync") {
-        auto typeObj = toka::Type::fromString(resolvedTypeName);
-        satisfied = typeObj && typeObj->isSync(this);
-      }
+        if (!satisfied && bound == "Send") {
+          auto typeObj = toka::Type::fromString(resolvedTypeName);
+          satisfied = typeObj && typeObj->isSend(this);
+        } else if (!satisfied && bound == "Sync") {
+          auto typeObj = toka::Type::fromString(resolvedTypeName);
+          satisfied = typeObj && typeObj->isSync(this);
+        }
 
-      if (!satisfied) {
-        DiagnosticEngine::report(getLoc(Impl),
-                                 DiagID::ERR_TRAIT_PREREQUISITE_UNSATISFIED,
-                                 Impl->TypeName, Impl->TraitName, bound);
-        HasError = true;
+        if (!satisfied) {
+          DiagnosticEngine::report(getLoc(Impl),
+                                   DiagID::ERR_TRAIT_PREREQUISITE_UNSATISFIED,
+                                   Impl->TypeName, Impl->TraitName, bound);
+          HasError = true;
+        }
       }
     }
   }
@@ -1321,6 +1611,16 @@ void Sema::checkImpl(ImplDecl *Impl) {
     CurrentScope->define("Self", Sym);
   } else {
     // Should we error?
+  }
+
+  auto assocIt = AssociatedTypeSubstitutionCache.find(Impl);
+  if (assocIt != AssociatedTypeSubstitutionCache.end()) {
+    for (const auto &[name, typeName] : assocIt->second) {
+      SymbolInfo Sym;
+      Sym.IsTypeAlias = true;
+      Sym.TypeObj = resolveType(toka::Type::fromString(typeName));
+      CurrentScope->define(name, Sym);
+    }
   }
 
   // 3. Check all methods

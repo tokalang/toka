@@ -1,0 +1,19 @@
+trait @Slot<K> {
+    per type Value
+    pub fn get(self) -> Value
+}
+
+shape Data(value: i32)
+
+impl Data@Slot<i32> {
+    type Value = i32
+    pub fn get(self) -> i32 {
+        return self.value
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0611]:

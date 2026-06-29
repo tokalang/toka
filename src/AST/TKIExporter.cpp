@@ -343,6 +343,11 @@ void TKIExporter::exportTrait(const TraitDecl &decl) {
     }
     m_OS << (multilineHeader ? "{\n" : " {\n");
     m_Indent++;
+    for (const auto &assoc : decl.AssociatedTypes) {
+        indent();
+        if (assoc.IsPer) m_OS << "per ";
+        m_OS << "type " << assoc.Name << "\n";
+    }
     for (const auto &method : decl.Methods) {
         exportFunction(*method, /*forceKeepBody=*/false);
     }
@@ -362,6 +367,13 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
     }
     m_OS << decl.TypeName << " {\n";
     m_Indent++;
+
+    // Associated types
+    for (const auto &assoc : decl.AssociatedTypes) {
+        indent();
+        if (assoc.IsPer) m_OS << "per ";
+        m_OS << "type " << assoc.Name << " = " << assoc.Type << "\n";
+    }
 
     // Encap entries
     for (const auto &entry : decl.EncapEntries) {

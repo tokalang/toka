@@ -1,0 +1,18 @@
+trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+shape Data(value: i32)
+
+impl Data@Readable {
+    pub fn read(self) -> i32 {
+        return self.value
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0609]:

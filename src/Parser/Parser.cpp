@@ -225,7 +225,7 @@ void Parser::synchronize() {
   }
 }
 
-std::string Parser::parseTypeString() {
+std::string Parser::parseTypeString(bool allowAssociatedProjection) {
   std::string type;
   int balance = 0;
   while (!check(TokenType::EndOfFile)) {
@@ -251,7 +251,7 @@ std::string Parser::parseTypeString() {
         // Ensure no significant tokens between dyn and @
         isDynTrait = true;
       }
-      if (!isDynTrait && !type.empty())
+      if (!isDynTrait && !type.empty() && !allowAssociatedProjection)
         break;
     }
 

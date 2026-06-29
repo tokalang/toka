@@ -1024,6 +1024,39 @@ std::unique_ptr<TypeAliasDecl> Parser::parseTypeAliasDecl(bool isPub) {
   return decl;
 }
 
+bool Parser::isAssociatedTypeDeclStart() const {
+  return check(TokenType::KwType) ||
+         (check(TokenType::Identifier) && peek().Text == "per" &&
+          checkAt(1, TokenType::KwType));
+}
+
+AssociatedTypeDecl Parser::parseAssociatedTypeDecl(bool requireDefinition) {
+  AssociatedTypeDecl decl;
+  Token startTok = peek();
+  if (check(TokenType::Identifier) && peek().Text == "per" &&
+      checkAt(1, TokenType::KwType)) {
+    decl.IsPer = true;
+    advance();
+  }
+
+  consume(TokenType::KwType, DiagID::ERR_PARSER_EXPECTED_ASSOCIATED_TYPE);
+  Token name =
+      consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ASSOCIATED_TYPE_NAME);
+  decl.Name = name.Text;
+  decl.Loc = name.Loc;
+
+  if (requireDefinition) {
+    consume(TokenType::Equal, DiagID::ERR_PARSER_ASSOCIATED_TYPE_EXPECTED_EQUAL);
+    decl.Type = parseTypeString();
+  } else if (match(TokenType::Equal)) {
+    error(startTok, DiagID::ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT);
+    decl.Type = parseTypeString();
+  }
+
+  expectEndOfStatement();
+  return decl;
+}
+
 std::unique_ptr<ImplDecl> Parser::parseImpl() {
   Token startTok = consume(TokenType::KwImpl, DiagID::ERR_PARSER_EXPECTED_IMPL);
 
@@ -1032,7 +1065,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
 
   // 2. Parse First Type/Trait String (Not just Identifier)
   // This allows "Box<T>" or "Iterator<T>"
-  std::string firstTypeStr = parseTypeString();
+  std::string firstTypeStr = parseTypeString(false);
 
   std::string traitName;
   std::string typeName;
@@ -1065,6 +1098,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
 
   std::vector<std::unique_ptr<FunctionDecl>> methods;
   std::vector<EncapEntry> encapEntries;
+  std::vector<AssociatedTypeDecl> associatedTypes;
 
   if (traitName == "encap") {
     while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile)) {
@@ -1127,6 +1161,11 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
     }
   } else {
     while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile)) {
+      if (isAssociatedTypeDeclStart()) {
+        associatedTypes.push_back(parseAssociatedTypeDecl(true));
+        continue;
+      }
+
       bool isPub = false;
       if (match(TokenType::KwPub)) {
         isPub = true;
@@ -1145,6 +1184,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
   auto decl = std::make_unique<ImplDecl>(typeName, std::move(methods),
                                          traitName, genericParams);
   decl->EncapEntries = std::move(encapEntries);
+  decl->AssociatedTypes = std::move(associatedTypes);
   decl->setLocation(startTok, m_CurrentFile);
   return decl;
 }
@@ -1167,7 +1207,13 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
   consume(TokenType::LBrace, DiagID::ERR_EXPECTED_LBRACE);
 
   std::vector<std::unique_ptr<FunctionDecl>> methods;
+  std::vector<AssociatedTypeDecl> associatedTypes;
   while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile)) {
+    if (isAssociatedTypeDeclStart()) {
+      associatedTypes.push_back(parseAssociatedTypeDecl(false));
+      continue;
+    }
+
     bool isPub = false;
     if (match(TokenType::KwPub)) {
       isPub = true;
@@ -1181,7 +1227,8 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
   consume(TokenType::RBrace, DiagID::ERR_EXPECTED_RBRACE);
   return std::make_unique<TraitDecl>(isPub, name.Text, std::move(methods),
                                      std::move(genericParams),
-                                     std::move(selfTraitBounds));
+                                     std::move(selfTraitBounds),
+                                     std::move(associatedTypes));
 }
 
 } // namespace toka

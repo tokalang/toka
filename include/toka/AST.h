@@ -1744,12 +1744,20 @@ struct EncapEntry {
   bool IsExclusion = false; // For pub * ! ...
 };
 
+struct AssociatedTypeDecl {
+  std::string Name;
+  std::string Type;
+  bool IsPer = false;
+  SourceLocation Loc;
+};
+
 class ImplDecl : public ASTNode {
 public:
   std::string TypeName;
   std::string TraitName;
   std::vector<std::unique_ptr<FunctionDecl>> Methods;
   std::vector<EncapEntry> EncapEntries;
+  std::vector<AssociatedTypeDecl> AssociatedTypes;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
 
   ImplDecl(const std::string &name,
@@ -1770,14 +1778,17 @@ public:
   std::string Name;
   std::vector<GenericParam> GenericParams;
   std::vector<std::string> SelfTraitBounds;
+  std::vector<AssociatedTypeDecl> AssociatedTypes;
   std::vector<std::unique_ptr<FunctionDecl>> Methods;
 
   TraitDecl(bool isPub, const std::string &name,
             std::vector<std::unique_ptr<FunctionDecl>> methods,
             std::vector<GenericParam> generics = {},
-            std::vector<std::string> selfTraitBounds = {})
+            std::vector<std::string> selfTraitBounds = {},
+            std::vector<AssociatedTypeDecl> associatedTypes = {})
       : IsPub(isPub), Name(name), GenericParams(std::move(generics)),
         SelfTraitBounds(std::move(selfTraitBounds)),
+        AssociatedTypes(std::move(associatedTypes)),
         Methods(std::move(methods)) {}
   std::string toString() const override {
     return std::string(IsPub ? "Pub" : "") + "Trait(" + Name + ")";

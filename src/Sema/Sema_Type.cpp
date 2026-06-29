@@ -82,6 +82,11 @@ std::string Sema::resolveType(const std::string &Type, bool force) {
     }
   }
 
+  std::string associatedProjection = resolveAssociatedTypeProjection(Type, force);
+  if (!associatedProjection.empty()) {
+    return resolveType(associatedProjection, force);
+  }
+
   size_t scopePos = Type.find("::");
   if (scopePos != std::string::npos) {
     std::string ModName = Type.substr(0, scopePos);
@@ -240,6 +245,16 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
   }
 
   if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
+    std::string associatedProjection =
+        resolveAssociatedTypeProjection(shape->toString(), force);
+    if (!associatedProjection.empty()) {
+      auto resolved = toka::Type::fromString(associatedProjection);
+      return resolveType(
+          resolved->withAttributes(type->IsWritable, type->IsNullable,
+                                   type->IsBlocked),
+          force);
+    }
+
     if (ShapeImportMap.count(shape->Name)) {
       const_cast<ImportDecl*>(ShapeImportMap[shape->Name])->HasBeenUsed = true;
     }

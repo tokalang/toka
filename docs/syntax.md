@@ -232,6 +232,40 @@ impl Rect@Shape {
 }
 ```
 
+Traits may declare associated types. A plain `type` associated type is stable for the whole trait family on a shape: once `Data@Mapper<i32>::Output` is bound, another `Data@Mapper<bool>` implementation must use the same `Output`. A `per type` associated type is bound per trait instance, so different trait arguments may choose different output types.
+
+```toka
+trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+shape IntBox(value: i32)
+
+impl IntBox@Readable {
+    type Item = i32
+    pub fn read(self) -> Item {
+        return self.value
+    }
+}
+
+trait @Slot<K> {
+    per type Value
+    pub fn get(self) -> Value
+}
+
+shape IntSlot(value: i32)
+
+impl IntSlot@Slot<i32> {
+    per type Value = i32
+    pub fn get(self) -> Value {
+        return self.value
+    }
+}
+```
+
+Inside the defining trait or impl block, the associated type name may be used directly in method signatures and local type annotations. Outside the block, use projection syntax: `IntBox@Readable::Item` or `IntSlot@Slot<i32>::Value`.
+
 Dynamic trait objects use `dyn @Trait` in type positions. A concrete value whose type implements the trait may be passed to a parameter expecting `dyn @Trait`; no `&` is needed for ordinary parameter passing because Toka parameters capture in place.
 
 ```toka

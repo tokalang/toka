@@ -88,6 +88,8 @@ private:
   std::unique_ptr<ShapeDecl> parseShape(bool isPub = false);
   std::unique_ptr<ImplDecl> parseImpl();
   std::unique_ptr<TraitDecl> parseTrait(bool isPub = false);
+  AssociatedTypeDecl parseAssociatedTypeDecl(bool requireDefinition);
+  bool isAssociatedTypeDeclStart() const;
   std::unique_ptr<Expr> parseMatchExpr();
   std::unique_ptr<MatchArm::Pattern> parseSinglePattern();
   std::unique_ptr<MatchArm::Pattern> parsePattern();
@@ -123,7 +125,7 @@ private:
 
   std::unique_ptr<Expr> parseExpr(int minPrec = 0, bool allowTrailingClosure = true);
   std::unique_ptr<Expr> parsePrimary(bool allowTrailingClosure = true);
-  std::string parseTypeString();
+  std::string parseTypeString(bool allowAssociatedProjection = true);
   bool isNextNamedField(int startOffset = 0) const;
   bool isNamedInitList() const;
   std::string parseNamespaceOrIdentifier();

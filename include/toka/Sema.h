@@ -262,6 +262,11 @@ private:
     bool IsStrong;
     std::vector<GenericParam> GenericParams; // [NEW]
   };
+  struct AssociatedTypeBinding {
+    std::string Type;
+    bool IsPer = false;
+    SourceLocation Loc;
+  };
   std::map<std::string, AliasInfo> TypeAliasMap;
   // TypeName -> {MethodName -> ReturnType}
   std::map<std::string, std::map<std::string, std::string>> MethodMap;
@@ -270,6 +275,10 @@ private:
   std::map<std::string, TraitDecl *> TraitMap;
   // Key: "StructName@TraitName" -> {MethodName -> FunctionDecl*}
   std::map<std::string, std::map<std::string, FunctionDecl *>> ImplMap;
+  std::map<std::string, AssociatedTypeBinding> AssociatedTypeMap;
+  std::map<const ImplDecl *, std::map<std::string, std::string>>
+      AssociatedTypeSubstitutionCache;
+  std::set<const TraitDecl *> CheckedAssociatedTypeTraits;
   std::map<std::string, std::vector<EncapEntry>> EncapMap;
   std::string CurrentFunctionReturnType;
   FunctionDecl *CurrentFunction =
@@ -351,6 +360,16 @@ private:
   // Passes
   void registerGlobals(Module &M);
   void checkFunction(FunctionDecl *Fn);
+  std::string getTraitFamilyName(const std::string &traitName) const;
+  TraitDecl *findTraitDecl(const std::string &traitName) const;
+  std::string resolveAssociatedTypeProjection(const std::string &typeName,
+                                              bool force);
+  std::map<std::string, std::string>
+  registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
+                          const std::string &resolvedTypeName);
+  void applyAssociatedTypeSubstitutions(
+      ImplDecl *Impl, const std::map<std::string, std::string> &substitutions);
+  void validateTraitAssociatedTypes(TraitDecl *Trait);
   void registerImpl(ImplDecl *Impl);
   void declareImpl(ImplDecl *Impl);
   void checkImpl(ImplDecl *Impl);

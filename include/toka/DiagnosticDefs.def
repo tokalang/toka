@@ -129,6 +129,14 @@ DIAG(ERR_DANGLING_EFFECT,         Error,   "E0702", "Dangling effect call reject
 DIAG(ERR_CONST_GENERIC_NAMING,    Error,   "E0605", "Const generic parameter '{}' must end with '_' (e.g., 'N_') to denote compile-time constant.")
 DIAG(ERR_TRAIT_BOUND_UNSATISFIED, Error,   "E0606", "Type '{}' does not satisfy trait bound '@{}' for generic parameter '{}'")
 DIAG(ERR_TRAIT_PREREQUISITE_UNSATISFIED, Error,   "E0608", "Type '{}' cannot implement '@{}' because it does not satisfy required trait '@{}'")
+DIAG(ERR_ASSOC_TYPE_MISSING,      Error,   "E0609", "Implementation of '@{}' for '{}' must define associated type '{}'")
+DIAG(ERR_ASSOC_TYPE_EXTRA,        Error,   "E0610", "Associated type '{}' is not declared by trait '@{}'")
+DIAG(ERR_ASSOC_TYPE_MODE_MISMATCH, Error,   "E0611", "Associated type '{}' must be declared as '{}'")
+DIAG(ERR_ASSOC_TYPE_DUPLICATE,    Error,   "E0612", "Associated type '{}' is already declared")
+DIAG(ERR_ASSOC_TYPE_CONFLICT,     Error,   "E0613", "Associated type '{}@{}::{}' is already bound to '{}', cannot bind it to '{}'")
+DIAG(ERR_ASSOC_TYPE_IN_INHERENT_IMPL, Error,   "E0614", "Associated type '{}' can only be defined in a trait impl")
+DIAG(ERR_ASSOC_TYPE_PROJECTION_NOT_FOUND, Error,   "E0615", "Associated type projection '{}' is not bound")
+DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated type '{}' conflicts with a generic parameter of trait '@{}'")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")
@@ -269,6 +277,10 @@ DIAG(ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX, Error,   "E01235", "Trait bo
 DIAG(ERR_PARSER_WHERE_EXPECTED_SUBJECT, Error,   "E01236", "Expected a generic parameter or 'Self' as the subject of a where constraint.")
 DIAG(ERR_PARSER_WHERE_IMPL_EXPECTED_TRAIT_TARGET, Error,   "E01237", "Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'.")
 DIAG(ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT, Error,   "E01238", "Where constraint subject '{}' must be a declared generic parameter or 'Self' in a trait declaration.")
+DIAG(ERR_PARSER_EXPECTED_ASSOCIATED_TYPE, Error,   "E01239", "Expected 'type' in associated type declaration")
+DIAG(ERR_PARSER_EXPECTED_ASSOCIATED_TYPE_NAME, Error,   "E01240", "Expected associated type name")
+DIAG(ERR_PARSER_ASSOCIATED_TYPE_EXPECTED_EQUAL, Error,   "E01241", "Expected '=' in associated type implementation")
+DIAG(ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT, Error,   "E01242", "Trait associated type declarations cannot define a default type")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")
