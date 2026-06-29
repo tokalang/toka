@@ -1,9 +1,9 @@
 ---
 title: Toka Programming Language
-description: A no-GC systems programming language that keeps performance and static safety as baselines while making code simpler to read, write, and maintain.
+description: A no-GC systems programming language that keeps performance and static safety as baselines while making real systems semantics explicit and everyday code easier to read, write, and maintain.
 template: splash
 hero:
-  tagline: "A no-GC systems programming language that keeps performance and static safety as baselines while making code simpler to read, write, and maintain."
+  tagline: "A no-GC systems programming language that keeps performance and static safety as baselines while making real systems semantics explicit and everyday code easier to read, write, and maintain."
   banner:
     content: "v0.9.8-06 is available with build-system hardening, cross-platform packaging fixes, and refreshed documentation."
   image:
@@ -27,9 +27,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## Design Goal
 
-Toka starts from two baselines: predictable zero-cost performance and strong static safety. With those in place, the language asks how direct, compact, and maintainable systems code can become.
+Toka starts from two baselines: predictable zero-cost performance and strong static safety. With those in place, the language asks how direct, compact, and maintainable systems code can become without hiding the semantics that make systems programming hard.
 
-The aim is not to make low-level behavior disappear. It is to make the important parts visible where they matter: ownership transfer, mutation, rebinding, nullability, error propagation, async suspension, and representation-level access.
+Toka does not pursue minimal syntax for its own sake. It pursues the minimum surface needed to expose real systems semantics: ownership transfer, mutation, rebinding, nullability, error propagation, async suspension, FFI boundaries, and representation-level access.
 
 <CardGrid stagger>
 	<Card title="Performance As A Baseline" icon="rocket">
@@ -40,6 +40,9 @@ The aim is not to make low-level behavior disappear. It is to make the important
 	</Card>
 	<Card title="Payload And Handle Separation" icon="puzzle">
 		Plain names operate on object payloads. Hats such as `&`, `*`, `^`, and `~` expose handle identity only when code genuinely needs to borrow, own, share, forward, or rebind that layer.
+	</Card>
+	<Card title="Complexity With A Job" icon="star">
+		Every piece of surface complexity should earn its place by revealing a systems boundary that would otherwise become implicit, distant, or harder to audit.
 	</Card>
 	<Card title="Integrated Project Tooling" icon="setting">
 		The `toka` command manages project creation, single-file runs, package resolution, build orchestration, tests, formatting, and documentation around `package.tk` and `build.tk`.

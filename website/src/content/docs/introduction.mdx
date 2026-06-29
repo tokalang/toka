@@ -3,11 +3,13 @@ title: Introduction
 description: What is Toka?
 ---
 
-Toka is a no-GC systems programming language designed around explicit resource semantics. It keeps zero-cost performance and static safety as baselines, then tries to make systems code simpler to read, write, and maintain.
+Toka is a no-GC systems programming language designed around explicit resource semantics. It keeps zero-cost performance and static safety as baselines, makes real systems semantics visible, and tries to keep everyday systems code readable, writable, and maintainable.
 
 ## Design Position
 
 Toka does not treat performance, safety, and simplicity as three independent slogans. Performance and static safety are the floor. The design question is what kind of syntax and compiler discipline can keep that floor while reducing accidental complexity in everyday systems code.
+
+That does not mean minimizing syntax at all costs. Toka aims for the minimum surface needed to expose real systems semantics: a piece of notation should earn its place by making ownership, access, representation, failure, or control-flow boundaries easier to see and audit.
 
 That leads to a few recurring principles:
 

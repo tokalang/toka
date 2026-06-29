@@ -2,7 +2,7 @@
 
 # Toka Programming Language
 
-**Toka is a no-GC systems programming language that keeps performance and static safety as baselines while making code simpler to read, write, and maintain.**
+**Toka is a no-GC systems programming language that keeps performance and static safety as baselines while making real systems semantics explicit and everyday code easier to read, write, and maintain.**
 
 ## Design Goal
 
@@ -13,7 +13,9 @@ Toka starts from two baselines:
 - **Zero-cost performance:** low-level representation and resource costs should remain predictable, without a GC or hidden runtime layer becoming the default answer.
 - **Strong static safety:** dangerous paths should be explicit enough for the compiler to check, with safety treated as a requirement rather than a convenience feature.
 
-With those two baselines kept in place, Toka asks how simple, direct, and maintainable systems code can become. Source code should match the programmer's intent and the program's actual behavior: ownership transfer, mutation, rebinding, nullability, error propagation, async suspension, and low-level representation should be visible where they matter, statically checkable, and still compact in everyday code.
+With those two baselines kept in place, Toka asks how close systems code can get to simple, direct, and maintainable expression without hiding the semantics that make systems programming hard. Source code should match the programmer's intent and the program's actual behavior: ownership transfer, mutation, rebinding, nullability, error propagation, async suspension, and low-level representation should be visible where they matter, statically checkable, and still compact in everyday code.
+
+Toka does not pursue minimal syntax for its own sake. It pursues the minimum surface needed to expose real systems semantics. Each piece of surface complexity should earn its place by making a boundary visible that would otherwise become implicit, distant, or harder to audit.
 
 ### The Tension
 
@@ -21,15 +23,15 @@ In today's mainstream language landscape, this combination often looks like an i
 
 - near-machine performance
 - strong safety
-- simple, maintainable expression
+- clear, maintainable expression
 
-Toka is an attempt to challenge that tension and move as close as possible to the ideal point.
+Toka is an attempt to challenge that tension and move as close as possible to the ideal point. Its compactness is not meant to erase low-level behavior; it is meant to keep that behavior explicit at the point where it matters.
 
 A possible extra payoff is optimization visibility. When resource flow, aliasing, and representation are explicit, the compiler may see opportunities that are harder to expose in conventional C or Rust code. In some performance-sensitive workloads, that can mean better register use, clearer alias boundaries, and the possibility of outperforming an equivalent hand-written formulation. This is a potential consequence of the design, not a blanket performance claim.
 
 ### The Approach
 
-Toka combines several mechanisms toward that goal:
+Toka combines several mechanisms toward that goal. The design tries to keep everyday code readable while still giving resource, representation, and safety boundaries a precise place in the language:
 
 - explicit resource semantics and deterministic cleanup
 - PAL (Pointer Aliasing & Lifecycle) checking
@@ -39,7 +41,7 @@ Toka combines several mechanisms toward that goal:
 
 The hat syntax is one consequence of this design, not the goal itself. It exists because Toka needs a compact, consistent way to distinguish payload operations from handle operations.
 
-Toka therefore explores a position between C, Rust, Go, and Zig: close to the machine, statically disciplined, and designed to keep everyday systems code readable.
+Toka therefore explores a position between C, Rust, Go, and Zig: close to the machine, statically disciplined, and designed to keep everyday systems code readable without turning important systems boundaries into convention.
 
 **Paper:** [Toka: A Systems Programming Language with Explicit Resource Semantics (arXiv:2606.01974)](https://arxiv.org/abs/2606.01974)
 
