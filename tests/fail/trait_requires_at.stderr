@@ -1,0 +1,5 @@
+error[E01234]: Trait declarations must use '@'. Write 'trait @Send' instead of 'trait Send'.
+ --> tests/fail/trait_requires_at.tk:1:7
+   |
+ 1 | trait Send {}
+   |       ^

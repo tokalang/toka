@@ -1,6 +1,6 @@
-trait Send {}
-trait Sync {}
-trait Clone {}
+trait @Send {}
+trait @Sync {}
+trait @Clone {}
 
 shape Data (
     value: i32

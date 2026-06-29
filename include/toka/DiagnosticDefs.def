@@ -86,7 +86,7 @@ DIAG(ERR_RETURN_REBIND_DISCARDED, Error,   "E0446", "Return value binding '{}' e
 DIAG(ERR_UNSAFE_RESOURCE,         Error,   "E0466", "Shape '{}' contains managed resources but does not implement 'drop'")
 DIAG(ERR_IMPLICIT_RESOURCE_COPY,  Error,   "E0468", "Implicit bitwise copy of resource type '{}' during auto-dereference is forbidden. Method '{}' takes 'self' by value, but the receiver is a pointer. Implement and call '.clone()' or change the method receiver to be explicitly mutable (use 'self#')")
 DIAG(ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Error,   "E0473", "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body")
-DIAG(ERR_CEDE_PARAMETER_NOT_CONSUMED, Error, "E0474", "Cede parameter '{}' must be explicitly consumed in the function body")
+DIAG(ERR_CEDE_PARAMETER_NOT_CONSUMED, Error,   "E0474", "Cede parameter '{}' must be explicitly consumed in the function body")
 DIAG(ERR_NULL_ACCESS,             Error,   "E0447", "Accessing member of nullable type '{}' requires explicit 'is' check")
 DIAG(ERR_MORPHOLOGY_MISMATCH,     Error,   "E0448", "Pointer morphology mismatch: expected explicit '{}' (from LHS/Target), found '{}' (from RHS/Source)")
 DIAG(ERR_SMART_PTR_FROM_STACK,    Error,   "E0449", "Smart pointer sigil '{}' cannot be applied to stack variable; use 'new' or assign from existing smart pointer")
@@ -263,6 +263,7 @@ DIAG(ERR_PARSER_EXPECTED_METHOD_IN_IMPL_BLOCK, Error,   "E01230", "Expected meth
 DIAG(ERR_PARSER_EXPECTED_TRAIT,   Error,   "E01231", "Expected 'trait'")
 DIAG(ERR_PARSER_EXPECTED_TRAIT_NAME, Error,   "E01232", "Expected trait name")
 DIAG(ERR_PARSER_EXPECTED_METHOD_PROTOTYPE_IN_TRAIT, Error,   "E01233", "Expected method prototype in trait")
+DIAG(ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX, Error,   "E01234", "Trait declarations must use '@'. Write 'trait @{}' instead of 'trait {}'.")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

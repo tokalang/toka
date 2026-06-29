@@ -23,7 +23,7 @@ impl<T> Node<T>@encap {
     }
 }
 /*
-trait MyDrop {
+trait @MyDrop {
     fn mydrop(self#)
 }
 impl Node<i32>@MyDrop {

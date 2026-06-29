@@ -416,6 +416,12 @@
       "message": "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body",
       "description": "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body"
     },
+    "E0474": {
+      "id": "ERR_CEDE_PARAMETER_NOT_CONSUMED",
+      "level": "Error",
+      "message": "Cede parameter '{}' must be explicitly consumed in the function body",
+      "description": "Cede parameter '{}' must be explicitly consumed in the function body"
+    },
     "E0447": {
       "id": "ERR_NULL_ACCESS",
       "level": "Error",
@@ -1494,6 +1500,12 @@
       "level": "Error",
       "message": "Expected method prototype in trait",
       "description": "Expected method prototype in trait"
+    },
+    "E01234": {
+      "id": "ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX",
+      "level": "Error",
+      "message": "Trait declarations must use '@'. Write 'trait @{}' instead of 'trait {}'.",
+      "description": "Trait declarations must use '@'."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",

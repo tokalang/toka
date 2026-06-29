@@ -1046,8 +1046,14 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
 
 std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
   consume(TokenType::KwTrait, DiagID::ERR_PARSER_EXPECTED_TRAIT);
-  if (match(TokenType::At)) {
-    // Optional @ prefix
+  if (!match(TokenType::At)) {
+    if (check(TokenType::Identifier)) {
+      error(peek(), DiagID::ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX,
+            peek().Text, peek().Text);
+    } else {
+      error(peek(), DiagID::ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX,
+            "<Name>", "<Name>");
+    }
   }
   Token name = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME);
   std::vector<GenericParam> genericParams = parseGenericParams();
