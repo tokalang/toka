@@ -404,7 +404,9 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
     return false;
   }
 
-  module->SourcePath = resolvedPath;
+  module->SourcePath = (finalIsInterface && !meta.SourcePath.empty())
+      ? PathUtils::canonicalize(meta.SourcePath)
+      : resolvedPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
 
   // Recursively parse imports

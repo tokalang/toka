@@ -363,9 +363,10 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
     if (!decl.TraitName.empty()) {
         std::string cleanTrait = decl.TraitName;
         if (cleanTrait[0] == '@') cleanTrait = cleanTrait.substr(1);
-        m_OS << "@" << cleanTrait << " for ";
+        m_OS << decl.TypeName << "@" << cleanTrait << " {\n";
+    } else {
+        m_OS << decl.TypeName << " {\n";
     }
-    m_OS << decl.TypeName << " {\n";
     m_Indent++;
 
     // Associated types

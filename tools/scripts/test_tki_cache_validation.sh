@@ -489,6 +489,59 @@ if [ $? -ne 0 ]; then
 fi
 echo "PASS: Test 7.6"
 
+# 7.7 Test std/core interface syntax round-trip for trait impls and declaration-only effects.
+echo "Test 7.7: Round-tripping core/string.tki as a reusable interface"
+rm -rf "$TEST_DIR/string_build"
+mkdir -p "$TEST_DIR/string_build/objects" "$TEST_DIR/string_build/interfaces"
+
+STRING_HASH=$(python3 -c '
+import os
+FNV_OFFSET = 14695981039346656037
+FNV_PRIME = 1099511628211
+path = os.path.realpath("lib/core/string.tk").replace("\\\\", "/")
+h = FNV_OFFSET
+for b in path.encode():
+    h ^= b
+    h = (h * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+print(f"{h:016x}")
+')
+STRING_OBJ="$TEST_DIR/string_build/objects/$STRING_HASH.o"
+STRING_TKI="$TEST_DIR/string_build/interfaces/$STRING_HASH.tki"
+
+TOKA_BUILD_DIR="$TEST_DIR/string_build" "$TOKAC_ABS" -c lib/core/string.tk --emit-interface -o "$STRING_OBJ"
+if [ ! -f "$STRING_TKI" ]; then
+    echo "FAIL: Expected cached core/string.tki at $STRING_TKI"
+    exit 1
+fi
+if ! grep -q "impl string@encap" "$STRING_TKI"; then
+    echo "FAIL: core/string.tki did not emit canonical Type@Trait impl syntax"
+    exit 1
+fi
+
+if ! "$TOKAC_ABS" --dump-dependencies=json "$STRING_TKI" > "$TEST_DIR/string_tki_roundtrip.json" 2> "$TEST_DIR/string_tki_roundtrip.err"; then
+    echo "FAIL: core/string.tki could not be parsed as an interface root"
+    cat "$TEST_DIR/string_tki_roundtrip.err"
+    exit 1
+fi
+
+cat << 'EOF' > "$TEST_DIR/string_user.tk"
+fn main() -> i32 {
+    auto s = string::from("abc")
+    if s.len() == 3 {
+        return 0
+    }
+    return 1
+}
+EOF
+
+if ! TOKA_BUILD_DIR="$TEST_DIR/string_build" "$TOKAC_ABS" "$TEST_DIR/string_user.tk" "$STRING_OBJ" -o "$TEST_DIR/string_user_app" 2> "$TEST_DIR/string_user.err"; then
+    echo "FAIL: core/string.tki could not be used with its cached object"
+    cat "$TEST_DIR/string_user.err"
+    exit 1
+fi
+"$TEST_DIR/string_user_app"
+echo "PASS: Test 7.7"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"

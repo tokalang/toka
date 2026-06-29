@@ -750,6 +750,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           }
         } while (match(TokenType::Pipe) || match(TokenType::Comma));
       } else {
+        if (isEndOfStatement()) {
+          break;
+        }
         error(peek(), DiagID::ERR_PARSER_ONLY_RETURN_OR_NAMED_RETURN_LHS_IS_CURR);
         return nullptr;
       }
