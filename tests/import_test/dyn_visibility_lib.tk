@@ -1,0 +1,16 @@
+pub trait @VisibleShape {
+    pub fn public_id(self) -> i32
+    fn private_id(self) -> i32
+}
+
+pub shape DynBox(value: i32)
+
+impl DynBox@VisibleShape {
+    pub fn public_id(self) -> i32 {
+        return self.value
+    }
+
+    fn private_id(self) -> i32 {
+        return self.value + 1
+    }
+}

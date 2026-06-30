@@ -30,13 +30,13 @@
 - closure 与 `dyn fn`
 - raw pointer / unsafe / FFI 的基本路径
 
-仍需要补锁的区域主要不是“功能缺失”，而是“规则组合缺少专门测试”：
+仍需要补锁的区域主要不是“功能缺失”，而是“更高阶规则组合缺少专门测试”：
 
 - `@encap` 的 `pub(path)`、`pub(crate)`、`pub * ! ...` 跨模块访问矩阵已补最小正反测试；后续可继续细化 crate 边界模型
-- `dyn @{A, B}` 作为 trait object 被拒绝的直接 fail case
-- 常见错误表里的若干项缺少专门 fail 测试，例如 `let` / `var`、`for x in ...`、字符串 `+`
+- `dyn @{A, B}` 作为 trait object 被拒绝的直接 fail case 已补；`dyn @Trait` 跨模块 pub/private 方法边界也已补最小正反测试
+- 常见错误表里的 `let` / `var`、`for x in ...`、字符串 `+` 已补最小 fail 测试
 - hatted 参数的“契约义务”目前只部分被诊断覆盖，仍需决定哪些情况是 error、warning，还是仅作为风格规则
-- TKI / 跨模块场景下的 associated type projection 已补最小 source-less `.tki` 回放用例；dyn trait、visibility 组合仍可继续细化
+- TKI / 跨模块场景下的 associated type projection 已补最小 source-less `.tki` 回放用例；dyn trait、visibility、where 的 TKI replay 组合仍可继续细化
 
 ## 逐节审计矩阵
 
@@ -48,7 +48,7 @@
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests | enum-like variant 的 fail 侧可再补未覆盖的错误形态 |
-| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵和 `dyn @{A, B}` 拒绝已补最小锁；dyn trait 跨模块 visibility 仍可继续细化 |
+| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵、`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 边界已补最小锁；TKI replay 组合仍可继续细化 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases | 建议补一个专门 fail：`box.'field` 与 `box.field` 在不匹配使用处的错误对照 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
@@ -114,7 +114,13 @@
 
 3. `dyn @Trait` + visibility + module boundary
 
-   当前 `dyn_privacy.tk` 能锁 private trait method 调用，但不是完整的跨模块 visibility matrix。建议补同模块 / 跨模块各一例。
+   当前 `dyn_privacy.tk` 能锁 private trait method 调用。已新增一个最小跨模块矩阵：
+
+   - `tests/import_test/dyn_visibility_lib.tk`
+   - `tests/pass/dyn_trait_cross_module_visibility.tk`
+   - `tests/fail/dyn_trait_cross_module_private_method.tk`
+
+   这确认了 `dyn @Trait` 参数可以跨模块动态派发 trait 中的 `pub fn`，同时 trait 中的 private method 不会在导入模块通过 dyn 对象泄漏为可调用方法。
 
 4. Closure capture fail matrix
 
@@ -167,7 +173,7 @@
 
 ### 3. `dyn @Trait`
 
-文档清楚限制为单 facet，但缺少 fail case。这个点很适合小提交补齐。
+文档清楚限制为单 facet。`dyn @{A, B}` 拒绝和 `dyn @Trait` 跨模块 pub/private 方法边界已经有最小测试锁。后续如果继续补，重点应转向 TKI replay 下的 dyn trait interface / vtable 组合，而不是基础语法形态。
 
 ### 4. Common Mistakes
 
@@ -189,7 +195,7 @@
 
 ### 阶段 C：跨模块 / TKI 组合测试
 
-继续补 dyn trait、visibility、where 在 TKI replay 场景下的正反测试；associated type projection 的最小 source-less `.tki` 回放和 generic impl `where:` 正反用例已经锁定。
+继续补 dyn trait、visibility、where 在 TKI replay 场景下的正反测试；associated type projection 的最小 source-less `.tki` 回放、generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 

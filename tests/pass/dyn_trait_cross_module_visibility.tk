@@ -1,0 +1,10 @@
+import tests/import_test/dyn_visibility_lib::{DynBox, @VisibleShape}
+
+fn public_id_of(obj: dyn @VisibleShape) -> i32 {
+    return obj.public_id()
+}
+
+fn main() -> i32 {
+    auto box = DynBox(value = 12)
+    return public_id_of(box) - 12
+}
