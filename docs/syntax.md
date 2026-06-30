@@ -509,6 +509,8 @@ auto r = 10
 auto g: fn(i32) -> i32 = { [copy ~r] x => x + r }
 ```
 
+When a closure is converted to `dyn fn`, any captured outer variable must be listed explicitly with `cede` or `copy`. This keeps owned, movable closures from silently storing borrowed references to local state.
+
 ## 13. Strings, Text, And Formatting
 
 String-like values appear in several layers:

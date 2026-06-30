@@ -124,7 +124,12 @@
 
 4. Closure capture fail matrix
 
-   目前 closure 功能可用，但 capture mode 的错误侧还可以更直接，尤其是 `copy ~r`、`cede env`、borrow escape 的组合。
+   已补两个最小 fail 锁：
+
+   - `tests/fail/closure_cede_capture_consumes.tk`
+   - `tests/fail/closure_dyn_implicit_capture_escape.tk`
+
+   这确认了 `[cede env]` 会消费外层变量，并且转换为 `dyn fn` 的 owned closure 不能隐式捕获外部变量；需要显式 `[cede ...]` 或 `[copy ...]`。后续如果继续细化，可补 `copy ~r` 的失败侧和非 `dyn fn` 闭包的局部/逃逸边界。
 
 5. Nullable handle matrix
 

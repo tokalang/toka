@@ -1,0 +1,10 @@
+fn make_bad() -> dyn fn() -> i32 {
+    auto value = 9
+    auto f: dyn fn() -> i32 = { => value }
+    return f // EXPECT: error[E04579]
+}
+
+fn main() -> i32 {
+    auto f = make_bad()
+    return f()
+}

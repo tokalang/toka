@@ -2237,6 +2237,12 @@
       "message": "'{}' is a shape, not a valid pattern for 'is'",
       "description": "'{}' is a shape, not a valid pattern for 'is'"
     },
+    "E04579": {
+      "id": "ERR_SEMA_DYN_FN_IMPLICIT_CAPTURE",
+      "level": "Error",
+      "message": "Closure converted to 'dyn fn' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make ownership explicit",
+      "description": "Closure converted to 'dyn fn' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make ownership explicit"
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

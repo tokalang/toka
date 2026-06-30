@@ -400,6 +400,7 @@ DIAG(ERR_SEMA_OPERAND_OF_MUST_BE_INTEGER_GOT_FLOAT, Error, "E04575", "operand of
 DIAG(ERR_SEMA_OPERANDS_OF_MUST_BE_NUMERIC_GOT, Error, "E04576", "operands of '{}' must be numeric, got '{}'")
 DIAG(ERR_SEMA_OPERANDS_OF_MUST_BE_INTEGERS, Error, "E04577", "operands of '{}' must be integers")
 DIAG(ERR_SEMA_IS_A_SHAPE_NOT_A_VALID_PATTERN_FOR_IS, Error, "E04578", "'{}' is a shape, not a valid pattern for 'is'")
+DIAG(ERR_SEMA_DYN_FN_IMPLICIT_CAPTURE, Error, "E04579", "Closure converted to 'dyn fn' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make ownership explicit")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

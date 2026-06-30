@@ -1,0 +1,8 @@
+shape Env(value: i32)
+
+fn main() -> i32 {
+    auto env = Env(value = 5)
+    auto f: fn() -> i32 = { [cede env] => env.value }
+    auto after = env.value // EXPECT: error[E0438]
+    return f() + after
+}

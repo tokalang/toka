@@ -271,6 +271,16 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
      }
   }
 
+  if (m_ExpectedType && m_ExpectedType->typeKind == toka::Type::DynFn &&
+      !Clo->ImplicitCaptures.empty()) {
+    for (const auto &name : Clo->ImplicitCaptures) {
+      DiagnosticEngine::report(
+          Clo->Loc, DiagID::ERR_SEMA_DYN_FN_IMPLICIT_CAPTURE, name, name,
+          name);
+      HasError = true;
+    }
+  }
+
   exitScope();
   m_AccessedVariables = oldAccessed;
   CurrentFunctionReturnType = oldFuncRetType;
