@@ -171,7 +171,9 @@
 
 `'T` / `'field` / `'param` 的规则已经比较一致：单引号属于 morphic 绑定名，不属于类型侧。`tests/pass/g08_generic_morphic.tk` 覆盖了 morphic field 与 morphic parameter 的正例，type-side 错误已有 fail case。
 
-`#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。缺口不是语义定义，而是矩阵测试仍偏分散：后续可以新增一个只覆盖 `x#`、`^#x`、`x$`、`^$x` 的小型 pass/fail 组。
+`#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。`tests/pass/g01_core_handle_views.tk` 与 `tests/fail/core_handle_rebind_requires_hash.tk` 已经补上最小 payload / handle 视图对照。
+
+`$` 当前是字段 / 参数 / 绑定名侧的内在不可变标记；公开文档和测试集中没有 `^$x` 这类 handle-side freeze 形态，因此不应把它当作已冻结语法。若未来需要 handle-level freeze marker，应单独设计并补测试，而不是从 `$` 的字段语义自然外推。
 
 `W0407` 是 hatted 参数义务的第一步工程化：它只提示“签名声明了 handle，但函数体没有使用 handle 视图”，不禁止 payload 读取，也不把该规则升级为错误。这样可以先暴露可疑签名，同时避免误伤 raw buffer、FFI adapter、测试和标准库中的历史写法。
 
