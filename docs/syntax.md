@@ -82,6 +82,8 @@ Nullable handles use the `nul` marker and `null`.
 auto nul *ptr: i32 = null
 ```
 
+Borrow handles (`&`) are not nullable; use `nul` only with raw, unique, or shared handle forms.
+
 ## 4. Hats And Handles
 
 Toka uses hats to expose handle identity:

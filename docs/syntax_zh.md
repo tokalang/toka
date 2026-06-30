@@ -82,6 +82,8 @@ handle 可空使用 `nul` 标记和 `null`。
 auto nul *ptr: i32 = null
 ```
 
+借用 handle（`&`）不可为空；`nul` 只用于 raw、unique、shared 这几类 handle 形态。
+
 ## 4. 帽子与 Handle
 
 Toka 使用帽子暴露 handle 身份：

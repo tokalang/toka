@@ -44,7 +44,7 @@
 | --- | --- | --- | --- |
 | 1. Core Model | 基本锁定 | pointer、member、morphic、PAL 相关 pass/fail 已覆盖 payload/handle 差异 | 建议新增一个最小化“裸名读 payload、帽子读 handle、带帽赋值重绑定”的单文件说明性 pass/fail 对 |
 | 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases | `pub import` 的 TKI 导出行为可补一个更直接的跨模块 snapshot 测试 |
-| 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 可按 `*` / `^` / `~` 做更小的矩阵化测试 |
+| 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests | enum-like variant 的 fail 侧可再补未覆盖的错误形态 |
@@ -133,7 +133,13 @@
 
 5. Nullable handle matrix
 
-   将 `nul *p`、`nul ^p`、`nul ~p`、非 nullable handle 赋 `null` 分成小测试，错误信息会更稳定。
+   `tests/pass/g08_polymorphic_null.tk` 已覆盖 `nul *`、`nul ^`、`nul ~` 接受 `null`。本轮新增：
+
+   - `tests/fail/non_null_unique_null.tk`
+   - `tests/fail/non_null_shared_null.tk`
+   - `tests/fail/nullable_borrow_handle.tk`
+
+   这补上了非 nullable unique/shared handle 不能接收 `null`，以及 borrow handle `&` 不能被 `nul` 标记的最小反例。raw pointer 的非 nullable 反例已有 `tests/fail/non_null_nullptr.tk` / `tests/fail/strict_null_identity.tk`。
 
 ## 细节复查补充
 
