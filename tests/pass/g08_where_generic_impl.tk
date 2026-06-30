@@ -1,0 +1,23 @@
+trait @Marked {}
+
+shape Token(value: i32)
+
+impl Token@Marked {}
+
+shape Plain(value: i32)
+
+shape Box<T>(item: T)
+
+impl<T> Box<T>
+where:
+    T impl @Marked
+{
+    pub fn marker(self) -> i32 {
+        return 7
+    }
+}
+
+pub fn main() -> i32 {
+    auto box = Box<Token>(item = Token(value = 1))
+    return box.marker() - 7
+}

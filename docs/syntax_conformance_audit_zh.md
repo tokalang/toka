@@ -105,7 +105,12 @@
 
 2. `where:` + trait prerequisite + generic impl
 
-   现有 `where` 测试覆盖了 shape、function、trait prerequisite。建议补一个 generic impl 中的 `where:`，确认约束传递与 impl 选择不会漂移。
+   现有 `where` 测试覆盖了 shape、function、trait prerequisite。已新增 generic impl 的正反锁：
+
+   - `tests/pass/g08_where_generic_impl.tk`
+   - `tests/fail/where_generic_impl_unsatisfied.tk`
+
+   这确认了 `impl<T> Box<T> where: T impl @Marked` 在满足约束时可实例化方法，在不满足约束时不会让该 impl 泄漏为可用方法。
 
 3. `dyn @Trait` + visibility + module boundary
 
@@ -125,7 +130,7 @@
 
 `trait @Name` 是当前唯一公开的 trait 声明形态，裸 `trait Name` 已有 `tests/fail/trait_requires_at.tk` 拒绝。Facet set 的公开规则是 `@{Trait1, Trait2}`，集合内部使用裸 trait 名称；`T impl @{Send, Sync}` 已由 `tests/pass/g08_where_trait_bounds.tk` 覆盖。
 
-这部分语法目前自洽。后续更值得补的是组合场景，而不是改语法：generic impl 中的 `where:`、generic associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
+这部分语法目前自洽。后续更值得补的是组合场景，而不是改语法：generic associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
 
 ### Morphic 与内部可变性标记
 
@@ -184,7 +189,7 @@
 
 ### 阶段 C：跨模块 / TKI 组合测试
 
-继续补 dyn trait、visibility、where 在 TKI replay 场景下的正反测试；associated type projection 的最小 source-less `.tki` 回放已经锁定。
+继续补 dyn trait、visibility、where 在 TKI replay 场景下的正反测试；associated type projection 的最小 source-less `.tki` 回放和 generic impl `where:` 正反用例已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 
