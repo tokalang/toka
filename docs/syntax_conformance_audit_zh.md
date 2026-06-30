@@ -48,7 +48,7 @@
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
-| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；visibility 的更多 TKI 组合仍可继续细化 |
+| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 后续重点转为诊断质量：普通字段误写 `.'field` 当前落在成员不存在诊断 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
@@ -187,6 +187,12 @@
 
    当前 TKI 会把 `where: T impl @Marked` 规范化为接口中的 `impl<T: @Marked> Box<T>`。这没有改变语义，但说明公开语法和接口规范化语法之间存在等价打印形式；如果后续追求接口文本与源码风格完全一致，可以单独讨论 TKI pretty-printer，而不影响语义闭合。
 
+11. `@encap` visibility through source-less TKI
+
+   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.17`：模块定义带 `impl VisibilityBox@encap { pub open_val }` 的 shape，生成 `.o + .tki` 后移走 `.tk` 源文件。主程序可通过接口缓存访问 `open_val`，但访问未授权的 `secret_val` 仍会失败。
+
+   这确认了 `@encap` 字段可见性不是仅在源码解析时生效，而是模块接口契约的一部分。
+
 ## 细节复查补充
 
 ### Trait facet 与 `where:`
@@ -254,7 +260,7 @@
 
 ### 阶段 C：跨模块 / TKI 组合测试
 
-继续补 visibility 在 TKI replay 场景下的正反测试；associated type projection、`pub import` re-export、dyn trait interface、generic impl `where:` 的最小 source-less `.tki` 回放、generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界已经锁定。
+associated type projection、`pub import` re-export、dyn trait interface、generic impl `where:`、`@encap` visibility 的最小 source-less `.tki` 回放，以及 generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界都已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 
