@@ -137,9 +137,9 @@
 
 ### `@encap pub(path)` 当前边界
 
-当前 `pub(path)` 的语义实现以访问点源文件路径包含 target string 作为授权判断，因此它更接近“源路径目标授权”，还不是完整 module identity 模型。新增测试使用 `pub(encap_visibility_matrix)` 避开关键字路径段，并锁定当前实现行为。
+当前 `pub(path)` 的语义实现已经从任意子串匹配收紧为路径段匹配，可以正确区分 `std` 与 `stdx` 这类前缀相似路径。新增测试使用 `pub(tests/pass)`，同时锁定关键字路径段解析和跨目录授权/拒绝行为。
 
-建议：短期保持文档的“模块路径授权”说法，但不要继续扩大承诺；中期若要把 `pub(path)` 做成真正的 module path，需要把 target path 的解析、归一化和 Sema 当前模块身份统一起来。
+建议：短期保持文档的“模块路径授权”说法，但不要继续扩大承诺；中期若要把 `pub(path)` 做成真正的 module identity，需要把 target path 的解析、归一化和 Sema 当前模块身份统一起来。
 
 ## 文档表述风险
 
@@ -147,7 +147,7 @@
 
 文档已经写入 `pub *`、`pub * ! field`、`pub(path)`。标准库里有 `pub *`、`pub(std)` 的真实用法，新增测试也已经覆盖排除式 wildcard 和 path-targeted access 的最小正反行为。
 
-建议：文档可以保持，但不要继续扩大 `pub(path)` 的承诺；当前实现仍是源文件路径子串匹配，未来若要升级成严格 module identity，需要单独设计。
+建议：文档可以保持，但不要继续扩大 `pub(path)` 的承诺；当前实现是路径段匹配，未来若要升级成严格 module identity，需要单独设计。
 
 ### 2. hatted 参数契约
 

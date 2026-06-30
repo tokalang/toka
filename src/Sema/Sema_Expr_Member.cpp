@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/MemberAccess.h"
+#include "toka/PathUtils.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -28,6 +29,72 @@
 namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
+
+static std::string stripModuleExtension(std::string path) {
+  if (path.size() > 4 && path.substr(path.size() - 3) == ".tk") {
+    path.resize(path.size() - 3);
+  } else if (path.size() > 5 && path.substr(path.size() - 4) == ".tki") {
+    path.resize(path.size() - 4);
+  }
+  return path;
+}
+
+static bool modulePathMatchesTarget(const std::string &moduleFile,
+                                    const std::string &targetPath) {
+  if (targetPath.empty())
+    return false;
+
+  std::string target = toka::PathUtils::normalize(targetPath);
+  std::replace(target.begin(), target.end(), '\\', '/');
+  target = stripModuleExtension(target);
+  while (!target.empty() && target.front() == '/') {
+    target.erase(target.begin());
+  }
+  while (!target.empty() && target.back() == '/') {
+    target.pop_back();
+  }
+  if (target.empty())
+    return false;
+
+  std::string module = toka::PathUtils::canonicalize(moduleFile);
+  module = toka::PathUtils::normalize(module);
+  std::replace(module.begin(), module.end(), '\\', '/');
+  module = stripModuleExtension(module);
+
+  auto segmentMatch = [&](const std::string &candidate) {
+    if (candidate == target)
+      return true;
+    if (candidate.rfind(target + "/", 0) == 0)
+      return true;
+    if (candidate.size() > target.size() &&
+        candidate.compare(candidate.size() - target.size(), target.size(),
+                          target) == 0 &&
+        candidate[candidate.size() - target.size() - 1] == '/') {
+      return true;
+    }
+    return candidate.find("/" + target + "/") != std::string::npos;
+  };
+
+  if (segmentMatch(module))
+    return true;
+
+  size_t slash = module.find_last_of('/');
+  std::string base = slash == std::string::npos ? module : module.substr(slash + 1);
+  if (segmentMatch(base))
+    return true;
+
+  size_t libPos = module.find("/lib/");
+  if (libPos != std::string::npos && segmentMatch(module.substr(libPos + 5)))
+    return true;
+
+  size_t testsPos = module.find("/tests/");
+  if (testsPos != std::string::npos &&
+      segmentMatch("tests/" + module.substr(testsPos + 7))) {
+    return true;
+  }
+
+  return false;
+}
 
 static std::string getStringifyPath(Expr *E) {
   if (!E)
@@ -283,7 +350,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
                 } else if (entry.Level == EncapEntry::Crate) {
                   accessible = true;
                 } else if (entry.Level == EncapEntry::Path) {
-                  if (membFile.find(entry.TargetPath) != std::string::npos) {
+                  if (modulePathMatchesTarget(membFile, entry.TargetPath)) {
                     accessible = true;
                   }
                 }

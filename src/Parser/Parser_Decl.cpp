@@ -1122,13 +1122,24 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
             entry.Level = EncapEntry::Crate;
           } else {
             entry.Level = EncapEntry::Path;
-            // Parse targeted path (simple logic for now)
-            while (check(TokenType::Identifier) || check(TokenType::Slash) ||
-                   check(TokenType::Colon)) {
+            // Parse targeted path segments. Match import path permissiveness so
+            // pub(tests/pass) and pub(core/str) are valid member grants.
+            while (check(TokenType::Identifier) ||
+                   (peek().Kind >= TokenType::KwLet &&
+                    peek().Kind <= TokenType::KwCrate) ||
+                   check(TokenType::Slash) || check(TokenType::Colon) ||
+                   check(TokenType::Minus) || check(TokenType::Dot) ||
+                   check(TokenType::DotDot)) {
               if (match(TokenType::Slash)) {
                 entry.TargetPath += "/";
               } else if (match(TokenType::Colon)) {
                 entry.TargetPath += ":";
+              } else if (match(TokenType::Minus)) {
+                entry.TargetPath += "-";
+              } else if (match(TokenType::Dot)) {
+                entry.TargetPath += ".";
+              } else if (match(TokenType::DotDot)) {
+                entry.TargetPath += "..";
               } else {
                 entry.TargetPath += advance().Text;
               }

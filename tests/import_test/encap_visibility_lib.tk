@@ -19,7 +19,7 @@ pub shape PathBox (
 )
 
 impl PathBox@encap {
-    pub(encap_visibility_matrix) path_val
+    pub(tests/pass) path_val
 
     fn drop(self#) {}
 
