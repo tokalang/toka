@@ -868,6 +868,63 @@ fi
 "$TEST_DIR/associated_type_interface_app"
 echo "PASS: Test 7.13"
 
+# 7.14 Test pub import re-exports survive source-less .tki replay.
+echo "Test 7.14: pub import re-export through source-less interface"
+rm -rf "$TEST_DIR/pub_import_interface"
+mkdir -p "$TEST_DIR/pub_import_interface"
+
+cat << 'EOF' > "$TEST_DIR/pub_import_interface/base.tk"
+pub fn base_value() -> i32 {
+    return 77
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/pub_import_interface/reexport.tk"
+pub import ./base::{base_value}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/pub_import_interface/main.tk"
+import ./reexport::{base_value}
+
+fn main() -> i32 {
+    return base_value() - 77
+}
+EOF
+
+"$TOKAC_ABS" -c "$TEST_DIR/pub_import_interface/base.tk" -o "$TEST_DIR/pub_import_interface/base.o"
+"$TOKAC_ABS" -c "$TEST_DIR/pub_import_interface/reexport.tk" -o "$TEST_DIR/pub_import_interface/reexport.o"
+
+if [ ! -f "$TEST_DIR/pub_import_interface/reexport.tki" ]; then
+    echo "FAIL: pub import reexport.tki was not generated"
+    exit 1
+fi
+if ! grep -q "pub import ./base" "$TEST_DIR/pub_import_interface/reexport.tki"; then
+    echo "FAIL: pub import was not emitted to reexport.tki"
+    cat "$TEST_DIR/pub_import_interface/reexport.tki"
+    exit 1
+fi
+if ! grep -q "base_value" "$TEST_DIR/pub_import_interface/reexport.tki"; then
+    echo "FAIL: re-exported item was not emitted to reexport.tki"
+    cat "$TEST_DIR/pub_import_interface/reexport.tki"
+    exit 1
+fi
+
+mv "$TEST_DIR/pub_import_interface/base.tk" "$TEST_DIR/pub_import_interface/base.tk.bak"
+mv "$TEST_DIR/pub_import_interface/reexport.tk" "$TEST_DIR/pub_import_interface/reexport.tk.bak"
+
+if ! "$TOKAC_ABS" \
+    "$TEST_DIR/pub_import_interface/main.tk" \
+    "$TEST_DIR/pub_import_interface/base.o" \
+    "$TEST_DIR/pub_import_interface/reexport.o" \
+    -o "$TEST_DIR/pub_import_interface_app" \
+    2> "$TEST_DIR/pub_import_interface.err"; then
+    echo "FAIL: pub import re-export could not be resolved from source-less reexport.tki"
+    cat "$TEST_DIR/pub_import_interface.err"
+    exit 1
+fi
+"$TEST_DIR/pub_import_interface_app"
+echo "PASS: Test 7.14"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"

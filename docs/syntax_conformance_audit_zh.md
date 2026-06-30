@@ -43,7 +43,7 @@
 | 语法章节 | 状态 | 证据 | 缺口 / 建议 |
 | --- | --- | --- | --- |
 | 1. Core Model | 基本锁定 | pointer、member、morphic、PAL 相关 pass/fail 已覆盖 payload/handle 差异；最小 payload/handle 视图对照已补 | 后续缺口转向更细的诊断质量，而不是核心规则本身 |
-| 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases | `pub import` 的 TKI 导出行为可补一个更直接的跨模块 snapshot 测试 |
+| 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases；`pub import` source-less TKI re-export 已补 | 后续可按需细化多级 re-export 与 wildcard import 的组合 |
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
@@ -158,6 +158,12 @@
    - `tests/fail/morphic_member_quote_on_plain_field.tk`
 
    这确认了 morphic 字段漏写 quote 时不能把 payload 视图当作 handle 形态返回；普通字段误写 `.'field` 时也不会被当成 morphic identity。当前后一类错误落在“成员不存在”诊断上，语义上是正确拒绝，后续如果追求诊断友好度可单独优化。
+
+7. `pub import` through source-less TKI
+
+   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.14`：底层模块导出 `base_value`，中间模块通过 `pub import ./base::{base_value}` 重导出；生成 `.o + .tki` 后移走底层和中间 `.tk` 源文件，主程序只能通过中间 `.tki` 的 re-export 记录解析并调用该符号。
+
+   这确认了 declaration-level `pub import` 不只是 source 模式可见，也会进入模块接口缓存；增量构建或 source-less replay 不会丢失 re-export 契约。
 
 ## 细节复查补充
 
