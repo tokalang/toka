@@ -1011,6 +1011,81 @@ if ! grep -q "private" "$TEST_DIR/dyn_trait_private.err"; then
 fi
 echo "PASS: Test 7.15"
 
+# 7.16 Test generic impl where constraints survive source-less .tki replay.
+echo "Test 7.16: generic impl where through source-less interface"
+rm -rf "$TEST_DIR/where_interface"
+mkdir -p "$TEST_DIR/where_interface"
+
+cat << 'EOF' > "$TEST_DIR/where_interface/lib.tk"
+pub trait @Marked {}
+
+pub shape Token(value: i32)
+
+impl Token@Marked {}
+
+pub shape Plain(value: i32)
+
+pub shape Box<T>(item: T)
+
+impl<T> Box<T>
+where:
+    T impl @Marked
+{
+    pub fn marker(self) -> i32 {
+        return 7
+    }
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/where_interface/main.tk"
+import ./lib::{Box, Token, @Marked}
+
+fn main() -> i32 {
+    auto box = Box<Token>(item = Token(value = 1))
+    return box.marker() - 7
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/where_interface/bad_main.tk"
+import ./lib::{Box, Plain, @Marked}
+
+fn main() -> i32 {
+    auto box = Box<Plain>(item = Plain(value = 1))
+    return box.marker()
+}
+EOF
+
+"$TOKAC_ABS" -c "$TEST_DIR/where_interface/lib.tk" -o "$TEST_DIR/where_interface/lib.o"
+if [ ! -f "$TEST_DIR/where_interface/lib.tki" ]; then
+    echo "FAIL: where interface lib.tki was not generated"
+    exit 1
+fi
+if ! grep -q "impl<T: @Marked> Box<T>" "$TEST_DIR/where_interface/lib.tki"; then
+    echo "FAIL: generic impl where constraint was not emitted to lib.tki"
+    cat "$TEST_DIR/where_interface/lib.tki"
+    exit 1
+fi
+
+mv "$TEST_DIR/where_interface/lib.tk" "$TEST_DIR/where_interface/lib.tk.bak"
+
+if ! "$TOKAC_ABS" "$TEST_DIR/where_interface/main.tk" "$TEST_DIR/where_interface/lib.o" -o "$TEST_DIR/where_interface_app" 2> "$TEST_DIR/where_interface.err"; then
+    echo "FAIL: generic impl where constraint could not be satisfied from source-less lib.tki"
+    cat "$TEST_DIR/where_interface.err"
+    exit 1
+fi
+"$TEST_DIR/where_interface_app"
+
+if "$TOKAC_ABS" "$TEST_DIR/where_interface/bad_main.tk" "$TEST_DIR/where_interface/lib.o" -o "$TEST_DIR/where_bad_app" 2> "$TEST_DIR/where_bad.err"; then
+    echo "FAIL: generic impl where constraint leaked to an unsatisfied type"
+    exit 1
+fi
+if ! grep -q "no member named 'marker'" "$TEST_DIR/where_bad.err"; then
+    echo "FAIL: expected unsatisfied where-bound method lookup diagnostic"
+    cat "$TEST_DIR/where_bad.err"
+    exit 1
+fi
+echo "PASS: Test 7.16"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"
