@@ -364,6 +364,10 @@ private:
   void checkFunction(FunctionDecl *Fn);
   std::string getTraitFamilyName(const std::string &traitName) const;
   TraitDecl *findTraitDecl(const std::string &traitName) const;
+  std::string getDynTraitName(const std::string &typeName) const;
+  std::string getDynTraitName(std::shared_ptr<toka::Type> type) const;
+  bool validateDynTraitObjectSafety(const std::string &traitName,
+                                    SourceLocation loc);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::map<std::string, std::string>

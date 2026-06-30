@@ -8,7 +8,7 @@ impl Data@Sync {}
 
 fn process<T>(val: ^T)
 where:
-    T impl @{Send, Sync}
+    T: @{Send, Sync}
 {
 }
 

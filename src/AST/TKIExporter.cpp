@@ -456,7 +456,7 @@ void TKIExporter::exportTrait(const TraitDecl &decl) {
         m_OS << "where:\n";
         m_Indent++;
         indent();
-        m_OS << "Self impl ";
+        m_OS << "Self: ";
         if (decl.SelfTraitBounds.size() == 1) {
             m_OS << "@" << decl.SelfTraitBounds[0] << "\n";
         } else {

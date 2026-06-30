@@ -6,7 +6,7 @@ impl Data@Send {}
 
 shape Holder<T>
 where:
-    T impl @Send
+    T: @Send
 (
     item: T
 )

@@ -126,7 +126,9 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
     }
 
     Token subject = advance();
-    consume(TokenType::KwImpl, DiagID::ERR_PARSER_EXPECTED_IMPL);
+    if (!match(TokenType::Colon)) {
+      consume(TokenType::KwImpl, DiagID::ERR_PARSER_EXPECTED_WHERE_RELATION);
+    }
     std::vector<std::string> bounds = parseTraitFacetTarget();
 
     if (subject.Text == "Self") {

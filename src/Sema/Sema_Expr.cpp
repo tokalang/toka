@@ -1989,6 +1989,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         traitName = ObjType.substr(4);
 
       if (!traitName.empty() && TraitMap.count(traitName)) {
+        if (!validateDynTraitObjectSafety(traitName, Met->Loc))
+          return toka::Type::fromString("unknown");
         TraitDecl *TD = TraitMap[traitName];
         for (auto &M : TD->Methods) {
           if (M->Name == Met->Method) {

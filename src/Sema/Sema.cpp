@@ -315,6 +315,81 @@ TraitDecl *Sema::findTraitDecl(const std::string &traitName) const {
   return it->second;
 }
 
+static bool typeMentionsSelf(const std::string &typeName) {
+  std::string type = trimTypeString(typeName);
+  size_t pos = 0;
+  while ((pos = type.find("Self", pos)) != std::string::npos) {
+    bool startOk = pos == 0 ||
+                   (!std::isalnum(static_cast<unsigned char>(type[pos - 1])) &&
+                    type[pos - 1] != '_');
+    size_t end = pos + 4;
+    bool endOk =
+        end >= type.size() ||
+        (!std::isalnum(static_cast<unsigned char>(type[end])) &&
+         type[end] != '_');
+    if (startOk && endOk)
+      return true;
+    pos = end;
+  }
+  return false;
+}
+
+std::string Sema::getDynTraitName(const std::string &typeName) const {
+  return getDynTraitName(toka::Type::fromString(typeName));
+}
+
+std::string Sema::getDynTraitName(std::shared_ptr<toka::Type> type) const {
+  if (!type)
+    return "";
+  auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type);
+  if (!shape)
+    return "";
+
+  const std::string &name = shape->Name;
+  if (name.rfind("dyn @", 0) == 0)
+    return getTraitFamilyName(name.substr(5));
+  if (name.rfind("dyn@", 0) == 0)
+    return getTraitFamilyName(name.substr(4));
+  return "";
+}
+
+bool Sema::validateDynTraitObjectSafety(const std::string &traitName,
+                                        SourceLocation loc) {
+  TraitDecl *trait = findTraitDecl(traitName);
+  if (!trait)
+    return true;
+
+  auto fail = [&](const std::string &reason) {
+    SourceLocation reportLoc = loc.isValid() ? loc : trait->Loc;
+    DiagnosticEngine::report(reportLoc, DiagID::ERR_DYN_TRAIT_NOT_OBJECT_SAFE,
+                             trait->Name, trait->Name, reason);
+    HasError = true;
+    return false;
+  };
+
+  if (!trait->GenericParams.empty())
+    return fail("generic traits are not yet object-safe");
+  if (!trait->AssociatedTypes.empty())
+    return fail("associated types are not yet bindable on dyn trait objects");
+
+  for (const auto &method : trait->Methods) {
+    if (!method->GenericParams.empty())
+      return fail("method '" + method->Name + "' is generic");
+    if (typeMentionsSelf(method->ReturnType))
+      return fail("method '" + method->Name +
+                  "' mentions Self in its return type");
+    for (const auto &arg : method->Args) {
+      if (arg.Name == "self")
+        continue;
+      if (typeMentionsSelf(arg.Type))
+        return fail("method '" + method->Name +
+                    "' mentions Self outside the receiver");
+    }
+  }
+
+  return true;
+}
+
 void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
   if (!Trait || CheckedAssociatedTypeTraits.count(Trait))
     return;
@@ -1464,6 +1539,10 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   // [New] Annotated AST: Resolve Return Type Object
   if (Fn->ReturnType != "void") {
+    if (std::string dynTrait = getDynTraitName(Fn->ReturnType);
+        !dynTrait.empty()) {
+      validateDynTraitObjectSafety(dynTrait, getLoc(Fn));
+    }
     std::string resolvedRetStr = resolveType(Fn->ReturnType);
     Fn->ResolvedReturnType = toka::Type::fromString(resolvedRetStr);
   } else {
@@ -1482,6 +1561,10 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       DiagnosticEngine::report(argLoc, DiagID::ERR_REDUNDANT_BLOCK,
                                Arg.Name);
       HasError = true;
+    }
+    if (std::string dynTrait = getDynTraitName(Arg.Type);
+        !dynTrait.empty()) {
+      validateDynTraitObjectSafety(dynTrait, argLoc);
     }
 
     if (Arg.IsReference && !Arg.IsRebindable &&

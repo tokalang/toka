@@ -599,6 +599,12 @@ void Sema::checkStmt(Stmt *S) {
                                Var->Name);
       HasError = true;
     }
+    if (!Var->TypeName.empty() && Var->TypeName != "auto") {
+      if (std::string dynTrait = getDynTraitName(Var->TypeName);
+          !dynTrait.empty()) {
+        validateDynTraitObjectSafety(dynTrait, getLoc(Var));
+      }
+    }
 
     std::string InitType = "";
     std::shared_ptr<toka::Type> InitTypeObj = nullptr;

@@ -1,5 +1,5 @@
 error[E01238]: Where constraint subject 'U' must be a declared generic parameter or 'Self' in a trait declaration.
  --> tests/fail/where_unknown_subject.tk:5:5
    |
- 5 |     U impl @Send
+ 5 |     U: @Send
    |     ^

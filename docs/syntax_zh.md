@@ -281,6 +281,8 @@ auto area = print_area(rect)
 
 通过 `dyn @Trait` 调用方法时，会经由 trait 接口动态派发。在定义模块之外，只有 trait 中的 `pub fn` 方法可以被调用。当前稳定的 trait object 语法是单个 trait facet，例如 `dyn @Shape`；`dyn @{A, B}` 不属于当前公开语法。动态闭包使用独立的 `dyn fn(...) -> T` 语法，不是 trait object。
 
+不是所有 trait 都能成为 `dyn @Trait`。当前公开规则是：trait object 必须能被擦除为固定的 receiver handle 与固定 vtable ABI。因此，带泛型参数的 trait、带关联类型但未在 dyn 类型中绑定的 trait、带泛型方法的 trait、以及方法签名中在非 receiver 位置使用 `Self` 的 trait，暂时不能作为 `dyn @Trait` 使用。
+
 Trait 约束必须使用 `@Trait` 表示单个 facet，使用 `@{Trait1, Trait2}` 表示 trait facet set。Trait facet set 内部使用裸 trait 名称，因为前导 `@` 已经把整个集合放入 trait 语境。
 
 ```toka
@@ -290,18 +292,18 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 `T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
 
-约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束。第一阶段支持的形式中，`impl` 是关系谓词：`T impl @Trait` 表示必须存在 `T@Trait` 的实现。
+约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束。推荐形式与泛型参数约束一致：`T: @Trait` 或 `T: @{Trait1, Trait2}` 表示必须存在对应的 trait 实现。历史形式 `T impl @Trait` 仍被接受为兼容写法，但不是推荐风格。
 
 ```toka
 fn copy<T>(io: T)
 where:
-    T impl @{Reader, Writer}
+    T: @{Reader, Writer}
 {
 }
 
 trait @Ord
 where:
-    Self impl @{Eq, PartialOrd}
+    Self: @{Eq, PartialOrd}
 {
 }
 ```

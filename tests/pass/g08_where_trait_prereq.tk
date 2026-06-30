@@ -2,7 +2,7 @@ pub trait @Eq {}
 
 pub trait @Ord
 where:
-    Self impl @Eq
+    Self: @Eq
 {
 }
 
@@ -13,7 +13,7 @@ impl Data@Ord {}
 
 fn process<T>(val: ^T)
 where:
-    T impl @Ord
+    T: @Ord
 {
 }
 

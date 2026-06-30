@@ -2,7 +2,7 @@ trait @Send {}
 
 fn process<T>(value: T)
 where:
-    U impl @Send
+    U: @Send
 {
 }
 

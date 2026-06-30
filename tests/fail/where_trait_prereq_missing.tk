@@ -2,7 +2,7 @@ trait @Eq {}
 
 trait @Ord
 where:
-    Self impl @Eq
+    Self: @Eq
 {
 }
 

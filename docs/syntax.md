@@ -281,6 +281,8 @@ auto area = print_area(rect)
 
 Method calls through `dyn @Trait` are dynamically dispatched through the trait interface. Outside the defining module, only `pub fn` methods in the trait are callable. The stable trait-object syntax is a single trait facet such as `dyn @Shape`; `dyn @{A, B}` is not part of the current public syntax. Dynamic closures use the separate `dyn fn(...) -> T` syntax.
 
+Not every trait can be used as `dyn @Trait`. The current public rule is that a trait object must erase to a fixed receiver handle and a fixed vtable ABI. Therefore, generic traits, traits with associated types that are not bound in the dyn type, traits with generic methods, and traits whose method signatures use `Self` outside the receiver position are not currently valid as `dyn @Trait`.
+
 Trait bounds must use `@Trait` for a single facet and `@{Trait1, Trait2}` for a trait facet set. The names inside a trait facet set are bare because the leading `@` places the whole set in trait context.
 
 ```toka
@@ -290,18 +292,18 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
 
-For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. In the first supported form, `impl` is a relation predicate: `T impl @Trait` means an implementation of `T@Trait` must exist.
+For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. The recommended form matches generic parameter bounds: `T: @Trait` or `T: @{Trait1, Trait2}` means the corresponding trait implementation must exist. The historical form `T impl @Trait` is still accepted for compatibility, but it is not the recommended style.
 
 ```toka
 fn copy<T>(io: T)
 where:
-    T impl @{Reader, Writer}
+    T: @{Reader, Writer}
 {
 }
 
 trait @Ord
 where:
-    Self impl @{Eq, PartialOrd}
+    Self: @{Eq, PartialOrd}
 {
 }
 ```

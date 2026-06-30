@@ -119,7 +119,7 @@
    - `tests/pass/g08_where_generic_impl.tk`
    - `tests/fail/where_generic_impl_unsatisfied.tk`
 
-   这确认了 `impl<T> Box<T> where: T impl @Marked` 在满足约束时可实例化方法，在不满足约束时不会让该 impl 泄漏为可用方法。
+   这确认了 `impl<T> Box<T> where: T: @Marked` 在满足约束时可实例化方法，在不满足约束时不会让该 impl 泄漏为可用方法。
 
 3. `dyn @Trait` + visibility + module boundary
 
@@ -183,9 +183,9 @@
 
 10. Generic impl `where:` through source-less TKI
 
-   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.16`：模块定义 `impl<T> Box<T> where: T impl @Marked`，生成 `.o + .tki` 后移走 `.tk` 源文件。满足约束的 `Box<Token>.marker()` 可以通过接口缓存编译并运行；不满足约束的 `Box<Plain>.marker()` 在 source-less replay 下仍被拒绝。
+   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.16`：模块定义 `impl<T> Box<T> where: T: @Marked`，生成 `.o + .tki` 后移走 `.tk` 源文件。满足约束的 `Box<Token>.marker()` 可以通过接口缓存编译并运行；不满足约束的 `Box<Plain>.marker()` 在 source-less replay 下仍被拒绝。
 
-   当前 TKI 会把 `where: T impl @Marked` 规范化为接口中的 `impl<T: @Marked> Box<T>`。这没有改变语义，但说明公开语法和接口规范化语法之间存在等价打印形式；如果后续追求接口文本与源码风格完全一致，可以单独讨论 TKI pretty-printer，而不影响语义闭合。
+   当前 TKI 会把 `where: T: @Marked` 规范化为接口中的 `impl<T: @Marked> Box<T>`。这没有改变语义，并让接口文本与推荐约束风格保持一致。
 
 11. `@encap` visibility through source-less TKI
 
@@ -197,9 +197,9 @@
 
 ### Trait facet 与 `where:`
 
-`trait @Name` 是当前唯一公开的 trait 声明形态，裸 `trait Name` 已有 `tests/fail/trait_requires_at.tk` 拒绝。Facet set 的公开规则是 `@{Trait1, Trait2}`，集合内部使用裸 trait 名称；`T impl @{Send, Sync}` 已由 `tests/pass/g08_where_trait_bounds.tk` 覆盖。
+`trait @Name` 是当前唯一公开的 trait 声明形态，裸 `trait Name` 已有 `tests/fail/trait_requires_at.tk` 拒绝。Facet set 的公开规则是 `@{Trait1, Trait2}`，集合内部使用裸 trait 名称；`T: @{Send, Sync}` 已由 `tests/pass/g08_where_trait_bounds.tk` 覆盖。历史 `T impl @Trait` 形式仍作为兼容写法解析，但公开推荐形式统一为 `:`。
 
-这部分语法目前自洽。后续更值得补的是组合场景，而不是改语法：generic associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
+这部分语法目前自洽。后续更值得补的是组合场景，而不是改基础写法：generic associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
 
 ### Morphic 与内部可变性标记
 
@@ -238,7 +238,7 @@
 
 ### 3. `dyn @Trait`
 
-文档清楚限制为单 facet。`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 方法边界、以及 source-less TKI replay 下的 dyn trait interface 都已经有最小测试锁。后续如果继续补，重点应转向更高阶组合，例如 dyn trait 与关联类型、可见性路径授权的交叉场景，而不是基础语法形态。
+文档清楚限制为单 facet。`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 方法边界、source-less TKI replay 下的 dyn trait interface，以及关联类型 / 泛型方法 / 非 receiver `Self` 的对象安全拒绝，都已经有最小测试锁。后续如果继续补，重点应转向显式绑定关联类型后的 dyn object 设计、可见性路径授权的交叉场景，而不是基础语法形态。
 
 ### 4. Common Mistakes
 

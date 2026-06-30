@@ -1,0 +1,13 @@
+trait @Convert<T> {
+    pub fn convert(self, value: T) -> i32
+}
+
+fn consume(item: dyn @Convert<i32>) -> i32 {
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0617]:

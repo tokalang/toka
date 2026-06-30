@@ -1,0 +1,17 @@
+trait @Marked {}
+
+shape Token(value: i32)
+
+impl Token@Marked {}
+
+fn use_marked<T>(value: T) -> i32
+where:
+    T impl @Marked
+{
+    return 7
+}
+
+pub fn main() -> i32 {
+    auto token = Token(value = 1)
+    return use_marked<Token>(token) - 7
+}

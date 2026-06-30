@@ -1029,7 +1029,7 @@ pub shape Box<T>(item: T)
 
 impl<T> Box<T>
 where:
-    T impl @Marked
+    T: @Marked
 {
     pub fn marker(self) -> i32 {
         return 7
