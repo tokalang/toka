@@ -806,6 +806,68 @@ fi
 "$TEST_DIR/sourceless_interface_app"
 echo "PASS: Test 7.12"
 
+# 7.13 Test associated type projections survive source-less .tki replay.
+echo "Test 7.13: Associated type projection through source-less interface"
+rm -rf "$TEST_DIR/associated_type_interface"
+mkdir -p "$TEST_DIR/associated_type_interface"
+
+cat << 'EOF' > "$TEST_DIR/associated_type_interface/lib.tk"
+pub trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+pub shape IntBox(value: i32)
+
+impl IntBox@Readable {
+    type Item = i32
+
+    pub fn read(self) -> Item {
+        auto tmp: Item = self.value
+        return tmp
+    }
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/associated_type_interface/main.tk"
+import ./lib::{IntBox, @Readable}
+
+fn accept_item(x: IntBox@Readable::Item) -> i32 {
+    return x
+}
+
+fn main() -> i32 {
+    auto box = IntBox(value = 41)
+    return accept_item(box.read()) - 41
+}
+EOF
+
+"$TOKAC_ABS" -c "$TEST_DIR/associated_type_interface/lib.tk" -o "$TEST_DIR/associated_type_interface/lib.o"
+if [ ! -f "$TEST_DIR/associated_type_interface/lib.tki" ]; then
+    echo "FAIL: associated type interface lib.tki was not generated"
+    exit 1
+fi
+if ! grep -q "type Item" "$TEST_DIR/associated_type_interface/lib.tki"; then
+    echo "FAIL: associated type declaration was not emitted to lib.tki"
+    cat "$TEST_DIR/associated_type_interface/lib.tki"
+    exit 1
+fi
+if ! grep -q "type Item = i32" "$TEST_DIR/associated_type_interface/lib.tki"; then
+    echo "FAIL: associated type implementation was not emitted to lib.tki"
+    cat "$TEST_DIR/associated_type_interface/lib.tki"
+    exit 1
+fi
+
+mv "$TEST_DIR/associated_type_interface/lib.tk" "$TEST_DIR/associated_type_interface/lib.tk.bak"
+
+if ! "$TOKAC_ABS" "$TEST_DIR/associated_type_interface/main.tk" "$TEST_DIR/associated_type_interface/lib.o" -o "$TEST_DIR/associated_type_interface_app" 2> "$TEST_DIR/associated_type_interface.err"; then
+    echo "FAIL: associated type projection could not be resolved from source-less lib.tki"
+    cat "$TEST_DIR/associated_type_interface.err"
+    exit 1
+fi
+"$TEST_DIR/associated_type_interface_app"
+echo "PASS: Test 7.13"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"

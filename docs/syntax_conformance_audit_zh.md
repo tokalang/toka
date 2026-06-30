@@ -36,7 +36,7 @@
 - `dyn @{A, B}` 作为 trait object 被拒绝的直接 fail case
 - 常见错误表里的若干项缺少专门 fail 测试，例如 `let` / `var`、`for x in ...`、字符串 `+`
 - hatted 参数的“契约义务”目前只部分被诊断覆盖，仍需决定哪些情况是 error、warning，还是仅作为风格规则
-- TKI / 跨模块场景下的 associated type、dyn trait、visibility 组合还需要更直接的用例
+- TKI / 跨模块场景下的 associated type projection 已补最小 source-less `.tki` 回放用例；dyn trait、visibility 组合仍可继续细化
 
 ## 逐节审计矩阵
 
@@ -101,7 +101,7 @@
 
 1. Associated type + TKI + cross-module
 
-   当前 associated type 有基础 pass/fail，标准库 `ReadDir@Iterator::Item` 也有使用。但可以补一个专门跨模块导入 `.tki` 后使用 projection 的测试，防止后续 TKI exporter / parser 回归。
+   当前 associated type 有基础 pass/fail，标准库 `ReadDir@Iterator::Item` 也有使用。已在 `tools/scripts/test_tki_cache_validation.sh` 增加 source-less `.tki` 回放用例：先把定义 `trait @Readable`、`type Item`、`impl IntBox@Readable { type Item = i32 }` 的模块编译为 `.o + .tki`，再移走 `.tk` 源文件，让主程序通过接口缓存解析 `IntBox@Readable::Item` 并调用 `read()`。
 
 2. `where:` + trait prerequisite + generic impl
 
@@ -125,7 +125,7 @@
 
 `trait @Name` 是当前唯一公开的 trait 声明形态，裸 `trait Name` 已有 `tests/fail/trait_requires_at.tk` 拒绝。Facet set 的公开规则是 `@{Trait1, Trait2}`，集合内部使用裸 trait 名称；`T impl @{Send, Sync}` 已由 `tests/pass/g08_where_trait_bounds.tk` 覆盖。
 
-这部分语法目前自洽。后续更值得补的是组合场景，而不是改语法：generic impl 中的 `where:`、associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
+这部分语法目前自洽。后续更值得补的是组合场景，而不是改语法：generic impl 中的 `where:`、generic associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
 
 ### Morphic 与内部可变性标记
 
@@ -184,7 +184,7 @@
 
 ### 阶段 C：跨模块 / TKI 组合测试
 
-补 associated type、dyn trait、visibility、where 在 TKI replay 场景下的正反测试。
+继续补 dyn trait、visibility、where 在 TKI replay 场景下的正反测试；associated type projection 的最小 source-less `.tki` 回放已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 
