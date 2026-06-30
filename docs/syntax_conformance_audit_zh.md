@@ -48,7 +48,7 @@
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
-| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵、`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 边界已补最小锁；TKI replay 组合仍可继续细化 |
+| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵、`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 边界与 TKI replay 已补最小锁；where / visibility 的更多 TKI 组合仍可继续细化 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 后续重点转为诊断质量：普通字段误写 `.'field` 当前落在成员不存在诊断 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
@@ -175,6 +175,12 @@
 
    审计中发现 `Shape::Variant(...)` 调用路径原本只检查实参表达式，没有验证 variant payload 形状，导致 unit variant 带参数、payload variant 参数个数错误仍可通过。已在 Sema 的 enum variant constructor 分支补上 `E0550` / `E0551` 检查，并保留未知变体的 `E04551` 诊断。
 
+9. `dyn @Trait` through source-less TKI
+
+   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.15`：模块定义 `pub trait @VisibleShape`、`DynBox` 与 `DynBox@VisibleShape` 实现，生成 `.o + .tki` 后移走 `.tk` 源文件。主程序通过 `.tki` 中的 trait/interface 信息调用 `dyn @VisibleShape` 的 `pub fn public_id`，并确认 private method 不会在 source-less replay 下泄漏为可调用方法。
+
+   这说明当前 `dyn @Trait` 的基础跨模块语义不需要重新讨论；后续若要讨论，应集中在新能力，例如是否支持 multi-facet trait object、object lifetime/ownership 表达、或 dyn object ABI 稳定性。
+
 ## 细节复查补充
 
 ### Trait facet 与 `where:`
@@ -220,7 +226,7 @@
 
 ### 3. `dyn @Trait`
 
-文档清楚限制为单 facet。`dyn @{A, B}` 拒绝和 `dyn @Trait` 跨模块 pub/private 方法边界已经有最小测试锁。后续如果继续补，重点应转向 TKI replay 下的 dyn trait interface / vtable 组合，而不是基础语法形态。
+文档清楚限制为单 facet。`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 方法边界、以及 source-less TKI replay 下的 dyn trait interface 都已经有最小测试锁。后续如果继续补，重点应转向更高阶组合，例如 dyn trait 与 `where:`、关联类型、可见性路径授权的交叉场景，而不是基础语法形态。
 
 ### 4. Common Mistakes
 
@@ -242,7 +248,7 @@
 
 ### 阶段 C：跨模块 / TKI 组合测试
 
-继续补 dyn trait、visibility、where 在 TKI replay 场景下的正反测试；associated type projection 的最小 source-less `.tki` 回放、generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界已经锁定。
+继续补 visibility、where 在 TKI replay 场景下的正反测试；associated type projection、`pub import` re-export、dyn trait interface 的最小 source-less `.tki` 回放、generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 

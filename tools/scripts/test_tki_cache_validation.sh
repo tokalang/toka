@@ -925,6 +925,92 @@ fi
 "$TEST_DIR/pub_import_interface_app"
 echo "PASS: Test 7.14"
 
+# 7.15 Test dyn trait interfaces survive source-less .tki replay.
+echo "Test 7.15: dyn trait through source-less interface"
+rm -rf "$TEST_DIR/dyn_trait_interface"
+mkdir -p "$TEST_DIR/dyn_trait_interface"
+
+cat << 'EOF' > "$TEST_DIR/dyn_trait_interface/lib.tk"
+pub trait @VisibleShape {
+    pub fn public_id(self) -> i32
+    fn private_id(self) -> i32
+}
+
+pub shape DynBox(value: i32)
+
+impl DynBox@VisibleShape {
+    pub fn public_id(self) -> i32 {
+        return self.value
+    }
+
+    fn private_id(self) -> i32 {
+        return self.value + 1
+    }
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/dyn_trait_interface/main.tk"
+import ./lib::{DynBox, @VisibleShape}
+
+fn public_id_of(obj: dyn @VisibleShape) -> i32 {
+    return obj.public_id()
+}
+
+fn main() -> i32 {
+    auto box = DynBox(value = 33)
+    return public_id_of(box) - 33
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/dyn_trait_interface/private_main.tk"
+import ./lib::{DynBox, @VisibleShape}
+
+fn private_id_of(obj: dyn @VisibleShape) -> i32 {
+    return obj.private_id()
+}
+
+fn main() -> i32 {
+    auto box = DynBox(value = 33)
+    return private_id_of(box)
+}
+EOF
+
+"$TOKAC_ABS" -c "$TEST_DIR/dyn_trait_interface/lib.tk" -o "$TEST_DIR/dyn_trait_interface/lib.o"
+if [ ! -f "$TEST_DIR/dyn_trait_interface/lib.tki" ]; then
+    echo "FAIL: dyn trait lib.tki was not generated"
+    exit 1
+fi
+if ! grep -q "pub trait @VisibleShape" "$TEST_DIR/dyn_trait_interface/lib.tki"; then
+    echo "FAIL: dyn trait declaration was not emitted to lib.tki"
+    cat "$TEST_DIR/dyn_trait_interface/lib.tki"
+    exit 1
+fi
+if ! grep -q "impl DynBox@VisibleShape" "$TEST_DIR/dyn_trait_interface/lib.tki"; then
+    echo "FAIL: dyn trait implementation was not emitted to lib.tki"
+    cat "$TEST_DIR/dyn_trait_interface/lib.tki"
+    exit 1
+fi
+
+mv "$TEST_DIR/dyn_trait_interface/lib.tk" "$TEST_DIR/dyn_trait_interface/lib.tk.bak"
+
+if ! "$TOKAC_ABS" "$TEST_DIR/dyn_trait_interface/main.tk" "$TEST_DIR/dyn_trait_interface/lib.o" -o "$TEST_DIR/dyn_trait_interface_app" 2> "$TEST_DIR/dyn_trait_interface.err"; then
+    echo "FAIL: dyn trait public method could not be resolved from source-less lib.tki"
+    cat "$TEST_DIR/dyn_trait_interface.err"
+    exit 1
+fi
+"$TEST_DIR/dyn_trait_interface_app"
+
+if "$TOKAC_ABS" "$TEST_DIR/dyn_trait_interface/private_main.tk" "$TEST_DIR/dyn_trait_interface/lib.o" -o "$TEST_DIR/dyn_trait_private_app" 2> "$TEST_DIR/dyn_trait_private.err"; then
+    echo "FAIL: dyn trait private method unexpectedly resolved from source-less lib.tki"
+    exit 1
+fi
+if ! grep -q "private" "$TEST_DIR/dyn_trait_private.err"; then
+    echo "FAIL: expected dyn trait private method diagnostic"
+    cat "$TEST_DIR/dyn_trait_private.err"
+    exit 1
+fi
+echo "PASS: Test 7.15"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All TKI cache validation tests PASSED!"
