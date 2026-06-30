@@ -1,0 +1,25 @@
+shape Cell(
+    value#: i32
+)
+
+fn main() -> i32 {
+    auto ^#cell = new Cell(value = 10)
+
+    // Bare names operate on the payload view.
+    if cell.value != 10 {
+        return 1
+    }
+
+    cell.value = 11
+    if cell.value != 11 {
+        return 2
+    }
+
+    // Hatted assignment operates on the handle identity.
+    ^#cell = new Cell(value = 20)
+    if cell.value != 20 {
+        return 3
+    }
+
+    return 0
+}

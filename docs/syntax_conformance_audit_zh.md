@@ -42,7 +42,7 @@
 
 | 语法章节 | 状态 | 证据 | 缺口 / 建议 |
 | --- | --- | --- | --- |
-| 1. Core Model | 基本锁定 | pointer、member、morphic、PAL 相关 pass/fail 已覆盖 payload/handle 差异 | 建议新增一个最小化“裸名读 payload、帽子读 handle、带帽赋值重绑定”的单文件说明性 pass/fail 对 |
+| 1. Core Model | 基本锁定 | pointer、member、morphic、PAL 相关 pass/fail 已覆盖 payload/handle 差异；最小 payload/handle 视图对照已补 | 后续缺口转向更细的诊断质量，而不是核心规则本身 |
 | 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases | `pub import` 的 TKI 导出行为可补一个更直接的跨模块 snapshot 测试 |
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
@@ -62,13 +62,22 @@
 
 ### P1：应尽快补的语法锁
 
-1. `dyn @{A, B}` 拒绝
+1. Core payload / handle view contrast
+
+   已新增一个最小 pass / fail 对：
+
+   - `tests/pass/g01_core_handle_views.tk`
+   - `tests/fail/core_handle_rebind_requires_hash.tk`
+
+   这直接锁住核心模型的两条基础规则：裸名访问 payload 视图，带帽赋值操作 handle identity；如果 handle binding 没有 `#` 重绑定权限，则不能通过 `^name = ...` 改写 handle。
+
+2. `dyn @{A, B}` 拒绝
 
    当前文档明确说稳定 trait object 语法只支持单个 facet `dyn @Trait`。已新增最小 fail 锁：
 
    - `tests/fail/dyn_trait_set_object.tk`
 
-2. `@encap` path / crate / wildcard 可见性矩阵
+3. `@encap` path / crate / wildcard 可见性矩阵
 
    当前 `pub(crate)` 在 `g08_encap_syntax.tk` 中出现，`pub(std)`、`pub *` 在标准库和若干 pass 测试中使用。已新增一个最小跨模块矩阵：
 
@@ -77,7 +86,7 @@
    - `tests/fail/encap_visibility_path_denied.tk`
    - `tests/fail/encap_visibility_wildcard_exclusion.tk`
 
-3. 常见错误 fail cases
+4. 常见错误 fail cases
 
    文档常见错误表中仍有几项需要最小 fail 锁。已新增：
 
@@ -87,7 +96,7 @@
 
    其中 `let` / `var` 和 `dyn @{...}` 当前已经被拒绝，但诊断还比较通用；后续可作为诊断质量改进项。
 
-4. hatted parameter obligation
+5. hatted parameter obligation
 
    当前已有 `param_type_side_reference.tk` 与 `redundant_param_borrow.tk`，可以拒绝 `info: &Info` 和无意义的 `&info: Info`。同时编译器已经增加 `W0407`，当函数参数声明了 handle morphology 但函数体没有使用 handle 视图时，会给出 warning。
 
