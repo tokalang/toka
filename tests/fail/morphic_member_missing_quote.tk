@@ -1,0 +1,17 @@
+// EXPECT: error[E0408]
+
+shape Box<'T>(
+    'data: T
+)
+
+fn take_identity<'T>(cede box: Box<'T>) -> 'T {
+    return cede box.data
+}
+
+fn main() -> i32 {
+    unsafe {
+        auto owned = Box<^i32>(^data = new i32(5))
+        auto ^p = take_identity<^i32>(cede owned)
+    }
+    return 0
+}

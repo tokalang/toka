@@ -1,0 +1,14 @@
+// EXPECT: error[E0417]
+
+shape PlainBox<T>(
+    data: T
+)
+
+fn read_plain(box: PlainBox<i32>) -> i32 {
+    return box.'data
+}
+
+fn main() -> i32 {
+    auto box = PlainBox<i32>(data = 5)
+    return read_plain(box)
+}

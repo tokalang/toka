@@ -49,7 +49,7 @@
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests | enum-like variant 的 fail 侧可再补未覆盖的错误形态 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵、`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 边界已补最小锁；TKI replay 组合仍可继续细化 |
-| 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases | 建议补一个专门 fail：`box.'field` 与 `box.field` 在不匹配使用处的错误对照 |
+| 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 后续重点转为诊断质量：普通字段误写 `.'field` 当前落在成员不存在诊断 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
 | 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases | 有些测试注释仍带“proposal/goal”历史语气，后续可清理注释避免误导 |
@@ -140,6 +140,15 @@
    - `tests/fail/nullable_borrow_handle.tk`
 
    这补上了非 nullable unique/shared handle 不能接收 `null`，以及 borrow handle `&` 不能被 `nul` 标记的最小反例。raw pointer 的非 nullable 反例已有 `tests/fail/non_null_nullptr.tk` / `tests/fail/strict_null_identity.tk`。
+
+6. Morphic member view contrast
+
+   `tests/pass/g08_morphic_member_identity.tk` 已覆盖 `box.'data` 保留 handle 形态的正例，`tests/pass/g08_generic_morphic.tk` 已覆盖 `box.data` 请求 payload 视图的正例。本轮新增：
+
+   - `tests/fail/morphic_member_missing_quote.tk`
+   - `tests/fail/morphic_member_quote_on_plain_field.tk`
+
+   这确认了 morphic 字段漏写 quote 时不能把 payload 视图当作 handle 形态返回；普通字段误写 `.'field` 时也不会被当成 morphic identity。当前后一类错误落在“成员不存在”诊断上，语义上是正确拒绝，后续如果追求诊断友好度可单独优化。
 
 ## 细节复查补充
 
