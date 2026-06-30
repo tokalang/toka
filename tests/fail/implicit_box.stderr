@@ -38,6 +38,16 @@ error[E0421]: Member access 'x' on non-shape type 'Unresolved(unknown)'
    |
  9 |     assert(p.x == 444, "implicit box unique mutation")
    |             ^
+error[E0402]: Use of undeclared identifier 'p'
+ --> tests/fail/implicit_box.tk:9:12
+   |
+ 9 |     assert(p.x == 444, "implicit box unique mutation")
+   |            ^
+error[E0421]: Member access 'x' on non-shape type 'Unresolved(unknown)'
+ --> tests/fail/implicit_box.tk:9:13
+   |
+ 9 |     assert(p.x == 444, "implicit box unique mutation")
+   |             ^
 error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new Point(...)' stringently
  --> tests/fail/implicit_box.tk:13:11
     |
@@ -88,8 +98,5 @@ error[E0421]: Member access 'x' on non-shape type 'Unresolved(unknown)'
     |
  17 |     assert(s2.x == 999, "implicit box shared mutation")
     |              ^
-error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new Point(...)' stringently
- --> tests/fail/implicit_box.tk:21:15
-    |
- 21 |     auto nul ~s1 = Point(x = 42, y = 42, z = 42)
-    |               ^
+error[E0402]: Use of undeclared identifier 's2'
+ --> tests/fail/implicit_box.tk:17:12
