@@ -1,0 +1,13 @@
+fn payload_only(*s: string) -> i32 {
+    return s.len() as i32
+}
+
+fn handle_used(*s: string) -> bool {
+    return *s == null
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: warning[W0407]

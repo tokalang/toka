@@ -94,7 +94,7 @@
    这还不是 hard error。更一般的规则仍需形成设计决议：
 
    - 如果作为 hard error：补 `tests/fail/hatted_param_unused.tk`
-   - 如果保持 warning：补 warning snapshot 或诊断测试工具
+   - 如果保持 warning：已补 `tools/scripts/test_verify_warn.py` 与 `tests/warn/hatted_param_handle_unused.tk`
    - 如果仅作为风格规则：文档需要明确“不保证诊断”
 
 ### P2：适合随后补的组合测试
