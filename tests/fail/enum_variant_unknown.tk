@@ -1,0 +1,11 @@
+// EXPECT: error[E04551]
+
+shape State(
+    Done |
+    Pair(i32, i32)
+)
+
+fn main() -> i32 {
+    auto s = State::Missing()
+    return 0
+}

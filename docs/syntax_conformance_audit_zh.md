@@ -47,7 +47,7 @@
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
 | 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
-| 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests | enum-like variant 的 fail 侧可再补未覆盖的错误形态 |
+| 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵、`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 边界已补最小锁；TKI replay 组合仍可继续细化 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 后续重点转为诊断质量：普通字段误写 `.'field` 当前落在成员不存在诊断 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
@@ -164,6 +164,16 @@
    已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.14`：底层模块导出 `base_value`，中间模块通过 `pub import ./base::{base_value}` 重导出；生成 `.o + .tki` 后移走底层和中间 `.tk` 源文件，主程序只能通过中间 `.tki` 的 re-export 记录解析并调用该符号。
 
    这确认了 declaration-level `pub import` 不只是 source 模式可见，也会进入模块接口缓存；增量构建或 source-less replay 不会丢失 re-export 契约。
+
+8. Enum variant constructor failures
+
+   已新增：
+
+   - `tests/fail/enum_variant_unknown.tk`
+   - `tests/fail/enum_variant_unit_args.tk`
+   - `tests/fail/enum_variant_arg_mismatch.tk`
+
+   审计中发现 `Shape::Variant(...)` 调用路径原本只检查实参表达式，没有验证 variant payload 形状，导致 unit variant 带参数、payload variant 参数个数错误仍可通过。已在 Sema 的 enum variant constructor 分支补上 `E0550` / `E0551` 检查，并保留未知变体的 `E04551` 诊断。
 
 ## 细节复查补充
 

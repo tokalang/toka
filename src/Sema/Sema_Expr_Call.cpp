@@ -466,7 +466,26 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         for (auto &Memb : SD->Members) {
           if (Memb.Name == VariantName) {
             // Enum Variant Constructor: Variant(Args...) -> ShapeName
-            for (auto &Arg : Call->Args) {
+            bool hasPayload = !Memb.SubMembers.empty() ||
+                              (!Memb.Type.empty() && Memb.Type != "void");
+            size_t expectedCount = 0;
+            if (!Memb.SubMembers.empty()) {
+              expectedCount = Memb.SubMembers.size();
+            } else if (!Memb.Type.empty() && Memb.Type != "void") {
+              expectedCount = 1;
+            }
+
+            if (!hasPayload) {
+              if (!Call->Args.empty()) {
+                error(Call, DiagID::ERR_VARIANT_NO_PAYLOAD, VariantName);
+              }
+            } else if (Call->Args.size() != expectedCount) {
+              error(Call, DiagID::ERR_VARIANT_ARG_MISMATCH, VariantName,
+                    expectedCount, Call->Args.size());
+            }
+
+            for (size_t i = 0; i < Call->Args.size(); ++i) {
+              auto &Arg = Call->Args[i];
               Arg = foldGenericConstant(std::move(Arg)); // [FIX]
               checkExpr(Arg.get());
             }
