@@ -600,10 +600,7 @@ void Sema::checkStmt(Stmt *S) {
       HasError = true;
     }
     if (!Var->TypeName.empty() && Var->TypeName != "auto") {
-      if (std::string dynTrait = getDynTraitName(Var->TypeName);
-          !dynTrait.empty()) {
-        validateDynTraitObjectSafety(dynTrait, getLoc(Var));
-      }
+      validateDynTraitObjectSafetyInType(Var->TypeName, getLoc(Var));
     }
 
     std::string InitType = "";

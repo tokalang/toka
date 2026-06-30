@@ -1,0 +1,12 @@
+trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+alias ReadableObj = dyn @Readable
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0617]:

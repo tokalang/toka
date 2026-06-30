@@ -145,7 +145,7 @@ fn keep(cede r: Resource) -> Resource {
 }
 ```
 
-If a parameter is declared `cede`, the function body must explicitly complete that transfer by consuming, forwarding, storing, returning, or otherwise ending the resource path.
+If a parameter is declared `cede`, the caller must pass it with `cede`, and the function body must explicitly complete that transfer by consuming, forwarding, storing, returning, or otherwise ending the resource path. Merely reading the payload does not satisfy the contract. A parameter that was not declared `cede` cannot be ceded inside the function body.
 
 Default arguments are supported. A call that chooses defaults must include `..`.
 

@@ -390,6 +390,53 @@ bool Sema::validateDynTraitObjectSafety(const std::string &traitName,
   return true;
 }
 
+bool Sema::validateDynTraitObjectSafetyInType(const std::string &typeName,
+                                              SourceLocation loc) {
+  return validateDynTraitObjectSafetyInType(toka::Type::fromString(typeName),
+                                            loc);
+}
+
+bool Sema::validateDynTraitObjectSafetyInType(std::shared_ptr<toka::Type> type,
+                                              SourceLocation loc) {
+  if (!type)
+    return true;
+
+  bool ok = true;
+  if (std::string dynTrait = getDynTraitName(type); !dynTrait.empty()) {
+    ok = validateDynTraitObjectSafety(dynTrait, loc) && ok;
+  }
+
+  if (type->isPointer()) {
+    ok = validateDynTraitObjectSafetyInType(type->getPointeeType(), loc) && ok;
+  }
+
+  if (auto arr = std::dynamic_pointer_cast<toka::ArrayType>(type)) {
+    ok = validateDynTraitObjectSafetyInType(arr->ElementType, loc) && ok;
+  }
+
+  if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
+    for (const auto &param : fn->ParamTypes) {
+      ok = validateDynTraitObjectSafetyInType(param, loc) && ok;
+    }
+    ok = validateDynTraitObjectSafetyInType(fn->ReturnType, loc) && ok;
+  }
+
+  if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(type)) {
+    for (const auto &param : dynFn->ParamTypes) {
+      ok = validateDynTraitObjectSafetyInType(param, loc) && ok;
+    }
+    ok = validateDynTraitObjectSafetyInType(dynFn->ReturnType, loc) && ok;
+  }
+
+  if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
+    for (const auto &arg : shape->GenericArgs) {
+      ok = validateDynTraitObjectSafetyInType(arg, loc) && ok;
+    }
+  }
+
+  return ok;
+}
+
 void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
   if (!Trait || CheckedAssociatedTypeTraits.count(Trait))
     return;
@@ -731,6 +778,15 @@ void Sema::declareGlobals(Module &M) {
       MethodDecls[traitKey][Method->Name] = Method.get();
     }
   }
+  for (auto &Alias : M.TypeAliases) {
+    validateDynTraitObjectSafetyInType(Alias->TargetType, getLoc(Alias.get()));
+  }
+  for (auto &St : M.Shapes) {
+    for (const auto &Member : St->Members) {
+      validateDynTraitObjectSafetyInType(
+          Sema::synthesizePhysicalType(Member), getLoc(St.get()));
+    }
+  }
   // 6. Register Globals
   for (auto &G : M.Globals) {
     if (auto *v = dynamic_cast<VariableDecl *>(G.get())) {
@@ -847,6 +903,15 @@ void Sema::registerGlobals(Module &M) {
     }
     // [NEW] Define locally in scope
     CurrentScope->define(Trait->Name, {toka::Type::fromString(Trait->Name)});
+  }
+  for (auto &Alias : M.TypeAliases) {
+    validateDynTraitObjectSafetyInType(Alias->TargetType, getLoc(Alias.get()));
+  }
+  for (auto &St : M.Shapes) {
+    for (const auto &Member : St->Members) {
+      validateDynTraitObjectSafetyInType(
+          Sema::synthesizePhysicalType(Member), getLoc(St.get()));
+    }
   }
   for (auto &G : M.Globals) {
     if (auto *v = dynamic_cast<VariableDecl *>(G.get())) {
@@ -1539,10 +1604,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   // [New] Annotated AST: Resolve Return Type Object
   if (Fn->ReturnType != "void") {
-    if (std::string dynTrait = getDynTraitName(Fn->ReturnType);
-        !dynTrait.empty()) {
-      validateDynTraitObjectSafety(dynTrait, getLoc(Fn));
-    }
+    validateDynTraitObjectSafetyInType(Fn->ReturnType, getLoc(Fn));
     std::string resolvedRetStr = resolveType(Fn->ReturnType);
     Fn->ResolvedReturnType = toka::Type::fromString(resolvedRetStr);
   } else {
@@ -1562,10 +1624,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                                Arg.Name);
       HasError = true;
     }
-    if (std::string dynTrait = getDynTraitName(Arg.Type);
-        !dynTrait.empty()) {
-      validateDynTraitObjectSafety(dynTrait, argLoc);
-    }
+    validateDynTraitObjectSafetyInType(Arg.Type, argLoc);
 
     if (Arg.IsReference && !Arg.IsRebindable &&
         Type::stripMorphology(Arg.Name) != "self") {

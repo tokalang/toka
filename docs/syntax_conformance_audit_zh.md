@@ -46,7 +46,7 @@
 | 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases；`pub import` source-less TKI re-export 已补 | 后续可按需细化多级 re-export 与 wildcard import 的组合 |
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
-| 5. Functions / Parameters / `cede` | 基本锁定 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 需要补“签名要求 cede，函数内部仅检查但不转移”的更细粒度错误说明；hatted non-cede 参数是否必须使用 handle 仍是规则决策点 |
+| 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 后续重点转为诊断质量：普通字段误写 `.'field` 当前落在成员不存在诊断 |
@@ -239,6 +239,8 @@
 ### 3. `dyn @Trait`
 
 文档清楚限制为单 facet。`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 方法边界、source-less TKI replay 下的 dyn trait interface，以及关联类型 / 泛型方法 / 非 receiver `Self` 的对象安全拒绝，都已经有最小测试锁。后续如果继续补，重点应转向显式绑定关联类型后的 dyn object 设计、可见性路径授权的交叉场景，而不是基础语法形态。
+
+本轮继续收紧了类型位置边界：alias、shape member、cast target 中出现的 `dyn @Trait` 也会走对象安全检查，避免通过间接类型位置绕过 `E0617`。
 
 ### 4. Common Mistakes
 

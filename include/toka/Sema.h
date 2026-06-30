@@ -368,6 +368,10 @@ private:
   std::string getDynTraitName(std::shared_ptr<toka::Type> type) const;
   bool validateDynTraitObjectSafety(const std::string &traitName,
                                     SourceLocation loc);
+  bool validateDynTraitObjectSafetyInType(const std::string &typeName,
+                                          SourceLocation loc);
+  bool validateDynTraitObjectSafetyInType(std::shared_ptr<toka::Type> type,
+                                          SourceLocation loc);
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::map<std::string, std::string>
