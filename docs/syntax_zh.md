@@ -135,6 +135,8 @@ fn add(a: i32, b: i32) -> i32 {
 
 只有函数确实需要 handle 本体时，才在参数名侧加帽子。例如 `*p: T` 表示 raw handle 参数，`*#p: T` 表示被调函数需要重绑定该 handle。
 
+在调用点传递 handle 本体时，也使用带帽视图，例如 `take(*p)`。裸 `p` 仍然表示 payload 视图。
+
 `cede` 是显式资源转移契约。
 
 ```toka

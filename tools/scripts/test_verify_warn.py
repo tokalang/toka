@@ -31,6 +31,18 @@ def expected_codes_for(test_file):
     return expected
 
 
+def expected_counts_for(test_file):
+    expected = {}
+    with open(test_file, "r") as f:
+        for line in f:
+            if "// EXPECT_COUNT:" not in line:
+                continue
+            match = re.search(r"(W\d+)\s+(\d+)", line)
+            if match:
+                expected[match.group(1)] = int(match.group(2))
+    return expected
+
+
 def filtered_diagnostics(raw_output):
     lines = []
     for line in raw_output.splitlines():
@@ -75,6 +87,7 @@ def main():
         shutil.copyfile(test_file, temp_file)
 
         expected_codes = expected_codes_for(test_file)
+        expected_counts = expected_counts_for(test_file)
         if not expected_codes:
             print(f"Testing {test_name:<35} {RED}FAIL (Missing Expectations){NC}")
             total_failed += 1
@@ -95,6 +108,19 @@ def main():
         if missing:
             print(f"Testing {test_name:<35} {RED}FAIL (Warning Match Failed){NC}")
             print(f"  {YELLOW}Expected warning codes not found:{NC} {missing}")
+            print(f"  {YELLOW}Actual Filtered Output:{NC}\n{output}")
+            total_failed += 1
+            continue
+
+        count_mismatches = []
+        for code, expected_count in expected_counts.items():
+            actual_count = actual_codes.count(code)
+            if actual_count != expected_count:
+                count_mismatches.append((code, expected_count, actual_count))
+        if count_mismatches:
+            print(f"Testing {test_name:<35} {RED}FAIL (Warning Count Mismatch){NC}")
+            for code, expected_count, actual_count in count_mismatches:
+                print(f"  {YELLOW}{code}:{NC} expected {expected_count}, got {actual_count}")
             print(f"  {YELLOW}Actual Filtered Output:{NC}\n{output}")
             total_failed += 1
             continue

@@ -135,6 +135,8 @@ For ordinary object parameters, Toka uses logical in-place capture. If the funct
 
 Use a hat on a parameter only when the function needs the handle itself, for example `*p: T` for a raw handle parameter or `*#p: T` when the callee must be able to rebind that handle.
 
+At a call site, passing that handle itself also uses the hatted view, such as `take(*p)`. A naked `p` remains the payload view.
+
 `cede` is an explicit resource-transfer contract.
 
 ```toka

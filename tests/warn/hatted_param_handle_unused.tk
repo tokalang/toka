@@ -6,8 +6,17 @@ fn handle_used(*s: string) -> bool {
     return *s == null
 }
 
+fn accept_raw(*s: string) -> bool {
+    return *s == null
+}
+
+fn handle_forwarded(*s: string) -> bool {
+    return accept_raw(*s)
+}
+
 fn main() -> i32 {
     return 0
 }
 
 // EXPECT: warning[W0407]
+// EXPECT_COUNT: W0407 1

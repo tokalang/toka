@@ -106,6 +106,8 @@
    - 如果保持 warning：已补 `tools/scripts/test_verify_warn.py` 与 `tests/warn/hatted_param_handle_unused.tk`
    - 如果仅作为风格规则：文档需要明确“不保证诊断”
 
+   当前 warning 测试已经精确锁定：只读 payload 的 hatted 参数会触发一次 `W0407`，显式使用 handle 视图（如 `*s == null`）以及把 handle 视图继续传递给另一个 hatted 参数（如 `accept_raw(*s)`）都满足 handle 使用义务。
+
 ### P2：适合随后补的组合测试
 
 1. Associated type + TKI + cross-module
@@ -233,7 +235,7 @@
 
 - 参数带帽但未使用 handle，是 error 还是 warning？
 - 参数带帽但只 payload-read，是否一律拒绝？
-- 参数带帽后原样传递给另一个函数，是否满足义务？
+- 参数带帽后显式以 handle 视图传给另一个函数，已按满足义务处理；是否升级为 hard error 仍需另行决定。
 - `cede` 与 hatted 参数同时出现时，义务如何叠加？
 
 ### 3. `dyn @Trait`
