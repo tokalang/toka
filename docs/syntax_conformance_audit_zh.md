@@ -67,10 +67,13 @@
    已新增一个最小 pass / fail 对：
 
    - `tests/pass/g01_core_handle_views.tk`
+   - `tests/pass/g01_handle_hash_position_matrix.tk`
    - `tests/fail/core_handle_rebind_requires_hash.tk`
    - `tests/fail/core_handle_suffix_hash_not_rebindable.tk`
+   - `tests/fail/core_raw_suffix_hash_not_rebindable.tk`
+   - `tests/fail/core_reference_suffix_hash_not_rebindable.tk`
 
-   这直接锁住核心模型的两条基础规则：裸名访问 payload 视图，带帽赋值操作 handle identity；如果 handle binding 没有 identity-side `#` 重绑定权限，则不能通过 `^name = ...` 改写 handle。`^p#` 只给 payload / soul 侧可写权限，不等价于 `^#p`。
+   这直接锁住核心模型的两条基础规则：裸名访问 payload 视图，带帽赋值操作 handle identity；如果 handle binding 没有 identity-side `#` 重绑定权限，则不能通过 `^name = ...`、`*name = ...`、`&name = ...` 改写 handle。`^p#`、`*p#`、`&p#` 只给 payload / soul 侧可写权限，不等价于 `^#p`、`*#p`、`&#p`。
 
 2. `dyn @{A, B}` 拒绝
 
@@ -101,13 +104,7 @@
 
    当前已有 `param_type_side_reference.tk` 与 `redundant_param_borrow.tk`，可以拒绝 `info: &Info` 和无意义的 `&info: Info`。同时编译器已经增加 `W0407`，当函数参数声明了 handle morphology 但函数体没有使用 handle 视图时，会给出 warning。
 
-   这还不是 hard error。更一般的规则仍需形成设计决议：
-
-   - 如果作为 hard error：补 `tests/fail/hatted_param_unused.tk`
-   - 如果保持 warning：已补 `tools/scripts/test_verify_warn.py` 与 `tests/warn/hatted_param_handle_unused.tk`
-   - 如果仅作为风格规则：文档需要明确“不保证诊断”
-
-   当前 warning 测试已经精确锁定 raw / unique / shared 三类 handle 参数：只读 payload 的 hatted 参数会触发 `W0407`，显式使用 handle 视图（如 `*s == null`）以及把 handle 视图继续传递给另一个 hatted 参数（如 `accept_raw(*s)`）都满足 handle 使用义务。
+   这条规则已经按 warning 级契约冻结，不升级为 hard error。已补 `tools/scripts/test_verify_warn.py` 与 `tests/warn/hatted_param_handle_unused.tk`，并精确锁定 raw / unique / shared 三类 handle 参数：只读 payload 的 hatted 参数会触发 `W0407`，显式使用 handle 视图（如 `*s == null`）以及把 handle 视图继续传递给另一个 hatted 参数（如 `accept_raw(*s)`）都满足 handle 使用义务。
 
 ### P2：适合随后补的组合测试
 
@@ -208,7 +205,7 @@
 
 `'T` / `'field` / `'param` 的规则已经比较一致：单引号属于 morphic 绑定名，不属于类型侧。`tests/pass/g08_generic_morphic.tk` 覆盖了 morphic field 与 morphic parameter 的正例，type-side 错误已有 fail case。
 
-`#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。`tests/pass/g01_core_handle_views.tk`、`tests/fail/core_handle_rebind_requires_hash.tk` 与 `tests/fail/core_handle_suffix_hash_not_rebindable.tk` 已经补上最小 payload / handle 视图对照，并锁住 `^p#` 不等价于 `^#p`。
+`#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `~#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。`tests/pass/g01_core_handle_views.tk`、`tests/pass/g01_handle_hash_position_matrix.tk`、`tests/fail/core_handle_rebind_requires_hash.tk`、`tests/fail/core_handle_suffix_hash_not_rebindable.tk`、`tests/fail/core_raw_suffix_hash_not_rebindable.tk` 与 `tests/fail/core_reference_suffix_hash_not_rebindable.tk` 已经补上 payload / handle 视图对照，并锁住 `^p#` / `*p#` / `&p#` 不等价于 `^#p` / `*#p` / `&#p`。
 
 `$` 当前是字段 / 参数 / 绑定名侧的内在不可变标记；公开文档和测试集中没有 `^$x` 这类 handle-side freeze 形态，因此不应把它当作已冻结语法。若未来需要 handle-level freeze marker，应单独设计并补测试，而不是从 `$` 的字段语义自然外推。
 
@@ -230,14 +227,9 @@
 
 ### 2. hatted 参数契约
 
-文档表达“只有函数确实需要 handle 本体时才加帽”。这与 Toka 的设计方向一致，但目前还不是完整的编译器义务体系。
+文档表达“只有函数确实需要 handle 本体时才加帽”。这条规则已经按 `W0407` warning 级契约冻结：参数带帽但只读取 payload 时报警；显式使用 handle 视图、判空、或继续把 handle 视图传给另一个 hatted 参数时满足义务。它不是 hard error，避免误伤 raw buffer、FFI adapter、测试和标准库中的历史写法。
 
-建议：下一轮语义冻结时明确：
-
-- 参数带帽但未使用 handle，是 error 还是 warning？
-- 参数带帽但只 payload-read，是否一律拒绝？
-- 参数带帽后显式以 handle 视图传给另一个函数，已按满足义务处理；是否升级为 hard error 仍需另行决定。
-- `cede` 与 hatted 参数同时出现时，义务如何叠加？
+`cede` 与 hatted 参数同时出现时按独立义务叠加理解：`cede` 负责资源转移路径必须完成，帽子负责 handle 视图必须被实际使用。后续如果继续补，只需要补更细的组合测试，不需要重新讨论基础语法。
 
 ### 3. `dyn @Trait`
 

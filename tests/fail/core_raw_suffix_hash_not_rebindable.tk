@@ -1,0 +1,10 @@
+// EXPECT: error[E04572]
+
+fn main() -> i32 {
+    auto left# = 1
+    auto right# = 2
+    auto *p# = *#left
+
+    *p = *#right
+    return 0
+}

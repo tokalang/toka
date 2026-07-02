@@ -121,7 +121,7 @@ shape Node(
 auto ^#head = new Node(val = 0, ^next = null)
 ```
 
-The position of `#` is semantic. `^#p`, `*#p`, and `&#p` mark the handle identity as rebindable. `^p#`, `*p#`, and `&p#` keep `#` on the binding name / payload side; they do not grant handle rebinding authority.
+The position of `#` is semantic. `^#p`, `*#p`, `~#p`, and `&#p` mark the handle identity as rebindable. `^p#`, `*p#`, `~p#`, and `&p#` keep `#` on the binding name / payload side; they do not grant handle rebinding authority. When both permissions are needed, write both positions, such as `^#p#`.
 
 ## 5. Functions, Parameters, And `cede`
 

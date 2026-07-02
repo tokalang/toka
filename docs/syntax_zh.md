@@ -121,7 +121,7 @@ shape Node(
 auto ^#head = new Node(val = 0, ^next = null)
 ```
 
-`#` 的位置有语义差异。`^#p`、`*#p`、`&#p` 表示 handle identity 可重绑定；`^p#`、`*p#`、`&p#` 里的 `#` 仍在绑定名 / payload 侧，不授予 handle 重绑定权限。
+`#` 的位置有语义差异。`^#p`、`*#p`、`~#p`、`&#p` 表示 handle identity 可重绑定；`^p#`、`*p#`、`~p#`、`&p#` 里的 `#` 仍在绑定名 / payload 侧，不授予 handle 重绑定权限。两种权限都需要时，两个位置都要写，例如 `^#p#`。
 
 ## 5. 函数、参数与 `cede`
 
