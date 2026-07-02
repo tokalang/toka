@@ -68,8 +68,9 @@
 
    - `tests/pass/g01_core_handle_views.tk`
    - `tests/fail/core_handle_rebind_requires_hash.tk`
+   - `tests/fail/core_handle_suffix_hash_not_rebindable.tk`
 
-   这直接锁住核心模型的两条基础规则：裸名访问 payload 视图，带帽赋值操作 handle identity；如果 handle binding 没有 `#` 重绑定权限，则不能通过 `^name = ...` 改写 handle。
+   这直接锁住核心模型的两条基础规则：裸名访问 payload 视图，带帽赋值操作 handle identity；如果 handle binding 没有 identity-side `#` 重绑定权限，则不能通过 `^name = ...` 改写 handle。`^p#` 只给 payload / soul 侧可写权限，不等价于 `^#p`。
 
 2. `dyn @{A, B}` 拒绝
 
@@ -106,7 +107,7 @@
    - 如果保持 warning：已补 `tools/scripts/test_verify_warn.py` 与 `tests/warn/hatted_param_handle_unused.tk`
    - 如果仅作为风格规则：文档需要明确“不保证诊断”
 
-   当前 warning 测试已经精确锁定：只读 payload 的 hatted 参数会触发一次 `W0407`，显式使用 handle 视图（如 `*s == null`）以及把 handle 视图继续传递给另一个 hatted 参数（如 `accept_raw(*s)`）都满足 handle 使用义务。
+   当前 warning 测试已经精确锁定 raw / unique / shared 三类 handle 参数：只读 payload 的 hatted 参数会触发 `W0407`，显式使用 handle 视图（如 `*s == null`）以及把 handle 视图继续传递给另一个 hatted 参数（如 `accept_raw(*s)`）都满足 handle 使用义务。
 
 ### P2：适合随后补的组合测试
 
@@ -207,7 +208,7 @@
 
 `'T` / `'field` / `'param` 的规则已经比较一致：单引号属于 morphic 绑定名，不属于类型侧。`tests/pass/g08_generic_morphic.tk` 覆盖了 morphic field 与 morphic parameter 的正例，type-side 错误已有 fail case。
 
-`#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。`tests/pass/g01_core_handle_views.tk` 与 `tests/fail/core_handle_rebind_requires_hash.tk` 已经补上最小 payload / handle 视图对照。
+`#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。`tests/pass/g01_core_handle_views.tk`、`tests/fail/core_handle_rebind_requires_hash.tk` 与 `tests/fail/core_handle_suffix_hash_not_rebindable.tk` 已经补上最小 payload / handle 视图对照，并锁住 `^p#` 不等价于 `^#p`。
 
 `$` 当前是字段 / 参数 / 绑定名侧的内在不可变标记；公开文档和测试集中没有 `^$x` 这类 handle-side freeze 形态，因此不应把它当作已冻结语法。若未来需要 handle-level freeze marker，应单独设计并补测试，而不是从 `$` 的字段语义自然外推。
 
