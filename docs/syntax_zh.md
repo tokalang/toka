@@ -347,7 +347,7 @@ pub trait @Readable {
 impl Device@encap {
     pub public_config
     pub(crate) crate_state
-    pub(os/driver::uart) uart_state
+    pub(os/driver/uart) uart_state
 
     fn drop(self#) {}
     pub fn clone(self) = delete

@@ -1,0 +1,17 @@
+shape BadPathBox (
+    value: i32
+)
+
+impl BadPathBox@encap {
+    pub(foo::bar) value // EXPECT: error[E01151]
+
+    fn drop(self#) {}
+
+    pub fn clone(self) -> BadPathBox {
+        return BadPathBox(value = self.value)
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}

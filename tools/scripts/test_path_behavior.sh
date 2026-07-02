@@ -88,6 +88,80 @@ cp "$TEST_DIR/build/helper_custom.tki" "$TEST_DIR/src/helper.tki"
 "$TEST_DIR/build/main_app"
 echo "PASS: Test 3"
 
+echo "Test 4: pub(path) uses normalized import-path identity"
+mkdir -p "$TEST_DIR/visibility/allowed/nested"
+cat << 'EOF' > "$TEST_DIR/visibility/grant.tk"
+pub shape PathGate (
+    allowed_val: i32,
+    nested_val: i32,
+    middle_val: i32
+)
+
+impl PathGate@encap {
+    pub(tmp/path_test/visibility/allowed/../allowed) allowed_val
+    pub(tmp/path_test/visibility/allowed/nested) nested_val
+    pub(path_test) middle_val
+
+    fn drop(self#) {}
+
+    pub fn clone(self) -> PathGate {
+        return PathGate(
+            allowed_val = self.allowed_val,
+            nested_val = self.nested_val,
+            middle_val = self.middle_val
+        )
+    }
+}
+EOF
+
+cat << 'EOF' > "$TEST_DIR/visibility/allowed/main_ok.tk"
+import ../grant::{PathGate}
+
+fn main() -> i32 {
+    auto gate = PathGate(allowed_val = 11, nested_val = 22, middle_val = 33)
+    return gate.allowed_val - 11
+}
+EOF
+
+"$TOKAC_ABS" "$TEST_DIR/visibility/allowed/main_ok.tk" -o "$TEST_DIR/build/path_visibility_ok"
+"$TEST_DIR/build/path_visibility_ok"
+echo "PASS: Test 4"
+
+echo "Test 5: pub(path) allows child modules under the target path"
+cat << 'EOF' > "$TEST_DIR/visibility/allowed/nested/main_nested.tk"
+import ../../grant::{PathGate}
+
+fn main() -> i32 {
+    auto gate = PathGate(allowed_val = 11, nested_val = 22, middle_val = 33)
+    return gate.nested_val - 22
+}
+EOF
+
+"$TOKAC_ABS" "$TEST_DIR/visibility/allowed/nested/main_nested.tk" -o "$TEST_DIR/build/path_visibility_nested"
+"$TEST_DIR/build/path_visibility_nested"
+echo "PASS: Test 5"
+
+echo "Test 6: pub(path) does not match path text in the middle"
+cat << 'EOF' > "$TEST_DIR/visibility/allowed/main_middle_denied.tk"
+import ../grant::{PathGate}
+
+fn main() -> i32 {
+    auto gate = PathGate(allowed_val = 11, nested_val = 22, middle_val = 33)
+    return gate.middle_val
+}
+EOF
+
+if "$TOKAC_ABS" "$TEST_DIR/visibility/allowed/main_middle_denied.tk" -o "$TEST_DIR/build/path_visibility_middle_denied" > "$TEST_DIR/build/path_visibility_middle_denied.log" 2>&1; then
+    echo "FAIL: pub(path_test) incorrectly matched a middle path segment"
+    exit 1
+fi
+if ! grep -q "error\\[E0418\\]" "$TEST_DIR/build/path_visibility_middle_denied.log"; then
+    echo "FAIL: Expected private member error for middle path segment match"
+    cat "$TEST_DIR/build/path_visibility_middle_denied.log"
+    exit 1
+fi
+echo "PASS: Test 6"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "All path behavior tests PASSED!"

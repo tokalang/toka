@@ -1119,18 +1119,17 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
             entry.Level = EncapEntry::Crate;
           } else {
             entry.Level = EncapEntry::Path;
-            // Parse targeted path segments. Match import path permissiveness so
-            // pub(tests/pass) and pub(core/str) are valid member grants.
+            // Parse targeted module-location path segments. Match the left
+            // side of import paths; item selection with :: is not part of
+            // pub(path).
             while (check(TokenType::Identifier) ||
                    (peek().Kind >= TokenType::KwLet &&
                     peek().Kind <= TokenType::KwCrate) ||
-                   check(TokenType::Slash) || check(TokenType::Colon) ||
-                   check(TokenType::Minus) || check(TokenType::Dot) ||
+                   check(TokenType::Slash) || check(TokenType::Minus) ||
+                   check(TokenType::Dot) ||
                    check(TokenType::DotDot)) {
               if (match(TokenType::Slash)) {
                 entry.TargetPath += "/";
-              } else if (match(TokenType::Colon)) {
-                entry.TargetPath += ":";
               } else if (match(TokenType::Minus)) {
                 entry.TargetPath += "-";
               } else if (match(TokenType::Dot)) {
