@@ -475,6 +475,13 @@ echo "  PASS tk duration: $(format_duration "$PASS_TK_DURATION")"
 [ $fail_count -eq 0 ] || exit 1
 
 echo ""
+echo "Running Public Unsafe/Raw API naming tests..."
+if ! run_without_test_cache bash tools/scripts/test_public_unsafe_api.sh; then
+    echo -e "${RED}Public unsafe/raw API naming tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running ODR Path & Interface Behavior lock tests..."
 if ! run_without_test_cache bash tools/scripts/test_path_behavior.sh; then
     echo -e "${RED}Path behavior lock tests failed!${NC}"
