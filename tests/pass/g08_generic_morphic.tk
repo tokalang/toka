@@ -18,7 +18,7 @@ fn test_morphic_raw() -> i32 {
   return val - 100
 }
 
-fn morphic_identity<'T>('value: T) -> 'T {
+fn morphic_identity<'T>('value: T) -> 'T <- 'value {
   return 'value
 }
 

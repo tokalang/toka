@@ -2221,34 +2221,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
         if (FD) {
             bool hasExplicitDeps = !FD->LifeDependencies.empty();
-            bool hasImplicitDeps = false;
-            
-            std::set<std::string> visited;
-            std::function<bool(std::shared_ptr<toka::Type>)> checkType = [&](std::shared_ptr<toka::Type> t) -> bool {
-                if (!t) return false;
-                if (t->isReference()) return true;
-                if (auto *st = dynamic_cast<ShapeType *>(t.get())) {
-                    for (const auto &arg : st->GenericArgs) {
-                        if (checkType(arg)) return true;
-                    }
-                    std::string sName = t->getSoulName();
-                    if (visited.count(sName) == 0) {
-                        visited.insert(sName);
-                        if (ShapeMap.count(sName)) {
-                            ShapeDecl *SD = ShapeMap[sName];
-                            for (const auto &m : SD->Members) {
-                                auto mT = getPhysicalType(m);
-                                if (checkType(mT)) return true;
-                            }
-                        }
-                    }
-                }
-                return false;
-            };
-
-            if (!hasExplicitDeps && retType && checkType(retType)) {
-                hasImplicitDeps = true;
-            }
 
             auto mapParamToArg = [&](const std::string &paramName) -> std::string {
                if (Type::stripMorphology(paramName) == "self") {
@@ -2269,11 +2241,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 for (const auto &dep : FD->LifeDependencies) {
                    std::string argVar = mapParamToArg(dep);
                    if (!argVar.empty()) m_LastLifeDependencies.insert(argVar);
-                }
-            } else if (hasImplicitDeps) {
-                std::string selfPath = getStringifyPath(Met->Object.get());
-                if (!selfPath.empty()) {
-                    m_LastLifeDependencies.insert(selfPath);
                 }
             }
         }

@@ -3,7 +3,7 @@ import core/types::SourceLoc
 
 fn get_line(line: i32 = __LINE__) -> i32 { return line }
 
-fn get_file(f: str = __FILE__) -> str { return f }
+fn get_file(f: str = __FILE__) -> str <- f { return f }
 
 fn get_loc(loc: SourceLoc = __LOC__) -> SourceLoc { return loc }
 

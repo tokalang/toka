@@ -47,7 +47,7 @@ impl Span {
     }
 
     // Convert Span to a str given the original source buffer
-    pub fn to_str(self, source: str) -> str {
+    pub fn to_str(self, source: str) -> str <- source {
         if !self.is_valid() {
             return source.substr(0:usize, 0:usize)
         }
@@ -79,7 +79,7 @@ pub shape SourceMap (
 )
 
 impl SourceMap {
-    pub fn new(file_name: str, source: str) -> SourceMap {
+    pub fn new(file_name: str, source: str) -> SourceMap <- file_name | source {
         return SourceMap(file_name = file_name, source = source)
     }
 

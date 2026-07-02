@@ -9,7 +9,7 @@ import std/hashmap::{HashMap}
 import stdx/serde/json::{deserialize_shape, deserialize_nested_shape, FromJson, JsonRes, to_json, ToJson, serialize_shape, json_skip_whitespace, json_skip_value}
 import core/comptime::{reflect}
 
-pub fn deserialize_nested_shape_local<'T>('obj#: T, json_str: str) -> JsonRes {
+pub fn deserialize_nested_shape_local<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
     auto res# = json_skip_whitespace(json_str)
     if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
     res = res.substr(1, res.len() - 1)
@@ -232,7 +232,7 @@ fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
     return buf
 }
 impl ModuleOutputs@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
         return deserialize_nested_shape_local<ModuleOutputs>(self, json)
     }
 }
@@ -309,7 +309,7 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
 }
 
 impl ModuleSnapshot@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
         return deserialize_nested_shape_local<ModuleSnapshot>(self, json)
     }
 }
@@ -377,7 +377,7 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
 }
 
 impl DependencyManifest@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
         return deserialize_nested_shape_local<DependencyManifest>(self, json)
     }
 }
@@ -419,7 +419,7 @@ fn info_to_json(info: RebuildModuleInfo) -> string {
 }
 
 impl RebuildModuleInfo@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
         return deserialize_nested_shape_local<RebuildModuleInfo>(self, json)
     }
 }
@@ -489,7 +489,7 @@ fn plan_to_json('plan: RebuildPlan) -> string {
 }
 
 impl RebuildPlan@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes {
+    pub fn parse_json(self#, json: str) -> JsonRes <- json {
         return deserialize_nested_shape_local<RebuildPlan>(self, json)
     }
 }

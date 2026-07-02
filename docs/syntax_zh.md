@@ -164,7 +164,11 @@ fn test_val(x: i32 = 42) -> i32 { return x }
 auto a = test_val(..)
 ```
 
-引用返回可以用 effects 路由描述。
+会逃出函数边界的借用类值，必须在签名中声明依赖路径。Toka 1.0 对 private
+和 public 函数统一要求显式标注：调用方只消费签名，被调函数体必须证明逃逸借用
+只来自签名声明的依赖源。这样 `.tki` 接口与源码编译保持一致。
+
+引用返回可以使用 effects 路由：
 
 ```toka
 fn choose(a: i32, b: i32) -> &res: i32
@@ -177,6 +181,12 @@ effects:
     return &b
 }
 ```
+
+同一规则也适用于其他跨边界的 borrowed view，包括 `str`、`bytes`、包含 `&`
+字段的 record / shape，以及捕获借用状态的闭包或 async 值。编译器可以在函数内
+使用局部控制流分析，但调用点不依赖查看被调函数体。`^T`、`~T` 这类所有权或
+共享 handle 本身不是 borrow-like dependency；只有返回值内部实际携带的 borrowed
+state 才形成依赖。
 
 ## 6. Shape、Enum 与初始化
 
@@ -572,7 +582,7 @@ auto *ptr = addr as *i32
 auto raw = *ptr as *void
 ```
 
-unsafe 代码应尽量留在系统与 FFI 边界。公共 API 不应暴露裸指针，除非 API 名称明确表达 unsafe 或 raw 语义。
+unsafe 代码应尽量留在系统与 FFI 边界。公共 API 不应暴露裸指针，除非 API 名称明确表达 unsafe 或 raw 语义。裸指针不属于 PAL 的 safe-borrow 保证范围，除非被安全库能力重新封装。
 
 ## 15. 常见错误
 

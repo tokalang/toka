@@ -30,7 +30,7 @@ impl<'T> Option<'T> {
         }
     }
 
-    pub fn unwrap_or(cede self, 'def_val: T) -> 'T {
+    pub fn unwrap_or(cede self, 'def_val: T) -> 'T <- self | 'def_val {
         match cede self {    
             auto Option<'T>::Some('val) => return 'val
             _ => return 'def_val

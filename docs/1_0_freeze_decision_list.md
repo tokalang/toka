@@ -33,6 +33,28 @@ later release.
   remains an operator and must be surrounded by spaces.
 - Closure capture rules: explicit `cede` / `copy`, with resource copy capture
   rejected.
+- PAL boundary: PAL is the safe-borrow layer for Toka borrow semantics,
+  including implicit parameter capture, `&` borrow handles, and borrowed views
+  such as `str` and `bytes`. Raw pointers remain in the unsafe / FFI layer and
+  are not part of PAL's safe-borrow guarantee. Ownership / sharing handles such
+  as `^` and `~` are not borrow-like dependencies by themselves, though shapes
+  stored behind them may still contain borrowed fields.
+- Escaping borrow dependencies: for 1.0, any borrow-like value that crosses a
+  function boundary must have an explicit dependency annotation in the
+  signature. This applies uniformly to private and public functions; later
+  releases may infer private body-visible helpers as an ergonomics improvement.
+- PAL analysis scope: local control-flow analysis may be used inside a
+  function, but calls do not require inspecting the callee body. Call sites
+  consume the callee signature, and callees must validate that their bodies
+  honor the dependencies declared in the signature.
+- PAL conflict model: disjoint field borrows are allowed, while overlapping path
+  prefixes conflict. Moving or `cede`-ing a value with an active borrow is an
+  error. If a hard-to-prove case cannot be verified locally, 1.0 should reject
+  it rather than weaken the safety contract.
+- Interior mutability boundary: payload-side `#` can express local interior
+  mutability, but it is not a thread-safety proof. Cross-thread sharing must be
+  mediated by appropriate library types and trait bounds such as
+  `Atomic`/`Mutex`/`RwLock`, `Send`, and `Sync`.
 - Public unsafe/raw API redlines: raw pointer exposure requires explicit
   unsafe/raw naming.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic
@@ -40,12 +62,11 @@ later release.
 
 ## Under Discussion / In Progress
 
-- PAL conservative boundaries: decide which hard-to-prove cases should remain
-  rejected for 1.0, which should be warning-level, and which are important
-  enough to support before freeze.
 - `dyn @Trait` boundary: keep the current single-facet object model stable, and
   decide how explicitly to document the future space around multi-facet
   objects, associated type binding, object safety, and dyn object ABI.
+- PAL implementation work: strengthen the current path-anchored checker into a
+  local CFG-based analysis without crossing function bodies.
 - Match exhaustiveness: decide whether full exhaustiveness checking is required
   before 1.0, or whether current safe rejection / safe execution behavior is
   enough for the first stable release.
@@ -63,6 +84,7 @@ later release.
 - Object lifetime / ownership annotations for dyn objects.
 - Full match exhaustiveness checking.
 - More aggressive PAL acceptance for hard-to-prove but possibly safe cases.
+- Private-helper inference for missing borrow dependency annotations.
 - Upgrading hatted parameter unused-handle warnings into hard errors.
 - Larger iterator / async trait formalization.
 - Further build-cache performance redesign unless required by correctness.

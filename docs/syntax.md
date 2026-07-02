@@ -170,7 +170,13 @@ fn test_val(x: i32 = 42) -> i32 { return x }
 auto a = test_val(..)
 ```
 
-Reference returns can be described with effect routing.
+Borrow-like values that escape a function boundary must declare their dependency
+path in the signature. For Toka 1.0 this is required for private and public
+functions alike: callers consume the signature, and the callee body must prove
+that any escaped borrow comes only from the declared dependency sources. This
+keeps `.tki` interfaces and source builds aligned.
+
+Reference returns can use effect routing:
 
 ```toka
 fn choose(a: i32, b: i32) -> &res: i32
@@ -183,6 +189,14 @@ effects:
     return &b
 }
 ```
+
+The same rule applies to other borrowed views that cross the boundary, including
+`str`, `bytes`, records or shapes containing `&` fields, and closures or async
+values that capture borrowed state. The compiler may use local control-flow
+analysis inside a function, but a call site never depends on inspecting the
+callee body. Ownership and sharing handles such as `^T` and `~T` are not
+borrow-like dependencies by themselves; any dependency comes from borrowed state
+inside the returned value.
 
 ## 6. Shapes, Enums, And Initialization
 
@@ -579,7 +593,7 @@ auto *ptr = addr as *i32
 auto raw = *ptr as *void
 ```
 
-Unsafe code should stay at system and FFI boundaries. Public APIs should avoid exposing raw pointers unless the API is explicitly named as unsafe or raw.
+Unsafe code should stay at system and FFI boundaries. Public APIs should avoid exposing raw pointers unless the API is explicitly named as unsafe or raw. Raw pointers are outside PAL's safe-borrow guarantee unless wrapped by a safe library capability.
 
 ## 15. Common Mistakes
 

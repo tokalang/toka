@@ -280,20 +280,93 @@ void Sema::checkStmt(Stmt *S) {
           expectedRetObj = resolveType(toka::Type::fromString(CurrentFunctionReturnType));
       }
 
-      bool isTrackedRet = false;
-      if (expectedRetObj) {
-          if (expectedRetObj->isReference() || expectedRetObj->isSmartPointer()) {
-              isTrackedRet = true;
-          } else if (expectedRetObj->isShape()) {
-              std::string name = expectedRetObj->getSoulName();
-              if (name == "str" || name == "bytes") {
-                  isTrackedRet = true;
-              }
+      std::set<std::string> visitedBorrowLikeTypes;
+      std::function<bool(std::shared_ptr<toka::Type>)> isBorrowLikeType =
+          [&](std::shared_ptr<toka::Type> t) -> bool {
+        if (!t)
+          return false;
+        if (t->isReference())
+          return true;
+        if (auto *shape = dynamic_cast<ShapeType *>(t.get())) {
+          for (const auto &arg : shape->GenericArgs) {
+            if (isBorrowLikeType(arg))
+              return true;
           }
-      }
+          std::string name = t->getSoulName();
+          if (name == "str" || name == "bytes")
+            return true;
+          if (visitedBorrowLikeTypes.count(name) == 0) {
+            visitedBorrowLikeTypes.insert(name);
+            if (ShapeMap.count(name)) {
+              ShapeDecl *SD = ShapeMap[name];
+              for (const auto &member : SD->Members) {
+                if (isBorrowLikeType(getPhysicalType(member)))
+                  return true;
+              }
+            }
+          }
+        }
+        return false;
+      };
+
+      std::function<bool(Expr *)> returnsBorrowExpr = [&](Expr *E) -> bool {
+        if (!E)
+          return false;
+        if (auto *Addr = dynamic_cast<UnaryExpr *>(E))
+          return Addr->Op == TokenType::Ampersand || returnsBorrowExpr(Addr->RHS.get());
+        if (dynamic_cast<AddressOfExpr *>(E))
+          return true;
+        if (auto *Cast = dynamic_cast<CastExpr *>(E))
+          return returnsBorrowExpr(Cast->Expression.get());
+        return false;
+      };
+
+      bool isTrackedRet =
+          isBorrowLikeType(expectedRetObj) || returnsBorrowExpr(Ret->ReturnValue.get());
 
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;
+
+          auto recordDependencyPath = [&](const std::string &dep) {
+            if (dep.empty())
+              return;
+            std::string baseName = dep;
+            size_t dotPos = baseName.find('.');
+            if (dotPos != std::string::npos)
+              baseName = baseName.substr(0, dotPos);
+
+            bool isParam = false;
+            if (CurrentFunction) {
+              for (const auto &Arg : CurrentFunction->Args) {
+                if (Arg.Name == baseName) {
+                  isParam = true;
+                  break;
+                }
+              }
+            }
+
+            SymbolInfo depInfo;
+            if (CurrentScope->lookup(baseName, depInfo)) {
+              bool contributedDeps = false;
+              if (!depInfo.BorrowedFrom.empty()) {
+                returnedDeps.insert(depInfo.BorrowedFrom);
+                contributedDeps = true;
+              }
+              size_t depCountBefore = returnedDeps.size();
+              returnedDeps.insert(depInfo.LifeDependencySet.begin(),
+                                  depInfo.LifeDependencySet.end());
+              if (returnedDeps.size() != depCountBefore)
+                contributedDeps = true;
+              if (!contributedDeps && isParam)
+                returnedDeps.insert(dep);
+              return;
+            }
+
+            if (isParam)
+              returnedDeps.insert(dep);
+            else
+              returnedDeps.insert(dep);
+          };
 
           // Helper to extract path
           std::function<std::string(Expr *)> getPath = [&](Expr *E) -> std::string {
@@ -330,14 +403,31 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
               SymbolInfo info;
               if (CurrentScope->lookup(Var->Name, info)) {
-                if (info.IsReference()) {
+                if (info.IsReference() || isBorrowLikeType(info.TypeObj)) {
+                  bool contributedDeps = false;
                   // It depends on whatever 'info' borrowed from
                   if (!info.BorrowedFrom.empty()) {
                     returnedDeps.insert(info.BorrowedFrom);
+                    contributedDeps = true;
                   }
                   // Also merge its transitive dependencies if we track them
+                  size_t depCountBefore = returnedDeps.size();
                   returnedDeps.insert(info.LifeDependencySet.begin(),
                                       info.LifeDependencySet.end());
+                  if (returnedDeps.size() != depCountBefore)
+                    contributedDeps = true;
+                  if (!contributedDeps && CurrentFunction) {
+                    std::string baseName = Var->Name;
+                    size_t dotPos = baseName.find('.');
+                    if (dotPos != std::string::npos)
+                      baseName = baseName.substr(0, dotPos);
+                    for (const auto &Arg : CurrentFunction->Args) {
+                      if (Arg.Name == baseName) {
+                        returnedDeps.insert(baseName);
+                        break;
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -346,7 +436,7 @@ void Sema::checkStmt(Stmt *S) {
               auto srcType = Cast->Expression ? Cast->Expression->ResolvedType : nullptr;
               auto targetType = Cast->ResolvedType;
               if (srcType && targetType) {
-                bool targetIsTracked = targetType->isReference() || targetType->isSmartPointer();
+                bool targetIsTracked = targetType->isReference();
                 bool srcIsUntraced = srcType->isRawPointer() || srcType->isAddrType() ||
                                      srcType->toString() == "Addr" || srcType->toString() == "*void" || srcType->toString() == "*byte";
                 
@@ -398,6 +488,10 @@ void Sema::checkStmt(Stmt *S) {
           };
 
           collectDeps(Ret->ReturnValue.get());
+          for (const auto &dep : m_LastLifeDependencies)
+            recordDependencyPath(dep);
+          if (!m_LastBorrowSource.empty())
+            recordDependencyPath(m_LastBorrowSource);
 
           // Validate dependencies against declared LifeDependencies
           if (CurrentFunction) {

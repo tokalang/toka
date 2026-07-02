@@ -343,7 +343,7 @@ impl str {
         return true
     }
 
-    pub fn as_bytes(self) -> bytes {
+    pub fn as_bytes(self) -> bytes <- self {
         unsafe {
             auto cpy = self.clone()
             auto ret = bytes(&buf = null as *[byte] as &[byte], len = self.len)
@@ -352,7 +352,7 @@ impl str {
         }
     }
 
-    pub fn bytes(self) -> bytes {
+    pub fn bytes(self) -> bytes <- self {
         return self.as_bytes()
     }
 
@@ -448,7 +448,7 @@ impl str {
         }
     }
 
-    pub fn substring(self, start: usize, end: usize) -> str {
+    pub fn substring(self, start: usize, end: usize) -> str <- self {
         return self.slice(start as i32, end as i32)
     }
 
@@ -543,7 +543,7 @@ impl str {
         }
     }
 
-    pub fn split(self, sep: str) -> ViewStrSplitIterator <- self {
+    pub fn split(self, sep: str) -> ViewStrSplitIterator <- self | sep {
         return ViewStrSplitIterator(&buf = self.&buf, len = self.len, pos = 0, sep = sep.clone(), finished = false)
     }
 
@@ -590,7 +590,7 @@ impl str {
     }
 }
 
-fn _internal_str_cast(s: str) -> str {
+fn _internal_str_cast(s: str) -> str <- s {
     return s.clone()
 }
 
@@ -612,7 +612,7 @@ impl cstr@encap {
 }
 
 impl cstr@delegate {
-    pub fn target(self) -> str {
+    pub fn target(self) -> str <- self {
         return self.as_str()
     }
 }
@@ -681,7 +681,7 @@ impl bytes {
         }
     }
 
-    pub fn slice_bytes(self, start: usize, end: usize) -> bytes {
+    pub fn slice_bytes(self, start: usize, end: usize) -> bytes <- self {
         if start > end || end > self.len {
             __toka_panic_handler("bytes::slice_bytes: out of bounds")
         }
@@ -694,7 +694,7 @@ impl bytes {
         }
     }
 
-    pub fn try_to_str(self) -> Result<str, UnicodeError> {
+    pub fn try_to_str(self) -> Result<str, UnicodeError> <- self {
         if self.len == 0 {
             unsafe {
                 auto ret = str(&buf = null as *[char] as &[char], len = 0)

@@ -182,7 +182,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
       // [NEW] Lifetime Union: Force capture if param is a dependency
       for (const auto &dep : func->LifeDependencies) {
-        if (dep == arg.Name) {
+        if (dep == arg.Name && isDirectValue) {
           needsCapture = true;
           break;
         }
@@ -390,7 +390,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
     // [NEW] Lifetime Union: Force capture if param is a dependency
     for (const auto &dep : func->LifeDependencies) {
-      if (dep == argDecl.Name) {
+      if (dep == argDecl.Name && isDirectValue) {
         needsCapture = true;
         break;
       }
@@ -2155,10 +2155,16 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     // Arg i maps to fd->Args[targetArgIdx]
     if (fd && targetArgIdx < fd->Args.size()) {
       const auto &arg = fd->Args[targetArgIdx];
-      
+      bool argIsPointerLike = arg.IsRawPointer || arg.IsReference ||
+                              arg.IsUnique || arg.IsShared;
+      if (arg.ResolvedType) {
+        argIsPointerLike = argIsPointerLike || arg.ResolvedType->isPointer() ||
+                           arg.ResolvedType->isReference();
+      }
+
       // [NEW] Lifetime dependencies check
       for (const auto &dep : fd->LifeDependencies) {
-        if (dep == arg.Name) {
+        if (dep == arg.Name && !argIsPointerLike) {
           isCaptured = true;
           break;
         }

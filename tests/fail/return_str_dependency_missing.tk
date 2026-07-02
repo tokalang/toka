@@ -1,0 +1,8 @@
+fn get_view(s: str) -> str {
+    return s // EXPECT: error[E0454]:
+}
+
+fn main() -> i32 {
+    auto view = get_view("hello")
+    return view.len() as i32
+}

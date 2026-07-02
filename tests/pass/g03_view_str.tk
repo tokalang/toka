@@ -50,7 +50,7 @@ fn test_str(vstr: str) -> i32 {
     return 0;
 }
 
-fn get_str(s: str) -> str { return s.clone() }
+fn get_str(s: str) -> str <- s { return s.clone() }
 
 fn test_split() {
     auto s1 = get_str("a,b,c")

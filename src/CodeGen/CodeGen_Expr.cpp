@@ -4658,7 +4658,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       // (avoiding ABI split)
       // [NEW] Lifetime Union: Force capture if param is a dependency
       for (const auto &dep : funcDecl->LifeDependencies) {
-        if (dep == arg.Name) {
+        if (dep == arg.Name && !hasArgPtr && !isArgRef &&
+            !isArgUnique && !isArgShared) {
           isCaptured = true;
           break;
         }

@@ -153,7 +153,7 @@ pub fn alloc_array<'T>(arena#: Arena, count: usize) -> *'T {
 /**
  * Copy a string view into the arena chunk pool, returning a new str that persists.
  */
-pub fn alloc_str(arena#: Arena, s: str) -> str {
+pub fn alloc_str(arena#: Arena, s: str) -> str <- arena | s {
     if s.len() == 0:usize {
         return s.clone()
     }
