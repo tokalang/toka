@@ -1,0 +1,8 @@
+fn main() -> i32 {
+    auto a: str = "hello"
+    auto b: str = "world"
+    auto c = a + b
+    return 0
+}
+
+// EXPECT: error[E04576]:

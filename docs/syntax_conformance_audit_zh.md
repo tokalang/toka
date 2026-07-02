@@ -54,7 +54,7 @@
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
 | 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases；历史提案式测试注释已清理 | 后续可转向 exhaustiveness 与资源析构组合诊断 |
 | 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail；resource copy capture 已拒绝浅拷 | capture mode 后续可继续细化非 `dyn fn` 闭包的局部/逃逸边界 |
-| 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail | `string + string` 已补直接 fail case；`str + str` 可按需再补 |
+| 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail；`string + string` 与 `str + str` 均已补直接 fail case | 后续可继续细化格式化错误诊断 |
 | 14. Unsafe / FFI | 基本锁定 | extern fn、大量 sys/libc 用例、raw alloc/free、cast、unsafe escape fail；public raw pointer API 的拒绝与命名豁免均已脚本锁定 | 后续可继续细化 unsafe 边界诊断措辞 |
 | 15. Common Mistakes | 基本有测试锚点 | `while`、position init、type-side `'T`、type-side `&T`、`let` / `var`、`for x in ...`、`dyn @{...}`、字符串 `+` 均已有 fail | 当前主要缺口转为组合矩阵：`let` / `var`、`dyn @{...}`、普通字段误写 `.'field` 均已收紧为专用 diagnostic |
 
