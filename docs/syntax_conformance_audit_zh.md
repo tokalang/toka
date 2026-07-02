@@ -49,14 +49,14 @@
 | 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
-| 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 后续重点转为诊断质量：普通字段误写 `.'field` 当前落在成员不存在诊断 |
+| 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
 | 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases | 有些测试注释仍带“proposal/goal”历史语气，后续可清理注释避免误导 |
 | 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail | capture mode 的失败矩阵可更细：`copy`、`cede`、`~`、borrow escape |
 | 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail | `string + string` 已补直接 fail case；`str + str` 可按需再补 |
 | 14. Unsafe / FFI | 基本锁定 | extern fn、大量 sys/libc 用例、raw alloc/free、cast、unsafe escape fail | public raw pointer API 限制已有 fail；建议补“raw/unsafe 命名豁免”正例或明确暂不豁免 |
-| 15. Common Mistakes | 基本有测试锚点 | `while`、position init、type-side `'T`、type-side `&T`、`let` / `var`、`for x in ...`、`dyn @{...}`、字符串 `+` 均已有 fail | 当前主要缺口转为诊断质量：`let` / `var` 与 `dyn @{...}` 已收紧为专用 parser diagnostic；普通字段误写 `.'field` 仍可后续优化 |
+| 15. Common Mistakes | 基本有测试锚点 | `while`、position init、type-side `'T`、type-side `&T`、`let` / `var`、`for x in ...`、`dyn @{...}`、字符串 `+` 均已有 fail | 当前主要缺口转为组合矩阵：`let` / `var`、`dyn @{...}`、普通字段误写 `.'field` 均已收紧为专用 diagnostic |
 
 ## 高优先级补测清单
 
@@ -98,7 +98,7 @@
    - `tests/fail/for_missing_auto.tk`
    - `tests/fail/string_concat_plus.tk`
 
-   其中 `let` / `var` 已收紧为 `E01112` / `E01244` 专用 parser diagnostic，`dyn @{...}` 已收紧为 `E01245`，避免落到泛泛的 `Expected ')'` 级联错误。`for x in ...` 和字符串 `+` 已有明确错误码，普通字段误写 `.'field` 仍可作为后续诊断友好度优化项。
+   其中 `let` / `var` 已收紧为 `E01112` / `E01244` 专用 parser diagnostic，`dyn @{...}` 已收紧为 `E01245`，普通字段误写 `.'field` 已收紧为 `E04580` 专用 Sema diagnostic。`for x in ...` 和字符串 `+` 也已有明确错误码，避免落到泛泛的级联错误。
 
 5. hatted parameter obligation
 
@@ -157,7 +157,7 @@
    - `tests/fail/morphic_member_missing_quote.tk`
    - `tests/fail/morphic_member_quote_on_plain_field.tk`
 
-   这确认了 morphic 字段漏写 quote 时不能把 payload 视图当作 handle 形态返回；普通字段误写 `.'field` 时也不会被当成 morphic identity。当前后一类错误落在“成员不存在”诊断上，语义上是正确拒绝，后续如果追求诊断友好度可单独优化。
+   这确认了 morphic 字段漏写 quote 时不能把 payload 视图当作 handle 形态返回；普通字段误写 `.'field` 时也不会被当成 morphic identity，并会触发 `E04580` 专用诊断，提示应使用普通字段访问 `.field`。
 
 7. `pub import` through source-less TKI
 

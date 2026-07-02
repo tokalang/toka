@@ -1,4 +1,4 @@
-// EXPECT: error[E0417]
+// EXPECT: error[E04580]
 
 shape PlainBox<T>(
     data: T

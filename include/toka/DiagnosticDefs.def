@@ -54,6 +54,7 @@ DIAG(NOTE_UNION_RESOURCE_TIP,     Note,    "N0002", "Legacy bare unions cannot t
 DIAG(ERR_UNION_DEPRECATED,        Error,   "E0470", "Bare union is deprecated and removed in Toka. Use Tagged Enum or explicit type structure with 'core/mem::bit_cast' instead.")
 DIAG(ERR_BITCAST_SIZE_MISMATCH,   Error,   "E0471", "bit_cast source and target types must have the same size (sizeof('{}') = {} vs sizeof('{}') = {})")
 DIAG(ERR_TUPLE_DEPRECATED,        Error,   "E0472", "Tuples are abolished. Shape fields must be named struct fields or tagged enum variants.")
+DIAG(ERR_SEMA_MORPHIC_MEMBER_ACCESS_REQUIRES_MORPHIC_FIELD, Error,   "E04580", "Morphic member access .'{} requires field '{}' on shape '{}' to be declared morphic; use '.{}' for ordinary field access")
 
 // --- Sema: Traits & Interfaces ---
 DIAG(ERR_SIGNATURE_MISMATCH,      Error,   "E0428", "Method signature mismatch: trait defines '{}' as {}, but implementation is {}")

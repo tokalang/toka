@@ -1,0 +1,5 @@
+error[E04580]: Morphic member access .'data requires field 'data' on shape 'PlainBox_M_i32' to be declared morphic; use '.data' for ordinary field access
+ --> tests/fail/morphic_member_quote_on_plain_field.tk:8:15
+   |
+ 8 |     return box.'data
+   |               ^

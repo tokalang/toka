@@ -2267,6 +2267,12 @@
       "message": "Closure converted to 'dyn fn' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make ownership explicit",
       "description": "Closure converted to 'dyn fn' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make ownership explicit"
     },
+    "E04580": {
+      "id": "ERR_SEMA_MORPHIC_MEMBER_ACCESS_REQUIRES_MORPHIC_FIELD",
+      "level": "Error",
+      "message": "Morphic member access .'{} requires field '{}' on shape '{}' to be declared morphic; use '.{}' for ordinary field access",
+      "description": "Morphic member access requires the target field to be declared morphic"
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

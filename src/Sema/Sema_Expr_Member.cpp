@@ -307,7 +307,9 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
       const auto &Field = SD->Members[i];
       if (toka::Type::stripMorphology(Field.Name) == requestedMember) {
         if (requestedMorphicIdentity && !Field.IsMorphicExempt) {
-          error(Memb, DiagID::ERR_NO_SUCH_MEMBER, ObjType, Memb->Member);
+          error(Memb,
+                DiagID::ERR_SEMA_MORPHIC_MEMBER_ACCESS_REQUIRES_MORPHIC_FIELD,
+                requestedMember, requestedMember, ObjType, requestedMember);
           return toka::Type::fromString("unknown");
         }
         Memb->Index = i; // [FIX] Set index for CodeGen
