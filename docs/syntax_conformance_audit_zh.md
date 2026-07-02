@@ -35,7 +35,7 @@
 - `@encap` 的 `pub(path)`、`pub(crate)`、`pub * ! ...` 跨模块访问矩阵已补最小正反测试；后续可继续细化 crate 边界模型
 - `dyn @{A, B}` 作为 trait object 被拒绝的直接 fail case 已补；`dyn @Trait` 跨模块 pub/private 方法边界也已补最小正反测试
 - 常见错误表里的 `let` / `var`、`for x in ...`、字符串 `+` 已补最小 fail 测试
-- hatted 参数的“契约义务”目前只部分被诊断覆盖，仍需决定哪些情况是 error、warning，还是仅作为风格规则
+- hatted 参数的“契约义务”已按 warning 级规则冻结：`&param` 冗余写法直接拒绝，`*` / `^` / `~` 参数只读 payload 时触发 `W0407`
 - TKI / 跨模块场景下的 associated type projection 已补最小 source-less `.tki` 回放用例；dyn trait、visibility、where 的 TKI replay 组合仍可继续细化
 
 ## 逐节审计矩阵
@@ -45,7 +45,7 @@
 | 1. Core Model | 基本锁定 | pointer、member、morphic、PAL 相关 pass/fail 已覆盖 payload/handle 差异；最小 payload/handle 视图对照已补 | 后续缺口转向更细的诊断质量，而不是核心规则本身 |
 | 2. Files / Imports / Entry | 基本锁定 | `g03_import_item.tk`、`g03_module.tk`、relative import、import fail cases；`pub import` source-less TKI re-export 已补 | 后续可按需细化多级 re-export 与 wildcard import 的组合 |
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
-| 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress 均有用例 | hatted 参数的“用或传递”义务尚未形成完整诊断矩阵 |
+| 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress、hatted parameter warning matrix 均有用例 | 后续可转向 handle 组合场景，而不是基础帽子规则 |
 | 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
