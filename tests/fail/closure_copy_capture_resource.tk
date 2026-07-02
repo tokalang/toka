@@ -1,0 +1,16 @@
+// EXPECT: error[E04581]
+
+import core/traits::{@encap}
+
+shape Env(value: i32)
+
+impl Env@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    auto env = Env(value = 5)
+    auto f: fn() -> i32 = { [copy env] => env.value }
+    return f()
+}

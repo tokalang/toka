@@ -2273,6 +2273,12 @@
       "message": "Morphic member access .'{} requires field '{}' on shape '{}' to be declared morphic; use '.{}' for ordinary field access",
       "description": "Morphic member access requires the target field to be declared morphic"
     },
+    "E04581": {
+      "id": "ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE",
+      "level": "Error",
+      "message": "Closure copy capture of resource '{}' with type '{}' would duplicate ownership; use '[cede {}]' or clone into a separate value first",
+      "description": "Closure copy capture cannot duplicate ownership of resource values"
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

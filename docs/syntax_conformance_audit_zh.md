@@ -50,10 +50,10 @@
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
-| 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
+| 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests；associated type projection 的 source-less TKI replay 已补 | 后续可转向更高阶 generic / trait / TKI 组合 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
 | 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases；历史提案式测试注释已清理 | 后续可转向 exhaustiveness 与资源析构组合诊断 |
-| 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail | capture mode 的失败矩阵可更细：`copy`、`cede`、`~`、borrow escape |
+| 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail；resource copy capture 已拒绝浅拷 | capture mode 后续可继续细化非 `dyn fn` 闭包的局部/逃逸边界 |
 | 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail | `string + string` 已补直接 fail case；`str + str` 可按需再补 |
 | 14. Unsafe / FFI | 基本锁定 | extern fn、大量 sys/libc 用例、raw alloc/free、cast、unsafe escape fail | public raw pointer API 限制已有 fail；建议补“raw/unsafe 命名豁免”正例或明确暂不豁免 |
 | 15. Common Mistakes | 基本有测试锚点 | `while`、position init、type-side `'T`、type-side `&T`、`let` / `var`、`for x in ...`、`dyn @{...}`、字符串 `+` 均已有 fail | 当前主要缺口转为组合矩阵：`let` / `var`、`dyn @{...}`、普通字段误写 `.'field` 均已收紧为专用 diagnostic |
@@ -138,7 +138,7 @@
    - `tests/fail/closure_cede_capture_consumes.tk`
    - `tests/fail/closure_dyn_implicit_capture_escape.tk`
 
-   这确认了 `[cede env]` 会消费外层变量，并且转换为 `dyn fn` 的 owned closure 不能隐式捕获外部变量；需要显式 `[cede ...]` 或 `[copy ...]`。后续如果继续细化，可补 `copy ~r` 的失败侧和非 `dyn fn` 闭包的局部/逃逸边界。
+   这确认了 `[cede env]` 会消费外层变量，并且转换为 `dyn fn` 的 owned closure 不能隐式捕获外部变量；需要显式 `[cede ...]` 或 `[copy ...]`。本轮补上 `tests/fail/closure_copy_capture_resource.tk`，锁定 `[copy ...]` 不能浅拷资源所有权。后续如果继续细化，可补非 `dyn fn` 闭包的局部/逃逸边界。
 
 5. Nullable handle matrix
 
@@ -199,7 +199,7 @@
 
 `trait @Name` 是当前唯一公开的 trait 声明形态，裸 `trait Name` 已有 `tests/fail/trait_requires_at.tk` 拒绝。Facet set 的公开规则是 `@{Trait1, Trait2}`，集合内部使用裸 trait 名称；`T: @{Send, Sync}` 已由 `tests/pass/g08_where_trait_bounds.tk` 覆盖。历史 `T impl @Trait` 形式仍作为兼容写法解析，但公开推荐形式统一为 `:`。
 
-这部分语法目前自洽。后续更值得补的是组合场景，而不是改基础写法：generic associated type projection 经过 TKI replay、以及 dyn trait 跨模块 visibility。
+这部分语法目前自洽。generic associated type projection 的 source-less TKI replay、以及 dyn trait 跨模块 visibility 均已有最小锁。后续更值得补的是更高阶组合场景，而不是改基础写法。
 
 ### Morphic 与内部可变性标记
 

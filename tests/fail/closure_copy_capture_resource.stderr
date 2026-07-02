@@ -1,0 +1,5 @@
+error[E04581]: Closure copy capture of resource 'env' with type 'Env' would duplicate ownership; use '[cede env]' or clone into a separate value first
+ --> tests/fail/closure_copy_capture_resource.tk:14:27
+    |
+ 14 |     auto f: fn() -> i32 = { [copy env] => env.value }
+    |                           ^

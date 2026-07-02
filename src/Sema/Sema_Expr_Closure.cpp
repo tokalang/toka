@@ -255,6 +255,18 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         sm.Name = varName;
         
         if (isExplicit && (explicitMode == CaptureMode::ExplicitCede || explicitMode == CaptureMode::ExplicitCopy)) {
+            if (explicitMode == CaptureMode::ExplicitCopy) {
+                bool isResourceCapture = infoPtr->TypeObj && infoPtr->TypeObj->isUniquePtr();
+                if (!isResourceCapture && infoPtr->TypeObj && infoPtr->TypeObj->isShape()) {
+                    std::string soul = toka::Type::stripMorphology(infoPtr->TypeObj->getSoulName());
+                    isResourceCapture = hasDrop(soul);
+                }
+                if (isResourceCapture) {
+                    error(Clo, DiagID::ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE,
+                          varName, infoPtr->TypeObj->toString(), varName);
+                    continue;
+                }
+            }
             sm.Type = infoPtr->TypeObj->toString(); 
             sm.ResolvedType = infoPtr->TypeObj; // [Fix] Pre-resolve
             if (explicitMode == CaptureMode::ExplicitCede) {
