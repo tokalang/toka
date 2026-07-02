@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/CodeGen.h"
+#include "toka/AssignmentStats.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleSurfaceStats.h"
 #include "toka/Lexer.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
@@ -41,9 +43,11 @@
 #include <iostream>
 #include <filesystem>
 #include <cstdlib>
+#include <chrono>
 #include <set>
 #include <list>
 #include <sstream>
+#include <vector>
 
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/IR/Verifier.h"
@@ -88,6 +92,37 @@ static std::string getFinalInterfacePath(const std::string &outputFile, const st
     }
     return toka::PathUtils::getInterfacePath(outputFile, sourcePath);
 }
+
+struct TokaProfile {
+    using Clock = std::chrono::steady_clock;
+
+    bool Enabled = false;
+    Clock::time_point Start;
+    Clock::time_point Last;
+    std::vector<std::pair<std::string, double>> Entries;
+
+    explicit TokaProfile(bool enabled)
+        : Enabled(enabled), Start(Clock::now()), Last(Start) {}
+
+    void mark(const std::string &name) {
+        if (!Enabled) return;
+        auto now = Clock::now();
+        std::chrono::duration<double, std::milli> elapsed = now - Last;
+        Entries.push_back({name, elapsed.count()});
+        Last = now;
+    }
+
+    void finish(const std::string &label) {
+        if (!Enabled) return;
+        auto now = Clock::now();
+        std::chrono::duration<double, std::milli> total = now - Start;
+        llvm::errs() << "[profile] " << label << "\n";
+        for (const auto &entry : Entries) {
+            llvm::errs() << "[profile]   " << entry.first << ": " << entry.second << " ms\n";
+        }
+        llvm::errs() << "[profile]   total: " << total.count() << " ms\n";
+    }
+};
 
 #include "lld/Common/Driver.h"
 
@@ -246,6 +281,8 @@ int main(int argc, char **argv) {
   bool emitInterface = false;
   bool dumpDependencies = false;
   bool dumpJson = false;
+  bool dumpAssignmentStats = false;
+  bool dumpHandleSurfaceStats = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
   std::string cliTargetTriple = "";
@@ -279,6 +316,10 @@ int main(int argc, char **argv) {
     } else if (arg == "--dump-dependencies=json" || arg == "--dump-module-graph-json") {
       dumpDependencies = true;
       dumpJson = true;
+    } else if (arg == "--dump-assignment-stats=json") {
+      dumpAssignmentStats = true;
+    } else if (arg == "--dump-handle-surface-stats=json") {
+      dumpHandleSurfaceStats = true;
     } else if (arg == "--pkg" || arg == "-P") {
       if (i + 1 < argc) {
         std::string mapping = argv[++i];
@@ -361,6 +402,19 @@ int main(int argc, char **argv) {
 
   toka::SourceManager sm;
   toka::DiagnosticEngine::init(sm);
+  const char *assignmentStatsEnv = std::getenv("TOKA_ASSIGNMENT_STATS");
+  bool assignmentStatsFromEnv =
+      assignmentStatsEnv && assignmentStatsEnv[0] != '\0' &&
+      std::string(assignmentStatsEnv) != "0";
+  toka::enableAssignmentStats(dumpAssignmentStats || assignmentStatsFromEnv);
+  const char *handleSurfaceStatsEnv = std::getenv("TOKA_HANDLE_SURFACE_STATS");
+  bool handleSurfaceStatsFromEnv =
+      handleSurfaceStatsEnv && handleSurfaceStatsEnv[0] != '\0' &&
+      std::string(handleSurfaceStatsEnv) != "0";
+  toka::enableHandleSurfaceStats(dumpHandleSurfaceStats ||
+                                 handleSurfaceStatsFromEnv);
+  const char *profileEnv = std::getenv("TOKA_PROFILE");
+  TokaProfile profile(profileEnv && profileEnv[0] != '\0' && std::string(profileEnv) != "0");
 
   std::vector<std::unique_ptr<toka::Module>> astModules;
   bool preferSource = !compileOnly;
@@ -372,6 +426,7 @@ int main(int argc, char **argv) {
       parseSuccess = false;
     }
   }
+  profile.mark("parse_resolve");
 
   const std::vector<std::string> &roots = resolver.getRoots();
   if (emitInterface) {
@@ -500,6 +555,8 @@ int main(int argc, char **argv) {
 
       llvm::outs() << "\n  }\n";
       llvm::outs() << "}\n";
+      profile.mark("dependency_dump_json");
+      profile.finish("tokac");
       return 0;
     }
 
@@ -510,6 +567,8 @@ int main(int argc, char **argv) {
       }
       llvm::outs() << "\n";
     }
+    profile.mark("dependency_dump");
+    profile.finish("tokac");
     return 0;
   }
 
@@ -527,6 +586,7 @@ int main(int argc, char **argv) {
   for (const auto &ast : astModules) {
     sema.declareGlobals(*ast);
   }
+  profile.mark("sema_declare");
 
   // Pass 2: Run full semantic analysis on all modules
   for (const auto &ast : astModules) {
@@ -542,6 +602,7 @@ int main(int argc, char **argv) {
     llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to previous semantic errors.\n";
     return 1;
   }
+  profile.mark("sema_check");
 
   if (emitInterface) {
     for (const auto &ast : astModules) {
@@ -564,6 +625,7 @@ int main(int argc, char **argv) {
       }
     }
   }
+  profile.mark("interface_export");
 
   if (verboseMode) fprintf(stderr, "Sema Successful. Merging and Generating IR...\n");
   fflush(stderr);
@@ -613,6 +675,7 @@ int main(int argc, char **argv) {
   // ----------------------------------------------------------------------------
 
   std::unique_ptr<toka::Module> genericModule = sema.extractGenericRegistry();
+  profile.mark("codegen_setup");
 
   if (verboseMode) fprintf(stderr, "Pass 1: Discovery (Registration)...\n");
   fflush(stderr);
@@ -620,6 +683,7 @@ int main(int argc, char **argv) {
     codegen.discover(*ast);
   }
   if (genericModule) codegen.discover(*genericModule);
+  profile.mark("codegen_discover");
 
   if (verboseMode) fprintf(stderr, "Pass 2: Resolution (Signatures)...\n");
   fflush(stderr);
@@ -627,6 +691,7 @@ int main(int argc, char **argv) {
     codegen.resolveSignatures(*ast);
   }
   if (genericModule) codegen.resolveSignatures(*genericModule);
+  profile.mark("codegen_signatures");
 
   if (verboseMode) fprintf(stderr, "Pass 3: Generation (Emission)...\n");
   fflush(stderr);
@@ -636,6 +701,7 @@ int main(int argc, char **argv) {
   if (genericModule) codegen.generate(*genericModule);
 
   codegen.finalizeGlobals();
+  profile.mark("codegen_generate");
 
   if (codegen.hasErrors() || toka::DiagnosticEngine::hasErrors()) {
     llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted during code generation.\n";
@@ -658,6 +724,7 @@ int main(int argc, char **argv) {
     llvm::errs() << "Fatal Error: LLVM IR Verification Failed!\n";
     return 1;
   }
+  profile.mark("verify");
 
   if (verboseMode) fprintf(stderr, "Pass 4: Optimization (Coroutines & O2)...\n");
   fflush(stderr);
@@ -694,6 +761,7 @@ int main(int argc, char **argv) {
     MPM = PB.buildPerModuleDefaultPipeline(optLevel);
   }
   MPM.run(*codegen.getModule(), MAM);
+  profile.mark("optimize");
 
   std::string finalOutput = outputFile;
   std::string objFile = outputFile;
@@ -737,6 +805,7 @@ int main(int argc, char **argv) {
     dest.flush();
     dest.close();
     if (verboseMode) fprintf(stderr, "Object file emitted successfully.\n");
+    profile.mark("emit_object");
 
     if (!compileOnly) {
       if (verboseMode) fprintf(stderr, "Linking executable (internal LLD): %s\n", finalOutput.c_str());
@@ -818,6 +887,7 @@ int main(int argc, char **argv) {
       (void)std::system(signCmd.c_str());
 #endif
       std::remove(objFile.c_str());
+      profile.mark("link");
     }
   } else {
     if (outputFile.empty()) {
@@ -831,8 +901,16 @@ int main(int argc, char **argv) {
       }
       codegen.print(dest);
     }
+    profile.mark("write_ir");
   }
 
+  profile.finish("tokac");
+  if (toka::assignmentStatsEnabled()) {
+    toka::dumpAssignmentStatsJson(llvm::outs(), astModules.size());
+  }
+  if (toka::handleSurfaceStatsEnabled()) {
+    toka::dumpHandleSurfaceStatsJson(llvm::outs(), astModules.size());
+  }
 
   return 0;
 }

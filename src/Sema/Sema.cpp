@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/Sema.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleSurfaceStats.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
 #include "toka/PathUtils.h"
@@ -696,6 +697,8 @@ void Sema::exitScope() {
   delete Old;
 }
 void Sema::declareGlobals(Module &M) {
+  recordHandleSurfaceModule(M);
+
   std::string fileName = !M.ResolvedPath.empty()
       ? toka::PathUtils::canonicalize(M.ResolvedPath)
       : toka::PathUtils::canonicalize(

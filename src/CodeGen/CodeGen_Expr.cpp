@@ -13,6 +13,7 @@
 // limitations under the License.
 #include <llvm/IR/InlineAsm.h>
 #include "toka/AST.h"
+#include "toka/AssignmentStats.h"
 #include "toka/CodeGen.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/SourceManager.h"
@@ -175,6 +176,8 @@ void CodeGen::emitSoulAssignment(llvm::Value *soulAddr, llvm::Value *rhsVal,
                                  llvm::Type *type) {
   if (!soulAddr || !rhsVal || !type)
     return;
+  if (assignmentStatsEnabled())
+    assignmentStats().LoweredSoulAssignments++;
 
   llvm::Value *finalRHS = rhsVal;
   llvm::Value *destAddr = soulAddr;
@@ -205,6 +208,8 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
                                  const TokaSymbol &sym, const Expr *lhsExpr) {
   if (!handleAddr || !rhsVal)
     return;
+  if (assignmentStatsEnabled())
+    assignmentStats().LoweredEnvelopeRebindings++;
 
   if (sym.morphology == Morphology::Shared) {
     // 1. Release(Old)

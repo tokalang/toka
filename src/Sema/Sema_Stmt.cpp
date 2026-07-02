@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleSurfaceStats.h"
 #include "toka/SourceManager.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
@@ -592,6 +593,8 @@ void Sema::checkStmt(Stmt *S) {
     }
 
   } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
+    recordHandleSurfaceVariableDecl(*Var);
+
     // [Constitutional 1.3] Adversarial Principle: $ is only for contesting
     // inheritance.
     if (Var->IsValueBlocked || Var->IsRebindBlocked) {

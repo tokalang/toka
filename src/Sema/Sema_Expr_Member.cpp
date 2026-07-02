@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleSurfaceStats.h"
 #include "toka/MemberAccess.h"
 #include "toka/PathUtils.h"
 #include "toka/Sema.h"
@@ -120,6 +121,8 @@ static std::string getStringifyPath(Expr *E) {
 }
 
 std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
+  recordHandleSurfaceMemberExpr(*Memb);
+
   MemberAccessIntent intent = parseMemberAccess(Memb->Member);
   bool hasInvalidMix = false;
 

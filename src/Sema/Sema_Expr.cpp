@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleSurfaceStats.h"
 #include "toka/MemberAccess.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
@@ -467,6 +468,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *Bool = dynamic_cast<BoolExpr *>(E)) {
     return toka::Type::fromString("bool");
   } else if (auto *Addr = dynamic_cast<AddressOfExpr *>(E)) {
+    recordHandleSurfaceAddressOfExpr(*Addr);
+
     // Toka Spec: &x creates a Reference.
     auto innerObj = checkExpr(Addr->Expression.get());
     if (innerObj->isUnknown())
@@ -588,6 +591,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     return toka::Type::fromString(UniqueName);
   } else if (auto *Deref = dynamic_cast<DereferenceExpr *>(E)) {
+    recordHandleSurfaceDereferenceExpr(*Deref);
+
     auto innerObj = checkExpr(Deref->Expression.get());
     if (innerObj->isUnknown())
       return toka::Type::fromString("unknown");

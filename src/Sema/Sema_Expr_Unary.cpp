@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/HandleSurfaceStats.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -97,6 +98,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     return toka::Type::fromString("unknown");
 
   std::string rhsInfo = rhsType->toString();
+  bool isHandleUnary =
+      Unary->Op == TokenType::Star || Unary->Op == TokenType::Caret ||
+      Unary->Op == TokenType::Ampersand ||
+      (Unary->Op == TokenType::Tilde && !rhsType->isInteger());
+  recordHandleSurfaceUnaryExpr(*Unary, isHandleUnary);
 
   // [Toka 1.3] Bitwise NOT (~) and Logical NOT (!) support
   if (Unary->Op == TokenType::Tilde && rhsType->isInteger()) {

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/AST.h"
+#include "toka/AssignmentStats.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
@@ -51,6 +52,52 @@ static std::string getStringifyPath(Expr *E) {
     return getStringifyPath(ce->Expression.get());
   }
   return "";
+}
+
+static bool containsMemberExpr(const Expr *E) {
+  if (!E)
+    return false;
+  if (auto *M = dynamic_cast<const MemberExpr *>(E))
+    return true;
+  if (auto *U = dynamic_cast<const UnaryExpr *>(E))
+    return containsMemberExpr(U->RHS.get());
+  if (auto *A = dynamic_cast<const AddressOfExpr *>(E))
+    return containsMemberExpr(A->Expression.get());
+  if (auto *A = dynamic_cast<const ArrayIndexExpr *>(E)) {
+    if (containsMemberExpr(A->Array.get()))
+      return true;
+    for (const auto &Index : A->Indices) {
+      if (containsMemberExpr(Index.get()))
+        return true;
+    }
+    return false;
+  }
+  if (auto *C = dynamic_cast<const CastExpr *>(E))
+    return containsMemberExpr(C->Expression.get());
+  if (auto *P = dynamic_cast<const PostfixExpr *>(E))
+    return containsMemberExpr(P->LHS.get());
+  return false;
+}
+
+static const MemberExpr *getTerminalMemberExpr(const Expr *E) {
+  if (!E)
+    return nullptr;
+  if (auto *M = dynamic_cast<const MemberExpr *>(E))
+    return M;
+  if (auto *U = dynamic_cast<const UnaryExpr *>(E))
+    return getTerminalMemberExpr(U->RHS.get());
+  if (auto *A = dynamic_cast<const AddressOfExpr *>(E))
+    return getTerminalMemberExpr(A->Expression.get());
+  if (auto *C = dynamic_cast<const CastExpr *>(E))
+    return getTerminalMemberExpr(C->Expression.get());
+  if (auto *P = dynamic_cast<const PostfixExpr *>(E))
+    return getTerminalMemberExpr(P->LHS.get());
+  return nullptr;
+}
+
+static bool terminalMemberHasMorphology(const Expr *E) {
+  const MemberExpr *M = getTerminalMemberExpr(E);
+  return M && toka::Type::stripMorphology(M->Member) != M->Member;
 }
 
 // Stage 5: Object-Oriented Binary Expression Check
@@ -150,9 +197,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // Generic Implicit Dereference for Smart Pointers (Soul Interaction)
   // If one side is Smart Pointer and other side matches its Pointee,
   // decay Smart Pointer.
+  bool assignmentLHSWasSmartPointerPayloadDecay = false;
   if (lhsType->isUniquePtr() || lhsType->isSharedPtr()) {
     if (auto inner = lhsType->getPointeeType()) {
       if (isTypeCompatible(inner, rhsType)) {
+        assignmentLHSWasSmartPointerPayloadDecay = isAssign;
         lhsType = inner;
         Bin->LHS->ResolvedType = lhsType; // PERSIST for CodeGen
         LHS = lhsType->toString();
@@ -173,6 +222,26 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     isRefAssign = true;
     isUnsetInit = true;
     m_IsUnsetInitCall = false;
+  }
+  if (isAssign && !assignmentLHSWasSmartPointerPayloadDecay) {
+    Expr *NakedLHS = Bin->LHS.get();
+    while (auto *C = dynamic_cast<CastExpr *>(NakedLHS))
+      NakedLHS = C->Expression.get();
+    if (auto *V = dynamic_cast<VariableExpr *>(NakedLHS)) {
+      if (!V->IsRawPointer && !V->IsUnique && !V->IsShared) {
+        SymbolInfo *InfoPtr = nullptr;
+        std::string actualName = V->Name;
+        if (CurrentScope->findVariableWithDeref(V->Name, InfoPtr,
+                                                actualName) &&
+            InfoPtr && InfoPtr->TypeObj && InfoPtr->TypeObj->isSmartPointer()) {
+          auto inner = InfoPtr->TypeObj->getPointeeType();
+          if (inner && isTypeCompatible(inner, lhsType) &&
+              isTypeCompatible(inner, rhsType)) {
+            assignmentLHSWasSmartPointerPayloadDecay = true;
+          }
+        }
+      }
+    }
   }
 
   // Rebinding Logic: Unwrap &ref on LHS
@@ -275,7 +344,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (isAssign) {
     // Smart Pointer NewExpr Special Case
     bool isSmartNew = false;
-    bool isImplicitDerefAssign = false;
+    bool isImplicitDerefAssign = assignmentLHSWasSmartPointerPayloadDecay;
 
     if (dynamic_cast<NewExpr *>(Bin->RHS.get())) {
       if (lhsType->isUniquePtr() || lhsType->isSharedPtr()) {
@@ -288,7 +357,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     }
 
     // Implicit Dereference Assignment Logic (Soul Mutation)
-    if (!isSmartNew && !isRefAssign &&
+    if (!isImplicitDerefAssign && !isSmartNew && !isRefAssign &&
         (lhsType->isUniquePtr() || lhsType->isSharedPtr())) {
       auto inner = lhsType->getPointeeType();
       // If RHS matches Inner, we are assigning to the Soul (implicit *s
@@ -310,6 +379,29 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       if (lhsType->isPointer() || lhsType->isSmartPointer() || isRefAssign) {
         isRebind = true;
       }
+    }
+
+    if (assignmentStatsEnabled()) {
+      AssignmentStats &stats = assignmentStats();
+      bool isCompound = Bin->Op != "=";
+      bool isMemberLHS = containsMemberExpr(Bin->LHS.get());
+      stats.TotalAssignmentSites++;
+      if (!isCompound && !isImplicitDerefAssign && !isRebind &&
+          !isRefAssign) {
+        stats.PlainPayloadAssignments++;
+      }
+      if (isImplicitDerefAssign)
+        stats.ImplicitDerefPayloadAssignments++;
+      if (isRebind && !isRefAssign)
+        stats.HandleRebindings++;
+      if (isRefAssign)
+        stats.ReferenceRebindings++;
+      if (isMemberLHS)
+        stats.MemberLHSAssignments++;
+      if (terminalMemberHasMorphology(Bin->LHS.get()))
+        stats.TerminalMemberMorphologyAssignments++;
+      if (isCompound)
+        stats.CompoundAssignments++;
     }
 
     Expr *Traverse = Bin->LHS.get();
