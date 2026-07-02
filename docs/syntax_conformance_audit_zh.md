@@ -215,7 +215,13 @@
 
 当前 `pub(path)` 的语义实现已经从任意子串匹配收紧为路径段匹配，可以正确区分 `std` 与 `stdx` 这类前缀相似路径。新增测试使用 `pub(tests/pass)`，同时锁定关键字路径段解析和跨目录授权/拒绝行为。
 
-建议：短期保持文档的“模块路径授权”说法，但不要继续扩大承诺；中期若要把 `pub(path)` 做成真正的 module identity，需要把 target path 的解析、归一化和 Sema 当前模块身份统一起来。
+1.0 决策：Toka 不引入源码层 `mod` 声明。`pub(path)` 的 `path` 应与 `import` 左半部分的模块定位路径同义，不包含 `::{...}` 内部名字选择，也不是 Rust 式 module tree。当前路径段匹配是实现层基础；后续若继续收紧，应沿 import resolver、package root、library root 和跨包归一化方向细化。
+
+### kebab-case 与减号边界
+
+1.0 决策：连字符只属于 filesystem-oriented module-location path。目录名、`.tk` 文件名、`import` 左半部分、以及对齐 import path 的 `pub(path)` 可以使用 kebab-case；`.tk` 内部新产生并进入 Toka 语义名字空间的名字禁止 kebab-case，包括 import alias、字段名、声明名、绑定名和可选择 namespace。表达式层的二元 `-` 保持操作符身份，并要求左右空格。
+
+这条规则把 URL / 包名 / 文件系统生态中的 kebab 命名兼容保留在路径层，同时避免 `max-size` 与 `max - size` 在语言层产生视觉歧义。IDE 双击选择等体验差异属于工具层瑕疵，不应扩大语言名字空间的复杂度。
 
 ## 文档表述风险
 
@@ -223,7 +229,7 @@
 
 文档已经写入 `pub *`、`pub * ! field`、`pub(path)`。标准库里有 `pub *`、`pub(std)` 的真实用法，新增测试也已经覆盖排除式 wildcard 和 path-targeted access 的最小正反行为。
 
-建议：文档可以保持，但不要继续扩大 `pub(path)` 的承诺；当前实现是路径段匹配，未来若要升级成严格 module identity，需要单独设计。
+建议：文档保持 import-path visibility 的口径。未来如果继续强化 `pub(path)`，应完善 resolver-normalized import identity，而不是引入新的源码级 `mod` 概念。
 
 ### 2. hatted 参数契约
 

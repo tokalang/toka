@@ -27,15 +27,20 @@ auto &r = &value
 
 Toka 源码文件使用 `.tk`。
 
+模块定位路径采用面向文件系统的写法。只要路径段指向目录或 `.tk` 文件名，就可以使用 kebab-case：
+
 ```toka
 import std/io::println
 import core/types::{usize, Addr}
+import ./third-party/http-client as http_client
 
 fn main() -> i32 {
     println("hello")
     return 0
 }
 ```
+
+连字符只属于路径层。凡是在 `.tk` 源码内部新产生、并进入 Toka 语义名字空间的名字，都必须是普通 identifier：变量、函数、类型、字段、import alias、import item alias、以及可选择的 namespace 都不使用 kebab-case。因此 `as http-client`、`http-client::send()`、`(package-name = "...")` 都是非法形式。在表达式语法中，二元 `-` 是操作符，必须用空格隔开，例如 `a - b`。
 
 入口函数是 `main`，通常返回 `i32`。
 
@@ -350,6 +355,8 @@ impl Device@encap {
 ```
 
 `pub field` 全局开放指定字段。`pub(crate) field` 在 crate 内开放指定字段。`pub(path) field` 授权给指定模块路径。
+
+`pub(path)` 中的 `path` 使用与 `import` 左半部分相同的模块定位路径语法，不包含 `::{...}` 内部名字选择。Toka 没有源码层 `mod` 声明；路径限定可见性锚定在 import resolver 归一化后的导入路径上，而不是任意子串匹配或 Rust 式模块树。
 
 对于宽松的数据承载型 shape，`@encap` 块也可以使用通配可见性条目：
 

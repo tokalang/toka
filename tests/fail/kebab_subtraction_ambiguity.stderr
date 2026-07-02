@@ -1,10 +1,5 @@
-error[E0101]: Expected ';' or newline after statement
- --> tests/fail/kebab_subtraction_ambiguity.tk:3:11
+error[E01246]: Binary '-' operator must be surrounded by spaces
+ --> tests/fail/kebab_subtraction_ambiguity.tk:3:18
    |
- 3 |   auto max-size = 1024
-   |           ^
-error[E0101]: Expected ';' or newline after statement
- --> tests/fail/kebab_subtraction_ambiguity.tk:4:12
-   |
- 4 |   auto user-name = "Toka"
-   |            ^
+ 3 |   auto value = 10-3 // EXPECT: error[E01246]
+   |                  ^

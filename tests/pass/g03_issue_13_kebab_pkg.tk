@@ -1,17 +1,14 @@
 import std/io::println
-import ./nested/toka-ink as toka-ink
+import ./nested/toka-ink as toka_ink
 
 fn main() -> i32 {
-    // 1. Test namespace function call
-    auto res = toka-ink::render(42)
+    // 1. File path segments may use kebab-case, but the Toka alias is an identifier.
+    auto res = toka_ink::render(42)
     println("res = {}", res)
 
-    // 2. Test anonymous record with kebab-case key
-    auto deps = (toka-ink = "1.0.0")
-
-    // 3. Test space-less subtraction
-    auto sub1 = 10-3
-    auto sub2 = sub1-2
+    // 2. Binary minus is an operator and must stay visually separate.
+    auto sub1 = 10 - 3
+    auto sub2 = sub1 - 2
     println("sub2 = {}", sub2)
 
     return 0

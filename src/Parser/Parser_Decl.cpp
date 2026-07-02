@@ -981,11 +981,6 @@ std::unique_ptr<ImportDecl> Parser::parseImport(bool isPub) {
     if (match(TokenType::KwAs)) {
       moduleAlias =
           consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_MODULE_ALIAS).Text;
-      while (match(TokenType::Minus)) {
-        moduleAlias += "-";
-        moduleAlias +=
-            consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER_IN_MODULE_ALI).Text;
-      }
     }
   }
 

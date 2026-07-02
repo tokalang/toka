@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto deps = (toka-ink = "1.0.0") // EXPECT: error[E01163]
+    return 0
+}

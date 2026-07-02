@@ -287,6 +287,7 @@ DIAG(ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT, Error,   "E01242", "T
 DIAG(ERR_PARSER_EXPECTED_WHERE_RELATION, Error,   "E01243", "Expected ':' or 'impl' in where constraint")
 DIAG(ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR, Error,   "E01244", "Deprecated keyword 'var'; use 'auto' for variable declarations.")
 DIAG(ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED, Error,   "E01245", "Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.")
+DIAG(ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED, Error, "E01246", "Binary '-' operator must be surrounded by spaces")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

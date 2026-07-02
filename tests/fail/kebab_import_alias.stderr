@@ -1,0 +1,5 @@
+error[E0101]: Expected ';' or newline after statement
+ --> tests/fail/kebab_import_alias.tk:1:21
+   |
+ 1 | import std/io as std-io // EXPECT: error[E0101]
+   |                     ^

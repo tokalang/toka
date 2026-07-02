@@ -6,7 +6,7 @@ This extension provides official language support, syntax highlighting, and LSP 
 
 ## Features
 
-* **Rich Syntax Highlighting**: Fully supports Toka's unique suffix token attributes (`#`, `?`, `!`), ownership sigils (`^`, `~`, `&`, `*`), and Lisp-style kebab-case identifiers.
+* **Rich Syntax Highlighting**: Fully supports Toka's unique suffix token attributes (`#`, `?`, `!`), ownership sigils (`^`, `~`, `&`, `*`), and kebab-case import path segments.
 * **Document Symbols (Outline)**: Instantly index and navigate your Toka `fn`, `shape`, `impl`, and `alias` definitions through the Outline view.
 * **Code Formatting**: Native integration with the Toka Formatter (`tokafmt`) for clean, semicolon-free source styling.
 * **Language Server (LSP) Support**: Real-time syntax validation, type checking, and compile-time diagnostics powered by `tokalsp`.

@@ -27,15 +27,26 @@ In the example above, `p` is the payload view of a unique-owned object, `^p` nam
 
 Toka source files use `.tk`.
 
+Module-location paths follow filesystem-oriented spelling. Path segments may
+use kebab-case when they refer to directories or `.tk` file names:
+
 ```toka
 import std/io::println
 import core/types::{usize, Addr}
+import ./third-party/http-client as http_client
 
 fn main() -> i32 {
     println("hello")
     return 0
 }
 ```
+
+Hyphens are path-only. Any name newly created inside `.tk` source and entering
+Toka's semantic namespace must be a normal identifier: variables, functions,
+types, fields, import aliases, import item aliases, and selectable namespaces do
+not use kebab-case. Therefore `as http-client`, `http-client::send()`, and
+`(package-name = "...")` are invalid. In expression syntax, binary `-` is an
+operator and must be surrounded by spaces, as in `a - b`.
 
 The entry point is `main`, and it normally returns `i32`.
 
@@ -350,6 +361,8 @@ impl Device@encap {
 ```
 
 `pub field` exposes selected fields globally. `pub(crate) field` exposes selected fields inside the crate. `pub(path) field` grants access to a module path.
+
+The `path` in `pub(path)` uses the same module-location path grammar as the left side of an `import`, before `::{...}` item selection. Toka has no source-level `mod` declaration; path-scoped visibility is anchored in resolver-normalized import paths rather than raw substring matching or a Rust-style module tree.
 
 For broad data carrier shapes, an `@encap` block may also use wildcard visibility entries:
 

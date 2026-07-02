@@ -146,10 +146,6 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
 
           Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           std::string fieldName = fieldPrefix + fieldNameTok.Text;
-          while (match(TokenType::Minus)) {
-            fieldName += "-";
-            fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-          }
           if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked)
             error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
           

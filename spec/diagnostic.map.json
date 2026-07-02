@@ -1643,6 +1643,12 @@
       "message": "Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.",
       "description": "Dynamic trait objects currently support a single trait facet."
     },
+    "E01246": {
+      "id": "ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED",
+      "level": "Error",
+      "message": "Binary '-' operator must be surrounded by spaces",
+      "description": "Binary '-' operator must be surrounded by spaces"
+    },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",
       "level": "Error",

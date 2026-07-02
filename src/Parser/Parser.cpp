@@ -358,23 +358,7 @@ bool Parser::isNamedInitList() const {
 
 std::string Parser::parseNamespaceOrIdentifier() {
   Token nameTok = consume(TokenType::Identifier, DiagID::ERR_EXPECTED_IDENTIFIER);
-  std::string name = nameTok.Text;
-  
-  bool isNamespace = false;
-  int lookAhead = 0;
-  while (peekAt(lookAhead).Kind == TokenType::Minus && peekAt(lookAhead + 1).Kind == TokenType::Identifier) {
-    lookAhead += 2;
-  }
-  if (peekAt(lookAhead).Kind == TokenType::Colon && peekAt(lookAhead + 1).Kind == TokenType::Colon) {
-    isNamespace = true;
-  }
-  if (isNamespace) {
-    while (match(TokenType::Minus)) {
-      name += "-";
-      name += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-    }
-  }
-  return name;
+  return nameTok.Text;
 }
 
 std::unique_ptr<Module> Parser::parseModule() {

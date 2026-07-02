@@ -373,7 +373,16 @@ Token Lexer::punctuation() {
       advance();
       return Token{TokenType::Arrow, "->", line, col};
     }
-    return Token{TokenType::Minus, "-", line, col};
+    {
+      bool spaceBefore =
+          (m_Current - 2 >= m_Source) &&
+          std::isspace(static_cast<unsigned char>(m_Current[-2]));
+      bool spaceAfter =
+          std::isspace(static_cast<unsigned char>(m_Current[0]));
+      Token t{TokenType::Minus, "-", line, col};
+      t.HasSpacesAround = spaceBefore && spaceAfter;
+      return t;
+    }
   case '*':
     if (peek() == '=') {
       advance();

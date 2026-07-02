@@ -270,10 +270,6 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
 
             Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
             std::string fieldName = fieldPrefix + fieldNameTok.Text;
-            while (match(TokenType::Minus)) {
-              fieldName += "-";
-              fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-            }
             if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked)
               error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
 
@@ -427,6 +423,9 @@ std::unique_ptr<Expr> Parser::parseExpr(int minPrec, bool allowTrailingClosure) 
       break;
 
     Token op = advance();
+    if (op.Kind == TokenType::Minus && !op.HasSpacesAround) {
+      error(op, DiagID::ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED);
+    }
     auto rhs = parseExpr(prec + 1, allowTrailingClosure);
     if (!rhs) {
       std::cerr << "Parser Error: Expected expression after operator\n";
@@ -697,10 +696,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
         Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
         std::string fieldName = fieldNameTok.Text;
-        while (match(TokenType::Minus)) {
-          fieldName += "-";
-          fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-        }
         if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked) error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
         consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_AFTER_FIELD_NAME);
         fields.push_back({prefix + fieldName, parseExpr()});
@@ -747,10 +742,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
           Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           std::string fieldName = fieldNameTok.Text;
-          while (match(TokenType::Minus)) {
-            fieldName += "-";
-            fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-          }
           if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked) error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
           consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_AFTER_FIELD_NAME);
           fields.push_back({prefix + fieldName, parseExpr()});
@@ -854,10 +845,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
             
             Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
             std::string fieldName = fieldNameTok.Text;
-            while (match(TokenType::Minus)) {
-              fieldName += "-";
-              fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-            }
             if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked) error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
             consume(TokenType::Equal, DiagID::ERR_EXPECTED_EQUAL);
             fields.push_back({prefix + fieldName, parseExpr()});
@@ -901,10 +888,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
         Token keyTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
         std::string key = keyTok.Text;
-        while (match(TokenType::Minus)) {
-          key += "-";
-          key += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-        }
         consume(TokenType::Equal, DiagID::ERR_EXPECTED_EQUAL);
         auto val = parseExpr();
         fields.push_back({key, std::move(val)});
@@ -1017,10 +1000,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
           Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           std::string fieldName = fieldNameTok.Text;
-          while (match(TokenType::Minus)) {
-            fieldName += "-";
-            fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-          }
           if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked) error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
           consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_AFTER_FIELD_NAME);
           fields.push_back({prefix + fieldName, parseExpr()});
@@ -1369,10 +1348,6 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
 
         Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
         std::string fieldName = fieldNameTok.Text;
-        while (match(TokenType::Minus)) {
-          fieldName += "-";
-          fieldName += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER).Text;
-        }
         if (fieldNameTok.HasWrite || fieldNameTok.IsBlocked) error(fieldNameTok, DiagID::ERR_ILLEGAL_FIELD_MODIFIER);
         consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_AFTER_FIELD_NAME);
         fields.push_back({prefix + fieldName, parseExpr()});

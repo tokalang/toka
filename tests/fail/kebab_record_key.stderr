@@ -1,0 +1,5 @@
+error[E01163]: Expected '='
+ --> tests/fail/kebab_record_key.tk:2:22
+   |
+ 2 |     auto deps = (toka-ink = "1.0.0") // EXPECT: error[E01163]
+   |                      ^

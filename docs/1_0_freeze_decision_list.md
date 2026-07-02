@@ -22,6 +22,15 @@ later release.
 - `dyn @Trait`: single-facet trait objects only.
 - `@encap`: keep the current visibility rules, including `pub`, `pub(crate)`,
   `pub(path)`, and wildcard forms.
+- Path-scoped visibility: Toka has no source-level `mod` declaration. The path
+  in `pub(path)` uses the same module-location path grammar as the left side of
+  an `import`, before item selection. It is interpreted by the import resolver,
+  not by raw substring matching or a Rust-style module tree.
+- Hyphen boundary: kebab-case is allowed only in filesystem-oriented
+  module-location paths, including `.tk` file names. Names created inside `.tk`
+  source and entering Toka's semantic namespace, including import aliases,
+  fields, declarations, and selectable namespaces, must not use `-`. Binary `-`
+  remains an operator and must be surrounded by spaces.
 - Closure capture rules: explicit `cede` / `copy`, with resource copy capture
   rejected.
 - Public unsafe/raw API redlines: raw pointer exposure requires explicit
@@ -29,9 +38,26 @@ later release.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic
   `where:`, and `@encap` visibility must remain source-less compatible.
 
+## Under Discussion / In Progress
+
+- PAL conservative boundaries: decide which hard-to-prove cases should remain
+  rejected for 1.0, which should be warning-level, and which are important
+  enough to support before freeze.
+- `dyn @Trait` boundary: keep the current single-facet object model stable, and
+  decide how explicitly to document the future space around multi-facet
+  objects, associated type binding, object safety, and dyn object ABI.
+- Match exhaustiveness: decide whether full exhaustiveness checking is required
+  before 1.0, or whether current safe rejection / safe execution behavior is
+  enough for the first stable release.
+- Iterator / async trait formalization: decide how much of the current library
+  and compiler convention should be documented as stable language contract
+  before 1.0.
+
 ## Postpone After 1.0
 
-- True module-identity semantics for `pub(path)`.
+- Full resolver-normalized package identity for `pub(path)`, including package
+  roots, library roots, and cross-package path normalization. This should refine
+  the import/path model rather than introduce a source-level `mod` concept.
 - Multi-facet trait objects such as `dyn @{A, B}`.
 - Associated type binding syntax for `dyn @Trait`.
 - Object lifetime / ownership annotations for dyn objects.

@@ -1,0 +1,5 @@
+import std/io as std-io // EXPECT: error[E0101]
+
+fn main() -> i32 {
+    return 0
+}
