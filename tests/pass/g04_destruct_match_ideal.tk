@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Note: This is a PROPOSED test file demonstrating the ideal complete pattern matching
-// and destructuring features once our compiler enhancements are implemented.
+// Note: This test covers currently supported pattern matching and destructuring
+// behavior that should remain stable for the public syntax surface.
 //
 // Features demonstrated:
 // 1. Direct matching and destructuring of plain structs in match expressions.
@@ -33,7 +33,7 @@ shape ASTNode(
 )
 
 fn test_struct_pair_in_match(p: Point, t: Pair) -> i32 {
-    // [Goal 1] Direct matching & destructuring of plain Struct in match expression
+    // Direct matching and destructuring of a plain Shape in a match expression.
     auto x_val = match p {
         auto Point(x = .x, y = .y) => {
             println("Point x = {}, y = {}", x, y)
@@ -41,7 +41,7 @@ fn test_struct_pair_in_match(p: Point, t: Pair) -> i32 {
         }
     }
 
-    // [Goal 3] Strict resource safety checks on named destructuring
+    // Named destructuring must preserve resource safety for resource fields.
     // 't' contains a string. A by-value destructuring of the string field must be blocked by the compiler
     // to prevent shallow copy. The developer MUST explicitly borrow the resource:
     auto Pair(a = .v0, &s = .&v1) = t
@@ -51,7 +51,7 @@ fn test_struct_pair_in_match(p: Point, t: Pair) -> i32 {
 }
 
 fn test_or_pattern_bindings(node: ASTNode) -> Point {
-    // [Goal 2] Or-pattern with shared variable bindings in a match arm
+    // Or-pattern with shared variable bindings in a match arm.
     auto pt = match node {
         // Shared binding 'pt' extracts the coordinate from both BinaryExpr and UnaryExpr!
         auto ASTNode::BinaryExpr(&op, &pt) | auto ASTNode::UnaryExpr(&op, &pt) => {

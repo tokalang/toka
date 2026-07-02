@@ -52,7 +52,7 @@
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests | 可补 TKI 下 generic associated type projection 的跨模块用例 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
-| 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases | 有些测试注释仍带“proposal/goal”历史语气，后续可清理注释避免误导 |
+| 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases；历史提案式测试注释已清理 | 后续可转向 exhaustiveness 与资源析构组合诊断 |
 | 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail | capture mode 的失败矩阵可更细：`copy`、`cede`、`~`、borrow escape |
 | 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail | `string + string` 已补直接 fail case；`str + str` 可按需再补 |
 | 14. Unsafe / FFI | 基本锁定 | extern fn、大量 sys/libc 用例、raw alloc/free、cast、unsafe escape fail | public raw pointer API 限制已有 fail；建议补“raw/unsafe 命名豁免”正例或明确暂不豁免 |
