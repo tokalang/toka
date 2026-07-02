@@ -14,4 +14,4 @@ fn main() -> i32 {
     return 0
 }
 
-// EXPECT: error[E01151]:
+// EXPECT: error[E01245]

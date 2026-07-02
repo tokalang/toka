@@ -137,7 +137,7 @@ DIAG(ERR_ASSOC_TYPE_CONFLICT,     Error,   "E0613", "Associated type '{}@{}::{}'
 DIAG(ERR_ASSOC_TYPE_IN_INHERENT_IMPL, Error,   "E0614", "Associated type '{}' can only be defined in a trait impl")
 DIAG(ERR_ASSOC_TYPE_PROJECTION_NOT_FOUND, Error,   "E0615", "Associated type projection '{}' is not bound")
 DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated type '{}' conflicts with a generic parameter of trait '@{}'")
-DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error, "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
+DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error,   "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")
@@ -282,7 +282,9 @@ DIAG(ERR_PARSER_EXPECTED_ASSOCIATED_TYPE, Error,   "E01239", "Expected 'type' in
 DIAG(ERR_PARSER_EXPECTED_ASSOCIATED_TYPE_NAME, Error,   "E01240", "Expected associated type name")
 DIAG(ERR_PARSER_ASSOCIATED_TYPE_EXPECTED_EQUAL, Error,   "E01241", "Expected '=' in associated type implementation")
 DIAG(ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT, Error,   "E01242", "Trait associated type declarations cannot define a default type")
-DIAG(ERR_PARSER_EXPECTED_WHERE_RELATION, Error, "E01243", "Expected ':' or 'impl' in where constraint")
+DIAG(ERR_PARSER_EXPECTED_WHERE_RELATION, Error,   "E01243", "Expected ':' or 'impl' in where constraint")
+DIAG(ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR, Error,   "E01244", "Deprecated keyword 'var'; use 'auto' for variable declarations.")
+DIAG(ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED, Error,   "E01245", "Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

@@ -41,7 +41,7 @@ def main():
         ("Sema: Safety Redline Boundaries", lambda c: c in ["E0480", "E0481", "E0482"]),
         ("Sema: Memory Safety", lambda c: c in ["E0501", "E0502", "E0503"]),
         ("Pattern Matching", lambda c: c in ["E0550", "E0551", "E0552", "E0553", "E0554"]),
-        ("Generics (Upcoming)", lambda c: c in ["E0601", "E0602", "E0603", "E0604", "E0607", "E0701", "E0702", "E0605", "E0606", "E0608", "E0609", "E0610", "E0611", "E0612", "E0613", "E0614", "E0615", "E0616"]),
+        ("Generics (Upcoming)", lambda c: c in ["E0601", "E0602", "E0603", "E0604", "E0607", "E0701", "E0702", "E0605", "E0606", "E0608", "E0609", "E0610", "E0611", "E0612", "E0613", "E0614", "E0615", "E0616", "E0617"]),
         ("Parser Errors", lambda c: c.startswith("E01")),
         ("Warnings", lambda c: c.startswith("W") or c.startswith("S")),
         ("System & CLI", lambda c: c.startswith("E09")),

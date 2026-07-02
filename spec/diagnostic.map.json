@@ -674,6 +674,12 @@
       "message": "Associated type '{}' conflicts with a generic parameter of trait '@{}'",
       "description": "Associated type '{}' conflicts with a generic parameter of trait '@{}'"
     },
+    "E0617": {
+      "id": "ERR_DYN_TRAIT_NOT_OBJECT_SAFE",
+      "level": "Error",
+      "message": "Trait '@{}' cannot be used as 'dyn @{}': {}",
+      "description": "Trait '@{}' cannot be used as 'dyn @{}': {}"
+    },
     "E0101": {
       "id": "ERR_EXPECTED_SEMI",
       "level": "Error",
@@ -1586,8 +1592,8 @@
     "E01237": {
       "id": "ERR_PARSER_WHERE_IMPL_EXPECTED_TRAIT_TARGET",
       "level": "Error",
-      "message": "Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'.",
-      "description": "Where impl constraints must target '@Trait' or '@{Trait1, Trait2}'."
+      "message": "Where constraints must target '@Trait' or '@{Trait1, Trait2}'.",
+      "description": "Where constraints must target '@Trait' or '@{Trait1, Trait2}'."
     },
     "E01238": {
       "id": "ERR_PARSER_WHERE_UNSUPPORTED_SUBJECT",
@@ -1618,6 +1624,24 @@
       "level": "Error",
       "message": "Trait associated type declarations cannot define a default type",
       "description": "Trait associated type declarations cannot define a default type"
+    },
+    "E01243": {
+      "id": "ERR_PARSER_EXPECTED_WHERE_RELATION",
+      "level": "Error",
+      "message": "Expected ':' or 'impl' in where constraint",
+      "description": "Expected ':' or 'impl' in where constraint"
+    },
+    "E01244": {
+      "id": "ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR",
+      "level": "Error",
+      "message": "Deprecated keyword 'var'; use 'auto' for variable declarations.",
+      "description": "Deprecated keyword 'var'; use 'auto' for variable declarations."
+    },
+    "E01245": {
+      "id": "ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED",
+      "level": "Error",
+      "message": "Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.",
+      "description": "Dynamic trait objects currently support a single trait facet."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",

@@ -20,6 +20,7 @@
 namespace toka {
 
 static std::unordered_map<std::string, TokenType> Keywords = {
+    {"let", TokenType::KwLet},
     {"auto", TokenType::KwAuto},
     {"mut", TokenType::KwMut},
     {"type", TokenType::KwType},

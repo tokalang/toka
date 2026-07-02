@@ -25,6 +25,9 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   if (!isConst) {
     if (match(TokenType::KwLet)) {
       error(previous(), DiagID::ERR_PARSER_DEPRECATED_KEYWORD_LET_USE_AUTO_FOR_VAR);
+    } else if (check(TokenType::Identifier) && peek().Text == "var") {
+      advance();
+      error(previous(), DiagID::ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR);
     } else if (previous().Kind != TokenType::KwAuto) {
       match(TokenType::KwAuto);
     }
@@ -303,7 +306,8 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     return std::make_unique<ExprStmt>(parseForExpr());
   if (check(TokenType::KwReturn))
     return parseReturn();
-  if (check(TokenType::KwLet) || check(TokenType::KwAuto))
+  if (check(TokenType::KwLet) || check(TokenType::KwAuto) ||
+      (check(TokenType::Identifier) && peek().Text == "var"))
     return parseVariableDecl(false);
   if (check(TokenType::KwDelete))
     return parseDeleteStmt();

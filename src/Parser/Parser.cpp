@@ -244,12 +244,28 @@ std::string Parser::parseTypeString(bool allowAssociatedProjection) {
 
     // Special handling for @: stop only if it's not following 'dyn'
     if (balance == 0 && check(TokenType::At)) {
-      bool isDynTrait = false;
-      // Poor man's check for 'dyn' prefix
-      size_t dynPos = type.find("dyn");
-      if (dynPos != std::string::npos) {
-        // Ensure no significant tokens between dyn and @
-        isDynTrait = true;
+      std::string compactType = type;
+      compactType.erase(std::remove(compactType.begin(), compactType.end(), ' '),
+                        compactType.end());
+      bool isDynTrait = compactType == "dyn";
+      if (isDynTrait && checkAt(1, TokenType::LBrace)) {
+        bool wasPanic = PanicMode;
+        error(peekAt(1), DiagID::ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED);
+        if (!wasPanic) {
+          PanicMode = false;
+        }
+        type += advance().Text; // '@'
+        int braceBalance = 0;
+        do {
+          Token tok = advance();
+          type += tok.Text;
+          if (tok.Kind == TokenType::LBrace) {
+            braceBalance++;
+          } else if (tok.Kind == TokenType::RBrace) {
+            braceBalance--;
+          }
+        } while (braceBalance > 0 && !check(TokenType::EndOfFile));
+        continue;
       }
       if (!isDynTrait && !type.empty() && !allowAssociatedProjection)
         break;
@@ -403,7 +419,8 @@ std::unique_ptr<Module> Parser::parseModule() {
     } else if (check(TokenType::KwFn)) {
       module->Functions.push_back(parseFunctionDecl(isPub));
     } else if (check(TokenType::KwLet) || check(TokenType::KwAuto) ||
-               check(TokenType::KwConst)) {
+               check(TokenType::KwConst) ||
+               (check(TokenType::Identifier) && peek().Text == "var")) {
       module->Globals.push_back(parseVariableDecl(isPub));
     } else if (check(TokenType::KwType) || check(TokenType::KwAlias)) {
       module->TypeAliases.push_back(parseTypeAliasDecl(isPub));

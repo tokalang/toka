@@ -12,4 +12,5 @@ fn main() -> i32 {
     return use_let() + use_var()
 }
 
-// EXPECT: error[E0101]:
+// EXPECT: error[E01112]
+// EXPECT: error[E01244]

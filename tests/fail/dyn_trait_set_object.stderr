@@ -1,0 +1,5 @@
+error[E01245]: Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.
+ --> tests/fail/dyn_trait_set_object.tk:9:25
+   |
+ 9 | fn use_object(obj: dyn @{Readable, Writable}) -> i32 {
+   |                         ^

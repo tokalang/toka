@@ -1,0 +1,10 @@
+error[E01112]: Deprecated keyword 'let'; use 'auto' for variable declarations.
+ --> tests/fail/let_var_binding.tk:2:5
+   |
+ 2 |     let x = 1
+   |     ^
+error[E01244]: Deprecated keyword 'var'; use 'auto' for variable declarations.
+ --> tests/fail/let_var_binding.tk:7:5
+   |
+ 7 |     var y = 2
+   |     ^

@@ -56,11 +56,11 @@
 | 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail | capture mode 的失败矩阵可更细：`copy`、`cede`、`~`、borrow escape |
 | 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail | `string + string` 已补直接 fail case；`str + str` 可按需再补 |
 | 14. Unsafe / FFI | 基本锁定 | extern fn、大量 sys/libc 用例、raw alloc/free、cast、unsafe escape fail | public raw pointer API 限制已有 fail；建议补“raw/unsafe 命名豁免”正例或明确暂不豁免 |
-| 15. Common Mistakes | 基本有测试锚点 | `while`、position init、type-side `'T`、type-side `&T`、`let` / `var`、`for x in ...`、`dyn @{...}`、字符串 `+` 均已有 fail | 当前主要缺口转为诊断质量：部分错误仍落在较通用的 parser/sema 诊断上 |
+| 15. Common Mistakes | 基本有测试锚点 | `while`、position init、type-side `'T`、type-side `&T`、`let` / `var`、`for x in ...`、`dyn @{...}`、字符串 `+` 均已有 fail | 当前主要缺口转为诊断质量：`let` / `var` 与 `dyn @{...}` 已收紧为专用 parser diagnostic；普通字段误写 `.'field` 仍可后续优化 |
 
 ## 高优先级补测清单
 
-### P1：应尽快补的语法锁
+### P1：已补齐的最小语法锁
 
 1. Core payload / handle view contrast
 
@@ -98,7 +98,7 @@
    - `tests/fail/for_missing_auto.tk`
    - `tests/fail/string_concat_plus.tk`
 
-   其中 `let` / `var` 和 `dyn @{...}` 当前已经被拒绝，但诊断还比较通用；后续可作为诊断质量改进项。
+   其中 `let` / `var` 已收紧为 `E01112` / `E01244` 专用 parser diagnostic，`dyn @{...}` 已收紧为 `E01245`，避免落到泛泛的 `Expected ')'` 级联错误。`for x in ...` 和字符串 `+` 已有明确错误码，普通字段误写 `.'field` 仍可作为后续诊断友好度优化项。
 
 5. hatted parameter obligation
 
@@ -243,25 +243,19 @@
 
 ## 推荐下一阶段路线
 
-### 阶段 A：补最小语法锁
+### 阶段 A：诊断质量收口
 
-先补 P1 的几个 fail/pass 测试，不改语义，除非发现编译器实际接受了文档明确拒绝的语法。
+主干语法锁已经补齐，下一步优先把仍然过于通用的 parser / sema 错误改成面向 Toka 规则的专用诊断。
 
-目标：让公开语法文档中的硬规则都有测试证据。
+目标：让公开语法文档中的常见错误不仅被拒绝，而且能以稳定、可理解的错误码解释为什么被拒绝。
 
-### 阶段 B：处理 hatted 参数义务
-
-这是当前最需要设计判断的点。它连接了 payload/handle 分层、参数原地捕获、`cede`、PAL、可读性和诊断体验。
-
-目标：确定“带帽即契约”的编译器级规则边界。
-
-### 阶段 C：跨模块 / TKI 组合测试
+### 阶段 B：跨模块 / TKI 组合测试
 
 associated type projection、`pub import` re-export、dyn trait interface、generic impl `where:`、`@encap` visibility 的最小 source-less `.tki` 回放，以及 generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界都已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 
-### 阶段 D：文档回填
+### 阶段 C：文档回填
 
 测试补齐后，再同步 `docs/syntax.md` 与 `docs/syntax_zh.md`，把仍是风格建议的地方和已经是编译器硬规则的地方分清楚。
 
