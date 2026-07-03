@@ -88,46 +88,155 @@ bool Sema::allPathsReturn(Stmt *S) {
   return false;
 }
 
-bool Sema::allPathsJump(Stmt *S) {
+void Sema::mergeFlowExits(FlowSummary &dst, const FlowSummary &src) {
+  dst.HasReturnLikeExit = dst.HasReturnLikeExit || src.HasReturnLikeExit;
+  dst.BreakLabels.insert(src.BreakLabels.begin(), src.BreakLabels.end());
+  dst.ContinueLabels.insert(src.ContinueLabels.begin(),
+                            src.ContinueLabels.end());
+}
+
+Sema::FlowSummary Sema::summarizeFlow(Stmt *S) {
+  FlowSummary result;
   if (!S)
-    return false;
-  if (dynamic_cast<ReturnStmt *>(S) || dynamic_cast<UnreachableStmt *>(S))
-    return true;
+    return result;
+
+  if (dynamic_cast<ReturnStmt *>(S) || dynamic_cast<UnreachableStmt *>(S)) {
+    result.CanFallThrough = false;
+    result.HasReturnLikeExit = true;
+    return result;
+  }
+
   if (auto *B = dynamic_cast<BlockStmt *>(S)) {
+    bool canReachNext = true;
+    result.CanFallThrough = true;
     for (const auto &Sub : B->Statements) {
-      if (allPathsJump(Sub.get()))
-        return true;
+      if (!canReachNext)
+        break;
+      FlowSummary sub = summarizeFlow(Sub.get());
+      mergeFlowExits(result, sub);
+      canReachNext = sub.CanFallThrough;
     }
-    return false;
+    result.CanFallThrough = canReachNext;
+    return result;
   }
+
   if (auto *Unsafe = dynamic_cast<UnsafeStmt *>(S)) {
-    return allPathsJump(Unsafe->Statement.get());
+    return summarizeFlow(Unsafe->Statement.get());
   }
+
   if (auto *ES = dynamic_cast<ExprStmt *>(S)) {
-    Expr *E = ES->Expression.get();
-    if (dynamic_cast<BreakExpr *>(E) || dynamic_cast<ContinueExpr *>(E))
-      return true;
-    if (auto *If = dynamic_cast<IfExpr *>(E)) {
-      if (If->Else && allPathsJump(If->Then.get()) &&
-          allPathsJump(If->Else.get()))
-        return true;
-      return false;
-    }
-    if (auto *Match = dynamic_cast<MatchExpr *>(E)) {
-      for (const auto &Arm : Match->Arms) {
-        if (!allPathsJump(Arm->Body.get()))
-          return false;
-      }
-      return true;
-    }
-    if (auto *Loop = dynamic_cast<LoopExpr *>(E)) {
-      // Loop body jumping out counts as jump
-      if (allPathsJump(Loop->Body.get()))
-        return true;
-      return false;
-    }
+    return summarizeFlowExpr(ES->Expression.get());
   }
-  return false;
+
+  return result;
+}
+
+Sema::FlowSummary Sema::summarizeFlowExpr(Expr *E) {
+  FlowSummary result;
+  if (!E)
+    return result;
+
+  if (auto *Break = dynamic_cast<BreakExpr *>(E)) {
+    result.CanFallThrough = false;
+    result.BreakLabels.insert(Break->TargetLabel);
+    return result;
+  }
+
+  if (auto *Continue = dynamic_cast<ContinueExpr *>(E)) {
+    result.CanFallThrough = false;
+    result.ContinueLabels.insert(Continue->TargetLabel);
+    return result;
+  }
+
+  if (auto *If = dynamic_cast<IfExpr *>(E)) {
+    FlowSummary thenFlow = summarizeFlow(If->Then.get());
+    mergeFlowExits(result, thenFlow);
+    if (If->Else) {
+      FlowSummary elseFlow = summarizeFlow(If->Else.get());
+      mergeFlowExits(result, elseFlow);
+      result.CanFallThrough =
+          thenFlow.CanFallThrough || elseFlow.CanFallThrough;
+    } else {
+      result.CanFallThrough = true;
+    }
+    return result;
+  }
+
+  if (auto *Guard = dynamic_cast<GuardExpr *>(E)) {
+    FlowSummary thenFlow = summarizeFlow(Guard->Then.get());
+    mergeFlowExits(result, thenFlow);
+    if (Guard->Else) {
+      FlowSummary elseFlow = summarizeFlow(Guard->Else.get());
+      mergeFlowExits(result, elseFlow);
+      result.CanFallThrough =
+          thenFlow.CanFallThrough || elseFlow.CanFallThrough;
+    } else {
+      result.CanFallThrough = true;
+    }
+    return result;
+  }
+
+  if (auto *Match = dynamic_cast<MatchExpr *>(E)) {
+    result.CanFallThrough = false;
+    for (const auto &Arm : Match->Arms) {
+      FlowSummary armFlow = summarizeFlow(Arm->Body.get());
+      mergeFlowExits(result, armFlow);
+      result.CanFallThrough = result.CanFallThrough || armFlow.CanFallThrough;
+    }
+    return result;
+  }
+
+  if (auto *Loop = dynamic_cast<LoopExpr *>(E)) {
+    FlowSummary bodyFlow = summarizeFlow(Loop->Body.get());
+    result.HasReturnLikeExit = bodyFlow.HasReturnLikeExit;
+
+    bool hasLocalBreak = bodyFlow.BreakLabels.count("") > 0;
+    result.CanFallThrough = (Loop->Condition != nullptr) || hasLocalBreak;
+
+    for (const auto &label : bodyFlow.BreakLabels) {
+      if (!label.empty())
+        result.BreakLabels.insert(label);
+    }
+    for (const auto &label : bodyFlow.ContinueLabels) {
+      if (!label.empty())
+        result.ContinueLabels.insert(label);
+    }
+    return result;
+  }
+
+  if (auto *For = dynamic_cast<ForExpr *>(E)) {
+    FlowSummary bodyFlow = summarizeFlow(For->Body.get());
+    FlowSummary elseFlow;
+    if (For->ElseBody)
+      elseFlow = summarizeFlow(For->ElseBody.get());
+
+    result.HasReturnLikeExit =
+        bodyFlow.HasReturnLikeExit || elseFlow.HasReturnLikeExit;
+
+    bool hasLocalBreak = bodyFlow.BreakLabels.count("") > 0;
+    result.CanFallThrough =
+        hasLocalBreak || (For->ElseBody ? elseFlow.CanFallThrough : true);
+
+    for (const auto &label : bodyFlow.BreakLabels) {
+      if (!label.empty())
+        result.BreakLabels.insert(label);
+    }
+    for (const auto &label : bodyFlow.ContinueLabels) {
+      if (!label.empty())
+        result.ContinueLabels.insert(label);
+    }
+    result.BreakLabels.insert(elseFlow.BreakLabels.begin(),
+                              elseFlow.BreakLabels.end());
+    result.ContinueLabels.insert(elseFlow.ContinueLabels.begin(),
+                                 elseFlow.ContinueLabels.end());
+    return result;
+  }
+
+  return result;
+}
+
+bool Sema::allPathsJump(Stmt *S) {
+  return !summarizeFlow(S).CanFallThrough;
 }
 
 void Sema::checkStmt(Stmt *S) {
@@ -153,11 +262,11 @@ void Sema::checkStmt(Stmt *S) {
         }
         if (!isWarningExempt) {
           DiagnosticEngine::report(SubStmt->Loc, DiagID::WARN_UNREACHABLE_CODE);
-          break; // Avoid spamming
         }
+        break; // Avoid applying effects from unreachable statements.
       }
       checkStmt(SubStmt.get());
-      if (dynamic_cast<ReturnStmt *>(SubStmt.get())) {
+      if (!summarizeFlow(SubStmt.get()).CanFallThrough) {
         hasDiverged = true;
       }
     }

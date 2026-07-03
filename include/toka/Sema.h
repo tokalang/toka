@@ -336,6 +336,13 @@ private:
   };
   std::vector<ControlFlowInfo> m_ControlFlowStack;
 
+  struct FlowSummary {
+    bool CanFallThrough = true;
+    bool HasReturnLikeExit = false;
+    std::set<std::string> BreakLabels;
+    std::set<std::string> ContinueLabels;
+  };
+
   // Anonymous Records
   int AnonRecordCounter = 0;
   std::vector<std::unique_ptr<ShapeDecl>> SyntheticShapes;
@@ -419,6 +426,9 @@ private:
   // Control flow helpers
   bool allPathsReturn(Stmt *S);
   bool allPathsJump(Stmt *S);
+  FlowSummary summarizeFlow(Stmt *S);
+  FlowSummary summarizeFlowExpr(Expr *E);
+  void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
 
   // Type system helpers
   bool isLValue(const Expr *expr);

@@ -1,0 +1,16 @@
+fn main() -> i32 {
+    auto flag = true
+    auto x#: i32 = unset
+
+    if flag {
+        loop {
+            x = 1
+            break
+        }
+    } else {
+        x = 2
+    }
+
+    assert(x == 1 || x == 2, "x should be initialized by both branches")
+    return 0
+}

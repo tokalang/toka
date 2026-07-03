@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    auto x#: i32 = unset
+
+    loop {
+        break
+        x = 1
+    }
+
+    return x // EXPECT: error[E0410]
+}
