@@ -1734,8 +1734,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     CurrentScope->IsLoop = true;
     checkStmt(le->Body.get());
     exitScope();
+    bool bodyJumps = allPathsJump(le->Body.get());
     auto breakStates = m_ControlFlowStack[loopFlowIndex].BreakStates;
     m_ControlFlowStack[loopFlowIndex].BreakStates.clear();
+    auto continueStates = m_ControlFlowStack[loopFlowIndex].ContinueStates;
+    m_ControlFlowStack[loopFlowIndex].ContinueStates.clear();
+
+    if (!continueStates.empty()) {
+      std::vector<AnalysisState> loopBackStates;
+      if (!bodyJumps)
+        loopBackStates.push_back(captureAnalysisState());
+      loopBackStates.insert(loopBackStates.end(), continueStates.begin(),
+                            continueStates.end());
+      mergeAnalysisStates(loopBackStates, palBefore);
+    }
 
     for (const auto &name :
          collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
@@ -1945,16 +1957,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
     checkStmt(fe->Body.get());
-    for (const auto &name :
-         collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
-      error(fe, DiagID::ERR_SEMA_CANNOT_CEDE_MOVE_VALUE_INSIDE_A_LOOP_BECA,
-            getDisplayVariableName(name));
-    }
     std::string bodyType = m_ControlFlowStack.back().ExpectedType;
     auto bodyTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
     bool bodyJumps = allPathsJump(fe->Body.get());
     auto breakStates = m_ControlFlowStack[loopFlowIndex].BreakStates;
     m_ControlFlowStack[loopFlowIndex].BreakStates.clear();
+    auto continueStates = m_ControlFlowStack[loopFlowIndex].ContinueStates;
+    m_ControlFlowStack[loopFlowIndex].ContinueStates.clear();
+    bool bodyContinuesLoop = !bodyJumps || !continueStates.empty();
+
+    if (!continueStates.empty()) {
+      std::vector<AnalysisState> loopBackStates;
+      if (!bodyJumps)
+        loopBackStates.push_back(captureAnalysisState());
+      loopBackStates.insert(loopBackStates.end(), continueStates.begin(),
+                            continueStates.end());
+      mergeAnalysisStates(loopBackStates, palBefore);
+    }
+
+    for (const auto &name :
+         collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
+      error(fe, DiagID::ERR_SEMA_CANNOT_CEDE_MOVE_VALUE_INSIDE_A_LOOP_BECA,
+            getDisplayVariableName(name));
+    }
+
     if (!tookOver)
       m_ControlFlowStack.pop_back();
     exitScope();
@@ -1984,10 +2010,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (fe->ElseBody) {
-      if (bodyJumps && elseJumps) {
+      if (!bodyContinuesLoop && elseJumps) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
         PALCheckerState.restore(palBefore);
-      } else if (bodyJumps) {
+      } else if (!bodyContinuesLoop) {
         restoreVisibleAnalysisState(CurrentScope, masksElse, movedElse);
         PALCheckerState.restore(palElse);
       } else if (elseJumps) {
@@ -2012,7 +2038,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         PALCheckerState.mergeBranches(palBefore, palBody, true, palElse, true);
       }
     } else {
-      if (bodyJumps) {
+      if (!bodyContinuesLoop) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
         PALCheckerState.restore(palBefore);
       } else {
@@ -2237,6 +2263,27 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return toka::Type::fromString("void");
   } else if (auto *ce = dynamic_cast<ContinueExpr *>(E)) {
     // Continue target must be a loop
+    ControlFlowInfo *target = nullptr;
+    if (ce->TargetLabel.empty()) {
+      for (auto it = m_ControlFlowStack.rbegin();
+           it != m_ControlFlowStack.rend(); ++it) {
+        if (it->IsLoop) {
+          target = &(*it);
+          break;
+        }
+      }
+    } else {
+      for (auto it = m_ControlFlowStack.rbegin();
+           it != m_ControlFlowStack.rend(); ++it) {
+        if (it->Label == ce->TargetLabel && it->IsLoop) {
+          target = &(*it);
+          break;
+        }
+      }
+    }
+
+    if (target)
+      target->ContinueStates.push_back(captureAnalysisState());
     return toka::Type::fromString("void");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
     return checkCallExpr(Call);

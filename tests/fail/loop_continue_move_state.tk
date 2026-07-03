@@ -1,0 +1,16 @@
+shape Data(id: i32)
+
+fn main() -> i32 {
+    auto flag = true
+    auto ^p = new Data(id = 1)
+
+    loop {
+        if flag {
+            auto ^q = cede ^p // EXPECT: error[E04501]
+            continue
+        }
+        break
+    }
+
+    return 0
+}

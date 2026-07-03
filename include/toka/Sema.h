@@ -340,6 +340,7 @@ private:
     bool IsReceiver =
         false; // Whether this context expects a 'pass' or 'break' value
     std::vector<AnalysisState> BreakStates;
+    std::vector<AnalysisState> ContinueStates;
   };
   std::vector<ControlFlowInfo> m_ControlFlowStack;
 
