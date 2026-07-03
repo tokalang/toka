@@ -1,0 +1,18 @@
+shape Data(id: i32)
+
+fn main() -> i32 {
+    auto ^p = new Data(id = 1)
+    auto i# = 0
+
+    auto outer: void = loop i < 2 {
+        i += 1
+        loop {
+            auto ^taken = cede ^p // EXPECT: error[E04501]
+            if taken.id == 1 {
+                continue to outer
+            }
+        }
+    }
+
+    return 0
+}

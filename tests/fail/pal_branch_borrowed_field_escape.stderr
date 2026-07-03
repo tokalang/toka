@@ -1,0 +1,10 @@
+error[E0456]: Object 'b' (lived longer) cannot depend on 'local' (lived shorter)
+ --> tests/fail/pal_branch_borrowed_field_escape.tk:11:11
+    |
+ 11 |         b = Bound(&ref = &local) // EXPECT: error[E0456]
+    |           ^
+error[E0456]: Object 'b' (lived longer) cannot depend on 'other' (lived shorter)
+ --> tests/fail/pal_branch_borrowed_field_escape.tk:14:11
+    |
+ 14 |         b = Bound(&ref = &other) // EXPECT: error[E0456]
+    |           ^

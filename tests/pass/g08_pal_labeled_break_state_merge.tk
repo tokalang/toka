@@ -1,0 +1,13 @@
+fn main() -> i32 {
+    auto x#: i32 = unset
+
+    auto outer: void = loop {
+        loop {
+            x = 7
+            break to outer
+        }
+    }
+
+    assert(x == 7, "labeled break should carry initialization state")
+    return 0
+}

@@ -1,0 +1,15 @@
+shape Data(id: i32)
+
+fn main() -> i32 {
+    auto outer: void = loop {
+        loop {
+            auto ^p = new Data(id = 1)
+            auto ^taken = cede ^p
+            if taken.id == 1 {
+                break to outer
+            }
+        }
+    }
+
+    return 0
+}

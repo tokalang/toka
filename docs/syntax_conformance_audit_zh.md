@@ -50,7 +50,7 @@
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress、hatted parameter warning matrix 均有用例 | 后续可转向 handle 组合场景，而不是基础帽子规则 |
 | 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
-| 5a. PAL / Borrow Safety | 主体冻结 | `g08_pal_stress_test`、branch restore、loop local move、break / continue state merge、borrow / move fail cases | 后续转向精度审计与诊断，不继续扩展主体规则 |
+| 5a. PAL / Borrow Safety | 主体冻结 | `g08_pal_stress_test`、branch restore、loop local move、labeled break / continue、borrowed-field escape、borrow / move fail cases | 后续转向精度审计与诊断，不继续扩展主体规则 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
@@ -245,8 +245,9 @@
 - 主体压力：`tests/pass/g08_pal_stress_test.tk`、`tests/pass/g08_pal_stress_test_borrow.tk`
 - 分支状态：`tests/pass/g08_pal_if_branch_restore.tk`、`tests/pass/g08_pal_guard_branch_state.tk`、`tests/pass/g08_pal_match_branch_state.tk`
 - 循环状态：`tests/pass/g08_pal_loop_local_move.tk`、`tests/fail/move_in_loop.tk`、`tests/fail/move_direct_in_loop.tk`
-- `break` / `continue` 状态：`tests/pass/g08_loop_break_state_merge.tk`、`tests/pass/g08_for_break_or_state_merge.tk`、`tests/fail/loop_break_state_maybe_unset.tk`、`tests/fail/for_break_skips_or_unset.tk`、`tests/fail/loop_continue_move_state.tk`、`tests/fail/for_continue_move_state.tk`
+- `break` / `continue` 状态：`tests/pass/g08_loop_break_state_merge.tk`、`tests/pass/g08_for_break_or_state_merge.tk`、`tests/pass/g08_pal_labeled_break_state_merge.tk`、`tests/pass/g08_pal_labeled_break_local_move.tk`、`tests/pass/g08_pal_labeled_continue_local_move.tk`、`tests/fail/loop_break_state_maybe_unset.tk`、`tests/fail/for_break_skips_or_unset.tk`、`tests/fail/loop_continue_move_state.tk`、`tests/fail/for_continue_move_state.tk`、`tests/fail/pal_labeled_break_move_state.tk`、`tests/fail/pal_labeled_continue_move_state.tk`
 - 借用冲突：`tests/fail/fail_pal_move_locked.tk`、`tests/fail/fail_pal_path_prefix.tk`、`tests/fail/fail_pal_transient_locked.tk`、`tests/fail/borrow_field.tk`、`tests/fail/array_borrow_aliasing.tk`
+- 借用逃逸：`tests/fail/ref_life_bound.tk`、`tests/fail/call_elision_escape.tk`、`tests/fail/pal_branch_borrowed_field_escape.tk`
 
 ### 仍属后续精度工作的边界
 

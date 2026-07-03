@@ -1,0 +1,18 @@
+shape Bound(
+    &ref: i32
+)
+
+fn main() -> i32 {
+    auto flag = true
+    auto b: Bound
+
+    if flag {
+        auto local = 10
+        b = Bound(&ref = &local) // EXPECT: error[E0456]
+    } else {
+        auto other = 20
+        b = Bound(&ref = &other) // EXPECT: error[E0456]
+    }
+
+    return b.ref
+}

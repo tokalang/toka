@@ -1,0 +1,10 @@
+error[E04501]: Cannot cede/move value 'p' inside a loop because it is defined outside the loop
+ --> tests/fail/pal_labeled_break_move_state.tk:7:9
+   |
+ 7 |         loop {
+   |         ^
+error[E04501]: Cannot cede/move value 'p' inside a loop because it is defined outside the loop
+ --> tests/fail/pal_labeled_break_move_state.tk:6:24
+   |
+ 6 |     auto outer: void = loop {
+   |                        ^

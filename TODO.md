@@ -4,16 +4,28 @@ This document tracks unresolved core issues, known bugs, and technical debt that
 
 ## High Priority Compiler Architecture Issues (Discovered during Stdlib Hardening)
 
-### 1. Borrow Checker Flow Analysis Limitation
-**Status**: Unresolved / Workaround Applied (Sema Phase)
-**Severity**: High
-**Description**: 
-Currently, the borrow checker (`src/Sema_Expr.cpp`, `src/Sema_Stmt.cpp`) relies on a linear environment tracing mechanism rather than robust Control Flow Graph (CFG) Liveness Analysis. 
-If a variable is moved (`cede`) in one branch (e.g., `if`), and borrowed or moved in an exclusive mutually un-reachable branch (e.g., `else if`), the compiler erroneously flags it as `Use of moved value` (`ERR_USE_MOVED`).
-**Impact**: 
-This limitation severely restricts the flexibility of control flow when implementing complex standard library algorithms (e.g., Robin Hood displacement in `HashMap`). Developers are forced to extract movement operations outside the conditional scope or revert to fallback implementations.
-**Proposed Fix**: 
-Refactor branch condition environment merges (`Env_Out = Env_True INTERSECT Env_False`) to accurately track moved-states relative to flow execution paths.
+### 1. PAL Precision and Local Control-Flow Audit
+**Status**: Partially resolved / precision audit in progress (Sema Phase)
+**Severity**: Medium
+**Description**:
+The PAL checker is no longer only a linear environment tracer. The current Sema
+pipeline snapshots and merges `InitMask`, `Moved`, and `PALChecker` state for
+`if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`. The original
+mutually-exclusive-branch false-positive class has representative coverage.
+
+The remaining work is a precision audit, not a redesign of the 1.0 safety
+contract. The checker should keep rejecting hard-to-prove cases, but it needs
+direct tests for higher-order local-control combinations such as labeled
+`break` / `continue`, nested loop exits, branch-carried borrowed fields, and
+closure / async capture boundaries.
+**Impact**:
+Without this audit, PAL may remain correct but overly conservative or may have
+unlocked control-flow paths that are not directly regression-tested.
+**Proposed Fix**:
+Keep the local `AnalysisState` model and extend the test matrix around
+remaining PAL edge combinations. Only introduce a fuller CFG representation if
+the existing state merge model cannot express a concrete safe program that
+Toka 1.0 should accept.
 
 ### 2. LLVM PhysReg Copy CodeGen Crash
 **Status**: Unresolved / Mitigated via SOA (CodeGen Phase)
