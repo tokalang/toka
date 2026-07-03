@@ -154,4 +154,64 @@ void PALChecker::markMoved(const std::string& path) {
   }
 }
 
+PALChecker PALChecker::snapshot() const {
+  return *this;
+}
+
+void PALChecker::restore(const PALChecker& snapshot) {
+  *this = snapshot;
+}
+
+void PALChecker::mergeBranches(const PALChecker& base,
+                               const PALChecker& first,
+                               bool firstReachable,
+                               const PALChecker& second,
+                               bool secondReachable) {
+  if (!firstReachable && !secondReachable) {
+    restore(base);
+    return;
+  }
+  if (firstReachable && !secondReachable) {
+    restore(first);
+    return;
+  }
+  if (!firstReachable && secondReachable) {
+    restore(second);
+    return;
+  }
+
+  restore(first);
+
+  auto mergeState = [](PathState lhs, PathState rhs) {
+    if (lhs == PathState::BorrowedMut || rhs == PathState::BorrowedMut)
+      return PathState::BorrowedMut;
+    if (lhs == PathState::BorrowedShared || rhs == PathState::BorrowedShared)
+      return PathState::BorrowedShared;
+    return PathState::Free;
+  };
+
+  if (LedgerStack.size() < second.LedgerStack.size()) {
+    LedgerStack.resize(second.LedgerStack.size());
+  }
+
+  for (size_t i = 0; i < second.LedgerStack.size(); ++i) {
+    auto& dst = LedgerStack[i].Map;
+    for (const auto& [path, state] : second.LedgerStack[i].Map) {
+      auto found = dst.find(path);
+      if (found == dst.end()) {
+        dst[path] = state;
+      } else {
+        found->second = mergeState(found->second, state);
+      }
+    }
+  }
+
+  for (const auto& path : second.TransientBorrows) {
+    if (std::find(TransientBorrows.begin(), TransientBorrows.end(), path) ==
+        TransientBorrows.end()) {
+      TransientBorrows.push_back(path);
+    }
+  }
+}
+
 } // namespace toka

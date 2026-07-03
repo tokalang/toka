@@ -81,6 +81,15 @@ public:
   // Clear tracking for a variable that has moved
   void markMoved(const std::string& path);
 
+  // Snapshot helpers for local control-flow analysis.
+  PALChecker snapshot() const;
+  void restore(const PALChecker& snapshot);
+  void mergeBranches(const PALChecker& base,
+                     const PALChecker& first,
+                     bool firstReachable,
+                     const PALChecker& second,
+                     bool secondReachable);
+
 private:
   struct LedgerScope {
     std::map<std::string, PathState> Map;

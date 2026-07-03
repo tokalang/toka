@@ -1273,6 +1273,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
     }
+    auto palBefore = PALCheckerState.snapshot();
 
     checkStmt(ie->Then.get());
 
@@ -1282,6 +1283,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       masksThen[pair.first] = pair.second.InitMask;
       movedThen[pair.first] = pair.second.Moved;
     }
+    auto palThen = PALCheckerState.snapshot();
 
     // Restore if narrowed
     if (narrowed) {
@@ -1310,19 +1312,24 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       for (auto &pair : movedBefore) {
         CurrentScope->Symbols[pair.first].Moved = pair.second;
       }
+      PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
       checkStmt(ie->Else.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
       elseReturns = allPathsJump(ie->Else.get());
+      auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
 
       // Intersection Rule
       if (thenReturns && elseReturns) {
-        // Unreachable after if. Just leave the state as Else state.
+        // No reachable continuation; keep the incoming PAL state for any
+        // subsequent dead-code diagnostics.
+        PALCheckerState.restore(palBefore);
       } else if (thenReturns) {
         // State is purely from Else branch. Leave as is.
+        PALCheckerState.restore(palElse);
       } else if (elseReturns) {
         // State is purely from Then branch
         for (auto &pair : CurrentScope->Symbols) {
@@ -1331,6 +1338,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (movedThen.count(pair.first))
             pair.second.Moved = movedThen[pair.first];
         }
+        PALCheckerState.restore(palThen);
       } else {
         // Actual Intersection
         for (auto &pair : CurrentScope->Symbols) {
@@ -1339,6 +1347,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           pair.second.Moved = pair.second.Moved || thenMoved;
         }
+        PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
       }
     } else {
       for (auto &pair : CurrentScope->Symbols) {
@@ -1349,6 +1358,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
             pair.second.Moved = movedBefore[pair.first] || thenMoved;
         }
+      }
+      if (thenReturns) {
+        PALCheckerState.restore(palBefore);
+      } else {
+        PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
       }
     }
 
