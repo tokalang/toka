@@ -575,6 +575,12 @@ value before capturing.
 
 When a closure is converted to `dyn fn`, any captured outer variable must be listed explicitly with `cede` or `copy`. This keeps owned, movable closures from silently storing borrowed references to local state.
 
+Ordinary `fn` closures may use implicit borrow captures while they remain local.
+If such a closure escapes, for example by being returned from the current
+function, those implicit captures are checked as lifetime dependencies. Use
+`[cede ...]` or `[copy ...]` when the escaping closure should own or copy the
+captured state instead of borrowing it.
+
 ## 13. Strings, Text, And Formatting
 
 String-like values appear in several layers:

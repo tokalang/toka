@@ -2833,4 +2833,37 @@ bool Sema::checkVisibility(ASTNode *Node, ShapeDecl *SD) {
   return true;
 }
 
+bool Sema::isBorrowLikeType(std::shared_ptr<toka::Type> type) const {
+  std::set<std::string> visited;
+  std::function<bool(std::shared_ptr<toka::Type>)> walk =
+      [&](std::shared_ptr<toka::Type> ty) -> bool {
+    if (!ty)
+      return false;
+    if (ty->isReference())
+      return true;
+    if (auto *shape = dynamic_cast<ShapeType *>(ty.get())) {
+      for (const auto &arg : shape->GenericArgs) {
+        if (walk(arg))
+          return true;
+      }
+      std::string name = ty->getSoulName();
+      if (name == "str" || name == "bytes")
+        return true;
+      if (visited.count(name) == 0) {
+        visited.insert(name);
+        auto it = ShapeMap.find(name);
+        if (it != ShapeMap.end()) {
+          ShapeDecl *SD = it->second;
+          for (const auto &member : SD->Members) {
+            if (walk(getPhysicalType(member)))
+              return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+  return walk(type);
+}
+
 } // namespace toka

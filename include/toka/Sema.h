@@ -387,6 +387,7 @@ private:
                                           SourceLocation loc);
   bool validateDynTraitObjectSafetyInType(std::shared_ptr<toka::Type> type,
                                           SourceLocation loc);
+  bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
   std::map<std::string, std::string>

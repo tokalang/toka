@@ -17,7 +17,9 @@ The remaining work is a precision audit, not a redesign of the 1.0 safety
 contract. The checker should keep rejecting hard-to-prove cases, but it needs
 direct tests for higher-order local-control combinations such as labeled
 `break` / `continue`, nested loop exits, branch-carried borrowed fields, and
-closure / async capture boundaries.
+async capture / suspension boundaries. Ordinary `fn` closure escape with
+implicit borrow captures is now rejected through the same lifetime-dependency
+return path used for other borrow-like values.
 **Impact**:
 Without this audit, PAL may remain correct but overly conservative or may have
 unlocked control-flow paths that are not directly regression-tested.

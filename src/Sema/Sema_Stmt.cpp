@@ -430,8 +430,41 @@ void Sema::checkStmt(Stmt *S) {
         return false;
       };
 
+      std::function<bool(Expr *)> carriesLifeDependencyExpr = [&](Expr *E) -> bool {
+        if (!E)
+          return false;
+        if (auto *Cast = dynamic_cast<CastExpr *>(E))
+          return carriesLifeDependencyExpr(Cast->Expression.get());
+        if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
+          SymbolInfo info;
+          if (CurrentScope->lookup(Var->Name, info)) {
+            return !info.BorrowedFrom.empty() || !info.LifeDependencySet.empty();
+          }
+        }
+        if (auto *Clo = dynamic_cast<ClosureExpr *>(E)) {
+          return !Clo->ImplicitCaptures.empty();
+        }
+        if (auto *Init = dynamic_cast<InitStructExpr *>(E)) {
+          for (auto &Mem : Init->Members) {
+            if (carriesLifeDependencyExpr(Mem.second.get()))
+              return true;
+          }
+        } else if (auto *Anon = dynamic_cast<AnonymousRecordExpr *>(E)) {
+          for (auto &Field : Anon->Fields) {
+            if (carriesLifeDependencyExpr(Field.second.get()))
+              return true;
+          }
+        } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
+          if (Bin->Op == "=")
+            return carriesLifeDependencyExpr(Bin->RHS.get());
+        }
+        return false;
+      };
+
       bool isTrackedRet =
-          isBorrowLikeType(expectedRetObj) || returnsBorrowExpr(Ret->ReturnValue.get());
+          isBorrowLikeType(expectedRetObj) || isBorrowLikeType(ExprTypeObj) ||
+          returnsBorrowExpr(Ret->ReturnValue.get()) ||
+          carriesLifeDependencyExpr(Ret->ReturnValue.get());
 
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;
@@ -512,6 +545,11 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
               SymbolInfo info;
               if (CurrentScope->lookup(Var->Name, info)) {
+                if (!info.BorrowedFrom.empty()) {
+                  returnedDeps.insert(info.BorrowedFrom);
+                }
+                returnedDeps.insert(info.LifeDependencySet.begin(),
+                                    info.LifeDependencySet.end());
                 if (info.IsReference() || isBorrowLikeType(info.TypeObj)) {
                   bool contributedDeps = false;
                   // It depends on whatever 'info' borrowed from
@@ -578,6 +616,12 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
                 if (Bin->Op == "=") {
                     collectDeps(Bin->RHS.get());
+                }
+            }
+            // Case 6b: Closure expression with implicit borrow captures
+            else if (auto *Clo = dynamic_cast<ClosureExpr *>(E)) {
+                for (const auto &capture : Clo->ImplicitCaptures) {
+                    recordDependencyPath(capture);
                 }
             }
             // Case 7: MemberExpr (e.g., e.&val)
@@ -1072,6 +1116,17 @@ void Sema::checkStmt(Stmt *S) {
         }
       }
       m_LastLifeDependencies.clear();
+    }
+
+    if (auto *clo = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
+      for (const auto &dep : clo->ImplicitCaptures) {
+        Info.LifeDependencySet.insert(dep);
+        SymbolInfo *depInfo = nullptr;
+        if (CurrentScope->findSymbol(dep, depInfo)) {
+          Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
+                                        depInfo->LifeDependencySet.end());
+        }
+      }
     }
 
     if (morph == "&" && !m_LastBorrowSource.empty()) {

@@ -1530,8 +1530,56 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       if (hasExplicitDeps) {
           for (const auto &dep : Fn->LifeDependencies) {
-             std::string argVar = mapParamToArg(dep);
-             if (!argVar.empty()) m_LastLifeDependencies.insert(argVar);
+             for (size_t i = 0; i < Fn->Args.size(); ++i) {
+                if (Fn->Args[i].Name != dep)
+                   continue;
+                if (i >= Call->Args.size())
+                   continue;
+
+                std::string argVar = getStringifyPath(Call->Args[i].get());
+                if (argVar.empty())
+                   continue;
+
+                bool isCurrentFunctionParam = false;
+                if (CurrentFunction) {
+                  std::string baseArg = argVar;
+                  size_t dotPos = baseArg.find('.');
+                  if (dotPos != std::string::npos)
+                    baseArg = baseArg.substr(0, dotPos);
+                  for (const auto &arg : CurrentFunction->Args) {
+                    if (arg.Name == baseArg) {
+                      isCurrentFunctionParam = true;
+                      break;
+                    }
+                  }
+                }
+
+                bool contributedDeps = false;
+                SymbolInfo *argInfo = nullptr;
+                if (auto *var = dynamic_cast<VariableExpr *>(Call->Args[i].get())) {
+                  if (CurrentScope->findSymbol(var->Name, argInfo)) {
+                    if (!argInfo->BorrowedFrom.empty()) {
+                      m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                      contributedDeps = true;
+                    }
+                    size_t before = m_LastLifeDependencies.size();
+                    m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                  argInfo->LifeDependencySet.end());
+                    if (m_LastLifeDependencies.size() != before)
+                      contributedDeps = true;
+                  }
+                }
+
+                auto argResolvedType = Call->Args[i]->ResolvedType;
+                if (!argResolvedType && argInfo)
+                  argResolvedType = argInfo->TypeObj;
+
+                if (contributedDeps || isCurrentFunctionParam ||
+                    !isBorrowLikeType(argResolvedType)) {
+                  m_LastLifeDependencies.insert(argVar);
+                }
+                break;
+             }
           }
       }
 

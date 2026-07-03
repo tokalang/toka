@@ -2655,7 +2655,67 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (hasExplicitDeps) {
                 for (const auto &dep : FD->LifeDependencies) {
                    std::string argVar = mapParamToArg(dep);
-                   if (!argVar.empty()) m_LastLifeDependencies.insert(argVar);
+                   if (argVar.empty())
+                     continue;
+
+                   bool isCurrentFunctionParam = false;
+                   if (CurrentFunction) {
+                     std::string baseArg = argVar;
+                     size_t dotPos = baseArg.find('.');
+                     if (dotPos != std::string::npos)
+                       baseArg = baseArg.substr(0, dotPos);
+                     for (const auto &arg : CurrentFunction->Args) {
+                       if (arg.Name == baseArg) {
+                         isCurrentFunctionParam = true;
+                         break;
+                       }
+                     }
+                   }
+
+                   SymbolInfo *argInfo = nullptr;
+                   std::shared_ptr<toka::Type> argResolvedType = nullptr;
+                   bool contributedDeps = false;
+
+                   if (Type::stripMorphology(dep) == "self") {
+                     if (auto *selfVar = dynamic_cast<VariableExpr *>(Met->Object.get())) {
+                       if (CurrentScope->findSymbol(selfVar->Name, argInfo)) {
+                         argResolvedType = argInfo->TypeObj;
+                       }
+                     } else {
+                       argResolvedType = Met->Object ? Met->Object->ResolvedType : nullptr;
+                     }
+                   } else {
+                     for (size_t i = 0; i < FD->Args.size(); ++i) {
+                       if (FD->Args[i].Name != dep || i == 0 || (i - 1) >= Met->Args.size())
+                         continue;
+                       Expr *argExpr = Met->Args[i - 1].get();
+                       argResolvedType = argExpr ? argExpr->ResolvedType : nullptr;
+                       if (auto *var = dynamic_cast<VariableExpr *>(argExpr)) {
+                         if (CurrentScope->findSymbol(var->Name, argInfo)) {
+                           if (!argResolvedType)
+                             argResolvedType = argInfo->TypeObj;
+                         }
+                       }
+                       break;
+                     }
+                   }
+
+                   if (argInfo) {
+                     if (!argInfo->BorrowedFrom.empty()) {
+                       m_LastLifeDependencies.insert(argInfo->BorrowedFrom);
+                       contributedDeps = true;
+                     }
+                     size_t before = m_LastLifeDependencies.size();
+                     m_LastLifeDependencies.insert(argInfo->LifeDependencySet.begin(),
+                                                   argInfo->LifeDependencySet.end());
+                     if (m_LastLifeDependencies.size() != before)
+                       contributedDeps = true;
+                   }
+
+                   if (contributedDeps || isCurrentFunctionParam ||
+                       !isBorrowLikeType(argResolvedType)) {
+                     m_LastLifeDependencies.insert(argVar);
+                   }
                 }
             }
         }

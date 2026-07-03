@@ -293,6 +293,10 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
     }
   }
 
+  for (const auto &name : Clo->ImplicitCaptures) {
+    m_LastLifeDependencies.insert(name);
+  }
+
   exitScope();
   m_AccessedVariables = oldAccessed;
   CurrentFunctionReturnType = oldFuncRetType;

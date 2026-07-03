@@ -137,12 +137,17 @@
 
 4. Closure capture fail matrix
 
-   已补两个最小 fail 锁：
+   已补最小 fail 锁：
 
    - `tests/fail/closure_cede_capture_consumes.tk`
    - `tests/fail/closure_dyn_implicit_capture_escape.tk`
+   - `tests/fail/closure_fn_implicit_capture_escape.tk`
 
-   这确认了 `[cede env]` 会消费外层变量，并且转换为 `dyn fn` 的 owned closure 不能隐式捕获外部变量；需要显式 `[cede ...]` 或 `[copy ...]`。本轮补上 `tests/fail/closure_copy_capture_resource.tk`，锁定 `[copy ...]` 不能浅拷资源所有权。后续如果继续细化，可补非 `dyn fn` 闭包的局部/逃逸边界。
+   这确认了 `[cede env]` 会消费外层变量，转换为 `dyn fn` 的 owned closure
+   不能隐式捕获外部变量，普通 `fn` 闭包若带隐式借用捕获也不能作为返回值逃逸。
+   需要保存闭包状态时应显式 `[cede ...]` 或 `[copy ...]`。本轮补上
+   `tests/fail/closure_copy_capture_resource.tk`，锁定 `[copy ...]` 不能浅拷资源所有权。
+   后续如果继续细化，应集中在 async suspension/capture 边界，而不是基础闭包逃逸。
 
 5. Nullable handle matrix
 
