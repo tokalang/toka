@@ -1,0 +1,17 @@
+fn main() -> i32 {
+    auto flag = true
+    auto x#: i32 = unset
+
+    loop {
+        if flag {
+            x = 1
+            break
+        } else {
+            x = 2
+            break
+        }
+    }
+
+    assert(x == 1 || x == 2, "x should be initialized by all break paths")
+    return 0
+}

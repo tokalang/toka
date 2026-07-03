@@ -326,6 +326,12 @@ private:
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity
 
+  struct AnalysisState {
+    std::map<std::string, uint64_t> InitMasks;
+    std::map<std::string, bool> Moved;
+    PALChecker PAL;
+  };
+
   struct ControlFlowInfo {
     std::string Label;
     std::string ExpectedType;
@@ -333,6 +339,7 @@ private:
     bool IsLoop;
     bool IsReceiver =
         false; // Whether this context expects a 'pass' or 'break' value
+    std::vector<AnalysisState> BreakStates;
   };
   std::vector<ControlFlowInfo> m_ControlFlowStack;
 
@@ -429,6 +436,9 @@ private:
   FlowSummary summarizeFlow(Stmt *S);
   FlowSummary summarizeFlowExpr(Expr *E);
   void mergeFlowExits(FlowSummary &dst, const FlowSummary &src);
+  AnalysisState captureAnalysisState();
+  void mergeAnalysisStates(const std::vector<AnalysisState> &states,
+                           const PALChecker &palBase);
 
   // Type system helpers
   bool isLValue(const Expr *expr);

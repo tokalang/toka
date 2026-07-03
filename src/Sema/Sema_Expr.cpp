@@ -80,6 +80,55 @@ static void restoreVisibleAnalysisState(
   }
 }
 
+Sema::AnalysisState Sema::captureAnalysisState() {
+  AnalysisState state;
+  state.InitMasks = captureVisibleInitMasks(CurrentScope);
+  state.Moved = captureVisibleMoved(CurrentScope);
+  state.PAL = PALCheckerState.snapshot();
+  return state;
+}
+
+void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
+                               const PALChecker &palBase) {
+  if (states.empty())
+    return;
+
+  std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
+  std::map<std::string, bool> mergedMoved = states.front().Moved;
+  PALChecker mergedPAL = states.front().PAL;
+
+  for (size_t i = 1; i < states.size(); ++i) {
+    const auto &state = states[i];
+
+    for (const auto &pair : state.InitMasks) {
+      if (!mergedMasks.count(pair.first))
+        mergedMasks[pair.first] = 0;
+    }
+    for (auto &pair : mergedMasks) {
+      uint64_t mask =
+          state.InitMasks.count(pair.first) ? state.InitMasks.at(pair.first) : 0;
+      pair.second &= mask;
+    }
+
+    for (const auto &pair : state.Moved) {
+      if (!mergedMoved.count(pair.first))
+        mergedMoved[pair.first] = false;
+    }
+    for (auto &pair : mergedMoved) {
+      bool moved = state.Moved.count(pair.first) ? state.Moved.at(pair.first)
+                                                 : false;
+      pair.second = pair.second || moved;
+    }
+
+    PALCheckerState.restore(mergedPAL);
+    PALCheckerState.mergeBranches(palBase, mergedPAL, true, state.PAL, true);
+    mergedPAL = PALCheckerState.snapshot();
+  }
+
+  restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved);
+  PALCheckerState.restore(mergedPAL);
+}
+
 static std::vector<std::string> collectLoopEscapingMoves(
     Scope *ScopePtr, const std::map<std::string, bool> &before) {
   std::vector<std::string> names;
@@ -1670,6 +1719,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
       m_ControlFlowStack.push_back({"", "void", nullptr, true, isReceiver});
     }
+    size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
 
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
@@ -1684,6 +1734,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     CurrentScope->IsLoop = true;
     checkStmt(le->Body.get());
     exitScope();
+    auto breakStates = m_ControlFlowStack[loopFlowIndex].BreakStates;
+    m_ControlFlowStack[loopFlowIndex].BreakStates.clear();
 
     for (const auto &name :
          collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
@@ -1714,6 +1766,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         pair.second.Moved = entryMoved || bodyMoved;
       }
       PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
+    }
+
+    if (!breakStates.empty()) {
+      std::vector<AnalysisState> afterStates;
+      if (le->Condition)
+        afterStates.push_back(captureAnalysisState());
+      afterStates.insert(afterStates.end(), breakStates.begin(),
+                         breakStates.end());
+      mergeAnalysisStates(afterStates, palBefore);
     }
 
     if (!tookOver)
@@ -1882,6 +1943,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
       m_ControlFlowStack.push_back({"", "void", nullptr, true, isReceiver});
     }
+    size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
     checkStmt(fe->Body.get());
     for (const auto &name :
          collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
@@ -1891,6 +1953,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::string bodyType = m_ControlFlowStack.back().ExpectedType;
     auto bodyTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
     bool bodyJumps = allPathsJump(fe->Body.get());
+    auto breakStates = m_ControlFlowStack[loopFlowIndex].BreakStates;
+    m_ControlFlowStack[loopFlowIndex].BreakStates.clear();
     if (!tookOver)
       m_ControlFlowStack.pop_back();
     exitScope();
@@ -1968,6 +2032,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
         PALCheckerState.mergeBranches(palBefore, palBody, true, palBefore, true);
       }
+    }
+
+    if (!breakStates.empty()) {
+      bool normalAfterReachable = !fe->ElseBody || !(bodyJumps && elseJumps);
+      std::vector<AnalysisState> afterStates;
+      if (normalAfterReachable)
+        afterStates.push_back(captureAnalysisState());
+      afterStates.insert(afterStates.end(), breakStates.begin(),
+                         breakStates.end());
+      mergeAnalysisStates(afterStates, palBefore);
     }
 
     if (isReceiver) {
@@ -2150,6 +2224,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (target) {
+      target->BreakStates.push_back(captureAnalysisState());
       if (valType != "void") {
         if (target->ExpectedType == "void") {
           target->ExpectedType = valType;
