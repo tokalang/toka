@@ -1,0 +1,17 @@
+shape Data(id: i32)
+
+fn main() -> i32 {
+    auto selector = 1
+    auto ^p# = new Data(id = 1)
+
+    match selector {
+        0 => {
+            auto ^taken = cede ^p
+        }
+        _ => {
+            p.id = 2
+        }
+    }
+
+    return 0
+}

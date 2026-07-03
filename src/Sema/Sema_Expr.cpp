@@ -2571,7 +2571,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     std::string targetPath = getStringifyPath(me->Target.get());
+    std::map<std::string, uint64_t> masksBefore;
+    std::map<std::string, bool> movedBefore;
+    for (auto &pair : CurrentScope->Symbols) {
+      masksBefore[pair.first] = pair.second.InitMask;
+      movedBefore[pair.first] = pair.second.Moved;
+    }
+    auto palBefore = PALCheckerState.snapshot();
+    bool hasReachableArm = false;
+    std::map<std::string, uint64_t> mergedMasks;
+    std::map<std::string, bool> mergedMoved;
+    PALChecker mergedPAL = palBefore;
+
+    auto restoreMatchEntryState = [&]() {
+      for (auto &pair : masksBefore) {
+        CurrentScope->Symbols[pair.first].InitMask = pair.second;
+      }
+      for (auto &pair : movedBefore) {
+        CurrentScope->Symbols[pair.first].Moved = pair.second;
+      }
+      PALCheckerState.restore(palBefore);
+    };
+
     for (auto &arm : me->Arms) {
+      restoreMatchEntryState();
       enterScope();
       checkPattern(arm->Pat.get(), targetType, false, targetPath);
       if (arm->Guard) {
@@ -2597,8 +2620,50 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       } else if (armType != "void" && !isTypeCompatible(resultTypeObj, armTypeObj)) {
         error(me, DiagID::ERR_BRANCH_TYPE_MISMATCH, "match", resultType, armType);
       }
-      
+
       exitScope();
+
+      if (!allPathsJump(arm->Body.get())) {
+        if (!hasReachableArm) {
+          for (auto &pair : CurrentScope->Symbols) {
+            mergedMasks[pair.first] = pair.second.InitMask;
+            mergedMoved[pair.first] = pair.second.Moved;
+          }
+          mergedPAL = PALCheckerState.snapshot();
+          hasReachableArm = true;
+        } else {
+          for (auto &pair : CurrentScope->Symbols) {
+            uint64_t armMask = pair.second.InitMask;
+            if (mergedMasks.count(pair.first))
+              mergedMasks[pair.first] &= armMask;
+            else
+              mergedMasks[pair.first] = armMask;
+
+            bool armMoved = pair.second.Moved;
+            if (mergedMoved.count(pair.first))
+              mergedMoved[pair.first] = mergedMoved[pair.first] || armMoved;
+            else
+              mergedMoved[pair.first] = armMoved;
+          }
+
+          PALChecker nextMerged = mergedPAL;
+          nextMerged.mergeBranches(palBefore, mergedPAL, true,
+                                   PALCheckerState.snapshot(), true);
+          mergedPAL = nextMerged;
+        }
+      }
+    }
+
+    if (hasReachableArm) {
+      for (auto &pair : CurrentScope->Symbols) {
+        if (mergedMasks.count(pair.first))
+          pair.second.InitMask = mergedMasks[pair.first];
+        if (mergedMoved.count(pair.first))
+          pair.second.Moved = mergedMoved[pair.first];
+      }
+      PALCheckerState.restore(mergedPAL);
+    } else {
+      restoreMatchEntryState();
     }
 
     if (isReceiver && resultType == "void") {
