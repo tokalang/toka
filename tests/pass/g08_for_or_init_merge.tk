@@ -1,0 +1,14 @@
+import std/vec::Vec
+
+fn main() -> i32 {
+    auto items# = Vec<i32>::with_capacity(0)
+    auto x#: i32 = unset
+
+    for auto i in items {
+        x = i
+    } or {
+        x = 0
+    }
+
+    return x
+}

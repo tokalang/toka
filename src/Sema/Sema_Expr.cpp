@@ -43,6 +43,43 @@ static std::map<std::string, bool> captureVisibleUniqueMoved(Scope *ScopePtr) {
   return moved;
 }
 
+static std::map<std::string, uint64_t> captureVisibleInitMasks(Scope *ScopePtr) {
+  std::map<std::string, uint64_t> masks;
+  for (Scope *S = ScopePtr; S; S = S->Parent) {
+    for (const auto &pair : S->Symbols) {
+      if (!masks.count(pair.first))
+        masks[pair.first] = pair.second.InitMask;
+    }
+  }
+  return masks;
+}
+
+static std::map<std::string, bool> captureVisibleMoved(Scope *ScopePtr) {
+  std::map<std::string, bool> moved;
+  for (Scope *S = ScopePtr; S; S = S->Parent) {
+    for (const auto &pair : S->Symbols) {
+      if (!moved.count(pair.first))
+        moved[pair.first] = pair.second.Moved;
+    }
+  }
+  return moved;
+}
+
+static void restoreVisibleAnalysisState(
+    Scope *ScopePtr, const std::map<std::string, uint64_t> &masks,
+    const std::map<std::string, bool> &moved) {
+  for (const auto &pair : masks) {
+    SymbolInfo *info = nullptr;
+    if (ScopePtr->findSymbol(pair.first, info) && info)
+      info->InitMask = pair.second;
+  }
+  for (const auto &pair : moved) {
+    SymbolInfo *info = nullptr;
+    if (ScopePtr->findSymbol(pair.first, info) && info)
+      info->Moved = pair.second;
+  }
+}
+
 static std::vector<std::string> collectLoopEscapingMoves(
     Scope *ScopePtr, const std::map<std::string, bool> &before) {
   std::vector<std::string> names;
@@ -1820,7 +1857,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
     }
 
+    auto masksBefore = captureVisibleInitMasks(CurrentScope);
+    auto movedBefore = captureVisibleMoved(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
+    auto palBefore = PALCheckerState.snapshot();
 
     enterScope();
     CurrentScope->IsLoop = true;
@@ -1850,26 +1890,92 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     std::string bodyType = m_ControlFlowStack.back().ExpectedType;
     auto bodyTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
+    bool bodyJumps = allPathsJump(fe->Body.get());
     if (!tookOver)
       m_ControlFlowStack.pop_back();
+    exitScope();
+    auto masksBody = captureVisibleInitMasks(CurrentScope);
+    auto movedBody = captureVisibleMoved(CurrentScope);
+    auto palBody = PALCheckerState.snapshot();
 
     std::string elseType = "void";
     std::shared_ptr<toka::Type> elseTypeObj;
+    bool elseJumps = false;
+    std::map<std::string, uint64_t> masksElse = masksBefore;
+    std::map<std::string, bool> movedElse = movedBefore;
+    PALChecker palElse = palBefore;
     if (fe->ElseBody) {
+      restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
+      PALCheckerState.restore(palBefore);
+
       m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
       checkStmt(fe->ElseBody.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
+      elseJumps = allPathsJump(fe->ElseBody.get());
+      masksElse = captureVisibleInitMasks(CurrentScope);
+      movedElse = captureVisibleMoved(CurrentScope);
+      palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
     }
-    exitScope();
+
+    if (fe->ElseBody) {
+      if (bodyJumps && elseJumps) {
+        restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
+        PALCheckerState.restore(palBefore);
+      } else if (bodyJumps) {
+        restoreVisibleAnalysisState(CurrentScope, masksElse, movedElse);
+        PALCheckerState.restore(palElse);
+      } else if (elseJumps) {
+        restoreVisibleAnalysisState(CurrentScope, masksBody, movedBody);
+        PALCheckerState.restore(palBody);
+      } else {
+        for (auto &pair : masksBefore) {
+          SymbolInfo *info = nullptr;
+          if (!CurrentScope->findSymbol(pair.first, info) || !info)
+            continue;
+          uint64_t bodyMask =
+              masksBody.count(pair.first) ? masksBody[pair.first] : 0;
+          uint64_t elseMask =
+              masksElse.count(pair.first) ? masksElse[pair.first] : 0;
+          info->InitMask = bodyMask & elseMask;
+          bool bodyMoved =
+              movedBody.count(pair.first) ? movedBody[pair.first] : false;
+          bool elseMoved =
+              movedElse.count(pair.first) ? movedElse[pair.first] : false;
+          info->Moved = bodyMoved || elseMoved;
+        }
+        PALCheckerState.mergeBranches(palBefore, palBody, true, palElse, true);
+      }
+    } else {
+      if (bodyJumps) {
+        restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
+        PALCheckerState.restore(palBefore);
+      } else {
+        for (auto &pair : masksBefore) {
+          SymbolInfo *info = nullptr;
+          if (!CurrentScope->findSymbol(pair.first, info) || !info)
+            continue;
+          uint64_t entryMask = pair.second;
+          uint64_t bodyMask =
+              masksBody.count(pair.first) ? masksBody[pair.first] : 0;
+          info->InitMask = entryMask & bodyMask;
+          bool entryMoved =
+              movedBefore.count(pair.first) ? movedBefore[pair.first] : false;
+          bool bodyMoved =
+              movedBody.count(pair.first) ? movedBody[pair.first] : false;
+          info->Moved = entryMoved || bodyMoved;
+        }
+        PALCheckerState.mergeBranches(palBefore, palBody, true, palBefore, true);
+      }
+    }
 
     if (isReceiver) {
-      if (bodyType == "void" && !allPathsJump(fe->Body.get()))
+      if (bodyType == "void" && !bodyJumps)
         error(fe->Body.get(), DiagID::ERR_YIELD_VALUE_REQUIRED, "for loop");
       if (!fe->ElseBody)
         error(fe, DiagID::ERR_YIELD_OR_REQUIRED, "for");
-      else if (elseType == "void" && !allPathsJump(fe->ElseBody.get()))
+      else if (elseType == "void" && !elseJumps)
         error(fe->ElseBody.get(), DiagID::ERR_YIELD_VALUE_REQUIRED,
               "'or' block");
     }
