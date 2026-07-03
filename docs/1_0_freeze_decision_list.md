@@ -47,10 +47,11 @@ later release.
   function, but calls do not require inspecting the callee body. Call sites
   consume the callee signature, and callees must validate that their bodies
   honor the dependencies declared in the signature.
-- PAL conflict model: disjoint field borrows are allowed, while overlapping path
-  prefixes conflict. Moving or `cede`-ing a value with an active borrow is an
-  error. If a hard-to-prove case cannot be verified locally, 1.0 should reject
-  it rather than weaken the safety contract.
+- PAL path model: disjoint field borrows are allowed, and overlapping path
+  prefixes are the unit that PAL uses to check possible conflicts. Moving or
+  `cede`-ing a value with an active borrow is an error. If a hard-to-prove case
+  cannot be verified locally, 1.0 should reject it rather than weaken the
+  safety contract.
 - Interior mutability boundary: payload-side `#` can express local interior
   mutability, but it is not a thread-safety proof. Cross-thread sharing must be
   mediated by appropriate library types and trait bounds such as
@@ -67,6 +68,24 @@ later release.
   objects, associated type binding, object safety, and dyn object ABI.
 - PAL implementation work: strengthen the current path-anchored checker into a
   local CFG-based analysis without crossing function bodies.
+- Shared immutable borrow rule: the intended Toka rule is that an immutable
+  borrow is a read-only capability of that borrow, not a global freeze promise
+  for the borrowed storage. The compiler must still preserve borrow validity:
+  move, `cede`, drop, handle rebinding, reallocation, exclusive mutation, and
+  any operation that can invalidate the borrow remain conflicts. Current PAL is
+  stricter than this rule: overlapping payload writes also conflict with
+  `BorrowedShared` because `verifyMutation` does not yet distinguish ordinary
+  payload writes from invalidating or exclusive mutations. TODO: split these
+  mutation classes before freezing the final 1.0 PAL behavior.
+- Async color model: keep `fn f() -> async T`, `.await`, `.wait`, and `.start`
+  as the current direction, but freeze this late because async crosses value
+  color, task ownership, suspension, cancellation, and PAL dependency
+  propagation. Async return and dependency annotations remain orthogonal:
+  `fn f(x: str) -> async str <- x` means the eventual `str` depends on `x`.
+- Threading / task ownership model: keep thread and task primitives library-led
+  where possible, but freeze the safety contract late because it interacts with
+  `Send` / `Sync`, `cede`, detached tasks, cancellation, and borrowed state
+  crossing execution boundaries.
 - Match exhaustiveness: decide whether full exhaustiveness checking is required
   before 1.0, or whether current safe rejection / safe execution behavior is
   enough for the first stable release.
@@ -87,6 +106,9 @@ later release.
 - Private-helper inference for missing borrow dependency annotations.
 - Upgrading hatted parameter unused-handle warnings into hard errors.
 - Larger iterator / async trait formalization.
+- Async blocks, parameterized `.start(...)`, and richer structured-concurrency
+  syntax. These should extend the frozen async color model rather than replace
+  it.
 - Further build-cache performance redesign unless required by correctness.
 
 ## Must Fix Before 1.0
