@@ -1,6 +1,7 @@
 # Toka 语法契约审计
 
-审计日期：2026-06-29
+初始审计日期：2026-06-29
+当前更新日期：2026-07-03
 
 本文以 `docs/syntax.md` 与 `docs/syntax_zh.md` 为公开语法声明源，对照当前编译器实现、标准库用例与测试集，检查语法设计是否已经被测试锁定，以及哪些规则仍需要补充更直接的 pass/fail 用例。
 
@@ -9,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 284 个，`tests/fail/*.tk` 约 138 个
+- 测试集：`tests/pass/*.tk` 约 301 个，`tests/fail/*.tk` 约 181 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -29,6 +30,8 @@
 - named destructuring、match、range match、loop / for
 - closure 与 `dyn fn`
 - raw pointer / unsafe / FFI 的基本路径
+- PAL 主体：局部路径借用、move / `cede`、分支合并、loop / for 回边、`break` /
+  `continue` 状态合并已经形成同一套保守安全模型
 
 仍需要补锁的区域主要不是“功能缺失”，而是“更高阶规则组合缺少专门测试”：
 
@@ -47,6 +50,7 @@
 | 3. Bindings / Mutability / Nullability | 基本锁定 | nullable、borrow、mutation、strict pointer、null fail cases 均存在 | nullable handle 的 raw / unique / shared 正例和非 nullable 反例已补最小矩阵；`nul &` 已锁为非法 |
 | 4. Hats / Handles | 基本锁定 | raw pointer、smart pointer、rebind、member hat、PAL stress、hatted parameter warning matrix 均有用例 | 后续可转向 handle 组合场景，而不是基础帽子规则 |
 | 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
+| 5a. PAL / Borrow Safety | 主体冻结 | `g08_pal_stress_test`、branch restore、loop local move、break / continue state merge、borrow / move fail cases | 后续转向精度审计与诊断，不继续扩展主体规则 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
 | 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
@@ -222,6 +226,39 @@
 1.0 决策：连字符只属于 filesystem-oriented module-location path。目录名、`.tk` 文件名、`import` 左半部分、以及对齐 import path 的 `pub(path)` 可以使用 kebab-case；`.tk` 内部新产生并进入 Toka 语义名字空间的名字禁止 kebab-case，包括 import alias、字段名、声明名、绑定名和可选择 namespace。表达式层的二元 `-` 保持操作符身份，并要求左右空格。
 
 这条规则把 URL / 包名 / 文件系统生态中的 kebab 命名兼容保留在路径层，同时避免 `max-size` 与 `max - size` 在语言层产生视觉歧义。IDE 双击选择等体验差异属于工具层瑕疵，不应扩大语言名字空间的复杂度。
+
+## PAL 主体冻结审计
+
+本轮冻结结论：PAL 的主体不是继续设计中的提案，而是 1.0 前可以依赖的主干安全模型。
+
+### 已冻结的主体能力
+
+- 基于路径的借用 ledger：同一路径、父路径、子路径的共享 / 可变借用冲突会被检查；可证明互不相交的路径可以共存。
+- move / `cede` 安全：已借用路径不能被 move 或 `cede`；非 `cede` 参数不能在函数体中被 `cede`；`cede` 参数必须在函数体中完成转移义务。
+- 局部控制流合并：`if`、`guard`、`match` 的 init mask、moved flag 与 PAL 状态会按可达分支合并。
+- 循环回边合并：`loop` / `for` 的正常回边、`break` 出口、`continue` 回边都会保存并合并同一类 `AnalysisState`，避免 jump-only 路径丢失安全状态。
+- 函数边界：逃逸 borrowed view 必须在签名中通过 inline dependency 或 `effects:` 明示，调用点不穿透函数体推断隐藏生命周期。
+- unsafe 边界：raw pointer 与 `unsafe` 代码不属于 PAL 的 safe-borrow 保证范围；公共安全 API 若封装 raw 行为，必须通过签名暴露依赖关系。
+
+### 测试锚点
+
+- 主体压力：`tests/pass/g08_pal_stress_test.tk`、`tests/pass/g08_pal_stress_test_borrow.tk`
+- 分支状态：`tests/pass/g08_pal_if_branch_restore.tk`、`tests/pass/g08_pal_guard_branch_state.tk`、`tests/pass/g08_pal_match_branch_state.tk`
+- 循环状态：`tests/pass/g08_pal_loop_local_move.tk`、`tests/fail/move_in_loop.tk`、`tests/fail/move_direct_in_loop.tk`
+- `break` / `continue` 状态：`tests/pass/g08_loop_break_state_merge.tk`、`tests/pass/g08_for_break_or_state_merge.tk`、`tests/fail/loop_break_state_maybe_unset.tk`、`tests/fail/for_break_skips_or_unset.tk`、`tests/fail/loop_continue_move_state.tk`、`tests/fail/for_continue_move_state.tk`
+- 借用冲突：`tests/fail/fail_pal_move_locked.tk`、`tests/fail/fail_pal_path_prefix.tk`、`tests/fail/fail_pal_transient_locked.tk`、`tests/fail/borrow_field.tk`、`tests/fail/array_borrow_aliasing.tk`
+
+### 仍属后续精度工作的边界
+
+这些不是主体安全缺口，而是 1.0 后可以按价值继续提高精度的区域：
+
+- 更高阶 lifetime polymorphism 与复杂 reborrow / freeze 模式。
+- 深层 async / closure 捕获中的精细借用表达。
+- dyn trait object 的对象生命周期、关联类型绑定与多 facet 组合。
+- raw pointer 别名关系的自动证明。当前策略是留在 `unsafe` 或安全封装 API 内。
+- 极端 disjointness 证明。若局部路径模型无法证明，当前策略是保守拒绝或要求更显式结构。
+
+因此 PAL 当前冻结为“安全优先、局部可证明、函数边界显式契约”的模型。后续工作应优先改善误报和诊断，而不是改变主体规则。
 
 ## 文档表述风险
 

@@ -34,7 +34,7 @@ A possible extra payoff is optimization visibility. When resource flow, aliasing
 Toka combines several mechanisms toward that goal. The design tries to keep everyday code readable while still giving resource, representation, and safety boundaries a precise place in the language:
 
 - explicit resource semantics and deterministic cleanup
-- PAL (Pointer Aliasing & Lifecycle) checking
+- PAL static checking for pointer aliasing and lifecycle constraints
 - compact markers for mutation, rebinding, transfer, nullability, and handle identity
 - integrated project tooling instead of large external build-system setup
 - a payload/handle distinction where ordinary names operate on object payloads, while hats such as `&`, `*`, `^`, and `~` expose or preserve handle identity only when the code genuinely needs that layer

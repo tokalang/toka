@@ -198,6 +198,31 @@ callee body. Ownership and sharing handles such as `^T` and `~T` are not
 borrow-like dependencies by themselves; any dependency comes from borrowed state
 inside the returned value.
 
+### PAL Static Safety Boundary
+
+For Toka 1.0, PAL is frozen as a local, path-based safety checker for the safe
+language subset. It tracks borrowed paths, payload mutation, handle rebinding,
+resource moves, unset state, and the analysis state produced by `if`, `guard`,
+`match`, `loop`, `for`, `break`, and `continue`.
+
+The stable contract is conservative:
+
+- A shared borrow blocks mutation of the same path or an overlapping parent /
+  child path.
+- A mutable borrow blocks both reads and writes through overlapping paths unless
+  the access is proven disjoint.
+- Moving or `cede`-ing a borrowed resource path is rejected.
+- Moving a resource path defined outside a loop from a loop backedge is rejected;
+  this includes paths that reach the backedge through `continue`.
+- Interior-mutable fields marked with `#` may be updated through the explicit
+  field rule, but ordinary fields remain protected by the active borrow.
+
+PAL does not infer hidden lifetime relationships across a function boundary.
+Escaping borrowed views must be declared in the signature, so source builds and
+`.tki` interface builds agree. Raw pointers and `unsafe` code are outside this
+safe-borrow guarantee unless wrapped by a safe API whose signature exposes the
+required dependencies.
+
 ## 6. Shapes, Enums, And Initialization
 
 `shape` defines aggregate data and tagged enum-like variants.
