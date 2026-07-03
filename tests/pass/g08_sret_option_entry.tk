@@ -1,0 +1,52 @@
+import std/io::println
+import core/option::{Option}
+
+shape Entry<'K, 'V>(
+    'key: K,
+    'val: V
+)
+
+shape Big(
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64
+)
+
+fn make_entry<'K, 'V>('k: K, 'v: V) -> Option<Entry<'K, 'V>> {
+    return Option<Entry<'K, 'V>>::Some(Entry<'K, 'V>(key='k, val='v))
+}
+
+fn make_big(a: i64, b: i64, c: i64, d: i64) -> Option<Big> {
+    return Option<Big>::Some(Big(a=a, b=b, c=c, d=d))
+}
+
+fn sum_big(big: Big) -> i64 {
+    return big.a + big.b + big.c + big.d
+}
+
+fn main() -> i32 {
+    auto entry_opt = make_entry<i64, i64>(11, 22)
+    match entry_opt {
+        auto Option<Entry<i64, i64>>::Some(entry) => {
+            if entry.key != 11 { return 1 }
+            if entry.val != 22 { return 2 }
+        }
+        auto Option<Entry<i64, i64>>::None => {
+            return 3
+        }
+    }
+
+    auto big_opt = make_big(1, 2, 3, 4)
+    match big_opt {
+        auto Option<Big>::Some(big) => {
+            if sum_big(big) != 10 { return 4 }
+        }
+        auto Option<Big>::None => {
+            return 5
+        }
+    }
+
+    println("sret_option_entry passed")
+    return 0
+}

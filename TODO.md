@@ -27,18 +27,28 @@ remaining PAL edge combinations. Only introduce a fuller CFG representation if
 the existing state merge model cannot express a concrete safe program that
 Toka 1.0 should accept.
 
-### 2. LLVM PhysReg Copy CodeGen Crash
-**Status**: Unresolved / Mitigated via SOA (CodeGen Phase)
-**Severity**: Critical
+### 2. Large Generic Aggregate ABI Lowering
+**Status**: Resolved / regression-covered (CodeGen Phase)
+**Severity**: Low
 **Description**: 
-When instantiating complex or heavily-nested generic types (e.g., `Option<Entry<'K, 'V>>` or generic `Bucket` structs) and attempting to pass or return them by value, the LLVM CodeGen backend fatally crashes with `LLVM ERROR: Cannot emit physreg copy instruction`.
+Older compiler revisions could crash LLVM with `LLVM ERROR: Cannot emit physreg
+copy instruction` when complex or heavily-nested generic aggregates (for
+example `Option<Entry<'K, 'V>>` or generic bucket-style structs) were passed or
+returned by value.
 **Impact**: 
-Toka currently fails to correctly map the ABI (Application Binary Interface) calling conventions for large multi-generic structures. Instead of implicitly elevating large structural returns to `byval` or pointer mechanisms (`alloca` / `sret`), it tries to map them to physical registers, causing LLVM assertion failures.
-**Mitigation**:
-Standard Library components (like `HashMap`) are currently circumventing this by adopting a Structure of Arrays (SOA) flat layout.
-**Proposed Fix**:
-Investigate `src/CodeGen_Type.cpp` and `src/CodeGen_Expr.cpp` to correctly lower complex product shapes to valid LLVM memory types and strictly enforce ABI parameter size attributes for returned compounds.
-
+The current CodeGen path lowers large structural returns through `sret` and
+passes captured aggregate parameters through memory/pointer-backed ABI paths
+instead of forcing them into physical registers.
+**Regression Coverage**:
+`tests/pass/g07_sret_generic.tk`, `tests/pass/g08_sret_closure.tk`,
+`tests/pass/g08_sret_option_entry.tk`, and the HashMap iterator tests cover
+nested generic structural returns, dyn-call structural returns,
+`Option<Entry<'K, 'V>>`, large tagged payloads, and aggregate argument
+forwarding.
+**Remaining Watchpoint**:
+If future call paths are added, especially new async/dyn/extern lowering paths,
+they must reuse the same aggregate ABI classification rather than constructing
+raw LLVM call signatures independently.
 
 ### 4. Windows Native Standard Library Support (lib/sys/windows.tk)
 **Status**: Deprioritized / Strategic Shift to WSL2
