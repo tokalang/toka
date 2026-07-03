@@ -32,6 +32,41 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static std::map<std::string, bool> captureVisibleUniqueMoved(Scope *ScopePtr) {
+  std::map<std::string, bool> moved;
+  for (Scope *S = ScopePtr; S; S = S->Parent) {
+    for (const auto &pair : S->Symbols) {
+      if (!moved.count(pair.first) && pair.second.IsUnique())
+        moved[pair.first] = pair.second.Moved;
+    }
+  }
+  return moved;
+}
+
+static std::vector<std::string> collectLoopEscapingMoves(
+    Scope *ScopePtr, const std::map<std::string, bool> &before) {
+  std::vector<std::string> names;
+  for (const auto &pair : before) {
+    if (pair.second)
+      continue;
+    SymbolInfo *info = nullptr;
+    if (ScopePtr->findSymbol(pair.first, info) && info && info->IsUnique() &&
+        info->Moved) {
+      names.push_back(pair.first);
+    }
+  }
+  return names;
+}
+
+static std::string getDisplayVariableName(std::string name) {
+  while (!name.empty() &&
+         (name[0] == '&' || name[0] == '*' || name[0] == '^' ||
+          name[0] == '~')) {
+    name.erase(name.begin());
+  }
+  return name;
+}
+
 static void collectVariables(ASTNode *Node, std::set<std::string> &Vars) {
   if (!Node) return;
   if (auto *VE = dynamic_cast<VariableExpr *>(Node)) {
@@ -1598,10 +1633,52 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
       m_ControlFlowStack.push_back({"", "void", nullptr, true, isReceiver});
     }
+
+    std::map<std::string, uint64_t> masksBefore;
+    std::map<std::string, bool> movedBefore;
+    for (auto &pair : CurrentScope->Symbols) {
+      masksBefore[pair.first] = pair.second.InitMask;
+      movedBefore[pair.first] = pair.second.Moved;
+    }
+    auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
+    auto palBefore = PALCheckerState.snapshot();
+
     enterScope();
     CurrentScope->IsLoop = true;
     checkStmt(le->Body.get());
     exitScope();
+
+    for (const auto &name :
+         collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
+      error(le, DiagID::ERR_SEMA_CANNOT_CEDE_MOVE_VALUE_INSIDE_A_LOOP_BECA,
+            getDisplayVariableName(name));
+    }
+
+    if (le->Condition) {
+      std::map<std::string, uint64_t> masksBody;
+      std::map<std::string, bool> movedBody;
+      for (auto &pair : CurrentScope->Symbols) {
+        masksBody[pair.first] = pair.second.InitMask;
+        movedBody[pair.first] = pair.second.Moved;
+      }
+      auto palBody = PALCheckerState.snapshot();
+
+      for (auto &pair : CurrentScope->Symbols) {
+        uint64_t entryMask =
+            masksBefore.count(pair.first) ? masksBefore[pair.first] : 0;
+        uint64_t bodyMask =
+            masksBody.count(pair.first) ? masksBody[pair.first] : 0;
+        pair.second.InitMask = entryMask & bodyMask;
+
+        bool entryMoved =
+            movedBefore.count(pair.first) ? movedBefore[pair.first] : false;
+        bool bodyMoved =
+            movedBody.count(pair.first) ? movedBody[pair.first] : false;
+        pair.second.Moved = entryMoved || bodyMoved;
+      }
+      PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
+    }
+
     if (!tookOver)
       m_ControlFlowStack.pop_back();
 
@@ -1743,6 +1820,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
     }
 
+    auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
+
     enterScope();
     CurrentScope->IsLoop = true;
     SymbolInfo Info;
@@ -1764,6 +1843,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.push_back({"", "void", nullptr, true, isReceiver});
     }
     checkStmt(fe->Body.get());
+    for (const auto &name :
+         collectLoopEscapingMoves(CurrentScope, visibleUniqueMovedBefore)) {
+      error(fe, DiagID::ERR_SEMA_CANNOT_CEDE_MOVE_VALUE_INSIDE_A_LOOP_BECA,
+            getDisplayVariableName(name));
+    }
     std::string bodyType = m_ControlFlowStack.back().ExpectedType;
     auto bodyTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
     if (!tookOver)
@@ -1839,20 +1923,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
             if (Info->IsFunctionParameter && !Info->IsCeded) {
                 error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
-            }
-            Scope *curr = CurrentScope;
-            bool crossedLoop = false;
-            while (curr) {
-              if (curr->Symbols.count(actualName)) {
-                break;
-              }
-              if (curr->IsLoop) {
-                crossedLoop = true;
-              }
-              curr = curr->Parent;
-            }
-            if (crossedLoop && Info->IsUnique()) {
-              error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_MOVE_VALUE_INSIDE_A_LOOP_BECA, Var->Name);
             }
             CurrentScope->markMoved(actualName);
         }

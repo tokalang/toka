@@ -1,5 +1,5 @@
 error[E04501]: Cannot cede/move value 'p' inside a loop because it is defined outside the loop
- --> tests/fail/move_in_loop.tk:8:20
+ --> tests/fail/move_in_loop.tk:6:5
    |
- 8 |         auto ^p2 = cede ^p
-   |                    ^
+ 6 |     for auto i in [0, 1, 2, 3, 4] {
+   |     ^
