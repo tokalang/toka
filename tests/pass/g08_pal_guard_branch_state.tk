@@ -1,0 +1,14 @@
+shape Data(id: i32)
+
+fn main() -> i32 {
+    auto nul ^p = new Data(id = 1)
+    auto ^q# = new Data(id = 2)
+
+    guard ^p {
+        auto ^taken = cede ^q
+    } else {
+        q.id = 3
+    }
+
+    return 0
+}

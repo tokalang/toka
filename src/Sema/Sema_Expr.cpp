@@ -1399,6 +1399,50 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     SymbolInfo *infoPtr = nullptr;
     std::string actualName;
+
+    std::map<std::string, uint64_t> masksBefore;
+    std::map<std::string, bool> movedBefore;
+    for (auto &pair : CurrentScope->Symbols) {
+      masksBefore[pair.first] = pair.second.InitMask;
+      movedBefore[pair.first] = pair.second.Moved;
+    }
+    auto palBefore = PALCheckerState.snapshot();
+
+    auto restoreGuardEntryState = [&]() {
+      for (auto &pair : masksBefore) {
+        CurrentScope->Symbols[pair.first].InitMask = pair.second;
+      }
+      for (auto &pair : movedBefore) {
+        CurrentScope->Symbols[pair.first].Moved = pair.second;
+      }
+      PALCheckerState.restore(palBefore);
+    };
+
+    auto captureMasks = [&]() {
+      std::map<std::string, uint64_t> masks;
+      for (auto &pair : CurrentScope->Symbols) {
+        masks[pair.first] = pair.second.InitMask;
+      }
+      return masks;
+    };
+
+    auto captureMoved = [&]() {
+      std::map<std::string, bool> moved;
+      for (auto &pair : CurrentScope->Symbols) {
+        moved[pair.first] = pair.second.Moved;
+      }
+      return moved;
+    };
+
+    bool thenJumps = false;
+    bool elseJumps = false;
+    std::map<std::string, uint64_t> masksThen;
+    std::map<std::string, bool> movedThen;
+    std::map<std::string, uint64_t> masksElse = masksBefore;
+    std::map<std::string, bool> movedElse = movedBefore;
+    PALChecker palThen = palBefore;
+    PALChecker palElse = palBefore;
+
     if (CurrentScope->findVariableWithDeref(varExpr->Name, infoPtr, actualName)) {
       bool isPtrNullable = false;
       bool isSoulNullable = false;
@@ -1421,16 +1465,75 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
       checkStmt(guard->Then.get());
       exitScope();
+      thenJumps = allPathsJump(guard->Then.get());
+      masksThen = captureMasks();
+      movedThen = captureMoved();
+      palThen = PALCheckerState.snapshot();
     } else {
       enterScope();
       checkStmt(guard->Then.get());
       exitScope();
+      thenJumps = allPathsJump(guard->Then.get());
+      masksThen = captureMasks();
+      movedThen = captureMoved();
+      palThen = PALCheckerState.snapshot();
     }
 
+    restoreGuardEntryState();
     if (guard->Else) {
       enterScope();
       checkStmt(guard->Else.get());
       exitScope();
+      elseJumps = allPathsJump(guard->Else.get());
+      masksElse = captureMasks();
+      movedElse = captureMoved();
+      palElse = PALCheckerState.snapshot();
+    }
+
+    if (guard->Else) {
+      if (thenJumps && elseJumps) {
+        restoreGuardEntryState();
+      } else if (thenJumps) {
+        for (auto &pair : CurrentScope->Symbols) {
+          if (masksElse.count(pair.first))
+            pair.second.InitMask = masksElse[pair.first];
+          if (movedElse.count(pair.first))
+            pair.second.Moved = movedElse[pair.first];
+        }
+        PALCheckerState.restore(palElse);
+      } else if (elseJumps) {
+        for (auto &pair : CurrentScope->Symbols) {
+          if (masksThen.count(pair.first))
+            pair.second.InitMask = masksThen[pair.first];
+          if (movedThen.count(pair.first))
+            pair.second.Moved = movedThen[pair.first];
+        }
+        PALCheckerState.restore(palThen);
+      } else {
+        for (auto &pair : CurrentScope->Symbols) {
+          uint64_t thenMask = masksThen.count(pair.first) ? masksThen[pair.first] : 0;
+          uint64_t elseMask = masksElse.count(pair.first) ? masksElse[pair.first] : 0;
+          pair.second.InitMask = thenMask & elseMask;
+          bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
+          bool elseMoved = movedElse.count(pair.first) ? movedElse[pair.first] : false;
+          pair.second.Moved = thenMoved || elseMoved;
+        }
+        PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
+      }
+    } else {
+      if (thenJumps) {
+        restoreGuardEntryState();
+      } else {
+        for (auto &pair : CurrentScope->Symbols) {
+          uint64_t thenMask = masksThen.count(pair.first) ? masksThen[pair.first] : 0;
+          uint64_t entryMask = masksBefore.count(pair.first) ? masksBefore[pair.first] : 0;
+          pair.second.InitMask = thenMask & entryMask;
+          bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
+          bool entryMoved = movedBefore.count(pair.first) ? movedBefore[pair.first] : false;
+          pair.second.Moved = thenMoved || entryMoved;
+        }
+        PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
+      }
     }
 
     return std::make_shared<VoidType>();
