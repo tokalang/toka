@@ -34,7 +34,7 @@ A possible extra payoff is optimization visibility. When resource flow, aliasing
 Toka combines several mechanisms toward that goal. The design tries to keep everyday code readable while still giving resource, representation, and safety boundaries a precise place in the language:
 
 - explicit resource semantics and deterministic cleanup
-- PAL static checking for pointer aliasing and lifecycle constraints
+- PAL (Path-Anchored Ledger) static checking for borrow validity and resource-contract safety
 - compact markers for mutation, rebinding, transfer, nullability, and handle identity
 - integrated project tooling instead of large external build-system setup
 - a payload/handle distinction where ordinary names operate on object payloads, while hats such as `&`, `*`, `^`, and `~` expose or preserve handle identity only when the code genuinely needs that layer
@@ -137,9 +137,15 @@ Toka has no garbage collector. Managed resources are controlled with determinist
 
 The language distinguishes the object being used from the handle by which it is reached. This makes code such as `*p = *q` meaningful as handle rebinding, while plain `p = q` remains payload assignment.
 
-### PAL Static Checking
+### PAL (Path-Anchored Ledger) Static Checking
 
-PAL checks pointer aliasing and lifecycle constraints so that borrows, moves, null checks, resource paths, and rebinding intent remain explicit and auditable. The goal is compile-time discipline without user-written lifetime parameters such as Rust's `<'a>`.
+PAL (Path-Anchored Ledger) is Toka’s compile-time resource-safety checker. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, and rejects operations that would make an active borrow or ownership contract invalid. The goal is compile-time safety without user-written lifetime parameters such as Rust's `<'a>`.
+
+PAL is governed by four core rules:
+1. **Unique ownership is exclusive:** A `^` resource is owned by one valid handle at any time.
+2. **Transfer is explicit:** Ownership handoff must be syntactically visible. Direct hatted unique-handle moves are visible transfer syntax; `cede` is required for declared cede contracts and explicit cede handoff paths, and any transfer obligation must be fulfilled.
+3. **Borrow validity is protected:** Operations that can invalidate an active borrow (such as moves, `cede`, drops, handle rebinding, or reallocations) are rejected.
+4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is intended as a read-only view for that borrow path rather than a global freeze promise; the current checker remains conservative around overlapping payload writes until mutation classes are fully separated.
 
 PAL is intended to be conservative before it is permissive. Toka does not trade safety away for a lighter surface; when an ownership or borrowing relationship cannot be proven locally without exposing a full lifetime calculus to the user, the compiler should reject the pattern or require a more explicit structure. This may accept fewer extreme-but-safe borrowing programs than Rust, but it keeps the safety line high while reducing the proof burden in ordinary code.
 

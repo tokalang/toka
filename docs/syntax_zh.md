@@ -188,19 +188,22 @@ effects:
 共享 handle 本身不是 borrow-like dependency；只有返回值内部实际携带的 borrowed
 state 才形成依赖。
 
-### PAL 静态安全边界
+### PAL (Path-Anchored Ledger) 静态安全边界
 
-对 Toka 1.0 来说，PAL 冻结为 safe 语言子集中的局部、基于路径的安全检查器。
-它跟踪借用路径、payload 修改、handle 重绑定、资源移动、unset 状态，以及
-`if`、`guard`、`match`、`loop`、`for`、`break`、`continue` 产生的分析状态。
+对 Toka 1.0 来说，PAL 冻结为 **Path-Anchored Ledger（路径锚定账本）**：safe 语言子集中的局部、基于路径的安全检查器。它将借用、所有权转移和失效风险记录到源码级存储路径上，跟踪借用路径、payload 修改、handle 重绑定、资源移动、unset 状态，以及 `if`、`guard`、`match`、`loop`、`for`、`break`、`continue` 产生的分析状态。
 
-稳定契约是保守的：
+稳定契约遵循四条核心规则：
+1. **独占所有权是唯一的（Unique ownership is exclusive）：** `^` 资源在任意时刻只能由一个有效 handle 拥有。
+2. **转移是显式的（Transfer is explicit）：** 所有权交接必须在语法上可见。直接书写帽子形态的 unique-handle move 也属于显式转移语法；`cede` 用于声明了 cede 契约的参数和显式 cede 交接路径，且必须履行相应的转移义务。
+3. **借用有效性受保护（Borrow validity is protected）：** 在活跃借用存在时，任何可能使该借用失效的操作（如 move、`cede`、drop、handle 重绑定或底层重新分配等）都将被拒绝。
+4. **独占修改需要独占权限（Exclusive mutation requires exclusive permission）：** 可变/独占借用与其他重叠的活跃借用冲突。普通不可变借用的设计含义是该借用通道只读，而不是对被借用存储作出全局冻结承诺；在 mutation class 完全拆分前，当前 checker 对重叠 payload 写入仍保持保守拒绝。
 
-- 共享借用会阻止同一路径或重叠父 / 子路径上的修改。
+在这些规则的约束下：
+- 共享借用会阻止同一路径或重叠父 / 子路径上的失效性操作或独占/可变修改。
+- 在共享借用的 mutation class 仍保守合并期间，当前 PAL 也会拒绝普通的重叠 payload 写入。
 - 可变借用会阻止重叠路径上的读写，除非该访问能被证明是互不相交的。
 - 对已借用资源路径执行 move 或 `cede` 会被拒绝。
-- 在循环回边上移动定义于循环外部的资源路径会被拒绝；这也包括通过 `continue`
-  到达回边的路径。
+- 在循环回边上移动定义于循环外部的资源路径会被拒绝；这也包括通过 `continue` 到达回边的路径。
 - 带 `#` 的内部可变字段可以通过显式字段规则更新，但普通字段仍受当前借用保护。
 
 PAL 不跨函数边界推断隐藏生命周期关系。会逃逸的 borrowed view 必须写在签名中，

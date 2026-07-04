@@ -33,7 +33,9 @@ later release.
   remains an operator and must be surrounded by spaces.
 - Closure capture rules: explicit `cede` / `copy`, with resource copy capture
   rejected.
-- PAL boundary: PAL is the safe-borrow layer for Toka borrow semantics,
+- PAL terminology: PAL is frozen as **Path-Anchored Ledger** (路径锚定账本),
+  not the earlier placeholder "Provenance, Alias, and Lifetime".
+- PAL boundary: PAL is the safe-borrow and resource-contract layer for Toka borrow semantics,
   including implicit parameter capture, `&` borrow handles, and borrowed views
   such as `str` and `bytes`. Raw pointers remain in the unsafe / FFI layer and
   are not part of PAL's safe-borrow guarantee. Ownership / sharing handles such

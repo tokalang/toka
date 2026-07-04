@@ -198,24 +198,23 @@ callee body. Ownership and sharing handles such as `^T` and `~T` are not
 borrow-like dependencies by themselves; any dependency comes from borrowed state
 inside the returned value.
 
-### PAL Static Safety Boundary
+### PAL (Path-Anchored Ledger) Static Safety Boundary
 
-For Toka 1.0, PAL is frozen as a local, path-based safety checker for the safe
-language subset. It tracks borrowed paths, payload mutation, handle rebinding,
-resource moves, unset state, and the analysis state produced by `if`, `guard`,
-`match`, `loop`, `for`, `break`, and `continue`.
+For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based safety checker for the safe language subset. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, tracking borrowed paths, payload mutation, handle rebinding, resource moves, unset state, and the analysis state produced by `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`.
 
-The stable contract is conservative:
+The stable contract is governed by four core rules:
+1. **Unique ownership is exclusive:** A `^` resource is owned by one valid handle at any time.
+2. **Transfer is explicit:** Ownership handoff must be syntactically visible. Direct hatted unique-handle moves are visible transfer syntax; `cede` is required for declared cede contracts and explicit cede handoff paths, and any transfer obligation must be fulfilled.
+3. **Borrow validity is protected:** Operations that can invalidate an active borrow (such as moves, `cede`, drops, handle rebinding, or reallocations of the underlying storage) are rejected.
+4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is intended as a read-only view for that borrow path rather than a global freeze promise; the current checker remains conservative around overlapping payload writes until mutation classes are fully separated.
 
-- A shared borrow blocks mutation of the same path or an overlapping parent /
-  child path.
-- A mutable borrow blocks both reads and writes through overlapping paths unless
-  the access is proven disjoint.
+Under these rules:
+- A shared borrow blocks invalidating or exclusive mutation of the same path or an overlapping parent / child path.
+- Current PAL also rejects ordinary overlapping payload writes while shared-borrow mutation classes are still conservatively merged.
+- A mutable borrow blocks both reads and writes through overlapping paths unless the access is proven disjoint.
 - Moving or `cede`-ing a borrowed resource path is rejected.
-- Moving a resource path defined outside a loop from a loop backedge is rejected;
-  this includes paths that reach the backedge through `continue`.
-- Interior-mutable fields marked with `#` may be updated through the explicit
-  field rule, but ordinary fields remain protected by the active borrow.
+- Moving a resource path defined outside a loop from a loop backedge is rejected; this includes paths that reach the backedge through `continue`.
+- Interior-mutable fields marked with `#` may be updated through the explicit field rule, but ordinary fields remain protected by the active borrow.
 
 PAL does not infer hidden lifetime relationships across a function boundary.
 Escaping borrowed views must be declared in the signature, so source builds and
