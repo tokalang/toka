@@ -56,34 +56,11 @@ static std::string getStringifyPath(Expr *E) {
   return "";
 }
 
-enum class CallArgPALAccess {
-  SharedPayload,
-  ExclusivePayload,
-  HandleView,
-  Invalidation
-};
-
 struct CallArgPALFact {
   std::string Path;
-  CallArgPALAccess Access;
+  PALOperationClass Access;
   Expr *Node = nullptr;
 };
-
-static bool isCallArgExclusive(CallArgPALAccess Access) {
-  return Access == CallArgPALAccess::ExclusivePayload ||
-         Access == CallArgPALAccess::Invalidation;
-}
-
-static bool isPathPrefix(const std::string &Prefix, const std::string &Full) {
-  return Prefix == Full ||
-         (Full.size() > Prefix.size() &&
-          Full.compare(0, Prefix.size(), Prefix) == 0 &&
-          Full[Prefix.size()] == '.');
-}
-
-static bool pathsOverlap(const std::string &A, const std::string &B) {
-  return isPathPrefix(A, B) || isPathPrefix(B, A);
-}
 
 // Stage 5c: Object-Oriented Call Expression Check
 std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
@@ -1521,18 +1498,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     if (paramType && i < ParamTypes.size()) {
       std::string argPath = getStringifyPath(Call->Args[i].get());
       if (!argPath.empty()) {
-        CallArgPALAccess access = CallArgPALAccess::SharedPayload;
+        PALOperationClass access = PALOperationClass::SharedPayloadBorrow;
         if (isCallerCeded || (isCededParam && !isCedeParamImplicitlyExempt)) {
-          access = CallArgPALAccess::Invalidation;
+          access = PALOperationClass::Invalidation;
         } else if (paramIsValueMutable || (paramIsHatted && paramIsRebindable)) {
-          access = CallArgPALAccess::ExclusivePayload;
+          access = PALOperationClass::ExclusivePayloadBorrow;
         } else if (paramIsHatted) {
-          access = CallArgPALAccess::HandleView;
+          access = PALOperationClass::HandleViewBorrow;
         }
 
-        std::string conflictPath = isCallArgExclusive(access)
-                                       ? PALCheckerState.verifyMutation(argPath)
-                                       : PALCheckerState.verifyAccess(argPath);
+        std::string conflictPath =
+            PALCheckerState.verifyOperation(argPath, access);
         if (!conflictPath.empty()) {
           error(Call->Args[i].get(), DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
                 argPath, conflictPath);
@@ -1580,9 +1556,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     for (size_t j = i + 1; j < callArgPALFacts.size(); ++j) {
       const auto &lhs = callArgPALFacts[i];
       const auto &rhs = callArgPALFacts[j];
-      if (!pathsOverlap(lhs.Path, rhs.Path))
+      if (!PALCheckerState.pathsOverlap(lhs.Path, rhs.Path))
         continue;
-      if (!isCallArgExclusive(lhs.Access) && !isCallArgExclusive(rhs.Access))
+      if (!PALCheckerState.operationsConflict(lhs.Access, rhs.Access))
         continue;
 
       error(rhs.Node, DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT, rhs.Path,

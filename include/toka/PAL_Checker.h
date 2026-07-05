@@ -28,6 +28,13 @@ enum class PathState {
   BorrowedMut      // Mutable/Exclusive borrow (&#)
 };
 
+enum class PALOperationClass {
+  SharedPayloadBorrow,
+  ExclusivePayloadBorrow,
+  HandleViewBorrow,
+  Invalidation
+};
+
 /// Toka's PAL (Path-Anchored Ledger) System
 /// 
 /// PAL is the official identifier for Toka's Borrow Checker mechanism. 
@@ -61,6 +68,12 @@ public:
 
   // Verifies if a path can be accessed (read)
   std::string verifyAccess(const std::string& path);
+
+  // Verifies whether an operation class can be applied at a path.
+  std::string verifyOperation(const std::string& path, PALOperationClass op);
+  bool operationRequiresExclusive(PALOperationClass op) const;
+  bool operationsConflict(PALOperationClass lhs, PALOperationClass rhs) const;
+  bool pathsOverlap(const std::string& lhs, const std::string& rhs) const;
 
   // Registers an upgrade of a previously shared borrow to mutable
   bool upgradeBorrow(const std::string& path);

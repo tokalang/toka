@@ -91,6 +91,27 @@ std::string PALChecker::verifyAccess(const std::string& path) {
   return "";
 }
 
+bool PALChecker::operationRequiresExclusive(PALOperationClass op) const {
+  return op == PALOperationClass::ExclusivePayloadBorrow ||
+         op == PALOperationClass::Invalidation;
+}
+
+bool PALChecker::operationsConflict(PALOperationClass lhs,
+                                    PALOperationClass rhs) const {
+  return operationRequiresExclusive(lhs) || operationRequiresExclusive(rhs);
+}
+
+bool PALChecker::pathsOverlap(const std::string& lhs,
+                              const std::string& rhs) const {
+  return isPrefixOf(lhs, rhs) || isPrefixOf(rhs, lhs);
+}
+
+std::string PALChecker::verifyOperation(const std::string& path,
+                                        PALOperationClass op) {
+  return operationRequiresExclusive(op) ? verifyMutation(path)
+                                        : verifyAccess(path);
+}
+
 PathState PALChecker::getState(const std::string& path) {
   if (!IsEnabled) return PathState::Free;
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
