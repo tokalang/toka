@@ -1,0 +1,5 @@
+error[E04528]: All branches of an Or-pattern must bind the exact same set of variables with consistent types and modifiers.
+ --> tests/fail/match_or_pattern_binding_mismatch.tk:9:14
+   |
+ 9 |         auto Expr::Int(n) | auto Expr::Flag(flag) => {
+   |              ^

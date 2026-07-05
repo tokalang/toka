@@ -505,7 +505,7 @@ for auto x in [1, 2, 3] {
 
 当前语法没有 `while`；条件循环使用 `loop condition { ... }`。
 
-`match` 支持字面量、变体、guard、通配符和 `default`。
+`match` 支持字面量、range、变体、guard、or-pattern、通配符和 `default`。
 
 ```toka
 auto value = match x {
@@ -514,6 +514,11 @@ auto value = match x {
     default => { pass -1 }
 }
 ```
+
+对 1.0 来说，enum match 会进行安全穷尽检查。每个变体都必须被无 guard
+的穷尽 pattern 覆盖，或者由 `_` / `default` 兜底；带 guard 的 arm 只能细化
+某个 case，不计入穷尽性。非 enum 目标需要无 guard 的 wildcard、`default`
+或无条件变量 arm。编译器不尝试证明整数、range 或字符串的完整值域覆盖。
 
 `pass` 从块表达式中产出值。
 
@@ -541,6 +546,24 @@ auto Config(h = .host, _ = .port, d = .debug) = cfg
 match result {
     auto Result<i32, str>::Ok(v) => { pass v }
     auto Result<i32, str>::Err(&e) => { pass 0 }
+}
+```
+
+or-pattern 使用 `|`。同一个 or-pattern 中的每个分支必须绑定完全相同的名字、
+兼容的类型和相同的修饰符，因为 arm body 只能看到合并后的一套绑定环境。
+
+```toka
+shape OpNode(
+    Binary(string, Point) |
+    Unary(string, Point) |
+    Literal(Point)
+)
+
+match node {
+    auto OpNode::Binary(&op, pos) | auto OpNode::Unary(&op, pos) => {
+        pass pos
+    }
+    auto OpNode::Literal(pos) => { pass pos }
 }
 ```
 

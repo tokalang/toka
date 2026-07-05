@@ -1,0 +1,27 @@
+import std/io::println
+
+shape Mode(
+    Read |
+    Write |
+    Execute
+)
+
+fn score(m: Mode) -> i32 {
+    auto value = match m {
+        auto Mode::Read | auto Mode::Write => {
+            pass 1
+        }
+        auto Mode::Execute => {
+            pass 2
+        }
+    }
+    return value
+}
+
+fn main() -> i32 {
+    assert(score(Mode::Read) == 1, "read score mismatch")
+    assert(score(Mode::Write) == 1, "write score mismatch")
+    assert(score(Mode::Execute) == 2, "execute score mismatch")
+    println("match or-pattern exhaustiveness locked")
+    return 0
+}

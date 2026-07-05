@@ -1,0 +1,15 @@
+shape Mode(
+    Read |
+    Write |
+    Execute
+)
+
+fn main() -> i32 {
+    auto mode = Mode::Read
+    auto code = match mode {
+        auto Mode::Read | auto Mode::Write => {
+            pass 1
+        }
+    }
+    return code
+}

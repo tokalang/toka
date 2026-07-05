@@ -1,0 +1,5 @@
+error[E0553]: Match is not exhaustive. Missing: Data
+ --> tests/fail/match_variant_payload_not_exhaustive.tk:8:18
+   |
+ 8 |     auto value = match packet {
+   |                  ^

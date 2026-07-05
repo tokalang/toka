@@ -1,0 +1,17 @@
+shape Packet(
+    Data(bool) |
+    Empty
+)
+
+fn main() -> i32 {
+    auto packet = Packet::Data(true)
+    auto value = match packet {
+        auto Packet::Data(true) => {
+            pass 1
+        }
+        auto Packet::Empty => {
+            pass 0
+        }
+    }
+    return value
+}

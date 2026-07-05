@@ -1,0 +1,5 @@
+error[E0553]: Match is not exhaustive. Missing: non-enum types require a wildcard/exhaustive branch
+ --> tests/fail/match_non_enum_requires_wildcard.tk:3:18
+   |
+ 3 |     auto value = match x {
+   |                  ^

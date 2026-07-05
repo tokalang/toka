@@ -1,0 +1,12 @@
+fn main() -> i32 {
+    auto x = 2
+    auto value = match x {
+        0 => {
+            pass 10
+        }
+        1 => {
+            pass 20
+        }
+    }
+    return value
+}

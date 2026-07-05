@@ -33,6 +33,12 @@ later release.
   remains an operator and must be surrounded by spaces.
 - Closure capture rules: explicit `cede` / `copy`, with resource copy capture
   rejected.
+- Match / pattern safety: freeze enum exhaustiveness, variant payload
+  shape-checking, guard handling, or-pattern binding consistency, wildcard /
+  `default` fallback, and resource-safe destructuring. Guarded arms refine a
+  case but do not count as exhaustive. Non-enum matches require an unguarded
+  wildcard, `default`, or unconditional variable arm rather than relying on
+  value-domain proof over literals, ranges, or strings.
 - PAL terminology: PAL is frozen as **Path-Anchored Ledger** (路径锚定账本),
   not the earlier placeholder "Provenance, Alias, and Lifetime".
 - PAL boundary: PAL is the safe-borrow and resource-contract layer for Toka borrow semantics,
@@ -88,9 +94,6 @@ later release.
   where possible, but freeze the safety contract late because it interacts with
   `Send` / `Sync`, `cede`, detached tasks, cancellation, and borrowed state
   crossing execution boundaries.
-- Match exhaustiveness: decide whether full exhaustiveness checking is required
-  before 1.0, or whether current safe rejection / safe execution behavior is
-  enough for the first stable release.
 - Iterator / async trait formalization: decide how much of the current library
   and compiler convention should be documented as stable language contract
   before 1.0.
@@ -103,7 +106,8 @@ later release.
 - Multi-facet trait objects such as `dyn @{A, B}`.
 - Associated type binding syntax for `dyn @Trait`.
 - Object lifetime / ownership annotations for dyn objects.
-- Full match exhaustiveness checking.
+- Full value-domain exhaustiveness checking for non-enum literal, range, and
+  string patterns.
 - More aggressive PAL acceptance for hard-to-prove but possibly safe cases.
 - Private-helper inference for missing borrow dependency annotations.
 - Upgrading hatted parameter unused-handle warnings into hard errors.

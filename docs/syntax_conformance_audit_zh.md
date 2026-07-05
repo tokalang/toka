@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 310 个，`tests/fail/*.tk` 约 186 个
+- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 191 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -27,7 +27,7 @@
 - trait `@Trait`、trait facet set `@{A, B}`、`where:` 约束
 - 关联类型 `type` / `per type`
 - morphic generic / morphic field 的基本规则
-- named destructuring、match、range match、loop / for
+- named destructuring、match、range match、or-pattern、loop / for
 - closure 与 `dyn fn`
 - raw pointer / unsafe / FFI 的基本路径
 - PAL 主体：局部路径借用、调用点临时借用组、payload write / exclusive
@@ -57,7 +57,7 @@
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests；associated type projection 的 source-less TKI replay 已补 | 后续可转向更高阶 generic / trait / TKI 组合 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
-| 11. Pattern Matching / Destructuring | 锁定较好 | named destructuring、elision、wildcard、resource destruct fail cases；历史提案式测试注释已清理 | 后续可转向 exhaustiveness 与资源析构组合诊断 |
+| 11. Pattern Matching / Destructuring | 1.0 主体冻结 | named destructuring、elision、wildcard/default、enum exhaustiveness、guard 非穷尽、or-pattern、resource destruct fail cases | 后续转向值域穷尽推理与诊断质量，而不是基础 match 语法 |
 | 12. Closures | 基本锁定 | explicit / implicit params、capture list、`dyn fn`、escape fail；resource copy capture 已拒绝浅拷 | capture mode 后续可继续细化非 `dyn fn` 闭包的局部/逃逸边界 |
 | 13. Strings / Formatting | 基本锁定 | string API、println placeholder mismatch、UTF-8 str index fail；`string + string` 与 `str + str` 均已补直接 fail case | 后续可继续细化格式化错误诊断 |
 | 14. Unsafe / FFI | 基本锁定 | extern fn、大量 sys/libc 用例、raw alloc/free、cast、unsafe escape fail；public raw pointer API 的拒绝与命名豁免均已脚本锁定 | 后续可继续细化 unsafe 边界诊断措辞 |
@@ -185,19 +185,38 @@
 
    审计中发现 `Shape::Variant(...)` 调用路径原本只检查实参表达式，没有验证 variant payload 形状，导致 unit variant 带参数、payload variant 参数个数错误仍可通过。已在 Sema 的 enum variant constructor 分支补上 `E0550` / `E0551` 检查，并保留未知变体的 `E04551` 诊断。
 
-9. `dyn @Trait` through source-less TKI
+9. Match / pattern safety freeze
+
+   本轮确认当前 `match` 不需要为 1.0 增加新语法花样，而是冻结已有能力的安全边界：
+   enum 需要安全穷尽；guard arm 不计入穷尽；or-pattern 必须绑定同一组名字、
+   类型和修饰符；payload variant 只有在内部 pattern 也穷尽时才算覆盖该变体；
+   非 enum match 需要 wildcard / `default` / 无条件变量 arm 兜底，不做完整值域证明。
+
+   已新增：
+
+   - `tests/pass/g04_match_or_pattern_exhaustive.tk`
+   - `tests/pass/g04_match_variant_payload_wildcard_exhaustive.tk`
+   - `tests/fail/match_guard_not_exhaustive.tk`
+   - `tests/fail/match_non_enum_requires_wildcard.tk`
+   - `tests/fail/match_or_pattern_binding_mismatch.tk`
+   - `tests/fail/match_or_pattern_not_exhaustive.tk`
+   - `tests/fail/match_variant_payload_not_exhaustive.tk`
+
+   这把 1.0 的 match 承诺收束为“语法足够表达、安全穷尽可检查、无法证明的值域覆盖显式兜底”，而不是继续扩张 pattern 语法。
+
+10. `dyn @Trait` through source-less TKI
 
    已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.15`：模块定义 `pub trait @VisibleShape`、`DynBox` 与 `DynBox@VisibleShape` 实现，生成 `.o + .tki` 后移走 `.tk` 源文件。主程序通过 `.tki` 中的 trait/interface 信息调用 `dyn @VisibleShape` 的 `pub fn public_id`，并确认 private method 不会在 source-less replay 下泄漏为可调用方法。
 
    这说明当前 `dyn @Trait` 的基础跨模块语义不需要重新讨论；后续若要讨论，应集中在新能力，例如是否支持 multi-facet trait object、object lifetime/ownership 表达、或 dyn object ABI 稳定性。
 
-10. Generic impl `where:` through source-less TKI
+11. Generic impl `where:` through source-less TKI
 
    已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.16`：模块定义 `impl<T> Box<T> where: T: @Marked`，生成 `.o + .tki` 后移走 `.tk` 源文件。满足约束的 `Box<Token>.marker()` 可以通过接口缓存编译并运行；不满足约束的 `Box<Plain>.marker()` 在 source-less replay 下仍被拒绝。
 
    当前 TKI 会把 `where: T: @Marked` 规范化为接口中的 `impl<T: @Marked> Box<T>`。这没有改变语义，并让接口文本与推荐约束风格保持一致。
 
-11. `@encap` visibility through source-less TKI
+12. `@encap` visibility through source-less TKI
 
    已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.17`：模块定义带 `impl VisibilityBox@encap { pub open_val }` 的 shape，生成 `.o + .tki` 后移走 `.tk` 源文件。主程序可通过接口缓存访问 `open_val`，但访问未授权的 `secret_val` 仍会失败。
 

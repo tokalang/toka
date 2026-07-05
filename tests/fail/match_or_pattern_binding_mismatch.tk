@@ -1,0 +1,14 @@
+shape Expr(
+    Int(i32) |
+    Flag(bool)
+)
+
+fn main() -> i32 {
+    auto expr = Expr::Int(1)
+    auto value = match expr {
+        auto Expr::Int(n) | auto Expr::Flag(flag) => {
+            pass 1
+        }
+    }
+    return value
+}

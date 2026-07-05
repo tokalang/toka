@@ -521,7 +521,8 @@ for auto x in [1, 2, 3] {
 
 `while` is not part of the current syntax; use `loop condition { ... }`.
 
-`match` supports literals, variants, guards, wildcards, and `default`.
+`match` supports literals, ranges, variants, guards, or-patterns, wildcards,
+and `default`.
 
 ```toka
 auto value = match x {
@@ -530,6 +531,12 @@ auto value = match x {
     default => { pass -1 }
 }
 ```
+
+For 1.0, enum matches are checked for safe exhaustiveness. Every variant must
+be covered by an unguarded exhaustive pattern or by `_` / `default`; guarded
+arms refine a case but do not count as exhaustive. For non-enum targets, use an
+unguarded wildcard, `default`, or unconditional variable arm. The compiler does
+not try to prove full integer, range, or string value-domain coverage.
 
 `pass` yields a value from a block expression.
 
@@ -557,6 +564,25 @@ Variant matching:
 match result {
     auto Result<i32, str>::Ok(v) => { pass v }
     auto Result<i32, str>::Err(&e) => { pass 0 }
+}
+```
+
+Or-patterns use `|`. Every alternative in an or-pattern must bind the exact
+same names with compatible types and modifiers, because the arm body sees one
+merged binding environment.
+
+```toka
+shape OpNode(
+    Binary(string, Point) |
+    Unary(string, Point) |
+    Literal(Point)
+)
+
+match node {
+    auto OpNode::Binary(&op, pos) | auto OpNode::Unary(&op, pos) => {
+        pass pos
+    }
+    auto OpNode::Literal(pos) => { pass pos }
 }
 ```
 

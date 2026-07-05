@@ -1,0 +1,5 @@
+error[E0553]: Match is not exhaustive. Missing: Execute
+ --> tests/fail/match_or_pattern_not_exhaustive.tk:9:17
+   |
+ 9 |     auto code = match mode {
+   |                 ^

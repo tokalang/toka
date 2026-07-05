@@ -1,0 +1,5 @@
+error[E0553]: Match is not exhaustive. Missing: Text
+ --> tests/fail/match_guard_not_exhaustive.tk:8:17
+   |
+ 8 |     auto code = match msg {
+   |                 ^

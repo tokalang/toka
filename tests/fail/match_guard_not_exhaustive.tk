@@ -1,0 +1,17 @@
+shape Msg(
+    Text(i32) |
+    Quit
+)
+
+fn main() -> i32 {
+    auto msg = Msg::Text(10)
+    auto code = match msg {
+        auto Msg::Text(v) if v > 0 => {
+            pass 1
+        }
+        auto Msg::Quit => {
+            pass 0
+        }
+    }
+    return code
+}

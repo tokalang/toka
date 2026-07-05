@@ -1,0 +1,26 @@
+import std/io::println
+
+shape Packet(
+    Data(bool) |
+    Empty
+)
+
+fn classify(p: Packet) -> i32 {
+    auto value = match p {
+        auto Packet::Data(_) => {
+            pass 1
+        }
+        auto Packet::Empty => {
+            pass 0
+        }
+    }
+    return value
+}
+
+fn main() -> i32 {
+    assert(classify(Packet::Data(true)) == 1, "true data mismatch")
+    assert(classify(Packet::Data(false)) == 1, "false data mismatch")
+    assert(classify(Packet::Empty) == 0, "empty mismatch")
+    println("match payload wildcard exhaustiveness locked")
+    return 0
+}
