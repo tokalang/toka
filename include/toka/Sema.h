@@ -142,6 +142,17 @@ public:
     return false;
   }
 
+  bool findVariableWithDerefScope(const std::string &Name, SymbolInfo *&OutInfo,
+                                  std::string &ActualName, Scope *&OutScope) {
+    if (Symbols.count(Name)) { OutInfo = &Symbols[Name]; ActualName = Name; OutScope = this; return true; }
+    if (Symbols.count("&" + Name)) { OutInfo = &Symbols["&" + Name]; ActualName = "&" + Name; OutScope = this; return true; }
+    if (Symbols.count("*" + Name)) { OutInfo = &Symbols["*" + Name]; ActualName = "*" + Name; OutScope = this; return true; }
+    if (Symbols.count("^" + Name)) { OutInfo = &Symbols["^" + Name]; ActualName = "^" + Name; OutScope = this; return true; }
+    if (Symbols.count("~" + Name)) { OutInfo = &Symbols["~" + Name]; ActualName = "~" + Name; OutScope = this; return true; }
+    if (Parent) return Parent->findVariableWithDerefScope(Name, OutInfo, ActualName, OutScope);
+    return false;
+  }
+
   bool lookup(const std::string &Name, SymbolInfo &OutInfo) {
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
@@ -319,6 +330,7 @@ private:
   bool m_DisableVisibilityCheck =
       false; // [Auto-Clone] Bypass visibility for injected calls
   bool m_IsPrecomputingCaptures = false; // [NEW] Disable errors in closures
+  Scope *m_ClosureCaptureRootScope = nullptr;
   bool m_IsMemberBase =
       false; // [NEW] Track if we are checking the base of a member access
   bool m_IsConsumingEffect = false; // [NEW] Track if current eval context consumes async/wait effects

@@ -208,6 +208,15 @@ callee body. Ownership and sharing handles such as `^T` and `~T` are not
 borrow-like dependencies by themselves; any dependency comes from borrowed state
 inside the returned value.
 
+Execution boundaries are stricter than ordinary local calls. For Toka 1.0,
+thread/task handoff must not carry hidden borrowed state: a closure passed to
+`thread_spawn` cannot implicitly capture outer variables, and future task
+handoff forms must follow the same rule. State that crosses such a boundary
+must be made explicit, typically by `[cede ...]` transfer or `[copy ...]` for
+copyable data. Async return dependencies such as `fn f(x: str) -> async str <-
+x` remain ordinary signature dependencies; they do not authorize detached tasks
+to keep an undeclared borrow.
+
 ### PAL (Path-Anchored Ledger) Static Safety Boundary
 
 For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based safety checker for the safe language subset. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, tracking borrowed paths, payload mutation, handle rebinding, resource moves, unset state, and the analysis state produced by `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`.
@@ -346,7 +355,12 @@ auto area = print_area(rect)
 
 Method calls through `dyn @Trait` are dynamically dispatched through the trait interface. Outside the defining module, only `pub fn` methods in the trait are callable. The stable trait-object syntax is a single trait facet such as `dyn @Shape`; `dyn @{A, B}` is not part of the current public syntax. Dynamic closures use the separate `dyn fn(...) -> T` syntax.
 
-Not every trait can be used as `dyn @Trait`. The current public rule is that a trait object must erase to a fixed receiver handle and a fixed vtable ABI. Therefore, generic traits, traits with associated types that are not bound in the dyn type, traits with generic methods, and traits whose method signatures use `Self` outside the receiver position are not currently valid as `dyn @Trait`.
+Not every trait can be used as `dyn @Trait`. The current public rule is that a trait object must erase to a fixed receiver handle and a fixed vtable ABI. Therefore, generic traits, traits with associated types, traits with generic methods, and traits whose method signatures use `Self` outside the receiver position are not currently valid as `dyn @Trait`.
+
+Toka 1.0 also does not support associated-type binding syntax on dynamic trait
+objects. Forms such as `dyn @Readable<Item = i32>` are rejected. Use a concrete
+generic parameter, a wrapper trait without associated types, or a concrete
+adapter until this is designed after 1.0.
 
 Trait bounds must use `@Trait` for a single facet and `@{Trait1, Trait2}` for a trait facet set. The names inside a trait facet set are bare because the leading `@` places the whole set in trait context.
 

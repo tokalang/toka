@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 191 个
+- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 194 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -85,6 +85,9 @@
    当前文档明确说稳定 trait object 语法只支持单个 facet `dyn @Trait`。已新增最小 fail 锁：
 
    - `tests/fail/dyn_trait_set_object.tk`
+   - `tests/fail/dyn_trait_associated_type_binding_syntax.tk`
+
+   这同时锁住 1.0 的关联类型绑定边界：`dyn @Readable<Item = i32>` 暂不属于公开语法。
 
 3. `@encap` path / crate / wildcard 可见性矩阵
 
@@ -97,13 +100,22 @@
 
 4. 常见错误 fail cases
 
-   文档常见错误表中仍有几项需要最小 fail 锁。已新增：
+   文档常见错误表中的条目已经逐项锚定到 fail 测试或专用 parser diagnostic：
 
    - `tests/fail/let_var_binding.tk`
+   - `tests/fail/while_abolished.tk`
    - `tests/fail/for_missing_auto.tk`
+   - `tests/fail/struct_positional_init_fail.tk`
+   - `tests/fail/struct_single_field_positional_fail.tk`
    - `tests/fail/string_concat_plus.tk`
+   - `tests/fail/common_mistake_handle_as_payload_read.tk`
+   - `tests/fail/core_handle_rebind_requires_hash.tk`
+   - `tests/fail/param_type_side_reference.tk`
+   - `tests/fail/redundant_param_borrow.tk`
+   - `tests/fail/morphic_type_side_fn_param.tk`
+   - `tests/fail/morphic_type_side_shape_member.tk`
 
-   其中 `let` / `var` 已收紧为 `E01112` / `E01244` 专用 parser diagnostic，`dyn @{...}` 已收紧为 `E01245`，普通字段误写 `.'field` 已收紧为 `E04580` 专用 Sema diagnostic。`for x in ...` 和字符串 `+` 也已有明确错误码，避免落到泛泛的级联错误。
+   其中 `let` / `var` 已收紧为 `E01112` / `E01244` 专用 parser diagnostic，`dyn @{...}` 已收紧为 `E01245`，普通字段误写 `.'field` 已收紧为 `E04580` 专用 Sema diagnostic。`while`、`for x in ...`、字符串 `+`、错误的 type-side morphology、以及把 handle view 当 payload 参数读取，也都有明确错误码或最小反例，避免落到泛泛的级联错误。
 
 5. hatted parameter obligation
 
@@ -148,7 +160,10 @@
    不能隐式捕获外部变量，普通 `fn` 闭包若带隐式借用捕获也不能作为返回值逃逸。
    需要保存闭包状态时应显式 `[cede ...]` 或 `[copy ...]`。本轮补上
    `tests/fail/closure_copy_capture_resource.tk`，锁定 `[copy ...]` 不能浅拷资源所有权。
-   后续如果继续细化，应集中在 async suspension/capture 边界，而不是基础闭包逃逸。
+   本轮补上 `tests/fail/thread_spawn_implicit_capture_escape.tk`，锁定传给
+   `thread_spawn` 的闭包不能隐式捕获外层变量；跨 execution boundary 的状态必须
+   使用 `[cede ...]` 或 `[copy ...]` 显式化。后续如果继续细化，应集中在 async
+   suspension/capture 边界，而不是基础闭包逃逸。
 
 5. Nullable handle matrix
 
@@ -308,13 +323,13 @@
 
 ### 3. `dyn @Trait`
 
-文档清楚限制为单 facet。`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 方法边界、source-less TKI replay 下的 dyn trait interface，以及关联类型 / 泛型方法 / 非 receiver `Self` 的对象安全拒绝，都已经有最小测试锁。后续如果继续补，重点应转向显式绑定关联类型后的 dyn object 设计、可见性路径授权的交叉场景，而不是基础语法形态。
+文档清楚限制为单 facet。`dyn @{A, B}` 拒绝、`dyn @Trait` 跨模块 pub/private 方法边界、source-less TKI replay 下的 dyn trait interface，以及关联类型 / 泛型方法 / 非 receiver `Self` 的对象安全拒绝，都已经有最小测试锁。1.0 暂不支持 associated type binding on dyn trait object，`dyn @Readable<Item = i32>` 已由 `tests/fail/dyn_trait_associated_type_binding_syntax.tk` 锁定为拒绝。后续如果继续补，重点应转向显式绑定关联类型后的 dyn object 设计、可见性路径授权的交叉场景，而不是基础语法形态。
 
 本轮继续收紧了类型位置边界：alias、shape member、cast target 中出现的 `dyn @Trait` 也会走对象安全检查，避免通过间接类型位置绕过 `E0617`。
 
 ### 4. Common Mistakes
 
-常见错误表已经很有价值，但若它公开存在，最好让每一行至少有一个 fail 测试或明确的 parser diagnostic。否则开发者会把它理解成硬承诺。
+常见错误表已经很有价值；现在每一行都有至少一个 fail 测试、专用 parser diagnostic，或已存在的语法拒绝路径作为锚点。后续新增表项时应同步新增最小 fail case，避免公开文档和编译器行为漂移。
 
 ## 推荐下一阶段路线
 

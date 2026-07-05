@@ -1,0 +1,14 @@
+trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+fn consume(item: dyn @Readable<Item = i32>) -> i32 {
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0617]

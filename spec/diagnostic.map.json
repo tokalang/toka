@@ -2291,6 +2291,12 @@
       "message": "Closure copy capture of resource '{}' with type '{}' would duplicate ownership; use '[cede {}]' or clone into a separate value first",
       "description": "Closure copy capture cannot duplicate ownership of resource values"
     },
+    "E04582": {
+      "id": "ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE",
+      "level": "Error",
+      "message": "Closure passed across execution boundary '{}' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make capture explicit",
+      "description": "Closures crossing an execution boundary must make captured state explicit"
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

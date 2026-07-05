@@ -748,7 +748,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       auto t = toka::Type::fromString("str");
       return resolveType(t);
   } else if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    m_AccessedVariables.insert(ve->Name); // [CLOSURE] Tracker
+    if (m_IsPrecomputingCaptures && m_ClosureCaptureRootScope) {
+      SymbolInfo *CapturedInfo = nullptr;
+      std::string actualName;
+      Scope *ownerScope = nullptr;
+      if (CurrentScope->findVariableWithDerefScope(ve->Name, CapturedInfo,
+                                                   actualName, ownerScope) &&
+          CapturedInfo && CapturedInfo->IsDeclaredVariable && ownerScope &&
+          ownerScope->Depth < m_ClosureCaptureRootScope->Depth) {
+        m_AccessedVariables.insert(ve->Name);
+      }
+    } else {
+      m_AccessedVariables.insert(ve->Name); // [CLOSURE] Tracker
+    }
     if (m_InLHS) {
       std::string actualName = ve->Name;
       SymbolInfo *InfoPtr = nullptr;

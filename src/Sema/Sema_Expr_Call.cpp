@@ -62,6 +62,32 @@ struct CallArgPALFact {
   Expr *Node = nullptr;
 };
 
+static bool isExecutionBoundaryCalleeName(std::string Name) {
+  size_t scopePos = Name.rfind("::");
+  if (scopePos != std::string::npos)
+    Name = Name.substr(scopePos + 2);
+  size_t genericPos = Name.find('<');
+  if (genericPos != std::string::npos)
+    Name = Name.substr(0, genericPos);
+  return Name == "thread_spawn";
+}
+
+static ClosureExpr *findClosureExpr(Expr *E) {
+  if (!E)
+    return nullptr;
+  if (auto *Clo = dynamic_cast<ClosureExpr *>(E))
+    return Clo;
+  if (auto *Cede = dynamic_cast<CedeExpr *>(E))
+    return findClosureExpr(Cede->Value.get());
+  if (auto *Pass = dynamic_cast<PassExpr *>(E))
+    return findClosureExpr(Pass->Value.get());
+  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+    return findClosureExpr(Cast->Expression.get());
+  if (auto *Unary = dynamic_cast<UnaryExpr *>(E))
+    return findClosureExpr(Unary->RHS.get());
+  return nullptr;
+}
+
 // Stage 5c: Object-Oriented Call Expression Check
 std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
@@ -1450,6 +1476,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     auto argType = checkExpr(Call->Args[i].get(), paramType);
+
+    if (isExecutionBoundaryCalleeName(OriginalName)) {
+      if (auto *Clo = findClosureExpr(Call->Args[i].get())) {
+        for (const auto &name : Clo->ImplicitCaptures) {
+          DiagnosticEngine::report(
+              Clo->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE,
+              OriginalName, name, name, name);
+          HasError = true;
+        }
+      }
+    }
     
     if (paramType && paramType->IsWritable) {
       Expr *argExpr = Call->Args[i].get();

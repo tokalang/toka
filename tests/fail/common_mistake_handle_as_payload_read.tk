@@ -1,0 +1,12 @@
+fn takes_i32(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    auto value# = 42
+    auto *ptr = *#value
+
+    return takes_i32(*ptr)
+}
+
+// EXPECT: error[E04571]

@@ -19,7 +19,9 @@ later release.
 - Trait syntax: `trait @Name`, `Type@Trait`, `@{A, B}` facet sets, and `where:`
   constraints.
 - Associated types: keep `type` and `per type` as the stable 1.0 model.
-- `dyn @Trait`: single-facet trait objects only.
+- `dyn @Trait`: single-facet trait objects only. Associated-type binding syntax
+  is not part of 1.0, so traits with associated types are not object-safe as
+  `dyn @Trait`, and forms such as `dyn @Readable<Item = i32>` are rejected.
 - `@encap`: keep the current visibility rules, including `pub`, `pub(crate)`,
   `pub(path)`, and wildcard forms.
 - Path-scoped visibility: Toka has no source-level `mod` declaration. The path
@@ -75,6 +77,11 @@ later release.
   mutability, but it is not a thread-safety proof. Cross-thread sharing must be
   mediated by appropriate library types and trait bounds such as
   `Atomic`/`Mutex`/`RwLock`, `Send`, and `Sync`.
+- Execution-boundary capture rule: thread / task handoff must not carry hidden
+  borrowed state. Closures passed to `thread_spawn` cannot implicitly capture
+  outer variables; state crossing such a boundary must be explicit through
+  `[cede ...]` transfer or `[copy ...]` for copyable data. Future task handoff
+  syntax must preserve the same conservative PAL boundary.
 - Public unsafe/raw API redlines: raw pointer exposure requires explicit
   unsafe/raw naming.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic
@@ -83,8 +90,8 @@ later release.
 ## Under Discussion / In Progress
 
 - `dyn @Trait` boundary: keep the current single-facet object model stable, and
-  decide how explicitly to document the future space around multi-facet
-  objects, associated type binding, object safety, and dyn object ABI.
+  decide how much future dyn-object ABI detail belongs in 1.0 docs versus
+  post-1.0 design notes.
 - Async color model: keep `fn f() -> async T`, `.await`, `.wait`, and `.start`
   as the current direction, but freeze this late because async crosses value
   color, task ownership, suspension, cancellation, and PAL dependency

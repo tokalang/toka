@@ -195,6 +195,13 @@ effects:
 共享 handle 本身不是 borrow-like dependency；只有返回值内部实际携带的 borrowed
 state 才形成依赖。
 
+Execution boundary 比普通局部调用更严格。对 Toka 1.0 来说，thread / task
+handoff 不能携带隐藏的借用状态：传给 `thread_spawn` 的闭包不能隐式捕获外层变量，
+后续 task handoff 形式也必须遵守同一规则。跨过这类边界的状态必须显式化，通常
+使用 `[cede ...]` 转移，或对可复制数据使用 `[copy ...]`。`fn f(x: str) ->
+async str <- x` 这类 async 返回依赖仍然只是普通签名依赖，并不授权 detached task
+持有未声明的借用。
+
 ### PAL (Path-Anchored Ledger) 静态安全边界
 
 对 Toka 1.0 来说，PAL 冻结为 **Path-Anchored Ledger（路径锚定账本）**：safe 语言子集中的局部、基于路径的安全检查器。它将借用、所有权转移和失效风险记录到源码级存储路径上，跟踪借用路径、payload 修改、handle 重绑定、资源移动、unset 状态，以及 `if`、`guard`、`match`、`loop`、`for`、`break`、`continue` 产生的分析状态。
@@ -330,7 +337,11 @@ auto area = print_area(rect)
 
 通过 `dyn @Trait` 调用方法时，会经由 trait 接口动态派发。在定义模块之外，只有 trait 中的 `pub fn` 方法可以被调用。当前稳定的 trait object 语法是单个 trait facet，例如 `dyn @Shape`；`dyn @{A, B}` 不属于当前公开语法。动态闭包使用独立的 `dyn fn(...) -> T` 语法，不是 trait object。
 
-不是所有 trait 都能成为 `dyn @Trait`。当前公开规则是：trait object 必须能被擦除为固定的 receiver handle 与固定 vtable ABI。因此，带泛型参数的 trait、带关联类型但未在 dyn 类型中绑定的 trait、带泛型方法的 trait、以及方法签名中在非 receiver 位置使用 `Self` 的 trait，暂时不能作为 `dyn @Trait` 使用。
+不是所有 trait 都能成为 `dyn @Trait`。当前公开规则是：trait object 必须能被擦除为固定的 receiver handle 与固定 vtable ABI。因此，带泛型参数的 trait、带关联类型的 trait、带泛型方法的 trait、以及方法签名中在非 receiver 位置使用 `Self` 的 trait，暂时不能作为 `dyn @Trait` 使用。
+
+Toka 1.0 也不支持 dynamic trait object 的关联类型绑定语法。`dyn
+@Readable<Item = i32>` 这类写法会被拒绝。1.0 阶段请改用具体泛型参数、不带关联类型的
+wrapper trait，或具体 adapter；显式绑定关联类型的 dyn object 设计推迟到 1.0 之后。
 
 Trait 约束必须使用 `@Trait` 表示单个 facet，使用 `@{Trait1, Trait2}` 表示 trait facet set。Trait facet set 内部使用裸 trait 名称，因为前导 `@` 已经把整个集合放入 trait 语境。
 

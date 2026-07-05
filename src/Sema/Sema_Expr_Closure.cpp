@@ -158,11 +158,13 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   auto oldAccessed = m_AccessedVariables;
   m_AccessedVariables.clear();
+  auto *oldClosureCaptureRootScope = m_ClosureCaptureRootScope;
   
   auto oldFuncRetType = CurrentFunctionReturnType;
   CurrentFunctionReturnType = Clo->ReturnType;
 
   enterScope();
+  m_ClosureCaptureRootScope = CurrentScope;
   
   // Synthesize Params and Generic Parameters for the `__invoke` method
   std::vector<GenericParam> invokeGenerics;
@@ -221,12 +223,15 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   for (const auto& varName : m_AccessedVariables) {
      SymbolInfo *infoPtr = nullptr;
      std::string actualName;
-     // Exclude current closure scope params; check if it exists in the environment (CurrentScope)!
-     bool isParam = false;
-     for (auto &p : closureParams) {
-         if (p.Name == varName) { isParam = true; break; }
-     }
-     if (isParam) {
+     // Only names resolved from an outer scope are captures. Parameters and
+     // locals declared inside the closure body belong to the closure scope.
+     bool isClosureLocal =
+         CurrentScope->Symbols.count(varName) ||
+         CurrentScope->Symbols.count("&" + varName) ||
+         CurrentScope->Symbols.count("*" + varName) ||
+         CurrentScope->Symbols.count("^" + varName) ||
+         CurrentScope->Symbols.count("~" + varName);
+     if (isClosureLocal) {
          continue;
      }
 
@@ -247,6 +252,10 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
            }
         }
         
+        if (!infoPtr->IsDeclaredVariable) {
+           continue;
+        }
+
         if (!isExplicit) {
            Clo->ImplicitCaptures.push_back(varName);
         }
@@ -298,6 +307,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   }
 
   exitScope();
+  m_ClosureCaptureRootScope = oldClosureCaptureRootScope;
   m_AccessedVariables = oldAccessed;
   CurrentFunctionReturnType = oldFuncRetType;
 
