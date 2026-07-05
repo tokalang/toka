@@ -1,0 +1,12 @@
+import std/io::println
+
+fn main() -> i32 {
+    auto arr#: [i32; 3] = [1, 2, 3]
+    auto &view = &arr[0]
+
+    arr[0] = 20
+
+    println("view is {}", view)
+    assert(view == 20, "shared array element borrow should observe payload write")
+    return 0
+}

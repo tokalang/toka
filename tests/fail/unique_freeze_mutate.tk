@@ -1,13 +1,13 @@
 // tests/fail/fail_unique_freeze_mutate.tk
 
 fn main() -> i32 {
-    auto ^p = new i32(10)
+    auto ^#p = new i32(10)
     
-    // Borrow p (freezes p)
+    // Borrow p (locks the handle from replacement)
     auto &x = &p
 
-    // ERROR: Cannot modify 'p' while it is borrowed
-    p = new i32(20) // EXPECT: error[E0442]:
+    // ERROR: Cannot replace 'p' while it is borrowed
+    ^#p = new i32(20) // EXPECT: error[E0442]:
 
     // Use x
     return x

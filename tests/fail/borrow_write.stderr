@@ -1,5 +1,0 @@
-error[E0442]: Cannot mutably borrow immutable entity 'x'
- --> tests/fail/borrow_write.tk:20:7
-    |
- 20 |     x = 20 // EXPECT: error[E0442]: cannot modify 'x' while it is borrowed
-    |       ^

@@ -1270,7 +1270,7 @@ void Sema::checkStmt(Stmt *S) {
         std::string actName;
         if (CurrentScope->findVariableWithDeref(RHSVar->Name, SourceInfoPtr, actName)) {
           if (SourceInfoPtr->IsUnique()) {
-            std::string conflictPath = PALCheckerState.verifyMutation(actName);
+            std::string conflictPath = PALCheckerState.verifyInvalidation(actName);
             if (!conflictPath.empty()) {
               DiagnosticEngine::report(getLoc(Var), DiagID::ERR_MOVE_BORROWED, conflictPath);
               HasError = true;

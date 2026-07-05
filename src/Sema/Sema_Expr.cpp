@@ -878,7 +878,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::string conflictPath = "";
     if (!m_InIntermediatePath) {
       if (m_InLHS) {
-         conflictPath = PALCheckerState.verifyMutation(actualName);
+         conflictPath = PALCheckerState.verifyPayloadWrite(actualName);
       } else {
          conflictPath = PALCheckerState.verifyAccess(actualName);
       }
@@ -2096,7 +2096,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (ce->Value) {
       std::string pathToMove = getStringifyPath(ce->Value.get());
       if (!pathToMove.empty()) {
-          std::string conflictPath = PALCheckerState.verifyMutation(pathToMove);
+          std::string conflictPath = PALCheckerState.verifyInvalidation(pathToMove);
           if (!conflictPath.empty()) {
               error(ce, DiagID::ERR_MOVE_BORROWED, conflictPath);
           }
@@ -2579,7 +2579,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Rule] Borrowing check for Method Call
         std::string objPath = getStringifyPath(Met->Object.get());
         if (!objPath.empty()) {
-           std::string conflictPath = requiresMutableBorrow ? PALCheckerState.verifyMutation(objPath) : PALCheckerState.verifyAccess(objPath);
+           std::string conflictPath = requiresMutableBorrow ? PALCheckerState.verifyExclusiveMutation(objPath) : PALCheckerState.verifyAccess(objPath);
            if (!conflictPath.empty()) {
                DiagnosticEngine::report(getLoc(Met), DiagID::ERR_BORROW_MUT, conflictPath);
                HasError = true;

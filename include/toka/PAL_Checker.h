@@ -29,9 +29,11 @@ enum class PathState {
 };
 
 enum class PALOperationClass {
+  PayloadWrite,
   SharedPayloadBorrow,
   ExclusivePayloadBorrow,
   HandleViewBorrow,
+  ExclusiveMutation,
   Invalidation
 };
 
@@ -63,8 +65,11 @@ public:
   // isMutable parameter determines exclusivity
   bool recordBorrow(const std::string& path, bool isMutable = false);
 
-  // Verifies if a path can be mutated
+  // Verifies if a path can be exclusively mutated
   std::string verifyMutation(const std::string& path);
+  std::string verifyPayloadWrite(const std::string& path);
+  std::string verifyExclusiveMutation(const std::string& path);
+  std::string verifyInvalidation(const std::string& path);
 
   // Verifies if a path can be accessed (read)
   std::string verifyAccess(const std::string& path);

@@ -1,15 +1,15 @@
 // tests/fail/fail_shared_scope_mutate.tk
 
 fn main() -> i32 {
-    auto ~p = new i32(10)
+    auto ~#p = new i32(10)
     
-    // Borrow p (locks p from mutation)
+    // Borrow p (locks the handle from replacement)
     auto &x = &p
 
-    // ERROR: Cannot modify 'p' while it is borrowed
+    // ERROR: Cannot replace 'p' while it is borrowed
     // Although ~p is shared, resetting the handle 'p' itself would destroy the link 
     // to the underlying object (potentially dropping it if refcount=1), making &x dangling.
-    p = new i32(20) // EXPECT: error[E0442]:
+    ~#p = new i32(20) // EXPECT: error[E0442]:
 
     return x
 }

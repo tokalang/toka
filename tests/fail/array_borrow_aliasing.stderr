@@ -1,5 +1,0 @@
-error[E0442]: Cannot mutably borrow immutable entity 'arr'
- --> tests/fail/array_borrow_aliasing.tk:7:12
-   |
- 7 |     arr[0] = 20 // EXPECT: error[E0442]:
-   |            ^

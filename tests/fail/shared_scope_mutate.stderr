@@ -1,15 +1,5 @@
 error[E0442]: Cannot mutably borrow immutable entity 'p'
- --> tests/fail/shared_scope_mutate.tk:12:7
+ --> tests/fail/shared_scope_mutate.tk:12:9
     |
- 12 |     p = new i32(20) // EXPECT: error[E0442]:
-    |       ^
-error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
- --> tests/fail/shared_scope_mutate.tk:12:7
-    |
- 12 |     p = new i32(20) // EXPECT: error[E0442]:
-    |       ^
-error[E0443]: Cannot modify immutable entity 'i32'
- --> tests/fail/shared_scope_mutate.tk:12:5
-    |
- 12 |     p = new i32(20) // EXPECT: error[E0442]:
-    |     ^
+ 12 |     ~#p = new i32(20) // EXPECT: error[E0442]:
+    |         ^

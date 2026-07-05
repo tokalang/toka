@@ -277,7 +277,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       std::string actualRHSName = RHSVar->Name;
       if (CurrentScope->findVariableWithDeref(RHSVar->Name, RHSInfoPtr, actualRHSName) &&
           RHSInfoPtr->IsUnique()) {
-        std::string conflictPath = PALCheckerState.verifyMutation(actualRHSName);
+        std::string conflictPath = PALCheckerState.verifyInvalidation(actualRHSName);
         if (!conflictPath.empty()) {
             error(Bin, DiagID::ERR_MOVE_BORROWED, conflictPath);
         }
@@ -429,7 +429,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       if (CurrentScope->findVariableWithDeref(Var->Name, InfoPtr, actualName)) {
         std::string lhsPath = getStringifyPath(Bin->LHS.get());
         if (!isUnsetInit && !lhsPath.empty()) {
-            std::string conflictPath = PALCheckerState.verifyMutation(lhsPath);
+            PALOperationClass lhsOperation =
+                (isRebind || isRefAssign) ? PALOperationClass::ExclusiveMutation
+                                          : PALOperationClass::PayloadWrite;
+            std::string conflictPath =
+                PALCheckerState.verifyOperation(lhsPath, lhsOperation);
             bool authorized = false;
             
             if (!conflictPath.empty()) {

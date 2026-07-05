@@ -35,14 +35,17 @@ bool PALChecker::isSuffixDerived(const std::string& base, const std::string& der
 bool PALChecker::recordBorrow(const std::string& path, bool isMutable) {
   if (!IsEnabled) return true;
 
-  auto& map = LedgerStack.back().Map;
-  
-  if (map.count(path)) {
-     if (map[path] == PathState::BorrowedMut || isMutable) {
-        return false; // Error: Already mutably borrowed, or want mutable and already borrowed
-     }
+  for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
+    for (const auto& [regPath, state] : it->Map) {
+       if (!pathsOverlap(regPath, path))
+         continue;
+       if (state == PathState::BorrowedMut || isMutable) {
+          return false; // Error: Already mutably borrowed, or want mutable and already borrowed
+       }
+    }
   }
   
+  auto& map = LedgerStack.back().Map;
   map[path] = isMutable ? PathState::BorrowedMut : PathState::BorrowedShared;
   TransientBorrows.push_back(path);
   return true;
@@ -62,6 +65,10 @@ bool PALChecker::upgradeBorrow(const std::string& path) {
 }
 
 std::string PALChecker::verifyMutation(const std::string& path) {
+  return verifyExclusiveMutation(path);
+}
+
+std::string PALChecker::verifyExclusiveMutation(const std::string& path) {
   if (!IsEnabled) return "";
 
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
@@ -91,8 +98,32 @@ std::string PALChecker::verifyAccess(const std::string& path) {
   return "";
 }
 
+std::string PALChecker::verifyPayloadWrite(const std::string& path) {
+  if (!IsEnabled) return "";
+
+  for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
+    for (const auto& [regPath, state] : it->Map) {
+      if (state == PathState::BorrowedMut) {
+        if (pathsOverlap(regPath, path)) {
+          return regPath;
+        }
+      }
+      if (state == PathState::BorrowedShared && regPath != path &&
+          isPrefixOf(path, regPath)) {
+        return regPath;
+      }
+    }
+  }
+  return "";
+}
+
+std::string PALChecker::verifyInvalidation(const std::string& path) {
+  return verifyExclusiveMutation(path);
+}
+
 bool PALChecker::operationRequiresExclusive(PALOperationClass op) const {
   return op == PALOperationClass::ExclusivePayloadBorrow ||
+         op == PALOperationClass::ExclusiveMutation ||
          op == PALOperationClass::Invalidation;
 }
 
@@ -108,8 +139,13 @@ bool PALChecker::pathsOverlap(const std::string& lhs,
 
 std::string PALChecker::verifyOperation(const std::string& path,
                                         PALOperationClass op) {
-  return operationRequiresExclusive(op) ? verifyMutation(path)
-                                        : verifyAccess(path);
+  if (op == PALOperationClass::PayloadWrite)
+    return verifyPayloadWrite(path);
+  if (op == PALOperationClass::Invalidation)
+    return verifyInvalidation(path);
+  if (operationRequiresExclusive(op))
+    return verifyExclusiveMutation(path);
+  return verifyAccess(path);
 }
 
 PathState PALChecker::getState(const std::string& path) {

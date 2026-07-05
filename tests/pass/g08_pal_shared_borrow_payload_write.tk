@@ -1,0 +1,13 @@
+import std/io::println
+
+fn main() -> i32 {
+    auto x# = 10
+    auto &view = &x
+
+    x = 20
+
+    println("view={}, x={}", view, x)
+    assert(view == 20, "shared borrow should observe payload write")
+    assert(x == 20, "payload write should update x")
+    return 0
+}
