@@ -27,6 +27,32 @@ extern bool verboseMode;
 
 namespace toka {
 
+static const MemberExpr *getTerminalAssignmentMember(const Expr *expr) {
+  if (!expr)
+    return nullptr;
+  if (auto *member = dynamic_cast<const MemberExpr *>(expr))
+    return member;
+  if (auto *unary = dynamic_cast<const UnaryExpr *>(expr))
+    return getTerminalAssignmentMember(unary->RHS.get());
+  if (auto *addr = dynamic_cast<const AddressOfExpr *>(expr))
+    return getTerminalAssignmentMember(addr->Expression.get());
+  if (auto *cast = dynamic_cast<const CastExpr *>(expr))
+    return getTerminalAssignmentMember(cast->Expression.get());
+  if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr))
+    return getTerminalAssignmentMember(postfix->LHS.get());
+  return nullptr;
+}
+
+static bool terminalAssignmentMemberHasMorphology(const Expr *expr) {
+  const MemberExpr *member = getTerminalAssignmentMember(expr);
+  return member && Type::stripMorphology(member->Member) != member->Member;
+}
+
+static bool assignmentLowersThroughEnvelopeCarrier(const Expr *expr) {
+  return terminalAssignmentMemberHasMorphology(expr) ||
+         (expr && expr->ResolvedType && expr->ResolvedType->isReference());
+}
+
 void CodeGen::emitAcquire(llvm::Value *sharedHandle, std::shared_ptr<Type> pointeeType) {
   if (!sharedHandle || !sharedHandle->getType()->isStructTy())
     return;
@@ -253,17 +279,17 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
   }
 }
 
-PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
+PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
+                                   const BinaryExpr *assignmentSite) {
   // 1. Resolve Intent
   bool hasRebind = false;
-  bool hasHandleLHS = false;
+  bool explicitRebind = false;
   const Expr *targetLHS = lhsExpr;
   while (auto *ue = dynamic_cast<const UnaryExpr *>(targetLHS)) {
-    if (ue->IsRebindable || ue->Op == TokenType::TokenWrite)
+    if (ue->IsRebindable || ue->Op == TokenType::TokenWrite) {
       hasRebind = true;
-    if (ue->Op == TokenType::Ampersand || ue->Op == TokenType::Caret ||
-        ue->Op == TokenType::Tilde || ue->Op == TokenType::Star)
-      hasHandleLHS = true;
+      explicitRebind = true;
+    }
     targetLHS = ue->RHS.get();
   }
 
@@ -290,7 +316,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
       lhsAlloca = symLHS->allocaPtr;
     }
   }
-  if (hasHandleLHS && symLHS &&
+  if (symLHS &&
       (symLHS->mode == AddressingMode::Reference ||
        symLHS->mode == AddressingMode::Pointer ||
        symLHS->morphology != Morphology::None)) {
@@ -360,7 +386,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
 
   // [Fix] Smart Pointer Assignment Ambiguity
   bool effectiveRebind = hasRebind;
-  if (effectiveRebind && symLHS && rhsVal) {
+  if (effectiveRebind && !explicitRebind && symLHS && rhsVal) {
     bool isHandleType = rhsVal->getType()->isStructTy(); // SharedPtr
     if (rhsVal->getType()->isPointerTy()) {
       // Could be RawPtr, UniquePtr, or promoted SharedPtr source
@@ -386,6 +412,8 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
       rhsVal =
           emitPromotion(rhsVal, getLLVMType(lhsExpr->ResolvedType), *symLHS);
     }
+    recordAssignmentLoweringCarrier(
+        assignmentSite, AssignmentLoweringCarrier::EnvelopeRebind);
     emitEnvelopeRebind(lhsAlloca, rhsVal, *symLHS, lhsExpr);
   } else {
     // Scene A: Soul Assignment
@@ -425,6 +453,13 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr) {
           destTy = targetStructTy;
         }
       }
+    }
+    if (soulAddr && destTy) {
+      AssignmentLoweringCarrier carrier =
+          assignmentLowersThroughEnvelopeCarrier(lhsExpr)
+              ? AssignmentLoweringCarrier::EnvelopeRebind
+              : AssignmentLoweringCarrier::SoulStore;
+      recordAssignmentLoweringCarrier(assignmentSite, carrier);
     }
     emitSoulAssignment(soulAddr, rhsVal, destTy);
   }
@@ -471,7 +506,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
       bin->Op == "/=" || bin->Op == "%=") {
 
     if (bin->Op == "=") {
-      return emitAssignment(bin->LHS.get(), bin->RHS.get());
+      return emitAssignment(bin->LHS.get(), bin->RHS.get(), bin);
     }
 
     llvm::Value *soulAddr = emitEntityAddr(bin->LHS.get());
@@ -532,6 +567,8 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
         llvm::Value *res =
             m_Builder.CreateInBoundsGEP(elemTy, lhsVal, {rhsVal}, "ptradd");
         m_Builder.CreateStore(res, soulAddr);
+        recordAssignmentLoweringCarrier(
+            bin, AssignmentLoweringCarrier::ResidualLowering);
         return PhysEntity(res, "void", res->getType(), false);
       }
     }
@@ -587,6 +624,8 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
     }
 
     m_Builder.CreateStore(res, soulAddr);
+    recordAssignmentLoweringCarrier(bin,
+                                    AssignmentLoweringCarrier::ResidualLowering);
     return res;
   }
 

@@ -385,23 +385,35 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       AssignmentStats &stats = assignmentStats();
       bool isCompound = Bin->Op != "=";
       bool isMemberLHS = containsMemberExpr(Bin->LHS.get());
+      AssignmentFrontendEvidence evidence =
+          AssignmentFrontendEvidence::Unclassified;
       stats.TotalAssignmentSites++;
       if (!isCompound && !isImplicitDerefAssign && !isRebind &&
           !isRefAssign) {
         stats.PlainPayloadAssignments++;
+        evidence = AssignmentFrontendEvidence::Payload;
       }
-      if (isImplicitDerefAssign)
+      if (isImplicitDerefAssign) {
         stats.ImplicitDerefPayloadAssignments++;
-      if (isRebind && !isRefAssign)
+        evidence = AssignmentFrontendEvidence::Payload;
+      }
+      if (isRebind && !isRefAssign) {
         stats.HandleRebindings++;
-      if (isRefAssign)
+        evidence = AssignmentFrontendEvidence::Handle;
+      }
+      if (isRefAssign) {
         stats.ReferenceRebindings++;
+        evidence = AssignmentFrontendEvidence::Handle;
+      }
       if (isMemberLHS)
         stats.MemberLHSAssignments++;
       if (terminalMemberHasMorphology(Bin->LHS.get()))
         stats.TerminalMemberMorphologyAssignments++;
-      if (isCompound)
+      if (isCompound) {
         stats.CompoundAssignments++;
+        evidence = AssignmentFrontendEvidence::ResidualCompound;
+      }
+      recordAssignmentFrontendEvidence(Bin, evidence);
     }
 
     Expr *Traverse = Bin->LHS.get();

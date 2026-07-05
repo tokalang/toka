@@ -187,7 +187,8 @@ private:
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
 
   // Assignment Strategy Dispatcher (Step 2)
-  PhysEntity emitAssignment(const Expr *lhs, const Expr *rhs);
+  PhysEntity emitAssignment(const Expr *lhs, const Expr *rhs,
+                            const BinaryExpr *assignmentSite);
   void emitSoulAssignment(llvm::Value *soulAddr, llvm::Value *rhsVal,
                           llvm::Type *type);
   void emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
