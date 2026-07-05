@@ -9,7 +9,7 @@ pub shape Lexer (
 )
 
 impl Lexer {
-    pub fn new(source: str) -> Lexer {
+    pub fn new(source: str) -> Lexer <- source {
         return Lexer(
             source = source,
             pos = 0,
@@ -207,4 +207,4 @@ impl Lexer {
     }
 }
 
-fn _str_cast(s: str) -> str { return s.clone() }
+fn _str_cast(s: str) -> str <- s { return s.clone() }

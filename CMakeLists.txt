@@ -7,7 +7,7 @@ if(APPLE)
 endif()
 
 project(TokaCompiler VERSION 0.9.8 LANGUAGES C CXX)
-set(TOKA_RELEASE_SUFFIX "-06")
+set(TOKA_RELEASE_SUFFIX "-07")
 set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}${TOKA_RELEASE_SUFFIX}")
 
 # Version Control Info

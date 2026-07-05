@@ -16,10 +16,13 @@
 #include "toka/AST.h"
 #include "toka/Token.h"
 #include "toka/Type.h"
-#include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 #include <set>
 #include <string>
+
+#ifndef __EMSCRIPTEN__
+#include "llvm/Support/raw_ostream.h"
+#endif
 
 namespace toka {
 
@@ -357,6 +360,7 @@ inline void recordHandleSurfaceModule(const Module &module) {
   }
 }
 
+#ifndef __EMSCRIPTEN__
 inline void dumpHandleSurfaceStatsJson(llvm::raw_ostream &os,
                                        uint64_t files) {
   const auto &stats = handleSurfaceStats();
@@ -472,5 +476,6 @@ inline void dumpHandleSurfaceStatsJson(llvm::raw_ostream &os,
   os << "  }\n";
   os << "}\n";
 }
+#endif
 
 } // namespace toka

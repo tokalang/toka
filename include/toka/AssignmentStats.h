@@ -13,8 +13,11 @@
 // limitations under the License.
 #pragma once
 
-#include "llvm/Support/raw_ostream.h"
 #include <cstdint>
+
+#ifndef __EMSCRIPTEN__
+#include "llvm/Support/raw_ostream.h"
+#endif
 
 namespace toka {
 
@@ -46,6 +49,7 @@ inline void enableAssignmentStats(bool enabled) {
 
 inline bool assignmentStatsEnabled() { return assignmentStats().Enabled; }
 
+#ifndef __EMSCRIPTEN__
 inline void dumpAssignmentStatsJson(llvm::raw_ostream &os, uint64_t files) {
   const AssignmentStats &stats = assignmentStats();
   os << "{\n";
@@ -74,5 +78,6 @@ inline void dumpAssignmentStatsJson(llvm::raw_ostream &os, uint64_t files) {
   os << "  }\n";
   os << "}\n";
 }
+#endif
 
 } // namespace toka

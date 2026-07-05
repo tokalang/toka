@@ -1,5 +1,4 @@
-import core/str::{str, _internal_str_cast}
-import sys/libc::{libc_memcpy}
+import core/str::{str}
 
 pub shape TokenKind(
     Unknown |
@@ -34,17 +33,9 @@ impl Token {
         )
     }
 
-    pub fn lexeme(self) -> str {
+    pub fn lexeme(self) -> str <- self {
         unsafe {
-            auto ret = _internal_str_cast("")
-            auto ptr_addr = self.lexeme_addr
-            libc_memcpy(&ret as *void, &ptr_addr as *void, 8)
-            
-            auto len_addr = (&ret as Addr) + 8
-            auto new_len = self.lexeme_len
-            libc_memcpy(len_addr as *void, &new_len as *void, 8)
-            
-            return ret
+            return str(&buf = (self.lexeme_addr as *[char]) as &[char], len = self.lexeme_len)
         }
     }
 }

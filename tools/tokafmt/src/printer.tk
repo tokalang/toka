@@ -1,16 +1,11 @@
 
-import core/str::{str, _internal_str_cast}
-import sys/libc::{libc_memcpy}
+import core/str::{str}
 import src/token::{Token, TokenKind}
 import src/lexer::{Lexer}
 
-fn rebuild_str(addr: Addr, len: usize) -> str {
+fn rebuild_str(addr: Addr, len: usize) -> str <- addr {
     unsafe {
-        auto ret = _internal_str_cast("")
-        libc_memcpy(&ret as *void, &addr as *void, 8)
-        auto len_addr = (&ret as Addr) + 8
-        libc_memcpy(len_addr as *void, &len as *void, 8)
-        return ret
+        return str(&buf = (addr as *[char]) as &[char], len = len)
     }
 }
 
@@ -258,4 +253,4 @@ impl Printer {
     }
 }
 
-fn _str_cast(s: str) -> str { return s.clone() }
+fn _str_cast(s: str) -> str <- s { return s.clone() }
