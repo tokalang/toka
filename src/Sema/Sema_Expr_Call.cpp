@@ -34,6 +34,9 @@ static std::string getStringifyPath(Expr *E) {
   if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
     return ve->Name;
   }
+  if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
+    return getStringifyPath(ce->Value.get());
+  }
   if (auto *me = dynamic_cast<MemberExpr *>(E)) {
     std::string member = toka::Type::stripMorphology(me->Member);
     return getStringifyPath(me->Object.get()) + "." + member;
@@ -51,6 +54,35 @@ static std::string getStringifyPath(Expr *E) {
     return getStringifyPath(ce->Expression.get());
   }
   return "";
+}
+
+enum class CallArgPALAccess {
+  SharedPayload,
+  ExclusivePayload,
+  HandleView,
+  Invalidation
+};
+
+struct CallArgPALFact {
+  std::string Path;
+  CallArgPALAccess Access;
+  Expr *Node = nullptr;
+};
+
+static bool isCallArgExclusive(CallArgPALAccess Access) {
+  return Access == CallArgPALAccess::ExclusivePayload ||
+         Access == CallArgPALAccess::Invalidation;
+}
+
+static bool isPathPrefix(const std::string &Prefix, const std::string &Full) {
+  return Prefix == Full ||
+         (Full.size() > Prefix.size() &&
+          Full.compare(0, Prefix.size(), Prefix) == 0 &&
+          Full[Prefix.size()] == '.');
+}
+
+static bool pathsOverlap(const std::string &A, const std::string &B) {
+  return isPathPrefix(A, B) || isPathPrefix(B, A);
 }
 
 // Stage 5c: Object-Oriented Call Expression Check
@@ -1419,6 +1451,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return ReturnType;
   }
 
+  std::vector<CallArgPALFact> callArgPALFacts;
+
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
 
@@ -1454,20 +1488,58 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     }
     
+    bool paramIsHatted = false;
+    bool paramIsRebindable = false;
+    bool paramIsValueMutable = false;
+
     // [NEW] Enforce explicit cede for normal function calls
     bool isCededParam = false;
     if (Fn && i < Fn->Args.size()) {
         isCededParam = Fn->Args[i].IsCeded;
+        paramIsHatted = Fn->Args[i].IsRawPointer || Fn->Args[i].IsUnique ||
+                        Fn->Args[i].IsShared || Fn->Args[i].IsReference;
+        paramIsRebindable = Fn->Args[i].IsRebindable;
+        paramIsValueMutable = Fn->Args[i].IsValueMutable;
     } else if (Ext && i < Ext->Args.size()) {
         isCededParam = Ext->Args[i].IsCeded;
+        paramIsHatted = Ext->Args[i].IsRawPointer || Ext->Args[i].IsUnique ||
+                        Ext->Args[i].IsShared || Ext->Args[i].IsReference;
+        paramIsRebindable = Ext->Args[i].IsRebindable;
+        paramIsValueMutable = Ext->Args[i].IsValueMutable;
     }
 
+    bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
+    bool isCedeParamImplicitlyExempt = false;
     if (isCededParam) {
-         bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
-         bool isPrimitive = canImplicitlyPassToCede(argType);
-         if (!isCallerCeded && !isPrimitive) {
+         bool isCedeExempt = canImplicitlyPassToCede(argType);
+         isCedeParamImplicitlyExempt = isCedeExempt && !isCallerCeded;
+         if (!isCallerCeded && !isCedeExempt) {
             error(Call->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
         }
+    }
+
+    if (paramType && i < ParamTypes.size()) {
+      std::string argPath = getStringifyPath(Call->Args[i].get());
+      if (!argPath.empty()) {
+        CallArgPALAccess access = CallArgPALAccess::SharedPayload;
+        if (isCallerCeded || (isCededParam && !isCedeParamImplicitlyExempt)) {
+          access = CallArgPALAccess::Invalidation;
+        } else if (paramIsValueMutable || (paramIsHatted && paramIsRebindable)) {
+          access = CallArgPALAccess::ExclusivePayload;
+        } else if (paramIsHatted) {
+          access = CallArgPALAccess::HandleView;
+        }
+
+        std::string conflictPath = isCallArgExclusive(access)
+                                       ? PALCheckerState.verifyMutation(argPath)
+                                       : PALCheckerState.verifyAccess(argPath);
+        if (!conflictPath.empty()) {
+          error(Call->Args[i].get(), DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+                argPath, conflictPath);
+        }
+
+        callArgPALFacts.push_back({argPath, access, Call->Args[i].get()});
+      }
     }
 
     if (IsVariadic && i >= ParamTypes.size())
@@ -1501,6 +1573,20 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (shp->Name == "str") {
         Call->Args[i]->ResolvedType = paramType;
       }
+    }
+  }
+
+  for (size_t i = 0; i < callArgPALFacts.size(); ++i) {
+    for (size_t j = i + 1; j < callArgPALFacts.size(); ++j) {
+      const auto &lhs = callArgPALFacts[i];
+      const auto &rhs = callArgPALFacts[j];
+      if (!pathsOverlap(lhs.Path, rhs.Path))
+        continue;
+      if (!isCallArgExclusive(lhs.Access) && !isCallArgExclusive(rhs.Access))
+        continue;
+
+      error(rhs.Node, DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT, rhs.Path,
+            lhs.Path);
     }
   }
   

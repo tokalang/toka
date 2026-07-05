@@ -1,0 +1,11 @@
+shape Data(val: i32)
+
+fn consume_and_read(cede owned: Data, view: Data) -> i32 {
+    auto moved = cede owned
+    return moved.val + view.val
+}
+
+fn main() -> i32 {
+    auto x# = Data(val = 1)
+    return consume_and_read(cede x, x) // EXPECT: error[E0475]
+}

@@ -88,6 +88,7 @@ DIAG(ERR_UNSAFE_RESOURCE,         Error,   "E0466", "Shape '{}' contains managed
 DIAG(ERR_IMPLICIT_RESOURCE_COPY,  Error,   "E0468", "Implicit bitwise copy of resource type '{}' during auto-dereference is forbidden. Method '{}' takes 'self' by value, but the receiver is a pointer. Implement and call '.clone()' or change the method receiver to be explicitly mutable (use 'self#')")
 DIAG(ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Error,   "E0473", "Parameter '{}' was not declared 'cede' in the function signature and cannot be ceded in the body")
 DIAG(ERR_CEDE_PARAMETER_NOT_CONSUMED, Error,   "E0474", "Cede parameter '{}' must be explicitly consumed in the function body")
+DIAG(ERR_CALL_ARGUMENT_ALIAS_CONFLICT, Error,   "E0475", "Call argument '{}' aliases '{}' with incompatible PAL access")
 DIAG(ERR_NULL_ACCESS,             Error,   "E0447", "Accessing member of nullable type '{}' requires explicit 'is' check")
 DIAG(ERR_MORPHOLOGY_MISMATCH,     Error,   "E0448", "Pointer morphology mismatch: expected explicit '{}' (from LHS/Target), found '{}' (from RHS/Source)")
 DIAG(ERR_SMART_PTR_FROM_STACK,    Error,   "E0449", "Smart pointer sigil '{}' cannot be applied to stack variable; use 'new' or assign from existing smart pointer")
@@ -287,7 +288,7 @@ DIAG(ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT, Error,   "E01242", "T
 DIAG(ERR_PARSER_EXPECTED_WHERE_RELATION, Error,   "E01243", "Expected ':' or 'impl' in where constraint")
 DIAG(ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR, Error,   "E01244", "Deprecated keyword 'var'; use 'auto' for variable declarations.")
 DIAG(ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED, Error,   "E01245", "Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.")
-DIAG(ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED, Error, "E01246", "Binary '-' operator must be surrounded by spaces")
+DIAG(ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED, Error,   "E01246", "Binary '-' operator must be surrounded by spaces")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")
@@ -296,7 +297,7 @@ DIAG(WARN_UNUSED_VARIABLE,        Warning, "W0402", "Variable '{}' is declared b
 DIAG(WARN_UNUSED_IMPORT,          Warning, "W0403", "Import '{}' is declared but never used")
 DIAG(WARN_UNUSED_RESULT,          Warning, "W0406", "Discarded Result type '{}'; errors should be explicitly handled")
 DIAG(WARN_HATTED_PARAM_HANDLE_UNUSED, Warning, "W0407", "Parameter '{}' declares a handle morphology but its handle view is never used")
-DIAG(WARN_UNREACHABLE_CODE,       Structural, "S0401", "Unreachable code detected after terminating control flow")
+DIAG(WARN_UNREACHABLE_CODE,       Structural, "S0401", "Unreachable code detected after unconditional return")
 DIAG(WARN_NON_PROGRESS_LOOP,      Structural, "S0402", "Potential non-progress loop condition: variable '{}' is never mutated inside the loop body")
 
 // --- System & CLI ---

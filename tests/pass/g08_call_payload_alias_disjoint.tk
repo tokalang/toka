@@ -1,0 +1,15 @@
+shape Data(val: i32)
+shape Pair(left: Data, right: Data)
+
+fn touch(left#: Data, right#: Data) {
+    left.val = 10
+    right.val = 20
+}
+
+fn main() -> i32 {
+    auto pair# = Pair(left = Data(val = 0), right = Data(val = 0))
+    touch(pair.left, pair.right)
+    assert(pair.left.val == 10, "left field should be updated")
+    assert(pair.right.val == 20, "right field should be updated")
+    return 0
+}

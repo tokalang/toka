@@ -422,6 +422,12 @@
       "message": "Cede parameter '{}' must be explicitly consumed in the function body",
       "description": "Cede parameter '{}' must be explicitly consumed in the function body"
     },
+    "E0475": {
+      "id": "ERR_CALL_ARGUMENT_ALIAS_CONFLICT",
+      "level": "Error",
+      "message": "Call argument '{}' aliases '{}' with incompatible PAL access",
+      "description": "A function call declares all parameter borrows simultaneously; overlapping arguments conflict when either side requires exclusive or invalidating access."
+    },
     "E0447": {
       "id": "ERR_NULL_ACCESS",
       "level": "Error",

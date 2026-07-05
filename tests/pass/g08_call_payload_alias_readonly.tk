@@ -1,0 +1,10 @@
+shape Data(val: i32)
+
+fn read_twice(left: Data, right: Data) -> i32 {
+    return left.val + right.val
+}
+
+fn main() -> i32 {
+    auto x# = Data(val = 21)
+    return read_twice(x, x) - 42
+}

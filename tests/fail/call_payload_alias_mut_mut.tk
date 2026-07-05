@@ -1,0 +1,12 @@
+shape Data(val: i32)
+
+fn duplicate_mut(left#: Data, right#: Data) {
+    left.val = 10
+    right.val = 20
+}
+
+fn main() -> i32 {
+    auto x# = Data(val = 0)
+    duplicate_mut(x, x) // EXPECT: error[E0475]
+    return 0
+}
