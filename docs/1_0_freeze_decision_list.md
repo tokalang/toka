@@ -87,23 +87,29 @@ later release.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic
   `where:`, and `@encap` visibility must remain source-less compatible.
 
-## Under Discussion / In Progress
+## Late / Post-1.0 Tracking
 
-- `dyn @Trait` boundary: keep the current single-facet object model stable, and
-  decide how much future dyn-object ABI detail belongs in 1.0 docs versus
-  post-1.0 design notes.
+These items do not block the 1.0 syntax freeze. They record the extension
+surface that should remain conservative in 1.0 and can be refined after the
+core contract ships.
+
+- `dyn @Trait` boundary: the 1.0 surface is single-facet `dyn @Trait` without
+  associated-type binding. Future work may specify multi-facet objects,
+  associated-type binding, object lifetime / ownership forms, and dyn object
+  ABI details.
 - Async color model: keep `fn f() -> async T`, `.await`, `.wait`, and `.start`
-  as the current direction, but freeze this late because async crosses value
-  color, task ownership, suspension, cancellation, and PAL dependency
-  propagation. Async return and dependency annotations remain orthogonal:
-  `fn f(x: str) -> async str <- x` means the eventual `str` depends on `x`.
-- Threading / task ownership model: keep thread and task primitives library-led
-  where possible, but freeze the safety contract late because it interacts with
-  `Send` / `Sync`, `cede`, detached tasks, cancellation, and borrowed state
-  crossing execution boundaries.
-- Iterator / async trait formalization: decide how much of the current library
-  and compiler convention should be documented as stable language contract
-  before 1.0.
+  as the current stable direction. Async return and dependency annotations
+  remain orthogonal: `fn f(x: str) -> async str <- x` means the eventual `str`
+  depends on `x`. Richer async ownership, cancellation, and task-handoff
+  syntax belongs after 1.0.
+- Threading / task ownership model: the 1.0 safety contract is conservative:
+  thread / task handoff must not carry hidden borrowed state, and crossing
+  state must be explicit through `cede`, `copy`, or library types with
+  appropriate `Send` / `Sync`-style bounds. More expressive structured
+  concurrency can build on this boundary later.
+- Iterator / async trait formalization: current library and compiler
+  conventions remain usable, but a larger language-level formalization of
+  iterator and async traits is post-1.0 work.
 
 ## Postpone After 1.0
 
