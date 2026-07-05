@@ -5,7 +5,7 @@ This document tracks unresolved core issues, known bugs, and technical debt that
 ## High Priority Compiler Architecture Issues (Discovered during Stdlib Hardening)
 
 ### 1. PAL Precision and Local Control-Flow Audit
-**Status**: Partially resolved / precision audit in progress (Sema Phase)
+**Status**: Resolved for PAL 1.0 core / post-1.0 precision watchpoints remain (Sema Phase)
 **Severity**: Medium
 **Description**:
 The PAL checker is no longer only a linear environment tracer. The current Sema
@@ -13,21 +13,28 @@ pipeline snapshots and merges `InitMask`, `Moved`, and `PALChecker` state for
 `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`. The original
 mutually-exclusive-branch false-positive class has representative coverage.
 
-The remaining work is a precision audit, not a redesign of the 1.0 safety
-contract. The checker should keep rejecting hard-to-prove cases, but it needs
-direct tests for higher-order local-control combinations such as labeled
-`break` / `continue`, nested loop exits, branch-carried borrowed fields, and
-async capture / suspension boundaries. Ordinary `fn` closure escape with
-implicit borrow captures is now rejected through the same lifetime-dependency
-return path used for other borrow-like values.
+The PAL 1.0 core is frozen as a local, path-anchored checker. Function calls are
+checked as simultaneous temporary borrow groups; payload arguments are implicit
+PAL borrows, not invisible value copies. PAL also distinguishes ordinary
+payload writes from exclusive mutations and invalidating transfers, so a shared
+borrow protects validity without becoming a global freeze promise.
+
+Remaining work is precision and feature-consumer coverage, not a redesign of
+the 1.0 safety contract. The checker should keep rejecting hard-to-prove cases,
+but future audits can still add higher-order local-control combinations,
+async capture / suspension boundaries, task/thread consumers, and richer
+diagnostics. Ordinary `fn` closure escape with implicit borrow captures is now
+rejected through the same lifetime-dependency return path used for other
+borrow-like values.
 **Impact**:
-Without this audit, PAL may remain correct but overly conservative or may have
-unlocked control-flow paths that are not directly regression-tested.
+PAL 1.0 now has regression coverage for its core safety contract. Remaining
+gaps may make the language conservative or leave newer consumers under-tested,
+but they are no longer known holes in the frozen single-thread safe subset.
 **Proposed Fix**:
-Keep the local `AnalysisState` model and extend the test matrix around
-remaining PAL edge combinations. Only introduce a fuller CFG representation if
-the existing state merge model cannot express a concrete safe program that
-Toka 1.0 should accept.
+Keep the local `AnalysisState` model. Post-1.0 work should extend tests around
+new PAL consumers and only introduce a fuller CFG representation if the
+existing state merge model cannot express a concrete safe program that Toka
+should accept.
 
 ### 2. Large Generic Aggregate ABI Lowering
 **Status**: Resolved / regression-covered (CodeGen Phase)

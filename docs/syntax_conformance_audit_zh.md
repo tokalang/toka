@@ -1,7 +1,7 @@
 # Toka 语法契约审计
 
 初始审计日期：2026-06-29
-当前更新日期：2026-07-03
+当前更新日期：2026-07-05
 
 本文以 `docs/syntax.md` 与 `docs/syntax_zh.md` 为公开语法声明源，对照当前编译器实现、标准库用例与测试集，检查语法设计是否已经被测试锁定，以及哪些规则仍需要补充更直接的 pass/fail 用例。
 
@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 301 个，`tests/fail/*.tk` 约 181 个
+- 测试集：`tests/pass/*.tk` 约 310 个，`tests/fail/*.tk` 约 186 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -30,8 +30,9 @@
 - named destructuring、match、range match、loop / for
 - closure 与 `dyn fn`
 - raw pointer / unsafe / FFI 的基本路径
-- PAL 主体：局部路径借用、move / `cede`、分支合并、loop / for 回边、`break` /
-  `continue` 状态合并已经形成同一套保守安全模型
+- PAL 主体：局部路径借用、调用点临时借用组、payload write / exclusive
+  mutation / invalidation 分类、move / `cede`、分支合并、loop / for 回边、
+  `break` / `continue` 状态合并已经形成同一套保守安全模型
 
 仍需要补锁的区域主要不是“功能缺失”，而是“更高阶规则组合缺少专门测试”：
 
@@ -255,7 +256,9 @@
 - 分支状态：`tests/pass/g08_pal_if_branch_restore.tk`、`tests/pass/g08_pal_guard_branch_state.tk`、`tests/pass/g08_pal_match_branch_state.tk`
 - 循环状态：`tests/pass/g08_pal_loop_local_move.tk`、`tests/fail/move_in_loop.tk`、`tests/fail/move_direct_in_loop.tk`
 - `break` / `continue` 状态：`tests/pass/g08_loop_break_state_merge.tk`、`tests/pass/g08_for_break_or_state_merge.tk`、`tests/pass/g08_pal_labeled_break_state_merge.tk`、`tests/pass/g08_pal_labeled_break_local_move.tk`、`tests/pass/g08_pal_labeled_continue_local_move.tk`、`tests/fail/loop_break_state_maybe_unset.tk`、`tests/fail/for_break_skips_or_unset.tk`、`tests/fail/loop_continue_move_state.tk`、`tests/fail/for_continue_move_state.tk`、`tests/fail/pal_labeled_break_move_state.tk`、`tests/fail/pal_labeled_continue_move_state.tk`
-- 借用冲突：`tests/fail/fail_pal_move_locked.tk`、`tests/fail/fail_pal_path_prefix.tk`、`tests/fail/fail_pal_transient_locked.tk`、`tests/fail/borrow_field.tk`、`tests/fail/array_borrow_aliasing.tk`
+- 调用点借用组：`tests/pass/g08_call_payload_alias_readonly.tk`、`tests/pass/g08_call_payload_alias_disjoint.tk`、`tests/fail/call_payload_alias_mut_mut.tk`、`tests/fail/call_payload_alias_mut_read.tk`、`tests/fail/call_payload_alias_cede_read.tk`
+- payload write 分类：`tests/pass/g08_pal_shared_borrow_payload_write.tk`、`tests/pass/g08_pal_shared_borrow_array_payload_write.tk`
+- 借用冲突：`tests/fail/fail_pal_move_locked.tk`、`tests/fail/fail_pal_path_prefix.tk`、`tests/fail/borrow_field.tk`、`tests/fail/pal_call_return_dependency_replacement.tk`
 - 借用逃逸：`tests/fail/ref_life_bound.tk`、`tests/fail/call_elision_escape.tk`、`tests/fail/pal_branch_borrowed_field_escape.tk`
 
 ### 仍属后续精度工作的边界
@@ -263,7 +266,7 @@
 这些不是主体安全缺口，而是 1.0 后可以按价值继续提高精度的区域：
 
 - 更高阶 lifetime polymorphism 与复杂 reborrow / freeze 模式。
-- 深层 async / closure 捕获中的精细借用表达。
+- async / thread 等后续 PAL consumers 的捕获、暂停、转移与任务边界。
 - dyn trait object 的对象生命周期、关联类型绑定与多 facet 组合。
 - raw pointer 别名关系的自动证明。当前策略是留在 `unsafe` 或安全封装 API 内。
 - 极端 disjointness 证明。若局部路径模型无法证明，当前策略是保守拒绝或要求更显式结构。

@@ -203,12 +203,12 @@ state 才形成依赖。
 1. **独占所有权是唯一的（Unique ownership is exclusive）：** `^` 资源在任意时刻只能由一个有效 handle 拥有。
 2. **转移是显式的（Transfer is explicit）：** 所有权交接必须在语法上可见。直接书写帽子形态的 unique-handle move 也属于显式转移语法；`cede` 用于声明了 cede 契约的参数和显式 cede 交接路径，且必须履行相应的转移义务。
 3. **借用有效性受保护（Borrow validity is protected）：** 在活跃借用存在时，任何可能使该借用失效的操作（如 move、`cede`、drop、handle 重绑定或底层重新分配等）都将被拒绝。
-4. **独占修改需要独占权限（Exclusive mutation requires exclusive permission）：** 可变/独占借用与其他重叠的活跃借用冲突。普通不可变借用的设计含义是该借用通道只读，而不是对被借用存储作出全局冻结承诺；在 mutation class 完全拆分前，当前 checker 对重叠 payload 写入仍保持保守拒绝。
+4. **独占修改需要独占权限（Exclusive mutation requires exclusive permission）：** 可变/独占借用与其他重叠的活跃借用冲突。普通不可变借用的设计含义是该借用视图本身只读，而不是对原路径可达的全部存储作出全局冻结承诺。普通 payload 写入、独占修改与失效性操作会被分开分类。
 
 在这些规则的约束下：
 - 函数调用会一次性声明所有实参借用；payload 传参不会在 PAL 中隐形。
 - 共享借用会阻止同一路径或重叠父 / 子路径上的失效性操作或独占/可变修改。
-- 在共享借用的 mutation class 仍保守合并期间，当前 PAL 也会拒绝普通的重叠 payload 写入。
+- 普通 payload 写入本身不等同于失效性操作，但如果写入父路径会替换仍含有活跃借用的存储，则仍属于失效风险并会被拒绝。
 - 可变借用会阻止重叠路径上的读写，除非该访问能被证明是互不相交的。
 - 对已借用资源路径执行 move 或 `cede` 会被拒绝。
 - 在循环回边上移动定义于循环外部的资源路径会被拒绝；这也包括通过 `continue` 到达回边的路径。

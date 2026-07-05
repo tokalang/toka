@@ -216,13 +216,13 @@ The stable contract is governed by four core rules:
 1. **Unique ownership is exclusive:** A `^` resource is owned by one valid handle at any time.
 2. **Transfer is explicit:** Ownership handoff must be syntactically visible. Direct hatted unique-handle moves are visible transfer syntax; `cede` is required for declared cede contracts and explicit cede handoff paths, and any transfer obligation must be fulfilled.
 3. **Borrow validity is protected:** Operations that can invalidate an active borrow (such as moves, `cede`, drops, handle rebinding, or reallocations of the underlying storage) are rejected.
-4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is intended as a read-only view for that borrow path rather than a global freeze promise; the current checker remains conservative around overlapping payload writes until mutation classes are fully separated.
+4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is a read-only capability of that borrow view, not a global freeze promise for all storage reachable from the original path. Ordinary payload writes, exclusive mutations, and invalidating operations are classified separately.
 
 Under these rules:
 - A function call declares all argument borrows at once; call-site payload
   passing is not invisible to PAL.
 - A shared borrow blocks invalidating or exclusive mutation of the same path or an overlapping parent / child path.
-- Current PAL also rejects ordinary overlapping payload writes while shared-borrow mutation classes are still conservatively merged.
+- Ordinary payload writes do not by themselves count as invalidation, but writing a parent path that would replace storage containing an active borrow remains invalidating and is rejected.
 - A mutable borrow blocks both reads and writes through overlapping paths unless the access is proven disjoint.
 - Moving or `cede`-ing a borrowed resource path is rejected.
 - Moving a resource path defined outside a loop from a loop backedge is rejected; this includes paths that reach the backedge through `continue`.

@@ -59,6 +59,12 @@ later release.
   `cede`-ing a value with an active borrow is an error. If a hard-to-prove case
   cannot be verified locally, 1.0 should reject it rather than weaken the
   safety contract.
+- PAL operation classes: PAL distinguishes ordinary payload writes, shared
+  payload borrows, exclusive payload borrows, handle-view borrows, exclusive
+  mutations, and invalidating transfers. A shared borrow is a read-only view of
+  that borrow path, not a global freeze promise for every ordinary payload
+  write on the original storage; invalidating replacement of a parent path
+  remains rejected.
 - Interior mutability boundary: payload-side `#` can express local interior
   mutability, but it is not a thread-safety proof. Cross-thread sharing must be
   mediated by appropriate library types and trait bounds such as
@@ -73,17 +79,6 @@ later release.
 - `dyn @Trait` boundary: keep the current single-facet object model stable, and
   decide how explicitly to document the future space around multi-facet
   objects, associated type binding, object safety, and dyn object ABI.
-- PAL implementation work: strengthen the current path-anchored checker into a
-  local CFG-based analysis without crossing function bodies.
-- Shared immutable borrow rule: the intended Toka rule is that an immutable
-  borrow is a read-only capability of that borrow, not a global freeze promise
-  for the borrowed storage. The compiler must still preserve borrow validity:
-  move, `cede`, drop, handle rebinding, reallocation, exclusive mutation, and
-  any operation that can invalidate the borrow remain conflicts. Current PAL is
-  stricter than this rule: overlapping payload writes also conflict with
-  `BorrowedShared` because `verifyMutation` does not yet distinguish ordinary
-  payload writes from invalidating or exclusive mutations. TODO: split these
-  mutation classes before freezing the final 1.0 PAL behavior.
 - Async color model: keep `fn f() -> async T`, `.await`, `.wait`, and `.start`
   as the current direction, but freeze this late because async crosses value
   color, task ownership, suspension, cancellation, and PAL dependency
