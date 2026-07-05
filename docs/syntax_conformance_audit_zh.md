@@ -239,6 +239,10 @@
 ### 已冻结的主体能力
 
 - 基于路径的借用 ledger：同一路径、父路径、子路径的共享 / 可变借用冲突会被检查；可证明互不相交的路径可以共存。
+- 调用点临时借用组：函数调用在 PAL 中一次性声明所有实参借用。裸 payload
+  传参不是无借用；`x: T` 是共享 payload 借用，`x#: T` 是独占 payload
+  借用，`cede x` 是失效性转移。若同一次调用中重叠实参含有独占访问或
+  转移，则调用点必须拒绝。
 - move / `cede` 安全：已借用路径不能被 move 或 `cede`；非 `cede` 参数不能在函数体中被 `cede`；`cede` 参数必须在函数体中完成转移义务。
 - 局部控制流合并：`if`、`guard`、`match` 的 init mask、moved flag 与 PAL 状态会按可达分支合并。
 - 循环回边合并：`loop` / `for` 的正常回边、`break` 出口、`continue` 回边都会保存并合并同一类 `AnalysisState`，避免 jump-only 路径丢失安全状态。

@@ -144,6 +144,13 @@ fn add(a: i32, b: i32) -> i32 {
 
 在调用点传递 handle 本体时，也使用带帽视图，例如 `take(*p)`。裸 `p` 仍然表示 payload 视图。
 
+在 PAL 看来，一次函数调用会同时声明一组临时借用。把 `x` 传给 payload
+参数仍然是一次借用事件，虽然源码没有写成 `&x`：`x: T` 产生临时共享 payload
+借用，`x#: T` 产生临时独占 payload 借用。整个参数列表会一起检查，因此
+只读 payload 参数下的 `read_twice(x, x)` 合法，但当任一参数需要独占 payload
+访问时，`mutate_twice(x, x)` 和 `mutate_and_read(x, x)` 都会被拒绝。`cede`
+实参是失效性转移，不是借用；它会与同一次调用中其他重叠路径实参冲突。
+
 `cede` 是显式资源转移契约。
 
 ```toka
@@ -199,6 +206,7 @@ state 才形成依赖。
 4. **独占修改需要独占权限（Exclusive mutation requires exclusive permission）：** 可变/独占借用与其他重叠的活跃借用冲突。普通不可变借用的设计含义是该借用通道只读，而不是对被借用存储作出全局冻结承诺；在 mutation class 完全拆分前，当前 checker 对重叠 payload 写入仍保持保守拒绝。
 
 在这些规则的约束下：
+- 函数调用会一次性声明所有实参借用；payload 传参不会在 PAL 中隐形。
 - 共享借用会阻止同一路径或重叠父 / 子路径上的失效性操作或独占/可变修改。
 - 在共享借用的 mutation class 仍保守合并期间，当前 PAL 也会拒绝普通的重叠 payload 写入。
 - 可变借用会阻止重叠路径上的读写，除非该访问能被证明是互不相交的。

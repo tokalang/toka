@@ -49,6 +49,11 @@ later release.
   function, but calls do not require inspecting the callee body. Call sites
   consume the callee signature, and callees must validate that their bodies
   honor the dependencies declared in the signature.
+- PAL call-site model: a function call is checked as a simultaneous temporary
+  borrow group. Payload arguments are implicit PAL borrows, not invisible
+  value copies: `x: T` is a shared payload borrow, `x#: T` is an exclusive
+  payload borrow, and `cede x` is an invalidating transfer. Overlapping
+  arguments conflict if any one of them requires exclusive access or transfer.
 - PAL path model: disjoint field borrows are allowed, and overlapping path
   prefixes are the unit that PAL uses to check possible conflicts. Moving or
   `cede`-ing a value with an active borrow is an error. If a hard-to-prove case

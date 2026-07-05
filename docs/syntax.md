@@ -150,6 +150,16 @@ Use a hat on a parameter only when the function needs the handle itself, for exa
 
 At a call site, passing that handle itself also uses the hatted view, such as `take(*p)`. A naked `p` remains the payload view.
 
+For PAL, a function call is checked as a simultaneous group of temporary
+borrows. Passing `x` to a payload parameter is still a borrow event even though
+the source does not spell `&x`: `x: T` creates a temporary shared payload
+borrow, while `x#: T` creates a temporary exclusive payload borrow. The whole
+argument list is checked together, so `read_twice(x, x)` is valid for read-only
+payload parameters, but `mutate_twice(x, x)` and `mutate_and_read(x, x)` are
+rejected when either parameter requires exclusive payload access. A `cede`
+argument is an invalidating transfer rather than a borrow and conflicts with
+any other overlapping argument in the same call.
+
 `cede` is an explicit resource-transfer contract.
 
 ```toka
@@ -209,6 +219,8 @@ The stable contract is governed by four core rules:
 4. **Exclusive mutation requires exclusive permission:** Exclusive/mutable borrows conflict with other overlapping active borrows. A standard immutable borrow is intended as a read-only view for that borrow path rather than a global freeze promise; the current checker remains conservative around overlapping payload writes until mutation classes are fully separated.
 
 Under these rules:
+- A function call declares all argument borrows at once; call-site payload
+  passing is not invisible to PAL.
 - A shared borrow blocks invalidating or exclusive mutation of the same path or an overlapping parent / child path.
 - Current PAL also rejects ordinary overlapping payload writes while shared-borrow mutation classes are still conservatively merged.
 - A mutable borrow blocks both reads and writes through overlapping paths unless the access is proven disjoint.
