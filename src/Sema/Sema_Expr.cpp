@@ -649,6 +649,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 
                 if (Info->FieldDependencySet.count(fieldName)) {
                     for (const auto &dep : Info->FieldDependencySet[fieldName]) {
+                        if (!m_InLHS) {
+                            if (!PALCheckerState.recordBorrow(dep, wantMutable)) {
+                                error(Addr, DiagID::ERR_BORROW_MUT, dep);
+                            }
+                        }
                         m_LastLifeDependencies.insert(dep);
                     }
                     if (!m_LastLifeDependencies.empty()) {

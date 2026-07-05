@@ -53,6 +53,11 @@ later release.
   function boundary must have an explicit dependency annotation in the
   signature. This applies uniformly to private and public functions; later
   releases may infer private body-visible helpers as an ergonomics improvement.
+- Structural return dependencies: `effects:` may route dependencies to
+  returned members, such as `return.left <- a` and `return.right <- b`.
+  The callee must prove each returned member carries only the dependency
+  sources declared for that member; a whole-return dependency check is not
+  enough to justify field-swapped returns.
 - PAL analysis scope: local control-flow analysis may be used inside a
   function, but calls do not require inspecting the callee body. Call sites
   consume the callee signature, and callees must validate that their bodies
@@ -140,6 +145,11 @@ core contract ships.
   compiler behavior.
 - Any `cede`, drop, clone, or PAL bug that allows resource duplication,
   use-after-move, or invalid escape.
+- Shape-internal member dependencies must be either fully specified and
+  implemented before 1.0 or explicitly rejected by the parser. A relation such
+  as `self.view <- self.owner` is useful, but it also implies immovable /
+  stable-placement construction semantics; Toka must not accept a surface form
+  that looks like an internal borrow while actually borrowing an external value.
 - Any diagnostic that makes a frozen rule practically impossible to understand
   in common usage.
 

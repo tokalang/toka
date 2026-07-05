@@ -469,7 +469,8 @@ void Sema::checkStmt(Stmt *S) {
       if (isTrackedRet) {
           std::set<std::string> returnedDeps;
 
-          auto recordDependencyPath = [&](const std::string &dep) {
+          auto recordDependencyPathTo = [&](std::set<std::string> &out,
+                                            const std::string &dep) {
             if (dep.empty())
               return;
             std::string baseName = dep;
@@ -491,23 +492,27 @@ void Sema::checkStmt(Stmt *S) {
             if (CurrentScope->lookup(baseName, depInfo)) {
               bool contributedDeps = false;
               if (!depInfo.BorrowedFrom.empty()) {
-                returnedDeps.insert(depInfo.BorrowedFrom);
+                out.insert(depInfo.BorrowedFrom);
                 contributedDeps = true;
               }
-              size_t depCountBefore = returnedDeps.size();
-              returnedDeps.insert(depInfo.LifeDependencySet.begin(),
-                                  depInfo.LifeDependencySet.end());
-              if (returnedDeps.size() != depCountBefore)
+              size_t depCountBefore = out.size();
+              out.insert(depInfo.LifeDependencySet.begin(),
+                         depInfo.LifeDependencySet.end());
+              if (out.size() != depCountBefore)
                 contributedDeps = true;
               if (!contributedDeps && isParam)
-                returnedDeps.insert(dep);
+                out.insert(dep);
               return;
             }
 
             if (isParam)
-              returnedDeps.insert(dep);
+              out.insert(dep);
             else
-              returnedDeps.insert(dep);
+              out.insert(dep);
+          };
+
+          auto recordDependencyPath = [&](const std::string &dep) {
+            recordDependencyPathTo(returnedDeps, dep);
           };
 
           // Helper to extract path
@@ -521,7 +526,8 @@ void Sema::checkStmt(Stmt *S) {
           };
 
           // Helper to collect dependencies from the returned expression
-          std::function<void(Expr *)> collectDeps = [&](Expr *E) {
+          std::function<void(Expr *, std::set<std::string> &)> collectDepsInto =
+              [&](Expr *E, std::set<std::string> &out) {
             if (!E)
               return;
 
@@ -530,7 +536,7 @@ void Sema::checkStmt(Stmt *S) {
               if (Addr->Op == TokenType::Ampersand) {
                 std::string path = getPath(Addr->RHS.get());
                 if (!path.empty()) {
-                    returnedDeps.insert(path);
+                    out.insert(path);
                 }
               }
             }
@@ -538,7 +544,7 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *AddrOf = dynamic_cast<AddressOfExpr *>(E)) {
                 std::string path = getPath(AddrOf->Expression.get());
                 if (!path.empty()) {
-                    returnedDeps.insert(path);
+                    out.insert(path);
                 }
             }
             // Case 2: Returning existing reference variable `x`
@@ -546,22 +552,22 @@ void Sema::checkStmt(Stmt *S) {
               SymbolInfo info;
               if (CurrentScope->lookup(Var->Name, info)) {
                 if (!info.BorrowedFrom.empty()) {
-                  returnedDeps.insert(info.BorrowedFrom);
+                  out.insert(info.BorrowedFrom);
                 }
-                returnedDeps.insert(info.LifeDependencySet.begin(),
-                                    info.LifeDependencySet.end());
+                out.insert(info.LifeDependencySet.begin(),
+                           info.LifeDependencySet.end());
                 if (info.IsReference() || isBorrowLikeType(info.TypeObj)) {
                   bool contributedDeps = false;
                   // It depends on whatever 'info' borrowed from
                   if (!info.BorrowedFrom.empty()) {
-                    returnedDeps.insert(info.BorrowedFrom);
+                    out.insert(info.BorrowedFrom);
                     contributedDeps = true;
                   }
                   // Also merge its transitive dependencies if we track them
-                  size_t depCountBefore = returnedDeps.size();
-                  returnedDeps.insert(info.LifeDependencySet.begin(),
-                                      info.LifeDependencySet.end());
-                  if (returnedDeps.size() != depCountBefore)
+                  size_t depCountBefore = out.size();
+                  out.insert(info.LifeDependencySet.begin(),
+                             info.LifeDependencySet.end());
+                  if (out.size() != depCountBefore)
                     contributedDeps = true;
                   if (!contributedDeps && CurrentFunction) {
                     std::string baseName = Var->Name;
@@ -570,7 +576,7 @@ void Sema::checkStmt(Stmt *S) {
                       baseName = baseName.substr(0, dotPos);
                     for (const auto &Arg : CurrentFunction->Args) {
                       if (Arg.Name == baseName) {
-                        returnedDeps.insert(baseName);
+                        out.insert(baseName);
                         break;
                       }
                     }
@@ -589,39 +595,39 @@ void Sema::checkStmt(Stmt *S) {
                 
                 if (targetIsTracked && srcIsUntraced) {
                   // Rule 3: Reinterpret Cast -> Chain Fracture -> Evaporation Event
-                  returnedDeps.insert("__untraced_escape");
+                  out.insert("__untraced_escape");
                 } else {
                   // Rule 2: Reference-Preserving Cast -> Continuity Preservation
-                  collectDeps(Cast->Expression.get());
+                  collectDepsInto(Cast->Expression.get(), out);
                 }
               }
             }
             // Case 4: CallExpr
             else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
                 for (auto &Arg : Call->Args) {
-                    collectDeps(Arg.get());
+                    collectDepsInto(Arg.get(), out);
                 }
             }
             // Case 5: InitStructExpr / AnonymousRecordExpr
             else if (auto *Init = dynamic_cast<InitStructExpr *>(E)) {
                 for (auto &Mem : Init->Members) {
-                    collectDeps(Mem.second.get());
+                    collectDepsInto(Mem.second.get(), out);
                 }
             } else if (auto *Anon = dynamic_cast<AnonymousRecordExpr *>(E)) {
                 for (auto &Field : Anon->Fields) {
-                    collectDeps(Field.second.get());
+                    collectDepsInto(Field.second.get(), out);
                 }
             }
             // Case 6: Fallback for BinaryExpr named arg init if kept as CallExpr
             else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
                 if (Bin->Op == "=") {
-                    collectDeps(Bin->RHS.get());
+                    collectDepsInto(Bin->RHS.get(), out);
                 }
             }
             // Case 6b: Closure expression with implicit borrow captures
             else if (auto *Clo = dynamic_cast<ClosureExpr *>(E)) {
                 for (const auto &capture : Clo->ImplicitCaptures) {
-                    recordDependencyPath(capture);
+                    recordDependencyPathTo(out, capture);
                 }
             }
             // Case 7: MemberExpr (e.g., e.&val)
@@ -634,13 +640,66 @@ void Sema::checkStmt(Stmt *S) {
                 if (isRef) {
                     std::string path = getPath(Memb);
                     if (!path.empty()) {
-                        returnedDeps.insert(path);
+                        out.insert(path);
                     }
                 }
             }
           };
 
+          auto collectDeps = [&](Expr *E) {
+            collectDepsInto(E, returnedDeps);
+          };
+
+          auto cleanFieldName = [](std::string name) {
+            while (!name.empty() &&
+                   (name[0] == '&' || name[0] == '*' || name[0] == '^' ||
+                    name[0] == '~')) {
+              name.erase(name.begin());
+            }
+            while (!name.empty() &&
+                   (name.back() == '#' || name.back() == '?' ||
+                    name.back() == '$' || name.back() == '!')) {
+              name.pop_back();
+            }
+            return toka::Type::stripMorphology(name);
+          };
+
+          std::map<std::string, std::set<std::string>> returnedMemberDeps;
+          std::function<void(Expr *)> collectMemberDeps = [&](Expr *E) {
+            if (!E)
+              return;
+            if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+              collectMemberDeps(Cast->Expression.get());
+            } else if (auto *Bin = dynamic_cast<BinaryExpr *>(E)) {
+              if (Bin->Op == "=")
+                collectMemberDeps(Bin->RHS.get());
+            } else if (auto *Init = dynamic_cast<InitStructExpr *>(E)) {
+              for (auto &Mem : Init->Members) {
+                std::string field = cleanFieldName(Mem.first);
+                if (field.empty() || field == ".." || field == "*")
+                  continue;
+                collectDepsInto(Mem.second.get(), returnedMemberDeps[field]);
+              }
+            } else if (auto *Anon = dynamic_cast<AnonymousRecordExpr *>(E)) {
+              for (auto &Field : Anon->Fields) {
+                std::string field = cleanFieldName(Field.first);
+                if (field.empty())
+                  continue;
+                collectDepsInto(Field.second.get(), returnedMemberDeps[field]);
+              }
+            } else if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
+              SymbolInfo info;
+              if (CurrentScope->lookup(Var->Name, info)) {
+                for (const auto &pair : info.FieldDependencySet) {
+                  returnedMemberDeps[pair.first].insert(pair.second.begin(),
+                                                        pair.second.end());
+                }
+              }
+            }
+          };
+
           collectDeps(Ret->ReturnValue.get());
+          collectMemberDeps(Ret->ReturnValue.get());
           for (const auto &dep : m_LastLifeDependencies)
             recordDependencyPath(dep);
           if (!m_LastBorrowSource.empty())
@@ -675,6 +734,40 @@ void Sema::checkStmt(Stmt *S) {
               returnedDeps.erase("__untraced_escape");
             }
 
+            auto isDepMatch = [](const std::string &d, const std::string &a) -> bool {
+              if (d == a) return true;
+              // a is sub-path of d (e.g., d is self.buf, a is self)
+              if (d.size() > a.size() && d.substr(0, a.size() + 1) == a + ".") return true;
+              // d is sub-path of a (e.g., d is self, a is self.buf)
+              if (a.size() > d.size() && a.substr(0, d.size() + 1) == d + ".") return true;
+              return false;
+            };
+
+            for (const auto &fieldPair : returnedMemberDeps) {
+              auto declaredIt = CurrentFunction->MemberDependencies.find(fieldPair.first);
+              if (declaredIt == CurrentFunction->MemberDependencies.end())
+                continue;
+
+              for (const auto &actualDep : fieldPair.second) {
+                if (actualDep == "__untraced_escape")
+                  continue;
+                bool allowedForField = false;
+                for (const auto &allowedDep : declaredIt->second) {
+                  if (isDepMatch(actualDep, allowedDep)) {
+                    allowedForField = true;
+                    break;
+                  }
+                }
+
+                if (!allowedForField) {
+                  DiagnosticEngine::report(getLoc(Ret),
+                                           DiagID::ERR_LIFETIME_UNION_REQUIRED,
+                                           actualDep, actualDep);
+                  HasError = true;
+                }
+              }
+            }
+
             for (const auto &dep : returnedDeps) {
               // 1. Is it a parameter that can outlive the function?
               bool isParam = false;
@@ -697,15 +790,6 @@ void Sema::checkStmt(Stmt *S) {
 
               // 2. Is it allowed via effects?
               bool allowed = false;
-              auto isDepMatch = [](const std::string &d, const std::string &a) -> bool {
-                if (d == a) return true;
-                // a is sub-path of d (e.g., d is self.buf, a is self)
-                if (d.size() > a.size() && d.substr(0, a.size() + 1) == a + ".") return true;
-                // d is sub-path of a (e.g., d is self, a is self.buf)
-                if (a.size() > d.size() && a.substr(0, d.size() + 1) == d + ".") return true;
-                return false;
-              };
-
               for (const auto &allowedDep : CurrentFunction->LifeDependencies) {
                 if (isDepMatch(dep, allowedDep)) {
                   allowed = true;
@@ -1181,7 +1265,14 @@ void Sema::checkStmt(Stmt *S) {
     }
     
     if (!m_LastFieldDependencies.empty()) {
-      Info.FieldDependencySet = m_LastFieldDependencies;
+      for (const auto &pair : m_LastFieldDependencies) {
+        for (const auto &dep : pair.second) {
+          std::string actualDep = dep;
+          if (actualDep.rfind("self.", 0) == 0)
+            actualDep = Var->Name + actualDep.substr(4);
+          Info.FieldDependencySet[pair.first].insert(actualDep);
+        }
+      }
       m_LastFieldDependencies.clear();
     }
 

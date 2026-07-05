@@ -1,0 +1,14 @@
+fn split_swapped(a: i32, b: i32) -> (left: &i32, right: &i32)
+effects:
+    return.left <- a
+    return.right <- b
+{
+    return (left = &b, right = &a) // EXPECT: error[E0454]
+}
+
+fn main() -> i32 {
+    auto x = 1
+    auto y = 2
+    auto rec = split_swapped(x, y)
+    return rec.left
+}
