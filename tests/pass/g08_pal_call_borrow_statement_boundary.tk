@@ -1,0 +1,30 @@
+shape Data(val: i32)
+
+fn touch(data#: Data) {
+    data.val = data.val + 1
+}
+
+fn read(data: Data) -> i32 {
+    return data.val
+}
+
+fn main() -> i32 {
+    auto data# = Data(val = 0)
+
+    touch(data)
+    touch(data)
+
+    if read(data) != 2 {
+        return 1
+    }
+
+    if data.val == 2 {
+        touch(data)
+    } else {
+        touch(data)
+    }
+
+    touch(data)
+    assert(data.val == 4, "call-site temporary borrows must end at statement boundary")
+    return 0
+}

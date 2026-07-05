@@ -1581,9 +1581,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       auto mapParamToArg = [&](const std::string &paramName) -> std::string {
          for (size_t i = 0; i < Fn->Args.size(); ++i) {
-            if (Fn->Args[i].Name == paramName) {
+            const std::string &argName = Fn->Args[i].Name;
+            if (argName == paramName ||
+                (paramName.size() > argName.size() &&
+                 paramName.compare(0, argName.size(), argName) == 0 &&
+                 paramName[argName.size()] == '.')) {
                if (i < Call->Args.size()) {
-                   return getStringifyPath(Call->Args[i].get());
+                   std::string argPath = getStringifyPath(Call->Args[i].get());
+                   if (argPath.empty())
+                     return "";
+                   if (argName == paramName)
+                     return argPath;
+                   return argPath + paramName.substr(argName.size());
                }
             }
          }
@@ -1593,7 +1602,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (hasExplicitDeps) {
           for (const auto &dep : Fn->LifeDependencies) {
              for (size_t i = 0; i < Fn->Args.size(); ++i) {
-                if (Fn->Args[i].Name != dep)
+                const std::string &argName = Fn->Args[i].Name;
+                bool depMatchesArg =
+                    argName == dep ||
+                    (dep.size() > argName.size() &&
+                     dep.compare(0, argName.size(), argName) == 0 &&
+                     dep[argName.size()] == '.');
+                if (!depMatchesArg)
                    continue;
                 if (i >= Call->Args.size())
                    continue;
@@ -1601,6 +1616,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 std::string argVar = getStringifyPath(Call->Args[i].get());
                 if (argVar.empty())
                    continue;
+                if (argName != dep)
+                  argVar += dep.substr(argName.size());
 
                 bool isCurrentFunctionParam = false;
                 if (CurrentFunction) {

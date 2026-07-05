@@ -1099,12 +1099,16 @@ void Sema::checkStmt(Stmt *S) {
       if ((Var->IsPointerNullable || hadNul) && morph.find("nul") == std::string::npos)
         morph = "nul " + morph;
     }
+    std::set<std::string> depsToCommitAsBorrow;
     if (!m_LastLifeDependencies.empty()) {
       for (const auto &dep : m_LastLifeDependencies) {
         Info.LifeDependencySet.insert(dep);
+        depsToCommitAsBorrow.insert(dep);
         SymbolInfo *depInfo = nullptr;
         if (CurrentScope->findSymbol(dep, depInfo)) {
             Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(), depInfo->LifeDependencySet.end());
+            depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(),
+                                        depInfo->LifeDependencySet.end());
         }
 
         int srcDepth = getScopeDepth(dep);
@@ -1223,6 +1227,19 @@ void Sema::checkStmt(Stmt *S) {
     if (!Info.TypeObj) {
       Info.TypeObj = toka::Type::fromString(fullType);
     }
+
+    if (!depsToCommitAsBorrow.empty() && (Var->IsReference || morph == "&")) {
+      for (const auto &dep : depsToCommitAsBorrow) {
+        if (dep.empty())
+          continue;
+        if (!PALCheckerState.recordBorrow(dep, false)) {
+          DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_MUT, dep);
+          HasError = true;
+        }
+        PALCheckerState.commitTransient(dep);
+      }
+    }
+
     Info.IsRebindable = Var->IsRebindable;
     Info.IsMorphicExempt = Var->IsMorphicExempt; // [NEW]
     Info.IsDeclaredMutable = Var->IsValueMutable;

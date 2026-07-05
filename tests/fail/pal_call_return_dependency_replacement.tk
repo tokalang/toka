@@ -1,0 +1,17 @@
+shape Data(val: i32)
+
+fn borrow_val(data: Data) -> &res: i32
+effects:
+    &res <- data.val
+{
+    return &(data.val)
+}
+
+fn main() -> i32 {
+    auto data# = Data(val = 1)
+    auto &view = borrow_val(data)
+
+    data = Data(val = 2) // EXPECT: error[E0442]
+
+    return view
+}
