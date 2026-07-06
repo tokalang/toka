@@ -1,0 +1,18 @@
+// EXPECT: error[E04573]
+
+shape Data(
+    val: i32
+)
+
+fn id_ref(r: Data) -> &Data <- r {
+    return &r
+}
+
+fn main() -> i32 {
+    auto x# = Data(val = 0)
+    auto &view = &x
+    auto &mut_view# = id_ref(view)
+
+    mut_view.val = 12
+    return x.val
+}

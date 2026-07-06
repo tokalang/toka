@@ -72,6 +72,13 @@ static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
   return false;
 }
 
+static bool isReadOnlyReferenceType(const std::shared_ptr<toka::Type> &Type) {
+  if (!Type || !Type->isReference())
+    return false;
+  auto pointee = Type->getPointeeType();
+  return !pointee || !pointee->IsWritable;
+}
+
 bool Sema::allPathsReturn(Stmt *S) {
   if (!S)
     return false;
@@ -1046,8 +1053,12 @@ void Sema::checkStmt(Stmt *S) {
       m_AllowUnsetUsage = false;
     }
 
+    bool initIsExplicitReferenceView =
+        Var->Init && getSyntacticMorphology(Var->Init.get()) == MorphKind::Ref;
     if (Var->IsReference && Var->IsValueMutable && Var->Init &&
-        isReadOnlyReferenceViewInitializer(Var->Init.get(), CurrentScope)) {
+        (isReadOnlyReferenceViewInitializer(Var->Init.get(), CurrentScope) ||
+         (isReadOnlyReferenceType(InitTypeObj) &&
+          !initIsExplicitReferenceView))) {
       DiagnosticEngine::report(getLoc(Var),
                                DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
       HasError = true;
