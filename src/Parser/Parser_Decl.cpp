@@ -182,15 +182,12 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
 
   std::vector<std::string> lifeDeps;
   if (match(TokenType::Dependency)) {
-    do {
-      if (check(TokenType::Identifier) || check(TokenType::KwSelf) ||
-          check(TokenType::KwUpperSelf)) {
-        lifeDeps.push_back(advance().Text);
-      } else {
-        error(peek(), DiagID::ERR_PARSER_EXPECTED_DEPENDENCY_IDENTIFIER);
-        return nullptr;
-      }
-    } while (match(TokenType::Pipe) || match(TokenType::Comma));
+    error(previous(), DiagID::ERR_PARSER_SHAPE_HEADER_DEPENDENCY_REMOVED);
+    while (!check(TokenType::EndOfFile) && !check(TokenType::LParen) &&
+           !check(TokenType::LBracket) && !check(TokenType::Equal) &&
+           !check(TokenType::LBrace)) {
+      advance();
+    }
   }
 
   ShapeKind kind = isUnion ? ShapeKind::Union : ShapeKind::Struct;

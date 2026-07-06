@@ -1141,6 +1141,11 @@ if ! grep -q "pub open_val" "$TEST_DIR/encap_interface/lib.tki"; then
     cat "$TEST_DIR/encap_interface/lib.tki"
     exit 1
 fi
+if ! grep -q "secret_val: i32" "$TEST_DIR/encap_interface/lib.tki"; then
+    echo "FAIL: private shape field structure was not preserved in lib.tki"
+    cat "$TEST_DIR/encap_interface/lib.tki"
+    exit 1
+fi
 
 mv "$TEST_DIR/encap_interface/lib.tk" "$TEST_DIR/encap_interface/lib.tk.bak"
 

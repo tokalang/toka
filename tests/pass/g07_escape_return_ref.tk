@@ -11,8 +11,7 @@ fn bigger<T>(x:T, y:T) -> &T <- x|y {
     return &y
 }
 
-shape RefInt <- val
-(
+shape RefInt(
     &val : i32
 )
 

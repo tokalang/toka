@@ -73,7 +73,7 @@ effects:
 }
 
 // Struct capturing lifetime dependencies
-shape EngineView <- target (
+shape EngineView(
     &target: Engine
 )
 

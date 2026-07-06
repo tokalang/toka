@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 194 个
+- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 196 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -282,6 +282,7 @@
 - 局部控制流合并：`if`、`guard`、`match` 的 init mask、moved flag 与 PAL 状态会按可达分支合并。
 - 循环回边合并：`loop` / `for` 的正常回边、`break` 出口、`continue` 回边都会保存并合并同一类 `AnalysisState`，避免 jump-only 路径丢失安全状态。
 - 函数边界：逃逸 borrowed view 必须在签名中通过 inline dependency 或 `effects:` 明示，调用点不穿透函数体推断隐藏生命周期。
+- Shape 结构事实：shape 定义是编译器可见的类型契约，`.tki` 需要保留语义检查所需的完整字段结构；可见性只控制用户访问，不擦除编译器知识。`shape X <- field` 头部依赖已移除，borrow-like 字段由字段形态和初始化表达式自动携带依赖事实。
 - unsafe 边界：raw pointer 与 `unsafe` 代码不属于 PAL 的 safe-borrow 保证范围；公共安全 API 若封装 raw 行为，必须通过签名暴露依赖关系。
 
 ### 测试锚点
@@ -294,6 +295,7 @@
 - payload write 分类：`tests/pass/g08_pal_shared_borrow_payload_write.tk`、`tests/pass/g08_pal_shared_borrow_array_payload_write.tk`
 - 借用冲突：`tests/fail/fail_pal_move_locked.tk`、`tests/fail/fail_pal_path_prefix.tk`、`tests/fail/borrow_field.tk`、`tests/fail/pal_call_return_dependency_replacement.tk`
 - 借用逃逸：`tests/fail/ref_life_bound.tk`、`tests/fail/call_elision_escape.tk`、`tests/fail/pal_branch_borrowed_field_escape.tk`
+- Shape 头部依赖废除：`tests/fail/shape_header_dependency_removed.tk`
 
 ### 仍属后续精度工作的边界
 

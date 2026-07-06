@@ -1655,6 +1655,12 @@
       "message": "Binary '-' operator must be surrounded by spaces",
       "description": "Binary '-' operator must be surrounded by spaces"
     },
+    "E01247": {
+      "id": "ERR_PARSER_SHAPE_HEADER_DEPENDENCY_REMOVED",
+      "level": "Error",
+      "message": "Shape header dependency syntax is removed. Borrow-like fields carry dependencies directly; use function effects for returned member dependencies.",
+      "description": "Shape header dependency syntax is removed. Borrow-like fields carry dependencies directly; use function effects for returned member dependencies."
+    },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",
       "level": "Error",

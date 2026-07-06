@@ -10,8 +10,7 @@ fn bigger(x:i32, y:i32) -> &i32 <- x {
     return &y // EXPECT: error[E0454]:
 }
 
-shape RefInt <- val
-(
+shape RefInt(
     &#val : i32
 )
 

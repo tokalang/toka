@@ -195,6 +195,17 @@ effects:
 共享 handle 本身不是 borrow-like dependency；只有返回值内部实际携带的 borrowed
 state 才形成依赖。
 
+Shape 头部依赖不属于 1.0 语法。直接写出 borrowed field：
+
+```toka
+shape RefInt(
+    &val: i32
+)
+```
+
+不要写 `shape RefInt <- val`。字段形态和初始化表达式本身携带依赖事实；返回值成员
+依赖使用函数 `effects:` 路由表达。
+
 Execution boundary 比普通局部调用更严格。对 Toka 1.0 来说，thread / task
 handoff 不能携带隐藏的借用状态：传给 `thread_spawn` 的闭包不能隐式捕获外层变量，
 后续 task handoff 形式也必须遵守同一规则。跨过这类边界的状态必须显式化，通常
@@ -244,6 +255,10 @@ Shape 字段有名字。构造 Shape 使用具名参数。
 ```toka
 auto p = Point(x = 10, y = 20)
 ```
+
+Shape 定义始终是编译器可见的类型契约，即使部分字段通过 `@encap` 对用户隐藏。
+接口文件必须保留语义检查所需的完整结构事实，包括字段形态、可变性、可空性、
+布局相关属性和 borrow-like 成员类型。可见性只控制用户访问，不擦除编译器知识。
 
 字段可以有默认值。使用 `..` 接受剩余默认值。
 
@@ -665,5 +680,6 @@ unsafe 代码应尽量留在系统与 FFI 边界。公共 API 不应暴露裸指
 | `p = q` 重绑定指针身份 | `*p = *q` | 重绑定是 handle 操作 |
 | `fn read(info: &Info)` | `fn read(info: Info)` | 帽子属于绑定名；普通参数使用 payload 视图 |
 | 只读取 payload 时写 `fn inspect(&info: Info)` | `fn inspect(info: Info)` | 带帽参数是 handle 契约，不是普通传参的写法 |
+| `shape Ref <- val (&val: T)` | `shape Ref(&val: T)` | borrow-like 字段直接携带依赖事实；shape 头部依赖已移除 |
 | `fn id<'T>(x: 'T) -> 'T` | `fn id<'T>('x: T) -> 'T` | 在绑定位置，单引号属于绑定名 |
 | `shape Box<'T>('data: 'T)` | `shape Box<'T>('data: T)` | 字段名保留形态，类型侧保持 `T` |

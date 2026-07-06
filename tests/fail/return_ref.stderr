@@ -9,12 +9,12 @@ error[E0454]: Returning reference to parameter 'y' requires explicit dependency 
  10 |     return &y // EXPECT: error[E0454]:
     |     ^
 error[E0461]: Illegal use of permission suffixes (# or $) in everyday contexts. Modifiers are strictly limited to declarations or explicit mutable method calls.
- --> tests/fail/return_ref.tk:27:31
+ --> tests/fail/return_ref.tk:26:31
     |
- 27 |     auto ref_a = RefInt(&val=&a#)
+ 26 |     auto ref_a = RefInt(&val=&a#)
     |                               ^
 error[E0456]: Object 'ref_a' (lived longer) cannot depend on 'b' (lived shorter)
- --> tests/fail/return_ref.tk:32:21
+ --> tests/fail/return_ref.tk:31:21
     |
- 32 |         ref_a.&#val = &b // EXPECT: error[E0456]:
+ 31 |         ref_a.&#val = &b // EXPECT: error[E0456]:
     |                     ^

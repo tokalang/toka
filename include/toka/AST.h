@@ -1424,7 +1424,9 @@ public:
   // struct GenericParam moved to top-level
   std::vector<GenericParam> GenericParams; // [UPDATED] e.g. <T, N_: usize>
   ShapeKind Kind;
-  std::vector<std::string> LifeDependencies; // [NEW] e.g. <- val
+  // Legacy shape-header dependencies are no longer populated by the parser.
+  // Borrow-like fields carry dependency facts directly.
+  std::vector<std::string> LifeDependencies;
   std::vector<ShapeMember> Members;
   int64_t ArraySize = 0; // For Array kind
   uint64_t MaxAlign = 1; // For enum/legacy union alignment persistence

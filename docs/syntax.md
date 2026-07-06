@@ -208,6 +208,19 @@ callee body. Ownership and sharing handles such as `^T` and `~T` are not
 borrow-like dependencies by themselves; any dependency comes from borrowed state
 inside the returned value.
 
+Shape-level header dependencies are not part of the 1.0 syntax. Write the
+borrow-like field itself:
+
+```toka
+shape RefInt(
+    &val: i32
+)
+```
+
+Do not write `shape RefInt <- val`. The field morphology and the initializer
+carry the dependency fact; returned-member dependencies are expressed with
+function `effects:` routing.
+
 Execution boundaries are stricter than ordinary local calls. For Toka 1.0,
 thread/task handoff must not carry hidden borrowed state: a closure passed to
 `thread_spawn` cannot implicitly capture outer variables, and future task
@@ -262,6 +275,12 @@ Shape fields are named. Shape construction uses named arguments.
 ```toka
 auto p = Point(x = 10, y = 20)
 ```
+
+Shape definitions remain compiler-visible type contracts even when some fields
+are private through `@encap`. Interface files must preserve the structural facts
+needed for semantic checking, including field morphology, mutability,
+nullability, layout-relevant attributes, and borrow-like member types. Visibility
+controls user access; it does not erase compiler knowledge.
 
 Fields may have defaults. Use `..` to accept remaining defaults.
 
@@ -690,5 +709,6 @@ Unsafe code should stay at system and FFI boundaries. Public APIs should avoid e
 | `p = q` to rebind pointer identity | `*p = *q` | Rebinding is a handle operation |
 | `fn read(info: &Info)` | `fn read(info: Info)` | Hats belong to binding names, and ordinary parameters use the payload view |
 | `fn inspect(&info: Info)` when only reading payload | `fn inspect(info: Info)` | A hatted parameter is a handle contract, not a spelling for normal passing |
+| `shape Ref <- val (&val: T)` | `shape Ref(&val: T)` | Borrow-like fields carry dependency facts directly; shape header dependencies are removed |
 | `fn id<'T>(x: 'T) -> 'T` | `fn id<'T>('x: T) -> 'T` | In binding positions, the quote belongs to the binding name |
 | `shape Box<'T>('data: 'T)` | `shape Box<'T>('data: T)` | The field name preserves morphology; the type side remains `T` |

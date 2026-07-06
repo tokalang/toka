@@ -53,6 +53,15 @@ later release.
   function boundary must have an explicit dependency annotation in the
   signature. This applies uniformly to private and public functions; later
   releases may infer private body-visible helpers as an ergonomics improvement.
+- Shape structural facts: a shape definition is part of the compiler-visible
+  type contract. `.tki` interfaces must preserve the complete structure needed
+  for semantic checking, including private fields, field morphology,
+  mutability, nullability, layout-relevant attributes, and borrow-like member
+  types. Visibility controls user access, not compiler knowledge.
+- Shape header dependencies such as `shape Ref <- field` are removed from the
+  1.0 public surface. Borrow-like fields carry dependency facts directly during
+  construction and assignment; escaping borrowed values still use function
+  signature dependencies or `effects:` routing.
 - Structural return dependencies: `effects:` may route dependencies to
   returned members, such as `return.left <- a` and `return.right <- b`.
   The callee must prove each returned member carries only the dependency
@@ -145,11 +154,10 @@ core contract ships.
   compiler behavior.
 - Any `cede`, drop, clone, or PAL bug that allows resource duplication,
   use-after-move, or invalid escape.
-- Shape-internal member dependencies must be either fully specified and
-  implemented before 1.0 or explicitly rejected by the parser. A relation such
-  as `self.view <- self.owner` is useful, but it also implies immovable /
-  stable-placement construction semantics; Toka must not accept a surface form
-  that looks like an internal borrow while actually borrowing an external value.
+- Shape-internal member dependencies such as `self.view <- self.owner` remain
+  outside the 1.0 surface until their immovable / stable-placement construction
+  semantics are fully specified. The removed shape header dependency syntax must
+  not be used as a substitute for this stronger relation.
 - Any diagnostic that makes a frozen rule practically impossible to understand
   in common usage.
 
