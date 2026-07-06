@@ -8,7 +8,7 @@ error[E0606]: Type 'UnsafeData' does not satisfy trait bound '@Send' for generic
     |
  16 |     process_send<UnsafeData>(u2)
     |     ^
-error[E0422]: Type mismatch for member '*ptr': expected '*i32', but got 'i32'
+error[E0422]: Type mismatch for member '*ptr': expected '*i32', but got 'i32$'
  --> tests/fail/trait_bounds_auto.tk:8:52
    |
  8 |     pub fn clone(self) -> ^UnsafeData { return new UnsafeData(value=0, *ptr=self.ptr) }

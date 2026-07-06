@@ -10,7 +10,7 @@ shape Node(
 )
 
 shape Scene(
-    ^root: Node
+    ^root#: Node
 )
 
 fn main() -> i32 {

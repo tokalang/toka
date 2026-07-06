@@ -1,0 +1,12 @@
+// EXPECT: error[E0443]
+
+shape Data(
+    ^$ptr: i32
+)
+
+fn main() -> i32 {
+    auto data# = Data(^ptr = new i32(1))
+
+    data.^ptr = new i32(2)
+    return 0
+}

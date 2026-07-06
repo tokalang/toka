@@ -1,7 +1,7 @@
 # Toka 语法契约审计
 
 初始审计日期：2026-06-29
-当前更新日期：2026-07-05
+当前更新日期：2026-07-06
 
 本文以 `docs/syntax.md` 与 `docs/syntax_zh.md` 为公开语法声明源，对照当前编译器实现、标准库用例与测试集，检查语法设计是否已经被测试锁定，以及哪些规则仍需要补充更直接的 pass/fail 用例。
 
@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 196 个
+- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 200 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -22,6 +22,7 @@
 
 - `auto` 绑定、`#` 可变权限、nullable payload / nullable handle
 - payload / handle 分层，以及 `&`、`*`、`^`、`~` 的基本使用
+- `$` 显式只读 / 阻断继承标记，以及 handle 字段的层内权限继承边界
 - `cede` 调用契约与未消费检查
 - shape 具名初始化、默认字段、禁止位置初始化
 - trait `@Trait`、trait facet set `@{A, B}`、`where:` 约束
@@ -251,7 +252,16 @@
 
 `#` 的位置规则也基本自洽：名字侧 `x#` 表示 payload/soul 可写，帽子侧 `^#p` / `*#p` / `~#p` / `&#p` 表示 handle identity 可重绑定。实现层已有 `BindingPermission` 和 TKI exporter 对这些标记做结构化保存。`tests/pass/g01_core_handle_views.tk`、`tests/pass/g01_handle_hash_position_matrix.tk`、`tests/fail/core_handle_rebind_requires_hash.tk`、`tests/fail/core_handle_suffix_hash_not_rebindable.tk`、`tests/fail/core_raw_suffix_hash_not_rebindable.tk` 与 `tests/fail/core_reference_suffix_hash_not_rebindable.tk` 已经补上 payload / handle 视图对照，并锁住 `^p#` / `*p#` / `&p#` 不等价于 `^#p` / `*#p` / `&#p`。
 
-`$` 当前是字段 / 参数 / 绑定名侧的内在不可变标记；公开文档和测试集中没有 `^$x` 这类 handle-side freeze 形态，因此不应把它当作已冻结语法。若未来需要 handle-level freeze marker，应单独设计并补测试，而不是从 `$` 的字段语义自然外推。
+`$` 已冻结为显式只读 / 阻断继承标记。普通 payload 默认只读，因此参数或局部变量
+上的 `$` 会被视为冗余；它主要用于 shape 成员或带帽成员这种会受到外层 `#`
+继承影响的位置。名字侧 `field$` 阻断 payload 继承，带帽侧 `^$p` / `*$p`
+阻断 handle identity 重绑定继承。权限继承只在当前物理层生效：对象 payload
+可写权限可以流入普通字段，但 handle 字段会阻断向 pointee payload 的自动继承；
+只有字段或绑定本身显式带 payload 侧 `#`，如 `^p#` / `*p#`，才允许写入
+pointee payload。相关正例已有 `tests/pass/g08_inherent_restriction.tk`，负例由
+`tests/fail/inherent_restriction_member_blocked.tk`、
+`tests/fail/inherent_restriction_handle_blocked.tk` 和
+`tests/fail/inherent_restriction_handle_payload_boundary.tk` 锁定。
 
 `W0407` 是 hatted 参数义务的第一步工程化：它只提示“签名声明了 handle，但函数体没有使用 handle 视图”，不禁止 payload 读取，也不把该规则升级为错误。这样可以先暴露可疑签名，同时避免误伤 raw buffer、FFI adapter、测试和标准库中的历史写法。
 

@@ -363,8 +363,11 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         if (requestedPrefix.empty() && !requestedMorphicIdentity &&
             !m_DisableSoulCollapse) {
           // obj.field (Hat-Off) -> Soul Collapse.
+          bool finalSoulBlocked =
+              Field.IsValueBlocked || (isSoulInsulated && !Field.IsValueMutable);
           return fieldType->getSoulType()->withAttributes(
-              finalSoulWritable, isNarrowed ? false : fieldType->IsNullable);
+              finalSoulWritable, isNarrowed ? false : fieldType->IsNullable,
+              finalSoulBlocked);
         } else {
           // Hatted access, morphic identity access, or disabled soul collapse.
           // Use fieldType directly as the base (preserving its

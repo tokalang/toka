@@ -12,6 +12,16 @@ later release.
 - Hat semantics: `&`, `*`, `^`, and `~` keep their current meanings.
 - `#` placement rules: `^#p` means handle rebinding; `^p#` means payload-side
   mutability.
+- `$` placement rules: `$` is the explicit read-only / blocked marker. It is
+  omitted for ordinary read-only locals and parameters, where it would be
+  redundant. It is meaningful where it blocks permission inheritance, such as
+  `field$` for payload inheritance and `^$p` / `*$p` for handle-identity
+  rebinding inheritance.
+- Permission inheritance boundary: writable object payload access flows into
+  ordinary fields, but handle fields stop payload inheritance at the handle
+  layer. A writable parent can authorize handle rebinding, while the pointee
+  payload remains read-only unless the field or binding explicitly carries a
+  payload-side `#`, such as `^p#` or `*p#`.
 - `cede` as an explicit transfer contract: both caller and callee must honor
   the transfer path.
 - Hatted parameter contract: unused handle views remain warning-level

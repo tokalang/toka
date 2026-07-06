@@ -134,6 +134,20 @@ auto ^#head = new Node(val = 0, ^next = null)
 
 The position of `#` is semantic. `^#p`, `*#p`, `~#p`, and `&#p` mark the handle identity as rebindable. `^p#`, `*p#`, `~p#`, and `&p#` keep `#` on the binding name / payload side; they do not grant handle rebinding authority. When both permissions are needed, write both positions, such as `^#p#`.
 
+`$` is the explicit read-only / blocked counterpart. Because ordinary payloads
+are read-only by default, `$` is usually omitted and is rejected on ordinary
+locals and parameters as redundant. Its purpose is to block inheritance in
+places where an outer writable path would otherwise grant permission:
+`field$` remains read-only even through `obj#`, and hatted forms such as
+`^$p` or `*$p` keep the handle identity non-rebindable even through a writable
+parent.
+
+Permission inheritance is layer-local. Writable access to an object payload
+can flow into ordinary fields, but a handle field forms an inheritance boundary:
+the parent may authorize rebinding the handle identity, while the pointee
+payload remains read-only unless the field or binding explicitly carries a
+payload-side `#`, such as `^p#` or `*p#`.
+
 ## 5. Functions, Parameters, And `cede`
 
 Function parameters are explicitly typed.
