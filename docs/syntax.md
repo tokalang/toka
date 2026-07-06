@@ -221,6 +221,13 @@ Do not write `shape RefInt <- val`. The field morphology and the initializer
 carry the dependency fact; returned-member dependencies are expressed with
 function `effects:` routing.
 
+Toka 1.0 also does not support shape-internal member dependency declarations
+such as `&view: i32 <- owner`; the parser rejects them as unsupported. That
+relation would make a shape internally self-referential and needs a stable
+placement model before it can be safe. Return borrowed views from functions and
+declare their dependencies there instead. Shape-level `effects:` blocks are not
+part of the shape grammar.
+
 Execution boundaries are stricter than ordinary local calls. For Toka 1.0,
 thread/task handoff must not carry hidden borrowed state: a closure passed to
 `thread_spawn` cannot implicitly capture outer variables, and future task

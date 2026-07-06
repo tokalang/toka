@@ -1661,6 +1661,12 @@
       "message": "Shape header dependency syntax is removed. Borrow-like fields carry dependencies directly; use function effects for returned member dependencies.",
       "description": "Shape header dependency syntax is removed. Borrow-like fields carry dependencies directly; use function effects for returned member dependencies."
     },
+    "E01248": {
+      "id": "ERR_PARSER_SHAPE_MEMBER_DEPENDENCY_UNSUPPORTED",
+      "level": "Error",
+      "message": "Shape member dependency annotations are not supported in Toka 1.0. Return borrowed views through functions and declare their dependencies in the function signature or effects block.",
+      "description": "Shape member dependency annotations are not supported in Toka 1.0. Return borrowed views through functions and declare their dependencies in the function signature or effects block."
+    },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",
       "level": "Error",

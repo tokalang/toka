@@ -291,6 +291,7 @@ DIAG(ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR, Error,   "E01244", "Dep
 DIAG(ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED, Error,   "E01245", "Dynamic trait objects currently support a single trait facet. Use 'dyn @Trait', not 'dyn @{Trait1, Trait2}'.")
 DIAG(ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED, Error,   "E01246", "Binary '-' operator must be surrounded by spaces")
 DIAG(ERR_PARSER_SHAPE_HEADER_DEPENDENCY_REMOVED, Error,   "E01247", "Shape header dependency syntax is removed. Borrow-like fields carry dependencies directly; use function effects for returned member dependencies.")
+DIAG(ERR_PARSER_SHAPE_MEMBER_DEPENDENCY_UNSUPPORTED, Error,   "E01248", "Shape member dependency annotations are not supported in Toka 1.0. Return borrowed views through functions and declare their dependencies in the function signature or effects block.")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

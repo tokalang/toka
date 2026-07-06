@@ -371,6 +371,13 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
                               suggestion + "'?";
             error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);
           }
+          if (match(TokenType::Dependency)) {
+            error(previous(), DiagID::ERR_PARSER_SHAPE_MEMBER_DEPENDENCY_UNSUPPORTED);
+            while (!check(TokenType::EndOfFile) && !check(TokenType::Comma) &&
+                   !check(TokenType::RParen)) {
+              advance();
+            }
+          }
         }
         m.Type = rawType;
         m.IsExplicitBound = isExplicitBound;

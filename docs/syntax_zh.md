@@ -206,6 +206,11 @@ shape RefInt(
 不要写 `shape RefInt <- val`。字段形态和初始化表达式本身携带依赖事实；返回值成员
 依赖使用函数 `effects:` 路由表达。
 
+Toka 1.0 也不支持 `&view: i32 <- owner` 这类 shape 内部成员依赖声明；parser 会把
+它作为暂不支持的语法拒绝。这类关系会让 shape 具备内部自引用语义，必须先有稳定放置 /
+不可移动构造模型才安全。1.0 中请通过函数返回 borrowed view，并在函数签名或
+`effects:` 中声明依赖。shape 级 `effects:` 块不属于 shape 语法。
+
 Execution boundary 比普通局部调用更严格。对 Toka 1.0 来说，thread / task
 handoff 不能携带隐藏的借用状态：传给 `thread_spawn` 的闭包不能隐式捕获外层变量，
 后续 task handoff 形式也必须遵守同一规则。跨过这类边界的状态必须显式化，通常

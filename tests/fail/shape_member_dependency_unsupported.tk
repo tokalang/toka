@@ -1,0 +1,10 @@
+shape RefInt(
+    owner: i32,
+    &view: i32 <- owner
+)
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E01248]

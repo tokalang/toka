@@ -62,6 +62,12 @@ later release.
   1.0 public surface. Borrow-like fields carry dependency facts directly during
   construction and assignment; escaping borrowed values still use function
   signature dependencies or `effects:` routing.
+- Shape-internal member dependencies such as `&view: T <- owner` are not part of
+  the 1.0 surface and are rejected as unsupported. They express a stronger
+  self-referential relation and require stable-placement / immovable
+  construction semantics. 1.0 code should expose borrowed views through
+  functions with signature dependencies or `effects:` return-member routing
+  instead.
 - Structural return dependencies: `effects:` may route dependencies to
   returned members, such as `return.left <- a` and `return.right <- b`.
   The callee must prove each returned member carries only the dependency
@@ -124,6 +130,10 @@ core contract ships.
 - Iterator / async trait formalization: current library and compiler
   conventions remain usable, but a larger language-level formalization of
   iterator and async traits is post-1.0 work.
+- Shape-internal member dependency model: future work may specify syntax such as
+  `self.view <- self.owner`, but only together with construction, assignment,
+  move, clone, drop, container-storage, and `.tki` rules for stable internal
+  borrows.
 
 ## Postpone After 1.0
 
@@ -136,6 +146,8 @@ core contract ships.
 - Full value-domain exhaustiveness checking for non-enum literal, range, and
   string patterns.
 - More aggressive PAL acceptance for hard-to-prove but possibly safe cases.
+- Shape-internal member dependencies and stable-placement / immovable shape
+  construction.
 - Private-helper inference for missing borrow dependency annotations.
 - Upgrading hatted parameter unused-handle warnings into hard errors.
 - Larger iterator / async trait formalization.
