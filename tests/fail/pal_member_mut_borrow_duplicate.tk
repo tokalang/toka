@@ -1,0 +1,14 @@
+// EXPECT: error[E0441]
+
+shape CounterInfo(
+    accesses#: i32,
+    name: str
+)
+
+fn main() -> i32 {
+    auto info# = CounterInfo(accesses = 0, name = "metrics")
+    auto &left# = info.&accesses
+    auto &right# = info.&accesses
+
+    return left + right
+}

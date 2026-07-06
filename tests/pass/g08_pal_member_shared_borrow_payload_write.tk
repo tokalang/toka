@@ -1,0 +1,18 @@
+import std/io::println
+
+shape CounterInfo(
+    accesses#: i32,
+    name: str
+)
+
+fn main() -> i32 {
+    auto info# = CounterInfo(accesses = 0, name = "metrics")
+    auto &field_view = info.&accesses
+
+    info.accesses = 1
+
+    println("field_view={}, accesses={}", field_view, info.accesses)
+    assert(field_view == 1, "shared field borrow should observe payload write")
+    assert(info.accesses == 1, "payload write should update field")
+    return 0
+}

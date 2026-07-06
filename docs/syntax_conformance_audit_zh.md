@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 312 个，`tests/fail/*.tk` 约 200 个
+- 测试集：`tests/pass/*.tk` 约 313 个，`tests/fail/*.tk` 约 203 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
@@ -302,8 +302,9 @@ pointee payload。相关正例已有 `tests/pass/g08_inherent_restriction.tk`，
 - 循环状态：`tests/pass/g08_pal_loop_local_move.tk`、`tests/fail/move_in_loop.tk`、`tests/fail/move_direct_in_loop.tk`
 - `break` / `continue` 状态：`tests/pass/g08_loop_break_state_merge.tk`、`tests/pass/g08_for_break_or_state_merge.tk`、`tests/pass/g08_pal_labeled_break_state_merge.tk`、`tests/pass/g08_pal_labeled_break_local_move.tk`、`tests/pass/g08_pal_labeled_continue_local_move.tk`、`tests/fail/loop_break_state_maybe_unset.tk`、`tests/fail/for_break_skips_or_unset.tk`、`tests/fail/loop_continue_move_state.tk`、`tests/fail/for_continue_move_state.tk`、`tests/fail/pal_labeled_break_move_state.tk`、`tests/fail/pal_labeled_continue_move_state.tk`
 - 调用点借用组：`tests/pass/g08_call_payload_alias_readonly.tk`、`tests/pass/g08_call_payload_alias_disjoint.tk`、`tests/fail/call_payload_alias_mut_mut.tk`、`tests/fail/call_payload_alias_mut_read.tk`、`tests/fail/call_payload_alias_cede_read.tk`
-- payload write 分类：`tests/pass/g08_pal_shared_borrow_payload_write.tk`、`tests/pass/g08_pal_shared_borrow_array_payload_write.tk`
+- payload write 分类：`tests/pass/g08_pal_shared_borrow_payload_write.tk`、`tests/pass/g08_pal_shared_borrow_array_payload_write.tk`、`tests/pass/g08_pal_member_shared_borrow_payload_write.tk`
 - 借用冲突：`tests/fail/fail_pal_move_locked.tk`、`tests/fail/fail_pal_path_prefix.tk`、`tests/fail/borrow_field.tk`、`tests/fail/pal_call_return_dependency_replacement.tk`
+- member-terminal 借用冲突：`tests/fail/pal_member_mut_borrow_payload_write.tk`、`tests/fail/pal_member_mut_borrow_payload_read.tk`、`tests/fail/pal_member_mut_borrow_duplicate.tk`
 - 借用逃逸：`tests/fail/ref_life_bound.tk`、`tests/fail/call_elision_escape.tk`、`tests/fail/pal_branch_borrowed_field_escape.tk`
 - Shape 头部依赖废除：`tests/fail/shape_header_dependency_removed.tk`
 

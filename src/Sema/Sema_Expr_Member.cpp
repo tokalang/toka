@@ -108,6 +108,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
   std::string path = getStringifyPath(Memb);
   bool isNarrowed = m_NarrowedPaths.count(path);
+  bool memberAccessHadConflict = false;
 
   // [Ch 5] Single Hat Principle & Terminal Marking Trace
   bool oldIntermediate = m_InIntermediatePath;
@@ -130,21 +131,22 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   m_DisableSoulCollapse = savedDisable;
   m_InIntermediatePath = oldIntermediate;
 
+  if (!m_InLHS && !m_InIntermediatePath && !path.empty()) {
+    std::string conflictPath = PALCheckerState.verifyAccess(path);
+    if (!conflictPath.empty()) {
+      DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_BORROW_MUT,
+                               conflictPath);
+      HasError = true;
+      memberAccessHadConflict = true;
+    }
+  }
+
   // Unset Check for Member Access
   if (!m_InLHS) {
     if (auto *objVar = dynamic_cast<VariableExpr *>(Memb->Object.get())) {
       SymbolInfo *Info = nullptr;
       std::string actualObjName = objVar->Name;
       if (CurrentScope->findVariableWithDeref(objVar->Name, Info, actualObjName)) {
-        // [Rule] Borrowing check for Member Access
-        if (!m_InIntermediatePath && !path.empty()) {
-           std::string conflictPath = PALCheckerState.verifyAccess(path);
-           if (!conflictPath.empty()) {
-               DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_BORROW_MUT, conflictPath);
-               HasError = true;
-           }
-        }
-
         if (Info->TypeObj && Info->TypeObj->isShape()) {
           // Determine which mask to check: InitMask (for values) or
           // DirtyReferentMask (for references)
@@ -358,6 +360,16 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             pt->IsWritable = true;
           else
             fieldType->IsWritable = true;
+        }
+
+        if (!m_InLHS && !m_InIntermediatePath &&
+            requestedPrefix.find('&') != std::string::npos &&
+            requestedPrefix != "??" && !memberAccessHadConflict) {
+          bool isExclusive = access.HasRebindMarker || m_ExpectedWritability;
+          if (!PALCheckerState.recordBorrow(path, isExclusive)) {
+            error(Memb, DiagID::ERR_BORROW_MUT, path);
+          }
+          m_LastBorrowSource = path;
         }
 
         if (requestedPrefix.empty() && !requestedMorphicIdentity &&

@@ -267,6 +267,8 @@ Under these rules:
 - A shared borrow blocks invalidating or exclusive mutation of the same path or an overlapping parent / child path.
 - Ordinary payload writes do not by themselves count as invalidation, but writing a parent path that would replace storage containing an active borrow remains invalidating and is rejected.
 - A mutable borrow blocks both reads and writes through overlapping paths unless the access is proven disjoint.
+- Terminal member borrows such as `obj.&field` and `obj.&#field` are recorded
+  against the selected member path, just like `&(obj.field)`.
 - Moving or `cede`-ing a borrowed resource path is rejected.
 - Moving a resource path defined outside a loop from a loop backedge is rejected; this includes paths that reach the backedge through `continue`.
 - Interior-mutable fields marked with `#` may be updated through the explicit field rule, but ordinary fields remain protected by the active borrow.

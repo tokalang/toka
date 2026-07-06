@@ -164,10 +164,10 @@ fn main() -> i32 {
         
         assert(immut_right.val == 30, "Immutable right value mismatch")
         assert(mut_left.val == 777, "Mutable disjoint test")
-        
-        println("heap check: scene.root.left.val = {}", scene.root.left.val)
-        assert(scene.root.left.val == 777, "Mutable reference definitively modified the actual heap data")
     }
+
+    println("heap check: scene.root.left.val = {}", scene.root.left.val)
+    assert(scene.root.left.val == 777, "Mutable reference definitively modified the actual heap data")
 
     // 7. Record Split Borrow and Struct Lifetime Bound
     {
