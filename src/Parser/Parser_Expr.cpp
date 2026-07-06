@@ -392,7 +392,7 @@ std::unique_ptr<Expr> Parser::parseExpr(int minPrec, bool allowTrailingClosure) 
         }
 
         t = advance();
-        std::string currentText = t.Text;
+        std::string currentText = typeTokenText(t);
         if (t.Kind == TokenType::Identifier && !currentText.empty() && currentText[0] == '\'') {
             // currentText = currentText.substr(1);
         }

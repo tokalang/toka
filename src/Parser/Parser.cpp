@@ -66,6 +66,20 @@ Token Parser::consume(TokenType type, DiagID id) {
   return peek();
 }
 
+std::string Parser::typeTokenText(const Token &tok) const {
+  std::string text = tok.Text;
+  if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
+      tok.Kind == TokenType::KwUpperSelf) {
+    if (tok.IsBlocked)
+      text += "$";
+    if (tok.HasNull)
+      text += "?";
+    if (tok.HasWrite)
+      text += "#";
+  }
+  return text;
+}
+
 void Parser::expectEndOfStatement() {
   if (isEndOfStatement()) {
     if (match(TokenType::Semicolon)) {
@@ -276,7 +290,7 @@ std::string Parser::parseTypeString(bool allowAssociatedProjection) {
       balance--;
 
     Token tok = advance();
-    std::string text = tok.Text;
+    std::string text = typeTokenText(tok);
     if (tok.Kind == TokenType::Identifier && !text.empty() && text[0] == '\'') {
         // text = text.substr(1);
     }

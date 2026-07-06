@@ -207,6 +207,24 @@ static bool isLValueRef(ASTNode *Node, const std::string &VarName) {
   return false;
 }
 
+static bool isReadOnlyReferenceViewExpr(ASTNode *Node, Scope *CurrentScope) {
+  if (!Node || !CurrentScope)
+    return false;
+
+  if (auto *Cast = dynamic_cast<CastExpr *>(Node))
+    return isReadOnlyReferenceViewExpr(Cast->Expression.get(), CurrentScope);
+  if (auto *Post = dynamic_cast<PostfixExpr *>(Node))
+    return isReadOnlyReferenceViewExpr(Post->LHS.get(), CurrentScope);
+
+  if (auto *VE = dynamic_cast<VariableExpr *>(Node)) {
+    SymbolInfo Info;
+    if (CurrentScope->lookup(VE->Name, Info))
+      return Info.IsReference() && !Info.IsDeclaredMutable;
+  }
+
+  return false;
+}
+
 static bool isVariableMutated(ASTNode *Node, const std::string &VarName) {
   if (!Node) return false;
 
@@ -1199,7 +1217,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     ->getPointeeType()
               : srcType;
 
-      if (!isTypeCompatible(targetInner, srcInner)) {
+      bool raisesWritePermission =
+          targetInner && targetInner->IsWritable &&
+          (isReadOnlyReferenceViewExpr(Cast->Expression.get(), CurrentScope) ||
+           !srcInner || !srcInner->IsWritable);
+      if (!isTypeCompatible(targetInner, srcInner) || raisesWritePermission) {
         error(Cast, DiagID::ERR_CAST_MISMATCH, srcType->toString(),
               Cast->TargetType);
       }
@@ -1250,7 +1272,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
           if (!m_InLHS) {
             bool isExclusive = targetInner->IsWritable;
-            std::string pathToBorrow = getStringifyPath(Var);
+            std::string pathToBorrow = EffectiveName;
             if (!pathToBorrow.empty()) {
                if (!PALCheckerState.recordBorrow(pathToBorrow, isExclusive)) {
                    error(Cast, DiagID::ERR_BORROW_MUT, pathToBorrow);

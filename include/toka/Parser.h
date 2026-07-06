@@ -75,6 +75,7 @@ private:
   bool rejectTypeSideReferenceParameter(const Token &nameTok,
                                         const std::string &bindingPrefix,
                                         std::string &typeName);
+  std::string typeTokenText(const Token &tok) const;
 
   bool HasError = false;
   bool PanicMode = false;
