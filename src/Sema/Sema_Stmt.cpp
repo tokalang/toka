@@ -48,6 +48,30 @@ static std::string getStringifyPath(Expr *E) {
   return "";
 }
 
+static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
+                                               Scope *CurrentScope) {
+  if (!Node || !CurrentScope)
+    return false;
+
+  if (auto *Cast = dynamic_cast<CastExpr *>(Node))
+    return isReadOnlyReferenceViewInitializer(Cast->Expression.get(),
+                                              CurrentScope);
+  if (auto *Post = dynamic_cast<PostfixExpr *>(Node))
+    return isReadOnlyReferenceViewInitializer(Post->LHS.get(), CurrentScope);
+  if (auto *Unsafe = dynamic_cast<UnsafeExpr *>(Node))
+    return isReadOnlyReferenceViewInitializer(Unsafe->Expression.get(),
+                                              CurrentScope);
+
+  if (auto *VE = dynamic_cast<VariableExpr *>(Node)) {
+    std::string actualName = VE->Name;
+    SymbolInfo *Info = nullptr;
+    if (CurrentScope->findVariableWithDeref(VE->Name, Info, actualName))
+      return Info && Info->IsReference() && !Info->IsDeclaredMutable;
+  }
+
+  return false;
+}
+
 bool Sema::allPathsReturn(Stmt *S) {
   if (!S)
     return false;
@@ -1020,6 +1044,13 @@ void Sema::checkStmt(Stmt *S) {
       }
       
       m_AllowUnsetUsage = false;
+    }
+
+    if (Var->IsReference && Var->IsValueMutable && Var->Init &&
+        isReadOnlyReferenceViewInitializer(Var->Init.get(), CurrentScope)) {
+      DiagnosticEngine::report(getLoc(Var),
+                               DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
     }
 
     // 4. If type not specified, infer from init

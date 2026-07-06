@@ -217,9 +217,10 @@ static bool isReadOnlyReferenceViewExpr(ASTNode *Node, Scope *CurrentScope) {
     return isReadOnlyReferenceViewExpr(Post->LHS.get(), CurrentScope);
 
   if (auto *VE = dynamic_cast<VariableExpr *>(Node)) {
-    SymbolInfo Info;
-    if (CurrentScope->lookup(VE->Name, Info))
-      return Info.IsReference() && !Info.IsDeclaredMutable;
+    std::string actualName = VE->Name;
+    SymbolInfo *Info = nullptr;
+    if (CurrentScope->findVariableWithDeref(VE->Name, Info, actualName))
+      return Info && Info->IsReference() && !Info->IsDeclaredMutable;
   }
 
   return false;

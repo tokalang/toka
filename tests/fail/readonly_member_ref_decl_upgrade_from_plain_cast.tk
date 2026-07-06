@@ -1,0 +1,18 @@
+// EXPECT: error[E04573]
+
+shape Data(
+    val: i32
+)
+
+shape Box(
+    inner: Data
+)
+
+fn main() -> i32 {
+    auto box# = Box(inner = Data(val = 0))
+    auto &view = box.&inner
+    auto &mut_view# = view as &Data
+
+    mut_view.val = 9
+    return box.inner.val
+}

@@ -10,7 +10,7 @@
 ## 输入范围
 
 - 公开语法文档：`docs/syntax.md`、`docs/syntax_zh.md`
-- 测试集：`tests/pass/*.tk` 约 313 个，`tests/fail/*.tk` 约 209 个
+- 测试集：`tests/pass/*.tk` 约 313 个，`tests/fail/*.tk` 约 212 个
 - 标准库与工具库：`lib/**/*.tk` 约 89 个
 - 辅助验证：已有 `test_pass.sh`、TKI cache validation、incremental build 流程
 
