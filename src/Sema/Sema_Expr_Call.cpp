@@ -1455,6 +1455,59 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   std::vector<CallArgPALFact> callArgPALFacts;
+  auto canonicalizePALPath = [&](const std::string &path) -> std::string {
+    if (path.empty())
+      return "";
+
+    std::string base = path;
+    std::string suffix = "";
+    size_t dot = path.find('.');
+    if (dot != std::string::npos) {
+      base = path.substr(0, dot);
+      suffix = path.substr(dot);
+    }
+
+    std::string current = base;
+    int depth = 0;
+    while (depth++ < 10) {
+      SymbolInfo *info = nullptr;
+      std::string actualName = current;
+      if (!CurrentScope->findVariableWithDeref(current, info, actualName))
+        break;
+      if (!info || info->BorrowedFrom.empty())
+        break;
+      current = info->BorrowedFrom;
+    }
+
+    return current + suffix;
+  };
+  auto isReadOnlyBorrowViewArgument = [&](Expr *expr) -> bool {
+    if (!expr)
+      return false;
+    while (auto *cast = dynamic_cast<CastExpr *>(expr))
+      expr = cast->Expression.get();
+    if (auto *var = dynamic_cast<VariableExpr *>(expr)) {
+      SymbolInfo *info = nullptr;
+      std::string actualName = var->Name;
+      if (CurrentScope->findVariableWithDeref(var->Name, info, actualName)) {
+        return info && info->IsReference() && !info->IsDeclaredMutable;
+      }
+    }
+    if (auto *member = dynamic_cast<MemberExpr *>(expr)) {
+      std::string raw = member->Member;
+      return raw.find('&') != std::string::npos &&
+             raw.find('#') == std::string::npos;
+    }
+    if (auto *unary = dynamic_cast<UnaryExpr *>(expr)) {
+      if (unary->Op == TokenType::Ampersand && !unary->IsValueMutable)
+        return true;
+    }
+    if (auto *addr = dynamic_cast<AddressOfExpr *>(expr)) {
+      (void)addr;
+      return true;
+    }
+    return false;
+  };
 
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
@@ -1532,8 +1585,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
     }
 
+    if (paramIsValueMutable && !paramIsHatted && !isCededParam &&
+        isReadOnlyBorrowViewArgument(Call->Args[i].get())) {
+      error(Call->Args[i].get(),
+            DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+            std::to_string(i + 1), paramType ? paramType->toString() : "T#",
+            argType->toString());
+    }
+
     if (paramType && i < ParamTypes.size()) {
-      std::string argPath = getStringifyPath(Call->Args[i].get());
+      std::string argPath =
+          canonicalizePALPath(getStringifyPath(Call->Args[i].get()));
       if (!argPath.empty()) {
         PALOperationClass access = PALOperationClass::SharedPayloadBorrow;
         if (isCallerCeded || (isCededParam && !isCedeParamImplicitlyExempt)) {

@@ -1,0 +1,17 @@
+// EXPECT: error[E04571]
+
+shape Data(
+    val: i32
+)
+
+fn write_one(target#: Data) {
+    target.val = 10
+}
+
+fn main() -> i32 {
+    auto x# = Data(val = 0)
+    auto &view = &x
+
+    write_one(view)
+    return x.val
+}

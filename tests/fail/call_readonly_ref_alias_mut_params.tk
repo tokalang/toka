@@ -1,0 +1,19 @@
+// EXPECT: error[E04571]
+
+shape Data(
+    val: i32
+)
+
+fn write_pair(left#: Data, right#: Data) {
+    left.val = 10
+    right.val = 20
+}
+
+fn main() -> i32 {
+    auto x# = Data(val = 0)
+    auto &left = &x
+    auto &right = &x
+
+    write_pair(left, right)
+    return x.val
+}

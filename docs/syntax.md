@@ -264,6 +264,8 @@ The stable contract is governed by four core rules:
 Under these rules:
 - A function call declares all argument borrows at once; call-site payload
   passing is not invisible to PAL.
+- Implicit dereference or borrow-based argument passing may not raise write
+  permission: a read-only `&T` view cannot satisfy a `T#` payload parameter.
 - A shared borrow blocks invalidating or exclusive mutation of the same path or an overlapping parent / child path.
 - Ordinary payload writes do not by themselves count as invalidation, but writing a parent path that would replace storage containing an active borrow remains invalidating and is rejected.
 - A mutable borrow blocks both reads and writes through overlapping paths unless the access is proven disjoint.

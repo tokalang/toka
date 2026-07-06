@@ -71,8 +71,12 @@ struct SymbolInfo {
   bool IsSoulMutable() const {
     if (!TypeObj)
       return false;
-    // For pointers/references, we care about whether the POINTED-TO value is
-    // mutable.
+    if (TypeObj->isReference()) {
+      return IsDeclaredMutable;
+    }
+    // For pointer handles, writability comes from the accessible pointee view.
+    // Reference views are handled above: an immutable & binding must not inherit
+    // write permission just because its source path was mutable.
     if (TypeObj->isPointer()) {
       auto pointee = TypeObj->getPointeeType();
       return pointee && pointee->IsWritable;

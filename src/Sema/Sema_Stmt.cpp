@@ -1638,6 +1638,8 @@ void Sema::checkStmt(Stmt *S) {
           }
 
           Info.IsDeclaredVariable = true;
+          Info.IsDeclaredMutable = Destruct->Variables[i].IsValueMutable;
+          Info.DeclLoc = Destruct->Loc;
           CurrentScope->define(Destruct->Variables[i].Name, Info);
         }
       } else {
