@@ -20,10 +20,15 @@ struct TopologyCacheMetrics {
   uint64_t nodesVisited = 0;                      // only B1 tracks this
   bool cacheValid = false;
 
+  // B1 specific validation stats
+  uint64_t b1StructuralFallbacks = 0;
+  uint64_t b1VsB2Mismatches = 0;
+
   // B3 specific validation stats
   uint64_t totalBinaryAssignments = 0;
   uint64_t explicitEvidenceCount = 0;
-  uint64_t mismatchCount = 0;
+  uint64_t b3ExplicitVsB2Mismatches = 0;
+  uint64_t b3ConservativeVsB2Mismatches = 0;
 };
 
 struct GroupedMetrics {

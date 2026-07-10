@@ -93,7 +93,8 @@ static int countNodes(const Expr *E) {
 static std::shared_ptr<Type> resolveTypeB1(
     const Expr *E,
     const std::map<std::string, ShapeDecl *> &shapeMap,
-    int &nodesVisited) {
+    int &nodesVisited,
+    uint64_t &fallbacks) {
   if (!E) return nullptr;
   nodesVisited++;
 
@@ -101,8 +102,11 @@ static std::shared_ptr<Type> resolveTypeB1(
     return V->ResolvedType;
   }
   if (auto *M = dynamic_cast<const MemberExpr *>(E)) {
-    auto baseTy = resolveTypeB1(M->Object.get(), shapeMap, nodesVisited);
-    if (!baseTy) return nullptr;
+    auto baseTy = resolveTypeB1(M->Object.get(), shapeMap, nodesVisited, fallbacks);
+    if (!baseTy) {
+      fallbacks++;
+      return M->ResolvedType;
+    }
 
     std::string baseName = Type::stripMorphology(baseTy->getSoulName());
     size_t angle = baseName.find('<');
@@ -119,13 +123,14 @@ static std::shared_ptr<Type> resolveTypeB1(
         }
       }
     }
+    fallbacks++;
     return M->ResolvedType;
   }
   if (auto *Idx = dynamic_cast<const ArrayIndexExpr *>(E)) {
-    auto arrayTy = resolveTypeB1(Idx->Array.get(), shapeMap, nodesVisited);
+    auto arrayTy = resolveTypeB1(Idx->Array.get(), shapeMap, nodesVisited, fallbacks);
     for (const auto &idx : Idx->Indices) {
       int dummy = 0;
-      resolveTypeB1(idx.get(), shapeMap, dummy);
+      resolveTypeB1(idx.get(), shapeMap, dummy, fallbacks);
       nodesVisited += dummy;
     }
     if (arrayTy && arrayTy->isArray()) {
@@ -134,21 +139,21 @@ static std::shared_ptr<Type> resolveTypeB1(
     return Idx->ResolvedType;
   }
   if (auto *Deref = dynamic_cast<const DereferenceExpr *>(E)) {
-    auto childTy = resolveTypeB1(Deref->Expression.get(), shapeMap, nodesVisited);
+    auto childTy = resolveTypeB1(Deref->Expression.get(), shapeMap, nodesVisited, fallbacks);
     if (childTy) {
       return childTy->getPointeeType();
     }
     return Deref->ResolvedType;
   }
   if (auto *Un = dynamic_cast<const UnaryExpr *>(E)) {
-    auto childTy = resolveTypeB1(Un->RHS.get(), shapeMap, nodesVisited);
+    auto childTy = resolveTypeB1(Un->RHS.get(), shapeMap, nodesVisited, fallbacks);
     if (Un->Op == TokenType::Star && childTy) {
       return childTy->getPointeeType();
     }
     return Un->ResolvedType;
   }
   if (auto *C = dynamic_cast<const CastExpr *>(E)) {
-    resolveTypeB1(C->Expression.get(), shapeMap, nodesVisited);
+    resolveTypeB1(C->Expression.get(), shapeMap, nodesVisited, fallbacks);
     return C->ResolvedType;
   }
   return E->ResolvedType;
@@ -233,33 +238,18 @@ public:
       traverseExpr(F->Expression.get());
       if (F->Count) traverseExpr(F->Count.get());
     } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
+      // Declarations are initializations, not rebindings.
+      // Traverse initializer for queries, but do not trigger baseline assignments.
       if (Var->Init) {
         traverseExpr(Var->Init.get());
-        bool isHandle = isHandleType(Var->ResolvedType);
-        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Var->Init.get()) + 1, !isHandle, false);
       }
     } else if (auto *Destruct = dynamic_cast<DestructuringDecl *>(S)) {
       if (Destruct->Init) {
         traverseExpr(Destruct->Init.get());
-        bool isHandle = false;
-        for (const auto &v : Destruct->Variables) {
-          if (v.IsReference || v.Name.find('^') != std::string::npos ||
-              v.Name.find('~') != std::string::npos || v.Name.find('&') != std::string::npos ||
-              v.Name.find('*') != std::string::npos) {
-            isHandle = true;
-            break;
-          }
-        }
-        if (!isHandle && Destruct->Init->ResolvedType) {
-          isHandle = isHandleType(Destruct->Init->ResolvedType);
-        }
-        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Destruct->Init.get()) + 1, !isHandle, false);
       }
     } else if (auto *Guard = dynamic_cast<GuardBindStmt *>(S)) {
       if (Guard->Target) {
         traverseExpr(Guard->Target.get());
-        bool isHandle = isHandleType(Guard->Target->ResolvedType);
-        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Guard->Target.get()) + 1, !isHandle, false);
       }
       if (Guard->ElseBody) {
         bool saveValid = metrics.cacheValid;
@@ -283,21 +273,30 @@ public:
         // Perform LHS traversal for query triggers on subexpressions
         traverseLHSForQueries(Bin->LHS.get());
 
+        // Ground-truth type properties
+        bool b2_isHandle = Bin->LHS->ResolvedType && isHandleType(Bin->LHS->ResolvedType);
+
+        // Unified Query Schedule: trigger query on LHS if semantically a handle write
+        if (b2_isHandle) {
+          triggerQuery();
+        }
+
         // Invalidation Baselines checking
         bool isHandle = false;
         int nodesB1 = 0;
 
-        bool b2_isHandle = Bin->LHS->ResolvedType && isHandleType(Bin->LHS->ResolvedType);
-
         if (baselineNum == 1) {
           // B1: Dynamically resolve target type and count nodes visited
-          auto targetTy = resolveTypeB1(Bin->LHS.get(), shapeMap, nodesB1);
+          auto targetTy = resolveTypeB1(Bin->LHS.get(), shapeMap, nodesB1, metrics.b1StructuralFallbacks);
           isHandle = isHandleType(targetTy);
+          if (countingEnabled && (isHandle != b2_isHandle)) {
+            metrics.b1VsB2Mismatches++;
+          }
         } else if (baselineNum == 2) {
           // B2: Query target AST node's cached metadata directly
           isHandle = b2_isHandle;
         } else if (baselineNum == 3) {
-          // B3: Read the lowering evidence.
+          // B3: Read frontend evidence
           if (countingEnabled) {
             metrics.totalBinaryAssignments++;
           }
@@ -309,13 +308,15 @@ public:
               metrics.explicitEvidenceCount++;
             }
             isHandle = (it->second.Frontend == AssignmentFrontendEvidence::Handle);
+            if (countingEnabled && (isHandle != b2_isHandle)) {
+              metrics.b3ExplicitVsB2Mismatches++;
+            }
           } else {
             // Missing/Residual evidence: conservatively invalidate
             isHandle = true;
-          }
-
-          if (countingEnabled && (isHandle != b2_isHandle)) {
-            metrics.mismatchCount++;
+            if (countingEnabled && !b2_isHandle) {
+              metrics.b3ConservativeVsB2Mismatches++;
+            }
           }
         } else {
           // B0 check
@@ -328,13 +329,8 @@ public:
           isSelfRebind = true;
         }
 
-        // Trigger query on the LHS handle if it is a handle write
-        if (isHandle) {
-          triggerQuery();
-        }
-
         // Perform invalidation/retention
-        handleAssignment(isHandle, isSelfRebind, nodesB1 + countNodes(Bin->RHS.get()) + 1, !isHandle, isSelfRebind);
+        handleAssignment(isHandle, isSelfRebind, nodesB1, !isHandle, isSelfRebind);
         return;
       }
     }
@@ -352,6 +348,10 @@ public:
       for (const auto &arm : Match->Arms) {
         metrics.cacheValid = initValid;
         if (isHandleTarget) {
+          // Trigger queries and handle rebindings inside arms if matching handle
+          if (isHandleTarget) {
+            triggerQuery();
+          }
           handleAssignment(true, false, Match->Target ? countNodes(Match->Target.get()) : 1, false, false);
         }
         if (arm->Guard) {
@@ -615,7 +615,6 @@ void runTopologyCacheEvaluation(
     sema.checkShapeSovereignty();
 
     if (toka::DiagnosticEngine::hasErrors()) {
-      // Revert successful count if sema failed
       successfulRoots--;
       skippedRoots++;
       continue;
@@ -752,62 +751,62 @@ void runTopologyCacheEvaluation(
             << std::setw(12) << "B0" 
             << std::setw(12) << "B1" 
             << std::setw(12) << "B2" 
-            << std::setw(12) << "B3" << "\n";
+            << std::setw(20) << "B3 (Frontend-Evidence)" << "\n";
   std::cout << "-------------------------------------------------------------------------\n";
   std::cout << std::setw(30) << "Topology Queries" 
             << std::setw(12) << total.B0.topologyQueries 
             << std::setw(12) << total.B1.topologyQueries 
             << std::setw(12) << total.B2.topologyQueries 
-            << std::setw(12) << total.B3.topologyQueries << "\n";
+            << std::setw(20) << total.B3.topologyQueries << "\n";
   std::cout << std::setw(30) << "Valid Cache Hits" 
             << std::setw(12) << total.B0.validCacheHits 
             << std::setw(12) << total.B1.validCacheHits 
             << std::setw(12) << total.B2.validCacheHits 
-            << std::setw(12) << total.B3.validCacheHits << "\n";
+            << std::setw(20) << total.B3.validCacheHits << "\n";
   std::cout << std::setw(30) << "Cache Recomputations" 
             << std::setw(12) << total.B0.cacheRecomputations 
             << std::setw(12) << total.B1.cacheRecomputations 
             << std::setw(12) << total.B2.cacheRecomputations 
-            << std::setw(12) << total.B3.cacheRecomputations << "\n";
+            << std::setw(20) << total.B3.cacheRecomputations << "\n";
   std::cout << std::setw(30) << "Invalidations" 
             << std::setw(12) << total.B0.invalidations 
             << std::setw(12) << total.B1.invalidations 
             << std::setw(12) << total.B2.invalidations 
-            << std::setw(12) << total.B3.invalidations << "\n";
+            << std::setw(20) << total.B3.invalidations << "\n";
   std::cout << std::setw(30) << "Retained-through-payload" 
             << std::setw(12) << total.B0.retainedThroughPayload 
             << std::setw(12) << total.B1.retainedThroughPayload 
             << std::setw(12) << total.B2.retainedThroughPayload 
-            << std::setw(12) << total.B3.retainedThroughPayload << "\n";
+            << std::setw(20) << total.B3.retainedThroughPayload << "\n";
   std::cout << std::setw(30) << "Payload-caused cons. inval." 
             << std::setw(12) << total.B0.payloadConservativeInvalidations 
             << std::setw(12) << total.B1.payloadConservativeInvalidations 
             << std::setw(12) << total.B2.payloadConservativeInvalidations 
-            << std::setw(12) << total.B3.payloadConservativeInvalidations << "\n";
+            << std::setw(20) << total.B3.payloadConservativeInvalidations << "\n";
   std::cout << std::setw(30) << "Syntactic self-rebind inval." 
             << std::setw(12) << total.B0.syntacticSelfRebindings 
             << std::setw(12) << total.B1.syntacticSelfRebindings 
             << std::setw(12) << total.B2.syntacticSelfRebindings 
-            << std::setw(12) << total.B3.syntacticSelfRebindings << "\n";
+            << std::setw(20) << total.B3.syntacticSelfRebindings << "\n";
   std::cout << std::setw(30) << "AST Nodes Visited" 
             << std::setw(12) << 0 
             << std::setw(12) << total.B1.nodesVisited 
             << std::setw(12) << 0 
-            << std::setw(12) << 0 << "\n";
+            << std::setw(20) << 0 << "\n";
   std::cout << std::fixed << std::setprecision(2);
   std::cout << std::setw(30) << "Analysis Wall Time (ms)" 
             << std::setw(12) << wallTimeB0 
             << std::setw(12) << wallTimeB1 
             << std::setw(12) << wallTimeB2 
-            << std::setw(12) << wallTimeB3 << "\n";
+            << std::setw(20) << wallTimeB3 << "\n";
   std::cout << std::setw(30) << "Modeled carrier footprint (B)" 
             << std::setw(12) << footprintB0 
             << std::setw(12) << footprintB1 
             << std::setw(12) << footprintB2 
-            << std::setw(12) << footprintB3 << "\n";
+            << std::setw(20) << footprintB3 << "\n";
   std::cout << "=========================================================================\n";
 
-  // Report B3 explicit evidence coverage and mismatches
+  // Report B3 explicit evidence coverage, mismatches, and B1 validation details
   double coveragePct = 0.0;
   if (total.B3.totalBinaryAssignments > 0) {
     coveragePct = (double)total.B3.explicitEvidenceCount * 100.0 / total.B3.totalBinaryAssignments;
@@ -815,8 +814,11 @@ void runTopologyCacheEvaluation(
   std::cout << std::fixed << std::setprecision(2);
   std::cout << "B3 Evidence Coverage: " << coveragePct << "% (" 
             << total.B3.explicitEvidenceCount << " explicit out of " 
-            << total.B3.totalBinaryAssignments << " binary assignments)\n";
-  std::cout << "B3 vs B2 Invalidation Mismatches: " << total.B3.mismatchCount << "\n";
+            << total.B3.totalBinaryAssignments << " evaluated assignments)\n";
+  std::cout << "B1 vs B2 Classification Mismatches: " << total.B1.b1VsB2Mismatches << "\n";
+  std::cout << "B1 Structural Fallbacks to Cached Type: " << total.B1.b1StructuralFallbacks << "\n";
+  std::cout << "B3 (Explicit) vs B2 Mismatches: " << total.B3.b3ExplicitVsB2Mismatches << "\n";
+  std::cout << "B3 (Conservative) vs B2 Mismatches: " << total.B3.b3ConservativeVsB2Mismatches << "\n";
   std::cout << "=========================================================================\n";
 }
 
