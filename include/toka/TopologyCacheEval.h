@@ -26,6 +26,7 @@ struct TopologyCacheMetrics {
   uint64_t b1VsB2Mismatches = 0;
   uint64_t b1FalsePayload = 0;
   uint64_t b1FalseHandle = 0;
+  uint64_t b1MismatchesWhileCacheValid = 0;
 
   // B3 specific validation stats
   uint64_t totalBinaryAssignments = 0;

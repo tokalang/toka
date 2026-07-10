@@ -317,6 +317,9 @@ public:
             metrics.nodesVisited += nodesB1;
             if (isHandle != b2_isHandle) {
               metrics.b1VsB2Mismatches++;
+              if (cacheValid) {
+                metrics.b1MismatchesWhileCacheValid++;
+              }
               if (isHandle) {
                 metrics.b1FalseHandle++;
               } else {
@@ -791,7 +794,7 @@ void runTopologyCacheEvaluation(
             << std::setw(12) << total.B1.retainedThroughPayload 
             << std::setw(12) << total.B2.retainedThroughPayload 
             << std::setw(20) << total.B3.retainedThroughPayload << "\n";
-  std::cout << std::setw(30) << "Payload Valid->Invalid"
+  std::cout << std::setw(30) << "B0 oracle-P Valid->Invalid"
             << std::setw(12) << total.B0.payloadConservativeInvalidations 
             << std::setw(12) << total.B1.payloadConservativeInvalidations 
             << std::setw(12) << total.B2.payloadConservativeInvalidations 
@@ -825,6 +828,8 @@ void runTopologyCacheEvaluation(
   std::cout << "B1 vs B2 Classification Mismatches: " << total.B1.b1VsB2Mismatches << "\n";
   std::cout << "  B1 False Payload (B2 Handle): " << total.B1.b1FalsePayload << "\n";
   std::cout << "  B1 False Handle (B2 Payload): " << total.B1.b1FalseHandle << "\n";
+  std::cout << "  B1 Mismatches While Cache Valid: "
+            << total.B1.b1MismatchesWhileCacheValid << "\n";
   std::cout << "B1 Structural Fallbacks to Cached Type: " << total.B1.b1StructuralFallbacks << "\n";
   std::cout << "B3 (Explicit) vs B2 Mismatches: " << total.B3.b3ExplicitVsB2Mismatches << "\n";
   std::cout << "B3 Unknown Sites: "
