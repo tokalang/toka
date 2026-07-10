@@ -90,27 +90,65 @@ static int countNodes(const Expr *E) {
 
 // Recovers/resolves type dynamically from the LHS AST tree, matching B1.
 // Also counts AST nodes visited during this resolution.
-static std::shared_ptr<Type> resolveTypeB1(const Expr *E, int &nodesVisited) {
+static std::shared_ptr<Type> resolveTypeB1(
+    const Expr *E,
+    const std::map<std::string, ShapeDecl *> &shapeMap,
+    int &nodesVisited) {
   if (!E) return nullptr;
   nodesVisited++;
 
   if (auto *V = dynamic_cast<const VariableExpr *>(E)) {
-    // VariableExpr is resolved from its type directly
     return V->ResolvedType;
   }
   if (auto *M = dynamic_cast<const MemberExpr *>(E)) {
+    auto baseTy = resolveTypeB1(M->Object.get(), shapeMap, nodesVisited);
+    if (!baseTy) return nullptr;
+
+    std::string baseName = Type::stripMorphology(baseTy->getSoulName());
+    size_t angle = baseName.find('<');
+    if (angle != std::string::npos) {
+      baseName = baseName.substr(0, angle);
+    }
+
+    auto it = shapeMap.find(baseName);
+    if (it != shapeMap.end()) {
+      ShapeDecl *SD = it->second;
+      for (const auto &member : SD->Members) {
+        if (member.Name == M->Member) {
+          return member.ResolvedType;
+        }
+      }
+    }
     return M->ResolvedType;
   }
   if (auto *Idx = dynamic_cast<const ArrayIndexExpr *>(E)) {
+    auto arrayTy = resolveTypeB1(Idx->Array.get(), shapeMap, nodesVisited);
+    for (const auto &idx : Idx->Indices) {
+      int dummy = 0;
+      resolveTypeB1(idx.get(), shapeMap, dummy);
+      nodesVisited += dummy;
+    }
+    if (arrayTy && arrayTy->isArray()) {
+      return arrayTy->getArrayElementType();
+    }
     return Idx->ResolvedType;
   }
   if (auto *Deref = dynamic_cast<const DereferenceExpr *>(E)) {
+    auto childTy = resolveTypeB1(Deref->Expression.get(), shapeMap, nodesVisited);
+    if (childTy) {
+      return childTy->getPointeeType();
+    }
     return Deref->ResolvedType;
   }
   if (auto *Un = dynamic_cast<const UnaryExpr *>(E)) {
+    auto childTy = resolveTypeB1(Un->RHS.get(), shapeMap, nodesVisited);
+    if (Un->Op == TokenType::Star && childTy) {
+      return childTy->getPointeeType();
+    }
     return Un->ResolvedType;
   }
   if (auto *C = dynamic_cast<const CastExpr *>(E)) {
+    resolveTypeB1(C->Expression.get(), shapeMap, nodesVisited);
     return C->ResolvedType;
   }
   return E->ResolvedType;
@@ -121,9 +159,13 @@ public:
   TopologyCacheMetrics &metrics;
   int baselineNum; // 0, 1, 2, or 3
   bool countingEnabled = true;
+  const std::map<std::string, ShapeDecl *> &shapeMap;
 
-  TopologyCacheSimulator(TopologyCacheMetrics &m, int baseline)
-      : metrics(m), baselineNum(baseline) {}
+  TopologyCacheSimulator(
+      TopologyCacheMetrics &m,
+      int baseline,
+      const std::map<std::string, ShapeDecl *> &shapes)
+      : metrics(m), baselineNum(baseline), shapeMap(shapes) {}
 
   void triggerQuery() {
     if (!countingEnabled) return;
@@ -136,14 +178,19 @@ public:
     }
   }
 
-  void handleAssignment(bool isHandle, bool isSilent, int nodesB1) {
+  void handleAssignment(
+      bool isHandle,
+      bool isSilent,
+      int nodesB1,
+      bool isB0PayloadInval = false,
+      bool isB13SelfRebind = false) {
     if (baselineNum == 0) {
       // B0: Always invalidate on every assignment
       if (metrics.cacheValid) {
         metrics.cacheValid = false;
         metrics.invalidations++;
-        if (!isHandle) {
-          metrics.extensionalFalseInvalidations++;
+        if (isB0PayloadInval) {
+          metrics.payloadConservativeInvalidations++;
         }
       }
     } else {
@@ -152,8 +199,8 @@ public:
         if (metrics.cacheValid) {
           metrics.cacheValid = false;
           metrics.invalidations++;
-          if (isSilent) {
-            metrics.extensionalFalseInvalidations++;
+          if (isB13SelfRebind) {
+            metrics.syntacticSelfRebindings++;
           }
         }
       } else {
@@ -189,7 +236,7 @@ public:
       if (Var->Init) {
         traverseExpr(Var->Init.get());
         bool isHandle = isHandleType(Var->ResolvedType);
-        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Var->Init.get()) + 1);
+        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Var->Init.get()) + 1, !isHandle, false);
       }
     } else if (auto *Destruct = dynamic_cast<DestructuringDecl *>(S)) {
       if (Destruct->Init) {
@@ -206,13 +253,13 @@ public:
         if (!isHandle && Destruct->Init->ResolvedType) {
           isHandle = isHandleType(Destruct->Init->ResolvedType);
         }
-        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Destruct->Init.get()) + 1);
+        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Destruct->Init.get()) + 1, !isHandle, false);
       }
     } else if (auto *Guard = dynamic_cast<GuardBindStmt *>(S)) {
       if (Guard->Target) {
         traverseExpr(Guard->Target.get());
         bool isHandle = isHandleType(Guard->Target->ResolvedType);
-        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Guard->Target.get()) + 1);
+        handleAssignment(isHandle, /*isSilent=*/false, /*nodesB1=*/countNodes(Guard->Target.get()) + 1, !isHandle, false);
       }
       if (Guard->ElseBody) {
         bool saveValid = metrics.cacheValid;
@@ -238,33 +285,47 @@ public:
 
         // Invalidation Baselines checking
         bool isHandle = false;
-        bool isSilent = false;
         int nodesB1 = 0;
 
+        bool b2_isHandle = Bin->LHS->ResolvedType && isHandleType(Bin->LHS->ResolvedType);
+
         if (baselineNum == 1) {
-          // B1: Dynamically resolve target write location's type and count nodes visited
-          auto targetTy = resolveTypeB1(Bin->LHS.get(), nodesB1);
+          // B1: Dynamically resolve target type and count nodes visited
+          auto targetTy = resolveTypeB1(Bin->LHS.get(), shapeMap, nodesB1);
           isHandle = isHandleType(targetTy);
         } else if (baselineNum == 2) {
           // B2: Query target AST node's cached metadata directly
-          isHandle = Bin->LHS->ResolvedType && isHandleType(Bin->LHS->ResolvedType);
+          isHandle = b2_isHandle;
         } else if (baselineNum == 3) {
-          // B3: Read the evidence carrier
+          // B3: Read the lowering evidence.
+          if (countingEnabled) {
+            metrics.totalBinaryAssignments++;
+          }
           const auto &pres = assignmentStats().EvidencePreservationSites;
           auto it = pres.find(Bin);
-          if (it != pres.end() && it->second.Frontend == AssignmentFrontendEvidence::Handle) {
-            isHandle = true;
+          if (it != pres.end() && (it->second.Frontend == AssignmentFrontendEvidence::Payload ||
+                                   it->second.Frontend == AssignmentFrontendEvidence::Handle)) {
+            if (countingEnabled) {
+              metrics.explicitEvidenceCount++;
+            }
+            isHandle = (it->second.Frontend == AssignmentFrontendEvidence::Handle);
           } else {
-            isHandle = Bin->LHS->ResolvedType && isHandleType(Bin->LHS->ResolvedType);
+            // Missing/Residual evidence: conservatively invalidate
+            isHandle = true;
+          }
+
+          if (countingEnabled && (isHandle != b2_isHandle)) {
+            metrics.mismatchCount++;
           }
         } else {
           // B0 check
-          isHandle = Bin->LHS->ResolvedType && isHandleType(Bin->LHS->ResolvedType);
+          isHandle = b2_isHandle;
         }
 
-        // Silent handle assignment: e.g. p = p
+        // Syntactic self-rebindings check: LHS name and RHS name are matching strings
+        bool isSelfRebind = false;
         if (isHandle && Bin->LHS->toString() == Bin->RHS->toString()) {
-          isSilent = true;
+          isSelfRebind = true;
         }
 
         // Trigger query on the LHS handle if it is a handle write
@@ -273,7 +334,7 @@ public:
         }
 
         // Perform invalidation/retention
-        handleAssignment(isHandle, isSilent, nodesB1 + countNodes(Bin->RHS.get()) + 1);
+        handleAssignment(isHandle, isSelfRebind, nodesB1 + countNodes(Bin->RHS.get()) + 1, !isHandle, isSelfRebind);
         return;
       }
     }
@@ -291,7 +352,7 @@ public:
       for (const auto &arm : Match->Arms) {
         metrics.cacheValid = initValid;
         if (isHandleTarget) {
-          handleAssignment(true, false, Match->Target ? countNodes(Match->Target.get()) : 1);
+          handleAssignment(true, false, Match->Target ? countNodes(Match->Target.get()) : 1, false, false);
         }
         if (arm->Guard) {
           traverseExpr(arm->Guard.get());
@@ -504,7 +565,7 @@ void runTopologyCacheEvaluation(
     const std::vector<std::string> &searchPaths,
     const std::map<std::string, std::string> &pkgMap) {
 
-  std::cout << "Starting Topology Cache Evaluation over " << testFiles.size() << " tests...\n";
+  std::cout << "Trace-driven Cache-Policy Simulator starting...\n";
 
   GroupedMetrics total;
   double wallTimeB0 = 0.0;
@@ -513,9 +574,13 @@ void runTopologyCacheEvaluation(
   double wallTimeB3 = 0.0;
 
   uint64_t totalAssignmentSites = 0;
+  uint64_t processedRoots = 0;
+  uint64_t successfulRoots = 0;
+  uint64_t skippedRoots = 0;
 
   // Process each root test file
   for (const auto &file : testFiles) {
+    processedRoots++;
     toka::DiagnosticEngine::ErrorCount = 0;
 
     // Parse and type-check the file and its imports
@@ -525,12 +590,16 @@ void runTopologyCacheEvaluation(
     std::vector<std::unique_ptr<toka::Module>> astModules;
     
     if (!resolver.resolveAndParse(file, astModules, "", false)) {
+      skippedRoots++;
       continue;
     }
 
     if (astModules.empty() || toka::DiagnosticEngine::hasErrors()) {
+      skippedRoots++;
       continue;
     }
+
+    successfulRoots++;
 
     // Run Semantic Analysis
     toka::Sema sema;
@@ -546,8 +615,13 @@ void runTopologyCacheEvaluation(
     sema.checkShapeSovereignty();
 
     if (toka::DiagnosticEngine::hasErrors()) {
+      // Revert successful count if sema failed
+      successfulRoots--;
+      skippedRoots++;
       continue;
     }
+
+    const auto &shapeMap = sema.getShapeMap();
 
     // Simulate baseline B0
     {
@@ -555,7 +629,7 @@ void runTopologyCacheEvaluation(
       for (const auto &ast : astModules) {
         for (const auto &fn : ast->Functions) {
           if (fn->Body) {
-            TopologyCacheSimulator sim(total.B0, 0);
+            TopologyCacheSimulator sim(total.B0, 0, shapeMap);
             sim.traverseStmt(fn->Body.get());
           }
         }
@@ -565,7 +639,7 @@ void runTopologyCacheEvaluation(
           }
           for (const auto &method : impl->Methods) {
             if (method->Body) {
-              TopologyCacheSimulator sim(total.B0, 0);
+              TopologyCacheSimulator sim(total.B0, 0, shapeMap);
               sim.traverseStmt(method->Body.get());
             }
           }
@@ -582,7 +656,7 @@ void runTopologyCacheEvaluation(
       for (const auto &ast : astModules) {
         for (const auto &fn : ast->Functions) {
           if (fn->Body) {
-            TopologyCacheSimulator sim(total.B1, 1);
+            TopologyCacheSimulator sim(total.B1, 1, shapeMap);
             sim.traverseStmt(fn->Body.get());
           }
         }
@@ -592,7 +666,7 @@ void runTopologyCacheEvaluation(
           }
           for (const auto &method : impl->Methods) {
             if (method->Body) {
-              TopologyCacheSimulator sim(total.B1, 1);
+              TopologyCacheSimulator sim(total.B1, 1, shapeMap);
               sim.traverseStmt(method->Body.get());
             }
           }
@@ -609,7 +683,7 @@ void runTopologyCacheEvaluation(
       for (const auto &ast : astModules) {
         for (const auto &fn : ast->Functions) {
           if (fn->Body) {
-            TopologyCacheSimulator sim(total.B2, 2);
+            TopologyCacheSimulator sim(total.B2, 2, shapeMap);
             sim.traverseStmt(fn->Body.get());
           }
         }
@@ -619,7 +693,7 @@ void runTopologyCacheEvaluation(
           }
           for (const auto &method : impl->Methods) {
             if (method->Body) {
-              TopologyCacheSimulator sim(total.B2, 2);
+              TopologyCacheSimulator sim(total.B2, 2, shapeMap);
               sim.traverseStmt(method->Body.get());
             }
           }
@@ -636,7 +710,7 @@ void runTopologyCacheEvaluation(
       for (const auto &ast : astModules) {
         for (const auto &fn : ast->Functions) {
           if (fn->Body) {
-            TopologyCacheSimulator sim(total.B3, 3);
+            TopologyCacheSimulator sim(total.B3, 3, shapeMap);
             sim.traverseStmt(fn->Body.get());
           }
         }
@@ -646,7 +720,7 @@ void runTopologyCacheEvaluation(
           }
           for (const auto &method : impl->Methods) {
             if (method->Body) {
-              TopologyCacheSimulator sim(total.B3, 3);
+              TopologyCacheSimulator sim(total.B3, 3, shapeMap);
               sim.traverseStmt(method->Body.get());
             }
           }
@@ -660,14 +734,18 @@ void runTopologyCacheEvaluation(
     totalAssignmentSites += toka::assignmentStats().TotalAssignmentSites;
   }
 
-  // Calculate memory metadata overhead
-  uint64_t overheadB0 = 0;
-  uint64_t overheadB1 = 0;
-  uint64_t overheadB2 = totalAssignmentSites * 8;  // 8 bytes per site for type pointer reference
-  uint64_t overheadB3 = totalAssignmentSites * 16; // 16 bytes per site for evidence Preserved entries
+  // Calculate modeled carrier footprint
+  uint64_t footprintB0 = 0;
+  uint64_t footprintB1 = 0;
+  uint64_t footprintB2 = totalAssignmentSites * 8;  // 8 bytes per site for type pointer reference
+  uint64_t footprintB3 = totalAssignmentSites * 16; // 16 bytes per site for evidence map entries
+
+  std::cout << "Processed roots: " << processedRoots 
+            << " (parsed successfully: " << successfulRoots 
+            << ", skipped due to errors: " << skippedRoots << ")\n";
 
   std::cout << "\n=========================================================================\n";
-  std::cout << "                        Topology Cache Evaluation Results\n";
+  std::cout << "               Trace-Driven Cache-Policy Simulator Results\n";
   std::cout << "=========================================================================\n";
   std::cout << std::left 
             << std::setw(30) << "Metric" 
@@ -701,11 +779,16 @@ void runTopologyCacheEvaluation(
             << std::setw(12) << total.B1.retainedThroughPayload 
             << std::setw(12) << total.B2.retainedThroughPayload 
             << std::setw(12) << total.B3.retainedThroughPayload << "\n";
-  std::cout << std::setw(30) << "Extensional False Inval." 
-            << std::setw(12) << total.B0.extensionalFalseInvalidations 
-            << std::setw(12) << total.B1.extensionalFalseInvalidations 
-            << std::setw(12) << total.B2.extensionalFalseInvalidations 
-            << std::setw(12) << total.B3.extensionalFalseInvalidations << "\n";
+  std::cout << std::setw(30) << "Payload-caused cons. inval." 
+            << std::setw(12) << total.B0.payloadConservativeInvalidations 
+            << std::setw(12) << total.B1.payloadConservativeInvalidations 
+            << std::setw(12) << total.B2.payloadConservativeInvalidations 
+            << std::setw(12) << total.B3.payloadConservativeInvalidations << "\n";
+  std::cout << std::setw(30) << "Syntactic self-rebind inval." 
+            << std::setw(12) << total.B0.syntacticSelfRebindings 
+            << std::setw(12) << total.B1.syntacticSelfRebindings 
+            << std::setw(12) << total.B2.syntacticSelfRebindings 
+            << std::setw(12) << total.B3.syntacticSelfRebindings << "\n";
   std::cout << std::setw(30) << "AST Nodes Visited" 
             << std::setw(12) << 0 
             << std::setw(12) << total.B1.nodesVisited 
@@ -717,11 +800,23 @@ void runTopologyCacheEvaluation(
             << std::setw(12) << wallTimeB1 
             << std::setw(12) << wallTimeB2 
             << std::setw(12) << wallTimeB3 << "\n";
-  std::cout << std::setw(30) << "Metadata Overhead (bytes)" 
-            << std::setw(12) << overheadB0 
-            << std::setw(12) << overheadB1 
-            << std::setw(12) << overheadB2 
-            << std::setw(12) << overheadB3 << "\n";
+  std::cout << std::setw(30) << "Modeled carrier footprint (B)" 
+            << std::setw(12) << footprintB0 
+            << std::setw(12) << footprintB1 
+            << std::setw(12) << footprintB2 
+            << std::setw(12) << footprintB3 << "\n";
+  std::cout << "=========================================================================\n";
+
+  // Report B3 explicit evidence coverage and mismatches
+  double coveragePct = 0.0;
+  if (total.B3.totalBinaryAssignments > 0) {
+    coveragePct = (double)total.B3.explicitEvidenceCount * 100.0 / total.B3.totalBinaryAssignments;
+  }
+  std::cout << std::fixed << std::setprecision(2);
+  std::cout << "B3 Evidence Coverage: " << coveragePct << "% (" 
+            << total.B3.explicitEvidenceCount << " explicit out of " 
+            << total.B3.totalBinaryAssignments << " binary assignments)\n";
+  std::cout << "B3 vs B2 Invalidation Mismatches: " << total.B3.mismatchCount << "\n";
   std::cout << "=========================================================================\n";
 }
 
