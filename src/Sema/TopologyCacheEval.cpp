@@ -108,7 +108,13 @@ static std::shared_ptr<Type> resolveTypeB1(
       return M->ResolvedType;
     }
 
-    std::string baseName = Type::stripMorphology(baseTy->getSoulName());
+    auto soulTy = baseTy->getSoulType();
+    if (!soulTy) {
+      fallbacks++;
+      return M->ResolvedType;
+    }
+
+    std::string baseName = soulTy->getSoulName();
     size_t angle = baseName.find('<');
     if (angle != std::string::npos) {
       baseName = baseName.substr(0, angle);
@@ -133,22 +139,36 @@ static std::shared_ptr<Type> resolveTypeB1(
       resolveTypeB1(idx.get(), shapeMap, dummy, fallbacks);
       nodesVisited += dummy;
     }
-    if (arrayTy && arrayTy->isArray()) {
-      return arrayTy->getArrayElementType();
+    if (arrayTy) {
+      auto soulTy = arrayTy->getSoulType();
+      if (soulTy && soulTy->isArray()) {
+        return soulTy->getArrayElementType();
+      }
     }
+    fallbacks++;
     return Idx->ResolvedType;
   }
   if (auto *Deref = dynamic_cast<const DereferenceExpr *>(E)) {
     auto childTy = resolveTypeB1(Deref->Expression.get(), shapeMap, nodesVisited, fallbacks);
     if (childTy) {
-      return childTy->getPointeeType();
+      auto soulTy = childTy->getSoulType();
+      if (soulTy && (soulTy->isPointer() || soulTy->isRawPointer() || soulTy->isSmartPointer() || soulTy->isReference())) {
+        return soulTy->getPointeeType();
+      }
     }
+    fallbacks++;
     return Deref->ResolvedType;
   }
   if (auto *Un = dynamic_cast<const UnaryExpr *>(E)) {
     auto childTy = resolveTypeB1(Un->RHS.get(), shapeMap, nodesVisited, fallbacks);
-    if (Un->Op == TokenType::Star && childTy) {
-      return childTy->getPointeeType();
+    if (Un->Op == TokenType::Star) {
+      if (childTy) {
+        auto soulTy = childTy->getSoulType();
+        if (soulTy && (soulTy->isPointer() || soulTy->isRawPointer() || soulTy->isSmartPointer() || soulTy->isReference())) {
+          return soulTy->getPointeeType();
+        }
+      }
+      fallbacks++;
     }
     return Un->ResolvedType;
   }
@@ -238,8 +258,6 @@ public:
       traverseExpr(F->Expression.get());
       if (F->Count) traverseExpr(F->Count.get());
     } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
-      // Declarations are initializations, not rebindings.
-      // Traverse initializer for queries, but do not trigger baseline assignments.
       if (Var->Init) {
         traverseExpr(Var->Init.get());
       }
@@ -340,20 +358,12 @@ public:
       if (Match->Target) {
         traverseExpr(Match->Target.get());
       }
-      bool isHandleTarget = Match->Target && Match->Target->ResolvedType && isHandleType(Match->Target->ResolvedType);
       bool initValid = metrics.cacheValid;
       bool mergedValid = true;
       bool hasArms = !Match->Arms.empty();
 
       for (const auto &arm : Match->Arms) {
         metrics.cacheValid = initValid;
-        if (isHandleTarget) {
-          // Trigger queries and handle rebindings inside arms if matching handle
-          if (isHandleTarget) {
-            triggerQuery();
-          }
-          handleAssignment(true, false, Match->Target ? countNodes(Match->Target.get()) : 1, false, false);
-        }
         if (arm->Guard) {
           traverseExpr(arm->Guard.get());
         }
