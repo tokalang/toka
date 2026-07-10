@@ -18,6 +18,7 @@
 #include "toka/Lexer.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
+#include "toka/TopologyCacheEval.h"
 #include "toka/TKIExporter.h"
 #include "toka/SourceLocation.h"
 #include "toka/SourceManager.h"
@@ -283,6 +284,7 @@ int main(int argc, char **argv) {
   bool dumpJson = false;
   bool dumpAssignmentStats = false;
   bool dumpHandleSurfaceStats = false;
+  bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
   std::string cliTargetTriple = "";
@@ -320,6 +322,8 @@ int main(int argc, char **argv) {
       dumpAssignmentStats = true;
     } else if (arg == "--dump-handle-surface-stats=json") {
       dumpHandleSurfaceStats = true;
+    } else if (arg == "--topology-eval") {
+      runTopologyEval = true;
     } else if (arg == "--pkg" || arg == "-P") {
       if (i + 1 < argc) {
         std::string mapping = argv[++i];
@@ -385,6 +389,24 @@ int main(int argc, char **argv) {
 
   if (compileOnly) {
     emitInterface = true;
+  }
+
+  if (runTopologyEval) {
+    std::vector<std::string> testFiles;
+    if (std::filesystem::exists("tests/pass")) {
+      for (const auto &entry : std::filesystem::recursive_directory_iterator("tests/pass")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".tk") {
+          testFiles.push_back(entry.path().string());
+        }
+      }
+    }
+    std::sort(testFiles.begin(), testFiles.end());
+
+    toka::SourceManager sm;
+    toka::DiagnosticEngine::init(sm);
+
+    toka::runTopologyCacheEvaluation(testFiles, searchPaths, pkgMap);
+    return 0;
   }
 
   if (sourceFiles.empty()) {

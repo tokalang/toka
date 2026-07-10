@@ -18,6 +18,7 @@ Sema/Sema_Expr_Closure.cpp
 Sema/Sema_Stmt.cpp
 Sema/Sema_Template.cpp
 Sema/PAL_Checker.cpp
+Sema/TopologyCacheEval.cpp
 Type.cpp
 CodeGen/CodeGen.cpp 
 CodeGen/CodeGen_Expr.cpp 
