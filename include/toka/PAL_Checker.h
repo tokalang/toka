@@ -13,10 +13,12 @@
 // limitations under the License.
 #pragma once
 
+#include "toka/AccessPath.h"
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include <string>
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace toka {
@@ -37,11 +39,19 @@ enum class PALOperationClass {
   Invalidation
 };
 
+struct PALConflict {
+  AccessPath Path;
+  PathState State = PathState::Free;
+  SourceLocation OriginLoc;
+
+  std::string displayPath() const { return Path.toLegacyString(); }
+};
+
 /// Toka's PAL (Path-Anchored Ledger) System
 /// 
 /// PAL is the official identifier for Toka's Borrow Checker mechanism. 
-/// It enforces memory safety and resource aliasing rules at compile time 
-/// uniformly utilizing an AST path-string based transient-lexical ledger stack.
+/// It enforces memory safety and resource aliasing rules at compile time
+/// using structured access paths in a transient lexical ledger stack.
 class PALChecker {
 public:
   bool IsEnabled = true;
@@ -63,41 +73,48 @@ public:
 
   // Marks a specific path as degraded
   // isMutable parameter determines exclusivity
-  bool recordBorrow(const std::string& path, bool isMutable = false);
+  bool recordBorrow(const AccessPath &path, bool isMutable = false,
+                    SourceLocation originLoc = {});
 
   // Verifies if a path can be exclusively mutated
-  std::string verifyMutation(const std::string& path);
-  std::string verifyPayloadWrite(const std::string& path);
-  std::string verifyExclusiveMutation(const std::string& path);
-  std::string verifyInvalidation(const std::string& path);
+  std::optional<PALConflict> verifyMutation(const AccessPath &path);
+  std::optional<PALConflict> verifyPayloadWrite(const AccessPath &path);
+  std::optional<PALConflict> verifyExclusiveMutation(const AccessPath &path);
+  std::optional<PALConflict> verifyInvalidation(const AccessPath &path);
 
   // Verifies if a path can be accessed (read)
-  std::string verifyAccess(const std::string& path);
+  std::optional<PALConflict> verifyAccess(const AccessPath &path);
 
   // Verifies whether an operation class can be applied at a path.
-  std::string verifyOperation(const std::string& path, PALOperationClass op);
+  std::optional<PALConflict> verifyOperation(const AccessPath &path,
+                                             PALOperationClass op);
   bool operationRequiresExclusive(PALOperationClass op) const;
   bool operationsConflict(PALOperationClass lhs, PALOperationClass rhs) const;
-  bool pathsOverlap(const std::string& lhs, const std::string& rhs) const;
+  AccessPathOverlap classifyOverlap(const AccessPath &lhs,
+                                    const AccessPath &rhs) const;
+  bool pathsOverlap(const AccessPath &lhs, const AccessPath &rhs) const;
+  const std::optional<PALConflict> &lastConflict() const {
+    return LastConflict;
+  }
 
   // Registers an upgrade of a previously shared borrow to mutable
-  bool upgradeBorrow(const std::string& path);
+  bool upgradeBorrow(const AccessPath &path);
 
   // Gets the exact state of a path
-  PathState getState(const std::string& path);
+  PathState getState(const AccessPath &path);
 
   // Commits a specific transient borrow so it persists until the scope ends
-  void commitTransient(const std::string& path);
+  void commitTransient(const AccessPath &path);
 
   // Clears all uncommitted transient borrows (called at statement boundaries)
   void clearTransient();
 
   // Revoke all borrows derived from a specific root identifier (e.g. `buf` is reassigned)
   // Returns true if an active borrow was revoked (which usually indicates an error should be thrown)
-  bool revokeRoot(const std::string& rootIdentifier);
+  bool revokeRoot(const AccessPath &root);
 
   // Clear tracking for a variable that has moved
-  void markMoved(const std::string& path);
+  void markMoved(const AccessPath &path);
 
   // Snapshot helpers for local control-flow analysis.
   PALChecker snapshot() const;
@@ -109,15 +126,17 @@ public:
                      bool secondReachable);
 
 private:
+  struct LedgerEntry {
+    PathState State = PathState::Free;
+    SourceLocation OriginLoc;
+  };
+
   struct LedgerScope {
-    std::map<std::string, PathState> Map;
+    std::map<AccessPath, LedgerEntry> Map;
   };
   std::vector<LedgerScope> LedgerStack;
-  std::vector<std::string> TransientBorrows;
-
-  // Helper to check prefix overlap
-  bool isPrefixOf(const std::string& prefix, const std::string& full) const;
-  bool isSuffixDerived(const std::string& base, const std::string& derived) const;
+  std::vector<AccessPath> TransientBorrows;
+  std::optional<PALConflict> LastConflict;
 };
 
 } // namespace toka

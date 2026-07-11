@@ -28,28 +28,6 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  return "";
-}
-
 void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                         bool SourceIsMutable, const std::string &TargetPath) {
   if (!Pat)
@@ -260,6 +238,17 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                 if (!ShapeMap[soulName]->MangledDestructorName.empty()) {
                     DiagnosticEngine::report(getLoc(Pat), DiagID::ERR_ILLEGAL_RESOURCE_COPY, soulName, Pat->Name);
                     HasError = true;
+                    SourceLocation originLoc = ShapeMap[soulName]->Loc;
+                    recordDecision(
+                        Pat, SemanticRuleID::OwnResource001,
+                        SemanticOperation::ResourceCopy,
+                        SemanticDecision::Reject,
+                        SemanticReason::ResourceCopyForbidden, Pat->Name,
+                        soulName, originLoc);
+                    if (originLoc.isValid())
+                      DiagnosticEngine::report(
+                          originLoc, DiagID::NOTE_GENERIC,
+                          "resource type declared here");
                 }
             }
         }
@@ -887,6 +876,15 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
                                    
             if (!isSpreadCede && !isBaseTemporary) {
               error(spreadExprObj, DiagID::ERR_SEMA_FIELD_OF_TYPE_IS_NON_COPYABLE_YOU_MUST_EX, defField.Name, memberTypeObj->toString());
+              recordDecision(
+                  spreadExprObj, SemanticRuleID::OwnResource001,
+                  SemanticOperation::ResourceCopy,
+                  SemanticDecision::Reject,
+                  SemanticReason::ResourceCopyForbidden, defField.Name,
+                  resolvedName, SD->Loc);
+              if (SD->Loc.isValid())
+                DiagnosticEngine::report(SD->Loc, DiagID::NOTE_GENERIC,
+                                         "resource-bearing type declared here");
             }
           }
 
@@ -1096,7 +1094,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
   m_LastInitMask = mask;
 
   if (!baseVarActualName.empty()) {
-    CurrentScope->markMoved(baseVarActualName);
+    CurrentScope->markMoved(baseVarActualName, Init->Loc);
   }
 
   return toka::Type::fromString(resolvedName);

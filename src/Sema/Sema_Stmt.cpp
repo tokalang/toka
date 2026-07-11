@@ -26,28 +26,6 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  return "";
-}
-
 static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
                                                Scope *CurrentScope) {
   if (!Node || !CurrentScope)
@@ -546,14 +524,13 @@ void Sema::checkStmt(Stmt *S) {
             recordDependencyPathTo(returnedDeps, dep);
           };
 
-          // Helper to extract path
-          std::function<std::string(Expr *)> getPath = [&](Expr *E) -> std::string {
-              if (!E) return "";
-              if (auto *ve = dynamic_cast<VariableExpr *>(E)) return ve->Name;
-              if (auto *me = dynamic_cast<MemberExpr *>(E)) return getPath(me->Object.get()) + "." + toka::Type::stripMorphology(me->Member);
-              if (auto *ue = dynamic_cast<UnaryExpr *>(E)) return getPath(ue->RHS.get());
-              if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) return getPath(ae->Expression.get());
-              return "";
+          auto getPath = [&](Expr *E) {
+            AccessPath path = makeAccessPath(E);
+            for (const auto &projection : path.Projections) {
+              if (projection.Kind != AccessProjectionKind::Field)
+                return std::string{};
+            }
+            return path.toLegacyString();
           };
 
           // Helper to collect dependencies from the returned expression
@@ -749,6 +726,12 @@ void Sema::checkStmt(Stmt *S) {
                 if (CurrentFunction->Args.empty()) {
                   DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_ESCAPE_LOCAL, "untraced unsafe cast");
                   HasError = true;
+                  recordDecision(
+                      Ret, SemanticRuleID::EffRet001,
+                      SemanticOperation::EscapingDependency,
+                      SemanticDecision::ConservativeReject,
+                      SemanticReason::UnknownProvenance,
+                      "untraced unsafe cast");
                 } else {
                   for (const auto &Arg : CurrentFunction->Args) {
                     // Only implicate parameters that can carry lifetimes (i.e. not pure value types)
@@ -795,7 +778,34 @@ void Sema::checkStmt(Stmt *S) {
                                            DiagID::ERR_LIFETIME_UNION_REQUIRED,
                                            actualDep, actualDep);
                   HasError = true;
+                  SourceLocation originLoc = findPathDeclaration(actualDep);
+                  recordDecision(
+                      Ret, SemanticRuleID::EffMember001,
+                      SemanticOperation::MemberDependency,
+                      SemanticDecision::Reject,
+                      SemanticReason::MemberDependencyMismatch, actualDep,
+                      fieldPair.first, originLoc);
+                  if (originLoc.isValid())
+                    DiagnosticEngine::report(
+                        originLoc, DiagID::NOTE_GENERIC,
+                        "returned dependency originates here");
                 }
+              }
+            }
+
+            bool hasLocalDependency = false;
+            for (const auto &dep : returnedDeps) {
+              std::string baseDep = dep.substr(0, dep.find('.'));
+              bool isParam = false;
+              for (const auto &Arg : CurrentFunction->Args) {
+                if (Arg.Name == baseDep) {
+                  isParam = true;
+                  break;
+                }
+              }
+              if (!isParam) {
+                hasLocalDependency = true;
+                break;
               }
             }
 
@@ -816,8 +826,23 @@ void Sema::checkStmt(Stmt *S) {
               if (!isParam) {
                 DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_ESCAPE_LOCAL, dep);
                 HasError = true;
+                SourceLocation originLoc = findPathDeclaration(dep);
+                recordDecision(
+                    Ret, SemanticRuleID::EffRet001,
+                    SemanticOperation::EscapingDependency,
+                    SemanticDecision::Reject, SemanticReason::LocalEscape,
+                    dep, dep, originLoc);
+                if (originLoc.isValid())
+                  DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                           "escaping local declared here");
                 continue;
               }
+
+              // A direct local escape is the primary fault. Transitive
+              // parameter provenance is retained internally but would only
+              // produce a secondary, misleading declaration suggestion.
+              if (hasLocalDependency)
+                continue;
 
               // 2. Is it allowed via effects?
               bool allowed = false;
@@ -842,6 +867,17 @@ void Sema::checkStmt(Stmt *S) {
               if (!allowed) {
                 DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_LIFETIME_UNION_REQUIRED, dep, dep);
                 HasError = true;
+                SourceLocation originLoc = findPathDeclaration(dep);
+                recordDecision(
+                    Ret, SemanticRuleID::EffRet001,
+                    SemanticOperation::EscapingDependency,
+                    SemanticDecision::Reject,
+                    SemanticReason::MissingReturnDependency, dep,
+                    CurrentFunction ? CurrentFunction->Name : "", originLoc);
+                if (originLoc.isValid())
+                  DiagnosticEngine::report(
+                      originLoc, DiagID::NOTE_GENERIC,
+                      "undeclared return dependency originates here");
               }
             }
           }
@@ -866,6 +902,26 @@ void Sema::checkStmt(Stmt *S) {
       if (Ret->ReturnValue && !dynamic_cast<CedeExpr*>(Ret->ReturnValue.get())) {
         DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_EXPECTED_CEDE_RETURN, CurrentFunctionReturnType);
         HasError = true;
+        SourceLocation originLoc = CurrentFunction ? CurrentFunction->Loc
+                                                   : SourceLocation{};
+        recordDecision(Ret, SemanticRuleID::OwnCede002,
+                       SemanticOperation::OwnershipTransfer,
+                       SemanticDecision::Reject,
+                       SemanticReason::MissingCedeReturn,
+                       CurrentFunctionReturnType,
+                       CurrentFunction ? CurrentFunction->Name : "",
+                       originLoc);
+        if (originLoc.isValid())
+          DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                   "cede return declared here");
+      } else if (Ret->ReturnValue) {
+        recordDecision(Ret, SemanticRuleID::OwnCede002,
+                       SemanticOperation::OwnershipTransfer,
+                       SemanticDecision::Allow, SemanticReason::CedeConsumed,
+                       CurrentFunctionReturnType,
+                       CurrentFunction ? CurrentFunction->Name : "",
+                       CurrentFunction ? CurrentFunction->Loc
+                                       : SourceLocation{});
       }
     }
 
@@ -1243,6 +1299,15 @@ void Sema::checkStmt(Stmt *S) {
           DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
                                    Var->Name, dep);
           HasError = true;
+          SourceLocation originLoc = findPathDeclaration(dep);
+          recordDecision(Var, SemanticRuleID::EffRet001,
+                         SemanticOperation::EscapingDependency,
+                         SemanticDecision::Reject,
+                         SemanticReason::LifetimeDepthViolation, Var->Name,
+                         dep, originLoc);
+          if (originLoc.isValid())
+            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                     "shorter-lived dependency declared here");
         }
       }
       m_LastLifeDependencies.clear();
@@ -1274,6 +1339,15 @@ void Sema::checkStmt(Stmt *S) {
           DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_LIFETIME,
                                    Var->Name, m_LastBorrowSource);
           HasError = true;
+          SourceLocation originLoc = findPathDeclaration(m_LastBorrowSource);
+          recordDecision(Var, SemanticRuleID::EffRet001,
+                         SemanticOperation::EscapingDependency,
+                         SemanticDecision::Reject,
+                         SemanticReason::LifetimeDepthViolation, Var->Name,
+                         m_LastBorrowSource, originLoc);
+          if (originLoc.isValid())
+            DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                     "shorter-lived dependency declared here");
         }
 
         // [Hot Potato] Propagate InitMask from Source to Reference
@@ -1299,10 +1373,12 @@ void Sema::checkStmt(Stmt *S) {
 
       Info.BorrowedFrom = m_LastBorrowSource;
       if (!m_LastBorrowSource.empty()) {
-          PALCheckerState.commitTransient(m_LastBorrowSource);
+          PALCheckerState.commitTransient(
+              canonicalizeAccessPath(makeAccessPath(m_LastBorrowSource)));
       }
       for (const auto &dep : Info.LifeDependencySet) {
-          PALCheckerState.commitTransient(dep);
+          PALCheckerState.commitTransient(
+              canonicalizeAccessPath(makeAccessPath(dep)));
       }
     }
     
@@ -1373,11 +1449,19 @@ void Sema::checkStmt(Stmt *S) {
       for (const auto &dep : depsToCommitAsBorrow) {
         if (dep.empty())
           continue;
-        if (!PALCheckerState.recordBorrow(dep, false)) {
+        AccessPath dependencyPath =
+            canonicalizeAccessPath(makeAccessPath(dep));
+        if (!PALCheckerState.recordBorrow(dependencyPath, false,
+                                          getLoc(Var))) {
           DiagnosticEngine::report(getLoc(Var), DiagID::ERR_BORROW_MUT, dep);
           HasError = true;
+          if (PALCheckerState.lastConflict()) {
+            recordPALConflict(
+                Var, PALOperationClass::SharedPayloadBorrow, dependencyPath,
+                *PALCheckerState.lastConflict());
+          }
         }
-        PALCheckerState.commitTransient(dep);
+        PALCheckerState.commitTransient(dependencyPath);
       }
     }
 
@@ -1417,6 +1501,9 @@ void Sema::checkStmt(Stmt *S) {
 
     // Move Logic: If initializing from a Unique Variable, move it.
     if (Var->Init && Info.IsUnique()) {
+      bool moveCheckedByExpression =
+          dynamic_cast<UnaryExpr *>(Var->Init.get()) != nullptr ||
+          dynamic_cast<CedeExpr *>(Var->Init.get()) != nullptr;
       Expr *InitExpr = Var->Init.get();
       // Unwrap unary ^ or ~ or * if it matches
       if (auto *Unary = dynamic_cast<UnaryExpr *>(InitExpr)) {
@@ -1428,12 +1515,23 @@ void Sema::checkStmt(Stmt *S) {
         std::string actName;
         if (CurrentScope->findVariableWithDeref(RHSVar->Name, SourceInfoPtr, actName)) {
           if (SourceInfoPtr->IsUnique()) {
-            std::string conflictPath = PALCheckerState.verifyInvalidation(actName);
-            if (!conflictPath.empty()) {
-              DiagnosticEngine::report(getLoc(Var), DiagID::ERR_MOVE_BORROWED, conflictPath);
-              HasError = true;
+            if (!SourceInfoPtr->Moved) {
+              if (!moveCheckedByExpression) {
+                auto conflict = PALCheckerState.verifyInvalidation(
+                    canonicalizeAccessPath(makeAccessPath(actName)));
+                if (conflict) {
+                  DiagnosticEngine::report(getLoc(Var),
+                                           DiagID::ERR_MOVE_BORROWED,
+                                           conflict->displayPath());
+                  HasError = true;
+                  recordPALConflict(
+                      Var, PALOperationClass::Invalidation,
+                      canonicalizeAccessPath(makeAccessPath(actName)),
+                      *conflict);
+                }
+              }
+              CurrentScope->markMoved(actName, getLoc(Var));
             }
-            CurrentScope->markMoved(actName);
           }
         }
       }
@@ -1683,6 +1781,16 @@ void Sema::checkStmt(Stmt *S) {
               if (!ShapeMap[sName]->MangledDestructorName.empty()) {
                 DiagnosticEngine::report(getLoc(Destruct), DiagID::ERR_ILLEGAL_RESOURCE_COPY, sName, Destruct->Variables[i].Name);
                 HasError = true;
+                recordDecision(
+                    Destruct, SemanticRuleID::OwnResource001,
+                    SemanticOperation::ResourceCopy,
+                    SemanticDecision::Reject,
+                    SemanticReason::ResourceCopyForbidden,
+                    Destruct->Variables[i].Name, sName, ShapeMap[sName]->Loc);
+                if (ShapeMap[sName]->Loc.isValid())
+                  DiagnosticEngine::report(ShapeMap[sName]->Loc,
+                                           DiagID::NOTE_GENERIC,
+                                           "resource type declared here");
               }
             }
           }
@@ -1715,7 +1823,7 @@ void Sema::checkStmt(Stmt *S) {
         GuardBind->Target->ExtendLifetime = true;
     }
 
-    std::string targetPath = getStringifyPath(GuardBind->Target.get());
+    std::string targetPath = getPathString(GuardBind->Target.get());
     // Check Pattern and bind variables into CurrentScope
     checkPattern(GuardBind->Pat.get(), targetType, false, targetPath);
 

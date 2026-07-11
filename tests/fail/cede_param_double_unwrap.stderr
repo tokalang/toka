@@ -3,3 +3,8 @@ error[E0438]: Use of moved value: 'res'
     |
  11 |     auto val2 = res.unwrap() 
     |                 ^
+note: value moved here
+ --> tests/fail/cede_param_double_unwrap.tk:8:20
+   |
+ 8 |     auto val1 = res.unwrap()
+   |                    ^

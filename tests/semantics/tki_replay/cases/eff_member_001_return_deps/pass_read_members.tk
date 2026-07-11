@@ -1,3 +1,4 @@
+// EXPECT_EVIDENCE: EFF-MEMBER-001
 import ./lib::{Engine, split_engines}
 
 fn main() -> i32 {

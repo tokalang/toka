@@ -1,0 +1,28 @@
+// EXPECT_ERROR: E0475
+
+shape Data(
+    val: i32
+)
+
+fn read_and_write(read: Data, write#: Data) {
+    write.val = read.val + 1
+}
+
+fn main() -> i32 {
+    auto data# = Data(val = 0)
+    auto &r1 = &data
+    auto &r2 = &r1
+    auto &r3 = &r2
+    auto &r4 = &r3
+    auto &r5 = &r4
+    auto &r6 = &r5
+    auto &r7 = &r6
+    auto &r8 = &r7
+    auto &r9 = &r8
+    auto &r10 = &r9
+    auto &r11 = &r10
+    auto &r12 = &r11
+
+    read_and_write(r12, data)
+    return data.val
+}

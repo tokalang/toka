@@ -281,6 +281,22 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
 
 PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
                                    const BinaryExpr *assignmentSite) {
+  auto verifyLowering = [&](AssignmentLoweringCarrier carrier) {
+    if (!assignmentSite)
+      return;
+    bool agrees =
+        (assignmentSite->AssignmentKind == AssignmentSemanticKind::Payload &&
+         carrier == AssignmentLoweringCarrier::SoulStore) ||
+        (assignmentSite->AssignmentKind == AssignmentSemanticKind::Handle &&
+         carrier == AssignmentLoweringCarrier::EnvelopeRebind);
+    bool classified =
+        assignmentSite->AssignmentKind == AssignmentSemanticKind::Payload ||
+        assignmentSite->AssignmentKind == AssignmentSemanticKind::Handle;
+    if (classified && !agrees) {
+      error(assignmentSite, DiagID::ERR_CODEGEN,
+            "assignment semantic classification disagrees with lowering");
+    }
+  };
   // 1. Resolve Intent
   bool hasRebind = false;
   bool explicitRebind = false;
@@ -414,6 +430,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     }
     recordAssignmentLoweringCarrier(
         assignmentSite, AssignmentLoweringCarrier::EnvelopeRebind);
+    verifyLowering(AssignmentLoweringCarrier::EnvelopeRebind);
     emitEnvelopeRebind(lhsAlloca, rhsVal, *symLHS, lhsExpr);
   } else {
     // Scene A: Soul Assignment
@@ -460,6 +477,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
               ? AssignmentLoweringCarrier::EnvelopeRebind
               : AssignmentLoweringCarrier::SoulStore;
       recordAssignmentLoweringCarrier(assignmentSite, carrier);
+      verifyLowering(carrier);
     }
     emitSoulAssignment(soulAddr, rhsVal, destTy);
   }

@@ -6,6 +6,7 @@ set -euo pipefail
 TOKAC="${TOKAC:-./build/bin/tokac}"
 CASE_ROOT="${CASE_ROOT:-tests/semantics/tki_replay/cases}"
 WORK_ROOT="${WORK_ROOT:-/tmp/toka_semantic_replay}"
+EVIDENCE_COMPARE="${EVIDENCE_COMPARE:-tools/scripts/compare_semantic_evidence.py}"
 
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
@@ -84,7 +85,7 @@ run_case() {
         local source_stem
         source_stem="$(basename "$source_consumer" .tk)"
         if ! TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
-            "$TOKAC_ABS" -c "$source_consumer" \
+            "$TOKAC_ABS" --dump-semantic-evidence=json -c "$source_consumer" \
             -o "$work_dir/$source_stem.source.o" \
             > "$work_dir/$source_stem.source.out" \
             2> "$work_dir/$source_stem.source.err"; then
@@ -102,7 +103,7 @@ run_case() {
         local source_expected_codes
         source_expected_codes="$(extract_expected_codes "$source_consumer")"
         if TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
-            "$TOKAC_ABS" -c "$source_consumer" \
+            "$TOKAC_ABS" --dump-semantic-evidence=json -c "$source_consumer" \
             -o "$work_dir/$source_stem.source.o" \
             > "$work_dir/$source_stem.source.out" \
             2> "$work_dir/$source_stem.source.err"; then
@@ -134,16 +135,22 @@ run_case() {
         local stem
         stem="$(basename "$consumer" .tk)"
         local exe="$work_dir/$stem.exe"
-        local compile_cmd=("$TOKAC_ABS" "$consumer" "$lib_obj" "-o" "$exe")
+        local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" "-o" "$exe")
         local compile_only=0
         if grep -q "COMPILE_ONLY" "$consumer"; then
             compile_only=1
             exe="$work_dir/$stem.o"
-            compile_cmd=("$TOKAC_ABS" "-c" "$consumer" "-o" "$exe")
+            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "-c" "$consumer" "-o" "$exe")
         fi
         if ! "${compile_cmd[@]}" > "$work_dir/$stem.out" 2> "$work_dir/$stem.err"; then
             echo "FAIL $case_name/$stem: expected pass but compilation failed"
             sed 's/^/  | /' "$work_dir/$stem.err"
+            case_failed=1
+            continue
+        fi
+        if ! python3 "$EVIDENCE_COMPARE" \
+            "$work_dir/$stem.source.out" "$work_dir/$stem.out" "$consumer"; then
+            echo "FAIL $case_name/$stem: source/interface semantic evidence differs"
             case_failed=1
             continue
         fi
@@ -170,7 +177,7 @@ run_case() {
             case_failed=1
             continue
         fi
-        if "$TOKAC_ABS" "$consumer" "$lib_obj" -o "$exe" > "$work_dir/$stem.out" 2> "$work_dir/$stem.err"; then
+        if "$TOKAC_ABS" --dump-semantic-evidence=json "$consumer" "$lib_obj" -o "$exe" > "$work_dir/$stem.out" 2> "$work_dir/$stem.err"; then
             echo "FAIL $case_name/$stem: expected failure but compilation passed"
             case_failed=1
             continue
@@ -187,6 +194,11 @@ run_case() {
                 case_failed=1
             fi
         done <<< "$expected_codes"
+        if ! python3 "$EVIDENCE_COMPARE" \
+            "$work_dir/$stem.source.out" "$work_dir/$stem.out" "$consumer"; then
+            echo "FAIL $case_name/$stem: source/interface semantic evidence differs"
+            case_failed=1
+        fi
     done
 
     if [ "$consumer_count" -eq 0 ]; then

@@ -503,6 +503,13 @@ if ! run_without_test_cache bash tools/scripts/test_tki_cache_validation.sh; the
 fi
 
 echo ""
+echo "Running Semantic Evidence tests..."
+if ! run_without_test_cache bash tools/scripts/test_semantic_evidence.sh; then
+    echo -e "${RED}Semantic Evidence tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic TKI Replay tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_replay.sh; then
     echo -e "${RED}Semantic TKI Replay tests failed!${NC}"

@@ -1,3 +1,4 @@
+// EXPECT_EVIDENCE: ASYNC-SUSPEND-001
 import ./lib::{Data, get_async_view}
 
 fn main() -> i32 {

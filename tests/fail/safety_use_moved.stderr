@@ -3,8 +3,18 @@ error[E0438]: Use of moved value: '^p'
     |
  20 |     auto x = p.v // Error: moved
     |              ^
+note: value moved here
+ --> tests/fail/safety_use_moved.tk:18:11
+    |
+ 18 |     auto ^q = ^p // Explicit Move
+    |           ^
 error[E0438]: Use of moved value: '^p'
  --> tests/fail/safety_use_moved.tk:20:14
     |
  20 |     auto x = p.v // Error: moved
     |              ^
+note: value moved here
+ --> tests/fail/safety_use_moved.tk:18:11
+    |
+ 18 |     auto ^q = ^p // Explicit Move
+    |           ^

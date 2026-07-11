@@ -1,3 +1,4 @@
+// EXPECT_EVIDENCE: PAL-CALL-001
 import ./lib::{Data, read_pair}
 
 fn main() -> i32 {

@@ -28,28 +28,6 @@ namespace toka {
 
 [[maybe_unused]] static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-[[maybe_unused]] static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  return "";
-}
-
 // Implementation of tryInjectAutoClone
 void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
   if (!expr)
@@ -273,6 +251,17 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
                 if (isResourceCapture) {
                     error(Clo, DiagID::ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE,
                           varName, infoPtr->TypeObj->toString(), varName);
+                    SourceLocation originLoc = infoPtr->DeclLoc;
+                    recordDecision(
+                        Clo, SemanticRuleID::OwnResource001,
+                        SemanticOperation::ResourceCopy,
+                        SemanticDecision::Reject,
+                        SemanticReason::ResourceCopyForbidden, varName,
+                        infoPtr->TypeObj->toString(), originLoc);
+                    if (originLoc.isValid())
+                      DiagnosticEngine::report(
+                          originLoc, DiagID::NOTE_GENERIC,
+                          "resource value declared here");
                     continue;
                 }
             }
@@ -280,7 +269,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             sm.ResolvedType = infoPtr->TypeObj; // [Fix] Pre-resolve
             if (explicitMode == CaptureMode::ExplicitCede) {
                 // Mark original variable as Consumed/Moved in the parent scope!
-                CurrentScope->Parent->markMoved(varName);
+                CurrentScope->Parent->markMoved(varName, Clo->Loc);
             }
         } else {
             // Implicit capture means Borrow (Reference)

@@ -23,6 +23,14 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   diagnostics, implementation areas, positive tests, negative tests, and gaps.
 - `tki_semantic_contract.md` records the semantic facts that `.tki` interfaces
   and dependency-cache metadata must preserve for source-less replay.
+- `phase2_cache_replay_closure.md` records phase-2 cache and replay completion
+  evidence.
+- `phase3_evidence_necessity_audit.md` audits the compiler need for structured
+  evidence, alias analysis, and backend optimization contracts.
+- `phase3a_structured_facts.md` records the implementation and verification of
+  the first structured semantic-fact layer.
+- `phase3b_decision_evidence.md` defines the internal decision-evidence schema,
+  causal diagnostics, and source/interface equivalence checks.
 
 ## Rule Status
 

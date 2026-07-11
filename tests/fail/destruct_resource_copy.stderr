@@ -3,3 +3,8 @@ error[E0554]: Naked destructuring of resource 'string' is strictly forbidden to 
     |
  10 |     auto Pair(a = .a, s = .s) = t
     |                                 ^
+note: resource type declared here
+ --> lib/core/string.tk:41:11
+    |
+ 41 | pub shape string (
+    |           ^

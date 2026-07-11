@@ -8,8 +8,18 @@ error[E0441]: Cannot access 'p' while it is mutably borrowed
     |
  18 |     auto val = p.x // EXPECT: error[E0441]: Cannot access 'p' while it is mutably borrowed
     |                 ^
+note: conflicting borrow originates here
+ --> tests/fail/borrow_field.tk:17:16
+    |
+ 17 |     auto &y# = &p#
+    |                ^
 error[E0441]: Cannot access 'p' while it is mutably borrowed
  --> tests/fail/borrow_field.tk:18:17
     |
  18 |     auto val = p.x // EXPECT: error[E0441]: Cannot access 'p' while it is mutably borrowed
     |                 ^
+note: conflicting borrow originates here
+ --> tests/fail/borrow_field.tk:17:16
+    |
+ 17 |     auto &y# = &p#
+    |                ^

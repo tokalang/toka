@@ -73,6 +73,11 @@ error[E0455]: Returning reference to local variable 'val' is unsafe
     |
  36 |     return &val;
     |     ^
+note: escaping local declared here
+ --> tests/fail/morphology_fail.tk:34:10
+    |
+ 34 |     auto val = 10;
+    |          ^
 error[E0448]: Pointer morphology mismatch: expected explicit '^' (from LHS/Target), found '&' (from RHS/Source)
  --> tests/fail/morphology_fail.tk:44:17
     |

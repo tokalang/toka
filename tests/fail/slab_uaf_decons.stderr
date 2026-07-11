@@ -8,3 +8,8 @@ error[E0455]: Returning reference to local variable 'default_val' is unsafe
     |
  16 |             return &default_val
     |             ^
+note: escaping local declared here
+ --> tests/fail/slab_uaf_decons.tk:10:10
+    |
+ 10 |     auto default_val = 0
+    |          ^

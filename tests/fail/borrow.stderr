@@ -8,3 +8,8 @@ error[E0441]: Cannot access 'x' while it is mutably borrowed
     |
  19 |     println("x is {}", x) // EXPECT: error[E0441]:
     |                        ^
+note: conflicting borrow originates here
+ --> tests/fail/borrow.tk:18:16
+    |
+ 18 |     auto &y# = &x#
+    |                ^

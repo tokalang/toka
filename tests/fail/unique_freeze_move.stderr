@@ -3,3 +3,8 @@ error[E0440]: Cannot move 'p' while it is borrowed
     |
  10 |     auto ^q = ^p 
     |               ^
+note: conflicting borrow originates here
+ --> tests/fail/unique_freeze_move.tk:7:15
+   |
+ 7 |     auto &x = &p
+   |               ^

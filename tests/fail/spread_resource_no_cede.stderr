@@ -3,3 +3,8 @@ error[E04535]: Field 'ptr' of type '^i32' is non-Copyable. You must explicitly u
     |
  10 |     auto r2 = ResourceBox(id = 200, r1.*)
     |                                       ^
+note: resource-bearing type declared here
+ --> tests/fail/spread_resource_no_cede.tk:1:7
+   |
+ 1 | shape ResourceBox(
+   |       ^

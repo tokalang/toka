@@ -281,10 +281,19 @@ public:
 
 class FunctionDecl;
 
+enum class AssignmentSemanticKind {
+  Unclassified,
+  Payload,
+  Handle,
+  ResidualCompound,
+};
+
 class BinaryExpr : public Expr {
 public:
   std::string Op;
   std::string OverloadedMethod; // [NEW] Syntactic sugar method dispatch
+  AssignmentSemanticKind AssignmentKind =
+      AssignmentSemanticKind::Unclassified;
   std::unique_ptr<Expr> LHS, RHS;
   BinaryExpr(const std::string &op, std::unique_ptr<Expr> lhs,
              std::unique_ptr<Expr> rhs)
@@ -296,6 +305,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<BinaryExpr>(Op, cloneNode(LHS), cloneNode(RHS));
     n->OverloadedMethod = OverloadedMethod;
+    n->AssignmentKind = AssignmentKind;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

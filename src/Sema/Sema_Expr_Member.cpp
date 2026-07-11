@@ -31,30 +31,6 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member =
-        toka::Type::stripMorphology(parseMemberAccess(me->Member).StrippedName);
-    std::string base = getStringifyPath(me->Object.get());
-    return base.empty() ? "" : base + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  return "";
-}
-
 std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   recordHandleSurfaceMemberExpr(*Memb);
 
@@ -107,7 +83,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     return nullptr;
   }
 
-  std::string path = getStringifyPath(Memb);
+  std::string path = getPathString(Memb);
   bool isNarrowed = m_NarrowedPaths.count(path);
   bool memberAccessHadConflict = false;
 
@@ -133,12 +109,17 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   m_InIntermediatePath = oldIntermediate;
 
   if (!m_InLHS && !m_InIntermediatePath && !path.empty()) {
-    std::string conflictPath = PALCheckerState.verifyAccess(path);
-    if (!conflictPath.empty()) {
+    AccessPath memberPath = makeAccessPath(Memb);
+    auto conflict = PALCheckerState.verifyAccess(
+        canonicalizeAccessPath(memberPath));
+    if (conflict &&
+        !isBorrowAccessAuthorized(memberPath, conflict->displayPath())) {
       DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_BORROW_MUT,
-                               conflictPath);
+                               conflict->displayPath());
       HasError = true;
       memberAccessHadConflict = true;
+      recordPALConflict(Memb, PALOperationClass::SharedPayloadBorrow,
+                        canonicalizeAccessPath(memberPath), *conflict);
     }
   }
 
@@ -378,8 +359,18 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             requestedPrefix.find('&') != std::string::npos &&
             requestedPrefix != "??" && !memberAccessHadConflict) {
           bool isExclusive = access.HasRebindMarker || m_ExpectedWritability;
-          if (!PALCheckerState.recordBorrow(path, isExclusive)) {
+          if (!PALCheckerState.recordBorrow(
+                  canonicalizeAccessPath(makeAccessPath(Memb)), isExclusive,
+                  Memb->Loc)) {
             error(Memb, DiagID::ERR_BORROW_MUT, path);
+            if (PALCheckerState.lastConflict()) {
+              recordPALConflict(
+                  Memb, isExclusive
+                            ? PALOperationClass::ExclusivePayloadBorrow
+                            : PALOperationClass::SharedPayloadBorrow,
+                  canonicalizeAccessPath(makeAccessPath(Memb)),
+                  *PALCheckerState.lastConflict());
+            }
           }
           m_LastBorrowSource = path;
         }

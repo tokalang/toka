@@ -3,3 +3,8 @@ error[E0442]: Cannot mutably borrow immutable entity 'p'
     |
  10 |     ^#p = new i32(20) // EXPECT: error[E0442]:
     |         ^
+note: conflicting borrow originates here
+ --> tests/fail/unique_freeze_mutate.tk:7:15
+   |
+ 7 |     auto &x = &p
+   |               ^

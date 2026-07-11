@@ -3,11 +3,21 @@ error[E0454]: Returning reference to parameter 'x' requires explicit dependency 
    |
  3 |     return &x // EXPECT: error[E0454]:
    |     ^
+note: undeclared return dependency originates here
+ --> tests/fail/return_ref.tk:2:12
+   |
+ 2 | fn get_ref(x:i32) -> &i32 {
+   |            ^
 error[E0454]: Returning reference to parameter 'y' requires explicit dependency declaration (<- y)
  --> tests/fail/return_ref.tk:10:5
     |
  10 |     return &y // EXPECT: error[E0454]:
     |     ^
+note: undeclared return dependency originates here
+ --> tests/fail/return_ref.tk:6:18
+   |
+ 6 | fn bigger(x:i32, y:i32) -> &i32 <- x {
+   |                  ^
 error[E0461]: Illegal use of permission suffixes (# or $) in everyday contexts. Modifiers are strictly limited to declarations or explicit mutable method calls.
  --> tests/fail/return_ref.tk:26:31
     |
@@ -18,3 +28,8 @@ error[E0456]: Object 'ref_a' (lived longer) cannot depend on 'b' (lived shorter)
     |
  31 |         ref_a.&#val = &b // EXPECT: error[E0456]:
     |                     ^
+note: shorter-lived dependency declared here
+ --> tests/fail/return_ref.tk:30:14
+    |
+ 30 |         auto b = 12
+    |              ^

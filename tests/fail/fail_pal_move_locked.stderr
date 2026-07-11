@@ -3,3 +3,8 @@ error[E0440]: Cannot move 'p' while it is borrowed
     |
  15 |     auto ^q = ^p
     |               ^
+note: conflicting borrow originates here
+ --> tests/fail/fail_pal_move_locked.tk:11:15
+    |
+ 11 |     auto &r = &p
+    |               ^

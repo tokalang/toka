@@ -14,9 +14,11 @@
 #pragma once
 
 #include "toka/AST.h"
+#include "toka/AccessPath.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/Type.h"
 #include "toka/PAL_Checker.h"
+#include "toka/SemanticEvidence.h"
 #include "toka/ComptimeValue.h"
 #include <map>
 #include <set>
@@ -28,10 +30,12 @@ namespace toka {
 struct SymbolInfo {
   // New Type Object (Source of Truth)
   std::shared_ptr<toka::Type> TypeObj;
+  uint64_t SymbolID = 0;
   SourceLocation DeclLoc;
 
   bool IsTypeAlias = false; // [NEW] For Generic Params (T -> i32)
   bool Moved = false;
+  SourceLocation MoveLoc;
   uint64_t InitMask =
       ~0ULL; // 0=unset, 1=set. For shapes, each bit corresponds to a member.
 
@@ -111,6 +115,7 @@ struct SymbolInfo {
 
 class Scope {
 public:
+  inline static uint64_t NextSymbolID = 1;
   Scope *Parent = nullptr;
   std::map<std::string, SymbolInfo> Symbols;
 
@@ -122,7 +127,25 @@ public:
   }
 
   void define(const std::string &Name, const SymbolInfo &Info) {
-    Symbols[Name] = Info;
+    SymbolInfo stored = Info;
+    if (stored.SymbolID == 0)
+      stored.SymbolID = NextSymbolID++;
+    Symbols[Name] = std::move(stored);
+  }
+
+  bool findSymbolByID(uint64_t ID, SymbolInfo *&OutInfo,
+                      std::string *OutName = nullptr) {
+    for (auto &entry : Symbols) {
+      if (entry.second.SymbolID == ID) {
+        OutInfo = &entry.second;
+        if (OutName)
+          *OutName = entry.first;
+        return true;
+      }
+    }
+    if (Parent)
+      return Parent->findSymbolByID(ID, OutInfo, OutName);
+    return false;
   }
 
   // Find symbol and its owning scope
@@ -167,10 +190,12 @@ public:
   }
 
   // Mark a symbol as moved. Returns true if found and updated.
-  bool markMoved(const std::string &Name) {
+  bool markMoved(const std::string &Name, SourceLocation Loc = {}) {
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
       ptr->Moved = true;
+      if (Loc.isValid())
+        ptr->MoveLoc = Loc;
       return true;
     }
     return false;
@@ -181,6 +206,7 @@ public:
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
       ptr->Moved = false;
+      ptr->MoveLoc = {};
       return true;
     }
     return false;
@@ -226,7 +252,8 @@ public:
   void checkStartBoundaryArgument(ASTNode *Node,
                                   std::shared_ptr<toka::Type> Ty,
                                   bool ParamIsCeded, bool ArgIsCeded,
-                                  const std::string &Name);
+                                  const std::string &Name,
+                                  SourceLocation ParamLoc = {});
   bool isShapeSend(const std::string &shapeName);
   bool isShapeSync(const std::string &shapeName);
   std::string resolveType(const std::string &Type, bool force = false);
@@ -396,6 +423,29 @@ private:
   // Scope management
   void enterScope();
   void exitScope();
+  AccessPath makeAccessPath(Expr *E);
+  AccessPath makeAccessPath(const std::string &Path);
+  AccessPath canonicalizeAccessPath(const AccessPath &Path);
+  void recordPALDecision(ASTNode *Node, SemanticRuleID Rule,
+                         PALOperationClass Operation, const AccessPath &Subject,
+                         const std::optional<PALConflict> &Conflict,
+                         SemanticDecision Decision, SemanticReason Reason,
+                         bool ReportOrigin = false);
+  void recordPALConflict(ASTNode *Node, PALOperationClass Operation,
+                         const AccessPath &Subject,
+                         const PALConflict &Conflict,
+                         bool ReportOrigin = true);
+  void recordDecision(ASTNode *Node, SemanticRuleID Rule,
+                      SemanticOperation Operation, SemanticDecision Decision,
+                      SemanticReason Reason, const std::string &Subject = {},
+                      const std::string &Origin = {},
+                      SourceLocation OriginLoc = {});
+  SourceLocation findPathDeclaration(const std::string &Path);
+  bool isBorrowAccessAuthorized(const AccessPath &Path,
+                                const std::string &ConflictPath);
+  std::string getPathString(Expr *E);
+  SymbolInfo *resolveBorrowSource(SymbolInfo *Info,
+                                  std::string &EffectiveName);
   int getScopeDepth(const std::string &
                         Name); // [NEW] Get depth of scope where name is defined
 

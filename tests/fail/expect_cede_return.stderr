@@ -3,6 +3,11 @@ error[E0464]: Function returns 'cede cede Data', but return expression does not 
    |
  5 |     return d 
    |     ^
+note: cede return declared here
+ --> tests/fail/expect_cede_return.tk:3:4
+   |
+ 3 | fn produce_data() -> cede Data {
+   |    ^
 error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new cede Data(...)' stringently
  --> tests/fail/expect_cede_return.tk:9:11
    |

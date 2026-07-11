@@ -1,4 +1,5 @@
 // EXPECT_ERROR: E04535
+// EXPECT_EVIDENCE: OWN-RESOURCE-001
 import ./lib::{Vault, make_vault}
 
 fn main() -> i32 {

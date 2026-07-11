@@ -313,28 +313,6 @@ static bool isVariableMutated(ASTNode *Node, const std::string &VarName) {
   return false;
 }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  return "";
-}
-
 bool Sema::isLValue(const Expr *expr) {
   if (dynamic_cast<const VariableExpr *>(expr))
     return true;
@@ -641,7 +619,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       scan = post->LHS.get();
     }
 
-    std::string pathToBorrow = getStringifyPath(scan);
+    std::string pathToBorrow = getPathString(scan);
     if (!pathToBorrow.empty()) {
         bool wantMutable = innerObj->IsWritable;
         if (wantMutable) {
@@ -664,8 +642,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 }
             }
             if (!m_InLHS) {
-                if (!PALCheckerState.recordBorrow(pathToBorrow, wantMutable)) {
+                if (!PALCheckerState.recordBorrow(
+                        canonicalizeAccessPath(makeAccessPath(scan)),
+                        wantMutable, Addr->Loc)) {
                     error(Addr, DiagID::ERR_BORROW_MUT, pathToBorrow);
+                    if (PALCheckerState.lastConflict()) {
+                      recordPALConflict(
+                          Addr, wantMutable
+                                    ? PALOperationClass::ExclusivePayloadBorrow
+                                    : PALOperationClass::SharedPayloadBorrow,
+                          canonicalizeAccessPath(makeAccessPath(scan)),
+                          *PALCheckerState.lastConflict());
+                    }
                 }
             }
 
@@ -680,8 +668,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 if (Info->FieldDependencySet.count(fieldName)) {
                     for (const auto &dep : Info->FieldDependencySet[fieldName]) {
                         if (!m_InLHS) {
-                            if (!PALCheckerState.recordBorrow(dep, wantMutable)) {
+                            if (!PALCheckerState.recordBorrow(
+                                    canonicalizeAccessPath(makeAccessPath(dep)),
+                                    wantMutable, Addr->Loc)) {
                                 error(Addr, DiagID::ERR_BORROW_MUT, dep);
+                                if (PALCheckerState.lastConflict()) {
+                                  recordPALConflict(
+                                      Addr,
+                                      wantMutable
+                                          ? PALOperationClass::ExclusivePayloadBorrow
+                                          : PALOperationClass::SharedPayloadBorrow,
+                                      canonicalizeAccessPath(
+                                          makeAccessPath(dep)),
+                                      *PALCheckerState.lastConflict());
+                                }
                             }
                         }
                         m_LastLifeDependencies.insert(dep);
@@ -903,38 +903,40 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     if (Info.Moved && !m_InLHS) {
       error(ve, DiagID::ERR_USE_MOVED, actualName);
+      recordDecision(ve, SemanticRuleID::OwnMove001,
+                     SemanticOperation::OwnershipTransfer,
+                     SemanticDecision::Reject, SemanticReason::AlreadyMoved,
+                     Type::stripMorphology(actualName),
+                     Type::stripMorphology(actualName), Info.MoveLoc);
+      if (Info.MoveLoc.isValid())
+        DiagnosticEngine::report(Info.MoveLoc, DiagID::NOTE_GENERIC,
+                                 "value moved here");
     }
     // [Fix] Trace to Source for Borrow Check
     SymbolInfo *EffectiveInfo = &Info;
     std::string EffectiveName = actualName;
-    int traceDepth = 0;
-    while (!EffectiveInfo->BorrowedFrom.empty() && traceDepth < 10) {
-      SymbolInfo *Next = nullptr;
-      if (CurrentScope->findSymbol(EffectiveInfo->BorrowedFrom, Next)) {
-        EffectiveName = EffectiveInfo->BorrowedFrom;
-        EffectiveInfo = Next;
-      } else
-        break;
-      traceDepth++;
-    }
+    EffectiveInfo = resolveBorrowSource(EffectiveInfo, EffectiveName);
 
     std::string borrower = "";
     if (!m_ControlFlowStack.empty())
       borrower = m_ControlFlowStack.back().Label;
 
-    std::string conflictPath = "";
+    std::optional<PALConflict> conflict;
     if (!m_InIntermediatePath) {
       if (m_InLHS) {
-         conflictPath = PALCheckerState.verifyPayloadWrite(actualName);
+         conflict = PALCheckerState.verifyPayloadWrite(
+             canonicalizeAccessPath(makeAccessPath(actualName)));
       } else {
-         conflictPath = PALCheckerState.verifyAccess(actualName);
+         conflict = PALCheckerState.verifyAccess(
+             canonicalizeAccessPath(makeAccessPath(actualName)));
       }
     }
     
     // Usage-time Authorization: A previously defined reference 
     // is authorized to access its own source.
     bool authorized = false;
-    if (!conflictPath.empty()) {
+    if (conflict) {
+       const std::string conflictPath = conflict->displayPath();
        SymbolInfo veInfo;
        if (CurrentScope->lookup(actualName, veInfo)) {
          if (veInfo.BorrowedFrom == conflictPath) {
@@ -951,8 +953,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
        }
     }
 
-    if (!conflictPath.empty() && !authorized) {
-       error(ve, DiagID::ERR_BORROW_MUT, conflictPath);
+    if (conflict && !authorized) {
+       error(ve, DiagID::ERR_BORROW_MUT, conflict->displayPath());
+       recordPALConflict(
+           ve, m_InLHS ? PALOperationClass::PayloadWrite
+                       : PALOperationClass::SharedPayloadBorrow,
+           canonicalizeAccessPath(makeAccessPath(actualName)), *conflict);
     }
 
     // [Annotated AST] Constant Substitution: The Core Fix
@@ -1271,23 +1277,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           // [Fix] Trace to Source for Borrow Registration
           SymbolInfo *EffectiveInfo = Info;
           std::string EffectiveName = Var->Name;
-          int traceDepth = 0;
-          while (!EffectiveInfo->BorrowedFrom.empty() && traceDepth < 10) {
-            SymbolInfo *Next = nullptr;
-            if (CurrentScope->findSymbol(EffectiveInfo->BorrowedFrom, Next)) {
-              EffectiveName = EffectiveInfo->BorrowedFrom;
-              EffectiveInfo = Next;
-            } else
-              break;
-            traceDepth++;
-          }
+          EffectiveInfo = resolveBorrowSource(EffectiveInfo, EffectiveName);
 
           if (!m_InLHS) {
             bool isExclusive = targetInner->IsWritable;
             std::string pathToBorrow = EffectiveName;
             if (!pathToBorrow.empty()) {
-               if (!PALCheckerState.recordBorrow(pathToBorrow, isExclusive)) {
+               if (!PALCheckerState.recordBorrow(
+                       canonicalizeAccessPath(makeAccessPath(pathToBorrow)),
+                       isExclusive, Cast->Loc)) {
                    error(Cast, DiagID::ERR_BORROW_MUT, pathToBorrow);
+                   if (PALCheckerState.lastConflict()) {
+                     recordPALConflict(
+                         Cast,
+                         isExclusive
+                             ? PALOperationClass::ExclusivePayloadBorrow
+                             : PALOperationClass::SharedPayloadBorrow,
+                         canonicalizeAccessPath(makeAccessPath(pathToBorrow)),
+                         *PALCheckerState.lastConflict());
+                   }
                }
                m_LastBorrowSource = pathToBorrow;
             }
@@ -1399,7 +1407,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (auto *bin = dynamic_cast<BinaryExpr *>(ie->Condition.get())) {
       if (bin->Op == "is") {
         Expr *lhs = bin->LHS.get();
-        std::string path = getStringifyPath(lhs);
+        std::string path = getPathString(lhs);
         if (!path.empty()) {
           m_NarrowedPaths.insert(path);
           narrowed = true;
@@ -2145,11 +2153,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.
     if (ce->Value) {
-      std::string pathToMove = getStringifyPath(ce->Value.get());
+      std::string pathToMove = getPathString(ce->Value.get());
       if (!pathToMove.empty()) {
-          std::string conflictPath = PALCheckerState.verifyInvalidation(pathToMove);
-          if (!conflictPath.empty()) {
-              error(ce, DiagID::ERR_MOVE_BORROWED, conflictPath);
+          auto conflict = PALCheckerState.verifyInvalidation(
+              canonicalizeAccessPath(makeAccessPath(ce->Value.get())));
+          if (conflict) {
+              error(ce, DiagID::ERR_MOVE_BORROWED, conflict->displayPath());
+              recordPALConflict(
+                  ce, PALOperationClass::Invalidation,
+                  canonicalizeAccessPath(makeAccessPath(ce->Value.get())),
+                  *conflict);
           }
           size_t dotPos = pathToMove.find('.');
           if (dotPos != std::string::npos) {
@@ -2160,7 +2173,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                                     actualRootName)) {
               if (RootInfo && RootInfo->IsFunctionParameter &&
                   RootInfo->IsCeded) {
-                CurrentScope->markMoved(actualRootName);
+                CurrentScope->markMoved(actualRootName, ce->Loc);
               }
             }
           }
@@ -2181,7 +2194,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (Info->IsFunctionParameter && !Info->IsCeded) {
                 error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
             }
-            CurrentScope->markMoved(actualName);
+            CurrentScope->markMoved(actualName, ce->Loc);
         }
       }
     }
@@ -2544,6 +2557,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Effect] Concurrency Check for Method Call
         if (FD->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
           error(Met, DiagID::ERR_DANGLING_EFFECT, Met->Method);
+          recordDecision(Met, SemanticRuleID::AsyncEffect001,
+                         SemanticOperation::EffectConsumption,
+                         SemanticDecision::Reject,
+                         SemanticReason::DanglingEffect, Met->Method);
+        } else if (FD->Effect != EffectKind::None && m_IsConsumingEffect &&
+                   !m_IsPrecomputingCaptures) {
+          recordDecision(Met, SemanticRuleID::AsyncEffect001,
+                         SemanticOperation::EffectConsumption,
+                         SemanticDecision::Allow, SemanticReason::NoConflict,
+                         Met->Method);
         }
         
         if (!FD->IsPub) {
@@ -2626,20 +2649,31 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
             // [NEW] Cede Ownership check for Method Call
             if (FD->Args[0].IsCeded) {
-                std::string objPath = getStringifyPath(Met->Object.get());
+                std::string objPath = getPathString(Met->Object.get());
                 if (!objPath.empty()) {
-                    CurrentScope->markMoved(objPath);
+                    CurrentScope->markMoved(objPath, Met->Loc);
                 }
             }
         }
 
         // [Rule] Borrowing check for Method Call
-        std::string objPath = getStringifyPath(Met->Object.get());
+        std::string objPath = getPathString(Met->Object.get());
         if (!objPath.empty()) {
-           std::string conflictPath = requiresMutableBorrow ? PALCheckerState.verifyExclusiveMutation(objPath) : PALCheckerState.verifyAccess(objPath);
-           if (!conflictPath.empty()) {
-               DiagnosticEngine::report(getLoc(Met), DiagID::ERR_BORROW_MUT, conflictPath);
+           AccessPath objectPath =
+               canonicalizeAccessPath(makeAccessPath(Met->Object.get()));
+           auto conflict =
+               requiresMutableBorrow
+                   ? PALCheckerState.verifyExclusiveMutation(objectPath)
+                   : PALCheckerState.verifyAccess(objectPath);
+           if (conflict) {
+               DiagnosticEngine::report(getLoc(Met), DiagID::ERR_BORROW_MUT,
+                                        conflict->displayPath());
                HasError = true;
+               recordPALConflict(
+                   Met, requiresMutableBorrow
+                            ? PALOperationClass::ExclusiveMutation
+                            : PALOperationClass::SharedPayloadBorrow,
+                   objectPath, *conflict);
            }
         }
 
@@ -2665,7 +2699,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   checkStartBoundaryArgument(
                       Met->Args[i].get(), argTy, FD->Args[i + 1].IsCeded,
                       dynamic_cast<CedeExpr *>(Met->Args[i].get()) != nullptr,
-                      FD->Args[i + 1].Name);
+                      FD->Args[i + 1].Name, FD->Args[i + 1].Loc);
                 }
                 
                 if (expectedParamTy) {
@@ -2674,7 +2708,22 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         bool isPrimitive = canImplicitlyPassToCede(argTy);
                         if (!isCallerCeded && !isPrimitive) {
                             error(Met->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_C);
+                            if (FD->Args[i + 1].Loc.isValid())
+                              DiagnosticEngine::report(
+                                  FD->Args[i + 1].Loc, DiagID::NOTE_GENERIC,
+                                  "cede parameter declared here");
                         }
+                        recordDecision(
+                            Met->Args[i].get(), SemanticRuleID::OwnCede001,
+                            SemanticOperation::CedeObligation,
+                            (!isCallerCeded && !isPrimitive)
+                                ? SemanticDecision::Reject
+                                : SemanticDecision::Allow,
+                            (!isCallerCeded && !isPrimitive)
+                                ? SemanticReason::MissingExplicitCede
+                                : SemanticReason::CedeConsumed,
+                            getPathString(Met->Args[i].get()),
+                            FD->Args[i + 1].Name, FD->Args[i + 1].Loc);
                     }
 
                     if (!isTypeCompatible(expectedParamTy, argTy)) {
@@ -2702,7 +2751,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
             auto mapParamToArg = [&](const std::string &paramName) -> std::string {
                if (Type::stripMorphology(paramName) == "self") {
-                  return getStringifyPath(Met->Object.get());
+                  return getPathString(Met->Object.get());
                }
                for (size_t i = 0; i < FD->Args.size(); ++i) {
                   if (FD->Args[i].Name == paramName) {
@@ -2779,6 +2828,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        !isBorrowLikeType(argResolvedType)) {
                      m_LastLifeDependencies.insert(argVar);
                    }
+                   recordDecision(
+                       Met, FD->Effect == EffectKind::Async
+                                ? SemanticRuleID::AsyncSuspend001
+                                : SemanticRuleID::EffRet001,
+                       SemanticOperation::EscapingDependency,
+                       SemanticDecision::Allow,
+                       SemanticReason::InterfaceContractApplied, argVar, dep,
+                       FD->Loc);
                 }
             }
         }
@@ -2875,6 +2932,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       DiagnosticEngine::report(
           getLoc(St), DiagID::ERR_SEMA_START_BOUNDARY_DEPENDENCY, dep);
       HasError = true;
+      SourceLocation originLoc = findPathDeclaration(dep);
+      recordDecision(St, SemanticRuleID::AsyncCapture001,
+                     SemanticOperation::ExecutionBoundaryCapture,
+                     SemanticDecision::Reject,
+                     SemanticReason::BorrowedBoundaryDependency, dep, dep,
+                     originLoc);
+      if (originLoc.isValid())
+        DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                 "borrowed dependency originates here");
     }
     St->ResolvedType = res;
     return res;
@@ -2888,7 +2954,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         SymbolInfo *Info = nullptr;
         std::string actualName;
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
-            CurrentScope->markMoved(actualName);
+            CurrentScope->markMoved(actualName, E->Loc);
         }
     }
 
@@ -3102,7 +3168,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
 
-    std::string targetPath = getStringifyPath(me->Target.get());
+    std::string targetPath = getPathString(me->Target.get());
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
     for (auto &pair : CurrentScope->Symbols) {

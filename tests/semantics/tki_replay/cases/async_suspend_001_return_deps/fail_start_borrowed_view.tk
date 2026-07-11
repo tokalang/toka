@@ -1,5 +1,6 @@
 // EXPECT_ERROR: E04583
 // EXPECT_ERROR: E04584
+// EXPECT_EVIDENCE: ASYNC-SUSPEND-001 ASYNC-CAPTURE-001
 import ./lib::{Data, get_async_view}
 
 fn main() -> i32 {

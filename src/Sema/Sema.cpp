@@ -1771,6 +1771,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         DiagnosticEngine::report(argLoc, DiagID::ERR_CEDE_PARAMETER_NOT_CONSUMED,
                                  Arg.Name);
         HasError = true;
+        recordDecision(Fn, SemanticRuleID::OwnCede001,
+                       SemanticOperation::CedeObligation,
+                       SemanticDecision::Reject,
+                       SemanticReason::UnconsumedCede, Arg.Name,
+                       Fn->Name, argLoc);
       }
     }
 
@@ -2427,19 +2432,40 @@ bool Sema::isStartBoundaryScalar(std::shared_ptr<toka::Type> Ty) const {
 void Sema::checkStartBoundaryArgument(ASTNode *Node,
                                       std::shared_ptr<toka::Type> Ty,
                                       bool ParamIsCeded, bool ArgIsCeded,
-                                      const std::string &Name) {
-  if (!m_IsStartingTask || isStartBoundaryScalar(Ty))
+                                      const std::string &Name,
+                                      SourceLocation ParamLoc) {
+  if (!m_IsStartingTask)
     return;
+  if (isStartBoundaryScalar(Ty)) {
+    recordDecision(Node, SemanticRuleID::AsyncCapture001,
+                   SemanticOperation::ExecutionBoundaryArgument,
+                   SemanticDecision::Allow, SemanticReason::NoConflict, Name,
+                   Name, ParamLoc);
+    return;
+  }
   const std::string soul = Ty ? Ty->getSoulName() : "";
   bool isNonTransferableBorrow =
       Ty && (Ty->isReference() || Ty->isRawPointer() || soul == "str" ||
              soul == "bytes" || soul == "cstr");
-  if (!isNonTransferableBorrow && ParamIsCeded && ArgIsCeded)
+  if (!isNonTransferableBorrow && ParamIsCeded && ArgIsCeded) {
+    recordDecision(Node, SemanticRuleID::AsyncCapture001,
+                   SemanticOperation::ExecutionBoundaryArgument,
+                   SemanticDecision::Allow, SemanticReason::CedeConsumed,
+                   Name, Name, ParamLoc);
     return;
+  }
   DiagnosticEngine::report(getLoc(Node),
                            DiagID::ERR_SEMA_START_BOUNDARY_ARGUMENT, Name,
                            Ty ? Ty->toString() : "unknown");
   HasError = true;
+  recordDecision(Node, SemanticRuleID::AsyncCapture001,
+                 SemanticOperation::ExecutionBoundaryArgument,
+                 SemanticDecision::Reject,
+                 SemanticReason::BorrowedBoundaryArgument, Name, Name,
+                 ParamLoc);
+  if (ParamLoc.isValid())
+    DiagnosticEngine::report(ParamLoc, DiagID::NOTE_GENERIC,
+                             "execution-boundary parameter declared here");
 }
 
 bool Sema::isShapeSend(const std::string &shapeName) {

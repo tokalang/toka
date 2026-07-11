@@ -1,4 +1,5 @@
 // COMPILE_ONLY: async task runtime symbols are not linked by this replay runner.
+// EXPECT_EVIDENCE: OWN-CEDE-001 ASYNC-CAPTURE-001
 import ./lib::{Payload, consume_async}
 
 fn main() -> i32 {

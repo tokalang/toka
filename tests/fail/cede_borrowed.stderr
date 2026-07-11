@@ -3,6 +3,11 @@ error[E0440]: Cannot move 'p' while it is borrowed
    |
  8 |     auto ^p2 = cede p
    |                ^
+note: conflicting borrow originates here
+ --> tests/fail/cede_borrowed.tk:5:17
+   |
+ 5 |     auto &ref = &p // immutable borrow
+   |                 ^
 error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new Data(...)' stringently
  --> tests/fail/cede_borrowed.tk:8:11
    |

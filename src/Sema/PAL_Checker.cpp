@@ -17,107 +17,104 @@
 
 namespace toka {
 
-bool PALChecker::isPrefixOf(const std::string& prefix, const std::string& full) const {
-  if (prefix == full) return true;
-  if (full.length() > prefix.length() && 
-      full.substr(0, prefix.length()) == prefix && 
-      full[prefix.length()] == '.') {
-    return true;
-  }
-  return false;
-}
-
-bool PALChecker::isSuffixDerived(const std::string& base, const std::string& derived) const {
-  // Same logic as prefix overlap in our path model: derived is a sub-path of base
-  return isPrefixOf(base, derived);
-}
-
-bool PALChecker::recordBorrow(const std::string& path, bool isMutable) {
+bool PALChecker::recordBorrow(const AccessPath &path, bool isMutable,
+                              SourceLocation originLoc) {
   if (!IsEnabled) return true;
+  LastConflict.reset();
 
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
-    for (const auto& [regPath, state] : it->Map) {
+    for (const auto& [regPath, entry] : it->Map) {
        if (!pathsOverlap(regPath, path))
          continue;
-       if (state == PathState::BorrowedMut || isMutable) {
+       if (entry.State == PathState::BorrowedMut || isMutable) {
+          LastConflict = PALConflict{regPath, entry.State, entry.OriginLoc};
           return false; // Error: Already mutably borrowed, or want mutable and already borrowed
        }
     }
   }
   
   auto& map = LedgerStack.back().Map;
-  map[path] = isMutable ? PathState::BorrowedMut : PathState::BorrowedShared;
+  map[path] = {isMutable ? PathState::BorrowedMut
+                         : PathState::BorrowedShared,
+               originLoc};
   TransientBorrows.push_back(path);
   return true;
 }
 
-bool PALChecker::upgradeBorrow(const std::string& path) {
+bool PALChecker::upgradeBorrow(const AccessPath &path) {
   if (!IsEnabled) return true;
   
   if (!LedgerStack.empty()) {
       auto& map = LedgerStack.back().Map;
-      if (map.count(path) && map[path] == PathState::BorrowedShared) {
-          map[path] = PathState::BorrowedMut;
+      if (map.count(path) &&
+          map[path].State == PathState::BorrowedShared) {
+          map[path].State = PathState::BorrowedMut;
           return true;
       }
   }
   return false;
 }
 
-std::string PALChecker::verifyMutation(const std::string& path) {
+std::optional<PALConflict>
+PALChecker::verifyMutation(const AccessPath &path) {
   return verifyExclusiveMutation(path);
 }
 
-std::string PALChecker::verifyExclusiveMutation(const std::string& path) {
-  if (!IsEnabled) return "";
+std::optional<PALConflict>
+PALChecker::verifyExclusiveMutation(const AccessPath &path) {
+  if (!IsEnabled) return std::nullopt;
 
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
-    for (const auto& [regPath, state] : it->Map) {
-      if (state == PathState::BorrowedMut || state == PathState::BorrowedShared) {
-        if (isPrefixOf(regPath, path) || isPrefixOf(path, regPath)) {
-          return regPath;
-        }
-      }
-    }
-  }
-  return "";
-}
-
-std::string PALChecker::verifyAccess(const std::string& path) {
-  if (!IsEnabled) return "";
-
-  for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
-    for (const auto& [regPath, state] : it->Map) {
-      if (state == PathState::BorrowedMut) {
-        if (isPrefixOf(regPath, path) || isPrefixOf(path, regPath)) {
-          return regPath;
-        }
-      }
-    }
-  }
-  return "";
-}
-
-std::string PALChecker::verifyPayloadWrite(const std::string& path) {
-  if (!IsEnabled) return "";
-
-  for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
-    for (const auto& [regPath, state] : it->Map) {
-      if (state == PathState::BorrowedMut) {
+    for (const auto& [regPath, entry] : it->Map) {
+      if (entry.State == PathState::BorrowedMut ||
+          entry.State == PathState::BorrowedShared) {
         if (pathsOverlap(regPath, path)) {
-          return regPath;
+          return PALConflict{regPath, entry.State, entry.OriginLoc};
         }
-      }
-      if (state == PathState::BorrowedShared && regPath != path &&
-          isPrefixOf(path, regPath)) {
-        return regPath;
       }
     }
   }
-  return "";
+  return std::nullopt;
 }
 
-std::string PALChecker::verifyInvalidation(const std::string& path) {
+std::optional<PALConflict>
+PALChecker::verifyAccess(const AccessPath &path) {
+  if (!IsEnabled) return std::nullopt;
+
+  for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
+    for (const auto& [regPath, entry] : it->Map) {
+      if (entry.State == PathState::BorrowedMut) {
+        if (pathsOverlap(regPath, path)) {
+          return PALConflict{regPath, entry.State, entry.OriginLoc};
+        }
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<PALConflict>
+PALChecker::verifyPayloadWrite(const AccessPath &path) {
+  if (!IsEnabled) return std::nullopt;
+
+  for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
+    for (const auto& [regPath, entry] : it->Map) {
+      if (entry.State == PathState::BorrowedMut) {
+        if (pathsOverlap(regPath, path)) {
+          return PALConflict{regPath, entry.State, entry.OriginLoc};
+        }
+      }
+      if (entry.State == PathState::BorrowedShared && !(regPath == path) &&
+          accessPathIsLegacyPrefix(path, regPath)) {
+        return PALConflict{regPath, entry.State, entry.OriginLoc};
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<PALConflict>
+PALChecker::verifyInvalidation(const AccessPath &path) {
   return verifyExclusiveMutation(path);
 }
 
@@ -132,13 +129,18 @@ bool PALChecker::operationsConflict(PALOperationClass lhs,
   return operationRequiresExclusive(lhs) || operationRequiresExclusive(rhs);
 }
 
-bool PALChecker::pathsOverlap(const std::string& lhs,
-                              const std::string& rhs) const {
-  return isPrefixOf(lhs, rhs) || isPrefixOf(rhs, lhs);
+AccessPathOverlap PALChecker::classifyOverlap(const AccessPath &lhs,
+                                              const AccessPath &rhs) const {
+  return classifyAccessPathOverlap(lhs, rhs);
 }
 
-std::string PALChecker::verifyOperation(const std::string& path,
-                                        PALOperationClass op) {
+bool PALChecker::pathsOverlap(const AccessPath &lhs,
+                              const AccessPath &rhs) const {
+  return accessPathsMayOverlap(lhs, rhs);
+}
+
+std::optional<PALConflict>
+PALChecker::verifyOperation(const AccessPath &path, PALOperationClass op) {
   if (op == PALOperationClass::PayloadWrite)
     return verifyPayloadWrite(path);
   if (op == PALOperationClass::Invalidation)
@@ -148,17 +150,17 @@ std::string PALChecker::verifyOperation(const std::string& path,
   return verifyAccess(path);
 }
 
-PathState PALChecker::getState(const std::string& path) {
+PathState PALChecker::getState(const AccessPath &path) {
   if (!IsEnabled) return PathState::Free;
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
     if (it->Map.count(path)) {
-      return it->Map[path];
+      return it->Map[path].State;
     }
   }
   return PathState::Free;
 }
 
-void PALChecker::commitTransient(const std::string& path) {
+void PALChecker::commitTransient(const AccessPath &path) {
   auto it = std::find(TransientBorrows.begin(), TransientBorrows.end(), path);
   if (it != TransientBorrows.end()) {
       TransientBorrows.erase(it);
@@ -174,7 +176,7 @@ void PALChecker::clearTransient() {
   TransientBorrows.clear();
 }
 
-bool PALChecker::revokeRoot(const std::string& rootIdentifier) {
+bool PALChecker::revokeRoot(const AccessPath &root) {
   if (!IsEnabled) return false;
 
   bool revoked = false;
@@ -183,7 +185,9 @@ bool PALChecker::revokeRoot(const std::string& rootIdentifier) {
     auto& map = it->Map;
     // Collect paths to erase, though typically if we hit this, it's an error.
     for (auto mapIt = map.begin(); mapIt != map.end(); ) {
-      if ((mapIt->second == PathState::BorrowedMut || mapIt->second == PathState::BorrowedShared) && isPrefixOf(rootIdentifier, mapIt->first)) {
+      if ((mapIt->second.State == PathState::BorrowedMut ||
+           mapIt->second.State == PathState::BorrowedShared) &&
+          accessPathIsLegacyPrefix(root, mapIt->first)) {
         revoked = true;
         // In a strict static analyzer, this triggers ERR_MOVE_BORROWED.
         // We will just report the conflict via our verifyMutation, or the caller can throw.
@@ -196,13 +200,13 @@ bool PALChecker::revokeRoot(const std::string& rootIdentifier) {
   return revoked;
 }
 
-void PALChecker::markMoved(const std::string& path) {
+void PALChecker::markMoved(const AccessPath &path) {
   if (!IsEnabled) return;
 
   for (auto it = LedgerStack.rbegin(); it != LedgerStack.rend(); ++it) {
     auto& map = it->Map;
     for (auto mapIt = map.begin(); mapIt != map.end(); ) {
-      if (isPrefixOf(path, mapIt->first)) {
+      if (accessPathIsLegacyPrefix(path, mapIt->first)) {
          mapIt = map.erase(mapIt);
       } else {
         ++mapIt;
@@ -253,12 +257,15 @@ void PALChecker::mergeBranches(const PALChecker& base,
 
   for (size_t i = 0; i < second.LedgerStack.size(); ++i) {
     auto& dst = LedgerStack[i].Map;
-    for (const auto& [path, state] : second.LedgerStack[i].Map) {
+    for (const auto& [path, entry] : second.LedgerStack[i].Map) {
       auto found = dst.find(path);
       if (found == dst.end()) {
-        dst[path] = state;
+        dst[path] = entry;
       } else {
-        found->second = mergeState(found->second, state);
+        PathState merged = mergeState(found->second.State, entry.State);
+        if (merged == entry.State && merged != found->second.State)
+          found->second.OriginLoc = entry.OriginLoc;
+        found->second.State = merged;
       }
     }
   }

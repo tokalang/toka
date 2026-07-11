@@ -28,36 +28,8 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
-    return getStringifyPath(ce->Value.get());
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  if (auto *ce = dynamic_cast<CastExpr *>(E)) {
-    return getStringifyPath(ce->Expression.get());
-  }
-  return "";
-}
-
 struct CallArgPALFact {
-  std::string Path;
+  AccessPath Path;
   PALOperationClass Access;
   Expr *Node = nullptr;
 };
@@ -1053,6 +1025,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // [Effect] Concurrency Check for Function Call
     if (Fn->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
       error(Call, DiagID::ERR_DANGLING_EFFECT, Fn->Name);
+      recordDecision(Call, SemanticRuleID::AsyncEffect001,
+                     SemanticOperation::EffectConsumption,
+                     SemanticDecision::Reject, SemanticReason::DanglingEffect,
+                     Fn->Name);
+    } else if (Fn->Effect != EffectKind::None && m_IsConsumingEffect &&
+               !m_IsPrecomputingCaptures) {
+      recordDecision(Call, SemanticRuleID::AsyncEffect001,
+                     SemanticOperation::EffectConsumption,
+                     SemanticDecision::Allow, SemanticReason::NoConflict,
+                     Fn->Name);
     }
   } else if (Ext) {
     Call->ResolvedExtern = Ext;
@@ -1066,6 +1048,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // [Effect] Concurrency Check for Extern Call
     if (Ext->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
       error(Call, DiagID::ERR_DANGLING_EFFECT, Ext->Name);
+      recordDecision(Call, SemanticRuleID::AsyncEffect001,
+                     SemanticOperation::EffectConsumption,
+                     SemanticDecision::Reject, SemanticReason::DanglingEffect,
+                     Ext->Name);
+    } else if (Ext->Effect != EffectKind::None && m_IsConsumingEffect &&
+               !m_IsPrecomputingCaptures) {
+      recordDecision(Call, SemanticRuleID::AsyncEffect001,
+                     SemanticOperation::EffectConsumption,
+                     SemanticDecision::Allow, SemanticReason::NoConflict,
+                     Ext->Name);
     }
   } else if (Sh) {
     if (!checkVisibility(Call, Sh)) {
@@ -1469,32 +1461,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   std::vector<CallArgPALFact> callArgPALFacts;
-  auto canonicalizePALPath = [&](const std::string &path) -> std::string {
-    if (path.empty())
-      return "";
-
-    std::string base = path;
-    std::string suffix = "";
-    size_t dot = path.find('.');
-    if (dot != std::string::npos) {
-      base = path.substr(0, dot);
-      suffix = path.substr(dot);
-    }
-
-    std::string current = base;
-    int depth = 0;
-    while (depth++ < 10) {
-      SymbolInfo *info = nullptr;
-      std::string actualName = current;
-      if (!CurrentScope->findVariableWithDeref(current, info, actualName))
-        break;
-      if (!info || info->BorrowedFrom.empty())
-        break;
-      current = info->BorrowedFrom;
-    }
-
-    return current + suffix;
-  };
   auto isReadOnlyBorrowViewArgument = [&](Expr *expr) -> bool {
     if (!expr)
       return false;
@@ -1551,6 +1517,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               Clo->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE,
               OriginalName, name, name, name);
           HasError = true;
+          recordDecision(Clo, SemanticRuleID::AsyncCapture001,
+                         SemanticOperation::ExecutionBoundaryCapture,
+                         SemanticDecision::Reject,
+                         SemanticReason::ImplicitBoundaryCapture, name,
+                         OriginalName, findPathDeclaration(name));
         }
       }
     }
@@ -1575,18 +1546,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     // [NEW] Enforce explicit cede for normal function calls
     bool isCededParam = false;
+    SourceLocation cedeParamLoc;
     if (Fn && i < Fn->Args.size()) {
         isCededParam = Fn->Args[i].IsCeded;
         paramIsHatted = Fn->Args[i].IsRawPointer || Fn->Args[i].IsUnique ||
                         Fn->Args[i].IsShared || Fn->Args[i].IsReference;
         paramIsRebindable = Fn->Args[i].IsRebindable;
         paramIsValueMutable = Fn->Args[i].IsValueMutable;
+        cedeParamLoc = Fn->Args[i].Loc;
     } else if (Ext && i < Ext->Args.size()) {
         isCededParam = Ext->Args[i].IsCeded;
         paramIsHatted = Ext->Args[i].IsRawPointer || Ext->Args[i].IsUnique ||
                         Ext->Args[i].IsShared || Ext->Args[i].IsReference;
         paramIsRebindable = Ext->Args[i].IsRebindable;
         paramIsValueMutable = Ext->Args[i].IsValueMutable;
+        cedeParamLoc = Ext->Args[i].Loc;
     }
 
     bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
@@ -1600,7 +1574,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       else if (Ext && i < Ext->Args.size())
         paramName = Ext->Args[i].Name;
       checkStartBoundaryArgument(Call->Args[i].get(), argType, isCededParam,
-                                 isCallerCeded, paramName);
+                                 isCallerCeded, paramName, cedeParamLoc);
     }
     bool isCedeParamImplicitlyExempt = false;
     if (isCededParam) {
@@ -1608,7 +1582,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
          isCedeParamImplicitlyExempt = isCedeExempt && !isCallerCeded;
          if (!isCallerCeded && !isCedeExempt) {
             error(Call->Args[i].get(), DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
-        }
+            if (cedeParamLoc.isValid())
+              DiagnosticEngine::report(cedeParamLoc, DiagID::NOTE_GENERIC,
+                                       "cede parameter declared here");
+         }
+         std::string subject = getPathString(Call->Args[i].get());
+         recordDecision(
+             Call->Args[i].get(), SemanticRuleID::OwnCede001,
+             SemanticOperation::CedeObligation,
+             (!isCallerCeded && !isCedeExempt) ? SemanticDecision::Reject
+                                               : SemanticDecision::Allow,
+             (!isCallerCeded && !isCedeExempt)
+                 ? SemanticReason::MissingExplicitCede
+                 : SemanticReason::CedeConsumed,
+             subject, Fn && i < Fn->Args.size() ? Fn->Args[i].Name : subject,
+             cedeParamLoc);
     }
 
     if (paramIsValueMutable && !paramIsHatted && !isCededParam &&
@@ -1620,9 +1608,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (paramType && i < ParamTypes.size()) {
-      std::string argPath =
-          canonicalizePALPath(getStringifyPath(Call->Args[i].get()));
-      if (!argPath.empty()) {
+      AccessPath argPath =
+          canonicalizeAccessPath(makeAccessPath(Call->Args[i].get()));
+      if (argPath) {
         PALOperationClass access = PALOperationClass::SharedPayloadBorrow;
         if (isCallerCeded || (isCededParam && !isCedeParamImplicitlyExempt)) {
           access = PALOperationClass::Invalidation;
@@ -1632,11 +1620,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           access = PALOperationClass::HandleViewBorrow;
         }
 
-        std::string conflictPath =
-            PALCheckerState.verifyOperation(argPath, access);
-        if (!conflictPath.empty()) {
+        auto conflict = PALCheckerState.verifyOperation(argPath, access);
+        if (conflict) {
           error(Call->Args[i].get(), DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
-                argPath, conflictPath);
+                argPath.toLegacyString(), conflict->displayPath());
+          recordPALConflict(Call->Args[i].get(), access, argPath, *conflict);
         }
 
         callArgPALFacts.push_back({argPath, access, Call->Args[i].get()});
@@ -1681,13 +1669,26 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     for (size_t j = i + 1; j < callArgPALFacts.size(); ++j) {
       const auto &lhs = callArgPALFacts[i];
       const auto &rhs = callArgPALFacts[j];
-      if (!PALCheckerState.pathsOverlap(lhs.Path, rhs.Path))
+      PALConflict lhsOrigin{lhs.Path, PathState::Free,
+                            lhs.Node ? lhs.Node->Loc : SourceLocation{}};
+      if (!PALCheckerState.pathsOverlap(lhs.Path, rhs.Path)) {
+        recordPALDecision(rhs.Node, SemanticRuleID::PALCall001, rhs.Access,
+                          rhs.Path, lhsOrigin, SemanticDecision::Allow,
+                          SemanticReason::DisjointPaths);
         continue;
-      if (!PALCheckerState.operationsConflict(lhs.Access, rhs.Access))
+      }
+      if (!PALCheckerState.operationsConflict(lhs.Access, rhs.Access)) {
+        recordPALDecision(rhs.Node, SemanticRuleID::PALCall001, rhs.Access,
+                          rhs.Path, lhsOrigin, SemanticDecision::Allow,
+                          SemanticReason::CompatibleSharedAccess);
         continue;
+      }
 
-      error(rhs.Node, DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT, rhs.Path,
-            lhs.Path);
+      error(rhs.Node, DiagID::ERR_CALL_ARGUMENT_ALIAS_CONFLICT,
+            rhs.Path.toLegacyString(), lhs.Path.toLegacyString());
+      recordPALDecision(rhs.Node, SemanticRuleID::PALCall001, rhs.Access,
+                        rhs.Path, lhsOrigin, SemanticDecision::Reject,
+                        SemanticReason::OverlappingExclusiveAccess, true);
     }
   }
   
@@ -1707,7 +1708,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                  paramName.compare(0, argName.size(), argName) == 0 &&
                  paramName[argName.size()] == '.')) {
                if (i < Call->Args.size()) {
-                   std::string argPath = getStringifyPath(Call->Args[i].get());
+                   std::string argPath = getPathString(Call->Args[i].get());
                    if (argPath.empty())
                      return "";
                    if (argName == paramName)
@@ -1733,7 +1734,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 if (i >= Call->Args.size())
                    continue;
 
-                std::string argVar = getStringifyPath(Call->Args[i].get());
+                std::string argVar = getPathString(Call->Args[i].get());
                 if (argVar.empty())
                    continue;
                 if (argName != dep)
@@ -1779,6 +1780,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     !isBorrowLikeType(argResolvedType)) {
                   m_LastLifeDependencies.insert(argVar);
                 }
+                recordDecision(
+                    Call, isAsync ? SemanticRuleID::AsyncSuspend001
+                                  : SemanticRuleID::EffRet001,
+                    SemanticOperation::EscapingDependency,
+                    SemanticDecision::Allow,
+                    SemanticReason::InterfaceContractApplied, argVar, dep,
+                    Fn->Args[i].Loc);
                 break;
              }
           }
@@ -1787,8 +1795,39 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       for (const auto &pair : Fn->MemberDependencies) {
          for (const auto &dep : pair.second) {
              std::string argVar = mapParamToArg(dep);
-             if (!argVar.empty()) m_LastFieldDependencies[pair.first].insert(argVar);
+             if (!argVar.empty()) {
+               m_LastFieldDependencies[pair.first].insert(argVar);
+               recordDecision(
+                   Call, SemanticRuleID::EffMember001,
+                   SemanticOperation::MemberDependency,
+                   SemanticDecision::Allow,
+                   SemanticReason::InterfaceContractApplied,
+                   pair.first + "<-" + argVar, dep);
+             }
           }
+      }
+
+      if (ReturnType && ReturnType->IsCede) {
+        recordDecision(Call, SemanticRuleID::OwnCede002,
+                       SemanticOperation::OwnershipTransfer,
+                       SemanticDecision::Allow,
+                       SemanticReason::InterfaceContractApplied, Fn->Name,
+                       ReturnType->toString(), Fn->Loc);
+      }
+
+      if (SemanticEvidence::isEnabled() && ReturnType &&
+          ReturnType->isShape()) {
+        std::string returnSoul =
+            Type::stripMorphology(ReturnType->getSoulName());
+        auto shapeIt = ShapeMap.find(returnSoul);
+        if (shapeIt != ShapeMap.end() && shapeIt->second &&
+            !shapeIt->second->MangledDestructorName.empty()) {
+          recordDecision(Call, SemanticRuleID::OwnResource001,
+                         SemanticOperation::InterfaceReplay,
+                         SemanticDecision::Allow,
+                         SemanticReason::InterfaceContractApplied, Fn->Name,
+                         returnSoul, Fn->Loc);
+        }
       }
   }
 

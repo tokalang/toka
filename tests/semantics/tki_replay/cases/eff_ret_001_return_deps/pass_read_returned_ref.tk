@@ -1,3 +1,4 @@
+// EXPECT_EVIDENCE: EFF-RET-001
 import ./lib::{Data, borrow_val}
 
 fn main() -> i32 {

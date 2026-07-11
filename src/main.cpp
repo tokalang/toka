@@ -18,6 +18,7 @@
 #include "toka/Lexer.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
+#include "toka/SemanticEvidence.h"
 #include "toka/TopologyCacheEval.h"
 #include "toka/TKIExporter.h"
 #include "toka/SourceLocation.h"
@@ -84,6 +85,18 @@ static std::string calculateFNV1a(const std::string &str) {
     snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)hash);
     return std::string(buf);
 }
+
+namespace {
+
+class SemanticEvidenceDumpGuard {
+public:
+  ~SemanticEvidenceDumpGuard() {
+    if (toka::SemanticEvidence::isEnabled())
+      toka::SemanticEvidence::dumpJSON(std::cout);
+  }
+};
+
+} // namespace
 
 static std::string getFinalInterfacePath(const std::string &outputFile, const std::string &sourcePath) {
     const char *envBuildDir = std::getenv("TOKA_BUILD_DIR");
@@ -291,6 +304,8 @@ int main(int argc, char **argv) {
   bool dumpJson = false;
   bool dumpAssignmentStats = false;
   bool dumpHandleSurfaceStats = false;
+  bool dumpSemanticEvidence = false;
+  SemanticEvidenceDumpGuard semanticEvidenceGuard;
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
@@ -329,6 +344,8 @@ int main(int argc, char **argv) {
       dumpAssignmentStats = true;
     } else if (arg == "--dump-handle-surface-stats=json") {
       dumpHandleSurfaceStats = true;
+    } else if (arg == "--dump-semantic-evidence=json") {
+      dumpSemanticEvidence = true;
     } else if (arg == "--topology-eval") {
       runTopologyEval = true;
     } else if (arg == "--pkg" || arg == "-P") {
@@ -397,6 +414,15 @@ int main(int argc, char **argv) {
   if (compileOnly) {
     emitInterface = true;
   }
+
+  if (dumpSemanticEvidence &&
+      (dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
+       runTopologyEval || g_JsonDiagnostics)) {
+    llvm::errs() << "--dump-semantic-evidence=json cannot be combined with "
+                    "another JSON or evaluation output mode\n";
+    return 1;
+  }
+  toka::SemanticEvidence::enable(dumpSemanticEvidence);
 
   if (runTopologyEval) {
     std::vector<std::string> testFiles;

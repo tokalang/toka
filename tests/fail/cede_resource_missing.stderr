@@ -3,4 +3,8 @@ error[E04509]: Argument must be explicitly passed with 'cede' because the method
    |
  7 |     v_str#.push(s1)
    |                 ^
-
+note: cede parameter declared here
+ --> lib/std/vec.tk:155:29
+     |
+ 155 |     pub fn push(self#, cede 'val: T) {
+     |                             ^

@@ -8,8 +8,18 @@ error[E0554]: Naked destructuring of resource 'string' is strictly forbidden to 
    |
  7 |         auto Ok(msg) => { // SHOULD FAIL HERE!
    |                 ^
+note: resource type declared here
+ --> lib/core/string.tk:41:11
+    |
+ 41 | pub shape string (
+    |           ^
 error[E0554]: Naked destructuring of resource 'string' is strictly forbidden to prevent silent copies and double-frees. You must use an explicit borrow '&' (e.g., '&e')
  --> tests/fail/block_naked_destructure.tk:10:18
     |
  10 |         auto Err(e) => {} // SHOULD FAIL HERE!
     |                  ^
+note: resource type declared here
+ --> lib/core/string.tk:41:11
+    |
+ 41 | pub shape string (
+    |           ^

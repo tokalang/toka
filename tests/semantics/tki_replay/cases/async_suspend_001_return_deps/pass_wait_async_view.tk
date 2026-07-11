@@ -1,4 +1,5 @@
 // COMPILE_ONLY: async task runtime symbols are not linked by this replay runner.
+// EXPECT_EVIDENCE: ASYNC-SUSPEND-001
 import ./lib::{Data, get_async_view}
 
 fn main() -> i32 {

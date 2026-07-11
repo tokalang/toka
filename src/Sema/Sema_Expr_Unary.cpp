@@ -29,31 +29,6 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  if (auto *ce = dynamic_cast<CastExpr *>(E)) {
-    return getStringifyPath(ce->Expression.get());
-  }
-  return "";
-}
-
 std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
 
@@ -148,16 +123,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       SymbolInfo *EffectiveInfo = Info;
       std::string EffectiveName = actualName;
       std::shared_ptr<toka::Type> physType = Info->TypeObj;
-      int traceDepth = 0;
-      while (!EffectiveInfo->BorrowedFrom.empty() && traceDepth < 10) {
-        SymbolInfo *Next = nullptr;
-        if (CurrentScope->findSymbol(EffectiveInfo->BorrowedFrom, Next)) {
-          EffectiveName = EffectiveInfo->BorrowedFrom;
-          EffectiveInfo = Next;
-        } else
-          break;
-        traceDepth++;
-      }
+      EffectiveInfo = resolveBorrowSource(EffectiveInfo, EffectiveName);
 
       if (Unary->Op == TokenType::Ampersand) {
         auto innerType = rhsType;
@@ -193,11 +159,23 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         }
 
         if (!m_InLHS) {
-          std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+          std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
              // Toka Path-Anchored Check
-             if (!PALCheckerState.recordBorrow(pathToBorrow, isExclusive)) {
+             if (!PALCheckerState.recordBorrow(
+                     canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                     isExclusive, Unary->Loc)) {
                 error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
+                if (PALCheckerState.lastConflict()) {
+                  recordPALConflict(
+                      Unary,
+                      isExclusive
+                          ? PALOperationClass::ExclusivePayloadBorrow
+                          : PALOperationClass::SharedPayloadBorrow,
+                      canonicalizeAccessPath(
+                          makeAccessPath(Unary->RHS.get())),
+                      *PALCheckerState.lastConflict());
+                }
              }
              m_LastBorrowSource = pathToBorrow; // keep this so RHS knows what it borrowed
           }
@@ -230,11 +208,17 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
       if (Unary->Op == TokenType::Caret) {
         if (!m_InLHS) {
-          std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+          std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
-             std::string conflictPath = PALCheckerState.verifyInvalidation(pathToBorrow);
-             if (!conflictPath.empty()) {
-                 error(Unary, DiagID::ERR_MOVE_BORROWED, conflictPath);
+             auto conflict = PALCheckerState.verifyInvalidation(
+                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())));
+             if (conflict) {
+                 error(Unary, DiagID::ERR_MOVE_BORROWED,
+                       conflict->displayPath());
+                 recordPALConflict(
+                     Unary, PALOperationClass::Invalidation,
+                     canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                     *conflict);
              }
           }
         }
@@ -253,11 +237,17 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
       if (Unary->Op == TokenType::Tilde) {
         if (!m_InLHS) {
-          std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+          std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
-             std::string conflictPath = PALCheckerState.verifyAccess(pathToBorrow);
-             if (!conflictPath.empty()) {
-                 error(Unary, DiagID::ERR_BORROW_MUT, conflictPath);
+             auto conflict = PALCheckerState.verifyAccess(
+                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())));
+             if (conflict) {
+                 error(Unary, DiagID::ERR_BORROW_MUT,
+                       conflict->displayPath());
+                 recordPALConflict(
+                     Unary, PALOperationClass::SharedPayloadBorrow,
+                     canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                     *conflict);
              }
           }
         }
@@ -303,10 +293,21 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     // remove debug
 
     if (!m_InLHS) {
-      std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+      std::string pathToBorrow = getPathString(Unary->RHS.get());
       if (!pathToBorrow.empty()) {
-         if (!PALCheckerState.recordBorrow(pathToBorrow, isExclusive)) {
+         if (!PALCheckerState.recordBorrow(
+                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                 isExclusive, Unary->Loc)) {
              error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
+             if (PALCheckerState.lastConflict()) {
+               recordPALConflict(
+                   Unary,
+                   isExclusive
+                       ? PALOperationClass::ExclusivePayloadBorrow
+                       : PALOperationClass::SharedPayloadBorrow,
+                   canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                   *PALCheckerState.lastConflict());
+             }
          }
          m_LastBorrowSource = pathToBorrow;
       }
@@ -316,11 +317,17 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
   if (Unary->Op == TokenType::Caret) {
     if (!m_InLHS) {
-      std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+      std::string pathToBorrow = getPathString(Unary->RHS.get());
       if (!pathToBorrow.empty()) {
-         std::string conflictPath = PALCheckerState.verifyInvalidation(pathToBorrow);
-         if (!conflictPath.empty()) {
-             error(Unary, DiagID::ERR_MOVE_BORROWED, conflictPath);
+         auto conflict = PALCheckerState.verifyInvalidation(
+             canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())));
+         if (conflict) {
+             error(Unary, DiagID::ERR_MOVE_BORROWED,
+                   conflict->displayPath());
+             recordPALConflict(
+                 Unary, PALOperationClass::Invalidation,
+                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                 *conflict);
          }
       }
     }
@@ -332,11 +339,17 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
   if (Unary->Op == TokenType::Tilde) {
     if (!m_InLHS) {
-      std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+      std::string pathToBorrow = getPathString(Unary->RHS.get());
       if (!pathToBorrow.empty()) {
-         std::string conflictPath = PALCheckerState.verifyAccess(pathToBorrow);
-         if (!conflictPath.empty()) {
-             error(Unary, DiagID::ERR_BORROW_MUT, conflictPath);
+         auto conflict = PALCheckerState.verifyAccess(
+             canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())));
+         if (conflict) {
+             error(Unary, DiagID::ERR_BORROW_MUT,
+                   conflict->displayPath());
+             recordPALConflict(
+                 Unary, PALOperationClass::SharedPayloadBorrow,
+                 canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                 *conflict);
          }
       }
     }
@@ -361,11 +374,17 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     if (auto *Var = dynamic_cast<VariableExpr *>(Unary->RHS.get())) {
       SymbolInfo *Info = nullptr;
       if (CurrentScope->findSymbol(Var->Name, Info)) {
-        std::string pathToBorrow = getStringifyPath(Unary->RHS.get());
+        std::string pathToBorrow = getPathString(Unary->RHS.get());
         if (!pathToBorrow.empty()) {
-           std::string conflictPath = PALCheckerState.verifyPayloadWrite(pathToBorrow);
-           if (!conflictPath.empty()) {
-               error(Unary, DiagID::ERR_BORROW_MUT, conflictPath);
+           auto conflict = PALCheckerState.verifyPayloadWrite(
+               canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())));
+           if (conflict) {
+               error(Unary, DiagID::ERR_BORROW_MUT,
+                     conflict->displayPath());
+               recordPALConflict(
+                   Unary, PALOperationClass::PayloadWrite,
+                   canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                   *conflict);
            }
         }
       }

@@ -8,3 +8,8 @@ error[E0442]: Cannot mutably borrow immutable entity 'scene.root.left'
     |
  28 |     scene.root = newRoot 
     |                ^
+note: conflicting borrow originates here
+ --> tests/fail/fail_pal_path_prefix.tk:20:21
+    |
+ 20 |     auto &my_left = &(scene.root.left)
+    |                     ^

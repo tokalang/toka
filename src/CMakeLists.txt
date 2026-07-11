@@ -17,7 +17,10 @@ Sema/Sema_Expr_Init.cpp
 Sema/Sema_Expr_Closure.cpp
 Sema/Sema_Stmt.cpp
 Sema/Sema_Template.cpp
-Sema/PAL_Checker.cpp
+Sema/AccessPath.cpp
+    Sema/Sema_AccessPath.cpp
+    Sema/SemanticEvidence.cpp
+    Sema/PAL_Checker.cpp
 Sema/TopologyCacheEval.cpp
 Type.cpp
 CodeGen/CodeGen.cpp 

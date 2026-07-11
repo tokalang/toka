@@ -29,31 +29,6 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
-static std::string getStringifyPath(Expr *E) {
-  if (!E)
-    return "";
-  if (auto *ve = dynamic_cast<VariableExpr *>(E)) {
-    return ve->Name;
-  }
-  if (auto *me = dynamic_cast<MemberExpr *>(E)) {
-    std::string member = toka::Type::stripMorphology(me->Member);
-    return getStringifyPath(me->Object.get()) + "." + member;
-  }
-  if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
-    return getStringifyPath(ue->RHS.get());
-  }
-  if (auto *ae = dynamic_cast<AddressOfExpr *>(E)) {
-    return getStringifyPath(ae->Expression.get());
-  }
-  if (auto *ae = dynamic_cast<ArrayIndexExpr *>(E)) {
-    return getStringifyPath(ae->Array.get());
-  }
-  if (auto *ce = dynamic_cast<CastExpr *>(E)) {
-    return getStringifyPath(ce->Expression.get());
-  }
-  return "";
-}
-
 static bool containsMemberExpr(const Expr *E) {
   if (!E)
     return false;
@@ -109,7 +84,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
   auto rhsType = checkExpr(Bin->RHS.get());
   std::string rhsBorrowSource = ""; 
-  if (!getStringifyPath(Bin->RHS.get()).empty()) {
+  if (!getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
   }
 
@@ -150,7 +125,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   m_IsAssignmentTarget = oldTarget;
 
   if (isAssign && lhsType && lhsType->IsWritable && !rhsBorrowSource.empty()) {
-      if (!PALCheckerState.upgradeBorrow(rhsBorrowSource)) {
+      if (!PALCheckerState.upgradeBorrow(
+              canonicalizeAccessPath(makeAccessPath(rhsBorrowSource)))) {
           error(Bin, DiagID::ERR_BORROW_MUT, rhsBorrowSource);
       }
   }
@@ -277,11 +253,16 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       std::string actualRHSName = RHSVar->Name;
       if (CurrentScope->findVariableWithDeref(RHSVar->Name, RHSInfoPtr, actualRHSName) &&
           RHSInfoPtr->IsUnique()) {
-        std::string conflictPath = PALCheckerState.verifyInvalidation(actualRHSName);
-        if (!conflictPath.empty()) {
-            error(Bin, DiagID::ERR_MOVE_BORROWED, conflictPath);
+        auto conflict = PALCheckerState.verifyInvalidation(
+            canonicalizeAccessPath(makeAccessPath(actualRHSName)));
+        if (conflict) {
+            error(Bin, DiagID::ERR_MOVE_BORROWED, conflict->displayPath());
+            recordPALConflict(
+                Bin, PALOperationClass::Invalidation,
+                canonicalizeAccessPath(makeAccessPath(actualRHSName)),
+                *conflict);
         }
-        CurrentScope->markMoved(actualRHSName);
+        CurrentScope->markMoved(actualRHSName, Bin->Loc);
       }
     }
     
@@ -381,6 +362,22 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       }
     }
 
+    AssignmentSemanticKind assignmentKind =
+        AssignmentSemanticKind::Unclassified;
+    if (!isImplicitDerefAssign && !isRebind && !isRefAssign) {
+      assignmentKind = AssignmentSemanticKind::Payload;
+    }
+    if (isImplicitDerefAssign) {
+      assignmentKind = AssignmentSemanticKind::Payload;
+    }
+    if (isRebind || isRefAssign) {
+      assignmentKind = AssignmentSemanticKind::Handle;
+    }
+    if (Bin->Op != "=") {
+      assignmentKind = AssignmentSemanticKind::ResidualCompound;
+    }
+    Bin->AssignmentKind = assignmentKind;
+
     if (assignmentStatsEnabled()) {
       AssignmentStats &stats = assignmentStats();
       bool isCompound = Bin->Op != "=";
@@ -388,8 +385,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       AssignmentFrontendEvidence evidence =
           AssignmentFrontendEvidence::Unclassified;
       stats.TotalAssignmentSites++;
-      if (!isCompound && !isImplicitDerefAssign && !isRebind &&
-          !isRefAssign) {
+      if (!isCompound && !isImplicitDerefAssign &&
+          assignmentKind == AssignmentSemanticKind::Payload) {
         stats.PlainPayloadAssignments++;
         evidence = AssignmentFrontendEvidence::Payload;
       }
@@ -397,7 +394,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         stats.ImplicitDerefPayloadAssignments++;
         evidence = AssignmentFrontendEvidence::Payload;
       }
-      if (isRebind && !isRefAssign) {
+      if (assignmentKind == AssignmentSemanticKind::Handle && !isRefAssign) {
         stats.HandleRebindings++;
         evidence = AssignmentFrontendEvidence::Handle;
       }
@@ -439,16 +436,17 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       SymbolInfo *InfoPtr = nullptr;
       std::string actualName = Var->Name;
       if (CurrentScope->findVariableWithDeref(Var->Name, InfoPtr, actualName)) {
-        std::string lhsPath = getStringifyPath(Bin->LHS.get());
-        if (!isUnsetInit && !lhsPath.empty()) {
+        AccessPath lhsPath =
+            canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
+        if (!isUnsetInit && lhsPath) {
             PALOperationClass lhsOperation =
                 (isRebind || isRefAssign) ? PALOperationClass::ExclusiveMutation
                                           : PALOperationClass::PayloadWrite;
-            std::string conflictPath =
-                PALCheckerState.verifyOperation(lhsPath, lhsOperation);
+            auto conflict = PALCheckerState.verifyOperation(lhsPath, lhsOperation);
             bool authorized = false;
             
-            if (!conflictPath.empty()) {
+            if (conflict) {
+               const std::string conflictPath = conflict->displayPath();
                SymbolInfo info;
                std::string borrower = "";
                if (!m_ControlFlowStack.empty())
@@ -466,13 +464,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                }
             }
             
-            if (!conflictPath.empty() && !authorized) {
-                toka::PathState conflictState = PALCheckerState.getState(conflictPath);
-                if (conflictState == toka::PathState::BorrowedShared) {
-                    error(Bin, DiagID::ERR_BORROW_IMMUT, conflictPath);
+            if (conflict && !authorized) {
+                if (conflict->State == toka::PathState::BorrowedShared) {
+                    error(Bin, DiagID::ERR_BORROW_IMMUT,
+                          conflict->displayPath());
                 } else {
-                    error(Bin, DiagID::ERR_BORROW_MUT, conflictPath);
+                    error(Bin, DiagID::ERR_BORROW_MUT,
+                          conflict->displayPath());
                 }
+                recordPALConflict(Bin, lhsOperation, lhsPath, *conflict);
             }
         }
 
@@ -719,6 +719,17 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                   int depDepth = getScopeDepth(transDep);
                   if (targetDepth < depDepth) {
                       error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, transDep);
+                      SourceLocation originLoc = findPathDeclaration(transDep);
+                      recordDecision(
+                          Bin, SemanticRuleID::EffRet001,
+                          SemanticOperation::EscapingDependency,
+                          SemanticDecision::Reject,
+                          SemanticReason::LifetimeDepthViolation,
+                          targetObjName, transDep, originLoc);
+                      if (originLoc.isValid())
+                        DiagnosticEngine::report(
+                            originLoc, DiagID::NOTE_GENERIC,
+                            "shorter-lived dependency declared here");
                   }
                   targetInfo->LifeDependencySet.insert(transDep);
               }
@@ -726,6 +737,16 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
               int depDepth = getScopeDepth(dep);
               if (targetDepth < depDepth) {
                 error(Bin, DiagID::ERR_BORROW_LIFETIME, targetObjName, dep);
+                SourceLocation originLoc = findPathDeclaration(dep);
+                recordDecision(Bin, SemanticRuleID::EffRet001,
+                               SemanticOperation::EscapingDependency,
+                               SemanticDecision::Reject,
+                               SemanticReason::LifetimeDepthViolation,
+                               targetObjName, dep, originLoc);
+                if (originLoc.isValid())
+                  DiagnosticEngine::report(
+                      originLoc, DiagID::NOTE_GENERIC,
+                      "shorter-lived dependency declared here");
               }
               targetInfo->LifeDependencySet.insert(dep);
           }

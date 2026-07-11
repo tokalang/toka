@@ -1,4 +1,5 @@
 // EXPECT_ERROR: E0554
+// EXPECT_EVIDENCE: OWN-RESOURCE-001
 import ./lib::{SecretBox, make_box}
 
 fn main() -> i32 {

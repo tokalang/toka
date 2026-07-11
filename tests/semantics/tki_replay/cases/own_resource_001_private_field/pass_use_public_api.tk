@@ -1,3 +1,4 @@
+// EXPECT_EVIDENCE: OWN-RESOURCE-001
 import ./lib::{make_box, read_id}
 
 fn main() -> i32 {

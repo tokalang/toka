@@ -8,6 +8,11 @@ error[E0454]: Returning reference to parameter 'b' requires explicit dependency 
    |
  9 |         return (*raw_b as Addr) as &Data
    |         ^
+note: undeclared return dependency originates here
+ --> tests/fail/unsafe_cast_escape.tk:4:19
+   |
+ 4 | fn cheat(a: Data, b: Data) -> &res: Data
+   |                   ^
 error[E0450]: Invalid cast: cannot convert 'Addr' to '&Data' via 'as'; only 'Addr' and '*' conversions are supported
  --> tests/fail/unsafe_cast_escape.tk:18:35
     |
