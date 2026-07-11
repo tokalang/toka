@@ -16,6 +16,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
 #include "toka/Lexer.h"
+#include "toka/MemoryContract.h"
 #include "toka/MemorySummary.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
@@ -307,6 +308,7 @@ int main(int argc, char **argv) {
   bool dumpHandleSurfaceStats = false;
   bool dumpSemanticEvidence = false;
   bool dumpMemorySummaries = false;
+  bool dumpMemoryContracts = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard;
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
@@ -350,6 +352,8 @@ int main(int argc, char **argv) {
       dumpSemanticEvidence = true;
     } else if (arg == "--dump-memory-summaries=json") {
       dumpMemorySummaries = true;
+    } else if (arg == "--dump-memory-contracts=json") {
+      dumpMemoryContracts = true;
     } else if (arg == "--topology-eval") {
       runTopologyEval = true;
     } else if (arg == "--pkg" || arg == "-P") {
@@ -430,6 +434,14 @@ int main(int argc, char **argv) {
       (dumpSemanticEvidence || dumpAssignmentStats || dumpHandleSurfaceStats ||
        dumpDependencies || runTopologyEval || g_JsonDiagnostics)) {
     llvm::errs() << "--dump-memory-summaries=json cannot be combined with "
+                    "another JSON or evaluation output mode\n";
+    return 1;
+  }
+  if (dumpMemoryContracts &&
+      (dumpMemorySummaries || dumpSemanticEvidence || dumpAssignmentStats ||
+       dumpHandleSurfaceStats || dumpDependencies || runTopologyEval ||
+       g_JsonDiagnostics)) {
+    llvm::errs() << "--dump-memory-contracts=json cannot be combined with "
                     "another JSON or evaluation output mode\n";
     return 1;
   }
@@ -813,8 +825,21 @@ int main(int argc, char **argv) {
       llvm::errs() << "Memory summary IR verification error: " << error << '\n';
     return 1;
   }
+  toka::MemoryContractShadow memoryContracts =
+      toka::MemoryContractShadow::analyze(
+          summaryModules, *codegen.getModule(), !disableBorrowCheck);
+  memorySummaryErrors.clear();
+  if (!memoryContracts.verify(summaryModules, *codegen.getModule(),
+                              !disableBorrowCheck, memorySummaryErrors)) {
+    for (const auto &error : memorySummaryErrors)
+      llvm::errs() << "Memory contract shadow verification error: " << error
+                   << '\n';
+    return 1;
+  }
   if (dumpMemorySummaries)
     toka::MemorySummaryAnalysis::dumpJSON(summaryModules, std::cout);
+  if (dumpMemoryContracts)
+    memoryContracts.dumpJSON(std::cout);
   profile.mark("verify");
 
   if (verboseMode) fprintf(stderr, "Pass 4: Optimization (Coroutines & O2)...\n");

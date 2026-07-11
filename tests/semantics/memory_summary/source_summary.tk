@@ -43,6 +43,20 @@ fn ms_memory() -> i32 {
     return 0
 }
 
+fn ms_generic<T>(data: T) -> i32 {
+    return 1
+}
+
 fn main() -> i32 {
-    return 0
+    auto data# = SummaryData(value = 1)
+    if ms_read(data) != 1 {
+        return 1
+    }
+    if ms_write(data) != 7 {
+        return 2
+    }
+    if ms_forward(data) != 7 {
+        return 3
+    }
+    return ms_generic<SummaryData>(data) - 1
 }

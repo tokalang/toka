@@ -66,7 +66,7 @@ struct CallEdge {
   std::vector<RootSet> ActualRoots;
 };
 
-std::vector<FunctionDecl *> collectFunctions(
+std::vector<FunctionDecl *> collectFunctionsImpl(
     const std::vector<Module *> &modules) {
   std::vector<FunctionDecl *> functions;
   for (Module *module : modules) {
@@ -340,6 +340,20 @@ private:
     return result;
   }
 
+  RootSet provenanceRoots(const Expr *expr) const {
+    if (!expr)
+      return {};
+    const auto &type = expr->ResolvedType;
+    if (!type)
+      return roots(expr);
+    bool mayCarryProvenance =
+        type->isPointer() || type->isReference() || type->isSmartPointer() ||
+        type->isShape() || type->isArray() || type->isSlice() ||
+        type->isFunction() || type->isDynFn() || type->isUnknown() ||
+        type->isUninit();
+    return mayCarryProvenance ? roots(expr) : RootSet{};
+  }
+
   void markUnknownBoundary(const std::vector<const Expr *> &arguments) {
     addLocal(Summary, FunctionMemoryEffect::UnknownCall);
     addLocal(Summary, FunctionMemoryEffect::UnknownBoundary);
@@ -394,7 +408,7 @@ private:
           std::string name = Type::stripMorphology(variable->Name);
           if (Globals.count(name) && !Aliases.count(name)) {
             addLocal(Summary, FunctionMemoryEffect::TouchGlobal);
-            addLocal(Summary, roots(binary->RHS.get()),
+            addLocal(Summary, provenanceRoots(binary->RHS.get()),
                      bit(MemoryRootEffect::Escape));
           }
         }
@@ -404,7 +418,7 @@ private:
           effects |= bit(MemoryRootEffect::Rebind);
         addLocal(Summary, lhsRoots, effects);
         if (auto *variable = dynamic_cast<const VariableExpr *>(binary->LHS.get()))
-          mergeAlias(variable->Name, roots(binary->RHS.get()));
+          mergeAlias(variable->Name, provenanceRoots(binary->RHS.get()));
         return;
       }
       visitExpr(binary->LHS.get());
@@ -579,13 +593,13 @@ private:
         visitStmt(child.get());
     } else if (auto *ret = dynamic_cast<const ReturnStmt *>(stmt)) {
       visitExpr(ret->ReturnValue.get());
-      addLocal(Summary, roots(ret->ReturnValue.get()),
+      addLocal(Summary, provenanceRoots(ret->ReturnValue.get()),
                bit(MemoryRootEffect::Escape));
     } else if (auto *expr = dynamic_cast<const ExprStmt *>(stmt)) {
       visitExpr(expr->Expression.get());
     } else if (auto *decl = dynamic_cast<const VariableDecl *>(stmt)) {
       visitExpr(decl->Init.get());
-      mergeAlias(decl->Name, roots(decl->Init.get()));
+      mergeAlias(decl->Name, provenanceRoots(decl->Init.get()));
     } else if (auto *decl = dynamic_cast<const DestructuringDecl *>(stmt)) {
       visitExpr(decl->Init.get());
       RootSet initRoots = roots(decl->Init.get());
@@ -721,6 +735,11 @@ void dumpNames(std::ostream &out, const std::vector<const char *> &names) {
 
 } // namespace
 
+std::vector<FunctionDecl *> MemorySummaryAnalysis::collectFunctions(
+    const std::vector<Module *> &modules) {
+  return collectFunctionsImpl(modules);
+}
+
 void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
                                 bool borrowCheckEnabled) {
   std::vector<CallEdge> edges;
@@ -732,7 +751,7 @@ void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
       if (auto *decl = dynamic_cast<VariableDecl *>(global.get()))
         globals.insert(Type::stripMorphology(decl->Name));
   }
-  std::vector<FunctionDecl *> functions = collectFunctions(modules);
+  std::vector<FunctionDecl *> functions = collectFunctionsImpl(modules);
   std::set<FunctionDecl *> analyzed(functions.begin(), functions.end());
   for (FunctionDecl *function : functions)
     LocalAnalyzer(*function, edges, borrowCheckEnabled, globals).run();
@@ -756,7 +775,7 @@ void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
 bool MemorySummaryAnalysis::verify(const std::vector<Module *> &modules,
                                    bool borrowCheckEnabled,
                                    std::vector<std::string> &errors) {
-  for (FunctionDecl *function : collectFunctions(modules)) {
+  for (FunctionDecl *function : collectFunctionsImpl(modules)) {
     const auto &summary = function->MemorySummary;
     for (const auto &arg : function->Args) {
       std::string name = rootName(arg);
@@ -791,7 +810,7 @@ bool MemorySummaryAnalysis::verify(const std::vector<Module *> &modules,
 bool MemorySummaryAnalysis::verifyIR(const std::vector<Module *> &modules,
                                      const llvm::Module &irModule,
                                      std::vector<std::string> &errors) {
-  for (FunctionDecl *function : collectFunctions(modules)) {
+  for (FunctionDecl *function : collectFunctionsImpl(modules)) {
     const auto &summary = function->MemorySummary;
     if (summary.FunctionName.rfind("@trait:", 0) == 0)
       continue;
@@ -843,7 +862,7 @@ bool MemorySummaryAnalysis::verifyIR(const std::vector<Module *> &modules,
 
 void MemorySummaryAnalysis::dumpJSON(const std::vector<Module *> &modules,
                                      std::ostream &out) {
-  auto functions = collectFunctions(modules);
+  auto functions = collectFunctionsImpl(modules);
   out << "{\"schema\":\"toka.memory-summary\",\"version\":"
       << FunctionMemorySummary::SchemaVersion << ",\"functions\":[";
   for (size_t i = 0; i < functions.size(); ++i) {

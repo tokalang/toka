@@ -61,6 +61,8 @@ struct FunctionMemorySummary {
 
 class MemorySummaryAnalysis {
 public:
+  static std::vector<FunctionDecl *>
+  collectFunctions(const std::vector<Module *> &modules);
   static void run(const std::vector<Module *> &modules,
                   bool borrowCheckEnabled);
   static bool verify(const std::vector<Module *> &modules,

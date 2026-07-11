@@ -55,6 +55,6 @@ Run the focused regression with:
 python3 tools/scripts/test_memory_summary.py
 ```
 
-The next phase may consume only facts whose lowering has an explicit verifier.
-LLVM attributes remain out of scope until their individual preconditions and
-counterexamples are specified and tested.
+Phase 3C-3 consumes these facts through optimization-neutral shadow contracts,
+documented in `phase3c_shadow_contracts.md`. LLVM attribute emission remains
+out of scope until each candidate class has its own proof and counterexamples.
