@@ -1,0 +1,12 @@
+// EXPECT_TKI: pub fn make_payload() -> cede Payload
+pub shape Payload(val: i32)
+
+pub fn make_payload() -> cede Payload {
+    auto p = Payload(val = 7)
+    return cede p
+}
+
+pub fn consume_payload(cede p: Payload) -> i32 {
+    auto moved = cede p
+    return moved.val
+}

@@ -1,0 +1,4 @@
+// EXPECT_TKI: -> async str <- s
+pub fn get_async_view(s: str) -> async str <- s {
+    return s
+}

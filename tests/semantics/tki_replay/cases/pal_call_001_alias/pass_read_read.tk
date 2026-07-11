@@ -1,0 +1,10 @@
+import ./lib::{Data, read_pair}
+
+fn main() -> i32 {
+    auto x = Data(val = 2)
+    auto v = read_pair(x, x)
+    if v != 4 {
+        return 1
+    }
+    return 0
+}

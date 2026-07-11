@@ -1,0 +1,10 @@
+import ./lib::{make_payload, consume_payload}
+
+fn main() -> i32 {
+    auto p = make_payload()
+    auto v = consume_payload(cede p)
+    if v != 7 {
+        return 1
+    }
+    return 0
+}

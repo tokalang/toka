@@ -1,0 +1,8 @@
+import ./lib::{Data, borrow_val}
+
+fn main() -> i32 {
+    auto data# = Data(val = 1)
+    auto &view = borrow_val(data)
+    data = Data(val = 2) // EXPECT_ERROR: E0442
+    return view
+}

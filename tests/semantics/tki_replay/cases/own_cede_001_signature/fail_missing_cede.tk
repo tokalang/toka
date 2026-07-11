@@ -1,0 +1,7 @@
+import ./lib::{Payload, consume_payload}
+
+fn main() -> i32 {
+    auto p = Payload(val = 42)
+    auto v = consume_payload(p) // EXPECT_ERROR: E04570
+    return v
+}

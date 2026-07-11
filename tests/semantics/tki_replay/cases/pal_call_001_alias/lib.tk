@@ -1,0 +1,11 @@
+// EXPECT_TKI: pub fn mut_and_read(target#: Data, view: Data) -> i32
+pub shape Data(val: i32)
+
+pub fn read_pair(a: Data, b: Data) -> i32 {
+    return a.val + b.val
+}
+
+pub fn mut_and_read(target#: Data, view: Data) -> i32 {
+    target.val = 10
+    return view.val
+}

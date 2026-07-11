@@ -1,0 +1,10 @@
+import ./lib::{Data, borrow_val}
+
+fn main() -> i32 {
+    auto data# = Data(val = 1)
+    auto &view = borrow_val(data)
+    if view != 1 {
+        return 1
+    }
+    return 0
+}

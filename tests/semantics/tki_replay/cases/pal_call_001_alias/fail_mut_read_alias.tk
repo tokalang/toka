@@ -1,0 +1,7 @@
+import ./lib::{Data, mut_and_read}
+
+fn main() -> i32 {
+    auto x# = Data(val = 1)
+    auto v = mut_and_read(x, x) // EXPECT_ERROR: E0475
+    return v
+}

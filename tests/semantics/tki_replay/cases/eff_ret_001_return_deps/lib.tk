@@ -1,0 +1,9 @@
+// EXPECT_TKI: return <- data.val
+pub shape Data(val: i32)
+
+pub fn borrow_val(data: Data) -> &res: i32
+effects:
+    &res <- data.val
+{
+    return &(data.val)
+}
