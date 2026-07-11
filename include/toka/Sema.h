@@ -227,6 +227,9 @@ public:
   std::string resolveType(const std::string &Type, bool force = false);
   std::shared_ptr<toka::Type> resolveType(std::shared_ptr<toka::Type> Type,
                                           bool force = false);
+  const std::map<std::string, ShapeDecl *> &getShapeMap() const {
+    return ShapeMap;
+  }
 
 private:
   // Shape Analysis Caches
