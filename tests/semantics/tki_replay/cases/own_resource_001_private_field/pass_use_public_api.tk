@@ -1,0 +1,9 @@
+import ./lib::{make_box, read_id}
+
+fn main() -> i32 {
+    auto box = make_box()
+    if read_id(box) != 7 {
+        return 1
+    }
+    return 0
+}

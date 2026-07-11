@@ -195,7 +195,10 @@ cases should become explicit conformance tests in phase 2:
   export, source-less parsing, and caller-side source locking covered by
   `tests/semantics/tki_replay/cases/eff_member_001_return_deps`; field-sensitive
   release/transfer and negative member-swap replay remain open.
-- Private resource fields causing downstream copy/destructure rejection.
+- Private resource fields causing downstream copy/destructure rejection:
+  covered by
+  `tests/semantics/tki_replay/cases/own_resource_001_private_field` for copy
+  capture and naked destructuring; spread and generic cases remain open.
 - Public unsafe/raw API redline through imported `.tki`.
 - Async borrowed return dependency through imported `.tki`: positive replay
   export, source-less parsing, and caller-side enforcement after `.wait`

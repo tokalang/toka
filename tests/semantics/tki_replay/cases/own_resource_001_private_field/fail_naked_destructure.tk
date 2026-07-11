@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E0554
+import ./lib::{SecretBox, make_box}
+
+fn main() -> i32 {
+    auto box = make_box()
+    auto SecretBox(id = .id, secret = .secret) = box
+    return id
+}

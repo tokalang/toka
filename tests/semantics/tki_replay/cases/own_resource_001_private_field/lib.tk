@@ -1,0 +1,18 @@
+// EXPECT_TKI: pub shape SecretBox(id: i32, secret: string)
+// EXPECT_TKI: impl SecretBox@encap
+import core/traits::{@encap}
+
+pub shape SecretBox(id: i32, secret: string)
+
+impl SecretBox@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+pub fn make_box() -> SecretBox {
+    return SecretBox(id = 7, secret = string::from("hidden"))
+}
+
+pub fn read_id(box: SecretBox) -> i32 {
+    return box.id
+}

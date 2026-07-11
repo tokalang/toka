@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04581
+import ./lib::{make_box, read_id}
+
+fn main() -> i32 {
+    auto box = make_box()
+    auto copied: fn() -> i32 = { [copy box] => read_id(box) }
+    return copied()
+}

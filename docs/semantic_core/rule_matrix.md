@@ -220,8 +220,10 @@ Primary references:
   `tests/fail/implicit_deref_err.tk`
 - Interface replay requirements: shape resource facts, drop/clone facts, and
   field morphology must remain compiler-visible.
-- Missing coverage: `.tki` replay for private resource fields and clone/drop
-  obligations.
+- Replay tests: `tests/semantics/tki_replay/cases/own_resource_001_private_field`
+  checks private resource structure, `drop`/deleted `clone`, copy capture, and
+  naked destructuring through a source-less interface.
+- Missing coverage: spread and generic private-resource-field replay.
 
 ## Effects And Escaping Dependency Rules
 
@@ -382,15 +384,16 @@ Primary references:
   `tests/semantics/tki_replay/cases/pal_call_001_alias`,
   `tests/semantics/tki_replay/cases/own_cede_001_signature`,
   `tests/semantics/tki_replay/cases/own_cede_002_return`,
+  `tests/semantics/tki_replay/cases/own_resource_001_private_field`,
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`,
   `tests/semantics/tki_replay/cases/eff_member_001_return_deps`,
   `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
 - Negative tests: tests driven by `tools/scripts/test_tki_cache_validation.sh`
   and `tools/scripts/test_semantic_replay.sh`
 - Interface replay requirements: see `tki_semantic_contract.md`.
-- Missing coverage: rule-by-rule replay tests for private resource fields,
-  unsafe public API redlines, cache invalidation from semantic-only annotation
-  changes, and async negative dependency-return cases.
+- Missing coverage: rule-by-rule replay tests for unsafe public API redlines,
+  cache invalidation from semantic-only annotation changes, detached async
+  handoff, and generic private-resource fields.
 
 ### TKI-CACHE-001: Semantic cache metadata must invalidate stale or incompatible interfaces
 
