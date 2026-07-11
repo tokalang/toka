@@ -26,6 +26,15 @@ extern bool verboseMode;
 
 namespace toka {
 
+void CodeGen::markMemoryEvent(llvm::Instruction *instruction,
+                              const char *event) {
+  if (!instruction)
+    return;
+  instruction->setMetadata(
+      "toka.memory.local",
+      llvm::MDNode::get(m_Context, llvm::MDString::get(m_Context, event)));
+}
+
 llvm::IntegerType* CodeGen::getIntPtrTy() {
   llvm::Triple triple(m_Module->getTargetTriple());
   if (triple.isArch32Bit()) {

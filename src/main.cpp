@@ -16,6 +16,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
 #include "toka/Lexer.h"
+#include "toka/MemorySummary.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
 #include "toka/SemanticEvidence.h"
@@ -305,6 +306,7 @@ int main(int argc, char **argv) {
   bool dumpAssignmentStats = false;
   bool dumpHandleSurfaceStats = false;
   bool dumpSemanticEvidence = false;
+  bool dumpMemorySummaries = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard;
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
@@ -346,6 +348,8 @@ int main(int argc, char **argv) {
       dumpHandleSurfaceStats = true;
     } else if (arg == "--dump-semantic-evidence=json") {
       dumpSemanticEvidence = true;
+    } else if (arg == "--dump-memory-summaries=json") {
+      dumpMemorySummaries = true;
     } else if (arg == "--topology-eval") {
       runTopologyEval = true;
     } else if (arg == "--pkg" || arg == "-P") {
@@ -419,6 +423,13 @@ int main(int argc, char **argv) {
       (dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
        runTopologyEval || g_JsonDiagnostics)) {
     llvm::errs() << "--dump-semantic-evidence=json cannot be combined with "
+                    "another JSON or evaluation output mode\n";
+    return 1;
+  }
+  if (dumpMemorySummaries &&
+      (dumpSemanticEvidence || dumpAssignmentStats || dumpHandleSurfaceStats ||
+       dumpDependencies || runTopologyEval || g_JsonDiagnostics)) {
+    llvm::errs() << "--dump-memory-summaries=json cannot be combined with "
                     "another JSON or evaluation output mode\n";
     return 1;
   }
@@ -731,6 +742,21 @@ int main(int argc, char **argv) {
   // ----------------------------------------------------------------------------
 
   std::unique_ptr<toka::Module> genericModule = sema.extractGenericRegistry();
+  std::vector<toka::Module *> summaryModules;
+  summaryModules.reserve(astModules.size() + (genericModule ? 1 : 0));
+  for (const auto &ast : astModules)
+    summaryModules.push_back(ast.get());
+  if (genericModule)
+    summaryModules.push_back(genericModule.get());
+
+  toka::MemorySummaryAnalysis::run(summaryModules, !disableBorrowCheck);
+  std::vector<std::string> memorySummaryErrors;
+  if (!toka::MemorySummaryAnalysis::verify(
+          summaryModules, !disableBorrowCheck, memorySummaryErrors)) {
+    for (const auto &error : memorySummaryErrors)
+      llvm::errs() << "Memory summary verification error: " << error << '\n';
+    return 1;
+  }
   profile.mark("codegen_setup");
 
   if (verboseMode) fprintf(stderr, "Pass 1: Discovery (Registration)...\n");
@@ -780,6 +806,15 @@ int main(int argc, char **argv) {
     llvm::errs() << "Fatal Error: LLVM IR Verification Failed!\n";
     return 1;
   }
+  memorySummaryErrors.clear();
+  if (!toka::MemorySummaryAnalysis::verifyIR(
+          summaryModules, *codegen.getModule(), memorySummaryErrors)) {
+    for (const auto &error : memorySummaryErrors)
+      llvm::errs() << "Memory summary IR verification error: " << error << '\n';
+    return 1;
+  }
+  if (dumpMemorySummaries)
+    toka::MemorySummaryAnalysis::dumpJSON(summaryModules, std::cout);
   profile.mark("verify");
 
   if (verboseMode) fprintf(stderr, "Pass 4: Optimization (Coroutines & O2)...\n");

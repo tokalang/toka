@@ -117,6 +117,7 @@ public:
 
 private:
   int m_ErrorCount = 0;
+  void markMemoryEvent(llvm::Instruction *instruction, const char *event);
   template <typename... Args>
   void error(const ASTNode *node, DiagID id, Args &&...args) {
     m_ErrorCount++;

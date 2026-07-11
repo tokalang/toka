@@ -17,6 +17,7 @@
 #include "toka/Token.h"
 #include "toka/Type.h" // Added for ResolvedType
 #include "toka/ComptimeValue.h"
+#include "toka/MemorySummary.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -694,6 +695,7 @@ public:
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;
   bool IsCompilerInternal = false; // [Auto-Clone] Bypass visibility
+  FunctionDecl *ResolvedFn = nullptr;
 
   MethodCallExpr(std::unique_ptr<Expr> obj, const std::string &method,
                  std::vector<std::unique_ptr<Expr>> args)
@@ -706,6 +708,7 @@ public:
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->IsCompilerInternal = IsCompilerInternal;
+    n->ResolvedFn = nullptr;
     return n;
   }
 };
@@ -1576,6 +1579,7 @@ public:
   std::vector<std::string> LifeDependencies; // [NEW] e.g., <- x|y
   std::map<std::string, std::vector<std::string>> MemberDependencies; // [NEW] e.g. res.&left <- a
   std::unique_ptr<BlockStmt> Body;
+  FunctionMemorySummary MemorySummary;
 
   bool IsVariadic = false;
   bool IsDeleted = false; // [NEW] e.g., `= delete` function

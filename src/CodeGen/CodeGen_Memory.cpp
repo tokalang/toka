@@ -169,7 +169,8 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
     sizeVal = m_Builder.CreateMul(sizeVal, count);
   }
 
-  llvm::Value *rawPtr = m_Builder.CreateCall(allocHook, sizeVal);
+  llvm::CallInst *rawPtr = m_Builder.CreateCall(allocHook, sizeVal);
+  markMemoryEvent(rawPtr, "allocate");
   llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
   llvm::Value *castedPtr = m_Builder.CreateBitCast(rawPtr, ptrTy);
 
@@ -566,7 +567,8 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
 
     llvm::Value *casted =
         m_Builder.CreateBitCast(ptrAddr, m_Builder.getPtrTy());
-    m_Builder.CreateCall(freeHook, casted);
+    llvm::CallInst *freeCall = m_Builder.CreateCall(freeHook, casted);
+    markMemoryEvent(freeCall, "free");
   }
   return nullptr;
 }

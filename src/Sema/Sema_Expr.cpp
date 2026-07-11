@@ -2543,6 +2543,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (MethodDecls.count(soulType) &&
           MethodDecls[soulType].count(Met->Method)) {
         FunctionDecl *FD = MethodDecls[soulType][Met->Method];
+        Met->ResolvedFn = FD;
         
         if (FD->IsDeleted) {
           if (Met->IsCompilerInternal && Met->Method == "clone") {

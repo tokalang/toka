@@ -5866,7 +5866,9 @@ PhysEntity CodeGen::genNewExpr(const NewExpr *newExpr) {
     sizeVal = m_Builder.CreateMul(sizeVal, count);
   }
 
-  llvm::Value *voidPtr = m_Builder.CreateCall(mallocFn, sizeVal, "new_alloc");
+  llvm::CallInst *voidPtr =
+      m_Builder.CreateCall(mallocFn, sizeVal, "new_alloc");
+  markMemoryEvent(voidPtr, "allocate");
 
   // In LLVM 17 with opaque pointers, we just use the pointer.
   // But we need to handle initialization.

@@ -232,7 +232,8 @@ llvm::Value *CodeGen::genDeleteStmt(const DeleteStmt *del) {
     if (val && val->getType()->isPointerTy()) {
       llvm::Value *casted = m_Builder.CreateBitCast(
           val, llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(m_Context)));
-      m_Builder.CreateCall(freeFunc, casted);
+      llvm::CallInst *freeCall = m_Builder.CreateCall(freeFunc, casted);
+      markMemoryEvent(freeCall, "free");
     }
   }
   return nullptr;

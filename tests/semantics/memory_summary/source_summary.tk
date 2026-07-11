@@ -1,0 +1,48 @@
+shape SummaryData(value: i32)
+
+auto ms_global# = 0
+
+fn ms_read(data: SummaryData) -> i32 {
+    return data.value
+}
+
+fn ms_write(data#: SummaryData) -> i32 {
+    data.value = 7
+    return data.value
+}
+
+fn ms_forward(data#: SummaryData) -> i32 {
+    return ms_write(data)
+}
+
+fn ms_consume(cede data: SummaryData) -> i32 {
+    auto owned = cede data
+    return owned.value
+}
+
+fn ms_raw(*data: SummaryData) -> i32 {
+    unsafe {
+        return data.value
+    }
+}
+
+fn ms_async(cede data: SummaryData) -> async i32 {
+    auto owned = cede data
+    return owned.value
+}
+
+fn ms_touch_global(value: i32) {
+    ms_global = value
+}
+
+fn ms_memory() -> i32 {
+    unsafe {
+        auto *data# = alloc SummaryData(value = 1)
+        unsafe free *data
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}

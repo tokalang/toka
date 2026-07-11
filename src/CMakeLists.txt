@@ -20,6 +20,7 @@ Sema/Sema_Template.cpp
 Sema/AccessPath.cpp
     Sema/Sema_AccessPath.cpp
     Sema/SemanticEvidence.cpp
+    Sema/MemorySummary.cpp
     Sema/PAL_Checker.cpp
 Sema/TopologyCacheEval.cpp
 Type.cpp
