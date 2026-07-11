@@ -1,0 +1,5 @@
+import ./lib::{consume}
+
+fn main() -> i32 {
+    return 0
+}

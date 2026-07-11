@@ -204,4 +204,7 @@ cases should become explicit conformance tests in phase 2:
   export, source-less parsing, and caller-side enforcement after `.wait`
   covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
   detached `.start` handoff and in-function suspension remain open.
-- Cache invalidation when only semantic annotations change.
+- Cache invalidation when only semantic annotations change: covered by
+  `tests/semantics/tki_cache/cases` for parameter mutability, `cede`
+  parameters, effects routing, and async markers. Resource structure,
+  drop/clone, generic constraints, and trait metadata remain open.

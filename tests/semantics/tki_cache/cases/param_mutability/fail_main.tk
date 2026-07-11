@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E0475
+import ./lib::{Data, combine}
+
+fn main() -> i32 {
+    auto data# = Data(val = 1)
+    return combine(data, data)
+}

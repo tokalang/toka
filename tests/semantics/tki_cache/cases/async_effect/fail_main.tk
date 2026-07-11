@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E0702
+import ./lib::{compute}
+
+fn main() -> i32 {
+    compute()
+    return 0
+}

@@ -1,0 +1,9 @@
+pub shape Leaf(val: i32)
+pub shape Data(left: Leaf, right: Leaf)
+
+pub fn borrow_left(data: Data) -> &res: i32
+effects:
+    &res <- data.left.val
+{
+    return &(data.left.val)
+}

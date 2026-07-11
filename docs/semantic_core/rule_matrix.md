@@ -388,11 +388,12 @@ Primary references:
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`,
   `tests/semantics/tki_replay/cases/eff_member_001_return_deps`,
   `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
-- Negative tests: tests driven by `tools/scripts/test_tki_cache_validation.sh`
-  and `tools/scripts/test_semantic_replay.sh`
+- Negative tests: tests driven by `tools/scripts/test_tki_cache_validation.sh`,
+  `tools/scripts/test_semantic_replay.sh`, and
+  `tools/scripts/test_semantic_cache_invalidation.sh`
 - Interface replay requirements: see `tki_semantic_contract.md`.
 - Missing coverage: rule-by-rule replay tests for unsafe public API redlines,
-  cache invalidation from semantic-only annotation changes, detached async
+  remaining resource/generic/trait semantic-only cache changes, detached async
   handoff, and generic private-resource fields.
 
 ### TKI-CACHE-001: Semantic cache metadata must invalidate stale or incompatible interfaces
@@ -406,14 +407,21 @@ Primary references:
 - Rationale: stale interfaces can otherwise replay old semantic facts.
 - Primary diagnostics: dependency manifest `cache_status` values
 - Implementation areas: `src/main.cpp`, `docs/dependency_manifest_schema.md`,
-  `tools/scripts/test_tki_cache_validation.sh`
+  `tools/scripts/test_tki_cache_validation.sh`,
+  `tools/scripts/test_semantic_cache_invalidation.sh`
 - Positive tests: `tools/scripts/test_incremental_build.sh`,
-  `tools/scripts/test_tki_cache_validation.sh`
+  `tools/scripts/test_tki_cache_validation.sh`,
+  `tools/scripts/test_semantic_cache_invalidation.sh`
 - Negative tests: cache validation script cases
 - Interface replay requirements: every semantic fact in
   `tki_semantic_contract.md` must participate in interface format stability.
-- Missing coverage: direct tests that mutate only semantic annotations without
-  changing ABI-like shape.
+- Semantic-only invalidation tests: `tests/semantics/tki_cache/cases` covers
+  parameter mutability, `cede` parameters, effects routing, and async effect
+  markers. Each case proves that the old consumer passes, the cache reports
+  `SourceHashMismatch`, fallback occurs, and the new caller-side constraint is
+  enforced.
+- Missing coverage: private resource structure, deleted clone/drop, generic
+  constraints, and trait/associated-type semantic-only cache changes.
 
 ## Unsafe Boundary Rules
 

@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0442
+import ./lib::{Data, Leaf, borrow_left}
+
+fn main() -> i32 {
+    auto data# = Data(left = Leaf(val = 1), right = Leaf(val = 2))
+    auto &view = borrow_left(data)
+    data.right = Leaf(val = 4)
+    return view
+}

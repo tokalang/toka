@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E04570
+import ./lib::{Payload, consume}
+
+fn main() -> i32 {
+    auto payload = Payload(val = 1)
+    return consume(payload)
+}
