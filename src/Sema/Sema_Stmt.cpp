@@ -1313,6 +1313,8 @@ void Sema::checkStmt(Stmt *S) {
           if (actualDep.rfind("self.", 0) == 0)
             actualDep = Var->Name + actualDep.substr(4);
           Info.FieldDependencySet[pair.first].insert(actualDep);
+          Info.LifeDependencySet.insert(actualDep);
+          depsToCommitAsBorrow.insert(actualDep);
         }
       }
       m_LastFieldDependencies.clear();
@@ -1361,7 +1363,13 @@ void Sema::checkStmt(Stmt *S) {
       Info.TypeObj = toka::Type::fromString(fullType);
     }
 
-    if (!depsToCommitAsBorrow.empty() && (Var->IsReference || morph == "&")) {
+    std::string dependencySoul =
+        Info.TypeObj ? Info.TypeObj->getSoulName() : "";
+    bool isBorrowedViewValue =
+        dependencySoul == "str" || dependencySoul == "bytes";
+    if (!depsToCommitAsBorrow.empty() &&
+        (Var->IsReference || morph == "&" || isBorrowedViewValue ||
+         !Info.FieldDependencySet.empty())) {
       for (const auto &dep : depsToCommitAsBorrow) {
         if (dep.empty())
           continue;

@@ -271,11 +271,11 @@ Primary references:
 - Interface replay requirements: member dependencies must be exported as
   `effects:` entries and consumed from `.tki`.
 - Replay tests: `tests/semantics/tki_replay/cases/eff_member_001_return_deps`
-  checks export and source-less parsing of member-specific `effects:`
-  declarations. It does not yet prove caller-side path locking.
-- Missing coverage: a discriminating source-less consumer test proving that
-  each returned member locks only its declared source path; negative
-  member-swap replay remains provider-side source validation only.
+  checks export, source-less parsing, and caller-side source locking for
+  member-specific `effects:` declarations.
+- Missing coverage: field-sensitive release or transfer tests proving that
+  retaining only one returned member does not lock unrelated source paths;
+  negative member-swap replay remains provider-side source validation only.
 
 ### EFF-SHAPE-001: Shape-internal dependency declarations are excluded from 1.0
 
@@ -356,10 +356,10 @@ Primary references:
 - Interface replay requirements: async return type and dependency facts must be
   preserved together.
 - Replay tests: `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
-  checks export and source-less parsing of `async str <- x`; it does not yet
-  prove caller-side dependency enforcement across suspension.
-- Missing coverage: negative replay tests for invalid async borrowed return and
-  task handoff cases.
+  checks export, source-less parsing, and caller-side dependency enforcement
+  after consuming `async str <- x` with `.wait`.
+- Missing coverage: detached `.start` handoff policy and dependency enforcement
+  across suspension inside an async function.
 
 ## Interface Replay And Cache Rules
 

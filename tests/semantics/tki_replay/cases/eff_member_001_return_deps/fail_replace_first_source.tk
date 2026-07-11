@@ -4,11 +4,6 @@ fn main() -> i32 {
     auto e1# = Engine(val = 3)
     auto e2# = Engine(val = 4)
     auto refs = split_engines(e1, e2)
-    if refs.first != 3 {
-        return 1
-    }
-    if refs.second != 4 {
-        return 2
-    }
-    return 0
+    e1 = Engine(val = 5) // EXPECT_ERROR: E0442
+    return refs.first
 }

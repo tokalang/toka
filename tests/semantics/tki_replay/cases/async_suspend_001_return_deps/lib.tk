@@ -1,4 +1,10 @@
-// EXPECT_TKI: -> async str <- s
-pub fn get_async_view(s: str) -> async str <- s {
-    return s
+// EXPECT_TKI: -> async str
+// EXPECT_TKI: return <- data.view
+pub shape Data(view: str)
+
+pub fn get_async_view(data: Data) -> async str
+effects:
+    return <- data.view
+{
+    return data.view
 }

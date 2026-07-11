@@ -1669,11 +1669,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   if (Fn && Fn->Effect == EffectKind::Async) isAsync = true;
   if (Ext && Ext->Effect == EffectKind::Async) isAsync = true;
   
-  if (isAsync) {
-      std::string tName = "TaskHandle<" + ReturnType->toString() + ">";
-      return toka::Type::fromString(tName);
-  }
-
   // Inject Caller-Side Effect Dependencies
   if (Fn) {
       bool hasExplicitDeps = !Fn->LifeDependencies.empty();
@@ -1752,7 +1747,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 if (!argResolvedType && argInfo)
                   argResolvedType = argInfo->TypeObj;
 
-                if (contributedDeps || isCurrentFunctionParam ||
+                bool isDottedDependency = argName != dep;
+                if (isDottedDependency || contributedDeps ||
+                    isCurrentFunctionParam ||
                     !isBorrowLikeType(argResolvedType)) {
                   m_LastLifeDependencies.insert(argVar);
                 }
@@ -1769,6 +1766,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
   }
 
+  if (isAsync) {
+    std::string tName = "TaskHandle<" + ReturnType->toString() + ">";
+    return toka::Type::fromString(tName);
+  }
   return ReturnType;
 }
 

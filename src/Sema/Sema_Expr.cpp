@@ -367,8 +367,14 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   ActiveNodeRAII Active(E);
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
+  std::set<std::string> taskDependencies;
+  if (T && T->toString().find("TaskHandle") != std::string::npos)
+    taskDependencies = m_LastLifeDependencies;
   // [Fix] Monomorphize type before assigning it to the node
   T = resolveType(T);
+  if (!taskDependencies.empty())
+    m_LastLifeDependencies.insert(taskDependencies.begin(),
+                                  taskDependencies.end());
   E->ResolvedType = T;
 
   if (!dynamic_cast<UnsetExpr *>(E) && !dynamic_cast<InitStructExpr *>(E) &&
@@ -400,6 +406,11 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
           return false;
       };
       hasRefs = checkType(T);
+      std::string soul = T->getSoulName();
+      if (!m_LastLifeDependencies.empty() &&
+          soul.rfind("TaskHandle", 0) == 0) {
+        hasRefs = true;
+      }
   }
 
   if (!hasRefs) {

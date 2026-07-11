@@ -1,11 +1,11 @@
-// EXPECT_TKI: return.first <- e1
-// EXPECT_TKI: return.second <- e2
+// EXPECT_TKI: return.first <- e1.val
+// EXPECT_TKI: return.second <- e2.val
 pub shape Engine(val: i32)
 
-pub fn split_engines(e1: Engine, e2: Engine) -> res: (first: &Engine, second: &Engine)
+pub fn split_engines(e1: Engine, e2: Engine) -> res: (first: &i32, second: &i32)
 effects:
-    res.first <- e1
-    res.second <- e2
+    res.first <- e1.val
+    res.second <- e2.val
 {
-    return (first = &e1, second = &e2)
+    return (first = &(e1.val), second = &(e2.val))
 }

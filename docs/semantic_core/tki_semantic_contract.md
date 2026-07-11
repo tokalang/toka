@@ -192,13 +192,13 @@ cases should become explicit conformance tests in phase 2:
 - Whole-return dependencies through imported `.tki`: covered by
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`.
 - Member-specific `effects:` dependency declarations through imported `.tki`:
-  export and source-less parsing covered by
-  `tests/semantics/tki_replay/cases/eff_member_001_return_deps`; caller-side
-  path enforcement and negative member-swap replay remain open.
+  export, source-less parsing, and caller-side source locking covered by
+  `tests/semantics/tki_replay/cases/eff_member_001_return_deps`; field-sensitive
+  release/transfer and negative member-swap replay remain open.
 - Private resource fields causing downstream copy/destructure rejection.
 - Public unsafe/raw API redline through imported `.tki`.
 - Async borrowed return dependency through imported `.tki`: positive replay
-  export and source-less parsing covered by
-  `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
-  caller-side enforcement and negative replay remain open.
+  export, source-less parsing, and caller-side enforcement after `.wait`
+  covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
+  detached `.start` handoff and in-function suspension remain open.
 - Cache invalidation when only semantic annotations change.

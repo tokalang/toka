@@ -63,13 +63,15 @@ fn main() -> i32 {
     }
 
     // 4. Test alloc_str
-    println("Testing alloc_str...")
-    auto orig_str: str = "TokaLangSelfHosting AST Node string Persistence"
-    auto arena_str = alloc_str(arena, orig_str)
-    
-    println("orig_str: '{}', arena_str: '{}'", orig_str, arena_str)
-    assert(arena_str == orig_str, "Allocated string must be equal to original string")
-    assert(arena_str.raw_ptr() != orig_str.raw_ptr(), "Allocated string must have different pointer from literal")
+    {
+        println("Testing alloc_str...")
+        auto orig_str: str = "TokaLangSelfHosting AST Node string Persistence"
+        auto arena_str = alloc_str(arena, orig_str)
+
+        println("orig_str: '{}', arena_str: '{}'", orig_str, arena_str)
+        assert(arena_str == orig_str, "Allocated string must be equal to original string")
+        assert(arena_str.raw_ptr() != orig_str.raw_ptr(), "Allocated string must have different pointer from literal")
+    }
 
     // 5. Test reset and reuse
     arena#.reset()
