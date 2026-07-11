@@ -1805,6 +1805,7 @@ public:
   std::string ResolvedPath;
   bool IsRootModule = false;
   bool IsInterface = false;
+  bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
   std::vector<std::unique_ptr<ImportDecl>> Imports;
   std::vector<std::unique_ptr<TypeAliasDecl>> TypeAliases;

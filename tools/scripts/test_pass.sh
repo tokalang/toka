@@ -482,6 +482,13 @@ if ! run_without_test_cache bash tools/scripts/test_public_unsafe_api.sh; then
 fi
 
 echo ""
+echo "Running untrusted TKI unsafe API revalidation tests..."
+if ! run_without_test_cache bash tools/scripts/test_tki_unsafe_revalidation.sh; then
+    echo -e "${RED}Untrusted TKI unsafe API revalidation tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running ODR Path & Interface Behavior lock tests..."
 if ! run_without_test_cache bash tools/scripts/test_path_behavior.sh; then
     echo -e "${RED}Path behavior lock tests failed!${NC}"

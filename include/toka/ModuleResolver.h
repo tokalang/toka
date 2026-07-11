@@ -49,7 +49,8 @@ public:
     ModuleResolver(SourceManager &sm,
                    std::vector<std::string> searchPaths,
                    std::map<std::string, std::string> pkgMap = {},
-                   bool preferSource = false);
+                   bool preferSource = false,
+                   std::vector<std::string> trustedSystemRoots = {});
 
     // Parse the entry file and all imports recursively.
     // If overrideSourceCode is non-empty, the entry file content is taken from it (used in playground).
@@ -79,6 +80,7 @@ private:
     std::map<std::string, std::string> m_PkgMap;
     bool m_PreferSource;
     bool m_UseBuildCache;
+    std::vector<std::string> m_TrustedSystemRoots;
     std::vector<std::string> m_Roots;
 
     std::set<std::string> m_ProvidedObjects;

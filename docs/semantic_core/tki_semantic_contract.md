@@ -14,6 +14,26 @@ A `.tki` file is not only an ABI summary. It is a semantic replay artifact.
 Visibility controls what user code may name; it must not erase facts the
 compiler needs for checking downstream code.
 
+Compatibility metadata is not a trust credential. In particular,
+`source_path` is supplied by the interface and cannot grant standard-library,
+prelude, build-file, or test exemptions.
+
+### Interface Trust Boundary
+
+Source-less and third-party interfaces are untrusted semantic inputs. Their
+public declarations must be checked against the same unsafe API redlines as
+source declarations, including raw pointer parameters, returns, and fields.
+Explicit `unsafe_`, `raw_`, `Unsafe*`, and `Raw*` naming remains the only
+interface-controlled exemption.
+
+Compiler-provided standard-library interfaces form a trusted system boundary.
+That status is held only in resolver state and is never serialized into `.tki`.
+It may be established when the physical interface is resolved from a
+compiler-configured standard-library root, or when a real source module from
+such a root is replaced by its build-cache interface. Package mappings,
+ordinary include paths, and interface metadata cannot establish this status by
+themselves.
+
 ## Required Semantic Facts
 
 ### Module And Cache Identity
@@ -201,7 +221,11 @@ cases should become explicit conformance tests in phase 2:
   covered by
   `tests/semantics/tki_replay/cases/own_resource_001_private_field` for copy
   capture and naked destructuring; spread and generic cases remain open.
-- Public unsafe/raw API redline through imported `.tki`.
+- Public unsafe/raw API redline through imported `.tki`: covered by
+  `tools/scripts/test_tki_unsafe_revalidation.sh` for parameters, returns,
+  fields, generic declarations, forged exempt-looking source paths, ordinary
+  include paths, explicit naming exemptions, and compiler-configured trusted
+  roots.
 - Async borrowed return dependency through imported `.tki`: positive replay
   export, source-less parsing, and caller-side enforcement after `.wait`
   covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;

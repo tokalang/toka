@@ -230,6 +230,87 @@ static bool isUnsafeType(const std::shared_ptr<toka::Type>& T) {
   return false;
 }
 
+static bool isUnsafePublicAPIExempt(const Module *module,
+                                    SourceLocation loc) {
+  if (module && module->IsInterface) {
+    return module->IsTrustedSystemModule;
+  }
+
+  std::string path;
+  if (loc.isValid()) {
+    path = DiagnosticEngine::SrcMgr->getFullSourceLoc(loc).FileName;
+  }
+  if (path.empty() && module) {
+    path = module->SourcePath;
+  }
+  return path.find("build.tk") != std::string::npos ||
+         path.find("prelude") != std::string::npos ||
+         path.find("tests/pass/") != std::string::npos ||
+         path.find("lib/") != std::string::npos;
+}
+
+void Sema::checkUnsafePublicFunctionBoundary(FunctionDecl *Fn) {
+  if (isUnsafePublicAPIExempt(CurrentModule, Fn->Loc) || !Fn->IsPub ||
+      Fn->Name.rfind("unsafe_", 0) == 0 ||
+      Fn->Name.rfind("raw_", 0) == 0 || Fn->Name.rfind("__", 0) == 0) {
+    return;
+  }
+
+  for (auto &Arg : Fn->Args) {
+    std::shared_ptr<toka::Type> type = Arg.ResolvedType;
+    if (!type) {
+      type = toka::Type::fromString(
+          resolveType(Sema::synthesizePhysicalType(Arg, false)));
+    }
+    if (isUnsafeType(type)) {
+      DiagnosticEngine::report(Fn->Loc, DiagID::ERR_EXPOSED_UNSAFE_TYPE,
+                               Fn->Name, type->toString(), Arg.Name);
+      HasError = true;
+    }
+  }
+
+  if (Fn->ReturnType != "void") {
+    std::shared_ptr<toka::Type> type = Fn->ResolvedReturnType;
+    if (!type) {
+      type = toka::Type::fromString(resolveType(Fn->ReturnType));
+    }
+    if (isUnsafeType(type)) {
+      DiagnosticEngine::report(Fn->Loc, DiagID::ERR_EXPOSED_UNSAFE_RET,
+                               Fn->Name, type->toString());
+      HasError = true;
+    }
+  }
+}
+
+void Sema::checkUnsafePublicShapeBoundary(ShapeDecl *Shape) {
+  if (isUnsafePublicAPIExempt(CurrentModule, Shape->Loc) || !Shape->IsPub ||
+      Shape->Name == "cstr" || Shape->Name.rfind("Unsafe", 0) == 0 ||
+      Shape->Name.rfind("Raw", 0) == 0) {
+    return;
+  }
+
+  auto checkMember = [&](ShapeMember &member) {
+    std::shared_ptr<toka::Type> type = member.ResolvedType;
+    if (!type) {
+      type = toka::Type::fromString(
+          resolveType(Sema::synthesizePhysicalType(member)));
+    }
+    if (isUnsafeType(type)) {
+      DiagnosticEngine::report(Shape->Loc,
+                               DiagID::ERR_EXPOSED_UNSAFE_FIELD, Shape->Name,
+                               member.Name, type->toString());
+      HasError = true;
+    }
+  };
+
+  for (auto &member : Shape->Members) {
+    checkMember(member);
+    for (auto &subMember : member.SubMembers) {
+      checkMember(subMember);
+    }
+  }
+}
+
 static bool isTypeNameBoundary(char c) {
   return !std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '\'';
 }
@@ -637,15 +718,21 @@ bool Sema::checkModule(Module &M) {
   // 2b. Check function bodies (reordered)
 
   for (size_t i = 0; i < M.Functions.size(); ++i) {
-    if (!M.Functions[i]->GenericParams.empty())
+    if (!M.Functions[i]->GenericParams.empty()) {
+      checkUnsafePublicFunctionBoundary(M.Functions[i].get());
       continue; // [NEW] Skip Generic Templates
+    }
     checkFunction(M.Functions[i].get());
   }
 
   // 2c. Check Impl blocks (NEW: Proper Self Injection)
   for (size_t i = 0; i < M.Impls.size(); ++i) {
-    if (!M.Impls[i]->GenericParams.empty())
+    if (!M.Impls[i]->GenericParams.empty()) {
+      for (auto &Method : M.Impls[i]->Methods) {
+        checkUnsafePublicFunctionBoundary(Method.get());
+      }
       continue; // Skip templates, they are checked upon instantiation
+    }
     checkImpl(M.Impls[i].get());
   }
   // ...
@@ -1669,37 +1756,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   }
 
   // --- Sema: Safety Redline Boundaries ---
-  bool isExemptFile = false;
-  if (Fn->Loc.isValid()) {
-    std::string path = DiagnosticEngine::SrcMgr->getFullSourceLoc(Fn->Loc).FileName;
-    if (path.find("build.tk") != std::string::npos ||
-        path.find("prelude") != std::string::npos ||
-        path.find("tests/pass/") != std::string::npos ||
-        path.find("lib/") != std::string::npos) {
-      isExemptFile = true;
-    }
-  }
-  if (!isExemptFile && CurrentModule && (CurrentModule->SourcePath.find("build.tk") != std::string::npos ||
-                        CurrentModule->SourcePath.find("prelude") != std::string::npos ||
-                        CurrentModule->SourcePath.find("tests/pass/") != std::string::npos ||
-                        CurrentModule->SourcePath.find("lib/") != std::string::npos)) {
-    isExemptFile = true;
-  }
-
-  if (!isExemptFile && Fn->IsPub && Fn->Name.rfind("unsafe_", 0) != 0 && Fn->Name.rfind("raw_", 0) != 0 && Fn->Name.rfind("__", 0) != 0) {
-    for (auto &Arg : Fn->Args) {
-      if (isUnsafeType(Arg.ResolvedType)) {
-        DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_EXPOSED_UNSAFE_TYPE,
-                                 Fn->Name, Arg.ResolvedType->toString(), Arg.Name);
-        HasError = true;
-      }
-    }
-    if (Fn->ReturnType != "void" && isUnsafeType(Fn->ResolvedReturnType)) {
-      DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_EXPOSED_UNSAFE_RET,
-                               Fn->Name, Fn->ResolvedReturnType->toString());
-      HasError = true;
-    }
-  }
+  checkUnsafePublicFunctionBoundary(Fn);
 
   if (Fn->Body) {
     checkStmt(Fn->Body.get());
@@ -1791,6 +1848,9 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 void Sema::checkImpl(ImplDecl *Impl) {
   // [NEW] Skip Generic Templates until Instantiation
   if (!Impl->GenericParams.empty()) {
+      for (auto &Method : Impl->Methods) {
+        checkUnsafePublicFunctionBoundary(Method.get());
+      }
       return;
   }
   // (Assuming Impl<T> is handled similarly to Functions, but for now we focus
@@ -1939,8 +1999,10 @@ void Sema::analyzeShapes(Module &M) {
   for (auto &S : M.Shapes) {
     // [NEW] Skip analysis for Generic Templates. They are analyzed only upon
     // Instantiation.
-    if (!S->GenericParams.empty())
+    if (!S->GenericParams.empty()) {
+      checkUnsafePublicShapeBoundary(S.get());
       continue;
+    }
 
     // We only resolve members for structs, enum payload records, and legacy bare unions (not enum variants).
     // purely yet? Enums have members too) Actually ShapeMember is used for
@@ -2015,39 +2077,7 @@ void Sema::analyzeShapes(Module &M) {
     }
 
     // --- Sema: Safety Redline Boundaries ---
-    bool isExemptFile = false;
-    if (S->Loc.isValid()) {
-      std::string path = DiagnosticEngine::SrcMgr->getFullSourceLoc(S->Loc).FileName;
-      if (path.find("build.tk") != std::string::npos ||
-          path.find("prelude") != std::string::npos ||
-          path.find("tests/pass/") != std::string::npos ||
-          path.find("lib/") != std::string::npos) {
-        isExemptFile = true;
-      }
-    }
-    if (!isExemptFile && CurrentModule && (CurrentModule->SourcePath.find("build.tk") != std::string::npos ||
-                          CurrentModule->SourcePath.find("prelude") != std::string::npos ||
-                          CurrentModule->SourcePath.find("tests/pass/") != std::string::npos ||
-                          CurrentModule->SourcePath.find("lib/") != std::string::npos)) {
-      isExemptFile = true;
-    }
-
-    if (!isExemptFile && S->IsPub && S->Name != "cstr" && S->Name.rfind("Unsafe", 0) != 0 && S->Name.rfind("Raw", 0) != 0) {
-      for (auto &member : S->Members) {
-        if (isUnsafeType(member.ResolvedType)) {
-          DiagnosticEngine::report(getLoc(S.get()), DiagID::ERR_EXPOSED_UNSAFE_FIELD,
-                                   S->Name, member.Name, member.ResolvedType->toString());
-          HasError = true;
-        }
-        for (auto &subMemb : member.SubMembers) {
-          if (isUnsafeType(subMemb.ResolvedType)) {
-            DiagnosticEngine::report(getLoc(S.get()), DiagID::ERR_EXPOSED_UNSAFE_FIELD,
-                                     S->Name, subMemb.Name, subMemb.ResolvedType->toString());
-            HasError = true;
-          }
-        }
-      }
-    }
+    checkUnsafePublicShapeBoundary(S.get());
   }
 
   // First pass: Compute properties for all shapes

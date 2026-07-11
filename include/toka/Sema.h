@@ -401,6 +401,8 @@ private:
 
   // Passes
   void registerGlobals(Module &M);
+  void checkUnsafePublicFunctionBoundary(FunctionDecl *Fn);
+  void checkUnsafePublicShapeBoundary(ShapeDecl *Shape);
   void checkFunction(FunctionDecl *Fn);
   std::string getTraitFamilyName(const std::string &traitName) const;
   TraitDecl *findTraitDecl(const std::string &traitName) const;

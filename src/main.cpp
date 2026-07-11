@@ -238,40 +238,47 @@ static std::string normalizePath(const std::string &path) {
 
 int main(int argc, char **argv) {
   std::vector<std::string> searchPaths;
-  auto splitEnvPaths = [&](const char* envName) {
+  std::vector<std::string> trustedSystemRoots = {"lib", "../lib"};
+  auto splitEnvPaths = [&](const char* envName, std::vector<std::string> &out) {
     if (const char* env_p = std::getenv(envName)) {
       std::string envStr(env_p);
       std::stringstream ss(envStr);
       std::string item;
+      std::vector<std::string> parsed;
       while (std::getline(ss, item, llvm::sys::EnvPathSeparator)) {
         if (!item.empty()) {
-          searchPaths.push_back(item);
+          parsed.push_back(item);
         }
       }
 
       // Dual-Separator Fallback for MSYS2/MinGW mixed environments on Windows
-      if (llvm::sys::EnvPathSeparator == ';' && searchPaths.size() <= 1) {
-        std::string singlePath = searchPaths.empty() ? envStr : searchPaths[0];
+      if (llvm::sys::EnvPathSeparator == ';' && parsed.size() <= 1) {
+        std::string singlePath = parsed.empty() ? envStr : parsed[0];
         size_t colonCount = 0;
         for (char c : singlePath) if (c == ':') colonCount++;
 
         // If it contains colons and doesn't look like a standard Windows drive letter path (like C:\)
         if (colonCount > 0 && (singlePath.size() < 2 || singlePath[1] != ':')) {
-          searchPaths.clear();
+          parsed.clear();
           std::stringstream ss2(singlePath);
           std::string item2;
           while (std::getline(ss2, item2, ':')) {
             if (!item2.empty()) {
-              searchPaths.push_back(item2);
+              parsed.push_back(item2);
             }
           }
         }
       }
+      out.insert(out.end(), parsed.begin(), parsed.end());
     }
   };
 
-  splitEnvPaths("TOKA_LIB");
-  splitEnvPaths("TOKA_PATH");
+  std::vector<std::string> tokaLibPaths;
+  splitEnvPaths("TOKA_LIB", tokaLibPaths);
+  searchPaths.insert(searchPaths.end(), tokaLibPaths.begin(), tokaLibPaths.end());
+  trustedSystemRoots.insert(trustedSystemRoots.end(), tokaLibPaths.begin(),
+                            tokaLibPaths.end());
+  splitEnvPaths("TOKA_PATH", searchPaths);
 
   std::vector<std::string> sourceFiles;
   std::vector<std::string> objectFiles;
@@ -440,7 +447,8 @@ int main(int argc, char **argv) {
 
   std::vector<std::unique_ptr<toka::Module>> astModules;
   bool preferSource = !compileOnly;
-  toka::ModuleResolver resolver(sm, searchPaths, pkgMap, preferSource);
+  toka::ModuleResolver resolver(sm, searchPaths, pkgMap, preferSource,
+                                trustedSystemRoots);
   resolver.setProvidedObjects(objectFiles);
   bool parseSuccess = true;
   for (size_t i = 0; i < sourceFiles.size(); ++i) {

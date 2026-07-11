@@ -17,11 +17,32 @@ static std::string calculateFNV1a(const std::string &str);
 ModuleResolver::ModuleResolver(SourceManager &sm,
                                std::vector<std::string> searchPaths,
                                std::map<std::string, std::string> pkgMap,
-                               bool preferSource)
+                               bool preferSource,
+                               std::vector<std::string> trustedSystemRoots)
     : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)),
       m_PkgMap(std::move(pkgMap)), m_PreferSource(preferSource) {
+    for (const auto &root : trustedSystemRoots) {
+        m_TrustedSystemRoots.push_back(PathUtils::canonicalize(root));
+    }
     const char *useBuildCache = std::getenv("TOKA_USE_LIB_CACHE");
     m_UseBuildCache = useBuildCache && std::string(useBuildCache) == "1";
+}
+
+static bool isWithinRoot(const std::string &path,
+                         const std::vector<std::string> &roots) {
+    std::string canonical = PathUtils::canonicalize(path);
+    for (std::string root : roots) {
+        while (root.size() > 1 && (root.back() == '/' || root.back() == '\\')) {
+            root.pop_back();
+        }
+        if (canonical == root ||
+            (canonical.size() > root.size() &&
+             canonical.compare(0, root.size(), root) == 0 &&
+             (canonical[root.size()] == '/' || canonical[root.size()] == '\\'))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
@@ -438,6 +459,10 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->ResolvedPath = canonicalPath;
   module->IsRootModule = (m_RecursionStack.size() == 1);
   module->IsInterface = finalIsInterface;
+  module->IsTrustedSystemModule =
+      finalIsInterface &&
+      (isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
+       isWithinRoot(canonicalPath, m_TrustedSystemRoots));
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
 
   // Recursively parse imports

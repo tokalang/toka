@@ -448,10 +448,16 @@ Primary references:
 - Rationale: raw pointers are outside PAL's safe-borrow guarantee.
 - Primary diagnostics: `E0480`, `E0481`, `E0482`
 - Implementation areas: `src/Sema/Sema.cpp`,
-  `tools/scripts/test_public_unsafe_api.sh`
+  `src/Basic/ModuleResolver.cpp`, `tools/scripts/test_public_unsafe_api.sh`,
+  `tools/scripts/test_tki_unsafe_revalidation.sh`
 - Positive tests: `tests/pass/g03_unsafe_null_privilege.tk`
 - Negative tests: `tests/fail/pub_api_exposed_raw_ptr.tk`,
   `tests/fail/pub_shape_exposed_ptr.tk`
 - Interface replay requirements: public exported signatures and fields must
-  preserve raw pointer exposure.
-- Missing coverage: source-less `.tki` public unsafe API redline tests.
+  preserve raw pointer exposure; interface metadata cannot grant path-based
+  exemptions. Only resolver-proven standard-library interfaces retain the
+  trusted-system exemption.
+- Source-less coverage: parameter `E0480`, return `E0481`, field `E0482`,
+  generic declarations, forged `lib/prelude/tests/pass/build.tk` paths,
+  ordinary include paths, explicit unsafe/raw names, and compiler-configured
+  trusted roots.
