@@ -1,0 +1,6 @@
+import ./lib::{make_vault, read_id}
+
+fn main() -> i32 {
+    auto vault = make_vault()
+    return read_id(vault) - 7
+}

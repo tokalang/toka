@@ -1,0 +1,11 @@
+// EXPECT_ERROR: E04571
+import ./lib::{Box, @Readable}
+
+fn accept_i32(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    auto box = Box(value = 5)
+    return accept_i32(box.read())
+}

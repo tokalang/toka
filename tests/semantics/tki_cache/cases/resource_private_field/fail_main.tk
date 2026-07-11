@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04581
+import ./lib::{make_capsule, read_id}
+
+fn main() -> i32 {
+    auto capsule = make_capsule()
+    auto copied: fn() -> i32 = { [copy capsule] => read_id(capsule) }
+    return copied()
+}

@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04507
+import ./lib::{make_resource, read_resource}
+
+fn main() -> i32 {
+    auto resource = make_resource()
+    auto copied = resource.clone()
+    return read_resource(copied)
+}

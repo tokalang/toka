@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0608
+import ./lib::{@Base, @Feature}
+
+shape Local()
+
+impl Local@Feature {}
+
+fn main() -> i32 {
+    return 0
+}

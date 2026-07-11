@@ -201,10 +201,10 @@ Any change to these facts must invalidate stale `.tki` replay:
 - public unsafe/raw API exposure,
 - interface format version.
 
-## Phase-1 Missing Replay Coverage
+## Phase-2 Conformance Coverage
 
-The current test suite has broad source-level coverage. The following replay
-cases should become explicit conformance tests in phase 2:
+The following matrix records the explicit source/interface conformance tests
+completed in phase 2:
 
 - PAL call-site alias conflict through imported `.tki`: covered by
   `tests/semantics/tki_replay/cases/pal_call_001_alias`.
@@ -215,12 +215,14 @@ cases should become explicit conformance tests in phase 2:
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`.
 - Member-specific `effects:` dependency declarations through imported `.tki`:
   export, source-less parsing, and caller-side source locking covered by
-  `tests/semantics/tki_replay/cases/eff_member_001_return_deps`; field-sensitive
-  release/transfer and negative member-swap replay remain open.
+  `tests/semantics/tki_replay/cases/eff_member_001_return_deps`, including
+  field-sensitive transfer, unrelated-source release, and swapped routing.
 - Private resource fields causing downstream copy/destructure rejection:
   covered by
   `tests/semantics/tki_replay/cases/own_resource_001_private_field` for copy
-  capture and naked destructuring; spread and generic cases remain open.
+  capture and naked destructuring, and by
+  `tests/semantics/tki_replay/cases/own_resource_002_spread_generic` for generic
+  private resource fields, spread, and copy capture.
 - Public unsafe/raw API redline through imported `.tki`: covered by
   `tools/scripts/test_tki_unsafe_revalidation.sh` for parameters, returns,
   fields, generic declarations, forged exempt-looking source paths, ordinary
@@ -231,9 +233,13 @@ cases should become explicit conformance tests in phase 2:
   covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
   borrowed `.start` rejection is covered by the same case, and explicit cede
   handoff is covered by
-  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`; in-function
-  suspension remains open.
+  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`. In-function
+  suspension is a separate, not-yet-frozen design topic and is outside this
+  conformance phase.
 - Cache invalidation when only semantic annotations change: covered by
   `tests/semantics/tki_cache/cases` for parameter mutability, `cede`
-  parameters, effects routing, and async markers. Resource structure,
-  drop/clone, generic constraints, and trait metadata remain open.
+  parameters, effects routing and swapping, async markers, private resource
+  structure, deleted clone, generic function and impl constraints, trait
+  prerequisites, associated type bindings, and dyn object safety. Every case
+  proves old-interface acceptance, `SourceHashMismatch` fallback, source-side
+  rejection, and fresh source-less interface rejection.

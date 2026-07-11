@@ -1,9 +1,9 @@
 # TKI Replay Semantic Tests
 
-These tests verify that source-less `.tki` replay preserves Toka 1.0 semantic
-facts. Each case compiles a provider module to `.o` and `.tki`, hides the
-provider `.tk` source, then compiles consumer modules against only the generated
-interface plus object file.
+These tests verify that source and source-less `.tki` paths preserve the same
+Toka 1.0 semantic facts. Each case first compiles every consumer against the
+provider source, then hides the provider `.tk` and repeats the same decisions
+against only the generated interface plus object file.
 
 Case layout:
 

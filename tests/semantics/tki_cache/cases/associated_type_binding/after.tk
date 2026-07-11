@@ -1,0 +1,14 @@
+pub trait @Readable {
+    type Item
+    pub fn read(self) -> Item
+}
+
+pub shape Box(value: string)
+
+impl Box@Readable {
+    type Item = string
+
+    pub fn read(self) -> Item {
+        return self.value
+    }
+}

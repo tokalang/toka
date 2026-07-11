@@ -1,0 +1,17 @@
+import core/traits::{@encap}
+
+pub shape Capsule(id: i32, ^secret: i32)
+
+impl Capsule@encap {
+    pub * ! secret
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+pub fn make_capsule() -> Capsule {
+    return Capsule(id = 7, ^secret = new i32(11))
+}
+
+pub fn read_id(capsule: Capsule) -> i32 {
+    return capsule.id
+}

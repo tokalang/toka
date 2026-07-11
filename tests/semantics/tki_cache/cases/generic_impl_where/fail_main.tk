@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E0417
+import ./lib::{Box, Plain, @Marked}
+
+fn main() -> i32 {
+    auto box = Box<Plain>(item = Plain(value = 1))
+    return box.marker()
+}

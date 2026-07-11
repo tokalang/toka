@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0442
+import ./lib::{Engine, select}
+
+fn main() -> i32 {
+    auto e1# = Engine(value = 1)
+    auto e2# = Engine(value = 2)
+    auto &first = select(e1, e2).&first
+    e2 = Engine(value = 3)
+    return first
+}

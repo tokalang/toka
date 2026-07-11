@@ -40,7 +40,8 @@ static std::string getStringifyPath(Expr *E) {
   if (auto *me = dynamic_cast<MemberExpr *>(E)) {
     std::string member =
         toka::Type::stripMorphology(parseMemberAccess(me->Member).StrippedName);
-    return getStringifyPath(me->Object.get()) + "." + member;
+    std::string base = getStringifyPath(me->Object.get());
+    return base.empty() ? "" : base + "." + member;
   }
   if (auto *ue = dynamic_cast<UnaryExpr *>(E)) {
     return getStringifyPath(ue->RHS.get());
@@ -242,6 +243,17 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     for (int i = 0; i < (int)SD->Members.size(); ++i) {
       const auto &Field = SD->Members[i];
       if (toka::Type::stripMorphology(Field.Name) == requestedMember) {
+        if (!m_LastFieldDependencies.empty()) {
+          auto selected = m_LastFieldDependencies.find(requestedMember);
+          if (selected == m_LastFieldDependencies.end()) {
+            m_LastFieldDependencies.clear();
+          } else {
+            auto dependencies = selected->second;
+            m_LastFieldDependencies.clear();
+            m_LastFieldDependencies[requestedMember] =
+                std::move(dependencies);
+          }
+        }
         if (requestedMorphicIdentity && !Field.IsMorphicExempt) {
           error(Memb,
                 DiagID::ERR_SEMA_MORPHIC_MEMBER_ACCESS_REQUIRES_MORPHIC_FIELD,
@@ -362,7 +374,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             fieldType->IsWritable = true;
         }
 
-        if (!m_InLHS && !m_InIntermediatePath &&
+        if (!m_InLHS && !m_InIntermediatePath && !path.empty() &&
             requestedPrefix.find('&') != std::string::npos &&
             requestedPrefix != "??" && !memberAccessHadConflict) {
           bool isExclusive = access.HasRebindMarker || m_ExpectedWritability;
@@ -377,9 +389,13 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           // obj.field (Hat-Off) -> Soul Collapse.
           bool finalSoulBlocked =
               Field.IsValueBlocked || (isSoulInsulated && !Field.IsValueMutable);
-          return fieldType->getSoulType()->withAttributes(
+          auto collapsed = fieldType->getSoulType()->withAttributes(
               finalSoulWritable, isNarrowed ? false : fieldType->IsNullable,
               finalSoulBlocked);
+          if (!isBorrowLikeType(collapsed)) {
+            m_LastFieldDependencies.clear();
+          }
+          return collapsed;
         } else {
           // Hatted access, morphic identity access, or disabled soul collapse.
           // Use fieldType directly as the base (preserving its

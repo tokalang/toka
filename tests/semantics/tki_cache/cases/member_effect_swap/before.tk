@@ -1,0 +1,9 @@
+pub shape Engine(value: i32)
+
+pub fn select(e1: Engine, e2: Engine) -> result: (first: &i32, second: &i32)
+effects:
+    result.first <- e1.value
+    result.second <- e2.value
+{
+    return (first = &(e1.value), second = &(e2.value))
+}

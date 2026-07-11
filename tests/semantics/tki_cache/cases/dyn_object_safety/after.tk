@@ -1,0 +1,4 @@
+pub trait @Service {
+    pub fn run(self) -> i32
+    pub fn convert<T>(self, value: T) -> i32
+}

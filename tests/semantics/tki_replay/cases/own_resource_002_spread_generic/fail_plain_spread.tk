@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04535
+import ./lib::{Vault, make_vault}
+
+fn main() -> i32 {
+    auto vault = make_vault()
+    auto copied = Vault<i32>(id = 8, vault.*)
+    return 0
+}

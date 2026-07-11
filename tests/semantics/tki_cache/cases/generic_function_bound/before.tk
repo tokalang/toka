@@ -1,0 +1,7 @@
+pub trait @Marked {}
+
+pub shape Plain(value: i32)
+
+pub fn accept<T>(value: T) -> i32 {
+    return 1
+}

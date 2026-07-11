@@ -222,8 +222,10 @@ Primary references:
   field morphology must remain compiler-visible.
 - Replay tests: `tests/semantics/tki_replay/cases/own_resource_001_private_field`
   checks private resource structure, `drop`/deleted `clone`, copy capture, and
-  naked destructuring through a source-less interface.
-- Missing coverage: spread and generic private-resource-field replay.
+  naked destructuring through a source-less interface;
+  `tests/semantics/tki_replay/cases/own_resource_002_spread_generic` covers
+  generic private resource fields, spread, and copy capture.
+- Missing coverage: none known for the frozen copy-prevention forms.
 
 ## Effects And Escaping Dependency Rules
 
@@ -274,10 +276,11 @@ Primary references:
   `effects:` entries and consumed from `.tki`.
 - Replay tests: `tests/semantics/tki_replay/cases/eff_member_001_return_deps`
   checks export, source-less parsing, and caller-side source locking for
-  member-specific `effects:` declarations.
-- Missing coverage: field-sensitive release or transfer tests proving that
-  retaining only one returned member does not lock unrelated source paths;
-  negative member-swap replay remains provider-side source validation only.
+  member-specific `effects:` declarations, selective member transfer,
+  unrelated-source release, and swapped member routing.
+- Cache invalidation tests:
+  `tests/semantics/tki_cache/cases/member_effect_swap`.
+- Missing coverage: none known for frozen structural return routing.
 
 ### EFF-SHAPE-001: Shape-internal dependency declarations are excluded from 1.0
 
@@ -397,6 +400,7 @@ Primary references:
   `tests/semantics/tki_replay/cases/own_cede_001_signature`,
   `tests/semantics/tki_replay/cases/own_cede_002_return`,
   `tests/semantics/tki_replay/cases/own_resource_001_private_field`,
+  `tests/semantics/tki_replay/cases/own_resource_002_spread_generic`,
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`,
   `tests/semantics/tki_replay/cases/eff_member_001_return_deps`,
   `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
@@ -404,9 +408,11 @@ Primary references:
   `tools/scripts/test_semantic_replay.sh`, and
   `tools/scripts/test_semantic_cache_invalidation.sh`
 - Interface replay requirements: see `tki_semantic_contract.md`.
-- Missing coverage: rule-by-rule replay tests for unsafe public API redlines,
-  remaining resource/generic/trait semantic-only cache changes, detached async
-  handoff, and generic private-resource fields.
+- Closure coverage: unsafe public API redlines, resource/generic/trait cache
+  changes, detached async handoff, member routing, and generic private-resource
+  fields are covered by the dedicated replay and cache matrices.
+- Remaining coverage outside this phase: imported generic cede method
+  signatures and dedicated `str`/`bytes` dependency cases.
 
 ### TKI-CACHE-001: Semantic cache metadata must invalidate stale or incompatible interfaces
 
@@ -428,12 +434,14 @@ Primary references:
 - Interface replay requirements: every semantic fact in
   `tki_semantic_contract.md` must participate in interface format stability.
 - Semantic-only invalidation tests: `tests/semantics/tki_cache/cases` covers
-  parameter mutability, `cede` parameters, effects routing, and async effect
-  markers. Each case proves that the old consumer passes, the cache reports
-  `SourceHashMismatch`, fallback occurs, and the new caller-side constraint is
-  enforced.
-- Missing coverage: private resource structure, deleted clone/drop, generic
-  constraints, and trait/associated-type semantic-only cache changes.
+  parameter mutability, `cede` parameters, effects routing and swapping, async
+  effect markers, private resource structure, deleted clone, generic function
+  bounds, generic impl where constraints, trait prerequisites, associated type
+  bindings, and dyn object safety. Each case proves old-interface acceptance,
+  `SourceHashMismatch` fallback, source-side rejection, and rejection through a
+  freshly emitted source-less interface.
+- Missing coverage: none known for the semantic fact classes listed in the TKI
+  contract's cache invalidation rules.
 
 ## Unsafe Boundary Rules
 

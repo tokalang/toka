@@ -1,0 +1,9 @@
+import ./lib::{Engine, split_swapped}
+
+fn main() -> i32 {
+    auto e1# = Engine(val = 3)
+    auto e2# = Engine(val = 4)
+    auto &first = split_swapped(e1, e2).&first
+    e1 = Engine(val = 5)
+    return first - 4
+}

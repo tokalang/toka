@@ -124,6 +124,43 @@ assert module.get("cache_status") == "SourceHashMismatch", module
         fi
     done <<< "$expected_codes"
 
+    if ! TOKA_BUILD_DIR="$build_dir" "$TOKAC_ABS" -c "$work_dir/lib.tk" \
+        --emit-interface -o "$build_dir/objects/lib.o" \
+        > "$work_dir/after.out" 2> "$work_dir/after.err"; then
+        echo "FAIL $case_name: after.tk did not compile into a fresh interface"
+        sed 's/^/  | /' "$work_dir/after.err"
+        failed=$((failed + 1))
+        return
+    fi
+
+    local fresh_tki
+    fresh_tki="$(grep -lE '^// @meta source_path: .*/lib\.tk$' \
+        "$build_dir"/interfaces/*.tki | head -n 1)"
+    if [ -z "$fresh_tki" ]; then
+        echo "FAIL $case_name: fresh lib interface was not emitted"
+        failed=$((failed + 1))
+        return
+    fi
+    cp "$fresh_tki" "$work_dir/lib.tki"
+    mv "$work_dir/lib.tk" "$work_dir/lib.tk.source-hidden"
+    if TOKA_BUILD_DIR="$build_dir" "$TOKAC_ABS" -c "$work_dir/fail_main.tk" \
+        -o "$work_dir/fail_tki.o" \
+        > "$work_dir/fail_tki.out" 2> "$work_dir/fail_tki.err"; then
+        echo "FAIL $case_name: fresh source-less interface lost the new constraint"
+        failed=$((failed + 1))
+        return
+    fi
+
+    while read -r code; do
+        [ -n "$code" ] || continue
+        if ! grep -Fq -- "$code" "$work_dir/fail_tki.err"; then
+            echo "FAIL $case_name: source-less replay did not report $code"
+            sed 's/^/  | /' "$work_dir/fail_tki.err"
+            failed=$((failed + 1))
+            return
+        fi
+    done <<< "$expected_codes"
+
     echo "PASS $case_name"
     passed=$((passed + 1))
 }

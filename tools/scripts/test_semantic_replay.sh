@@ -75,6 +75,54 @@ run_case() {
         fi
     done < <(extract_expected_tki "$lib_src")
 
+    local held_tki="$work_dir/lib.tki.replay-held"
+    mv "$lib_tki" "$held_tki"
+    mkdir -p "$work_dir/source-build/interfaces" "$work_dir/source-build/objects"
+    local source_consumer
+    for source_consumer in "$work_dir"/pass_*.tk; do
+        [ -e "$source_consumer" ] || continue
+        local source_stem
+        source_stem="$(basename "$source_consumer" .tk)"
+        if ! TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
+            "$TOKAC_ABS" -c "$source_consumer" \
+            -o "$work_dir/$source_stem.source.o" \
+            > "$work_dir/$source_stem.source.out" \
+            2> "$work_dir/$source_stem.source.err"; then
+            echo "FAIL $case_name/$source_stem: source-backed compilation failed"
+            sed 's/^/  | /' "$work_dir/$source_stem.source.err"
+            failed=$((failed + 1))
+            return
+        fi
+    done
+
+    for source_consumer in "$work_dir"/fail_*.tk; do
+        [ -e "$source_consumer" ] || continue
+        local source_stem
+        source_stem="$(basename "$source_consumer" .tk)"
+        local source_expected_codes
+        source_expected_codes="$(extract_expected_codes "$source_consumer")"
+        if TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
+            "$TOKAC_ABS" -c "$source_consumer" \
+            -o "$work_dir/$source_stem.source.o" \
+            > "$work_dir/$source_stem.source.out" \
+            2> "$work_dir/$source_stem.source.err"; then
+            echo "FAIL $case_name/$source_stem: source-backed negative case passed"
+            failed=$((failed + 1))
+            return
+        fi
+        local source_code
+        while read -r source_code; do
+            [ -n "$source_code" ] || continue
+            if ! grep -Fq -- "$source_code" "$work_dir/$source_stem.source.err"; then
+                echo "FAIL $case_name/$source_stem: source-backed path missed $source_code"
+                sed 's/^/  | /' "$work_dir/$source_stem.source.err"
+                failed=$((failed + 1))
+                return
+            fi
+        done <<< "$source_expected_codes"
+    done
+    mv "$held_tki" "$lib_tki"
+
     mv "$lib_src" "$lib_hidden"
 
     local case_failed=0

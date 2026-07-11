@@ -1,0 +1,9 @@
+pub shape Capsule(id: i32, secret: i32)
+
+pub fn make_capsule() -> Capsule {
+    return Capsule(id = 7, secret = 11)
+}
+
+pub fn read_id(capsule: Capsule) -> i32 {
+    return capsule.id
+}

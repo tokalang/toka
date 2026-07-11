@@ -1,9 +1,9 @@
 # TKI Semantic Cache Invalidation Tests
 
-These cases verify that changing only a public semantic annotation invalidates
-an existing cached interface. The runner also compiles a discriminating
-consumer after fallback, proving that the new constraint is enforced rather
-than merely reported in the dependency manifest.
+These cases verify that changing compiler-visible semantic facts invalidates an
+existing cached interface. For every case the runner proves old-interface
+acceptance, `SourceHashMismatch` fallback, source-side rejection, and rejection
+through a freshly generated interface after the provider source is hidden.
 
 Each case contains:
 

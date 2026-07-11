@@ -1,0 +1,19 @@
+import core/traits::{@encap}
+
+pub shape Resource(value: i32)
+
+impl Resource@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> Resource {
+        return Resource(value = self.value)
+    }
+}
+
+pub fn make_resource() -> Resource {
+    return Resource(value = 3)
+}
+
+pub fn read_resource(resource: Resource) -> i32 {
+    return resource.value
+}

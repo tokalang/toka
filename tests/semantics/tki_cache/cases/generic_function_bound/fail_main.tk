@@ -1,0 +1,6 @@
+// EXPECT_ERROR: E0606
+import ./lib::{Plain, accept, @Marked}
+
+fn main() -> i32 {
+    return accept(Plain(value = 1))
+}

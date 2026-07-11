@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0617
+import ./lib::{@Service}
+
+fn consume(service: dyn @Service) -> i32 {
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}

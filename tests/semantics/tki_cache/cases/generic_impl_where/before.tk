@@ -1,0 +1,10 @@
+pub trait @Marked {}
+
+pub shape Plain(value: i32)
+pub shape Box<T>(item: T)
+
+impl<T> Box<T> {
+    pub fn marker(self) -> i32 {
+        return 7
+    }
+}

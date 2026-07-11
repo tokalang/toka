@@ -9,3 +9,11 @@ effects:
 {
     return (first = &(e1.val), second = &(e2.val))
 }
+
+pub fn split_swapped(e1: Engine, e2: Engine) -> res: (first: &i32, second: &i32)
+effects:
+    res.first <- e2.val
+    res.second <- e1.val
+{
+    return (first = &(e2.val), second = &(e1.val))
+}

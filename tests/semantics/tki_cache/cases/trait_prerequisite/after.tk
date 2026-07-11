@@ -1,0 +1,6 @@
+pub trait @Base {}
+
+pub trait @Feature
+where:
+    Self: @Base
+{}
