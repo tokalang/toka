@@ -244,12 +244,15 @@ part of the shape grammar.
 
 Execution boundaries are stricter than ordinary local calls. For Toka 1.0,
 thread/task handoff must not carry hidden borrowed state: a closure passed to
-`thread_spawn` cannot implicitly capture outer variables, and future task
-handoff forms must follow the same rule. State that crosses such a boundary
-must be made explicit, typically by `[cede ...]` transfer or `[copy ...]` for
-copyable data. Async return dependencies such as `fn f(x: str) -> async str <-
-x` remain ordinary signature dependencies; they do not authorize detached tasks
-to keep an undeclared borrow.
+`thread_spawn` cannot implicitly capture outer variables, and `.start` follows
+the same rule. A started task may receive non-borrowing scalar arguments by
+value. Any shape or resource crossing `.start` must be transferred through a
+`cede` parameter and an explicit `cede` call argument; copyable shapes are not
+copied implicitly because ordinary object parameters are logical in-place
+captures. References, `str`, `bytes`, raw pointers, and task values carrying PAL
+dependencies cannot cross `.start`. Async return dependencies such as
+`fn f(x: str) -> async str <- x` remain ordinary signature dependencies; they
+do not authorize detached tasks to keep an undeclared borrow.
 
 ### PAL (Path-Anchored Ledger) Static Safety Boundary
 

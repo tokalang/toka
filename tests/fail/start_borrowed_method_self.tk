@@ -1,0 +1,13 @@
+shape Worker(value: i32)
+
+impl Worker {
+    pub fn run(self) -> async i32 {
+        return self.value
+    }
+}
+
+fn main() -> i32 {
+    auto worker = Worker(value = 1)
+    worker.run().start // EXPECT: error[E04583]
+    return 0
+}

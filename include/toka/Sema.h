@@ -222,6 +222,11 @@ public:
   // [NEW] Trait  // Concurrency type bounds
   bool hasDrop(const std::string &shapeName);
   bool canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty);
+  bool isStartBoundaryScalar(std::shared_ptr<toka::Type> Ty) const;
+  void checkStartBoundaryArgument(ASTNode *Node,
+                                  std::shared_ptr<toka::Type> Ty,
+                                  bool ParamIsCeded, bool ArgIsCeded,
+                                  const std::string &Name);
   bool isShapeSend(const std::string &shapeName);
   bool isShapeSync(const std::string &shapeName);
   std::string resolveType(const std::string &Type, bool force = false);
@@ -341,6 +346,7 @@ private:
   bool m_IsMemberBase =
       false; // [NEW] Track if we are checking the base of a member access
   bool m_IsConsumingEffect = false; // [NEW] Track if current eval context consumes async/wait effects
+  bool m_IsStartingTask = false; // Enforce the strict detached-task boundary.
 
   bool m_AllowPermissionSuffix = false; // [NEW] Track explicit method call context
   bool m_ExpectedWritability = false;   // [NEW] Contextual expectation for borrow exclusivity

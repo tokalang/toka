@@ -1,8 +1,8 @@
 // COMPILE_ONLY: async task runtime symbols are not linked by this replay runner.
-import ./lib::{Data, get_async_view}
+import ./lib::{Payload, consume_async}
 
 fn main() -> i32 {
-    auto data = Data(view = "hello")
-    get_async_view(data).start
+    auto payload = Payload(val = 7)
+    consume_async(cede payload).start
     return 0
 }

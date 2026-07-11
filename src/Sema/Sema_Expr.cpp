@@ -2618,6 +2618,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
         if (!FD->Args.empty() &&
             Type::stripMorphology(FD->Args[0].Name) == "self") {
+            if (FD->Effect == EffectKind::Async) {
+              checkStartBoundaryArgument(
+                  Met->Object.get(), ObjTypeObj, FD->Args[0].IsCeded,
+                  dynamic_cast<CedeExpr *>(Met->Object.get()) != nullptr,
+                  "self");
+            }
             // [NEW] Cede Ownership check for Method Call
             if (FD->Args[0].IsCeded) {
                 std::string objPath = getStringifyPath(Met->Object.get());
@@ -2655,6 +2661,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 }
                 
                 auto argTy = checkExpr(Met->Args[i].get(), expectedParamTy);
+                if (FD->Effect == EffectKind::Async && i < expectedArgs) {
+                  checkStartBoundaryArgument(
+                      Met->Args[i].get(), argTy, FD->Args[i + 1].IsCeded,
+                      dynamic_cast<CedeExpr *>(Met->Args[i].get()) != nullptr,
+                      FD->Args[i + 1].Name);
+                }
                 
                 if (expectedParamTy) {
                     if (FD->Args[i + 1].IsCeded) {
@@ -2853,9 +2865,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return res;
   } else if (auto *St = dynamic_cast<StartExpr *>(E)) {
     bool old = m_IsConsumingEffect;
+    bool oldStartingTask = m_IsStartingTask;
     m_IsConsumingEffect = true;
+    m_IsStartingTask = true;
     auto res = checkExpr(St->Expression.get());
     m_IsConsumingEffect = old;
+    m_IsStartingTask = oldStartingTask;
+    for (const auto &dep : m_LastLifeDependencies) {
+      DiagnosticEngine::report(
+          getLoc(St), DiagID::ERR_SEMA_START_BOUNDARY_DEPENDENCY, dep);
+      HasError = true;
+    }
     St->ResolvedType = res;
     return res;
   } else if (auto *Unwrap = dynamic_cast<UnwrapPropagationExpr *>(E)) {

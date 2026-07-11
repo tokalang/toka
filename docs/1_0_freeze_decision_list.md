@@ -110,8 +110,11 @@ later release.
 - Execution-boundary capture rule: thread / task handoff must not carry hidden
   borrowed state. Closures passed to `thread_spawn` cannot implicitly capture
   outer variables; state crossing such a boundary must be explicit through
-  `[cede ...]` transfer or `[copy ...]` for copyable data. Future task handoff
-  syntax must preserve the same conservative PAL boundary.
+  `[cede ...]` transfer or `[copy ...]` for copyable data. `.start` uses the
+  same conservative boundary: only non-borrowing scalar arguments or values
+  transferred through both a `cede` parameter and a `cede` call argument may
+  cross it. Ordinary shapes remain logical in-place captures even when they
+  are copyable, so `.start` does not copy them implicitly.
 - Public unsafe/raw API redlines: raw pointer exposure requires explicit
   unsafe/raw naming.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic

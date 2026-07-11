@@ -1,0 +1,10 @@
+fn worker(cede view: str) -> async i32 {
+    auto owned_view = cede view
+    return owned_view.len() as i32
+}
+
+fn main() -> i32 {
+    auto view = "borrowed"
+    worker(cede view).start // EXPECT: error[E04583]
+    return 0
+}

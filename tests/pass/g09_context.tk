@@ -42,11 +42,12 @@ fn test_cancel() -> async i32 {
     return 0
 }
 
-fn worker(rx#: Receiver<bool>) -> async i32 {
+fn worker(cede rx: Receiver<bool>) -> async i32 {
+    auto owned_rx# = cede rx
     println("  [worker] entering worker")
     loop true {
         auto should_break# = false
-        auto res = rx#.try_recv()
+        auto res = owned_rx#.try_recv()
         match res {
             auto Result::Ok(opt) => {
                 match opt {

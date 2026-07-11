@@ -2309,6 +2309,18 @@
       "message": "Closure passed across execution boundary '{}' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make capture explicit",
       "description": "Closures crossing an execution boundary must make captured state explicit"
     },
+    "E04583": {
+      "id": "ERR_SEMA_START_BOUNDARY_ARGUMENT",
+      "level": "Error",
+      "message": "Task started across execution boundary cannot borrow argument '{}' of type '{}'; use a non-borrowing scalar or transfer an owned value through a cede parameter and cede argument",
+      "description": "Started tasks may receive only non-borrowing scalars or explicitly ceded ownership"
+    },
+    "E04584": {
+      "id": "ERR_SEMA_START_BOUNDARY_DEPENDENCY",
+      "level": "Error",
+      "message": "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'",
+      "description": "Started tasks cannot carry PAL borrow dependencies across the execution boundary"
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

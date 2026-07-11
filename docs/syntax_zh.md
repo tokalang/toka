@@ -223,8 +223,10 @@ Toka 1.0 也不支持 `&view: i32 <- owner` 这类 shape 内部成员依赖声�
 
 Execution boundary 比普通局部调用更严格。对 Toka 1.0 来说，thread / task
 handoff 不能携带隐藏的借用状态：传给 `thread_spawn` 的闭包不能隐式捕获外层变量，
-后续 task handoff 形式也必须遵守同一规则。跨过这类边界的状态必须显式化，通常
-使用 `[cede ...]` 转移，或对可复制数据使用 `[copy ...]`。`fn f(x: str) ->
+`.start` 也遵守同一规则。started task 可以按值接收不携带借用的标量；shape 或资源
+必须同时通过 `cede` 参数和调用点显式 `cede` 转移。即使 shape 可复制，`.start`
+也不会隐式复制，因为普通对象参数仍是逻辑原地捕获。引用、`str`、`bytes`、raw
+pointer 以及携带 PAL dependency 的 task 都不能跨过 `.start`。`fn f(x: str) ->
 async str <- x` 这类 async 返回依赖仍然只是普通签名依赖，并不授权 detached task
 持有未声明的借用。
 

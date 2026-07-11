@@ -320,25 +320,36 @@ Primary references:
 - Missing coverage: negative tests for dangling async calls in more expression
   contexts.
 
-### ASYNC-CAPTURE-001: Execution-boundary closures cannot carry hidden borrowed state
+### ASYNC-CAPTURE-001: Execution boundaries cannot carry hidden borrowed state
 
 - Status: Core guarantee
-- Source form: `thread_spawn({ => use outer })`
+- Source form: `thread_spawn({ => use outer })`, `worker(data).start`
 - Operation class: `ExecutionBoundaryCapture`
 - Decision: closures crossing a thread/task boundary must use explicit
   `[cede ...]` or `[copy ...]` capture for state that crosses the boundary.
+  `.start` accepts only non-borrowing scalars or values transferred through a
+  `cede` parameter and explicit `cede` call argument. It rejects PAL
+  dependencies and does not implicitly copy ordinary shapes.
 - Rationale: detached execution must not retain undeclared borrowed state.
-- Primary diagnostics: `E04582`
+- Primary diagnostics: `E04582`, `E04583`, `E04584`
 - Implementation areas: `src/Sema/Sema_Expr_Call.cpp`,
   `src/Sema/Sema_Expr_Closure.cpp`
 - Positive tests: `tests/pass/g09_thread_example.tk`,
   `tests/pass/g08_sync_mpsc_multi.tk`,
   `tests/pass/g09_std_atomic.tk`,
-  `tests/pass/g10_net_read_exact.tk`
-- Negative tests: `tests/fail/thread_spawn_implicit_capture_escape.tk`
+  `tests/pass/g10_net_read_exact.tk`,
+  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`
+- Negative tests: `tests/fail/thread_spawn_implicit_capture_escape.tk`,
+  `tests/fail/start_borrowed_shape.tk`,
+  `tests/fail/start_borrowed_method_self.tk`,
+  `tests/fail/start_borrowed_static_argument.tk`,
+  `tests/fail/start_borrowed_str.tk`,
+  `tests/fail/start_cede_borrowed_str.tk`,
+  `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
 - Interface replay requirements: execution-boundary consumers must be known from
   signatures/imports; closure capture mode must be checked at the call site.
-- Missing coverage: `.start` task handoff with implicit borrowed capture.
+- Missing coverage: generic cede handoff and Send/Sync-constrained library
+  handles once those bounds become part of the frozen task contract.
 
 ### ASYNC-SUSPEND-001: Borrow-like async results carry ordinary dependency annotations
 
@@ -348,7 +359,7 @@ Primary references:
 - Decision: async return dependencies describe the eventual value; they do not
   authorize detached tasks to keep undeclared borrowed state.
 - Rationale: async color and dependency routing are orthogonal.
-- Primary diagnostics: `E0454`, `E0457`, `E04582`
+- Primary diagnostics: `E0454`, `E0457`, `E04583`, `E04584`
 - Implementation areas: `src/Sema/Sema_Stmt.cpp`,
   `src/Sema/Sema_Expr_Call.cpp`, `src/AST/TKIExporter.cpp`
 - Positive tests: `tests/pass/g09_async_prove.tk`,
@@ -359,9 +370,10 @@ Primary references:
   preserved together.
 - Replay tests: `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
   checks export, source-less parsing, and caller-side dependency enforcement
-  after consuming `async str <- x` with `.wait`.
-- Missing coverage: detached `.start` handoff policy and dependency enforcement
-  across suspension inside an async function.
+  after consuming `async str <- x` with `.wait`, and rejects the same borrowed
+  result across `.start`.
+- Missing coverage: dependency enforcement across suspension inside an async
+  function.
 
 ## Interface Replay And Cache Rules
 

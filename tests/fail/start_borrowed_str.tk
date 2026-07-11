@@ -1,0 +1,9 @@
+fn worker(view: str) -> async i32 {
+    return view.len() as i32
+}
+
+fn main() -> i32 {
+    auto view = "borrowed"
+    worker(view).start // EXPECT: error[E04583]
+    return 0
+}

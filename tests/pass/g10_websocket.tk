@@ -6,8 +6,9 @@ import core/result::Result
 import sys/libc
 import stdx/net/websocket::{WsConnection, ws_accept_async}
 
-fn server_task(server#: TcpListener) -> async i32 {
-    auto stream# = net_async_accept(server).await
+fn server_task(cede server: TcpListener) -> async i32 {
+    auto owned_server# = cede server
+    auto stream# = net_async_accept(owned_server).await
     if !stream.is_valid() {
         return 1
     }
@@ -133,8 +134,9 @@ fn client_task() -> async i32 {
 }
 
 // Global test entry
-fn entry_point(listener_arg: TcpListener) -> async i32 {
-    server_task(listener_arg).start
+fn entry_point(cede listener_arg: TcpListener) -> async i32 {
+    auto owned_listener = cede listener_arg
+    server_task(cede owned_listener).start
     auto c_res = client_task().await
     return c_res
 }
@@ -149,7 +151,7 @@ pub fn main() -> i32 {
     }
     
     // Start entry point
-    auto entry = entry_point(listener).start
+    auto entry = entry_point(cede listener).start
     auto status = block_on<i32>(entry)
     
     if status == 0 {

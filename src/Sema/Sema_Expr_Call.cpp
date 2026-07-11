@@ -424,6 +424,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               expectedTy = resolveType(toka::Type::fromString(tyStr), false);
           }
           auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+          if (MetAST && MetAST->Effect == EffectKind::Async &&
+              i < MetAST->Args.size()) {
+            checkStartBoundaryArgument(
+                Call->Args[i].get(), argTy, MetAST->Args[i].IsCeded,
+                dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr,
+                MetAST->Args[i].Name);
+          }
           if (expectedTy && !isTypeCompatible(expectedTy, argTy)) {
               DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                        "Argument " + std::to_string(i + 1) + " (actual: " + argTy->getSoulName() + ")", expectedTy->getSoulName(), argTy->getSoulName());
@@ -475,6 +482,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     expectedTy = resolveType(toka::Type::fromString(tyStr), false);
                 }
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                if (MetAST && MetAST->Effect == EffectKind::Async &&
+                    i < MetAST->Args.size()) {
+                  checkStartBoundaryArgument(
+                      Call->Args[i].get(), argTy, MetAST->Args[i].IsCeded,
+                      dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr,
+                      MetAST->Args[i].Name);
+                }
                 if (expectedTy && !isTypeCompatible(expectedTy, argTy)) {
                     DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                              "Argument " + std::to_string(i + 1) + " (actual: " + argTy->getSoulName() + ")", expectedTy->getSoulName(), argTy->getSoulName());
@@ -1576,6 +1590,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
+    bool calleeIsAsync =
+        (Fn && Fn->Effect == EffectKind::Async) ||
+        (Ext && Ext->Effect == EffectKind::Async);
+    if (calleeIsAsync) {
+      std::string paramName = "arg" + std::to_string(i + 1);
+      if (Fn && i < Fn->Args.size())
+        paramName = Fn->Args[i].Name;
+      else if (Ext && i < Ext->Args.size())
+        paramName = Ext->Args[i].Name;
+      checkStartBoundaryArgument(Call->Args[i].get(), argType, isCededParam,
+                                 isCallerCeded, paramName);
+    }
     bool isCedeParamImplicitlyExempt = false;
     if (isCededParam) {
          bool isCedeExempt = canImplicitlyPassToCede(argType);

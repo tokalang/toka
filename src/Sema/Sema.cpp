@@ -2387,6 +2387,31 @@ bool Sema::canImplicitlyPassToCede(std::shared_ptr<toka::Type> Ty) {
   return false;
 }
 
+bool Sema::isStartBoundaryScalar(std::shared_ptr<toka::Type> Ty) const {
+  if (!Ty || Ty->typeKind != toka::Type::Primitive)
+    return false;
+  const std::string name = Ty->getSoulName();
+  return name != "str" && name != "bytes" && name != "cstr";
+}
+
+void Sema::checkStartBoundaryArgument(ASTNode *Node,
+                                      std::shared_ptr<toka::Type> Ty,
+                                      bool ParamIsCeded, bool ArgIsCeded,
+                                      const std::string &Name) {
+  if (!m_IsStartingTask || isStartBoundaryScalar(Ty))
+    return;
+  const std::string soul = Ty ? Ty->getSoulName() : "";
+  bool isNonTransferableBorrow =
+      Ty && (Ty->isReference() || Ty->isRawPointer() || soul == "str" ||
+             soul == "bytes" || soul == "cstr");
+  if (!isNonTransferableBorrow && ParamIsCeded && ArgIsCeded)
+    return;
+  DiagnosticEngine::report(getLoc(Node),
+                           DiagID::ERR_SEMA_START_BOUNDARY_ARGUMENT, Name,
+                           Ty ? Ty->toString() : "unknown");
+  HasError = true;
+}
+
 bool Sema::isShapeSend(const std::string &shapeName) {
   // First, explicit manual trait impl ALWAYS takes precedence
   if (ImplMap.count(shapeName + "@Send")) {

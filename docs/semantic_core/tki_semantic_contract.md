@@ -163,7 +163,9 @@ Interfaces must preserve:
 Replay requirement:
 
 - Detached execution must not gain implicit borrowed captures through an
-  interface boundary.
+  interface boundary. `.start` must reject imported async calls with ordinary
+  shape/borrow arguments or PAL dependencies, while preserving explicit cede
+  handoff from both the parameter and call site.
 
 ## Cache Invalidation Rules
 
@@ -203,7 +205,10 @@ cases should become explicit conformance tests in phase 2:
 - Async borrowed return dependency through imported `.tki`: positive replay
   export, source-less parsing, and caller-side enforcement after `.wait`
   covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
-  detached `.start` handoff and in-function suspension remain open.
+  borrowed `.start` rejection is covered by the same case, and explicit cede
+  handoff is covered by
+  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`; in-function
+  suspension remains open.
 - Cache invalidation when only semantic annotations change: covered by
   `tests/semantics/tki_cache/cases` for parameter mutability, `cede`
   parameters, effects routing, and async markers. Resource structure,

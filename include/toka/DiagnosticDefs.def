@@ -104,6 +104,8 @@ DIAG(ERR_REDUNDANT_BLOCK,         Error,   "E0460", "Redundant inherent restrict
 DIAG(ERR_ILLEGAL_MODIFIER_SUFFIX, Error,   "E0461", "Illegal use of permission suffixes (# or $) in everyday contexts. Modifiers are strictly limited to declarations or explicit mutable method calls.")
 DIAG(ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE, Error,   "E04581", "Closure copy capture of resource '{}' with type '{}' would duplicate ownership; use '[cede {}]' or clone into a separate value first")
 DIAG(ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE, Error,   "E04582", "Closure passed across execution boundary '{}' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make capture explicit")
+DIAG(ERR_SEMA_START_BOUNDARY_ARGUMENT, Error,   "E04583", "Task started across execution boundary cannot borrow argument '{}' of type '{}'; use a non-borrowing scalar or transfer an owned value through a cede parameter and cede argument")
+DIAG(ERR_SEMA_START_BOUNDARY_DEPENDENCY, Error,   "E04584", "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")

@@ -1,0 +1,11 @@
+shape Data(val: i32)
+
+fn worker(data: Data) -> async i32 {
+    return data.val
+}
+
+fn main() -> i32 {
+    auto data = Data(val = 1)
+    worker(data).start // EXPECT: error[E04583]
+    return 0
+}

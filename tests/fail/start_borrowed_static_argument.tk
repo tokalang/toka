@@ -1,0 +1,14 @@
+shape Data(value: i32)
+shape Worker()
+
+impl Worker {
+    pub fn run(data: Data) -> async i32 {
+        return data.value
+    }
+}
+
+fn main() -> i32 {
+    auto data = Data(value = 1)
+    Worker::run(data).start // EXPECT: error[E04583]
+    return 0
+}
