@@ -14,6 +14,8 @@ TOKAC = os.path.abspath(os.environ.get("TOKAC", "./build/bin/tokac"))
 SOURCE = os.path.abspath(
     "tests/semantics/memory_summary/source_summary.tk")
 FLAG = "--experimental-memory-contracts=nocapture"
+AUDIT = os.path.abspath(
+    "tools/scripts/audit_experimental_nocapture.py")
 
 
 def run(command):
@@ -44,6 +46,18 @@ def contract_record(document, function, contract):
 
 
 def focused(work):
+    audit_command = [sys.executable, AUDIT]
+    first_audit = run(audit_command).stdout
+    second_audit = run(audit_command).stdout
+    if first_audit != second_audit:
+        raise AssertionError("focused benefit audit is not deterministic")
+    audit = json.loads(first_audit)
+    if audit.get("schema") != "toka.nocapture-benefit-audit" or \
+            audit.get("version") != 1 or \
+            audit.get("decision") != "KeepExperimental" or \
+            audit.get("reason") != "NoOptimizedIRDelta":
+        raise AssertionError("unexpected focused benefit audit result")
+
     default_ir_path = os.path.join(work, "default.ll")
     experimental_ir_path = os.path.join(work, "experimental.ll")
     disabled_ir_path = os.path.join(work, "disabled.ll")

@@ -1,0 +1,24 @@
+import std/net::TcpStream
+import std/task::block_on
+import stdx/net/websocket::ws_accept_async
+
+fn run_once() -> async i32 {
+    auto stream# = TcpStream(fd=-1, closed=true)
+    auto result = ws_accept_async(stream).await
+    if result.is_err() {
+        return 0
+    }
+    return 1
+}
+
+pub fn main() -> i32 {
+    auto i# = 0
+    loop i < 5000000 {
+        auto status = block_on<i32>(run_once())
+        if status != 0 {
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}

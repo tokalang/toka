@@ -84,6 +84,7 @@ The tests prove:
 ## Non-goals
 
 This phase does not enable `nocapture` by default and makes no performance
-claim. Default enablement requires benchmark evidence and continued
-differential testing. It also does not weaken the separate final gate for
-`noalias`.
+claim. Phase 3C-5 subsequently audited its real optimization effect and kept
+the attribute experimental, as documented in
+`phase3c_nocapture_benefit_audit.md`. It also does not weaken the separate
+final gate for `noalias`.

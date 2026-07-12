@@ -65,8 +65,10 @@ raw/unsafe code, disabled borrow checking, generic instances, async functions,
 shared LLVM symbols, object-code equivalence, and executable checks at `-O0`,
 `-O2`, and `-O3`.
 
-## Next gate
+## Emission gates
 
 Phase 3C-4 enables `nocapture` only behind an explicit experimental flag, as
 documented in `phase3c_experimental_nocapture.md`. No performance claim is made
-yet, and `noalias` remains last.
+by the emission gate itself. Phase 3C-5 measures the resulting optimizer and
+machine-code effects in `phase3c_nocapture_benefit_audit.md`; its decision is
+to keep emission experimental. `noalias` remains last.

@@ -214,6 +214,12 @@ if no backend optimization is ever enabled.
 `noalias` remains a separate final gate and requires its own written soundness
 argument.
 
+Phase 3C is complete through its benefit audit. The first emitted contract,
+`nocapture`, remains behind an experimental flag: it demonstrated a narrow
+coroutine-frame and object-size reduction, but no stable runtime improvement
+sufficient for default enablement. See
+`phase3c_nocapture_benefit_audit.md` for the replayable method and decision.
+
 ## Resulting Compiler State
 
 After 3A and 3B, Toka will have a structured, explainable semantic core whose
