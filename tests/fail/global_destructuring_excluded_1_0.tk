@@ -1,0 +1,9 @@
+shape Pair(left: i32, right: i32)
+
+auto pair = Pair(left = 1, right = 2)
+// EXPECT_ERROR: E0744
+auto (left, right) = pair
+
+fn main() -> i32 {
+    return 0
+}

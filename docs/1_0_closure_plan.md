@@ -75,7 +75,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-1` | `Complete` | Close the language contract and in-function async suspension rules | `semantic_core/fz1_async_suspension_closure.md`, frozen async rule matrix, focused pass/fail coverage, and synchronized specification |
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
 | `FZ-3` | `Blocked` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | Local closure is recorded in `semantic_core/fz3_compiler_reliability_closure.md`; clean Linux/macOS target gates remain required |
-| `FZ-4` | `Pending` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | Consistency audit and stable public-contract tests |
+| `FZ-4` | `Complete` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | `semantic_core/fz4_public_contract_freeze.md`, synchronized specifications, stable diagnostic tests, and ABI-boundary execution coverage |
 | `FZ-5` | `Pending` | Run the release-candidate moratorium and final 1.0 gate | Deterministic gate report and clean supported-platform release runs |
 
 Work proceeds in phase order. A later phase may collect evidence early, but it
@@ -185,9 +185,9 @@ unless it is separately promoted through a new audited decision.
 | `FZ-3-T01` | `FZ-3` | `Complete` | Mandatory network and async tests depended on fixed ports | Bind ephemeral ports and query the assigned local port; the complete positive suite passes without retries |
 | `FZ-3-A01` | `FZ-3` | `Complete` | No bounded parser/Sema/interface mutation gate was part of the release contract | Added deterministic 82-case fixed-seed audit; normal and ASan/UBSan builds pass |
 | `FZ-3-P01` | `FZ-3` | `Blocked` | A macOS arm64 workstation cannot produce clean native results for every supported release target | Run the mandatory gate from clean checkouts on Linux x64/arm64 and macOS x64/arm64; all four rows must pass without ignored failures |
-| `FZ-4-D01` | `FZ-4` | `Pending` | Logical capture semantics versus scalar value ABI is not stated as a public FFI boundary | Document the logical/physical distinction and lock representative ABI tests |
-| `FZ-4-D02` | `FZ-4` | `Pending` | README platform wording still presents Windows parity as near-term while the 1.0 decision makes it non-blocking | Align public support wording with the frozen Linux/macOS release boundary |
-| `FZ-4-D03` | `FZ-4` | `Pending` | Several diagnostics say "not yet supported" without naming their 1.0 classification | Replace ambiguous wording with frozen exclusion or post-1.0 terminology while preserving diagnostic identity |
+| `FZ-4-D01` | `FZ-4` | `Complete` | Logical capture semantics versus scalar value ABI was not stated as a public boundary | Specifications now separate source semantics from version-bound target lowering; mutable scalar and shape execution lock the distinction |
+| `FZ-4-D02` | `FZ-4` | `Complete` | README platform wording presented Windows parity as near-term while the 1.0 decision made it non-blocking | README now names Linux/macOS as supported 1.0 platforms and Windows/MSYS2, WSL2, and WASI as available or experimental non-blockers |
+| `FZ-4-D03` | `FZ-4` | `Complete` | Diagnostics used "not yet supported" without naming their 1.0 classification | `E04547` and `E0744` retain their identities and now state explicit 1.0 exclusions, with focused negative tests |
 
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains
@@ -272,6 +272,8 @@ The starting baseline already includes:
 - local FZ-3 correctness closure with 317/317 positive tests, 235/235
   negative tests, 11/11 semantic replays, 12/12 cache cases, and normal plus
   ASan/UBSan fixed-seed reliability audits at 82/82;
+- completed FZ-4 public-contract freeze with synchronized compatibility,
+  source/ABI, runtime, platform, and diagnostic boundaries;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 

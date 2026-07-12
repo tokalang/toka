@@ -490,6 +490,61 @@ Primary references:
 - Coverage closure: none known for the semantic fact classes listed in the TKI
   contract's cache invalidation rules.
 
+## Public Contract And Runtime Rules
+
+### CONTRACT-ABI-001: Logical parameter capture is independent of target lowering
+
+- Status: Core guarantee
+- Source form: scalar or aggregate payload parameter
+- Operation class: call borrow, target ABI lowering
+- Decision: ordinary parameters use PAL's logical in-place capture semantics;
+  physical register, pointer, aggregate, closure, and return-storage lowering
+  does not create a source-level copy or a stable binary ABI promise.
+- Rationale: source ownership and mutation behavior must not depend on a target
+  calling convention.
+- Primary diagnostics: ordinary PAL and mutability diagnostics
+- Implementation areas: `src/CodeGen/CodeGen_Decl.cpp`,
+  `src/CodeGen/CodeGen_Expr.cpp`
+- Positive tests: `tests/pass/g05_logical_capture_abi_boundary.tk`
+- Interface replay requirements: `.tki` preserves parameter semantics and
+  morphology, not cross-version machine calling conventions.
+
+### CONTRACT-EXCLUSION-001: Post-1.0 formatting and global destructuring are explicit exclusions
+
+- Status: Conservative rejection
+- Source form: a String/str format specifier or module-scope destructuring
+- Operation class: frozen 1.0 surface exclusion
+- Decision: plain `{}` text formatting remains valid; text format specifiers
+  and global destructuring are outside 1.0.
+- Rationale: diagnostics must state a frozen boundary instead of implying an
+  untracked temporary implementation gap.
+- Primary diagnostics: `E04547`, `E0744`
+- Implementation areas: `src/Sema/Sema_Expr_Call.cpp`,
+  `src/CodeGen/CodeGen_Decl.cpp`
+- Negative tests: `tests/fail/formatted_text_excluded_1_0.tk`,
+  `tests/fail/global_destructuring_excluded_1_0.tk`
+- Interface replay requirements: none; neither construct creates an exported
+  frozen declaration.
+
+### RUNTIME-001: Normal cleanup is deterministic and panic is non-unwinding termination
+
+- Status: Core guarantee
+- Source form: normal scope exit, ownership transfer, or runtime panic
+- Operation class: resource cleanup, runtime failure
+- Decision: each live owned value is cleaned exactly once on normal exits;
+  move and `cede` transfer that obligation. Panic is non-returning process
+  termination and does not promise catchability, stack unwinding, or cleanup
+  after the panic point.
+- Rationale: the minimum runtime behavior needed by frozen ownership semantics
+  must be public without promising an exception model that does not exist.
+- Primary diagnostics: runtime panic output; compile-time ownership diagnostics
+- Implementation areas: `src/CodeGen/CodeGen_Stmt.cpp`,
+  `src/CodeGen/CodeGen_Memory.cpp`, `lib/sys/toka_rt.c`
+- Positive tests: `tests/pass/g09_resource_cleanup_matrix.tk`,
+  `tests/pass/g08_nullable_pointer_unwrap_panic.tk`
+- Interface replay requirements: ownership transfer and resource facts replay;
+  panic transport is a same-toolchain runtime contract, not `.tki` metadata.
+
 ## Unsafe Boundary Rules
 
 ### UNSAFE-PUB-001: Public safe APIs must not expose raw unsafe representation silently

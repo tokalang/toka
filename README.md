@@ -180,9 +180,9 @@ Toka is under active development. The repository currently contains:
 - A standard library with core containers and system-level modules.
 - The `toka` project manager / build tool, `tokafmt`, and `tokalsp`.
 - Incremental build metadata and TKI interface cache validation.
-- Linux and macOS support as the primary development path, with Windows/MSYS2 support in progress.
+- Linux and macOS as the supported 1.0 release platforms. Windows/MSYS2, WSL2, and WASI remain available or experimental and do not block 1.0.
 
-The language is not yet self-hosted. The ecosystem is young. The most important near-term engineering work remains compiler hardening, standard-library stabilization, Windows parity, and eventual self-hosting.
+The language is not yet self-hosted. The ecosystem is young. The immediate engineering priority is closing and verifying the 1.0 language, compiler, same-version interface, and core runtime contracts. Windows parity and eventual self-hosting remain later work.
 
 ## Is Toka A Good Fit?
 

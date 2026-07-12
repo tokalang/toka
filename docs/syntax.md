@@ -160,6 +160,13 @@ fn add(a: i32, b: i32) -> i32 {
 
 For ordinary object parameters, Toka uses logical in-place capture. If the function wants the payload view, use forms such as `x: T` or `x#: T`.
 
+This is a source-level semantic rule, not a promise about physical argument
+layout. A target ABI may pass scalar values in registers and lower aggregates,
+handles, closures, or return storage through different representations. Those
+choices do not create an implicit source copy or change PAL's call-borrow
+rules. Generated layout and calling convention remain compiler-, target-, and
+version-bound rather than a stable Toka 1.x binary ABI.
+
 Use a hat on a parameter only when the function needs the handle itself, for example `*p: T` for a raw handle parameter or `*#p: T` when the callee must be able to rebind that handle.
 
 At a call site, passing that handle itself also uses the hatted view, such as `take(*p)`. A naked `p` remains the payload view.
@@ -414,7 +421,7 @@ auto area = print_area(rect)
 
 Method calls through `dyn @Trait` are dynamically dispatched through the trait interface. Outside the defining module, only `pub fn` methods in the trait are callable. The stable trait-object syntax is a single trait facet such as `dyn @Shape`; `dyn @{A, B}` is not part of the current public syntax. Dynamic closures use the separate `dyn fn(...) -> T` syntax.
 
-Not every trait can be used as `dyn @Trait`. The current public rule is that a trait object must erase to a fixed receiver handle and a fixed vtable ABI. Therefore, generic traits, traits with associated types, traits with generic methods, and traits whose method signatures use `Self` outside the receiver position are not currently valid as `dyn @Trait`.
+Not every trait can be used as `dyn @Trait`. The 1.0 rule is that a trait object must erase to a fixed receiver handle and a fixed vtable ABI. Therefore, generic traits, traits with associated types, traits with generic methods, and traits whose method signatures use `Self` outside the receiver position are not valid as `dyn @Trait` in 1.0.
 
 Toka 1.0 also does not support associated-type binding syntax on dynamic trait
 objects. Forms such as `dyn @Readable<Item = i32>` are rejected. Use a concrete
@@ -666,6 +673,10 @@ match node {
 
 When destructuring resource-carrying values, use explicit borrowing in the pattern when the original value must not be moved.
 
+Destructuring declarations are local in Toka 1.0. A module-level global may
+bind one value, but a destructuring declaration at module scope is rejected
+with `E0744`; destructure that value inside a function instead.
+
 ## 12. Closures
 
 Closures use `{ ... => ... }` syntax.
@@ -712,6 +723,9 @@ Formatting uses `{}` placeholders.
 println("x={}, y={}", x, y)
 ```
 
+Plain `{}` accepts `String` and `str`. Format specifiers for those text forms
+are outside the 1.0 surface; `E04547` identifies that exclusion.
+
 String concatenation with `+` is not part of the public syntax. Build owned strings explicitly with `string` APIs such as `push_str`.
 
 ## 14. Unsafe And FFI
@@ -741,7 +755,32 @@ auto raw = *ptr as *void
 
 Unsafe code should stay at system and FFI boundaries. Public APIs should avoid exposing raw pointers unless the API is explicitly named as unsafe or raw. Raw pointers are outside PAL's safe-borrow guarantee unless wrapped by a safe library capability.
 
-## 15. Common Mistakes
+### Core Runtime Contract
+
+On normal scope exits, including structured control-flow exits and returns,
+every still-live owned value is cleaned up exactly once. A successful `cede`
+or move transfers that obligation and prevents cleanup of the moved-from path.
+
+`panic` is non-returning process termination in Toka 1.0. It is not a catchable
+exception and does not promise stack unwinding or cleanup after the panic
+point. Bounds and null checks that fail through the safe runtime use this same
+non-returning failure boundary. Raw allocation, foreign calls, and raw-pointer
+validity remain obligations of explicit unsafe/FFI code.
+
+## 15. Compatibility Contract
+
+Toka 1.x preserves the source-level meaning of programs in the frozen 1.0
+surface. Additive features and releases that relax a conservative rejection
+may be source-compatible extensions. A memory-safety or miscompile correction
+may reject code that depended on unsound behavior and is recorded as a safety
+fix.
+
+Diagnostic codes are not reused for unrelated rules during 1.x. Diagnostic
+wording and source highlighting may improve. `.tki`, build-cache formats,
+generated object layout, and binary ABI are compiler- and format-version-bound
+and do not carry a cross-version compatibility promise.
+
+## 16. Common Mistakes
 
 | Avoid | Use | Reason |
 | :--- | :--- | :--- |

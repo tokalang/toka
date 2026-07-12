@@ -122,6 +122,15 @@ later release.
   transferred through both a `cede` parameter and a `cede` call argument may
   cross it. Ordinary shapes remain logical in-place captures even when they
   are copyable, so `.start` does not copy them implicitly.
+- Source-call versus ABI boundary: ordinary parameters have the frozen logical
+  in-place capture semantics described by PAL. The compiler may lower scalars,
+  aggregates, handles, closures, and return values differently for a target
+  ABI, but that physical layout is not a source-level copy/borrow rule and is
+  not a stable binary ABI commitment.
+- Core runtime failure boundary: normal scope exits perform deterministic
+  cleanup for live owned values. `panic` is non-returning process termination,
+  not a catchable exception or unwinding guarantee; cleanup after panic is not
+  part of the 1.0 contract.
 - Public unsafe/raw API redlines: raw pointer exposure requires explicit
   unsafe/raw naming.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic
@@ -194,6 +203,19 @@ core contract ships.
   not be used as a substitute for this stronger relation.
 - Any diagnostic that makes a frozen rule practically impossible to understand
   in common usage.
+
+## 1.x Compatibility Policy
+
+- A valid frozen 1.0 source program keeps its source-level meaning throughout
+  1.x. Additive syntax and conservative-analysis improvements may be introduced
+  when they do not reinterpret frozen code.
+- A memory-safety or miscompile fix may reject previously accepted source that
+  depended on unsound behavior. The change must be recorded as a safety fix.
+- Published diagnostic codes are not reused for a different rule in 1.x.
+  Wording and source highlighting may improve while preserving rule identity.
+- `.tki`, build-cache data, generated object layout, and binary ABI remain tied
+  to compiler and format versions. They are not cross-version compatibility
+  promises.
 
 ## Guiding Principle
 

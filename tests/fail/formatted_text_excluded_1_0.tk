@@ -1,0 +1,7 @@
+import std/io::println
+
+// EXPECT_ERROR: E04547
+fn main() -> i32 {
+    println("{:x}", "text")
+    return 0
+}

@@ -1,0 +1,23 @@
+import core/prelude::assert
+
+shape Counter(value#: i32)
+
+fn increment_scalar(value#: i32) {
+    value += 1
+}
+
+fn increment_shape(counter#: Counter) {
+    counter.value += 1
+}
+
+fn main() -> i32 {
+    auto scalar# = 10
+    auto counter# = Counter(value = 20)
+
+    increment_scalar(scalar)
+    increment_shape(counter)
+
+    assert(scalar == 11, "mutable scalar keeps logical in-place semantics")
+    assert(counter.value == 21, "mutable shape keeps logical in-place semantics")
+    return 0
+}
