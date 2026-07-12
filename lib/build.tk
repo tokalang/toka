@@ -566,7 +566,8 @@ fn is_std_or_core(path: string) -> bool {
     return false
 }
 
-fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
+fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: string,
+                                    updates#: HashMap<string, ModuleSnapshot>) {
     auto iter# = 'graph.modules.iter()
     loop {
         auto entry_opt = iter#.next_ref()
@@ -576,34 +577,49 @@ fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
         auto &val = entry.val()
         auto m_path = key.clone()
         auto info# = val.clone()
-        
+
         if !vec_contains('graph.roots, m_path) && info.kind.as_str().equals("source") {
             if is_std_or_core(m_path.clone()) {
                 continue
             }
             auto h = calculate_fnv1a(m_path.clone())
-            
+
             auto obj_path# = build_dir.clone()
             obj_path#.push_str("/objects/")
             obj_path#.push_str(h.as_str())
             obj_path#.push_str(".o")
             auto obj_path_canon = path_canonicalize(obj_path)
-            
+
             auto tki_path# = build_dir.clone()
             tki_path#.push_str("/interfaces/")
             tki_path#.push_str(h.as_str())
             tki_path#.push_str(".tki")
             auto tki_path_canon = path_canonicalize(tki_path)
-            
+
             auto new_outputs = ModuleOutputs(
                 interface = tki_path_canon,
                 object = obj_path_canon,
                 executable = string::from("")
             )
-            
+
             info.outputs = new_outputs
-            'graph.modules#.insert(cede m_path.clone(), cede info)
+            updates#.insert(cede m_path, cede info)
         }
+    }
+}
+
+fn populate_submodule_outputs('graph#: DependencyManifest, build_dir: string) {
+    auto updates# = HashMap<string, ModuleSnapshot>::new()
+    collect_submodule_output_updates('graph, build_dir, updates)
+
+    auto updates_iter# = updates.iter()
+    loop {
+        auto entry_opt = updates_iter#.next_ref()
+        if entry_opt.is_none() { break }
+        auto entry = entry_opt.unwrap()
+        auto &key = entry.key()
+        auto &val = entry.val()
+        'graph.modules#.insert(cede key.clone(), cede val.clone())
     }
 }
 

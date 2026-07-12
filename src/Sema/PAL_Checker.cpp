@@ -167,6 +167,16 @@ void PALChecker::commitTransient(const AccessPath &path) {
   }
 }
 
+void PALChecker::releaseBorrow(const AccessPath &path) {
+  if (!IsEnabled)
+    return;
+  for (auto &ledger : LedgerStack)
+    ledger.Map.erase(path);
+  TransientBorrows.erase(
+      std::remove(TransientBorrows.begin(), TransientBorrows.end(), path),
+      TransientBorrows.end());
+}
+
 void PALChecker::clearTransient() {
   if (LedgerStack.empty()) return;
   auto& map = LedgerStack.back().Map;

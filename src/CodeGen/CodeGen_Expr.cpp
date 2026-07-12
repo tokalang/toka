@@ -3017,7 +3017,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
         collObjTy = m_TypeToName[collVal->getType()];
     }
     std::string stripName = toka::Type::stripMorphology(collObjTy);
-    std::string iterMangled = "encap_" + stripName + "_iter";
+    std::string iterMangled =
+        fe->ResolvedIterFn && !fe->ResolvedIterFn->CodegenName.empty()
+            ? fe->ResolvedIterFn->CodegenName
+            : "encap_" + stripName + "_iter";
     llvm::Function *iterFn = m_Module->getFunction(iterMangled);
     if (!iterFn) {
         iterMangled = stripName + "_iter"; // Fallback without encap_ prefix
@@ -3075,6 +3078,26 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
 
   // Define loop variable scope (moved here to allow optAlloca to bind correctly if needed, though alloca is block-level)
   m_ScopeStack.push_back({});
+  size_t iteratorScopeDepth = m_ScopeStack.size() - 1;
+  if (!isArray && iterAlloca) {
+    std::string iteratorType = fe->IteratorType;
+    if (iteratorType.empty() &&
+        m_TypeToName.count(iterAlloca->getAllocatedType())) {
+      iteratorType = m_TypeToName[iterAlloca->getAllocatedType()];
+    }
+    std::string dropName = "encap_" + iteratorType + "_drop";
+    llvm::Function *dropFn = m_Module->getFunction(dropName);
+    VariableScopeInfo iteratorInfo;
+    iteratorInfo.Name = "__for_iterator";
+    iteratorInfo.Alloca = iterAlloca;
+    iteratorInfo.AllocType = iterAlloca->getAllocatedType();
+    iteratorInfo.IsUniquePointer = false;
+    iteratorInfo.IsShared = false;
+    iteratorInfo.HasDrop = dropFn != nullptr;
+    iteratorInfo.DropFunc = dropFn ? dropName : "";
+    iteratorInfo.SoulName = iteratorType;
+    m_ScopeStack.back().push_back(iteratorInfo);
+  }
 
 
   m_Builder.CreateBr(condBB);
@@ -3122,7 +3145,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
         iterTyName = m_TypeToName[iterAlloca->getAllocatedType()];
     }
     std::string nextMethodName = fe->IsReference ? "next_ref" : "next";
-    std::string nextFnName = "encap_" + iterTyName + "_" + nextMethodName;
+    std::string nextFnName =
+        fe->ResolvedNextFn && !fe->ResolvedNextFn->CodegenName.empty()
+            ? fe->ResolvedNextFn->CodegenName
+            : "encap_" + iterTyName + "_" + nextMethodName;
     llvm::Function *nextFn = m_Module->getFunction(nextFnName);
     if (!nextFn) {
         nextFnName = iterTyName + "_" + nextMethodName; // Fallback
@@ -3307,6 +3333,8 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     m_Builder.CreateBr(afterBB);
   afterBB->insertInto(f);
   m_Builder.SetInsertPoint(afterBB);
+  executeScopeUnwinding(iteratorScopeDepth);
+  m_ScopeStack.pop_back();
   return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr, "for_result");
 }
 

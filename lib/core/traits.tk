@@ -41,6 +41,16 @@ pub trait @Iterator {
     pub fn next(self#) -> Option<Item>
 }
 
+pub trait @BorrowIterator {
+    type BorrowedItem
+    pub fn next_ref(self#) -> Option<BorrowedItem> <- self
+}
+
+pub trait @Iterable {
+    type Iter
+    pub fn iter(self) -> Iter <- self
+}
+
 pub trait @delegate<T> {
     pub fn target(self) -> T
 }

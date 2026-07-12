@@ -1,0 +1,10 @@
+error[E0441]: Cannot access 'values' while it is mutably borrowed
+ --> tests/fail/iterator_saved_cursor_mutate_source.tk:7:12
+   |
+ 7 |     values#.push(2)
+   |            ^
+note: conflicting borrow originates here
+ --> tests/fail/iterator_saved_cursor_mutate_source.tk:6:10
+   |
+ 6 |     auto cursor# = values.iter()
+   |          ^

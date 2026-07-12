@@ -1,0 +1,74 @@
+import core/option::{Option}
+import core/traits::{@encap, @Iterable, @Iterator}
+
+auto iterator_drop_count# = 0
+
+shape Values(source_value: i32)
+shape TestIteratorCursor(cursor_value: i32, done#: bool)
+
+impl TestIteratorCursor@encap {
+    fn drop(self#) {
+        iterator_drop_count += 1
+    }
+
+    pub fn clone(self) -> TestIteratorCursor {
+        return TestIteratorCursor(cursor_value = self.cursor_value, done = self.done)
+    }
+}
+
+impl Values@Iterable {
+    type Iter = TestIteratorCursor
+
+    pub fn iter(self) -> Iter <- self {
+        return TestIteratorCursor(cursor_value = self.source_value, done = false)
+    }
+}
+
+impl TestIteratorCursor@Iterator {
+    type Item = i32
+
+    pub fn next(self#) -> Option<Item> {
+        if self.done {
+            return Option<Item>::None
+        }
+        self.done = true
+        return Option<Item>::Some(self.cursor_value)
+    }
+}
+
+fn return_from_loop(values: Values) -> i32 {
+    for auto value in values {
+        return value
+    }
+    return 0
+}
+
+pub fn main() -> i32 {
+    auto values = Values(source_value = 7)
+
+    for auto value in values {
+        if value == 7 {
+            break
+        }
+    }
+    if iterator_drop_count != 1 {
+        return 1
+    }
+
+    if return_from_loop(values) != 7 {
+        return 2
+    }
+    if iterator_drop_count != 2 {
+        return 3
+    }
+
+    for auto value in values {
+        if value != 7 {
+            return 4
+        }
+    }
+    if iterator_drop_count != 3 {
+        return 5
+    }
+    return 0
+}

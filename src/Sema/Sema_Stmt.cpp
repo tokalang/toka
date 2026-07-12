@@ -453,6 +453,10 @@ void Sema::checkStmt(Stmt *S) {
         if (auto *Clo = dynamic_cast<ClosureExpr *>(E)) {
           return !Clo->ImplicitCaptures.empty();
         }
+        if (auto *Method = dynamic_cast<MethodCallExpr *>(E)) {
+          return Method->ResolvedFn &&
+                 !Method->ResolvedFn->LifeDependencies.empty();
+        }
         if (auto *Init = dynamic_cast<InitStructExpr *>(E)) {
           for (auto &Mem : Init->Members) {
             if (carriesLifeDependencyExpr(Mem.second.get()))
@@ -614,6 +618,28 @@ void Sema::checkStmt(Stmt *S) {
             else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
                 for (auto &Arg : Call->Args) {
                     collectDepsInto(Arg.get(), out);
+                }
+            }
+            else if (auto *Method = dynamic_cast<MethodCallExpr *>(E)) {
+                if (Method->ResolvedFn) {
+                  for (const auto &dep : Method->ResolvedFn->LifeDependencies) {
+                    if (Type::stripMorphology(dep) == "self") {
+                      std::string path = getPath(Method->Object.get());
+                      if (!path.empty())
+                        out.insert(path);
+                      continue;
+                    }
+                    for (size_t i = 1;
+                         i < Method->ResolvedFn->Args.size(); ++i) {
+                      if (Method->ResolvedFn->Args[i].Name != dep ||
+                          i - 1 >= Method->Args.size())
+                        continue;
+                      std::string path = getPath(Method->Args[i - 1].get());
+                      if (!path.empty())
+                        out.insert(path);
+                      break;
+                    }
+                  }
                 }
             }
             // Case 5: InitStructExpr / AnonymousRecordExpr
@@ -1451,9 +1477,10 @@ void Sema::checkStmt(Stmt *S) {
         Info.TypeObj ? Info.TypeObj->getSoulName() : "";
     bool isBorrowedViewValue =
         dependencySoul == "str" || dependencySoul == "bytes";
+    bool isBorrowLikeStoredValue = isBorrowLikeType(Info.TypeObj);
     if (!depsToCommitAsBorrow.empty() &&
         (Var->IsReference || morph == "&" || isBorrowedViewValue ||
-         !Info.FieldDependencySet.empty())) {
+         isBorrowLikeStoredValue || !Info.FieldDependencySet.empty())) {
       for (const auto &dep : depsToCommitAsBorrow) {
         if (dep.empty())
           continue;

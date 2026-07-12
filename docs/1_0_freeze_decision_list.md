@@ -36,6 +36,13 @@ later release.
   visible through the standard prelude. Every other trait name follows normal
   lexical import rules and must be declared locally or explicitly imported.
 - Associated types: keep `type` and `per type` as the stable 1.0 model.
+- Iterator protocol: non-array `for` is trait-based. `@Iterable::iter` returns
+  an associated `Iter` with `return <- self`; value iteration uses
+  `@Iterator::Item`, while reference morphology additionally selects
+  `@BorrowIterator::BorrowedItem`. The source remains PAL-borrowed for the
+  cursor lifetime, and the hidden cursor follows ordinary deterministic drop.
+  These traits remain ordinary explicitly imported traits, not implicit
+  prelude names.
 - `dyn @Trait`: single-facet trait objects only. Associated-type binding syntax
   is not part of 1.0, so traits with associated types are not object-safe as
   `dyn @Trait`, and forms such as `dyn @Readable<Item = i32>` are rejected.
@@ -158,9 +165,8 @@ core contract ships.
   state must be explicit through `cede`, `copy`, or library types with
   appropriate `Send` / `Sync`-style bounds. More expressive structured
   concurrency can build on this boundary later.
-- Iterator / async trait formalization: current library and compiler
-  conventions remain usable, but a larger language-level formalization of
-  iterator and async traits is post-1.0 work.
+- Consuming iteration, async iteration, and a larger combinator library remain
+  post-1.0 work; they must extend the frozen synchronous iterator facets.
 - Shape-internal member dependency model: future work may specify syntax such as
   `self.view <- self.owner`, but only together with construction, assignment,
   move, clone, drop, container-storage, and `.tki` rules for stable internal
@@ -181,7 +187,8 @@ core contract ships.
   construction.
 - Private-helper inference for missing borrow dependency annotations.
 - Upgrading hatted parameter unused-handle warnings into hard errors.
-- Larger iterator / async trait formalization.
+- Consuming iterators, async iterators, and larger iterator combinator
+  formalization.
 - Async blocks, parameterized `.start(...)`, and richer structured-concurrency
   syntax. These should extend the frozen async color model rather than replace
   it.

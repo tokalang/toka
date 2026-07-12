@@ -2174,8 +2174,38 @@ void Sema::registerImpl(ImplDecl *Impl) {
   }
   applyAssociatedTypeSubstitutions(Impl, associatedTypeSubstitutions);
 
+  auto requireSelfDependency = [&](const char *methodName) {
+    for (const auto &method : Impl->Methods) {
+      if (method->Name != methodName)
+        continue;
+      bool found = false;
+      for (const auto &dep : method->LifeDependencies) {
+        if (Type::stripMorphology(dep) == "self") {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        DiagnosticEngine::report(
+            getLoc(method.get()),
+            DiagID::ERR_SEMA_ITERATOR_DEPENDENCY_REQUIRED,
+            canonicalTrait + "::" + methodName,
+            resolvedTypeName);
+        HasError = true;
+      }
+    }
+  };
+  if (getTraitFamilyName(canonicalTrait) == "Iterable")
+    requireSelfDependency("iter");
+  if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
+    requireSelfDependency("next_ref");
+
   std::set<std::string> implemented;
   for (auto &Method : Impl->Methods) {
+    Method->CodegenName =
+        Impl->TraitName.empty()
+            ? resolvedTypeName + "_" + Method->Name
+            : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
     MethodDecls[resolvedTypeName][Method->Name] = Method.get();
     implemented.insert(Method->Name);
@@ -2297,7 +2327,36 @@ void Sema::declareImpl(ImplDecl *Impl) {
           ? nullptr
           : findVisibleTraitDecl(Impl->TraitName, getLoc(Impl));
   std::string canonicalTrait = canonicalTraitName(Impl->TraitName, traitDecl);
+  auto requireSelfDependency = [&](const char *methodName) {
+    for (const auto &method : Impl->Methods) {
+      if (method->Name != methodName)
+        continue;
+      bool found = false;
+      for (const auto &dep : method->LifeDependencies) {
+        if (Type::stripMorphology(dep) == "self") {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        DiagnosticEngine::report(
+            getLoc(method.get()),
+            DiagID::ERR_SEMA_ITERATOR_DEPENDENCY_REQUIRED,
+            canonicalTrait + "::" + methodName,
+            resolvedTypeName);
+        HasError = true;
+      }
+    }
+  };
+  if (getTraitFamilyName(canonicalTrait) == "Iterable")
+    requireSelfDependency("iter");
+  if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
+    requireSelfDependency("next_ref");
   for (auto &Method : Impl->Methods) {
+    Method->CodegenName =
+        Impl->TraitName.empty()
+            ? resolvedTypeName + "_" + Method->Name
+            : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
     MethodDecls[resolvedTypeName][Method->Name] = Method.get();
     implemented.insert(Method->Name);

@@ -1,10 +1,12 @@
 # FZ-5 Release Candidate Gate
 
-Status: `Complete`
+Status: `InProgress`
 
 `FZ-5` establishes the release-candidate moratorium, one mandatory gate entry
-point, deterministic evidence, and supported-platform CI. The implementation
-and four-target clean revision evidence are complete.
+point, deterministic evidence, and supported-platform CI. The gate machinery
+is complete. The explicitly authorized late iterator protocol invalidated the
+previous final-revision evidence, so a replacement four-target clean matrix is
+pending.
 
 ## Unified Entry Point
 
@@ -100,11 +102,12 @@ Release-gate run `29202522704` tested tag `v0.9.8-08-RC` at committed revision
 - package smoke 8/8.
 
 The other three rows passed the same fixed stage sequence at the same
-revision. This closes both `FZ-5-P01` and `FZ-3-P01`. The master plan remains
-`InProgress` until the separate, explicit 1.0 version and release decision;
-the RC evidence does not silently perform that release act.
+revision. This historically closes both `FZ-5-P01` and `FZ-3-P01`, but it does
+not cover the later iterator protocol. `FZ-5-P02` tracks the replacement
+Linux/macOS x64/arm64 matrix required for the current revision.
 
-No language-design question remains in FZ-5. RC work accepts only blocking
+No unresolved language-design question remains in the current iterator scope.
+After its replacement RC is established, work again accepts only blocking
 correctness, safety, platform, package, and documentation fixes; every such fix
 invalidates prior final-gate evidence and requires all four rows again.
 

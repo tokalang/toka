@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0441
+import ./lib::{Values}
+
+pub fn main() -> i32 {
+    auto values# = Values(value = 7)
+    for auto &value in values {
+        values#.set(value)
+    }
+    return 0
+}

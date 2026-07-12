@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@encap}
+import core/traits::{@encap, @Iterable, @Iterator, @BorrowIterator}
 import sys/libc::*
 import core/option::{Option}
 
@@ -327,11 +327,21 @@ impl<'T> Vec<'T> {
         }
     }
 
-    // Create Iterator
-    pub fn iter(self) -> VecIterator<'T> {
+}
+
+pub shape VecIterator<'T> (
+    &buf: ['T],
+    len#: usize = 0,
+    pos#: usize = 0
+)
+
+impl<'T> Vec<'T>@Iterable {
+    type Iter = VecIterator<'T>
+
+    pub fn iter(self) -> Iter <- self {
         unsafe {
             return VecIterator<'T>(
-                *buf = self.*buf,
+                &buf = (self.*buf as &[T]),
                 len = self.len,
                 pos = 0
             )
@@ -339,17 +349,11 @@ impl<'T> Vec<'T> {
     }
 }
 
-pub shape VecIterator<'T> (
-    nul *#buf#: ['T] = null as *['T],
-    len#: usize = 0,
-    pos#: usize = 0
-)
-
 impl<'T> VecIterator<'T>@encap {
     fn drop(self#) {}
-    pub fn clone(self) -> VecIterator<'T> {
+    pub fn clone(self) -> VecIterator<'T> <- self {
         return VecIterator<'T>(
-             *buf = self.*buf,
+             &buf = self.&buf,
              len = self.len,
              pos = self.pos
         )
@@ -357,26 +361,32 @@ impl<'T> VecIterator<'T>@encap {
 }
 
 // Concrete Implementation
-impl<'T> VecIterator<'T> {
-    pub fn next(self#) -> Option<'T> {
+impl<'T> VecIterator<'T>@Iterator {
+    type Item = 'T
+
+    pub fn next(self#) -> Option<Item> {
+        if self.pos >= self.len {
+            return Option<Item>::None
+        }
+
+        self.pos += 1
         unsafe {
-            if self.pos >= self.len {
-                return Option<'T>::None
-            }
-            
-            self.pos += 1
-            return Option<'T>::Some(self.buf[self.pos - 1])
+            return Option<Item>::Some(self.buf[self.pos - 1])
         }
     }
+}
 
-    pub fn next_ref(self#) -> Option<&'T> {
+impl<'T> VecIterator<'T>@BorrowIterator {
+    type BorrowedItem = &'T
+
+    pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
+        if self.pos >= self.len {
+            return Option<BorrowedItem>::None
+        }
+
+        self.pos += 1
         unsafe {
-            if self.pos >= self.len {
-                return Option<&'T>::None
-            }
-            
-            self.pos += 1
-            return Option<&'T>::Some(&self.buf[self.pos - 1])
+            return Option<BorrowedItem>::Some(&self.buf[self.pos - 1])
         }
     }
 }

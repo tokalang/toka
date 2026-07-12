@@ -421,6 +421,55 @@ Primary references:
   `.start`.
 - Coverage closure: none known for the frozen 1.0 suspension/state boundary.
 
+## Iterator Protocol Rules
+
+### ITER-PROTOCOL-001: Non-array iteration is resolved through formal facets
+
+- Source form: `for auto x in values` and `for auto &x in values`
+- Operation class: protocol resolution and morphology-selected iteration
+- Decision: a non-array collection must implement `@Iterable`; its associated
+  cursor must implement `@Iterator`, and reference iteration additionally
+  requires `@BorrowIterator`. Inherent methods with the same names do not
+  satisfy the protocol.
+- Diagnostics: `E04587` for a structural-only collection and `E04588` for a
+  cursor missing the required facet. Existing `E04498`/`E04500` retain the
+  `Option<Item>` return-shape checks.
+- Positive tests: `tests/pass/g07_for_iterators.tk`,
+  `tests/pass/g08_iterator_pal_protocol.tk`, and
+  `tests/pass/g08_iterator_hidden_drop.tk`.
+- Negative tests: `tests/fail/iterator_structural_protocol_rejected.tk` and
+  `tests/fail/iterator_missing_source_dependency.tk`.
+- Interface replay requirements: `@Iterable::Iter`, `@Iterator::Item`,
+  `@BorrowIterator::BorrowedItem`, method signatures, and dependencies are
+  exported together.
+- Replay tests: `tests/semantics/tki_replay/cases/iterator_001_protocol` covers
+  value and borrowed loops plus a source-mutation rejection through both
+  source-backed and source-less imports.
+
+### ITER-LIFETIME-001: Cursor lifetime remains anchored to its source
+
+- Source form: `auto cursor# = values.iter()` or an implicit cursor created by
+  `for`.
+- Operation class: escaping dependency, PAL shared borrow, and deterministic
+  cleanup.
+- Decision: `@Iterable::iter` and `@BorrowIterator::next_ref` must declare
+  `<- self`. A live cursor prevents mutation, replacement, move, or cede of the
+  source. A cursor cannot escape a local source. The compiler-generated cursor
+  is dropped on normal exhaustion, `break`, and function return.
+- Diagnostics: `E04589` for a missing protocol dependency, `E0441` for source
+  mutation while borrowed, and `E0455` for a cursor escaping a local source.
+- Positive tests: `tests/pass/g08_iterator_pal_protocol.tk` proves the borrow is
+  released after the loop; `tests/pass/g08_iterator_hidden_drop.tk` observes
+  exact hidden-cursor drop on `break` and return.
+- Negative tests: `tests/fail/iterator_mutate_source_in_loop.tk`,
+  `tests/fail/iterator_saved_cursor_mutate_source.tk`, and
+  `tests/fail/iterator_escape_local_source.tk`.
+- Library closure: Vec, HashMap, and HashSet cursors carry explicit borrowed
+  slices or nested dependent cursors. The build manifest update path now uses
+  two phases rather than mutating a HashMap while traversing it.
+- Coverage closure: synchronous value and borrow iteration are closed. Toka
+  1.0 intentionally has no consuming-iterator or async-iterator contract.
+
 ## Interface Replay And Cache Rules
 
 ### TKI-REPLAY-001: `.tki` must preserve all semantic facts needed by callers

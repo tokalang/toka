@@ -604,6 +604,40 @@ for auto x in [1, 2, 3] {
 }
 ```
 
+Non-array iteration uses three ordinary traits from `core/traits`. They are not
+implicit prelude traits:
+
+```toka
+trait @Iterable {
+    type Iter
+    pub fn iter(self) -> Iter <- self
+}
+
+trait @Iterator {
+    type Item
+    pub fn next(self#) -> Option<Item>
+}
+
+trait @BorrowIterator {
+    type BorrowedItem
+    pub fn next_ref(self#) -> Option<BorrowedItem> <- self
+}
+```
+
+`for auto item in values` requires `values: @Iterable` and its `Iter` type to
+implement `@Iterator`. `for auto &item in values` additionally requires
+`@BorrowIterator`; further reference morphology, such as `&&item`, is preserved
+in `BorrowedItem`. The `iter` and `next_ref` dependencies are mandatory: PAL
+keeps the source collection borrowed while an explicit cursor is live and for
+the duration of a `for` loop. Mutating, replacing, moving, or ceding the source
+during that interval is rejected. The hidden cursor is a normal scoped value
+and is dropped on exhaustion, `break`, and function exit.
+
+Value iteration does not implicitly cede the collection or its elements. Its
+ownership behavior is exactly the declared `Item` returned by `next`, and the
+ordinary copy/resource rules still apply. Toka 1.0 does not define a consuming
+iterator or async-iterator protocol.
+
 `while` is not part of the current syntax; use `loop condition { ... }`.
 
 `match` supports literals, ranges, variants, guards, or-patterns, wildcards,

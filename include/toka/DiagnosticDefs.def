@@ -108,6 +108,9 @@ DIAG(ERR_SEMA_START_BOUNDARY_ARGUMENT, Error,   "E04583", "Task started across e
 DIAG(ERR_SEMA_START_BOUNDARY_DEPENDENCY, Error,   "E04584", "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'")
 DIAG(ERR_SEMA_WAIT_INSIDE_ASYNC, Error,   "E04585", "'.wait' cannot be used inside an async function because it blocks the task executor; use '.await'")
 DIAG(ERR_SEMA_BARE_ARRAY_INIT_EXCLUDED, Error,   "E04586", "Bare '[N]T(...)' array initialization is outside the Toka 1.0 language; use '[value; count]' for a fixed array value or 'new [N]T(...)' for owned storage")
+DIAG(ERR_SEMA_ITERABLE_TRAIT_REQUIRED, Error, "E04587", "Type '{}' has an iter method but does not implement the formal @Iterable protocol")
+DIAG(ERR_SEMA_ITERATOR_TRAIT_REQUIRED, Error, "E04588", "Iterator type '{}' does not implement the required {} protocol")
+DIAG(ERR_SEMA_ITERATOR_DEPENDENCY_REQUIRED, Error, "E04589", "{} for type '{}' must declare '<- self' so PAL can preserve the source lifetime")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")

@@ -1192,6 +1192,9 @@ public:
   std::unique_ptr<Stmt> Body;
   std::unique_ptr<Stmt> ElseBody;
   std::string IterElementType;
+  std::string IteratorType;
+  FunctionDecl *ResolvedIterFn = nullptr;
+  FunctionDecl *ResolvedNextFn = nullptr;
 
   // [Phase 2] Comptime Macro Unrolling
   bool IsComptimeUnrolled = false;
@@ -1212,7 +1215,10 @@ public:
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->Permission = Permission;
-      n->IterElementType = IterElementType;
+    n->IterElementType = IterElementType;
+    n->IteratorType = IteratorType;
+    n->ResolvedIterFn = nullptr;
+    n->ResolvedNextFn = nullptr;
     return n;
   }
 };

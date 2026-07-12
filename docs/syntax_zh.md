@@ -568,6 +568,37 @@ for auto x in [1, 2, 3] {
 }
 ```
 
+非数组迭代使用 `core/traits` 中三个普通 trait；它们不是隐式 prelude
+trait：
+
+```toka
+trait @Iterable {
+    type Iter
+    pub fn iter(self) -> Iter <- self
+}
+
+trait @Iterator {
+    type Item
+    pub fn next(self#) -> Option<Item>
+}
+
+trait @BorrowIterator {
+    type BorrowedItem
+    pub fn next_ref(self#) -> Option<BorrowedItem> <- self
+}
+```
+
+`for auto item in values` 要求 `values: @Iterable`，并且其 `Iter` 类型实现
+`@Iterator`。`for auto &item in values` 还要求 `@BorrowIterator`；`&&item`
+等更深的引用 morphology 由 `BorrowedItem` 保留。`iter` 和 `next_ref` 的
+依赖是强制契约：显式 cursor 存活期间以及整个 `for` 循环期间，PAL 都会
+保持源集合被借用；此时修改、替换、移动或 `cede` 源集合会被拒绝。隐藏
+cursor 是普通作用域值，在迭代结束、`break` 和函数退出时执行 drop。
+
+值迭代不会隐式 `cede` 集合或元素；其所有权行为完全由 `next` 声明返回的
+`Item` 决定，并继续服从普通复制和资源规则。Toka 1.0 不定义 consuming
+iterator 或 async-iterator 协议。
+
 当前语法没有 `while`；条件循环使用 `loop condition { ... }`。
 
 `match` 支持字面量、range、变体、guard、or-pattern、通配符和 `default`。

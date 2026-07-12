@@ -1923,6 +1923,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     std::string fullType = "void";
+    AccessPath iteratorSourcePath;
+    std::string iteratorSourceName;
+    bool iteratorBorrowAdded = false;
 
     if (isArray) {
         // Array emulation of next/next_ref
@@ -1936,11 +1939,34 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             error(fe->Collection.get(), DiagID::ERR_SEMA_TYPE_DOES_NOT_IMPLEMENT_ITERATOR_PROTOCOL, soulType);
             fullType = "i32";
         } else {
+            std::string iterableKey = baseSoulType + "@Iterable";
+            if (!ImplMap.count(iterableKey)) {
+              error(fe->Collection.get(),
+                    DiagID::ERR_SEMA_ITERABLE_TRAIT_REQUIRED, soulType);
+            }
             std::string iterObjStr = MethodMap[baseSoulType]["iter"];
             iterObjStr = resolveType(iterObjStr, false);
-              auto iterObj = toka::Type::fromString(iterObjStr);
+            auto iterObj = toka::Type::fromString(iterObjStr);
             auto iterSoul = iterObj->getSoulType()->toString();
             std::string baseIterSoul = toka::Type::stripMorphology(iterSoul);
+            fe->IteratorType = baseIterSoul;
+            if (MethodDecls.count(baseSoulType) &&
+                MethodDecls[baseSoulType].count("iter")) {
+              fe->ResolvedIterFn = MethodDecls[baseSoulType]["iter"];
+              bool dependsOnSelf = false;
+              for (const auto &dep : fe->ResolvedIterFn->LifeDependencies) {
+                if (Type::stripMorphology(dep) == "self") {
+                  dependsOnSelf = true;
+                  break;
+                }
+              }
+              if (!dependsOnSelf) {
+                error(fe->Collection.get(),
+                      DiagID::ERR_SEMA_ITERATOR_DEPENDENCY_REQUIRED,
+                      "Iterable::iter",
+                      soulType);
+              }
+            }
             
             // 1. Peek at next() to see what the element type is
             std::string E_type = "";
@@ -1971,11 +1997,31 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 
                 fe->IsReference = expectsRef;
                 std::string nextMethodName = expectsRef ? "next_ref" : "next";
+                if (!ImplMap.count(baseIterSoul + "@Iterator")) {
+                  error(fe, DiagID::ERR_SEMA_ITERATOR_TRAIT_REQUIRED,
+                        baseIterSoul, "@Iterator");
+                }
+                std::string iteratorFacet =
+                    expectsRef ? "@BorrowIterator" : "@Iterator";
+                if (expectsRef &&
+                    !ImplMap.count(baseIterSoul + iteratorFacet)) {
+                  error(fe, DiagID::ERR_SEMA_ITERATOR_TRAIT_REQUIRED,
+                        baseIterSoul, iteratorFacet);
+                }
                 
                 if (!MethodMap[iterSoul].count(nextMethodName)) {
                      error(fe, DiagID::ERR_SEMA_ITERATOR_FOR_DOES_NOT_SUPPORT, soulType, (expectsRef ? "borrow semantics (.next_ref())" : "value semantics (.next())"));
                      fullType = "i32";
                 } else {
+                     if (MethodDecls.count(iterSoul) &&
+                         MethodDecls[iterSoul].count(nextMethodName)) {
+                       fe->ResolvedNextFn =
+                           MethodDecls[iterSoul][nextMethodName];
+                     } else if (MethodDecls.count(baseIterSoul) &&
+                                MethodDecls[baseIterSoul].count(nextMethodName)) {
+                       fe->ResolvedNextFn =
+                           MethodDecls[baseIterSoul][nextMethodName];
+                     }
                      std::string nextRetStr = MethodMap[iterSoul][nextMethodName];
                      if (nextRetStr.size() > 7 && nextRetStr.substr(0, 7) == "Option<") {
                          std::string payload = nextRetStr.substr(7, nextRetStr.size() - 8);
@@ -1996,10 +2042,31 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
+    if (!isArray) {
+      iteratorSourcePath =
+          canonicalizeAccessPath(makeAccessPath(fe->Collection.get()));
+      iteratorSourceName = getPathString(fe->Collection.get());
+      if (iteratorSourcePath &&
+          PALCheckerState.getState(iteratorSourcePath) == PathState::Free) {
+        if (!PALCheckerState.recordBorrow(iteratorSourcePath, false,
+                                          getLoc(fe))) {
+          error(fe->Collection.get(), DiagID::ERR_BORROW_MUT,
+                iteratorSourcePath.toLegacyString());
+        } else {
+          PALCheckerState.commitTransient(iteratorSourcePath);
+          iteratorBorrowAdded = true;
+        }
+      }
+    }
+
     enterScope();
     CurrentScope->IsLoop = true;
     SymbolInfo Info;
     Info.TypeObj = toka::Type::fromString(fullType);
+    if (fe->IsReference && !iteratorSourceName.empty()) {
+      Info.BorrowedFrom = iteratorSourceName;
+      Info.LifeDependencySet.insert(iteratorSourceName);
+    }
     CurrentScope->define(fe->VarName, Info);
 
     bool isReceiver = false;
@@ -2149,6 +2216,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(fe, DiagID::ERR_BRANCH_TYPE_MISMATCH, "For loop", bodyType,
             elseType);
     }
+    if (iteratorBorrowAdded)
+      PALCheckerState.releaseBorrow(iteratorSourcePath);
     return toka::Type::fromString((bodyType != "void") ? bodyType : elseType);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
     auto innerTy = checkExpr(ce->Value.get());

@@ -106,6 +106,9 @@ public:
   // Commits a specific transient borrow so it persists until the scope ends
   void commitTransient(const AccessPath &path);
 
+  // Releases an exact borrow introduced by a compiler-managed lexical value.
+  void releaseBorrow(const AccessPath &path);
+
   // Clears all uncommitted transient borrows (called at statement boundaries)
   void clearTransient();
 

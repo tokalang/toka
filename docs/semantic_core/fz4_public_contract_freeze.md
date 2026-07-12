@@ -90,3 +90,14 @@ must pass before 1.0 can freeze. `FZ-5` may now build the unified release gate
 and RC evidence path without changing any language contract.
 
 Milestone commit subject: `docs: freeze Toka 1.0 public contracts`.
+
+## Authorized Iterator Addendum
+
+After the original RC, the user explicitly reopened the 1.0 surface for the
+synchronous iterator closure. `syntax.md`, `syntax_zh.md`, the freeze decision
+list, and the semantic rule matrix now freeze `@Iterable`, `@Iterator`, and
+`@BorrowIterator` consistently. Focused diagnostics, PAL lifetime tests,
+hidden-cursor drop execution, and source/source-less replay are recorded in
+`iterator_protocol_closure.md`. Local verification is 320/320 pass, 242/242
+fail, 1/1 warn, and 12/12 replay, so FZ-4 remains complete; FZ-5 is reopened
+only for replacement supported-platform evidence.

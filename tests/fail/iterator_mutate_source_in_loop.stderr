@@ -1,0 +1,10 @@
+error[E0441]: Cannot access 'values' while it is mutably borrowed
+ --> tests/fail/iterator_mutate_source_in_loop.tk:8:16
+   |
+ 8 |         values#.push(value)
+   |                ^
+note: conflicting borrow originates here
+ --> tests/fail/iterator_mutate_source_in_loop.tk:7:5
+   |
+ 7 |     for auto &value in values {
+   |     ^

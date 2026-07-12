@@ -24,6 +24,8 @@ The following decisions govern all 1.0 closure work:
 - The current async color and consumption model (`fn -> async T`, `.await`,
   `.wait`, and `.start`) is in the 1.0 surface. Richer cancellation, async
   blocks, parameterized `.start`, and structured concurrency are post-1.0.
+- The synchronous iterator surface is the formal `@Iterable`, `@Iterator`, and
+  `@BorrowIterator` protocol. Consuming and async iteration remain post-1.0.
 - Experimental `nocapture` and `readonly` stay non-default. `writeonly` is
   stopped at its summary-precision boundary, and `noalias` is paused. None is
   a 1.0 completion condition.
@@ -76,7 +78,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
 | `FZ-3` | `Complete` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | `semantic_core/fz3_compiler_reliability_closure.md` and clean revision `3ab00dff` release gates on Linux x64/arm64 and macOS x64/arm64 |
 | `FZ-4` | `Complete` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | `semantic_core/fz4_public_contract_freeze.md`, synchronized specifications, stable diagnostic tests, and ABI-boundary execution coverage |
-| `FZ-5` | `Complete` | Run the release-candidate moratorium and final 1.0 gate | `semantic_core/fz5_release_candidate_gate.md` and four passing reports from release-gate run `29202522704` at revision `3ab00dff` |
+| `FZ-5` | `InProgress` | Run the release-candidate moratorium and final 1.0 gate | The previous four-target RC evidence covers revision `3ab00dff`; the explicitly authorized late iterator closure requires a fresh clean matrix |
 
 Work proceeds in phase order. A later phase may collect evidence early, but it
 cannot be declared complete while an earlier semantic blocker can invalidate
@@ -107,6 +109,10 @@ through `FZ-4`.
 - `if`, `guard`, `match`, `loop`, `for`, `break`, `continue`, block `pass`,
   enum exhaustiveness, guard handling, or-pattern consistency, and
   resource-safe patterns.
+- The formal `@Iterable`, `@Iterator`, and `@BorrowIterator` facets, including
+  associated item types, mandatory source dependencies, morphology-selected
+  value/borrow iteration, scoped hidden-cursor cleanup, and same-version TKI
+  replay.
 - PAL path overlap, simultaneous call borrow groups, branch/loop state merge,
   move invalidation, borrow validity, and conservative local proof.
 - Async effect consumption, async return dependencies, `.start` execution
@@ -150,8 +156,8 @@ unless it is separately promoted through a new audited decision.
   construction semantics.
 - Full value-domain exhaustiveness, private-helper dependency inference, and
   more aggressive PAL acceptance.
-- Larger iterator/async trait formalization, async blocks, parameterized
-  `.start`, cancellation semantics, and structured concurrency.
+- Consuming iterators, async iterators and combinator breadth, async blocks,
+  parameterized `.start`, cancellation semantics, and structured concurrency.
 - Global destructuring and formatted `String`/`str` printing beyond the
   currently supported plain formatting path.
 - Resolver-normalized cross-package identity refinements for `pub(path)`.
@@ -190,6 +196,7 @@ unless it is separately promoted through a new audited decision.
 | `FZ-4-D03` | `FZ-4` | `Complete` | Diagnostics used "not yet supported" without naming their 1.0 classification | `E04547` and `E0744` retain their identities and now state explicit 1.0 exclusions, with focused negative tests |
 | `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed ten-stage gate, deterministic JSON, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
+| `FZ-5-P02` | `FZ-5` | `InProgress` | The authorized late iterator protocol changed the frozen source surface after revision `3ab00dff` | Local 320/320 pass, 242/242 fail, 1/1 warn, and 12/12 replay evidence is complete; create a new RC revision and obtain clean Linux/macOS x64/arm64 release-gate reports |
 
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains
@@ -278,6 +285,9 @@ The starting baseline already includes:
   source/ABI, runtime, platform, and diagnostic boundaries;
 - completed the FZ-5 unified RC gate, deterministic report, self-contained
   package smoke, and four-target clean matrix at revision `3ab00dff`;
+- completed the local iterator-protocol closure with 320/320 positive tests,
+  242/242 negative tests, 1/1 warning tests, and 12/12 source/source-less
+  semantic replay cases; a replacement four-target RC matrix is still pending;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 
@@ -300,8 +310,10 @@ Toka 1.0 may be frozen only when all of the following are true:
 - English and Chinese specifications agree with compiler behavior;
 - all backend memory contracts remain non-default unless separately promoted.
 
-The `v0.9.8-08-RC` evidence at revision `3ab00dff` satisfies these technical
-conditions. This document remains `InProgress` until an explicit decision
+The `v0.9.8-08-RC` evidence at revision `3ab00dff` is the historical baseline,
+but it predates the authorized iterator closure and no longer satisfies the
+final-current-revision condition. This document and `FZ-5` remain `InProgress`
+until the replacement four-target matrix passes and an explicit decision
 authorizes the 1.0 version transition and final release act.
 
 At that point the document status changes to `Frozen`, 1.0 semantic expansion

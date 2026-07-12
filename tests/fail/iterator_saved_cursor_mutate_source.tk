@@ -1,0 +1,9 @@
+import std/vec::{Vec}
+
+pub fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    auto cursor# = values.iter()
+    values#.push(2)
+    return cursor#.next().unwrap()
+}

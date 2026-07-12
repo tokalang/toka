@@ -1,0 +1,12 @@
+import std/vec::{Vec, VecIterator}
+
+fn escaped() -> VecIterator<i32> {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    return values.iter()
+}
+
+pub fn main() -> i32 {
+    auto cursor# = escaped()
+    return cursor#.next().unwrap()
+}

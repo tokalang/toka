@@ -2,7 +2,7 @@
 
 import core/types::{usize}
 import std/hashmap::{HashMap, HashMapIterator, Entry, EntryRef}
-import core/traits::{@Hash, @PartialEq, @encap}
+import core/traits::{@Hash, @PartialEq, @encap, @Iterable, @Iterator, @BorrowIterator}
 import core/option::{Option}
 
 pub shape HashSet<'T>(
@@ -56,9 +56,14 @@ impl<'T> HashSet<'T> {
         return opt.is_some()
     }
 
-    pub fn iter(self#) -> HashSetIterator<'T> {
+}
+
+impl<'T> HashSet<'T>@Iterable {
+    type Iter = HashSetIterator<'T>
+
+    pub fn iter(self) -> Iter <- self {
         return HashSetIterator<'T>(
-            map_iter = self.map#.iter()
+            map_iter = self.map.iter()
         )
     }
 }
@@ -67,18 +72,24 @@ pub shape HashSetIterator<'T> (
     map_iter#: HashMapIterator<'T, bool>
 )
 
-impl<'T> HashSetIterator<'T> {
-    pub fn next(self#) -> Option<'T> {
+impl<'T> HashSetIterator<'T>@Iterator {
+    type Item = 'T
+
+    pub fn next(self#) -> Option<Item> {
         match self.map_iter#.next() {
-            auto Option<Entry<'T, bool>>::Some(entry) => return Option<'T>::Some(*entry.key())
-            auto Option<Entry<'T, bool>>::None => return Option<'T>::None
+            auto Option<Entry<'T, bool>>::Some(entry) => return Option<Item>::Some(*entry.key())
+            auto Option<Entry<'T, bool>>::None => return Option<Item>::None
         }
     }
+}
 
-    pub fn next_ref(self#) -> Option<&'T> {
+impl<'T> HashSetIterator<'T>@BorrowIterator {
+    type BorrowedItem = &'T
+
+    pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
         match self.map_iter#.next_ref() {
-            auto Option<EntryRef<'T, bool>>::Some(entry) => return Option<&'T>::Some(entry.key())
-            auto Option<EntryRef<'T, bool>>::None => return Option<&'T>::None
+            auto Option<EntryRef<'T, bool>>::Some(entry) => return Option<BorrowedItem>::Some(entry.key())
+            auto Option<EntryRef<'T, bool>>::None => return Option<BorrowedItem>::None
         }
     }
 }

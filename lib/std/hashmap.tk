@@ -1,5 +1,5 @@
 import core/types::{usize}
-import core/traits::{@Hash, @PartialEq, @encap}
+import core/traits::{@Hash, @PartialEq, @encap, @Iterable, @Iterator, @BorrowIterator}
 import core/option::{Option}
 import std/vec::{Vec}
 import core/primitives
@@ -359,15 +359,21 @@ impl<'K, 'V> HashMap<'K, 'V> {
         }
     }
 
+}
 
-    pub fn iter(self) -> HashMapIterator<'K, 'V> {
-        return HashMapIterator<'K, 'V>(
-             *keys_ptr = self.keys.unsafe_as_raw(),
-             *vals_ptr = self.vals.unsafe_as_raw(),
-             *meta_ptr = self.meta.unsafe_as_raw(),
-             cap  = self.cap,
-             pos  = 0
-        )
+impl<'K, 'V> HashMap<'K, 'V>@Iterable {
+    type Iter = HashMapIterator<'K, 'V>
+
+    pub fn iter(self) -> Iter <- self {
+        unsafe {
+            return HashMapIterator<'K, 'V>(
+                 &keys = (self.keys.*buf as &[K]),
+                 &vals = (self.vals.*buf as &[V]),
+                 &meta = (self.meta.*buf as &[u8]),
+                 cap = self.cap,
+                 pos = 0
+            )
+        }
     }
 }
 
@@ -401,9 +407,9 @@ impl<'K, 'V> EntryRef<'K, 'V> {
 pub alias MapResult<'K, 'V> = Option<Entry<'K, 'V>>
 
 pub shape HashMapIterator<'K, 'V> (
-    *keys_ptr: ['K],
-    *vals_ptr: ['V],
-    *meta_ptr: [u8],
+    &keys: ['K],
+    &vals: ['V],
+    &meta: [u8],
     cap: usize,
     pos#: usize
 )
@@ -412,57 +418,55 @@ impl<'K, 'V> HashMapIterator<'K, 'V>@encap {
     pub(std) *
     fn drop(self#) {}
     
-    pub fn clone(self) -> HashMapIterator<'K, 'V> {
+    pub fn clone(self) -> HashMapIterator<'K, 'V> <- self {
         return HashMapIterator<'K, 'V>(
-            *keys_ptr = self.*keys_ptr,
-            *vals_ptr = self.*vals_ptr,
-            *meta_ptr = self.*meta_ptr,
+            &keys = self.&keys,
+            &vals = self.&vals,
+            &meta = self.&meta,
             cap = self.cap,
             pos = self.pos
         )
     }
 }
 
-impl<'K, 'V> HashMapIterator<'K, 'V> {
-    pub fn next(self#) -> Option<Entry<'K, 'V>> {
-        unsafe {
-            auto *m_buf = self.*meta_ptr as *[u8]
-            auto *k_buf = self.*keys_ptr as *['K]
-            auto *v_buf = self.*vals_ptr as *['V]
-            
-            loop self.pos < self.cap {
-                if m_buf[self.pos] == 1 {
-                    auto p = self.pos
-                    self.pos += 1
-                    return Option<Entry<'K, 'V>>::Some(Entry<'K, 'V>(
-                        *key=*k_buf[p],
-                        *val=*v_buf[p]
-                    ))
-                }
-                self.pos += 1
-            }
-        }
-        return Option<Entry<'K, 'V>>::None
-    }
+impl<'K, 'V> HashMapIterator<'K, 'V>@Iterator {
+    type Item = Entry<'K, 'V>
 
-    pub fn next_ref(self#) -> Option<EntryRef<'K, 'V>> {
+    pub fn next(self#) -> Option<Item> {
         unsafe {
-            auto *m_buf = self.*meta_ptr as *[u8]
-            auto *k_buf = self.*keys_ptr as *['K]
-            auto *v_buf = self.*vals_ptr as *['V]
-            
             loop self.pos < self.cap {
-                if m_buf[self.pos] == 1 {
+                if self.meta[self.pos] == 1 {
                     auto p = self.pos
                     self.pos += 1
-                    return Option<EntryRef<'K, 'V>>::Some(EntryRef<'K, 'V>(
-                        &key=&k_buf[p],
-                        &val=&v_buf[p]
+                    return Option<Item>::Some(Entry<'K, 'V>(
+                        *key = (&self.keys[p] as *K),
+                        *val = (&self.vals[p] as *V)
                     ))
                 }
                 self.pos += 1
             }
         }
-        return Option<EntryRef<'K, 'V>>::None
+        return Option<Item>::None
+    }
+}
+
+impl<'K, 'V> HashMapIterator<'K, 'V>@BorrowIterator {
+    type BorrowedItem = EntryRef<'K, 'V>
+
+    pub fn next_ref(self#) -> Option<BorrowedItem> <- self {
+        unsafe {
+            loop self.pos < self.cap {
+                if self.meta[self.pos] == 1 {
+                    auto p = self.pos
+                    self.pos += 1
+                    return Option<BorrowedItem>::Some(EntryRef<'K, 'V>(
+                        &key = &self.keys[p],
+                        &val = &self.vals[p]
+                    ))
+                }
+                self.pos += 1
+            }
+        }
+        return Option<BorrowedItem>::None
     }
 }

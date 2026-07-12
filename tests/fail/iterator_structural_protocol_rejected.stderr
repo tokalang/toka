@@ -1,0 +1,10 @@
+error[E04587]: Type 'Values' has an iter method but does not implement the formal @Iterable protocol
+ --> tests/fail/iterator_structural_protocol_rejected.tk:25:23
+    |
+ 25 |     for auto value in values {
+    |                       ^
+error[E04588]: Iterator type 'Cursor' does not implement the required @Iterator protocol
+ --> tests/fail/iterator_structural_protocol_rejected.tk:25:5
+    |
+ 25 |     for auto value in values {
+    |     ^
