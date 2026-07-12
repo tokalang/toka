@@ -1,4 +1,3 @@
-// COMPILE_ONLY: runtime cleanup correctness is tracked by FZ-3.
 // EXPECT_EVIDENCE: OWN-CEDE-001 OWN-CEDE-002
 import ./lib::{Parcel, forward_parcel}
 

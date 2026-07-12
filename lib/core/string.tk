@@ -13,12 +13,12 @@
 // limitations under the License.
 
 import core/types::{char, byte, usize, Addr, ADDR0, OAddr, Char32}
-import core/traits::{@encap, @Hash, @PartialEq, @PartialOrd}
+import core/traits::{@encap, @Hash, @PartialEq, @PartialOrd, @delegate, @Send, @Sync}
 import core/str::{str, cstr, libc_strlen, bytes}
 import core/utf8::{Cursor, REPLACEMENT_CHAR}
+import core/option::{Option}
+import core/result::{Result}
 import core/internal/runtime::__toka_panic_handler
-
-
 extern fn libc_malloc(size: usize) -> *void
 extern fn libc_free(*ptr: void) -> void
 extern fn libc_memcpy(*dest: void, *src: void, n: usize) -> *void

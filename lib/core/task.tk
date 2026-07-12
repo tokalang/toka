@@ -3,6 +3,8 @@
 // core/task.tk
 // This file provides the core compiler-injected primitives for asynchronous tasks.
 
+import core/traits::{@encap}
+
 extern fn __toka_coro_resume(*handle: void) -> void
 extern fn __toka_coro_done(*handle: void) -> bool
 extern fn __toka_coro_destroy(*handle: void) -> void

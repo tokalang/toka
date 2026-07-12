@@ -1,0 +1,9 @@
+import tests/import_test/selective_lib::{selected_value}
+
+fn hidden(value: UnselectedAlias) -> i32 { // EXPECT: error[E0463]
+    return value.value
+}
+
+fn main() -> i32 {
+    return selected_value()
+}

@@ -1,4 +1,5 @@
 import sys/thread::{sys_thread_spawn, sys_thread_join, sys_thread_detach, unwrap_fat_pointer, sys_alloc_thread_env, sys_free_thread_env}
+import sys/libc::{libc_usleep, libc_sched_yield}
 import std/error::{Error, __unused_dummy}
 
 /// Suspends the current thread for at least the specified number of milliseconds.
@@ -149,5 +150,4 @@ fn __dummy_unused_ref() {
         }
     }
 }
-
 

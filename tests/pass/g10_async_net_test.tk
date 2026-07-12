@@ -3,17 +3,10 @@ import std/task::{sleep_async, block_on}
 
 import std/io::{println}
 
-pub fn async_server() -> async i32 {
-    println("[Server] Binding to 127.0.0.1:48899...")
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 48899)
-    auto listener# = TcpListener::bind(addr)
-    if !listener.is_valid() {
-        println("[Server] Bind failed!")
-        return -1
-    }
-    
+pub fn async_server(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
     println("[Server] Awaiting incoming connection...")
-    auto stream# = net_async_accept(listener).await
+    auto stream# = net_async_accept(owned_listener).await
     if !stream.is_valid() {
         println("[Server] Accept failed!")
         return -1
@@ -38,9 +31,9 @@ pub fn async_server() -> async i32 {
     return 0
 }
 
-pub fn async_client() -> async i32 {
+pub fn async_client(port: u16) -> async i32 {
     println("[Client] Connecting to server...")
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 48899)
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)
     auto stream# = TcpStream::connect(addr)
     auto retries# = 0
     loop !stream.is_valid() {
@@ -71,9 +64,14 @@ pub fn async_client() -> async i32 {
 }
 
 pub fn main() -> i32 {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() { return 1 }
+    auto port = listener.local_port()
+    if port == 0:u16 { return 1 }
     println("[Main] Spawning client and server...")
-    async_client().start
-    auto server = async_server().start
+    async_client(port).start
+    auto server = async_server(cede listener).start
     
     println("[Main] Blocking on server completion...")
     block_on<i32>(server)

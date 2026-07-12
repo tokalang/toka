@@ -692,6 +692,9 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   llvm::Value *initVal = nullptr;
   llvm::Type *decayArrayType = nullptr;
   std::string inferredTypeName = "";
+  llvm::Value *closureEnvAddr = nullptr;
+  llvm::Type *closureEnvType = nullptr;
+  std::string closureEnvTypeName;
   if (var->Init) {
     // [Fix] Handle UnsetExpr: Skip generation for explicit 'unset'
     if (dynamic_cast<const UnsetExpr *>(var->Init.get())) {
@@ -1128,6 +1131,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
          if (shp->Name.find("__Closure_") == 0) {
              bool isDynFn = type->getStructNumElements() == 3;
              llvm::Type *envTy = initVal->getType();
+             closureEnvType = getLLVMType(var->Init->ResolvedType);
+             closureEnvTypeName = shp->Name;
              llvm::Value *envPtrAddr;
              
              if (isDynFn) {
@@ -1156,6 +1161,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                      envPtrAddr = createEntryBlockAlloca(envTy, nullptr, "closure_env_alloc");
                      m_Builder.CreateStore(initVal, envPtrAddr);
                  }
+                 closureEnvAddr = envPtrAddr;
              }
              
              llvm::Value *opaqueEnv = m_Builder.CreatePointerCast(envPtrAddr, llvm::PointerType::getUnqual(m_Context));
@@ -1273,6 +1279,11 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       hasDrop = false;
       dropFunc = "";
     }
+    if (var->ResolvedType &&
+        var->ResolvedType->typeKind == toka::Type::DynFn) {
+      hasDrop = true;
+      dropFunc = "";
+    }
 
     VariableScopeInfo info;
     info.Name = varName;
@@ -1286,8 +1297,31 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
         auto soul = m_Symbols[varName].soulTypeObj;
         info.SoulName = soul ? soul->getSoulType()->getSoulName() : "";
     }
+    if (alloca && (hasDrop || var->IsUnique || var->IsShared)) {
+      info.DropFlag = createEntryBlockAlloca(
+          llvm::Type::getInt1Ty(m_Context), nullptr, varName + ".drop.live");
+      m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                            info.DropFlag);
+    }
 
     m_ScopeStack.back().push_back(info);
+
+    if (closureEnvAddr && closureEnvType && !closureEnvTypeName.empty()) {
+      VariableScopeInfo envInfo;
+      envInfo.Name = varName;
+      envInfo.Alloca = closureEnvAddr;
+      envInfo.AllocType = closureEnvType;
+      envInfo.IsUniquePointer = false;
+      envInfo.IsShared = false;
+      envInfo.HasDrop = true;
+      envInfo.SoulName = closureEnvTypeName;
+      envInfo.DropFlag = createEntryBlockAlloca(
+          llvm::Type::getInt1Ty(m_Context), nullptr,
+          varName + ".env.drop.live");
+      m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                            envInfo.DropFlag);
+      m_ScopeStack.back().push_back(envInfo);
+    }
 
     // [New] Update m_Symbols with drop metadata for dispatcher
     if (m_Symbols.count(varName)) {
@@ -1868,28 +1902,25 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     }
 
     if (isPointer) {
-      llvm::Value *objVal = genExpr(expr->Object.get()).load(m_Builder);
+      llvm::Value *objVal = nullptr;
+      const Expr *object = expr->Object.get();
+      while (auto *postfix = dynamic_cast<const PostfixExpr *>(object))
+        object = postfix->LHS.get();
+
+      if (auto *var = dynamic_cast<const VariableExpr *>(object)) {
+        llvm::Value *identity = getIdentityAddr(var->codegenName());
+        llvm::Type *handleTy = getLLVMType(expr->Object->ResolvedType);
+        if (identity && handleTy)
+          objVal = m_Builder.CreateLoad(handleTy, identity, "unwrap.handle");
+      }
+      if (!objVal)
+        objVal = genExpr(expr->Object.get()).load(m_Builder);
       if (!objVal)
         return nullptr;
 
-      llvm::Value *nn = m_Builder.CreateIsNotNull(objVal, "unwrap.nn");
-      llvm::Function *f = m_Builder.GetInsertBlock()->getParent();
-      llvm::BasicBlock *okBB =
-          llvm::BasicBlock::Create(m_Context, "unwrap.ok", f);
-      llvm::BasicBlock *panicBB =
-          llvm::BasicBlock::Create(m_Context, "unwrap.panic", f);
-      m_Builder.CreateCondBr(nn, okBB, panicBB);
-
-      m_Builder.SetInsertPoint(panicBB);
-      // [TODO] Call __toka_panic properly. For now, trap or abort.
-      llvm::Function *trap = llvm::Intrinsic::getOrInsertDeclaration(
-          m_Module.get(), llvm::Intrinsic::trap);
-      m_Builder.CreateCall(trap);
-      m_Builder.CreateUnreachable();
-
-      m_Builder.SetInsertPoint(okBB);
-      m_Builder.SetInsertPoint(okBB);
-      return objVal;
+      genNullCheck(objVal, expr, "null pointer unwrap");
+      return PhysEntity(objVal, expr->ResolvedType->toString(),
+                        objVal->getType(), false);
     }
   }
 
@@ -2084,8 +2115,8 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   }
 
   // Retrieve FunctionDecl to check for Mutability (Pass-By-Reference)
-  const FunctionDecl *fd = nullptr;
-  if (m_Functions.count(funcName)) {
+  const FunctionDecl *fd = expr->ResolvedFn;
+  if (!fd && m_Functions.count(funcName)) {
     fd = m_Functions[funcName];
   }
 
@@ -2267,6 +2298,16 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   }
 
   llvm::CallInst *ci = m_Builder.CreateCall(callee, args);
+
+  if (!isStatic && fd && !fd->Args.empty() && fd->Args[0].IsCeded) {
+    const Expr *movedObject = expr->Object.get();
+    while (auto *postfix = dynamic_cast<const PostfixExpr *>(movedObject))
+      movedObject = postfix->LHS.get();
+
+    if (auto *var = dynamic_cast<const VariableExpr *>(movedObject)) {
+      suppressDropForMove(var->Name);
+    }
+  }
 
   if (isSRet) {
       ci->addParamAttr(0, llvm::Attribute::get(m_Context, llvm::Attribute::StructRet, getLLVMType(expr->ResolvedType)));

@@ -354,6 +354,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   size_t pos = CallName.find("::");
   if (pos != std::string::npos) {
     std::string RawPrefix = CallName.substr(0, pos);
+    bool staticTypeVisible = isTypeNameVisible(RawPrefix, getLoc(Call));
+    if (!staticTypeVisible &&
+        (ShapeMap.count(RawPrefix) || TypeAliasMap.count(RawPrefix))) {
+      DiagnosticEngine::report(getLoc(Call), DiagID::ERR_UNDEFINED_TYPE,
+                               RawPrefix);
+      HasError = true;
+      return toka::Type::fromString("unknown");
+    }
     std::string ShapeName = resolveType(RawPrefix);
     // [FIX] resolveType might return a type string "SharedPtr_M_i32" or
     // similar. If it contains sigils, strip them for Map lookup.
@@ -361,7 +369,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     std::string VariantName = CallName.substr(pos + 2);
 
-    if (ShapeMap.count(ShapeName)) {
+    if (staticTypeVisible && ShapeMap.count(ShapeName)) {
       // Update CallName and Callee for subsequent lookup and CodeGen
       CallName = ShapeName + "::" + VariantName;
       Call->Callee = CallName;
@@ -612,12 +620,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return matchCount == 1 ? match : Fallback;
   };
 
+  auto lexicalModuleForCall = [&]() -> ModuleScope * {
+    SourceLocation loc = Call->Loc;
+    if (!loc.isValid() && CurrentFunction)
+      loc = CurrentFunction->Loc;
+    return getLexicalModule(loc);
+  };
+
   // [NEW] Generic Constructor Pre-Check
   // If CallName looks like a generic type "Box<i32>", try to resolve it
   // as a Type. This triggers monomorphization in resolveType.
   if (CallName.find('<') != std::string::npos) {
+    std::string genericBase = CallName.substr(0, CallName.find('<'));
     auto possibleType = toka::Type::fromString(CallName);
-    if (possibleType && !possibleType->isUnknown()) {
+    if (isTypeNameVisible(genericBase, getLoc(Call)) && possibleType &&
+        !possibleType->isUnknown()) {
       auto resolved = resolveType(possibleType);
       if (auto shapeT = std::dynamic_pointer_cast<toka::ShapeType>(resolved)) {
         if (shapeT->Decl) {
@@ -681,13 +698,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       return toka::Type::fromString("unknown");
     }
   } else if (!Sh) {
-    if (ExternMap.count(CallName))
+    SymbolInfo *visibleSymbol = nullptr;
+    std::string visibleName = CallName;
+    bool hasVisibleSymbol = CurrentScope->findVariableWithDeref(
+        CallName, visibleSymbol, visibleName);
+
+    if (hasVisibleSymbol && visibleSymbol->TypeObj &&
+        visibleSymbol->TypeObj->toString() == "extern" &&
+        ExternMap.count(CallName))
       Ext = ExternMap[CallName];
-    else if (ShapeMap.count(CallName))
+    else if (isTypeNameVisible(CallName, getLoc(Call)) &&
+             ShapeMap.count(CallName))
       Sh = ShapeMap[CallName];
 
     // Fallback: Check if it's a type alias to a shape
-    if (!Fn && !Ext && !Sh && TypeAliasMap.count(CallName)) {
+    if (!Fn && !Ext && !Sh && isTypeNameVisible(CallName, getLoc(Call)) &&
+        TypeAliasMap.count(CallName)) {
       std::string target = TypeAliasMap[CallName].Target;
       // [FIX] Generic Alias Resolution: Resolve the type string first
       // This handles 'alias Node = GenericNode<i32>' by triggering
@@ -737,28 +763,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       Ext = static_cast<ExternDecl *>(sym.ASTPtr);
     }
 
-    // Find implementation based on lookup
-    if (!Fn && !Ext) {
-      for (auto *GF : GlobalFunctions) {
-        if (GF->Name == CallName) {
-          Fn = GF;
-          break;
-        }
-      }
-    }
-    if (!Fn && !Ext) {
-      for (auto &pair : ExternMap) {
-        if (pair.second->Name == CallName) {
-          Ext = pair.second;
-          break;
-        }
-      }
-    }
-    std::string soulName = Type::stripMorphology(CallName);
-    if (!Fn && !Ext && ShapeMap.count(soulName)) {
-      Sh = ShapeMap[soulName];
-    }
-
     // [New] Closure Invocation Intercept
     if (!Fn && !Ext && !Sh && sym.TypeObj) {
       if (auto sTy = std::dynamic_pointer_cast<ShapeType>(sym.TypeObj)) {
@@ -799,14 +803,51 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
-  // [Fix] Fallback for implicitly instantiated generics that are in GlobalFunctions but not in CurrentScope
+  // A generic body is checked at its instantiation site but retains the
+  // lexical namespace of its defining module.
   if (!Fn && !Ext && !Sh) {
-    for (auto *GF : GlobalFunctions) {
-      if (GF->Name == CallName) {
-        Fn = GF;
-        break;
+    auto findLexicalSymbol = [&](ModuleScope *lexical) {
+      if (!lexical)
+        return;
+      auto symbol = lexical->LexicalSymbols.find(CallName);
+      if (symbol != lexical->LexicalSymbols.end()) {
+        SymbolInfo &lexicalInfo = symbol->second;
+        if (lexicalInfo.TypeObj && lexicalInfo.TypeObj->toString() == "fn") {
+          Fn = static_cast<FunctionDecl *>(lexicalInfo.ASTPtr);
+        } else if (lexicalInfo.TypeObj &&
+                   lexicalInfo.TypeObj->toString() == "extern") {
+          Ext = static_cast<ExternDecl *>(lexicalInfo.ASTPtr);
+        }
+        if (Fn || Ext || Sh) {
+          lexicalInfo.HasBeenUsed = true;
+          if (lexicalInfo.ImportingDecl) {
+            const_cast<ImportDecl *>(lexicalInfo.ImportingDecl)->HasBeenUsed =
+                true;
+          }
+        }
       }
+    };
+
+    findLexicalSymbol(lexicalModuleForCall());
+    if (!Fn && !Ext && !Sh && CurrentFunction) {
+      auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+      if (owner != DeclarationLexicalScopes.end())
+        findLexicalSymbol(owner->second);
     }
+    if (!Fn && !Ext && !Sh && CurrentFunction) {
+      auto context = InstantiationLexicalScopes.find(CurrentFunction);
+      if (context != InstantiationLexicalScopes.end())
+        findLexicalSymbol(context->second);
+    }
+  }
+
+  // Concrete generic instances are compiler-created and are not source-level
+  // imports. Keep this internal fallback narrow so GlobalFunctions cannot leak
+  // unselected module symbols into the current namespace.
+  if (!Fn && !Ext && !Sh) {
+    auto instance = InstantiationCache.find(CallName);
+    if (instance != InstantiationCache.end())
+      Fn = instance->second;
   }
 
   if (!Fn && !Ext && !Sh) {

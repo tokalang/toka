@@ -32,6 +32,9 @@ later release.
   diagnostics; redundant `&param` remains an error.
 - Trait syntax: `trait @Name`, `Type@Trait`, `@{A, B}` facet sets, and `where:`
   constraints.
+- Prelude trait visibility: `@encap`, `@Send`, and `@Sync` are implicitly
+  visible through the standard prelude. Every other trait name follows normal
+  lexical import rules and must be declared locally or explicitly imported.
 - Associated types: keep `type` and `per type` as the stable 1.0 model.
 - `dyn @Trait`: single-facet trait objects only. Associated-type binding syntax
   is not part of 1.0, so traits with associated types are not object-safe as

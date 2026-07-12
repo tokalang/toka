@@ -430,6 +430,11 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
 
+The standard prelude makes exactly three core safety traits implicitly visible:
+`@encap`, `@Send`, and `@Sync`. All other trait names use the ordinary lexical
+module namespace and must be declared in the current module or selected by an
+import. Loading a module does not make its unselected traits visible.
+
 For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. The recommended form matches generic parameter bounds: `T: @Trait` or `T: @{Trait1, Trait2}` means the corresponding trait implementation must exist. The historical form `T impl @Trait` is still accepted for compatibility, but it is not the recommended style.
 
 ```toka

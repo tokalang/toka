@@ -891,7 +891,10 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
           sName = sShape->Name;
 
         if (!sName.empty()) {
-          std::string implKey = sName + "@" + traitName;
+          TraitDecl *trait =
+              findVisibleTraitDecl(traitName, SourceLocation());
+          std::string implKey =
+              sName + "@" + canonicalTraitName(traitName, trait);
           if (ImplMap.count(implKey))
             return true;
         }

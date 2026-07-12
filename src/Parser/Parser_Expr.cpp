@@ -904,11 +904,19 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       std::vector<std::unique_ptr<Expr>> elements;
       bool isDeprecatedTuple = false;
       if (!check(TokenType::RParen)) {
-        elements.push_back(parseExpr());
+        auto first = parseExpr();
+        if (!first)
+          return nullptr;
+        elements.push_back(std::move(first));
         if (match(TokenType::Comma)) {
           isDeprecatedTuple = true;
           while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
-            elements.push_back(parseExpr());
+            size_t elementStart = m_Pos;
+            auto element = parseExpr();
+            if (element)
+              elements.push_back(std::move(element));
+            if (m_Pos == elementStart && !check(TokenType::EndOfFile))
+              advance();
             match(TokenType::Comma);
           }
         }
@@ -962,6 +970,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       if (isNamed) {
         std::vector<std::pair<std::string, std::unique_ptr<Expr>>> fields;
         while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
+          size_t fieldStart = m_Pos;
           if (!isNextNamedField(0)) {
               auto expr = parseExpr();
               if (dynamic_cast<ElisionExpr*>(expr.get())) {
@@ -985,6 +994,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
                   error(peek(), DiagID::ERR_PARSER_EXPECTED_NAMED_ARGUMENT_KEY_VALUE_OR_EL);
               }
               if (!check(TokenType::RParen)) match(TokenType::Comma);
+              if (m_Pos == fieldStart && !check(TokenType::EndOfFile))
+                advance();
               continue;
           }
 
@@ -1005,6 +1016,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           fields.push_back({prefix + fieldName, parseExpr()});
           if (!check(TokenType::RParen))
             match(TokenType::Comma);
+          if (m_Pos == fieldStart && !check(TokenType::EndOfFile))
+            advance();
         }
         consume(TokenType::RParen, DiagID::ERR_PARSER_EXPECTED_AFTER_ARGUMENTS);
         expr = std::make_unique<InitStructExpr>(name.Text + genericSuffix,

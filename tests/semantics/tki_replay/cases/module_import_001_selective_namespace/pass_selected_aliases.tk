@@ -1,0 +1,17 @@
+import ./lib::{
+    selected_value as chosen_value,
+    selected_global as chosen_global,
+    SelectedShape,
+    SelectedAlias as ImportedAlias,
+    @SelectedTrait as ImportedTrait
+}
+
+fn accepts_selected<T: @ImportedTrait>(value: T) -> i32 {
+    return 1
+}
+
+fn main() -> i32 {
+    auto value: ImportedAlias = SelectedShape(value = chosen_value())
+    auto trait_result = accepts_selected<SelectedShape>(value)
+    return chosen_global + trait_result - 4
+}

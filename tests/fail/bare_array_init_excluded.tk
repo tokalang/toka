@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto values = [3]i32(7) // EXPECT: error[E04586]
+    return 0
+}

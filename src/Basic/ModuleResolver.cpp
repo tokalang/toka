@@ -486,10 +486,6 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
 
   // Recursively parse imports
   for (const auto &imp : module->Imports) {
-    if (!imp->Items.empty()) {
-      // TODO: Handle logic import symbol filtering
-    }
-
     std::string importPath = imp->PhysicalPath;
     if (importPath.rfind("./", 0) == 0 || importPath.rfind("../", 0) == 0) {
         std::string baseSourcePath = canonicalPath;

@@ -5,26 +5,33 @@ import std/io::{println}
 
 pub fn main() -> i32 {
     auto local_ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
-    auto addr1 = SocketAddrV4::new(local_ip, 8881:u16)
-    auto addr2 = SocketAddrV4::new(local_ip, 8882:u16)
+    auto addr1 = SocketAddrV4::new(local_ip, 0:u16)
+    auto addr2 = SocketAddrV4::new(local_ip, 0:u16)
     
     auto s1# = UdpSocket::bind(addr1)
     if !s1.is_valid() {
         println("s1 bind failed")
         return 1
     }
+    auto port1 = s1.local_port()
     
     auto s2# = UdpSocket::bind(addr2)
     if !s2.is_valid() {
         println("s2 bind failed")
         return 1
     }
+    auto port2 = s2.local_port()
+    if port1 == 0:u16 || port2 == 0:u16 {
+        println("local port lookup failed")
+        return 1
+    }
+    auto send_addr2 = SocketAddrV4::new(local_ip, port2)
     
     // Test send_to
     auto msg = string::from("Hello UDP")
     auto *buf = msg.c_str() as *u8
     auto len = msg.len() as usize
-    auto s_res = s1#.send_to(*buf, len, addr2)
+    auto s_res = s1#.send_to(*buf, len, send_addr2)
     match s_res {
         auto Result::Err(&e) => {
             println("send_to failed")
@@ -52,7 +59,7 @@ pub fn main() -> i32 {
                 println("recv_from length mismatch")
                 return 1
             }
-            if info.addr.port != 8881:u16 {
+            if info.addr.port != port1 {
                 println("recv_from port mismatch")
                 return 1
             }

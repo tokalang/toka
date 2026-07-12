@@ -3,6 +3,7 @@
 import std/io::{println}
 import std/context::{background, with_cancel, with_timeout, with_value, @Context, BackgroundContext, CancelContext, TimeoutContext, ValueContext}
 import std/task::{sleep_async, block_on, current_time_ms}
+import std/channel::{Receiver}
 
 fn test_cancel() -> async i32 {
     println("1. Starting test_cancel...")

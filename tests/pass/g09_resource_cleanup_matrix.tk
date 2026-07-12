@@ -1,0 +1,73 @@
+import core/traits::{@encap}
+import std/task::{sleep_async, block_on}
+
+auto g_drop_count# = 0
+
+shape CleanupToken (
+    id: i32
+)
+
+impl CleanupToken@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+impl CleanupToken {
+    pub fn forward(cede self) -> cede Self {
+        return cede self
+    }
+}
+
+fn branch_cleanup(take_branch: bool) -> i32 {
+    auto token = CleanupToken(id = 11)
+    if take_branch {
+        auto moved = token.forward()
+        return moved.id
+    }
+    return token.id
+}
+
+fn suspended_cleanup() -> async i32 {
+    auto token = CleanupToken(id = 13)
+    sleep_async(1).await
+    return token.id
+}
+
+fn suspended_handoff(cede token: CleanupToken) -> async i32 {
+    auto owned = cede token
+    sleep_async(1).await
+    return owned.id
+}
+
+fn main() -> i32 {
+    {
+        auto first = CleanupToken(id = 7)
+        auto second = cede first
+        assert(second.id == 7, "plain cede payload")
+    }
+    assert(g_drop_count == 1, "plain cede drops exactly once")
+
+    assert(branch_cleanup(true) == 11, "taken branch result")
+    assert(g_drop_count == 2, "taken branch drops exactly once")
+    assert(branch_cleanup(false) == 11, "untaken branch result")
+    assert(g_drop_count == 3, "untaken branch keeps source drop live")
+
+    {
+        auto captured = CleanupToken(id = 12)
+        auto invoke: fn() -> i32 = { [cede captured] => captured.id }
+        assert(invoke() == 12, "cede capture payload")
+    }
+    assert(g_drop_count == 4, "cede capture drops exactly once")
+
+    auto suspended = suspended_cleanup().start
+    assert(block_on<i32>(suspended) == 13, "suspended local result")
+    assert(g_drop_count == 5, "suspended local drops exactly once")
+
+    auto handed = CleanupToken(id = 17)
+    auto handed_task = suspended_handoff(cede handed).start
+    assert(block_on<i32>(handed_task) == 17, "suspended handoff result")
+    assert(g_drop_count == 6, "suspended handoff drops exactly once")
+    return 0
+}

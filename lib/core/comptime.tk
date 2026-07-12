@@ -4,6 +4,7 @@
 // and unrolled by the Toka compiler's Sema phase.
 
 import core/types::*
+import core/traits::{@encap}
 
 // ==========================================
 // 1. Metadata Shapes ( Sema )

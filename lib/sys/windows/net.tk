@@ -88,6 +88,27 @@ pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
     }
 }
 
+pub fn net_local_port_impl(fd: i32) -> i32 {
+    unsafe {
+        if fd == -1 { return -1 }
+        toka_ensure_wsa_initialized()
+        auto *addr_buf# = unsafe alloc [32] byte as *char
+        auto *addr_len# = unsafe alloc [1] i32
+        addr_len[0] = 32
+        auto res = getsockname(fd, *addr_buf as *void, *addr_len as *i32)
+        if res != 0 {
+            libc_free(*addr_buf as *void)
+            libc_free(*addr_len as *void)
+            return -1
+        }
+        auto *port_ptr# = (*addr_buf as usize + 2) as *u16
+        auto port = libc_htons(port_ptr) as i32
+        libc_free(*addr_buf as *void)
+        libc_free(*addr_len as *void)
+        return port
+    }
+}
+
 pub fn net_listen_impl(fd: i32) -> i32 {
     unsafe {
         if fd == -1 { return -1 }

@@ -16,7 +16,7 @@ pub import core/types::{str}
 import core/types::{char, byte, usize, Addr, Char32}
 import core/option::{Option}
 import core/result::{Result}
-import core/traits::{@encap, @PartialEq, @PartialOrd}
+import core/traits::{@encap, @PartialEq, @PartialOrd, @delegate}
 import core/utf8::{Cursor, REPLACEMENT_CHAR}
 import core/memory::{copy_memory, compare_memory}
 import core/internal/runtime::__toka_panic_handler

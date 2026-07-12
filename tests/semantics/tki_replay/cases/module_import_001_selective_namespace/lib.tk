@@ -1,0 +1,20 @@
+pub fn selected_value() -> i32 {
+    return 7
+}
+
+pub fn hidden_value() -> i32 {
+    return 9
+}
+
+pub const selected_global = 3
+pub const hidden_global = 4
+
+extern fn hidden_external() -> i32
+
+pub shape SelectedShape(value: i32)
+pub alias SelectedAlias = SelectedShape
+
+pub trait @SelectedTrait {}
+impl SelectedShape@SelectedTrait {}
+
+pub trait @HiddenTrait {}

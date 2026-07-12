@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0430
+import ./lib::{selected_value}
+
+shape Local(value: i32)
+
+impl Local@HiddenTrait {}
+
+fn main() -> i32 {
+    return selected_value()
+}

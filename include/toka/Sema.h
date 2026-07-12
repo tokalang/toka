@@ -30,6 +30,7 @@ namespace toka {
 struct SymbolInfo {
   // New Type Object (Source of Truth)
   std::shared_ptr<toka::Type> TypeObj;
+  std::string CodegenName;
   uint64_t SymbolID = 0;
   SourceLocation DeclLoc;
 
@@ -98,6 +99,8 @@ struct SymbolInfo {
   bool HasHandleBeenUsed = false;
   bool IsDeclaredVariable = false;
   const ImportDecl* ImportingDecl = nullptr;
+  bool IsTypeName = false;
+  bool IsTraitName = false;
   bool IsRebindable = false; // [NEW] prefix '#' or '!' rebind permission
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption
   bool IsCeded = false;
@@ -343,6 +346,8 @@ private:
   PALChecker PALCheckerState; // [NEW] Path-Anchored Borrow Checker
   struct ModuleScope {
     std::string Name;
+    std::map<std::string, SymbolInfo> LexicalSymbols;
+    std::map<std::string, SymbolInfo> LexicalTypes;
     std::map<std::string, FunctionDecl *> Functions;
     std::map<std::string, std::vector<FunctionDecl *>> FunctionOverloads;
     std::map<std::string, ExternDecl *> Externs;
@@ -352,6 +357,11 @@ private:
     std::map<std::string, VariableDecl *> Globals;
   };
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
+  std::map<std::string, ModuleScope *> ModulePathAliases;
+  std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;
+  std::map<const FunctionDecl *, ModuleScope *> InstantiationLexicalScopes;
+  std::map<const FunctionDecl *, std::set<std::string>>
+      InstantiationTypeNames;
 
   ModuleScope *getModule(const std::string &Path);
   std::string getModuleName(Module *M);
@@ -455,7 +465,11 @@ private:
   void checkUnsafePublicShapeBoundary(ShapeDecl *Shape);
   void checkFunction(FunctionDecl *Fn);
   std::string getTraitFamilyName(const std::string &traitName) const;
+  std::string canonicalTraitName(const std::string &traitName,
+                                 const TraitDecl *trait) const;
   TraitDecl *findTraitDecl(const std::string &traitName) const;
+  TraitDecl *findVisibleTraitDecl(const std::string &traitName,
+                                  SourceLocation loc);
   std::string getDynTraitName(const std::string &typeName) const;
   std::string getDynTraitName(std::shared_ptr<toka::Type> type) const;
   bool validateDynTraitObjectSafety(const std::string &traitName,
@@ -464,6 +478,14 @@ private:
                                           SourceLocation loc);
   bool validateDynTraitObjectSafetyInType(std::shared_ptr<toka::Type> type,
                                           SourceLocation loc);
+  ModuleScope *getLexicalModule(SourceLocation loc);
+  void recordInstantiationType(FunctionDecl *function,
+                               std::shared_ptr<toka::Type> type);
+  bool isTypeNameVisible(const std::string &typeName, SourceLocation loc);
+  bool validateTypeVisibilityInType(const std::string &typeName,
+                                    SourceLocation loc);
+  bool validateTypeVisibilityInType(std::shared_ptr<toka::Type> type,
+                                    SourceLocation loc);
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
@@ -531,7 +553,8 @@ private:
 
   bool checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 
                         const std::vector<std::string> &TraitBounds, 
-                        const std::string &ConcreteType, bool isSilent = false);
+                        const std::string &ConcreteType, bool isSilent = false,
+                        SourceLocation BoundLoc = SourceLocation());
 
   // [NEW] Deep Inspection for Union Safety
   std::shared_ptr<toka::Type>

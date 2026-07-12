@@ -49,4 +49,5 @@ extern fn closesocket(s: i32) -> i32
 extern fn ioctlsocket(s: i32, cmd: u32, *argp: u32) -> i32
 extern fn setsockopt(s: i32, level: i32, optname: i32, *optval: void, optlen: i32) -> i32
 extern fn getsockopt(s: i32, level: i32, optname: i32, *optval: void, *optlen: i32) -> i32
+extern fn getsockname(s: i32, *name: void, *namelen: i32) -> i32
 extern fn select(nfds: i32, *readfds: void, *writefds: void, *exceptfds: void, *timeout: void) -> i32

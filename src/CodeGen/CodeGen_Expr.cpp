@@ -797,7 +797,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
             m_Symbols[baseName].morphology == Morphology::Shared) {
           return genExpr(target).load(m_Builder);
         }
-        return getEntityAddr(v->Name);
+        return getEntityAddr(v->codegenName());
       }
       return genExpr(e).load(m_Builder);
     };
@@ -1645,7 +1645,7 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
 
   llvm::Value *soulAddr = nullptr;
   bool isShared = false;
-  std::string varName = var->Name;
+  std::string varName = var->codegenName();
   std::string checkName = varName;
   // Strip morphology for lookup
   while (!checkName.empty() &&
@@ -1653,11 +1653,11 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
     checkName.pop_back();
 
   // Use getEntityAddr to get the Soul address (fully dereferenced if needed)
-  soulAddr = getEntityAddr(var->Name);
+  soulAddr = getEntityAddr(varName);
 
   if (var->ResolvedType && var->ResolvedType->isSharedPtr()) {
     isShared = true;
-    soulAddr = getIdentityAddr(var->Name); // [Fix] Handle Address for RValue
+    soulAddr = getIdentityAddr(varName); // [Fix] Handle Address for RValue
   } else if (m_Symbols.count(checkName) &&
              m_Symbols[checkName].morphology == Morphology::Shared) {
     isShared = true;
@@ -1669,7 +1669,7 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   }
 
   // Get the base name (no morphology) for symbol lookup
-  std::string baseName = var->Name;
+  std::string baseName = varName;
   while (!baseName.empty() &&
          (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
           baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!'))
@@ -4784,12 +4784,12 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                auto &sym = m_Symbols[baseName];
                if (sym.mode == AddressingMode::Reference || 
                    (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
-                   val = getEntityAddr(ve->Name);
+                   val = getEntityAddr(ve->codegenName());
                } else {
-                   val = getIdentityAddr(ve->Name);
+                   val = getIdentityAddr(ve->codegenName());
                }
             } else {
-               val = getIdentityAddr(ve->Name);
+               val = getIdentityAddr(ve->codegenName());
             }
           }
         }
@@ -4975,12 +4975,12 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
               if (sym.mode == AddressingMode::Reference ||
                   (sym.mode == AddressingMode::Pointer &&
                    sym.morphology == Morphology::None)) {
-                lvalueAddr = getEntityAddr(ve->Name);
+                lvalueAddr = getEntityAddr(ve->codegenName());
               } else {
-                lvalueAddr = getIdentityAddr(ve->Name);
+                lvalueAddr = getIdentityAddr(ve->codegenName());
               }
             } else {
-              lvalueAddr = getIdentityAddr(ve->Name);
+              lvalueAddr = getIdentityAddr(ve->codegenName());
             }
           }
         } else if (dynamic_cast<const MemberExpr *>(rawArg)) {
@@ -5562,21 +5562,7 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
       }
     }
     if (ve) {
-      std::string varName = Type::stripMorphology(ve->Name);
-      bool found = false;
-      for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
-        auto &scope = m_ScopeStack[i];
-        for (auto &entry : scope) {
-          if (Type::stripMorphology(entry.Name) == varName) {
-            if (entry.HasDrop) {
-              entry.HasDrop = false; // SUPPRESS DROP (Moved)
-            }
-            found = true;
-            break;
-          }
-        }
-        if (found) break;
-      }
+      suppressDropForMove(ve->Name);
     }
     return genExpr(ce->Value.get());
   }
@@ -5657,20 +5643,7 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
 
   // Suppress drop for any variables ceded by base.*
   for (const auto &varName : init->CededBases) {
-    bool found = false;
-    for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
-      auto &scope = m_ScopeStack[i];
-      for (auto &entry : scope) {
-        if (Type::stripMorphology(entry.Name) == varName) {
-          if (entry.HasDrop) {
-            entry.HasDrop = false; // SUPPRESS DROP (Moved by spread cede)
-          }
-          found = true;
-          break;
-        }
-      }
-      if (found) break;
-    }
+    suppressDropForMove(varName);
   }
 
   llvm::StructType *st = m_StructTypes[shapeName];
@@ -6216,21 +6189,7 @@ PhysEntity CodeGen::genClosureExpr(const ClosureExpr *expr) {
                    m_Builder.CreateStore(llvm::ConstantAggregateZero::get(loadTy), srcAddr);
                }
                
-               std::string varName = Type::stripMorphology(member.Name);
-               bool found = false;
-               for (int scopeIdx = (int)m_ScopeStack.size() - 1; scopeIdx >= 0; --scopeIdx) {
-                   auto &scope = m_ScopeStack[scopeIdx];
-                   for (auto &entry : scope) {
-                       if (Type::stripMorphology(entry.Name) == varName) {
-                           if (entry.HasDrop) {
-                               entry.HasDrop = false; // SUPPRESS DROP (Moved)
-                           }
-                           found = true;
-                           break;
-                       }
-                   }
-                   if (found) break;
-               }
+               suppressDropForMove(member.Name);
            }
        } else {
            std::cerr << "CodeGen Internal Error: Captured variable '" << member.Name << "' val not found.\n";

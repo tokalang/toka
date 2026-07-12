@@ -856,6 +856,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (CurrentScope->findVariableWithDeref(ve->Name, InfoPtr, actualName)) {
       isImplicitDeref = (actualName != ve->Name);
       Info = *InfoPtr;
+      ve->ResolvedName = Info.CodegenName;
       ve->IsMorphicExempt = Info.IsMorphicExempt; // [NEW]
       ve->IsImplicitDeref = isImplicitDeref;      // [Fix] Mark AST node
       if (!m_InLHS) {
@@ -1188,6 +1189,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     return current;
   } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
+    validateTypeVisibilityInType(Cast->TargetType, getLoc(Cast));
     auto targetType = resolveType(toka::Type::fromString(Cast->TargetType));
     validateDynTraitObjectSafetyInType(targetType, getLoc(Cast));
     auto srcType = checkExpr(Cast->Expression.get(), targetType);
@@ -2389,11 +2391,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     error(E, DiagID::ERR_SEMA_CANNOT_WAIT_ON_A_NON_TASKHANDLE_TYPE, tName);
     return toka::Type::fromString("unknown");
   } else if (auto *AIE = dynamic_cast<ArrayInitExpr *>(E)) {
-    auto expectedType = toka::Type::fromString(resolveType(AIE->Type));
-    if (AIE->ArraySize) checkExpr(AIE->ArraySize.get());
-    if (AIE->Initializer) checkExpr(AIE->Initializer.get(), expectedType);
-    return toka::Type::fromString("[" + resolveType(AIE->Type) + "]");
+    error(AIE, DiagID::ERR_SEMA_BARE_ARRAY_INIT_EXCLUDED);
+    return toka::Type::fromString("unknown");
   } else if (auto *New = dynamic_cast<NewExpr *>(E)) {
+    validateTypeVisibilityInType(New->Type, getLoc(New));
     std::string resolvedName = resolveType(New->Type);
 
     // [New] Generic Inference for 'new'
@@ -2447,6 +2448,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     // Mapping to __toka_alloc
     // Returning raw pointer identity: *Type
+    validateTypeVisibilityInType(AllocE->TypeName, getLoc(AllocE));
     std::string baseType = resolveType(AllocE->TypeName);
     if (AllocE->IsArray) {
       if (AllocE->ArraySize) {
@@ -2480,10 +2482,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       else if (ObjType.rfind("dyn@", 0) == 0)
         traitName = ObjType.substr(4);
 
-      if (!traitName.empty() && TraitMap.count(traitName)) {
+      TraitDecl *TD = traitName.empty()
+                          ? nullptr
+                          : findVisibleTraitDecl(traitName, Met->Loc);
+      if (TD) {
         if (!validateDynTraitObjectSafety(traitName, Met->Loc))
           return toka::Type::fromString("unknown");
-        TraitDecl *TD = TraitMap[traitName];
         for (auto &M : TD->Methods) {
           if (M->Name == Met->Method) {
             if (!M->IsPub) {

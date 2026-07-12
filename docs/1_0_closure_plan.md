@@ -74,7 +74,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-0` | `Complete` | Establish the closure ledger and classify the public surface | This document, the capability ledger, and the unresolved-item register |
 | `FZ-1` | `Complete` | Close the language contract and in-function async suspension rules | `semantic_core/fz1_async_suspension_closure.md`, frozen async rule matrix, focused pass/fail coverage, and synchronized specification |
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
-| `FZ-3` | `Pending` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | Sanitizer/mutation evidence and clean Linux/macOS gates |
+| `FZ-3` | `Blocked` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | Local closure is recorded in `semantic_core/fz3_compiler_reliability_closure.md`; clean Linux/macOS target gates remain required |
 | `FZ-4` | `Pending` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | Consistency audit and stable public-contract tests |
 | `FZ-5` | `Pending` | Run the release-candidate moratorium and final 1.0 gate | Deterministic gate report and clean supported-platform release runs |
 
@@ -100,6 +100,8 @@ through `FZ-4`.
   dependencies, `effects:` routing, and member-specific return dependencies.
 - Traits, facet constraints, `where:`, associated `type`/`per type`, and
   single-facet `dyn @Trait` within the frozen object-safety boundary.
+- Implicit prelude visibility for exactly `@encap`, `@Send`, and `@Sync`;
+  every other trait follows ordinary lexical imports.
 - `@encap`, `pub`, `pub(crate)`, `pub(path)`, wildcard visibility, imports,
   re-exports, and the filesystem-path/name hyphen boundary.
 - `if`, `guard`, `match`, `loop`, `for`, `break`, `continue`, block `pass`,
@@ -176,12 +178,13 @@ unless it is separately promoted through a new audited decision.
 | `FZ-1-A01` | `FZ-1` | `Complete` | Borrow, move, init, and dependency state across in-function suspension lacked dedicated tests | Closed by the frame/branch/loop pass case, four state-preservation fail cases, async-context diagnostics, and source/TKI `.await` replay recorded in `semantic_core/fz1_async_suspension_closure.md` |
 | `FZ-2-R01` | `FZ-2` | `Complete` | The semantic rule matrix listed explicit source-less and generic replay gaps | Closed by member/cede call replay, generic function/method transfer replay, `str`/`bytes` dependency replay, generic `.start` handoff, and evidence-backed Post1.0 classification of trait-gated widening |
 | `FZ-2-R02` | `FZ-2` | `Complete` | TKI export/import retained legacy shape life-dependency paths although both old source forms are outside 1.0 | Removed the internal field/export path and proved forged header/member declarations fail closed with `E01247`/`E01248` in `test_tki_excluded_syntax_revalidation.sh` |
-| `FZ-3-C01` | `FZ-3` | `Pending` | Panic lowering contains a temporary trap/abort path | Determine whether public valid programs reach it, then implement or formally bound the 1.0 behavior |
-| `FZ-3-C02` | `FZ-3` | `Pending` | Bare expression lowering for `ArrayInitExpr` still returns no value outside the specialized initialization paths | Build a public-syntax reachability matrix and either implement the valid expression cases or reject them before CodeGen |
-| `FZ-3-C03` | `FZ-3` | `Pending` | A valid generic resource transferred through imported cede functions and methods compiles but aborts during runtime cleanup | Minimize the fixture, audit ownership lowering/drop state, and eliminate the abort without weakening cede or resource semantics |
-| `FZ-3-R01` | `FZ-3` | `Pending` | Import symbol filtering has an unresolved resolver TODO | Reproduce its public effect and either fix it or record why it is unreachable in the frozen grammar |
-| `FZ-3-T01` | `FZ-3` | `Pending` | The current full positive run has three environment/runtime-dependent network or async failures | Make mandatory tests deterministic on supported platforms; do not hide failures with retries |
-| `FZ-3-A01` | `FZ-3` | `Pending` | No bounded parser/Sema/interface mutation gate is part of the release contract | Add fixed-seed mutation coverage and run the core corpus under ASan/UBSan |
+| `FZ-3-C01` | `FZ-3` | `Complete` | Nullable raw-pointer unwrap reached a temporary LLVM trap | Lowered through the stable runtime panic path and locked by an expected-panic fixture |
+| `FZ-3-C02` | `FZ-3` | `Complete` | Bare expression lowering for `ArrayInitExpr` returned no value outside specialized initialization paths | Classified bare `[N]T(...)` construction outside 1.0 and rejected in Sema with `E04586` |
+| `FZ-3-C03` | `FZ-3` | `Complete` | Generic resource transfer through imported cede functions and methods aborted during runtime cleanup | Added branch-safe drop-live state and closure cleanup; executable transfer replay and exact-drop resource matrix pass |
+| `FZ-3-R01` | `FZ-3` | `Complete` | Selective imports leaked symbols through global resolver maps | Separated physical discovery from lexical value/type/trait namespaces and replayed selected, aliased, and hidden forms through source and `.tki` |
+| `FZ-3-T01` | `FZ-3` | `Complete` | Mandatory network and async tests depended on fixed ports | Bind ephemeral ports and query the assigned local port; the complete positive suite passes without retries |
+| `FZ-3-A01` | `FZ-3` | `Complete` | No bounded parser/Sema/interface mutation gate was part of the release contract | Added deterministic 82-case fixed-seed audit; normal and ASan/UBSan builds pass |
+| `FZ-3-P01` | `FZ-3` | `Blocked` | A macOS arm64 workstation cannot produce clean native results for every supported release target | Run the mandatory gate from clean checkouts on Linux x64/arm64 and macOS x64/arm64; all four rows must pass without ignored failures |
 | `FZ-4-D01` | `FZ-4` | `Pending` | Logical capture semantics versus scalar value ABI is not stated as a public FFI boundary | Document the logical/physical distinction and lock representative ABI tests |
 | `FZ-4-D02` | `FZ-4` | `Pending` | README platform wording still presents Windows parity as near-term while the 1.0 decision makes it non-blocking | Align public support wording with the frozen Linux/macOS release boundary |
 | `FZ-4-D03` | `FZ-4` | `Pending` | Several diagnostics say "not yet supported" without naming their 1.0 classification | Replace ambiguous wording with frozen exclusion or post-1.0 terminology while preserving diagnostic identity |
@@ -266,6 +269,9 @@ The starting baseline already includes:
 - frozen async suspension state and source/TKI dependency replay;
 - closed high-risk PAL/ownership/effects/async combinations, removed-syntax
   revalidation, and same-version source/source-less replay;
+- local FZ-3 correctness closure with 317/317 positive tests, 235/235
+  negative tests, 11/11 semantic replays, 12/12 cache cases, and normal plus
+  ASan/UBSan fixed-seed reliability audits at 82/82;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 

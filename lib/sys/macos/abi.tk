@@ -22,6 +22,7 @@ extern fn connect(fd: i32, *addr: void, len: u32) -> i32
 extern fn accept(fd: i32, *addr: void, *len: u32) -> i32
 extern fn listen(fd: i32, backlog: i32) -> i32
 extern fn getsockopt(fd: i32, level: i32, optname: i32, *optval: void, *optlen: u32) -> i32
+extern fn getsockname(fd: i32, *addr: void, *addrlen: u32) -> i32
 
 extern fn kqueue() -> i32
 extern fn kevent(kq: i32, *changelist: void, nchanges: i32, *eventlist: void, nevents: i32, *timeout: void) -> i32

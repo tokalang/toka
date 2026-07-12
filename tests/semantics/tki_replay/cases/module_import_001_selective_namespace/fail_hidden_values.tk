@@ -1,0 +1,6 @@
+// EXPECT_ERROR: E0402
+import ./lib::{selected_value}
+
+fn main() -> i32 {
+    return hidden_value() + hidden_global + hidden_external()
+}

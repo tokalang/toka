@@ -3,7 +3,7 @@ import core/traits::{@encap}
 import std/io::{println, remove_file, File}
 import std/fs::{read_to_string, exists, create_dir, write_string}
 import std/env
-import std/path::{join, dirname, basename, is_absolute}
+import std/path::{join, dirname, basename, file_stem, is_absolute}
 import std/vec::{Vec}
 import std/hashmap::{HashMap}
 import stdx/serde/json::{deserialize_shape, deserialize_nested_shape, FromJson, JsonRes, to_json, ToJson, serialize_shape, json_skip_whitespace, json_skip_value}

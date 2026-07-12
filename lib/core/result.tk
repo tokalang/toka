@@ -3,6 +3,8 @@
 // The Toka compiler natively supports Deep Move / Cede semantics for Resources
 // wrapped in Sum Shapes like Result or Option. When extracting a value using
 // `match cede` or `.unwrap()`, the original container's state will automatically
+extern fn libc_exit(status: i32) -> void
+
 pub shape Result<'T, 'E> (
     Ok('T) = 1 |
     Err('E) = 0 |
@@ -43,5 +45,4 @@ impl<'T, 'E> Result<'T, 'E> {
         }
     }
 }
-
 

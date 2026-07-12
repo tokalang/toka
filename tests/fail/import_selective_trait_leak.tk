@@ -1,0 +1,10 @@
+import tests/import_test/selective_lib::{selected_value}
+
+shape Local(value: i32)
+
+impl Local@UnselectedTrait { // EXPECT: error[E0430]
+}
+
+fn main() -> i32 {
+    return selected_value()
+}

@@ -3,7 +3,7 @@ import std/task::{block_on, sleep_async}
 import std/io::println
 
 import core/result::Result
-import sys/libc
+import sys/libc::{libc_memcpy}
 import stdx/net/websocket::{WsConnection, ws_accept_async}
 
 fn server_task(cede server: TcpListener) -> async i32 {

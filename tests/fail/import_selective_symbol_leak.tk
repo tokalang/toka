@@ -1,0 +1,5 @@
+import tests/import_test/selective_lib::{selected_value}
+
+fn main() -> i32 {
+    return unselected_value() // EXPECT: error[E0402]
+}

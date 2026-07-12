@@ -188,6 +188,7 @@ public:
 class VariableExpr : public Expr {
 public:
   std::string Name;
+  std::string ResolvedName;
   bool IsRawPointer = false;
   bool IsUnique = false;
   bool IsShared = false;
@@ -201,12 +202,16 @@ public:
   ComptimeValue ConstantValObj;
 
   VariableExpr(const std::string &name) : Name(name) {}
+  const std::string &codegenName() const {
+    return ResolvedName.empty() ? Name : ResolvedName;
+  }
   std::string toString() const override {
     return std::string("Var(") + (IsRawPointer ? "^" : "") + Name +
            (IsValueMutable ? "#" : "") + ")";
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<VariableExpr>(Name);
+    n->ResolvedName = ResolvedName;
     n->IsRawPointer = IsRawPointer;
     n->IsUnique = IsUnique;
     n->IsShared = IsShared;

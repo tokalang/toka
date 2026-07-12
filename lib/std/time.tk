@@ -15,6 +15,7 @@
 
 
 import sys/os/time as sys
+import sys/libc::{libc_snprintf, toka_localtime_r, toka_gmtime_r}
 import core/traits::{@PartialEq, @PartialOrd}
 
 // ----------------------------------------------------------------------------

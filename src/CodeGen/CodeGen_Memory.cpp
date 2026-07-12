@@ -995,7 +995,7 @@ PhysEntity CodeGen::genIndexExpr(const ArrayIndexExpr *idxExpr) {
 
 llvm::Value *CodeGen::genAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
-    return getEntityAddr(var->Name);
+    return getEntityAddr(var->codegenName());
   }
 
   if (auto *unary = dynamic_cast<const UnaryExpr *>(expr)) {
@@ -1016,9 +1016,9 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
         if (it != m_Symbols.end()) {
           TokaSymbol &sym = it->second;
           if (sym.indirectionLevel > 0) {
-            return getEntityAddr(v->Name);
+            return getEntityAddr(v->codegenName());
           }
-          return getIdentityAddr(v->Name);
+          return getIdentityAddr(v->codegenName());
         }
 
         bool isCapturedRef = false;
@@ -1044,9 +1044,9 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
         }
 
         if (isCapturedRef) {
-          return getEntityAddr(v->Name);
+          return getEntityAddr(v->codegenName());
         } else {
-          return getIdentityAddr(v->Name);
+          return getIdentityAddr(v->codegenName());
         }
       }
       return genAddr(unary->RHS.get());
@@ -1056,7 +1056,7 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
       // [Constitution] *p, ^p, ~p refer to the Identity (the pointer handle).
       // Their "address" is the address of the handle box (the alloca).
       if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
-        return getIdentityAddr(v->Name);
+        return getIdentityAddr(v->codegenName());
       }
       // For recursive unary, we'd need to go deeper, but Toka usually has 1
       // level.
@@ -1435,7 +1435,7 @@ llvm::Value *CodeGen::getIdentityAddr(const std::string &name) {
 
 llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
-    return getEntityAddr(var->Name);
+    return getEntityAddr(var->codegenName());
   }
 
   // Try to get address directly (LValue)
@@ -1464,7 +1464,7 @@ llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
 
 llvm::Value *CodeGen::emitHandleAddr(const Expr *expr) {
   if (auto *var = dynamic_cast<const VariableExpr *>(expr)) {
-    return getIdentityAddr(var->Name);
+    return getIdentityAddr(var->codegenName());
   }
   return genAddr(expr);
 }

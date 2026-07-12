@@ -1,0 +1,6 @@
+import tests/import_test/selective_lib::{selected_value}
+
+fn main() -> i32 {
+    auto hidden = UnselectedShape(value = 1) // EXPECT: error[E0463]
+    return 0
+}

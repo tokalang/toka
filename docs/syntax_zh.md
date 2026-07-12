@@ -397,6 +397,10 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 `T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
 
+标准 prelude 只隐式提供三个核心安全 trait：`@encap`、`@Send` 与 `@Sync`。
+其他 trait 名称均遵守普通词法模块命名空间，必须在当前模块声明或通过 import
+显式选择。仅加载一个模块不会让其中未选择的 trait 自动可见。
+
 约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束。推荐形式与泛型参数约束一致：`T: @Trait` 或 `T: @{Trait1, Trait2}` 表示必须存在对应的 trait 实现。历史形式 `T impl @Trait` 仍被接受为兼容写法，但不是推荐风格。
 
 ```toka

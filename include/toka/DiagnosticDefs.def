@@ -107,6 +107,7 @@ DIAG(ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE, Error,   "E04582", "Closure passed
 DIAG(ERR_SEMA_START_BOUNDARY_ARGUMENT, Error,   "E04583", "Task started across execution boundary cannot borrow argument '{}' of type '{}'; use a non-borrowing scalar or transfer an owned value through a cede parameter and cede argument")
 DIAG(ERR_SEMA_START_BOUNDARY_DEPENDENCY, Error,   "E04584", "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'")
 DIAG(ERR_SEMA_WAIT_INSIDE_ASYNC, Error,   "E04585", "'.wait' cannot be used inside an async function because it blocks the task executor; use '.await'")
+DIAG(ERR_SEMA_BARE_ARRAY_INIT_EXCLUDED, Error,   "E04586", "Bare '[N]T(...)' array initialization is outside the Toka 1.0 language; use '[value; count]' for a fixed array value or 'new [N]T(...)' for owned storage")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")

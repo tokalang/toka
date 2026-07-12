@@ -2,6 +2,7 @@
 
 import sys/os/base as sys
 import sys/os/net as sysnet
+import sys/libc::{toka_resolve_ipv4}
 import std/io::{@Reader, @Writer}
 import std/task::{get_reactor_fd, sleep_async}
 
@@ -103,6 +104,12 @@ impl UdpSocket {
             
             return UdpSocket(fd=fd, closed=false)
         }
+    }
+
+    pub fn local_port(self) -> u16 {
+        auto port = sysnet::net_local_port_impl(self.fd)
+        if port < 0 { return 0:u16 }
+        return port as u16
     }
     
     pub fn send_to(self#, *buf: u8, len: usize, addr: SocketAddrV4) -> Result<usize, string> {
@@ -402,6 +409,12 @@ impl TcpListener {
             
             return TcpListener(fd=fd, closed=false)
         }
+    }
+
+    pub fn local_port(self) -> u16 {
+        auto port = sysnet::net_local_port_impl(self.fd)
+        if port < 0 { return 0:u16 }
+        return port as u16
     }
     
     pub fn accept(self#) -> TcpStream {

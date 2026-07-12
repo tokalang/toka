@@ -1020,7 +1020,9 @@ void Sema::checkStmt(Stmt *S) {
                                Var->Name);
       HasError = true;
     }
-    if (!Var->TypeName.empty() && Var->TypeName != "auto") {
+    if (!Var->ResolvedType && !Var->TypeName.empty() &&
+        Var->TypeName != "auto") {
+      validateTypeVisibilityInType(Var->TypeName, getLoc(Var));
       validateDynTraitObjectSafetyInType(Var->TypeName, getLoc(Var));
     }
 

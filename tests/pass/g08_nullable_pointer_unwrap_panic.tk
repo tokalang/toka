@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto nul *ptr: i32 = null
+    ptr.unwrap() // EXPECT_PANIC
+    return 0
+}

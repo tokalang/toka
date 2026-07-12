@@ -37,6 +37,10 @@ pub fn net_bind_impl(fd: i32, host: usize, port: i32) -> i32 {
     return -1
 }
 
+pub fn net_local_port_impl(fd: i32) -> i32 {
+    return -1
+}
+
 pub fn net_listen_impl(fd: i32) -> i32 {
     return -1
 }

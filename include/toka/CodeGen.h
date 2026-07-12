@@ -184,8 +184,11 @@ private:
     bool HasDrop;
     std::string DropFunc;
     std::string SoulName; // [New] Correct type name for destructor lookup
+    llvm::Value *DropFlag = nullptr;
   };
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
+
+  void suppressDropForMove(const std::string &name);
 
   // Assignment Strategy Dispatcher (Step 2)
   PhysEntity emitAssignment(const Expr *lhs, const Expr *rhs,

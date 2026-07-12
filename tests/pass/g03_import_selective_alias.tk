@@ -1,0 +1,20 @@
+import tests/import_test/selective_lib::{
+    selected_value as chosen_value,
+    selected_global as chosen_global,
+    SelectedShape,
+    RenameOnlyShape as ImportedShape,
+    SelectedAlias as ImportedAlias,
+    @SelectedTrait as ImportedTrait
+}
+
+fn accepts_selected<T: @ImportedTrait>(value: T) -> i32 {
+    return 1
+}
+
+fn main() -> i32 {
+    auto direct = ImportedShape(value = chosen_value())
+    auto via_alias: ImportedAlias = SelectedShape(value = 0)
+    auto constrained = SelectedShape(value = 1)
+    auto trait_result = accepts_selected<SelectedShape>(constrained)
+    return direct.value + via_alias.value + chosen_global + trait_result - 11
+}

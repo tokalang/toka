@@ -1,0 +1,35 @@
+pub fn selected_value() -> i32 {
+    return 7
+}
+
+pub fn unselected_value() -> i32 {
+    return 9
+}
+
+pub const selected_global = 3
+pub const unselected_global = 4
+
+extern fn selected_external() -> i32
+extern fn unselected_external() -> i32
+
+pub shape SelectedShape (
+    value: i32
+)
+
+pub alias SelectedAlias = SelectedShape
+
+pub trait @SelectedTrait {}
+
+impl SelectedShape@SelectedTrait {}
+
+pub shape RenameOnlyShape (
+    value: i32
+)
+
+pub shape UnselectedShape (
+    value: i32
+)
+
+pub alias UnselectedAlias = UnselectedShape
+
+pub trait @UnselectedTrait {}

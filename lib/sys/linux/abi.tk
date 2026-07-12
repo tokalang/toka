@@ -20,6 +20,7 @@ extern fn accept(fd: i32, *addr: void, *len: u32) -> i32
 extern fn listen(fd: i32, backlog: i32) -> i32
 extern fn setsockopt(fd: i32, level: i32, optname: i32, *optval: void, optlen: u32) -> i32
 extern fn getsockopt(fd: i32, level: i32, optname: i32, *optval: void, *optlen: u32) -> i32
+extern fn getsockname(fd: i32, *addr: void, *addrlen: u32) -> i32
 extern fn sendto(fd: i32, *buf: void, len: usize, flags: i32, *dest_addr: void, addrlen: u32) -> i64
 extern fn recvfrom(fd: i32, *buf: void, len: usize, flags: i32, *src_addr: void, *addrlen: u32) -> i64
 extern fn __errno_location() -> Addr

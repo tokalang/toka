@@ -1,4 +1,4 @@
-import core/traits::{@Hash, @PartialEq}
+import core/traits::{@Hash, @PartialEq, @PartialOrd}
 
 // i32 Implementation
 impl i32@Hash {

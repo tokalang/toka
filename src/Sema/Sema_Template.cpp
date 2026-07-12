@@ -116,6 +116,9 @@ public:
       visitExpr(Var->Init.get());
     } else if (auto *Del = dynamic_cast<DeleteStmt *>(S)) {
       visitExpr(Del->Expression.get());
+    } else if (auto *Free = dynamic_cast<FreeStmt *>(S)) {
+      visitExpr(Free->Expression.get());
+      visitExpr(Free->Count.get());
     } else if (auto *Uns = dynamic_cast<UnsafeStmt *>(S)) {
       if (Uns->Statement)
         visitStmt(Uns->Statement.get());
@@ -272,6 +275,13 @@ void Sema::instantiateGenericImpl(
 
   // 3. Clone and Substitute
   GenericInstantiator Instantiator(Replacements, MorphicParams);
+  SourceLocation instantiationLoc =
+      CurrentFunction && CurrentFunction->Loc.isValid()
+          ? CurrentFunction->Loc
+          : CurrentModule && CurrentModule->Loc.isValid()
+                ? CurrentModule->Loc
+                : Template->Loc;
+  ModuleScope *instantiationScope = getLexicalModule(instantiationLoc);
 
   std::vector<std::unique_ptr<FunctionDecl>> NewMethods;
   for (auto &Method : Template->Methods) {
@@ -289,6 +299,14 @@ void Sema::instantiateGenericImpl(
 
     // Apply Substitution
     Instantiator.visitFunction(ClonedFn.get());
+    InstantiationLexicalScopes[ClonedFn.get()] = instantiationScope;
+    auto definition = DeclarationLexicalScopes.find(Method.get());
+    if (definition != DeclarationLexicalScopes.end())
+      DeclarationLexicalScopes[ClonedFn.get()] = definition->second;
+    for (const auto &arg : GenericArgs)
+      recordInstantiationType(ClonedFn.get(), resolveType(arg));
+    recordInstantiationType(
+        ClonedFn.get(), resolveType(toka::Type::fromString(ConcreteTypeName)));
 
     NewMethods.push_back(std::move(ClonedFn));
   }
@@ -329,19 +347,23 @@ void Sema::instantiateGenericImpl(
 
 bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 
                             const std::vector<std::string> &TraitBounds, 
-                            const std::string &ConcreteType, bool isSilent) {
+                            const std::string &ConcreteType, bool isSilent,
+                            SourceLocation BoundLoc) {
   bool success = true;
   std::string resolvedConcreteType = resolveType(ConcreteType);
 
   for (const auto &bound : TraitBounds) {
-    std::string implKey = resolvedConcreteType + "@" + bound;
+    SourceLocation visibilityLoc = BoundLoc.isValid() ? BoundLoc : Loc;
+    TraitDecl *trait = findVisibleTraitDecl(bound, visibilityLoc);
+    std::string canonicalBound = canonicalTraitName(bound, trait);
+    std::string implKey = resolvedConcreteType + "@" + canonicalBound;
     if (ImplMap.count(implKey)) continue;
 
     // [NEW] Fallback for Auto Traits
-    if (bound == "Send") {
+    if (canonicalBound == "Send") {
       auto typeObj = toka::Type::fromString(resolvedConcreteType);
       if (typeObj && typeObj->isSend(this)) continue;
-    } else if (bound == "Sync") {
+    } else if (canonicalBound == "Sync") {
       auto typeObj = toka::Type::fromString(resolvedConcreteType);
       if (typeObj && typeObj->isSync(this)) continue;
     }

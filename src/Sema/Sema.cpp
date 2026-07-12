@@ -389,12 +389,81 @@ std::string Sema::getTraitFamilyName(const std::string &traitName) const {
   return clean;
 }
 
+std::string Sema::canonicalTraitName(const std::string &traitName,
+                                     const TraitDecl *trait) const {
+  std::string clean = trimTypeString(traitName);
+  if (!clean.empty() && clean[0] == '@')
+    clean.erase(0, 1);
+  if (!trait)
+    return clean;
+
+  size_t generic = findTopLevelChar(clean, '<');
+  return trait->Name +
+         (generic == std::string::npos ? "" : clean.substr(generic));
+}
+
 TraitDecl *Sema::findTraitDecl(const std::string &traitName) const {
   std::string family = getTraitFamilyName(traitName);
   auto it = TraitMap.find(family);
   if (it == TraitMap.end())
     return nullptr;
   return it->second;
+}
+
+TraitDecl *Sema::findVisibleTraitDecl(const std::string &traitName,
+                                      SourceLocation loc) {
+  std::string family = getTraitFamilyName(traitName);
+  auto findInModule = [&](ModuleScope *module) -> TraitDecl * {
+    if (!module)
+      return nullptr;
+    auto symbol = module->LexicalTypes.find(family);
+    if (symbol == module->LexicalTypes.end())
+      return nullptr;
+    if (!symbol->second.IsTraitName || !symbol->second.ASTPtr)
+      return nullptr;
+    auto *trait = static_cast<TraitDecl *>(symbol->second.ASTPtr);
+    symbol->second.HasBeenUsed = true;
+    if (symbol->second.ImportingDecl) {
+      const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
+          true;
+    }
+    return trait;
+  };
+
+  if (loc.isValid()) {
+    if (TraitDecl *trait = findInModule(getLexicalModule(loc)))
+      return trait;
+  }
+
+  if (CurrentFunction) {
+    auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+    if (owner != DeclarationLexicalScopes.end()) {
+      if (TraitDecl *trait = findInModule(owner->second))
+        return trait;
+    }
+  }
+
+  if (CurrentModule) {
+    ModuleScope *module = nullptr;
+    if (!CurrentModule->ResolvedPath.empty())
+      module = getModule(CurrentModule->ResolvedPath);
+    if (!module && CurrentModule->Loc.isValid())
+      module = getLexicalModule(CurrentModule->Loc);
+    if (!module && !CurrentModule->SourcePath.empty())
+      module = getModule(CurrentModule->SourcePath);
+    if (TraitDecl *trait = findInModule(module))
+      return trait;
+  }
+
+  if (CurrentFunction) {
+    auto context = InstantiationLexicalScopes.find(CurrentFunction);
+    if (context != InstantiationLexicalScopes.end()) {
+      if (TraitDecl *trait = findInModule(context->second))
+        return trait;
+    }
+  }
+
+  return nullptr;
 }
 
 static bool typeMentionsSelf(const std::string &typeName) {
@@ -437,7 +506,7 @@ std::string Sema::getDynTraitName(std::shared_ptr<toka::Type> type) const {
 
 bool Sema::validateDynTraitObjectSafety(const std::string &traitName,
                                         SourceLocation loc) {
-  TraitDecl *trait = findTraitDecl(traitName);
+  TraitDecl *trait = findVisibleTraitDecl(traitName, loc);
   if (!trait)
     return true;
 
@@ -513,6 +582,301 @@ bool Sema::validateDynTraitObjectSafetyInType(std::shared_ptr<toka::Type> type,
   if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
     for (const auto &arg : shape->GenericArgs) {
       ok = validateDynTraitObjectSafetyInType(arg, loc) && ok;
+    }
+  }
+
+  return ok;
+}
+
+bool Sema::isTypeNameVisible(const std::string &typeName, SourceLocation loc) {
+  std::string name = Type::stripMorphology(typeName);
+  if (name.rfind("cede ", 0) == 0)
+    name = name.substr(5);
+  if (name.rfind("async ", 0) == 0)
+    name = name.substr(6);
+
+  size_t genericPos = name.find('<');
+  if (genericPos != std::string::npos)
+    name = name.substr(0, genericPos);
+
+  if (name.empty() || name.rfind("__Toka_", 0) == 0 ||
+      name.rfind("__Closure_", 0) == 0)
+    return true;
+
+  size_t scopePos = name.find("::");
+  if (scopePos != std::string::npos) {
+    std::string moduleName = name.substr(0, scopePos);
+    std::string targetName = name.substr(scopePos + 2);
+    SymbolInfo *moduleInfo = nullptr;
+    std::string actualName = moduleName;
+    if (CurrentScope) {
+      CurrentScope->findVariableWithDeref(moduleName, moduleInfo, actualName);
+    }
+    if ((!moduleInfo || !moduleInfo->ReferencedModule) && loc.isValid()) {
+      if (ModuleScope *lexical = getLexicalModule(loc)) {
+        auto symbol = lexical->LexicalSymbols.find(moduleName);
+        if (symbol != lexical->LexicalSymbols.end())
+          moduleInfo = &symbol->second;
+      }
+    }
+    if (!moduleInfo || !moduleInfo->ReferencedModule) {
+      return false;
+    }
+    auto *target = static_cast<ModuleScope *>(moduleInfo->ReferencedModule);
+    bool visible = target->Shapes.count(targetName) ||
+                   target->TypeAliases.count(targetName) ||
+                   target->Traits.count(targetName);
+    if (visible) {
+      moduleInfo->HasBeenUsed = true;
+      if (moduleInfo->ImportingDecl) {
+        const_cast<ImportDecl *>(moduleInfo->ImportingDecl)->HasBeenUsed = true;
+      }
+    }
+    return visible;
+  }
+
+  SymbolInfo *info = nullptr;
+  if (CurrentScope && CurrentScope->findSymbol(name, info) && info &&
+      (info->IsTypeName || info->IsTypeAlias)) {
+    info->HasBeenUsed = true;
+    if (info->ImportingDecl) {
+      const_cast<ImportDecl *>(info->ImportingDecl)->HasBeenUsed = true;
+    }
+    return true;
+  }
+
+  ModuleScope *currentModuleScope = nullptr;
+  if (CurrentModule) {
+    if (!CurrentModule->ResolvedPath.empty())
+      currentModuleScope = getModule(CurrentModule->ResolvedPath);
+    if (!currentModuleScope && CurrentModule->Loc.isValid())
+      currentModuleScope = getLexicalModule(CurrentModule->Loc);
+    if (!currentModuleScope && !CurrentModule->SourcePath.empty())
+      currentModuleScope = getModule(CurrentModule->SourcePath);
+  }
+  if (currentModuleScope) {
+    auto symbol = currentModuleScope->LexicalTypes.find(name);
+    if (symbol != currentModuleScope->LexicalTypes.end()) {
+      symbol->second.HasBeenUsed = true;
+      if (symbol->second.ImportingDecl) {
+        const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
+            true;
+      }
+      return true;
+    }
+  }
+
+  if (loc.isValid()) {
+    if (ModuleScope *lexical = getLexicalModule(loc)) {
+      auto symbol = lexical->LexicalTypes.find(name);
+      if (symbol != lexical->LexicalTypes.end()) {
+        symbol->second.HasBeenUsed = true;
+        if (symbol->second.ImportingDecl) {
+          const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
+              true;
+        }
+        return true;
+      }
+    }
+  }
+
+  if (CurrentFunction) {
+    auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+    if (owner != DeclarationLexicalScopes.end() && owner->second) {
+      auto symbol = owner->second->LexicalTypes.find(name);
+      if (symbol != owner->second->LexicalTypes.end()) {
+        symbol->second.HasBeenUsed = true;
+        if (symbol->second.ImportingDecl) {
+          const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
+              true;
+        }
+        return true;
+      }
+    }
+
+    auto visibleTypes = InstantiationTypeNames.find(CurrentFunction);
+    if (visibleTypes != InstantiationTypeNames.end() &&
+        visibleTypes->second.count(name)) {
+      return true;
+    }
+
+    auto context = InstantiationLexicalScopes.find(CurrentFunction);
+    if (context != InstantiationLexicalScopes.end() && context->second) {
+      auto symbol = context->second->LexicalTypes.find(name);
+      if (symbol != context->second->LexicalTypes.end()) {
+        symbol->second.HasBeenUsed = true;
+        if (symbol->second.ImportingDecl) {
+          const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
+              true;
+        }
+        return true;
+      }
+    }
+  }
+
+  size_t instancePos = name.find("_M_");
+  if (instancePos != std::string::npos)
+    return isTypeNameVisible(name.substr(0, instancePos), loc);
+
+  return false;
+}
+
+void Sema::recordInstantiationType(FunctionDecl *function,
+                                   std::shared_ptr<toka::Type> type) {
+  if (!function || !type)
+    return;
+
+  if (type->isPointer()) {
+    recordInstantiationType(function, type->getPointeeType());
+    return;
+  }
+  if (auto *uninit = dynamic_cast<UninitType *>(type.get())) {
+    recordInstantiationType(function, uninit->InnerType);
+    return;
+  }
+  if (auto element = type->getArrayElementType()) {
+    recordInstantiationType(function, element);
+    return;
+  }
+  if (auto *fn = dynamic_cast<FunctionType *>(type.get())) {
+    for (const auto &param : fn->ParamTypes)
+      recordInstantiationType(function, param);
+    recordInstantiationType(function, fn->ReturnType);
+    return;
+  }
+  if (auto *fn = dynamic_cast<DynFnType *>(type.get())) {
+    for (const auto &param : fn->ParamTypes)
+      recordInstantiationType(function, param);
+    recordInstantiationType(function, fn->ReturnType);
+    return;
+  }
+  if (auto *shape = dynamic_cast<ShapeType *>(type.get())) {
+    InstantiationTypeNames[function].insert(
+        Type::stripMorphology(shape->Name));
+    for (const auto &arg : shape->GenericArgs)
+      recordInstantiationType(function, arg);
+  }
+}
+
+bool Sema::validateTypeVisibilityInType(const std::string &typeName,
+                                        SourceLocation loc) {
+  std::string trimmed = trimTypeString(typeName);
+  if (trimmed == "()")
+    return true;
+
+  std::string associated = resolveAssociatedTypeProjection(trimmed, false);
+  if (!associated.empty()) {
+    size_t at = findTopLevelChar(trimmed, '@');
+    size_t scope = at == std::string::npos
+                       ? std::string::npos
+                       : findTopLevelDoubleColon(trimmed, at + 1);
+    bool ok = true;
+    if (at != std::string::npos && scope != std::string::npos) {
+      ok = validateTypeVisibilityInType(trimmed.substr(0, at), loc) && ok;
+      std::string traitName =
+          trimTypeString(trimmed.substr(at + 1, scope - at - 1));
+      if (!isTypeNameVisible(traitName, loc)) {
+        DiagnosticEngine::report(loc, DiagID::ERR_UNDEFINED_TYPE, traitName);
+        HasError = true;
+        ok = false;
+      }
+    }
+    return validateTypeVisibilityInType(associated, loc) && ok;
+  }
+
+  size_t open = trimmed.find('[');
+  if (open != std::string::npos) {
+    std::string prefix = trimTypeString(trimmed.substr(0, open));
+    bool legacyPrefix = true;
+    for (char c : prefix) {
+      if (std::isalnum(static_cast<unsigned char>(c)) &&
+          prefix != "cede" && prefix != "async" && prefix != "nul") {
+        legacyPrefix = false;
+        break;
+      }
+    }
+    size_t close = trimmed.find(']', open + 1);
+    if (legacyPrefix && close != std::string::npos &&
+        close + 1 < trimmed.size() &&
+        trimmed.substr(open + 1, close - open - 1).find(';') ==
+            std::string::npos) {
+      return validateTypeVisibilityInType(trimmed.substr(close + 1), loc);
+    }
+  }
+
+  return validateTypeVisibilityInType(toka::Type::fromString(typeName), loc);
+}
+
+bool Sema::validateTypeVisibilityInType(std::shared_ptr<toka::Type> type,
+                                        SourceLocation loc) {
+  if (!type)
+    return true;
+
+  bool ok = true;
+  if (type->isPointer())
+    return validateTypeVisibilityInType(type->getPointeeType(), loc);
+
+  if (auto *uninit = dynamic_cast<UninitType *>(type.get()))
+    return validateTypeVisibilityInType(uninit->InnerType, loc);
+
+  if (auto element = type->getArrayElementType())
+    ok = validateTypeVisibilityInType(element, loc) && ok;
+
+  if (auto *fn = dynamic_cast<FunctionType *>(type.get())) {
+    for (const auto &param : fn->ParamTypes)
+      ok = validateTypeVisibilityInType(param, loc) && ok;
+    ok = validateTypeVisibilityInType(fn->ReturnType, loc) && ok;
+  }
+  if (auto *fn = dynamic_cast<DynFnType *>(type.get())) {
+    for (const auto &param : fn->ParamTypes)
+      ok = validateTypeVisibilityInType(param, loc) && ok;
+    ok = validateTypeVisibilityInType(fn->ReturnType, loc) && ok;
+  }
+
+  if (auto *shape = dynamic_cast<ShapeType *>(type.get())) {
+    if (shape->Name == "()")
+      return ok;
+
+    if (!shape->Name.empty() && shape->Name.front() == '(' &&
+        shape->Name.back() == ')') {
+      auto resolved = resolveType(type, false);
+      auto record = std::dynamic_pointer_cast<ShapeType>(resolved);
+      if (record && record->Decl) {
+        for (const auto &member : record->Decl->Members) {
+          ok = validateTypeVisibilityInType(member.Type, loc) && ok;
+        }
+      }
+      return ok;
+    }
+
+    std::string visibleName = shape->Name;
+    if (std::string dynTrait = getDynTraitName(type); !dynTrait.empty())
+      visibleName = dynTrait;
+
+    if (!isTypeNameVisible(visibleName, loc)) {
+      DiagnosticEngine::report(loc, DiagID::ERR_UNDEFINED_TYPE, visibleName);
+      HasError = true;
+      ok = false;
+    }
+    ShapeDecl *genericDecl = shape->Decl;
+    if (!genericDecl) {
+      auto declaration = ShapeMap.find(shape->Name);
+      if (declaration != ShapeMap.end())
+        genericDecl = declaration->second;
+    }
+    for (size_t i = 0; i < shape->GenericArgs.size(); ++i) {
+      if (genericDecl && i < genericDecl->GenericParams.size() &&
+          genericDecl->GenericParams[i].IsConst) {
+        continue;
+      }
+      auto *constant =
+          dynamic_cast<ShapeType *>(shape->GenericArgs[i].get());
+      if (constant && !constant->Name.empty() &&
+          std::all_of(constant->Name.begin(), constant->Name.end(),
+                      [](unsigned char c) { return std::isdigit(c); })) {
+        continue;
+      }
+      ok = validateTypeVisibilityInType(shape->GenericArgs[i], loc) && ok;
     }
   }
 
@@ -622,11 +986,9 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
     resolvedAssocType = resolveType(resolvedAssocType);
     replacements[name] = resolvedAssocType;
 
+    std::string canonical = canonicalTraitName(Impl->TraitName, Trait);
     std::string traitKey =
-        implAssoc->IsPer ? Impl->TraitName : getTraitFamilyName(Impl->TraitName);
-    if (!traitKey.empty() && traitKey[0] == '@') {
-      traitKey = traitKey.substr(1);
-    }
+        implAssoc->IsPer ? canonical : getTraitFamilyName(canonical);
     std::string assocKey =
         resolvedTypeName + "@" + traitKey + "::" + name;
 
@@ -689,6 +1051,8 @@ std::string Sema::resolveAssociatedTypeProjection(const std::string &typeName,
   if (!exactTrait.empty() && exactTrait[0] == '@') {
     exactTrait = exactTrait.substr(1);
   }
+  if (TraitDecl *trait = findVisibleTraitDecl(exactTrait, SourceLocation()))
+    exactTrait = canonicalTraitName(exactTrait, trait);
 
   std::string exactKey = resolvedSelf + "@" + exactTrait + "::" + assocName;
   auto exact = AssociatedTypeMap.find(exactKey);
@@ -791,6 +1155,15 @@ void Sema::declareGlobals(Module &M) {
       : toka::PathUtils::canonicalize(
             DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
+  ModulePathAliases[fileName] = &ms;
+  if (!M.ResolvedPath.empty())
+    ModulePathAliases[toka::PathUtils::canonicalize(M.ResolvedPath)] = &ms;
+  if (!M.SourcePath.empty())
+    ModulePathAliases[toka::PathUtils::canonicalize(M.SourcePath)] = &ms;
+  if (M.Loc.isValid()) {
+    ModulePathAliases[toka::PathUtils::canonicalize(
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName)] = &ms;
+  }
   ms.Name = fileName;
   size_t lastSlash = ms.Name.find_last_of('/');
   if (lastSlash != std::string::npos) {
@@ -803,6 +1176,7 @@ void Sema::declareGlobals(Module &M) {
 
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
+    DeclarationLexicalScopes[Fn.get()] = &ms;
     Fn->CodegenName = moduleScopedCodegenName(M, Fn->Name);
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
@@ -818,9 +1192,14 @@ void Sema::declareGlobals(Module &M) {
     if (std::find(GlobalFunctions.begin(), GlobalFunctions.end(), Fn.get()) == GlobalFunctions.end()) {
       GlobalFunctions.push_back(Fn.get());
     }
+    SymbolInfo info;
+    info.TypeObj = toka::Type::fromString("fn");
+    info.ASTPtr = Fn.get();
+    ms.LexicalSymbols[Fn->Name] = info;
   }
   // 2. Register Externs
   for (auto &Ext : M.Externs) {
+    DeclarationLexicalScopes[Ext.get()] = &ms;
     for (const auto &Arg : Ext->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("extern argument", Arg.Name, Arg.Type,
@@ -828,14 +1207,25 @@ void Sema::declareGlobals(Module &M) {
     }
     ms.Externs[Ext->Name] = Ext.get();
     ExternMap[Ext->Name] = Ext.get();
+    SymbolInfo info;
+    info.TypeObj = toka::Type::fromString("extern");
+    info.ASTPtr = Ext.get();
+    ms.LexicalSymbols[Ext->Name] = info;
   }
   // 3. Register Shapes
   for (auto &St : M.Shapes) {
+    DeclarationLexicalScopes[St.get()] = &ms;
     ms.Shapes[St->Name] = St.get();
     ShapeMap[St->Name] = St.get();
+    SymbolInfo info;
+    info.TypeObj = toka::Type::fromString(St->Name);
+    info.IsTypeName = true;
+    info.ASTPtr = St.get();
+    ms.LexicalTypes[St->Name] = info;
   }
   // 4. Register TypeAliases
   for (auto &Alias : M.TypeAliases) {
+    DeclarationLexicalScopes[Alias.get()] = &ms;
     std::string target = Alias->TargetType;
     if (!toka::Parser::TargetTriple.empty()) {
       std::string triple = toka::Parser::TargetTriple;
@@ -855,15 +1245,28 @@ void Sema::declareGlobals(Module &M) {
                                    Alias->GenericParams};
     TypeAliasMap[Alias->Name] = {target, Alias->IsStrong,
                                  Alias->GenericParams};
+    SymbolInfo info;
+    info.TypeObj = toka::Type::fromString(Alias->Name);
+    info.IsTypeName = true;
+    info.ASTPtr = Alias.get();
+    ms.LexicalTypes[Alias->Name] = info;
   }
   // 5. Register Traits
   for (auto &Trait : M.Traits) {
+    DeclarationLexicalScopes[Trait.get()] = &ms;
     ms.Traits[Trait->Name] = Trait.get();
     TraitMap[Trait->Name] = Trait.get();
+    SymbolInfo info;
+    info.TypeObj = toka::Type::fromString(Trait->Name);
+    info.IsTypeName = true;
+    info.IsTraitName = true;
+    info.ASTPtr = Trait.get();
+    ms.LexicalTypes[Trait->Name] = info;
     validateTraitAssociatedTypes(Trait.get());
 
     std::string traitKey = "@" + Trait->Name;
     for (auto &Method : Trait->Methods) {
+      DeclarationLexicalScopes[Method.get()] = &ms;
       MethodMap[traitKey][Method->Name] = Method->ReturnType;
       MethodDecls[traitKey][Method->Name] = Method.get();
     }
@@ -880,11 +1283,150 @@ void Sema::declareGlobals(Module &M) {
   // 6. Register Globals
   for (auto &G : M.Globals) {
     if (auto *v = dynamic_cast<VariableDecl *>(G.get())) {
+      DeclarationLexicalScopes[v] = &ms;
       ms.Globals[v->Name] = v;
+      SymbolInfo info;
+      info.TypeObj = v->TypeName.empty()
+                         ? toka::Type::fromString("unknown")
+                         : toka::Type::fromString(synthesizePhysicalType(*v));
+      info.IsRebindable = v->IsRebindable;
+      info.CodegenName = v->Name;
+      info.ASTPtr = v;
+      ms.LexicalSymbols[v->Name] = info;
     }
   }
+
+  // Build a diagnostic-free lexical preview for generic instantiations that
+  // can occur during the declaration pass. Full conflict and visibility
+  // diagnostics remain in registerGlobals().
+  for (auto &Imp : M.Imports) {
+    ModuleScope *target = nullptr;
+    if (!Imp->ResolvedPath.empty()) {
+      auto resolved = ModuleMap.find(
+          toka::PathUtils::canonicalize(Imp->ResolvedPath));
+      if (resolved != ModuleMap.end())
+        target = &resolved->second;
+    }
+    if (!target)
+      target = getModule(Imp->PhysicalPath);
+    if (!target)
+      continue;
+
+    auto bindValue = [&](const std::string &name,
+                         std::shared_ptr<toka::Type> type, ASTNode *node) {
+      if (!ms.LexicalSymbols.count(name)) {
+        SymbolInfo info;
+        info.TypeObj = std::move(type);
+        info.ASTPtr = node;
+        info.ImportingDecl = Imp.get();
+        info.ReferencedModule = target;
+        ms.LexicalSymbols[name] = info;
+      }
+    };
+    auto bindType = [&](const std::string &name, ASTNode *node) {
+      if (!ms.LexicalTypes.count(name)) {
+        SymbolInfo info;
+        info.TypeObj = toka::Type::fromString(name);
+        info.IsTypeName = true;
+        info.ASTPtr = node;
+        info.ImportingDecl = Imp.get();
+        info.ReferencedModule = target;
+        ms.LexicalTypes[name] = info;
+      }
+    };
+    auto bindFunction = [&](const std::string &name, FunctionDecl *fn) {
+      bindValue(name, toka::Type::fromString("fn"), fn);
+      if (Imp->IsPub)
+        ms.Functions[name] = fn;
+    };
+    auto bindExtern = [&](const std::string &name, ExternDecl *ext) {
+      bindValue(name, toka::Type::fromString("extern"), ext);
+      if (Imp->IsPub)
+        ms.Externs[name] = ext;
+    };
+    auto bindShape = [&](const std::string &name, ShapeDecl *shape) {
+      bindType(name, shape);
+      if (Imp->IsPub)
+        ms.Shapes[name] = shape;
+    };
+    auto bindAlias = [&](const std::string &name,
+                         const AliasInfo &alias) {
+      bindType(name, nullptr);
+      if (Imp->IsPub)
+        ms.TypeAliases[name] = alias;
+    };
+    auto bindTrait = [&](const std::string &name, TraitDecl *trait) {
+      bindType(name, trait);
+      auto symbol = ms.LexicalTypes.find(name);
+      if (symbol != ms.LexicalTypes.end() && symbol->second.ASTPtr == trait)
+        symbol->second.IsTraitName = true;
+      if (Imp->IsPub)
+        ms.Traits[name] = trait;
+    };
+    auto bindGlobal = [&](const std::string &name, VariableDecl *global) {
+      bindValue(name,
+                toka::Type::fromString(global->TypeName.empty()
+                                           ? "unknown"
+                                           : synthesizePhysicalType(*global)),
+                global);
+      auto symbol = ms.LexicalSymbols.find(name);
+      if (symbol != ms.LexicalSymbols.end() && symbol->second.ASTPtr == global)
+        symbol->second.CodegenName = global->Name;
+      if (Imp->IsPub)
+        ms.Globals[name] = global;
+    };
+
+    if (Imp->Items.empty()) {
+      std::string name = Imp->Alias.empty()
+                             ? defaultModuleNameForImport(Imp->PhysicalPath)
+                             : Imp->Alias;
+      bindValue(name, toka::Type::fromString("module"), nullptr);
+      ms.LexicalSymbols[name].ReferencedModule = target;
+      continue;
+    }
+
+    for (const auto &item : Imp->Items) {
+      if (item.Symbol == "*") {
+        for (const auto &[name, fn] : target->Functions)
+          bindFunction(name, fn);
+        for (const auto &[name, ext] : target->Externs)
+          bindExtern(name, ext);
+        for (const auto &[name, shape] : target->Shapes)
+          bindShape(name, shape);
+        for (const auto &[name, alias] : target->TypeAliases)
+          bindAlias(name, alias);
+        for (const auto &[name, trait] : target->Traits)
+          bindTrait(name, trait);
+        for (const auto &[name, global] : target->Globals)
+          bindGlobal(name, global);
+        continue;
+      }
+
+      std::string visible =
+          item.Alias.empty() ? item.Symbol : item.Alias;
+      std::string traitName = item.Symbol;
+      if (!traitName.empty() && traitName.front() == '@')
+        traitName.erase(traitName.begin());
+      if (target->Functions.count(item.Symbol))
+        bindFunction(visible, target->Functions[item.Symbol]);
+      else if (target->Externs.count(item.Symbol))
+        bindExtern(visible, target->Externs[item.Symbol]);
+      else if (target->Shapes.count(item.Symbol))
+        bindShape(visible, target->Shapes[item.Symbol]);
+      else if (target->TypeAliases.count(item.Symbol))
+        bindAlias(visible, target->TypeAliases[item.Symbol]);
+      else if (target->Traits.count(traitName))
+        bindTrait(visible, target->Traits[traitName]);
+      else if (target->Globals.count(item.Symbol))
+        bindGlobal(visible, target->Globals[item.Symbol]);
+    }
+  }
+
   // 7. Register Impls
   for (auto &Impl : M.Impls) {
+    DeclarationLexicalScopes[Impl.get()] = &ms;
+    for (auto &Method : Impl->Methods)
+      DeclarationLexicalScopes[Method.get()] = &ms;
     declareImpl(Impl.get());
   }
 }
@@ -897,6 +1439,15 @@ void Sema::registerGlobals(Module &M) {
       : toka::PathUtils::canonicalize(
             DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
+  ModulePathAliases[fileName] = &ms;
+  if (!M.ResolvedPath.empty())
+    ModulePathAliases[toka::PathUtils::canonicalize(M.ResolvedPath)] = &ms;
+  if (!M.SourcePath.empty())
+    ModulePathAliases[toka::PathUtils::canonicalize(M.SourcePath)] = &ms;
+  if (M.Loc.isValid()) {
+    ModulePathAliases[toka::PathUtils::canonicalize(
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName)] = &ms;
+  }
   ms.Name = fileName;
   // Simple name extraction (e.g. std/io.tk -> io)
   size_t lastSlash = ms.Name.find_last_of('/');
@@ -906,6 +1457,27 @@ void Sema::registerGlobals(Module &M) {
   size_t dot = ms.Name.find_last_of('.');
   if (dot != std::string::npos) {
     ms.Name = ms.Name.substr(0, dot);
+  }
+
+  for (auto &Fn : M.Functions)
+    DeclarationLexicalScopes[Fn.get()] = &ms;
+  for (auto &Ext : M.Externs)
+    DeclarationLexicalScopes[Ext.get()] = &ms;
+  for (auto &St : M.Shapes)
+    DeclarationLexicalScopes[St.get()] = &ms;
+  for (auto &Alias : M.TypeAliases)
+    DeclarationLexicalScopes[Alias.get()] = &ms;
+  for (auto &Trait : M.Traits) {
+    DeclarationLexicalScopes[Trait.get()] = &ms;
+    for (auto &Method : Trait->Methods)
+      DeclarationLexicalScopes[Method.get()] = &ms;
+  }
+  for (auto &G : M.Globals)
+    DeclarationLexicalScopes[G.get()] = &ms;
+  for (auto &Impl : M.Impls) {
+    DeclarationLexicalScopes[Impl.get()] = &ms;
+    for (auto &Method : Impl->Methods)
+      DeclarationLexicalScopes[Method.get()] = &ms;
   }
 
   // Case A: Register local symbols in the ModuleScope
@@ -951,10 +1523,12 @@ void Sema::registerGlobals(Module &M) {
     } else {
       ms.Shapes[St->Name] = St.get();
       ShapeMap[St->Name] = St.get();
-      // [NEW] Shapes usually resolved via ShapeMap, but define in scope for
-      // consistency if needed.
-      CurrentScope->define(St->Name, {toka::Type::fromString(St->Name)});
     }
+    SymbolInfo typeInfo;
+    typeInfo.TypeObj = toka::Type::fromString(St->Name);
+    typeInfo.IsTypeName = true;
+    typeInfo.ASTPtr = St.get();
+    ms.LexicalTypes[St->Name] = typeInfo;
   }
   for (auto &Alias : M.TypeAliases) {
     std::string target = Alias->TargetType;
@@ -977,8 +1551,11 @@ void Sema::registerGlobals(Module &M) {
     TypeAliasMap[Alias->Name] = {target, Alias->IsStrong,
                                  Alias->GenericParams};
 
-    // [NEW] Define locally in scope
-    CurrentScope->define(Alias->Name, {toka::Type::fromString(Alias->Name)});
+    SymbolInfo aliasInfo;
+    aliasInfo.TypeObj = toka::Type::fromString(Alias->Name);
+    aliasInfo.IsTypeName = true;
+    aliasInfo.ASTPtr = Alias.get();
+    ms.LexicalTypes[Alias->Name] = aliasInfo;
   }
   for (auto &Trait : M.Traits) {
     ms.Traits[Trait->Name] = Trait.get();
@@ -991,8 +1568,12 @@ void Sema::registerGlobals(Module &M) {
       MethodMap[traitKey][Method->Name] = Method->ReturnType;
       MethodDecls[traitKey][Method->Name] = Method.get();
     }
-    // [NEW] Define locally in scope
-    CurrentScope->define(Trait->Name, {toka::Type::fromString(Trait->Name)});
+    SymbolInfo traitInfo;
+    traitInfo.TypeObj = toka::Type::fromString(Trait->Name);
+    traitInfo.IsTypeName = true;
+    traitInfo.IsTraitName = true;
+    traitInfo.ASTPtr = Trait.get();
+    ms.LexicalTypes[Trait->Name] = traitInfo;
   }
   for (auto &Alias : M.TypeAliases) {
     validateDynTraitObjectSafetyInType(Alias->TargetType, getLoc(Alias.get()));
@@ -1008,32 +1589,13 @@ void Sema::registerGlobals(Module &M) {
       debugCheckBindingPermission(*v);
 
       ms.Globals[v->Name] = v;
-      // In-line inference for global constants if TypeName is missing
-      if (v->TypeName.empty() && v->Init) {
-        if (auto *cast = dynamic_cast<CastExpr *>(v->Init.get())) {
-          v->TypeName = cast->TargetType;
-        } else if (dynamic_cast<NumberExpr *>(v->Init.get())) {
-          v->TypeName = "i64";
-        } else if (dynamic_cast<BoolExpr *>(v->Init.get())) {
-          v->TypeName = "bool";
-        } else if (dynamic_cast<StringExpr *>(v->Init.get())) {
-          v->TypeName = "str";
-        } else {
-          // Last resort: run full checkExpr (e.g. for AnonymousRecordExpr)
-          std::shared_ptr<toka::Type> inferredType = checkExpr(v->Init.get());
-          std::string inferred = inferredType->toString();
-          if (!inferredType->isUnknown() && !inferredType->isVoid()) {
-            v->TypeName = inferred;
-          }
-        }
-      }
-      debugCheckBindingTypeString("global variable", v->Name, v->TypeName,
-                                  v->Permission, v->Loc);
-      // [NEW] Define local global in scope
-      std::string fullT = synthesizePhysicalType(*v);
       SymbolInfo globalInfo;
-      globalInfo.TypeObj = toka::Type::fromString(fullT);
+      globalInfo.TypeObj = v->TypeName.empty()
+                               ? toka::Type::fromString("unknown")
+                               : toka::Type::fromString(
+                                     synthesizePhysicalType(*v));
       globalInfo.IsRebindable = v->IsRebindable;
+      globalInfo.CodegenName = v->Name;
       globalInfo.ASTPtr = v;
       CurrentScope->define(v->Name, globalInfo);
     }
@@ -1128,6 +1690,30 @@ void Sema::registerGlobals(Module &M) {
       continue;
     }
 
+    auto importTypeName = [&](const std::string &visibleName,
+                              ASTNode *declaration) {
+      auto existing = ms.LexicalTypes.find(visibleName);
+      if (existing != ms.LexicalTypes.end()) {
+        bool sameDeclaration =
+            declaration && existing->second.ASTPtr == declaration;
+        bool samePreviewAlias =
+            !declaration && !existing->second.ASTPtr &&
+            existing->second.ImportingDecl == Imp.get() &&
+            existing->second.ReferencedModule == target;
+        return existing->second.IsTypeName &&
+               (sameDeclaration || samePreviewAlias);
+      }
+
+      SymbolInfo typeInfo;
+      typeInfo.TypeObj = toka::Type::fromString(visibleName);
+      typeInfo.IsTypeName = true;
+      typeInfo.ASTPtr = declaration;
+      typeInfo.ImportingDecl = Imp.get();
+      typeInfo.ReferencedModule = target;
+      ms.LexicalTypes[visibleName] = typeInfo;
+      return true;
+    };
+
     if (Imp->Items.empty()) {
       // 1. Simple Import: import std/io
       // [Fix] Check for conflict using lookup to catch prelude clashes
@@ -1192,6 +1778,8 @@ void Sema::registerGlobals(Module &M) {
           }
           // Import all shapes
           for (auto const &[name, sh] : target->Shapes) {
+            if (!importTypeName(name, sh))
+              continue;
             ShapeMap[name] =
                 sh; // Still needs to be in global maps for resolution
             ShapeImportMap[name] = Imp.get(); // [NEW]
@@ -1201,6 +1789,8 @@ void Sema::registerGlobals(Module &M) {
           }
           // Import all aliases
           for (auto const &[name, ai] : target->TypeAliases) {
+            if (!importTypeName(name, nullptr))
+              continue;
             TypeAliasMap[name] = ai;
             ShapeImportMap[name] = Imp.get(); // [NEW]
             if (Imp->IsPub) {
@@ -1209,6 +1799,9 @@ void Sema::registerGlobals(Module &M) {
           }
           // Import all traits
           for (auto const &[name, trait] : target->Traits) {
+            if (!importTypeName(name, trait))
+              continue;
+            ms.LexicalTypes[name].IsTraitName = true;
             TraitMap[name] = trait;
             ShapeImportMap[name] = Imp.get(); // [NEW]
             if (Imp->IsPub) {
@@ -1260,6 +1853,7 @@ void Sema::registerGlobals(Module &M) {
             SymbolInfo globalInfo;
             globalInfo.TypeObj = toka::Type::fromString(fullType);
             globalInfo.IsRebindable = v->IsRebindable;
+            globalInfo.CodegenName = v->Name;
             globalInfo.ReferencedModule = target;
             globalInfo.ImportingDecl = Imp.get();
             globalInfo.ASTPtr = v;
@@ -1324,6 +1918,8 @@ void Sema::registerGlobals(Module &M) {
             }
             found = true;
           } else if (target->Shapes.count(item.Symbol)) {
+            if (!importTypeName(name, target->Shapes[item.Symbol]))
+              continue;
             ShapeMap[name] = target->Shapes[item.Symbol];
             ShapeImportMap[name] = Imp.get(); // [NEW]
             if (Imp->IsPub) {
@@ -1331,6 +1927,8 @@ void Sema::registerGlobals(Module &M) {
             }
             found = true;
           } else if (target->TypeAliases.count(item.Symbol)) {
+            if (!importTypeName(name, nullptr))
+              continue;
             TypeAliasMap[name] = target->TypeAliases[item.Symbol];
             ShapeImportMap[name] = Imp.get(); // [NEW]
             if (Imp->IsPub) {
@@ -1338,6 +1936,9 @@ void Sema::registerGlobals(Module &M) {
             }
             found = true;
           } else if (target->Traits.count(lookupSym)) {
+            if (!importTypeName(name, target->Traits[lookupSym]))
+              continue;
+            ms.LexicalTypes[name].IsTraitName = true;
             TraitMap[name] = target->Traits[lookupSym];
             ShapeImportMap[name] = Imp.get(); // [NEW]
             if (Imp->IsPub) {
@@ -1389,6 +1990,7 @@ void Sema::registerGlobals(Module &M) {
             SymbolInfo globalInfo;
             globalInfo.TypeObj = toka::Type::fromString(fullType);
             globalInfo.IsRebindable = v->IsRebindable;
+            globalInfo.CodegenName = v->Name;
             globalInfo.ReferencedModule = target;
             globalInfo.ImportingDecl = Imp.get();
             globalInfo.ASTPtr = v;
@@ -1422,6 +2024,45 @@ void Sema::registerGlobals(Module &M) {
       }
     }
   }
+
+  // Imports must be visible before global initializers are inferred. Globals
+  // were predeclared above so imports still diagnose name conflicts.
+  for (auto &G : M.Globals) {
+    auto *v = dynamic_cast<VariableDecl *>(G.get());
+    if (!v)
+      continue;
+
+    if (v->TypeName.empty() && v->Init) {
+      if (auto *cast = dynamic_cast<CastExpr *>(v->Init.get())) {
+        v->TypeName = cast->TargetType;
+      } else if (dynamic_cast<NumberExpr *>(v->Init.get())) {
+        v->TypeName = "i64";
+      } else if (dynamic_cast<BoolExpr *>(v->Init.get())) {
+        v->TypeName = "bool";
+      } else if (dynamic_cast<StringExpr *>(v->Init.get())) {
+        v->TypeName = "str";
+      } else {
+        std::shared_ptr<toka::Type> inferredType = checkExpr(v->Init.get());
+        if (!inferredType->isUnknown() && !inferredType->isVoid())
+          v->TypeName = inferredType->toString();
+      }
+    }
+
+    if (!v->TypeName.empty())
+      validateTypeVisibilityInType(v->TypeName, getLoc(v));
+    debugCheckBindingTypeString("global variable", v->Name, v->TypeName,
+                                v->Permission, v->Loc);
+
+    auto symbol = CurrentScope->Symbols.find(v->Name);
+    if (symbol != CurrentScope->Symbols.end()) {
+      symbol->second.TypeObj = toka::Type::fromString(
+          v->TypeName.empty() ? "unknown" : synthesizePhysicalType(*v));
+      symbol->second.IsRebindable = v->IsRebindable;
+      symbol->second.ASTPtr = v;
+    }
+  }
+
+  ms.LexicalSymbols = CurrentScope->Symbols;
 
   for (auto &Impl : M.Impls) {
     // [NEW] Generic Impl Registration (Lazy)
@@ -1502,12 +2143,19 @@ void Sema::registerGlobals(Module &M) {
     }
     registerImpl(Impl.get());
   }
+
+  ms.LexicalSymbols = CurrentScope->Symbols;
 }
 
 void Sema::registerImpl(ImplDecl *Impl) {
   std::string resolvedTypeName = resolveType(Impl->TypeName);
   TraitDecl *traitDecl =
-      Impl->TraitName.empty() ? nullptr : findTraitDecl(Impl->TraitName);
+      Impl->TraitName.empty()
+          ? nullptr
+          : Impl->Loc.isValid()
+                ? findVisibleTraitDecl(Impl->TraitName, getLoc(Impl))
+                : findTraitDecl(Impl->TraitName);
+  std::string canonicalTrait = canonicalTraitName(Impl->TraitName, traitDecl);
   std::map<std::string, std::string> associatedTypeSubstitutions =
       registerAssociatedTypes(Impl, traitDecl, resolvedTypeName);
   AssociatedTypeSubstitutionCache[Impl] = associatedTypeSubstitutions;
@@ -1535,7 +2183,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
   // Populate ImplMap
   if (!Impl->TraitName.empty()) {
-    std::string implKey = resolvedTypeName + "@" + Impl->TraitName;
+    std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey]; // Ensure the key exists even for empty traits
     for (auto &Method : Impl->Methods) {
       ImplMap[implKey][Method->Name] = Method.get();
@@ -1546,7 +2194,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
   if (!Impl->TraitName.empty()) {
     if (traitDecl) {
       TraitDecl *TD = traitDecl;
-      std::string traitFamily = getTraitFamilyName(Impl->TraitName);
+      std::string traitFamily = getTraitFamilyName(canonicalTrait);
       if (ShapeImportMap.count(traitFamily)) {
         const_cast<ImportDecl*>(ShapeImportMap[traitFamily])->HasBeenUsed = true;
       }
@@ -1582,7 +2230,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
           MethodDecls[resolvedTypeName][Method->Name] = Method.get();
         } else {
           // [Fix] Optional methods for intrinsic interfaces
-          if (Impl->TraitName == "delegate" || Impl->TraitName == "@delegate") {
+          if (getTraitFamilyName(canonicalTrait) == "delegate") {
             continue;
           }
 
@@ -1601,7 +2249,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
   // [Toka] Resource Management: Mark type as having drop if @encap is
   // implemented
-  if (Impl->TraitName == "encap") {
+  if (getTraitFamilyName(canonicalTrait) == "encap") {
     if (implemented.count("drop")) {
       m_ShapeProps[resolvedTypeName].HasDrop = true;
       // [Single Source of Truth] Store the authoritative mangled name
@@ -1613,7 +2261,8 @@ void Sema::registerImpl(ImplDecl *Impl) {
   }
 
   // [Toka] Sync Trait: Mark type as IsSync
-  if (Impl->TraitName == "sync" || Impl->TraitName == "@sync" || Impl->TraitName == "Sync" || Impl->TraitName == "@Sync") {
+  if (getTraitFamilyName(canonicalTrait) == "sync" ||
+      getTraitFamilyName(canonicalTrait) == "Sync") {
     if (ShapeMap.count(resolvedTypeName)) {
       ShapeMap[resolvedTypeName]->IsSync = true;
     }
@@ -1643,6 +2292,11 @@ void Sema::declareImpl(ImplDecl *Impl) {
 
   std::set<std::string> implemented;
   std::string resolvedTypeName = resolveType(Impl->TypeName);
+  TraitDecl *traitDecl =
+      Impl->TraitName.empty()
+          ? nullptr
+          : findVisibleTraitDecl(Impl->TraitName, getLoc(Impl));
+  std::string canonicalTrait = canonicalTraitName(Impl->TraitName, traitDecl);
   for (auto &Method : Impl->Methods) {
     MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
     MethodDecls[resolvedTypeName][Method->Name] = Method.get();
@@ -1650,14 +2304,14 @@ void Sema::declareImpl(ImplDecl *Impl) {
   }
 
   if (!Impl->TraitName.empty()) {
-    std::string implKey = resolvedTypeName + "@" + Impl->TraitName;
+    std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey];
     for (auto &Method : Impl->Methods) {
       ImplMap[implKey][Method->Name] = Method.get();
     }
   }
 
-  if (Impl->TraitName == "encap") {
+  if (getTraitFamilyName(canonicalTrait) == "encap") {
     if (implemented.count("drop")) {
       m_ShapeProps[resolvedTypeName].HasDrop = true;
       if (ShapeMap.count(resolvedTypeName)) {
@@ -1667,7 +2321,8 @@ void Sema::declareImpl(ImplDecl *Impl) {
     }
   }
 
-  if (Impl->TraitName == "sync" || Impl->TraitName == "@sync" || Impl->TraitName == "Sync" || Impl->TraitName == "@Sync") {
+  if (getTraitFamilyName(canonicalTrait) == "sync" ||
+      getTraitFamilyName(canonicalTrait) == "Sync") {
     if (ShapeMap.count(resolvedTypeName)) {
       ShapeMap[resolvedTypeName]->IsSync = true;
     }
@@ -1696,6 +2351,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   // [New] Annotated AST: Resolve Return Type Object
   if (Fn->ReturnType != "void") {
+    validateTypeVisibilityInType(Fn->ReturnType, getLoc(Fn));
     validateDynTraitObjectSafetyInType(Fn->ReturnType, getLoc(Fn));
     std::string resolvedRetStr = resolveType(Fn->ReturnType);
     Fn->ResolvedReturnType = toka::Type::fromString(resolvedRetStr);
@@ -1716,6 +2372,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                                Arg.Name);
       HasError = true;
     }
+    validateTypeVisibilityInType(Arg.Type, argLoc);
     validateDynTraitObjectSafetyInType(Arg.Type, argLoc);
 
     if (Arg.IsReference && !Arg.IsRebindable &&
@@ -1880,17 +2537,22 @@ void Sema::checkImpl(ImplDecl *Impl) {
   }
 
   if (!Impl->TraitName.empty()) {
-    TraitDecl *TD = findTraitDecl(Impl->TraitName);
+    TraitDecl *TD = Impl->Loc.isValid()
+                        ? findVisibleTraitDecl(Impl->TraitName, getLoc(Impl))
+                        : findTraitDecl(Impl->TraitName);
     if (TD) {
       std::string resolvedTypeName = resolveType(Impl->TypeName);
       for (const auto &bound : TD->SelfTraitBounds) {
-        std::string implKey = resolvedTypeName + "@" + bound;
+        TraitDecl *boundDecl = findVisibleTraitDecl(bound, TD->Loc);
+        std::string canonicalBound = canonicalTraitName(bound, boundDecl);
+        std::string implKey = resolvedTypeName + "@" + canonicalBound;
         bool satisfied = ImplMap.count(implKey);
 
-        if (!satisfied && bound == "Send") {
+        if (!satisfied && getTraitFamilyName(canonicalBound) == "Send") {
           auto typeObj = toka::Type::fromString(resolvedTypeName);
           satisfied = typeObj && typeObj->isSend(this);
-        } else if (!satisfied && bound == "Sync") {
+        } else if (!satisfied &&
+                   getTraitFamilyName(canonicalBound) == "Sync") {
           auto typeObj = toka::Type::fromString(resolvedTypeName);
           satisfied = typeObj && typeObj->isSync(this);
         }
@@ -2029,6 +2691,7 @@ void Sema::analyzeShapes(Module &M) {
           return;
 
         std::string fullTypeStr = Sema::synthesizePhysicalType(m);
+        validateTypeVisibilityInType(fullTypeStr, getLoc(S.get()));
         std::string resolvedName = resolveType(fullTypeStr);
         m.ResolvedType = toka::Type::fromString(resolvedName);
 
@@ -2521,7 +3184,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
       if (!checkTraitBounds(CallSite ? getLoc(CallSite) : Template->Loc, 
                             Template->GenericParams[i].Name, 
                             Template->GenericParams[i].TraitBounds, 
-                            Args[i]->toString())) {
+                            Args[i]->toString(), false, Template->Loc)) {
         return nullptr;
       }
     }
@@ -2839,6 +3502,15 @@ FunctionDecl *Sema::instantiateGenericFunction(
     InstancePtr.release(); // Leak if no module? No, let's assume CurrentModule.
   }
 
+  SourceLocation instantiationLoc =
+      CallSite && CallSite->Loc.isValid() ? CallSite->Loc : Template->Loc;
+  InstantiationLexicalScopes[Instance] = getLexicalModule(instantiationLoc);
+  auto definition = DeclarationLexicalScopes.find(Template);
+  if (definition != DeclarationLexicalScopes.end())
+    DeclarationLexicalScopes[Instance] = definition->second;
+  for (const auto &arg : Args)
+    recordInstantiationType(Instance, resolveType(arg));
+
   // [NEW] Inject Const Generic Variables into Body
   // Removed dirty hack (VariableDecl injection).
   // Const values are now handled by SymbolInfo resolution in CodeGen.
@@ -2855,8 +3527,32 @@ FunctionDecl *Sema::instantiateGenericFunction(
 
 Sema::ModuleScope *Sema::getModule(const std::string &Path) {
   std::string canonicalPath = toka::PathUtils::canonicalize(Path);
+  auto alias = ModulePathAliases.find(canonicalPath);
+  if (alias != ModulePathAliases.end())
+    return alias->second;
   if (ModuleMap.count(canonicalPath))
     return &ModuleMap[canonicalPath];
+  return nullptr;
+}
+
+Sema::ModuleScope *Sema::getLexicalModule(SourceLocation loc) {
+  if (!loc.isValid() || !DiagnosticEngine::SrcMgr)
+    return nullptr;
+
+  std::string file =
+      DiagnosticEngine::SrcMgr->getFullSourceLoc(loc).FileName;
+  std::string canonical = toka::PathUtils::canonicalize(file);
+  auto alias = ModulePathAliases.find(canonical);
+  if (alias != ModulePathAliases.end())
+    return alias->second;
+  auto exact = ModuleMap.find(canonical);
+  if (exact != ModuleMap.end())
+    return &exact->second;
+
+  for (auto &[path, module] : ModuleMap) {
+    if (path == file || toka::PathUtils::canonicalize(path) == canonical)
+      return &module;
+  }
   return nullptr;
 }
 

@@ -124,25 +124,7 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
     if (auto *ve = dynamic_cast<const VariableExpr *>(inner)) {
       std::string varName = Type::stripMorphology(ve->Name);
 
-      // Find in ScopeStack and disable Drop
-      // We search from inner-most scope out
-      bool found = false;
-      for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
-        auto &scope = m_ScopeStack[i];
-        for (auto &entry : scope) {
-          if (Type::stripMorphology(entry.Name) == varName) {
-            // Found the variable!
-            if (entry.HasDrop) {
-              // DISABLE DROP -> MANIFEST MOVE
-              entry.HasDrop = false;
-            }
-            found = true;
-            break;
-          }
-        }
-        if (found)
-          break;
-      }
+      suppressDropForMove(varName);
     }
   }
 
@@ -239,6 +221,24 @@ llvm::Value *CodeGen::genDeleteStmt(const DeleteStmt *del) {
   return nullptr;
 }
 
+void CodeGen::suppressDropForMove(const std::string &name) {
+  std::string movedName = Type::stripMorphology(name);
+  for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (Type::stripMorphology(entry->Name) != movedName)
+        continue;
+      if (entry->DropFlag) {
+        m_Builder.CreateStore(
+            llvm::ConstantInt::getFalse(m_Context), entry->DropFlag);
+      } else {
+        entry->HasDrop = false;
+      }
+      return;
+    }
+  }
+}
+
 void CodeGen::executeScopeUnwinding(size_t targetDepth) {
   llvm::BasicBlock *currBB = m_Builder.GetInsertBlock();
   if (!currBB || currBB->getTerminator())
@@ -248,6 +248,20 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
   for (int i = (int)m_ScopeStack.size() - 1; i >= (int)targetDepth; --i) {
     auto &scope = m_ScopeStack[i];
     for (auto it = scope.rbegin(); it != scope.rend(); ++it) {
+      llvm::BasicBlock *dropFlagContBB = nullptr;
+      if (it->DropFlag) {
+        llvm::Function *function = currBB->getParent();
+        llvm::BasicBlock *dropBB =
+            llvm::BasicBlock::Create(m_Context, "drop.live", function);
+        dropFlagContBB =
+            llvm::BasicBlock::Create(m_Context, "drop.done", function);
+        llvm::Value *isLive = m_Builder.CreateLoad(
+            llvm::Type::getInt1Ty(m_Context), it->DropFlag, "drop.is_live");
+        m_Builder.CreateCondBr(isLive, dropBB, dropFlagContBB);
+        m_Builder.SetInsertPoint(dropBB);
+        currBB = dropBB;
+      }
+
       if (it->IsShared && it->Alloca && it->AllocType) {
         llvm::Type *shTy = it->AllocType;
         llvm::Value *sh = nullptr;
@@ -483,6 +497,14 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
       } else if (it->HasDrop && it->Alloca) {
         std::string cleanName = it->SoulName;
         emitDropCascade(it->Alloca, cleanName);
+      }
+
+      if (dropFlagContBB) {
+        llvm::BasicBlock *dropEnd = m_Builder.GetInsertBlock();
+        if (dropEnd && !dropEnd->getTerminator())
+          m_Builder.CreateBr(dropFlagContBB);
+        m_Builder.SetInsertPoint(dropFlagContBB);
+        currBB = dropFlagContBB;
       }
     }
   }

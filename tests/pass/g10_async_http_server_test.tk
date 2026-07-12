@@ -60,20 +60,12 @@ fn process_client(cede stream: TcpStream) -> async i32 {
 // Global flag to stop server
 auto g_server_stop# = false
 
-fn run_server(port: u16) -> async i32 {
-    println("[Server] Binding to 127.0.0.1:{}...", port as i32)
-    auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
-    auto addr = SocketAddrV4::new(ip, port)
-    
-    auto listener# = TcpListener::bind(addr)
-    if !listener.is_valid() { 
-        println("[Server] Bind failed!")
-        return 1 
-    }
+fn run_server(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
     println("[Server] Listening...")
     
     loop !g_server_stop {
-        auto stream = net_async_accept(listener).await
+        auto stream = net_async_accept(owned_listener).await
         if stream.is_valid() {
             if g_server_stop { break } // exit before processing if stopped
             println("[Server] Accepted Web connection natively asynchronously!")
@@ -83,11 +75,11 @@ fn run_server(port: u16) -> async i32 {
     return 0
 }
 
-fn async_client_runner() -> async i32 {
+fn async_client_runner(port: u16) -> async i32 {
     unsafe {
         // Connect and send HTTP GET using connect_async
         auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
-        auto addr = SocketAddrV4::new(ip, 48901:u16)
+        auto addr = SocketAddrV4::new(ip, port)
         
         println("[Client] Connecting to Async Server...")
         auto stream# = TcpStream::connect_async(addr).await
@@ -134,8 +126,14 @@ fn async_client_runner() -> async i32 {
 }
 
 fn entry_point() -> async i32 {
-    run_server(48901:u16).start
-    async_client_runner().await
+    auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
+    auto addr = SocketAddrV4::new(ip, 0:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() { return 1 }
+    auto port = listener.local_port()
+    if port == 0:u16 { return 1 }
+    run_server(cede listener).start
+    async_client_runner(port).await
     return 0
 }
 
