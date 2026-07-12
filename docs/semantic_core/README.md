@@ -37,6 +37,8 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `phase4c_evidence_replay.md` records three-path replay and tamper coverage.
 - `phase4d_cross_module_nocapture.md` records activation and the cross-module
   optimizer-benefit decision.
+- `phase5a_bounded_readonly.md` freezes the bounded `readonly` experiment and
+  its stop conditions.
 
 ## Rule Status
 
