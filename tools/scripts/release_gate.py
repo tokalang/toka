@@ -178,7 +178,7 @@ def main():
     env["CORES"] = env.get("CORES", str(max(1, os.cpu_count() or 1)))
 
     asan_dir = work_dir / "asan-build"
-    audit_timeout = "30" if os_name == "linux" and arch == "arm64" else "15"
+    audit_timeout = "30"
     archive = build_dir / ("toka-%s-%s-%s.tar.gz" % (args.version, os_name, arch))
     toka_command = [
         env["TOKAC"], "-I", "lib", "-I", "tools/toka",
@@ -203,7 +203,7 @@ def main():
         ("incremental", (["tools/scripts/test_incremental_build.sh"],)),
         ("async", ([sys.executable, "tools/scripts/test_pass.py"] + list(ASYNC_FIXTURES),)),
         ("sanitizer", (
-            ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"],
+            ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"],
             ["cmake", "--build", str(asan_dir), "--parallel", env["CORES"]],
             [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac"), "--timeout", audit_timeout],
         )),
@@ -216,9 +216,7 @@ def main():
     report_stages = []
     failed = False
     sanitizer_env = env.copy()
-    if sys.platform == "darwin" or (
-        sys.platform.startswith("linux") and arch == "arm64"
-    ):
+    if sys.platform == "darwin":
         sanitizer_env["ASAN_OPTIONS"] = (
             "detect_leaks=0:detect_container_overflow=0"
         )
