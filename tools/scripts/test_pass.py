@@ -323,6 +323,8 @@ def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
         return False, fail_desc + log_dump
 
 def main():
+    runtime_only = len(sys.argv) == 2 and sys.argv[1] == "--prepare-runtime-only"
+
     # Orchestrator Build
     if os.path.exists("build") and os.path.exists("build/CMakeCache.txt") and shutil.which("cmake"):
         safe_print("Building Toka compiler using cmake...")
@@ -345,6 +347,9 @@ def main():
     
     # Prebuild native shims
     rebuild_runtime(CLANG, CLANGXX, sysroot, cxxflags)
+    if runtime_only:
+        safe_print("Native runtime and shim objects are ready.")
+        return
     
     # Find all test cases
     test_cases = []

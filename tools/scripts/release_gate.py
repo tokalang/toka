@@ -191,6 +191,7 @@ def main():
     stages = (
         ("build", (
             ["cmake", "--build", str(build_dir), "--parallel", env["CORES"]],
+            [sys.executable, "tools/scripts/test_pass.py", "--prepare-runtime-only"],
             toka_command,
         )),
         ("pass", ([sys.executable, "tools/scripts/test_pass.py"],)),
