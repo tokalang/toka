@@ -87,6 +87,37 @@ int toka_clock_monotonic(int64_t *ts) {
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifdef __linux__
+#include <stdint.h>
+#include <sys/epoll.h>
+
+int toka_epoll_ctl_handle(int epfd, int op, int fd, uint32_t events,
+                          uintptr_t handle) {
+    struct epoll_event event = {0};
+    event.events = events;
+    event.data.u64 = (uint64_t)handle;
+    return epoll_ctl(epfd, op, fd, &event);
+}
+
+int toka_epoll_wait_handles(int epfd, int timeout_ms, uintptr_t *out_events,
+                            int max_events) {
+    if (max_events <= 0) {
+        return 0;
+    }
+    struct epoll_event *events = calloc((size_t)max_events, sizeof(*events));
+    if (!events) {
+        return -1;
+    }
+    int count = epoll_wait(epfd, events, max_events, timeout_ms);
+    for (int i = 0; i < count; ++i) {
+        out_events[i] = (uintptr_t)events[i].data.u64;
+    }
+    free(events);
+    return count;
+}
+#endif
+
 void toka_panic(const char* msg, int len) {
     const char *prefix = "thread 'main' panicked at '";
     const char *suffix = "'\n";
@@ -266,7 +297,6 @@ ti_int __muloti4(ti_int a, ti_int b, int *overflow) {
     return (ti_int)result_l;
 }
 #endif
-
 
 
 

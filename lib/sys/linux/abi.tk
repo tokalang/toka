@@ -26,6 +26,6 @@ extern fn recvfrom(fd: i32, *buf: void, len: usize, flags: i32, *src_addr: void,
 extern fn __errno_location() -> Addr
 
 extern fn epoll_create1(flags: i32) -> i32
-extern fn epoll_ctl(epfd: i32, op: i32, fd: i32, *event: void) -> i32
-extern fn epoll_wait(epfd: i32, *events: void, maxevents: i32, timeout: i32) -> i32
+extern fn toka_epoll_ctl_handle(epfd: i32, op: i32, fd: i32, events: u32, handle: Addr) -> i32
+extern fn toka_epoll_wait_handles(epfd: i32, timeout_ms: i32, *out_events: Addr, max_events: i32) -> i32
 extern fn fcntl(fd: i32, cmd: i32, ...) -> i32
