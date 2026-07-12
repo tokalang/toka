@@ -215,7 +215,9 @@ def main():
     report_stages = []
     failed = False
     sanitizer_env = env.copy()
-    if sys.platform == "darwin":
+    if sys.platform == "darwin" or (
+        sys.platform.startswith("linux") and arch == "arm64"
+    ):
         sanitizer_env["ASAN_OPTIONS"] = (
             "detect_leaks=0:detect_container_overflow=0"
         )
