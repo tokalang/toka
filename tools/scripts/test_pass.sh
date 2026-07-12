@@ -503,6 +503,13 @@ if ! run_without_test_cache bash tools/scripts/test_tki_cache_validation.sh; the
 fi
 
 echo ""
+echo "Running trusted memory evidence tests..."
+if ! run_without_test_cache python3 tools/scripts/test_trusted_memory_evidence.py; then
+    echo -e "${RED}Trusted memory evidence tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic Evidence tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_evidence.sh; then
     echo -e "${RED}Semantic Evidence tests failed!${NC}"
