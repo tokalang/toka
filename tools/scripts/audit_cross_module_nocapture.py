@@ -20,6 +20,8 @@ CASE = os.path.join(
 PROVIDER = os.path.join(CASE, "provider.tk")
 CONSUMER = os.path.join(CASE, "consumer.tk")
 FLAG = "--experimental-memory-contracts=nocapture"
+CONTRACT = "nocapture"
+SCHEMA = "toka.cross-module-nocapture-audit"
 LEVELS = ("O1", "O2", "O3", "Os", "Oz")
 
 
@@ -85,7 +87,7 @@ def normalized_disassembly(path):
 def contract(document, suffix):
     matches = [entry for entry in document["records"]
                if entry["function"].endswith(suffix) and
-               entry["contract"] == "nocapture"]
+               entry["contract"] == CONTRACT]
     if len(matches) != 1:
         raise RuntimeError("expected one contract for " + suffix)
     return matches[0]
@@ -232,7 +234,7 @@ def main():
             "optimization_levels": list(LEVELS),
             "reason": "CrossModuleMachineCodeDelta",
             "results": results,
-            "schema": "toka.cross-module-nocapture-audit",
+            "schema": SCHEMA,
             "target_triple": target_triple,
             "version": 1,
         }

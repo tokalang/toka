@@ -158,7 +158,7 @@ def focused(work):
         raise AssertionError("TKI-only function emitted nocapture")
 
     unsupported = subprocess.run(
-        [TOKAC, "--experimental-memory-contracts=readonly", "-c", SOURCE,
+        [TOKAC, "--experimental-memory-contracts=writeonly", "-c", SOURCE,
          "-o", os.path.join(work, "unsupported.o")], stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True)
     if unsupported.returncode == 0 or \

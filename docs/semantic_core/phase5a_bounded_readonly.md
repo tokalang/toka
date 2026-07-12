@@ -34,6 +34,41 @@ Phase 5A is complete when the following are all reproducible:
 5. Optimized artifacts are compared at `-O1`, `-O2`, `-O3`, `-Os`, and `-Oz`.
    Runtime measurement is required only when machine code differs.
 
+The cross-module audit is run with:
+
+```sh
+python3 tools/scripts/audit_cross_module_readonly.py
+python3 tools/scripts/audit_cross_module_readonly.py --benchmark
+```
+
+## Audit Result
+
+On LLVM 20 / arm64 macOS, the cross-module fixture produced these results:
+
+| Level | Default object | Experimental object | Machine code |
+| --- | ---: | ---: | --- |
+| `-O1` | 9288 | 9288 | identical |
+| `-O2` | 9496 | 9464 | different |
+| `-O3` | 9216 | 9184 | different |
+| `-Os` | 9208 | 9192 | different |
+| `-Oz` | 10008 | 10008 | identical |
+
+The default path emitted no attribute. The experimental path emitted one
+`readonly` contract with reason `ProvenByTrustedCache`. Missing, disabled-PAL,
+ordinary source-less, and tampered-cache paths remained conservative.
+
+The targeted workload executes 50 million calls across the separately compiled
+provider boundary. Seven alternating `-O2` runs measured medians of
+1,614,437,750 ns for default and 1,598,058,208 ns for experimental, a 1.015%
+improvement. This is below the 2% stable-improvement threshold.
+
+The phase decision is therefore `KeepExperimental / NoStableRuntimeBenefit`.
+`readonly` has demonstrated a real cross-module optimizer effect, but this
+bounded cycle stops here. No default emission or further readonly-specific
+analysis expansion is justified by this result. The next independent
+direction may be considered separately; `writeonly` remains after readonly and
+`noalias` remains last.
+
 ## Stop Decision
 
 The cycle stops after one complete audit. It does not keep expanding the

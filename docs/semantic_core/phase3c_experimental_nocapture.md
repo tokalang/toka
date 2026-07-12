@@ -7,8 +7,8 @@ flag:
 --experimental-memory-contracts=nocapture
 ```
 
-Default compilation does not emit the attribute. `readonly`, `writeonly`, and
-`noalias` remain shadow-only.
+Default compilation does not emit the attribute. `writeonly` and `noalias`
+remain shadow-only; `readonly` is handled by the bounded Phase 5A experiment.
 
 ## LLVM contract
 

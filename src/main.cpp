@@ -311,6 +311,7 @@ int main(int argc, char **argv) {
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
   bool experimentalNoCapture = false;
+  bool experimentalReadOnly = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard;
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
@@ -358,6 +359,8 @@ int main(int argc, char **argv) {
       dumpMemoryContracts = true;
     } else if (arg == "--experimental-memory-contracts=nocapture") {
       experimentalNoCapture = true;
+    } else if (arg == "--experimental-memory-contracts=readonly") {
+      experimentalReadOnly = true;
     } else if (arg.rfind("--experimental-memory-contracts=", 0) == 0) {
       llvm::errs() << "unsupported experimental memory contract: "
                    << arg.substr(std::string("--experimental-memory-contracts=").size())
@@ -778,8 +781,9 @@ int main(int argc, char **argv) {
   if (genericModule)
     summaryModules.push_back(genericModule.get());
 
+  bool activateTrustedEvidence = experimentalNoCapture || experimentalReadOnly;
   toka::MemorySummaryAnalysis::run(summaryModules, !disableBorrowCheck,
-                                   experimentalNoCapture);
+                                   activateTrustedEvidence);
   std::vector<std::string> memorySummaryErrors;
   if (!toka::MemorySummaryAnalysis::verify(
           summaryModules, !disableBorrowCheck, memorySummaryErrors)) {
@@ -874,16 +878,24 @@ int main(int argc, char **argv) {
     return 1;
   }
   if (experimentalNoCapture)
-    memoryContracts.emitExperimentalNoCapture(*codegen.getModule());
+    memoryContracts.emitExperimental(*codegen.getModule(),
+                                     toka::MemoryContractKind::NoCapture);
+  if (experimentalReadOnly)
+    memoryContracts.emitExperimental(*codegen.getModule(),
+                                     toka::MemoryContractKind::ReadOnly);
   memorySummaryErrors.clear();
-  if (!memoryContracts.verifyExperimentalNoCapture(
-          *codegen.getModule(), experimentalNoCapture, memorySummaryErrors)) {
+  if (!memoryContracts.verifyExperimental(
+          *codegen.getModule(), toka::MemoryContractKind::NoCapture,
+          experimentalNoCapture, memorySummaryErrors) ||
+      !memoryContracts.verifyExperimental(
+          *codegen.getModule(), toka::MemoryContractKind::ReadOnly,
+          experimentalReadOnly, memorySummaryErrors)) {
     for (const auto &error : memorySummaryErrors)
       llvm::errs() << "Experimental nocapture verification error: " << error
                    << '\n';
     return 1;
   }
-  if (experimentalNoCapture &&
+  if ((experimentalNoCapture || experimentalReadOnly) &&
       llvm::verifyModule(*codegen.getModule(), &llvm::errs())) {
     llvm::errs() << "Fatal Error: Experimental nocapture IR verification failed!\n";
     return 1;

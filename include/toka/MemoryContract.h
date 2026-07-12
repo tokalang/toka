@@ -70,10 +70,11 @@ public:
               const llvm::Module &irModule,
               bool borrowCheckEnabled,
               std::vector<std::string> &errors) const;
-  unsigned emitExperimentalNoCapture(llvm::Module &irModule);
-  bool verifyExperimentalNoCapture(const llvm::Module &irModule,
-                                   bool enabled,
-                                   std::vector<std::string> &errors) const;
+  unsigned emitExperimental(llvm::Module &irModule,
+                            MemoryContractKind kind);
+  bool verifyExperimental(const llvm::Module &irModule,
+                          MemoryContractKind kind, bool enabled,
+                          std::vector<std::string> &errors) const;
   void dumpJSON(std::ostream &out) const;
 
   const std::vector<MemoryContractRecord> &records() const { return Records; }

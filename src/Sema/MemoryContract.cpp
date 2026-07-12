@@ -346,11 +346,11 @@ bool MemoryContractShadow::verify(const std::vector<Module *> &modules,
   return errors.empty();
 }
 
-unsigned MemoryContractShadow::emitExperimentalNoCapture(
-    llvm::Module &irModule) {
+unsigned MemoryContractShadow::emitExperimental(
+    llvm::Module &irModule, MemoryContractKind kind) {
   unsigned emitted = 0;
   for (auto &record : Records) {
-    if (record.Kind != MemoryContractKind::NoCapture ||
+    if (record.Kind != kind ||
         record.Decision != MemoryContractDecision::Candidate)
       continue;
     llvm::Function *function = irModule.getFunction(record.FunctionName);
@@ -358,32 +358,45 @@ unsigned MemoryContractShadow::emitExperimentalNoCapture(
         function, record.ParameterName, record.ParameterIndex);
     if (!argument || !argument->getType()->isPointerTy())
       continue;
-    function->addParamAttr(argument->getArgNo(), llvm::Attribute::NoCapture);
+    switch (kind) {
+    case MemoryContractKind::NoCapture:
+      function->addParamAttr(argument->getArgNo(), llvm::Attribute::NoCapture);
+      break;
+    case MemoryContractKind::ReadOnly:
+      function->addParamAttr(argument->getArgNo(), llvm::Attribute::ReadOnly);
+      break;
+    case MemoryContractKind::WriteOnly:
+      function->addParamAttr(argument->getArgNo(), llvm::Attribute::WriteOnly);
+      break;
+    case MemoryContractKind::NoAlias:
+      function->addParamAttr(argument->getArgNo(), llvm::Attribute::NoAlias);
+      break;
+    }
     record.Emitted = true;
     ++emitted;
   }
   return emitted;
 }
 
-bool MemoryContractShadow::verifyExperimentalNoCapture(
-    const llvm::Module &irModule, bool enabled,
+bool MemoryContractShadow::verifyExperimental(
+    const llvm::Module &irModule, MemoryContractKind kind, bool enabled,
     std::vector<std::string> &errors) const {
   for (const auto &record : Records) {
     const llvm::Function *function = irModule.getFunction(record.FunctionName);
     const llvm::Argument *argument =
         findIRArgument(function, record.ParameterName, record.ParameterIndex);
-    bool expected = enabled &&
-                    record.Kind == MemoryContractKind::NoCapture &&
+    bool expected = enabled && record.Kind == kind &&
                     record.Decision == MemoryContractDecision::Candidate;
-    bool actual = argument &&
-                  argument->hasAttribute(llvm::Attribute::NoCapture);
-    if (record.Kind == MemoryContractKind::NoCapture && actual != expected)
-      errors.push_back(record.FunctionName + ": nocapture emission mismatch for " +
-                       record.ParameterName);
-    if (record.Emitted != expected)
-      errors.push_back(record.FunctionName +
-                       ": nocapture emission evidence mismatch for " +
-                       record.ParameterName);
+    if (record.Kind == kind) {
+      bool actual = argument && hasEmittedAttribute(*argument, kind);
+      if (actual != expected)
+        errors.push_back(record.FunctionName + ": " + toString(kind) +
+                         " emission mismatch for " + record.ParameterName);
+      if (record.Emitted != expected)
+        errors.push_back(record.FunctionName + ": " + toString(kind) +
+                         " emission evidence mismatch for " +
+                         record.ParameterName);
+    }
   }
   return errors.empty();
 }

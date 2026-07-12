@@ -517,6 +517,13 @@ if ! run_without_test_cache python3 tools/scripts/audit_cross_module_nocapture.p
 fi
 
 echo ""
+echo "Running experimental readonly tests..."
+if ! run_without_test_cache python3 tools/scripts/test_experimental_readonly.py; then
+    echo -e "${RED}Experimental readonly tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic Evidence tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_evidence.sh; then
     echo -e "${RED}Semantic Evidence tests failed!${NC}"
