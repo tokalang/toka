@@ -268,9 +268,8 @@ pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> boo
         auto *_p_events# = base as *u32
         _p_events = 1073741825:u32
         
-        // data.ptr = coro_handle
-        auto *_p_data# = (base + 4) as *Addr
-        _p_data = coro_handle  
+        // epoll_event is packed: data.ptr starts at an unaligned offset.
+        libc_memcpy((base + 4) as *void, &coro_handle as *void, 8)
         
         // 1 = EPOLL_CTL_ADD, 3 = EPOLL_CTL_MOD
         auto res# = epoll_ctl(reactor_fd, 1, fd, *ev as *void)
@@ -296,9 +295,8 @@ pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bo
         auto *_p_events# = base as *u32
         _p_events = 1073741828:u32
         
-        // data.ptr = coro_handle
-        auto *_p_data# = (base + 4) as *Addr
-        _p_data = coro_handle  
+        // epoll_event is packed: data.ptr starts at an unaligned offset.
+        libc_memcpy((base + 4) as *void, &coro_handle as *void, 8)
         
         // 1 = EPOLL_CTL_ADD, 3 = EPOLL_CTL_MOD
         auto res# = epoll_ctl(reactor_fd, 1, fd, *ev as *void)
@@ -324,8 +322,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
         auto i# = 0
         loop i < n {
             auto ev_base = *events as usize + ((12 * i) as usize)
-            auto *p_data = (ev_base + 4) as *Addr
-            auto h = p_data // value
+            auto h: Addr = 0:Addr
+            libc_memcpy(&h as *void, (ev_base + 4) as *void, 8)
             auto *_dest# = (*out_events as usize + ((8 * i) as usize)) as *Addr
             _dest = h
             i += 1
