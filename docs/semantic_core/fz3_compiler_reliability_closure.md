@@ -1,11 +1,10 @@
 # FZ-3 Compiler Reliability Closure
 
-Status: `Blocked`
+Status: `Complete`
 
-`FZ-3` closes the locally reproducible compiler correctness and reliability
-defects found by the 1.0 audit. The implementation work is complete on macOS
-arm64, but the phase remains blocked until the same mandatory gates have clean
-results on Linux x64/arm64 and macOS x64.
+`FZ-3` closes the compiler correctness and reliability defects found by the
+1.0 audit. Local implementation evidence is complemented by clean mandatory
+gate results on Linux x64/arm64 and macOS x64/arm64.
 
 ## Correctness Closure
 
@@ -87,16 +86,13 @@ Local platform: macOS arm64.
 The JSON reports used for the local run were emitted outside the source tree.
 They are reproducible evidence, not a public compiler or cache ABI.
 
-## Remaining Platform Blocker
+## Supported Platform Closure
 
-The implementation and local acceptance work are complete, but a local macOS
-arm64 run cannot establish Linux x64, Linux arm64, or macOS x64 correctness.
-`FZ-3-P01` therefore blocks phase completion until all four supported target
-rows run the mandatory gate from clean checkouts. A release workflow that
-ignores test failures is not acceptable evidence.
+Release-gate run `29202522704` executed all four supported target rows from
+clean checkouts of revision `3ab00dff`. Linux x64/arm64 and macOS x64/arm64
+all passed without ignored failures. Each row includes the complete positive,
+negative, replay, cache, incremental, async, sanitizer, and package gates.
 
-No language-design question remains open in `FZ-3`. The next implementation
-phase may prepare public-contract and release-gate work, but 1.0 cannot be
-frozen while `FZ-3-P01` is unresolved.
+No language-design question remains open in `FZ-3`; `FZ-3-P01` is complete.
 
 Milestone commit subject: `feat: close local Toka 1.0 compiler reliability`.
