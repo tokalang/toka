@@ -1,7 +1,7 @@
 # Toka 语法契约审计
 
 初始审计日期：2026-06-29
-当前更新日期：2026-07-06
+当前更新日期：2026-07-12
 
 本文以 `docs/syntax.md` 与 `docs/syntax_zh.md` 为公开语法声明源，对照当前编译器实现、标准库用例与测试集，检查语法设计是否已经被测试锁定，以及哪些规则仍需要补充更直接的 pass/fail 用例。
 
@@ -163,8 +163,9 @@
    `tests/fail/closure_copy_capture_resource.tk`，锁定 `[copy ...]` 不能浅拷资源所有权。
    本轮补上 `tests/fail/thread_spawn_implicit_capture_escape.tk`，锁定传给
    `thread_spawn` 的闭包不能隐式捕获外层变量；跨 execution boundary 的状态必须
-   使用 `[cede ...]` 或 `[copy ...]` 显式化。后续如果继续细化，应集中在 async
-   suspension/capture 边界，而不是基础闭包逃逸。
+   使用 `[cede ...]` 或 `[copy ...]` 显式化。`FZ-1` 又补齐了当前 async
+   suspension/capture 边界；后续只需覆盖新 consumer，不再重开基础闭包或
+   suspension 设计。
 
 5. Nullable handle matrix
 
@@ -308,13 +309,14 @@ pointee payload。相关正例已有 `tests/pass/g08_inherent_restriction.tk`，
 - member-terminal 借用冲突：`tests/fail/pal_member_mut_borrow_payload_write.tk`、`tests/fail/pal_member_mut_borrow_payload_read.tk`、`tests/fail/pal_member_mut_borrow_duplicate.tk`
 - 借用逃逸：`tests/fail/ref_life_bound.tk`、`tests/fail/call_elision_escape.tk`、`tests/fail/pal_branch_borrowed_field_escape.tk`
 - Shape 头部依赖废除：`tests/fail/shape_header_dependency_removed.tk`
+- async suspension：`tests/pass/g09_async_suspension_state.tk`、`tests/fail/async_suspension_borrow_move.tk`、`tests/fail/async_suspension_branch_move_state.tk`、`tests/fail/async_suspension_maybe_unset.tk`、`tests/fail/async_suspension_continue_move_state.tk`
 
 ### 仍属后续精度工作的边界
 
 这些不是主体安全缺口，而是 1.0 后可以按价值继续提高精度的区域：
 
 - 更高阶 lifetime polymorphism 与复杂 reborrow / freeze 模式。
-- async / thread 等后续 PAL consumers 的捕获、暂停、转移与任务边界。
+- async / thread 新增 PAL consumer 的捕获、暂停、转移与任务边界；当前 `.await` / `.wait` / `.start` 模型已由 `FZ-1` 冻结。
 - dyn trait object 的对象生命周期、关联类型绑定与多 facet 组合。
 - raw pointer 别名关系的自动证明。当前策略是留在 `unsafe` 或安全封装 API 内。
 - 极端 disjointness 证明。若局部路径模型无法证明，当前策略是保守拒绝或要求更显式结构。

@@ -233,9 +233,9 @@ completed in phase 2:
   covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
   borrowed `.start` rejection is covered by the same case, and explicit cede
   handoff is covered by
-  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`. In-function
-  suspension is a separate, not-yet-frozen design topic and is outside this
-  conformance phase.
+  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`. The same
+  async-return case now also checks `.await` inside an async function and
+  source invalidation after resume through both source and source-less replay.
 - Cache invalidation when only semantic annotations change: covered by
   `tests/semantics/tki_cache/cases` for parameter mutability, `cede`
   parameters, effects routing and swapping, async markers, private resource

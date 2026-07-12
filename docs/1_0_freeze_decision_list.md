@@ -137,8 +137,10 @@ core contract ships.
 - Async color model: keep `fn f() -> async T`, `.await`, `.wait`, and `.start`
   as the current stable direction. Async return and dependency annotations
   remain orthogonal: `fn f(x: str) -> async str <- x` means the eventual `str`
-  depends on `x`. Richer async ownership, cancellation, and task-handoff
-  syntax belongs after 1.0.
+  depends on `x`. `.await` requires an async function, `.wait` is rejected
+  inside an async function, and suspension preserves frame-local init, move,
+  and PAL state instead of creating a semantic reset point. Richer async
+  ownership, cancellation, and task-handoff syntax belongs after 1.0.
 - Threading / task ownership model: the 1.0 safety contract is conservative:
   thread / task handoff must not carry hidden borrowed state, and crossing
   state must be explicit through `cede`, `copy`, or library types with

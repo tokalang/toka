@@ -1,0 +1,11 @@
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn invalid_await() -> i32 {
+    return immediate().await // EXPECT: error[E0715]
+}
+
+fn main() -> i32 {
+    return 0
+}

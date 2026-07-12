@@ -254,6 +254,18 @@ dependencies cannot cross `.start`. Async return dependencies such as
 `fn f(x: str) -> async str <- x` remain ordinary signature dependencies; they
 do not authorize detached tasks to keep an undeclared borrow.
 
+Inside a function declared `-> async T`, `.await` is the source-level
+suspending consumer. Using `.await` in a function that is not declared async is
+rejected; using the blocking `.wait` consumer inside an async function is also
+rejected. Suspension does not end the current scope or reset semantic state.
+Locals needed after `.await` remain coroutine-frame state, and init, move, and
+PAL borrow facts continue through the suspension point and the surrounding
+`if`, `match`, `loop`, `break`, and `continue` merges. A dependency obtained
+from an awaited async result remains active after resume, so replacing, moving,
+or ceding its source is checked exactly as it is in synchronous code. These
+guarantees do not extend PAL to raw pointers, which remain inside the explicit
+unsafe/FFI boundary.
+
 ### PAL (Path-Anchored Ledger) Static Safety Boundary
 
 For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based safety checker for the safe language subset. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, tracking borrowed paths, payload mutation, handle rebinding, resource moves, unset state, and the analysis state produced by `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`.

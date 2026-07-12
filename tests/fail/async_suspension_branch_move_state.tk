@@ -1,0 +1,20 @@
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn invalid_branch_move(flag: bool) -> async i32 {
+    auto ^value = new i32(7)
+
+    if flag {
+        auto ^moved = ^value
+        immediate().await
+    } else {
+        immediate().await
+    }
+
+    return value // EXPECT: error[E0438]
+}
+
+fn main() -> i32 {
+    return 0
+}

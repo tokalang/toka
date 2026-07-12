@@ -1,0 +1,14 @@
+// EXPECT_ERROR: E0442
+// EXPECT_EVIDENCE: ASYNC-SUSPEND-001
+import ./lib::{Data, get_async_view}
+
+fn replace_source() -> async i32 {
+    auto data# = Data(view = "hello")
+    auto view = get_async_view(data).await
+    data = Data(view = "goodbye") // EXPECT_ERROR: E0442
+    return view.len() as i32
+}
+
+fn main() -> i32 {
+    return 0
+}

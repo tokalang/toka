@@ -116,7 +116,7 @@ Primary references:
   use-before-init, or invalid borrowed state.
 - Rationale: local control-flow analysis may be used inside a function, but
   calls consume only signatures.
-- Primary diagnostics: `E0410`, `E0440`, `E04501`
+- Primary diagnostics: `E0410`, `E0438`, `E0440`, `E04501`
 - Implementation areas: `src/Sema/Sema_Stmt.cpp`,
   `src/Sema/PAL_Checker.cpp`
 - Positive tests: `tests/pass/g08_pal_if_branch_restore.tk`,
@@ -125,14 +125,18 @@ Primary references:
   `tests/pass/g08_pal_labeled_break_state_merge.tk`,
   `tests/pass/g08_pal_labeled_continue_local_move.tk`,
   `tests/pass/g08_for_break_or_state_merge.tk`,
-  `tests/pass/g08_loop_break_state_merge.tk`
+  `tests/pass/g08_loop_break_state_merge.tk`,
+  `tests/pass/g09_async_suspension_state.tk`
 - Negative tests: `tests/fail/pal_labeled_break_move_state.tk`,
   `tests/fail/pal_labeled_continue_move_state.tk`,
   `tests/fail/loop_break_state_maybe_unset.tk`,
   `tests/fail/loop_continue_move_state.tk`,
-  `tests/fail/for_continue_move_state.tk`
+  `tests/fail/for_continue_move_state.tk`,
+  `tests/fail/async_suspension_branch_move_state.tk`,
+  `tests/fail/async_suspension_maybe_unset.tk`,
+  `tests/fail/async_suspension_continue_move_state.tk`
 - Interface replay requirements: none for purely local facts.
-- Missing coverage: async suspension combined with local branch merge.
+- Missing coverage: none known for frozen local state merges.
 
 ## Ownership Rules
 
@@ -309,7 +313,7 @@ Primary references:
 - Operation class: async effect consumption
 - Decision: async/task effects cannot be dropped silently.
 - Rationale: suspension and scheduling are visible control-flow costs.
-- Primary diagnostics: `E0702`
+- Primary diagnostics: `E0702`, `E0715`, `E04585`
 - Implementation areas: `src/Sema/Sema_Expr.cpp`,
   `src/CodeGen/CodeGen_Expr.cpp`
 - Positive tests: `tests/pass/g09_async_basic.tk`,
@@ -317,7 +321,9 @@ Primary references:
   `tests/pass/g09_async_main.tk`,
   `tests/pass/g10_async_io_test.tk`,
   `tests/pass/g10_async_net_test.tk`
-- Negative tests: `tests/fail/async_wait_conflict.tk`
+- Negative tests: `tests/fail/async_wait_conflict.tk`,
+  `tests/fail/async_await_requires_async_function.tk`,
+  `tests/fail/async_wait_inside_async.tk`
 - Interface replay requirements: async return shape and dependency annotations
   must remain visible from the signature.
 - Missing coverage: negative tests for dangling async calls in more expression
@@ -354,29 +360,40 @@ Primary references:
 - Missing coverage: generic cede handoff and Send/Sync-constrained library
   handles once those bounds become part of the frozen task contract.
 
-### ASYNC-SUSPEND-001: Borrow-like async results carry ordinary dependency annotations
+### ASYNC-SUSPEND-001: Suspension preserves local state and async-result dependencies
 
 - Status: Core guarantee
-- Source form: `fn f(x: str) -> async str <- x`
-- Operation class: `EscapingDependency`, async return dependency
-- Decision: async return dependencies describe the eventual value; they do not
-  authorize detached tasks to keep undeclared borrowed state.
-- Rationale: async color and dependency routing are orthogonal.
-- Primary diagnostics: `E0454`, `E0457`, `E04583`, `E04584`
-- Implementation areas: `src/Sema/Sema_Stmt.cpp`,
-  `src/Sema/Sema_Expr_Call.cpp`, `src/AST/TKIExporter.cpp`
+- Source form: `fn f(x: str) -> async str <- x`, local state used across
+  `.await`, and suspension inside branch/loop control flow
+- Operation class: `EscapingDependency`, async return dependency, local
+  init/move/PAL state
+- Decision: suspension does not end scope or reset analysis state. Async return
+  dependencies describe the eventual value and remain active after resume;
+  they do not authorize detached tasks to keep undeclared borrowed state.
+- Rationale: async color and dependency routing are orthogonal, while a
+  coroutine frame is still governed by the same local ownership and PAL rules.
+- Primary diagnostics: `E0410`, `E0438`, `E0440`, `E04501`, `E0454`, `E0457`,
+  `E04583`, `E04584`
+- Implementation areas: `src/Sema/Sema_Expr.cpp`,
+  `src/Sema/Sema_Stmt.cpp`, `src/Sema/Sema_Expr_Call.cpp`,
+  `src/AST/TKIExporter.cpp`
 - Positive tests: `tests/pass/g09_async_prove.tk`,
   `tests/pass/g09_context.tk`,
+  `tests/pass/g09_async_suspension_state.tk`,
   `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
-- Negative tests: none dedicated
+- Negative tests: `tests/fail/async_suspension_borrow_move.tk`,
+  `tests/fail/async_suspension_branch_move_state.tk`,
+  `tests/fail/async_suspension_maybe_unset.tk`,
+  `tests/fail/async_suspension_continue_move_state.tk`,
+  `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
 - Interface replay requirements: async return type and dependency facts must be
   preserved together.
 - Replay tests: `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
   checks export, source-less parsing, and caller-side dependency enforcement
-  after consuming `async str <- x` with `.wait`, and rejects the same borrowed
-  result across `.start`.
-- Missing coverage: dependency enforcement across suspension inside an async
-  function.
+  after consuming `async str <- x` with both `.wait` and `.await`, rejects
+  invalidation after resume, and rejects the same borrowed result across
+  `.start`.
+- Missing coverage: none known for the frozen 1.0 suspension/state boundary.
 
 ## Interface Replay And Cache Rules
 

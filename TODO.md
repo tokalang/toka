@@ -20,12 +20,13 @@ payload writes from exclusive mutations and invalidating transfers, so a shared
 borrow protects validity without becoming a global freeze promise.
 
 Remaining work is precision and feature-consumer coverage, not a redesign of
-the 1.0 safety contract. The checker should keep rejecting hard-to-prove cases,
-but future audits can still add higher-order local-control combinations,
-async capture / suspension boundaries, task/thread consumers, and richer
-diagnostics. Ordinary `fn` closure escape with implicit borrow captures is now
-rejected through the same lifetime-dependency return path used for other
-borrow-like values.
+the 1.0 safety contract. The checker should keep rejecting hard-to-prove cases.
+`FZ-1` now locks the existing async suspension boundary with dedicated local
+borrow, move, init, branch, loop, `break`, `continue`, and source/TKI dependency
+tests. Future audits can still add higher-order local-control combinations,
+new task/thread consumers, and richer diagnostics. Ordinary `fn` closure escape
+with implicit borrow captures is rejected through the same lifetime-dependency
+return path used for other borrow-like values.
 **Impact**:
 PAL 1.0 now has regression coverage for its core safety contract. Remaining
 gaps may make the language conservative or leave newer consumers under-tested,

@@ -1,0 +1,11 @@
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn invalid_wait() -> async i32 {
+    return immediate().wait // EXPECT: error[E04585]
+}
+
+fn main() -> i32 {
+    return 0
+}

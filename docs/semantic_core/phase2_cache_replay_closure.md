@@ -59,3 +59,8 @@ case:
 Borrow preservation across suspension inside an async function is not part of
 this closure. Its rule is not frozen and requires a separate language-design
 decision. This phase changes no suspension semantics.
+
+Subsequent status: `FZ-1` froze the existing suspension model without adding
+syntax. Its completion evidence is recorded in
+`fz1_async_suspension_closure.md`; this paragraph remains the historical
+boundary of Phase 2.

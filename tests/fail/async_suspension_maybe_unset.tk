@@ -1,0 +1,20 @@
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn invalid_maybe_unset(flag: bool) -> async i32 {
+    auto value#: i32 = unset
+
+    if flag {
+        value = 7
+        immediate().await
+    } else {
+        immediate().await
+    }
+
+    return value // EXPECT: error[E0410]
+}
+
+fn main() -> i32 {
+    return 0
+}

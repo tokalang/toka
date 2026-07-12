@@ -1,0 +1,21 @@
+shape Data(value: i32)
+
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn invalid_continue_move(flag: bool) -> async i32 {
+    auto ^value = new Data(value = 7)
+
+    loop flag {
+        auto ^moved = cede ^value // EXPECT: error[E04501]
+        immediate().await
+        continue
+    }
+
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}

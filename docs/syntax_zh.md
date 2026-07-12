@@ -230,6 +230,15 @@ pointer 以及携带 PAL dependency 的 task 都不能跨过 `.start`。`fn f(x:
 async str <- x` 这类 async 返回依赖仍然只是普通签名依赖，并不授权 detached task
 持有未声明的借用。
 
+在声明为 `-> async T` 的函数中，`.await` 是源码层的 suspension consumer。未声明
+async 的函数使用 `.await` 会被拒绝；async 函数内部使用会阻塞 executor 的 `.wait`
+同样会被拒绝。Suspension 不会结束当前作用域，也不会重置语义状态。需要在
+`.await` 后继续使用的局部值会保留在 coroutine frame 中，init、move 和 PAL 借用
+事实会穿过 suspension point，并继续参与外层 `if`、`match`、`loop`、`break`、
+`continue` 的状态合并。由 awaited async 结果产生的依赖在恢复执行后仍然有效，
+因此替换、move 或 `cede` 其来源时，检查规则与同步代码完全相同。这些保证不会把
+PAL 扩展到 raw pointer；raw pointer 仍属于显式 unsafe / FFI 边界。
+
 ### PAL (Path-Anchored Ledger) 静态安全边界
 
 对 Toka 1.0 来说，PAL 冻结为 **Path-Anchored Ledger（路径锚定账本）**：safe 语言子集中的局部、基于路径的安全检查器。它将借用、所有权转移和失效风险记录到源码级存储路径上，跟踪借用路径、payload 修改、handle 重绑定、资源移动、unset 状态，以及 `if`、`guard`、`match`、`loop`、`for`、`break`、`continue` 产生的分析状态。

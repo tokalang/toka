@@ -72,7 +72,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | Phase | Status | Purpose | Exit evidence |
 | --- | --- | --- | --- |
 | `FZ-0` | `Complete` | Establish the closure ledger and classify the public surface | This document, the capability ledger, and the unresolved-item register |
-| `FZ-1` | `Pending` | Close the language contract and in-function async suspension rules | Frozen async rule matrix, dedicated pass/fail coverage, synchronized specification |
+| `FZ-1` | `Complete` | Close the language contract and in-function async suspension rules | `semantic_core/fz1_async_suspension_closure.md`, frozen async rule matrix, focused pass/fail coverage, and synchronized specification |
 | `FZ-2` | `Pending` | Close high-risk semantic combinations and source/TKI equivalence | Rule coverage closure and three-path replay results |
 | `FZ-3` | `Pending` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | Sanitizer/mutation evidence and clean Linux/macOS gates |
 | `FZ-4` | `Pending` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | Consistency audit and stable public-contract tests |
@@ -173,7 +173,7 @@ unless it is separately promoted through a new audited decision.
 
 | ID | Phase | Status | Blocker | Required resolution |
 | --- | --- | --- | --- | --- |
-| `FZ-1-A01` | `FZ-1` | `Pending` | Borrow, move, init, and dependency state across in-function suspension is not yet frozen by dedicated tests | Audit the current model, add branch/loop/frame tests, and synchronize the async specification without adding syntax |
+| `FZ-1-A01` | `FZ-1` | `Complete` | Borrow, move, init, and dependency state across in-function suspension lacked dedicated tests | Closed by the frame/branch/loop pass case, four state-preservation fail cases, async-context diagnostics, and source/TKI `.await` replay recorded in `semantic_core/fz1_async_suspension_closure.md` |
 | `FZ-2-R01` | `FZ-2` | `Pending` | The semantic rule matrix still lists explicit source-less and generic replay gaps | Close every listed gap or reclassify it with an evidence-backed `Deferred` decision |
 | `FZ-2-R02` | `FZ-2` | `Pending` | TKI export/import retains legacy shape life-dependency paths although both old source forms are outside 1.0 | Prove excluded syntax cannot re-enter through a forged or stale interface, then remove or tightly bound the legacy paths |
 | `FZ-3-C01` | `FZ-3` | `Pending` | Panic lowering contains a temporary trap/abort path | Determine whether public valid programs reach it, then implement or formally bound the 1.0 behavior |
@@ -262,6 +262,7 @@ The starting baseline already includes:
 - structured semantic facts and replayable decision evidence;
 - same-version source/source-less TKI replay and cache invalidation suites;
 - object-bound trusted memory evidence with all-or-nothing validation;
+- frozen async suspension state and source/TKI dependency replay;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 

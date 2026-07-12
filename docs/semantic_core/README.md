@@ -45,6 +45,8 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   its stop conditions.
 - `phase5b_writeonly_preflight.md` records the bounded `writeonly` feasibility
   stop before backend emission.
+- `fz1_async_suspension_closure.md` freezes the 1.0 in-function suspension,
+  async consumer, PAL state, and source/TKI dependency boundary.
 
 ## Rule Status
 

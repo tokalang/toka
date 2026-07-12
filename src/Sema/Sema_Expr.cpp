@@ -2352,6 +2352,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
     return checkCallExpr(Call);
   } else if (auto *awaitEx = dynamic_cast<AwaitExpr *>(E)) {
+    if (!CurrentFunction || CurrentFunction->Effect != EffectKind::Async) {
+      error(awaitEx,
+            DiagID::ERR_CODEGEN_AWAIT_CAN_ONLY_BE_USED_INSIDE_AN_ASYNC);
+    }
     bool oldConsuming = m_IsConsumingEffect;
     m_IsConsumingEffect = true;
     auto innerType = checkExpr(awaitEx->Expression.get());
@@ -2367,6 +2371,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     error(E, DiagID::ERR_SEMA_CANNOT_AWAIT_A_NON_TASKHANDLE_TYPE, tName);
     return toka::Type::fromString("unknown");
   } else if (auto *waitEx = dynamic_cast<WaitExpr *>(E)) {
+    if (CurrentFunction && CurrentFunction->Effect == EffectKind::Async) {
+      error(waitEx, DiagID::ERR_SEMA_WAIT_INSIDE_ASYNC);
+    }
     bool oldConsuming = m_IsConsumingEffect;
     m_IsConsumingEffect = true;
     auto innerType = checkExpr(waitEx->Expression.get());
@@ -2900,27 +2907,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return checkShapeInit(Init);
   } else if (auto *Memb = dynamic_cast<MemberExpr *>(E)) {
     return checkMemberExpr(Memb);
-  } else if (auto *Aw = dynamic_cast<AwaitExpr *>(E)) {
-    if (CurrentFunction && CurrentFunction->Effect != EffectKind::Async) {
-      CurrentFunction->Effect = EffectKind::Async;
-    }
-    bool old = m_IsConsumingEffect;
-    m_IsConsumingEffect = true;
-    auto res = checkExpr(Aw->Expression.get());
-    m_IsConsumingEffect = old;
-    return res;
-  } else if (auto *Wt = dynamic_cast<WaitExpr *>(E)) {
-    if (CurrentFunction && CurrentFunction->Effect == EffectKind::Async) {
-      error(Wt, DiagID::ERR_CODEGEN, "Cannot use '.wait' inside an 'async' function. This would block the thread pool.");
-    }
-    if (CurrentFunction && CurrentFunction->Effect == EffectKind::None) {
-      CurrentFunction->Effect = EffectKind::Wait;
-    }
-    bool old = m_IsConsumingEffect;
-    m_IsConsumingEffect = true;
-    auto res = checkExpr(Wt->Expression.get());
-    m_IsConsumingEffect = old;
-    return res;
   } else if (auto *St = dynamic_cast<StartExpr *>(E)) {
     bool old = m_IsConsumingEffect;
     bool oldStartingTask = m_IsStartingTask;

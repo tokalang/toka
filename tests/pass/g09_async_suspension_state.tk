@@ -1,0 +1,53 @@
+fn immediate(value: i32) -> async i32 {
+    return value
+}
+
+fn preserve_frame_borrow() -> async i32 {
+    auto value = 7
+    auto &view = &value
+
+    immediate(0).await
+    return view
+}
+
+fn preserve_branch_init(flag: bool) -> async i32 {
+    auto value#: i32 = unset
+
+    if flag {
+        value = 11
+        immediate(0).await
+    } else {
+        value = 13
+        immediate(0).await
+    }
+
+    return value
+}
+
+fn preserve_break_init() -> async i32 {
+    auto value#: i32 = unset
+
+    loop {
+        value = 17
+        immediate(0).await
+        break
+    }
+
+    return value
+}
+
+fn preserve_continue_state() -> async i32 {
+    auto count# = 0
+
+    loop count < 2 {
+        count = count + 1
+        immediate(0).await
+        continue
+    }
+
+    return count
+}
+
+fn main() -> i32 {
+    return 0
+}

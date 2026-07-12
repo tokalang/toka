@@ -1,0 +1,17 @@
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn invalid_move_after_suspend() -> async i32 {
+    auto ^value = new i32(7)
+    auto &view = &value
+
+    immediate().await
+    auto ^moved = ^value // EXPECT: error[E0440]
+
+    return view
+}
+
+fn main() -> i32 {
+    return 0
+}
