@@ -1,0 +1,6 @@
+pub shape Payload(value: i32)
+
+pub fn write_payload(data#: Payload) -> i32 {
+    data.value = 7
+    return 0
+}

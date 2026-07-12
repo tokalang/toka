@@ -39,6 +39,8 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   optimizer-benefit decision.
 - `phase5a_bounded_readonly.md` freezes the bounded `readonly` experiment and
   its stop conditions.
+- `phase5b_writeonly_preflight.md` records the bounded `writeonly` feasibility
+  stop before backend emission.
 
 ## Rule Status
 
