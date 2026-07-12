@@ -431,6 +431,10 @@ int main(int argc, char **argv) {
   if (compileOnly) {
     emitInterface = true;
   }
+  const char *configuredBuildDir = std::getenv("TOKA_BUILD_DIR");
+  bool emitTrustedMemoryEvidence =
+      compileOnly && emitInterface && configuredBuildDir &&
+      configuredBuildDir[0] != '\0';
 
   if (dumpSemanticEvidence &&
       (dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
@@ -774,7 +778,8 @@ int main(int argc, char **argv) {
   if (genericModule)
     summaryModules.push_back(genericModule.get());
 
-  toka::MemorySummaryAnalysis::run(summaryModules, !disableBorrowCheck);
+  toka::MemorySummaryAnalysis::run(summaryModules, !disableBorrowCheck,
+                                   experimentalNoCapture);
   std::vector<std::string> memorySummaryErrors;
   if (!toka::MemorySummaryAnalysis::verify(
           summaryModules, !disableBorrowCheck, memorySummaryErrors)) {
@@ -837,6 +842,25 @@ int main(int argc, char **argv) {
     for (const auto &error : memorySummaryErrors)
       llvm::errs() << "Memory summary IR verification error: " << error << '\n';
     return 1;
+  }
+  if (emitTrustedMemoryEvidence) {
+    for (const auto &ast : astModules) {
+      std::string canonicalPath =
+          toka::PathUtils::canonicalize(ast->SourcePath);
+      bool isRoot =
+          std::find(roots.begin(), roots.end(), canonicalPath) != roots.end();
+      if (!isRoot || ast->IsInterface)
+        continue;
+      memorySummaryErrors.clear();
+      if (!toka::MemoryEvidenceCache::bindObject(
+              *codegen.getModule(), *ast,
+              toka::MemoryEvidenceCache::sourceHash(ast->SourcePath),
+              toka::Parser::TargetTriple, memorySummaryErrors)) {
+        for (const auto &error : memorySummaryErrors)
+          llvm::errs() << "Memory evidence binding error: " << error << '\n';
+        return 1;
+      }
+    }
   }
   toka::MemoryContractShadow memoryContracts =
       toka::MemoryContractShadow::analyze(
@@ -948,7 +972,7 @@ int main(int argc, char **argv) {
     pass.run(*codegen.getModule());
     dest.flush();
     dest.close();
-    if (compileOnly && emitInterface) {
+    if (emitTrustedMemoryEvidence) {
       for (const auto &ast : astModules) {
         std::string canonicalPath =
             toka::PathUtils::canonicalize(ast->SourcePath);

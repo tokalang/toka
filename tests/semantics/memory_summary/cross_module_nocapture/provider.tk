@@ -1,0 +1,5 @@
+pub shape Payload(value: i32)
+
+pub fn read_payload(data: Payload) -> i32 {
+    return data.value
+}

@@ -1,0 +1,23 @@
+import ./provider::{Payload, read_payload}
+import std/task::block_on
+
+fn immediate(value: i32) -> async i32 {
+    return value
+}
+
+fn observe() -> async i32 {
+    auto data = Payload(value=42)
+    auto value = read_payload(data)
+    return immediate(value).await
+}
+
+pub fn main() -> i32 {
+    auto i# = 0
+    auto total# = 0:i64
+    loop i < 50000000 {
+        total += block_on<i32>(observe()) as i64
+        i += 1
+    }
+    if total == 2100000000:i64 { return 0 }
+    return 1
+}

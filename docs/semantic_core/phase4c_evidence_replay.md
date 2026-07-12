@@ -21,6 +21,7 @@ The downgrade matrix independently covers:
 - unsupported schema;
 - compiler/interface/source/target identity mismatch;
 - invalid or out-of-range summary records; and
+- valid-range summary tampering that no longer matches the object marker; and
 - a backing object whose SHA-256 no longer matches.
 
 Every failure produces a stable evidence status, attaches no partial records,

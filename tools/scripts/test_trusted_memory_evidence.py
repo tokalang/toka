@@ -10,6 +10,7 @@ import tempfile
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 TOKAC = os.path.abspath(os.environ.get(
     "TOKAC", os.path.join(ROOT, "build/bin/tokac")))
+FLAG = "--experimental-memory-contracts=nocapture"
 
 PROVIDER = """\
 import core/traits::{@encap}
@@ -120,6 +121,23 @@ def restore(path, content):
         stream.write(content)
 
 
+def imported_summary(document, suffix):
+    matches = [entry for entry in document["functions"]
+               if entry["name"].endswith(suffix)]
+    if len(matches) != 1:
+        raise AssertionError("expected one summary for " + suffix)
+    return matches[0]
+
+
+def imported_contract(document, suffix):
+    matches = [entry for entry in document["records"]
+               if entry["function"].endswith(suffix) and
+               entry["contract"] == "nocapture"]
+    if len(matches) != 1:
+        raise AssertionError("expected one nocapture record for " + suffix)
+    return matches[0]
+
+
 def main():
     if not os.path.isfile(TOKAC):
         raise AssertionError("tokac not found: " + TOKAC)
@@ -188,6 +206,58 @@ def main():
         if len(imported) != 1 or imported[0]["origin"] != "signature_only":
             raise AssertionError("Phase 4B activated cached evidence early")
 
+        experimental_summary_dump = invoke([
+            FLAG, "--dump-memory-summaries=json", "-c", pass_consumer,
+            object_path, "-o", os.path.join(work, "experimental-summary.o")],
+            cache_env)
+        experimental_summaries = json.loads(
+            experimental_summary_dump.stdout)
+        if imported_summary(
+                experimental_summaries, "read_payload")["origin"] != \
+                "trusted_cache":
+            raise AssertionError("validated cache evidence was not activated")
+
+        contract_dump = invoke([
+            FLAG, "--dump-memory-contracts=json", "-c", pass_consumer,
+            object_path, "-o", os.path.join(work, "contracts.o")], cache_env)
+        contract = imported_contract(
+            json.loads(contract_dump.stdout), "read_payload")
+        if contract["decision"] != "Candidate" or \
+                contract["reason"] != "ProvenByTrustedCache" or \
+                not contract["emitted"]:
+            raise AssertionError("trusted nocapture contract was not emitted")
+
+        disabled_dump = invoke([
+            FLAG, "--disable-borrow-check", "--dump-memory-contracts=json",
+            "-c", pass_consumer, object_path, "-o",
+            os.path.join(work, "disabled-contracts.o")], cache_env)
+        disabled_contract = imported_contract(
+            json.loads(disabled_dump.stdout), "read_payload")
+        if disabled_contract["emitted"] or \
+                disabled_contract["reason"] != "SignatureOnly":
+            raise AssertionError("disabled PAL consumed trusted evidence")
+
+        for level in ("-O0", "-O2", "-O3"):
+            default_executable = os.path.join(
+                work, "default-" + level[1:].lower())
+            experimental_executable = os.path.join(
+                work, "experimental-" + level[1:].lower())
+            invoke([level, pass_consumer, object_path, "-o",
+                    default_executable], cache_env)
+            invoke([level, FLAG, pass_consumer, object_path, "-o",
+                    experimental_executable], cache_env)
+            default_run = subprocess.run(
+                [default_executable], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True)
+            experimental_run = subprocess.run(
+                [experimental_executable], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True)
+            if (default_run.returncode, default_run.stdout,
+                    default_run.stderr) != \
+                    (experimental_run.returncode, experimental_run.stdout,
+                     experimental_run.stderr):
+                raise AssertionError(level + " cache behavior differs")
+
         with open(object_path, "rb") as stream:
             pristine_object = stream.read()
         with open(evidence_path, "rb") as stream:
@@ -198,6 +268,15 @@ def main():
             pass_consumer, build_dir, object_path, True))
         if missing["memory_evidence_status"] != "Missing":
             raise AssertionError("missing sidecar did not degrade")
+        missing_contract_dump = invoke([
+            FLAG, "--dump-memory-contracts=json", "-c", pass_consumer,
+            object_path, "-o", os.path.join(work, "missing-contract.o")],
+            cache_env)
+        missing_contract = imported_contract(
+            json.loads(missing_contract_dump.stdout), "read_payload")
+        if missing_contract["emitted"] or \
+                missing_contract["reason"] != "SignatureOnly":
+            raise AssertionError("missing evidence affected nocapture")
         restore(evidence_path, pristine_evidence)
 
         write(evidence_path, "{")
@@ -234,6 +313,15 @@ def main():
             pass_consumer, build_dir, object_path, True))
         if record["memory_evidence_status"] != "InvalidRecord":
             raise AssertionError("invalid record did not degrade")
+        restore(evidence_path, pristine_evidence)
+
+        document = json.loads(pristine_evidence)
+        document["functions"][0]["effects"] ^= 1
+        write(evidence_path, json.dumps(document))
+        evidence = provider_record(dependency_dump(
+            pass_consumer, build_dir, object_path, True))
+        if evidence["memory_evidence_status"] != "EvidenceMismatch":
+            raise AssertionError("valid-range evidence tamper did not degrade")
         restore(evidence_path, pristine_evidence)
 
         restore(object_path, pristine_object + b"tampered")
@@ -273,6 +361,15 @@ def main():
         assert_language_result(
             standalone_fail, os.path.join(work, "standalone-fail.o"),
             standalone_env, standalone_object, False)
+        standalone_contract_dump = invoke([
+            FLAG, "--dump-memory-contracts=json", "-c", standalone_pass,
+            standalone_object, "-o",
+            os.path.join(work, "standalone-contract.o")], standalone_env)
+        standalone_contract = imported_contract(
+            json.loads(standalone_contract_dump.stdout), "read_payload")
+        if standalone_contract["emitted"] or \
+                standalone_contract["reason"] != "SignatureOnly":
+            raise AssertionError("ordinary TKI emitted trusted nocapture")
 
     print("Trusted memory evidence tests PASSED")
 

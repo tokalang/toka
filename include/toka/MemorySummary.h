@@ -50,7 +50,7 @@ struct MemoryRootSummary {
 };
 
 struct FunctionMemorySummary {
-  static constexpr unsigned SchemaVersion = 1;
+  static constexpr unsigned SchemaVersion = 2;
 
   std::string FunctionName;
   MemorySummaryOrigin Origin = MemorySummaryOrigin::SourceBody;
@@ -64,7 +64,8 @@ public:
   static std::vector<FunctionDecl *>
   collectFunctions(const std::vector<Module *> &modules);
   static void run(const std::vector<Module *> &modules,
-                  bool borrowCheckEnabled);
+                  bool borrowCheckEnabled,
+                  bool activateTrustedEvidence = false);
   static bool verify(const std::vector<Module *> &modules,
                      bool borrowCheckEnabled,
                      std::vector<std::string> &errors);

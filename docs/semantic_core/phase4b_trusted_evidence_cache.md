@@ -6,8 +6,9 @@ backend contracts yet.
 
 ## Export
 
-Every successful compile-only build that emits an interface also writes a
-`.tke` sidecar after the backing object has been finalized. The exporter:
+Every successful compile-only build under `TOKA_BUILD_DIR` that emits an
+interface also writes a `.tke` sidecar after the backing object has been
+finalized. Ordinary compile-only output remains unchanged. The exporter:
 
 - includes only source-body summaries belonging to the root module;
 - sorts functions and roots deterministically;
@@ -32,6 +33,7 @@ stable status:
 - `IdentityMismatch`
 - `MissingObject`
 - `ObjectMismatch`
+- `EvidenceMismatch`
 - `InvalidRecord`
 - `Valid`
 

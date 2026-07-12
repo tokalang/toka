@@ -45,9 +45,10 @@ verifier checks that tagged events have matching local summaries. It also
 checks coroutine-state and frame-allocation evidence without interpreting
 compiler-inserted cleanup as source effects.
 
-`--dump-memory-summaries=json` emits deterministic schema version 1 output for
-replay and debugging. It is an observational mode and is mutually exclusive
-with other JSON/evaluation output modes.
+`--dump-memory-summaries=json` emits deterministic schema version 2 output for
+replay and debugging. Version 2 adds the later `trusted_cache` origin without
+changing the Phase 3 source-body lattice. It is an observational mode and is
+mutually exclusive with other JSON/evaluation output modes.
 
 Run the focused regression with:
 

@@ -53,6 +53,9 @@ def main():
             SOURCE, os.path.join(work, "second.o"))
         if first_text != second_text:
             raise AssertionError("memory summary output is not deterministic")
+        if first.get("schema") != "toka.memory-summary" or \
+                first.get("version") != 2:
+            raise AssertionError("unexpected memory summary schema")
 
         write = find_function(first, "ms_write")
         require(root(write, "data")["local_effects"], "read", "write")

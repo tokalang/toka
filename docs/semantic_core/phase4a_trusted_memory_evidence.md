@@ -27,6 +27,8 @@ A memory-evidence artifact is trusted only when all of these hold:
   source hash match the selected interface;
 - the evidence records the SHA-256 digest of the exact backing object and the
   current object has that digest; and
+- the canonical evidence payload digest matches a marker retained in that
+  backing object; and
 - every record is structurally valid and maps to a declaration in the
   selected interface.
 

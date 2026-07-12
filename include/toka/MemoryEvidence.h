@@ -20,6 +20,7 @@ enum class MemoryEvidenceStatus {
   IdentityMismatch,
   MissingObject,
   ObjectMismatch,
+  EvidenceMismatch,
   InvalidRecord,
   Valid,
 };
@@ -30,6 +31,10 @@ public:
 
   static std::string sidecarPath(const std::string &interfacePath);
   static std::string sourceHash(const std::string &sourcePath);
+  static bool bindObject(llvm::Module &irModule, const Module &module,
+                         const std::string &sourceHash,
+                         const std::string &targetTriple,
+                         std::vector<std::string> &errors);
   static bool write(const std::string &path, const std::string &objectPath,
                     const Module &module, const std::string &sourceHash,
                     const std::string &targetTriple,

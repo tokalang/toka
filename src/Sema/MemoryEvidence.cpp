@@ -6,10 +6,14 @@
 #include "toka/InterfaceVersion.h"
 #include "toka/MemorySummary.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/SHA256.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
@@ -90,6 +94,69 @@ bool sameSummary(const FunctionMemorySummary &lhs,
   return true;
 }
 
+std::optional<std::map<std::string, FunctionMemorySummary>>
+collectEvidenceSummaries(const Module &module,
+                         std::vector<std::string> &errors) {
+  std::map<std::string, FunctionMemorySummary> summaries;
+  std::vector<Module *> modules = {const_cast<Module *>(&module)};
+  for (FunctionDecl *function : MemorySummaryAnalysis::collectFunctions(modules)) {
+    const FunctionMemorySummary &summary = function->MemorySummary;
+    if (summary.Origin != MemorySummaryOrigin::SourceBody ||
+        summary.FunctionName.empty())
+      continue;
+    auto [position, inserted] = summaries.emplace(summary.FunctionName, summary);
+    if (!inserted && !sameSummary(position->second, summary)) {
+      errors.push_back("conflicting summaries for " + summary.FunctionName);
+      return std::nullopt;
+    }
+  }
+  return summaries;
+}
+
+std::string functionsJSON(
+    const std::map<std::string, FunctionMemorySummary> &summaries) {
+  std::ostringstream out;
+  out << '[';
+  size_t functionIndex = 0;
+  for (const auto &entry : summaries) {
+    if (functionIndex++)
+      out << ',';
+    const FunctionMemorySummary &summary = entry.second;
+    out << "{\"name\":\"" << escapeJSON(summary.FunctionName)
+        << "\",\"local_effects\":" << summary.LocalEffects
+        << ",\"effects\":" << summary.Effects << ",\"roots\":[";
+    size_t rootIndex = 0;
+    for (const auto &root : summary.Roots) {
+      if (rootIndex++)
+        out << ',';
+      out << "{\"name\":\"" << escapeJSON(root.first)
+          << "\",\"local_effects\":" << root.second.LocalEffects
+          << ",\"effects\":" << root.second.Effects << '}';
+    }
+    out << "]}";
+  }
+  out << ']';
+  return out.str();
+}
+
+std::string canonicalPayload(
+    const std::map<std::string, FunctionMemorySummary> &summaries,
+    const std::string &sourceHash, const std::string &targetTriple) {
+  std::ostringstream out;
+  out << "{\"schema\":\"toka.trusted-memory-evidence\",\"version\":"
+      << MemoryEvidenceCache::SchemaVersion << ",\"compiler_version\":\""
+      << TOKA_COMPILER_INTERFACE_VERSION << "\",\"interface_format\":\""
+      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"target_triple\":\""
+      << escapeJSON(targetTriple) << "\",\"source_hash\":\""
+      << escapeJSON(sourceHash) << "\",\"functions\":"
+      << functionsJSON(summaries) << '}';
+  return out.str();
+}
+
+std::string evidenceMarker(const std::string &digest) {
+  return "TOKEVID1:" + digest;
+}
+
 std::optional<uint32_t> unsignedField(const llvm::json::Object &object,
                                       llvm::StringRef name, uint32_t mask) {
   std::optional<int64_t> value = object.getInteger(name);
@@ -119,6 +186,27 @@ std::string MemoryEvidenceCache::sourceHash(const std::string &sourcePath) {
   return content ? calculateFNV1a(*content) : std::string();
 }
 
+bool MemoryEvidenceCache::bindObject(
+    llvm::Module &irModule, const Module &module,
+    const std::string &sourceHash, const std::string &targetTriple,
+    std::vector<std::string> &errors) {
+  auto summaries = collectEvidenceSummaries(module, errors);
+  if (!summaries)
+    return false;
+  std::string digest = sha256(
+      canonicalPayload(*summaries, sourceHash, targetTriple));
+  std::string marker = evidenceMarker(digest);
+  llvm::Constant *data = llvm::ConstantDataArray::getString(
+      irModule.getContext(), marker, true);
+  auto *global = new llvm::GlobalVariable(
+      irModule, data->getType(), true, llvm::GlobalValue::PrivateLinkage,
+      data, "__toka_memory_evidence_" + digest.substr(0, 16));
+  global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+  global->setAlignment(llvm::Align(1));
+  llvm::appendToUsed(irModule, {global});
+  return true;
+}
+
 bool MemoryEvidenceCache::write(const std::string &path,
                                 const std::string &objectPath,
                                 const Module &module,
@@ -131,19 +219,11 @@ bool MemoryEvidenceCache::write(const std::string &path,
     return false;
   }
 
-  std::map<std::string, FunctionMemorySummary> summaries;
-  std::vector<Module *> modules = {const_cast<Module *>(&module)};
-  for (FunctionDecl *function : MemorySummaryAnalysis::collectFunctions(modules)) {
-    const FunctionMemorySummary &summary = function->MemorySummary;
-    if (summary.Origin != MemorySummaryOrigin::SourceBody ||
-        summary.FunctionName.empty())
-      continue;
-    auto [position, inserted] = summaries.emplace(summary.FunctionName, summary);
-    if (!inserted && !sameSummary(position->second, summary)) {
-      errors.push_back("conflicting summaries for " + summary.FunctionName);
-      return false;
-    }
-  }
+  auto summaries = collectEvidenceSummaries(module, errors);
+  if (!summaries)
+    return false;
+  std::string evidenceDigest = sha256(
+      canonicalPayload(*summaries, sourceHash, targetTriple));
 
   std::string temporary = path + ".tmp";
   std::error_code error;
@@ -158,27 +238,10 @@ bool MemoryEvidenceCache::write(const std::string &path,
       << TOKA_COMPILER_INTERFACE_VERSION << "\",\"interface_format\":\""
       << TOKA_INTERFACE_FORMAT_VERSION << "\",\"target_triple\":\""
       << escapeJSON(targetTriple) << "\",\"source_hash\":\""
-      << escapeJSON(sourceHash) << "\",\"object_sha256\":\""
-      << sha256(*object) << "\",\"functions\":[";
-  size_t functionIndex = 0;
-  for (const auto &entry : summaries) {
-    if (functionIndex++)
-      out << ',';
-    const FunctionMemorySummary &summary = entry.second;
-    out << "{\"name\":\"" << escapeJSON(summary.FunctionName)
-        << "\",\"local_effects\":" << summary.LocalEffects
-        << ",\"effects\":" << summary.Effects << ",\"roots\":[";
-    size_t rootIndex = 0;
-    for (const auto &root : summary.Roots) {
-      if (rootIndex++)
-        out << ',';
-      out << "{\"name\":\"" << escapeJSON(root.first)
-          << "\",\"local_effects\":" << root.second.LocalEffects
-          << ",\"effects\":" << root.second.Effects << '}';
-    }
-    out << "]}";
-  }
-  out << "]}\n";
+      << escapeJSON(sourceHash) << "\",\"evidence_sha256\":\""
+      << evidenceDigest << "\",\"object_sha256\":\""
+      << sha256(*object) << "\",\"functions\":"
+      << functionsJSON(*summaries) << "}\n";
   out.close();
   if (out.has_error()) {
     errors.push_back("failed writing evidence sidecar " + temporary);
@@ -286,6 +349,15 @@ MemoryEvidenceStatus MemoryEvidenceCache::load(
       return fail(MemoryEvidenceStatus::InvalidRecord,
                   "function record is duplicated", reason);
   }
+  std::optional<llvm::StringRef> recordedEvidenceDigest =
+      document->getString("evidence_sha256");
+  std::string actualEvidenceDigest = sha256(canonicalPayload(
+      summaries, expectedSourceHash, expectedTargetTriple));
+  if (!recordedEvidenceDigest ||
+      *recordedEvidenceDigest != actualEvidenceDigest ||
+      object->find(evidenceMarker(actualEvidenceDigest)) == std::string::npos)
+    return fail(MemoryEvidenceStatus::EvidenceMismatch,
+                "evidence digest is not bound to backing object", reason);
   reason = "validated against backing object";
   return MemoryEvidenceStatus::Valid;
 }
@@ -299,6 +371,7 @@ const char *toString(MemoryEvidenceStatus status) {
   case MemoryEvidenceStatus::IdentityMismatch: return "IdentityMismatch";
   case MemoryEvidenceStatus::MissingObject: return "MissingObject";
   case MemoryEvidenceStatus::ObjectMismatch: return "ObjectMismatch";
+  case MemoryEvidenceStatus::EvidenceMismatch: return "EvidenceMismatch";
   case MemoryEvidenceStatus::InvalidRecord: return "InvalidRecord";
   case MemoryEvidenceStatus::Valid: return "Valid";
   }

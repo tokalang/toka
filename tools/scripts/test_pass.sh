@@ -510,6 +510,13 @@ if ! run_without_test_cache python3 tools/scripts/test_trusted_memory_evidence.p
 fi
 
 echo ""
+echo "Running cross-module nocapture audit..."
+if ! run_without_test_cache python3 tools/scripts/audit_cross_module_nocapture.py > /dev/null; then
+    echo -e "${RED}Cross-module nocapture audit failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic Evidence tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_evidence.sh; then
     echo -e "${RED}Semantic Evidence tests failed!${NC}"

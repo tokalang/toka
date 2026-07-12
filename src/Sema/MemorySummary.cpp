@@ -768,7 +768,8 @@ std::vector<FunctionDecl *> MemorySummaryAnalysis::collectFunctions(
 }
 
 void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
-                                bool borrowCheckEnabled) {
+                                bool borrowCheckEnabled,
+                                bool activateTrustedEvidence) {
   std::vector<CallEdge> edges;
   std::set<std::string> globals;
   for (Module *module : modules) {
@@ -782,6 +783,46 @@ void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
   std::set<FunctionDecl *> analyzed(functions.begin(), functions.end());
   for (FunctionDecl *function : functions)
     LocalAnalyzer(*function, edges, borrowCheckEnabled, globals).run();
+  if (borrowCheckEnabled && activateTrustedEvidence) {
+    for (Module *module : modules) {
+      if (!module || module->TrustedMemorySummaries.empty())
+        continue;
+      std::vector<Module *> oneModule = {module};
+      std::map<std::string, FunctionDecl *> declarations;
+      for (FunctionDecl *function : collectFunctionsImpl(oneModule)) {
+        const std::string &name = function->MemorySummary.FunctionName;
+        if (name.empty() || !declarations.emplace(name, function).second) {
+          declarations.clear();
+          break;
+        }
+      }
+      bool valid = !declarations.empty();
+      for (const auto &entry : module->TrustedMemorySummaries) {
+        auto declaration = declarations.find(entry.first);
+        if (declaration == declarations.end()) {
+          valid = false;
+          break;
+        }
+        std::set<std::string> expectedRoots;
+        for (const auto &argument : declaration->second->Args)
+          expectedRoots.insert(rootName(argument));
+        std::set<std::string> cachedRoots;
+        for (const auto &root : entry.second.Roots)
+          cachedRoots.insert(root.first);
+        if (expectedRoots != cachedRoots) {
+          valid = false;
+          break;
+        }
+      }
+      if (!valid)
+        continue;
+      for (const auto &entry : module->TrustedMemorySummaries) {
+        FunctionDecl *function = declarations.at(entry.first);
+        if (!function->Body)
+          function->MemorySummary = entry.second;
+      }
+    }
+  }
   for (auto &edge : edges) {
     if (analyzed.count(edge.Callee))
       continue;

@@ -31,6 +31,12 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   the first structured semantic-fact layer.
 - `phase3b_decision_evidence.md` defines the internal decision-evidence schema,
   causal diagnostics, and source/interface equivalence checks.
+- `phase4a_trusted_memory_evidence.md` freezes the cross-module evidence trust
+  model.
+- `phase4b_trusted_evidence_cache.md` defines the object-bound cache sidecar.
+- `phase4c_evidence_replay.md` records three-path replay and tamper coverage.
+- `phase4d_cross_module_nocapture.md` records activation and the cross-module
+  optimizer-benefit decision.
 
 ## Rule Status
 

@@ -44,22 +44,28 @@ std::string rootName(const FunctionDecl::Arg &arg) {
 }
 
 const llvm::Argument *findIRArgument(const llvm::Function *function,
-                                     const std::string &name) {
+                                     const std::string &name,
+                                     unsigned parameterIndex) {
   if (!function)
     return nullptr;
   for (const llvm::Argument &argument : function->args())
     if (argument.getName() == name)
       return &argument;
+  if (parameterIndex < function->arg_size())
+    return function->getArg(parameterIndex);
   return nullptr;
 }
 
 llvm::Argument *findIRArgument(llvm::Function *function,
-                               const std::string &name) {
+                               const std::string &name,
+                               unsigned parameterIndex) {
   if (!function)
     return nullptr;
   for (llvm::Argument &argument : function->args())
     if (argument.getName() == name)
       return &argument;
+  if (parameterIndex < function->arg_size())
+    return function->getArg(parameterIndex);
   return nullptr;
 }
 
@@ -69,7 +75,9 @@ MemoryContractReason commonRejection(
   const auto &summary = function.MemorySummary;
   if (summary.Origin == MemorySummaryOrigin::SignatureOnly)
     return MemoryContractReason::SignatureOnly;
-  if (!irFunction || irFunction->isDeclaration())
+  if (!irFunction ||
+      (irFunction->isDeclaration() &&
+       summary.Origin != MemorySummaryOrigin::TrustedCache))
     return MemoryContractReason::MissingIRFunction;
   if (!irArgument)
     return MemoryContractReason::MissingIRParameter;
@@ -108,7 +116,7 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
   const llvm::Function *irFunction =
       irModule.getFunction(summary.FunctionName);
   const llvm::Argument *irArgument =
-      findIRArgument(irFunction, parameterName);
+      findIRArgument(irFunction, parameterName, parameterIndex);
   MemoryContractReason common = commonRejection(
       function, irFunction, irArgument, borrowCheckEnabled);
   if (common != MemoryContractReason::ProvenBySummary) {
@@ -129,7 +137,10 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
   };
   auto candidate = [&]() {
     record.Decision = MemoryContractDecision::Candidate;
-    record.Reason = MemoryContractReason::ProvenBySummary;
+    record.Reason =
+        summary.Origin == MemorySummaryOrigin::TrustedCache
+            ? MemoryContractReason::ProvenByTrustedCache
+            : MemoryContractReason::ProvenBySummary;
     return record;
   };
 
@@ -140,13 +151,15 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
       return reject(MemoryContractReason::CapturesRoot);
     if (has(effects, MemoryRootEffect::Escape))
       return reject(MemoryContractReason::EscapesRoot);
-    const llvm::Function *captureFunction =
-        captureModule.getFunction(summary.FunctionName);
-    const llvm::Argument *captureArgument =
-        findIRArgument(captureFunction, parameterName);
-    if (!captureArgument ||
-        llvm::PointerMayBeCaptured(captureArgument, true, true))
-      return reject(MemoryContractReason::IRCaptureDetected);
+    if (summary.Origin != MemorySummaryOrigin::TrustedCache) {
+      const llvm::Function *captureFunction =
+          captureModule.getFunction(summary.FunctionName);
+      const llvm::Argument *captureArgument =
+          findIRArgument(captureFunction, parameterName, parameterIndex);
+      if (!captureArgument ||
+          llvm::PointerMayBeCaptured(captureArgument, true, true))
+        return reject(MemoryContractReason::IRCaptureDetected);
+    }
     return candidate();
   }
 
@@ -341,7 +354,8 @@ unsigned MemoryContractShadow::emitExperimentalNoCapture(
         record.Decision != MemoryContractDecision::Candidate)
       continue;
     llvm::Function *function = irModule.getFunction(record.FunctionName);
-    llvm::Argument *argument = findIRArgument(function, record.ParameterName);
+    llvm::Argument *argument = findIRArgument(
+        function, record.ParameterName, record.ParameterIndex);
     if (!argument || !argument->getType()->isPointerTy())
       continue;
     function->addParamAttr(argument->getArgNo(), llvm::Attribute::NoCapture);
@@ -357,7 +371,7 @@ bool MemoryContractShadow::verifyExperimentalNoCapture(
   for (const auto &record : Records) {
     const llvm::Function *function = irModule.getFunction(record.FunctionName);
     const llvm::Argument *argument =
-        findIRArgument(function, record.ParameterName);
+        findIRArgument(function, record.ParameterName, record.ParameterIndex);
     bool expected = enabled &&
                     record.Kind == MemoryContractKind::NoCapture &&
                     record.Decision == MemoryContractDecision::Candidate;
@@ -414,6 +428,7 @@ const char *toString(MemoryContractDecision value) {
 const char *toString(MemoryContractReason value) {
   switch (value) {
   case MemoryContractReason::ProvenBySummary: return "ProvenBySummary";
+  case MemoryContractReason::ProvenByTrustedCache: return "ProvenByTrustedCache";
   case MemoryContractReason::MissingIRFunction: return "MissingIRFunction";
   case MemoryContractReason::MissingIRParameter: return "MissingIRParameter";
   case MemoryContractReason::SignatureOnly: return "SignatureOnly";

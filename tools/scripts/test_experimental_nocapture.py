@@ -102,7 +102,7 @@ def focused(work):
     dump = run([TOKAC, FLAG, "--dump-memory-contracts=json", "-c", SOURCE,
                 "-o", os.path.join(work, "dump.o")])
     document = json.loads(dump.stdout)
-    if document.get("version") != 2:
+    if document.get("version") != 3:
         raise AssertionError("unexpected contract evidence schema")
     for function in candidates:
         record = contract_record(document, function, "nocapture")

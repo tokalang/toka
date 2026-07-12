@@ -26,6 +26,7 @@ enum class MemoryContractDecision { Candidate, Reject };
 
 enum class MemoryContractReason {
   ProvenBySummary,
+  ProvenByTrustedCache,
   MissingIRFunction,
   MissingIRParameter,
   SignatureOnly,
@@ -60,7 +61,7 @@ struct MemoryContractRecord {
 
 class MemoryContractShadow {
 public:
-  static constexpr unsigned SchemaVersion = 2;
+  static constexpr unsigned SchemaVersion = 3;
 
   static MemoryContractShadow analyze(const std::vector<Module *> &modules,
                                       const llvm::Module &irModule,

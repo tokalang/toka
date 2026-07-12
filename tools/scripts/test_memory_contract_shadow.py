@@ -67,7 +67,7 @@ def main():
         if first_text != second_text:
             raise AssertionError("shadow output is not deterministic")
         if first.get("schema") != "toka.memory-contract-shadow" or \
-                first.get("version") != 2:
+                first.get("version") != 3:
             raise AssertionError("unexpected shadow schema")
         if any(entry.get("emitted") for entry in first["records"]):
             raise AssertionError("default shadow mode emitted a contract")

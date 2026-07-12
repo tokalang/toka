@@ -55,9 +55,9 @@ The pipeline is deliberately ordered:
 5. verify that emitted attributes exactly equal the Candidate set; and
 6. run the LLVM module verifier again before optimization.
 
-Memory-contract JSON schema version 2 includes an `emitted` boolean. This makes
-the distinction between proof, rejection, and experimental emission
-deterministic and replayable.
+Memory-contract JSON schema version 3 includes an `emitted` boolean and the
+later `ProvenByTrustedCache` reason. This makes the distinction between proof,
+rejection, and experimental emission deterministic and replayable.
 
 ## Tests
 

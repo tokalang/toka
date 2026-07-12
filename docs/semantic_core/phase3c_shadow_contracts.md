@@ -50,8 +50,9 @@ equivalent records. It rejects duplicate symbol/parameter/contract keys and
 scans every corresponding pre-optimization LLVM parameter to ensure that `nocapture`,
 `readonly`, `writeonly`, and `noalias` were not emitted.
 
-`--dump-memory-contracts=json` emits deterministic schema version 2 records,
-including whether an experimental contract was emitted.
+`--dump-memory-contracts=json` emits deterministic schema version 3 records,
+including whether an experimental contract was emitted and whether a later
+contract was proven by validated cross-module cache evidence.
 The mode is mutually exclusive with other JSON and evaluation modes.
 
 Focused verification:
