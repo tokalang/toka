@@ -1,4 +1,5 @@
 shape SummaryData(value: i32)
+shape SummaryRef(&value: i32)
 
 auto ms_global# = 0
 
@@ -18,6 +19,22 @@ fn ms_forward(data#: SummaryData) -> i32 {
 fn ms_consume(cede data: SummaryData) -> i32 {
     auto owned = cede data
     return owned.value
+}
+
+fn ms_escape(data: SummaryData) -> &i32 <- data {
+    return data.&value
+}
+
+fn ms_store(source: SummaryData, target#: SummaryRef) {
+    target.&value = source.&value
+}
+
+fn ms_address(^data: SummaryData) -> usize {
+    return *data as usize
+}
+
+fn ms_is_null(nul ^data: SummaryData) -> bool {
+    return ^data is null
 }
 
 fn ms_raw(*data: SummaryData) -> i32 {

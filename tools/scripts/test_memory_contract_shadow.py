@@ -67,8 +67,10 @@ def main():
         if first_text != second_text:
             raise AssertionError("shadow output is not deterministic")
         if first.get("schema") != "toka.memory-contract-shadow" or \
-                first.get("version") != 1:
+                first.get("version") != 2:
             raise AssertionError("unexpected shadow schema")
+        if any(entry.get("emitted") for entry in first["records"]):
+            raise AssertionError("default shadow mode emitted a contract")
 
         expect(first, "ms_read", "nocapture", "Candidate",
                "ProvenBySummary")
@@ -81,6 +83,8 @@ def main():
         expect(first, "ms_write", "nocapture", "Candidate",
                "ProvenBySummary")
         expect(first, "ms_write", "readonly", "Reject", "WritesMemory")
+        expect(first, "ms_forward", "nocapture", "Reject",
+               "IRCaptureDetected")
         expect(first, "ms_forward", "readonly", "Reject", "WritesMemory")
         expect(first, "ms_consume", "nocapture", "Reject",
                "TransfersOwnership")

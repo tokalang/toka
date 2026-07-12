@@ -309,6 +309,7 @@ int main(int argc, char **argv) {
   bool dumpSemanticEvidence = false;
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
+  bool experimentalNoCapture = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard;
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
@@ -354,6 +355,13 @@ int main(int argc, char **argv) {
       dumpMemorySummaries = true;
     } else if (arg == "--dump-memory-contracts=json") {
       dumpMemoryContracts = true;
+    } else if (arg == "--experimental-memory-contracts=nocapture") {
+      experimentalNoCapture = true;
+    } else if (arg.rfind("--experimental-memory-contracts=", 0) == 0) {
+      llvm::errs() << "unsupported experimental memory contract: "
+                   << arg.substr(std::string("--experimental-memory-contracts=").size())
+                   << '\n';
+      return 1;
     } else if (arg == "--topology-eval") {
       runTopologyEval = true;
     } else if (arg == "--pkg" || arg == "-P") {
@@ -834,6 +842,21 @@ int main(int argc, char **argv) {
     for (const auto &error : memorySummaryErrors)
       llvm::errs() << "Memory contract shadow verification error: " << error
                    << '\n';
+    return 1;
+  }
+  if (experimentalNoCapture)
+    memoryContracts.emitExperimentalNoCapture(*codegen.getModule());
+  memorySummaryErrors.clear();
+  if (!memoryContracts.verifyExperimentalNoCapture(
+          *codegen.getModule(), experimentalNoCapture, memorySummaryErrors)) {
+    for (const auto &error : memorySummaryErrors)
+      llvm::errs() << "Experimental nocapture verification error: " << error
+                   << '\n';
+    return 1;
+  }
+  if (experimentalNoCapture &&
+      llvm::verifyModule(*codegen.getModule(), &llvm::errs())) {
+    llvm::errs() << "Fatal Error: Experimental nocapture IR verification failed!\n";
     return 1;
   }
   if (dumpMemorySummaries)

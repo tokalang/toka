@@ -4,12 +4,18 @@
 #include "toka/MemoryContract.h"
 #include "toka/AST.h"
 #include "toka/MemorySummary.h"
+#include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/PromoteMemToReg.h"
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <ostream>
 #include <set>
 #include <tuple>
@@ -47,6 +53,16 @@ const llvm::Argument *findIRArgument(const llvm::Function *function,
   return nullptr;
 }
 
+llvm::Argument *findIRArgument(llvm::Function *function,
+                               const std::string &name) {
+  if (!function)
+    return nullptr;
+  for (llvm::Argument &argument : function->args())
+    if (argument.getName() == name)
+      return &argument;
+  return nullptr;
+}
+
 MemoryContractReason commonRejection(
     const FunctionDecl &function, const llvm::Function *irFunction,
     const llvm::Argument *irArgument, bool borrowCheckEnabled) {
@@ -77,6 +93,7 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
                               unsigned parameterIndex,
                               MemoryContractKind kind,
                               const llvm::Module &irModule,
+                              const llvm::Module &captureModule,
                               bool borrowCheckEnabled) {
   const auto &summary = function.MemorySummary;
   std::string parameterName = rootName(argument);
@@ -123,6 +140,13 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
       return reject(MemoryContractReason::CapturesRoot);
     if (has(effects, MemoryRootEffect::Escape))
       return reject(MemoryContractReason::EscapesRoot);
+    const llvm::Function *captureFunction =
+        captureModule.getFunction(summary.FunctionName);
+    const llvm::Argument *captureArgument =
+        findIRArgument(captureFunction, parameterName);
+    if (!captureArgument ||
+        llvm::PointerMayBeCaptured(captureArgument, true, true))
+      return reject(MemoryContractReason::IRCaptureDetected);
     return candidate();
   }
 
@@ -149,12 +173,32 @@ MemoryContractRecord evaluate(const FunctionDecl &function,
   return candidate();
 }
 
+std::unique_ptr<llvm::Module>
+makeCaptureAnalysisModule(const llvm::Module &irModule) {
+  std::unique_ptr<llvm::Module> captureModule = llvm::CloneModule(irModule);
+  for (llvm::Function &function : *captureModule) {
+    if (function.isDeclaration())
+      continue;
+    std::vector<llvm::AllocaInst *> promotableAllocas;
+    for (llvm::BasicBlock &block : function)
+      for (llvm::Instruction &instruction : block)
+        if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(&instruction);
+            alloca && llvm::isAllocaPromotable(alloca))
+          promotableAllocas.push_back(alloca);
+    if (promotableAllocas.empty())
+      continue;
+    llvm::DominatorTree dominatorTree(function);
+    llvm::PromoteMemToReg(promotableAllocas, dominatorTree);
+  }
+  return captureModule;
+}
+
 bool sameRecord(const MemoryContractRecord &lhs,
                 const MemoryContractRecord &rhs) {
   return std::tie(lhs.FunctionName, lhs.ParameterName, lhs.ParameterIndex,
-                  lhs.Kind, lhs.Decision, lhs.Reason) ==
+                  lhs.Kind, lhs.Decision, lhs.Reason, lhs.Emitted) ==
          std::tie(rhs.FunctionName, rhs.ParameterName, rhs.ParameterIndex,
-                  rhs.Kind, rhs.Decision, rhs.Reason);
+                  rhs.Kind, rhs.Decision, rhs.Reason, rhs.Emitted);
 }
 
 bool hasEmittedAttribute(const llvm::Argument &argument,
@@ -196,6 +240,8 @@ MemoryContractShadow MemoryContractShadow::analyze(
     const std::vector<Module *> &modules, const llvm::Module &irModule,
     bool borrowCheckEnabled) {
   MemoryContractShadow result;
+  std::unique_ptr<llvm::Module> captureModule =
+      makeCaptureAnalysisModule(irModule);
   std::map<std::tuple<std::string, unsigned, MemoryContractKind>,
            MemoryContractRecord>
       merged;
@@ -208,7 +254,7 @@ MemoryContractShadow MemoryContractShadow::analyze(
       for (MemoryContractKind kind : kinds) {
         MemoryContractRecord candidate =
             evaluate(*function, function->Args[i],
-                     static_cast<unsigned>(i), kind, irModule,
+                     static_cast<unsigned>(i), kind, irModule, *captureModule,
                      borrowCheckEnabled);
         auto key = std::make_tuple(candidate.FunctionName,
                                    candidate.ParameterIndex, candidate.Kind);
@@ -287,6 +333,47 @@ bool MemoryContractShadow::verify(const std::vector<Module *> &modules,
   return errors.empty();
 }
 
+unsigned MemoryContractShadow::emitExperimentalNoCapture(
+    llvm::Module &irModule) {
+  unsigned emitted = 0;
+  for (auto &record : Records) {
+    if (record.Kind != MemoryContractKind::NoCapture ||
+        record.Decision != MemoryContractDecision::Candidate)
+      continue;
+    llvm::Function *function = irModule.getFunction(record.FunctionName);
+    llvm::Argument *argument = findIRArgument(function, record.ParameterName);
+    if (!argument || !argument->getType()->isPointerTy())
+      continue;
+    function->addParamAttr(argument->getArgNo(), llvm::Attribute::NoCapture);
+    record.Emitted = true;
+    ++emitted;
+  }
+  return emitted;
+}
+
+bool MemoryContractShadow::verifyExperimentalNoCapture(
+    const llvm::Module &irModule, bool enabled,
+    std::vector<std::string> &errors) const {
+  for (const auto &record : Records) {
+    const llvm::Function *function = irModule.getFunction(record.FunctionName);
+    const llvm::Argument *argument =
+        findIRArgument(function, record.ParameterName);
+    bool expected = enabled &&
+                    record.Kind == MemoryContractKind::NoCapture &&
+                    record.Decision == MemoryContractDecision::Candidate;
+    bool actual = argument &&
+                  argument->hasAttribute(llvm::Attribute::NoCapture);
+    if (record.Kind == MemoryContractKind::NoCapture && actual != expected)
+      errors.push_back(record.FunctionName + ": nocapture emission mismatch for " +
+                       record.ParameterName);
+    if (record.Emitted != expected)
+      errors.push_back(record.FunctionName +
+                       ": nocapture emission evidence mismatch for " +
+                       record.ParameterName);
+  }
+  return errors.empty();
+}
+
 void MemoryContractShadow::dumpJSON(std::ostream &out) const {
   out << "{\"schema\":\"toka.memory-contract-shadow\",\"version\":"
       << SchemaVersion << ",\"records\":[";
@@ -299,7 +386,9 @@ void MemoryContractShadow::dumpJSON(std::ostream &out) const {
         << "\",\"parameter_index\":" << record.ParameterIndex
         << ",\"contract\":\"" << toString(record.Kind)
         << "\",\"decision\":\"" << toString(record.Decision)
-        << "\",\"reason\":\"" << toString(record.Reason) << "\"}";
+        << "\",\"reason\":\"" << toString(record.Reason)
+        << "\",\"emitted\":" << (record.Emitted ? "true" : "false")
+        << '}';
   }
   out << "]}\n";
 }
@@ -335,6 +424,7 @@ const char *toString(MemoryContractReason value) {
   case MemoryContractReason::RawProvenance: return "RawProvenance";
   case MemoryContractReason::UnknownBoundary: return "UnknownBoundary";
   case MemoryContractReason::UnknownRoot: return "UnknownRoot";
+  case MemoryContractReason::IRCaptureDetected: return "IRCaptureDetected";
   case MemoryContractReason::ReadsMemory: return "ReadsMemory";
   case MemoryContractReason::NoWrites: return "NoWrites";
   case MemoryContractReason::WritesMemory: return "WritesMemory";

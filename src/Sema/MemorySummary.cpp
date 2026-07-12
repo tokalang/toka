@@ -269,7 +269,10 @@ private:
     auto merge = [&](const RootSet &other) {
       result.insert(other.begin(), other.end());
     };
-    if (auto *call = dynamic_cast<const CallExpr *>(expr)) {
+    if (auto *binary = dynamic_cast<const BinaryExpr *>(expr)) {
+      merge(roots(binary->LHS.get()));
+      merge(roots(binary->RHS.get()));
+    } else if (auto *call = dynamic_cast<const CallExpr *>(expr)) {
       if (call->ResolvedShape) {
         for (const auto &argument : call->Args)
           merge(roots(argument.get()));
@@ -346,12 +349,16 @@ private:
     const auto &type = expr->ResolvedType;
     if (!type)
       return roots(expr);
-    bool mayCarryProvenance =
-        type->isPointer() || type->isReference() || type->isSmartPointer() ||
-        type->isShape() || type->isArray() || type->isSlice() ||
-        type->isFunction() || type->isDynFn() || type->isUnknown() ||
-        type->isUninit();
-    return mayCarryProvenance ? roots(expr) : RootSet{};
+    return mayCarryProvenance(type) ? roots(expr) : RootSet{};
+  }
+
+  static bool mayCarryProvenance(const std::shared_ptr<Type> &type) {
+    if (!type)
+      return true;
+    return type->isPointer() || type->isReference() ||
+           type->isSmartPointer() || type->isShape() || type->isArray() ||
+           type->isSlice() || type->isFunction() || type->isDynFn() ||
+           type->isUnknown() || type->isUninit();
   }
 
   void markUnknownBoundary(const std::vector<const Expr *> &arguments) {
@@ -409,7 +416,8 @@ private:
           if (Globals.count(name) && !Aliases.count(name)) {
             addLocal(Summary, FunctionMemoryEffect::TouchGlobal);
             addLocal(Summary, provenanceRoots(binary->RHS.get()),
-                     bit(MemoryRootEffect::Escape));
+                     bit(MemoryRootEffect::Capture) |
+                         bit(MemoryRootEffect::Escape));
           }
         }
         RootSet lhsRoots = roots(binary->LHS.get());
@@ -417,9 +425,23 @@ private:
         if (binary->AssignmentKind == AssignmentSemanticKind::Handle)
           effects |= bit(MemoryRootEffect::Rebind);
         addLocal(Summary, lhsRoots, effects);
-        if (auto *variable = dynamic_cast<const VariableExpr *>(binary->LHS.get()))
+        if (auto *variable =
+                dynamic_cast<const VariableExpr *>(binary->LHS.get())) {
           mergeAlias(variable->Name, provenanceRoots(binary->RHS.get()));
+        } else {
+          addLocal(Summary, provenanceRoots(binary->RHS.get()),
+                   bit(MemoryRootEffect::Capture) |
+                       bit(MemoryRootEffect::Escape));
+        }
         return;
+      }
+      if (!mayCarryProvenance(binary->ResolvedType)) {
+        if (binary->LHS && mayCarryProvenance(binary->LHS->ResolvedType))
+          addLocal(Summary, roots(binary->LHS.get()),
+                   bit(MemoryRootEffect::Capture));
+        if (binary->RHS && mayCarryProvenance(binary->RHS->ResolvedType))
+          addLocal(Summary, roots(binary->RHS.get()),
+                   bit(MemoryRootEffect::Capture));
       }
       visitExpr(binary->LHS.get());
       visitExpr(binary->RHS.get());
@@ -452,6 +474,13 @@ private:
                bit(MemoryRootEffect::Transfer) |
                    bit(MemoryRootEffect::Invalidate) |
                    bit(MemoryRootEffect::Escape));
+      return;
+    }
+    if (auto *value = dynamic_cast<const CastExpr *>(expr)) {
+      visitExpr(value->Expression.get());
+      if (!mayCarryProvenance(value->ResolvedType))
+        addLocal(Summary, roots(value->Expression.get()),
+                 bit(MemoryRootEffect::Capture));
       return;
     }
     if (auto *value = dynamic_cast<const UnsafeExpr *>(expr)) {
@@ -552,8 +581,6 @@ private:
     } else if (auto *value = dynamic_cast<const DereferenceExpr *>(expr))
       visitExpr(value->Expression.get());
     else if (auto *value = dynamic_cast<const AddressOfExpr *>(expr))
-      visitExpr(value->Expression.get());
-    else if (auto *value = dynamic_cast<const CastExpr *>(expr))
       visitExpr(value->Expression.get());
     else if (auto *value = dynamic_cast<const UnaryExpr *>(expr))
       visitExpr(value->RHS.get());

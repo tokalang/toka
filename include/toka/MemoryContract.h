@@ -36,6 +36,7 @@ enum class MemoryContractReason {
   RawProvenance,
   UnknownBoundary,
   UnknownRoot,
+  IRCaptureDetected,
   ReadsMemory,
   NoWrites,
   WritesMemory,
@@ -54,11 +55,12 @@ struct MemoryContractRecord {
   MemoryContractKind Kind = MemoryContractKind::NoCapture;
   MemoryContractDecision Decision = MemoryContractDecision::Reject;
   MemoryContractReason Reason = MemoryContractReason::UnknownBoundary;
+  bool Emitted = false;
 };
 
 class MemoryContractShadow {
 public:
-  static constexpr unsigned SchemaVersion = 1;
+  static constexpr unsigned SchemaVersion = 2;
 
   static MemoryContractShadow analyze(const std::vector<Module *> &modules,
                                       const llvm::Module &irModule,
@@ -67,6 +69,10 @@ public:
               const llvm::Module &irModule,
               bool borrowCheckEnabled,
               std::vector<std::string> &errors) const;
+  unsigned emitExperimentalNoCapture(llvm::Module &irModule);
+  bool verifyExperimentalNoCapture(const llvm::Module &irModule,
+                                   bool enabled,
+                                   std::vector<std::string> &errors) const;
   void dumpJSON(std::ostream &out) const;
 
   const std::vector<MemoryContractRecord> &records() const { return Records; }

@@ -20,7 +20,9 @@ boundary.
 
 The contract-specific gates are:
 
-- `nocapture`: no capture, escape, transfer, or unknown root effect;
+- `nocapture`: no capture, escape, transfer, or unknown root effect, plus no
+  capture found by LLVM CaptureTracking on an analysis-only normalized IR
+  clone;
 - `readonly`: no write, rebind, invalidation, transfer, or unknown root effect;
 - `writeonly`: at least one write and no read, invalidation, transfer, or
   unknown root effect;
@@ -48,7 +50,8 @@ equivalent records. It rejects duplicate symbol/parameter/contract keys and
 scans every corresponding pre-optimization LLVM parameter to ensure that `nocapture`,
 `readonly`, `writeonly`, and `noalias` were not emitted.
 
-`--dump-memory-contracts=json` emits deterministic schema version 1 records.
+`--dump-memory-contracts=json` emits deterministic schema version 2 records,
+including whether an experimental contract was emitted.
 The mode is mutually exclusive with other JSON and evaluation modes.
 
 Focused verification:
@@ -64,7 +67,6 @@ shared LLVM symbols, object-code equivalence, and executable checks at `-O0`,
 
 ## Next gate
 
-No performance claim is made in shadow mode. Enabling even one candidate class
-requires a separate proof obligation, IR contract tests that deliberately
-break each precondition, optimization differential tests, and benchmark
-evidence. `noalias` remains last.
+Phase 3C-4 enables `nocapture` only behind an explicit experimental flag, as
+documented in `phase3c_experimental_nocapture.md`. No performance claim is made
+yet, and `noalias` remains last.
