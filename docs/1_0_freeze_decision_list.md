@@ -1,5 +1,9 @@
 # Toka 1.0 Freeze Decision List
 
+Execution status, blockers, and final release stop conditions are tracked in
+[`1_0_closure_plan.md`](1_0_closure_plan.md). This document remains the
+normative record of 1.0 scope and exclusions.
+
 This document records the current freeze direction for Toka 1.0. It is not a
 new language proposal. Its purpose is to separate the public syntax and
 semantics that should be stabilized for 1.0 from work that can safely move to a

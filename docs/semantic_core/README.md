@@ -1,5 +1,9 @@
 # Toka Semantic Core
 
+The 1.0 execution order, phase status, blockers, and stop conditions are
+tracked by [`../1_0_closure_plan.md`](../1_0_closure_plan.md). This directory
+provides the semantic evidence indexed by that plan.
+
 This directory is the phase-1 audit surface for the Toka 1.0 semantic core.
 It turns the frozen language rules into a stable contract that can be reviewed
 against implementation, diagnostics, interface replay, and tests.
