@@ -179,13 +179,20 @@ def main():
 
     asan_dir = work_dir / "asan-build"
     archive = build_dir / ("toka-%s-%s-%s.tar.gz" % (args.version, os_name, arch))
-    tool_commands = (
-        [env["TOKAC"], "-I", "lib", "-I", "tools/toka", "tools/toka/src/main.tk", "-o", str(build_dir / "bin" / "toka"), "-O3"],
+    toka_command = [
+        env["TOKAC"], "-I", "lib", "-I", "tools/toka",
+        "tools/toka/src/main.tk", "-o", str(build_dir / "bin" / "toka"),
+        "-O3",
+    ]
+    package_tool_commands = (
         [env["TOKAC"], "-I", "lib", "-I", "tools/tokafmt", "tools/tokafmt/src/main.tk", "-o", str(build_dir / "bin" / "tokafmt"), "-O3"],
         [env["TOKAC"], "-I", "lib", "-I", "tools/tokalsp", "tools/tokalsp/main.tk", "-o", str(build_dir / "bin" / "tokalsp"), "-O3"],
     )
     stages = (
-        ("build", (["cmake", "--build", str(build_dir), "--parallel", env["CORES"]],)),
+        ("build", (
+            ["cmake", "--build", str(build_dir), "--parallel", env["CORES"]],
+            toka_command,
+        )),
         ("pass", ([sys.executable, "tools/scripts/test_pass.py"],)),
         ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py"],)),
         ("warn", ([sys.executable, "tools/scripts/test_verify_warn.py"],)),
@@ -198,7 +205,7 @@ def main():
             ["cmake", "--build", str(asan_dir), "--parallel", env["CORES"]],
             [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac")],
         )),
-        ("package_smoke", tool_commands + (
+        ("package_smoke", package_tool_commands + (
             ["tools/scripts/package_release.sh", args.version],
             [sys.executable, "tools/scripts/test_release_package.py", str(archive)],
         )),

@@ -14,7 +14,7 @@ macOS x64/arm64.
 runs these stages in fixed order and stops after the first failure while still
 recording every later stage as `not_run`:
 
-1. compiler build;
+1. compiler and native `toka` build-manager build;
 2. complete executable positive corpus;
 3. complete negative diagnostic corpus;
 4. warning corpus;
