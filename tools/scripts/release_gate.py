@@ -178,6 +178,7 @@ def main():
     env["CORES"] = env.get("CORES", str(max(1, os.cpu_count() or 1)))
 
     asan_dir = work_dir / "asan-build"
+    audit_timeout = "30" if os_name == "linux" and arch == "arm64" else "15"
     archive = build_dir / ("toka-%s-%s-%s.tar.gz" % (args.version, os_name, arch))
     toka_command = [
         env["TOKAC"], "-I", "lib", "-I", "tools/toka",
@@ -204,7 +205,7 @@ def main():
         ("sanitizer", (
             ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"],
             ["cmake", "--build", str(asan_dir), "--parallel", env["CORES"]],
-            [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac")],
+            [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac"), "--timeout", audit_timeout],
         )),
         ("package_smoke", package_tool_commands + (
             ["tools/scripts/package_release.sh", args.version],

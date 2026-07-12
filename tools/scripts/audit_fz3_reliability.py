@@ -49,13 +49,16 @@ def sanitizer_failure(result):
     return any(marker in output for marker in SANITIZER_MARKERS)
 
 
-def compiler_failure(result):
-    return (
-        result["timeout"]
-        or result["returncode"] is None
-        or result["returncode"] < 0
-        or sanitizer_failure(result)
-    )
+def compiler_failure_reason(result):
+    if result["timeout"]:
+        return "timed out"
+    if result["returncode"] is None:
+        return "did not return a status"
+    if result["returncode"] < 0:
+        return "crashed with signal %d" % (-result["returncode"])
+    if sanitizer_failure(result):
+        return "reported sanitizer diagnostics"
+    return None
 
 
 def mutate_parser_source(source, rng, index):
@@ -78,9 +81,11 @@ def mutate_parser_source(source, rng, index):
     return source[:start] + span + span + source[start + width :]
 
 
-def compile_source(tokac, root, source_path, object_path):
+def compile_source(tokac, root, source_path, object_path, timeout):
     return run(
-        [str(tokac), "-c", str(source_path), "-o", str(object_path)], root
+        [str(tokac), "-c", str(source_path), "-o", str(object_path)],
+        root,
+        timeout=timeout,
     )
 
 
@@ -89,8 +94,11 @@ def main():
     parser.add_argument("--tokac", default="./build/bin/tokac")
     parser.add_argument("--seed", type=int, default=0x544F4B41)
     parser.add_argument("--parser-mutations", type=int, default=32)
+    parser.add_argument("--timeout", type=int, default=15)
     parser.add_argument("--output")
     args = parser.parse_args()
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
 
     root = Path(__file__).resolve().parents[2]
     tokac = Path(args.tokac)
@@ -155,21 +163,25 @@ def main():
 
         for index, relative in enumerate(core_pass):
             result = compile_source(
-                tokac, root, root / relative, work / ("core_pass_%02d.o" % index)
+                tokac, root, root / relative,
+                work / ("core_pass_%02d.o" % index), args.timeout
             )
             counts["core_corpus"] += 1
-            if compiler_failure(result):
-                failures.append("core pass case %s crashed or timed out" % relative)
+            failure_reason = compiler_failure_reason(result)
+            if failure_reason:
+                failures.append("core pass case %s %s" % (relative, failure_reason))
             elif result["returncode"] != 0:
                 failures.append("core pass case %s was rejected" % relative)
 
         for index, relative in enumerate(core_fail):
             result = compile_source(
-                tokac, root, root / relative, work / ("core_fail_%02d.o" % index)
+                tokac, root, root / relative,
+                work / ("core_fail_%02d.o" % index), args.timeout
             )
             counts["core_corpus"] += 1
-            if compiler_failure(result):
-                failures.append("core fail case %s crashed or timed out" % relative)
+            failure_reason = compiler_failure_reason(result)
+            if failure_reason:
+                failures.append("core fail case %s %s" % (relative, failure_reason))
             elif result["returncode"] == 0:
                 failures.append("core fail case %s was accepted" % relative)
 
@@ -177,20 +189,26 @@ def main():
             source = mutate_parser_source(parser_seed, rng, index)
             path = work / ("parser_%03d.tk" % index)
             path.write_bytes(source.encode("utf-8", errors="surrogatepass"))
-            result = compile_source(tokac, root, path, work / (path.stem + ".o"))
+            result = compile_source(
+                tokac, root, path, work / (path.stem + ".o"), args.timeout
+            )
             counts["parser_mutations"] += 1
-            if compiler_failure(result):
-                failures.append("parser mutation %d crashed or timed out" % index)
+            failure_reason = compiler_failure_reason(result)
+            if failure_reason:
+                failures.append("parser mutation %d %s" % (index, failure_reason))
 
         sema_order = list(range(len(sema_mutants)))
         rng.shuffle(sema_order)
         for output_index, mutant_index in enumerate(sema_order):
             path = work / ("sema_%03d.tk" % output_index)
             path.write_text(sema_mutants[mutant_index], encoding="utf-8")
-            result = compile_source(tokac, root, path, work / (path.stem + ".o"))
+            result = compile_source(
+                tokac, root, path, work / (path.stem + ".o"), args.timeout
+            )
             counts["sema_mutations"] += 1
-            if compiler_failure(result):
-                failures.append("sema mutation %d crashed or timed out" % mutant_index)
+            failure_reason = compiler_failure_reason(result)
+            if failure_reason:
+                failures.append("sema mutation %d %s" % (mutant_index, failure_reason))
             elif result["returncode"] == 0:
                 failures.append("sema mutation %d was unexpectedly accepted" % mutant_index)
 
@@ -209,10 +227,13 @@ def main():
         base_compile = run(
             [str(tokac), "-c", str(library), "-o", str(interface_dir / "lib.o")],
             root,
+            timeout=args.timeout,
         )
         base_tki = interface_dir / "lib.tki"
-        if compiler_failure(base_compile) or base_compile["returncode"] != 0:
-            failures.append("could not generate mutation interface fixture")
+        base_failure_reason = compiler_failure_reason(base_compile)
+        if base_failure_reason or base_compile["returncode"] != 0:
+            suffix = base_failure_reason or "was rejected"
+            failures.append("could not generate mutation interface fixture: " + suffix)
         elif not base_tki.exists():
             failures.append("interface fixture did not emit lib.tki")
         else:
@@ -248,10 +269,12 @@ def main():
                         str(case / "app"),
                     ],
                     root,
+                    timeout=args.timeout,
                 )
                 counts["interface_mutations"] += 1
-                if compiler_failure(result):
-                    failures.append("interface mutation %d crashed or timed out" % index)
+                failure_reason = compiler_failure_reason(result)
+                if failure_reason:
+                    failures.append("interface mutation %d %s" % (index, failure_reason))
                 elif result["returncode"] == 0:
                     failures.append("interface mutation %d was unexpectedly accepted" % index)
 
@@ -259,8 +282,12 @@ def main():
         deterministic.write_text(
             "fn main() -> i32 { return missing_name }\n", encoding="utf-8"
         )
-        first = compile_source(tokac, root, deterministic, work / "deterministic.o")
-        second = compile_source(tokac, root, deterministic, work / "deterministic.o")
+        first = compile_source(
+            tokac, root, deterministic, work / "deterministic.o", args.timeout
+        )
+        second = compile_source(
+            tokac, root, deterministic, work / "deterministic.o", args.timeout
+        )
         counts["determinism_checks"] += 1
         if first["stderr"] != second["stderr"] or first["returncode"] != second["returncode"]:
             failures.append("diagnostic output is not deterministic")
@@ -278,8 +305,8 @@ def main():
             "-o",
             str(work / "evidence.o"),
         ]
-        evidence_first = run(evidence_command, root)
-        evidence_second = run(evidence_command, root)
+        evidence_first = run(evidence_command, root, timeout=args.timeout)
+        evidence_second = run(evidence_command, root, timeout=args.timeout)
         counts["determinism_checks"] += 1
         if (
             evidence_first["stdout"] != evidence_second["stdout"]
@@ -292,8 +319,8 @@ def main():
             "--dump-dependencies=json",
             str(evidence),
         ]
-        deps_first = run(dependencies_command, root)
-        deps_second = run(dependencies_command, root)
+        deps_first = run(dependencies_command, root, timeout=args.timeout)
+        deps_second = run(dependencies_command, root, timeout=args.timeout)
         counts["determinism_checks"] += 1
         if deps_first["stdout"] != deps_second["stdout"]:
             failures.append("dependency JSON output is not deterministic")
@@ -302,10 +329,10 @@ def main():
         stable_lib.write_text("pub fn value() -> i32 { return 7 }\n", encoding="utf-8")
         stable_object = work / "stable_lib.o"
         stable_command = [str(tokac), "-c", str(stable_lib), "-o", str(stable_object)]
-        stable_first = run(stable_command, root)
+        stable_first = run(stable_command, root, timeout=args.timeout)
         stable_tki = work / "stable_lib.tki"
         first_bytes = stable_tki.read_bytes() if stable_tki.exists() else b""
-        stable_second = run(stable_command, root)
+        stable_second = run(stable_command, root, timeout=args.timeout)
         second_bytes = stable_tki.read_bytes() if stable_tki.exists() else b""
         counts["determinism_checks"] += 1
         if (
