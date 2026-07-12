@@ -1,0 +1,9 @@
+// COMPILE_ONLY: async task runtime symbols are not linked by this replay runner.
+// EXPECT_EVIDENCE: OWN-CEDE-001 ASYNC-CAPTURE-001
+import ./lib::{Envelope, consume_generic_async}
+
+fn main() -> i32 {
+    auto payload = Envelope<i32>(^value = new i32(7))
+    consume_generic_async<i32>(cede payload).start
+    return 0
+}

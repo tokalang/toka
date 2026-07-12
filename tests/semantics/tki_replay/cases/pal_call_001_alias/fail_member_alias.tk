@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E0475
+// EXPECT_EVIDENCE: PAL-CALL-001
+import ./lib::{Data, Pair, mut_and_read}
+
+fn main() -> i32 {
+    auto pair# = Pair(left = Data(val = 1), right = Data(val = 2))
+    return mut_and_read(pair.left, pair.left)
+}

@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E04570
+// EXPECT_EVIDENCE: OWN-CEDE-001
+import ./lib::{Parcel, forward_parcel}
+
+fn main() -> i32 {
+    auto parcel = Parcel<i32>(^item = new i32(7))
+    auto moved = forward_parcel<i32>(parcel)
+    return moved.item
+}

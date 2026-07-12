@@ -1129,6 +1129,12 @@ void Sema::checkStmt(Stmt *S) {
         Var->TypeName = "unknown";
       } else {
         std::string Inferred = InitType;
+        // A cede return marks transfer across the call edge. Binding the
+        // result accepts that transfer, so the local variable has the
+        // underlying owned type rather than a persistent cede-qualified type.
+        if (Inferred.rfind("cede ", 0) == 0) {
+          Inferred = Inferred.substr(5);
+        }
         if (Inferred == "null") {
           DiagnosticEngine::report(getLoc(Var), DiagID::ERR_INFER_NULLPTR);
           HasError = true;

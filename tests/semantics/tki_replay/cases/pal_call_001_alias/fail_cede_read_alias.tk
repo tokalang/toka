@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E0475
+// EXPECT_EVIDENCE: PAL-CALL-001 OWN-CEDE-001
+import ./lib::{Data, consume_and_read}
+
+fn main() -> i32 {
+    auto data# = Data(val = 1)
+    return consume_and_read(cede data, data)
+}

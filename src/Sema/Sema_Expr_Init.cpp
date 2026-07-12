@@ -981,18 +981,10 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
             memberTypeObj->toString(), exprTypeObj->toString());
     }
 
-     // Lifetime dependency tracking
-    bool hasExplicitDep = false;
-    std::string cleanName = toka::Type::stripMorphology(pDefMember->Name);
-    for (const auto &dep : SD->LifeDependencies) {
-      if (dep == cleanName) {
-        hasExplicitDep = true;
-        if (!m_LastBorrowSource.empty()) {
-          m_LastLifeDependencies.insert(m_LastBorrowSource);
-        }
-      }
-    }
-    if (!hasExplicitDep && memberTypeObj && (memberTypeObj->isReference() || memberTypeObj->isPointer() || memberTypeObj->isSmartPointer())) {
+    // Borrow-like fields carry dependencies directly from their initializer.
+    if (memberTypeObj &&
+        (memberTypeObj->isReference() || memberTypeObj->isPointer() ||
+         memberTypeObj->isSmartPointer())) {
         if (!m_LastBorrowSource.empty()) {
           m_LastLifeDependencies.insert(m_LastBorrowSource);
         }

@@ -128,12 +128,14 @@ Current exporter reference:
 
 - `TKIExporter::exportShape`
 
-Open audit item:
+Closed 1.0 boundary:
 
-- The exporter currently has legacy support paths for shape life dependencies.
-  Toka 1.0 syntax excludes shape header dependencies and shape-internal member
-  dependency annotations. The interface contract should ensure unsupported
-  dependency syntax is not used as a substitute for stable-placement semantics.
+- `ShapeDecl` and `TKIExporter` have no legacy shape-header dependency path.
+  Borrow-like fields retain dependency facts from their initializers without
+  reviving excluded declaration syntax.
+- `tools/scripts/test_tki_excluded_syntax_revalidation.sh` forges interfaces
+  containing shape-header and shape-member dependency declarations and proves
+  that interface parsing rejects them with `E01247` and `E01248`.
 
 ### Traits, Associated Types, And Dyn Safety
 
@@ -201,18 +203,21 @@ Any change to these facts must invalidate stale `.tki` replay:
 - public unsafe/raw API exposure,
 - interface format version.
 
-## Phase-2 Conformance Coverage
+## FZ-2 Conformance Coverage
 
 The following matrix records the explicit source/interface conformance tests
 completed in phase 2:
 
 - PAL call-site alias conflict through imported `.tki`: covered by
-  `tests/semantics/tki_replay/cases/pal_call_001_alias`.
+  `tests/semantics/tki_replay/cases/pal_call_001_alias` for read/read,
+  overlapping and disjoint member paths, and cede/read conflicts.
 - Cede parameter and cede return obligations through imported `.tki`: covered
-  by `tests/semantics/tki_replay/cases/own_cede_001_signature` and
-  `tests/semantics/tki_replay/cases/own_cede_002_return`.
+  by `tests/semantics/tki_replay/cases/own_cede_001_signature`,
+  `own_cede_002_return`, and `own_cede_003_generic_methods`, including generic
+  functions, methods, double consumption, and use after transfer.
 - Whole-return dependencies through imported `.tki`: covered by
-  `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`.
+  `tests/semantics/tki_replay/cases/eff_ret_001_return_deps` for references,
+  `str`, and `bytes` views.
 - Member-specific `effects:` dependency declarations through imported `.tki`:
   export, source-less parsing, and caller-side source locking covered by
   `tests/semantics/tki_replay/cases/eff_member_001_return_deps`, including
@@ -228,14 +233,18 @@ completed in phase 2:
   fields, generic declarations, forged exempt-looking source paths, ordinary
   include paths, explicit naming exemptions, and compiler-configured trusted
   roots.
+- Excluded shape dependency syntax cannot re-enter through a forged interface:
+  covered by `tools/scripts/test_tki_excluded_syntax_revalidation.sh` for both
+  removed declaration forms and their stable diagnostics.
 - Async borrowed return dependency through imported `.tki`: positive replay
   export, source-less parsing, and caller-side enforcement after `.wait`
   covered by `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`;
   borrowed `.start` rejection is covered by the same case, and explicit cede
   handoff is covered by
-  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`. The same
-  async-return case now also checks `.await` inside an async function and
-  source invalidation after resume through both source and source-less replay.
+  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff` for concrete
+  and generic resources. The same async-return case also checks `.await`
+  inside an async function and source invalidation after resume through both
+  source and source-less replay.
 - Cache invalidation when only semantic annotations change: covered by
   `tests/semantics/tki_cache/cases` for parameter mutability, `cede`
   parameters, effects routing and swapping, async markers, private resource

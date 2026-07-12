@@ -1517,13 +1517,11 @@ void Sema::registerImpl(ImplDecl *Impl) {
   // so that callers (like main) typically don't fail to resolve 'Self'.
   std::string selfTy = Impl->TypeName;
   for (auto &Method : Impl->Methods) {
-    if (Method->ReturnType == "Self") {
-      Method->ReturnType = selfTy;
-    }
+    replaceTypeNameToken(Method->ReturnType, "Self", selfTy);
+    Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
-      if (Arg.Type == "Self") {
-        Arg.Type = selfTy;
-      }
+      replaceTypeNameToken(Arg.Type, "Self", selfTy);
+      Arg.ResolvedType = nullptr;
     }
   }
   applyAssociatedTypeSubstitutions(Impl, associatedTypeSubstitutions);
@@ -1635,13 +1633,11 @@ void Sema::declareImpl(ImplDecl *Impl) {
 
   std::string selfTy = Impl->TypeName;
   for (auto &Method : Impl->Methods) {
-    if (Method->ReturnType == "Self") {
-      Method->ReturnType = selfTy;
-    }
+    replaceTypeNameToken(Method->ReturnType, "Self", selfTy);
+    Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
-      if (Arg.Type == "Self") {
-        Arg.Type = selfTy;
-      }
+      replaceTypeNameToken(Arg.Type, "Self", selfTy);
+      Arg.ResolvedType = nullptr;
     }
   }
 
@@ -1689,8 +1685,14 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   std::string savedRet =
       CurrentFunctionReturnType; // [FIX] Save state for recursion
   FunctionDecl *savedFn = CurrentFunction;
+  std::string savedBorrowSource = m_LastBorrowSource;
+  auto savedLifeDependencies = m_LastLifeDependencies;
+  auto savedFieldDependencies = m_LastFieldDependencies;
   CurrentFunction = Fn;
   CurrentFunctionReturnType = Fn->ReturnType;
+  m_LastBorrowSource.clear();
+  m_LastLifeDependencies.clear();
+  m_LastFieldDependencies.clear();
 
   // [New] Annotated AST: Resolve Return Type Object
   if (Fn->ReturnType != "void") {
@@ -1848,6 +1850,15 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   exitScope();
   CurrentFunctionReturnType = savedRet; // [FIX] Restore state
   CurrentFunction = savedFn;
+  if (savedFn) {
+    m_LastBorrowSource = std::move(savedBorrowSource);
+    m_LastLifeDependencies = std::move(savedLifeDependencies);
+    m_LastFieldDependencies = std::move(savedFieldDependencies);
+  } else {
+    m_LastBorrowSource.clear();
+    m_LastLifeDependencies.clear();
+    m_LastFieldDependencies.clear();
+  }
 }
 
 void Sema::checkImpl(ImplDecl *Impl) {

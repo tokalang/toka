@@ -1,9 +1,27 @@
 // EXPECT_TKI: return <- data.val
+// EXPECT_TKI: pub fn borrow_text(data: TextData) -> str
+// EXPECT_TKI: pub fn borrow_bytes(data: TextData) -> bytes
+// EXPECT_TKI: return <- data.text
 pub shape Data(val: i32)
+pub shape TextData(text: str)
 
 pub fn borrow_val(data: Data) -> &res: i32
 effects:
     &res <- data.val
 {
     return &(data.val)
+}
+
+pub fn borrow_text(data: TextData) -> str
+effects:
+    return <- data.text
+{
+    return data.text
+}
+
+pub fn borrow_bytes(data: TextData) -> bytes
+effects:
+    return <- data.text
+{
+    return data.text.as_bytes()
 }

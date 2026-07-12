@@ -1,0 +1,11 @@
+// EXPECT_EVIDENCE: PAL-CALL-001
+import ./lib::{Data, Pair, touch}
+
+fn main() -> i32 {
+    auto pair# = Pair(left = Data(val = 1), right = Data(val = 2))
+    auto total = touch(pair.left, pair.right)
+    if total != 30 {
+        return 1
+    }
+    return 0
+}

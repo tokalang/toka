@@ -1437,9 +1437,6 @@ public:
   // struct GenericParam moved to top-level
   std::vector<GenericParam> GenericParams; // [UPDATED] e.g. <T, N_: usize>
   ShapeKind Kind;
-  // Legacy shape-header dependencies are no longer populated by the parser.
-  // Borrow-like fields carry dependency facts directly.
-  std::vector<std::string> LifeDependencies;
   std::vector<ShapeMember> Members;
   int64_t ArraySize = 0; // For Array kind
   uint64_t MaxAlign = 1; // For enum/legacy union alignment persistence
@@ -1447,11 +1444,10 @@ public:
 
   ShapeDecl(bool isPub, const std::string &name,
             std::vector<GenericParam> generics, ShapeKind kind,
-            std::vector<ShapeMember> members, bool packed = false,
-            std::vector<std::string> lifeDeps = {})
+            std::vector<ShapeMember> members, bool packed = false)
       : IsPub(isPub), IsPacked(packed), Name(name),
         GenericParams(std::move(generics)), Kind(kind),
-        Members(std::move(members)), LifeDependencies(std::move(lifeDeps)) {}
+        Members(std::move(members)) {}
 
   std::string toString() const override {
     std::string s = std::string(IsPub ? "Pub " : "") + "Shape(" + Name;

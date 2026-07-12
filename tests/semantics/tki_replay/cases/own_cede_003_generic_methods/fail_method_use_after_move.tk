@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0438
+// EXPECT_EVIDENCE: OWN-MOVE-001
+import ./lib::Parcel
+
+fn main() -> i32 {
+    auto parcel = Parcel<i32>(^item = new i32(7))
+    auto moved = parcel.forward()
+    return moved.item + parcel.item
+}

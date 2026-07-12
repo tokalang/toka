@@ -1,5 +1,7 @@
 // EXPECT_TKI: pub fn mut_and_read(target#: Data, view: Data) -> i32
+// EXPECT_TKI: pub fn consume_and_read(cede owned: Data, view: Data) -> i32
 pub shape Data(val: i32)
+pub shape Pair(left: Data, right: Data)
 
 pub fn read_pair(a: Data, b: Data) -> i32 {
     return a.val + b.val
@@ -8,4 +10,15 @@ pub fn read_pair(a: Data, b: Data) -> i32 {
 pub fn mut_and_read(target#: Data, view: Data) -> i32 {
     target.val = 10
     return view.val
+}
+
+pub fn touch(left#: Data, right#: Data) -> i32 {
+    left.val = 10
+    right.val = 20
+    return left.val + right.val
+}
+
+pub fn consume_and_read(cede owned: Data, view: Data) -> i32 {
+    auto moved = cede owned
+    return moved.val + view.val
 }

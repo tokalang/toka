@@ -375,14 +375,6 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
     m_OS << "shape " << decl.Name;
     printGenericParams(decl.GenericParams);
 
-    if (!decl.LifeDependencies.empty()) {
-        m_OS << " <- ";
-        for (size_t i = 0; i < decl.LifeDependencies.size(); ++i) {
-            if (i > 0) m_OS << " | ";
-            m_OS << decl.LifeDependencies[i];
-        }
-    }
-
     if (decl.Kind == ShapeKind::Array) {
         m_OS << " = [" << decl.Members[0].Type << "; " << decl.ArraySize << "]\n";
         return;

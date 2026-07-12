@@ -1,0 +1,10 @@
+// COMPILE_ONLY: runtime cleanup correctness is tracked by FZ-3.
+// EXPECT_EVIDENCE: OWN-CEDE-001 OWN-CEDE-002
+import ./lib::{Parcel, forward_parcel}
+
+fn main() -> i32 {
+    auto first = Parcel<i32>(^item = new i32(7))
+    auto second = forward_parcel<i32>(cede first)
+    auto third = second.forward()
+    return third.item - 7
+}

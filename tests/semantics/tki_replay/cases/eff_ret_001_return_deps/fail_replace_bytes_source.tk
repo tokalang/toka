@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0442
+// EXPECT_EVIDENCE: EFF-RET-001
+import ./lib::{TextData, borrow_bytes}
+
+fn main() -> i32 {
+    auto data# = TextData(text = "hello")
+    auto raw = borrow_bytes(data)
+    data = TextData(text = "goodbye")
+    return raw.len() as i32
+}

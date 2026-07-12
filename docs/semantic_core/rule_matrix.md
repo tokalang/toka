@@ -1,8 +1,8 @@
 # Toka 1.0 Semantic Rule Matrix
 
-This matrix records the first phase of the semantic-core freeze audit. It maps
-the current language contract to implementation areas and existing tests. It
-does not move tests or change compiler behavior.
+This matrix records the semantic-core freeze audit. It maps the current
+language contract to implementation areas and existing tests. It does not
+define new language behavior.
 
 Primary references:
 
@@ -37,9 +37,11 @@ Primary references:
   `tests/fail/call_readonly_member_ref_alias_mut_params.tk`
 - Interface replay requirements: callee parameter access class must be visible
   from the signature and `.tki`; call sites must not inspect callee bodies.
-- Replay tests: `tests/semantics/tki_replay/cases/pal_call_001_alias`.
-- Missing coverage: broader alias-conflict replay for member paths and cede
-  arguments.
+- Replay tests: `tests/semantics/tki_replay/cases/pal_call_001_alias` covers
+  read/read acceptance, disjoint member mutation, overlapping member
+  rejection, and cede/read alias rejection through source and source-less
+  imports.
+- Coverage closure: none known for the frozen simultaneous-call group.
 
 ### PAL-BORROW-001: Active exclusive borrows block overlapping reads and writes
 
@@ -61,8 +63,10 @@ Primary references:
   `tests/fail/pal_member_mut_borrow_payload_write.tk`
 - Interface replay requirements: no callee-body dependence for local borrow
   facts; escaping borrowed views use `EFF-*` rules.
-- Missing coverage: broader member-chain examples with mixed handle and payload
-  mutability.
+- Coverage closure: `tests/pass/g08_pal_stress_test_borrow.tk` exercises deep
+  member chains, disjoint mutable/immutable paths, handle-bearing members, and
+  payload/interior mutation. No cross-module fact is required for this local
+  rule.
 
 ### PAL-BORROW-002: Active shared borrows protect validity but do not globally freeze every payload write
 
@@ -85,7 +89,10 @@ Primary references:
   `tests/fail/cede_borrowed.tk`, `tests/fail/fail_pal_move_locked.tk`
 - Interface replay requirements: escaping shared borrow dependencies must be
   declared in signatures or `effects:`.
-- Missing coverage: explicit source-less replay for shared-borrow-returned views.
+- Replay tests: `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`
+  covers returned references, `str`, and `bytes`, including source replacement
+  rejection after source-less import.
+- Coverage closure: none known for the frozen shared-borrow validity rule.
 
 ### PAL-PATH-001: Overlap is path-prefix based, with disjoint fields allowed
 
@@ -104,7 +111,12 @@ Primary references:
   `tests/fail/borrow_field.tk`
 - Interface replay requirements: member morphology and field structure needed
   for semantic checking must survive `.tki` export even for private fields.
-- Missing coverage: generated `.tki` replay for private-field disjointness.
+- Coverage closure: downstream code cannot name private fields, so there is no
+  runnable private-field disjointness call-site path. Private structural facts
+  are preserved and replayed by
+  `tests/semantics/tki_replay/cases/own_resource_001_private_field` and
+  `own_resource_002_spread_generic`; public member paths are covered by
+  `pal_call_001_alias`.
 
 ### PAL-CFG-001: Local control-flow states are merged conservatively
 
@@ -136,7 +148,7 @@ Primary references:
   `tests/fail/async_suspension_maybe_unset.tk`,
   `tests/fail/async_suspension_continue_move_state.tk`
 - Interface replay requirements: none for purely local facts.
-- Missing coverage: none known for frozen local state merges.
+- Coverage closure: none known for frozen local state merges.
 
 ## Ownership Rules
 
@@ -159,7 +171,10 @@ Primary references:
   `tests/fail/move_direct_in_loop.tk`
 - Interface replay requirements: function signatures must expose consuming
   parameters and cede returns.
-- Missing coverage: source-less replay for generic unique-handle transfer.
+- Replay tests: `tests/semantics/tki_replay/cases/own_cede_003_generic_methods`
+  covers generic resource transfer through imported functions and methods,
+  including use-after-move rejection.
+- Coverage closure: none known for frozen generic unique transfer.
 
 ### OWN-CEDE-001: `cede` parameters are explicit transfer obligations
 
@@ -181,9 +196,10 @@ Primary references:
   `tests/fail/cede_resource_missing.tk`
 - Interface replay requirements: parameter cede-ness and return cede-ness must
   be preserved in `.tki`.
-- Replay tests: `tests/semantics/tki_replay/cases/own_cede_001_signature`.
-- Missing coverage: imported generic cede signatures and method cede
-  signatures.
+- Replay tests: `tests/semantics/tki_replay/cases/own_cede_001_signature` and
+  `tests/semantics/tki_replay/cases/own_cede_003_generic_methods` cover plain,
+  generic, and method cede signatures.
+- Coverage closure: none known for frozen cede parameter obligations.
 
 ### OWN-CEDE-002: `cede` return types require explicit transfer at return sites
 
@@ -199,8 +215,10 @@ Primary references:
   `tests/pass/g08_sync_mpsc_bounded.tk`
 - Negative tests: `tests/fail/expect_cede_return.tk`
 - Interface replay requirements: return type cede marker must survive `.tki`.
-- Replay tests: `tests/semantics/tki_replay/cases/own_cede_002_return`.
-- Missing coverage: negative replay cases for misuse of cede-returned resources.
+- Replay tests: `tests/semantics/tki_replay/cases/own_cede_002_return` covers
+  valid binding, double consumption, and use after transfer through source and
+  source-less imports.
+- Coverage closure: none known for frozen cede returns.
 
 ### OWN-RESOURCE-001: Resource values cannot be silently copied
 
@@ -229,7 +247,7 @@ Primary references:
   naked destructuring through a source-less interface;
   `tests/semantics/tki_replay/cases/own_resource_002_spread_generic` covers
   generic private resource fields, spread, and copy capture.
-- Missing coverage: none known for the frozen copy-prevention forms.
+- Coverage closure: none known for the frozen copy-prevention forms.
 
 ## Effects And Escaping Dependency Rules
 
@@ -256,9 +274,10 @@ Primary references:
   `tests/fail/call_elision_escape.tk`
 - Interface replay requirements: whole-return dependencies must be emitted and
   imported exactly.
-- Replay tests: `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`.
-- Missing coverage: dedicated `.tki` source-less replay for `str`/`bytes`
-  escaping dependencies.
+- Replay tests: `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`
+  covers reference, `str`, and `bytes` return dependencies and rejects source
+  replacement while each returned view is live.
+- Coverage closure: none known for frozen whole-return dependencies.
 
 ### EFF-MEMBER-001: Structural return dependencies must route to returned members
 
@@ -284,7 +303,7 @@ Primary references:
   unrelated-source release, and swapped member routing.
 - Cache invalidation tests:
   `tests/semantics/tki_cache/cases/member_effect_swap`.
-- Missing coverage: none known for frozen structural return routing.
+- Coverage closure: none known for frozen structural return routing.
 
 ### EFF-SHAPE-001: Shape-internal dependency declarations are excluded from 1.0
 
@@ -302,7 +321,10 @@ Primary references:
   `tests/fail/shape_member_dependency_unsupported.tk`
 - Interface replay requirements: borrow-like fields themselves must remain
   visible; unsupported dependency syntax must not be emitted as a substitute.
-- Missing coverage: none known for parser rejection.
+- Revalidation tests: `tools/scripts/test_tki_excluded_syntax_revalidation.sh`
+  proves forged shape-header and member dependency syntax is rejected with
+  `E01247` and `E01248` during interface parsing.
+- Coverage closure: none known for the 1.0 syntax exclusion.
 
 ## Async And Execution Boundary Rules
 
@@ -323,11 +345,12 @@ Primary references:
   `tests/pass/g10_async_net_test.tk`
 - Negative tests: `tests/fail/async_wait_conflict.tk`,
   `tests/fail/async_await_requires_async_function.tk`,
-  `tests/fail/async_wait_inside_async.tk`
+  `tests/fail/async_wait_inside_async.tk`,
+  `tests/fail/async_dangling_expression_contexts.tk`
 - Interface replay requirements: async return shape and dependency annotations
   must remain visible from the signature.
-- Missing coverage: negative tests for dangling async calls in more expression
-  contexts.
+- Coverage closure: dangling direct and conditional-block async calls are
+  rejected; none known for the frozen expression contexts.
 
 ### ASYNC-CAPTURE-001: Execution boundaries cannot carry hidden borrowed state
 
@@ -357,8 +380,11 @@ Primary references:
   `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
 - Interface replay requirements: execution-boundary consumers must be known from
   signatures/imports; closure capture mode must be checked at the call site.
-- Missing coverage: generic cede handoff and Send/Sync-constrained library
-  handles once those bounds become part of the frozen task contract.
+- Replay tests: `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`
+  covers concrete and generic shape/resource handoff through both sides of the
+  cede contract.
+- Coverage closure: none known for the frozen `.start` contract. Trait-gated
+  Send/Sync widening is Post1.0 and is not a missing 1.0 case.
 
 ### ASYNC-SUSPEND-001: Suspension preserves local state and async-result dependencies
 
@@ -393,7 +419,7 @@ Primary references:
   after consuming `async str <- x` with both `.wait` and `.await`, rejects
   invalidation after resume, and rejects the same borrowed result across
   `.start`.
-- Missing coverage: none known for the frozen 1.0 suspension/state boundary.
+- Coverage closure: none known for the frozen 1.0 suspension/state boundary.
 
 ## Interface Replay And Cache Rules
 
@@ -416,20 +442,24 @@ Primary references:
   `tests/semantics/tki_replay/cases/pal_call_001_alias`,
   `tests/semantics/tki_replay/cases/own_cede_001_signature`,
   `tests/semantics/tki_replay/cases/own_cede_002_return`,
+  `tests/semantics/tki_replay/cases/own_cede_003_generic_methods`,
   `tests/semantics/tki_replay/cases/own_resource_001_private_field`,
   `tests/semantics/tki_replay/cases/own_resource_002_spread_generic`,
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`,
   `tests/semantics/tki_replay/cases/eff_member_001_return_deps`,
+  `tests/semantics/tki_replay/cases/async_start_001_cede_handoff`,
   `tests/semantics/tki_replay/cases/async_suspend_001_return_deps`
 - Negative tests: tests driven by `tools/scripts/test_tki_cache_validation.sh`,
   `tools/scripts/test_semantic_replay.sh`, and
-  `tools/scripts/test_semantic_cache_invalidation.sh`
+  `tools/scripts/test_semantic_cache_invalidation.sh`, plus excluded-syntax
+  revalidation in `tools/scripts/test_tki_excluded_syntax_revalidation.sh`
 - Interface replay requirements: see `tki_semantic_contract.md`.
 - Closure coverage: unsafe public API redlines, resource/generic/trait cache
-  changes, detached async handoff, member routing, and generic private-resource
-  fields are covered by the dedicated replay and cache matrices.
-- Remaining coverage outside this phase: imported generic cede method
-  signatures and dedicated `str`/`bytes` dependency cases.
+  changes, generic cede functions and methods, detached async handoff, member
+  routing, `str`/`bytes` dependencies, generic private-resource fields, and
+  excluded shape-dependency syntax are covered by the dedicated replay,
+  revalidation, and cache matrices.
+- Coverage closure: none known for the frozen same-version TKI fact classes.
 
 ### TKI-CACHE-001: Semantic cache metadata must invalidate stale or incompatible interfaces
 
@@ -457,7 +487,7 @@ Primary references:
   bindings, and dyn object safety. Each case proves old-interface acceptance,
   `SourceHashMismatch` fallback, source-side rejection, and rejection through a
   freshly emitted source-less interface.
-- Missing coverage: none known for the semantic fact classes listed in the TKI
+- Coverage closure: none known for the semantic fact classes listed in the TKI
   contract's cache invalidation rules.
 
 ## Unsafe Boundary Rules

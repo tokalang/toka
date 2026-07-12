@@ -1,0 +1,12 @@
+// EXPECT_EVIDENCE: EFF-RET-001
+import ./lib::{TextData, borrow_text, borrow_bytes}
+
+fn main() -> i32 {
+    auto data = TextData(text = "hello")
+    auto text = borrow_text(data)
+    auto raw = borrow_bytes(data)
+    if text.len() != 5 || raw.len() != 5 {
+        return 1
+    }
+    return 0
+}

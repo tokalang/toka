@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0438
+// EXPECT_EVIDENCE: OWN-CEDE-001 OWN-CEDE-002
+import ./lib::{make_payload, consume_payload}
+
+fn main() -> i32 {
+    auto payload = make_payload()
+    auto first = consume_payload(cede payload)
+    auto second = consume_payload(cede payload)
+    return first + second
+}

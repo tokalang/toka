@@ -180,7 +180,6 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
   std::vector<GenericParam> genericParams = parseGenericParams();
   parseWhereConstraints(genericParams);
 
-  std::vector<std::string> lifeDeps;
   if (match(TokenType::Dependency)) {
     error(previous(), DiagID::ERR_PARSER_SHAPE_HEADER_DEPENDENCY_REMOVED);
     while (!check(TokenType::EndOfFile) && !check(TokenType::LParen) &&
@@ -400,8 +399,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
   }
 
   auto decl = std::make_unique<ShapeDecl>(isPub, name.Text, genericParams, kind,
-                                          std::move(members), packed,
-                                          std::move(lifeDeps));
+                                          std::move(members), packed);
   decl->ArraySize = arraySize;
   // decl->FileName = m_CurrentFile;
   decl->setLocation(name, m_CurrentFile);

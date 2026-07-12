@@ -1,0 +1,26 @@
+shape Worker(value: i32)
+
+impl Worker {
+    fn run(self) -> async i32 {
+        return self.value
+    }
+}
+
+fn fetch() -> async i32 {
+    return 1
+}
+
+fn invalid(flag: bool) -> i32 {
+    auto worker = Worker(value = 7)
+    worker.run() // EXPECT: error[E0702]
+
+    if flag {
+        fetch() // EXPECT: error[E0702]
+    }
+
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}

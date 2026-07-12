@@ -489,6 +489,13 @@ if ! run_without_test_cache bash tools/scripts/test_tki_unsafe_revalidation.sh; 
 fi
 
 echo ""
+echo "Running excluded TKI syntax revalidation tests..."
+if ! run_without_test_cache bash tools/scripts/test_tki_excluded_syntax_revalidation.sh; then
+    echo -e "${RED}Excluded TKI syntax revalidation tests failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running ODR Path & Interface Behavior lock tests..."
 if ! run_without_test_cache bash tools/scripts/test_path_behavior.sh; then
     echo -e "${RED}Path behavior lock tests failed!${NC}"

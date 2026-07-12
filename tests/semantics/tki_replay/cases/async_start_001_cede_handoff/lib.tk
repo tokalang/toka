@@ -1,9 +1,16 @@
 // EXPECT_TKI: pub fn consume_async(cede payload: Payload) -> async i32
+// EXPECT_TKI: pub fn consume_generic_async<T>(cede payload: Envelope<T>) -> async i32
 import core/traits::{@encap}
 
 pub shape Payload(val: i32)
+pub shape Envelope<T>(^value: T)
 
 impl Payload@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+impl<T> Envelope<T>@encap {
     fn drop(self#) {}
     pub fn clone(self) = delete
 }
@@ -11,4 +18,9 @@ impl Payload@encap {
 pub fn consume_async(cede payload: Payload) -> async i32 {
     auto owned = cede payload
     return owned.val
+}
+
+pub fn consume_generic_async<T>(cede payload: Envelope<T>) -> async i32 {
+    auto owned = cede payload
+    return 0
 }
