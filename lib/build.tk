@@ -1308,14 +1308,33 @@ fn run_build_impl(
 
         // Detect driver path
         auto driver_path# = string::from("tools/scripts/toka_build.py")
-        if libc_access(c"tools/scripts/toka_build.py", 0) != 0 {
+        auto driver_found# = libc_access(c"tools/scripts/toka_build.py", 0) == 0
+        if !driver_found {
             if libc_access(c"../tools/scripts/toka_build.py", 0) == 0 {
                 driver_path = string::from("../tools/scripts/toka_build.py")
+                driver_found = true
             } else if libc_access(c"../../tools/scripts/toka_build.py", 0) == 0 {
                 driver_path = string::from("../../tools/scripts/toka_build.py")
+                driver_found = true
             } else if libc_access(c"../../../tools/scripts/toka_build.py", 0) == 0 {
                 driver_path = string::from("../../../tools/scripts/toka_build.py")
+                driver_found = true
             }
+        }
+        if !driver_found {
+            auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
+            if toka_lib != 0:Addr {
+                driver_path = string::from_cstr(toka_lib as *char)
+                if !driver_path.ends_with("/") && !driver_path.ends_with("\\") {
+                    driver_path#.push_str("/")
+                }
+                driver_path#.push_str("toolchain/toka_build.py")
+                driver_found = libc_access(driver_path.c_str(), 0) == 0
+            }
+        }
+        if !driver_found {
+            println("error: Toka build driver not found; expected tools/scripts/toka_build.py or $TOKA_LIB/toolchain/toka_build.py")
+            return 1
         }
 
         // Assemble toka_build.py command line

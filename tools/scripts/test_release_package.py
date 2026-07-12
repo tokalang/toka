@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import tarfile
+
+
+def run(command, cwd, env):
+    result = subprocess.run(
+        command,
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise RuntimeError("command failed: " + " ".join(command))
+    return result.stdout + result.stderr
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("archive")
+    args = parser.parse_args()
+
+    archive = Path(args.archive).resolve()
+    if not archive.is_file():
+        raise SystemExit("release archive not found: %s" % archive)
+
+    checks = []
+    with tempfile.TemporaryDirectory(prefix="toka-package-smoke-") as temp:
+        root = Path(temp)
+        with tarfile.open(str(archive), "r:gz") as package:
+            package.extractall(str(root))
+        entries = sorted(path for path in root.iterdir() if path.is_dir())
+        if len(entries) != 1:
+            raise SystemExit("archive must contain exactly one package root")
+        package_root = entries[0]
+        suffix = ".exe" if sys.platform == "win32" else ""
+        required = ("tokac", "toka", "tokafmt", "tokalsp")
+        for name in required:
+            binary = package_root / "bin" / (name + suffix)
+            if not binary.is_file():
+                raise SystemExit("missing packaged binary: %s" % binary.name)
+            checks.append("binary:" + name)
+
+        env = os.environ.copy()
+        env["TOKA_LIB"] = str(package_root / "lib")
+        env["PATH"] = str(package_root / "bin") + os.pathsep + env.get("PATH", "")
+        tokac = package_root / "bin" / ("tokac" + suffix)
+        toka = package_root / "bin" / ("toka" + suffix)
+        run([str(tokac), "--version"], root, env)
+        checks.append("tokac-version")
+        run([str(toka), "--version"], root, env)
+        checks.append("toka-version")
+
+        direct = root / "direct.tk"
+        direct.write_text("fn main() -> i32 { return 0 }\n", encoding="utf-8")
+        direct_exe = root / ("direct" + suffix)
+        run([str(tokac), str(direct), "-o", str(direct_exe)], root, env)
+        run([str(direct_exe)], root, env)
+        checks.append("tokac-compile-run")
+
+        run([str(toka), "new", "smoke_app"], root, env)
+        output = run([str(toka), "run"], root / "smoke_app", env)
+        if "Hello, Toka!" not in output:
+            raise SystemExit("packaged toka run did not produce expected output")
+        checks.append("toka-new-run")
+
+    print(json.dumps({
+        "checks": checks,
+        "count": len(checks),
+        "result": "pass",
+        "schema": "toka.release-package-smoke",
+        "version": 1,
+    }, sort_keys=True, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    main()

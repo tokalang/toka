@@ -76,7 +76,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
 | `FZ-3` | `Blocked` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | Local closure is recorded in `semantic_core/fz3_compiler_reliability_closure.md`; clean Linux/macOS target gates remain required |
 | `FZ-4` | `Complete` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | `semantic_core/fz4_public_contract_freeze.md`, synchronized specifications, stable diagnostic tests, and ABI-boundary execution coverage |
-| `FZ-5` | `Pending` | Run the release-candidate moratorium and final 1.0 gate | Deterministic gate report and clean supported-platform release runs |
+| `FZ-5` | `Blocked` | Run the release-candidate moratorium and final 1.0 gate | Gate implementation and local evidence are recorded in `semantic_core/fz5_release_candidate_gate.md`; four clean supported-target reports remain required |
 
 Work proceeds in phase order. A later phase may collect evidence early, but it
 cannot be declared complete while an earlier semantic blocker can invalidate
@@ -188,6 +188,8 @@ unless it is separately promoted through a new audited decision.
 | `FZ-4-D01` | `FZ-4` | `Complete` | Logical capture semantics versus scalar value ABI was not stated as a public boundary | Specifications now separate source semantics from version-bound target lowering; mutable scalar and shape execution lock the distinction |
 | `FZ-4-D02` | `FZ-4` | `Complete` | README platform wording presented Windows parity as near-term while the 1.0 decision made it non-blocking | README now names Linux/macOS as supported 1.0 platforms and Windows/MSYS2, WSL2, and WASI as available or experimental non-blockers |
 | `FZ-4-D03` | `FZ-4` | `Complete` | Diagnostics used "not yet supported" without naming their 1.0 classification | `E04547` and `E0744` retain their identities and now state explicit 1.0 exclusions, with focused negative tests |
+| `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed ten-stage gate, deterministic JSON, package smoke, and a four-target workflow with no ignored mandatory failures |
+| `FZ-5-P01` | `FZ-5` | `Blocked` | Final RC evidence requires clean native reports that one workstation cannot produce | Run `tools/scripts/release_gate.py` for one identical committed revision on Linux x64/arm64 and macOS x64/arm64; all reports must have `source_dirty: false` and `result: pass` |
 
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains
@@ -274,6 +276,9 @@ The starting baseline already includes:
   ASan/UBSan fixed-seed reliability audits at 82/82;
 - completed FZ-4 public-contract freeze with synchronized compatibility,
   source/ABI, runtime, platform, and diagnostic boundaries;
+- implemented the FZ-5 unified RC gate, deterministic report, self-contained
+  package smoke, and supported-platform workflow; final clean matrix evidence
+  remains external;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 

@@ -326,7 +326,13 @@ def main():
     # Orchestrator Build
     if os.path.exists("build") and os.path.exists("build/CMakeCache.txt") and shutil.which("cmake"):
         safe_print("Building Toka compiler using cmake...")
-        subprocess.run(["cmake", "--build", "build", "--parallel", str(get_cores())], stdout=subprocess.DEVNULL)
+        build = subprocess.run(
+            ["cmake", "--build", "build", "--parallel", str(get_cores())],
+            stdout=subprocess.DEVNULL,
+        )
+        if build.returncode != 0:
+            safe_print(RED + "Compiler build failed." + NC)
+            sys.exit(build.returncode)
         
     # Detect Compilers
     CLANGXX = find_compiler_tool("clang++", "clang++")
@@ -342,11 +348,19 @@ def main():
     
     # Find all test cases
     test_cases = []
-    tests_dir = "tests/pass"
-    for root, _, files in os.walk(tests_dir):
-        for f in files:
-            if f.endswith(".tk"):
-                test_cases.append(os.path.join(root, f).replace("\\", "/"))
+    if len(sys.argv) > 1:
+        for path in sys.argv[1:]:
+            normalized = path.replace("\\", "/")
+            if not normalized.endswith(".tk") or not os.path.isfile(normalized):
+                safe_print(RED + "Invalid pass fixture: " + normalized + NC)
+                sys.exit(2)
+            test_cases.append(normalized)
+    else:
+        tests_dir = "tests/pass"
+        for root, _, files in os.walk(tests_dir):
+            for f in files:
+                if f.endswith(".tk"):
+                    test_cases.append(os.path.join(root, f).replace("\\", "/"))
                 
     test_cases.sort()
     

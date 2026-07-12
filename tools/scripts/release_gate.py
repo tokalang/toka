@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import subprocess
+import sys
+
+
+SCHEMA = "toka.release-gate"
+SCHEMA_VERSION = 1
+ASYNC_FIXTURES = (
+    "tests/pass/g09_async_basic.tk",
+    "tests/pass/g09_async_suspension_state.tk",
+    "tests/pass/g09_task_group_test.tk",
+    "tests/pass/g10_async_http_server_test.tk",
+    "tests/pass/g10_async_io_test.tk",
+    "tests/pass/g10_async_net_test.tk",
+)
+STAGE_NAMES = (
+    "build", "pass", "fail", "warn", "semantic_replay",
+    "cache_invalidation", "incremental", "async", "sanitizer",
+    "package_smoke",
+)
+
+
+def native_package_target():
+    if sys.platform == "darwin":
+        os_name = "macos"
+    elif sys.platform.startswith("linux"):
+        os_name = "linux"
+    else:
+        raise RuntimeError("release gate supports native Linux and macOS only")
+    machine = platform.machine().lower()
+    if machine in ("arm64", "aarch64"):
+        arch = "arm64"
+    elif machine in ("x86_64", "amd64"):
+        arch = "x64"
+    else:
+        raise RuntimeError("unsupported release architecture: " + machine)
+    return os_name, arch
+
+
+def strip_ansi(value):
+    return re.sub(r"\x1b\[[0-9;]*m", "", value)
+
+
+def parse_counts(name, output):
+    clean = strip_ansi(output)
+    counts = {}
+    if name in ("pass", "fail", "warn", "async"):
+        passed = re.findall(r"Passed:\s*(\d+)", clean)
+        failed = re.findall(r"Failed:\s*(\d+)", clean)
+        if passed:
+            counts["passed"] = int(passed[-1])
+        if failed:
+            counts["failed"] = int(failed[-1])
+    elif name == "semantic_replay":
+        match = re.search(r"Semantic replay cases passed:\s*(\d+).*Semantic replay cases failed:\s*(\d+)", clean, re.S)
+        if match:
+            counts = {"passed": int(match.group(1)), "failed": int(match.group(2))}
+    elif name == "cache_invalidation":
+        match = re.search(r"Semantic cache cases passed:\s*(\d+).*Semantic cache cases failed:\s*(\d+)", clean, re.S)
+        if match:
+            counts = {"passed": int(match.group(1)), "failed": int(match.group(2))}
+    elif name == "sanitizer":
+        for line in reversed(clean.splitlines()):
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if data.get("schema") == "toka.fz3-reliability-audit":
+                counts = dict(data.get("counts", {}))
+                counts["total"] = sum(data.get("counts", {}).values())
+                break
+    elif name == "package_smoke":
+        for line in reversed(clean.splitlines()):
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if data.get("schema") == "toka.release-package-smoke":
+                counts = {"checks": int(data.get("count", 0))}
+                break
+    return counts
+
+
+def run_commands(name, commands, root, log_dir, env):
+    output_parts = []
+    returncode = 0
+    for command in commands:
+        result = subprocess.run(
+            command,
+            cwd=str(root),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        output_parts.append(result.stdout)
+        if result.returncode != 0:
+            returncode = result.returncode
+            break
+    output = "".join(output_parts)
+    (log_dir / (name + ".log")).write_text(output, encoding="utf-8")
+    sys.stdout.write("[%s] %s\n" % ("PASS" if returncode == 0 else "FAIL", name))
+    sys.stdout.flush()
+    if returncode != 0:
+        sys.stdout.write(output)
+    return {
+        "counts": parse_counts(name, output),
+        "exit_code": returncode,
+        "name": name,
+        "result": "pass" if returncode == 0 else "fail",
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--target", required=True)
+    parser.add_argument("--version", default="rc")
+    parser.add_argument("--build-dir", default="build")
+    parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
+    parser.add_argument("--allow-dirty", action="store_true")
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parents[2]
+    build_dir = (root / args.build_dir).resolve()
+    work_dir = Path(args.work_dir).resolve()
+    if work_dir.exists():
+        shutil.rmtree(str(work_dir))
+    log_dir = work_dir / "logs"
+    log_dir.mkdir(parents=True)
+    output_path = Path(args.output).resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    os_name, arch = native_package_target()
+    expected_target = os_name + "-" + arch
+    if args.target != expected_target:
+        raise SystemExit("target %s does not match native runner %s" % (args.target, expected_target))
+
+    revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=str(root), text=True
+    ).strip()
+    source_dirty = bool(subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=str(root), text=True,
+    ).strip())
+    if source_dirty and not args.allow_dirty:
+        report = {
+            "result": "fail",
+            "revision": revision,
+            "schema": SCHEMA,
+            "source_dirty": True,
+            "stages": [
+                {"counts": {}, "exit_code": None, "name": name,
+                 "result": "not_run"}
+                for name in STAGE_NAMES
+            ],
+            "target": args.target,
+            "version": SCHEMA_VERSION,
+            "version_label": args.version,
+        }
+        output_path.write_text(
+            json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(report, sort_keys=True, separators=(",", ":")))
+        raise SystemExit(1)
+    env = os.environ.copy()
+    env["TOKAC"] = str(build_dir / "bin" / "tokac")
+    env["TOKA"] = str(build_dir / "bin" / "toka")
+    env["TOKA_LIB"] = str(root / "lib")
+    env["CORES"] = env.get("CORES", str(max(1, os.cpu_count() or 1)))
+
+    asan_dir = work_dir / "asan-build"
+    archive = build_dir / ("toka-%s-%s-%s.tar.gz" % (args.version, os_name, arch))
+    tool_commands = (
+        [env["TOKAC"], "-I", "lib", "-I", "tools/toka", "tools/toka/src/main.tk", "-o", str(build_dir / "bin" / "toka"), "-O3"],
+        [env["TOKAC"], "-I", "lib", "-I", "tools/tokafmt", "tools/tokafmt/src/main.tk", "-o", str(build_dir / "bin" / "tokafmt"), "-O3"],
+        [env["TOKAC"], "-I", "lib", "-I", "tools/tokalsp", "tools/tokalsp/main.tk", "-o", str(build_dir / "bin" / "tokalsp"), "-O3"],
+    )
+    stages = (
+        ("build", (["cmake", "--build", str(build_dir), "--parallel", env["CORES"]],)),
+        ("pass", ([sys.executable, "tools/scripts/test_pass.py"],)),
+        ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py"],)),
+        ("warn", ([sys.executable, "tools/scripts/test_verify_warn.py"],)),
+        ("semantic_replay", (["tools/scripts/test_semantic_replay.sh"],)),
+        ("cache_invalidation", (["tools/scripts/test_semantic_cache_invalidation.sh"],)),
+        ("incremental", (["tools/scripts/test_incremental_build.sh"],)),
+        ("async", ([sys.executable, "tools/scripts/test_pass.py"] + list(ASYNC_FIXTURES),)),
+        ("sanitizer", (
+            ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"],
+            ["cmake", "--build", str(asan_dir), "--parallel", env["CORES"]],
+            [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac")],
+        )),
+        ("package_smoke", tool_commands + (
+            ["tools/scripts/package_release.sh", args.version],
+            [sys.executable, "tools/scripts/test_release_package.py", str(archive)],
+        )),
+    )
+
+    report_stages = []
+    failed = False
+    sanitizer_env = env.copy()
+    if sys.platform == "darwin":
+        sanitizer_env["ASAN_OPTIONS"] = (
+            "detect_leaks=0:detect_container_overflow=0"
+        )
+    for name, commands in stages:
+        if failed:
+            report_stages.append({
+                "counts": {}, "exit_code": None, "name": name,
+                "result": "not_run",
+            })
+            continue
+        stage_env = sanitizer_env if name == "sanitizer" else env
+        stage = run_commands(name, commands, root, log_dir, stage_env)
+        report_stages.append(stage)
+        failed = stage["result"] != "pass"
+
+    report = {
+        "result": "fail" if failed else "pass",
+        "revision": revision,
+        "schema": SCHEMA,
+        "source_dirty": source_dirty,
+        "stages": report_stages,
+        "target": args.target,
+        "version": SCHEMA_VERSION,
+        "version_label": args.version,
+    }
+    output_path.write_text(
+        json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(report, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()

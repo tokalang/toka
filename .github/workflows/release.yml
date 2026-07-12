@@ -1,311 +1,116 @@
-name: Release
+name: Release Gate
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: 'Select target platform to build'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - linux-x64
-          - linux-arm64
-          - macos-x64
-          - macos-arm64
-          - windows-x64
       tag_name:
-        description: 'Release Tag Name (e.g. v0.1.3) to upload assets to (optional)'
+        description: Optional release tag/version label
         required: false
         type: string
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
-  prep:
-    name: Prepare Build Matrix
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - id: set-matrix
-        run: |
-          VERSION="${{ github.event.inputs.tag_name }}"
-          if [ -z "$VERSION" ]; then
-            VERSION="${{ github.ref_name }}"
-          fi
-          
-          ALL_MATRIX='[
-            {"os": "ubuntu-22.04", "display_os": "Linux (x64)", "name": "linux-x64", "pkg_cmd": "OS=linux ARCH=x64 ./tools/scripts/package_release.sh VERSION_PLACEHOLDER", "version": "VERSION_PLACEHOLDER"},
-            {"os": "ubuntu-22.04-arm", "display_os": "Linux (ARM64)", "name": "linux-arm64", "pkg_cmd": "OS=linux ARCH=arm64 ./tools/scripts/package_release.sh VERSION_PLACEHOLDER", "version": "VERSION_PLACEHOLDER"},
-            {"os": "macos-latest", "display_os": "macOS (Intel)", "name": "macos-x64", "pkg_cmd": "OS=macos ARCH=x64 ./tools/scripts/package_release.sh VERSION_PLACEHOLDER", "version": "VERSION_PLACEHOLDER"},
-            {"os": "macos-latest", "display_os": "macOS (Apple Silicon)", "name": "macos-arm64", "pkg_cmd": "OS=macos ARCH=arm64 ./tools/scripts/package_release.sh VERSION_PLACEHOLDER", "version": "VERSION_PLACEHOLDER"},
-            {"os": "windows-latest", "display_os": "Windows (x64)", "name": "windows-x64", "pkg_cmd": "OS=windows ARCH=x64 bash ./tools/scripts/package_release.sh VERSION_PLACEHOLDER", "version": "VERSION_PLACEHOLDER"}
-          ]'
-          ALL_MATRIX=$(echo "$ALL_MATRIX" | sed "s/VERSION_PLACEHOLDER/$VERSION/g")
-          
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.target }}" != "all" ]; then
-            FILTERED=$(echo "$ALL_MATRIX" | jq -c '[.[] | select(.name == "${{ github.event.inputs.target }}")]')
-          else
-            FILTERED=$(echo "$ALL_MATRIX" | jq -c '.')
-          fi
-          
-          echo "matrix={\"include\":$FILTERED}" >> $GITHUB_OUTPUT
-
-  build-and-release:
-    needs: prep
-    name: Build & Release on ${{ matrix.display_os }}
-    runs-on: ${{ matrix.os }}
+  release-gate:
+    name: RC gate (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.prep.outputs.matrix) }}
-            
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-22.04
+            os: linux
+            arch: x64
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+          - name: macos-x64
+            runner: macos-15-intel
+            os: macos
+            arch: x64
+          - name: macos-arm64
+            runner: macos-15
+            os: macos
+            arch: arm64
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM 20 (Ubuntu)
+      - name: Install LLVM 20 (Linux)
         if: runner.os == 'Linux'
         run: |
+          set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
-          sudo -E apt-get update -o Acquire::Retries=5 || true
+          sudo -E apt-get update -o Acquire::Retries=5
           wget --timeout=15 --tries=3 https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo -E ./llvm.sh 20
-          sudo apt-get install -y liblld-20-dev lld-20 libpolly-20-dev
-          
+          sudo apt-get install -y cmake ninja-build liblld-20-dev lld-20 libpolly-20-dev libzstd-dev
+
       - name: Install LLVM 20 (macOS)
         if: runner.os == 'macOS'
         run: |
-          if [ "${{ matrix.name }}" = "macos-x64" ]; then
-            # Install an independent Intel Homebrew to fetch x86_64 bottles on Apple Silicon
-            git clone --depth=1 https://github.com/Homebrew/brew ~/intel-brew
-            arch -x86_64 ~/intel-brew/bin/brew install llvm@20 lld@20 zstd || arch -x86_64 ~/intel-brew/bin/brew install llvm lld zstd
-            arch -x86_64 ~/intel-brew/bin/brew link --force llvm@20 || arch -x86_64 ~/intel-brew/bin/brew link --force llvm
-          else
-            brew install llvm@20 lld@20 || brew install llvm lld
-            brew link --force llvm@20 || brew link --force llvm
-          fi
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "LLVM_DIR=$(brew --prefix llvm@20)/lib/cmake/llvm" >> "$GITHUB_ENV"
+          echo "LLD_DIR=$(brew --prefix lld@20)/lib/cmake/lld" >> "$GITHUB_ENV"
+          echo "ZSTD_LIBRARY=$(brew --prefix zstd)/lib/libzstd.dylib" >> "$GITHUB_ENV"
 
-      - name: Setup MSYS2 (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          install: >-
-            mingw-w64-x86_64-clang
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-llvm
-            mingw-w64-x86_64-lld
-            mingw-w64-x86_64-polly
-            mingw-w64-x86_64-python
-            make
-
-      - name: Build Toka (macOS/Linux)
-        if: runner.os != 'Windows'
+      - name: Configure compiler
         run: |
-          mkdir build && cd build
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            if [ "${{ matrix.name }}" = "macos-x64" ]; then
-              export LLVM_PATH=~/intel-brew/opt/llvm@20
-              if [ ! -d "$LLVM_PATH" ]; then export LLVM_PATH=~/intel-brew/opt/llvm; fi
-              export LLD_PATH=~/intel-brew/opt/lld@20
-              if [ ! -d "$LLD_PATH" ]; then export LLD_PATH=~/intel-brew/opt/lld; fi
-              export ZSTD_PATH=~/intel-brew/opt/zstd
-              CC=$LLVM_PATH/bin/clang CXX=$LLVM_PATH/bin/clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) -DCMAKE_OSX_ARCHITECTURES=x86_64 -DLLVM_DIR=$LLVM_PATH/lib/cmake/llvm -DLLD_DIR=$LLD_PATH/lib/cmake/lld -DZSTD_LIBRARY=$ZSTD_PATH/lib/libzstd.dylib -DCMAKE_EXE_LINKER_FLAGS="-L$HOME/intel-brew/lib -L$ZSTD_PATH/lib"
-            else
-              export LLVM_PATH=$(brew --prefix llvm@20 || brew --prefix llvm)
-              CC=$LLVM_PATH/bin/clang CXX=$LLVM_PATH/bin/clang++ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_EXE_LINKER_FLAGS="-L/opt/homebrew/lib -L/usr/local/lib"
-            fi
-          else
-            cmake .. -DCMAKE_BUILD_TYPE=Release
-          fi
-          make -j4
-          
-          cd ..
-          export TOKA_LIB=$GITHUB_WORKSPACE/lib
-          
-          # Compile Runtime
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            if [ "${{ matrix.name }}" = "macos-x64" ]; then
-              export LLVM_PATH=~/intel-brew/opt/llvm@20
-              if [ ! -d "$LLVM_PATH" ]; then export LLVM_PATH=~/intel-brew/opt/llvm; fi
-              $LLVM_PATH/bin/clang -isysroot $(xcrun --show-sdk-path) -arch x86_64 -c $GITHUB_WORKSPACE/lib/sys/toka_rt.c -o $GITHUB_WORKSPACE/lib/sys/toka_rt.o
-              $LLVM_PATH/bin/clang++ -isysroot $(xcrun --show-sdk-path) -arch x86_64 -O3 -c $GITHUB_WORKSPACE/lib/sys/llvm_shim.cpp -o $GITHUB_WORKSPACE/lib/sys/llvm_shim.o -I$LLVM_PATH/include
-            else
-              export LLVM_PATH=$(brew --prefix llvm@20 || brew --prefix llvm)
-              $LLVM_PATH/bin/clang -isysroot $(xcrun --show-sdk-path) -arch arm64 -c $GITHUB_WORKSPACE/lib/sys/toka_rt.c -o $GITHUB_WORKSPACE/lib/sys/toka_rt.o
-              $LLVM_PATH/bin/clang++ -isysroot $(xcrun --show-sdk-path) -arch arm64 -O3 -c $GITHUB_WORKSPACE/lib/sys/llvm_shim.cpp -o $GITHUB_WORKSPACE/lib/sys/llvm_shim.o -I$LLVM_PATH/include
-            fi
-          else
-            clang-20 -c $GITHUB_WORKSPACE/lib/sys/toka_rt.c -o $GITHUB_WORKSPACE/lib/sys/toka_rt.o
-            clang++-20 -O3 -c $GITHUB_WORKSPACE/lib/sys/llvm_shim.cpp -o $GITHUB_WORKSPACE/lib/sys/llvm_shim.o $(llvm-config-20 --cppflags)
-          fi
-          
-          # Run full testing suite to verify compiler integrity (Native execution)
-          python3 tools/scripts/test_pass.py || true
-          cd build
-          
-          if [ "${{ matrix.name }}" = "macos-x64" ]; then
-            arch -x86_64 ./bin/tokac -I ../lib -I ../tools/toka ../tools/toka/src/main.tk -o ./bin/toka -O3
-            arch -x86_64 ./bin/tokac -I ../lib -I ../tools/tokafmt ../tools/tokafmt/src/main.tk -o ./bin/tokafmt -O3
-            arch -x86_64 ./bin/tokac -I ../lib -I ../tools/tokalsp ../tools/tokalsp/main.tk -o ./bin/tokalsp -O3
-          else
-            ./bin/tokac -I ../lib -I ../tools/toka ../tools/toka/src/main.tk -o ./bin/toka -O3
-            ./bin/tokac -I ../lib -I ../tools/tokafmt ../tools/tokafmt/src/main.tk -o ./bin/tokafmt -O3
-            ./bin/tokac -I ../lib -I ../tools/tokalsp ../tools/tokalsp/main.tk -o ./bin/tokalsp -O3
-          fi
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            ${LLVM_DIR:+-DLLVM_DIR="$LLVM_DIR"} \
+            ${LLD_DIR:+-DLLD_DIR="$LLD_DIR"} \
+            ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"}
 
-      - name: Build Toka (Windows MSYS2)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          set -e
-          mkdir build && cd build
-          # Use Ninja for better stability on Windows CI
-          CC=clang CXX=clang++ cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release
-          ninja
-          
-          cd ..
-          export TOKA_LIB=$GITHUB_WORKSPACE/lib
-          
-          # Debug Windows Environment
-          ldd ./build/bin/tokac.exe || echo "ldd failed"
-          ls -la /mingw64/bin/ | grep -i polly || echo "No polly DLL"
-          which clang || echo "clang not found"
-          clang --version || echo "clang failed"
-          ./build/bin/tokac.exe --version || echo "tokac version failed"
-          
-          # Compile Runtime
-          set -x
-          clang -c $GITHUB_WORKSPACE/lib/sys/toka_rt.c -o $GITHUB_WORKSPACE/lib/sys/toka_rt.o
-          cp $GITHUB_WORKSPACE/lib/sys/toka_rt.o $GITHUB_WORKSPACE/lib/sys/toka_rt.obj
-          clang++ -O3 -c $GITHUB_WORKSPACE/lib/sys/llvm_shim.cpp -o $GITHUB_WORKSPACE/lib/sys/llvm_shim.o
-          cp $GITHUB_WORKSPACE/lib/sys/llvm_shim.o $GITHUB_WORKSPACE/lib/sys/llvm_shim.obj
-          set +x
-          
-          # Run full testing suite to verify compiler integrity (Native execution)
-          python3 tools/scripts/test_pass.py || true
-          cd build
-
-          cat << 'C_EOF' > test_abort.c
-          #include <stdlib.h>
-          int main() { abort(); }
-          C_EOF
-          clang test_abort.c -o test_abort.exe
-          ./test_abort.exe || echo "abort exit code: $?"
-
-          cat << 'C_EOF' > test_segv.c
-          int main() { int *p = 0; *p = 1; }
-          C_EOF
-          clang test_segv.c -o test_segv.exe
-          ./test_segv.exe || echo "segv exit code: $?"
-          
-          # Check file type
-          file ./bin/tokac.exe || true
-          
-          # Compile native binaries on Windows
-          ./bin/tokac.exe -I ../lib -I ../tools/toka ../tools/toka/src/main.tk -o ./bin/toka.exe -O3
-          ./bin/tokac.exe -I ../lib -I ../tools/tokafmt ../tools/tokafmt/src/main.tk -o ./bin/tokafmt.exe -O3
-          ./bin/tokac.exe -I ../lib -I ../tools/tokalsp ../tools/tokalsp/main.tk -o ./bin/tokalsp.exe -O3
-
-      - name: Run Package Script
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+      - name: Resolve version label
+        id: version
         shell: bash
         run: |
-          ${{ matrix.pkg_cmd }}
-          
-      - name: Verify Package Delivery (E2E macOS/Linux)
-        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && runner.os != 'Windows'
-        run: |
-          mkdir -p verify_dir
-          tar -xzvf build/toka-*.tar.gz -C verify_dir/
-          DIR_NAME=$(ls verify_dir | head -n 1)
-          VERIFY_PATH="$GITHUB_WORKSPACE/verify_dir/$DIR_NAME"
-          echo "Verifying package contents in $VERIFY_PATH"
-          export PATH="$VERIFY_PATH/bin:$PATH"
-          export TOKA_LIB="$VERIFY_PATH/lib"
-          toka --version
-          cd verify_dir
-          toka new e2e_test_app
-          cd e2e_test_app
-          toka run > run.log 2>&1 || { cat run.log; exit 1; }
-          cat run.log
-          grep -q "Hello, Toka!" run.log || { echo "❌ Error: Output verification failed!"; exit 1; }
-          echo "✅ macOS/Linux package E2E verification success!"
-
-      - name: Verify Package Delivery (E2E Windows MSYS2)
-        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          mkdir -p verify_dir
-          tar -xzvf build/toka-*.tar.gz -C verify_dir/
-          DIR_NAME=$(ls verify_dir | head -n 1)
-          VERIFY_PATH=$(cygpath -u "$GITHUB_WORKSPACE/verify_dir/$DIR_NAME")
-          echo "Verifying package contents in $VERIFY_PATH"
-          
-          # =================================================================
-          # 🩺 动态依赖体检（保留已绿的 LDD 安全锁）
-          # =================================================================
-          echo "=== 🩺 LDD Dependency Scan ==="
-          ldd "$VERIFY_PATH/bin/toka.exe" || echo "ldd toka failed"
-          ldd "$VERIFY_PATH/bin/tokac.exe" || echo "ldd tokac failed"
-          
-          # 将二进制拷贝至全局命令目录
-          cp "$VERIFY_PATH/bin/toka.exe" /mingw64/bin/
-          cp "$VERIFY_PATH/bin/tokac.exe" /mingw64/bin/
-          export TOKA_LIB="$VERIFY_PATH/lib"
-          
-          # 1. 验证版本
-          echo "=== Testing toka.exe --version ==="
-          toka.exe --version || { echo "❌ Error: toka.exe --version failed!"; exit 1; }
-          
-          # 2. 验证项目创建（现场剥离真实退出码，打印目录脏数据体检）
-          echo "=== Testing toka.exe new ==="
-          cd verify_dir
-          
-          # 运行并捕获真实退出状态码
-          toka.exe new e2e_test_app
-          NEW_EXIT_CODE=$?
-          echo "toka.exe new exit code is: $NEW_EXIT_CODE"
-          
-          # 打印当前 verify_dir 目录下的文件结构，确认项目是否其实被部分创建了
-          echo "=== Verify_dir directory state ==="
-          ls -la
-          
-          if [ $NEW_EXIT_CODE -ne 0 ]; then
-              echo "❌ Error: toka.exe new failed with real exit code $NEW_EXIT_CODE!"
-              exit $NEW_EXIT_CODE
+          set -euo pipefail
+          label="${{ inputs.tag_name }}"
+          if [ -z "$label" ]; then
+            label="${{ github.ref_name }}"
           fi
-          
-          # 3. 验证项目编译与执行
-          echo "=== Testing toka.exe run ==="
-          cd e2e_test_app
-          set +e
-          toka.exe run > run.log 2>&1
-          RUN_EXIT_CODE=$?
-          set -e
-          echo "toka.exe run exit code is: $RUN_EXIT_CODE"
-          
-          cat run.log
-          if [ $RUN_EXIT_CODE -ne 0 ]; then
-              echo "❌ Error: toka.exe run failed with real exit code $RUN_EXIT_CODE!"
-              exit $RUN_EXIT_CODE
+          if [ -z "$label" ] || [ "$label" = "main" ]; then
+            label="rc"
           fi
-          
-          grep -q "Hello, Toka!" run.log || { echo "❌ Error: Output verification failed!"; exit 1; }
-          echo "✅ Windows package E2E verification success!"
+          echo "label=$label" >> "$GITHUB_OUTPUT"
 
+      - name: Run unified RC gate
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/release_gate.py \
+            --target "${{ matrix.name }}" \
+            --version "${{ steps.version.outputs.label }}" \
+            --work-dir "build/release-gate-work-${{ matrix.name }}" \
+            --output "build/release-gate-${{ matrix.name }}.json"
 
-      - name: Upload Release Asset
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.tag_name != ''
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-${{ matrix.name }}
+          path: |
+            build/release-gate-${{ matrix.name }}.json
+            build/release-gate-work-${{ matrix.name }}/logs
+          if-no-files-found: error
+
+      - name: Upload release archive
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.tag_name != '')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ matrix.version }}
-          files: build/toka-${{ matrix.version }}-${{ matrix.name }}.tar.gz
+          tag_name: ${{ steps.version.outputs.label }}
+          files: build/toka-${{ steps.version.outputs.label }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

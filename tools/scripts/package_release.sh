@@ -71,6 +71,13 @@ done
 # Copy standard library
 cp -a lib/* "${PACKAGE_DIR}/lib/"
 
+# The native build module invokes this same-version incremental driver.
+if [ ! -f "tools/scripts/toka_build.py" ]; then
+    echo "Error: Required build driver 'tools/scripts/toka_build.py' not found!"
+    exit 1
+fi
+cp -a tools/scripts/toka_build.py "${PACKAGE_DIR}/lib/toolchain/"
+
 # Copy meta files
 cp README.md "${PACKAGE_DIR}/" || true
 cp LICENSE "${PACKAGE_DIR}/" || true
