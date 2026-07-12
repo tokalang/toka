@@ -17,6 +17,7 @@
 #include "toka/HandleSurfaceStats.h"
 #include "toka/Lexer.h"
 #include "toka/MemoryContract.h"
+#include "toka/MemoryEvidence.h"
 #include "toka/MemorySummary.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
@@ -599,6 +600,10 @@ int main(int argc, char **argv) {
         llvm::outs() << "      \"interface_version\": \"" << TOKA_INTERFACE_FORMAT_VERSION << "\",\n";
         llvm::outs() << "      \"source_hash\": \"" << escapeJsonString(info.SourceHash) << "\",\n";
         llvm::outs() << "      \"content_hash\": \"" << escapeJsonString(info.ContentHash) << "\",\n";
+        llvm::outs() << "      \"memory_evidence_status\": \""
+                     << escapeJsonString(info.MemoryEvidenceStatus) << "\",\n";
+        llvm::outs() << "      \"memory_evidence_reason\": \""
+                     << escapeJsonString(info.MemoryEvidenceReason) << "\",\n";
 
         bool isRoot = (std::find(roots.begin(), roots.end(), info.CanonicalPath) != roots.end());
         std::string interfaceOut = "";
@@ -943,6 +948,29 @@ int main(int argc, char **argv) {
     pass.run(*codegen.getModule());
     dest.flush();
     dest.close();
+    if (compileOnly && emitInterface) {
+      for (const auto &ast : astModules) {
+        std::string canonicalPath =
+            toka::PathUtils::canonicalize(ast->SourcePath);
+        bool isRoot =
+            std::find(roots.begin(), roots.end(), canonicalPath) != roots.end();
+        if (!isRoot || ast->IsInterface)
+          continue;
+        std::string interfacePath = toka::PathUtils::canonicalize(
+            getFinalInterfacePath(outputFile, ast->SourcePath));
+        std::vector<std::string> evidenceErrors;
+        if (!toka::MemoryEvidenceCache::write(
+                toka::MemoryEvidenceCache::sidecarPath(interfacePath),
+                objFile, *ast,
+                toka::MemoryEvidenceCache::sourceHash(ast->SourcePath),
+                toka::Parser::TargetTriple, evidenceErrors)) {
+          for (const auto &evidenceError : evidenceErrors)
+            llvm::errs() << "Memory evidence export error: "
+                         << evidenceError << '\n';
+          return 1;
+        }
+      }
+    }
     if (verboseMode) fprintf(stderr, "Object file emitted successfully.\n");
     profile.mark("emit_object");
 

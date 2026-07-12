@@ -42,6 +42,8 @@ struct ModuleResolutionInfo {
     std::string SourceHash;
     std::string ContentHash;
     std::string SourcePath;
+    std::string MemoryEvidenceStatus;
+    std::string MemoryEvidenceReason;
 };
 
 class ModuleResolver {

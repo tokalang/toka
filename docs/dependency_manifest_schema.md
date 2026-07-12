@@ -115,6 +115,10 @@
 * **类型**：`string` (16位 FNV-1a 64位十六进制哈希值)
 * **说明**：该模块**实际被加载的物理文件**（即 `kind` 为 `interface` 时对 `.tki` 文件，`kind` 为 `source` 时对 `.tk` 文件）的当前物理哈希快照。
 
+### 9.1 Trusted memory evidence
+* **类型**：`string` status and reason fields
+* **说明**：`memory_evidence_status` 和 `memory_evidence_reason` 描述编译器缓存 `.tke` 与接口、目标平台及 backing object 的验证结果。除 `Valid` 外均按保守 cache miss 处理，不导致语言规则降级。
+
 ### 10. `outputs`
 * **类型**：`object`
 * **说明**：模块被成功编译后预期的输出产物物理路径：

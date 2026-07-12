@@ -42,7 +42,7 @@ enum class FunctionMemoryEffect : uint32_t {
   UnknownBoundary = 1u << 7,
 };
 
-enum class MemorySummaryOrigin { SourceBody, SignatureOnly };
+enum class MemorySummaryOrigin { SourceBody, SignatureOnly, TrustedCache };
 
 struct MemoryRootSummary {
   uint32_t LocalEffects = 0;

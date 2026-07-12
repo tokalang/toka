@@ -1,4 +1,5 @@
 #include "toka/ModuleResolver.h"
+#include "toka/MemoryEvidence.h"
 #include "toka/Lexer.h"
 #include "toka/Parser.h"
 #include "toka/DiagnosticEngine.h"
@@ -281,6 +282,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
                                     std::string *outActualPath) {
   std::string resolvedPath = filename;
   std::string originalTkPath = "";
+  std::string selectedCachedObjectPath;
   bool selectedCachedInterfaceHasBacking = false;
   if (overrideSourceCode.empty()) {
       resolvedPath = resolveSourcePath(filename, m_SearchPaths);
@@ -305,6 +307,8 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
           if (cacheTkiExists) {
               resolvedPath = expectedTki;
               selectedCachedInterfaceHasBacking = isObjProvided || cacheObjExists;
+              if (selectedCachedInterfaceHasBacking)
+                  selectedCachedObjectPath = PathUtils::canonicalize(expectedObj);
           }
       }
   } else {
@@ -377,6 +381,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   info.CacheStatusReason = cacheStatusReason;
   info.SourceHash = sourceHash;
   info.ContentHash = contentHash;
+  info.MemoryEvidenceStatus = "NotApplicable";
   if (finalIsInterface) {
       info.SourcePath = meta.SourcePath;
   } else {
@@ -464,6 +469,20 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       (isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
        isWithinRoot(canonicalPath, m_TrustedSystemRoots));
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
+  if (module->HasBackingObject) {
+    std::string evidenceReason;
+    MemoryEvidenceStatus evidenceStatus = MemoryEvidenceCache::load(
+        MemoryEvidenceCache::sidecarPath(resolvedPath),
+        selectedCachedObjectPath, meta.SourceHash, Parser::TargetTriple,
+        module->TrustedMemorySummaries, evidenceReason);
+    module->MemoryEvidenceStatus = toString(evidenceStatus);
+    module->MemoryEvidenceReason = evidenceReason;
+    auto record = m_ResolutionRecords.find(canonicalPath);
+    if (record != m_ResolutionRecords.end()) {
+      record->second.MemoryEvidenceStatus = module->MemoryEvidenceStatus;
+      record->second.MemoryEvidenceReason = evidenceReason;
+    }
+  }
 
   // Recursively parse imports
   for (const auto &imp : module->Imports) {

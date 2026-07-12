@@ -1821,6 +1821,9 @@ public:
   bool IsInterface = false;
   bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
+  std::map<std::string, FunctionMemorySummary> TrustedMemorySummaries;
+  std::string MemoryEvidenceStatus = "NotApplicable";
+  std::string MemoryEvidenceReason;
   std::vector<std::unique_ptr<ImportDecl>> Imports;
   std::vector<std::unique_ptr<TypeAliasDecl>> TypeAliases;
   std::vector<std::unique_ptr<ShapeDecl>> Shapes;

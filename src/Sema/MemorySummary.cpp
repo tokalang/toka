@@ -897,9 +897,14 @@ void MemorySummaryAnalysis::dumpJSON(const std::vector<Module *> &modules,
       out << ',';
     const auto &summary = functions[i]->MemorySummary;
     out << "{\"name\":\"" << escapeJSON(summary.FunctionName)
-        << "\",\"origin\":\""
-        << (summary.Origin == MemorySummaryOrigin::SourceBody ? "source_body"
-                                                              : "signature_only")
+        << "\",\"origin\":\"";
+    if (summary.Origin == MemorySummaryOrigin::SourceBody)
+      out << "source_body";
+    else if (summary.Origin == MemorySummaryOrigin::TrustedCache)
+      out << "trusted_cache";
+    else
+      out << "signature_only";
+    out
         << "\",\"local_effects\":";
     dumpNames(out, effectNames<FunctionMemoryEffect>(summary.LocalEffects));
     out << ",\"effects\":";
