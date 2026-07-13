@@ -123,9 +123,6 @@ impl<'T: @Send> Receiver<'T> {
     }
     
     pub fn recv(self#) -> Result<Option<'T>, Error> {
-        unsafe {
-            println("Receiver::recv: Receiver address: {}, channel address: {}", ((*self) as OAddr).to_string(), (self.channel as OAddr).to_string())
-        }
         auto lguard = self.channel.state.lock()!
 
         auto *q = lguard.get_ref()

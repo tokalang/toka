@@ -180,7 +180,10 @@ core contract ships.
   thread / task handoff must not carry hidden borrowed state, and crossing
   state must be explicit through `cede`, `copy`, or library types with
   appropriate `Send` / `Sync`-style bounds. More expressive structured
-  concurrency can build on this boundary later.
+  concurrency, task groups, force-destroy cancellation, and async join
+  combinators remain post-1.0. The pre-1.0 `std/task::TaskGroup` experiment is
+  not part of the frozen library surface; future structured concurrency can
+  build on this ownership boundary later.
 - Consuming iteration, async iteration, and a larger combinator library remain
   post-1.0 work; they must extend the frozen synchronous iterator facets.
 - Shape-internal member dependency model: future work may specify syntax such as

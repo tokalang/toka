@@ -8,7 +8,6 @@ import sys/sync::{sys_mutex_create}
 import core/option::{Option}
 import core/result::{Result}
 import std/task::{sleep_async, detach_forget}
-import std/io::{println}
 
 /// @Context trait defines the unified lifecycle control contract
 pub trait @Context {
@@ -89,15 +88,13 @@ impl Canceler {
                 }
                 val.canceled = true
                 val.err = Option<string>::Some(string::from("context canceled"))
-                
+
                 loop val.waiters.len() > 0 {
                     auto tx# = val.waiters#.pop().unwrap()
                     auto _ = tx#.send(true)
                 }
             }
             auto Result::Err(err) => {
-                println("Mutex lock failed in Canceler::call")
-                println("{}", err.message)
                 assert(false, "Mutex lock failed in Canceler::call")
             }
         }
@@ -167,52 +164,46 @@ impl<'C: @Context> CancelContext<'C>@Context {
     }
 }
 
-fn propagate_cancel(raw_addr: Addr) -> async i32 {
-    println("  [prop_cancel] propagate_cancel coroutine started")
+fn propagate_cancel(cede canceler: Canceler) -> async i32 {
+    auto owned_canceler# = cede canceler
     sleep_async(1).await
     loop true {
         auto should_exit# = false
         auto parent_canceled# = false
         
-        unsafe {
-            auto *mut_ptr = (raw_addr as *Mutex<CancelState>)
-            auto lock_res = mut_ptr.lock()
-            match lock_res {
-                auto Result::Ok(&lock) => {
-                    auto *val# = lock.get_ref()
-                    if val.canceled {
-                        should_exit = true
-                    } else if val.has_parent {
-                        auto res = val.parent_rx#.try_recv()
-                        match res {
-                            auto Result::Ok(opt) => {
-                                match opt {
-                                    auto Option::Some(val_sig) => {
-                                        println("  [prop_cancel] parent signal received in child!")
-                                        parent_canceled = true
-                                    }
-                                    auto Option::None() => {}
+        auto lock_res = owned_canceler.state.lock()
+        match lock_res {
+            auto Result::Ok(&lock) => {
+                auto *val# = lock.get_ref()
+                if val.canceled {
+                    should_exit = true
+                } else if val.has_parent {
+                    auto res = val.parent_rx#.try_recv()
+                    match res {
+                        auto Result::Ok(opt) => {
+                            match opt {
+                                auto Option::Some(val_sig) => {
+                                    parent_canceled = true
                                 }
-                            }
-                            auto Result::Err(err) => {
-                                println("  [prop_cancel] parent_rx try_recv failed!")
+                                auto Option::None() => {}
                             }
                         }
-                    }
-                    
-                    if parent_canceled {
-                        val.canceled = true
-                        val.err = Option<string>::Some(string::from("context canceled"))
-                        loop val.waiters.len() > 0 {
-                            auto tx# = val.waiters#.pop().unwrap()
-                            auto _ = tx#.send(true)
+                        auto Result::Err(err) => {
                         }
-                        should_exit = true
                     }
                 }
-                auto Result::Err(err) => {
-                    println("  [prop_cancel] mutex lock failed!")
+
+                if parent_canceled {
+                    val.canceled = true
+                    val.err = Option<string>::Some(string::from("context canceled"))
+                    loop val.waiters.len() > 0 {
+                        auto tx# = val.waiters#.pop().unwrap()
+                        auto _ = tx#.send(true)
+                    }
+                    should_exit = true
                 }
+            }
+            auto Result::Err(err) => {
             }
         }
         
@@ -222,7 +213,6 @@ fn propagate_cancel(raw_addr: Addr) -> async i32 {
         
         sleep_async(1).await
     }
-    println("  [prop_cancel] propagate_cancel coroutine exiting")
     return 0
 }
 
@@ -264,8 +254,7 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
             }
             _ => {}
         }
-        auto raw_addr = canceler_fn.~state as Addr
-        auto h = propagate_cancel(raw_addr).start
+        auto h = propagate_cancel(cede canceler_fn.clone()).start
         detach_forget<i32>(cede h)
     }
     
@@ -317,27 +306,25 @@ pub shape TimeoutResult<'C: @Context> (
 )
 
 
-fn timer_helper(ms: i32, raw_addr: Addr) -> async i32 {
+fn timer_helper(ms: i32, cede canceler: Canceler) -> async i32 {
+    auto owned_canceler# = cede canceler
     sleep_async(ms).await
-    unsafe {
-        auto *mut_ptr = (raw_addr as *Mutex<CancelState>)
-        auto lock_res = mut_ptr.lock()
-        match lock_res {
-            auto Result::Ok(&lock) => {
-                auto *val# = lock.get_ref()
-                if val.canceled {
-                    return 0
-                }
-                val.canceled = true
-                val.err = Option<string>::Some(string::from("context canceled"))
-                
-                loop val.waiters.len() > 0 {
-                    auto tx# = val.waiters#.pop().unwrap()
-                    auto _ = tx#.send(true)
-                }
+    auto lock_res = owned_canceler.state.lock()
+    match lock_res {
+        auto Result::Ok(&lock) => {
+            auto *val# = lock.get_ref()
+            if val.canceled {
+                return 0
             }
-            _ => {}
+            val.canceled = true
+            val.err = Option<string>::Some(string::from("context canceled"))
+
+            loop val.waiters.len() > 0 {
+                auto tx# = val.waiters#.pop().unwrap()
+                auto _ = tx#.send(true)
+            }
         }
+        _ => {}
     }
     return 0
 }
@@ -346,8 +333,7 @@ pub fn with_timeout<'C: @Context>(cede 'parent#: C, timeout_ms: i32) -> TimeoutR
     auto res = with_cancel<'C>(cede 'parent)
     auto deadline_val = Instant::now().add(Duration::from_millis(timeout_ms as u64))
     
-    auto raw_addr = res.canceler.~state as Addr
-    auto h_task = timer_helper(timeout_ms, raw_addr).start
+    auto h_task = timer_helper(timeout_ms, cede res.canceler.clone()).start
     detach_forget<i32>(cede h_task)
     
     auto timeout_ctx = TimeoutContext<'C>(

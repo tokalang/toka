@@ -236,7 +236,10 @@ impl TcpStream {
             }
             
             auto coro = __builtin_coro_current_handle() as Addr
-            sysnet::reactor_add_write_impl(get_reactor_fd(), fd, coro)
+            if !sysnet::reactor_add_write_impl(get_reactor_fd(), fd, coro) {
+                sysnet::net_close_impl(fd)
+                return TcpStream(fd=-1, closed=true)
+            }
             __builtin_coro_suspend()
             
             auto get_err = sysnet::net_getsockopt_error_impl(fd)
@@ -459,7 +462,11 @@ pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<u
                     
                     if err == eagain {
                         auto coro = __builtin_coro_current_handle() as Addr
-                        sysnet::reactor_add_read_impl(get_reactor_fd(), stream.fd, coro)
+                        if !sysnet::reactor_add_read_impl(get_reactor_fd(), stream.fd, coro) {
+                            ret = Result<usize, string>::Err(string::from("Failed to register async read"))
+                            done = true
+                            continue
+                        }
                         __builtin_coro_suspend()
                     } else {
                         sleep_async(0:i64).await
@@ -495,7 +502,11 @@ pub fn net_async_accept(listener: TcpListener) -> async TcpStream {
                     
                     if err == eagain {
                         auto coro = __builtin_coro_current_handle() as Addr
-                        sysnet::reactor_add_read_impl(get_reactor_fd(), listener.fd, coro)
+                        if !sysnet::reactor_add_read_impl(get_reactor_fd(), listener.fd, coro) {
+                            ret = TcpStream(fd=-1, closed=true)
+                            done = true
+                            continue
+                        }
                         __builtin_coro_suspend()
                     } else {
                         sleep_async(0:i64).await
@@ -530,7 +541,11 @@ pub fn net_async_write(stream: TcpStream, *buf: u8, len: usize) -> async Result<
                     
                     if err == eagain {
                         auto coro = __builtin_coro_current_handle() as Addr
-                        sysnet::reactor_add_write_impl(get_reactor_fd(), stream.fd, coro)
+                        if !sysnet::reactor_add_write_impl(get_reactor_fd(), stream.fd, coro) {
+                            ret = Result<usize, string>::Err(string::from("Failed to register async write"))
+                            done = true
+                            continue
+                        }
                         __builtin_coro_suspend()
                     } else {
                         sleep_async(0:i64).await

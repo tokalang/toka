@@ -163,7 +163,8 @@ unless it is separately promoted through a new audited decision.
 - Full value-domain exhaustiveness, private-helper dependency inference, and
   more aggressive PAL acceptance.
 - Consuming iterators, async iterators and combinator breadth, async blocks,
-  parameterized `.start`, cancellation semantics, and structured concurrency.
+  parameterized `.start`, cancellation semantics, task groups, async join
+  combinators, and structured concurrency.
 - Global destructuring and formatted `String`/`str` printing beyond the
   currently supported plain formatting path.
 - Resolver-normalized cross-package identity refinements for `pub(path)`.
@@ -307,6 +308,10 @@ The starting baseline already includes:
 - completed the callable-protocol closure with receiver-morphology inference,
   generic/user callables, iterator and thread composition, consuming exact-drop
   execution, stable diagnostics, and a thirteenth replay case;
+- completed the async runtime lifecycle audit: detached coroutine frames now
+  have an explicit destruction path, context helpers own their shared state,
+  reactor registration failure no longer suspends forever, and the unsafe
+  pre-1.0 `TaskGroup` cancellation experiment is removed;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 

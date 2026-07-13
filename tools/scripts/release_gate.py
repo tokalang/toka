@@ -16,7 +16,7 @@ SCHEMA_VERSION = 1
 ASYNC_FIXTURES = (
     "tests/pass/g09_async_basic.tk",
     "tests/pass/g09_async_suspension_state.tk",
-    "tests/pass/g09_task_group_test.tk",
+    "tests/pass/g09_async_detached_lifecycle.tk",
     "tests/pass/g10_async_http_server_test.tk",
     "tests/pass/g10_async_io_test.tk",
     "tests/pass/g10_async_net_test.tk",

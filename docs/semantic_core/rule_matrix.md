@@ -421,6 +421,22 @@ Primary references:
   `.start`.
 - Coverage closure: none known for the frozen 1.0 suspension/state boundary.
 
+### ASYNC-LIFECYCLE-001: Task frames and detached state retain one explicit owner
+
+- Status: `Frozen` for normal completion and detach; cancellation remains
+  `Post1.0`.
+- Runtime form: `TaskHandle` drop, `detach_forget`, scheduler completion,
+  context propagation helpers.
+- Rule: dropping or explicitly detaching a live handle transfers frame cleanup
+  to the scheduler; a completed frame is destroyed exactly once. Detached
+  helpers must own state carried across their execution boundary rather than
+  retain an unowned raw address.
+- Conservative boundary: force-destroy cancellation, task groups, recursive
+  child cancellation, and awaiter unlinking are not part of the 1.0 contract.
+- Evidence: `g09_async_detached_lifecycle.tk`,
+  `task_group_cancellation_post_1_0.tk`, and
+  `semantic_core/async_runtime_lifecycle_audit.md`.
+
 ## Iterator Protocol Rules
 
 ### ITER-PROTOCOL-001: Non-array iteration is resolved through formal facets

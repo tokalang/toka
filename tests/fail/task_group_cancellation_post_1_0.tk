@@ -1,0 +1,9 @@
+import std/task::{TaskGroup}
+
+fn main() -> i32 {
+    auto group# = TaskGroup::new()
+    group#.cancel_all()
+    return 0
+}
+
+// EXPECT: error[E0404]
