@@ -34,7 +34,7 @@ states.
 | `ERG-1` | `Complete` | Equality across the zero-cost owned text view | `string == str` and `str == string`, positive runtime coverage, no allocation or consumption, QSLite CLI and vertical use |
 | `ERG-2` | `Complete` | Contextual numeric literals | Calls, methods, constructors, returns, assignments, comparisons, negative literals, overflow rejection, and stable diagnostics |
 | `ERG-3` | `Complete` | Text and byte API friction | Audit avoidable `as_str()`, `string::from()`, and temporary bindings in the native builder and QSLite; classify every retained conversion |
-| `ERG-4` | `Pending` | Ownership-facing expression composition | Direct member chains, container resource clone, `cede` capture, Result/Option propagation, and cleanup must work without hiding transfer |
+| `ERG-4` | `Complete` | Ownership-facing expression composition | Direct member chains, container resource clone, `cede` capture, Result/Option propagation, and cleanup must work without hiding transfer |
 | `ERG-5` | `Pending` | Iterator, closure, and async composition | Real algorithms must accept natural closures and iterator values without adapter noise or lost dependency facts |
 | `ERG-6` | `Pending` | Diagnostic ergonomics | Rejections identify the ownership, type, effect, or ambiguity that requires explicit source and show a viable spelling where one exists |
 | `ERG-7` | `InProgress` | Real-program normalization | Native builder and QSLite contain no known avoidable type repetition, view conversion, allocation-only comparison, or workaround temporary |
@@ -87,13 +87,21 @@ The first slice closes `ERG-1` and establishes the audit mechanism:
   `Vec<string>::get_ref()`, whose result is a pointer rather than an owned
   `string`. Compiler-synthesized projections mark their receiver as already
   checked, so consuming expressions such as `Result::unwrap()` are checked
-  exactly once. The six retained calls are `ERG-4` expression-composition
-  boundaries rather than view API requirements.
+  exactly once. The six retained calls are explicit raw-pointer boundaries,
+  not view API requirements. Making `*string -> str` implicit would change the
+  raw-pointer surface and requires a separate owner decision.
 - The obsolete `implicit_deref_err` fixture was removed: it rejected the now
   frozen `string -> str` view and did not exercise resource copying. Actual
   resource-copy rejection remains covered by destructuring, spread, closure,
   and source-less resource fixtures; non-`cede` shape parameters remain
   observational and may accept a reference to the same soul.
+- Ownership-facing expression composition is closed for the frozen surface:
+  `Vec<Resource>::clone()` deep-clones elements, pointer-return member chains
+  such as `rows.get_ref(0).key` lower correctly, `Result/Option::unwrap()` can
+  feed a view parameter or direct member access, and `cede` closure capture,
+  branch return, error propagation, async suspension, and frame cleanup each
+  drop resources exactly once. None of these paths inserts a hidden clone,
+  transfer, or `cede`.
 - Focused execution passes, the complete positive corpus is 329/329 after
   running its two local-socket cases outside the restricted sandbox, and the
   negative corpus is 253/253. Warn is 1/1 and semantic replay is 15/15.
