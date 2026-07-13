@@ -55,6 +55,25 @@ pub fn cmd_fetch() -> i32 {
     return command#.status()
 }
 
+pub fn cmd_fetch_quiet() -> i32 {
+    auto helper = package_helper_path()
+    if helper.is_empty() { return 1 }
+    auto command# = package_command(string::from("fetch"))
+    unsafe {
+        auto offline = libc_getenv(c"TOKA_OFFLINE") as Addr
+        if offline != 0:Addr && string::from_cstr(offline as *char) == string::from("1") {
+            command#.arg(string::from("--offline"))
+        }
+    }
+    auto result = command#.output()
+    if result.is_err() { return 1 }
+    auto output = result.unwrap()
+    if !output.status.success() && !output.stderr.is_empty() {
+        println("{}", output.stderr)
+    }
+    return output.status.legacy_code()
+}
+
 pub fn cmd_update() -> i32 {
     auto command# = package_command(string::from("fetch"))
     command#.arg(string::from("--refresh"))

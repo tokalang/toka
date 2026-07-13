@@ -70,6 +70,8 @@ done
 
 # Copy standard library
 cp -a lib/* "${PACKAGE_DIR}/lib/"
+find "${PACKAGE_DIR}" -type d -name __pycache__ -prune -exec rm -rf {} +
+find "${PACKAGE_DIR}" -type f -name '*.pyc' -delete
 
 # The native build module invokes this same-version incremental driver.
 if [ ! -f "tools/scripts/toka_build.py" ]; then

@@ -45,6 +45,10 @@ def main():
         if len(entries) != 1:
             raise SystemExit("archive must contain exactly one package root")
         package_root = entries[0]
+        generated_python = list(package_root.rglob("__pycache__")) + list(package_root.rglob("*.pyc"))
+        if generated_python:
+            raise SystemExit("release archive contains generated Python cache files")
+        checks.append("no-python-cache")
         suffix = ".exe" if sys.platform == "win32" else ""
         required = ("tokac", "toka", "tokafmt", "tokalsp")
         for name in required:
@@ -52,6 +56,12 @@ def main():
             if not binary.is_file():
                 raise SystemExit("missing packaged binary: %s" % binary.name)
             checks.append("binary:" + name)
+
+        for name in ("toka_package.py", "toka_safe_extract.py"):
+            helper = package_root / "lib" / "toolchain" / name
+            if not helper.is_file():
+                raise SystemExit("missing packaged package helper: %s" % name)
+            checks.append("package-helper:" + name)
 
         env = os.environ.copy()
         env["TOKA_LIB"] = str(package_root / "lib")
@@ -75,6 +85,31 @@ def main():
         if "Hello, Toka!" not in output:
             raise SystemExit("packaged toka run did not produce expected output")
         checks.append("toka-new-run")
+
+        dependency = root / "local dependency"
+        dependency_module = dependency / "lib" / "dep" / "mod.tk"
+        dependency_module.parent.mkdir(parents=True)
+        (dependency / "package.tk").write_text(
+            'pub const PACKAGE = (name = "dep", version = "1.0.0", dependencies = ())\n',
+            encoding="utf-8",
+        )
+        dependency_module.write_text("pub fn value() -> i32 { return 1 }\n", encoding="utf-8")
+        package_project = root / "package-project"
+        package_project.mkdir()
+        (package_project / "package.tk").write_text(
+            'pub const PACKAGE = (name = "root", version = "1.0.0", dependencies = (dep = %s,))\n'
+            % json.dumps(str(dependency)),
+            encoding="utf-8",
+        )
+        run([str(toka), "fetch"], package_project, env)
+        lock = package_project / "package.lock"
+        if not lock.read_text(encoding="utf-8").startswith("toka-lock-v1\n"):
+            raise SystemExit("packaged toka did not create a v1 lock")
+        offline_env = env.copy()
+        offline_env["TOKA_OFFLINE"] = "1"
+        run([str(toka), "fetch"], package_project, offline_env)
+        run([str(toka), "rm", "dep"], package_project, env)
+        checks.append("toka-package-lock-offline-remove")
 
     print(json.dumps({
         "checks": checks,

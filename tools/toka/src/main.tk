@@ -5,7 +5,7 @@ import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, meta
 import sys/libc::{libc_system, libc_printf, libc_getenv}
 import std/vec::{Vec}
 import std/process::{Command}
-import src/pkg_manager::{cmd_fetch, cmd_update, cmd_remove, build_pkg_mappings, cmd_publish, cmd_search, resolve_package}
+import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, cmd_publish, cmd_search, resolve_package}
 
 
 fn print_help() {
@@ -411,10 +411,11 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
     } else {
         env::set_var(string::from("TOKA_USE_FORGE"), string::from("0"))
     }
-    // Phase 4: Implicit fetch before build
-    auto fetch_res = cmd_fetch()
-    if fetch_res != 0 {
-        return fetch_res
+    if exists(string::from("package.tk")) {
+        auto fetch_res = cmd_fetch_quiet()
+        if fetch_res != 0 {
+            return fetch_res
+        }
     }
 
     {

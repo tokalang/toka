@@ -535,7 +535,9 @@ class Resolver:
         if locked and digest != locked.archive_sha256:
             raise PackageError("downloaded archive does not match package.lock: " + dependency.alias)
         cached = cache / (digest + ".tar.gz")
-        if not cached.exists():
+        if cached.is_file() and file_sha256(cached) == digest:
+            downloaded.unlink()
+        else:
             os.replace(downloaded, cached)
         return cached, digest
 
@@ -666,6 +668,7 @@ class Resolver:
         transaction_path = tempfile.mkdtemp(prefix="resolve-", dir=staging)
         self.transaction = Path(transaction_path)
         committed: list[Path] = []
+        retired: list[tuple[Path, Path]] = []
         try:
             for dependency in parse_manifest(self.manifest):
                 self._resolve(dependency)
@@ -675,12 +678,36 @@ class Resolver:
                     continue
                 os.replace(source, target)
                 committed.append(target)
+            current_targets = {
+                self._install_path(entry)
+                for entry in self.entries.values()
+                if entry.kind != "path"
+            }
+            obsolete = sorted(
+                {
+                    self._install_path(entry)
+                    for entry in self.old_lock.values()
+                    if entry.kind != "path" and self._install_path(entry) not in current_targets
+                },
+                key=str,
+            )
+            retirement = self.transaction / "retired"
+            retirement.mkdir()
+            for index, target in enumerate(obsolete):
+                if not target.exists():
+                    continue
+                backup = retirement / str(index)
+                os.replace(target, backup)
+                retired.append((target, backup))
             encoded = encode_lock(self.entries)
             atomic_write(self.lock_path, encoded)
             return self.entries
         except BaseException:
             for target in reversed(committed):
                 shutil.rmtree(target, ignore_errors=True)
+            for target, backup in reversed(retired):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(backup, target)
             raise
         finally:
             shutil.rmtree(self.transaction, ignore_errors=True)

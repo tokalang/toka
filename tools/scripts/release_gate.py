@@ -208,6 +208,7 @@ def main():
             [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac"), "--timeout", audit_timeout],
         )),
         ("package_smoke", package_tool_commands + (
+            [sys.executable, "tools/scripts/test_package_manager_supply_chain.py", "--toka", env["TOKA"]],
             ["tools/scripts/package_release.sh", args.version],
             [sys.executable, "tools/scripts/test_release_package.py", str(archive)],
         )),

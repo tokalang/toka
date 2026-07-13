@@ -1051,8 +1051,9 @@ fn run_build_impl(
         cmd1#.arg(cede tokac_path.clone())
         auto driver_arg_index# = 0:usize
         loop driver_arg_index < compiler_args.len() {
-            cmd1#.arg(string::from("--compiler-arg"))
-            cmd1#.arg(cede compiler_args.get_ref(driver_arg_index).clone())
+            auto driver_arg# = string::from("--compiler-arg=")
+            driver_arg#.push_str(compiler_args.get_ref(driver_arg_index).as_str())
+            cmd1#.arg(cede driver_arg)
             driver_arg_index += 1
         }
         auto src_str = string::from_cstr(*s)

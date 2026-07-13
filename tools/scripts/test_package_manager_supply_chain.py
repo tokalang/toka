@@ -224,12 +224,16 @@ def test_cycles_and_conflicts(root: Path) -> None:
 def test_registry_and_rollback(root: Path) -> None:
     registry = root / "registry"
     registry.mkdir()
+    child = root / "registry-child"
+    write_package(child, "child", [])
+    child_archive = registry / "child-1.0.0.tar.gz"
+    make_archive(child, child_archive)
     package = root / "registry-package"
-    write_package(package, "reg", [])
+    write_package(package, "reg", [("child", '"1.0.0"')])
     archive = registry / "reg-1.0.0.tar.gz"
     make_archive(package, archive)
     (registry / "catalog.json").write_text(
-        '{"packages":[{"name":"reg","version":"1.0.0"}]}\n',
+        '{"packages":[{"name":"reg","version":"1.0.0"},{"name":"child","version":"1.0.0"}]}\n',
         encoding="utf-8",
     )
     old_registry = os.environ.get("TOKA_REGISTRY_URL")
@@ -238,6 +242,7 @@ def test_registry_and_rollback(root: Path) -> None:
         project = root / "registry-project"
         write_package(project, "root", [("reg", '"1.0.0"')])
         entries = resolve(project)
+        assert sorted(entries) == ["child", "reg"]
         entry = entries["reg"]
         assert entry.archive_sha256 != "-"
         lock_bytes = (project / "package.lock").read_bytes()
@@ -245,6 +250,17 @@ def test_registry_and_rollback(root: Path) -> None:
         assert installed.is_dir()
         resolve(project, offline=True)
         assert (project / "package.lock").read_bytes() == lock_bytes
+
+        shutil.rmtree(installed)
+        resolve(project, offline=True)
+        assert installed.is_dir()
+        shutil.rmtree(installed)
+        cached = project / ".toka" / "cache" / "archives" / (entry.archive_sha256 + ".tar.gz")
+        cached.write_bytes(b"corrupt cache")
+        expect_error(lambda: resolve(project, offline=True), "missing or corrupt")
+        assert not installed.exists()
+        resolve(project)
+        assert installed.is_dir() and file_sha256(cached) == entry.archive_sha256
 
         (installed / "lib" / "reg" / "mod.tk").write_text("corrupt\n", encoding="utf-8")
         expect_error(lambda: resolve(project, offline=True), "does not match package.lock")
@@ -257,7 +273,14 @@ def test_registry_and_rollback(root: Path) -> None:
         expect_error(lambda: resolve(rollback), "escapes")
         assert not (rollback / "package.lock").exists()
         assert not (rollback / ".toka" / "packages" / "reg-1.0.0").exists()
+        assert not (rollback / ".toka" / "packages" / "child-1.0.0").exists()
         assert not (rollback / "escaped").exists()
+
+        (project / "package.tk").write_text(manifest("root-after-remove", []), encoding="utf-8")
+        resolve(project)
+        assert read_lock(project / "package.lock") == {}
+        assert not installed.exists()
+        assert not (project / ".toka" / "packages" / "child-1.0.0").exists()
     finally:
         if old_registry is None:
             os.environ.pop("TOKA_REGISTRY_URL", None)
