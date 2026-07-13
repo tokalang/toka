@@ -215,6 +215,16 @@ Local `NB-1` through `NB-3` evidence is complete, including 100 fixed-seed
 mutation cycles. `NB-4` remains in progress until the dedicated Linux/macOS
 qualification workflow produces reports for both supported platform families.
 
+QSLite is the second bounded `FZ-5` reference application. Its persistent
+storage workload, corruption policy, toolchain replay requirements, and finite
+stop conditions are maintained in `qslite_reference_plan.md`. It validates the
+frozen language through a real stateful program and does not add SQL, storage,
+or language breadth to the 1.0 contract. `QS-0` through `QS-4` are complete:
+the fixed-seed storage/corruption qualification and source-less TKI,
+incremental, locked, and offline toolchain paths pass. The final four-target RC
+matrix runs after these QSLite-driven fixes so later application work cannot
+invalidate the release evidence.
+
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains
 `Pending` or `InProgress`.
@@ -312,6 +322,9 @@ The starting baseline already includes:
   have an explicit destruction path, context helpers own their shared state,
   reactor registration failure no longer suspends forever, and the unsafe
   pre-1.0 `TaskGroup` cancellation experiment is removed;
+- completed the bounded QSLite reference application with deterministic
+  persistent-state and corruption qualification plus source-less TKI,
+  incremental, locked-package, and offline replay evidence;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 

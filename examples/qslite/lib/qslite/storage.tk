@@ -1,0 +1,324 @@
+import core/option::{Option}
+import core/result::{Result}
+import std/fmt::{StringBuilder}
+import std/io::{File, exists, remove_file, rename_file}
+import std/vec::{Vec}
+import stdx/crypto/sha256::{Sha256}
+import stdx/encoding/hex::{encode_hex_view}
+
+pub const QSLITE_ERROR_IO: i32 = 1
+pub const QSLITE_ERROR_HEADER: i32 = 2
+pub const QSLITE_ERROR_RECORD: i32 = 3
+pub const QSLITE_ERROR_CHECKSUM: i32 = 4
+pub const QSLITE_ERROR_UTF8: i32 = 5
+
+pub shape DbError(
+    code: i32,
+    message: string
+)
+
+impl DbError@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> DbError {
+        return DbError(code = self.code, message = self.message.clone())
+    }
+
+    pub fn code(self) -> i32 { return self.code }
+    pub fn message(self) -> string { return self.message.clone() }
+}
+
+pub shape Row(
+    key: u64,
+    value: string
+)
+
+impl Row@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> Row {
+        return Row(key = self.key, value = self.value.clone())
+    }
+
+    pub fn key(self) -> u64 { return self.key }
+    pub fn value(self) -> string { return self.value.clone() }
+}
+
+pub shape Database(
+    path: string,
+    rows#: Vec<Row>
+)
+
+impl Database@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) = delete
+
+    pub fn len(self) -> usize { return self.rows.len() }
+
+    pub fn get(self, key: u64) -> Option<string> {
+        auto index = find_row(self.rows, key)
+        if index < 0 { return Option<string>::None }
+        auto *row = self.rows.get_ref(index as usize)
+        auto value = row.value.clone()
+        return Option<string>::Some(cede value)
+    }
+
+    pub fn scan_text(self) -> string {
+        auto output# = StringBuilder::new()
+        auto i# = 0:usize
+        loop i < self.rows.len() {
+            auto *row = self.rows.get_ref(i)
+            output#.append_u64(row.key)
+            output#.append_char('\t' as char)
+            output#.append_str(row.value.as_str())
+            output#.append_char('\n' as char)
+            i += 1
+        }
+        return output.to_string()
+    }
+
+    pub fn upsert(self#, key: u64, value: string) -> Result<bool, DbError> {
+        if !value.as_str().is_valid_utf8() {
+            return Result<bool, DbError>::Err(error(QSLITE_ERROR_UTF8, "value is not valid UTF-8"))
+        }
+        auto content = self.encode_upsert(key, value.as_str())
+        auto decoded = decode(content.clone())
+        if decoded.is_err() { return Result<bool, DbError>::Err(decoded.unwrap_err()) }
+        auto persisted = persist_content(self.path.clone(), content)
+        if persisted.is_err() { return Result<bool, DbError>::Err(persisted.unwrap_err()) }
+        auto next_rows = decoded.unwrap()
+        self.rows = cede next_rows
+        return Result<bool, DbError>::Ok(true)
+    }
+
+    pub fn remove(self#, key: u64) -> Result<bool, DbError> {
+        auto index = find_row(self.rows, key)
+        if index < 0 { return Result<bool, DbError>::Ok(false) }
+        auto content = self.encode_without(key)
+        auto decoded = decode(content.clone())
+        if decoded.is_err() { return Result<bool, DbError>::Err(decoded.unwrap_err()) }
+        auto persisted = persist_content(self.path.clone(), content)
+        if persisted.is_err() { return Result<bool, DbError>::Err(persisted.unwrap_err()) }
+        auto next_rows = decoded.unwrap()
+        self.rows = cede next_rows
+        return Result<bool, DbError>::Ok(true)
+    }
+
+    fn encode_upsert(self, key: u64, value: str) -> string {
+        auto output# = string::from("QSLITE\t1\n")
+        auto inserted# = false
+        auto i# = 0:usize
+        loop i < self.rows.len() {
+            auto *row = self.rows.get_ref(i)
+            if !inserted && key < row.key {
+                append_record(output, key, value)
+                inserted = true
+            }
+            if row.key == key {
+                append_record(output, key, value)
+                inserted = true
+            } else {
+                append_record(output, row.key, row.value.as_str())
+            }
+            i += 1
+        }
+        if !inserted { append_record(output, key, value) }
+        return output
+    }
+
+    fn encode_without(self, key: u64) -> string {
+        auto output# = string::from("QSLITE\t1\n")
+        auto i# = 0:usize
+        loop i < self.rows.len() {
+            auto *row = self.rows.get_ref(i)
+            if row.key != key { append_record(output, row.key, row.value.as_str()) }
+            i += 1
+        }
+        return output
+    }
+}
+
+fn error(code: i32, message: str) -> DbError {
+    return DbError(code = code, message = string::from(message))
+}
+
+fn find_row(rows: Vec<Row>, key: u64) -> i32 {
+    auto i# = 0:usize
+    loop i < rows.len() {
+        auto *row = rows.get_ref(i)
+        if row.key == key { return i as i32 }
+        if row.key > key { return -1 }
+        i += 1
+    }
+    return -1
+}
+
+fn parse_u64(value: str) -> Option<u64> {
+    if value.len() == 0:usize { return Option<u64>::None }
+    auto result# = 0:u64
+    auto i# = 0:usize
+    loop i < value.len() {
+        auto byte = value.byte_at(i) as u8
+        if byte < 48:u8 || byte > 57:u8 { return Option<u64>::None }
+        auto digit = (byte - 48:u8) as u64
+        if result > 1844674407370955161:u64 ||
+           (result == 1844674407370955161:u64 && digit > 5:u64) {
+            return Option<u64>::None
+        }
+        result = result * 10:u64 + digit
+        i += 1
+    }
+    return Option<u64>::Some(result)
+}
+
+pub fn parse_key(value: str) -> Result<u64, DbError> {
+    auto parsed = parse_u64(value)
+    if parsed.is_none() {
+        return Result<u64, DbError>::Err(error(QSLITE_ERROR_RECORD, "invalid unsigned key"))
+    }
+    return Result<u64, DbError>::Ok(parsed.unwrap())
+}
+
+fn hex_nibble(byte: u8) -> i32 {
+    if byte >= 48:u8 && byte <= 57:u8 { return (byte - 48:u8) as i32 }
+    if byte >= 97:u8 && byte <= 102:u8 { return (byte - 97:u8 + 10:u8) as i32 }
+    return -1
+}
+
+fn decode_value(value: str) -> Result<string, DbError> {
+    if value.len() % 2:usize != 0:usize {
+        return Result<string, DbError>::Err(error(QSLITE_ERROR_RECORD, "hex payload has odd length"))
+    }
+    auto decoded# = string::from("")
+    auto i# = 0:usize
+    loop i < value.len() {
+        auto high = hex_nibble(value.byte_at(i) as u8)
+        auto low = hex_nibble(value.byte_at(i + 1:usize) as u8)
+        if high < 0 || low < 0 {
+            return Result<string, DbError>::Err(error(QSLITE_ERROR_RECORD, "hex payload is invalid"))
+        }
+        decoded#.push_byte_raw(((high * 16 + low) as u8))
+        i += 2:usize
+    }
+    if !decoded.as_str().is_valid_utf8() {
+        return Result<string, DbError>::Err(error(QSLITE_ERROR_UTF8, "decoded value is not valid UTF-8"))
+    }
+    return Result<string, DbError>::Ok(cede decoded)
+}
+
+fn record_payload(key: u64, value_hex: str) -> string {
+    auto builder# = StringBuilder::new()
+    builder#.append_u64(key)
+    builder#.append_char('\t' as char)
+    builder#.append_str(value_hex)
+    return builder.to_string()
+}
+
+fn record_checksum(payload: str) -> string {
+    auto sha# = Sha256::new()
+    sha#.update(payload)
+    return sha#.finalize_hex()
+}
+
+fn append_record(output#: string, key: u64, value: str) {
+    auto value_hex = encode_hex_view(value)
+    auto payload = record_payload(key, value_hex.as_str())
+    auto digest = record_checksum(payload.as_str())
+    output#.push_str(payload.as_str())
+    output#.push_str("\t")
+    output#.push_str(digest.as_str())
+    output#.push_str("\n")
+}
+
+fn decode(content: string) -> Result<Vec<Row>, DbError> {
+    auto lines# = content.split('\n' as i32)
+    if lines.is_done() {
+        return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_HEADER, "database header is missing"))
+    }
+    auto header = lines#.next()
+    if header != string::from("QSLITE\t1") {
+        return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_HEADER, "database version header is invalid"))
+    }
+
+    auto rows# = Vec<Row>::new()
+    auto previous# = 0:u64
+    auto has_previous# = false
+    loop !lines.is_done() {
+        auto line = lines#.next()
+        if line.is_empty() { continue }
+        auto fields# = line.split('\t' as i32)
+        if fields.is_done() { return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record key is missing")) }
+        auto key_text = fields#.next()
+        if fields.is_done() { return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record value is missing")) }
+        auto value_hex = fields#.next()
+        if fields.is_done() { return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record checksum is missing")) }
+        auto digest = fields#.next()
+        if !fields.is_done() { return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record has extra fields")) }
+
+        auto parsed_key = parse_u64(key_text.as_str())
+        if parsed_key.is_none() {
+            auto message# = string::from("record key is invalid: '")
+            message#.push_str(key_text.as_str())
+            message#.push_str("'")
+            return Result<Vec<Row>, DbError>::Err(DbError(code = QSLITE_ERROR_RECORD, message = cede message))
+        }
+        auto key = parsed_key.unwrap()
+        if has_previous && key <= previous {
+            return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record keys are duplicate or unsorted"))
+        }
+        auto payload = record_payload(key, value_hex.as_str())
+        auto expected_digest = record_checksum(payload.as_str())
+        if expected_digest != digest {
+            return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_CHECKSUM, "record checksum mismatch"))
+        }
+        auto decoded = decode_value(value_hex.as_str())
+        if decoded.is_err() { return Result<Vec<Row>, DbError>::Err(decoded.unwrap_err()) }
+        rows#.push(cede Row(key = key, value = decoded.unwrap()))
+        previous = key
+        has_previous = true
+    }
+    return Result<Vec<Row>, DbError>::Ok(cede rows)
+}
+
+fn persist_content(path: string, content: string) -> Result<bool, DbError> {
+    auto temporary# = path.clone()
+    temporary#.push_str(".tmp")
+    auto file# = File::open(temporary.clone(), "wb")
+    if !file.is_valid() {
+        return Result<bool, DbError>::Err(error(QSLITE_ERROR_IO, "cannot create temporary database"))
+    }
+    auto written = file.write(content.as_str())
+    file#.flush()
+    file#.close()
+    if written != content.len() {
+        remove_file(temporary)
+        return Result<bool, DbError>::Err(error(QSLITE_ERROR_IO, "short database write"))
+    }
+    if !rename_file(temporary.clone(), path) {
+        remove_file(temporary)
+        return Result<bool, DbError>::Err(error(QSLITE_ERROR_IO, "cannot atomically replace database"))
+    }
+    return Result<bool, DbError>::Ok(true)
+}
+
+pub fn open_database(path: string) -> Result<Database, DbError> {
+    if !exists(path.clone()) {
+        auto created = persist_content(path.clone(), string::from("QSLITE\t1\n"))
+        if created.is_err() { return Result<Database, DbError>::Err(created.unwrap_err()) }
+        auto empty = Vec<Row>::new()
+        return Result<Database, DbError>::Ok(Database(path = path, rows = cede empty))
+    }
+    auto file# = File::open(path.clone(), "rb")
+    if !file.is_valid() {
+        return Result<Database, DbError>::Err(error(QSLITE_ERROR_IO, "cannot open database"))
+    }
+    auto content_result = file.read_to_string()
+    file#.close()
+    if content_result.is_err() {
+        return Result<Database, DbError>::Err(error(QSLITE_ERROR_IO, "cannot read database"))
+    }
+    auto decoded = decode(content_result.unwrap())
+    if decoded.is_err() { return Result<Database, DbError>::Err(decoded.unwrap_err()) }
+    return Result<Database, DbError>::Ok(Database(path = path, rows = decoded.unwrap()))
+}

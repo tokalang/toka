@@ -1,0 +1,52 @@
+import std/env::{args_count, get_arg}
+import std/io::{print, println}
+import qslite/storage::{open_database, parse_key}
+
+fn usage() -> i32 {
+    println("usage: qslite <database> <put|get|delete|scan> [key] [value]")
+    return 2
+}
+
+fn main() -> i32 {
+    auto argc = args_count()
+    if argc < 3 { return usage() }
+    auto path = get_arg(1)
+    auto command = get_arg(2)
+    auto opened = open_database(path)
+    if opened.is_err() {
+        auto problem = opened.unwrap_err()
+        println("error[{}]: {}", problem.code(), problem.message())
+        return 1
+    }
+    auto database# = opened.unwrap()
+    if command == string::from("scan") {
+        print("{}", database.scan_text())
+        return 0
+    }
+    if argc < 4 { return usage() }
+    auto parsed = parse_key(get_arg(3).as_str())
+    if parsed.is_err() {
+        println("error: invalid key")
+        return 2
+    }
+    auto key = parsed.unwrap()
+    if command == string::from("put") {
+        if argc < 5 { return usage() }
+        auto result = database#.upsert(key, get_arg(4))
+        if result.is_err() { println("error: {}", result.unwrap_err().message()); return 1 }
+        return 0
+    }
+    if command == string::from("get") {
+        auto value = database.get(key)
+        if value.is_none() { return 3 }
+        println("{}", value.unwrap())
+        return 0
+    }
+    if command == string::from("delete") {
+        auto result = database#.remove(key)
+        if result.is_err() { println("error: {}", result.unwrap_err().message()); return 1 }
+        if !result.unwrap() { return 3 }
+        return 0
+    }
+    return usage()
+}

@@ -1,0 +1,6 @@
+pub const PACKAGE = (
+    name = "qslite",
+    version = "0.1.0",
+    dependencies = (
+    )
+)
