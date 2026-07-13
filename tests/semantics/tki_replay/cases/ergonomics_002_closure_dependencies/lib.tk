@@ -1,0 +1,12 @@
+// EXPECT_TKI: pub fn make_adder(base: ClosureBase) -> fn(i32)->i32
+// EXPECT_TKI: -> fn(i32)->i32 <- base
+
+pub shape ClosureBase(value: i32)
+
+pub fn make_adder(base: ClosureBase) -> fn(i32) -> i32
+effects:
+    return <- base
+{
+    auto adder: fn(i32) -> i32 = { value => base.value + value }
+    return adder
+}

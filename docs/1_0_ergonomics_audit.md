@@ -35,7 +35,7 @@ states.
 | `ERG-2` | `Complete` | Contextual numeric literals | Calls, methods, constructors, returns, assignments, comparisons, negative literals, overflow rejection, and stable diagnostics |
 | `ERG-3` | `Complete` | Text and byte API friction | Audit avoidable `as_str()`, `string::from()`, and temporary bindings in the native builder and QSLite; classify every retained conversion |
 | `ERG-4` | `Complete` | Ownership-facing expression composition | Direct member chains, container resource clone, `cede` capture, Result/Option propagation, and cleanup must work without hiding transfer |
-| `ERG-5` | `Pending` | Iterator, closure, and async composition | Real algorithms must accept natural closures and iterator values without adapter noise or lost dependency facts |
+| `ERG-5` | `Complete` | Iterator, closure, and async composition | Real algorithms must accept natural closures and iterator values without adapter noise or lost dependency facts |
 | `ERG-6` | `Pending` | Diagnostic ergonomics | Rejections identify the ownership, type, effect, or ambiguity that requires explicit source and show a viable spelling where one exists |
 | `ERG-7` | `InProgress` | Real-program normalization | Native builder and QSLite contain no known avoidable type repetition, view conversion, allocation-only comparison, or workaround temporary |
 
@@ -104,12 +104,30 @@ The first slice closes `ERG-1` and establishes the audit mechanism:
   branch return, error propagation, async suspension, and frame cleanup each
   drop resources exactly once. None of these paths inserts a hidden clone,
   transfer, or `cede`.
-- Focused execution passes, the complete positive corpus is 329/329 after
+- Iterator/callable/async composition is closed for the frozen eager protocol.
+  Generic algorithms accept shared, exclusive, and consuming callables; cede
+  capture remains separate from invocation mode, and inferred generic `cede`
+  arguments are checked exactly once. An owned `Vec` and exclusive closure can
+  cross `.start` through the existing two-sided cede contract, then iterate and
+  invoke across `.await` without adapter values or lost frame state.
+- Local closures with implicit captures now commit their dependency paths to
+  PAL. A returned `fn` dependency is preserved by `effects: return <- source`,
+  emitted in `.tki`, and replayed source-less, so moving the source while the
+  callable is live is rejected consistently.
+- ERG-5 did not add lazy adapters, consuming iteration, or async iteration.
+  Those remain post-1.0 design work rather than hidden extensions of the eager
+  iterator contract.
+- The composition audit exposed a module-name diagnostic candidate: a local
+  `Counter` declaration can collide with `std/vec`'s private helper of the same
+  name. It is assigned to `ERG-6`; it does not alter the ERG-5 callable or
+  iterator semantics.
+- Focused execution passes, the complete positive corpus is 330/330 after
   running its two local-socket cases outside the restricted sandbox, and the
-  negative corpus is 253/253. Warn is 1/1 and semantic replay is 15/15.
-- QSLite passes 100 sustained operations, 10 corruption classes, its vertical
-  test, and source-less/incremental/package replay. The native builder passes
-  source-less facade/process replay and a 30-module, 20-cycle qualification.
+  negative corpus is 255/255. Warn is 1/1 and semantic replay is 16/16.
+- QSLite passes 300 sustained operations, 313 process-level reopens, 10
+  corruption classes, deterministic bytes, and source-less/incremental/package
+  replay. The native builder passes source-less facade/process replay and a
+  31-module, 20-cycle qualification.
 
 ## 5. Verification
 

@@ -1,0 +1,12 @@
+shape GenericCedeToken(value: i32)
+
+fn consume<F>(cede value: F) -> i32 {
+    auto owned = cede value
+    return owned.value
+}
+
+fn main() -> i32 {
+    auto token = GenericCedeToken(value = 7)
+    auto result = consume(cede token)
+    return result + token.value // EXPECT: error[E0438]
+}

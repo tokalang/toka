@@ -1353,10 +1353,13 @@ void Sema::checkStmt(Stmt *S) {
     if (auto *clo = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
       for (const auto &dep : clo->ImplicitCaptures) {
         Info.LifeDependencySet.insert(dep);
+        depsToCommitAsBorrow.insert(dep);
         SymbolInfo *depInfo = nullptr;
         if (CurrentScope->findSymbol(dep, depInfo)) {
           Info.LifeDependencySet.insert(depInfo->LifeDependencySet.begin(),
                                         depInfo->LifeDependencySet.end());
+          depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(),
+                                      depInfo->LifeDependencySet.end());
         }
       }
     }
@@ -1481,9 +1484,13 @@ void Sema::checkStmt(Stmt *S) {
     bool isBorrowedViewValue =
         dependencySoul == "str" || dependencySoul == "bytes";
     bool isBorrowLikeStoredValue = isBorrowLikeType(Info.TypeObj);
+    bool isBorrowingCallable =
+        Info.TypeObj &&
+        (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn());
     if (!depsToCommitAsBorrow.empty() &&
         (Var->IsReference || morph == "&" || isBorrowedViewValue ||
-         isBorrowLikeStoredValue || !Info.FieldDependencySet.empty())) {
+         isBorrowLikeStoredValue || isBorrowingCallable ||
+         !Info.FieldDependencySet.empty())) {
       for (const auto &dep : depsToCommitAsBorrow) {
         if (dep.empty())
           continue;

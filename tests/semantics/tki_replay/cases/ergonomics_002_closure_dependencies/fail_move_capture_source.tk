@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0440
+import ./lib::{ClosureBase, make_adder}
+
+fn main() -> i32 {
+    auto base# = ClosureBase(value = 5)
+    auto adder = make_adder(base)
+    auto moved = cede base
+    return adder(1) + moved.value
+}

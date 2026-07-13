@@ -988,6 +988,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   std::vector<std::shared_ptr<toka::Type>> ParamTypes;
   std::shared_ptr<toka::Type> ReturnType;
   bool IsVariadic = false;
+  std::vector<std::shared_ptr<toka::Type>> precheckedArgTypes(Call->Args.size());
 
   // [NEW] Generic Instantiation
   if (Fn && !Fn->GenericParams.empty()) {
@@ -1016,11 +1017,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       std::map<std::string, std::shared_ptr<toka::Type>> Deduced;
 
       for (size_t i = 0; i < Call->Args.size() && i < Fn->Args.size(); ++i) {
-        Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
-        auto argType = checkExpr(Call->Args[i].get());
-        if (!argType || argType->isUnknown())
-          continue;
-
         const auto &Param = Fn->Args[i];
         std::string PType = Param.Type;
         // [FIX] Parse Sigils from PType string (since Parser might
@@ -1056,6 +1052,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             break;
           }
         }
+
+        if (!isGeneric)
+          continue;
+
+        Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
+        auto argType = checkExpr(Call->Args[i].get());
+        precheckedArgTypes[i] = argType;
+        if (!argType || argType->isUnknown())
+          continue;
 
         if (isGeneric) {
           // Strict Match: T matches ArgType
@@ -1638,7 +1643,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
        }
     }
 
-    auto argType = checkExpr(Call->Args[i].get(), paramType);
+    auto argType = i < precheckedArgTypes.size() && precheckedArgTypes[i]
+                       ? precheckedArgTypes[i]
+                       : checkExpr(Call->Args[i].get(), paramType);
     projectOwnedStringView(Call->Args[i], argType, paramType);
 
     if (isExecutionBoundaryCalleeName(OriginalName)) {

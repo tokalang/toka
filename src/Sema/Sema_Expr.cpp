@@ -390,6 +390,10 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
           soul.rfind("TaskHandle", 0) == 0) {
         hasRefs = true;
       }
+      if (!m_LastLifeDependencies.empty() &&
+          (T->isFunction() || T->isDynFn())) {
+        hasRefs = true;
+      }
   }
 
   if (!hasRefs) {

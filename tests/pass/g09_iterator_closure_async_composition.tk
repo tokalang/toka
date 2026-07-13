@@ -1,0 +1,78 @@
+import std/task::{block_on, sleep_async}
+import std/vec::{Vec}
+
+shape MapperState(value: i32)
+shape OncePayload(value: i32)
+
+fn sum_mapped<F: @Callable>(values: Vec<i32>, mapper#: F) -> i32 {
+    auto total# = 0
+    for auto value in values {
+        total += mapper#(value)
+    }
+    return total
+}
+
+fn sum_mapped_async<F: @Callable>(
+    cede values: Vec<i32>,
+    cede mapper#: F
+) -> async i32 {
+    auto owned_values = cede values
+    auto owned_mapper# = cede mapper
+    auto total# = 0
+    for auto value in owned_values {
+        sleep_async(1).await
+        total += owned_mapper#(value)
+    }
+    return total
+}
+
+fn invoke_once<F: @Callable>(cede callback: F) -> i32 {
+    return cede callback()
+}
+
+fn keep_context<T>(value: T, count: u8) -> u8 {
+    return count
+}
+
+fn main() -> i32 {
+    auto eager_values# = Vec<i32>::new()
+    eager_values#.push(1)
+    eager_values#.push(2)
+    eager_values#.push(3)
+    auto bias = 4
+    auto shared: fn(i32) -> i32 = { value => value + bias }
+    if sum_mapped(eager_values, shared) != 18 {
+        return 1
+    }
+
+    auto async_values# = Vec<i32>::new()
+    async_values#.push(1)
+    async_values#.push(2)
+    async_values#.push(3)
+    auto counter# = MapperState(value = 0)
+    auto mutable_mapper#: fn#(i32) -> i32 = { [cede counter] value =>
+        counter.value = counter.value + 1
+        value * counter.value
+    }
+
+    auto task = sum_mapped_async(
+        cede async_values,
+        cede mutable_mapper
+    ).start
+    if block_on<i32>(task) != 14 {
+        return 2
+    }
+
+    auto payload = OncePayload(value = 9)
+    auto once: cede fn() -> i32 = { [cede payload] =>
+        auto owned = cede payload
+        return owned.value
+    }
+    if invoke_once(cede once) != 9 {
+        return 3
+    }
+    if keep_context(1, 7) != 7 {
+        return 4
+    }
+    return 0
+}

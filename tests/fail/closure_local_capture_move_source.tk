@@ -1,0 +1,8 @@
+shape LocalClosureSource(value: i32)
+
+fn main() -> i32 {
+    auto source# = LocalClosureSource(value = 3)
+    auto read: fn() -> i32 = { => source.value }
+    auto moved = cede source // EXPECT: error[E0440]
+    return read() + moved.value
+}

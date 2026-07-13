@@ -275,7 +275,9 @@ Primary references:
   imported exactly.
 - Replay tests: `tests/semantics/tki_replay/cases/eff_ret_001_return_deps`
   covers reference, `str`, and `bytes` return dependencies and rejects source
-  replacement while each returned view is live.
+  replacement while each returned view is live;
+  `ergonomics_002_closure_dependencies` preserves `fn(...) <- source` and
+  rejects moving the captured source through source and source-less paths.
 - Coverage closure: none known for frozen whole-return dependencies.
 
 ### EFF-MEMBER-001: Structural return dependencies must route to returned members
@@ -501,7 +503,8 @@ Primary references:
 - Implementation areas: `src/Sema/Sema_Expr_Closure.cpp`,
   `src/Sema/Sema_Expr_Call.cpp`, `src/Sema/Sema_Type.cpp`, `src/Type.cpp`
 - Positive tests: `tests/pass/g08_callable_protocol.tk`,
-  `tests/pass/g08_dyn_closure.tk`
+  `tests/pass/g08_dyn_closure.tk`, and
+  `tests/pass/g09_iterator_closure_async_composition.tk`
 - Negative tests: `tests/fail/callable_mutable_shared_call.tk`,
   `tests/fail/callable_mutable_immutable_binding.tk`, and
   `tests/fail/callable_consuming_without_cede.tk`
@@ -526,7 +529,9 @@ Primary references:
   `tests/pass/g08_callable_protocol.tk`
 - Negative test: `tests/fail/callable_protocol_missing.tk`
 - Composition coverage: the positive case combines an exclusive callback with
-  value iteration; synchronization tests exercise exclusive thread callbacks.
+  value iteration; the ERG-5 case covers shared, exclusive, and consuming
+  generic callbacks plus detached async iteration across suspension;
+  synchronization tests exercise exclusive thread callbacks.
 - Replay tests: `tests/semantics/tki_replay/cases/callable_001_modes` covers a
   retained generic callable body, a `dyn fn#` return signature, and source-less
   rejection of a shared call.
