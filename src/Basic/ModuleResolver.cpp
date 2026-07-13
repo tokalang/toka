@@ -465,9 +465,8 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->IsRootModule = (m_RecursionStack.size() == 1);
   module->IsInterface = finalIsInterface;
   module->IsTrustedSystemModule =
-      finalIsInterface &&
-      (isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
-       isWithinRoot(canonicalPath, m_TrustedSystemRoots));
+      isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
+      isWithinRoot(canonicalPath, m_TrustedSystemRoots);
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
   if (module->HasBackingObject) {
     std::string evidenceReason;

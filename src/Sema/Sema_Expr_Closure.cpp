@@ -251,16 +251,22 @@ void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
   if (!expr)
     return;
 
-  // Guard: Not if inside clone method (infinite recursion prevention)
-  // Check strict name "clone" or namespaced "::clone"
-  if (CurrentFunction) {
-    if (CurrentFunction->Name == "clone")
-      return;
-    if (CurrentFunction->Name.size() >= 7 &&
+  // A direct `self` copy inside clone would recursively call the same clone.
+  // Member and indexed lvalues still need their own element clone semantics.
+  bool insideClone = CurrentFunction &&
+      (CurrentFunction->Name == "clone" ||
+       (CurrentFunction->Name.size() >= 7 &&
         CurrentFunction->Name.compare(CurrentFunction->Name.size() - 7, 7,
-                                      "::clone") == 0) {
-      return;
+                                      "::clone") == 0));
+  if (insideClone) {
+    const Expr *candidate = expr.get();
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(candidate)) {
+      if (postfix->Op == TokenType::TokenWrite)
+        candidate = postfix->LHS.get();
     }
+    auto *variable = dynamic_cast<const VariableExpr *>(candidate);
+    if (variable && Type::stripMorphology(variable->Name) == "self")
+      return;
   }
 
   // 1. Must be L-Value
@@ -287,12 +293,21 @@ void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
 
   // 4. Check for 'clone' method existence
   std::string typeName = soulType->getSoulName();
-  std::string resolvedTypeName = resolveType(typeName);
-  bool hasClone = false;
+  bool hasClone =
+      (MethodDecls.count(typeName) &&
+       MethodDecls[typeName].count("clone")) ||
+      (ImplMap.count(typeName + "@encap") &&
+       ImplMap[typeName + "@encap"].count("clone")) ||
+      (ImplMap.count(typeName + "@Clone") &&
+       ImplMap[typeName + "@Clone"].count("clone"));
+  if (!hasClone && (insideClone || ShapeMap.count(typeName)))
+    return;
+
+  std::string resolvedTypeName = hasClone ? typeName : resolveType(typeName);
 
   // Inherent methods
-  if ((MethodDecls.count(typeName) && MethodDecls[typeName].count("clone")) ||
-      (MethodDecls.count(resolvedTypeName) && MethodDecls[resolvedTypeName].count("clone"))) {
+  if (!hasClone && MethodDecls.count(resolvedTypeName) &&
+      MethodDecls[resolvedTypeName].count("clone")) {
     hasClone = true;
   }
   // Trait methods (specifically @encap or similar)

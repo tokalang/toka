@@ -250,7 +250,13 @@ static bool isUnsafePublicAPIExempt(const Module *module,
 }
 
 void Sema::checkUnsafePublicFunctionBoundary(FunctionDecl *Fn) {
-  if (isUnsafePublicAPIExempt(CurrentModule, Fn->Loc) || !Fn->IsPub ||
+  bool trustedDeclaration = false;
+  auto owner = DeclarationLexicalScopes.find(Fn);
+  if (owner != DeclarationLexicalScopes.end() && owner->second) {
+    trustedDeclaration = owner->second->IsTrustedSystemModule;
+  }
+  if (isUnsafePublicAPIExempt(CurrentModule, Fn->Loc) || trustedDeclaration ||
+      !Fn->IsPub ||
       Fn->Name.rfind("unsafe_", 0) == 0 ||
       Fn->Name.rfind("raw_", 0) == 0 || Fn->Name.rfind("__", 0) == 0) {
     return;
@@ -283,7 +289,13 @@ void Sema::checkUnsafePublicFunctionBoundary(FunctionDecl *Fn) {
 }
 
 void Sema::checkUnsafePublicShapeBoundary(ShapeDecl *Shape) {
-  if (isUnsafePublicAPIExempt(CurrentModule, Shape->Loc) || !Shape->IsPub ||
+  bool trustedDeclaration = false;
+  auto owner = DeclarationLexicalScopes.find(Shape);
+  if (owner != DeclarationLexicalScopes.end() && owner->second) {
+    trustedDeclaration = owner->second->IsTrustedSystemModule;
+  }
+  if (isUnsafePublicAPIExempt(CurrentModule, Shape->Loc) ||
+      trustedDeclaration || !Shape->IsPub ||
       Shape->Name == "cstr" || Shape->Name.rfind("Unsafe", 0) == 0 ||
       Shape->Name.rfind("Raw", 0) == 0) {
     return;
@@ -1155,6 +1167,8 @@ void Sema::declareGlobals(Module &M) {
       : toka::PathUtils::canonicalize(
             DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
+  ms.IsTrustedSystemModule =
+      ms.IsTrustedSystemModule || M.IsTrustedSystemModule;
   ModulePathAliases[fileName] = &ms;
   if (!M.ResolvedPath.empty())
     ModulePathAliases[toka::PathUtils::canonicalize(M.ResolvedPath)] = &ms;

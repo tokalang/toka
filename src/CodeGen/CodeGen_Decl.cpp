@@ -1591,8 +1591,9 @@ void CodeGen::genGlobal(const Stmt *stmt) {
       finalConstInit = llvm::Constant::getNullValue(type);
     }
 
+    bool importedSource = !m_AST->IsRootModule && !declOnly;
     llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::ExternalLinkage;
-    if (var->IsConst && !backedInterface) {
+    if ((var->IsConst && !backedInterface) || importedSource) {
       linkage = llvm::GlobalValue::LinkOnceODRLinkage;
     }
 
@@ -1600,7 +1601,7 @@ void CodeGen::genGlobal(const Stmt *stmt) {
         *m_Module, type, false, linkage, finalConstInit,
         var->Name);
 
-    if (var->IsConst && !backedInterface) {
+    if ((var->IsConst && !backedInterface) || importedSource) {
       llvm::Triple triple(m_Module->getTargetTriple());
       if (triple.supportsCOMDAT()) {
         globalVar->setComdat(m_Module->getOrInsertComdat(globalVar->getName()));

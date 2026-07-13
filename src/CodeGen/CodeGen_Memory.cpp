@@ -889,7 +889,20 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
   MemberAccessIntent memberAccess = parseMemberAccess(mem->Member);
   std::string memberName = memberAccess.StrippedName;
 
-  llvm::Value *objAddr = emitEntityAddr(objectExpr);
+  llvm::Value *objAddr = nullptr;
+  bool isCallResult = dynamic_cast<const CallExpr *>(objectExpr) ||
+                      dynamic_cast<const MethodCallExpr *>(objectExpr);
+  if (isCallResult && objectExpr->ResolvedType &&
+      (objectExpr->ResolvedType->isPointer() ||
+       objectExpr->ResolvedType->isReference())) {
+    PhysEntity object = genExpr(objectExpr);
+    if (!object.isAddress && object.value &&
+        object.value->getType()->isPointerTy()) {
+      objAddr = object.value;
+    }
+  }
+  if (!objAddr)
+    objAddr = emitEntityAddr(objectExpr);
   if (!objAddr)
     return nullptr;
 
@@ -1163,6 +1176,15 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
 
       llvm::Value *basePtr = nullptr;
       llvm::Type *elemTy = nullptr;
+      auto indexedElementType = [&](std::shared_ptr<toka::Type> type) {
+        if (!type)
+          return static_cast<llvm::Type *>(nullptr);
+        if (type->isPointer() || type->isReference())
+          type = type->getPointeeType();
+        if (type && (type->isSlice() || type->isArray()))
+          type = type->getArrayElementType();
+        return type ? getLLVMType(type) : nullptr;
+      };
 
       if (arrEnt.isAddress) {
         llvm::Type *memTy = arrEnt.irType;
@@ -1175,11 +1197,7 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
           // We must LOAD to get the actual pointer (Identity).
           basePtr = m_Builder.CreateLoad(memTy, arrEnt.value, "arr_load_ptr");
 
-          if (idxExpr->Array->ResolvedType) {
-            if (auto pt = idxExpr->Array->ResolvedType->getPointeeType()) {
-              elemTy = getLLVMType(pt);
-            }
-          }
+          elemTy = indexedElementType(idxExpr->Array->ResolvedType);
           if (!elemTy)
             elemTy = llvm::Type::getInt8Ty(m_Context);
         } else if (memTy->isArrayTy()) {
@@ -1209,11 +1227,7 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
         return nullptr;
 
       if (!elemTy) {
-        if (idxExpr->Array->ResolvedType) {
-          if (auto pt = idxExpr->Array->ResolvedType->getPointeeType()) {
-            elemTy = getLLVMType(pt);
-          }
-        }
+        elemTy = indexedElementType(idxExpr->Array->ResolvedType);
       }
       if (!elemTy) {
         // Default stride for unknown pointer types in fallback

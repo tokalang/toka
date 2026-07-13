@@ -347,6 +347,7 @@ private:
   PALChecker PALCheckerState; // [NEW] Path-Anchored Borrow Checker
   struct ModuleScope {
     std::string Name;
+    bool IsTrustedSystemModule = false;
     std::map<std::string, SymbolInfo> LexicalSymbols;
     std::map<std::string, SymbolInfo> LexicalTypes;
     std::map<std::string, FunctionDecl *> Functions;

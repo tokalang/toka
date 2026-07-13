@@ -1,0 +1,22 @@
+import std/vec::{Vec}
+
+shape ResourceRow(key: u64, value: string)
+
+impl ResourceRow@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> ResourceRow {
+        return ResourceRow(key = self.key, value = self.value.clone())
+    }
+}
+
+fn main() -> i32 {
+    auto rows# = Vec<ResourceRow>::new()
+    rows#.push(cede ResourceRow(key = 19:u64, value = string::from("first")))
+    auto candidate = rows.clone()
+    if candidate.len() != 1:usize { return 10 }
+    if candidate.get_ref(0).key != 19:u64 { return 11 }
+    auto *copied = candidate.get_ref(0)
+    if copied.value != string::from("first") { return 12 }
+    return 0
+}
