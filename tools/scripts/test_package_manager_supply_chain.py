@@ -129,6 +129,12 @@ def test_safe_extract(root: Path) -> None:
     add_tar_bytes(traversal, "../outside", b"bad")
     expect_error(lambda: safe_extract(traversal, root / "traversal-output"), "escapes")
     assert not (root / "outside").exists()
+    assert not (root / "traversal-output").exists()
+
+    absolute = root / "absolute.tar.gz"
+    add_tar_bytes(absolute, "/outside", b"bad")
+    expect_error(lambda: safe_extract(absolute, root / "absolute-output"), "escapes")
+    assert not (root / "absolute-output").exists()
 
     link = root / "link.tar.gz"
     with tarfile.open(link, "w:gz") as output:
@@ -137,6 +143,18 @@ def test_safe_extract(root: Path) -> None:
         info.linkname = "/tmp/outside"
         output.addfile(info)
     expect_error(lambda: safe_extract(link, root / "link-output"), "link or special")
+    assert not (root / "link-output").exists()
+
+    conflict = root / "conflict.tar.gz"
+    with tarfile.open(conflict, "w:gz") as output:
+        file_info = tarfile.TarInfo("node")
+        file_info.size = 1
+        output.addfile(file_info, io.BytesIO(b"x"))
+        child_info = tarfile.TarInfo("node/child")
+        child_info.size = 1
+        output.addfile(child_info, io.BytesIO(b"y"))
+    expect_error(lambda: safe_extract(conflict, root / "conflict-output"), "file/directory conflict")
+    assert not (root / "conflict-output").exists()
 
     oversized = root / "oversized.tar.gz"
     add_tar_bytes(oversized, "large", b"12345")
@@ -144,6 +162,12 @@ def test_safe_extract(root: Path) -> None:
         lambda: safe_extract(oversized, root / "oversized-output", max_file_size=4),
         "size limit",
     )
+    assert not (root / "oversized-output").exists()
+
+    corrupt = root / "corrupt.tar.gz"
+    corrupt.write_bytes(b"not a tar archive")
+    expect_error(lambda: safe_extract(corrupt, root / "corrupt-output"), "not a gzip")
+    assert not (root / "corrupt-output").exists()
 
 
 def test_path_graph(root: Path) -> None:

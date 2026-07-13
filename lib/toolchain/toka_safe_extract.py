@@ -10,6 +10,7 @@ import shutil
 import stat
 import sys
 import tarfile
+import tempfile
 
 
 DEFAULT_MAX_ENTRIES = 10_000
@@ -32,7 +33,7 @@ def _validated_members(
         raise ExtractionError("archive entry limit exceeded")
 
     checked: list[tuple[tarfile.TarInfo, PurePosixPath]] = []
-    seen: set[str] = set()
+    seen: dict[str, bool] = {}
     total_size = 0
     for member in members:
         name = member.name
@@ -47,7 +48,13 @@ def _validated_members(
         normalized = path.as_posix()
         if normalized in seen:
             raise ExtractionError("archive contains a duplicate path: " + normalized)
-        seen.add(normalized)
+        for parent in path.parents:
+            parent_name = parent.as_posix()
+            if parent_name != "." and parent_name in seen and not seen[parent_name]:
+                raise ExtractionError("archive contains a file/directory conflict: " + normalized)
+        if not member.isdir() and any(name.startswith(normalized + "/") for name in seen):
+            raise ExtractionError("archive contains a file/directory conflict: " + normalized)
+        seen[normalized] = member.isdir()
 
         if member.isdir():
             checked.append((member, path))
@@ -71,10 +78,13 @@ def safe_extract(
     max_file_size: int = DEFAULT_MAX_FILE_SIZE,
     max_total_size: int = DEFAULT_MAX_TOTAL_SIZE,
 ) -> None:
-    if destination.exists() and any(destination.iterdir()):
-        raise ExtractionError("extraction destination must be empty")
-    destination.mkdir(parents=True, exist_ok=True)
-    destination_root = destination.resolve()
+    if min(max_entries, max_file_size, max_total_size) < 0:
+        raise ExtractionError("extraction limits must not be negative")
+    if destination.exists() or destination.is_symlink():
+        raise ExtractionError("extraction destination already exists")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=destination.name + ".extract-", dir=destination.parent))
+    destination_root = temporary.resolve()
 
     try:
         with tarfile.open(archive_path, "r:gz") as archive:
@@ -82,7 +92,7 @@ def safe_extract(
                 archive, max_entries, max_file_size, max_total_size
             )
             for member, relative in members:
-                target = destination.joinpath(*relative.parts)
+                target = temporary.joinpath(*relative.parts)
                 resolved_parent = target.parent.resolve()
                 if resolved_parent != destination_root and destination_root not in resolved_parent.parents:
                     raise ExtractionError("archive member escapes the package root")
@@ -98,7 +108,11 @@ def safe_extract(
                     shutil.copyfileobj(source, output, length=1024 * 1024)
                 mode = 0o755 if member.mode & stat.S_IXUSR else 0o644
                 os.chmod(target, mode)
-    except (tarfile.TarError, OSError) as error:
+        os.replace(temporary, destination)
+    except (ExtractionError, tarfile.TarError, OSError) as error:
+        shutil.rmtree(temporary, ignore_errors=True)
+        if isinstance(error, ExtractionError):
+            raise
         raise ExtractionError(str(error)) from error
 
 

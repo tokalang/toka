@@ -99,7 +99,7 @@ child `package.tk` is parsed with the same restricted dependency parser.
 | `PM-0` | `Complete` | Lock schema, digest, transaction, resolver, and stop conditions are frozen in this document |
 | `PM-1` | `Complete` | Package-manager subprocesses use structured argv; CLI qualification covers paths containing spaces and error status propagation |
 | `PM-2` | `Complete` | Known SHA-256 vectors, deterministic content changes, strict graph validation, and atomic lock replacement pass focused tests |
-| `PM-3` | `Pending` | Malicious archives are rejected and failed installs leave no visible partial package |
+| `PM-3` | `Complete` | Traversal, links, absolute paths, hierarchy conflicts, corrupt archives, and size violations are rejected before atomic visibility |
 | `PM-4` | `Pending` | Direct/transitive resolve, conflict/cycle handling, offline replay, and cache corruption tests pass |
 
 ## Stop Conditions
