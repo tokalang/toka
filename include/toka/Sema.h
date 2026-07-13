@@ -439,6 +439,9 @@ private:
   AccessPath makeAccessPath(Expr *E);
   AccessPath makeAccessPath(const std::string &Path);
   AccessPath canonicalizeAccessPath(const AccessPath &Path);
+  bool returnTypeHasMember(FunctionDecl *Function,
+                           const std::string &Member);
+  std::string getDependencyPathString(Expr *E);
   void recordPALDecision(ASTNode *Node, SemanticRuleID Rule,
                          PALOperationClass Operation, const AccessPath &Subject,
                          const std::optional<PALConflict> &Conflict,
@@ -519,6 +522,10 @@ private:
   bool validateIntegerLiteralRange(
       ASTNode *site, NumberExpr *literal,
       const std::shared_ptr<toka::Type> &targetType, bool isNegative);
+  bool projectOwnedStringView(
+      std::unique_ptr<Expr> &argument,
+      std::shared_ptr<toka::Type> &argumentType,
+      const std::shared_ptr<toka::Type> &expectedType);
   std::shared_ptr<toka::Type> checkMemberExpr(MemberExpr *Memb);
   std::shared_ptr<toka::Type>
   checkIndexExpr(ArrayIndexExpr *Idx);                       // New Object API

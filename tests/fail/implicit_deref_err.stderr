@@ -1,5 +1,0 @@
-error[E04571]: Type mismatch for argument 1: expected str, got string
- --> tests/fail/implicit_deref_err.tk:9:17
-   |
- 9 |     expect_view(path)
-   |                 ^

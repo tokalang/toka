@@ -24,7 +24,7 @@ fn main() -> i32 {
         return 0
     }
     if argc < 4 { return usage() }
-    auto parsed = parse_key(get_arg(3).as_str())
+    auto parsed = parse_key(get_arg(3))
     if parsed.is_err() {
         println("error: invalid key")
         return 2

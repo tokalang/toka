@@ -71,7 +71,7 @@ impl Database@encap {
             auto *row = self.rows.get_ref(i)
             output#.append_u64(row.key)
             output#.append_char('\t' as char)
-            output#.append_str(row.value.as_str())
+            output#.append_str(row.value)
             output#.append_char('\n' as char)
             i += 1
         }
@@ -79,10 +79,10 @@ impl Database@encap {
     }
 
     pub fn upsert(self#, key: u64, value: string) -> Result<bool, DbError> {
-        if !value.as_str().is_valid_utf8() {
+        if !value.is_valid_utf8() {
             return Result<bool, DbError>::Err(error(QSLITE_ERROR_UTF8, "value is not valid UTF-8"))
         }
-        auto content = self.encode_upsert(key, value.as_str())
+        auto content = self.encode_upsert(key, value)
         auto decoded = decode(content.clone())
         if decoded.is_err() { return Result<bool, DbError>::Err(decoded.unwrap_err()) }
         auto persisted = persist_content(self.path.clone(), content)
@@ -119,7 +119,7 @@ impl Database@encap {
                 append_record(output, key, value)
                 inserted = true
             } else {
-                append_record(output, row.key, row.value.as_str())
+                append_record(output, row.key, row.value)
             }
             i += 1
         }
@@ -132,7 +132,7 @@ impl Database@encap {
         auto i# = 0:usize
         loop i < self.rows.len() {
             auto *row = self.rows.get_ref(i)
-            if row.key != key { append_record(output, row.key, row.value.as_str()) }
+            if row.key != key { append_record(output, row.key, row.value) }
             i += 1
         }
         return output
@@ -201,7 +201,7 @@ fn decode_value(value: str) -> Result<string, DbError> {
         decoded#.push_byte_raw(((high * 16 + low) as u8))
         i += 2
     }
-    if !decoded.as_str().is_valid_utf8() {
+    if !decoded.is_valid_utf8() {
         return Result<string, DbError>::Err(error(QSLITE_ERROR_UTF8, "decoded value is not valid UTF-8"))
     }
     return Result<string, DbError>::Ok(cede decoded)
@@ -223,11 +223,11 @@ fn record_checksum(payload: str) -> string {
 
 fn append_record(output#: string, key: u64, value: str) {
     auto value_hex = encode_hex_view(value)
-    auto payload = record_payload(key, value_hex.as_str())
-    auto digest = record_checksum(payload.as_str())
-    output#.push_str(payload.as_str())
+    auto payload = record_payload(key, value_hex)
+    auto digest = record_checksum(payload)
+    output#.push_str(payload)
     output#.push_str("\t")
-    output#.push_str(digest.as_str())
+    output#.push_str(digest)
     output#.push_str("\n")
 }
 
@@ -256,10 +256,10 @@ fn decode(content: string) -> Result<Vec<Row>, DbError> {
         auto digest = fields#.next()
         if !fields.is_done() { return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record has extra fields")) }
 
-        auto parsed_key = parse_u64(key_text.as_str())
+        auto parsed_key = parse_u64(key_text)
         if parsed_key.is_none() {
             auto message# = string::from("record key is invalid: '")
-            message#.push_str(key_text.as_str())
+            message#.push_str(key_text)
             message#.push_str("'")
             return Result<Vec<Row>, DbError>::Err(DbError(code = QSLITE_ERROR_RECORD, message = cede message))
         }
@@ -267,12 +267,12 @@ fn decode(content: string) -> Result<Vec<Row>, DbError> {
         if has_previous && key <= previous {
             return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_RECORD, "record keys are duplicate or unsorted"))
         }
-        auto payload = record_payload(key, value_hex.as_str())
-        auto expected_digest = record_checksum(payload.as_str())
+        auto payload = record_payload(key, value_hex)
+        auto expected_digest = record_checksum(payload)
         if expected_digest != digest {
             return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_CHECKSUM, "record checksum mismatch"))
         }
-        auto decoded = decode_value(value_hex.as_str())
+        auto decoded = decode_value(value_hex)
         if decoded.is_err() { return Result<Vec<Row>, DbError>::Err(decoded.unwrap_err()) }
         rows#.push(cede Row(key = key, value = decoded.unwrap()))
         previous = key
@@ -288,7 +288,7 @@ fn persist_content(path: string, content: string) -> Result<bool, DbError> {
     if !file.is_valid() {
         return Result<bool, DbError>::Err(error(QSLITE_ERROR_IO, "cannot create temporary database"))
     }
-    auto written = file.write(content.as_str())
+    auto written = file.write(content)
     file#.flush()
     file#.close()
     if written != content.len() {

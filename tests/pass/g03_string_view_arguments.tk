@@ -1,0 +1,29 @@
+fn view_len(value: str) -> usize {
+    return value.len()
+}
+
+shape Reader(marker: i32)
+
+impl Reader {
+    pub fn read_len(self, value: str) -> usize {
+        return value.len()
+    }
+}
+
+pub fn main() -> i32 {
+    auto owned = string::from("hello")
+    auto reader = Reader(marker = 0)
+
+    if view_len(owned) != 5 { return 1 }
+    if reader.read_len(owned) != 5 { return 2 }
+    if view_len(string::from("temporary")) != 9 { return 3 }
+    if !owned.is_valid_utf8() { return 4 }
+
+    auto output# = string::from("")
+    output#.push_str(owned)
+    if output != "hello" { return 5 }
+    if owned != "hello" { return 6 }
+    auto pending = Result<string, string>::Ok(string::from("consumed once"))
+    if view_len(pending.unwrap()) != 13 { return 7 }
+    return 0
+}

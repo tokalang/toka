@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E0441
+
+fn main() -> i32 {
+    auto owned# = string::from("borrowed")
+    auto view = owned.as_str()
+    owned#.push_str("!")
+    return view.len() as i32
+}

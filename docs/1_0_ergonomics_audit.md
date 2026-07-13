@@ -33,7 +33,7 @@ states.
 | --- | --- | --- | --- |
 | `ERG-1` | `Complete` | Equality across the zero-cost owned text view | `string == str` and `str == string`, positive runtime coverage, no allocation or consumption, QSLite CLI and vertical use |
 | `ERG-2` | `Complete` | Contextual numeric literals | Calls, methods, constructors, returns, assignments, comparisons, negative literals, overflow rejection, and stable diagnostics |
-| `ERG-3` | `InProgress` | Text and byte API friction | Audit avoidable `as_str()`, `string::from()`, and temporary bindings in the native builder and QSLite; classify every retained conversion |
+| `ERG-3` | `Complete` | Text and byte API friction | Audit avoidable `as_str()`, `string::from()`, and temporary bindings in the native builder and QSLite; classify every retained conversion |
 | `ERG-4` | `Pending` | Ownership-facing expression composition | Direct member chains, container resource clone, `cede` capture, Result/Option propagation, and cleanup must work without hiding transfer |
 | `ERG-5` | `Pending` | Iterator, closure, and async composition | Real algorithms must accept natural closures and iterator values without adapter noise or lost dependency facts |
 | `ERG-6` | `Pending` | Diagnostic ergonomics | Rejections identify the ownership, type, effect, or ambiguity that requires explicit source and show a viable spelling where one exists |
@@ -75,9 +75,28 @@ The first slice closes `ERG-1` and establishes the audit mechanism:
   numeric suffixes where an operand or parameter already fixes the type.
 - The native builder uses direct text equality for CLI, platform, manifest,
   and cache facts.
-- Focused execution passes, the complete positive corpus is 328/328 after
+- A `string` argument is projected to `str` when a function or method has that
+  unique expected view. The projection calls the core `as_str()` contract and
+  does not allocate, clone, consume, or insert `cede`.
+- Explicit and automatic `as_str()` expressions now replay member dependencies
+  through source and source-less `.tki` paths. A returned view keeps
+  `owned.buf` borrowed, while methods returning non-borrowing values and
+  completed `return` statements clear their temporary dependency facts.
+- The two reference programs went from 51 explicit `.as_str()` calls to 6.
+  QSLite retains none. The native builder retains six calls after
+  `Vec<string>::get_ref()`, whose result is a pointer rather than an owned
+  `string`. Compiler-synthesized projections mark their receiver as already
+  checked, so consuming expressions such as `Result::unwrap()` are checked
+  exactly once. The six retained calls are `ERG-4` expression-composition
+  boundaries rather than view API requirements.
+- The obsolete `implicit_deref_err` fixture was removed: it rejected the now
+  frozen `string -> str` view and did not exercise resource copying. Actual
+  resource-copy rejection remains covered by destructuring, spread, closure,
+  and source-less resource fixtures; non-`cede` shape parameters remain
+  observational and may accept a reference to the same soul.
+- Focused execution passes, the complete positive corpus is 329/329 after
   running its two local-socket cases outside the restricted sandbox, and the
-  negative corpus is 254/254. Warn is 1/1 and semantic replay is 14/14.
+  negative corpus is 253/253. Warn is 1/1 and semantic replay is 15/15.
 - QSLite passes 100 sustained operations, 10 corruption classes, its vertical
   test, and source-less/incremental/package replay. The native builder passes
   source-less facade/process replay and a 30-module, 20-cycle qualification.

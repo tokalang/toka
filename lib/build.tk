@@ -39,11 +39,11 @@ fn json_write_string(s: str, buf#: string) {
 }
 fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
     buf#.push_str("{\"interface\":")
-    json_write_string(outputs.interface.as_str(), buf)
+    json_write_string(outputs.interface, buf)
     buf#.push_str(",\"object\":")
-    json_write_string(outputs.object.as_str(), buf)
+    json_write_string(outputs.object, buf)
     buf#.push_str(",\"executable\":")
-    json_write_string(outputs.executable.as_str(), buf)
+    json_write_string(outputs.executable, buf)
     buf#.push_str("}")
     return buf
 }
@@ -106,23 +106,23 @@ impl ModuleSnapshot@encap {
 
 fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
     buf#.push_str("{\"kind\":")
-    json_write_string(snapshot.kind.as_str(), buf)
+    json_write_string(snapshot.kind, buf)
     buf#.push_str(",\"fallback_triggered\":")
     if snapshot.fallback_triggered { buf#.push_str("true") } else { buf#.push_str("false") }
     buf#.push_str(",\"cache_status\":")
-    json_write_string(snapshot.cache_status.as_str(), buf)
+    json_write_string(snapshot.cache_status, buf)
     buf#.push_str(",\"cache_status_reason\":")
-    json_write_string(snapshot.cache_status_reason.as_str(), buf)
+    json_write_string(snapshot.cache_status_reason, buf)
     buf#.push_str(",\"target_triple\":")
-    json_write_string(snapshot.target_triple.as_str(), buf)
+    json_write_string(snapshot.target_triple, buf)
     buf#.push_str(",\"compiler_version\":")
-    json_write_string(snapshot.compiler_version.as_str(), buf)
+    json_write_string(snapshot.compiler_version, buf)
     buf#.push_str(",\"interface_version\":")
-    json_write_string(snapshot.interface_version.as_str(), buf)
+    json_write_string(snapshot.interface_version, buf)
     buf#.push_str(",\"source_hash\":")
-    json_write_string(snapshot.source_hash.as_str(), buf)
+    json_write_string(snapshot.source_hash, buf)
     buf#.push_str(",\"content_hash\":")
-    json_write_string(snapshot.content_hash.as_str(), buf)
+    json_write_string(snapshot.content_hash, buf)
     buf#.push_str(",\"outputs\":")
     buf = outputs_to_json(snapshot.outputs.clone(), buf)
     buf#.push_str(",\"dependencies\":[")
@@ -181,7 +181,7 @@ impl DependencyManifest@encap {
 
 fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
     buf#.push_str("{\"manifest_version\":")
-    json_write_string(manifest.manifest_version.as_str(), buf)
+    json_write_string(manifest.manifest_version, buf)
     buf#.push_str(",\"roots\":[")
     auto i# = 0:usize
     loop i < manifest.roots.len() {
@@ -199,7 +199,7 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
         if !first { buf#.push_str(",") }
         first = false
         auto &key = entry.key()
-        json_write_string(key.as_str(), buf)
+        json_write_string(key, buf)
         buf#.push_str(":")
         auto &val = entry.val()
         buf = snapshot_to_json(val.clone(), buf)
@@ -241,7 +241,7 @@ impl RebuildModuleInfo@encap {
 fn info_to_json(info: RebuildModuleInfo) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"reason\":")
-    json_write_string(info.reason.as_str(), buf)
+    json_write_string(info.reason, buf)
     buf#.push_str(",\"dirty_deps\":[")
     auto i# = 0:usize
     loop i < info.dirty_deps.len() {
@@ -299,7 +299,7 @@ impl RebuildPlan@encap {
 fn plan_to_json('plan: RebuildPlan) -> string {
     auto buf# = string::from("")
     buf#.push_str("{\"status\":")
-    json_write_string('plan.status.as_str(), buf)
+    json_write_string('plan.status, buf)
     buf#.push_str(",\"dirty_roots\":[")
     auto i# = 0:usize
     loop i < 'plan.dirty_roots.len() {
@@ -317,11 +317,11 @@ fn plan_to_json('plan: RebuildPlan) -> string {
         if !first { buf#.push_str(",") }
         first = false
         auto &key = entry.key()
-        json_write_string(key.as_str(), buf)
+        json_write_string(key, buf)
         buf#.push_str(":")
         auto &val = entry.val()
         auto info_str = info_to_json(val)
-        buf#.push_str(info_str.as_str())
+        buf#.push_str(info_str)
     }
     buf#.push_str("}}")
     return buf
@@ -359,7 +359,7 @@ impl DfsResult@encap {
 fn vec_contains('vec: Vec<string>, 'item: string) -> bool {
     auto i# = 0:usize
     loop i < 'vec.len() {
-        if 'vec.get_ref(i).as_str().equals('item.as_str()) {
+        if 'vec.get_ref(i).as_str().equals('item) {
             return true
         }
         i += 1
@@ -384,12 +384,12 @@ fn is_std_or_core(path: string) -> bool {
     auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
     if toka_lib != 0:Addr {
         auto env_lib = __path_normalize(__path_canonicalize(string::from_cstr(toka_lib as *char)))
-        if path_norm.starts_with(env_lib.as_str()) {
+        if path_norm.starts_with(env_lib) {
             return true
         }
     }
     auto std_usr = string::from("/usr/local/lib/toka")
-    if path_norm.starts_with(std_usr.as_str()) {
+    if path_norm.starts_with(std_usr) {
         return true
     }
     if path_norm.contains("/lib/core/") ||
@@ -425,13 +425,13 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
 
             auto obj_path# = build_dir.clone()
             obj_path#.push_str("/objects/")
-            obj_path#.push_str(h.as_str())
+            obj_path#.push_str(h)
             obj_path#.push_str(".o")
             auto obj_path_canon = __path_canonicalize(obj_path)
 
             auto tki_path# = build_dir.clone()
             tki_path#.push_str("/interfaces/")
-            tki_path#.push_str(h.as_str())
+            tki_path#.push_str(h)
             tki_path#.push_str(".tki")
             auto tki_path_canon = __path_canonicalize(tki_path)
 
@@ -863,7 +863,7 @@ fn run_build_impl(
         if toka_lib != 0:Addr {
             auto toka_lib_arg = string::from_cstr(toka_lib as *char)
             c_args#.push_str("-I ")
-            c_args#.push_str(toka_lib_arg.as_str())
+            c_args#.push_str(toka_lib_arg)
             c_args#.push_str(" ")
             compiler_args#.push(cede string::from("-I"))
             compiler_args#.push(cede toka_lib_arg)
@@ -880,7 +880,7 @@ fn run_build_impl(
         auto env_pkg_args = libc_getenv(c"TOKA_PKG_ARGS") as Addr
         if env_pkg_args != 0:Addr {
             auto pkg_args = string::from_cstr(env_pkg_args as *char)
-            c_args#.push_str(pkg_args.as_str())
+            c_args#.push_str(pkg_args)
             c_args#.push_str(" ")
             auto pkg_arg_iter = pkg_args.split(' ' as i32)
             loop !pkg_arg_iter.is_done() {
@@ -985,7 +985,7 @@ fn run_build_impl(
                 return 1
             }
             auto dump_json = cede dump_output.stdout
-            auto current_graph_res = __deserialize_shape<DependencyManifest>(dump_json.as_str())
+            auto current_graph_res = __deserialize_shape<DependencyManifest>(dump_json)
             if current_graph_res.is_err() {
                 println("error: failed to deserialize current graph: {}", current_graph_res.unwrap_err())
                 return 1
@@ -997,7 +997,7 @@ fn run_build_impl(
             if exists(manifest_path.clone()) {
                 auto old_json_res = read_to_string(manifest_path.clone())
                 if old_json_res.is_ok() {
-                    auto old_manifest_res = __deserialize_shape<DependencyManifest>(old_json_res.unwrap().as_str())
+                    auto old_manifest_res = __deserialize_shape<DependencyManifest>(old_json_res.unwrap())
                     if old_manifest_res.is_ok() {
                         old_manifest = old_manifest_res.unwrap()
                     }
@@ -1007,7 +1007,7 @@ fn run_build_impl(
             auto plan# = RebuildPlan(..)
             generate_rebuild_plan(current_graph, old_manifest, plan)
             auto plan_json = plan_to_json(plan)
-            println("{}", plan_json.as_str())
+            println("{}", plan_json)
             return 0
         }
 
@@ -1101,7 +1101,7 @@ fn run_build_impl(
                         c_compile#.arg(string::from("-o"))
                         auto c_object# = string::from("target/debug/")
                         auto f_stem = file_stem(file)
-                        c_object#.push_str(f_stem.as_str())
+                        c_object#.push_str(f_stem)
                         c_object#.push_str(".o")
                         c_compile#.arg(cede c_object)
 
@@ -1142,7 +1142,7 @@ fn run_build_impl(
                         if file.len() == 0:usize { break }
                         auto f_stem = file_stem(file)
                         auto c_object# = string::from("target/debug/")
-                        c_object#.push_str(f_stem.as_str())
+                        c_object#.push_str(f_stem)
                         c_object#.push_str(".o")
                         ar_cmd#.arg(cede c_object)
                     }

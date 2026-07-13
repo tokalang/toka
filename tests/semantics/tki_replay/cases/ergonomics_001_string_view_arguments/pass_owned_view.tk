@@ -1,0 +1,12 @@
+import ./lib::{imported_view_len, imported_identity, ImportedReader}
+
+fn main() -> i32 {
+    auto owned = string::from("source-less")
+    auto reader = ImportedReader(marker = 0)
+    if imported_view_len(owned) != 11 { return 1 }
+    if reader.read_len(owned) != 11 { return 2 }
+    auto view = imported_identity(owned)
+    if view != "source-less" { return 3 }
+    if owned != "source-less" { return 4 }
+    return 0
+}

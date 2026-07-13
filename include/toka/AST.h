@@ -709,6 +709,7 @@ public:
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;
   bool IsCompilerInternal = false; // [Auto-Clone] Bypass visibility
+  bool ObjectIsPrechecked = false; // Synthesized wrapper reuses receiver Sema
   FunctionDecl *ResolvedFn = nullptr;
 
   MethodCallExpr(std::unique_ptr<Expr> obj, const std::string &method,
@@ -722,6 +723,7 @@ public:
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->IsCompilerInternal = IsCompilerInternal;
+    n->ObjectIsPrechecked = ObjectIsPrechecked;
     n->ResolvedFn = nullptr;
     return n;
   }

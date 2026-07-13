@@ -1058,8 +1058,8 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
 
   // 3. Implicit Dereference (Reference -> Value)
   // If Source is Reference (&T) and Target is Value (T), allow if T is
-  // compat. Note: Sema doesn't strictly track "is copyable" yet, so we
-  // allow it generically. CodeGen handles the load.
+  // compatible. Non-cede parameters observe the referenced soul without
+  // transferring ownership.
   if (auto refS = std::dynamic_pointer_cast<toka::ReferenceType>(S)) {
     // Check if Target is NOT a reference
     if (!std::dynamic_pointer_cast<toka::ReferenceType>(T)) {

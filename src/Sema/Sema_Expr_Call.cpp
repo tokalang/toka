@@ -1639,6 +1639,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     auto argType = checkExpr(Call->Args[i].get(), paramType);
+    projectOwnedStringView(Call->Args[i], argType, paramType);
 
     if (isExecutionBoundaryCalleeName(OriginalName)) {
       if (auto *Clo = findClosureExpr(Call->Args[i].get())) {
@@ -1838,7 +1839,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                  paramName.compare(0, argName.size(), argName) == 0 &&
                  paramName[argName.size()] == '.')) {
                if (i < Call->Args.size()) {
-                   std::string argPath = getPathString(Call->Args[i].get());
+                   std::string argPath =
+                       getDependencyPathString(Call->Args[i].get());
                    if (argPath.empty())
                      return "";
                    if (argName == paramName)
@@ -1864,9 +1866,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 if (i >= Call->Args.size())
                    continue;
 
-                std::string argVar = getPathString(Call->Args[i].get());
+                std::string structuralArgVar =
+                    getPathString(Call->Args[i].get());
+                std::string argVar =
+                    getDependencyPathString(Call->Args[i].get());
                 if (argVar.empty())
-                   continue;
+                  continue;
+                bool isExpressionDependency = structuralArgVar.empty();
                 if (argName != dep)
                   argVar += dep.substr(argName.size());
 
@@ -1905,7 +1911,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   argResolvedType = argInfo->TypeObj;
 
                 bool isDottedDependency = argName != dep;
-                if (isDottedDependency || contributedDeps ||
+                if (isExpressionDependency || isDottedDependency ||
+                    contributedDeps ||
                     isCurrentFunctionParam ||
                     !isBorrowLikeType(argResolvedType)) {
                   m_LastLifeDependencies.insert(argVar);

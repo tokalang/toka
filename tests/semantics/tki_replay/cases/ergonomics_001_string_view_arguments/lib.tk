@@ -1,0 +1,19 @@
+pub fn imported_view_len(value: str) -> usize {
+    return value.len()
+}
+
+// EXPECT_TKI: pub fn imported_identity(value: str) -> str <- value
+pub fn imported_identity(value: str) -> str
+effects:
+    return <- value
+{
+    return value
+}
+
+pub shape ImportedReader(marker: i32)
+
+impl ImportedReader {
+    pub fn read_len(self, value: str) -> usize {
+        return value.len()
+    }
+}

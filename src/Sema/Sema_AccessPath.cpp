@@ -240,6 +240,82 @@ std::string Sema::getPathString(Expr *E) {
   return makeAccessPath(E).toLegacyString();
 }
 
+bool Sema::returnTypeHasMember(FunctionDecl *Function,
+                               const std::string &Member) {
+  if (!Function)
+    return false;
+
+  auto returnType = Function->ResolvedReturnType;
+  if (!returnType)
+    returnType = resolveType(toka::Type::fromString(Function->ReturnType), false);
+  if (!returnType || !returnType->isShape())
+    return false;
+
+  const std::string soul = Type::stripMorphology(returnType->getSoulName());
+  auto shape = ShapeMap.find(soul);
+  if (shape == ShapeMap.end() || !shape->second)
+    return false;
+  for (const auto &field : shape->second->Members)
+    if (Type::stripMorphology(field.Name) == Member)
+      return true;
+  return false;
+}
+
+std::string Sema::getDependencyPathString(Expr *E) {
+  std::string directPath = getPathString(E);
+  if (!directPath.empty())
+    return directPath;
+
+  FunctionDecl *function = nullptr;
+  std::vector<Expr *> arguments;
+  if (auto *call = dynamic_cast<CallExpr *>(E)) {
+    function = call->ResolvedFn;
+    for (const auto &argument : call->Args)
+      arguments.push_back(argument.get());
+  } else if (auto *call = dynamic_cast<MethodCallExpr *>(E)) {
+    function = call->ResolvedFn;
+    arguments.push_back(call->Object.get());
+    for (const auto &argument : call->Args)
+      arguments.push_back(argument.get());
+  }
+  if (!function)
+    return {};
+
+  std::set<std::string> paths;
+  auto mapDependency = [&](const std::string &dependency) {
+    for (size_t i = 0; i < function->Args.size() && i < arguments.size(); ++i) {
+      const std::string parameter =
+          Type::stripMorphology(function->Args[i].Name);
+      const std::string normalized = Type::stripMorphology(dependency);
+      if (normalized != parameter &&
+          !(normalized.size() > parameter.size() &&
+            normalized.compare(0, parameter.size(), parameter) == 0 &&
+            normalized[parameter.size()] == '.')) {
+        continue;
+      }
+
+      std::string path = getDependencyPathString(arguments[i]);
+      if (path.empty())
+        return;
+      if (normalized.size() > parameter.size())
+        path += normalized.substr(parameter.size());
+      paths.insert(std::move(path));
+      return;
+    }
+  };
+
+  for (const auto &dependency : function->LifeDependencies)
+    mapDependency(dependency);
+  for (const auto &member : function->MemberDependencies) {
+    if (!returnTypeHasMember(function, member.first))
+      continue;
+    for (const auto &dependency : member.second)
+      mapDependency(dependency);
+  }
+
+  return paths.size() == 1 ? *paths.begin() : std::string{};
+}
+
 SymbolInfo *Sema::resolveBorrowSource(SymbolInfo *Info,
                                       std::string &EffectiveName) {
   if (!Info || !CurrentScope)

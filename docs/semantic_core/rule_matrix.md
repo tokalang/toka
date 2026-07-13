@@ -238,8 +238,7 @@ Primary references:
   `tests/pass/g07_implicit_borrow_match.tk`
 - Negative tests: `tests/fail/destruct_resource_copy.tk`,
   `tests/fail/closure_copy_capture_resource.tk`,
-  `tests/fail/spread_resource_no_cede.tk`,
-  `tests/fail/implicit_deref_err.tk`
+  `tests/fail/spread_resource_no_cede.tk`
 - Interface replay requirements: shape resource facts, drop/clone facts, and
   field morphology must remain compiler-visible.
 - Replay tests: `tests/semantics/tki_replay/cases/own_resource_001_private_field`

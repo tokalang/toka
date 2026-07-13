@@ -990,6 +990,9 @@ void Sema::checkStmt(Stmt *S) {
           checkStrictMorphology(Ret, targetMorph, sourceMorph, "return value");
       }
     }
+    m_LastBorrowSource.clear();
+    m_LastLifeDependencies.clear();
+    m_LastFieldDependencies.clear();
   } else if (auto *Free = dynamic_cast<FreeStmt *>(S)) {
     Free->Expression = foldGenericConstant(std::move(Free->Expression));
     auto FreeTypeObj = checkExpr(Free->Expression.get());

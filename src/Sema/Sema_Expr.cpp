@@ -394,6 +394,7 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
 
   if (!hasRefs) {
       m_LastLifeDependencies.clear();
+      m_LastFieldDependencies.clear();
       m_LastBorrowSource = "";
   }
 
@@ -457,6 +458,36 @@ bool Sema::validateIntegerLiteralRange(
           targetType->toString());
   }
   return fits;
+}
+
+bool Sema::projectOwnedStringView(
+    std::unique_ptr<Expr> &argument,
+    std::shared_ptr<toka::Type> &argumentType,
+    const std::shared_ptr<toka::Type> &expectedType) {
+  if (!argument || !argumentType || !expectedType)
+    return false;
+
+  auto source = resolveType(argumentType, true);
+  auto target = resolveType(expectedType, true);
+  if (!source || !target || target->getSoulName() != "str")
+    return false;
+
+  const std::string sourceSoul = source->getSoulName();
+  if (sourceSoul != "string" && sourceSoul != "String")
+    return false;
+  if (!MethodMap.count(sourceSoul) ||
+      !MethodMap[sourceSoul].count("as_str"))
+    return false;
+
+  SourceLocation loc = argument->Loc;
+  auto view = std::make_unique<MethodCallExpr>(
+      std::move(argument), "as_str", std::vector<std::unique_ptr<Expr>>{});
+  view->Loc = loc;
+  view->IsCompilerInternal = true;
+  view->ObjectIsPrechecked = true;
+  argument = std::move(view);
+  argumentType = checkExpr(argument.get(), expectedType);
+  return argumentType && argumentType->getSoulName() == "str";
 }
 
 // -----------------------------------------------------------------------------
@@ -2593,7 +2624,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E)) {
     bool oldAllow = m_AllowPermissionSuffix;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects
-    auto ObjTypeObj = checkExpr(Met->Object.get());
+    auto ObjTypeObj = Met->ObjectIsPrechecked && Met->Object->ResolvedType
+                          ? Met->Object->ResolvedType
+                          : checkExpr(Met->Object.get());
     m_AllowPermissionSuffix = oldAllow;
     
     std::string ObjType = resolveType(ObjTypeObj->toString());
@@ -2831,6 +2864,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 }
                 
                 auto argTy = checkExpr(Met->Args[i].get(), expectedParamTy);
+                projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
                 if (FD->Effect == EffectKind::Async && i < expectedArgs) {
                   checkStartBoundaryArgument(
                       Met->Args[i].get(), argTy, FD->Args[i + 1].IsCeded,
@@ -2886,16 +2920,28 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             bool hasExplicitDeps = !FD->LifeDependencies.empty();
 
             auto mapParamToArg = [&](const std::string &paramName) -> std::string {
-               if (Type::stripMorphology(paramName) == "self") {
-                  return getPathString(Met->Object.get());
-               }
+               const std::string normalized =
+                   Type::stripMorphology(paramName);
                for (size_t i = 0; i < FD->Args.size(); ++i) {
-                  if (FD->Args[i].Name == paramName) {
-                     if (i > 0 && (i - 1) < Met->Args.size()) {
-                         if (auto *ve = dynamic_cast<VariableExpr*>(Met->Args[i - 1].get())) return ve->Name;
-                         else if (auto *me = dynamic_cast<MemberExpr*>(Met->Args[i - 1].get())) return me->toString();
-                     }
-                  }
+                  const std::string argumentName =
+                      Type::stripMorphology(FD->Args[i].Name);
+                  if (normalized != argumentName &&
+                      !(normalized.size() > argumentName.size() &&
+                        normalized.compare(0, argumentName.size(),
+                                           argumentName) == 0 &&
+                        normalized[argumentName.size()] == '.'))
+                    continue;
+
+                  Expr *argument = i == 0 ? Met->Object.get()
+                                          : (i - 1 < Met->Args.size()
+                                                 ? Met->Args[i - 1].get()
+                                                 : nullptr);
+                  std::string path = getDependencyPathString(argument);
+                  if (path.empty())
+                    return "";
+                  if (normalized.size() > argumentName.size())
+                    path += normalized.substr(argumentName.size());
+                  return path;
                }
                return "";
             };
@@ -2905,6 +2951,25 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    std::string argVar = mapParamToArg(dep);
                    if (argVar.empty())
                      continue;
+
+                   Expr *structuralArg = Met->Object.get();
+                   for (size_t i = 1; i < FD->Args.size(); ++i) {
+                     const std::string argumentName =
+                         Type::stripMorphology(FD->Args[i].Name);
+                     const std::string normalized =
+                         Type::stripMorphology(dep);
+                     if ((normalized == argumentName ||
+                          (normalized.size() > argumentName.size() &&
+                           normalized.compare(0, argumentName.size(),
+                                              argumentName) == 0 &&
+                           normalized[argumentName.size()] == '.')) &&
+                         i - 1 < Met->Args.size()) {
+                       structuralArg = Met->Args[i - 1].get();
+                       break;
+                     }
+                   }
+                   bool isExpressionDependency =
+                       getPathString(structuralArg).empty();
 
                    bool isCurrentFunctionParam = false;
                    if (CurrentFunction) {
@@ -2960,7 +3025,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        contributedDeps = true;
                    }
 
-                   if (contributedDeps || isCurrentFunctionParam ||
+                   if (isExpressionDependency || contributedDeps ||
+                       isCurrentFunctionParam ||
                        !isBorrowLikeType(argResolvedType)) {
                      m_LastLifeDependencies.insert(argVar);
                    }
@@ -2973,6 +3039,23 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                        SemanticReason::InterfaceContractApplied, argVar, dep,
                        FD->Loc);
                 }
+            }
+
+            for (const auto &pair : FD->MemberDependencies) {
+              if (!returnTypeHasMember(FD, pair.first))
+                continue;
+              for (const auto &dep : pair.second) {
+                std::string argVar = mapParamToArg(dep);
+                if (argVar.empty())
+                  continue;
+                m_LastFieldDependencies[pair.first].insert(argVar);
+                recordDecision(
+                    Met, SemanticRuleID::EffMember001,
+                    SemanticOperation::MemberDependency,
+                    SemanticDecision::Allow,
+                    SemanticReason::InterfaceContractApplied,
+                    pair.first + "<-" + argVar, dep, FD->Loc);
+              }
             }
         }
 
