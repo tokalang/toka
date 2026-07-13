@@ -248,6 +248,6 @@ Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 0.9.8-08-RC}
+  note         = {Version 0.9.8-09-RC}
 }
 ```

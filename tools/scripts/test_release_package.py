@@ -30,6 +30,7 @@ def run(command, cwd, env):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("archive")
+    parser.add_argument("--version")
     args = parser.parse_args()
 
     archive = Path(args.archive).resolve()
@@ -68,9 +69,14 @@ def main():
         env["PATH"] = str(package_root / "bin") + os.pathsep + env.get("PATH", "")
         tokac = package_root / "bin" / ("tokac" + suffix)
         toka = package_root / "bin" / ("toka" + suffix)
-        run([str(tokac), "--version"], root, env)
+        tokac_version = run([str(tokac), "--version"], root, env)
+        expected_version = args.version[1:] if args.version and args.version.startswith("v") else args.version
+        if expected_version and expected_version not in tokac_version:
+            raise SystemExit("packaged tokac version mismatch: " + tokac_version.strip())
         checks.append("tokac-version")
-        run([str(toka), "--version"], root, env)
+        toka_version = run([str(toka), "--version"], root, env)
+        if expected_version and expected_version not in toka_version:
+            raise SystemExit("packaged toka version mismatch: " + toka_version.strip())
         checks.append("toka-version")
 
         direct = root / "direct.tk"

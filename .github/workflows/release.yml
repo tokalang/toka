@@ -7,6 +7,11 @@ on:
         description: Optional release tag/version label
         required: false
         type: string
+      publish_release:
+        description: Publish archives to the named release after the gate passes
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
@@ -107,10 +112,11 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release archive
-        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.tag_name != '')
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.label }}
+          body_path: docs/release_notes_${{ steps.version.outputs.label }}.md
           files: build/toka-${{ steps.version.outputs.label }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -203,17 +203,18 @@ unless it is separately promoted through a new audited decision.
 | `FZ-4-D03` | `FZ-4` | `Complete` | Diagnostics used "not yet supported" without naming their 1.0 classification | `E04547` and `E0744` retain their identities and now state explicit 1.0 exclusions, with focused negative tests |
 | `FZ-4-D04` | `FZ-4` | `Complete` | Closure capture ownership existed, but shared, exclusive, and consuming invocation were not a replayable public contract | Added one `@Callable` protocol, receiver-morphology inference, `fn#`/`cede fn` type modes, exact consuming cleanup, stable diagnostics, iterator/thread composition, and source-less replay |
 | `FZ-4-D05` | `FZ-4` | `Complete` | `!` accepted layout-compatible error types and CodeGen copied unmatched union storage without a conversion contract | Added one-step `@ErrorInto<Target>`, parameterized trait bounds, typed context, exact sync/async cleanup evidence, stable diagnostics, and source-less replay; `dyn error` and `main -> Result` remain deferred |
-| `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed ten-stage gate, deterministic JSON, package smoke, and a four-target workflow with no ignored mandatory failures |
+| `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed twelve-stage gate, deterministic JSON, two sustained reference applications, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
-| `FZ-5-P02` | `FZ-5` | `InProgress` | The authorized late iterator, callable, and typed error-propagation protocols changed the frozen source surface after revision `3ab00dff` | Local 324/324 pass, 251/251 fail, 1/1 warn, 14/14 replay, and 12/12 cache-invalidation evidence is complete; no RC or tag is created by this change. A later authorized RC must obtain clean Linux/macOS x64/arm64 release-gate reports |
+| `FZ-5-P02` | `FZ-5` | `InProgress` | The authorized late language closures and later application-driven fixes changed the candidate revision after `3ab00dff` | The dirty-source `v0.9.8-09-RC` preparation gate passes all twelve stages locally: 326/326 pass, 252/252 fail, 1/1 warn, 14/14 replay, 12/12 cache invalidation, 100 native-build cycles, QSLite, 6/6 async, 82/82 sanitizer, and 12 package checks. Clean Linux/macOS x64/arm64 reports are still required before the tag |
 
 The Toka-native incremental build orchestrator is the sustained `FZ-5`
 reference application. Its workload, finding policy, and finite stop conditions
 are maintained in `native_build_reference_plan.md`; it does not expand the 1.0
 language surface or replace the clean four-platform release gate.
 Local `NB-1` through `NB-3` evidence is complete, including 100 fixed-seed
-mutation cycles. `NB-4` remains in progress until the dedicated Linux/macOS
-qualification workflow produces reports for both supported platform families.
+mutation cycles. The qualification is now a mandatory stage of the unified RC
+gate. `NB-4` remains in progress until clean `v0.9.8-09-RC` reports cover both
+supported platform families.
 
 QSLite is the second bounded `FZ-5` reference application. Its persistent
 storage workload, corruption policy, toolchain replay requirements, and finite
@@ -349,9 +350,10 @@ Toka 1.0 may be frozen only when all of the following are true:
 
 The `v0.9.8-08-RC` evidence at revision `3ab00dff` is the historical baseline,
 but it predates the authorized iterator and callable closures and no longer
-satisfies the final-current-revision condition. This document and `FZ-5` remain `InProgress`
-until the replacement four-target matrix passes and an explicit decision
-authorizes the 1.0 version transition and final release act.
+satisfies the final-current-revision condition. `v0.9.8-09-RC` is the active
+replacement candidate. This document and `FZ-5` remain `InProgress` until its
+four-target matrix passes and an explicit decision authorizes the 1.0 version
+transition and final release act.
 
 At that point the document status changes to `Frozen`, 1.0 semantic expansion
 stops, and new expressive power moves to an additive 1.x proposal or a 2.0

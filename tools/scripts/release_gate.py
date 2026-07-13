@@ -23,8 +23,8 @@ ASYNC_FIXTURES = (
 )
 STAGE_NAMES = (
     "build", "pass", "fail", "warn", "semantic_replay",
-    "cache_invalidation", "incremental", "async", "sanitizer",
-    "package_smoke",
+    "cache_invalidation", "incremental", "native_build_reference",
+    "qslite", "async", "sanitizer", "package_smoke",
 )
 
 
@@ -86,6 +86,36 @@ def parse_counts(name, output):
             if data.get("schema") == "toka.release-package-smoke":
                 counts = {"checks": int(data.get("count", 0))}
                 break
+    elif name == "native_build_reference":
+        for line in reversed(clean.splitlines()):
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if data.get("schema") == "toka.native-build-reference":
+                counts = {
+                    "cycles": int(data.get("cycles", 0)),
+                    "modules": int(data.get("module_count", 0)),
+                }
+                break
+    elif name == "qslite":
+        reference = None
+        toolchain = None
+        for line in clean.splitlines():
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if data.get("schema") == "toka.qslite-reference":
+                reference = data
+            elif data.get("schema") == "toka.qslite-toolchain":
+                toolchain = data
+        if reference is not None and toolchain is not None:
+            counts = {
+                "corruption_cases": int(reference.get("corruption_cases", 0)),
+                "operations": int(reference.get("operation_count", 0)),
+                "toolchain_stages": len(toolchain.get("stages", {})),
+            }
     return counts
 
 
@@ -201,6 +231,19 @@ def main():
         ("semantic_replay", (["tools/scripts/test_semantic_replay.sh"],)),
         ("cache_invalidation", (["tools/scripts/test_semantic_cache_invalidation.sh"],)),
         ("incremental", (["tools/scripts/test_incremental_build.sh"],)),
+        ("native_build_reference", (
+            ["tools/scripts/test_native_build_reference.sh"],
+            [sys.executable, "tools/scripts/qualify_native_build.py",
+             "--cycles", "100",
+             "--work-root", str(work_dir / "native-build-work"),
+             "--report", str(log_dir / "native-build-reference.json")],
+        )),
+        ("qslite", (
+            [sys.executable, "tools/scripts/qualify_qslite.py",
+             "--output", str(log_dir / "qslite-reference.json")],
+            [sys.executable, "tools/scripts/qualify_qslite_toolchain.py",
+             "--output", str(log_dir / "qslite-toolchain.json")],
+        )),
         ("async", ([sys.executable, "tools/scripts/test_pass.py"] + list(ASYNC_FIXTURES),)),
         ("sanitizer", (
             ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"],
@@ -210,7 +253,8 @@ def main():
         ("package_smoke", package_tool_commands + (
             [sys.executable, "tools/scripts/test_package_manager_supply_chain.py", "--toka", env["TOKA"]],
             ["tools/scripts/package_release.sh", args.version],
-            [sys.executable, "tools/scripts/test_release_package.py", str(archive)],
+            [sys.executable, "tools/scripts/test_release_package.py", str(archive),
+             "--version", args.version],
         )),
     )
 
