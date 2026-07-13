@@ -1,0 +1,24 @@
+import core/traits::@delegate
+
+shape Target(value: i32)
+
+impl Target {
+    pub fn eq(self, other: Target) -> bool {
+        return self.value == other.value
+    }
+}
+
+shape Wrapper(value: i32)
+
+impl Wrapper@delegate {
+    pub fn target(self) -> Target {
+        return Target(value = self.value)
+    }
+}
+
+fn main() -> i32 {
+    auto wrapper = Wrapper(value = 1)
+    auto target = Target(value = 1)
+    if wrapper == target { return 1 }
+    return 0
+}

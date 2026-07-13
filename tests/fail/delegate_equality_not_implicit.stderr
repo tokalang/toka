@@ -1,0 +1,5 @@
+error[E0413]: Invalid operands for operation '==': 'Wrapper' and 'Target'
+ --> tests/fail/delegate_equality_not_implicit.tk:22:16
+    |
+ 22 |     if wrapper == target { return 1 }
+    |                ^

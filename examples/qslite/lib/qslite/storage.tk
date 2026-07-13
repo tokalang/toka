@@ -155,18 +155,18 @@ fn find_row(rows: Vec<Row>, key: u64) -> i32 {
 }
 
 fn parse_u64(value: str) -> Option<u64> {
-    if value.len() == 0:usize { return Option<u64>::None }
+    if value.len() == 0 { return Option<u64>::None }
     auto result# = 0:u64
     auto i# = 0:usize
     loop i < value.len() {
         auto byte = value.byte_at(i) as u8
-        if byte < 48:u8 || byte > 57:u8 { return Option<u64>::None }
-        auto digit = (byte - 48:u8) as u64
-        if result > 1844674407370955161:u64 ||
-           (result == 1844674407370955161:u64 && digit > 5:u64) {
+        if byte < 48 || byte > 57 { return Option<u64>::None }
+        auto digit = (byte - 48) as u64
+        if result > 1844674407370955161 ||
+           (result == 1844674407370955161 && digit > 5) {
             return Option<u64>::None
         }
-        result = result * 10:u64 + digit
+        result = result * 10 + digit
         i += 1
     }
     return Option<u64>::Some(result)
@@ -181,25 +181,25 @@ pub fn parse_key(value: str) -> Result<u64, DbError> {
 }
 
 fn hex_nibble(byte: u8) -> i32 {
-    if byte >= 48:u8 && byte <= 57:u8 { return (byte - 48:u8) as i32 }
-    if byte >= 97:u8 && byte <= 102:u8 { return (byte - 97:u8 + 10:u8) as i32 }
+    if byte >= 48 && byte <= 57 { return (byte - 48) as i32 }
+    if byte >= 97 && byte <= 102 { return (byte - 97 + 10) as i32 }
     return -1
 }
 
 fn decode_value(value: str) -> Result<string, DbError> {
-    if value.len() % 2:usize != 0:usize {
+    if value.len() % 2 != 0 {
         return Result<string, DbError>::Err(error(QSLITE_ERROR_RECORD, "hex payload has odd length"))
     }
     auto decoded# = string::from("")
     auto i# = 0:usize
     loop i < value.len() {
         auto high = hex_nibble(value.byte_at(i) as u8)
-        auto low = hex_nibble(value.byte_at(i + 1:usize) as u8)
+        auto low = hex_nibble(value.byte_at(i + 1) as u8)
         if high < 0 || low < 0 {
             return Result<string, DbError>::Err(error(QSLITE_ERROR_RECORD, "hex payload is invalid"))
         }
         decoded#.push_byte_raw(((high * 16 + low) as u8))
-        i += 2:usize
+        i += 2
     }
     if !decoded.as_str().is_valid_utf8() {
         return Result<string, DbError>::Err(error(QSLITE_ERROR_UTF8, "decoded value is not valid UTF-8"))
@@ -237,7 +237,7 @@ fn decode(content: string) -> Result<Vec<Row>, DbError> {
         return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_HEADER, "database header is missing"))
     }
     auto header = lines#.next()
-    if header != string::from("QSLITE\t1") {
+    if header != "QSLITE\t1" {
         return Result<Vec<Row>, DbError>::Err(error(QSLITE_ERROR_HEADER, "database version header is invalid"))
     }
 

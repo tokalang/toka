@@ -19,7 +19,7 @@ fn main() -> i32 {
         return 1
     }
     auto database# = opened.unwrap()
-    if command == string::from("scan") {
+    if command == "scan" {
         print("{}", database.scan_text())
         return 0
     }
@@ -30,19 +30,19 @@ fn main() -> i32 {
         return 2
     }
     auto key = parsed.unwrap()
-    if command == string::from("put") {
+    if command == "put" {
         if argc < 5 { return usage() }
         auto result = database#.upsert(key, get_arg(4))
         if result.is_err() { println("error: {}", result.unwrap_err().message()); return 1 }
         return 0
     }
-    if command == string::from("get") {
+    if command == "get" {
         auto value = database.get(key)
         if value.is_none() { return 3 }
         println("{}", value.unwrap())
         return 0
     }
-    if command == string::from("delete") {
+    if command == "delete" {
         auto result = database#.remove(key)
         if result.is_err() { println("error: {}", result.unwrap_err().message()); return 1 }
         if !result.unwrap() { return 3 }

@@ -417,7 +417,7 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
         auto m_path = key.clone()
         auto info# = val.clone()
 
-        if !vec_contains('graph.roots, m_path) && info.kind.as_str().equals("source") {
+        if !vec_contains('graph.roots, m_path) && info.kind == "source" {
             if is_std_or_core(m_path.clone()) {
                 continue
             }
@@ -644,16 +644,16 @@ fn generate_rebuild_plan(
         }
         auto &old_info = old_info_opt.unwrap()
         
-        if !curr_info.target_triple.as_str().equals(old_info.target_triple.as_str()) ||
-           !curr_info.compiler_version.as_str().equals(old_info.compiler_version.as_str()) ||
-           !curr_info.interface_version.as_str().equals(old_info.interface_version.as_str()) {
+        if curr_info.target_triple != old_info.target_triple ||
+           curr_info.compiler_version != old_info.compiler_version ||
+           curr_info.interface_version != old_info.interface_version {
             dirty_map#.insert(cede m_path.clone(), cede string::from("version/target changed"))
             continue
         }
         
-        if !curr_info.outputs.interface.as_str().equals(old_info.outputs.interface.as_str()) ||
-           !curr_info.outputs.object.as_str().equals(old_info.outputs.object.as_str()) ||
-           !curr_info.outputs.executable.as_str().equals(old_info.outputs.executable.as_str()) {
+        if curr_info.outputs.interface != old_info.outputs.interface ||
+           curr_info.outputs.object != old_info.outputs.object ||
+           curr_info.outputs.executable != old_info.outputs.executable {
             dirty_map#.insert(cede m_path.clone(), cede string::from("outputs changed"))
             continue
         }
@@ -679,9 +679,9 @@ fn generate_rebuild_plan(
         }
         
         auto curr_hash = calculate_file_hash(m_path.clone())
-        if !curr_hash.as_str().equals(old_info.content_hash.as_str()) {
+        if curr_hash != old_info.content_hash {
             auto reason# = string::from("")
-            if curr_info.kind.as_str().equals("source") {
+            if curr_info.kind == "source" {
                 reason = string::from("hash changed")
             } else {
                 reason = string::from("stale interface")
@@ -767,7 +767,7 @@ fn run_build_impl(
         auto os_env = libc_getenv(c"OS") as Addr
         if os_env != 0:Addr {
             auto os_str = string::from_cstr(os_env as *char)
-            if os_str == string::from("Windows_NT") {
+            if os_str == "Windows_NT" {
                 is_windows = true
             }
         }
@@ -789,7 +789,7 @@ fn run_build_impl(
         auto forge_env = libc_getenv(c"TOKA_USE_FORGE") as Addr
         if forge_env != 0:Addr {
             auto forge_env_str = string::from_cstr(forge_env as *char)
-            if forge_env_str == string::from("1") {
+            if forge_env_str == "1" {
                 if libc_access(c"build/bin/forge", 0) == 0 {
                     use_forge = true
                     forge_path = string::from("build/bin/forge")
@@ -947,10 +947,10 @@ fn run_build_impl(
         auto idx_arg#: i32 = 0
         loop idx_arg < env::args_count() {
             auto arg = env::get_arg(idx_arg)
-            if arg.eq(string::from("--plan")) {
+            if arg == "--plan" {
                 has_plan = true
             }
-            if arg.eq(string::from("-m")) || arg.eq(string::from("--manifest")) {
+            if arg == "-m" || arg == "--manifest" {
                 if idx_arg + 1 < env::args_count() {
                     manifest_path = env::get_arg(idx_arg + 1)
                 }

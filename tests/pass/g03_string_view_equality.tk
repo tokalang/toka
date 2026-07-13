@@ -1,0 +1,22 @@
+pub fn main() -> i32 {
+    auto command = string::from("scan")
+
+    if command != "scan" {
+        return 1
+    }
+    if "scan" != command {
+        return 2
+    }
+    if command == "put" {
+        return 3
+    }
+    if "put" == command {
+        return 4
+    }
+
+    // Equality projects a read-only view; it does not consume the string.
+    if command.len() != 4 {
+        return 5
+    }
+    return 0
+}

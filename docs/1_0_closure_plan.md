@@ -205,7 +205,8 @@ unless it is separately promoted through a new audited decision.
 | `FZ-4-D05` | `FZ-4` | `Complete` | `!` accepted layout-compatible error types and CodeGen copied unmatched union storage without a conversion contract | Added one-step `@ErrorInto<Target>`, parameterized trait bounds, typed context, exact sync/async cleanup evidence, stable diagnostics, and source-less replay; `dyn error` and `main -> Result` remain deferred |
 | `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed twelve-stage gate, deterministic JSON, two sustained reference applications, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
-| `FZ-5-P02` | `FZ-5` | `InProgress` | The authorized late language closures and later application-driven fixes changed the candidate revision after `3ab00dff` | The dirty-source `v0.9.8-09-RC` preparation gate passes all twelve stages locally: 326/326 pass, 252/252 fail, 1/1 warn, 14/14 replay, 12/12 cache invalidation, 100 native-build cycles, QSLite, 6/6 async, 82/82 sanitizer, and 12 package checks. Clean Linux/macOS x64/arm64 reports are still required before the tag |
+| `FZ-5-P02` | `FZ-5` | `Complete` | The authorized late language closures and later application-driven fixes changed the candidate revision after `3ab00dff` | The clean four-target pre-release matrix passed and annotated pre-release tag `v0.9.8-09-RC` points to revision `a39c6acd` |
+| `FZ-5-E01` | `FZ-5` | `InProgress` | Sustained applications still expose avoidable compiler mechanics in ordinary source, including allocation-only text comparison and redundant contextual literal suffixes | Close the bounded `docs/1_0_ergonomics_audit.md` ledger without weakening ownership or adding implicit allocation, then rerun the complete release gate |
 
 The Toka-native incremental build orchestrator is the sustained `FZ-5`
 reference application. Its workload, finding policy, and finite stop conditions
@@ -225,6 +226,12 @@ the fixed-seed storage/corruption qualification and source-less TKI,
 incremental, locked, and offline toolchain paths pass. The final four-target RC
 matrix runs after these QSLite-driven fixes so later application work cannot
 invalidate the release evidence.
+
+The bounded 1.0 source ergonomics audit is maintained in
+`1_0_ergonomics_audit.md`. It removes application-proven repetition when the
+compiler already has one zero-cost interpretation. It does not permit hidden
+allocation, clone, transfer, or ambiguous coercion, and it has explicit stop
+conditions so release work cannot become an indefinite syntax-polish cycle.
 
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains

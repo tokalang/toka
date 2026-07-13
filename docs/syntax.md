@@ -69,6 +69,13 @@ auto y: i64 = 10
 auto z = 10:i64
 ```
 
+An integer literal adopts the unique integer type supplied by its context,
+including a function or method parameter, assignment target, return type, or
+the typed operand of a comparison. Write an explicit type only when no unique
+context exists or when the width is itself part of the intended boundary. A
+literal that does not fit the selected type is rejected with `E04598`; Toka
+does not silently truncate contextual literals.
+
 `#` on a binding grants mutation authority for that binding.
 
 ```toka
@@ -835,6 +842,11 @@ println("x={}, y={}", x, y)
 
 Plain `{}` accepts `String` and `str`. Format specifiers for those text forms
 are outside the 1.0 surface; `E04547` identifies that exclusion.
+
+Equality between an owned `string` and a `str` view, including a text literal,
+uses the owned value's zero-allocation read-only `as_str()` projection. Both
+`command == "scan"` and `"scan" == command` compare contents without
+allocating, cloning, moving, or consuming `command`.
 
 String concatenation with `+` is not part of the public syntax. Build owned strings explicitly with `string` APIs such as `push_str`.
 

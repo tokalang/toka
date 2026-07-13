@@ -65,7 +65,13 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       m_DisableSoulCollapse = true;
     }
   }
+  bool savedNegativeLiteral = m_CheckingNegativeIntegerLiteral;
+  if (Unary->Op == TokenType::Minus &&
+      dynamic_cast<NumberExpr *>(Unary->RHS.get())) {
+    m_CheckingNegativeIntegerLiteral = true;
+  }
   auto rhsType = checkExpr(Unary->RHS.get());
+  m_CheckingNegativeIntegerLiteral = savedNegativeLiteral;
   m_DisableSoulCollapse = savedDisable;
 
   // Assuming checkExpr returns object now.

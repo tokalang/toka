@@ -148,24 +148,35 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   Expr *lhsExpr = Bin->LHS.get();
   Expr *rhsExpr = Bin->RHS.get();
 
-  // Strip parens if needed (simple check)
-  // For now direct NumberExpr check
-  auto *lhsNum = dynamic_cast<NumberExpr *>(lhsExpr);
-  auto *rhsNum = dynamic_cast<NumberExpr *>(rhsExpr);
+  auto integerLiteral = [](Expr *expr) -> NumberExpr * {
+    if (auto *number = dynamic_cast<NumberExpr *>(expr))
+      return number;
+    if (auto *unary = dynamic_cast<UnaryExpr *>(expr)) {
+      if (unary->Op == TokenType::Minus)
+        return dynamic_cast<NumberExpr *>(unary->RHS.get());
+    }
+    return nullptr;
+  };
+  auto adaptIntegerLiteral = [&](Expr *expr, NumberExpr *number,
+                                 const std::shared_ptr<toka::Type> &type) {
+    auto *unary = dynamic_cast<UnaryExpr *>(expr);
+    const bool isNegative = unary && unary->Op == TokenType::Minus;
+    validateIntegerLiteralRange(expr, number, type, isNegative);
+    expr->ResolvedType = type;
+    number->ResolvedType = type;
+  };
+
+  auto *lhsNum = integerLiteral(lhsExpr);
+  auto *rhsNum = integerLiteral(rhsExpr);
 
   if (resolveType(lhsType, true)->isInteger() && rhsNum && !lhsNum) {
     // Left is Strong Integer, Right is Literal -> Adapt Right
-    Bin->RHS->ResolvedType = lhsType;
+    adaptIntegerLiteral(Bin->RHS.get(), rhsNum, lhsType);
     rhsType = lhsType;
     RHS = rhsType->toString();
   } else if (resolveType(rhsType, true)->isInteger() && lhsNum && !rhsNum) {
     // Right is Strong Integer, Left is Literal -> Adapt Left
-    Bin->LHS->ResolvedType = rhsType;
-    lhsType = rhsType;
-    LHS = lhsType->toString();
-  } else if (resolveType(rhsType, true)->isInteger() && lhsNum && !rhsNum) {
-    // Right is Strong Integer, Left is Literal -> Adapt Left
-    Bin->LHS->ResolvedType = rhsType;
+    adaptIntegerLiteral(Bin->LHS.get(), lhsNum, rhsType);
     lhsType = rhsType;
     LHS = lhsType->toString();
   }
@@ -987,6 +998,50 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
     // [Phase 2] Syntactic Sugar / Operator Overloading for == and !=
     if ((Bin->Op == "==" || Bin->Op == "!=") && !bypassNullCmp) {
+      auto projectOwnedStringViewForEquality =
+          [&](std::unique_ptr<Expr> &operand,
+              std::shared_ptr<toka::Type> &operandType,
+              const std::shared_ptr<toka::Type> &otherType) -> bool {
+        auto resolvedOperand = resolveType(operandType, true);
+        if (!resolvedOperand || !resolvedOperand->isShape())
+          return false;
+
+        const std::string soul = resolvedOperand->getSoulName();
+        if (soul != "string" && soul != "String")
+          return false;
+        if (!MethodMap.count(soul) || !MethodMap[soul].count("as_str"))
+          return false;
+        auto targetType = resolveType(
+            toka::Type::fromString(MethodMap[soul]["as_str"]), true);
+        if (!targetType ||
+            (!isTypeCompatible(targetType, otherType) &&
+             !isTypeCompatible(otherType, targetType)))
+          return false;
+
+        const std::string targetSoul = targetType->getSoulName();
+        if (targetSoul != "str" || !MethodMap.count(targetSoul) ||
+            !MethodMap[targetSoul].count("eq"))
+          return false;
+
+        auto targetCall = std::make_unique<MethodCallExpr>(
+            std::move(operand), "as_str",
+            std::vector<std::unique_ptr<Expr>>{});
+        targetCall->Loc = Bin->Loc;
+        operand = std::move(targetCall);
+        operandType = checkExpr(operand.get());
+        return operandType && operandType->toString() != "unknown";
+      };
+
+      if (!isTypeCompatible(lhsType, rhsType) &&
+          !isTypeCompatible(rhsType, lhsType)) {
+        if (projectOwnedStringViewForEquality(Bin->LHS, lhsType, rhsType)) {
+          LHS = lhsType->toString();
+        } else if (projectOwnedStringViewForEquality(Bin->RHS, rhsType,
+                                                     lhsType)) {
+          RHS = rhsType->toString();
+        }
+      }
+
       auto shapeLRes = resolveType(lhsType, true);
       if (shapeLRes->isShape()) {
         std::string sName = shapeLRes->getSoulName();

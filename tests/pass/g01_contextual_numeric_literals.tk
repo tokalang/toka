@@ -1,0 +1,34 @@
+fn accept_u8(value: u8) -> u8 { return value }
+fn accept_u16(value: u16) -> u16 { return value }
+fn accept_u32(value: u32) -> u32 { return value }
+fn accept_u64(value: u64) -> u64 { return value }
+fn accept_usize(value: usize) -> usize { return value }
+fn accept_i64(value: i64) -> i64 { return value }
+
+shape Limits(value: u64)
+
+impl Limits {
+    pub fn accepts_u16(self, value: u16) -> u16 { return value }
+}
+
+fn return_u64() -> u64 { return 65 }
+
+pub fn main() -> i32 {
+    if accept_u8(8) != 8 { return 1 }
+    if accept_u16(16) != 16 { return 2 }
+    if accept_u32(32) != 32 { return 3 }
+    if accept_u64(64) != 64 { return 4 }
+    if accept_usize(10) != 10 { return 5 }
+    if accept_i64(-64) != -64 { return 6 }
+    if accept_i64(-9223372036854775808) != -9223372036854775808 { return 7 }
+
+    auto limits = Limits(value = 66)
+    if limits.accepts_u16(16) != 16 { return 8 }
+    if limits.value != 66 { return 9 }
+    if return_u64() != 65 { return 10 }
+
+    auto assigned#: u64 = 67
+    assigned = 68
+    if assigned != 68 { return 11 }
+    return 0
+}

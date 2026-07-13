@@ -343,6 +343,7 @@ private:
       m_LastLifeDependencies; // [NEW] Track shape dependencies
   std::map<std::string, std::set<std::string>> m_LastFieldDependencies; // [NEW] Track field specific dependencies
   std::shared_ptr<toka::Type> m_ExpectedType;
+  bool m_CheckingNegativeIntegerLiteral = false;
   std::set<std::string> m_AccessedVariables; // [CLOSURE] Track accessed variables
   PALChecker PALCheckerState; // [NEW] Path-Anchored Borrow Checker
   struct ModuleScope {
@@ -515,6 +516,9 @@ private:
   checkUnaryExpr(UnaryExpr *Unary); // New Object API
   std::shared_ptr<toka::Type>
   checkBinaryExpr(BinaryExpr *Bin); // New Object API
+  bool validateIntegerLiteralRange(
+      ASTNode *site, NumberExpr *literal,
+      const std::shared_ptr<toka::Type> &targetType, bool isNegative);
   std::shared_ptr<toka::Type> checkMemberExpr(MemberExpr *Memb);
   std::shared_ptr<toka::Type>
   checkIndexExpr(ArrayIndexExpr *Idx);                       // New Object API

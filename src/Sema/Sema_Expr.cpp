@@ -22,6 +22,7 @@
 #include "toka/ComptimeValue.h"
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -408,6 +409,56 @@ Sema::checkExpr(Expr *E, std::shared_ptr<toka::Type> expected) {
   return T;
 }
 
+bool Sema::validateIntegerLiteralRange(
+    ASTNode *site, NumberExpr *literal,
+    const std::shared_ptr<toka::Type> &targetType, bool isNegative) {
+  if (!literal || !targetType)
+    return true;
+
+  auto resolved = resolveType(targetType, true);
+  if (!resolved || !resolved->isInteger())
+    return true;
+
+  const std::string name = resolved->getSoulName();
+  unsigned bits = 0;
+  if (name == "i8" || name == "u8" || name == "char")
+    bits = 8;
+  else if (name == "i16" || name == "u16")
+    bits = 16;
+  else if (name == "i32" || name == "u32")
+    bits = 32;
+  else if (name == "i64" || name == "u64")
+    bits = 64;
+  if (bits == 0)
+    return true;
+
+  const bool isSigned = resolved->isSignedInteger();
+  bool fits = true;
+  if (isNegative && !isSigned) {
+    fits = false;
+  } else if (isSigned) {
+    const uint64_t limit =
+        bits == 64
+            ? (isNegative ? (uint64_t{1} << 63)
+                          : static_cast<uint64_t>(
+                                std::numeric_limits<int64_t>::max()))
+            : (isNegative ? (uint64_t{1} << (bits - 1))
+                          : (uint64_t{1} << (bits - 1)) - 1);
+    fits = literal->Value <= limit;
+  } else if (bits < 64) {
+    fits = literal->Value <= ((uint64_t{1} << bits) - 1);
+  }
+
+  if (!fits) {
+    const std::string value =
+        (isNegative ? "-" : "") + std::to_string(literal->Value);
+    error(site ? site : literal,
+          DiagID::ERR_SEMA_INTEGER_LITERAL_OUT_OF_RANGE, value,
+          targetType->toString());
+  }
+  return fits;
+}
+
 // -----------------------------------------------------------------------------
 // Type & Morphology Helpers
 // -----------------------------------------------------------------------------
@@ -585,6 +636,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
   if (auto *Num = dynamic_cast<NumberExpr *>(E)) {
     if (m_ExpectedType && m_ExpectedType->isInteger()) {
+      validateIntegerLiteralRange(Num, Num, m_ExpectedType,
+                                  m_CheckingNegativeIntegerLiteral);
       return m_ExpectedType;
     }
     if (Num->Value > 9223372036854775807ULL)

@@ -141,6 +141,11 @@ Toka ensures strict type checking while offering seamless ergonomics via Explici
 ### 4.1 Auto-Deref Ergonomics
 To reduce syntax noise, whenever a function or method signature explicitly expects a `str` parameter, the compiler automatically allows passing a mutable `string` variable directly, auto-inserting the zero-cost `.as_str()` view projection under the hood. No manual `.as_str()` required!
 
+The same zero-cost projection applies to equality with a `str` value or text
+literal in either operand order. Write `command == "scan"`, not
+`command == string::from("scan")`; equality never allocates or consumes the
+owned string.
+
 ---
 
 ## ⚖️ 5. Safety and C-FFI Redlines

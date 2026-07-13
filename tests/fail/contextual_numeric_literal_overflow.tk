@@ -1,0 +1,9 @@
+fn accept_u8(value: u8) -> u8 { return value }
+fn accept_i8(value: i8) -> i8 { return value }
+
+fn main() -> i32 {
+    auto a = accept_u8(256)
+    auto b = accept_i8(128)
+    auto c = accept_u8(-1)
+    return a as i32 + b as i32 + c as i32
+}
