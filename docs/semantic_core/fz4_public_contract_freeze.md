@@ -101,3 +101,15 @@ hidden-cursor drop execution, and source/source-less replay are recorded in
 `iterator_protocol_closure.md`. Local verification is 320/320 pass, 242/242
 fail, 1/1 warn, and 12/12 replay, so FZ-4 remains complete; FZ-5 is reopened
 only for replacement supported-platform evidence.
+
+## Authorized Callable Addendum
+
+The user subsequently authorized the callable development-experience closure.
+Toka now freezes one `@Callable` protocol whose permission is expressed by
+`self`, `self#`, or `cede self`, with corresponding `fn`, `fn#`, and `cede fn`
+types. Capture ownership remains separate from invocation permission. The
+implementation, diagnostics, exact-drop behavior, generic and iterator
+composition, thread callback migration, and source-less replay are recorded in
+`callable_protocol_closure.md`. Local verification is 322/322 pass, 246/246
+fail, 1/1 warn, and 13/13 replay. This addendum keeps FZ-4 complete and leaves
+FZ-5 `InProgress`; it intentionally creates no new RC or tag.

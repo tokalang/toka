@@ -437,10 +437,11 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
 
-The standard prelude makes exactly three core safety traits implicitly visible:
-`@encap`, `@Send`, and `@Sync`. All other trait names use the ordinary lexical
-module namespace and must be declared in the current module or selected by an
-import. Loading a module does not make its unselected traits visible.
+The standard prelude makes exactly four semantic-core traits implicitly
+visible: `@encap`, `@Send`, `@Sync`, and `@Callable`. All other trait names use
+the ordinary lexical module namespace and must be declared in the current
+module or selected by an import. Loading a module does not make its unselected
+traits visible.
 
 For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. The recommended form matches generic parameter bounds: `T: @Trait` or `T: @{Trait1, Trait2}` means the corresponding trait implementation must exist. The historical form `T impl @Trait` is still accepted for compatibility, but it is not the recommended style.
 
@@ -740,6 +741,45 @@ If such a closure escapes, for example by being returned from the current
 function, those implicit captures are checked as lifetime dependencies. Use
 `[cede ...]` or `[copy ...]` when the escaping closure should own or copy the
 captured state instead of borrowing it.
+
+Callable permission follows Toka receiver morphology rather than a family of
+nominal `Fn` traits:
+
+| Callable type or receiver | Contract |
+| :--- | :--- |
+| `fn(A) -> R` / `call(self, ...)` | shared, repeatable invocation |
+| `fn#(A) -> R` / `call(self#, ...)` | exclusive, repeatable invocation |
+| `cede fn(A) -> R` / `call(cede self, ...)` | consuming invocation |
+
+The compiler infers a closure's least required permission from its body.
+Reading captures requires shared invocation, mutating captured state requires
+exclusive invocation, and transferring a captured value with `cede` requires
+consuming invocation. A `[cede value]` capture only gives the closure ownership;
+it does not make the closure consuming unless the body transfers that value.
+
+Binding permission remains separate from callable permission:
+
+```toka
+auto counter#: fn#(i32) -> i32 = { [cede state] value =>
+    state.value = state.value + value
+    state.value
+}
+auto next = counter#(1)
+```
+
+`counter#` on the declaration and call grants exclusive access to the binding;
+`fn#(...)` records that the callable requires that access. A consuming callable
+is invoked as `cede take()`. If the called value is not consuming, the same
+`cede` expression applies only to the returned value and does not consume the
+callable.
+
+`@Callable` is the single implicit-prelude callable protocol. User-defined
+types implement a `call` method with `self`, `self#`, or `cede self`; values of
+the type then support ordinary call syntax. Generic bounds use `F: @Callable`.
+Callable receiver mode and returned lifetime dependencies are preserved in
+same-version TKI interfaces. Thread callbacks that mutate owned captures use
+the exclusive `fn#` contract; detached execution still applies the ordinary
+explicit-capture, dependency, and `@Send` rules.
 
 ## 13. Strings, Text, And Formatting
 

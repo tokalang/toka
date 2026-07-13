@@ -2202,10 +2202,12 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
   std::set<std::string> implemented;
   for (auto &Method : Impl->Methods) {
-    Method->CodegenName =
-        Impl->TraitName.empty()
-            ? resolvedTypeName + "_" + Method->Name
-            : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
+    if (!Method->IsClosureInvoke) {
+      Method->CodegenName =
+          Impl->TraitName.empty()
+              ? resolvedTypeName + "_" + Method->Name
+              : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
+    }
     MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
     MethodDecls[resolvedTypeName][Method->Name] = Method.get();
     implemented.insert(Method->Name);
@@ -2353,10 +2355,12 @@ void Sema::declareImpl(ImplDecl *Impl) {
   if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
     requireSelfDependency("next_ref");
   for (auto &Method : Impl->Methods) {
-    Method->CodegenName =
-        Impl->TraitName.empty()
-            ? resolvedTypeName + "_" + Method->Name
-            : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
+    if (!Method->IsClosureInvoke) {
+      Method->CodegenName =
+          Impl->TraitName.empty()
+              ? resolvedTypeName + "_" + Method->Name
+              : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
+    }
     MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
     MethodDecls[resolvedTypeName][Method->Name] = Method.get();
     implemented.insert(Method->Name);
@@ -2464,6 +2468,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Info.DeclLoc = argLoc;
     Info.IsCeded = Arg.IsCeded;
     Info.IsFunctionParameter = true;
+    if (Info.TypeObj && (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()))
+      Info.CallableReceiver = getCallableReceiverMode(*Info.TypeObj);
 
 
     if (!Arg.Type.empty() && Arg.Type[0] == '\'') {

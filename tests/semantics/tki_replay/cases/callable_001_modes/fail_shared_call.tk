@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E04590
+import ./lib::{make_counter}
+
+pub fn main() -> i32 {
+    auto counter# = make_counter(10)
+    return counter(1)
+}

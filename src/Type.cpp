@@ -470,8 +470,8 @@ bool ShapeType::isSync(class Sema *S) const {
 }
 std::string FunctionType::toString() const {
   std::string s = "";
-  if (IsCede) s += "cede ";
-  s += "fn(";
+  if (ReceiverMode == CallableReceiverMode::Consuming) s += "cede ";
+  s += ReceiverMode == CallableReceiverMode::Mutable ? "fn#(" : "fn(";
   for (size_t i = 0; i < ParamTypes.size(); ++i) {
     if (i > 0)
       s += ", ";
@@ -484,6 +484,7 @@ std::string FunctionType::toString() const {
     s += " -> ";
     s += ReturnType->toString();
   }
+  if (IsWritable) s += "#";
   return s;
 }
 
@@ -491,7 +492,8 @@ bool FunctionType::equals(const Type &other) const {
   if (!Type::equals(other))
     return false;
   const auto *otherFn = dynamic_cast<const FunctionType *>(&other);
-  if (!otherFn || ParamTypes.size() != otherFn->ParamTypes.size())
+  if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
+      ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
   return ReturnType->equals(*otherFn->ReturnType);
 }
@@ -500,7 +502,8 @@ bool FunctionType::isCompatibleWith(const Type &target) const {
   if (!Type::isCompatibleWith(target))
     return false;
   const auto *otherFn = dynamic_cast<const FunctionType *>(&target);
-  if (!otherFn || ParamTypes.size() != otherFn->ParamTypes.size())
+  if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
+      ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
   if (!ReturnType->isCompatibleWith(*otherFn->ReturnType))
     return false;
@@ -521,8 +524,8 @@ bool FunctionType::isSync(class Sema *S) const { return true; }
 
 std::string DynFnType::toString() const {
   std::string s = "";
-  if (IsCede) s += "cede ";
-  s += "dyn fn(";
+  if (ReceiverMode == CallableReceiverMode::Consuming) s += "cede ";
+  s += ReceiverMode == CallableReceiverMode::Mutable ? "dyn fn#(" : "dyn fn(";
   for (size_t i = 0; i < ParamTypes.size(); ++i) {
     if (i > 0)
       s += ", ";
@@ -533,6 +536,7 @@ std::string DynFnType::toString() const {
     s += " -> ";
     s += ReturnType->toString();
   }
+  if (IsWritable) s += "#";
   return s;
 }
 
@@ -540,7 +544,8 @@ bool DynFnType::equals(const Type &other) const {
   if (!Type::equals(other))
     return false;
   const auto *otherFn = dynamic_cast<const DynFnType *>(&other);
-  if (!otherFn || ParamTypes.size() != otherFn->ParamTypes.size())
+  if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
+      ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
   return ReturnType->equals(*otherFn->ReturnType);
 }
@@ -549,7 +554,8 @@ bool DynFnType::isCompatibleWith(const Type &target) const {
   if (!Type::isCompatibleWith(target))
     return false;
   const auto *otherFn = dynamic_cast<const DynFnType *>(&target);
-  if (!otherFn || ParamTypes.size() != otherFn->ParamTypes.size())
+  if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
+      ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
   if (!ReturnType->isCompatibleWith(*otherFn->ReturnType))
     return false;
@@ -762,6 +768,18 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   if (s.empty())
     return std::make_shared<UnresolvedType>(rawType);
 
+  bool callableMutable = false;
+  if (s.rfind("dyn fn#(", 0) == 0) {
+    callableMutable = true;
+    s.erase(6, 1);
+  } else if (s.rfind("dynfn#(", 0) == 0) {
+    callableMutable = true;
+    s.erase(5, 1);
+  } else if (s.rfind("fn#(", 0) == 0) {
+    callableMutable = true;
+    s.erase(2, 1);
+  }
+
   bool isDynFnWithSpace = s.rfind("dyn fn(", 0) == 0;
   bool isDynFnWithoutSpace = s.rfind("dynfn(", 0) == 0;
   if (isDynFnWithSpace || isDynFnWithoutSpace) {
@@ -812,6 +830,10 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       fnNode->IsNullable = isNullable;
       fnNode->IsBlocked = isBlocked;
       fnNode->IsCede = isCede;
+      fnNode->ReceiverMode =
+          isCede ? CallableReceiverMode::Consuming
+                 : callableMutable ? CallableReceiverMode::Mutable
+                                   : CallableReceiverMode::Shared;
       return fnNode;
     }
   }
@@ -868,6 +890,10 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       fnNode->IsNullable = isNullable;
       fnNode->IsBlocked = isBlocked;
       fnNode->IsCede = isCede;
+      fnNode->ReceiverMode =
+          isCede ? CallableReceiverMode::Consuming
+                 : callableMutable ? CallableReceiverMode::Mutable
+                                   : CallableReceiverMode::Shared;
       return fnNode;
     }
   }

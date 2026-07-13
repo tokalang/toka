@@ -503,6 +503,35 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     idx++;
   }
 
+  if (func->IsClosureInvoke &&
+      func->ClosureReceiver == CallableReceiverMode::Consuming &&
+      !func->Args.empty() && func->Args[0].ResolvedType &&
+      func->Args[0].ResolvedType->isShape() && !m_ScopeStack.empty()) {
+    auto closureType =
+        std::static_pointer_cast<ShapeType>(func->Args[0].ResolvedType);
+    if (closureType->Decl) {
+      for (const auto &member : closureType->Decl->Members) {
+        if (!member.ResolvedType || member.ResolvedType->isReference())
+          continue;
+        llvm::Value *fieldAddr = getEntityAddr(member.Name);
+        if (!fieldAddr)
+          continue;
+        VariableScopeInfo capture;
+        capture.Name = member.Name;
+        capture.Alloca = fieldAddr;
+        capture.AllocType = getLLVMType(member.ResolvedType);
+        capture.HasDrop = true;
+        capture.SoulName = member.ResolvedType->getSoulType()->getSoulName();
+        capture.DropFlag = createEntryBlockAlloca(
+            llvm::Type::getInt1Ty(m_Context), nullptr,
+            member.Name + ".callable.drop.live");
+        m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                              capture.DropFlag);
+        m_ScopeStack.back().push_back(std::move(capture));
+      }
+    }
+  }
+
   genStmt(func->Body.get());
 
   // Recursive Drop Injection
@@ -1813,7 +1842,9 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
   // Methods defined in Impl block
   for (const auto &method : decl->Methods) {
     std::string mangledName;
-    if (!decl->TraitName.empty()) {
+    if (method->IsClosureInvoke && !method->CodegenName.empty()) {
+      mangledName = method->CodegenName;
+    } else if (!decl->TraitName.empty()) {
       mangledName = decl->TraitName + "_" + decl->TypeName + "_" + method->Name;
     } else {
       mangledName = decl->TypeName + "_" + method->Name;

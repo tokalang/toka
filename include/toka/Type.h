@@ -25,6 +25,8 @@ namespace toka {
 class ShapeDecl; // Forward declaration
 class Sema;      // Forward declaration
 
+enum class CallableReceiverMode { Shared, Mutable, Consuming };
+
 class Type : public std::enable_shared_from_this<Type> {
 public:
   enum Kind {
@@ -353,6 +355,7 @@ public:
   std::vector<std::shared_ptr<Type>> ParamTypes;
   std::shared_ptr<Type> ReturnType;
   bool IsVariadic = false;
+  CallableReceiverMode ReceiverMode = CallableReceiverMode::Shared;
 
   FunctionType(std::vector<std::shared_ptr<Type>> params,
                std::shared_ptr<Type> ret, bool variadic = false)
@@ -373,6 +376,7 @@ public:
   std::shared_ptr<Type> substitute(const std::map<std::string, std::shared_ptr<Type>> &substMap) const override;
   std::vector<std::shared_ptr<Type>> ParamTypes;
   std::shared_ptr<Type> ReturnType;
+  CallableReceiverMode ReceiverMode = CallableReceiverMode::Shared;
 
   DynFnType(std::vector<std::shared_ptr<Type>> params, std::shared_ptr<Type> ret)
       : Type(DynFn), ParamTypes(std::move(params)), ReturnType(ret) {}
@@ -384,6 +388,14 @@ public:
   bool isSend(class Sema* S = nullptr) const override;
   bool isSync(class Sema* S = nullptr) const override;
 };
+
+inline CallableReceiverMode getCallableReceiverMode(const Type &type) {
+  if (auto *fn = dynamic_cast<const FunctionType *>(&type))
+    return fn->ReceiverMode;
+  if (auto *fn = dynamic_cast<const DynFnType *>(&type))
+    return fn->ReceiverMode;
+  return CallableReceiverMode::Shared;
+}
 
 // #include "toka/Type.h" -> Removed self-include
 

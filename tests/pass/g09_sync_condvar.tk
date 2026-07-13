@@ -12,7 +12,7 @@ pub fn main() -> i32 {
     auto cv = CondVar<State>::new()
     
     // Consumer
-    auto consumer: fn() -> cede i32 = { =>
+    auto consumer#: fn#() -> cede i32 = { =>
         println("Consumer locking mutex...")
         auto lock = m#.lock().unwrap()
         

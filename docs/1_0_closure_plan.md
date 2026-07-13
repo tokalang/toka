@@ -78,7 +78,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
 | `FZ-3` | `Complete` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | `semantic_core/fz3_compiler_reliability_closure.md` and clean revision `3ab00dff` release gates on Linux x64/arm64 and macOS x64/arm64 |
 | `FZ-4` | `Complete` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | `semantic_core/fz4_public_contract_freeze.md`, synchronized specifications, stable diagnostic tests, and ABI-boundary execution coverage |
-| `FZ-5` | `InProgress` | Run the release-candidate moratorium and final 1.0 gate | The previous four-target RC evidence covers revision `3ab00dff`; the explicitly authorized late iterator closure requires a fresh clean matrix |
+| `FZ-5` | `InProgress` | Run the release-candidate moratorium and final 1.0 gate | The previous four-target RC evidence covers revision `3ab00dff`; the explicitly authorized late iterator and callable closures require a fresh clean matrix |
 
 Work proceeds in phase order. A later phase may collect evidence early, but it
 cannot be declared complete while an earlier semantic blocker can invalidate
@@ -100,9 +100,12 @@ through `FZ-4`.
   morphology, private structural facts, and resource-bearing shape rules.
 - Functions, methods, closures, explicit `cede`/`copy` capture, escaping
   dependencies, `effects:` routing, and member-specific return dependencies.
+- The single `@Callable` protocol and its `self` / `self#` / `cede self`
+  receiver modes, including `fn`, `fn#`, and `cede fn` type preservation.
 - Traits, facet constraints, `where:`, associated `type`/`per type`, and
   single-facet `dyn @Trait` within the frozen object-safety boundary.
-- Implicit prelude visibility for exactly `@encap`, `@Send`, and `@Sync`;
+- Implicit prelude visibility for exactly `@encap`, `@Send`, `@Sync`, and
+  `@Callable`;
   every other trait follows ordinary lexical imports.
 - `@encap`, `pub`, `pub(crate)`, `pub(path)`, wildcard visibility, imports,
   re-exports, and the filesystem-path/name hyphen boundary.
@@ -194,9 +197,10 @@ unless it is separately promoted through a new audited decision.
 | `FZ-4-D01` | `FZ-4` | `Complete` | Logical capture semantics versus scalar value ABI was not stated as a public boundary | Specifications now separate source semantics from version-bound target lowering; mutable scalar and shape execution lock the distinction |
 | `FZ-4-D02` | `FZ-4` | `Complete` | README platform wording presented Windows parity as near-term while the 1.0 decision made it non-blocking | README now names Linux/macOS as supported 1.0 platforms and Windows/MSYS2, WSL2, and WASI as available or experimental non-blockers |
 | `FZ-4-D03` | `FZ-4` | `Complete` | Diagnostics used "not yet supported" without naming their 1.0 classification | `E04547` and `E0744` retain their identities and now state explicit 1.0 exclusions, with focused negative tests |
+| `FZ-4-D04` | `FZ-4` | `Complete` | Closure capture ownership existed, but shared, exclusive, and consuming invocation were not a replayable public contract | Added one `@Callable` protocol, receiver-morphology inference, `fn#`/`cede fn` type modes, exact consuming cleanup, stable diagnostics, iterator/thread composition, and source-less replay |
 | `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed ten-stage gate, deterministic JSON, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
-| `FZ-5-P02` | `FZ-5` | `InProgress` | The authorized late iterator protocol changed the frozen source surface after revision `3ab00dff` | Local 320/320 pass, 242/242 fail, 1/1 warn, and 12/12 replay evidence is complete; create a new RC revision and obtain clean Linux/macOS x64/arm64 release-gate reports |
+| `FZ-5-P02` | `FZ-5` | `InProgress` | The authorized late iterator and callable protocols changed the frozen source surface after revision `3ab00dff` | Local 322/322 pass, 246/246 fail, 1/1 warn, and 13/13 replay evidence is complete; no RC or tag is created by this change. A later authorized RC must obtain clean Linux/macOS x64/arm64 release-gate reports |
 
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains
@@ -288,6 +292,9 @@ The starting baseline already includes:
 - completed the local iterator-protocol closure with 320/320 positive tests,
   242/242 negative tests, 1/1 warning tests, and 12/12 source/source-less
   semantic replay cases; a replacement four-target RC matrix is still pending;
+- completed the callable-protocol closure with receiver-morphology inference,
+  generic/user callables, iterator and thread composition, consuming exact-drop
+  execution, stable diagnostics, and a thirteenth replay case;
 - completed bounded audits for experimental `nocapture` and `readonly`;
 - a stopped `writeonly` preflight with an explicit summary-precision reason.
 
@@ -311,8 +318,8 @@ Toka 1.0 may be frozen only when all of the following are true:
 - all backend memory contracts remain non-default unless separately promoted.
 
 The `v0.9.8-08-RC` evidence at revision `3ab00dff` is the historical baseline,
-but it predates the authorized iterator closure and no longer satisfies the
-final-current-revision condition. This document and `FZ-5` remain `InProgress`
+but it predates the authorized iterator and callable closures and no longer
+satisfies the final-current-revision condition. This document and `FZ-5` remain `InProgress`
 until the replacement four-target matrix passes and an explicit decision
 authorizes the 1.0 version transition and final release act.
 

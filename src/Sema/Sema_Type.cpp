@@ -838,8 +838,12 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
     
     auto sSh = std::static_pointer_cast<toka::ShapeType>(S);
     if (sSh->Name.find("__Closure_") == 0) {
-      if (MethodDecls.count(sSh->Name) && MethodDecls[sSh->Name].count("__invoke")) {
-        auto *invokeFn = MethodDecls[sSh->Name]["__invoke"];
+      if (MethodDecls.count(sSh->Name) && MethodDecls[sSh->Name].count("call")) {
+        auto *invokeFn = MethodDecls[sSh->Name]["call"];
+        CallableReceiverMode targetMode = getCallableReceiverMode(*T);
+        CallableReceiverMode closureMode = invokeFn->ClosureReceiver;
+        if (static_cast<int>(targetMode) < static_cast<int>(closureMode))
+          return false;
         if (paramTypes.size() == invokeFn->Args.size() - 1) {
           bool ok = true;
           for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -858,6 +862,39 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
           }
         }
       }
+    }
+  }
+
+  if (T->typeKind == S->typeKind &&
+      (T->typeKind == toka::Type::Function ||
+       T->typeKind == toka::Type::DynFn)) {
+    std::vector<std::shared_ptr<Type>> targetParams;
+    std::vector<std::shared_ptr<Type>> sourceParams;
+    std::shared_ptr<Type> targetReturn;
+    std::shared_ptr<Type> sourceReturn;
+    if (T->typeKind == toka::Type::Function) {
+      auto targetFn = std::static_pointer_cast<FunctionType>(T);
+      auto sourceFn = std::static_pointer_cast<FunctionType>(S);
+      targetParams = targetFn->ParamTypes;
+      sourceParams = sourceFn->ParamTypes;
+      targetReturn = targetFn->ReturnType;
+      sourceReturn = sourceFn->ReturnType;
+    } else {
+      auto targetFn = std::static_pointer_cast<DynFnType>(T);
+      auto sourceFn = std::static_pointer_cast<DynFnType>(S);
+      targetParams = targetFn->ParamTypes;
+      sourceParams = sourceFn->ParamTypes;
+      targetReturn = targetFn->ReturnType;
+      sourceReturn = sourceFn->ReturnType;
+    }
+    if (static_cast<int>(getCallableReceiverMode(*S)) <=
+            static_cast<int>(getCallableReceiverMode(*T)) &&
+        targetParams.size() == sourceParams.size()) {
+      bool compatible = isTypeCompatible(targetReturn, sourceReturn);
+      for (size_t i = 0; compatible && i < targetParams.size(); ++i)
+        compatible = isTypeCompatible(targetParams[i], sourceParams[i]);
+      if (compatible)
+        return true;
     }
   }
 

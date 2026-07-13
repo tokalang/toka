@@ -19,7 +19,7 @@ pub import core/string::{string}
 pub import core/option::{Option}
 pub import core/result::{Result}
 pub import core/task::{TaskHandle}
-pub import core/traits::{@encap, @Send, @Sync}
+pub import core/traits::{@encap, @Send, @Sync, @Callable}
 
 import core/internal/runtime::__toka_panic_handler;
 

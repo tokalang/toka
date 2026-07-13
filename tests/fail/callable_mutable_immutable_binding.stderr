@@ -1,0 +1,5 @@
+error[E04592]: Callable 'increment' requires exclusive invocation, but its binding is not writable
+ --> tests/fail/callable_mutable_immutable_binding.tk:9:12
+   |
+ 9 |     return increment#(1) // EXPECT: error[E04592]
+   |            ^

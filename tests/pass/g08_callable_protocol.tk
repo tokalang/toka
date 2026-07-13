@@ -1,0 +1,87 @@
+import std/vec::{Vec}
+
+auto g_drops# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drops += 1
+    }
+
+    pub fn clone(self) = delete
+}
+
+shape Adder(delta: i32)
+shape LocalCounter(value: i32)
+shape Accumulator(value: i32)
+
+impl Adder@Callable {
+    pub fn call(self, value: i32) -> i32 {
+        return value + self.delta
+    }
+}
+
+impl Accumulator@Callable {
+    pub fn call(self#, value: i32) -> i32 {
+        self.value = self.value + value
+        return self.value
+    }
+}
+
+fn apply_mut<F: @Callable>(f#: F, value: i32) -> i32 {
+    return f#(value)
+}
+
+fn sum_mapped<F: @Callable>(values: Vec<i32>, f#: F) -> i32 {
+    auto total# = 0
+    for auto value in values {
+        total += f#(value)
+    }
+    return total
+}
+
+fn main() -> i32 {
+    auto add = Adder(delta = 4)
+    if add(3) != 7 { return 1 }
+
+    auto accumulator# = Accumulator(value = 20)
+    if apply_mut(accumulator, 2) != 22 { return 7 }
+
+    auto nested# = Accumulator(value = 30)
+    auto nested_callback#: fn#(i32) -> i32 = { [cede nested] value =>
+        nested#(value)
+    }
+    if nested_callback#(1) != 31 { return 8 }
+
+    auto state# = LocalCounter(value = 10)
+    auto mutate#: fn#(i32) -> i32 = { [cede state] value =>
+        state.value = state.value + value
+        state.value
+    }
+    if apply_mut(mutate, 5) != 15 { return 2 }
+
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    values#.push(2)
+    values#.push(3)
+    auto factor# = LocalCounter(value = 2)
+    auto mapper#: fn#(i32) -> i32 = { [cede factor] value =>
+        factor.value = factor.value + 1
+        value * factor.value
+    }
+    if sum_mapped(values, mapper) != 26 { return 3 }
+
+    {
+        auto first = Token(id = 7)
+        auto second = Token(id = 9)
+        auto take: cede fn() -> cede Token = { [cede first, cede second] =>
+            return cede first
+        }
+        auto result = cede take()
+        if result.id != 7 { return 4 }
+        if g_drops != 1 { return 5 }
+    }
+    if g_drops != 2 { return 6 }
+    return 0
+}

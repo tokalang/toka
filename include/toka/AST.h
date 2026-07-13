@@ -664,6 +664,7 @@ public:
   ShapeDecl *ResolvedShape = nullptr;
   int MatchedMemberIdx = -1; // For enum variant selection
   bool IsIsomorphicCopy = false; // [NEW] Copy/Move constructor intercept
+  CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
 
   CallExpr(const std::string &callee, std::vector<std::unique_ptr<Expr>> args,
            std::vector<std::string> genericArgs = {})
@@ -690,6 +691,7 @@ public:
     n->ResolvedType = ResolvedType;
     n->ResolvedFn = nullptr; // Reset sema cache
     n->IsIsomorphicCopy = IsIsomorphicCopy;
+    n->CallableReceiver = CallableReceiver;
     return n;
   }
 };
@@ -1590,6 +1592,8 @@ public:
 
   bool IsVariadic = false;
   bool IsDeleted = false; // [NEW] e.g., `= delete` function
+  bool IsClosureInvoke = false;
+  CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
 
   FunctionDecl(bool isPub, const std::string &name, std::vector<Arg> args,
@@ -1626,6 +1630,8 @@ public:
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
     n->IsDeleted = IsDeleted;
+    n->IsClosureInvoke = IsClosureInvoke;
+    n->ClosureReceiver = ClosureReceiver;
     n->Loc = Loc;
     n->ResolvedReturnType = ResolvedReturnType;
     // FunctionDecl is NOT an Expr, does not have ResolvedType?
@@ -1665,6 +1671,7 @@ public:
   std::shared_ptr<toka::Type> ResolvedReturnType;
   std::unique_ptr<BlockStmt> Body;
   std::string SynthesizedShapeName;
+  CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
 
   ClosureExpr() {}
   std::string toString() const override { return "ClosureExpr(" + SynthesizedShapeName + ")"; }
@@ -1684,6 +1691,7 @@ public:
           static_cast<BlockStmt *>(Body->clone().release()));
     }
     n->SynthesizedShapeName = SynthesizedShapeName;
+    n->CallableReceiver = CallableReceiver;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

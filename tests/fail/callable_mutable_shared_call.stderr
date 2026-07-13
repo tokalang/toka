@@ -1,0 +1,5 @@
+error[E04590]: Callable 'increment' requires exclusive invocation; use 'increment#(...)' and a writable binding
+ --> tests/fail/callable_mutable_shared_call.tk:9:12
+   |
+ 9 |     return increment(1) // EXPECT: error[E04590]
+   |            ^

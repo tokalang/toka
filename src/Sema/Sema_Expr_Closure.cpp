@@ -28,6 +28,224 @@ namespace toka {
 
 [[maybe_unused]] static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+namespace {
+
+class ClosureCapabilityAnalyzer {
+public:
+  explicit ClosureCapabilityAnalyzer(std::set<std::string> captures)
+      : Captures(std::move(captures)) {}
+
+  CallableReceiverMode analyze(BlockStmt *body) {
+    visitStmt(body);
+    return Mode;
+  }
+
+private:
+  std::set<std::string> Captures;
+  CallableReceiverMode Mode = CallableReceiverMode::Shared;
+
+  void require(CallableReceiverMode requested) {
+    if (static_cast<int>(requested) > static_cast<int>(Mode))
+      Mode = requested;
+  }
+
+  bool isCaptureRoot(Expr *expr) {
+    if (!expr)
+      return false;
+    std::string path = pathString(expr);
+    if (path.empty())
+      return false;
+    size_t dot = path.find('.');
+    std::string root = Type::stripMorphology(path.substr(0, dot));
+    return Captures.count(root) != 0;
+  }
+
+  static std::string pathString(Expr *expr) {
+    if (!expr)
+      return {};
+    if (auto *variable = dynamic_cast<VariableExpr *>(expr))
+      return variable->Name;
+    if (auto *member = dynamic_cast<MemberExpr *>(expr)) {
+      std::string base = pathString(member->Object.get());
+      return base.empty() ? std::string() : base + "." + member->Member;
+    }
+    if (auto *index = dynamic_cast<ArrayIndexExpr *>(expr))
+      return pathString(index->Array.get());
+    if (auto *postfix = dynamic_cast<PostfixExpr *>(expr))
+      return pathString(postfix->LHS.get());
+    if (auto *unary = dynamic_cast<UnaryExpr *>(expr))
+      return pathString(unary->RHS.get());
+    if (auto *address = dynamic_cast<AddressOfExpr *>(expr))
+      return pathString(address->Expression.get());
+    if (auto *deref = dynamic_cast<DereferenceExpr *>(expr))
+      return pathString(deref->Expression.get());
+    if (auto *cede = dynamic_cast<CedeExpr *>(expr))
+      return pathString(cede->Value.get());
+    return {};
+  }
+
+  static bool isAssignment(const std::string &op) {
+    return op == "=" || op == "+=" || op == "-=" || op == "*=" ||
+           op == "/=" || op == "%=" || op == "&=" || op == "|=" ||
+           op == "^=" || op == "<<=" || op == ">>=";
+  }
+
+  void visitStmt(Stmt *stmt) {
+    if (!stmt)
+      return;
+    if (auto *expr = dynamic_cast<Expr *>(stmt)) {
+      visitExpr(expr);
+    } else if (auto *block = dynamic_cast<BlockStmt *>(stmt)) {
+      for (auto &child : block->Statements)
+        visitStmt(child.get());
+    } else if (auto *ret = dynamic_cast<ReturnStmt *>(stmt)) {
+      visitExpr(ret->ReturnValue.get());
+    } else if (auto *exprStmt = dynamic_cast<ExprStmt *>(stmt)) {
+      visitExpr(exprStmt->Expression.get());
+    } else if (auto *var = dynamic_cast<VariableDecl *>(stmt)) {
+      visitExpr(var->Init.get());
+    } else if (auto *del = dynamic_cast<DeleteStmt *>(stmt)) {
+      visitExpr(del->Expression.get());
+    } else if (auto *fre = dynamic_cast<FreeStmt *>(stmt)) {
+      visitExpr(fre->Expression.get());
+      visitExpr(fre->Count.get());
+    } else if (auto *unsafeStmt = dynamic_cast<UnsafeStmt *>(stmt)) {
+      visitStmt(unsafeStmt->Statement.get());
+    }
+  }
+
+  void visitExpr(Expr *expr) {
+    if (!expr)
+      return;
+    if (dynamic_cast<ClosureExpr *>(expr))
+      return;
+    if (auto *cede = dynamic_cast<CedeExpr *>(expr)) {
+      if (isCaptureRoot(cede->Value.get()))
+        require(CallableReceiverMode::Consuming);
+      visitExpr(cede->Value.get());
+      return;
+    }
+    if (auto *binary = dynamic_cast<BinaryExpr *>(expr)) {
+      if (isAssignment(binary->Op) && isCaptureRoot(binary->LHS.get()))
+        require(CallableReceiverMode::Mutable);
+      visitExpr(binary->LHS.get());
+      visitExpr(binary->RHS.get());
+      return;
+    }
+    if (auto *method = dynamic_cast<MethodCallExpr *>(expr)) {
+      if (isCaptureRoot(method->Object.get()) && method->ResolvedFn &&
+          !method->ResolvedFn->Args.empty()) {
+        const auto &receiver = method->ResolvedFn->Args[0];
+        if (receiver.IsCeded)
+          require(CallableReceiverMode::Consuming);
+        else if (receiver.IsValueMutable)
+          require(CallableReceiverMode::Mutable);
+      }
+      visitExpr(method->Object.get());
+      for (auto &arg : method->Args)
+        visitExpr(arg.get());
+      return;
+    }
+    if (auto *call = dynamic_cast<CallExpr *>(expr)) {
+      std::string callee = Type::stripMorphology(call->Callee);
+      if (Captures.count(callee)) {
+        if (call->CallableReceiver == CallableReceiverMode::Consuming)
+          require(CallableReceiverMode::Consuming);
+        else if (call->CallableReceiver == CallableReceiverMode::Mutable)
+          require(CallableReceiverMode::Mutable);
+      }
+      size_t offset = call->ResolvedFn && call->ResolvedFn->IsClosureInvoke ? 1 : 0;
+      for (size_t i = offset; i < call->Args.size(); ++i) {
+        Expr *arg = call->Args[i].get();
+        size_t param = i;
+        if (call->ResolvedFn && param < call->ResolvedFn->Args.size() &&
+            isCaptureRoot(arg)) {
+          const auto &formal = call->ResolvedFn->Args[param];
+          if (formal.IsCeded)
+            require(CallableReceiverMode::Consuming);
+          else if (formal.IsValueMutable)
+            require(CallableReceiverMode::Mutable);
+        }
+        visitExpr(arg);
+      }
+      return;
+    }
+    if (auto *variable = dynamic_cast<VariableExpr *>(expr)) {
+      if (variable->IsValueMutable && isCaptureRoot(variable))
+        require(CallableReceiverMode::Mutable);
+      return;
+    }
+    if (auto *member = dynamic_cast<MemberExpr *>(expr))
+      visitExpr(member->Object.get());
+    else if (auto *index = dynamic_cast<ArrayIndexExpr *>(expr)) {
+      visitExpr(index->Array.get());
+      for (auto &item : index->Indices)
+        visitExpr(item.get());
+    } else if (auto *value = dynamic_cast<DereferenceExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<AddressOfExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<UnaryExpr *>(expr)) {
+      if ((value->Op == TokenType::PlusPlus || value->Op == TokenType::MinusMinus) &&
+          isCaptureRoot(value->RHS.get()))
+        require(CallableReceiverMode::Mutable);
+      visitExpr(value->RHS.get());
+    } else if (auto *value = dynamic_cast<PostfixExpr *>(expr)) {
+      if (value->Op == TokenType::TokenWrite && isCaptureRoot(value->LHS.get()))
+        require(CallableReceiverMode::Mutable);
+      visitExpr(value->LHS.get());
+    } else if (auto *value = dynamic_cast<CastExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<UnsafeExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<StartExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<AwaitExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<WaitExpr *>(expr))
+      visitExpr(value->Expression.get());
+    else if (auto *value = dynamic_cast<IfExpr *>(expr)) {
+      visitExpr(value->Condition.get());
+      visitStmt(value->Then.get());
+      visitStmt(value->Else.get());
+    } else if (auto *value = dynamic_cast<GuardExpr *>(expr)) {
+      visitExpr(value->Condition.get());
+      visitStmt(value->Then.get());
+      visitStmt(value->Else.get());
+    } else if (auto *value = dynamic_cast<LoopExpr *>(expr)) {
+      visitExpr(value->Condition.get());
+      visitStmt(value->Body.get());
+    } else if (auto *value = dynamic_cast<ForExpr *>(expr)) {
+      visitExpr(value->Collection.get());
+      visitStmt(value->Body.get());
+      visitStmt(value->ElseBody.get());
+    } else if (auto *value = dynamic_cast<MatchExpr *>(expr)) {
+      visitExpr(value->Target.get());
+      for (auto &arm : value->Arms) {
+        visitExpr(arm->Guard.get());
+        visitStmt(arm->Body.get());
+      }
+    } else if (auto *value = dynamic_cast<PassExpr *>(expr))
+      visitExpr(value->Value.get());
+    else if (auto *value = dynamic_cast<BreakExpr *>(expr))
+      visitExpr(value->Value.get());
+    else if (auto *value = dynamic_cast<ArrayExpr *>(expr))
+      for (auto &item : value->Elements)
+        visitExpr(item.get());
+    else if (auto *value = dynamic_cast<RepeatedArrayExpr *>(expr)) {
+      visitExpr(value->Value.get());
+      visitExpr(value->Count.get());
+    } else if (auto *value = dynamic_cast<InitStructExpr *>(expr))
+      for (auto &field : value->Members)
+        visitExpr(field.second.get());
+    else if (auto *value = dynamic_cast<AnonymousRecordExpr *>(expr))
+      for (auto &field : value->Fields)
+        visitExpr(field.second.get());
+  }
+};
+
+} // namespace
+
 // Implementation of tryInjectAutoClone
 void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
   if (!expr)
@@ -198,6 +416,11 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   // Determine Captures
   std::vector<ShapeMember> members;
+  for (const auto &capture : Clo->ExplicitCaptures) {
+    std::string name = Type::stripMorphology(capture.Name);
+    if (!name.empty() && name != "*")
+      m_AccessedVariables.insert(name);
+  }
   for (const auto& varName : m_AccessedVariables) {
      SymbolInfo *infoPtr = nullptr;
      std::string actualName;
@@ -295,6 +518,13 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
     m_LastLifeDependencies.insert(name);
   }
 
+  std::set<std::string> captureNames;
+  for (const auto &member : members)
+    captureNames.insert(Type::stripMorphology(member.Name));
+  Clo->CallableReceiver =
+      ClosureCapabilityAnalyzer(std::move(captureNames))
+          .analyze(Clo->Body.get());
+
   exitScope();
   m_ClosureCaptureRootScope = oldClosureCaptureRootScope;
   m_AccessedVariables = oldAccessed;
@@ -314,9 +544,15 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   std::vector<FunctionDecl::Arg> invokeArgs;
   FunctionDecl::Arg selfArg;
   selfArg.Name = "self";
-  selfArg.Type = "&" + UniqueName;
-  selfArg.ResolvedType = std::make_shared<toka::ReferenceType>(retTy);
-  selfArg.IsReference = true;
+  selfArg.Type = UniqueName;
+  selfArg.ResolvedType = retTy;
+  selfArg.IsValueMutable =
+      Clo->CallableReceiver == CallableReceiverMode::Mutable;
+  selfArg.IsCeded =
+      Clo->CallableReceiver == CallableReceiverMode::Consuming;
+  selfArg.Permission = BindingPermission::fromLegacy(
+      false, false, false, false, false, false, false,
+      selfArg.IsValueMutable, false, false);
   invokeArgs.push_back(std::move(selfArg));
 
   for (const auto& p : closureParams) {
@@ -327,9 +563,14 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   if (invokeRetType.empty() || invokeRetType == "unknown") {
       invokeRetType = CurrentFunctionReturnType; 
   }
-  auto invokeFunc = std::make_unique<FunctionDecl>(false, "__invoke", std::move(invokeArgs), std::move(Clo->Body), invokeRetType);
+  auto invokeFunc = std::make_unique<FunctionDecl>(
+      true, "call", std::move(invokeArgs), std::move(Clo->Body),
+      invokeRetType);
   invokeFunc->GenericParams = invokeGenerics; // [NEW] Attach generic parameters
   invokeFunc->ResolvedReturnType = toka::Type::fromString(invokeRetType);
+  invokeFunc->IsClosureInvoke = true;
+  invokeFunc->ClosureReceiver = Clo->CallableReceiver;
+  invokeFunc->CodegenName = UniqueName + "___invoke";
 
   // [Fix] Closure Body Semantic Checking
   // We must type-check the body here so all AST nodes receive ResolvedType.
@@ -374,12 +615,17 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   ShapeMap[UniqueName] = SyntheticShape.get();
   SyntheticShapes.push_back(std::move(SyntheticShape));
 
-  ImplMap[UniqueName]["__invoke"] = invokeFunc.get();
+  ImplMap[UniqueName]["call"] = invokeFunc.get();
+  ImplMap[UniqueName + "@Callable"]["call"] = invokeFunc.get();
+  MethodDecls[UniqueName]["call"] = invokeFunc.get();
   MethodDecls[UniqueName]["__invoke"] = invokeFunc.get();
+  MethodMap[UniqueName]["call"] = invokeRetType;
+  MethodMap[UniqueName]["__invoke"] = invokeRetType;
 
   std::vector<std::unique_ptr<FunctionDecl>> implMethods;
   implMethods.push_back(std::move(invokeFunc));
-  auto implDecl = std::make_unique<ImplDecl>(UniqueName, std::move(implMethods));
+  auto implDecl = std::make_unique<ImplDecl>(UniqueName, std::move(implMethods),
+                                             "Callable");
 
   if (GenericInstancesModule) {
       GenericInstancesModule->Impls.push_back(std::move(implDecl));

@@ -763,12 +763,66 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       Ext = static_cast<ExternDecl *>(sym.ASTPtr);
     }
 
-    // [New] Closure Invocation Intercept
+    // Formal callable invocation. Closures and user-defined callable values
+    // share the same receiver-permission path.
     if (!Fn && !Ext && !Sh && sym.TypeObj) {
       if (auto sTy = std::dynamic_pointer_cast<ShapeType>(sym.TypeObj)) {
         std::string shapeName = sTy->getSoulName();
-        if (MethodMap.count(shapeName) && MethodMap[shapeName].count("__invoke")) {
-          FunctionDecl *invokeFn = (FunctionDecl*)MethodDecls[shapeName]["__invoke"];
+        bool hasCall = MethodDecls.count(shapeName) &&
+                       MethodDecls[shapeName].count("call");
+        bool isCallable = ImplMap.count(shapeName + "@Callable") != 0;
+        if (hasCall && !isCallable) {
+          error(Call, DiagID::ERR_SEMA_CALLABLE_PROTOCOL_REQUIRED, shapeName);
+          return toka::Type::fromString("unknown");
+        } else if (hasCall && isCallable) {
+          FunctionDecl *invokeFn = MethodDecls[shapeName]["call"];
+          if (Call->ResolvedFn == invokeFn &&
+              Call->Args.size() == invokeFn->Args.size()) {
+            return invokeFn->ResolvedReturnType
+                       ? invokeFn->ResolvedReturnType
+                       : toka::Type::fromString(MethodMap[shapeName]["call"]);
+          }
+          CallableReceiverMode required = invokeFn->ClosureReceiver;
+          if (!invokeFn->IsClosureInvoke && !invokeFn->Args.empty()) {
+            if (invokeFn->Args[0].IsCeded)
+              required = CallableReceiverMode::Consuming;
+            else if (invokeFn->Args[0].IsValueMutable)
+              required = CallableReceiverMode::Mutable;
+          }
+
+          if (required == CallableReceiverMode::Consuming &&
+              Call->CallableReceiver != CallableReceiverMode::Consuming) {
+            error(Call, DiagID::ERR_SEMA_CALLABLE_CONSUME_REQUIRED, CallName,
+                  CallName);
+          } else if (required == CallableReceiverMode::Mutable &&
+                     Call->CallableReceiver == CallableReceiverMode::Shared) {
+            error(Call, DiagID::ERR_SEMA_CALLABLE_MUTABLE_REQUIRED, CallName,
+                  CallName);
+          }
+          if (required != CallableReceiverMode::Consuming &&
+              Call->CallableReceiver == CallableReceiverMode::Consuming) {
+            Call->CallableReceiver = required;
+          }
+          if (required == CallableReceiverMode::Mutable && symPtr &&
+              !symPtr->IsDeclaredMutable) {
+            error(Call, DiagID::ERR_SEMA_CALLABLE_NOT_WRITABLE, CallName);
+          }
+
+          AccessPath callablePath =
+              canonicalizeAccessPath(makeAccessPath(CallName));
+          std::optional<PALConflict> conflict;
+          if (required == CallableReceiverMode::Consuming)
+            conflict = PALCheckerState.verifyInvalidation(callablePath);
+          else if (required == CallableReceiverMode::Mutable)
+            conflict = PALCheckerState.verifyExclusiveMutation(callablePath);
+          else
+            conflict = PALCheckerState.verifyAccess(callablePath);
+          if (conflict) {
+            error(Call, required == CallableReceiverMode::Consuming
+                            ? DiagID::ERR_MOVE_BORROWED
+                            : DiagID::ERR_BORROW_MUT,
+                  conflict->displayPath());
+          }
           
           if (Call->Args.size() != invokeFn->Args.size() - 1) {
              error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(invokeFn->Args.size() - 1), std::to_string(Call->Args.size()));
@@ -789,16 +843,51 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
              }
           }
           Call->ResolvedFn = invokeFn;
-          
-          // [Fix] Inject `self` as the first argument!
-          // We construct `&f1` (AddressOfExpr(VariableExpr("f1"))) and insert it at index 0.
+
           auto varE = std::make_unique<VariableExpr>(CallName);
-          auto refE = std::make_unique<AddressOfExpr>(std::move(varE));
-          checkExpr(refE.get()); // Populate ResolvedType and morphology
-          Call->Args.insert(Call->Args.begin(), std::move(refE));
-          
-          return invokeFn->ResolvedReturnType ? invokeFn->ResolvedReturnType : toka::Type::fromString(MethodMap[shapeName]["__invoke"]);
+          varE->IsValueMutable = required == CallableReceiverMode::Mutable;
+          varE->ResolvedType = sym.TypeObj;
+          Call->Args.insert(Call->Args.begin(), std::move(varE));
+
+          if (required == CallableReceiverMode::Consuming) {
+            CurrentScope->markMoved(CallName, Call->Loc);
+          }
+          if (symPtr && !invokeFn->LifeDependencies.empty()) {
+            for (const auto &dep : invokeFn->LifeDependencies) {
+              if (Type::stripMorphology(dep) == "self") {
+                m_LastLifeDependencies.insert(symPtr->LifeDependencySet.begin(),
+                                              symPtr->LifeDependencySet.end());
+              }
+            }
+          }
+
+          return invokeFn->ResolvedReturnType
+                     ? invokeFn->ResolvedReturnType
+                     : toka::Type::fromString(MethodMap[shapeName]["call"]);
         }
+      }
+
+      if (sym.TypeObj->isFunction() || sym.TypeObj->isDynFn()) {
+        CallableReceiverMode required = symPtr ? symPtr->CallableReceiver
+                                               : getCallableReceiverMode(*sym.TypeObj);
+        if (required == CallableReceiverMode::Consuming &&
+            Call->CallableReceiver != CallableReceiverMode::Consuming) {
+          error(Call, DiagID::ERR_SEMA_CALLABLE_CONSUME_REQUIRED, CallName,
+                CallName);
+        } else if (required == CallableReceiverMode::Mutable &&
+                   Call->CallableReceiver == CallableReceiverMode::Shared) {
+          error(Call, DiagID::ERR_SEMA_CALLABLE_MUTABLE_REQUIRED, CallName,
+                CallName);
+        }
+        if (required == CallableReceiverMode::Mutable && symPtr &&
+            !symPtr->IsDeclaredMutable) {
+          error(Call, DiagID::ERR_SEMA_CALLABLE_NOT_WRITABLE, CallName);
+        }
+        if (required != CallableReceiverMode::Consuming &&
+            Call->CallableReceiver == CallableReceiverMode::Consuming)
+          Call->CallableReceiver = required;
+        if (required == CallableReceiverMode::Consuming)
+          CurrentScope->markMoved(CallName, Call->Loc);
       }
     }
   }

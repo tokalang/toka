@@ -402,9 +402,9 @@ fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
 
 `T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
 
-标准 prelude 只隐式提供三个核心安全 trait：`@encap`、`@Send` 与 `@Sync`。
-其他 trait 名称均遵守普通词法模块命名空间，必须在当前模块声明或通过 import
-显式选择。仅加载一个模块不会让其中未选择的 trait 自动可见。
+标准 prelude 只隐式提供四个语义核心 trait：`@encap`、`@Send`、`@Sync` 与
+`@Callable`。其他 trait 名称均遵守普通词法模块命名空间，必须在当前模块声明
+或通过 import 显式选择。仅加载一个模块不会让其中未选择的 trait 自动可见。
 
 约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束。推荐形式与泛型参数约束一致：`T: @Trait` 或 `T: @{Trait1, Trait2}` 表示必须存在对应的 trait 实现。历史形式 `T impl @Trait` 仍被接受为兼容写法，但不是推荐风格。
 
@@ -694,6 +694,38 @@ auto g: fn(i32) -> i32 = { [copy ~r] x => x + r }
 普通 `fn` 闭包在局部范围内可以使用隐式借用捕获。如果这类闭包发生逃逸，例如
 从当前函数返回，那么这些隐式捕获会作为生命周期依赖参与检查。需要让逃逸闭包
 拥有或复制捕获状态时，应使用 `[cede ...]` 或 `[copy ...]`。
+
+Callable 权限沿用 Toka 的接收者形态，而不是建立一组名义上的 `Fn` traits：
+
+| Callable 类型或接收者 | 契约 |
+| :--- | :--- |
+| `fn(A) -> R` / `call(self, ...)` | 共享、可重复调用 |
+| `fn#(A) -> R` / `call(self#, ...)` | 独占、可重复调用 |
+| `cede fn(A) -> R` / `call(cede self, ...)` | 消费式调用 |
+
+编译器根据闭包 body 推导所需的最低权限：只读捕获需要共享调用，修改捕获状态
+需要独占调用，以 `cede` 转移捕获值需要消费式调用。`[cede value]` 只表示闭包
+拥有 `value`；只有 body 真正转移它时，闭包才成为消费式 callable。
+
+绑定权限与 callable 权限彼此独立：
+
+```toka
+auto counter#: fn#(i32) -> i32 = { [cede state] value =>
+    state.value = state.value + value
+    state.value
+}
+auto next = counter#(1)
+```
+
+声明和调用处的 `counter#` 授予绑定的独占访问；`fn#(...)` 记录 callable 本身
+要求这种访问。消费式 callable 以 `cede take()` 调用。如果被调用值不是消费式，
+同一个 `cede` 表达式只作用于返回值，不会消费 callable。
+
+`@Callable` 是唯一的隐式 prelude callable 协议。用户类型可用 `self`、`self#`
+或 `cede self` 实现 `call` 方法，随后以普通调用语法使用；泛型约束写作
+`F: @Callable`。Callable receiver mode 和返回生命周期依赖会保存在同版本 TKI
+接口中。修改 owned capture 的线程回调使用独占 `fn#` 契约；detached 执行仍然
+遵守既有的显式捕获、依赖和 `@Send` 规则。
 
 ## 13. 字符串、文本与格式化
 

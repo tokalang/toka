@@ -861,6 +861,8 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << ")";
     } else if (auto call = dynamic_cast<const CallExpr *>(expr)) {
         m_OS << call->Callee;
+        if (call->CallableReceiver == CallableReceiverMode::Mutable)
+            m_OS << "#";
         if (!call->GenericArgs.empty()) {
             m_OS << "<";
             for (size_t i = 0; i < call->GenericArgs.size(); ++i) {

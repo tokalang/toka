@@ -105,6 +105,7 @@ struct SymbolInfo {
   bool IsMorphicExempt = false; // [NEW] Track morphic exemption
   bool IsCeded = false;
   bool IsFunctionParameter = false;
+  CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
 
   // [Phase 2] Comptime Field Unroll Node Information
   bool IsComptimeField = false;

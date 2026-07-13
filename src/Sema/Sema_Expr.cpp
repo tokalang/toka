@@ -2220,6 +2220,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.releaseBorrow(iteratorSourcePath);
     return toka::Type::fromString((bodyType != "void") ? bodyType : elseType);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
+    if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get()))
+      call->CallableReceiver = CallableReceiverMode::Consuming;
     auto innerTy = checkExpr(ce->Value.get());
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.

@@ -7,7 +7,7 @@ pub fn main() -> i32 {
     
     // We spawn 5 threads, each looping 1000 times, incrementing the protected value by 1 each time
     // The expected total sum should be 5000
-    auto f: fn() -> cede i32 = { =>
+    auto f#: fn#() -> cede i32 = { =>
         auto i# = 0
         loop i < 1000 {
             auto g = m#.lock().unwrap()

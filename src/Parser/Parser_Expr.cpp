@@ -1033,6 +1033,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         consume(TokenType::RParen, DiagID::ERR_PARSER_EXPECTED_AFTER_ARGUMENTS);
         auto node =
             std::make_unique<CallExpr>(name.Text, std::move(args), genericArgs);
+        if (name.HasWrite)
+          node->CallableReceiver = CallableReceiverMode::Mutable;
         node->setLocation(name, m_CurrentFile);
         expr = std::move(node);
       }

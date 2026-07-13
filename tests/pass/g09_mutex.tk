@@ -21,7 +21,7 @@ pub fn main() -> i32 {
     // Auto drop will unlock when mut_guard goes out of scope here
     }
     
-    auto f: fn() -> cede i32 = { =>
+    auto f#: fn#() -> cede i32 = { =>
         sleep_ms(100:u32)
         auto mut_guard2 = m#.lock().unwrap()
         auto *mut_val2# = mut_guard2.get_ref()

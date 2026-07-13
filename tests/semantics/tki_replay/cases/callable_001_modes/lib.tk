@@ -1,0 +1,16 @@
+shape Counter(value: i32)
+
+// EXPECT_TKI: pub fn make_counter(start: i32) -> dyn fn#(i32)->i32
+
+pub fn invoke_mut<F: @Callable>(f#: F, value: i32) -> i32 {
+    return f#(value)
+}
+
+pub fn make_counter(start: i32) -> dyn fn#(i32) -> i32 {
+    auto counter# = Counter(value = start)
+    auto callback#: dyn fn#(i32) -> i32 = { [cede counter] value =>
+        counter.value = counter.value + value
+        counter.value
+    }
+    return callback
+}

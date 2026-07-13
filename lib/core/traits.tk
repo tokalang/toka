@@ -36,6 +36,10 @@ pub trait @PartialEq {
 pub trait @Send {}
 pub trait @Sync {}
 
+// Invocation permission is carried by call(self), call(self#), or
+// call(cede self), not by separate nominal callable traits.
+pub trait @Callable {}
+
 pub trait @Iterator {
     type Item
     pub fn next(self#) -> Option<Item>

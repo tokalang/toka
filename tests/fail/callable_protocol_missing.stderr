@@ -1,0 +1,5 @@
+error[E04593]: Type 'Adder' defines callable behavior but does not implement the formal @Callable protocol
+ --> tests/fail/callable_protocol_missing.tk:11:12
+    |
+ 11 |     return add(2) // EXPECT: error[E04593]
+    |            ^

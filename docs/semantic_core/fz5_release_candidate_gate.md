@@ -5,8 +5,9 @@ Status: `InProgress`
 `FZ-5` establishes the release-candidate moratorium, one mandatory gate entry
 point, deterministic evidence, and supported-platform CI. The gate machinery
 is complete. The explicitly authorized late iterator protocol invalidated the
-previous final-revision evidence, so a replacement four-target clean matrix is
-pending.
+previous final-revision evidence. The later authorized callable protocol also
+belongs to the replacement revision, so a replacement four-target clean matrix
+is pending. Neither late closure creates an RC automatically.
 
 ## Unified Entry Point
 

@@ -360,7 +360,11 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
     if (ImplMap.count(implKey)) continue;
 
     // [NEW] Fallback for Auto Traits
-    if (canonicalBound == "Send") {
+    if (getTraitFamilyName(canonicalBound) == "Callable") {
+      auto typeObj = toka::Type::fromString(resolvedConcreteType);
+      if (typeObj && (typeObj->isFunction() || typeObj->isDynFn()))
+        continue;
+    } else if (canonicalBound == "Send") {
       auto typeObj = toka::Type::fromString(resolvedConcreteType);
       if (typeObj && typeObj->isSend(this)) continue;
     } else if (canonicalBound == "Sync") {

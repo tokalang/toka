@@ -11,14 +11,14 @@ pub fn main() -> i32 {
     auto state# = Mutex<SharedData>::new(init_val)
     auto once# = Once::new()
     
-    auto init_fn: fn() = { =>
+    auto init_fn#: fn#() = { =>
         auto lock = state#.lock().unwrap()
         auto *val# = lock.get_ref()
         val.counter = val.counter + 1
         println("init_fn executed!")
     }
     
-    auto task: fn() -> cede i32 = { =>
+    auto task#: fn#() -> cede i32 = { =>
         once#.call(init_fn)
         return cede 0
     }

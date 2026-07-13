@@ -352,7 +352,7 @@ impl Once {
         )
     }
 
-    pub fn call(self#, f: fn()) {
+    pub fn call(self#, f#: fn#()) {
         if self.done {
             return
         }
@@ -362,7 +362,7 @@ impl Once {
             return
         }
         
-        f()
+            f#()
         self.done = true
     }
 }

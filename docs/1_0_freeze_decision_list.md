@@ -32,9 +32,14 @@ later release.
   diagnostics; redundant `&param` remains an error.
 - Trait syntax: `trait @Name`, `Type@Trait`, `@{A, B}` facet sets, and `where:`
   constraints.
-- Prelude trait visibility: `@encap`, `@Send`, and `@Sync` are implicitly
-  visible through the standard prelude. Every other trait name follows normal
-  lexical import rules and must be declared locally or explicitly imported.
+- Prelude trait visibility: `@encap`, `@Send`, `@Sync`, and `@Callable` are
+  implicitly visible through the standard prelude. Every other trait name
+  follows normal lexical import rules and must be declared locally or
+  explicitly imported.
+- Callable protocol: one `@Callable` facet uses `call(self)`, `call(self#)`, or
+  `call(cede self)` receiver morphology. Closure types spell the same modes as
+  `fn(...)`, `fn#(...)`, and `cede fn(...)`; callable mode and binding `#` are
+  independent facts.
 - Associated types: keep `type` and `per type` as the stable 1.0 model.
 - Iterator protocol: non-array `for` is trait-based. `@Iterable::iter` returns
   an associated `Iter` with `return <- self`; value iteration uses
@@ -59,6 +64,9 @@ later release.
   remains an operator and must be surrounded by spaces.
 - Closure capture rules: explicit `cede` / `copy`, with resource copy capture
   rejected.
+- Closure invocation rules: body operations infer shared, exclusive, or
+  consuming invocation. Capturing with `cede` transfers environment ownership
+  but does not imply consuming invocation unless the body transfers a capture.
 - Match / pattern safety: freeze enum exhaustiveness, variant payload
   shape-checking, guard handling, or-pattern binding consistency, wildcard /
   `default` fallback, and resource-safe destructuring. Guarded arms refine a
@@ -187,8 +195,10 @@ core contract ships.
   construction.
 - Private-helper inference for missing borrow dependency annotations.
 - Upgrading hatted parameter unused-handle warnings into hard errors.
-- Consuming iterators, async iterators, and larger iterator combinator
-  formalization.
+- Consuming iterators, async iterators, and lazy iterator combinator
+  formalization. Eager generic algorithms may use the frozen `@Callable`
+  protocol; a lazy mutable adapter needs a separately designed consuming-loop
+  or iterator-as-iterable contract.
 - Async blocks, parameterized `.start(...)`, and richer structured-concurrency
   syntax. These should extend the frozen async color model rather than replace
   it.

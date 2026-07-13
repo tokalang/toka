@@ -111,6 +111,10 @@ DIAG(ERR_SEMA_BARE_ARRAY_INIT_EXCLUDED, Error,   "E04586", "Bare '[N]T(...)' arr
 DIAG(ERR_SEMA_ITERABLE_TRAIT_REQUIRED, Error, "E04587", "Type '{}' has an iter method but does not implement the formal @Iterable protocol")
 DIAG(ERR_SEMA_ITERATOR_TRAIT_REQUIRED, Error, "E04588", "Iterator type '{}' does not implement the required {} protocol")
 DIAG(ERR_SEMA_ITERATOR_DEPENDENCY_REQUIRED, Error, "E04589", "{} for type '{}' must declare '<- self' so PAL can preserve the source lifetime")
+DIAG(ERR_SEMA_CALLABLE_MUTABLE_REQUIRED, Error, "E04590", "Callable '{}' requires exclusive invocation; use '{}#(...)' and a writable binding")
+DIAG(ERR_SEMA_CALLABLE_CONSUME_REQUIRED, Error, "E04591", "Callable '{}' consumes its environment; invoke it with 'cede {}(...)'")
+DIAG(ERR_SEMA_CALLABLE_NOT_WRITABLE, Error, "E04592", "Callable '{}' requires exclusive invocation, but its binding is not writable")
+DIAG(ERR_SEMA_CALLABLE_PROTOCOL_REQUIRED, Error, "E04593", "Type '{}' defines callable behavior but does not implement the formal @Callable protocol")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")

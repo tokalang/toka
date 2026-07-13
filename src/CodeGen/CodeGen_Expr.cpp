@@ -4577,6 +4577,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 llvm::FunctionType *llFnTy = llvm::FunctionType::get(retTy, argTys, false);
                 
                 llvm::CallInst *ci = m_Builder.CreateCall(llFnTy, funcPtr, argVals);
+                if (call->CallableReceiver ==
+                    CallableReceiverMode::Consuming) {
+                  suppressDropForMove(calleeName);
+                  if (isDynFn) {
+                    llvm::Function *freeFn = m_Module->getFunction("free");
+                    if (freeFn)
+                      m_Builder.CreateCall(freeFn, envPtr);
+                  }
+                }
                 if (isSRet) {
                     ci->addParamAttr(0, llvm::Attribute::get(m_Context, llvm::Attribute::StructRet, getLLVMType(returnType)));
                     return PhysEntity(sretAlloc, returnType->getSoulName(), getLLVMType(returnType), true);
@@ -5303,6 +5312,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   }
 
   llvm::CallInst *ci = m_Builder.CreateCall(callee->getFunctionType(), callee, argsV);
+
+  if (call->CallableReceiver == CallableReceiverMode::Consuming)
+    suppressDropForMove(call->Callee);
 
   if (isSRet) {
       ci->addParamAttr(0, llvm::Attribute::get(m_Context, llvm::Attribute::StructRet, getLLVMType(call->ResolvedType)));

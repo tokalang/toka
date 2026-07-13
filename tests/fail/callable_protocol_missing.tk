@@ -1,0 +1,12 @@
+shape Adder(delta: i32)
+
+impl Adder {
+    pub fn call(self, value: i32) -> i32 {
+        return value + self.delta
+    }
+}
+
+fn main() -> i32 {
+    auto add = Adder(delta = 1)
+    return add(2) // EXPECT: error[E04593]
+}

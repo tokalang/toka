@@ -1505,6 +1505,13 @@ void Sema::checkStmt(Stmt *S) {
     Info.IsDeclaredMutable = Var->IsValueMutable;
     Info.DeclLoc = Var->Loc;
     Var->ResolvedType = Info.TypeObj;
+    if (Info.TypeObj && (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()))
+      Info.CallableReceiver = getCallableReceiverMode(*Info.TypeObj);
+    if (auto *closure = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
+      if (!Info.TypeObj ||
+          (!Info.TypeObj->isFunction() && !Info.TypeObj->isDynFn()))
+        Info.CallableReceiver = closure->CallableReceiver;
+    }
 
     if (Var->Init) {
       Info.InitMask = m_LastInitMask;

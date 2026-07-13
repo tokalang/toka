@@ -224,18 +224,21 @@ llvm::Value *CodeGen::genDeleteStmt(const DeleteStmt *del) {
 void CodeGen::suppressDropForMove(const std::string &name) {
   std::string movedName = Type::stripMorphology(name);
   for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
+    bool matched = false;
     for (auto entry = m_ScopeStack[i].rbegin();
          entry != m_ScopeStack[i].rend(); ++entry) {
       if (Type::stripMorphology(entry->Name) != movedName)
         continue;
+      matched = true;
       if (entry->DropFlag) {
         m_Builder.CreateStore(
             llvm::ConstantInt::getFalse(m_Context), entry->DropFlag);
       } else {
         entry->HasDrop = false;
       }
-      return;
     }
+    if (matched)
+      return;
   }
 }
 

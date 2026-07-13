@@ -12,11 +12,11 @@ impl HandlerEnv@encap {
    }
 }
 
-fn create_counter(start: i32) -> dyn fn(i32) -> i32 {
+fn create_counter(start: i32) -> dyn fn#(i32) -> i32 {
    libc_printf(c"Start is: %d\n", start)
    auto env# = HandlerEnv(count = start)
    libc_printf(c"Init env.count: %d\n", env.count)
-   auto f: dyn fn(i32) -> i32 = { [cede env] x => 
+   auto f#: dyn fn#(i32) -> i32 = { [cede env] x =>
        libc_printf(c"Before invoke: count=%d, expected=%d\n", env.count, x)
        env.count = env.count + x
        libc_printf(c"After invoke: count=%d\n", env.count)
@@ -25,13 +25,13 @@ fn create_counter(start: i32) -> dyn fn(i32) -> i32 {
    return f
 }
 
-fn execute_closure(cb: dyn fn(i32) -> i32, x: i32) -> i32 {
-    return cb(x)
+fn execute_closure(cb#: dyn fn#(i32) -> i32, x: i32) -> i32 {
+    return cb#(x)
 }
 
 fn main() -> i32 {
-    auto dynC1 = create_counter(10)
-    auto dynC2 = create_counter(200)
+    auto dynC1# = create_counter(10)
+    auto dynC2# = create_counter(200)
     
     auto res1# = execute_closure(dynC1, 5)
     auto res2# = execute_closure(dynC2, 5)

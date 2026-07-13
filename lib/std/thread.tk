@@ -17,9 +17,9 @@ pub fn yield_now() {
     }
 }
 
-pub alias ThreadClosure<'T> = fn() -> cede 'T
+pub alias ThreadClosure<'T> = fn#() -> cede 'T
 
-shape ClosureBox<'T>(closure: fn() -> cede 'T, self_ptr: Addr)
+shape ClosureBox<'T>(closure: fn#() -> cede 'T, self_ptr: Addr)
 shape TrampBox(f: fn() -> Addr)
 
 /// Spawns a new OS thread, running the given closure.
@@ -27,7 +27,7 @@ shape TrampBox(f: fn() -> Addr)
 /// Note: To capture variables from the environment safely across threads,
 /// use the `[cede ...]` capture list in the closure to consume variables
 /// by value (move semantics).
-pub fn thread_spawn<'T: @Send>(cede f: fn() -> cede 'T) -> JoinHandle<'T> {
+pub fn thread_spawn<'T: @Send>(cede f#: fn#() -> cede 'T) -> JoinHandle<'T> {
     unsafe {
         // 1. Box the closure explicitly via sys_alloc_thread_env to avoid compiler managed auto-drop
         auto f_arg = sys_alloc_thread_env(sizeof(ClosureBox<'T>) as usize)
@@ -41,14 +41,14 @@ pub fn thread_spawn<'T: @Send>(cede f: fn() -> cede 'T) -> JoinHandle<'T> {
         // 2. Define capturing trampoline matching C-ABI implicitly via fat ptrs
         auto tramp_fn: fn() -> Addr = { [cede captured_box] =>
             unsafe {
-                auto closure = captured_box.closure
+                auto closure# = captured_box.closure
                 auto self_ptr = captured_box.self_ptr
                 
                 // Create native heap box for result matching structural types safely via parenthesis isolating generic templates 
                 auto *ret_ptr# = (sys_alloc_thread_env(sizeof('T) as usize) as *'T)
                 
                 // Write the structural closure evaluation safely to memory by utilizing `cede` keyword for moves!
-                ret_ptr = cede closure()
+                ret_ptr = cede closure#()
                 
                 // Free the ClosureBox shell 
                 sys_free_thread_env(self_ptr)
@@ -150,4 +150,3 @@ fn __dummy_unused_ref() {
         }
     }
 }
-

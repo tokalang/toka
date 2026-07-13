@@ -69,7 +69,7 @@ Token Parser::consume(TokenType type, DiagID id) {
 std::string Parser::typeTokenText(const Token &tok) const {
   std::string text = tok.Text;
   if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
-      tok.Kind == TokenType::KwUpperSelf) {
+      tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn) {
     if (tok.IsBlocked)
       text += "$";
     if (tok.HasNull)

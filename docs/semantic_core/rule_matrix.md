@@ -470,6 +470,52 @@ Primary references:
 - Coverage closure: synchronous value and borrow iteration are closed. Toka
   1.0 intentionally has no consuming-iterator or async-iterator contract.
 
+## Callable Protocol Rules
+
+### CALL-MODE-001: Invocation permission is receiver morphology
+
+- Status: Core guarantee
+- Source form: `fn(...)`, `fn#(...)`, `cede fn(...)`, and closure literals
+- Operation class: shared access, exclusive mutation, or ownership transfer
+- Decision: closure bodies infer shared, mutable, or consuming invocation from
+  operations rooted at captures. Calls must use ordinary, `#`, or `cede`
+  morphology respectively, and exclusive calls require a writable binding.
+- Rationale: callable access must use the same ownership vocabulary and PAL
+  conflict model as methods instead of a parallel `Fn/FnMut/FnOnce` taxonomy.
+- Primary diagnostics: `E04590`, `E04591`, `E04592`
+- Implementation areas: `src/Sema/Sema_Expr_Closure.cpp`,
+  `src/Sema/Sema_Expr_Call.cpp`, `src/Sema/Sema_Type.cpp`, `src/Type.cpp`
+- Positive tests: `tests/pass/g08_callable_protocol.tk`,
+  `tests/pass/g08_dyn_closure.tk`
+- Negative tests: `tests/fail/callable_mutable_shared_call.tk`,
+  `tests/fail/callable_mutable_immutable_binding.tk`, and
+  `tests/fail/callable_consuming_without_cede.tk`
+- Runtime closure: consuming invocation owns one drop-live obligation per value
+  capture; moved captures and remaining captures are finalized independently.
+- Interface replay requirements: callable receiver mode is part of `fn` and
+  `dyn fn` type identity, and mutable call syntax in retained generic bodies is
+  emitted as `f#(...)`.
+
+### CALL-PROTOCOL-001: User callables require formal `@Callable` conformance
+
+- Status: Core guarantee
+- Source form: `impl Type@Callable { fn call(self...) ... }`
+- Operation class: protocol resolution and generic bound checking
+- Decision: closures implement the implicit-prelude protocol automatically;
+  user shapes require explicit conformance. An inherent `call` method alone
+  does not grant call syntax.
+- Rationale: generic algorithms need one inspectable, replayable callable
+  contract without structural-name accidents.
+- Primary diagnostic: `E04593`
+- Positive tests: shared and mutable user callables plus `F: @Callable` in
+  `tests/pass/g08_callable_protocol.tk`
+- Negative test: `tests/fail/callable_protocol_missing.tk`
+- Composition coverage: the positive case combines an exclusive callback with
+  value iteration; synchronization tests exercise exclusive thread callbacks.
+- Replay tests: `tests/semantics/tki_replay/cases/callable_001_modes` covers a
+  retained generic callable body, a `dyn fn#` return signature, and source-less
+  rejection of a shared call.
+
 ## Interface Replay And Cache Rules
 
 ### TKI-REPLAY-001: `.tki` must preserve all semantic facts needed by callers
