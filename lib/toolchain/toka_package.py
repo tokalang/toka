@@ -340,8 +340,38 @@ def read_lock(path: Path) -> dict[str, LockEntry]:
             raise PackageError("invalid locked dependency list")
         entry = LockEntry(alias, kind, locator, resolved, archive_hash, content_hash, deps)
         entry.line()
+        if kind == "path":
+            if archive_hash != "-" or not Path(locator).is_absolute() or resolved != locator:
+                raise PackageError("invalid locked path package: " + alias)
+        elif kind == "git":
+            if archive_hash != "-" or not re.fullmatch(r"[0-9a-f]{40,64}", resolved):
+                raise PackageError("invalid locked Git package: " + alias)
+        elif archive_hash == "-" or not resolved or resolved == "latest":
+            raise PackageError("invalid locked registry package: " + alias)
         entries[alias] = entry
         previous = alias
+
+    for alias, entry in entries.items():
+        for dependency in entry.dependencies:
+            if dependency == alias or dependency not in entries:
+                raise PackageError("invalid locked dependency reference: " + alias + " -> " + dependency)
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(alias: str) -> None:
+        if alias in visiting:
+            raise PackageError("package.lock contains a dependency cycle")
+        if alias in visited:
+            return
+        visiting.add(alias)
+        for dependency in entries[alias].dependencies:
+            visit(dependency)
+        visiting.remove(alias)
+        visited.add(alias)
+
+    for alias in entries:
+        visit(alias)
     return entries
 
 
@@ -360,6 +390,14 @@ def atomic_write(path: Path, content: str) -> None:
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, path)
+        try:
+            directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except OSError:
+            pass
     except BaseException:
         try:
             os.unlink(temporary)

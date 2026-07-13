@@ -22,6 +22,9 @@ from toka_package import (  # noqa: E402
     PackageError,
     Resolver,
     compiler_mappings,
+    encode_lock,
+    file_sha256,
+    LockEntry,
     parse_manifest,
     read_lock,
     remove_dependency,
@@ -71,6 +74,36 @@ def expect_error(function, text: str) -> None:
             raise AssertionError("expected %r in %r" % (text, str(error)))
     else:
         raise AssertionError("expected failure containing: " + text)
+
+
+def test_hash_and_lock(root: Path) -> None:
+    vector = root / "sha256-vector"
+    vector.write_bytes(b"abc")
+    assert file_sha256(vector) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+    tree = root / "hash-tree"
+    write_package(tree, "hash_tree", [])
+    first = tree_sha256(tree)
+    assert len(first) == 64 and first == tree_sha256(tree)
+    (tree / "lib" / "hash_tree" / "mod.tk").write_text("changed\n", encoding="utf-8")
+    assert tree_sha256(tree) != first
+
+    lock = root / "strict.lock"
+    package_path = str(tree.resolve())
+    valid = LockEntry("tree", "path", package_path, package_path, "-", tree_sha256(tree), [])
+    lock.write_text(encode_lock({"tree": valid}), encoding="utf-8")
+    assert list(read_lock(lock)) == ["tree"]
+    previous = lock.read_bytes()
+
+    dangling = LockEntry("tree", "path", package_path, package_path, "-", tree_sha256(tree), ["missing"])
+    lock.write_text(encode_lock({"tree": dangling}), encoding="utf-8")
+    expect_error(lambda: read_lock(lock), "invalid locked dependency reference")
+    lock.write_bytes(previous)
+
+    invalid_git = LockEntry("gitpkg", "git", "repo#commit=x", "moving-tag", "-", "0" * 64, [])
+    lock.write_text(encode_lock({"gitpkg": invalid_git}), encoding="utf-8")
+    expect_error(lambda: read_lock(lock), "invalid locked Git package")
+    lock.write_bytes(previous)
 
 
 def resolve(project: Path, *, offline: bool = False, refresh: bool = False):
@@ -288,6 +321,7 @@ def main() -> int:
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="toka-package-supply-chain-") as temporary:
         root = Path(temporary)
+        test_hash_and_lock(root)
         test_safe_extract(root)
         test_path_graph(root)
         test_cycles_and_conflicts(root)
