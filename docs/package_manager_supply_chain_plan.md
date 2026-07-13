@@ -1,6 +1,6 @@
 # Package Manager Supply-Chain Closure
 
-Status: `InProgress`
+Status: `Complete`
 
 This document governs the bounded hardening of the existing Toka package
 manager. It implements the deterministic and integrity requirements already
@@ -110,3 +110,13 @@ failure leaves the previous lock and package installation unchanged, and the
 normal compiler/release gates retain their previous results. Registry service
 implementation, package signing, semver ranges, binary packages, and ecosystem
 hosting are outside this closure.
+
+## Final Qualification
+
+The `pm-supply-chain-closure` release gate passed on macOS arm64 against
+revision `396c70fb4babdda369833432f589400eb253ffb2`. Evidence included 325 pass
+fixtures, 252 fail fixtures, 14 semantic replays, 12 cache invalidation cases,
+the complete incremental and async stages, 82 sanitizer audit checks, and 12
+release-package smoke checks. The package smoke stage runs the supply-chain
+qualification through the built `toka` binary and repeats a packaged lock,
+offline replay, and removal workflow.
