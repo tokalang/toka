@@ -27,6 +27,9 @@ v0.9.8-08-RC. It is still a release candidate, not the final 1.0 release.
   stdout, and stderr handling instead of shell-composed execution.
 - Corrected resource-element cloning inside generic containers and fixed
   pointer-return member chains such as `rows.get_ref(0).key`.
+- Made synthesized closure identities module-, source-, and concrete-function
+  specific, preventing separate objects and TKI replay from merging unrelated
+  capture layouts.
 - Preserved trusted standard-library declaration provenance through generic
   specialization while retaining fail-closed validation for untrusted or
   forged TKI input.

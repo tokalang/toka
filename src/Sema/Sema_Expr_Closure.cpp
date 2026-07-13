@@ -13,10 +13,12 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/PathUtils.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
 #include <algorithm>
+#include <cstdint>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -29,6 +31,33 @@ namespace toka {
 [[maybe_unused]] static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 namespace {
+
+uint64_t closureIdentityHash(const std::string &identity) {
+  uint64_t hash = 14695981039346656037ULL;
+  for (unsigned char c : identity) {
+    hash ^= c;
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+std::string closureModulePath(const ClosureExpr *closure,
+                              const Module *currentModule) {
+  if (closure && closure->Loc.isValid() && DiagnosticEngine::SrcMgr) {
+    auto fullLoc = DiagnosticEngine::SrcMgr->getFullSourceLoc(closure->Loc);
+    if (fullLoc.isValid())
+      return PathUtils::canonicalize(fullLoc.FileName);
+  }
+
+  if (currentModule) {
+    std::string path = currentModule->SourcePath.empty()
+                           ? currentModule->ResolvedPath
+                           : currentModule->SourcePath;
+    if (!path.empty())
+      return PathUtils::canonicalize(path);
+  }
+  return "root";
+}
 
 class ClosureCapabilityAnalyzer {
 public:
@@ -363,8 +392,21 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
       return toka::Type::fromString(Clo->SynthesizedShapeName);
   }
 
-  static int closureCounter = 0;
-  std::string UniqueName = "__Closure_" + std::to_string(closureCounter++);
+  auto fullLoc = DiagnosticEngine::SrcMgr && Clo->Loc.isValid()
+                     ? DiagnosticEngine::SrcMgr->getFullSourceLoc(Clo->Loc)
+                     : FullSourceLoc{};
+  std::string modulePath = closureModulePath(Clo, CurrentModule);
+  std::string functionName = "<global>";
+  if (CurrentFunction) {
+    functionName = CurrentFunction->CodegenName.empty()
+                       ? CurrentFunction->Name
+                       : CurrentFunction->CodegenName;
+  }
+  std::string closureIdentity =
+      modulePath + "\n" + functionName + "\n" +
+      std::to_string(fullLoc.Line) + ":" + std::to_string(fullLoc.Column);
+  std::string UniqueName =
+      "__Closure_" + std::to_string(closureIdentityHash(closureIdentity));
   Clo->SynthesizedShapeName = UniqueName;
 
   auto oldAccessed = m_AccessedVariables;
