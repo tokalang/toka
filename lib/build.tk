@@ -1,203 +1,14 @@
 import sys/libc::{libc_system, libc_access, libc_getenv}
-import core/traits::{@encap}
-import std/io::{println, remove_file, File}
-import std/fs::{read_to_string, exists, create_dir, write_string}
+import std/io::{println, File}
+import std/fs::{read_to_string, exists, write_string}
 import std/env
-import std/path::{join, dirname, basename, file_stem, is_absolute}
+import std/path::{dirname, basename, file_stem}
 import std/vec::{Vec}
 import std/hashmap::{HashMap}
-import stdx/serde/json::{deserialize_shape, deserialize_nested_shape, FromJson, JsonRes, to_json, ToJson, serialize_shape, json_skip_whitespace, json_skip_value}
-import core/comptime::{reflect}
-
-pub fn deserialize_nested_shape_local<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
-    auto res# = json_skip_whitespace(json_str)
-    if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
-    res = res.substr(1, res.len() - 1)
-
-    auto first# = true
-    loop true {
-        res = json_skip_whitespace(res)
-        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
-        if !first {
-            if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
-            res = res.substr(1, res.len() - 1)
-        }
-        first = false
-        res = json_skip_whitespace(res)
-        auto key_view# = ""
-        res = key_view#.parse_json(res)!
-        res = json_skip_whitespace(res)
-        if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
-        res = res.substr(1, res.len() - 1)
-        auto found# = false
-        for auto f in reflect<'T>().fields {
-            if key_view.equals(f.name) {
-                found = true
-                auto 'val# = f.get('obj)
-                res = 'val#.parse_json(res)!
-                f.set('obj, cede 'val)
-                continue
-            }
-        }
-        if !found { res = json_skip_value(res)! }
-    }
-    return JsonRes::Ok(res)
-}
-
-pub fn deserialize_shape_local<'T>(json_str: str) -> Result<'T, str> {
-    auto res# = json_skip_whitespace(json_str)
-    if res.len() == 0 || res.byte_at(0) != 123 { return Result<'T, str>::Err("Expected {") }
-    res = res.substr(1, res.len() - 1)
-
-    auto 'obj# = 'T(..)
-    auto first# = true
-    loop true {
-        res = json_skip_whitespace(res)
-        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
-        if !first {
-            if res.len() == 0 || res.byte_at(0) != 44 { return Result<'T, str>::Err("Expected ,") }
-            res = res.substr(1, res.len() - 1)
-        }
-        first = false
-        res = json_skip_whitespace(res)
-        auto key_view# = ""
-        res = key_view#.parse_json(res)!
-        res = json_skip_whitespace(res)
-        if res.len() == 0 || res.byte_at(0) != 58 { return Result<'T, str>::Err("Expected :") }
-        res = res.substr(1, res.len() - 1)
-        auto found# = false
-        for auto f in reflect<'T>().fields {
-            if key_view.equals(f.name) {
-                found = true
-                auto 'val# = f.get('obj)
-                res = 'val#.parse_json(res)!
-                f.set('obj, cede 'val)
-                continue
-            }
-        }
-        if !found { res = json_skip_value(res)! }
-    }
-    return Result<'T, str>::Ok(cede 'obj)
-}
-
-fn path_normalize(path: string) -> string {
-    auto res# = string::from("")
-    auto view = path.as_str()
-    auto len = view.len()
-    auto i# = 0:usize
-    loop {
-        if i >= len { break }
-        auto c = view.byte_at(i)
-        if c == '\\' {
-            res#.push_char('/')
-        } else {
-            res#.push_char(c)
-        }
-        i = i + 1:usize
-    }
-    return res
-}
-
-fn path_canonicalize(p: string) -> string {
-    auto path_str# = p.clone()
-    if !is_absolute(path_str.clone()) {
-        auto cwd = env::current_dir()
-        path_str = join(cwd, path_str)
-    }
-
-    auto norm# = path_normalize(path_str)
-    auto parts = norm.split('/' as i32)
-    auto resolved_parts# = Vec<string>::new()
-    resolved_parts = cede resolved_parts
-
-    loop !parts.is_done() {
-        auto part = parts#.next()
-        if part.is_empty() || part == string::from(".") {
-            continue
-        }
-        if part == string::from("..") {
-            if resolved_parts.len() > 0:usize {
-                resolved_parts#.pop()
-            }
-        } else {
-            resolved_parts#.push(cede part.clone())
-        }
-    }
-
-    auto res# = string::from("")
-    if norm.starts_with("/") {
-        res#.push_str("/")
-    }
-
-    auto i#: u64 = 0
-    loop i < resolved_parts.len() {
-        if i > 0 {
-            res#.push_str("/")
-        }
-        res#.push_str(resolved_parts.get_ref(i).as_str())
-        i += 1
-    }
-    return res
-}
-
-fn u64_to_hex(val: u64) -> string {
-    auto hex_chars = "0123456789abcdef"
-    auto res# = string::from("")
-    auto i# = 0
-    auto v# = val
-    loop {
-        if i >= 16 { break }
-        auto shift = (15 - i) * 4
-        auto digit = (v >> (shift as u64)) & 15:u64
-        res#.push_char(hex_chars.byte_at(digit as usize))
-        i = i + 1
-    }
-    return res
-}
-
-fn calculate_fnv1a(str: string) -> string {
-    auto hash# = 14695981039346656037:u64
-    auto view = str.as_str()
-    auto len = view.len()
-    auto i# = 0:usize
-    loop {
-        if i >= len { break }
-        auto c = view.byte_at(i)
-        hash = hash ^ (c as u64)
-        hash = hash * 1099511628211:u64
-        i = i + 1:usize
-    }
-    return u64_to_hex(hash)
-}
-
-fn run_and_capture_stdout(cmd: string) -> string {
-    auto tmp_file# = string::from(".toka/build/tmp_stdout.txt")
-    
-    // Ensure build directory exists
-    if !exists(string::from(".toka")) {
-        create_dir(string::from(".toka"))
-    }
-    if !exists(string::from(".toka/build")) {
-        create_dir(string::from(".toka/build"))
-    }
-
-    auto full_cmd# = cmd.clone()
-    full_cmd#.push_str(" > ")
-    full_cmd#.push_str(tmp_file.as_str())
-    full_cmd#.push_str(" 2>&1")
-
-    unsafe {
-        libc_system(full_cmd.c_str())
-    }
-
-    auto content_res = read_to_string(tmp_file.clone())
-    remove_file(tmp_file)
-
-    if content_res.is_ok() {
-        return content_res.unwrap()
-    }
-    return string::from("")
-}
+import stdx/serde/json::{FromJson, JsonRes}
+pub import build/project::{Executable, Library}
+import build/internal/support::{__path_normalize, __path_canonicalize, __calculate_fnv1a, __run_and_capture_stdout, __shell_quote}
+import build/internal/codec::{__deserialize_nested_shape, __deserialize_shape}
 
 pub shape ModuleOutputs (
     interface: string = string::from(""),
@@ -206,6 +17,10 @@ pub shape ModuleOutputs (
 )
 
 impl ModuleOutputs@encap {
+    pub(build/internal/codec) interface
+    pub(build/internal/codec) object
+    pub(build/internal/codec) executable
+
     fn drop(self#) { }
     pub fn clone(self) -> ModuleOutputs {
         return ModuleOutputs(
@@ -233,7 +48,7 @@ fn outputs_to_json(outputs: ModuleOutputs, buf#: string) -> string {
 }
 impl ModuleOutputs@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return deserialize_nested_shape_local<ModuleOutputs>(self, json)
+        return __deserialize_nested_shape<ModuleOutputs>(self, json)
     }
 }
 
@@ -252,6 +67,18 @@ pub shape ModuleSnapshot (
 )
 
 impl ModuleSnapshot@encap {
+    pub(build/internal/codec) kind
+    pub(build/internal/codec) fallback_triggered
+    pub(build/internal/codec) cache_status
+    pub(build/internal/codec) cache_status_reason
+    pub(build/internal/codec) target_triple
+    pub(build/internal/codec) compiler_version
+    pub(build/internal/codec) interface_version
+    pub(build/internal/codec) source_hash
+    pub(build/internal/codec) content_hash
+    pub(build/internal/codec) outputs
+    pub(build/internal/codec) dependencies
+
     fn drop(self#) { }
     pub fn clone(self) -> ModuleSnapshot {
         auto c_dependencies# = Vec<string>::new()
@@ -310,7 +137,7 @@ fn snapshot_to_json(snapshot: ModuleSnapshot, buf#: string) -> string {
 
 impl ModuleSnapshot@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return deserialize_nested_shape_local<ModuleSnapshot>(self, json)
+        return __deserialize_nested_shape<ModuleSnapshot>(self, json)
     }
 }
 
@@ -321,6 +148,10 @@ pub shape DependencyManifest (
 )
 
 impl DependencyManifest@encap {
+    pub(build/internal/codec) manifest_version
+    pub(build/internal/codec) roots
+    pub(build/internal/codec) modules
+
     fn drop(self#) { }
     pub fn clone(self) -> DependencyManifest {
         auto c_roots# = Vec<string>::new()
@@ -378,7 +209,7 @@ fn manifest_to_json(manifest: DependencyManifest, buf#: string) -> string {
 
 impl DependencyManifest@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return deserialize_nested_shape_local<DependencyManifest>(self, json)
+        return __deserialize_nested_shape<DependencyManifest>(self, json)
     }
 }
 
@@ -388,6 +219,9 @@ pub shape RebuildModuleInfo (
 )
 
 impl RebuildModuleInfo@encap {
+    pub(build/internal/codec) reason
+    pub(build/internal/codec) dirty_deps
+
     fn drop(self#) { }
     pub fn clone(self) -> RebuildModuleInfo {
         auto c_dirty_deps# = Vec<string>::new()
@@ -420,7 +254,7 @@ fn info_to_json(info: RebuildModuleInfo) -> string {
 
 impl RebuildModuleInfo@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return deserialize_nested_shape_local<RebuildModuleInfo>(self, json)
+        return __deserialize_nested_shape<RebuildModuleInfo>(self, json)
     }
 }
 
@@ -431,6 +265,10 @@ pub shape RebuildPlan (
 )
 
 impl RebuildPlan@encap {
+    pub(build/internal/codec) status
+    pub(build/internal/codec) dirty_roots
+    pub(build/internal/codec) dirty_modules
+
     fn drop(self#) { }
     pub fn clone(self) -> RebuildPlan {
         auto c_dirty_roots# = Vec<string>::new()
@@ -490,7 +328,7 @@ fn plan_to_json('plan: RebuildPlan) -> string {
 
 impl RebuildPlan@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
-        return deserialize_nested_shape_local<RebuildPlan>(self, json)
+        return __deserialize_nested_shape<RebuildPlan>(self, json)
     }
 }
 
@@ -541,10 +379,10 @@ fn roots_equal('a: Vec<string>, 'b: Vec<string>) -> bool {
 }
 
 fn is_std_or_core(path: string) -> bool {
-    auto path_norm = path_normalize(path_canonicalize(path))
+    auto path_norm = __path_normalize(__path_canonicalize(path))
     auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
     if toka_lib != 0:Addr {
-        auto env_lib = path_normalize(path_canonicalize(string::from_cstr(toka_lib as *char)))
+        auto env_lib = __path_normalize(__path_canonicalize(string::from_cstr(toka_lib as *char)))
         if path_norm.starts_with(env_lib.as_str()) {
             return true
         }
@@ -582,19 +420,19 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
             if is_std_or_core(m_path.clone()) {
                 continue
             }
-            auto h = calculate_fnv1a(m_path.clone())
+            auto h = __calculate_fnv1a(m_path.clone())
 
             auto obj_path# = build_dir.clone()
             obj_path#.push_str("/objects/")
             obj_path#.push_str(h.as_str())
             obj_path#.push_str(".o")
-            auto obj_path_canon = path_canonicalize(obj_path)
+            auto obj_path_canon = __path_canonicalize(obj_path)
 
             auto tki_path# = build_dir.clone()
             tki_path#.push_str("/interfaces/")
             tki_path#.push_str(h.as_str())
             tki_path#.push_str(".tki")
-            auto tki_path_canon = path_canonicalize(tki_path)
+            auto tki_path_canon = __path_canonicalize(tki_path)
 
             auto new_outputs = ModuleOutputs(
                 interface = tki_path_canon,
@@ -629,7 +467,7 @@ fn calculate_file_hash(path: string) -> string {
     }
     auto content_res = read_to_string(path)
     if content_res.is_ok() {
-        return calculate_fnv1a(content_res.unwrap())
+        return __calculate_fnv1a(content_res.unwrap())
     }
     return string::from("")
 }
@@ -891,222 +729,6 @@ fn generate_rebuild_plan(
     return
 }
 
-pub shape Executable (
-    *name: char,
-    *version: char,
-    *src: char,
-    deps: string,
-    c_srcs: string = string::from(""),
-    lib_dirs: string = string::from(""),
-    libs: string = string::from(""),
-    include_dirs: string = string::from(""),
-    ldflags: string = string::from("")
-)
-
-impl Executable@encap {
-    fn drop(self#) { }
-    pub fn clone(self) -> Executable {
-        return Executable(
-            *name = self.*name,
-            *version = self.*version,
-            *src = self.*src,
-            deps = self.deps.clone(),
-            c_srcs = self.c_srcs.clone(),
-            lib_dirs = self.lib_dirs.clone(),
-            libs = self.libs.clone(),
-            include_dirs = self.include_dirs.clone(),
-            ldflags = self.ldflags.clone()
-        )
-    }
-}
-
-pub shape Library (
-    *name: char,
-    *version: char,
-    *src: char,
-    deps: string,
-    c_srcs: string = string::from(""),
-    lib_dirs: string = string::from(""),
-    libs: string = string::from(""),
-    include_dirs: string = string::from("")
-)
-
-impl Library@encap {
-    fn drop(self#) { }
-    pub fn clone(self) -> Library {
-        return Library(
-            *name = self.*name,
-            *version = self.*version,
-            *src = self.*src,
-            deps = self.deps.clone(),
-            c_srcs = self.c_srcs.clone(),
-            lib_dirs = self.lib_dirs.clone(),
-            libs = self.libs.clone(),
-            include_dirs = self.include_dirs.clone()
-        )
-    }
-}
-
-impl Library {
-    pub fn make(*name: char, *src: char) -> Library {
-        return Library(
-            *name = *name,
-            *version = c"0.1.0",
-            *src = *src,
-            deps = string::from(""),
-            c_srcs = string::from(""),
-            lib_dirs = string::from(""),
-            libs = string::from(""),
-            include_dirs = string::from("")
-        )
-    }
-
-    pub fn add_dep(self#, *url: char) {
-        if self.deps.len() > 0:usize {
-            self.deps#.push_str(",")
-        }
-        self.deps#.push_cstr(*url)
-    }
-
-    pub fn add_c_src(self#, path: string) {
-        if self.c_srcs.len() > 0:usize {
-            self.c_srcs#.push_str(",")
-        }
-        self.c_srcs#.push_str(path.as_str())
-    }
-
-    pub fn add_lib_dir(self#, path: string) {
-        if self.lib_dirs.len() > 0:usize {
-            self.lib_dirs#.push_str(",")
-        }
-        self.lib_dirs#.push_str(path.as_str())
-    }
-
-    pub fn add_lib(self#, name: string) {
-        if self.libs.len() > 0:usize {
-            self.libs#.push_str(",")
-        }
-        self.libs#.push_str(name.as_str())
-    }
-
-    pub fn add_include_dir(self#, path: string) {
-        if self.include_dirs.len() > 0:usize {
-            self.include_dirs#.push_str(",")
-        }
-        self.include_dirs#.push_str(path.as_str())
-    }
-}
-
-impl Executable {
-    pub fn make(*name: char, *src: char) -> Executable {
-        return Executable(
-            *name = *name,
-            *version = c"0.1.0",
-            *src = *src,
-            deps = string::from(""),
-            c_srcs = string::from(""),
-            lib_dirs = string::from(""),
-            libs = string::from(""),
-            include_dirs = string::from(""),
-            ldflags = string::from("")
-        )
-    }
-
-    pub fn add_dep(self#, *url: char) {
-        if self.deps.len() > 0:usize {
-            self.deps#.push_str(",")
-        }
-        self.deps#.push_cstr(*url)
-    }
-
-    pub fn add_c_src(self#, path: string) {
-        if self.c_srcs.len() > 0:usize {
-            self.c_srcs#.push_str(",")
-        }
-        self.c_srcs#.push_str(path.as_str())
-    }
-
-    pub fn add_lib_dir(self#, path: string) {
-        if self.lib_dirs.len() > 0:usize {
-            self.lib_dirs#.push_str(",")
-        }
-        self.lib_dirs#.push_str(path.as_str())
-    }
-
-    pub fn add_lib(self#, name: string) {
-        if self.libs.len() > 0:usize {
-            self.libs#.push_str(",")
-        }
-        self.libs#.push_str(name.as_str())
-    }
-
-    pub fn add_include_dir(self#, path: string) {
-        if self.include_dirs.len() > 0:usize {
-            self.include_dirs#.push_str(",")
-        }
-        self.include_dirs#.push_str(path.as_str())
-    }
-
-    pub fn add_ldflag(self#, flag: string) {
-        if self.ldflags.len() > 0:usize {
-            self.ldflags#.push_str(" ")
-        }
-        self.ldflags#.push_str(flag.as_str())
-    }
-}
-
-fn shell_quote(s: string) -> string {
-    auto is_windows# = false
-    unsafe {
-        auto os_env = libc_getenv(c"OS") as Addr
-        if os_env != 0:Addr {
-            auto os_str = string::from_cstr(os_env as *char)
-            if os_str == string::from("Windows_NT") {
-                is_windows = true
-            }
-        }
-        if libc_access(c"build/bin/tokac.exe", 0) == 0 {
-            is_windows = true
-        }
-    }
-
-    if is_windows {
-        auto res# = string::from("\"")
-        auto view = s.as_str()
-        auto len = view.len()
-        auto i# = 0:usize
-        loop {
-            if i >= len { break }
-            auto c = view.byte_at(i)
-            if c == '"' {
-                res#.push_str("\\\"")
-            } else {
-                res#.push_char(c)
-            }
-            i = i + 1:usize
-        }
-        res#.push_str("\"")
-        return res
-    } else {
-        auto res# = string::from("'")
-        auto view = s.as_str()
-        auto len = view.len()
-        auto i# = 0:usize
-        loop {
-            if i >= len { break }
-            auto c = view.byte_at(i)
-            if c == '\'' {
-                res#.push_str("'\\''")
-            } else {
-                res#.push_char(c)
-            }
-            i = i + 1:usize
-        }
-        res#.push_str("'")
-        return res
-    }
-}
-
 fn run_build_impl(
     *name: char,
     *version: char,
@@ -1185,7 +807,7 @@ fn run_build_impl(
             auto forge_cmd# = forge_path.clone()
             forge_cmd#.push_str(" ")
             auto src_str = string::from_cstr(*s)
-            forge_cmd#.push_str(shell_quote(src_str).as_str())
+            forge_cmd#.push_str(__shell_quote(src_str).as_str())
             forge_cmd#.push_str(" -j 4 -c .forge_cache")
 
             auto forge_res = libc_system(forge_cmd.c_str())
@@ -1289,14 +911,14 @@ fn run_build_impl(
             dump_cmd#.push_str(c_args.as_str())
             dump_cmd#.push_str(" ")
             auto src_str = string::from_cstr(*s)
-            dump_cmd#.push_str(shell_quote(src_str).as_str())
+            dump_cmd#.push_str(__shell_quote(src_str).as_str())
 
-            auto build_dir = path_canonicalize(dirname(manifest_path.clone()))
+            auto build_dir = __path_canonicalize(dirname(manifest_path.clone()))
             env::set_var(string::from("TOKA_BUILD_DIR"), build_dir.clone())
 
 
-            auto dump_json = run_and_capture_stdout(dump_cmd)
-            auto current_graph_res = deserialize_shape_local<DependencyManifest>(dump_json.as_str())
+            auto dump_json = __run_and_capture_stdout(dump_cmd)
+            auto current_graph_res = __deserialize_shape<DependencyManifest>(dump_json.as_str())
             if current_graph_res.is_err() {
                 println("error: failed to deserialize current graph: {}", current_graph_res.unwrap_err())
                 return 1
@@ -1308,7 +930,7 @@ fn run_build_impl(
             if exists(manifest_path.clone()) {
                 auto old_json_res = read_to_string(manifest_path.clone())
                 if old_json_res.is_ok() {
-                    auto old_manifest_res = deserialize_shape_local<DependencyManifest>(old_json_res.unwrap().as_str())
+                    auto old_manifest_res = __deserialize_shape<DependencyManifest>(old_json_res.unwrap().as_str())
                     if old_manifest_res.is_ok() {
                         old_manifest = old_manifest_res.unwrap()
                     }
@@ -1355,14 +977,16 @@ fn run_build_impl(
 
         // Assemble toka_build.py command line
         auto cmd1# = string::from("python3 ")
-        cmd1#.push_str(shell_quote(driver_path).as_str())
-        cmd1#.push_str(" --build -m .toka/build/manifest.json --tokac ")
-        cmd1#.push_str(shell_quote(tokac_path).as_str())
+        cmd1#.push_str(__shell_quote(driver_path).as_str())
+        cmd1#.push_str(" --build -m ")
+        cmd1#.push_str(__shell_quote(manifest_path).as_str())
+        cmd1#.push_str(" --tokac ")
+        cmd1#.push_str(__shell_quote(tokac_path).as_str())
         cmd1#.push_str(" --compiler-args ")
-        cmd1#.push_str(shell_quote(c_args).as_str())
+        cmd1#.push_str(__shell_quote(c_args).as_str())
         cmd1#.push_str(" ")
         auto src_str = string::from_cstr(*s)
-        cmd1#.push_str(shell_quote(src_str).as_str())
+        cmd1#.push_str(__shell_quote(src_str).as_str())
 
         auto name_str = string::from_cstr(*n)
         auto version_str = string::from_cstr(*v)
@@ -1373,7 +997,7 @@ fn run_build_impl(
         if res1 != 0 {
             auto fail_name = string::from_cstr(*n)
             println("\x1b[1;31m       Error\x1b[0m failed to compile {}", fail_name)
-            return res1
+            return 1
         }
 
         if is_hybrid {
@@ -1400,9 +1024,9 @@ fn run_build_impl(
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
 
-                        auto c_compile# = shell_quote(cxx)
+                        auto c_compile# = __shell_quote(cxx)
                         c_compile#.push_str(" -c ")
-                        c_compile#.push_str(shell_quote(file).as_str())
+                        c_compile#.push_str(__shell_quote(file).as_str())
                         c_compile#.push_str(" -o target/debug/")
                         auto f_stem = file_stem(file)
                         c_compile#.push_str(f_stem.as_str())
@@ -1502,12 +1126,12 @@ fn run_build_impl(
                     }
                 }
 
-                auto cmd2# = shell_quote(cxx)
+                auto cmd2# = __shell_quote(cxx)
                 cmd2#.push_str(" ")
                 auto obj_path# = string::from("target/debug/")
                 obj_path#.push_cstr(*n)
                 obj_path#.push_str(".o")
-                cmd2#.push_str(shell_quote(obj_path).as_str())
+                cmd2#.push_str(__shell_quote(obj_path).as_str())
 
                 if c_srcs.len() > 0:usize {
                     auto c_srcs_iter = c_srcs.split(',' as i32)
@@ -1515,12 +1139,12 @@ fn run_build_impl(
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
                         cmd2#.push_str(" ")
-                        cmd2#.push_str(shell_quote(file).as_str())
+                        cmd2#.push_str(__shell_quote(file).as_str())
                     }
                 }
 
                 cmd2#.push_str(" ")
-                cmd2#.push_str(shell_quote(rt_path).as_str())
+                cmd2#.push_str(__shell_quote(rt_path).as_str())
 
                 if include_dirs.len() > 0:usize {
                     auto inc_iter = include_dirs.split(',' as i32)
@@ -1528,7 +1152,7 @@ fn run_build_impl(
                         auto dir = inc_iter#.next()
                         if dir.len() == 0:usize { break }
                         cmd2#.push_str(" -I ")
-                        cmd2#.push_str(shell_quote(dir).as_str())
+                        cmd2#.push_str(__shell_quote(dir).as_str())
                     }
                 }
 
@@ -1538,7 +1162,7 @@ fn run_build_impl(
                         auto dir = lib_dir_iter#.next()
                         if dir.len() == 0:usize { break }
                         cmd2#.push_str(" -L ")
-                        cmd2#.push_str(shell_quote(dir).as_str())
+                        cmd2#.push_str(__shell_quote(dir).as_str())
                     }
                 }
 
@@ -1548,7 +1172,7 @@ fn run_build_impl(
                         auto lib = lib_iter#.next()
                         if lib.len() == 0:usize { break }
                         cmd2#.push_str(" -l ")
-                        cmd2#.push_str(shell_quote(lib).as_str())
+                        cmd2#.push_str(__shell_quote(lib).as_str())
                     }
                 }
 
@@ -1567,13 +1191,13 @@ fn run_build_impl(
                 if is_windows {
                     out_path#.push_str(".exe")
                 }
-                cmd2#.push_str(shell_quote(out_path).as_str())
+                cmd2#.push_str(__shell_quote(out_path).as_str())
 
                 auto res2 = libc_system(cmd2.c_str())
                 if res2 != 0 {
                     auto fail_name = string::from_cstr(*n)
                     println("\x1b[1;31m       Error\x1b[0m linking failed for {}", fail_name)
-                    return res2
+                    return 1
                 }
 
                 // Clean up temporary .o file
@@ -1587,7 +1211,7 @@ fn run_build_impl(
                     auto rm_path# = string::from("target/debug/")
                     rm_path#.push_cstr(*n)
                     rm_path#.push_str(".o")
-                    rm_cmd#.push_str(shell_quote(rm_path).as_str())
+                    rm_cmd#.push_str(__shell_quote(rm_path).as_str())
                 }
                 libc_system(rm_cmd.c_str())
             }

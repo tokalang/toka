@@ -1,0 +1,73 @@
+import stdx/serde/json::{JsonRes, json_skip_whitespace, json_skip_value}
+import core/comptime::{reflect}
+
+pub fn __deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
+    auto res# = json_skip_whitespace(json_str)
+    if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
+    res = res.substr(1, res.len() - 1)
+
+    auto first# = true
+    loop true {
+        res = json_skip_whitespace(res)
+        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
+        if !first {
+            if res.len() == 0 || res.byte_at(0) != 44 { return JsonRes::Err("Expected ,") }
+            res = res.substr(1, res.len() - 1)
+        }
+        first = false
+        res = json_skip_whitespace(res)
+        auto key_view# = ""
+        res = key_view#.parse_json(res)!
+        res = json_skip_whitespace(res)
+        if res.len() == 0 || res.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
+        res = res.substr(1, res.len() - 1)
+        auto found# = false
+        for auto f in reflect<'T>().fields {
+            if key_view.equals(f.name) {
+                found = true
+                auto 'val# = f.get('obj)
+                res = 'val#.parse_json(res)!
+                f.set('obj, cede 'val)
+                continue
+            }
+        }
+        if !found { res = json_skip_value(res)! }
+    }
+    return JsonRes::Ok(res)
+}
+
+pub fn __deserialize_shape<'T>(json_str: str) -> Result<'T, str> {
+    auto res# = json_skip_whitespace(json_str)
+    if res.len() == 0 || res.byte_at(0) != 123 { return Result<'T, str>::Err("Expected {") }
+    res = res.substr(1, res.len() - 1)
+
+    auto 'obj# = 'T(..)
+    auto first# = true
+    loop true {
+        res = json_skip_whitespace(res)
+        if res.len() > 0 && res.byte_at(0) == 125 { res = res.substr(1, res.len() - 1); break }
+        if !first {
+            if res.len() == 0 || res.byte_at(0) != 44 { return Result<'T, str>::Err("Expected ,") }
+            res = res.substr(1, res.len() - 1)
+        }
+        first = false
+        res = json_skip_whitespace(res)
+        auto key_view# = ""
+        res = key_view#.parse_json(res)!
+        res = json_skip_whitespace(res)
+        if res.len() == 0 || res.byte_at(0) != 58 { return Result<'T, str>::Err("Expected :") }
+        res = res.substr(1, res.len() - 1)
+        auto found# = false
+        for auto f in reflect<'T>().fields {
+            if key_view.equals(f.name) {
+                found = true
+                auto 'val# = f.get('obj)
+                res = 'val#.parse_json(res)!
+                f.set('obj, cede 'val)
+                continue
+            }
+        }
+        if !found { res = json_skip_value(res)! }
+    }
+    return Result<'T, str>::Ok(cede 'obj)
+}

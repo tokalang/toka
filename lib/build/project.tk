@@ -1,0 +1,162 @@
+import core/traits::{@encap}
+
+pub shape Executable (
+    *name: char,
+    *version: char,
+    *src: char,
+    deps: string,
+    c_srcs: string = string::from(""),
+    lib_dirs: string = string::from(""),
+    libs: string = string::from(""),
+    include_dirs: string = string::from(""),
+    ldflags: string = string::from("")
+)
+
+impl Executable@encap {
+    pub(build) name
+    pub(build) version
+    pub(build) src
+    pub(build) deps
+    pub(build) c_srcs
+    pub(build) lib_dirs
+    pub(build) libs
+    pub(build) include_dirs
+    pub(build) ldflags
+
+    fn drop(self#) { }
+    pub fn clone(self) -> Executable {
+        return Executable(
+            *name = self.*name,
+            *version = self.*version,
+            *src = self.*src,
+            deps = self.deps.clone(),
+            c_srcs = self.c_srcs.clone(),
+            lib_dirs = self.lib_dirs.clone(),
+            libs = self.libs.clone(),
+            include_dirs = self.include_dirs.clone(),
+            ldflags = self.ldflags.clone()
+        )
+    }
+}
+
+pub shape Library (
+    *name: char,
+    *version: char,
+    *src: char,
+    deps: string,
+    c_srcs: string = string::from(""),
+    lib_dirs: string = string::from(""),
+    libs: string = string::from(""),
+    include_dirs: string = string::from("")
+)
+
+impl Library@encap {
+    pub(build) name
+    pub(build) version
+    pub(build) src
+    pub(build) deps
+    pub(build) c_srcs
+    pub(build) lib_dirs
+    pub(build) libs
+    pub(build) include_dirs
+
+    fn drop(self#) { }
+    pub fn clone(self) -> Library {
+        return Library(
+            *name = self.*name,
+            *version = self.*version,
+            *src = self.*src,
+            deps = self.deps.clone(),
+            c_srcs = self.c_srcs.clone(),
+            lib_dirs = self.lib_dirs.clone(),
+            libs = self.libs.clone(),
+            include_dirs = self.include_dirs.clone()
+        )
+    }
+}
+
+impl Library {
+    pub fn make(*name: char, *src: char) -> Library {
+        return Library(
+            *name = *name,
+            *version = c"0.1.0",
+            *src = *src,
+            deps = string::from(""),
+            c_srcs = string::from(""),
+            lib_dirs = string::from(""),
+            libs = string::from(""),
+            include_dirs = string::from("")
+        )
+    }
+
+    pub fn add_dep(self#, *url: char) {
+        if self.deps.len() > 0:usize { self.deps#.push_str(",") }
+        self.deps#.push_cstr(*url)
+    }
+
+    pub fn add_c_src(self#, path: string) {
+        if self.c_srcs.len() > 0:usize { self.c_srcs#.push_str(",") }
+        self.c_srcs#.push_str(path.as_str())
+    }
+
+    pub fn add_lib_dir(self#, path: string) {
+        if self.lib_dirs.len() > 0:usize { self.lib_dirs#.push_str(",") }
+        self.lib_dirs#.push_str(path.as_str())
+    }
+
+    pub fn add_lib(self#, name: string) {
+        if self.libs.len() > 0:usize { self.libs#.push_str(",") }
+        self.libs#.push_str(name.as_str())
+    }
+
+    pub fn add_include_dir(self#, path: string) {
+        if self.include_dirs.len() > 0:usize { self.include_dirs#.push_str(",") }
+        self.include_dirs#.push_str(path.as_str())
+    }
+}
+
+impl Executable {
+    pub fn make(*name: char, *src: char) -> Executable {
+        return Executable(
+            *name = *name,
+            *version = c"0.1.0",
+            *src = *src,
+            deps = string::from(""),
+            c_srcs = string::from(""),
+            lib_dirs = string::from(""),
+            libs = string::from(""),
+            include_dirs = string::from(""),
+            ldflags = string::from("")
+        )
+    }
+
+    pub fn add_dep(self#, *url: char) {
+        if self.deps.len() > 0:usize { self.deps#.push_str(",") }
+        self.deps#.push_cstr(*url)
+    }
+
+    pub fn add_c_src(self#, path: string) {
+        if self.c_srcs.len() > 0:usize { self.c_srcs#.push_str(",") }
+        self.c_srcs#.push_str(path.as_str())
+    }
+
+    pub fn add_lib_dir(self#, path: string) {
+        if self.lib_dirs.len() > 0:usize { self.lib_dirs#.push_str(",") }
+        self.lib_dirs#.push_str(path.as_str())
+    }
+
+    pub fn add_lib(self#, name: string) {
+        if self.libs.len() > 0:usize { self.libs#.push_str(",") }
+        self.libs#.push_str(name.as_str())
+    }
+
+    pub fn add_include_dir(self#, path: string) {
+        if self.include_dirs.len() > 0:usize { self.include_dirs#.push_str(",") }
+        self.include_dirs#.push_str(path.as_str())
+    }
+
+    pub fn add_ldflag(self#, flag: string) {
+        if self.ldflags.len() > 0:usize { self.ldflags#.push_str(" ") }
+        self.ldflags#.push_str(flag.as_str())
+    }
+}

@@ -546,6 +546,14 @@ fi
 
 echo "PASS: Test 9"
 
+# 11. Test 10: Native build reference application smoke and source-less replay
+echo "Test 10: Running native build reference application qualification"
+tools/scripts/test_native_build_reference.sh
+python3 tools/scripts/qualify_native_build.py \
+    --cycles "${TOKA_NATIVE_BUILD_SMOKE_CYCLES:-3}" \
+    --report "$TEST_DIR/native_build_reference_report.json"
+echo "PASS: Test 10"
+
 # Clean up
 rm -rf "$TEST_DIR"
 echo "=================================================="

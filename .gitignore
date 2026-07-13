@@ -17,6 +17,8 @@ Toka*.md
 .VSCodeCounter/
 !CMakeLists.txt
 build/
+!lib/build/
+!lib/build/**
 build-linux/
 bin/
 target/
@@ -105,4 +107,3 @@ promo/
 /playground/tokacheck.js
 /playground/tokacheck.wasm
 /website/public/playground/
-

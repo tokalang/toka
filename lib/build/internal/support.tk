@@ -1,0 +1,176 @@
+import sys/libc::{libc_system, libc_access, libc_getenv}
+import std/io::{remove_file}
+import std/fs::{read_to_string, exists, create_dir}
+import std/env
+import std/path::{join, is_absolute}
+import std/vec::{Vec}
+
+pub fn __path_normalize(path: string) -> string {
+    auto res# = string::from("")
+    auto view = path.as_str()
+    auto len = view.len()
+    auto i# = 0:usize
+    loop {
+        if i >= len { break }
+        auto c = view.byte_at(i)
+        if c == '\\' {
+            res#.push_char('/')
+        } else {
+            res#.push_char(c)
+        }
+        i = i + 1:usize
+    }
+    return res
+}
+
+pub fn __path_canonicalize(p: string) -> string {
+    auto path_str# = p.clone()
+    if !is_absolute(path_str.clone()) {
+        auto cwd = env::current_dir()
+        path_str = join(cwd, path_str)
+    }
+
+    auto norm# = __path_normalize(path_str)
+    auto parts = norm.split('/' as i32)
+    auto resolved_parts# = Vec<string>::new()
+    resolved_parts = cede resolved_parts
+
+    loop !parts.is_done() {
+        auto part = parts#.next()
+        if part.is_empty() || part == string::from(".") {
+            continue
+        }
+        if part == string::from("..") {
+            if resolved_parts.len() > 0:usize {
+                resolved_parts#.pop()
+            }
+        } else {
+            resolved_parts#.push(cede part.clone())
+        }
+    }
+
+    auto res# = string::from("")
+    if norm.starts_with("/") {
+        res#.push_str("/")
+    }
+
+    auto i#: u64 = 0
+    loop i < resolved_parts.len() {
+        if i > 0 {
+            res#.push_str("/")
+        }
+        res#.push_str(resolved_parts.get_ref(i).as_str())
+        i += 1
+    }
+    return res
+}
+
+fn u64_to_hex(val: u64) -> string {
+    auto hex_chars = "0123456789abcdef"
+    auto res# = string::from("")
+    auto i# = 0
+    auto v# = val
+    loop {
+        if i >= 16 { break }
+        auto shift = (15 - i) * 4
+        auto digit = (v >> (shift as u64)) & 15:u64
+        res#.push_char(hex_chars.byte_at(digit as usize))
+        i = i + 1
+    }
+    return res
+}
+
+pub fn __calculate_fnv1a(str: string) -> string {
+    auto hash# = 14695981039346656037:u64
+    auto view = str.as_str()
+    auto len = view.len()
+    auto i# = 0:usize
+    loop {
+        if i >= len { break }
+        auto c = view.byte_at(i)
+        hash = hash ^ (c as u64)
+        hash = hash * 1099511628211:u64
+        i = i + 1:usize
+    }
+    return u64_to_hex(hash)
+}
+
+pub fn __run_and_capture_stdout(cmd: string) -> string {
+    auto tmp_file# = string::from(".toka/build/tmp_stdout.txt")
+
+    if !exists(string::from(".toka")) {
+        create_dir(string::from(".toka"))
+    }
+    if !exists(string::from(".toka/build")) {
+        create_dir(string::from(".toka/build"))
+    }
+
+    auto full_cmd# = cmd.clone()
+    full_cmd#.push_str(" > ")
+    full_cmd#.push_str(tmp_file.as_str())
+    full_cmd#.push_str(" 2>&1")
+
+    unsafe {
+        libc_system(full_cmd.c_str())
+    }
+
+    auto content_res = read_to_string(tmp_file.clone())
+    remove_file(tmp_file)
+
+    if content_res.is_ok() {
+        return content_res.unwrap()
+    }
+    return string::from("")
+}
+
+pub fn __shell_quote(s: string) -> string {
+    auto is_windows# = false
+    unsafe {
+        auto os_env = libc_getenv(c"OS") as Addr
+        if os_env != 0:Addr {
+            auto os_str = string::from_cstr(os_env as *char)
+            if os_str == string::from("Windows_NT") {
+                is_windows = true
+            }
+        }
+        if libc_access(c"build/bin/tokac.exe", 0) == 0 {
+            is_windows = true
+        }
+    }
+
+    if is_windows {
+        auto res# = string::from("\"")
+        auto view = s.as_str()
+        auto len = view.len()
+        auto i# = 0:usize
+        loop {
+            if i >= len { break }
+            auto c = view.byte_at(i)
+            if c == '"' {
+                res#.push_str("\\\"")
+            } else {
+                res#.push_char(c)
+            }
+            i = i + 1:usize
+        }
+        res#.push_str("\"")
+        return res
+    }
+
+    auto res# = string::from("'")
+    auto view = s.as_str()
+    auto len = view.len()
+    auto i# = 0:usize
+    loop {
+        if i >= len { break }
+        auto c = view.byte_at(i)
+        if c == '\'' {
+            res#.push_str("'\\''")
+        } else {
+            res#.push_char(c)
+        }
+        i = i + 1:usize
+    }
+    res#.push_str("'")
+    return res
+}

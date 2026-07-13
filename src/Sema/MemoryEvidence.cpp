@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iomanip>
 #include <optional>
+#include <set>
 #include <sstream>
 
 namespace toka {
@@ -98,16 +99,21 @@ std::optional<std::map<std::string, FunctionMemorySummary>>
 collectEvidenceSummaries(const Module &module,
                          std::vector<std::string> &errors) {
   std::map<std::string, FunctionMemorySummary> summaries;
+  std::set<std::string> ambiguousNames;
   std::vector<Module *> modules = {const_cast<Module *>(&module)};
   for (FunctionDecl *function : MemorySummaryAnalysis::collectFunctions(modules)) {
     const FunctionMemorySummary &summary = function->MemorySummary;
     if (summary.Origin != MemorySummaryOrigin::SourceBody ||
-        summary.FunctionName.empty())
+        summary.FunctionName.empty() ||
+        ambiguousNames.count(summary.FunctionName) != 0)
       continue;
     auto [position, inserted] = summaries.emplace(summary.FunctionName, summary);
     if (!inserted && !sameSummary(position->second, summary)) {
-      errors.push_back("conflicting summaries for " + summary.FunctionName);
-      return std::nullopt;
+      // Target aliases such as usize/u64 can share a codegen name. Neither
+      // source summary is authoritative for that symbol, so omit it from
+      // trusted evidence and retain conservative downstream behavior.
+      summaries.erase(position);
+      ambiguousNames.insert(summary.FunctionName);
     }
   }
   return summaries;
