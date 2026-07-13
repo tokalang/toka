@@ -33,6 +33,7 @@ enum class SemanticRuleID {
   TKIReplay001,
   TKICache001,
   UnsafePub001,
+  ErrorProp001,
 };
 
 enum class SemanticOperation {
@@ -51,6 +52,7 @@ enum class SemanticOperation {
   ExecutionBoundaryCapture,
   ExecutionBoundaryArgument,
   InterfaceReplay,
+  ErrorPropagation,
 };
 
 enum class SemanticDecision {
@@ -83,6 +85,10 @@ enum class SemanticReason {
   BorrowedBoundaryDependency,
   InterfaceContractApplied,
   UnknownProvenance,
+  DirectErrorMatch,
+  ExplicitErrorConversion,
+  MissingErrorConversion,
+  PartialMoveUnsupported,
 };
 
 struct SemanticEvidenceLocation {

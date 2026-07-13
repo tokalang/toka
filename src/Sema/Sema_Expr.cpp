@@ -3012,12 +3012,33 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto baseObj = checkExpr(Unwrap->Base.get());
     m_IsConsumingEffect = old;
 
-    if (auto *Var = dynamic_cast<VariableExpr *>(Unwrap->Base.get())) {
+    std::string propagationPath = getPathString(Unwrap->Base.get());
+    if (!propagationPath.empty()) {
+      auto *Var = dynamic_cast<VariableExpr *>(Unwrap->Base.get());
+      if (!Var) {
+        error(Unwrap, DiagID::ERR_SEMA_PROPAGATION_COMPLEX_MOVE,
+              propagationPath);
+        recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
+                       SemanticOperation::ErrorPropagation,
+                       SemanticDecision::ConservativeReject,
+                       SemanticReason::PartialMoveUnsupported,
+                       propagationPath, propagationPath);
+      } else {
+        AccessPath path =
+            canonicalizeAccessPath(makeAccessPath(Unwrap->Base.get()));
+        if (auto conflict = PALCheckerState.verifyInvalidation(path)) {
+          error(Unwrap, DiagID::ERR_MOVE_BORROWED,
+                conflict->displayPath());
+          recordPALConflict(Unwrap, PALOperationClass::Invalidation, path,
+                            *conflict);
+        }
         SymbolInfo *Info = nullptr;
         std::string actualName;
         if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
-            CurrentScope->markMoved(actualName, E->Loc);
+          CurrentScope->markMoved(actualName, E->Loc);
+          PALCheckerState.markMoved(path);
         }
+      }
     }
 
     if (baseObj->isUnknown()) return toka::Type::fromString("unknown");
@@ -3110,8 +3131,58 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!errT || !retErrT) {
         error(Unwrap, DiagID::ERR_SEMA_RESULT_TYPES_MUST_HAVE_ERR_VARIANT);
       } else {
-        if (!isTypeCompatible(retErrT, errT)) {
-           error(Unwrap, DiagID::ERR_SEMA_FUNCTION_ERROR_RETURN_TYPE_IS_INCOMPATIBL, retErrT->toString(), errT->toString());
+        errT = resolveType(errT, false);
+        retErrT = resolveType(retErrT, false);
+        Unwrap->SourceErrorType = errT;
+        Unwrap->TargetErrorType = retErrT;
+
+        if (!errT->equals(*retErrT)) {
+          std::string sourceName =
+              Type::stripMorphology(errT->getSoulName());
+          std::string targetName = retErrT->toString();
+          std::string traitName = "ErrorInto<" + targetName + ">";
+          std::string implKey = sourceName + "@" + traitName;
+
+          if (!ImplMap.count(implKey)) {
+            std::string sourceBase = sourceName;
+            size_t generic = sourceBase.find('<');
+            if (generic != std::string::npos)
+              sourceBase = sourceBase.substr(0, generic);
+            if (GenericImplMap.count(sourceBase)) {
+              std::vector<std::shared_ptr<toka::Type>> genericArgs;
+              if (auto sourceShape =
+                      std::dynamic_pointer_cast<ShapeType>(errT))
+                genericArgs = sourceShape->GenericArgs;
+              for (auto *impl : GenericImplMap[sourceBase])
+                instantiateGenericImpl(impl, sourceName, genericArgs);
+            }
+          }
+
+          auto impl = ImplMap.find(implKey);
+          if (impl == ImplMap.end() ||
+              !impl->second.count("into_error")) {
+            error(Unwrap, DiagID::ERR_SEMA_ERROR_CONVERSION_REQUIRED,
+                  errT->toString(), retErrT->toString(), sourceName,
+                  targetName);
+            recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
+                           SemanticOperation::ErrorPropagation,
+                           SemanticDecision::Reject,
+                           SemanticReason::MissingErrorConversion,
+                           errT->toString(), retErrT->toString());
+          } else {
+            Unwrap->ErrorConversionFn = impl->second["into_error"];
+            recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
+                           SemanticOperation::ErrorPropagation,
+                           SemanticDecision::Allow,
+                           SemanticReason::ExplicitErrorConversion,
+                           errT->toString(), retErrT->toString());
+          }
+        } else {
+          recordDecision(Unwrap, SemanticRuleID::ErrorProp001,
+                         SemanticOperation::ErrorPropagation,
+                         SemanticDecision::Allow,
+                         SemanticReason::DirectErrorMatch,
+                         errT->toString(), retErrT->toString());
         }
       }
     } else if (isOption) {

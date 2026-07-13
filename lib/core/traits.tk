@@ -40,6 +40,11 @@ pub trait @Sync {}
 // call(cede self), not by separate nominal callable traits.
 pub trait @Callable {}
 
+// Error propagation performs at most one explicit, consuming conversion.
+pub trait @ErrorInto<Target> {
+    pub fn into_error(cede self) -> Target
+}
+
 pub trait @Iterator {
     type Item
     pub fn next(self#) -> Option<Item>

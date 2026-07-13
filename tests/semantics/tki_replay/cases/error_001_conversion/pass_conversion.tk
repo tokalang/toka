@@ -1,0 +1,31 @@
+import core/traits::{@ErrorInto}
+import ./lib::{low, conversion_bound, LowError, AppError}
+
+fn lift<'T, 'E1, 'E2>(cede result: Result<'T, 'E1>) -> Result<'T, 'E2>
+where:
+    E1: @ErrorInto<E2>
+{
+    auto value = result!
+    return Result<'T, 'E2>::Ok(value)
+}
+
+fn high(fail: bool) -> Result<i32, AppError> {
+    auto value = low(fail)!
+    return Result<i32, AppError>::Ok(value + 1)
+}
+
+pub fn main() -> i32 {
+    if conversion_bound<LowError, AppError>() != 1 {
+        return 4
+    }
+    if high(false).unwrap() != 18 {
+        return 1
+    }
+    if high(true).unwrap_err().code != 10 {
+        return 2
+    }
+    if lift<i32, LowError, AppError>(cede low(true)).unwrap_err().code != 10 {
+        return 3
+    }
+    return 0
+}

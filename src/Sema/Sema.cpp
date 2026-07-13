@@ -2156,6 +2156,36 @@ void Sema::registerImpl(ImplDecl *Impl) {
                 ? findVisibleTraitDecl(Impl->TraitName, getLoc(Impl))
                 : findTraitDecl(Impl->TraitName);
   std::string canonicalTrait = canonicalTraitName(Impl->TraitName, traitDecl);
+
+  if (getTraitFamilyName(canonicalTrait) == "ErrorInto") {
+    size_t begin = canonicalTrait.find('<');
+    size_t end = canonicalTrait.rfind('>');
+    std::string target =
+        begin != std::string::npos && end > begin
+            ? canonicalTrait.substr(begin + 1, end - begin - 1)
+            : "unknown";
+    for (const auto &method : Impl->Methods) {
+      if (method->Name != "into_error")
+        continue;
+      bool validSelf =
+          method->Args.size() == 1 &&
+          Type::stripMorphology(method->Args[0].Name) == "self" &&
+          method->Args[0].IsCeded;
+      auto actualReturn = resolveType(toka::Type::fromString(method->ReturnType),
+                                      false);
+      auto targetType = resolveType(toka::Type::fromString(target), false);
+      bool validReturn = actualReturn && targetType &&
+                         actualReturn->equals(*targetType);
+      if (!method->IsPub || method->IsDeleted ||
+          method->Effect != EffectKind::None || !validSelf || !validReturn) {
+        DiagnosticEngine::report(getLoc(method.get()),
+                                 DiagID::ERR_SEMA_ERROR_CONVERSION_SIGNATURE,
+                                 target, target);
+        HasError = true;
+      }
+    }
+  }
+
   std::map<std::string, std::string> associatedTypeSubstitutions =
       registerAssociatedTypes(Impl, traitDecl, resolvedTypeName);
   AssociatedTypeSubstitutionCache[Impl] = associatedTypeSubstitutions;
@@ -2420,6 +2450,16 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Fn->ResolvedReturnType = toka::Type::fromString(resolvedRetStr);
   } else {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
+  }
+
+  if (Fn->Name == "main" && Fn->ResolvedReturnType) {
+    auto mainRet = resolveType(Fn->ResolvedReturnType, false);
+    std::string mainRetName = mainRet ? mainRet->getSoulName() : "unknown";
+    if (mainRetName != "i32" && mainRetName != "void") {
+      DiagnosticEngine::report(getLoc(Fn),
+                               DiagID::ERR_SEMA_MAIN_RETURN_CONTRACT);
+      HasError = true;
+    }
   }
 
   enterScope(); // Function scope
@@ -3246,9 +3286,12 @@ FunctionDecl *Sema::instantiateGenericFunction(
   // [NEW] Check Trait Bounds
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     if (!Template->GenericParams[i].TraitBounds.empty()) {
+      auto bounds = substituteTraitBounds(
+          Template->GenericParams[i].TraitBounds, Template->GenericParams,
+          Args);
       if (!checkTraitBounds(CallSite ? getLoc(CallSite) : Template->Loc, 
                             Template->GenericParams[i].Name, 
-                            Template->GenericParams[i].TraitBounds, 
+                            bounds,
                             Args[i]->toString(), false, Template->Loc)) {
         return nullptr;
       }

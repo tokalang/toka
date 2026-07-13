@@ -1,0 +1,5 @@
+error[E04595]: Propagation with '!' cannot consume the partial path 'holder.result'; bind the Result to a local value and propagate that binding
+ --> tests/fail/error_propagation_complex_path.tk:7:49
+   |
+ 7 |     return Result<i32, string>::Ok(holder.result!)
+   |                                                 ^

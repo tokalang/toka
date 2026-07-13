@@ -1,0 +1,11 @@
+fn narrow() -> Result<i32, i32> {
+    return Result<i32, i32>::Err(7)
+}
+
+fn widened() -> Result<i32, i64> {
+    return Result<i32, i64>::Ok(narrow()!)
+}
+
+fn main() -> i32 {
+    return 0
+}

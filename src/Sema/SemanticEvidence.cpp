@@ -142,6 +142,7 @@ const char *toString(SemanticRuleID value) {
   case SemanticRuleID::TKIReplay001: return "TKI-REPLAY-001";
   case SemanticRuleID::TKICache001: return "TKI-CACHE-001";
   case SemanticRuleID::UnsafePub001: return "UNSAFE-PUB-001";
+  case SemanticRuleID::ErrorProp001: return "ERROR-PROP-001";
   }
   return "PAL-PATH-001";
 }
@@ -163,6 +164,7 @@ const char *toString(SemanticOperation value) {
   case SemanticOperation::ExecutionBoundaryCapture: return "ExecutionBoundaryCapture";
   case SemanticOperation::ExecutionBoundaryArgument: return "ExecutionBoundaryArgument";
   case SemanticOperation::InterfaceReplay: return "InterfaceReplay";
+  case SemanticOperation::ErrorPropagation: return "ErrorPropagation";
   }
   return "InterfaceReplay";
 }
@@ -201,6 +203,10 @@ const char *toString(SemanticReason value) {
   case SemanticReason::BorrowedBoundaryDependency: return "BorrowedBoundaryDependency";
   case SemanticReason::InterfaceContractApplied: return "InterfaceContractApplied";
   case SemanticReason::UnknownProvenance: return "UnknownProvenance";
+  case SemanticReason::DirectErrorMatch: return "DirectErrorMatch";
+  case SemanticReason::ExplicitErrorConversion: return "ExplicitErrorConversion";
+  case SemanticReason::MissingErrorConversion: return "MissingErrorConversion";
+  case SemanticReason::PartialMoveUnsupported: return "PartialMoveUnsupported";
   }
   return "UnknownProvenance";
 }

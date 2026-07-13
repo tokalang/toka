@@ -113,3 +113,17 @@ composition, thread callback migration, and source-less replay are recorded in
 `callable_protocol_closure.md`. Local verification is 322/322 pass, 246/246
 fail, 1/1 warn, and 13/13 replay. This addendum keeps FZ-4 complete and leaves
 FZ-5 `InProgress`; it intentionally creates no new RC or tag.
+
+## Authorized Error Propagation Addendum
+
+The user subsequently authorized the typed error-propagation closure. Postfix
+`!` now has a frozen consuming and cleanup contract. Different error types use
+one explicit `@ErrorInto<Target>` implementation instead of ordinary type
+compatibility or raw union copying, and parameterized trait bounds make the
+contract usable in generic functions. `ErrorContext<E>` preserves typed source
+errors; synchronous, async, generic, diagnostic, and source-less evidence is
+recorded in `error_propagation_closure.md`. `dyn error`, conversion chains, and
+`main -> Result` remain outside 1.0. This addendum keeps FZ-4 complete and
+requires the eventual FZ-5 replacement revision to include this change. Local
+verification is 324/324 pass, 251/251 fail, 1/1 warn, 14/14 replay, and 12/12
+semantic cache invalidation.

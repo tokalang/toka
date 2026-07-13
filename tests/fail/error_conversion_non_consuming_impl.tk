@@ -1,0 +1,14 @@
+import core/traits::{@ErrorInto}
+
+shape LowError(code: i32)
+shape AppError(code: i32)
+
+impl LowError@ErrorInto<AppError> {
+    pub fn into_error(self) -> AppError {
+        return AppError(code = self.code)
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}

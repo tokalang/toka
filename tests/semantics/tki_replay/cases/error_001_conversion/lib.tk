@@ -1,0 +1,26 @@
+import core/traits::{@ErrorInto}
+
+// EXPECT_TKI: impl LowError@ErrorInto<AppError>
+// EXPECT_TKI: pub fn into_error(cede self: LowError) -> AppError
+// EXPECT_TKI: pub fn conversion_bound<E1: @ErrorInto<E2>, E2>() -> i32
+pub shape LowError(code: i32)
+pub shape AppError(code: i64)
+
+impl LowError@ErrorInto<AppError> {
+    pub fn into_error(cede self) -> AppError {
+        auto code = self.code
+        auto consumed = cede self
+        return AppError(code = code as i64 + consumed.code as i64)
+    }
+}
+
+pub fn low(fail: bool) -> Result<i32, LowError> {
+    if fail {
+        return Result<i32, LowError>::Err(LowError(code = 5))
+    }
+    return Result<i32, LowError>::Ok(17)
+}
+
+pub fn conversion_bound<E1: @ErrorInto<E2>, E2>() -> i32 {
+    return 1
+}

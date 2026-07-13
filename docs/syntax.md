@@ -48,7 +48,9 @@ not use kebab-case. Therefore `as http-client`, `http-client::send()`, and
 `(package-name = "...")` are invalid. In expression syntax, binary `-` is an
 operator and must be surrounded by spaces, as in `a - b`.
 
-The entry point is `main`, and it normally returns `i32`.
+The entry point is `main`. Toka 1.0 accepts `i32` or `void` as its return type,
+including for async `main`. A `Result`-returning helper must be handled at this
+boundary; `main -> Result<...>` is reserved for a future termination protocol.
 
 Comments:
 
@@ -433,6 +435,7 @@ Trait bounds must use `@Trait` for a single facet and `@{Trait1, Trait2}` for a 
 ```toka
 fn draw_one<T: @Drawable>(item: T) {}
 fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
+fn convert<T, E1: @ErrorInto<E2>, E2>(value: T) {}
 ```
 
 Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
@@ -780,6 +783,39 @@ Callable receiver mode and returned lifetime dependencies are preserved in
 same-version TKI interfaces. Thread callbacks that mutate owned captures use
 the exclusive `fn#` contract; detached execution still applies the ordinary
 explicit-capture, dependency, and `@Send` rules.
+
+### Result propagation
+
+Postfix `!` consumes a `Result<T, E>` or `Option<T>`. Success moves out the
+payload. Failure returns `Err` or `None` after dropping every still-live local
+in reverse lexical order. The operand is evaluated exactly once. Propagation
+from a whole local binding marks that binding moved; partial paths such as
+`holder.result!` are conservatively rejected in 1.0 and should first be bound
+to a local value.
+
+For `Result<T, E1>` inside a function returning `Result<U, E2>`, `E1` and `E2`
+must be the same resolved type or `E1` must implement the ordinary, explicitly
+imported protocol below:
+
+```toka
+trait @ErrorInto<Target> {
+    pub fn into_error(cede self) -> Target
+}
+```
+
+The conversion consumes `E1` and runs exactly once on the error path. It is a
+single direct conversion: Toka does not search conversion chains and does not
+use numeric widening, structural compatibility, or raw representation copying
+for errors. Parameterized bounds such as `E1: @ErrorInto<E2>` are valid in
+generic declarations and `where:` blocks. The selected implementation and
+receiver/return contract are preserved in same-version TKI interfaces.
+
+`std/error::ErrorContext<E>` stores an owned message and the original typed
+error. `with_context(cede result, message)` returns a context-bearing Result
+without erasing the source. Async `.await!` applies these same conversion,
+move, and cleanup rules after resumption. Toka 1.0 has no throw/catch,
+automatic conversion chain, universal `dyn error`, or implicit cleanup-error
+replacement policy.
 
 ## 13. Strings, Text, And Formatting
 

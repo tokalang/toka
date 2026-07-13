@@ -1,0 +1,14 @@
+shape LowError(code: i32)
+shape AppError(code: i64)
+
+fn low() -> Result<i32, LowError> {
+    return Result<i32, LowError>::Err(LowError(code = 7))
+}
+
+fn converted() -> Result<i32, AppError> {
+    return Result<i32, AppError>::Ok(low()!)
+}
+
+fn main() -> i32 {
+    return 0
+}

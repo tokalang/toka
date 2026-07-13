@@ -1,0 +1,12 @@
+shape Holder(result: Result<i32, string>)
+
+fn propagate() -> Result<i32, string> {
+    auto holder = Holder(
+        result = Result<i32, string>::Err(string::from("failed"))
+    )
+    return Result<i32, string>::Ok(holder.result!)
+}
+
+fn main() -> i32 {
+    return 0
+}

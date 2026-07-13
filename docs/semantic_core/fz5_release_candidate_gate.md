@@ -6,8 +6,9 @@ Status: `InProgress`
 point, deterministic evidence, and supported-platform CI. The gate machinery
 is complete. The explicitly authorized late iterator protocol invalidated the
 previous final-revision evidence. The later authorized callable protocol also
-belongs to the replacement revision, so a replacement four-target clean matrix
-is pending. Neither late closure creates an RC automatically.
+belongs to the replacement revision, as does the authorized typed
+error-propagation closure. A replacement four-target clean matrix is pending.
+None of these late closures creates an RC automatically.
 
 ## Unified Entry Point
 
@@ -107,7 +108,8 @@ revision. This historically closes both `FZ-5-P01` and `FZ-3-P01`, but it does
 not cover the later iterator protocol. `FZ-5-P02` tracks the replacement
 Linux/macOS x64/arm64 matrix required for the current revision.
 
-No unresolved language-design question remains in the current iterator scope.
+No unresolved language-design question remains in the iterator, callable, or
+typed error-propagation scope.
 After its replacement RC is established, work again accepts only blocking
 correctness, safety, platform, package, and documentation fixes; every such fix
 invalidates prior final-gate evidence and requires all four rows again.

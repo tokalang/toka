@@ -95,6 +95,7 @@ private:
   std::unique_ptr<MatchArm::Pattern> parseSinglePattern();
   std::unique_ptr<MatchArm::Pattern> parsePattern();
   std::vector<GenericParam> parseGenericParams();
+  std::string parseTraitBoundName();
   std::vector<std::string> parseTraitFacetTarget();
   void parseWhereConstraints(std::vector<GenericParam> &genericParams,
                              std::vector<std::string> *selfTraitBounds = nullptr);

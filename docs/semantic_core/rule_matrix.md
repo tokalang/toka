@@ -516,6 +516,41 @@ Primary references:
   retained generic callable body, a `dyn fn#` return signature, and source-less
   rejection of a shared call.
 
+## Error Propagation Rules
+
+### ERROR-PROP-001: `!` is a consuming, typed early return
+
+- Status: Core guarantee
+- Source form: `result!`, `.await!`, and `E1: @ErrorInto<E2>`
+- Operation class: ownership transfer, error conversion, deterministic cleanup
+- Decision: same-type errors move directly; different errors require exactly
+  one `into_error(cede self) -> Target` implementation. Numeric widening,
+  structural compatibility, raw layout copying, and conversion chains do not
+  participate.
+- Rationale: propagation must preserve ordinary Toka ownership and make every
+  cross-type conversion inspectable at the call site and interface boundary.
+- Primary diagnostics: `E04594` for a missing conversion, `E04595` for a
+  partial path, `E04596` for the frozen entry return boundary, and `E04597`
+  for a non-consuming or otherwise incompatible protocol method.
+- Implementation areas: `src/Sema/Sema_Expr.cpp`,
+  `src/CodeGen/CodeGen_Expr.cpp`, `src/Parser/Parser_Decl.cpp`, and
+  `lib/core/traits.tk`.
+- Positive tests: `tests/pass/g08_error_conversion_protocol.tk` and
+  `tests/pass/g09_error_propagation_cleanup_async.tk`.
+- Negative tests: `tests/fail/error_conversion_missing.tk`,
+  `tests/fail/error_conversion_numeric_implicit.tk`,
+  `tests/fail/error_conversion_non_consuming_impl.tk`,
+  `tests/fail/error_propagation_complex_path.tk`, and
+  `tests/fail/main_result_return.tk`.
+- Cleanup contract: the operand is evaluated once, the Result and selected
+  payload move once, and every remaining local drops before return. The async
+  fixture observes the same rule after suspension.
+- Interface replay requirements: the parameterized trait implementation and
+  `into_error` signature must survive `.tki`; callers never inspect its body.
+- Replay tests: `tests/semantics/tki_replay/cases/error_001_conversion` compares
+  direct and generic conversion decisions plus missing-conversion rejection
+  through source-backed and source-less providers.
+
 ## Interface Replay And Cache Rules
 
 ### TKI-REPLAY-001: `.tki` must preserve all semantic facts needed by callers

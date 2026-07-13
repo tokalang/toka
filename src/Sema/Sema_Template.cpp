@@ -235,7 +235,12 @@ void Sema::instantiateGenericImpl(
   // [NEW] Check Trait Bounds (SFINAE)
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     if (!Template->GenericParams[i].TraitBounds.empty()) {
-      if (!checkTraitBounds(Template->Loc, Template->GenericParams[i].Name, Template->GenericParams[i].TraitBounds, GenericArgs[i]->toString(), true /* isSilent */)) {
+      auto bounds = substituteTraitBounds(
+          Template->GenericParams[i].TraitBounds, Template->GenericParams,
+          GenericArgs);
+      if (!checkTraitBounds(Template->Loc, Template->GenericParams[i].Name,
+                            bounds, GenericArgs[i]->toString(),
+                            true /* isSilent */)) {
         return; // SFINAE: Silently filter out this impl block
       }
     }
@@ -343,6 +348,26 @@ void Sema::instantiateGenericImpl(
   checkImpl(RawPtr);
 
   // Done.
+}
+
+std::vector<std::string> Sema::substituteTraitBounds(
+    const std::vector<std::string> &Bounds,
+    const std::vector<GenericParam> &Params,
+    const std::vector<std::shared_ptr<toka::Type>> &Args) {
+  std::map<std::string, std::shared_ptr<toka::Type>> replacements;
+  for (size_t i = 0; i < Params.size() && i < Args.size(); ++i) {
+    replacements[Params[i].Name] = Args[i];
+    if (!Params[i].Name.empty() && Params[i].Name[0] == '\'')
+      replacements[Params[i].Name.substr(1)] = Args[i];
+  }
+
+  std::vector<std::string> result;
+  result.reserve(Bounds.size());
+  for (const auto &bound : Bounds) {
+    auto type = toka::Type::fromString(bound);
+    result.push_back(type ? type->substitute(replacements)->toString() : bound);
+  }
+  return result;
 }
 
 bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 

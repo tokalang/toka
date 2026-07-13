@@ -25,6 +25,7 @@
 namespace toka {
 
 class ASTNode;
+class FunctionDecl;
 
 struct GenericParam {
   std::string Name;
@@ -373,6 +374,9 @@ public:
 class UnwrapPropagationExpr : public Expr {
 public:
   std::unique_ptr<Expr> Base;
+  std::shared_ptr<toka::Type> SourceErrorType;
+  std::shared_ptr<toka::Type> TargetErrorType;
+  FunctionDecl *ErrorConversionFn = nullptr;
   UnwrapPropagationExpr(std::unique_ptr<Expr> base)
       : Base(std::move(base)) {}
   std::string toString() const override {
@@ -382,6 +386,9 @@ public:
     auto n = std::make_unique<UnwrapPropagationExpr>(cloneNode(Base));
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
+    n->SourceErrorType = SourceErrorType;
+    n->TargetErrorType = TargetErrorType;
+    n->ErrorConversionFn = nullptr;
     return n;
   }
 };

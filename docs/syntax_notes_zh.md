@@ -112,7 +112,7 @@
 | `for auto x in iter { ... }` | 协议迭代循环 | **迭代绑定铁律**：支持实现了迭代器协议的对象。迭代绑定**必须且只能**携带 `auto` 关键字声明修饰符（可变迭代为 `for auto x#`，借用为 `for auto &x`），绝对不支持 `let` 关键字（E0107），防止隐式名称重名或变量隐藏。 |
 | `auto label: void = loop { ... }` | Labeled Loop 声明与长跳转 | **绝对 Void 坍缩与特化放行**：Toka 1.0 的 loop **绝对隐式坍缩为 void**。如果在中端检测到它被用作表达式带值返回（即 `ExpectedType != "void"` 且 `isReceiver` 为真），会触发类型收紧拦截（E0406）。但为了支持多层嵌套循环的 **Labeled Loop** 与长跳转，特设 `auto label: void = loop { ... }` 这一合法写法：将变量名作为 loop 的 label，内部通过 `break to label` 穿透长跳。中端对此 `isReceiver` 且期待类型为 `void` 的情况进行了**特化放行**，后端 LLVM 实现零 cost 内存分配消除（消除 alloca），捍卫绝对零成本抽象。 |
 | `match val { ... }` | 模式匹配 | 强制穷尽检查 (Exhaustive)，如果有遗漏需用 `_ =>` 通配符 |
-| `auto val = res!` | 错误传递 (解包) | 后缀感叹号 `!` 仅用于 `Result` 或 `Option` 结构。遇到 `Err`/`None` 时会自动提取错误并提早 return 向上抛出；成功则提取有效负载 (Payload)。**注意：此操作会触发 Move 语义，消耗掉原来的受托管容器本身。** |
+| `auto val = res!` | 错误传递 (解包) | 后缀感叹号 `!` 仅用于 `Result` 或 `Option` 结构。遇到 `Err`/`None` 时会自动提早 return 并清理存活局部值；成功则移出有效负载。不同错误类型必须有一步显式 `@ErrorInto<Target>` 转换。该操作消费原容器。 |
 | `auto Variant(x) =  或者 match 分支` | 解构的复制语义(纯数据) | **铁律**：解构和 `match` 匹配分支的绑定默认具备**复制 (Copy)** 语义。这仅对纯数据（如 `i32`）合法且安全。 |
 | `auto Variant(&x) =  或者 match 分支` | 强制资源对象仅允许借用解构 | **铁律 (防深拷贝/内存泄漏机制)**：对于带有生命周期托管（Drop / `@encap`）的资源（如 `string`），编译器会直接**封杀阻止**其裸解构（`auto Ok(msg)`）。你**必须显式戴上借用帽 `&`**（如 `auto Ok(&msg)`）以引用的形态读写原物理内存！这样彻底杜绝了因隐式海量深拷贝暴雪或非法浅拷贝引发的双重释放崩溃。 |
 | `auto Variant` | 无参解构 | 对于无负荷状态（如 `None`），直接写名字即可 |

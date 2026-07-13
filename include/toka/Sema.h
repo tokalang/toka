@@ -556,6 +556,10 @@ private:
                         const std::vector<std::string> &TraitBounds, 
                         const std::string &ConcreteType, bool isSilent = false,
                         SourceLocation BoundLoc = SourceLocation());
+  std::vector<std::string> substituteTraitBounds(
+      const std::vector<std::string> &Bounds,
+      const std::vector<GenericParam> &Params,
+      const std::vector<std::shared_ptr<toka::Type>> &Args);
 
   // [NEW] Deep Inspection for Union Safety
   std::shared_ptr<toka::Type>

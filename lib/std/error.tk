@@ -6,11 +6,34 @@ pub shape Error(
     message: string
 )
 
+// Typed context preserves the original error instead of erasing it.
+pub shape ErrorContext<'E>(
+    message: string,
+    'source: E
+)
+
 impl Error {
     pub fn new(code: i32, msg: string) -> Error {
         return Error(code = code, message = msg)
     }
 }
 
-pub fn __unused_dummy() {}
+pub fn with_context<'T, 'E>(cede result: Result<'T, 'E>, message: string) -> Result<'T, ErrorContext<'E>> {
+    match cede result {
+        auto Result<'T, 'E>::Ok('value) => {
+            return Result<'T, ErrorContext<'E>>::Ok(cede 'value)
+        }
+        auto Result<'T, 'E>::Err('error) => {
+            return Result<'T, ErrorContext<'E>>::Err(
+                ErrorContext<'E>(message = message, source = cede 'error)
+            )
+        }
+        _ => {
+            panic("moved Result passed to with_context")
+            auto *fallback = 0 as *Result<'T, ErrorContext<'E>>
+            return fallback
+        }
+    }
+}
 
+pub fn __unused_dummy() {}

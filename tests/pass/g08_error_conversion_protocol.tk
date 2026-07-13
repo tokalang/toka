@@ -1,0 +1,52 @@
+import core/traits::{@ErrorInto}
+
+shape LowError(code: i32)
+shape AppError(code: i64)
+
+auto conversion_count# = 0
+
+impl LowError@ErrorInto<AppError> {
+    pub fn into_error(cede self) -> AppError {
+        conversion_count += 1
+        auto code = self.code
+        auto consumed = cede self
+        return AppError(code = code as i64 + consumed.code as i64)
+    }
+}
+
+fn low(fail: bool) -> Result<i32, LowError> {
+    if fail {
+        return Result<i32, LowError>::Err(LowError(code = 7))
+    }
+    return Result<i32, LowError>::Ok(21)
+}
+
+fn same_type(fail: bool) -> Result<i32, LowError> {
+    auto value = low(fail)!
+    return Result<i32, LowError>::Ok(value * 2)
+}
+
+fn converted(fail: bool) -> Result<i32, AppError> {
+    auto value = low(fail)!
+    return Result<i32, AppError>::Ok(value * 2)
+}
+
+fn lift<'T, 'E1: @ErrorInto<E2>, 'E2>(cede result: Result<'T, 'E1>) -> Result<'T, 'E2> {
+    auto value = result!
+    return Result<'T, 'E2>::Ok(value)
+}
+
+fn main() -> i32 {
+    assert(same_type(false).unwrap() == 42, "same-type success")
+    assert(same_type(true).unwrap_err().code == 7, "same-type error")
+    assert(converted(false).unwrap() == 42, "converted success")
+    assert(conversion_count == 0, "success path does not convert")
+    assert(converted(true).unwrap_err().code == 14, "converted error")
+    assert(conversion_count == 1, "error conversion executes exactly once")
+    assert(lift<i32, LowError, AppError>(cede low(false)).unwrap() == 21,
+           "generic conversion success")
+    assert(lift<i32, LowError, AppError>(cede low(true)).unwrap_err().code == 14,
+           "generic conversion error")
+    assert(conversion_count == 2, "generic conversion executes exactly once")
+    return 0
+}

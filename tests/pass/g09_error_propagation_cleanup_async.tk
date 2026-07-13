@@ -1,0 +1,84 @@
+import core/traits::{@encap, @ErrorInto}
+import std/error::{ErrorContext, with_context}
+import std/task::{block_on, sleep_async}
+
+auto source_drops# = 0
+auto local_drops# = 0
+auto conversions# = 0
+
+shape SourceError(code: i32)
+shape TargetError(code: i32)
+shape LocalToken(id: i32)
+
+impl SourceError@encap {
+    fn drop(self#) {
+        source_drops += 1
+    }
+    pub fn clone(self) = delete
+}
+
+impl LocalToken@encap {
+    fn drop(self#) {
+        local_drops += 1
+    }
+    pub fn clone(self) = delete
+}
+
+impl SourceError@ErrorInto<TargetError> {
+    pub fn into_error(cede self) -> TargetError {
+        conversions += 1
+        auto code = self.code
+        auto consumed = cede self
+        return TargetError(code = code + consumed.code)
+    }
+}
+
+fn source(fail: bool) -> Result<i32, SourceError> {
+    if fail {
+        return Result<i32, SourceError>::Err(SourceError(code = 9))
+    }
+    return Result<i32, SourceError>::Ok(11)
+}
+
+fn converted_sync() -> Result<i32, TargetError> {
+    auto local = LocalToken(id = 1)
+    auto value = source(true)!
+    return Result<i32, TargetError>::Ok(value + local.id)
+}
+
+fn converted_async() -> async Result<i32, TargetError> {
+    auto local = LocalToken(id = 2)
+    sleep_async(1).await
+    auto value = source(true)!
+    return Result<i32, TargetError>::Ok(value + local.id)
+}
+
+fn main() -> i32 {
+    {
+        auto error = converted_sync().unwrap_err()
+        assert(error.code == 18, "sync converted payload")
+    }
+    assert(conversions == 1, "sync converts once")
+    assert(source_drops == 1, "sync source error drops once")
+    assert(local_drops == 1, "sync propagation cleans local once")
+
+    {
+        auto contextual = with_context<i32, SourceError>(
+            cede source(true), string::from("loading configuration")
+        ).unwrap_err()
+        assert(contextual.source.code == 9, "context preserves source")
+        assert(contextual.message.eq(string::from("loading configuration")),
+               "context preserves message")
+    }
+    assert(source_drops == 2, "context owns and drops source once")
+
+    auto task = converted_async().start
+    {
+        auto error = block_on<Result<i32, TargetError>>(task).unwrap_err()
+        assert(error.code == 18, "async converted payload")
+    }
+    assert(conversions == 2, "async converts once")
+    assert(source_drops == 3, "async source error drops once")
+    assert(local_drops == 2, "async propagation cleans frame local once")
+    return 0
+}

@@ -5421,30 +5421,81 @@ PhysEntity CodeGen::genUnwrapPropagationExpr(const UnwrapPropagationExpr *expr) 
     
     if (targetRetTy->isStructTy() && targetRetTy->getStructNumElements() >= 2) {
       llvm::Type *tagTy = targetRetTy->getStructElementType(0);
-      llvm::Value *failedTag = m_Builder.CreateIntCast(tagVal, tagTy, false);
-      retVal = m_Builder.CreateInsertValue(retVal, failedTag, {0});
-      
-      llvm::Value *srcAlloc = createEntryBlockAlloca(unionData->getType(), nullptr, "unwrap.err.src");
+      retVal = m_Builder.CreateInsertValue(
+          retVal, llvm::ConstantInt::get(tagTy, 0), {0});
+
+      if (!expr->SourceErrorType || !expr->TargetErrorType) {
+        error(expr, DiagID::ERR_CODEGEN_PROPAGATION_EXPRESSION_LACKS_RESOLVED);
+        return nullptr;
+      }
+
+      llvm::Type *sourceErrTy = getLLVMType(expr->SourceErrorType);
+      llvm::Type *targetErrTy = getLLVMType(expr->TargetErrorType);
+      if (!sourceErrTy || !targetErrTy) {
+        error(expr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR, soul);
+        return nullptr;
+      }
+
+      llvm::AllocaInst *srcAlloc = createEntryBlockAlloca(
+          unionData->getType(), nullptr, "unwrap.err.src");
+      srcAlloc->setAlignment(
+          m_Module->getDataLayout().getABITypeAlign(sourceErrTy));
       m_Builder.CreateStore(unionData, srcAlloc);
-      llvm::Type *dstUnionTy = targetRetTy->getStructElementType(1);
-      llvm::Value *newUnionData = nullptr;
-      if (unionData->getType() == dstUnionTy) {
-        newUnionData = unionData;
-      } else {
-        const llvm::DataLayout &dl = m_Module->getDataLayout();
-        uint64_t srcSize = dl.getTypeAllocSize(unionData->getType()).getFixedValue();
-        uint64_t dstSize = dl.getTypeAllocSize(dstUnionTy).getFixedValue();
-        if (srcSize <= dstSize) {
-          llvm::Value *dstAlloc = createEntryBlockAlloca(dstUnionTy, nullptr, "unwrap.err.dst");
-          m_Builder.CreateStore(llvm::Constant::getNullValue(dstUnionTy), dstAlloc);
-          m_Builder.CreateStore(unionData, dstAlloc);
-          newUnionData = m_Builder.CreateLoad(dstUnionTy, dstAlloc);
+      llvm::Value *sourceError =
+          m_Builder.CreateLoad(sourceErrTy, srcAlloc, "unwrap.err.value");
+      llvm::Value *targetError = sourceError;
+
+      if (expr->ErrorConversionFn) {
+        const FunctionDecl *conversion = expr->ErrorConversionFn;
+        std::string calleeName = conversion->CodegenName.empty()
+                                     ? conversion->Name
+                                     : conversion->CodegenName;
+        llvm::Function *callee = m_Module->getFunction(calleeName);
+        if (!callee)
+          callee = genFunction(conversion, "", true);
+        if (!callee) {
+          error(expr, DiagID::ERR_CODEGEN_METHOD_NOT_FOUND_FOR_TYPE_MANGLED,
+                "into_error", expr->SourceErrorType->toString(), calleeName);
+          return nullptr;
+        }
+
+        bool conversionSRet = shouldReturnSRet(expr->TargetErrorType);
+        size_t selfIndex = conversionSRet ? 1 : 0;
+        std::vector<llvm::Value *> args;
+        llvm::Value *convertedStorage = nullptr;
+        if (conversionSRet) {
+          convertedStorage = createEntryBlockAlloca(
+              targetErrTy, nullptr, "unwrap.err.converted");
+          args.push_back(convertedStorage);
+        }
+
+        llvm::Value *selfArg = sourceError;
+        if (callee->arg_size() > selfIndex &&
+            callee->getArg(selfIndex)->getType()->isPointerTy())
+          selfArg = srcAlloc;
+        args.push_back(selfArg);
+
+        llvm::CallInst *converted = m_Builder.CreateCall(callee, args);
+        if (conversionSRet) {
+          converted->addParamAttr(
+              0, llvm::Attribute::get(m_Context, llvm::Attribute::StructRet,
+                                      targetErrTy));
+          targetError = m_Builder.CreateLoad(
+              targetErrTy, convertedStorage, "unwrap.err.converted.value");
         } else {
-          llvm::Value *castSrc = m_Builder.CreateBitCast(srcAlloc, llvm::PointerType::getUnqual(m_Context));
-          newUnionData = m_Builder.CreateLoad(dstUnionTy, castSrc);
+          targetError = converted;
         }
       }
-      
+
+      llvm::Type *dstUnionTy = targetRetTy->getStructElementType(1);
+      llvm::AllocaInst *dstAlloc = createEntryBlockAlloca(
+          dstUnionTy, nullptr, "unwrap.err.dst");
+      dstAlloc->setAlignment(
+          m_Module->getDataLayout().getABITypeAlign(targetErrTy));
+      m_Builder.CreateStore(llvm::Constant::getNullValue(dstUnionTy), dstAlloc);
+      m_Builder.CreateStore(targetError, dstAlloc);
+      llvm::Value *newUnionData =
+          m_Builder.CreateLoad(dstUnionTy, dstAlloc, "unwrap.err.packed");
       retVal = m_Builder.CreateInsertValue(retVal, newUnionData, {1});
     }
 

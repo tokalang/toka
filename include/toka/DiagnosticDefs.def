@@ -115,6 +115,10 @@ DIAG(ERR_SEMA_CALLABLE_MUTABLE_REQUIRED, Error, "E04590", "Callable '{}' require
 DIAG(ERR_SEMA_CALLABLE_CONSUME_REQUIRED, Error, "E04591", "Callable '{}' consumes its environment; invoke it with 'cede {}(...)'")
 DIAG(ERR_SEMA_CALLABLE_NOT_WRITABLE, Error, "E04592", "Callable '{}' requires exclusive invocation, but its binding is not writable")
 DIAG(ERR_SEMA_CALLABLE_PROTOCOL_REQUIRED, Error, "E04593", "Type '{}' defines callable behavior but does not implement the formal @Callable protocol")
+DIAG(ERR_SEMA_ERROR_CONVERSION_REQUIRED, Error, "E04594", "Cannot propagate error type '{}' as '{}'; implement '{}@ErrorInto<{}>'")
+DIAG(ERR_SEMA_PROPAGATION_COMPLEX_MOVE, Error, "E04595", "Propagation with '!' cannot consume the partial path '{}'; bind the Result to a local value and propagate that binding")
+DIAG(ERR_SEMA_MAIN_RETURN_CONTRACT, Error, "E04596", "Toka 1.0 main must return i32 or void, including async main; move fallible work into a Result-returning helper and handle it at the entry boundary")
+DIAG(ERR_SEMA_ERROR_CONVERSION_SIGNATURE, Error, "E04597", "@ErrorInto<{}>::into_error must have signature 'pub fn into_error(cede self) -> {}'")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")

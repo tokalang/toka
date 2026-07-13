@@ -1,0 +1,12 @@
+// EXPECT_ERROR: E04594
+import ./lib::{low}
+
+shape OtherError(code: i32)
+
+fn high() -> Result<i32, OtherError> {
+    return Result<i32, OtherError>::Ok(low(true)!)
+}
+
+pub fn main() -> i32 {
+    return 0
+}

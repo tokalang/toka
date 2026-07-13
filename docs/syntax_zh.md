@@ -42,7 +42,9 @@ fn main() -> i32 {
 
 连字符只属于路径层。凡是在 `.tk` 源码内部新产生、并进入 Toka 语义名字空间的名字，都必须是普通 identifier：变量、函数、类型、字段、import alias、import item alias、以及可选择的 namespace 都不使用 kebab-case。因此 `as http-client`、`http-client::send()`、`(package-name = "...")` 都是非法形式。在表达式语法中，二元 `-` 是操作符，必须用空格隔开，例如 `a - b`。
 
-入口函数是 `main`，通常返回 `i32`。
+入口函数是 `main`。Toka 1.0 接受 `i32` 或 `void` 返回类型，async `main`
+也遵循相同规则。返回 `Result` 的工作函数必须在入口边界显式处理；
+`main -> Result<...>` 留待未来 termination 协议。
 
 注释：
 
@@ -398,6 +400,7 @@ Trait 约束必须使用 `@Trait` 表示单个 facet，使用 `@{Trait1, Trait2}
 ```toka
 fn draw_one<T: @Drawable>(item: T) {}
 fn draw_and_fly<T: @{Drawable, Flyable}>(item: T) {}
+fn convert<T, E1: @ErrorInto<E2>, E2>(value: T) {}
 ```
 
 `T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
@@ -726,6 +729,32 @@ auto next = counter#(1)
 `F: @Callable`。Callable receiver mode 和返回生命周期依赖会保存在同版本 TKI
 接口中。修改 owned capture 的线程回调使用独占 `fn#` 契约；detached 执行仍然
 遵守既有的显式捕获、依赖和 `@Send` 规则。
+
+### Result 错误传播
+
+后缀 `!` 消费 `Result<T, E>` 或 `Option<T>`。成功分支移出 payload；失败
+分支按逆词法顺序 drop 所有仍存活的局部值后返回 `Err` 或 `None`。操作数只
+求值一次。对完整局部绑定传播会把该绑定标记为 moved；`holder.result!` 这类
+部分路径在 1.0 中保守拒绝，应先绑定到局部值再传播。
+
+在返回 `Result<U, E2>` 的函数中传播 `Result<T, E1>` 时，`E1` 与 `E2`
+必须是同一解析类型，或者 `E1` 实现下面这个普通、需要显式导入的协议：
+
+```toka
+trait @ErrorInto<Target> {
+    pub fn into_error(cede self) -> Target
+}
+```
+
+转换消费 `E1`，且只在错误路径执行一次。它只能直接转换一步：Toka 不搜索
+转换链，也不会用数值 widening、结构兼容或原始表示复制来转换错误。
+`E1: @ErrorInto<E2>` 可用于泛型声明和 `where:`。选中的实现及其 receiver/
+return 契约会保存在同版本 TKI 中。
+
+`std/error::ErrorContext<E>` 保存 owned message 和原始类型化错误；
+`with_context(cede result, message)` 不擦除 source。async `.await!` 在恢复后
+遵循相同的转换、move 与 cleanup 规则。Toka 1.0 不包含 throw/catch、自动
+转换链、通用 `dyn error`，也不隐式决定 cleanup error 是否替换主错误。
 
 ## 13. 字符串、文本与格式化
 

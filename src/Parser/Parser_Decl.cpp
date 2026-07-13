@@ -20,6 +20,16 @@
 
 namespace toka {
 
+std::string Parser::parseTraitBoundName() {
+  std::string name =
+      consume(TokenType::Identifier,
+              DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT)
+          .Text;
+  if (check(TokenType::GenericLT))
+    name += parseTypeString();
+  return name;
+}
+
 std::vector<GenericParam> Parser::parseGenericParams() {
   std::vector<GenericParam> genericParams;
   if (match(TokenType::GenericLT)) {
@@ -41,7 +51,7 @@ std::vector<GenericParam> Parser::parseGenericParams() {
             if (unionBraces && match(TokenType::At)) {
               error(previous(), DiagID::ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX);
             }
-            gp.TraitBounds.push_back(consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT).Text);
+            gp.TraitBounds.push_back(parseTraitBoundName());
           } while (unionBraces && match(TokenType::Comma));
           if (unionBraces) {
             consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
@@ -51,7 +61,7 @@ std::vector<GenericParam> Parser::parseGenericParams() {
           advance();
           do {
             match(TokenType::At);
-            gp.TraitBounds.push_back(consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT).Text);
+            gp.TraitBounds.push_back(parseTraitBoundName());
           } while (match(TokenType::Comma));
           consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
         } else {
@@ -82,8 +92,7 @@ std::vector<std::string> Parser::parseTraitFacetTarget() {
     if (unionBraces && match(TokenType::At)) {
       error(previous(), DiagID::ERR_PARSER_TRAIT_BOUND_SET_REQUIRES_AT_PREFIX);
     }
-    traitBounds.push_back(
-        consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT).Text);
+    traitBounds.push_back(parseTraitBoundName());
   } while (unionBraces && match(TokenType::Comma));
 
   if (unionBraces) {

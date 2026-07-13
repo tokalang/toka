@@ -40,6 +40,14 @@ later release.
   `call(cede self)` receiver morphology. Closure types spell the same modes as
   `fn(...)`, `fn#(...)`, and `cede fn(...)`; callable mode and binding `#` are
   independent facts.
+- Error propagation: postfix `!` consumes a whole Result/Option and performs
+  deterministic early-return cleanup. Cross-error propagation is either an
+  exact type match or one explicit `@ErrorInto<Target>` conversion; the trait
+  remains an ordinary imported `core/traits` name rather than an implicit
+  prelude addition.
+- Entry return: 1.0 `main`, including async `main`, returns `i32` or `void`.
+  Fallible work lives in a Result-returning helper and is handled at the entry
+  boundary.
 - Associated types: keep `type` and `per type` as the stable 1.0 model.
 - Iterator protocol: non-array `for` is trait-based. `@Iterable::iter` returns
   an associated `Iter` with `return <- self`; value iteration uses
@@ -199,6 +207,10 @@ core contract ships.
   formalization. Eager generic algorithms may use the frozen `@Callable`
   protocol; a lazy mutable adapter needs a separately designed consuming-loop
   or iterator-as-iterable contract.
+- Universal `dyn error`, conversion-chain search, throw/catch, implicit
+  cleanup-error precedence, and `main -> Result`. These require independent
+  object, termination, and failure-composition contracts; typed errors,
+  `ErrorContext<E>`, and one-step conversion cover the 1.0 core.
 - Async blocks, parameterized `.start(...)`, and richer structured-concurrency
   syntax. These should extend the frozen async color model rather than replace
   it.

@@ -1,0 +1,5 @@
+error[E04594]: Cannot propagate error type 'i32' as 'i64'; implement 'i32@ErrorInto<i64>'
+ --> tests/fail/error_conversion_numeric_implicit.tk:6:41
+   |
+ 6 |     return Result<i32, i64>::Ok(narrow()!)
+   |                                         ^
