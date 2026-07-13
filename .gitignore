@@ -102,6 +102,8 @@ promo/
 /toka_bootc
 *.tki
 *.tar.gz
+__pycache__/
+*.pyc
 
 # Local WebAssembly playground build assets
 /playground/tokacheck.js

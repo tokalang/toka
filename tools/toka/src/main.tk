@@ -4,7 +4,8 @@ import std/io::{println, File, remove_file}
 import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, metadata}
 import sys/libc::{libc_system, libc_printf, libc_getenv}
 import std/vec::{Vec}
-import src/pkg_manager::{cmd_fetch, build_pkg_args, cmd_publish, cmd_search, resolve_package}
+import std/process::{Command}
+import src/pkg_manager::{cmd_fetch, cmd_update, cmd_remove, build_pkg_mappings, cmd_publish, cmd_search, resolve_package}
 
 
 fn print_help() {
@@ -389,29 +390,17 @@ fn cmd_add(pkg_url_or_name: string) -> i32 {
         auto rest = pkg_content.substring(insert_pos, pkg_content.len() as i32)
         new_content#.push_str(rest.as_str())
         
-        auto file# = File::open(string::from("package.tk"), "w")
-        if !file.is_valid() {
-            println("\x1b[1;31m       Error\x1b[0m failed to open package.tk for writing")
-            return 1
-        }
-        file.write(new_content.as_view())
-        file#.close()
+        write_string(string::from("package.tk"), new_content.as_str())
         
         println("\x1b[1;32m       Added\x1b[0m {} to package.tk", pkg_alias)
         
-        println("\x1b[1;32m    Updating\x1b[0m package.lock...")
-        auto lock_file# = File::open(string::from("package.lock"), "a")
-        if lock_file.is_valid() {
-            auto lock_entry# = string::from("")
-            lock_entry#.push_str(pkg_alias.as_str())
-            lock_entry#.push_str(" ")
-            lock_entry#.push_str(pkg_url.as_str())
-            lock_entry#.push_str(" sha256:mock_hash_for_now_00000000000000000000000000
-")
-            lock_file.write(lock_entry.as_view())
-            lock_file#.close()
+        println("\x1b[1;32m    Resolving\x1b[0m package graph...")
+        auto fetch_result = cmd_fetch()
+        if fetch_result != 0 {
+            write_string(string::from("package.tk"), pkg_content.as_str())
+            println("\x1b[1;31m       Error\x1b[0m dependency resolution failed; package.tk restored")
+            return fetch_result
         }
-        
         return 0
     }
 }
@@ -428,24 +417,19 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         return fetch_res
     }
 
-    unsafe {
-        auto cmd# = string::from("")
+    {
         auto tokac_path = detect_tokac_path()
-        cmd#.push_str(tokac_path.as_str())
-        cmd#.push_str(" ")
         auto default_lib = detect_default_lib_path()
-        cmd#.push_str("-I ")
-        cmd#.push_str(default_lib.as_str())
-        cmd#.push_str(" ")
-        
-        auto pkg_args = build_pkg_args()
-        if !pkg_args.is_empty() {
-            cmd#.push_str(pkg_args.as_str())
-            cmd#.push_str(" ")
-            env::set_var(string::from("TOKA_PKG_ARGS"), pkg_args)
-        } else {
-            env::set_var(string::from("TOKA_PKG_ARGS"), string::from(""))
+        auto pkg_mappings = build_pkg_mappings()
+        auto mapping_env# = string::from("")
+        auto mapping_index# = 0:usize
+        loop mapping_index < pkg_mappings.len() {
+            if mapping_index > 0:usize { mapping_env#.push_str("\n") }
+            mapping_env#.push_str(pkg_mappings.get_ref(mapping_index).as_str())
+            mapping_index += 1
         }
+        env::set_var(string::from("TOKA_PKG_MAP_V1"), mapping_env)
+        env::set_var(string::from("TOKA_PKG_ARGS"), string::from(""))
         
         auto build_file# = string::from("build.tk")
         if !exists(string::from("build.tk")) {
@@ -458,34 +442,37 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             }
         }
         
-        auto is_windows = check_is_windows()
-        
-        cmd#.push_str(build_file.as_str())
-        if is_windows {
-            cmd#.push_str(" -o .toka_build_exe.exe -O3 && .toka_build_exe.exe")
-        } else {
-            cmd#.push_str(" -o .toka_build_exe -O3 && ./.toka_build_exe")
+        auto executable# = string::from(".toka_build_exe")
+        if check_is_windows() { executable#.push_str(".exe") }
+        auto compile# = Command::new(cede tokac_path)
+        compile#.arg(string::from("-I"))
+        compile#.arg(cede default_lib)
+        auto pkg_index# = 0:usize
+        loop pkg_index < pkg_mappings.len() {
+            compile#.arg(string::from("--pkg"))
+            compile#.arg(cede pkg_mappings.get_ref(pkg_index).clone())
+            pkg_index += 1
         }
-
+        compile#.arg(cede build_file.clone())
+        compile#.arg(string::from("-o"))
+        compile#.arg(cede executable.clone())
+        compile#.arg(string::from("-O3"))
+        if compile#.status() != 0 {
+            println("\x1b[1;31m       Error\x1b[0m executing {} -> compile failed", build_file)
+            return 1
+        }
+        if !check_is_windows() {
+            auto relative# = string::from("./")
+            relative#.push_str(executable.as_str())
+            executable = relative
+        }
+        auto run# = Command::new(cede executable)
         auto idx_extra# = 0:usize
         loop idx_extra < extra_args.len() {
-            cmd#.push_str(" ")
-            cmd#.push_str(shell_quote(extra_args.get(idx_extra)).as_str())
+            run#.arg(cede extra_args.get_ref(idx_extra).clone())
             idx_extra += 1
         }
-
-
-        auto res = libc_system(cmd.c_str())
-        if res != 0 {
-            println("\x1b[1;31m       Error\x1b[0m executing {} -> compile failed", build_file)
-        }
-        // if is_windows {
-        //     remove_file(string::from(".toka_build_exe.exe"))
-        // } else {
-        //     remove_file(string::from(".toka_build_exe"))
-        // }
-        if res != 0 { return 1 }
-        return 0
+        return run#.status()
     }
 }
 
@@ -787,13 +774,15 @@ fn main() -> i32 {
     }
     
     if cmd.eq(string::from("rm")) {
-        println("TODO: Implement toka rm")
-        return 0
+        if argc < 3 + shift {
+            println("Error: 'toka rm' requires a package alias.")
+            return 1
+        }
+        return cmd_remove(env::get_arg(2 + shift))
     }
     
     if cmd.eq(string::from("up")) {
-        println("TODO: Implement toka up")
-        return 0
+        return cmd_update()
     }
     
     if cmd.eq(string::from("fetch")) {

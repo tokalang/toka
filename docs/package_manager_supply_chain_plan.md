@@ -36,7 +36,8 @@ package<TAB>alias<TAB>kind<TAB>locator<TAB>resolved<TAB>archive_sha256<TAB>conte
 Rules:
 
 - entries are sorted by alias;
-- fields may not contain tabs, newlines, NUL bytes, or `..` path components;
+- fields may not contain tabs, newlines, or NUL bytes; filesystem paths are
+  canonicalized before they enter the lock and may not traverse package roots;
 - `kind` is `path`, `git`, or `registry`;
 - `resolved` is the canonical path, exact Git commit, or exact registry
   version;
@@ -96,7 +97,7 @@ child `package.tk` is parsed with the same restricted dependency parser.
 | Stage | Status | Exit evidence |
 | --- | --- | --- |
 | `PM-0` | `Complete` | Lock schema, digest, transaction, resolver, and stop conditions are frozen in this document |
-| `PM-1` | `Pending` | Package-manager subprocesses use structured argv and preserve real errors |
+| `PM-1` | `Complete` | Package-manager subprocesses use structured argv; CLI qualification covers paths containing spaces and error status propagation |
 | `PM-2` | `Pending` | Real SHA-256 and deterministic atomic lock read/write pass focused tests |
 | `PM-3` | `Pending` | Malicious archives are rejected and failed installs leave no visible partial package |
 | `PM-4` | `Pending` | Direct/transitive resolve, conflict/cycle handling, offline replay, and cache corruption tests pass |

@@ -310,6 +310,7 @@ def main():
     parser.add_argument('--manifest', '-m', default='.toka/build/manifest.json', help='Manifest store path')
     parser.add_argument('--tokac', default='build/bin/tokac', help='Path to tokac compiler')
     parser.add_argument('--compiler-args', default='', help='Arguments to pass to tokac (e.g. "-I lib -o app")')
+    parser.add_argument('--compiler-arg', action='append', default=[], help='One literal argument to pass to tokac')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--plan', action='store_true', help='Perform dirty check and print rebuild plan JSON')
     group.add_argument('--build', action='store_true', help='Compile dirty targets and persist manifest')
@@ -317,7 +318,7 @@ def main():
     args = parser.parse_args()
 
     # Parse compiler arguments
-    c_args = shlex.split(args.compiler_args)
+    c_args = shlex.split(args.compiler_args) + args.compiler_arg
 
     # Resolve build directory and construct environment
     build_dir = canonicalize(os.path.dirname(args.manifest) or ".")

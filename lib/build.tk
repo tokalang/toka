@@ -890,6 +890,18 @@ fn run_build_impl(
                 }
             }
         }
+        auto env_pkg_map = libc_getenv(c"TOKA_PKG_MAP_V1") as Addr
+        if env_pkg_map != 0:Addr {
+            auto pkg_map = string::from_cstr(env_pkg_map as *char)
+            auto mapping_iter = pkg_map.split('\n' as i32)
+            loop !mapping_iter.is_done() {
+                auto mapping = mapping_iter#.next()
+                if mapping.len() > 0:usize {
+                    compiler_args#.push(cede string::from("--pkg"))
+                    compiler_args#.push(cede mapping.clone())
+                }
+            }
+        }
 
         auto is_hybrid# = false
         if c_srcs.len() > 0:usize { is_hybrid = true }
@@ -1037,8 +1049,12 @@ fn run_build_impl(
         cmd1#.arg(cede manifest_path.clone())
         cmd1#.arg(string::from("--tokac"))
         cmd1#.arg(cede tokac_path.clone())
-        cmd1#.arg(string::from("--compiler-args"))
-        cmd1#.arg(cede c_args.clone())
+        auto driver_arg_index# = 0:usize
+        loop driver_arg_index < compiler_args.len() {
+            cmd1#.arg(string::from("--compiler-arg"))
+            cmd1#.arg(cede compiler_args.get_ref(driver_arg_index).clone())
+            driver_arg_index += 1
+        }
         auto src_str = string::from_cstr(*s)
         cmd1#.arg(cede src_str)
 
