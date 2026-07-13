@@ -85,3 +85,32 @@ fi
 mv "$WORK_ROOT/lib/build.tki.valid" "$WORK_ROOT/lib/build.tki"
 
 echo "PASS: native build facade source-less replay"
+
+PROCESS_LIB="$ROOT_DIR/$WORK_ROOT/process_lib"
+mkdir -p "$PROCESS_LIB"
+cp -R lib/std "$PROCESS_LIB/std"
+for module in core stdx sys prim hal; do
+    ln -s "$ROOT_DIR/lib/$module" "$PROCESS_LIB/$module"
+done
+
+TOKA_LIB="$PROCESS_LIB" "$TOKAC_ABS" -c \
+    "$PROCESS_LIB/std/process.tk" \
+    -o "$PROCESS_LIB/std/process.o"
+if [ ! -f "$PROCESS_LIB/std/process.tki" ]; then
+    echo "FAIL: expected process interface not generated"
+    exit 1
+fi
+mv "$PROCESS_LIB/std/process.tk" "$PROCESS_LIB/std/process.tk.hidden"
+cat > "$WORK_ROOT/process_compile_only.tk" <<'EOF'
+import std/process::{Command, ExitStatus, Output, ProcessError}
+
+fn invoke_process() -> i32 {
+    auto command# = Command::new(string::from("true"))
+    return command#.status()
+}
+EOF
+TOKA_LIB="$PROCESS_LIB" "$TOKAC_ABS" -c \
+    "$WORK_ROOT/process_compile_only.tk" \
+    -o "$WORK_ROOT/process_compile_only.o"
+
+echo "PASS: process command source-less replay"

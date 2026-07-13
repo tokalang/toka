@@ -1,13 +1,14 @@
-import sys/libc::{libc_system, libc_access, libc_getenv}
-import std/io::{println, File}
-import std/fs::{read_to_string, exists, write_string}
+import sys/libc::{libc_access, libc_getenv}
+import std/io::{println, remove_file, File}
+import std/fs::{read_to_string, exists, create_dir, write_string}
+import std/process::{Command}
 import std/env
 import std/path::{dirname, basename, file_stem}
 import std/vec::{Vec}
 import std/hashmap::{HashMap}
 import stdx/serde/json::{FromJson, JsonRes}
 pub import build/project::{Executable, Library}
-import build/internal/support::{__path_normalize, __path_canonicalize, __calculate_fnv1a, __run_and_capture_stdout, __shell_quote}
+import build/internal/support::{__path_normalize, __path_canonicalize, __calculate_fnv1a}
 import build/internal/codec::{__deserialize_nested_shape, __deserialize_shape}
 
 pub shape ModuleOutputs (
@@ -752,9 +753,13 @@ fn run_build_impl(
                 auto pkg_url = deps_iter#.next()
                 if pkg_url.len() == 0:usize { break }
 
-                auto add_cmd# = string::from("toka add ")
-                add_cmd#.push_str(pkg_url.as_str())
-                libc_system(add_cmd.c_str())
+                auto add_cmd# = Command::new(string::from("toka"))
+                add_cmd#.arg(string::from("add"))
+                add_cmd#.arg(cede pkg_url.clone())
+                if add_cmd#.status() != 0 {
+                    println("error: failed to add dependency {}", pkg_url)
+                    return 1
+                }
             }
         }
 
@@ -770,10 +775,13 @@ fn run_build_impl(
             is_windows = true
         }
 
-        if is_windows {
-            libc_system(c"if not exist target\\debug mkdir target\\debug")
-        } else {
-            libc_system(c"mkdir -p target/debug")
+        if !exists(string::from("target")) && !create_dir(string::from("target")) {
+            println("error: failed to create target directory")
+            return 1
+        }
+        if !exists(string::from("target/debug")) && !create_dir(string::from("target/debug")) {
+            println("error: failed to create target/debug directory")
+            return 1
         }
 
         auto use_forge# = false
@@ -804,13 +812,15 @@ fn run_build_impl(
         }
 
         if use_forge {
-            auto forge_cmd# = forge_path.clone()
-            forge_cmd#.push_str(" ")
+            auto forge_cmd# = Command::new(cede forge_path.clone())
             auto src_str = string::from_cstr(*s)
-            forge_cmd#.push_str(__shell_quote(src_str).as_str())
-            forge_cmd#.push_str(" -j 4 -c .forge_cache")
+            forge_cmd#.arg(cede src_str)
+            forge_cmd#.arg(string::from("-j"))
+            forge_cmd#.arg(string::from("4"))
+            forge_cmd#.arg(string::from("-c"))
+            forge_cmd#.arg(string::from(".forge_cache"))
 
-            auto forge_res = libc_system(forge_cmd.c_str())
+            auto forge_res = forge_cmd#.status()
             if forge_res != 0 {
                 auto name_str = string::from_cstr(*n)
                 println("\x1b[1;31m       Error\x1b[0m forge incremental compilation failed for {} with exit code: {}", name_str, forge_res.to_string())
@@ -848,21 +858,37 @@ fn run_build_impl(
         }
 
         auto c_args# = string::from("")
+        auto compiler_args# = Vec<string>::new()
         auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
         if toka_lib != 0:Addr {
+            auto toka_lib_arg = string::from_cstr(toka_lib as *char)
             c_args#.push_str("-I ")
-            c_args#.push_cstr(toka_lib as *char)
+            c_args#.push_str(toka_lib_arg.as_str())
             c_args#.push_str(" ")
+            compiler_args#.push(cede string::from("-I"))
+            compiler_args#.push(cede toka_lib_arg)
         } else {
             c_args#.push_str("-I /usr/local/lib/toka ")
+            compiler_args#.push(cede string::from("-I"))
+            compiler_args#.push(cede string::from("/usr/local/lib/toka"))
         }
         if libc_access(c".tokapkg", 0) == 0 {
             c_args#.push_str("-I .tokapkg ")
+            compiler_args#.push(cede string::from("-I"))
+            compiler_args#.push(cede string::from(".tokapkg"))
         }
         auto env_pkg_args = libc_getenv(c"TOKA_PKG_ARGS") as Addr
         if env_pkg_args != 0:Addr {
-            c_args#.push_cstr(env_pkg_args as *char)
+            auto pkg_args = string::from_cstr(env_pkg_args as *char)
+            c_args#.push_str(pkg_args.as_str())
             c_args#.push_str(" ")
+            auto pkg_arg_iter = pkg_args.split(' ' as i32)
+            loop !pkg_arg_iter.is_done() {
+                auto pkg_arg = pkg_arg_iter#.next()
+                if pkg_arg.len() > 0:usize {
+                    compiler_args#.push(cede pkg_arg.clone())
+                }
+            }
         }
 
         auto is_hybrid# = false
@@ -873,12 +899,20 @@ fn run_build_impl(
 
         if is_hybrid || is_lib_target {
             c_args#.push_str(" --emit-obj ")
+            compiler_args#.push(cede string::from("--emit-obj"))
             if is_lib_target {
                 c_args#.push_str(" --emit-interface ")
+                compiler_args#.push(cede string::from("--emit-interface"))
             }
             c_args#.push_str(" -o target/debug/")
             c_args#.push_cstr(*n)
             c_args#.push_str(".o -O3")
+            auto compiler_output# = string::from("target/debug/")
+            compiler_output#.push_cstr(*n)
+            compiler_output#.push_str(".o")
+            compiler_args#.push(cede string::from("-o"))
+            compiler_args#.push(cede compiler_output)
+            compiler_args#.push(cede string::from("-O3"))
         } else {
             c_args#.push_str(" -o target/debug/")
             c_args#.push_cstr(*n)
@@ -886,6 +920,14 @@ fn run_build_impl(
                 c_args#.push_str(".exe")
             }
             c_args#.push_str(" -O3")
+            auto compiler_output# = string::from("target/debug/")
+            compiler_output#.push_cstr(*n)
+            if is_windows {
+                compiler_output#.push_str(".exe")
+            }
+            compiler_args#.push(cede string::from("-o"))
+            compiler_args#.push(cede compiler_output)
+            compiler_args#.push(cede string::from("-O3"))
         }
 
         auto has_plan# = false
@@ -906,18 +948,31 @@ fn run_build_impl(
 
         if has_plan {
             // Run compiler dependency dump to get current graph
-            auto dump_cmd# = tokac_path.clone()
-            dump_cmd#.push_str(" --dump-dependencies=json ")
-            dump_cmd#.push_str(c_args.as_str())
-            dump_cmd#.push_str(" ")
+            auto dump_cmd# = Command::new(cede tokac_path.clone())
+            dump_cmd#.arg(string::from("--dump-dependencies=json"))
+            auto compiler_arg_index# = 0:usize
+            loop compiler_arg_index < compiler_args.len() {
+                dump_cmd#.arg(cede compiler_args.get_ref(compiler_arg_index).clone())
+                compiler_arg_index += 1
+            }
             auto src_str = string::from_cstr(*s)
-            dump_cmd#.push_str(__shell_quote(src_str).as_str())
+            dump_cmd#.arg(cede src_str)
 
             auto build_dir = __path_canonicalize(dirname(manifest_path.clone()))
             env::set_var(string::from("TOKA_BUILD_DIR"), build_dir.clone())
 
 
-            auto dump_json = __run_and_capture_stdout(dump_cmd)
+            auto dump_result# = dump_cmd#.output()
+            if dump_result.is_err() {
+                println("error: failed to execute compiler dependency dump")
+                return 1
+            }
+            auto dump_output = dump_result.unwrap()
+            if !dump_output.status.success() {
+                println("error: compiler dependency dump failed: {}", dump_output.stderr)
+                return 1
+            }
+            auto dump_json = cede dump_output.stdout
             auto current_graph_res = __deserialize_shape<DependencyManifest>(dump_json.as_str())
             if current_graph_res.is_err() {
                 println("error: failed to deserialize current graph: {}", current_graph_res.unwrap_err())
@@ -975,25 +1030,24 @@ fn run_build_impl(
             return 1
         }
 
-        // Assemble toka_build.py command line
-        auto cmd1# = string::from("python3 ")
-        cmd1#.push_str(__shell_quote(driver_path).as_str())
-        cmd1#.push_str(" --build -m ")
-        cmd1#.push_str(__shell_quote(manifest_path).as_str())
-        cmd1#.push_str(" --tokac ")
-        cmd1#.push_str(__shell_quote(tokac_path).as_str())
-        cmd1#.push_str(" --compiler-args ")
-        cmd1#.push_str(__shell_quote(c_args).as_str())
-        cmd1#.push_str(" ")
+        auto cmd1# = Command::new(string::from("python3"))
+        cmd1#.arg(cede driver_path.clone())
+        cmd1#.arg(string::from("--build"))
+        cmd1#.arg(string::from("-m"))
+        cmd1#.arg(cede manifest_path.clone())
+        cmd1#.arg(string::from("--tokac"))
+        cmd1#.arg(cede tokac_path.clone())
+        cmd1#.arg(string::from("--compiler-args"))
+        cmd1#.arg(cede c_args.clone())
         auto src_str = string::from_cstr(*s)
-        cmd1#.push_str(__shell_quote(src_str).as_str())
+        cmd1#.arg(cede src_str)
 
         auto name_str = string::from_cstr(*n)
         auto version_str = string::from_cstr(*v)
         println("\x1b[1;32m   Compiling\x1b[0m {} v{} ...", name_str, version_str)
 
         // Execute compiler
-        auto res1 = libc_system(cmd1.c_str())
+        auto res1 = cmd1#.status()
         if res1 != 0 {
             auto fail_name = string::from_cstr(*n)
             println("\x1b[1;31m       Error\x1b[0m failed to compile {}", fail_name)
@@ -1024,31 +1078,44 @@ fn run_build_impl(
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
 
-                        auto c_compile# = __shell_quote(cxx)
-                        c_compile#.push_str(" -c ")
-                        c_compile#.push_str(__shell_quote(file).as_str())
-                        c_compile#.push_str(" -o target/debug/")
+                        auto c_compile# = Command::new(cede cxx.clone())
+                        c_compile#.arg(string::from("-c"))
+                        c_compile#.arg(cede file.clone())
+                        c_compile#.arg(string::from("-o"))
+                        auto c_object# = string::from("target/debug/")
                         auto f_stem = file_stem(file)
-                        c_compile#.push_str(f_stem.as_str())
-                        c_compile#.push_str(".o")
+                        c_object#.push_str(f_stem.as_str())
+                        c_object#.push_str(".o")
+                        c_compile#.arg(cede c_object)
 
-                        libc_system(c_compile.c_str())
+                        if c_compile#.status() != 0 {
+                            println("error: failed to compile C/C++ source {}", file)
+                            return 1
+                        }
                     }
                 }
 
-                auto ar_cmd# = string::from("")
+                auto ar_cmd# = Command::new(string::from("ar"))
                 if is_windows {
-                    ar_cmd = string::from("lib.exe /OUT:target\\debug\\")
-                    ar_cmd#.push_cstr(*n)
-                    ar_cmd#.push_str(".lib target\\debug\\")
-                    ar_cmd#.push_cstr(*n)
-                    ar_cmd#.push_str(".o")
+                    ar_cmd = Command::new(string::from("lib.exe"))
+                    auto library_output# = string::from("/OUT:target\\debug\\")
+                    library_output#.push_cstr(*n)
+                    library_output#.push_str(".lib")
+                    ar_cmd#.arg(cede library_output)
+                    auto toka_object# = string::from("target\\debug\\")
+                    toka_object#.push_cstr(*n)
+                    toka_object#.push_str(".o")
+                    ar_cmd#.arg(cede toka_object)
                 } else {
-                    ar_cmd = string::from("ar rcs target/debug/lib")
-                    ar_cmd#.push_cstr(*n)
-                    ar_cmd#.push_str(".a target/debug/")
-                    ar_cmd#.push_cstr(*n)
-                    ar_cmd#.push_str(".o")
+                    ar_cmd#.arg(string::from("rcs"))
+                    auto library_output# = string::from("target/debug/lib")
+                    library_output#.push_cstr(*n)
+                    library_output#.push_str(".a")
+                    ar_cmd#.arg(cede library_output)
+                    auto toka_object# = string::from("target/debug/")
+                    toka_object#.push_cstr(*n)
+                    toka_object#.push_str(".o")
+                    ar_cmd#.arg(cede toka_object)
                 }
 
                 if c_srcs.len() > 0:usize {
@@ -1057,12 +1124,16 @@ fn run_build_impl(
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
                         auto f_stem = file_stem(file)
-                        ar_cmd#.push_str(" target/debug/")
-                        ar_cmd#.push_str(f_stem.as_str())
-                        ar_cmd#.push_str(".o")
+                        auto c_object# = string::from("target/debug/")
+                        c_object#.push_str(f_stem.as_str())
+                        c_object#.push_str(".o")
+                        ar_cmd#.arg(cede c_object)
                     }
                 }
-                libc_system(ar_cmd.c_str())
+                if ar_cmd#.status() != 0 {
+                    println("error: failed to create library archive")
+                    return 1
+                }
             } else {
                 auto rt_path# = string::from("")
                 if is_windows {
@@ -1126,33 +1197,30 @@ fn run_build_impl(
                     }
                 }
 
-                auto cmd2# = __shell_quote(cxx)
-                cmd2#.push_str(" ")
+                auto cmd2# = Command::new(cede cxx.clone())
                 auto obj_path# = string::from("target/debug/")
                 obj_path#.push_cstr(*n)
                 obj_path#.push_str(".o")
-                cmd2#.push_str(__shell_quote(obj_path).as_str())
+                cmd2#.arg(cede obj_path)
 
                 if c_srcs.len() > 0:usize {
                     auto c_srcs_iter = c_srcs.split(',' as i32)
                     loop {
                         auto file = c_srcs_iter#.next()
                         if file.len() == 0:usize { break }
-                        cmd2#.push_str(" ")
-                        cmd2#.push_str(__shell_quote(file).as_str())
+                        cmd2#.arg(cede file.clone())
                     }
                 }
 
-                cmd2#.push_str(" ")
-                cmd2#.push_str(__shell_quote(rt_path).as_str())
+                cmd2#.arg(cede rt_path.clone())
 
                 if include_dirs.len() > 0:usize {
                     auto inc_iter = include_dirs.split(',' as i32)
                     loop {
                         auto dir = inc_iter#.next()
                         if dir.len() == 0:usize { break }
-                        cmd2#.push_str(" -I ")
-                        cmd2#.push_str(__shell_quote(dir).as_str())
+                        cmd2#.arg(string::from("-I"))
+                        cmd2#.arg(cede dir.clone())
                     }
                 }
 
@@ -1161,8 +1229,8 @@ fn run_build_impl(
                     loop {
                         auto dir = lib_dir_iter#.next()
                         if dir.len() == 0:usize { break }
-                        cmd2#.push_str(" -L ")
-                        cmd2#.push_str(__shell_quote(dir).as_str())
+                        cmd2#.arg(string::from("-L"))
+                        cmd2#.arg(cede dir.clone())
                     }
                 }
 
@@ -1171,49 +1239,45 @@ fn run_build_impl(
                     loop {
                         auto lib = lib_iter#.next()
                         if lib.len() == 0:usize { break }
-                        cmd2#.push_str(" -l ")
-                        cmd2#.push_str(__shell_quote(lib).as_str())
+                        cmd2#.arg(string::from("-l"))
+                        cmd2#.arg(cede lib.clone())
                     }
                 }
 
                 if ldflags.len() > 0:usize {
-                    cmd2#.push_str(" ")
-                    cmd2#.push_str(ldflags.as_str())
+                    auto ldflag_iter = ldflags.split(' ' as i32)
+                    loop !ldflag_iter.is_done() {
+                        auto ldflag = ldflag_iter#.next()
+                        if ldflag.len() > 0:usize {
+                            cmd2#.arg(cede ldflag.clone())
+                        }
+                    }
                 }
 
                 if is_windows {
-                    cmd2#.push_str(" -lws2_32 -lshell32")
+                    cmd2#.arg(string::from("-lws2_32"))
+                    cmd2#.arg(string::from("-lshell32"))
                 }
 
-                cmd2#.push_str(" -o ")
+                cmd2#.arg(string::from("-o"))
                 auto out_path# = string::from("target/debug/")
                 out_path#.push_cstr(*n)
                 if is_windows {
                     out_path#.push_str(".exe")
                 }
-                cmd2#.push_str(__shell_quote(out_path).as_str())
+                cmd2#.arg(cede out_path)
 
-                auto res2 = libc_system(cmd2.c_str())
+                auto res2 = cmd2#.status()
                 if res2 != 0 {
                     auto fail_name = string::from_cstr(*n)
                     println("\x1b[1;31m       Error\x1b[0m linking failed for {}", fail_name)
                     return 1
                 }
 
-                // Clean up temporary .o file
-                auto rm_cmd# = string::from("")
-                if is_windows {
-                    rm_cmd = string::from("del /f /q target\\debug\\")
-                    rm_cmd#.push_cstr(*n)
-                    rm_cmd#.push_str(".o")
-                } else {
-                    rm_cmd = string::from("rm -f ")
-                    auto rm_path# = string::from("target/debug/")
-                    rm_path#.push_cstr(*n)
-                    rm_path#.push_str(".o")
-                    rm_cmd#.push_str(__shell_quote(rm_path).as_str())
-                }
-                libc_system(rm_cmd.c_str())
+                auto rm_path# = string::from("target/debug/")
+                rm_path#.push_cstr(*n)
+                rm_path#.push_str(".o")
+                remove_file(cede rm_path)
             }
         }
 

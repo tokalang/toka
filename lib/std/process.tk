@@ -1,31 +1,105 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
+import core/result::{Result}
+import std/vec::{Vec}
 
+extern fn libc_free(*ptr: void) -> void
+extern fn toka_process_spawn_packed(*argv_blob: char, blob_len: usize, argc: usize) -> i32
+extern fn toka_process_wait(pid: i32, *exit_code: i32, *signal: i32) -> i32
+extern fn toka_process_status_packed(*argv_blob: char, blob_len: usize, argc: usize,
+                                     *exit_code: i32, *signal: i32) -> i32
+extern fn toka_process_output_packed(*argv_blob: char, blob_len: usize, argc: usize,
+                                     *stdout_data: Addr, *stdout_len: usize,
+                                     *stderr_data: Addr, *stderr_len: usize,
+                                     *exit_code: i32, *signal: i32) -> i32
 
-pub shape Child(pid: i32)
+pub shape ProcessError(
+    code: i32,
+    message: string
+)
+
+pub shape ExitStatus(
+    code: i32,
+    signal: i32
+)
+
+impl ExitStatus {
+    pub fn success(self) -> bool {
+        return self.signal == 0 && self.code == 0
+    }
+
+    pub fn exited(self) -> bool {
+        return self.signal == 0 && self.code >= 0
+    }
+
+    pub fn signaled(self) -> bool {
+        return self.signal != 0
+    }
+
+    pub fn legacy_code(self) -> i32 {
+        if self.signal != 0 { return 128 + self.signal }
+        return self.code
+    }
+}
+
+pub shape Output(
+    status: ExitStatus,
+    stdout: string,
+    stderr: string
+)
+
+pub shape Child(
+    pid#: i32,
+    reaped#: bool = false
+)
 
 impl Child@encap {
     pub pid
+
     fn drop(self#) {
-        // Usually waitpid should be called explicitly, 
-        // to avoid silent blocking drops, we leave this as a no-op observation.
+        // Child ownership is explicit; drop never introduces hidden blocking.
     }
-    
+
     pub fn clone(self) = delete
 }
 
 impl Child {
-    pub fn wait_exit(self#) -> i32 {
+    pub fn wait_status(self#) -> Result<ExitStatus, ProcessError> {
+        if self.reaped || self.pid <= 0 {
+            return Result<ExitStatus, ProcessError>::Err(ProcessError(
+                code = 22,
+                message = string::from("child has already been waited or is invalid")
+            ))
+        }
         unsafe {
-            // Allocate 4 bytes for status
-            // Pass null for status to ignore it for now
-            libc_waitpid(self.pid, 0 as *i32, 0)
-            return 0
+            auto exit_code# = -1
+            auto signal# = 0
+            auto error = toka_process_wait(self.pid, &exit_code as *i32, &signal as *i32)
+            if error != 0 {
+                return Result<ExitStatus, ProcessError>::Err(ProcessError(
+                    code = error,
+                    message = string::from("failed to wait for child process")
+                ))
+            }
+            self.pid = -1
+            self.reaped = true
+            return Result<ExitStatus, ProcessError>::Ok(
+                ExitStatus(code = exit_code, signal = signal)
+            )
         }
     }
-    
+
+    pub fn wait_exit(self#) -> i32 {
+        match cede self#.wait_status() {
+            auto Result<ExitStatus, ProcessError>::Ok(status) => {
+                return status.legacy_code()
+            }
+            _ => return -1
+        }
+    }
+
     pub fn is_valid(self) -> bool {
-        return self.pid >= 0
+        return !self.reaped && self.pid > 0
     }
 }
 
@@ -37,63 +111,145 @@ pub shape Command(
 impl Command {
     pub fn new(program: string) -> Command {
         auto args# = Vec<string>::new()
-        // Standard convention: argv[0] is the program name
-        args#.push(program.clone())
-        
-        return Command(
-            program=program,
-            args=args
-        )
+        return Command(program = program, args = args)
     }
-    
+
     pub fn arg(self#, arg: string) {
-        self.args#.push(arg)
+        self.args#.push(cede arg.clone())
     }
-    
+
     pub fn args(self#, args: Vec<string>) {
         auto iter# = args.iter()
         loop true {
             match iter#.next() {
-                auto Option<string>::Some(&val) => {
-                    self.args#.push(val.clone())
-                }
+                auto Option<string>::Some(&val) => self.args#.push(cede val.clone())
                 _ => break
             }
         }
     }
-    
-    pub fn spawn(self#) -> Child {
+
+    fn packed_argv(self) -> Result<string, ProcessError> {
+        auto argv_blob# = string::from("")
+        auto program_view = self.program.as_str()
+        auto program_index# = 0:usize
+        loop program_index < program_view.len() {
+            if program_view.byte_at(program_index) == 0 {
+                return Result<string, ProcessError>::Err(ProcessError(
+                    code = 22,
+                    message = string::from("process program cannot contain NUL bytes")
+                ))
+            }
+            program_index += 1
+        }
+        argv_blob#.push_str(program_view)
+        argv_blob#.push_char(0 as char)
+
+        auto i# = 0:usize
+        loop i < self.args.len() {
+            auto &arg = self.args.get_ref(i)
+            auto view = arg.as_str()
+            auto j# = 0:usize
+            loop j < view.len() {
+                if view.byte_at(j) == 0 {
+                    return Result<string, ProcessError>::Err(ProcessError(
+                        code = 22,
+                        message = string::from("process arguments cannot contain NUL bytes")
+                    ))
+                }
+                j += 1
+            }
+            argv_blob#.push_str(view)
+            argv_blob#.push_char(0 as char)
+            i += 1
+        }
+        return Result<string, ProcessError>::Ok(cede argv_blob)
+    }
+
+    pub fn try_spawn(self#) -> Result<Child, ProcessError> {
+        auto argv_blob = self.packed_argv()!
         unsafe {
-            auto pid = libc_fork()
+            auto pid = toka_process_spawn_packed(
+                argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize
+            )
             if pid < 0 {
-                // Fork failed
-                return Child(pid=-1)
+                return Result<Child, ProcessError>::Err(ProcessError(
+                    code = -pid,
+                    message = string::from("failed to spawn process")
+                ))
             }
-            
-            if pid == 0 {
-                // Child process
-                self.do_exec()
-                // If exec returns, it failed
-                libc_exit(127) 
-            }
-            
-            // Parent process
-            return Child(pid=pid)
+            return Result<Child, ProcessError>::Ok(Child(pid = pid, ..))
         }
     }
-    
-    // Helper to setup argv and call execvp
-    fn do_exec(self) {
+
+    pub fn spawn(self#) -> Child {
+        auto result# = self#.try_spawn()
+        if result.is_ok() {
+            return result.unwrap()
+        }
+        return Child(pid = -1, ..)
+    }
+
+    pub fn try_status(self#) -> Result<ExitStatus, ProcessError> {
+        auto argv_blob = self.packed_argv()!
         unsafe {
-             libc_exit(127)
+            auto exit_code# = -1
+            auto signal# = 0
+            auto error = toka_process_status_packed(
+                argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize,
+                &exit_code as *i32, &signal as *i32
+            )
+            if error != 0 {
+                return Result<ExitStatus, ProcessError>::Err(ProcessError(
+                    code = error,
+                    message = string::from("failed to execute process")
+                ))
+            }
+            return Result<ExitStatus, ProcessError>::Ok(
+                ExitStatus(code = exit_code, signal = signal)
+            )
         }
     }
-    
+
     pub fn status(self#) -> i32 {
-        auto child# = self#.spawn()
-        if child.pid == -1 {
-            return -1
+        match cede self#.try_status() {
+            auto Result<ExitStatus, ProcessError>::Ok(status) => {
+                return status.legacy_code()
+            }
+            _ => return -1
         }
-        return child#.wait_exit()
+    }
+
+    pub fn output(self#) -> Result<Output, ProcessError> {
+        auto argv_blob = self.packed_argv()!
+        unsafe {
+            auto stdout_data#: Addr = 0:Addr
+            auto stdout_len#: usize = 0
+            auto stderr_data#: Addr = 0:Addr
+            auto stderr_len#: usize = 0
+            auto exit_code# = -1
+            auto signal# = 0
+            auto error = toka_process_output_packed(
+                argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize,
+                &stdout_data as *Addr, &stdout_len as *usize,
+                &stderr_data as *Addr, &stderr_len as *usize,
+                &exit_code as *i32, &signal as *i32
+            )
+            if error != 0 {
+                return Result<Output, ProcessError>::Err(ProcessError(
+                    code = error,
+                    message = string::from("failed to execute process with captured output")
+                ))
+            }
+
+            auto stdout# = string::from_with_len(stdout_data as *char, stdout_len)
+            auto stderr# = string::from_with_len(stderr_data as *char, stderr_len)
+            libc_free(stdout_data as *void)
+            libc_free(stderr_data as *void)
+            return Result<Output, ProcessError>::Ok(Output(
+                status = ExitStatus(code = exit_code, signal = signal),
+                stdout = cede stdout,
+                stderr = cede stderr
+            ))
+        }
     }
 }

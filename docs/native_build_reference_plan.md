@@ -110,6 +110,13 @@ The first sustained run found and closed two native build defects:
   exit 1 could become build-executable exit 0 after truncation; failure paths
   now return a stable nonzero status.
 
+The process-boundary follow-up replaced the builder's shell command assembly
+and shared stdout capture file with structured argv, normalized status, and
+independent stdout/stderr capture. The focused process fixture and the full
+incremental suite pass with the new boundary. The remaining shell-oriented
+tool callers are classified in `process_command_boundary.md` and are not
+silently included in this builder qualification.
+
 The workload also confirmed that module dependency cycles are currently legal
 when declarations resolve. Qualification therefore requires deterministic
 cycle handling and recovery, not a new rejection rule.

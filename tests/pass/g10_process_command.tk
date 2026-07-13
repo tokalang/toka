@@ -1,0 +1,68 @@
+import std/process::{Command}
+
+fn main() -> i32 {
+    auto literal# = Command::new(string::from("printf"))
+    literal#.arg(string::from("%s"))
+    literal#.arg(string::from("hello world;$(not-a-shell)"))
+    auto literal_output# = literal#.output().unwrap()
+    assert(literal_output.status.success(), "literal argv command failed")
+    assert(
+        literal_output.stdout == string::from("hello world;$(not-a-shell)"),
+        "argument was not preserved literally"
+    )
+    assert(literal_output.stderr.is_empty(), "literal command wrote stderr")
+
+    auto empty_arg# = Command::new(string::from("printf"))
+    empty_arg#.arg(string::from("%s|%s"))
+    empty_arg#.arg(string::from(""))
+    empty_arg#.arg(string::from("two words"))
+    auto empty_output# = empty_arg#.output().unwrap()
+    assert(empty_output.stdout == string::from("|two words"), "empty argv entry was lost")
+
+    auto separated# = Command::new(string::from("/bin/sh"))
+    separated#.arg(string::from("-c"))
+    separated#.arg(string::from("printf out; printf err >&2; exit 7"))
+    auto separated_output# = separated#.output().unwrap()
+    assert(separated_output.status.code == 7, "exit code was not normalized")
+    assert(separated_output.status.signal == 0, "ordinary exit reported signal")
+    assert(separated_output.stdout == string::from("out"), "stdout capture mismatch")
+    assert(separated_output.stderr == string::from("err"), "stderr capture mismatch")
+
+    auto spawned# = Command::new(string::from("/bin/sh"))
+    spawned#.arg(string::from("-c"))
+    spawned#.arg(string::from("exit 3"))
+    auto child# = spawned#.try_spawn().unwrap()
+    auto spawned_status = child#.wait_status().unwrap()
+    assert(spawned_status.code == 3, "spawn/wait exit code mismatch")
+    assert(!child.is_valid(), "waited child remained valid")
+    assert(child#.wait_status().is_err(), "child accepted a second wait")
+
+    auto signaled# = Command::new(string::from("/bin/sh"))
+    signaled#.arg(string::from("-c"))
+    signaled#.arg(string::from("kill -TERM $$"))
+    auto signal_status = signaled#.try_status().unwrap()
+    assert(signal_status.signaled(), "signal termination was not reported")
+    assert(signal_status.signal == 15, "unexpected termination signal")
+    assert(signal_status.legacy_code() == 143, "legacy signal code mismatch")
+
+    auto missing# = Command::new(string::from("toka-command-that-does-not-exist"))
+    auto missing_result# = missing#.output()
+    assert(missing_result.is_err(), "missing executable did not return ProcessError")
+
+    auto nul_arg# = string::from("bad")
+    nul_arg#.push_char(0 as char)
+    auto invalid# = Command::new(string::from("printf"))
+    invalid#.arg(nul_arg)
+    auto invalid_result# = invalid#.try_status()
+    assert(invalid_result.is_err(), "NUL argument was accepted")
+
+    auto large# = Command::new(string::from("/bin/sh"))
+    large#.arg(string::from("-c"))
+    large#.arg(string::from("i=0; while [ $i -lt 3000 ]; do printf 1234567890; printf abcdefghij >&2; i=$((i+1)); done"))
+    auto large_output# = large#.output().unwrap()
+    assert(large_output.status.success(), "large output command failed")
+    assert(large_output.stdout.len() == 30000:usize, "large stdout was truncated")
+    assert(large_output.stderr.len() == 30000:usize, "large stderr was truncated")
+
+    return 0
+}
