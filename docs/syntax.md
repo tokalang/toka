@@ -848,6 +848,12 @@ uses the owned value's zero-allocation read-only `as_str()` projection. Both
 `command == "scan"` and `"scan" == command` compare contents without
 allocating, cloning, moving, or consuming `command`.
 
+The same projection is available when a function or method parameter has the
+unique expected type `str`, so an owned `string` can be passed directly without
+an explicit `.as_str()`. It does not apply to `*string`: obtaining a text view
+through a raw pointer remains explicit because raw dereference, provenance, and
+nullability are outside PAL's safe-borrow guarantee.
+
 String concatenation with `+` is not part of the public syntax. Build owned strings explicitly with `string` APIs such as `push_str`.
 
 ## 14. Unsafe And FFI

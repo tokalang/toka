@@ -89,6 +89,11 @@ later release.
   are not part of PAL's safe-borrow guarantee. Ownership / sharing handles such
   as `^` and `~` are not borrow-like dependencies by themselves, though shapes
   stored behind them may still contain borrowed fields.
+- Raw text-view boundary: an owned `string` may project implicitly to `str`
+  when the compiler has that unique expected view. A `*string` does not receive
+  the same conversion: obtaining a view through a raw pointer requires an
+  explicit dereference or `.as_str()` call. Toka 1.0 does not hide raw-pointer
+  provenance, nullability, or dereference behind a safe-view conversion.
 - Escaping borrow dependencies: for 1.0, any borrow-like value that crosses a
   function boundary must have an explicit dependency annotation in the
   signature. This applies uniformly to private and public functions; later

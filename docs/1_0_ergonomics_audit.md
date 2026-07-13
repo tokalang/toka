@@ -88,8 +88,10 @@ The first slice closes `ERG-1` and establishes the audit mechanism:
   `string`. Compiler-synthesized projections mark their receiver as already
   checked, so consuming expressions such as `Result::unwrap()` are checked
   exactly once. The six retained calls are explicit raw-pointer boundaries,
-  not view API requirements. Making `*string -> str` implicit would change the
-  raw-pointer surface and requires a separate owner decision.
+  not view API requirements. The 1.0 decision keeps `*string -> str` explicit:
+  raw pointers are outside PAL, so the compiler does not hide dereference,
+  provenance, or nullability behind an automatic safe-view projection. These
+  six calls are classified as `Boundary`, not unresolved ergonomics noise.
 - The obsolete `implicit_deref_err` fixture was removed: it rejected the now
   frozen `string -> str` view and did not exercise resource copying. Actual
   resource-copy rejection remains covered by destructuring, spread, closure,
