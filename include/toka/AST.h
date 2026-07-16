@@ -1456,6 +1456,7 @@ public:
   bool IsPub = false;
   bool IsPacked = false;
   std::string Name;
+  std::string CodegenName;
   // struct GenericParam moved to top-level
   std::vector<GenericParam> GenericParams; // [UPDATED] e.g. <T, N_: usize>
   ShapeKind Kind;

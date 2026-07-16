@@ -430,7 +430,11 @@ bool ShapeType::equals(const Type &other) const {
   if (!Type::equals(other))
     return false;
   const auto *otherSh = dynamic_cast<const ShapeType *>(&other);
-  return otherSh && Name == otherSh->Name;
+  if (!otherSh)
+    return false;
+  if (Decl && otherSh->Decl)
+    return Decl == otherSh->Decl;
+  return Name == otherSh->Name;
 }
 
 bool ShapeType::isCompatibleWith(const Type &target) const {
@@ -438,6 +442,8 @@ bool ShapeType::isCompatibleWith(const Type &target) const {
   if (otherSh) {
     if (otherSh->Name.rfind("dyn@", 0) == 0)
       return true;
+    if (Decl && otherSh->Decl && Decl != otherSh->Decl)
+      return false;
     if (Name == otherSh->Name)
       return Type::isCompatibleWith(target);
     return false;

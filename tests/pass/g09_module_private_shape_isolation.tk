@@ -1,0 +1,18 @@
+import std/vec::{Vec}
+
+shape Counter(
+    value: i32,
+    marker: u8
+)
+
+pub fn main() -> i32 {
+    auto local = Counter(value = 41, marker = 1)
+    auto values = Vec<i32>::new()
+    if values.len() != 0 {
+        return 2
+    }
+    if local.value != 41 || local.marker != 1 {
+        return 3
+    }
+    return 0
+}

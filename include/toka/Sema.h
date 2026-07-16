@@ -476,6 +476,8 @@ private:
   TraitDecl *findTraitDecl(const std::string &traitName) const;
   TraitDecl *findVisibleTraitDecl(const std::string &traitName,
                                   SourceLocation loc);
+  ShapeDecl *findVisibleShapeDecl(const std::string &shapeName,
+                                  SourceLocation loc = {});
   std::string getDynTraitName(const std::string &typeName) const;
   std::string getDynTraitName(std::shared_ptr<toka::Type> type) const;
   bool validateDynTraitObjectSafety(const std::string &traitName,

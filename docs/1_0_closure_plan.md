@@ -195,6 +195,7 @@ unless it is separately promoted through a new audited decision.
 | `FZ-3-C02` | `FZ-3` | `Complete` | Bare expression lowering for `ArrayInitExpr` returned no value outside specialized initialization paths | Classified bare `[N]T(...)` construction outside 1.0 and rejected in Sema with `E04586` |
 | `FZ-3-C03` | `FZ-3` | `Complete` | Generic resource transfer through imported cede functions and methods aborted during runtime cleanup | Added branch-safe drop-live state and closure cleanup; executable transfer replay and exact-drop resource matrix pass |
 | `FZ-3-R01` | `FZ-3` | `Complete` | Selective imports leaked symbols through global resolver maps | Separated physical discovery from lexical value/type/trait namespaces and replayed selected, aliased, and hidden forms through source and `.tki` |
+| `FZ-3-R02` | `FZ-3` | `Pending` | Same-name generic shape templates still use legacy process-global instantiation and cache keys; concrete shape identity closure does not prove their isolation | Build one source/TKI reproducer before changing implementation; if it fails, repair template/instance/cache identity as a bounded correctness task without changing generic syntax |
 | `FZ-3-T01` | `FZ-3` | `Complete` | Mandatory network and async tests depended on fixed ports | Bind ephemeral ports and query the assigned local port; the complete positive suite passes without retries |
 | `FZ-3-A01` | `FZ-3` | `Complete` | No bounded parser/Sema/interface mutation gate was part of the release contract | Added deterministic 82-case fixed-seed audit; normal and ASan/UBSan builds pass |
 | `FZ-3-P01` | `FZ-3` | `Complete` | A macOS arm64 workstation cannot produce clean native results for every supported release target | Closed by four clean native reports for revision `3ab00dff` in release-gate run `29202522704`; every row passed without ignored failures |
@@ -206,7 +207,7 @@ unless it is separately promoted through a new audited decision.
 | `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed twelve-stage gate, deterministic JSON, two sustained reference applications, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
 | `FZ-5-P02` | `FZ-5` | `Complete` | The authorized late language closures and later application-driven fixes changed the candidate revision after `3ab00dff` | The clean four-target pre-release matrix passed and annotated pre-release tag `v0.9.8-09-RC` points to revision `a39c6acd` |
-| `FZ-5-E01` | `FZ-5` | `InProgress` | Sustained applications still expose avoidable compiler mechanics in ordinary source, including allocation-only text comparison and redundant contextual literal suffixes | Close the bounded `docs/1_0_ergonomics_audit.md` ledger without weakening ownership or adding implicit allocation, then rerun the complete release gate |
+| `FZ-5-E01` | `FZ-5` | `Complete` | Sustained applications exposed avoidable compiler mechanics in ordinary source, including allocation-only text comparison, redundant contextual literal suffixes, and bare-name shape collisions | The bounded `docs/1_0_ergonomics_audit.md` ledger is closed without hidden allocation or ownership action; two consecutive QSLite and native-builder qualifications pass, and further convenience discovery is stopped for 1.0 |
 
 The Toka-native incremental build orchestrator is the sustained `FZ-5`
 reference application. Its workload, finding policy, and finite stop conditions
@@ -232,6 +233,10 @@ The bounded 1.0 source ergonomics audit is maintained in
 compiler already has one zero-cost interpretation. It does not permit hidden
 allocation, clone, transfer, or ambiguous coercion, and it has explicit stop
 conditions so release work cannot become an indefinite syntax-polish cycle.
+`ERG-1` through `ERG-7` are complete. Two consecutive sustained qualifications
+found no new workaround, so additional preference-level convenience work is
+post-1.0 unless a reference application or release gate demonstrates a new
+correctness issue or ordinary-code blocker.
 
 `Blocked` is reserved for work that cannot proceed without a design decision or
 an external supported-platform result. Ordinary incomplete work remains

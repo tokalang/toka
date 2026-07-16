@@ -611,6 +611,35 @@ Primary references:
   revalidation, and cache matrices.
 - Coverage closure: none known for the frozen same-version TKI fact classes.
 
+### TKI-NOMINAL-001: Shape identity follows the declaring module
+
+- Status: Core guarantee
+- Source form: local and imported shapes with the same unqualified name
+- Operation class: nominal type resolution, interface replay, lowering identity
+- Decision: a resolved shape is identified by its declaration; caller lexical
+  lookup must not rebind an imported value by bare spelling.
+- Rationale: process-global name maps otherwise merge private layouts and can
+  make source-backed and source-less imports accept, reject, or lower different
+  programs.
+- Primary diagnostic: `E04571`, with module qualification when both displayed
+  type names would otherwise be identical.
+- Implementation areas: `src/Sema/Sema.cpp`, `src/Sema/Sema_Type.cpp`,
+  `src/Sema/Sema_Expr_Init.cpp`, `src/Type.cpp`,
+  `src/CodeGen/CodeGen_Decl.cpp`, and `src/CodeGen/CodeGen_Expr.cpp`
+- Positive test: `tests/pass/g09_module_private_shape_isolation.tk`
+- Replay tests:
+  `tests/semantics/tki_replay/cases/ergonomics_003_shape_identity`
+- Interface replay requirements: exported signatures reconstruct a declaration
+  owned by the provider module; direct shape parameters and inferred return
+  values retain that identity.
+- Lowering boundary: collision-free internal struct names are version-bound
+  implementation details, not a stable ABI.
+- Detailed rule: `docs/semantic_core/module_shape_identity.md`
+- Coverage closure: concrete non-generic same-name structs and enums, distinct
+  layouts and variants, local use, imported parameter/return use, cross-module
+  mismatch, and source-less replay are covered. Same-name generic template
+  isolation remains the bounded `FZ-3-R02` audit.
+
 ### TKI-CACHE-001: Semantic cache metadata must invalidate stale or incompatible interfaces
 
 - Status: Core guarantee

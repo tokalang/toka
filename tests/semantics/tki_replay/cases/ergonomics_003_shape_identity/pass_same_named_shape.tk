@@ -1,0 +1,31 @@
+import ./lib as remote
+
+shape Counter(
+    local: i32,
+    marker: u8
+)
+shape Choice(Here | There)
+
+fn main() -> i32 {
+    auto local = Counter(local = 11, marker = 2)
+    auto imported = remote::make_counter()
+    if local.local != 11 || local.marker != 2 {
+        return 1
+    }
+    if imported.remote != 73 {
+        return 2
+    }
+    auto local_choice = Choice::There()
+    match local_choice {
+        auto Choice::There => {}
+        _ => return 3
+    }
+    auto imported_choice = remote::remote_choice()
+    if remote::remote_choice_tag() != 1 {
+        return 4
+    }
+    if remote::choice_tag(remote::remote_choice()) != 1 {
+        return 5
+    }
+    return 0
+}

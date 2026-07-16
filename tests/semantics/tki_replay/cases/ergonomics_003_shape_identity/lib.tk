@@ -1,0 +1,31 @@
+// EXPECT_TKI: pub shape Counter(remote: i64)
+// EXPECT_TKI: pub shape Choice
+// EXPECT_TKI: pub fn make_counter() -> Counter
+// EXPECT_TKI: pub fn remote_choice() -> Choice
+// EXPECT_TKI: pub fn remote_choice_tag() -> i32
+// EXPECT_TKI: pub fn choice_tag(value: Choice) -> i32
+
+pub shape Counter(remote: i64)
+pub shape Choice(Left | Right)
+
+pub fn make_counter() -> Counter {
+    return Counter(remote = 73)
+}
+
+pub fn remote_choice() -> Choice {
+    return Choice::Right()
+}
+
+pub fn remote_choice_tag() -> i32 {
+    match remote_choice() {
+        auto Choice::Right => return 1
+        _ => return 0
+    }
+}
+
+pub fn choice_tag(value: Choice) -> i32 {
+    match value {
+        auto Choice::Right => return 1
+        _ => return 0
+    }
+}

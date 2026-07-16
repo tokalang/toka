@@ -651,7 +651,14 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
   std::map<std::string, uint64_t> memberMasks;
   if (!validateTypeVisibilityInType(OriginalName, getLoc(Init)))
     return toka::Type::fromString("unknown");
-  std::string resolvedName = resolveType(Init->ShapeName, true);
+  auto resolvedTypeObj =
+      resolveType(toka::Type::fromString(Init->ShapeName), true);
+  std::string resolvedName = resolvedTypeObj->toString();
+  ShapeDecl *resolvedShape = nullptr;
+  if (auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedTypeObj))
+    resolvedShape = shapeType->Decl;
+  if (!resolvedShape)
+    resolvedShape = findVisibleShapeDecl(resolvedName, getLoc(Init));
 
   // Helper lambda for inference (copied from original)
   auto performInference = [&](std::string &currentName, ShapeDecl *&SD) {
@@ -739,8 +746,8 @@ std::shared_ptr<toka::Type> Sema::checkShapeInit(InitStructExpr *Init) {
     }
   };
 
-  if (ShapeMap.count(resolvedName)) {
-    ShapeDecl *SD = ShapeMap[resolvedName];
+  if (resolvedShape) {
+    ShapeDecl *SD = resolvedShape;
     performInference(resolvedName, SD);
     Init->ShapeName = resolvedName;
 
@@ -1091,7 +1098,9 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     CurrentScope->markMoved(baseVarActualName, Init->Loc);
   }
 
-  return toka::Type::fromString(resolvedName);
+  auto resultType = std::make_shared<toka::ShapeType>(resolvedName);
+  resultType->resolve(SD);
+  return resultType;
 }
 
 std::shared_ptr<toka::Type>
@@ -1102,7 +1111,9 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
     error(Init, DiagID::ERR_MISSING_MEMBER, "at least one variant",
           Init->ShapeName);
     m_LastInitMask = 0;
-    return toka::Type::fromString(resolvedName);
+    auto resultType = std::make_shared<toka::ShapeType>(resolvedName);
+    resultType->resolve(SD);
+    return resultType;
   }
 
   if (Init->Members.size() > 1) {

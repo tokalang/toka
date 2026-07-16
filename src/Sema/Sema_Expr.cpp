@@ -1199,9 +1199,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         isFullyInit = false;
       } else if (Info.TypeObj && Info.TypeObj->isShape()) {
         // Check all bits for struct and enum-payload record shapes
-        std::string soul = Info.TypeObj->getSoulName();
-        if (ShapeMap.count(soul)) {
-          ShapeDecl *SD = ShapeMap[soul];
+        auto shapeType = std::dynamic_pointer_cast<ShapeType>(Info.TypeObj);
+        ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+        if (!SD)
+          SD = findVisibleShapeDecl(Info.TypeObj->getSoulName(), getLoc(ve));
+        if (SD) {
           if (SD->Kind == ShapeKind::Struct || SD->Kind == ShapeKind::Tuple) {
             uint64_t expected = (1ULL << SD->Members.size()) - 1;
             if (SD->Members.size() >= 64)

@@ -1680,13 +1680,16 @@ void CodeGen::genShape(const ShapeDecl *sh) {
   if (!sh->GenericParams.empty())
     return;
 
-  if (m_StructTypes.count(sh->Name))
+  const std::string shapeName =
+      sh->CodegenName.empty() ? sh->Name : sh->CodegenName;
+  if (m_StructTypes.count(shapeName))
     return;
 
-  llvm::StructType *st = llvm::StructType::create(m_Context, sh->Name);
+  llvm::StructType *st = llvm::StructType::create(m_Context, shapeName);
   m_Shapes[sh->Name] = sh;
-  m_StructTypes[sh->Name] = st;
-  m_TypeToName[st] = sh->Name;
+  m_Shapes[shapeName] = sh;
+  m_StructTypes[shapeName] = st;
+  m_TypeToName[st] = shapeName;
 
   std::vector<llvm::Type *> body;
   const llvm::DataLayout &DL = m_Module->getDataLayout();
@@ -1721,6 +1724,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
     }
     st->setBody(body, sh->IsPacked);
     m_StructFieldNames[sh->Name] = fieldNames;
+    m_StructFieldNames[shapeName] = fieldNames;
   } else if (sh->Kind == ShapeKind::Array) {
     llvm::Type *elemTy = nullptr;
     if (sh->Members[0].ResolvedType) {
@@ -1771,6 +1775,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
       fieldNames.push_back(member.Name);
     }
     m_StructFieldNames[sh->Name] = fieldNames;
+    m_StructFieldNames[shapeName] = fieldNames;
   } else if (sh->Kind == ShapeKind::Enum) {
     // Tagged enum: { i8 tag, [Payload] }
     uint64_t maxPayloadSize = 0;
@@ -1824,6 +1829,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
       fieldNames.push_back(member.Name);
     }
     m_StructFieldNames[sh->Name] = fieldNames;
+    m_StructFieldNames[shapeName] = fieldNames;
   }
 }
 
@@ -2542,10 +2548,12 @@ llvm::Type *CodeGen::resolveType(const std::string &baseType, bool hasPointer) {
     if (m_StructTypes.count(actualType)) {
       type = m_StructTypes[actualType];
     } else if (m_Shapes.count(actualType)) {
-      genShape(m_Shapes[actualType]);
-      if (m_StructTypes.count(actualType)) {
-        type = m_StructTypes[actualType];
-      }
+      const ShapeDecl *shape = m_Shapes[actualType];
+      genShape(shape);
+      const std::string codegenName =
+          shape->CodegenName.empty() ? shape->Name : shape->CodegenName;
+      if (m_StructTypes.count(codegenName))
+        type = m_StructTypes[codegenName];
     } else if (baseType == "unknown") {
       return nullptr;
     } else {
@@ -2665,6 +2673,8 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   if (type->typeKind == Type::Shape) {
     auto shapeType = std::static_pointer_cast<ShapeType>(type);
     std::string shapeName = shapeType->Name;
+    if (shapeType->Decl && !shapeType->Decl->CodegenName.empty())
+      shapeName = shapeType->Decl->CodegenName;
     if (!shapeName.empty() && shapeName.front() == '(' && shapeName.back() == ')') {
       if (m_ParenthesizedRecordTypes.count(shapeName)) {
         auto resolved = m_ParenthesizedRecordTypes[shapeName];

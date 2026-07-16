@@ -137,9 +137,13 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             maskToCheck = Info->DirtyReferentMask;
           }
 
-          std::string soul = Info->TypeObj->getSoulName();
-          if (ShapeMap.count(soul)) {
-            ShapeDecl *SD = ShapeMap[soul];
+          auto shapeType =
+              std::dynamic_pointer_cast<ShapeType>(Info->TypeObj);
+          ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+          if (!SD)
+            SD = findVisibleShapeDecl(Info->TypeObj->getSoulName(),
+                                      getLoc(Memb));
+          if (SD) {
             for (int i = 0; i < (int)SD->Members.size(); ++i) {
               if (SD->Members[i].Name == Memb->Member) {
                 if (i < 64 && !(maskToCheck & (1ULL << i))) {
@@ -205,11 +209,18 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     objTypeObj = objTypeObj->getSoulType();
   }
 
+  auto resolvedObjType = resolveType(objTypeObj, true);
   std::string ObjType =
-      toka::Type::stripMorphology(resolveType(objTypeObj, true)->toString());
+      toka::Type::stripMorphology(resolvedObjType->toString());
 
-  if (ShapeMap.count(ObjType)) {
-    ShapeDecl *SD = ShapeMap[ObjType];
+  ShapeDecl *resolvedShape = nullptr;
+  if (auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedObjType))
+    resolvedShape = shapeType->Decl;
+  if (!resolvedShape)
+    resolvedShape = findVisibleShapeDecl(ObjType, getLoc(Memb));
+
+  if (resolvedShape) {
+    ShapeDecl *SD = resolvedShape;
     MemberAccessIntent access = parseMemberAccess(Memb->Member);
     std::string requestedMember = access.MemberName;
     std::string requestedPrefix = access.Prefix;

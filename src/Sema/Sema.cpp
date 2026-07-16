@@ -176,6 +176,25 @@ static std::string moduleScopedCodegenName(const Module &M,
          sanitizeSymbolPart(name);
 }
 
+static std::string shapeCodegenName(const Module &M,
+                                    const std::string &name) {
+  std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
+  if (path.empty())
+    return name;
+  path = toka::PathUtils::canonicalize(path);
+  return "__toka_shape_" + std::to_string(fnv1a64(path)) + "_" +
+         sanitizeSymbolPart(name);
+}
+
+static std::string shapeCodegenName(const ShapeDecl &shape) {
+  if (!shape.Loc.isValid() || !DiagnosticEngine::SrcMgr)
+    return shape.Name;
+  std::string path = DiagnosticEngine::SrcMgr->getFullSourceLoc(shape.Loc).FileName;
+  path = toka::PathUtils::canonicalize(path);
+  return "__toka_shape_" + std::to_string(fnv1a64(path)) + "_" +
+         sanitizeSymbolPart(shape.Name);
+}
+
 static std::string defaultModuleNameForImport(const std::string &importPath) {
   std::string path = toka::PathUtils::normalize(importPath);
   while (path.size() > 1 && path.back() == '/') {
@@ -476,6 +495,96 @@ TraitDecl *Sema::findVisibleTraitDecl(const std::string &traitName,
   }
 
   return nullptr;
+}
+
+ShapeDecl *Sema::findVisibleShapeDecl(const std::string &shapeName,
+                                      SourceLocation loc) {
+  auto findInModule = [&](ModuleScope *module,
+                          const std::string &name) -> ShapeDecl * {
+    if (!module)
+      return nullptr;
+    auto symbol = module->LexicalTypes.find(name);
+    if (symbol == module->LexicalTypes.end() || !symbol->second.IsTypeName ||
+        symbol->second.IsTraitName || !symbol->second.ASTPtr)
+      return nullptr;
+
+    auto findRegisteredShape = [](ModuleScope *scope,
+                                  void *declaration) -> ShapeDecl * {
+      if (!scope)
+        return nullptr;
+      for (const auto &[_, shape] : scope->Shapes) {
+        if (shape == declaration)
+          return shape;
+      }
+      return nullptr;
+    };
+    ShapeDecl *shape = findRegisteredShape(module, symbol->second.ASTPtr);
+    if (!shape) {
+      shape = findRegisteredShape(
+          static_cast<ModuleScope *>(symbol->second.ReferencedModule),
+          symbol->second.ASTPtr);
+    }
+    if (!shape)
+      return nullptr;
+
+    symbol->second.HasBeenUsed = true;
+    if (symbol->second.ImportingDecl) {
+      const_cast<ImportDecl *>(symbol->second.ImportingDecl)->HasBeenUsed =
+          true;
+    }
+    return shape;
+  };
+
+  size_t scope = shapeName.find("::");
+  if (scope != std::string::npos && CurrentScope) {
+    std::string moduleName = shapeName.substr(0, scope);
+    std::string targetName = shapeName.substr(scope + 2);
+    SymbolInfo *moduleInfo = nullptr;
+    std::string actualName = moduleName;
+    if (CurrentScope->findVariableWithDeref(moduleName, moduleInfo,
+                                            actualName) &&
+        moduleInfo && moduleInfo->ReferencedModule) {
+      return findInModule(
+          static_cast<ModuleScope *>(moduleInfo->ReferencedModule),
+          targetName);
+    }
+  }
+
+  if (loc.isValid()) {
+    if (ShapeDecl *shape = findInModule(getLexicalModule(loc), shapeName))
+      return shape;
+  }
+
+  if (CurrentFunction) {
+    auto owner = DeclarationLexicalScopes.find(CurrentFunction);
+    if (owner != DeclarationLexicalScopes.end()) {
+      if (ShapeDecl *shape = findInModule(owner->second, shapeName))
+        return shape;
+    }
+  }
+
+  if (CurrentModule) {
+    ModuleScope *module = nullptr;
+    if (!CurrentModule->ResolvedPath.empty())
+      module = getModule(CurrentModule->ResolvedPath);
+    if (!module && CurrentModule->Loc.isValid())
+      module = getLexicalModule(CurrentModule->Loc);
+    if (!module && !CurrentModule->SourcePath.empty())
+      module = getModule(CurrentModule->SourcePath);
+    if (ShapeDecl *shape = findInModule(module, shapeName))
+      return shape;
+  }
+
+  if (CurrentFunction) {
+    auto context = InstantiationLexicalScopes.find(CurrentFunction);
+    if (context != InstantiationLexicalScopes.end()) {
+      if (ShapeDecl *shape = findInModule(context->second, shapeName))
+        return shape;
+    }
+  }
+
+  auto fallback = ShapeMap.find(shapeName);
+  return fallback == ShapeMap.end() ? nullptr : fallback->second;
 }
 
 static bool typeMentionsSelf(const std::string &typeName) {
@@ -1229,6 +1338,16 @@ void Sema::declareGlobals(Module &M) {
   // 3. Register Shapes
   for (auto &St : M.Shapes) {
     DeclarationLexicalScopes[St.get()] = &ms;
+    if (St->CodegenName.empty())
+      St->CodegenName = St->Name;
+    auto existingShape = ShapeMap.find(St->Name);
+    if (existingShape != ShapeMap.end() && existingShape->second != St.get() &&
+        existingShape->second->GenericParams.empty() &&
+        St->GenericParams.empty()) {
+      existingShape->second->CodegenName =
+          shapeCodegenName(*existingShape->second);
+      St->CodegenName = shapeCodegenName(M, St->Name);
+    }
     ms.Shapes[St->Name] = St.get();
     ShapeMap[St->Name] = St.get();
     SymbolInfo info;
@@ -1289,6 +1408,8 @@ void Sema::declareGlobals(Module &M) {
     validateDynTraitObjectSafetyInType(Alias->TargetType, getLoc(Alias.get()));
   }
   for (auto &St : M.Shapes) {
+    if (St->CodegenName.empty())
+      St->CodegenName = St->Name;
     for (const auto &Member : St->Members) {
       validateDynTraitObjectSafetyInType(
           Sema::synthesizePhysicalType(Member), getLoc(St.get()));
@@ -2460,8 +2581,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (Fn->ReturnType != "void") {
     validateTypeVisibilityInType(Fn->ReturnType, getLoc(Fn));
     validateDynTraitObjectSafetyInType(Fn->ReturnType, getLoc(Fn));
-    std::string resolvedRetStr = resolveType(Fn->ReturnType);
-    Fn->ResolvedReturnType = toka::Type::fromString(resolvedRetStr);
+    Fn->ResolvedReturnType =
+        resolveType(toka::Type::fromString(Fn->ReturnType));
   } else {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
   }
@@ -2506,10 +2627,13 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     if (Arg.ResolvedType) {
       Info.TypeObj = Arg.ResolvedType;
     } else {
-      // [New] Annotated AST: Use resolveType (string version) to handle
-      // aliases/Self, then parse
-      std::string resolvedStr = resolveType(fullType);
-      Info.TypeObj = toka::Type::fromString(resolvedStr);
+      auto parsedType = toka::Type::fromString(fullType);
+      if (parsedType && parsedType->typeKind == toka::Type::Shape) {
+        Info.TypeObj = resolveType(parsedType);
+      } else {
+        std::string resolvedStr = resolveType(fullType);
+        Info.TypeObj = toka::Type::fromString(resolvedStr);
+      }
 
       // Assign to AST Node for CodeGen
       Arg.ResolvedType = Info.TypeObj;

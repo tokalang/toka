@@ -369,7 +369,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     std::string VariantName = CallName.substr(pos + 2);
 
-    if (staticTypeVisible && ShapeMap.count(ShapeName)) {
+    ShapeDecl *staticShape =
+        staticTypeVisible ? findVisibleShapeDecl(ShapeName, getLoc(Call))
+                          : nullptr;
+    if (!staticShape && staticTypeVisible)
+      staticShape = findVisibleShapeDecl(RawPrefix, getLoc(Call));
+    if (staticShape) {
       // Update CallName and Callee for subsequent lookup and CodeGen
       CallName = ShapeName + "::" + VariantName;
       Call->Callee = CallName;
@@ -490,7 +495,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
       }
       // Enum Variant Constructor
-      ShapeDecl *SD = ShapeMap[ShapeName];
+      ShapeDecl *SD = staticShape;
       if (SD->Kind == ShapeKind::Enum) {
         for (auto &Memb : SD->Members) {
           if (Memb.Name == VariantName) {
@@ -707,9 +712,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         visibleSymbol->TypeObj->toString() == "extern" &&
         ExternMap.count(CallName))
       Ext = ExternMap[CallName];
-    else if (isTypeNameVisible(CallName, getLoc(Call)) &&
-             ShapeMap.count(CallName))
-      Sh = ShapeMap[CallName];
+    else if (isTypeNameVisible(CallName, getLoc(Call)))
+      Sh = findVisibleShapeDecl(CallName, getLoc(Call));
 
     // Fallback: Check if it's a type alias to a shape
     if (!Fn && !Ext && !Sh && isTypeNameVisible(CallName, getLoc(Call)) &&
@@ -1151,10 +1155,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     Call->ResolvedFn = Fn;
     for (auto &arg : Fn->Args) {
-      ParamTypes.push_back(
-          toka::Type::fromString(Sema::synthesizePhysicalType(arg)));
+      if (arg.ResolvedType &&
+          arg.ResolvedType->typeKind == toka::Type::Shape) {
+        ParamTypes.push_back(arg.ResolvedType);
+      } else {
+        ParamTypes.push_back(
+            toka::Type::fromString(Sema::synthesizePhysicalType(arg)));
+      }
     }
-    ReturnType = toka::Type::fromString(Fn->ReturnType);
+    ReturnType = Fn->ResolvedReturnType
+                     ? Fn->ResolvedReturnType
+                     : toka::Type::fromString(Fn->ReturnType);
     IsVariadic = Fn->IsVariadic;
 
     // [Effect] Concurrency Check for Function Call
@@ -1624,6 +1635,19 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     return false;
   };
 
+  auto diagnosticTypeName = [&](const std::shared_ptr<toka::Type> &type) {
+    if (!type)
+      return std::string("unknown");
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+    if (!shape || !shape->Decl ||
+        shape->Decl->CodegenName == shape->Decl->Name)
+      return type->toString();
+    auto owner = DeclarationLexicalScopes.find(shape->Decl);
+    if (owner == DeclarationLexicalScopes.end() || !owner->second)
+      return type->toString();
+    return owner->second->Name + "::" + type->toString();
+  };
+
   for (size_t i = 0; i < Call->Args.size(); ++i) {
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
 
@@ -1741,8 +1765,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         isReadOnlyBorrowViewArgument(Call->Args[i].get())) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
-            std::to_string(i + 1), paramType ? paramType->toString() : "T#",
-            argType->toString());
+            std::to_string(i + 1),
+            paramType ? diagnosticTypeName(paramType) : "T#",
+            diagnosticTypeName(argType));
     }
 
     if (paramType && i < ParamTypes.size()) {
@@ -1794,7 +1819,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (!bypassNull && !isTypeCompatible(paramType, argType)) {
-      error(Call->Args[i].get(), DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT, std::to_string(i + 1), paramType->toString(), argType->toString());
+      error(Call->Args[i].get(),
+            DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+            std::to_string(i + 1), diagnosticTypeName(paramType),
+            diagnosticTypeName(argType));
     } else if (paramType && argType && paramType->isShape() && argType->isRawPointer()) {
       auto shp = std::static_pointer_cast<toka::ShapeType>(paramType);
       if (shp->Name == "str") {

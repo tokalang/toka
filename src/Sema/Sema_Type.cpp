@@ -245,6 +245,12 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
   }
 
   if (auto shape = std::dynamic_pointer_cast<toka::ShapeType>(type)) {
+    // A resolved shape carries its declaration identity across call and TKI
+    // boundaries. Rebinding it by the caller's bare lexical name would turn
+    // two module-local shapes with the same spelling into one type.
+    if (shape->Decl)
+      return shape;
+
     std::string associatedProjection =
         resolveAssociatedTypeProjection(shape->toString(), force);
     if (!associatedProjection.empty()) {
@@ -423,6 +429,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
               if (!ShapeMap.count(mangledName)) {
                 auto cloned = new ShapeDecl(*targetSh->Decl);
                 cloned->Name = mangledName;
+                cloned->CodegenName = mangledName;
                 cloned->GenericParams.clear(); // Concretized
                 ShapeMap[mangledName] = cloned;
                 SyntheticShapes.push_back(std::unique_ptr<ShapeDecl>(cloned));
@@ -498,6 +505,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
             if (targetSh->Decl) {
               auto cloned = new ShapeDecl(*targetSh->Decl);
               cloned->Name = shape->Name;
+              cloned->CodegenName = shape->Name;
               ShapeMap[cloned->Name] = cloned;
               SyntheticShapes.push_back(std::unique_ptr<ShapeDecl>(cloned));
             }
@@ -514,9 +522,12 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
       }
     }
 
-    if (ShapeMap.count(shape->Name)) {
-      shape->resolve(ShapeMap[shape->Name]);
-    }
+    SourceLocation lookupLoc =
+        CurrentFunction && CurrentFunction->Loc.isValid()
+            ? CurrentFunction->Loc
+            : CurrentModule ? CurrentModule->Loc : SourceLocation();
+    if (ShapeDecl *decl = findVisibleShapeDecl(shape->Name, lookupLoc))
+      shape->resolve(decl);
   }
 
   if (auto prim = std::dynamic_pointer_cast<toka::PrimitiveType>(type)) {
@@ -545,11 +556,12 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
 
   // 1. Find the Template
   std::string templateName = GenericShape->Name;
-  if (!ShapeMap.count(templateName)) {
+  ShapeDecl *Template = findVisibleShapeDecl(
+      templateName, CurrentFunction ? CurrentFunction->Loc : SourceLocation());
+  if (!Template) {
     // Maybe alias logic here, but let's assume direct lookup first
     return GenericShape;
   }
-  ShapeDecl *Template = ShapeMap[templateName];
   if (Template->GenericParams.empty()) {
     // Not a generic template, why args?
     // Error or ignore? Error.
@@ -595,9 +607,11 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   // We also have a GenericShapeCache if we want to return the same ShapeType
   // object too.
   if (GenericShapeCache.count(mangledName)) {
-    return std::dynamic_pointer_cast<ShapeType>(
+    auto cached = std::dynamic_pointer_cast<ShapeType>(
         GenericShapeCache[mangledName]->withAttributes(
             GenericShape->IsWritable, GenericShape->IsNullable));
+    cached->IsCede = GenericShape->IsCede;
+    return cached;
   }
 
   // 4. Instantiate (Cache-First Cycle Breaking)
@@ -605,6 +619,10 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   auto NewDecl = std::make_unique<ShapeDecl>(
       Template->IsPub, mangledName, std::vector<GenericParam>{}, Template->Kind,
       std::vector<ShapeMember>{}, Template->IsPacked);
+  NewDecl->CodegenName = Template->CodegenName.empty()
+                             ? mangledName
+                             : Template->CodegenName +
+                                   mangledName.substr(templateName.size());
   NewDecl->Loc = Template->Loc;
 
   ShapeDecl *storedDecl = NewDecl.get();
@@ -738,8 +756,11 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
                              GenericShape->GenericArgs);
     }
   }
-  return std::dynamic_pointer_cast<ShapeType>(NewShapeTy->withAttributes(
-      GenericShape->IsWritable, GenericShape->IsNullable));
+  auto result = std::dynamic_pointer_cast<ShapeType>(
+      NewShapeTy->withAttributes(GenericShape->IsWritable,
+                                 GenericShape->IsNullable));
+  result->IsCede = GenericShape->IsCede;
+  return result;
 }
 
 bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
@@ -802,6 +823,17 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
     // Rule 3: Anon Target, Nominal Source: ALWAYS FALSE
     return false;
   }
+
+  auto resolvedShapeDecl = [](const std::shared_ptr<toka::Type> &type) {
+    if (!type)
+      return static_cast<ShapeDecl *>(nullptr);
+    auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+    return shape ? shape->Decl : nullptr;
+  };
+  ShapeDecl *targetDecl = resolvedShapeDecl(T);
+  ShapeDecl *sourceDecl = resolvedShapeDecl(S);
+  if (targetDecl && sourceDecl && targetDecl != sourceDecl)
+    return false;
 
   // Identity: For strong aliases, this is the final authority.
   if (T->equals(*S))

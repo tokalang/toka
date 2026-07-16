@@ -1041,6 +1041,7 @@ void Sema::checkStmt(Stmt *S) {
 
   } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
     recordHandleSurfaceVariableDecl(*Var);
+    const bool inferredType = Var->TypeName.empty() || Var->TypeName == "auto";
 
     // [Constitutional 1.3] Adversarial Principle: $ is only for contesting
     // inheritance.
@@ -1474,7 +1475,14 @@ void Sema::checkStmt(Stmt *S) {
     std::string fullType =
         Sema::synthesizePhysicalType(LocalPermission, baseType, false);
 
-    Info.TypeObj = resolveType(toka::Type::fromString(fullType), false);
+    if (inferredType && morph.empty() && InitTypeObj &&
+        InitTypeObj->isShape()) {
+      Info.TypeObj = resolveType(InitTypeObj->withAttributes(
+          LocalPermission.SoulWritable, LocalPermission.SoulNullable), false);
+      Info.TypeObj->IsCede = false;
+    } else {
+      Info.TypeObj = resolveType(toka::Type::fromString(fullType), false);
+    }
     if (!Info.TypeObj) {
       Info.TypeObj = toka::Type::fromString(fullType);
     }

@@ -1,0 +1,12 @@
+// EXPECT_ERROR: E04571
+import ./lib as remote
+
+shape Counter(local: i32)
+
+fn accept_local(value: Counter) -> i32 {
+    return value.local
+}
+
+fn main() -> i32 {
+    return accept_local(remote::make_counter())
+}

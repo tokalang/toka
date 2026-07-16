@@ -232,6 +232,8 @@ void CodeGen::discover(const Module &ast) {
 
   // Phase 1: Registration (Names only)
   for (const auto &sh : ast.Shapes) {
+    if (!sh->CodegenName.empty())
+      m_Shapes[sh->CodegenName] = sh.get();
     m_Shapes[sh->Name] = sh.get();
 
   }

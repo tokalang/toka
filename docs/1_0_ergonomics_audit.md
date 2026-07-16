@@ -1,6 +1,6 @@
 # Toka 1.0 Ergonomics Audit
 
-Status: `InProgress`
+Status: `Complete`
 
 This audit closes source-level friction that makes ordinary Toka programs
 needlessly expose compiler mechanics. It is an `FZ-5` release-quality task,
@@ -36,8 +36,8 @@ states.
 | `ERG-3` | `Complete` | Text and byte API friction | Audit avoidable `as_str()`, `string::from()`, and temporary bindings in the native builder and QSLite; classify every retained conversion |
 | `ERG-4` | `Complete` | Ownership-facing expression composition | Direct member chains, container resource clone, `cede` capture, Result/Option propagation, and cleanup must work without hiding transfer |
 | `ERG-5` | `Complete` | Iterator, closure, and async composition | Real algorithms must accept natural closures and iterator values without adapter noise or lost dependency facts |
-| `ERG-6` | `Pending` | Diagnostic ergonomics | Rejections identify the ownership, type, effect, or ambiguity that requires explicit source and show a viable spelling where one exists |
-| `ERG-7` | `InProgress` | Real-program normalization | Native builder and QSLite contain no known avoidable type repetition, view conversion, allocation-only comparison, or workaround temporary |
+| `ERG-6` | `Complete` | Diagnostic ergonomics | Rejections identify the ownership, type, effect, or ambiguity that requires explicit source and show a viable spelling where one exists |
+| `ERG-7` | `Complete` | Real-program normalization | Native builder and QSLite contain no known avoidable type repetition, view conversion, allocation-only comparison, or workaround temporary |
 
 An implementation gap may be fixed directly when it follows a frozen rule.
 Any new implicit allocation, ownership action, conversion choice, or change to
@@ -117,17 +117,39 @@ The first slice closes `ERG-1` and establishes the audit mechanism:
 - ERG-5 did not add lazy adapters, consuming iteration, or async iteration.
   Those remain post-1.0 design work rather than hidden extensions of the eager
   iterator contract.
-- The composition audit exposed a module-name diagnostic candidate: a local
-  `Counter` declaration can collide with `std/vec`'s private helper of the same
-  name. It is assigned to `ERG-6`; it does not alter the ERG-5 callable or
-  iterator semantics.
-- Focused execution passes, the complete positive corpus is 330/330 after
+- Shape identity now follows the lexically resolved declaration rather than a
+  process-global bare name. A local `Counter` and `std/vec`'s private `Counter`
+  coexist in one program, and same-spelled public shapes from different modules
+  remain distinct nominal types. `E04571` qualifies both module names when the
+  unqualified spelling would be ambiguous. Source-backed and source-less `.tki`
+  paths accept and reject the same struct and enum cases. Enum construction also
+  lowers from the resolved declaration rather than reparsing a bare callee name.
+- ASan exposed and closed one implementation defect in that lookup: a strong
+  record alias in the lexical type namespace could be mistaken for a shape
+  declaration. The lookup now validates declaration identity against the
+  module's registered shapes. The former intermittent `g04_small.tk` crash is
+  stable across 30 ASan and 50 normal repeated compilations.
+- The unified gate exposed one remaining bare-name lowering path after semantic
+  analysis: enum variant construction reparsed `Type::Variant` and ignored the
+  resolved declaration. Duplicate `TokenKind` declarations in `tokafmt` made
+  that path allocate a null LLVM type. Enum lowering now uses `ResolvedShape`;
+  normal and ASan tool compilation pass, and the replay case includes distinct
+  same-name enum variants.
+- Focused execution passes, the complete positive corpus is 331/331 after
   running its two local-socket cases outside the restricted sandbox, and the
-  negative corpus is 255/255. Warn is 1/1 and semantic replay is 16/16.
+  negative corpus is 255/255. Warn is 1/1 and semantic replay is 17/17.
 - QSLite passes 300 sustained operations, 313 process-level reopens, 10
   corruption classes, deterministic bytes, and source-less/incremental/package
   replay. The native builder passes source-less facade/process replay and a
   31-module, 20-cycle qualification.
+- Two consecutive clean qualifications produced the same QSLite database and
+  lock summaries and passed two native-builder 31-module, 20-cycle runs without
+  a new workaround. This satisfies the bounded-audit stop rule.
+- A final local macOS arm64 unified gate passes all 12 stages: 331 positive, 255
+  negative, one warning fixture, 17 semantic replay cases, 12 cache invalidation
+  cases, incremental build, a 31-module 100-cycle native qualification, QSLite,
+  six async fixtures, 82 sanitizer cases, and 12 release-package checks. The
+  report is local dirty-worktree evidence, not a replacement for clean RC CI.
 
 ## 5. Verification
 
@@ -159,3 +181,34 @@ This audit stops when:
 After these conditions hold, further convenience work is post-1.0 unless it
 fixes a correctness issue or a newly demonstrated blocker in a sustained
 program.
+
+### 6.1 Bounded Audit Budget
+
+`ERG-6` is the final active discovery pass for 1.0 source ergonomics. `ERG-7`
+may normalize and requalify the two reference programs, but it must not open a
+new category of convenience work. After `ERG-6` and `ERG-7` are closed:
+
+- no new ergonomics item is admitted from speculative API review or isolated
+  spelling preference;
+- a new item may block 1.0 only when the native builder, QSLite, or the unified
+  release gate demonstrates that ordinary frozen-language code cannot be
+  expressed without a workaround, compiler-internal detail, hidden cost, or
+  misleading rejection;
+- two consecutive clean sustained qualifications with no newly observed
+  ergonomics workaround end this audit; and
+- work that needs new syntax, a new implicit conversion, an ownership-policy
+  choice, or broader library design moves to the post-1.0 ledger instead of
+  extending this audit.
+
+The exit decision is therefore evidence-based: once the known ledger is
+closed and the two real programs stop producing new release-blocking friction,
+the project returns to the remaining FZ-5 release work.
+
+This decision has now been reached. Further source-convenience work is stopped
+for 1.0 unless a sustained application or the release gate demonstrates a new
+correctness issue or ordinary-code blocker under the criteria above.
+
+This stop does not claim that same-name generic template identity has been
+audited. Generic instantiation and cache keys retain their previous behavior and
+are tracked separately as `FZ-3-R02`; that bounded correctness item must not
+reopen the ergonomics discovery ledger.
