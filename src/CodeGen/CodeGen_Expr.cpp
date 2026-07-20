@@ -198,10 +198,11 @@ llvm::Value *CodeGen::emitPromotion(llvm::Value *rawPtr,
   return handle;
 }
 
-void CodeGen::emitSoulAssignment(llvm::Value *soulAddr, llvm::Value *rhsVal,
-                                 llvm::Type *type) {
+llvm::StoreInst *CodeGen::emitSoulAssignment(llvm::Value *soulAddr,
+                                             llvm::Value *rhsVal,
+                                             llvm::Type *type) {
   if (!soulAddr || !rhsVal || !type)
-    return;
+    return nullptr;
   if (assignmentStatsEnabled())
     assignmentStats().LoweredSoulAssignments++;
 
@@ -227,7 +228,7 @@ void CodeGen::emitSoulAssignment(llvm::Value *soulAddr, llvm::Value *rhsVal,
     }
   }
 
-  m_Builder.CreateStore(finalRHS, destAddr);
+  return m_Builder.CreateStore(finalRHS, destAddr);
 }
 
 void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
@@ -243,7 +244,7 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
         m_Builder.CreateLoad(rhsVal->getType(), handleAddr, "sh.old_handle");
     emitRelease(oldVal, sym, sym.soulTypeObj);
     // 2. Update(Handle) with new owning handle from genExpr
-    m_Builder.CreateStore(rhsVal, handleAddr);
+    markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
   } else if (sym.morphology == Morphology::Unique) {
     // Unique: simple Release(Old) + Update
     llvm::Value *oldVal =
@@ -272,10 +273,10 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
     m_Builder.CreateBr(contBB);
     m_Builder.SetInsertPoint(contBB);
 
-    m_Builder.CreateStore(rhsVal, handleAddr);
+    markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
   } else {
     // Raw/Ref: direct store
-    m_Builder.CreateStore(rhsVal, handleAddr);
+    markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
   }
 }
 
@@ -471,15 +472,19 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
         }
       }
     }
+    AssignmentLoweringCarrier carrier =
+        AssignmentLoweringCarrier::SoulStore;
     if (soulAddr && destTy) {
-      AssignmentLoweringCarrier carrier =
+      carrier =
           assignmentLowersThroughEnvelopeCarrier(lhsExpr)
               ? AssignmentLoweringCarrier::EnvelopeRebind
               : AssignmentLoweringCarrier::SoulStore;
       recordAssignmentLoweringCarrier(assignmentSite, carrier);
       verifyLowering(carrier);
     }
-    emitSoulAssignment(soulAddr, rhsVal, destTy);
+    llvm::StoreInst *store = emitSoulAssignment(soulAddr, rhsVal, destTy);
+    if (carrier == AssignmentLoweringCarrier::EnvelopeRebind)
+      markMemoryEvent(store, "rebind");
   }
 
   m_InLHS = false;

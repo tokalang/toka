@@ -889,6 +889,7 @@ bool MemorySummaryAnalysis::verifyIR(const std::vector<Module *> &modules,
     bool suspends = false;
     bool taggedAllocation = false;
     bool taggedFree = false;
+    bool taggedRebind = false;
     for (const llvm::BasicBlock &block : *ir) {
       for (const llvm::Instruction &instruction : block) {
         if (const llvm::MDNode *metadata =
@@ -898,6 +899,7 @@ bool MemorySummaryAnalysis::verifyIR(const std::vector<Module *> &modules,
                     metadata->getOperand(0).get())) {
               taggedAllocation |= event->getString() == "allocate";
               taggedFree |= event->getString() == "free";
+              taggedRebind |= event->getString() == "rebind";
             }
           }
         }
@@ -918,6 +920,13 @@ bool MemorySummaryAnalysis::verifyIR(const std::vector<Module *> &modules,
       errors.push_back(summary.FunctionName + ": tagged IR allocation lacks local summary evidence");
     if (taggedFree && !has(summary.LocalEffects, FunctionMemoryEffect::Free))
       errors.push_back(summary.FunctionName + ": tagged IR free lacks local summary evidence");
+    bool hasLocalRebind = false;
+    for (const auto &root : summary.Roots)
+      hasLocalRebind |=
+          has(root.second.LocalEffects, MemoryRootEffect::Rebind);
+    if (taggedRebind && !hasLocalRebind)
+      errors.push_back(summary.FunctionName +
+                       ": tagged IR rebind lacks root summary evidence");
     if (suspends && !has(summary.LocalEffects, FunctionMemoryEffect::Suspend))
       errors.push_back(summary.FunctionName + ": coroutine IR lacks suspend summary evidence");
     if (function->Effect == EffectKind::Async && !suspends)

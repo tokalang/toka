@@ -65,6 +65,18 @@ def main():
             raise AssertionError("transitive write leaked into local effects")
         require(root(forward, "data")["effects"], "read", "write")
 
+        store = find_function(first, "ms_store")
+        require(root(store, "target")["local_effects"], "write", "rebind")
+        ir_path = os.path.join(work, "summary.ll")
+        ir = subprocess.run(
+            [TOKAC, "--emit-llvm", SOURCE, "-o", ir_path],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if ir.returncode != 0:
+            raise AssertionError(ir.stderr)
+        with open(ir_path, encoding="utf-8") as handle:
+            if '!{!"rebind"}' not in handle.read():
+                raise AssertionError("handle store lacks rebind IR evidence")
+
         consume = find_function(first, "ms_consume")
         require(root(consume, "data")["effects"], "transfer", "invalidate",
                 "escape")

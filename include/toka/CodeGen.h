@@ -193,8 +193,9 @@ private:
   // Assignment Strategy Dispatcher (Step 2)
   PhysEntity emitAssignment(const Expr *lhs, const Expr *rhs,
                             const BinaryExpr *assignmentSite);
-  void emitSoulAssignment(llvm::Value *soulAddr, llvm::Value *rhsVal,
-                          llvm::Type *type);
+  llvm::StoreInst *emitSoulAssignment(llvm::Value *soulAddr,
+                                      llvm::Value *rhsVal,
+                                      llvm::Type *type);
   void emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
                           const TokaSymbol &sym, const Expr *lhsExpr);
   llvm::Value *emitPromotion(llvm::Value *rawPtr, llvm::Type *targetHandleType,
