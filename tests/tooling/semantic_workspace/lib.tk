@@ -3,7 +3,22 @@ pub shape Box (
     value: i32
 )
 
+pub trait @Readable {
+    pub fn read(self) -> i32
+}
+
+impl Box@Readable {
+    pub fn read(self) -> i32 {
+        return self.value
+    }
+}
+
 /// Adds delta to value.
 pub fn add(value: i32, delta: i32) -> i32 {
     return value + delta
+}
+
+/// Returns its input without changing its type.
+pub fn identity<T>(value: T) -> T {
+    return value
 }

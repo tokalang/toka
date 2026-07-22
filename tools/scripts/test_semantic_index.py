@@ -83,7 +83,7 @@ def main():
 
     definition = query("definition", 3, 19)
     require(definition["file"] == library_path and
-            definition["range"]["start"] == {"line": 6, "character": 7},
+            definition["range"]["start"] == add["declaration"]["range"]["start"],
             "cross-module definition did not resolve to the declaration")
 
     references = query("references", 3, 19)
@@ -114,10 +114,34 @@ def main():
                 {symbol["name"] for symbol in document_symbols}),
             "document symbol query is incomplete")
 
+    identity = next(symbol for symbol in local_symbols
+                    if symbol["name"] == "identity" and symbol["kind"] == "function")
+    require("identity<T>(value: T) -> T" in identity["detail"],
+            "generic function signature lost its template parameters")
+    generic_definition = query("definition", 13, 12)
+    require(generic_definition["file"] == library_path and
+            generic_definition["range"]["start"] ==
+            identity["declaration"]["range"]["start"],
+            "generic instance did not resolve to its source template")
+
+    readable = [symbol for symbol in local_symbols
+                if symbol["name"] == "Readable" and symbol["kind"] == "trait"]
+    implementation = next(symbol for symbol in local_symbols
+                          if symbol["name"] == "read" and symbol["kind"] == "method"
+                          and symbol["detail"].startswith("fn read(self: Box)"))
+    require(len(readable) == 1,
+            "trait declaration is missing from the semantic index")
+    method_definition = query("definition", 13, 26)
+    require(method_definition["file"] == library_path and
+            method_definition["range"]["start"] ==
+            implementation["declaration"]["range"]["start"],
+            "trait implementation call did not resolve to the selected method")
+
     checks = [
         "schema", "determinism", "shadowing", "cross-module-definition",
         "cross-module-references", "safe-rename", "rename-conflict",
-        "typed-completion", "document-symbols",
+        "typed-completion", "document-symbols", "generic-template-identity",
+        "trait-impl-method",
     ]
     print(json.dumps({
         "checks": checks,

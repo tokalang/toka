@@ -76,6 +76,9 @@ public:
 
     void setProvidedObjects(const std::vector<std::string> &objs);
 
+    void setSourceOverrides(std::map<std::string, std::string> overrides);
+    void setVersionedSources(bool enabled) { m_VersionedSources = enabled; }
+
 private:
     SourceManager &m_SourceManager;
     std::vector<std::string> m_SearchPaths;
@@ -84,6 +87,8 @@ private:
     bool m_UseBuildCache;
     std::vector<std::string> m_TrustedSystemRoots;
     std::vector<std::string> m_Roots;
+    std::map<std::string, std::string> m_SourceOverrides;
+    bool m_VersionedSources = false;
 
     std::set<std::string> m_ProvidedObjects;
     std::set<std::string> m_Visited;

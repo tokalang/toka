@@ -96,6 +96,10 @@ def text_document_position(uri, line, character):
     }
 
 
+def utf16_column(text, character):
+    return len(text[:character].encode("utf-16-le")) // 2
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", default="build")
@@ -128,6 +132,10 @@ def main():
                 "referencesProvider",
                 "completionProvider",
                 "renameProvider",
+                "signatureHelpProvider",
+                "documentSymbolProvider",
+                "workspaceSymbolProvider",
+                "documentFormattingProvider",
             ):
                 require(capability in capabilities, "missing LSP capability: " + capability)
             client.notification("initialized", {})
@@ -178,8 +186,8 @@ def main():
                 "textDocument/hover",
                 text_document_position(uri, 2, y_use),
             )["result"]
-            require("auto y" in hover["contents"]["value"],
-                    "hover did not show the declaration")
+            require("variable y: i32" in hover["contents"]["value"],
+                    "hover did not show the resolved local type")
 
             references_params = text_document_position(uri, 2, y_use)
             references_params["context"] = {"includeDeclaration": True}
@@ -204,11 +212,140 @@ def main():
             require(len(edits) == 2 and all(edit["newText"] == "result" for edit in edits),
                     "rename did not edit all symbol occurrences")
 
-            unknown = client.request(7, "toka/notARealMethod", {})
+            library = Path(temp) / "lib.tk"
+            library_text = (
+                "/// Increment a value.\n"
+                "pub fn bump(x: i32) -> i32 { return x + 1 }\n"
+            )
+            library.write_text(library_text, encoding="utf-8")
+            library_uri = library.as_uri()
+            cross_lines = [
+                "import ./lib::{bump}",
+                "",
+                "fn main() -> i32 {",
+                "    assert(true, \"😀\"); return bump(1) - 2",
+                "}",
+            ]
+            cross_text = "\n".join(cross_lines) + "\n"
+            client.notification(
+                "textDocument/didChange",
+                {
+                    "textDocument": {"uri": uri, "version": 3},
+                    "contentChanges": [{"text": cross_text}],
+                },
+            )
+            require(client.diagnostics(uri) == [],
+                    "cross-module document produced diagnostics")
+            client.notification(
+                "textDocument/didOpen",
+                {
+                    "textDocument": {
+                        "uri": library_uri,
+                        "languageId": "toka",
+                        "version": 1,
+                        "text": library_text,
+                    }
+                },
+            )
+            require(client.diagnostics(library_uri) == [],
+                    "library overlay produced diagnostics")
+
+            bump_use = cross_lines[3].index("bump")
+            bump_utf16 = utf16_column(cross_lines[3], bump_use)
+            definition = client.request(
+                7,
+                "textDocument/definition",
+                text_document_position(uri, 3, bump_utf16 + 1),
+            )["result"]
+            require(definition["uri"] == library_uri and
+                    definition["range"]["start"]["line"] == 1,
+                    "semantic definition did not cross the module boundary")
+
+            hover = client.request(
+                8,
+                "textDocument/hover",
+                text_document_position(uri, 3, bump_utf16 + 1),
+            )["result"]
+            require("fn bump(x: i32) -> i32" in hover["contents"]["value"] and
+                    "Increment a value." in hover["contents"]["value"],
+                    "cross-module hover is missing signature or documentation")
+
+            reference_params = text_document_position(uri, 3, bump_utf16 + 1)
+            reference_params["context"] = {"includeDeclaration": True}
+            references = client.request(
+                9, "textDocument/references", reference_params
+            )["result"]
+            require(len(references) == 2 and
+                    {item["uri"] for item in references} == {uri, library_uri},
+                    "semantic references did not cross the module boundary")
+
+            signature = client.request(
+                10,
+                "textDocument/signatureHelp",
+                text_document_position(uri, 3, bump_utf16 + len("bump(")),
+            )["result"]
+            require(signature["activeParameter"] == 0 and
+                    "bump(x: i32)" in signature["signatures"][0]["label"],
+                    "signature help did not use the resolved callable")
+
+            document_symbols = client.request(
+                11, "textDocument/documentSymbol", {"textDocument": {"uri": uri}}
+            )["result"]
+            require("main" in {item["name"] for item in document_symbols},
+                    "document symbols are incomplete")
+            workspace_symbols = client.request(
+                12, "workspace/symbol", {"query": "bump"}
+            )["result"]
+            require(any(item["name"] == "bump" for item in workspace_symbols),
+                    "workspace symbols are incomplete")
+
+            semantic_rename = text_document_position(uri, 3, bump_utf16 + 1)
+            semantic_rename["newName"] = "increment"
+            workspace_edit = client.request(
+                13, "textDocument/rename", semantic_rename
+            )["result"]
+            require(set(workspace_edit["changes"]) == {uri, library_uri},
+                    "semantic rename did not produce cross-module edits")
+
+            changed_library = library_text.replace("x + 1", "x + 2")
+            client.notification(
+                "textDocument/didChange",
+                {
+                    "textDocument": {"uri": library_uri, "version": 2},
+                    "contentChanges": [{"text": changed_library}],
+                },
+            )
+            require(client.diagnostics(library_uri) == [],
+                    "updated library overlay produced diagnostics")
+            stats = client.request(14, "toka/analysisStats", {})["result"]
+            require(stats["fresh"] and stats["recheckedModules"] == 2 and
+                    stats["reusedModules"] > 0,
+                    "reverse-dependency invalidation did not recheck exactly the library and root")
+
+            unformatted = "import ./lib::{bump}\nfn main()->i32{return bump(1) - 3}\n"
+            client.notification(
+                "textDocument/didChange",
+                {
+                    "textDocument": {"uri": uri, "version": 4},
+                    "contentChanges": [{"text": unformatted}],
+                },
+            )
+            unformatted_diagnostics = client.diagnostics(uri)
+            require(unformatted_diagnostics == [],
+                    "unformatted valid document produced diagnostics: " +
+                    json.dumps(unformatted_diagnostics, sort_keys=True))
+            formatting = client.request(
+                15, "textDocument/formatting",
+                {"textDocument": {"uri": uri}, "options": {"tabSize": 4}},
+            )["result"]
+            require(len(formatting) == 1 and "fn main() -> i32" in formatting[0]["newText"],
+                    "document formatting did not return a full-document edit")
+
+            unknown = client.request(16, "toka/notARealMethod", {})
             require(unknown["error"]["code"] == -32601,
                     "unknown request did not return Method not found")
 
-            shutdown = client.request(8, "shutdown")
+            shutdown = client.request(17, "shutdown")
             require(shutdown.get("result") is None, "shutdown result must be null")
             client.notification("exit")
             client.process.wait(timeout=5)
@@ -222,9 +359,14 @@ def main():
     print(json.dumps({
         "checks": [
             "initialize", "diagnostics", "full-sync", "definition", "hover",
-            "references", "completion", "rename", "method-errors", "shutdown-exit",
+            "references", "completion", "rename", "cross-module-definition",
+            "semantic-hover", "cross-module-references", "utf16-positions",
+            "signature-help",
+            "document-symbols", "workspace-symbols", "cross-module-rename",
+            "incremental-invalidation", "formatting", "method-errors",
+            "shutdown-exit",
         ],
-        "count": 10,
+        "count": 20,
         "result": "pass",
         "schema": "toka.lsp-protocol",
         "version": 1,

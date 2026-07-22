@@ -90,6 +90,34 @@ SourceLocation SourceManager::addFile(const std::string &Path,
   return SourceLocation(Start);
 }
 
+SourceLocation SourceManager::loadFileVersion(const std::string &Path) {
+  std::string NormPath = Path;
+  std::replace(NormPath.begin(), NormPath.end(), '\\', '/');
+  std::ifstream Input(NormPath);
+  if (!Input)
+    return SourceLocation();
+  std::stringstream Buffer;
+  Buffer << Input.rdbuf();
+  return addFileVersion(NormPath, Buffer.str());
+}
+
+SourceLocation SourceManager::addFileVersion(const std::string &Path,
+                                             std::string Content) {
+  std::string NormPath = Path;
+  std::replace(NormPath.begin(), NormPath.end(), '\\', '/');
+  for (auto It = Files.rbegin(); It != Files.rend(); ++It) {
+    if (It->FileName == NormPath) {
+      if (It->Content == Content)
+        return SourceLocation(It->GlobalStartOffset);
+      break;
+    }
+  }
+  uint32_t Start = NextOffset;
+  Files.emplace_back(NormPath, std::move(Content), Start);
+  NextOffset = Files.back().GlobalEndOffset;
+  return SourceLocation(Start);
+}
+
 FullSourceLoc SourceManager::getFullSourceLoc(SourceLocation Loc) const {
   if (Loc.isInvalid())
     return FullSourceLoc();
@@ -153,7 +181,25 @@ std::string_view SourceManager::getBufferData(SourceLocation Loc) const {
 }
 
 std::string SourceManager::getLineData(SourceLocation Loc) const {
-  return getLineData(getFullSourceLoc(Loc));
+  if (Loc.isInvalid())
+    return "";
+  uint32_t Offset = Loc.getRawEncoding();
+  for (const auto &File : Files) {
+    if (Offset < File.GlobalStartOffset || Offset >= File.GlobalEndOffset)
+      continue;
+    uint32_t Relative = Offset - File.GlobalStartOffset;
+    auto Line = std::upper_bound(File.LineStartOffsets.begin(),
+                                 File.LineStartOffsets.end(), Relative);
+    size_t Index = std::distance(File.LineStartOffsets.begin(), Line) - 1;
+    uint32_t Start = File.LineStartOffsets[Index];
+    uint32_t End = File.Content.size();
+    if (Index + 1 < File.LineStartOffsets.size())
+      End = File.LineStartOffsets[Index + 1] - 1;
+    else if (End > Start && File.Content[End - 1] == '\n')
+      --End;
+    return File.Content.substr(Start, End - Start);
+  }
+  return "";
 }
 
 std::string SourceManager::getLineData(FullSourceLoc FullLoc) const {

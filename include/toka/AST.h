@@ -662,6 +662,7 @@ class ShapeDecl;
 class CallExpr : public Expr {
 public:
   std::string Callee;
+  std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
   std::vector<std::string> GenericArgs; // [NEW]
 
@@ -675,7 +676,7 @@ public:
 
   CallExpr(const std::string &callee, std::vector<std::unique_ptr<Expr>> args,
            std::vector<std::string> genericArgs = {})
-      : Callee(callee), Args(std::move(args)),
+      : Callee(callee), OriginalCallee(callee), Args(std::move(args)),
         GenericArgs(std::move(genericArgs)) {}
 
   std::string toString() const override {
@@ -694,6 +695,7 @@ public:
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<CallExpr>(Callee, cloneVec(Args), GenericArgs);
+    n->OriginalCallee = OriginalCallee;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     n->ResolvedFn = nullptr; // Reset sema cache
@@ -1608,6 +1610,7 @@ public:
   bool IsClosureInvoke = false;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
+  FunctionDecl *TemplateOrigin = nullptr;  // Tooling identity for an instance.
 
   FunctionDecl(bool isPub, const std::string &name, std::vector<Arg> args,
                std::unique_ptr<BlockStmt> body, const std::string &retType,
@@ -1645,6 +1648,7 @@ public:
     n->IsDeleted = IsDeleted;
     n->IsClosureInvoke = IsClosureInvoke;
     n->ClosureReceiver = ClosureReceiver;
+    n->TemplateOrigin = TemplateOrigin;
     n->Loc = Loc;
     n->ResolvedReturnType = ResolvedReturnType;
     // FunctionDecl is NOT an Expr, does not have ResolvedType?

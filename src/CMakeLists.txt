@@ -1,23 +1,27 @@
-add_executable(tokac main.cpp Basic/SourceManager.cpp Basic/ModuleResolver.cpp Lexer/Lexer.cpp
-DiagnosticEngine.cpp
-AST/TKIExporter.cpp
-AST/ASTEvaluator.cpp
-Parser/Parser.cpp 
-Parser/Parser_Decl.cpp
-Parser/Parser_Stmt.cpp
-Parser/Parser_Expr.cpp 
-Sema/Sema.cpp
-Sema/Sema_Type.cpp
-Sema/Sema_Expr.cpp
-Sema/Sema_Expr_Member.cpp
-Sema/Sema_Expr_Unary.cpp
-Sema/Sema_Expr_Binary.cpp
-Sema/Sema_Expr_Call.cpp
-Sema/Sema_Expr_Init.cpp
-Sema/Sema_Expr_Closure.cpp
-Sema/Sema_Stmt.cpp
-Sema/Sema_Template.cpp
-Sema/AccessPath.cpp
+set(toka_frontend_sources
+    Basic/SourceManager.cpp
+    Basic/ModuleResolver.cpp
+    Analysis/AnalysisSession.cpp
+    Lexer/Lexer.cpp
+    DiagnosticEngine.cpp
+    AST/TKIExporter.cpp
+    AST/ASTEvaluator.cpp
+    Parser/Parser.cpp
+    Parser/Parser_Decl.cpp
+    Parser/Parser_Stmt.cpp
+    Parser/Parser_Expr.cpp
+    Sema/Sema.cpp
+    Sema/Sema_Type.cpp
+    Sema/Sema_Expr.cpp
+    Sema/Sema_Expr_Member.cpp
+    Sema/Sema_Expr_Unary.cpp
+    Sema/Sema_Expr_Binary.cpp
+    Sema/Sema_Expr_Call.cpp
+    Sema/Sema_Expr_Init.cpp
+    Sema/Sema_Expr_Closure.cpp
+    Sema/Sema_Stmt.cpp
+    Sema/Sema_Template.cpp
+    Sema/AccessPath.cpp
     Sema/Sema_AccessPath.cpp
     Sema/SemanticEvidence.cpp
     Sema/SemanticIndex.cpp
@@ -25,14 +29,19 @@ Sema/AccessPath.cpp
     Sema/MemoryEvidence.cpp
     Sema/MemoryContract.cpp
     Sema/PAL_Checker.cpp
-Sema/TopologyCacheEval.cpp
-Type.cpp
-CodeGen/CodeGen.cpp 
-CodeGen/CodeGen_Expr.cpp 
-CodeGen/CodeGen_Stmt.cpp 
-CodeGen/CodeGen_Memory.cpp
-CodeGen/CodeGen_Decl.cpp
-AST/TKIExporter.cpp
+    Sema/TopologyCacheEval.cpp
+    Type.cpp
+)
+
+add_library(toka_frontend STATIC ${toka_frontend_sources})
+
+add_executable(tokac
+    main.cpp
+    CodeGen/CodeGen.cpp
+    CodeGen/CodeGen_Expr.cpp
+    CodeGen/CodeGen_Stmt.cpp
+    CodeGen/CodeGen_Memory.cpp
+    CodeGen/CodeGen_Decl.cpp
 )
 
 # Link against LLVM libraries
@@ -57,15 +66,11 @@ foreach(libname ${lld_names})
     endif()
 endforeach()
 
-target_link_libraries(tokac PUBLIC ${lld_libs} ${llvm_libs})
+target_link_libraries(toka_frontend PUBLIC ${llvm_libs})
+target_link_libraries(tokac PUBLIC toka_frontend ${lld_libs})
 
-if(WIN32 AND TARGET LLVM)
-    set(tokalsp_llvm_libs LLVM)
-else()
-    llvm_map_components_to_libnames(tokalsp_llvm_libs Support)
-endif()
 add_executable(tokalsp "${CMAKE_SOURCE_DIR}/tools/tokalsp/main.cpp")
-target_link_libraries(tokalsp PRIVATE ${tokalsp_llvm_libs})
+target_link_libraries(tokalsp PRIVATE toka_frontend)
 
 set(zstd_hints ${LLVM_LIBRARY_DIRS})
 if(APPLE)
@@ -95,9 +100,12 @@ if(NOT ZSTD_LIBRARY)
 endif()
 
 if(APPLE)
+    target_link_libraries(toka_frontend PUBLIC ${ZSTD_LIBRARY} z curses)
     target_link_libraries(tokac PUBLIC ${ZSTD_LIBRARY} z curses)
 elseif(UNIX)
+    target_link_libraries(toka_frontend PUBLIC ${ZSTD_LIBRARY} z)
     target_link_libraries(tokac PUBLIC ${ZSTD_LIBRARY} z)
 else()
+    target_link_libraries(toka_frontend PUBLIC ${ZSTD_LIBRARY})
     target_link_libraries(tokac PUBLIC ${ZSTD_LIBRARY})
 endif()

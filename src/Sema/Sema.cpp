@@ -3469,6 +3469,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
 
   Instance->Name = mangledName;
   Instance->CodegenName = mangledName;
+  Instance->TemplateOrigin = Template;
   Instance->GenericParams.clear(); // Mark as concrete
 
   // 2. Scope Injection Setup

@@ -51,6 +51,12 @@ public:
   /// Add a file from memory content. Useful for testing or REPL.
   SourceLocation addFile(const std::string &Path, std::string Content);
 
+  /// Load a fresh disk version while preserving locations from older versions.
+  SourceLocation loadFileVersion(const std::string &Path);
+
+  /// Add a fresh in-memory version while preserving older source locations.
+  SourceLocation addFileVersion(const std::string &Path, std::string Content);
+
   /// Return true if the location is valid.
   bool isValid(SourceLocation Loc) const { return Loc.isValid(); }
 

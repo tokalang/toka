@@ -52,6 +52,14 @@ ActiveNodeRAII::~ActiveNodeRAII() {
 
 SourceManager *DiagnosticEngine::SrcMgr = nullptr;
 int DiagnosticEngine::ErrorCount = 0;
+bool DiagnosticEngine::PrintingEnabled = true;
+std::vector<DiagnosticRecord> DiagnosticEngine::Records;
+
+void DiagnosticEngine::reset() {
+  ErrorCount = 0;
+  ActiveNode = nullptr;
+  Records.clear();
+}
 
 const char *DiagnosticEngine::getFormatString(DiagID id) {
   switch (id) {
@@ -103,6 +111,12 @@ void DiagnosticEngine::reportImpl(DiagLoc loc, DiagID id,
     ErrorCount++;
   }
 
+  Records.push_back({loc.File, loc.Line, loc.Col, loc.Length, level,
+                     getCode(id), message});
+
+  if (!PrintingEnabled)
+    return;
+
   if (::g_JsonDiagnostics) {
     std::string escapedMsg = escapeJson(message);
     std::cout << "{\"file\": \"" << escapeJson(loc.File) << "\", \"line\": " << loc.Line
@@ -153,6 +167,13 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, DiagID id,
 void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
                                   const std::string &message) {
   DiagLevel level = getLevel(id);
+  if (!PrintingEnabled) {
+    FullSourceLoc Full = SrcMgr ? SrcMgr->getFullSourceLoc(loc) : FullSourceLoc();
+    reportImpl(DiagLoc{Full.FileName, static_cast<int>(Full.Line),
+                       static_cast<int>(Full.Column), length},
+               id, message);
+    return;
+  }
   if (::g_JsonDiagnostics && level == DiagLevel::Error) {
     ErrorCount++;
   }
@@ -176,6 +197,8 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
       node_serial = ActiveNode->NodeSerial;
       expansion_context = ActiveNode->ExpansionContext;
     }
+    Records.push_back({fileName, line, col, length, level, getCode(id),
+                       message});
     std::cout << "{\"file\": \"" << escapeJson(fileName) << "\", \"line\": " << line
               << ", \"col\": " << col << ", \"message\": \"" << escapedMsg 
               << "\", \"code\": \"" << getCode(id) << "\", \"level\": " << (int)level
@@ -196,7 +219,7 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
     reportImpl(DL, id, message);
 
     // Print rich snippet if available
-    std::string lineData = SrcMgr->getLineData(Full);
+    std::string lineData = SrcMgr->getLineData(loc);
     if (!lineData.empty()) {
       std::string lineNumStr = std::to_string(Full.Line);
       std::string padding(lineNumStr.length() + 2, ' ');

@@ -3,13 +3,28 @@
 `tokalsp` is a standard-input/standard-output language server. Editors should
 launch it without arguments and use `Content-Length` framed JSON-RPC 2.0.
 
-The 1.0 baseline supports full document synchronization, compiler diagnostics,
-hover, go to definition, references, completion, rename, and the standard
-initialize/shutdown/exit lifecycle. The server discovers `tokac` beside its own
-executable first and then on `PATH`, so an installed SDK remains self-contained.
+The server supports full document synchronization, compiler diagnostics,
+hover, go to definition, references, completion, rename, signature help,
+document and workspace symbols, formatting, and the standard
+initialize/shutdown/exit lifecycle.
 
-Diagnostics come from `tokac --check-json`. Editing features currently use a
-UTF-16-aware lexical index over all open documents. This makes them predictable
-and useful for the first release, but rename and reference results are not yet
-scope- or type-aware. The next LSP milestone is to replace that index with a
-stable compiler semantic-query interface without changing the LSP protocol.
+`tokalsp` links the reusable compiler front end and keeps an in-process
+`AnalysisSession`. Open document contents are in-memory source overlays, so an
+editor never needs to save a file before receiving compiler diagnostics or
+semantic results. Changed modules invalidate their reverse-dependency closure;
+unchanged, already-checked ASTs are reused.
+
+Hover, definition, references, completion, rename, signature help, and symbol
+queries consume compiler `SemanticIndex` identities. This makes shadowing,
+cross-module calls, generic instances, and trait implementation methods
+scope- and type-aware. Rename rejects a same-scope collision and can return a
+multi-file workspace edit. LSP positions are UTF-16 even though compiler source
+ranges are byte-based internally.
+
+Formatting delegates to the `tokafmt` shipped beside `tokalsp` and returns a
+single full-document edit without modifying the open source file. The custom
+read-only request `toka/analysisStats` exposes revision, invalidation, reuse,
+recheck, and elapsed-time data for qualification and troubleshooting.
+
+Run `python3 tools/scripts/test_lsp_protocol.py` for the protocol, semantic,
+overlay, incremental invalidation, UTF-16, and formatting gate.

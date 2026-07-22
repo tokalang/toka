@@ -1,4 +1,4 @@
-import tests/tooling/semantic_workspace/lib::{Box, add}
+import tests/tooling/semantic_workspace/lib::{Box, add, identity}
 
 fn compute(value: i32) -> i32 {
     auto result = add(value, 1)
@@ -11,5 +11,5 @@ fn compute(value: i32) -> i32 {
 
 fn main() -> i32 {
     auto item = Box(value = compute(3))
-    return item.value
+    return identity(item.read())
 }

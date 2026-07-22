@@ -1249,10 +1249,11 @@ std::unique_ptr<TraitDecl> Parser::parseTrait(bool isPub) {
     }
   }
   consume(TokenType::RBrace, DiagID::ERR_EXPECTED_RBRACE);
-  return std::make_unique<TraitDecl>(isPub, name.Text, std::move(methods),
-                                     std::move(genericParams),
-                                     std::move(selfTraitBounds),
-                                     std::move(associatedTypes));
+  auto declaration = std::make_unique<TraitDecl>(
+      isPub, name.Text, std::move(methods), std::move(genericParams),
+      std::move(selfTraitBounds), std::move(associatedTypes));
+  declaration->setLocation(name, m_CurrentFile);
+  return declaration;
 }
 
 } // namespace toka

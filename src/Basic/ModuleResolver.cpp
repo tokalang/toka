@@ -87,7 +87,9 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
                                              const std::vector<std::string> &activeSearchPaths) {
   std::string filename = PathUtils::normalize(rawFilename);
 
-  auto fileExists = [](const std::string &p) {
+  auto fileExists = [&](const std::string &p) {
+    if (m_SourceOverrides.count(PathUtils::canonicalize(p)))
+      return true;
     std::error_code ec;
     return std::filesystem::is_regular_file(p, ec);
   };
@@ -281,6 +283,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
                                     const std::string &overrideSourceCode,
                                     std::string *outActualPath) {
   std::string resolvedPath = filename;
+  const std::string *sourceOverride = nullptr;
   std::string originalTkPath = "";
   std::string selectedCachedObjectPath;
   bool selectedCachedInterfaceHasBacking = false;
@@ -293,6 +296,10 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       }
       originalTkPath = PathUtils::canonicalize(resolvedPath);
       std::string canonical = originalTkPath;
+      auto overrideIt = m_SourceOverrides.find(canonical);
+      if (overrideIt != m_SourceOverrides.end()) {
+          sourceOverride = &overrideIt->second;
+      }
       const char *envBuildDir = std::getenv("TOKA_BUILD_DIR");
       std::string buildDir = envBuildDir ? envBuildDir : ".toka/build";
       std::string expectedObj = buildDir + "/objects/" + calculateFNV1a(canonical) + ".o";
@@ -303,7 +310,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       bool isRoot = (std::find(m_Roots.begin(), m_Roots.end(), canonical) != m_Roots.end());
       bool shouldUseCachedInterface =
           isObjProvided || ((!m_PreferSource || m_UseBuildCache) && cacheTkiExists);
-      if (!isRoot && shouldUseCachedInterface) {
+      if (!sourceOverride && !isRoot && shouldUseCachedInterface) {
           if (cacheTkiExists) {
               resolvedPath = expectedTki;
               selectedCachedInterfaceHasBacking = isObjProvided || cacheObjExists;
@@ -314,6 +321,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   } else {
       resolvedPath = PathUtils::normalize(filename);
       originalTkPath = resolvedPath;
+      sourceOverride = &overrideSourceCode;
   }
 
   // Validate TKI metadata and potentially fallback to .tk
@@ -368,7 +376,9 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   };
 
   bool finalIsInterface = (resolvedPath.length() >= 4 && resolvedPath.substr(resolvedPath.length() - 4) == ".tki");
-  std::string contentHash = getFileHash(resolvedPath);
+  std::string contentHash = sourceOverride
+      ? calculateFNV1a(*sourceOverride)
+      : getFileHash(resolvedPath);
   if (!finalIsInterface) {
       sourceHash = contentHash;
   }
@@ -424,8 +434,10 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       : resolvedPath;
 
   SourceLocation startLoc;
-  if (!overrideSourceCode.empty()) {
-      startLoc = m_SourceManager.addFile(resolvedPath, overrideSourceCode);
+  if (sourceOverride) {
+      startLoc = m_VersionedSources
+          ? m_SourceManager.addFileVersion(resolvedPath, *sourceOverride)
+          : m_SourceManager.addFile(resolvedPath, *sourceOverride);
   } else if (finalIsInterface && !meta.SourcePath.empty()) {
       std::ifstream input(resolvedPath);
       if (!input) {
@@ -437,7 +449,9 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       buffer << input.rdbuf();
       startLoc = m_SourceManager.addFile(parserPath + "#interface", buffer.str());
   } else {
-      startLoc = m_SourceManager.loadFile(resolvedPath);
+      startLoc = m_VersionedSources
+          ? m_SourceManager.loadFileVersion(resolvedPath)
+          : m_SourceManager.loadFile(resolvedPath);
   }
 
   if (startLoc.isInvalid()) {
@@ -644,6 +658,14 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(const std::string &path, std:
 void ModuleResolver::setProvidedObjects(const std::vector<std::string> &objs) {
     for (const auto &obj : objs) {
         m_ProvidedObjects.insert(PathUtils::canonicalize(obj));
+    }
+}
+
+void ModuleResolver::setSourceOverrides(
+    std::map<std::string, std::string> overrides) {
+    m_SourceOverrides.clear();
+    for (auto &[path, content] : overrides) {
+        m_SourceOverrides[PathUtils::canonicalize(path)] = std::move(content);
     }
 }
 

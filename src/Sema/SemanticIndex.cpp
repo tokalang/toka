@@ -164,7 +164,7 @@ private:
     range.File = normalizeFile(full.FileName);
     unsigned line = full.Line > 0 ? full.Line - 1 : 0;
     unsigned column = full.Column > 0 ? full.Column - 1 : 0;
-    std::string lineData = SM.getLineData(full);
+    std::string lineData = SM.getLineData(loc);
     std::string plainName = stripped(name);
     if (!plainName.empty() && column < lineData.size() &&
         lineData.compare(column, plainName.size(), plainName) != 0) {
@@ -269,7 +269,17 @@ private:
   }
 
   std::string functionDetail(const FunctionDecl &function) const {
-    std::string result = "fn " + function.Name + "(";
+    std::string result = "fn " + function.Name;
+    if (!function.GenericParams.empty()) {
+      result += "<";
+      for (size_t i = 0; i < function.GenericParams.size(); ++i) {
+        if (i)
+          result += ", ";
+        result += function.GenericParams[i].Name;
+      }
+      result += ">";
+    }
+    result += "(";
     for (size_t i = 0; i < function.Args.size(); ++i) {
       if (i)
         result += ", ";
@@ -279,6 +289,20 @@ private:
     result +=
         ") -> " + typeName(function.ResolvedReturnType, function.ReturnType);
     return result;
+  }
+
+  std::string functionSymbol(const FunctionDecl *function) const {
+    if (!function)
+      return {};
+    auto found = FunctionSymbols.find(function);
+    if (found != FunctionSymbols.end())
+      return found->second;
+    if (function->TemplateOrigin) {
+      found = FunctionSymbols.find(function->TemplateOrigin);
+      if (found != FunctionSymbols.end())
+        return found->second;
+    }
+    return {};
   }
 
   std::string externDetail(const ExternDecl &function) const {
@@ -625,23 +649,24 @@ private:
     if (auto *call = dynamic_cast<const CallExpr *>(expression)) {
       std::string id;
       if (call->ResolvedFn)
-        id = FunctionSymbols[call->ResolvedFn];
+        id = functionSymbol(call->ResolvedFn);
       else if (call->ResolvedExtern)
         id = ExternSymbols[call->ResolvedExtern];
       else if (call->ResolvedShape)
         id = ShapeSymbols[call->ResolvedShape];
       else
         id = lookup(call->Callee);
+      const std::string &sourceName =
+          call->OriginalCallee.empty() ? call->Callee : call->OriginalCallee;
       addOccurrence(id, SemanticReferenceRole::Call,
-                    rangeFor(call->Loc, call->Callee));
+                    rangeFor(call->Loc, sourceName));
       for (const auto &argument : call->Args)
         visitExpr(argument.get(), SemanticReferenceRole::Read);
       return;
     }
     if (auto *call = dynamic_cast<const MethodCallExpr *>(expression)) {
       visitExpr(call->Object.get(), SemanticReferenceRole::Read);
-      std::string id =
-          call->ResolvedFn ? FunctionSymbols[call->ResolvedFn] : "";
+      std::string id = functionSymbol(call->ResolvedFn);
       addOccurrence(id, SemanticReferenceRole::Call,
                     rangeFor(call->Loc, call->Method));
       for (const auto &argument : call->Args)

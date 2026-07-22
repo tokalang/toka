@@ -31,6 +31,16 @@ struct DiagLoc {
 
 enum class DiagLevel { Warning, Error, Note, Structural };
 
+struct DiagnosticRecord {
+  std::string File;
+  int Line = 0;
+  int Column = 0;
+  int Length = 1;
+  DiagLevel Level = DiagLevel::Error;
+  std::string Code;
+  std::string Message;
+};
+
 enum class DiagID {
 #define DIAG(ID, Level, Code, Msg) ID,
 #include "toka/DiagnosticDefs.def"
@@ -54,6 +64,9 @@ public:
   static const ASTNode *ActiveNode;
 
   static void init(SourceManager &SM) { SrcMgr = &SM; }
+  static void reset();
+  static void setPrintingEnabled(bool enabled) { PrintingEnabled = enabled; }
+  static const std::vector<DiagnosticRecord> &records() { return Records; }
 
   static bool hasErrors() { return ErrorCount > 0; }
 
@@ -74,6 +87,8 @@ public:
   }
 
 private:
+  static bool PrintingEnabled;
+  static std::vector<DiagnosticRecord> Records;
   static void reportImpl(DiagLoc loc, DiagID id, const std::string &message);
   static void reportImpl(SourceLocation loc, DiagID id,
                          const std::string &message);
