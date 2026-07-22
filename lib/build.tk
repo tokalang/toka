@@ -747,6 +747,21 @@ fn run_build_impl(
         auto *v = *version
         auto *s = *src
 
+        auto requested_tokac# = string::from("")
+        auto requested_toka_lib# = string::from("")
+        auto requested_index# = 0
+        loop requested_index < env::args_count() {
+            auto requested_arg = env::get_arg(requested_index)
+            if requested_arg == "--tokac" && requested_index + 1 < env::args_count() {
+                requested_tokac = env::get_arg(requested_index + 1)
+                requested_index += 1
+            } else if requested_arg == "--toka-lib" && requested_index + 1 < env::args_count() {
+                requested_toka_lib = env::get_arg(requested_index + 1)
+                requested_index += 1
+            }
+            requested_index += 1
+        }
+
         if deps.len() > 0:usize {
             auto deps_iter = deps.split(',' as i32)
             loop {
@@ -831,7 +846,9 @@ fn run_build_impl(
         // Build tokac command via toka_build.py incremental manager
         auto tokac_path# = string::from("tokac")
         auto env_tokac = libc_getenv(c"TOKAC") as Addr
-        if env_tokac != 0:Addr {
+        if !requested_tokac.is_empty() {
+            tokac_path = requested_tokac.clone()
+        } else if env_tokac != 0:Addr {
             tokac_path = string::from_cstr(env_tokac as *char)
         } else {
             if is_windows {
@@ -860,13 +877,16 @@ fn run_build_impl(
         auto c_args# = string::from("")
         auto compiler_args# = Vec<string>::new()
         auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
-        if toka_lib != 0:Addr {
-            auto toka_lib_arg = string::from_cstr(toka_lib as *char)
+        auto toka_lib_arg# = requested_toka_lib.clone()
+        if toka_lib_arg.is_empty() && toka_lib != 0:Addr {
+            toka_lib_arg = string::from_cstr(toka_lib as *char)
+        }
+        if !toka_lib_arg.is_empty() {
             c_args#.push_str("-I ")
             c_args#.push_str(toka_lib_arg)
             c_args#.push_str(" ")
             compiler_args#.push(cede string::from("-I"))
-            compiler_args#.push(cede toka_lib_arg)
+            compiler_args#.push(cede toka_lib_arg.clone())
         } else {
             c_args#.push_str("-I /usr/local/lib/toka ")
             compiler_args#.push(cede string::from("-I"))
@@ -1027,9 +1047,8 @@ fn run_build_impl(
             }
         }
         if !driver_found {
-            auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
-            if toka_lib != 0:Addr {
-                driver_path = string::from_cstr(toka_lib as *char)
+            if !toka_lib_arg.is_empty() {
+                driver_path = toka_lib_arg.clone()
                 if !driver_path.ends_with("/") && !driver_path.ends_with("\\") {
                     driver_path#.push_str("/")
                 }

@@ -91,6 +91,25 @@ static std::string calculateFNV1a(const std::string &str) {
 
 namespace {
 
+void printHelp() {
+  llvm::outs()
+      << "Usage: tokac [options] <source.tk> [objects...]\n\n"
+      << "Options:\n"
+      << "  -h, --help                      Show this help\n"
+      << "  -V, --version                   Show compiler version\n"
+      << "  -I <path>                       Add an import search path\n"
+      << "  -P, --pkg <name=path>           Map a package name to a path\n"
+      << "  -o <file>                       Write output to file\n"
+      << "  -c                              Compile without linking\n"
+      << "  -O0|-O1|-O2|-O3|-Os|-Oz        Select optimization level\n"
+      << "  --target <triple>               Select target triple\n"
+      << "  --emit-obj                      Emit native object code\n"
+      << "  --emit-llvm                     Emit LLVM IR\n"
+      << "  --emit-interface                Emit a TKI interface\n"
+      << "  --check-json                    Emit JSON Lines diagnostics\n"
+      << "  -v, --verbose                   Enable progress output\n";
+}
+
 class SemanticEvidenceDumpGuard {
 public:
   ~SemanticEvidenceDumpGuard() {
@@ -296,6 +315,28 @@ int main(int argc, char **argv) {
                             tokaLibPaths.end());
   splitEnvPaths("TOKA_PATH", searchPaths);
 
+  // An installed compiler is self-contained: discover the standard library
+  // beside the SDK before falling back to cwd-relative development paths.
+  std::string executable = llvm::sys::fs::getMainExecutable(
+      argv[0], reinterpret_cast<void *>(&main));
+  if (!executable.empty()) {
+    std::filesystem::path binDir = std::filesystem::path(executable).parent_path();
+    std::vector<std::filesystem::path> bundledLibs = {
+        binDir.parent_path() / "share" / "toka" / "lib",
+        binDir.parent_path() / "lib" / "toka",
+        binDir.parent_path() / "lib",
+        binDir / "lib",
+    };
+    for (const auto &candidate : bundledLibs) {
+      if (std::filesystem::exists(candidate / "core" / "prelude.tk")) {
+        std::string normalized = normalizePath(candidate.string());
+        searchPaths.push_back(normalized);
+        trustedSystemRoots.push_back(normalized);
+        break;
+      }
+    }
+  }
+
   std::vector<std::string> sourceFiles;
   std::vector<std::string> objectFiles;
   std::map<std::string, std::string> pkgMap;
@@ -335,6 +376,9 @@ int main(int argc, char **argv) {
       }
     } else if (arg.rfind("-I", 0) == 0 && arg.length() > 2) {
       searchPaths.push_back(arg.substr(2));
+    } else if (arg == "--help" || arg == "-h") {
+      printHelp();
+      return 0;
     } else if (arg == "--version" || arg == "-V") {
       llvm::outs() << "toka version " << TOKA_VERSION_STRING << " (Built: " << __DATE__ << " " << __TIME__ << ")\n";
       return 0;
@@ -421,7 +465,9 @@ int main(int argc, char **argv) {
     } else if (arg == "--emit-interface") {
       emitInterface = true;
     } else if (arg.rfind("-", 0) == 0) {
-      // Ignore other flags for now or report error
+      llvm::errs() << "error: unknown option '" << arg
+                   << "' (use --help for available options)\n";
+      return 1;
     } else {
       if (arg.length() > 2 && (arg.substr(arg.length() - 2) == ".o" || arg.substr(arg.length() - 2) == ".a")) {
         objectFiles.push_back(arg);
@@ -482,7 +528,7 @@ int main(int argc, char **argv) {
   }
 
   if (sourceFiles.empty()) {
-    llvm::errs() << "Usage: tokac [options] <source.tk> [objects...]\n";
+    llvm::errs() << "error: no input files (use --help for usage)\n";
     return 1;
   }
 

@@ -7,6 +7,7 @@ if(APPLE)
 endif()
 
 project(TokaCompiler VERSION 0.9.8 LANGUAGES C CXX)
+include(GNUInstallDirs)
 set(TOKA_RELEASE_SUFFIX "-09-RC")
 set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}${TOKA_RELEASE_SUFFIX}")
 
@@ -43,7 +44,7 @@ endif()
 # Configure the Version header
 configure_file(
     ${CMAKE_SOURCE_DIR}/include/toka/Version.h.in
-    ${CMAKE_SOURCE_DIR}/include/toka/Version.h
+    ${CMAKE_BINARY_DIR}/include/toka/Version.h
 )
 
 set(CMAKE_CXX_STANDARD 17)
@@ -123,6 +124,82 @@ include_directories(${LLVM_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFS NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFS})
 
-include_directories(include)
+include_directories(${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include)
 
 add_subdirectory(src)
+
+# Build the native runtime and the user-facing tools into one SDK layout.  The
+# compiler must be built first because the remaining tools are written in Toka.
+set(TOKA_RUNTIME_OBJECT
+    "${CMAKE_BINARY_DIR}/lib/sys/toka_rt${CMAKE_C_OUTPUT_EXTENSION}")
+add_custom_command(
+    OUTPUT "${TOKA_RUNTIME_OBJECT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib/sys"
+    COMMAND ${CMAKE_C_COMPILER} -c "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
+            -o "${TOKA_RUNTIME_OBJECT}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
+    VERBATIM
+)
+
+file(GLOB_RECURSE TOKA_TOOL_AND_LIBRARY_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/tools/toka/*.tk"
+    "${CMAKE_SOURCE_DIR}/tools/tokafmt/*.tk"
+    "${CMAKE_SOURCE_DIR}/tools/tokalsp/*.tk"
+    "${CMAKE_SOURCE_DIR}/lib/*.tk")
+
+set(TOKA_MANAGER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/toka")
+set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt")
+set(TOKA_LANGUAGE_SERVER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokalsp")
+
+add_custom_command(
+    OUTPUT "${TOKA_MANAGER}"
+    COMMAND $<TARGET_FILE:tokac> -I "${CMAKE_SOURCE_DIR}/lib"
+            -I "${CMAKE_SOURCE_DIR}/tools/toka"
+            "${CMAKE_SOURCE_DIR}/tools/toka/src/main.tk"
+            "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_MANAGER}" -O3
+    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}" ${TOKA_TOOL_AND_LIBRARY_SOURCES}
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VERBATIM
+)
+add_custom_command(
+    OUTPUT "${TOKA_FORMATTER}"
+    COMMAND $<TARGET_FILE:tokac> -I "${CMAKE_SOURCE_DIR}/lib"
+            -I "${CMAKE_SOURCE_DIR}/tools/tokafmt"
+            "${CMAKE_SOURCE_DIR}/tools/tokafmt/src/main.tk"
+            "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_FORMATTER}" -O3
+    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}" ${TOKA_TOOL_AND_LIBRARY_SOURCES}
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VERBATIM
+)
+add_custom_command(
+    OUTPUT "${TOKA_LANGUAGE_SERVER}"
+    COMMAND $<TARGET_FILE:tokac> -I "${CMAKE_SOURCE_DIR}/lib"
+            -I "${CMAKE_SOURCE_DIR}/tools/tokalsp"
+            "${CMAKE_SOURCE_DIR}/tools/tokalsp/main.tk"
+            "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_LANGUAGE_SERVER}" -O3
+    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}" ${TOKA_TOOL_AND_LIBRARY_SOURCES}
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VERBATIM
+)
+add_custom_target(toka-tools ALL
+    DEPENDS "${TOKA_MANAGER}" "${TOKA_FORMATTER}"
+            "${TOKA_LANGUAGE_SERVER}")
+
+install(TARGETS tokac RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(PROGRAMS
+    "${TOKA_MANAGER}"
+    "${TOKA_FORMATTER}"
+    "${TOKA_LANGUAGE_SERVER}"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/toka/lib"
+    PATTERN "*.o" EXCLUDE
+    PATTERN "*.obj" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
+    PATTERN "__pycache__" EXCLUDE)
+install(FILES "${TOKA_RUNTIME_OBJECT}"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/toka/lib/sys")
+install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/scripts/toka_build.py"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/toka/lib/toolchain")
+install(FILES README.md README_zh.md LICENSE
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}")

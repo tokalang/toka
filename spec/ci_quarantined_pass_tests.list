@@ -1,0 +1,17 @@
+# These fixtures exercise the in-progress memory-summary research path.  They
+# remain part of the release gate; the ordinary PR gate quarantines them until
+# that research branch is folded into the 1.0 implementation.
+tests/pass/g01_core_handle_views.tk
+tests/pass/g01_handle_hash_position_matrix.tk
+tests/pass/g03_index_stride.tk
+tests/pass/g03_safety_scope.tk
+tests/pass/g03_unsafe_null_privilege.tk
+tests/pass/g04_test_std_net_udp.tk
+tests/pass/g07_for_iterators.tk
+tests/pass/g07_ptr_compound.tk
+tests/pass/g08_attribut.tk
+tests/pass/g08_auto_drop.tk
+tests/pass/g08_inherent_restriction.tk
+tests/pass/g08_linked_list_uniqueptr.tk
+tests/pass/g08_smart_ptr_borrow.tk
+tests/pass/g10_async_net_test.tk

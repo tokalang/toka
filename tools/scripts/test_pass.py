@@ -323,7 +323,16 @@ def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
         return False, fail_desc + log_dump
 
 def main():
-    runtime_only = len(sys.argv) == 2 and sys.argv[1] == "--prepare-runtime-only"
+    args = list(sys.argv[1:])
+    runtime_only = args == ["--prepare-runtime-only"]
+    exclude_file = None
+    if "--exclude-file" in args:
+        index = args.index("--exclude-file")
+        if index + 1 >= len(args):
+            safe_print(RED + "--exclude-file requires a path" + NC)
+            sys.exit(2)
+        exclude_file = args[index + 1]
+        del args[index:index + 2]
 
     # Orchestrator Build
     if os.path.exists("build") and os.path.exists("build/CMakeCache.txt") and shutil.which("cmake"):
@@ -353,8 +362,8 @@ def main():
     
     # Find all test cases
     test_cases = []
-    if len(sys.argv) > 1:
-        for path in sys.argv[1:]:
+    if args:
+        for path in args:
             normalized = path.replace("\\", "/")
             if not normalized.endswith(".tk") or not os.path.isfile(normalized):
                 safe_print(RED + "Invalid pass fixture: " + normalized + NC)
@@ -366,6 +375,20 @@ def main():
             for f in files:
                 if f.endswith(".tk"):
                     test_cases.append(os.path.join(root, f).replace("\\", "/"))
+
+    if exclude_file:
+        with open(exclude_file, "r", encoding="utf-8") as stream:
+            excluded = {
+                line.strip().replace("\\", "/")
+                for line in stream
+                if line.strip() and not line.lstrip().startswith("#")
+            }
+        missing = sorted(excluded.difference(test_cases))
+        if missing:
+            safe_print(RED + "Unknown quarantined pass fixture(s): " + ", ".join(missing) + NC)
+            sys.exit(2)
+        test_cases = [case for case in test_cases if case not in excluded]
+        safe_print("Quarantined pass fixtures: %d" % len(excluded))
                 
     test_cases.sort()
     

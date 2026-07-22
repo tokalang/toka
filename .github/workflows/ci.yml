@@ -1,0 +1,70 @@
+name: Pull Request Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler-and-sdk:
+    name: Compiler and SDK (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-22.04
+          - name: macos-arm64
+            runner: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 20 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo -E apt-get update -o Acquire::Retries=5
+          wget --timeout=15 --tries=3 https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo -E ./llvm.sh 20
+          sudo apt-get install -y cmake ninja-build liblld-20-dev lld-20 libpolly-20-dev libzstd-dev
+
+      - name: Install LLVM 20 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@20 lld@20 zstd
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+          echo "LLVM_DIR=$(brew --prefix llvm@20)/lib/cmake/llvm" >> "$GITHUB_ENV"
+          echo "LLD_DIR=$(brew --prefix lld@20)/lib/cmake/lld" >> "$GITHUB_ENV"
+          echo "ZSTD_LIBRARY=$(brew --prefix zstd)/lib/libzstd.dylib" >> "$GITHUB_ENV"
+
+      - name: Configure and build SDK
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            ${LLVM_DIR:+-DLLVM_DIR="$LLVM_DIR"} \
+            ${LLD_DIR:+-DLLD_DIR="$LLD_DIR"} \
+            ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"}
+          cmake --build build --parallel 2
+
+      - name: Verify developer experience
+        run: python3 tools/scripts/test_developer_experience.py
+
+      - name: Run compiler regression suites
+        env:
+          CORES: "2"
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/test_pass.py --exclude-file spec/ci_quarantined_pass_tests.list
+          python3 tools/scripts/test_verify_fail.py
+          python3 tools/scripts/test_verify_warn.py
+          tools/scripts/test_semantic_replay.sh

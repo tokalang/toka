@@ -506,47 +506,133 @@ impl Printer {
 
 fn _str_cast(s: str) -> str <- s { return s.clone() }
 
-fn main() -> i32 {
-    auto argc = env::args_count()
-    if argc < 2 {
-        println("Usage: tokafmt <file.tk>")
-        return 1
-    }
+fn ignored_directory(name: str) -> bool {
+    return name.equals(".git") || name.equals(".toka") || name.equals("build") ||
+           name.equals("target") || name.equals(".tokapkg")
+}
 
-    auto target_file = env::get_arg(1)
-    
-    // Gracefully ignore directory paths
-    if fs::exists(target_file.clone()) {
-        auto meta_res = fs::metadata(target_file.clone())
-        if meta_res.is_ok() {
-            auto meta = meta_res.unwrap()
-            if meta.is_dir() {
-                return 0
-            }
-        }
+fn join_path(parent: string, child: string) -> string {
+    auto result# = parent.clone()
+    if !result.ends_with("/") && !result.ends_with("\\") {
+        result#.push_str("/")
     }
-    
-    // Open file to read formatting
-    auto file# = File::open(target_file.clone(), "r")
+    result#.push_str(child.as_str())
+    return result
+}
+
+fn format_file(path: string, write: bool, check: bool) -> i32 {
+    auto file# = File::open(path.clone(), "r")
     if !file.is_valid() {
-        println("Error: Could not read file {}", target_file.as_str())
+        println("Error: Could not read file {}", path.as_str())
         return 1
     }
     auto content_res = file.read_to_string()
     if !content_res.is_ok() {
-        println("Error reading string from file")
+        println("Error: Could not read file {}", path.as_str())
         return 1
     }
     auto content = content_res.unwrap()
     file#.close()
-
-    if content.len() == 0 {
-        return 0
-    }
+    if content.len() == 0 { return 0 }
 
     auto lexer = Lexer::new(content.as_str())
     auto printer# = Printer::new()
-    auto formatted_code = printer#.format(lexer)
-    print("{}", formatted_code)
+    auto formatted = printer#.format(lexer)
+    if check {
+        if content != formatted {
+            println("Needs formatting: {}", path.as_str())
+            return 1
+        }
+        return 0
+    }
+    if write {
+        if content != formatted {
+            auto result = fs::write_string(path.clone(), formatted.as_str())
+            if result.is_err() {
+                println("Error: Could not write file {}", path.as_str())
+                return 1
+            }
+        }
+        return 0
+    }
+    print("{}", formatted)
+    return 0
+}
+
+fn format_path(path: string, write: bool, check: bool) -> i32 {
+    if !fs::exists(path.clone()) {
+        // Project commands deliberately pass conventional paths that may not
+        // exist. Missing explicit .tk files remain errors.
+        if path.ends_with(".tk") {
+            println("Error: Path not found: {}", path.as_str())
+            return 1
+        }
+        return 0
+    }
+    auto metadata_result = fs::metadata(path.clone())
+    if metadata_result.is_err() { return 1 }
+    auto meta = metadata_result.unwrap()
+    if meta.is_file() {
+        if path.ends_with(".tk") { return format_file(path, write, check) }
+        return 0
+    }
+    if !meta.is_dir() { return 0 }
+
+    auto entries# = fs::read_dir(path.clone())
+    auto failures# = 0
+    loop true {
+        auto entry = entries#.next()
+        if entry.is_none() { break }
+        auto name = entry.unwrap()
+        if ignored_directory(name.as_str()) { continue }
+        auto child = join_path(path.clone(), name)
+        if format_path(child, write, check) != 0 { failures += 1 }
+    }
+    return failures
+}
+
+fn main() -> i32 {
+    auto argc = env::args_count()
+    if argc < 2 {
+        println("Usage: tokafmt [--write|--check] <file-or-directory>...")
+        return 0
+    }
+
+    auto first = env::get_arg(1)
+    if first == string::from("--help") || first == string::from("-h") {
+        println("Usage: tokafmt [--write|--check] <file-or-directory>...")
+        return 0
+    }
+    if first == string::from("--version") || first == string::from("-V") {
+        println("tokafmt version 0.9.8-09-RC")
+        return 0
+    }
+
+    auto write# = false
+    auto check# = false
+    auto start# = 1
+    if first == string::from("--write") {
+        write = true
+        start = 2
+    } else if first == string::from("--check") {
+        check = true
+        start = 2
+    } else if first.starts_with("-") {
+        println("Error: unknown option '{}'", first)
+        return 1
+    }
+    if start >= argc {
+        println("Error: at least one file or directory is required")
+        return 1
+    }
+
+    auto failures# = 0
+    auto index# = start
+    loop index < argc {
+        auto path = env::get_arg(index)
+        if format_path(path, write, check) != 0 { failures += 1 }
+        index += 1
+    }
+    if failures != 0 { return 1 }
     return 0
 }

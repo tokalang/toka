@@ -21,6 +21,22 @@ extern bool g_JsonDiagnostics;
 
 namespace toka {
 
+static std::string escapeJson(const std::string &value) {
+  std::string escaped;
+  escaped.reserve(value.size());
+  for (char ch : value) {
+    switch (ch) {
+    case '\\': escaped += "\\\\"; break;
+    case '"': escaped += "\\\""; break;
+    case '\n': escaped += "\\n"; break;
+    case '\r': escaped += "\\r"; break;
+    case '\t': escaped += "\\t"; break;
+    default: escaped += ch; break;
+    }
+  }
+  return escaped;
+}
+
 uint32_t ASTNode::NextNodeSerial = 1;
 uint32_t ASTNode::CurrentExpansionContext = 0;
 const ASTNode *DiagnosticEngine::ActiveNode = nullptr;
@@ -88,21 +104,13 @@ void DiagnosticEngine::reportImpl(DiagLoc loc, DiagID id,
   }
 
   if (::g_JsonDiagnostics) {
-    std::string escapedMsg = message;
-    size_t pos = 0;
-    while ((pos = escapedMsg.find('"', pos)) != std::string::npos) {
-      escapedMsg.replace(pos, 1, "\\\"");
-      pos += 2;
-    }
-    std::cout << "{\"file\": \"" << loc.File << "\", \"line\": " << loc.Line 
+    std::string escapedMsg = escapeJson(message);
+    std::cout << "{\"file\": \"" << escapeJson(loc.File) << "\", \"line\": " << loc.Line
               << ", \"col\": " << loc.Col << ", \"message\": \"" << escapedMsg 
               << "\", \"code\": \"" << getCode(id) << "\", \"level\": " << (int)level
               << ", \"ast_anchor\": 0, \"semantic_id\": {\"file_id\": 0, \"node_serial\": 0, \"expansion_context\": 0}"
               << ", \"compiler_version\": \"" << TOKA_COMPILER_INTERFACE_VERSION
               << "\"}\n";
-#ifndef __EMSCRIPTEN__
-    if (level == DiagLevel::Error) exit(0); // Exit 0 for LSP so it doesn't think it crashed
-#endif
     return;
   }
 
@@ -150,12 +158,7 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
   }
 
   if (::g_JsonDiagnostics) {
-    std::string escapedMsg = message;
-    size_t pos = 0;
-    while ((pos = escapedMsg.find('"', pos)) != std::string::npos) {
-      escapedMsg.replace(pos, 1, "\\\"");
-      pos += 2;
-    }
+    std::string escapedMsg = escapeJson(message);
     std::string fileName = "";
     int line = 0;
     int col = 0;
@@ -173,7 +176,7 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
       node_serial = ActiveNode->NodeSerial;
       expansion_context = ActiveNode->ExpansionContext;
     }
-    std::cout << "{\"file\": \"" << fileName << "\", \"line\": " << line 
+    std::cout << "{\"file\": \"" << escapeJson(fileName) << "\", \"line\": " << line
               << ", \"col\": " << col << ", \"message\": \"" << escapedMsg 
               << "\", \"code\": \"" << getCode(id) << "\", \"level\": " << (int)level
               << ", \"ast_anchor\": " << loc.getRawEncoding()
@@ -182,9 +185,6 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
               << ", \"expansion_context\": " << expansion_context << "}"
               << ", \"compiler_version\": \"" << TOKA_COMPILER_INTERFACE_VERSION
               << "\"}\n";
-#ifndef __EMSCRIPTEN__
-    if (level == DiagLevel::Error) exit(0); // Exit 0 for LSP so it doesn't think it crashed
-#endif
     return;
   }
 
