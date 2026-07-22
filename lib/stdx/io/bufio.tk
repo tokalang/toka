@@ -232,3 +232,139 @@ impl<'W: @Writer> BufferedWriter<'W>@Writer {
         return self#.write_bytes(*buf, len)
     }
 }
+
+import std/net::{TcpStream}
+
+/// AsyncBufferedReader wraps a TcpStream and buffers its async reads.
+pub shape AsyncBufferedReader (
+    stream: TcpStream,
+    buf: [u8; 4096],
+    pos: usize,
+    cap: usize
+)
+
+impl AsyncBufferedReader@encap {
+    pub stream
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+impl AsyncBufferedReader {
+    pub fn new(stream: cede TcpStream) -> AsyncBufferedReader {
+        auto init_buf = [0:u8; 4096]
+        return AsyncBufferedReader(
+            stream = cede stream,
+            buf = init_buf,
+            pos = 0 as usize,
+            cap = 0 as usize
+        )
+    }
+
+    pub fn read_until_async(self#, delimiter: u8, max_bytes: usize) -> async Result<string, string> {
+        auto res_str# = string::from("")
+        auto done# = false
+        auto total_bytes# = 0:usize
+
+        loop !done {
+            if self.pos >= self.cap {
+                auto *ptr = &self.buf[0] as *u8
+                auto fill_res = self.stream#.read_async(*ptr, 4096:usize).await
+                match fill_res {
+                    auto Result::Ok(n) => {
+                        if n == 0:usize {
+                            done = true
+                            break
+                        }
+                        self.pos = 0:usize
+                        self.cap = n
+                    }
+                    auto Result::Err(&e) => {
+                        return Result<string, string>::Err(e.clone())
+                    }
+                }
+            }
+
+            auto start_pos = self.pos
+            auto found_delim# = false
+            auto search_idx# = self.pos
+
+            loop search_idx < self.cap {
+                auto b = self.buf[search_idx]
+                if b == delimiter {
+                    found_delim = true
+                    break
+                }
+                search_idx = search_idx + (1 as usize)
+            }
+
+            auto end_pos# = search_idx
+            if found_delim {
+                end_pos = end_pos + (1 as usize)
+                done = true
+            }
+
+            auto chunk_len = end_pos - start_pos
+            if total_bytes + chunk_len > max_bytes {
+                return Result<string, string>::Err(string::from("Header or line size limit exceeded"))
+            }
+
+            if chunk_len > 0:usize {
+                unsafe {
+                    auto *chunk_ptr = &self.buf[start_pos] as *u8
+                    res_str#.push_buf(*chunk_ptr, chunk_len)
+                }
+                self.pos = end_pos
+                total_bytes = total_bytes + chunk_len
+            }
+        }
+
+        return Result<string, string>::Ok(res_str)
+    }
+
+    pub fn read_line_async(self#, max_bytes: usize) -> async Result<string, string> {
+        return self#.read_until_async(10:u8, max_bytes).await
+    }
+
+    pub fn read_bytes_async(self#, *out_buf: u8, len: usize) -> async Result<usize, string> {
+        if len == 0:usize {
+            return Result<usize, string>::Ok(0:usize)
+        }
+
+        if self.pos < self.cap {
+            auto avail = self.cap - self.pos
+            auto to_copy# = len
+            if to_copy > avail {
+                to_copy = avail
+            }
+
+            unsafe {
+                auto *src = &self.buf[self.pos] as *u8
+                libc_memcpy(*out_buf as *void, *src as *void, to_copy)
+            }
+            self.pos = self.pos + to_copy
+            return Result<usize, string>::Ok(to_copy)
+        }
+
+        return self.stream#.read_async(*out_buf, len).await
+    }
+
+    pub fn read_exact_async(self#, *out_buf: u8, len: usize) -> async Result<usize, string> {
+        auto total# = 0:usize
+        loop total < len {
+            auto *current_ptr = (*out_buf as Addr + total as u64) as *u8
+            auto res = self#.read_bytes_async(*current_ptr, len - total).await
+            match res {
+                auto Result::Ok(n) => {
+                    if n == 0:usize {
+                        return Result<usize, string>::Err(string::from("Unexpected EOF during AsyncBufferedReader::read_exact_async"))
+                    }
+                    total = total + n
+                }
+                auto Result::Err(&e) => {
+                    return Result<usize, string>::Err(e.clone())
+                }
+            }
+        }
+        return Result<usize, string>::Ok(total)
+    }
+}

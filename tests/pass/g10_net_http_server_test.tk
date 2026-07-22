@@ -1,3 +1,5 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+
 import std/io::{println}
 import stdx/net/http::{HttpRequest, HttpResponse, HttpMethod, parse_http_request}
 import std/net::{TcpListener, TcpStream, Ipv4Addr, SocketAddrV4}
@@ -28,115 +30,68 @@ fn handle_request(req#: HttpRequest) -> HttpResponse {
     return HttpResponse::not_found()
 }
 
-fn run_server(port: u16) -> i32 {
-    unsafe {
-        println("[Server] Binding to 127.0.0.1:{}...", port as i32)
-        auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
-        auto addr = SocketAddrV4::new(ip, port)
-        
-        auto listener# = TcpListener::bind(addr)
-        if !listener.is_valid() {
-             return 1
-        }
-        println("[Server] Listening...")
-        
-        auto stream# = listener#.accept()
-        if !stream.is_valid() {
-             return 1
-        }
-        
-        println("[Server] Accepted Web connection!")
-        
-        auto buf: [char; 1024] = [0 as char; 1024]
-        auto *buf_ptr# = &buf[0] as *u8
-        
-        auto read_res = stream#.read(*buf_ptr, 1024)
-        if read_res.is_err() {
-            println("[Server] Read error")
-            return 1
-        }
-        
-        auto n = read_res.unwrap()
-        if n == 0:usize {
-            return 0
-        }
-        
-        auto req_str = string::from_with_len(&buf[0] as *char, n as i32)
-        println("[Server] Incoming Request length: {} bytes", n as i32)
-        
-        auto req# = parse_http_request(req_str)
-        auto is_get# = false
-        match req.method {
-             auto HttpMethod::GET => { is_get = true }
-             _ => {}
-        }
-
-        if is_get {
-             println("[Server] Method: GET, Path: {}", req.path.c_str())
-        }
-        
-        // Pass to handler
-        auto resp# = handle_request(req)
-        auto resp_str = resp#.to_string()
-        
-        println("[Server] Responding with HTTP {}...", resp.status_code)
-        
-        auto *ptr = resp_str.c_str() as *u8
-        auto w_res = stream#.write(*ptr, resp_str.len() as usize)
-        
-        // Let it close naturally to end server.
-        return 0
-    }
-}
-
 pub fn main() -> i32 {
-    auto test_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 49998)
-    {
-        auto dummy_listener = TcpListener::bind(test_addr)
-        if !dummy_listener.is_valid() {
+    unsafe {
+        auto bind_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16)
+        auto listener# = TcpListener::bind(bind_addr)
+        if !listener.is_valid() {
             println("Networking unsupported or port in use, skipping.")
             return 0
         }
-    }
 
-    unsafe {
+        auto local_port = listener.local_port()
+
         // Spawn server thread
-        auto server_thread# = thread_spawn<i32>({ => 
-            return cede run_server(49998:u16)
+        auto server_thread# = thread_spawn<i32>(cede { [cede listener] =>
+            unsafe {
+                auto s# = listener#.accept()
+                if !s.is_valid() { return cede 1 }
+
+                auto buf: [char; 1024] = [0 as char; 1024]
+                auto *buf_ptr# = &buf[0] as *u8
+
+                auto read_res = s#.read(*buf_ptr, 1024)
+                if read_res.is_err() { return cede 1 }
+
+                auto n = read_res.unwrap()
+                if n == 0:usize { return cede 0 }
+
+                auto req_str = string::from_with_len(&buf[0] as *char, n as i32)
+                auto req_res = parse_http_request(req_str)
+                if req_res.is_err() { return cede 1 }
+
+                auto req# = req_res.unwrap()
+                auto resp# = handle_request(req)
+                auto resp_str = resp#.to_string()
+
+                auto *ptr = resp_str.c_str() as *u8
+                auto w_res = s#.write(*ptr, resp_str.len() as usize)
+                if w_res.is_err() { return cede 1 }
+
+                return cede 0
+            }
         })
         
-        auto ip = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
-        auto addr = SocketAddrV4::new(ip, 49998:u16)
-        
-        auto stream# = TcpStream::connect(addr)
-        auto retries# = 0
-        loop !stream.is_valid() {
-            if retries > 100 {
-                assert(false, "Client connect timeout after 10s")
-            }
-            sleep(1)
-            stream = TcpStream::connect(addr)
-            retries = retries + 1
-        }
-        
-        auto req_line = string::from("GET /home HTTP/1.1\r\nHost: localhost:49998\r\nAccept: */*\r\n\r\n")
+        sleep(1)
+
+        auto client_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), local_port)
+        auto stream# = TcpStream::connect(client_addr)
+        assert(stream.is_valid(), "TcpStream::connect failed")
+
+        auto req_line = string::from("GET /home HTTP/1.1\r\nHost: localhost\r\nAccept: */*\r\n\r\n")
         auto write_res = stream#.write_string(req_line)
-        
+        assert(write_res.is_ok(), "Client write failed")
+
         // Read response
         auto buf: [char; 1024] = [0 as char; 1024]
         auto *buf_ptr# = &buf[0] as *u8
         auto read_res = stream#.read(*buf_ptr, 1024)
-        
-        if read_res.is_ok() {
-            auto n = read_res.unwrap()
-            auto idx = n as i32
-            auto *chr_ptr# = &buf[idx] as *char
-            chr_ptr = 0 as char
-            
-            println("[Client] HTTP Response received ({} bytes):", n as i32)
-            println("{}", &buf[0] as *char)
-        }
-        
+        assert(read_res.is_ok(), "Client read failed")
+
+        auto n = read_res.unwrap()
+        auto resp_str = string::from_with_len(&buf[0] as *char, n as i32)
+        assert(resp_str.contains("Welcome to Toka HTTP Framework"), "HTTP Response content mismatch")
+
         stream#.close()
         server_thread#.join()
         println("[Test] Web Server HTTP engine successful!")

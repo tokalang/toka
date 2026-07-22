@@ -252,7 +252,6 @@ impl TcpStream {
         }
     }
     
-    
     pub fn read(self#, *buf: u8, len: usize) -> Result<usize, string> {
         unsafe {
             auto my_fd = self.fd
@@ -340,6 +339,26 @@ impl TcpStream {
                 auto Result::Ok(n) => {
                     if n == 0:usize {
                         return Result<usize, string>::Err(string::from("Unexpected EOF during read_exact_async"))
+                    }
+                    total = total + n
+                }
+                auto Result::Err(&e) => {
+                    return Result<usize, string>::Err(e.clone())
+                }
+            }
+        }
+        return Result<usize, string>::Ok(total)
+    }
+
+    pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
+        auto total# = 0:usize
+        loop total < len {
+            auto *current_ptr = (*buf as Addr + total as u64) as *u8
+            auto res = self#.write_async(*current_ptr, len - total).await
+            match res {
+                auto Result::Ok(n) => {
+                    if n == 0:usize {
+                        return Result<usize, string>::Err(string::from("Zero byte written during write_all_async"))
                     }
                     total = total + n
                 }

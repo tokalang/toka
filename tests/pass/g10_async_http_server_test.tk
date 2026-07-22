@@ -42,7 +42,12 @@ fn process_client(cede stream: TcpStream) -> async i32 {
         if n == 0:usize { return 0 }
         
         auto req_str = string::from_with_len(&buf[0] as *char, n as i32)
-        auto req# = parse_http_request(req_str)
+        auto req_res = parse_http_request(req_str)
+        if req_res.is_err() {
+            println("[Client Handler] Parse request error")
+            return 1
+        }
+        auto req# = req_res.unwrap()
         
         // Pass to handler
         auto resp# = handle_request(req)

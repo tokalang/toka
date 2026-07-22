@@ -1,4 +1,8 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
+import std/vec::{Vec}
+import core/result::{Result}
+import core/option::{Option}
 
 pub shape HttpMethod (
     GET = 0 |
@@ -8,66 +12,253 @@ pub shape HttpMethod (
     UNKNOWN = 4
 )
 
+pub shape HeaderEntry (
+    key: string,
+    value#: string
+)
+
+impl HeaderEntry@encap {
+    pub key
+    pub value
+    fn drop(self#) {}
+    pub fn clone(self) -> HeaderEntry {
+        return HeaderEntry(key = self.key.clone(), value = self.value.clone())
+    }
+}
+
+pub shape HeaderMap (
+    entries: Vec<HeaderEntry>
+)
+
+impl HeaderMap@encap {
+    pub entries
+    fn drop(self#) {}
+    pub fn clone(self) -> HeaderMap {
+        auto new_entries# = Vec<HeaderEntry>::new()
+        auto idx# = 0:usize
+        loop idx < self.entries.len() {
+            auto entry = self.entries.get(idx)
+            new_entries#.push(cede entry.clone())
+            idx = idx + 1
+        }
+        return HeaderMap(entries = new_entries)
+    }
+}
+
+// RFC 7230 Token Validation: DIGIT, ALPHA, or ! # $ % & ' * + - . ^ _ ` | ~
+pub fn is_valid_header_name(key: str) -> bool {
+    if key.len() == 0 { return false }
+    auto idx# = 0:usize
+    auto bytes = key.as_bytes()
+    loop idx < key.len() {
+        auto b = bytes.at(idx).unwrap()
+        if b >= 65:byte && b <= 90:byte {
+            idx = idx + 1
+            continue
+        }
+        if b >= 97:byte && b <= 122:byte {
+            idx = idx + 1
+            continue
+        }
+        if b >= 48:byte && b <= 57:byte {
+            idx = idx + 1
+            continue
+        }
+        if b == 33:byte || b == 35:byte || b == 36:byte || b == 37:byte || b == 38:byte {
+            idx = idx + 1
+            continue
+        }
+        if b == 39:byte || b == 42:byte || b == 43:byte || b == 45:byte || b == 46:byte {
+            idx = idx + 1
+            continue
+        }
+        if b == 94:byte || b == 95:byte || b == 96:byte || b == 124:byte || b == 126:byte {
+            idx = idx + 1
+            continue
+        }
+        return false
+    }
+    return true
+}
+
+// RFC 7230 Header Value Validation: HTAB (9), printable ASCII (32..126), or UTF-8 octets (128..255)
+pub fn is_valid_header_value(val: str) -> bool {
+    auto idx# = 0:usize
+    auto bytes = val.as_bytes()
+    loop idx < val.len() {
+        auto b = bytes.at(idx).unwrap()
+        if b == 9:byte {
+            idx = idx + 1
+            continue
+        }
+        if b >= 32:byte && b <= 126:byte {
+            idx = idx + 1
+            continue
+        }
+        if b >= 128:byte {
+            idx = idx + 1
+            continue
+        }
+        return false
+    }
+    return true
+}
+
+// RFC 7230 Section 3.3.2: Content-Length = 1*DIGIT (No '+' or '-' signs allowed)
+pub fn parse_content_length(cl_str: str) -> Result<usize, string> {
+    if cl_str.len() == 0 {
+        return Result<usize, string>::Err(string::from("Empty Content-Length"))
+    }
+    auto idx# = 0:usize
+    auto bytes = cl_str.as_bytes()
+    auto acc# = 0:usize
+    loop idx < cl_str.len() {
+        auto b = bytes.at(idx).unwrap()
+        if b < 48:byte || b > 57:byte {
+            return Result<usize, string>::Err(string::from("Invalid Content-Length: non-digit character found"))
+        }
+        auto digit = (b as usize) - 48:usize
+        // Overflow check (assume max usize limit)
+        if acc > (18446744073709551615:usize - digit) / 10:usize {
+            return Result<usize, string>::Err(string::from("Content-Length overflow"))
+        }
+        acc = acc * 10:usize + digit
+        idx = idx + 1
+    }
+    return Result<usize, string>::Ok(acc)
+}
+
+impl HeaderMap {
+    pub fn new() -> HeaderMap {
+        return HeaderMap(entries = Vec<HeaderEntry>::new())
+    }
+
+    pub fn insert(self#, key: string, value: string) -> Result<bool, string> {
+        if !is_valid_header_name(key.as_str()) {
+            return Result<bool, string>::Err(string::from("Invalid Header Name: forbidden token characters or CR/LF"))
+        }
+        if !is_valid_header_value(value.as_str()) {
+            return Result<bool, string>::Err(string::from("Invalid Header Value: forbidden control characters"))
+        }
+        auto norm_key = key.to_ascii_lowercase()
+        auto idx# = 0:usize
+        loop idx < self.entries.len() {
+            auto *entry_ptr = self.entries.get_ref(idx)
+            if entry_ptr.key.as_str().eq_ignore_ascii_case(key.as_str()) {
+                unsafe {
+                    entry_ptr.value = value
+                }
+                return Result<bool, string>::Ok(true)
+            }
+            idx = idx + 1
+        }
+        self.entries#.push(cede HeaderEntry(key = norm_key, value = value))
+        return Result<bool, string>::Ok(true)
+    }
+
+    pub fn get(self, key: str) -> Option<string> {
+        auto idx# = 0:usize
+        loop idx < self.entries.len() {
+            auto *entry_ptr = self.entries.get_ref(idx)
+            if entry_ptr.key.as_str().eq_ignore_ascii_case(key) {
+                return Option<string>::Some(entry_ptr.value.clone())
+            }
+            idx = idx + 1
+        }
+        return Option<string>::None
+    }
+
+    pub fn contains_key(self, key: str) -> bool {
+        return self.get(key).is_some()
+    }
+}
+
 pub shape HttpRequest (
     method: HttpMethod,
     path: string,
+    version: string,
+    headers: HeaderMap,
     body: string
 )
 
 impl HttpRequest@encap {
     pub method
     pub path
+    pub version
+    pub headers
     pub body
-    fn drop(self#) {} // string fields auto drop
-    
+    fn drop(self#) {}
+
     pub fn clone(self) -> HttpRequest {
-        return HttpRequest(method = self.method, path = self.path.clone(), body = self.body.clone())
+        return HttpRequest(
+            method = self.method,
+            path = self.path.clone(),
+            version = self.version.clone(),
+            headers = self.headers.clone(),
+            body = self.body.clone()
+        )
     }
 }
 
 pub shape HttpResponse (
     status_code: i32,
     content_type: string,
+    headers: HeaderMap,
     body: string
 )
 
 impl HttpResponse@encap {
     pub status_code
     pub content_type
+    pub headers
     pub body
-    fn drop(self#) {} 
-    
+    fn drop(self#) {}
+
     pub fn clone(self) -> HttpResponse {
-        return HttpResponse(status_code = self.status_code, content_type = self.content_type.clone(), body = self.body.clone())
+        return HttpResponse(
+            status_code = self.status_code,
+            content_type = self.content_type.clone(),
+            headers = self.headers.clone(),
+            body = self.body.clone()
+        )
     }
 }
 
 impl HttpResponse {
     pub fn ok(body: string) -> HttpResponse {
+        auto headers# = HeaderMap::new()
+        auto _res = headers#.insert(string::from("Content-Type"), string::from("text/plain"))
         return HttpResponse(
             status_code = 200,
             content_type = string::from("text/plain"),
+            headers = headers,
             body = body
         )
     }
 
     pub fn html(body: string) -> HttpResponse {
+        auto headers# = HeaderMap::new()
+        auto _res = headers#.insert(string::from("Content-Type"), string::from("text/html"))
         return HttpResponse(
             status_code = 200,
             content_type = string::from("text/html"),
+            headers = headers,
             body = body
         )
     }
 
     pub fn not_found() -> HttpResponse {
+        auto headers# = HeaderMap::new()
+        auto _res = headers#.insert(string::from("Content-Type"), string::from("text/plain"))
         return HttpResponse(
             status_code = 404,
             content_type = string::from("text/plain"),
+            headers = headers,
             body = string::from("404 Not Found")
         )
     }
 
-    pub fn to_string(self#) -> string {
+    pub fn to_string(self) -> string {
         auto res# = string::from("HTTP/1.1 ")
         if self.status_code == 200 {
             res#.push_str("200 OK\r\n")
@@ -77,38 +268,247 @@ impl HttpResponse {
             res#.push_str("500 Internal Server Error\r\n")
         }
 
-        res#.push_str("Content-Type: ")
-        res#.push_str(self.content_type.as_str())
-        res#.push_str("\r\nContent-Length: ")
+        auto has_connection# = false
+
+        auto idx# = 0:usize
+        loop idx < self.headers.entries.len() {
+            auto *entry_ptr = self.headers.entries.get_ref(idx)
+            if entry_ptr.key.eq(string::from("connection")) {
+                has_connection = true
+            }
+            if entry_ptr.key.eq(string::from("content-length")) {
+                idx = idx + 1
+                continue
+            }
+            res#.push_str(entry_ptr.key.as_str())
+            res#.push_str(": ")
+            res#.push_str(entry_ptr.value.as_str())
+            res#.push_str("\r\n")
+            idx = idx + 1
+        }
+
+        if !self.headers.contains_key("Content-Type") {
+            res#.push_str("Content-Type: ")
+            res#.push_str(self.content_type.as_str())
+            res#.push_str("\r\n")
+        }
+
+        res#.push_str("Content-Length: ")
         auto len_str = string::from_int(self.body.len())
         res#.push_str(len_str.as_str())
-        res#.push_str("\r\nConnection: close\r\n\r\n")
-        
+        res#.push_str("\r\n")
+
+        if !has_connection {
+            res#.push_str("Connection: close\r\n")
+        }
+        res#.push_str("\r\n")
         res#.push_str(self.body.as_str())
         return res
     }
 }
 
-pub fn parse_http_request(req_str: string) -> HttpRequest {
-    auto iter# = req_str.split(10) // split by \n
-    if iter#.is_done() {
-        return HttpRequest(method = HttpMethod::UNKNOWN, path = string::from("/"), body = string::from(""))
+pub shape HeaderBoundary (
+    index: i32,
+    delim_len: usize
+)
+
+pub fn find_header_boundary(req_str: str) -> HeaderBoundary {
+    auto idx# = 0:usize
+    if req_str.len() < 2 { return HeaderBoundary(index = -1, delim_len = 0:usize) }
+    auto bytes = req_str.as_bytes()
+    loop idx + 1 < req_str.len() {
+        auto b0 = bytes.at(idx).unwrap()
+        auto b1 = bytes.at(idx + 1).unwrap()
+        if b0 == 10:byte && b1 == 10:byte {
+            return HeaderBoundary(index = idx as i32, delim_len = 2:usize)
+        }
+        if idx + 3 < req_str.len() {
+            auto b2 = bytes.at(idx + 2).unwrap()
+            auto b3 = bytes.at(idx + 3).unwrap()
+            if b0 == 13:byte && b1 == 10:byte && b2 == 13:byte && b3 == 10:byte {
+                return HeaderBoundary(index = idx as i32, delim_len = 4:usize)
+            }
+        }
+        idx = idx + 1
     }
-    
+    return HeaderBoundary(index = -1, delim_len = 0:usize)
+}
+
+pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) -> Result<HttpRequest, string> {
+    auto boundary = find_header_boundary(req_str.as_str())
+    if boundary.index < 0 {
+        return Result<HttpRequest, string>::Err(string::from("Malformed HTTP request: missing header boundary"))
+    }
+
+    auto h_len = boundary.index as usize
+    if h_len > max_header_size {
+        return Result<HttpRequest, string>::Err(string::from("Header size limit exceeded"))
+    }
+
+    auto header_str = string::from_with_len(req_str.c_str(), h_len)
+    auto body_start = h_len + boundary.delim_len
+    auto req_len = req_str.len()
+    auto body_str# = string::from("")
+
+    auto parse_res = parse_http_request_headers(header_str)
+    if parse_res.is_err() {
+        return parse_res
+    }
+
+    auto req# = parse_res.unwrap()
+
+    if req.headers.contains_key("transfer-encoding") {
+        return Result<HttpRequest, string>::Err(string::from("Unsupported Transfer-Encoding header"))
+    }
+
+    auto cl_opt = req.headers.get("content-length")
+    if cl_opt.is_some() {
+        auto cl_str = cl_opt.unwrap()
+        auto cl_res = parse_content_length(cl_str.as_str())
+        if cl_res.is_err() {
+            return Result<HttpRequest, string>::Err(cl_res.unwrap_err())
+        }
+        auto target_cl = cl_res.unwrap()
+
+        if body_start < req_len {
+            auto *body_ptr = (req_str.c_str() as usize + body_start) as *char
+            auto actual_body_len = req_len - body_start
+
+            if target_cl > actual_body_len {
+                return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
+            }
+            if target_cl < actual_body_len {
+                return Result<HttpRequest, string>::Err(string::from("Trailing bytes after Content-Length payload unsupported in Phase 1"))
+            }
+            body_str = string::from_with_len(*body_ptr, target_cl)
+        } else {
+            if target_cl > 0:usize {
+                return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
+            }
+        }
+    } else {
+        // Without Content-Length (or Transfer-Encoding), body length is strictly 0.
+        // If there are trailing bytes after header boundary without Content-Length, reject in Phase 1.
+        if body_start < req_len {
+            return Result<HttpRequest, string>::Err(string::from("Trailing bytes without Content-Length unsupported in Phase 1"))
+        }
+    }
+
+    req.body = body_str
+    return Result<HttpRequest, string>::Ok(req)
+}
+
+pub fn parse_http_request(req_str: string) -> Result<HttpRequest, string> {
+    return parse_http_request_with_limit(req_str, 65536)
+}
+
+fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string> {
+    auto headers# = HeaderMap::new()
+    auto iter# = header_str.split(10) // split by \n
+    if iter#.is_done() {
+        return Result<HttpRequest, string>::Err(string::from("Empty request headers"))
+    }
+
     auto first_line# = iter#.next()
-    first_line = first_line.trim_end() // remove \r
-    
-    auto parts_iter# = first_line.split(32) // split by space
+    if first_line.ends_with("\r") {
+        first_line = string::from_with_len(first_line.c_str(), first_line.len() - 1:usize)
+    }
+
+    // Verify request line contains exactly 2 space delimiters (3 tokens)
+    auto sp_count# = 0
+    auto sp_idx# = 0:usize
+    auto bytes = first_line.as_str().as_bytes()
+    loop sp_idx < first_line.len() {
+        if bytes.at(sp_idx).unwrap() == 32:byte {
+            sp_count = sp_count + 1
+        }
+        sp_idx = sp_idx + 1
+    }
+
+    if sp_count != 2 {
+        return Result<HttpRequest, string>::Err(string::from("Malformed request line: must contain exactly 3 SP-delimited tokens"))
+    }
+
+    auto parts_iter# = first_line.split(32)
     auto method_str = parts_iter#.next()
     auto path_str = parts_iter#.next()
-    
+    auto ver_str = parts_iter#.next()
+
+    if method_str.len() == 0 || !is_valid_header_name(method_str.as_str()) {
+        return Result<HttpRequest, string>::Err(string::from("Invalid HTTP method token"))
+    }
+
+    if path_str.len() == 0 {
+        return Result<HttpRequest, string>::Err(string::from("Empty request target"))
+    }
+
+    auto target_idx# = 0:usize
+    auto target_bytes = path_str.as_str().as_bytes()
+    loop target_idx < path_str.len() {
+        auto b = target_bytes.at(target_idx).unwrap()
+        if b <= 32:byte || b == 127:byte {
+            return Result<HttpRequest, string>::Err(string::from("Invalid control or whitespace character in request target"))
+        }
+        target_idx = target_idx + 1
+    }
+
+    if !ver_str.as_str().equals("HTTP/1.1") && !ver_str.as_str().equals("HTTP/1.0") {
+        return Result<HttpRequest, string>::Err(string::from("Invalid or missing HTTP version"))
+    }
+
     auto method# = HttpMethod::UNKNOWN
-    if method_str.eq(string::from("GET")) { method = HttpMethod::GET }
-    else if method_str.eq(string::from("POST")) { method = HttpMethod::POST }
-    
-    return HttpRequest(
+    if method_str.as_str().equals("GET") { method = HttpMethod::GET }
+    else if method_str.as_str().equals("POST") { method = HttpMethod::POST }
+    else if method_str.as_str().equals("PUT") { method = HttpMethod::PUT }
+    else if method_str.as_str().equals("DELETE") { method = HttpMethod::DELETE }
+
+    auto seen_cl# = false
+    auto seen_host_count# = 0
+
+    loop !iter#.is_done() {
+        auto line# = iter#.next()
+        line = line.trim_end()
+        if line.len() == 0 { continue }
+
+        auto colon_idx = line.find_char(58:char) // ':'
+        if colon_idx <= 0 {
+            return Result<HttpRequest, string>::Err(string::from("Malformed header line: missing colon delimiter"))
+        }
+
+        // Do NOT trim key! RFC 7230 forbids OWs before colon or in field-name.
+        auto key = string::from_with_len(line.c_str(), colon_idx as usize)
+        auto val_raw = string::from_with_len((line.c_str() as usize + colon_idx as usize + 1) as *char, (line.len() - colon_idx as usize - 1) as usize)
+        auto val = val_raw.trim()
+
+        if key.to_ascii_lowercase().eq(string::from("content-length")) {
+            if seen_cl {
+                return Result<HttpRequest, string>::Err(string::from("Duplicate Content-Length headers rejected"))
+            }
+            seen_cl = true
+        }
+
+        if key.to_ascii_lowercase().eq(string::from("host")) {
+            seen_host_count = seen_host_count + 1
+            if seen_host_count > 1 {
+                return Result<HttpRequest, string>::Err(string::from("Duplicate Host header rejected"))
+            }
+        }
+
+        auto ins_res = headers#.insert(key, val)
+        if ins_res.is_err() {
+            return Result<HttpRequest, string>::Err(ins_res.unwrap_err())
+        }
+    }
+
+    if ver_str.as_str().equals("HTTP/1.1") && seen_host_count != 1 {
+        return Result<HttpRequest, string>::Err(string::from("HTTP/1.1 request requires exactly one Host header"))
+    }
+
+    return Result<HttpRequest, string>::Ok(HttpRequest(
         method = method,
         path = path_str.clone(),
-        body = string::from("") // Ignore body parsing for this micro engine
-    )
+        version = ver_str,
+        headers = headers,
+        body = string::from("")
+    ))
 }

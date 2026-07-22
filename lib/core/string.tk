@@ -548,6 +548,28 @@ impl string {
         return res
     }
 
+    pub fn to_ascii_lowercase(self) -> string {
+        return self.to_lower()
+    }
+
+    pub fn to_ascii_lowercase_in_place(self#) {
+        unsafe {
+            auto i#: usize = 0
+            auto *b# = (self.c_str() as usize) as *[char]#
+            loop i < self.len {
+                auto c = b[i]
+                if c >= 65:char && c <= 90:char {
+                    b[i] = (c as i32 + 32) as char
+                }
+                i = i + 1
+            }
+        }
+    }
+
+    pub fn eq_ignore_ascii_case(self, other: string) -> bool {
+        return self.as_str().eq_ignore_ascii_case(other.as_str())
+    }
+
     pub fn replace(self, old_c: char, new_c: char) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
         unsafe {

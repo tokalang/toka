@@ -1,0 +1,200 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+
+import std/io::{println}
+import stdx/net/http::{HttpRequest, HttpResponse, HttpMethod, HeaderMap, parse_http_request, parse_http_request_with_limit}
+import std/net::{TcpListener, TcpStream, Ipv4Addr, SocketAddrV4}
+import stdx/io/bufio::{AsyncBufferedReader}
+import std/thread::{thread_spawn}
+import std/task::{sleep_async, block_on}
+import sys/libc
+
+extern fn sleep(seconds: i32) -> i32
+
+fn test_async_client(local_port: u16) -> async i32 {
+    unsafe {
+        auto client_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), local_port)
+        auto stream# = TcpStream::connect_async(client_addr).await
+        auto retries# = 0
+        loop !stream.is_valid() {
+            if retries > 100 { return 1 }
+            sleep_async(10).await
+            stream = TcpStream::connect_async(client_addr).await
+            retries = retries + 1
+        }
+
+        auto reader# = AsyncBufferedReader::new(stream#.take())
+
+        auto req_line = string::from("GET /strict HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        auto *req_ptr# = req_line.c_str() as *u8
+        auto w_res = reader.stream#.write_all_async(*req_ptr, req_line.len() as usize).await
+        assert(w_res.is_ok(), "client write_all_async failed")
+
+        // Test AsyncBufferedReader line & byte reads
+        auto line_res = reader#.read_line_async(1024).await
+        assert(line_res.is_ok(), "reader.read_line_async status line failed")
+        assert(line_res.unwrap().starts_with("HTTP/1.1 200 OK"), "Buffered status line mismatch")
+
+        auto body_buf: [u8; 512] = [0:u8; 512]
+        auto *body_ptr# = &body_buf[0] as *u8
+        auto bytes_res = reader#.read_bytes_async(*body_ptr, 512).await
+        assert(bytes_res.is_ok(), "reader.read_bytes_async failed")
+
+        auto resp_len = bytes_res.unwrap() as i32
+        auto resp_received = string::from_raw(*body_ptr, resp_len as usize)
+        assert(resp_received.contains("Verified Strict Async Response"), "Response body content verification failed")
+        return 0
+    }
+}
+
+fn run_async_e2e_test() -> async i32 {
+    unsafe {
+        auto bind_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16)
+        auto listener# = TcpListener::bind(bind_addr)
+        assert(listener.is_valid(), "TcpListener bind port 0 failed")
+
+        auto local_port = listener.local_port()
+        assert(local_port > 0:u16, "local_port allocation failed")
+
+        auto server_thread# = thread_spawn<i32>(cede { [cede listener] =>
+            unsafe {
+                auto s# = listener#.accept()
+                if !s.is_valid() { return cede 1 }
+
+                auto buf: [char; 256] = [0 as char; 256]
+                auto *buf_ptr# = &buf[0] as *u8
+                auto r_res = s#.read(*buf_ptr, 256)
+                if r_res.is_err() { return cede 1 }
+
+                auto req_str = string::from_with_len(&buf[0] as *char, r_res.unwrap() as i32)
+                if !req_str.starts_with("GET /strict") { return cede 1 }
+
+                auto out_resp = HttpResponse::ok(string::from("Verified Strict Async Response"))
+                auto out_str = out_resp.to_string()
+                auto w_res = s#.write_string(out_str)
+                if w_res.is_err() { return cede 1 }
+
+                return cede 0
+            }
+        })
+
+        sleep(1)
+
+        auto client_res = test_async_client(local_port).await
+        assert(client_res == 0, "test_async_client runtime execution failed")
+        server_thread#.join()
+        return 0
+    }
+}
+
+pub fn main() -> i32 {
+    // 1. RFC 7230 Header Name Token Validation (Reject Bad(Name), Key?, Slash/Header)
+    auto headers# = HeaderMap::new()
+    auto r1 = headers#.insert(string::from("Bad(Name)"), string::from("val"))
+    assert(r1.is_err(), "Bad(Name) should be rejected")
+
+    auto r2 = headers#.insert(string::from("Key?"), string::from("val"))
+    assert(r2.is_err(), "Key? should be rejected")
+
+    auto r3 = headers#.insert(string::from("Slash/Header"), string::from("val"))
+    assert(r3.is_err(), "Slash/Header should be rejected")
+
+    auto r4 = headers#.insert(string::from("Valid-Header-Name"), string::from("val"))
+    assert(r4.is_ok(), "Valid header name failed")
+
+    // 1b. Reject whitespace before colon and leading space before field-name
+    auto space_before_colon = string::from("POST /api HTTP/1.1\r\nHost : example.com\r\n\r\n")
+    assert(parse_http_request(space_before_colon).is_err(), "Space before colon must be rejected")
+
+    auto leading_space = string::from("POST /api HTTP/1.1\r\n Host: example.com\r\n\r\n")
+    assert(parse_http_request(leading_space).is_err(), "Leading space before field-name must be rejected")
+
+    // 1c. HTTP/1.1 Host Header Requirement & Uniqueness
+    auto missing_host = string::from("POST /api HTTP/1.1\r\nContent-Length: 0\r\n\r\n")
+    assert(parse_http_request(missing_host).is_err(), "HTTP/1.1 missing Host header must be rejected")
+
+    auto dup_host = string::from("POST /api HTTP/1.1\r\nHost: a.com\r\nHost: b.com\r\n\r\n")
+    assert(parse_http_request(dup_host).is_err(), "Duplicate Host header must be rejected")
+
+    // 2. Control Character Rejection in Header Values (Reject \x07, \x1F)
+    auto r5 = headers#.insert(string::from("X-Ctrl"), string::from("val\x07test"))
+    assert(r5.is_err(), "Control char 0x07 in value should be rejected")
+
+    auto r6 = headers#.insert(string::from("X-Ctrl2"), string::from("val\x1Ftest"))
+    assert(r6.is_err(), "Control char 0x1F in value should be rejected")
+
+    // 3. Strict Content-Length Framing & Format Checks
+    // 3a. Declared 5, actual 2 -> REJECT
+    auto cl_over = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: 5\r\n\r\nAB")
+    assert(parse_http_request(cl_over).is_err(), "Declared Content-Length > actual payload must be rejected")
+
+    // 3b. Declared 2, actual 5 (Trailing bytes) -> REJECT
+    auto cl_trail = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: 2\r\n\r\nABCDE")
+    assert(parse_http_request(cl_trail).is_err(), "Trailing bytes after Content-Length must be rejected in Phase 1")
+
+    // 3c. Content-Length: 2junk -> REJECT
+    auto cl_junk = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: 2junk\r\n\r\nAB")
+    assert(parse_http_request(cl_junk).is_err(), "Content-Length: 2junk must be rejected")
+
+    // 3d. Content-Length: +0 -> REJECT (DIGIT only)
+    auto cl_plus = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: +0\r\n\r\n")
+    assert(parse_http_request(cl_plus).is_err(), "Content-Length: +0 must be rejected (DIGIT only)")
+
+    // 3e. Content-Length: -1 -> REJECT (DIGIT only)
+    auto cl_neg = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: -1\r\n\r\n")
+    assert(parse_http_request(cl_neg).is_err(), "Content-Length: -1 must be rejected (DIGIT only)")
+
+    // 3f. Duplicate Content-Length headers -> REJECT
+    auto cl_dup = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: 2\r\nContent-Length: 5\r\n\r\nAB")
+    assert(parse_http_request(cl_dup).is_err(), "Duplicate Content-Length headers must be rejected")
+
+    // 3g. Trailing bytes without Content-Length -> REJECT
+    auto no_cl_trail = string::from("POST /first HTTP/1.1\r\nHost: test\r\n\r\nGET /second HTTP/1.1\r\nHost: test\r\n\r\n")
+    assert(parse_http_request(no_cl_trail).is_err(), "Trailing bytes without Content-Length must be rejected in Phase 1")
+
+    // 3h. Header line without colon -> REJECT
+    auto no_colon = string::from("POST /api HTTP/1.1\r\nHost test\r\n\r\n")
+    assert(parse_http_request(no_colon).is_err(), "Header line without colon must be rejected")
+
+    // 3i. Request line formatting checks: 4 tokens or double space -> REJECT
+    auto req_4tokens = string::from("GET / HTTP/1.1 extra\r\nHost: test\r\n\r\n")
+    assert(parse_http_request(req_4tokens).is_err(), "Request line with 4 tokens must be rejected")
+
+    auto req_dblspace = string::from("GET  HTTP/1.1\r\nHost: test\r\n\r\n")
+    assert(parse_http_request(req_dblspace).is_err(), "Request line with double space must be rejected")
+
+    auto req_tab_target = string::from("GET /\tadmin HTTP/1.1\r\nHost: test\r\n\r\n")
+    assert(parse_http_request(req_tab_target).is_err(), "Request target with HTAB must be rejected")
+
+    auto req_trailing_space = string::from("GET / HTTP/1.1 \r\nHost: test\r\n\r\n")
+    assert(parse_http_request(req_trailing_space).is_err(), "Request line with trailing space must be rejected")
+
+    // 3j. Invalid HTTP version -> REJECT
+    auto bad_ver = string::from("POST /api\r\nHost: test\r\n\r\n")
+    assert(parse_http_request(bad_ver).is_err(), "Invalid HTTP version must be rejected")
+
+    // 3k. Exact matching Content-Length: 2 with 2 bytes payload -> OK
+    auto cl_ok = string::from("POST /api HTTP/1.1\r\nHost: test\r\nContent-Length: 2\r\n\r\nAB")
+    auto ok_parsed = parse_http_request(cl_ok)
+    match ok_parsed {
+        auto Result::Ok(&req) => {
+            assert(req.body.eq(string::from("AB")), "Exact body mismatch")
+        }
+        auto Result::Err(&err) => {
+            assert(false, "Exact Content-Length payload parse failed")
+        }
+    }
+
+    // 4. Response Serialization Content-Length Overriding
+    auto resp# = HttpResponse::ok(string::from("Hello Toka"))
+    auto _fake_cl = resp.headers#.insert(string::from("Content-Length"), string::from("999"))
+    auto resp_str = resp.to_string()
+    assert(resp_str.contains("Content-Length: 10"), "Response Content-Length override failed")
+    assert(!resp_str.contains("Content-Length: 999"), "Fake caller Content-Length duplicated")
+
+    // 5. Execute Async Client Runtime E2E Test
+    auto async_task = run_async_e2e_test().start
+    block_on<i32>(async_task)
+
+    println("[Test Phase1 Strict RFC 7230] All P1 and P2 audit items verified successfully!")
+    return 0
+}
