@@ -75,7 +75,6 @@ and remain visible audit items:
 - `tools/toka/src/main.tk`: user-facing run/test/doc/install/clean commands;
 - `tools/toka/src/pkg_manager.tk`: Git, curl, tar, and publication commands;
 - `tools/forge/src/scheduler.tk`: execution of scheduler command strings;
-- `tools/tokalsp/main.tk`: compiler output capture through `popen`.
 
 They should migrate independently because some currently accept command
 strings as part of their own contract. Replacing those strings may require a

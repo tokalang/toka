@@ -169,7 +169,7 @@ Toka 使用一组紧凑的标记：
 
 ### 原生工具链
 
-`toka` CLI 支持 `toka new`、`toka run`、`toka build`、包解析，以及基于 `package.tk` / `build.tk` 的构建编排。编译器也会导出依赖元数据，供增量构建路径使用。
+`toka` CLI 支持 `toka new`、`toka run`、`toka build`、包解析，以及基于 `package.tk` / `build.tk` 的构建编排。编译器也会导出依赖元数据，供增量构建路径使用。`tokalsp` 通过标准 LSP 传输提供诊断、悬停、定义跳转、引用、补全与重命名；详见 [LSP 支持](docs/lsp.md)。
 
 ## 当前状态
 

@@ -217,7 +217,7 @@ def main():
     ]
     package_tool_commands = (
         [env["TOKAC"], "-I", "lib", "-I", "tools/tokafmt", "tools/tokafmt/src/main.tk", "-o", str(build_dir / "bin" / "tokafmt"), "-O3"],
-        [env["TOKAC"], "-I", "lib", "-I", "tools/tokalsp", "tools/tokalsp/main.tk", "-o", str(build_dir / "bin" / "tokalsp"), "-O3"],
+        ["cmake", "--build", str(build_dir), "--target", "tokalsp"],
     )
     stages = (
         ("build", (

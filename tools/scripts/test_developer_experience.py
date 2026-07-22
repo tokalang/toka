@@ -44,9 +44,11 @@ def main():
     tokac = build_dir / "bin" / ("tokac" + suffix)
     toka = build_dir / "bin" / ("toka" + suffix)
     tokafmt = build_dir / "bin" / ("tokafmt" + suffix)
+    tokalsp = build_dir / "bin" / ("tokalsp" + suffix)
     checks = []
 
-    require(tokac.is_file() and toka.is_file() and tokafmt.is_file(), "SDK binaries are missing")
+    require(tokac.is_file() and toka.is_file() and tokafmt.is_file() and
+            tokalsp.is_file(), "SDK binaries are missing")
     require("Usage: tokac" in run([tokac, "--help"], root).stdout, "tokac help is incomplete")
     run([tokac, "--not-a-real-option"], root, expected=1)
     run([tokac], root, expected=1)
@@ -67,7 +69,11 @@ def main():
     run([toka, "--not-a-real-command"], root, expected=1)
     require("tokafmt version" in run([tokafmt, "--version"], root).stdout, "tokafmt version is missing")
     run([tokafmt, "--not-a-real-option"], root, expected=1)
-    checks.extend(("toka-help", "toka-unknown-command", "tokafmt-cli"))
+    require("Usage: tokalsp" in run([tokalsp, "--help"], root).stdout,
+            "tokalsp help is incomplete")
+    run([tokalsp, "--not-a-real-option"], root, expected=1)
+    checks.extend(("toka-help", "toka-unknown-command", "tokafmt-cli",
+                   "tokalsp-cli"))
 
     with tempfile.TemporaryDirectory(prefix="toka-developer-experience-") as temp:
         temp_root = Path(temp)

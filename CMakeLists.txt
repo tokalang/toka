@@ -144,12 +144,10 @@ add_custom_command(
 file(GLOB_RECURSE TOKA_TOOL_AND_LIBRARY_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/toka/*.tk"
     "${CMAKE_SOURCE_DIR}/tools/tokafmt/*.tk"
-    "${CMAKE_SOURCE_DIR}/tools/tokalsp/*.tk"
     "${CMAKE_SOURCE_DIR}/lib/*.tk")
 
 set(TOKA_MANAGER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/toka")
 set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt")
-set(TOKA_LANGUAGE_SERVER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokalsp")
 
 add_custom_command(
     OUTPUT "${TOKA_MANAGER}"
@@ -171,25 +169,14 @@ add_custom_command(
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     VERBATIM
 )
-add_custom_command(
-    OUTPUT "${TOKA_LANGUAGE_SERVER}"
-    COMMAND $<TARGET_FILE:tokac> -I "${CMAKE_SOURCE_DIR}/lib"
-            -I "${CMAKE_SOURCE_DIR}/tools/tokalsp"
-            "${CMAKE_SOURCE_DIR}/tools/tokalsp/main.tk"
-            "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_LANGUAGE_SERVER}" -O3
-    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}" ${TOKA_TOOL_AND_LIBRARY_SOURCES}
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    VERBATIM
-)
 add_custom_target(toka-tools ALL
-    DEPENDS "${TOKA_MANAGER}" "${TOKA_FORMATTER}"
-            "${TOKA_LANGUAGE_SERVER}")
+    DEPENDS "${TOKA_MANAGER}" "${TOKA_FORMATTER}")
+add_dependencies(toka-tools tokalsp)
 
-install(TARGETS tokac RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(TARGETS tokac tokalsp RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(PROGRAMS
     "${TOKA_MANAGER}"
     "${TOKA_FORMATTER}"
-    "${TOKA_LANGUAGE_SERVER}"
     DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/toka/lib"

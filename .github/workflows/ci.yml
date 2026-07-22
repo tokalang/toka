@@ -57,7 +57,9 @@ jobs:
           cmake --build build --parallel 2
 
       - name: Verify developer experience
-        run: python3 tools/scripts/test_developer_experience.py
+        run: |
+          python3 tools/scripts/test_developer_experience.py
+          python3 tools/scripts/test_lsp_protocol.py
 
       - name: Run compiler regression suites
         env:

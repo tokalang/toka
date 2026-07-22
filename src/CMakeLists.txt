@@ -58,6 +58,14 @@ endforeach()
 
 target_link_libraries(tokac PUBLIC ${lld_libs} ${llvm_libs})
 
+if(WIN32 AND TARGET LLVM)
+    set(tokalsp_llvm_libs LLVM)
+else()
+    llvm_map_components_to_libnames(tokalsp_llvm_libs Support)
+endif()
+add_executable(tokalsp "${CMAKE_SOURCE_DIR}/tools/tokalsp/main.cpp")
+target_link_libraries(tokalsp PRIVATE ${tokalsp_llvm_libs})
+
 set(zstd_hints ${LLVM_LIBRARY_DIRS})
 if(APPLE)
     execute_process(
