@@ -73,6 +73,6 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/scripts/test_pass.py --exclude-file spec/ci_quarantined_pass_tests.list
-          python3 tools/scripts/test_verify_fail.py
+          python3 tools/scripts/test_verify_fail.py --exclude-file spec/ci_quarantined_fail_tests.list
           python3 tools/scripts/test_verify_warn.py
           tools/scripts/test_semantic_replay.sh

@@ -35,3 +35,10 @@ overlay is the sole changed document, its import signature is unchanged, and
 all on-disk dependencies retain their timestamps. Other changes use full graph
 resolution. Semantic-index construction caches normalized paths and source-line
 tables within each build to avoid repeated filesystem and buffer scans.
+
+The PR gate explicitly quarantines `tests/fail/dyn_privacy.tk`. That fixture
+expects the pre-1.0 research behavior described by the paper, while this phase
+uses the maintainers' stated 1.0 assumption. The test remains checked in and can
+still be run directly; the exclusion is centralized in
+`spec/ci_quarantined_fail_tests.list` rather than being silently treated as a
+pass.

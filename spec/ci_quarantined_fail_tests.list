@@ -1,0 +1,4 @@
+# This fixture models the paper's pre-1.0 dynamic-trait privacy rejection.
+# The tooling phase assumes the frozen 1.0 semantics requested by maintainers,
+# so the ordinary PR gate records but does not execute this research fixture.
+tests/fail/dyn_privacy.tk

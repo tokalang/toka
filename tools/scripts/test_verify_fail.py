@@ -18,6 +18,15 @@ NC = '\033[0m' # No Color
 
 def main():
     bless_mode = os.environ.get("BLESS") == "1"
+    args = list(sys.argv[1:])
+    exclude_file = None
+    if "--exclude-file" in args:
+        index = args.index("--exclude-file")
+        if index + 1 >= len(args):
+            print(f"{RED}--exclude-file requires a path{NC}")
+            sys.exit(2)
+        exclude_file = args[index + 1]
+        del args[index:index + 2]
     
     if not os.path.exists(TOKAC):
         print(f"{RED}Error: Compiler not found at {TOKAC}{NC}")
@@ -25,14 +34,30 @@ def main():
         sys.exit(1)
 
     # Determine which files to test
-    if len(sys.argv) > 1:
-        # Filter out arguments that might be options if we ever add them
-        files = [f for f in sys.argv[1:] if f.endswith(".tk")]
+    if args:
+        files = [f for f in args if f.endswith(".tk")]
     else:
         files = glob.glob(os.path.join(FAIL_TEST_DIR, "*.tk"))
         if not files:
             print(f"{YELLOW}No .tk files found in {FAIL_TEST_DIR}{NC}")
             sys.exit(0)
+
+    if exclude_file:
+        with open(exclude_file, "r", encoding="utf-8") as stream:
+            excluded = {
+                line.strip().replace("\\", "/")
+                for line in stream
+                if line.strip() and not line.lstrip().startswith("#")
+            }
+        normalized_files = {path.replace("\\", "/") for path in files}
+        missing = sorted(excluded.difference(normalized_files))
+        if missing:
+            print(f"{RED}Unknown quarantined fail fixture(s): " +
+                  ", ".join(missing) + NC)
+            sys.exit(2)
+        files = [path for path in files
+                 if path.replace("\\", "/") not in excluded]
+        print("Quarantined fail fixtures: %d" % len(excluded))
 
     files.sort()
     
