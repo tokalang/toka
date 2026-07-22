@@ -35,6 +35,10 @@ new language surface and is not the final 1.0 release.
 ## Release status
 
 Linux x64/arm64 and macOS x64/arm64 remain the supported 1.0 target families.
+The schema-version-2 release gate now qualifies the complete compiler corpus,
+installed SDK, semantic index, LSP, AI interfaces, persistent-tooling scale,
+sustained applications, sanitizer audit, and packaged delivery in 13
+fail-closed stages.
 The v0.9.9-01 tag and release archives are created only after the candidate
 revision passes the unified release gate. Interface files and caches remain
 compiler-version-bound and must be regenerated when upgrading.

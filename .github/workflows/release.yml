@@ -85,7 +85,7 @@ jobs:
             label="${{ github.ref_name }}"
           fi
           if [ -z "$label" ] || [ "$label" = "main" ]; then
-            label="rc"
+            label="v0.9.9-01"
           fi
           echo "label=$label" >> "$GITHUB_OUTPUT"
 

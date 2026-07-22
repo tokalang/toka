@@ -17,18 +17,24 @@ runs these stages in fixed order and stops after the first failure while still
 recording every later stage as `not_run`:
 
 1. compiler, native runtime/shim, and `toka` build-manager build;
-2. complete executable positive corpus;
-3. complete negative diagnostic corpus;
+2. release-eligible executable positive corpus;
+3. release-eligible negative diagnostic corpus;
 4. warning corpus;
 5. source/source-less semantic replay;
 6. semantic cache invalidation;
-7. incremental build behavior;
-8. source-less and 100-cycle Toka-native build qualification;
-9. QSLite sustained-state, corruption, TKI, incremental, lock, and offline
+7. installed SDK, semantic index, LSP protocol, AI-facing contracts and coding
+   baseline, plus the 6,024-line persistent-tooling scale/soak qualification;
+8. incremental build behavior;
+9. source-less and 100-cycle Toka-native build qualification;
+10. QSLite sustained-state, corruption, TKI, incremental, lock, and offline
    qualification;
-10. focused async execution;
-11. a fresh ASan/UBSan build and fixed-seed reliability audit;
-12. tool build, release packaging, extraction, and package smoke.
+11. focused async execution;
+12. a fresh ASan/UBSan build and fixed-seed reliability audit;
+13. tool build, release packaging, extraction, and package smoke.
+
+The positive and negative compiler stages use the checked-in
+`spec/ci_quarantined_*_tests.list` files. These are explicit research-fixture
+boundaries, not silent ignored failures; the same lists are used by normal CI.
 
 The gate rejects a tracked dirty worktree by default and still emits a failed
 report with all stages marked `not_run`. `--allow-dirty` exists only for local
@@ -37,12 +43,17 @@ as final RC evidence.
 
 ## Deterministic Report
 
-The output schema is `toka.release-gate`, version 1. Reports contain only the
-revision, native target, caller-provided version label, source cleanliness,
-fixed stage order, result, exit code, and stable counts. They contain no
-timestamps, elapsed durations, temporary paths, or host names.
+The current output schema is `toka.release-gate`, version 2. Reports contain
+only the revision, native target, caller-provided version label, source
+cleanliness, fixed stage order, result, exit code, and stable counts. They
+contain no timestamps, elapsed durations, temporary paths, or host names.
 
-The original ten-stage implementation produced byte-identical reports in two
+Schema version 2 adds the tooling stage and records only deterministic tooling
+counts (suite/check/task size and scale fixture/edit size). Host-dependent
+latency and memory measurements remain in the stage log and are still enforced
+by the test, but are not copied into the deterministic release report.
+
+The historical schema-version-1 gate produced byte-identical reports in two
 equal macOS arm64 development runs. The expanded `v0.9.8-09-RC` gate passed a
 complete dirty-source development run with these principal counts:
 
@@ -119,8 +130,8 @@ Linux/macOS x64/arm64 matrix required for the current revision.
 The clean four-target matrix later bound revision `a39c6acd` to the annotated
 `v0.9.8-09-RC` tag and closed `FZ-5-P02`. Those reports remain historical
 evidence. `FZ-5-P03` tracks the new `0.9.9-01` candidate and requires the
-expanded gate to include the phase-2 SDK, semantic, AI, and scale contracts
-before a fresh clean matrix is accepted.
+13-stage schema-version-2 gate, which now includes the phase-2 SDK, semantic,
+AI, and scale contracts, before a fresh clean matrix is accepted.
 
 No unresolved language-design question remains in the iterator, callable, or
 typed error-propagation scope.

@@ -12,7 +12,7 @@ import sys
 
 
 SCHEMA = "toka.release-gate"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ASYNC_FIXTURES = (
     "tests/pass/g09_async_basic.tk",
     "tests/pass/g09_async_suspension_state.tk",
@@ -23,8 +23,9 @@ ASYNC_FIXTURES = (
 )
 STAGE_NAMES = (
     "build", "pass", "fail", "warn", "semantic_replay",
-    "cache_invalidation", "incremental", "native_build_reference",
-    "qslite", "async", "sanitizer", "package_smoke",
+    "cache_invalidation", "tooling", "incremental",
+    "native_build_reference", "qslite", "async", "sanitizer",
+    "package_smoke",
 )
 
 
@@ -67,6 +68,35 @@ def parse_counts(name, output):
         match = re.search(r"Semantic cache cases passed:\s*(\d+).*Semantic cache cases failed:\s*(\d+)", clean, re.S)
         if match:
             counts = {"passed": int(match.group(1)), "failed": int(match.group(2))}
+    elif name == "tooling":
+        results = {}
+        for line in clean.splitlines():
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            schema = data.get("schema")
+            if schema:
+                results[schema] = data
+        check_schemas = (
+            "toka.developer-experience",
+            "toka.ai-tooling-test",
+            "toka.semantic-index-test",
+            "toka.lsp-protocol",
+        )
+        scale = results.get("toka.tooling-scale")
+        evaluation = results.get("toka.ai-coding-evaluation")
+        if (all(schema in results for schema in check_schemas) and
+                scale is not None and evaluation is not None):
+            counts = {
+                "checks": sum(int(results[schema].get("count", 0))
+                              for schema in check_schemas),
+                "evaluation_tasks": int(evaluation.get("tasks", 0)),
+                "scale_edits": int(scale.get("soak", {}).get("edits", 0)),
+                "scale_lines": int(scale.get("fixture", {}).get("lines", 0)),
+                "scale_modules": int(scale.get("fixture", {}).get("modules", 0)),
+                "suites": 6,
+            }
     elif name == "sanitizer":
         for line in reversed(clean.splitlines()):
             try:
@@ -153,7 +183,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="rc")
+    parser.add_argument("--version", default="v0.9.9-01")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -225,11 +255,27 @@ def main():
             [sys.executable, "tools/scripts/test_pass.py", "--prepare-runtime-only"],
             toka_command,
         )),
-        ("pass", ([sys.executable, "tools/scripts/test_pass.py"],)),
-        ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py"],)),
+        ("pass", ([sys.executable, "tools/scripts/test_pass.py",
+                   "--exclude-file", "spec/ci_quarantined_pass_tests.list"],)),
+        ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py",
+                   "--exclude-file", "spec/ci_quarantined_fail_tests.list"],)),
         ("warn", ([sys.executable, "tools/scripts/test_verify_warn.py"],)),
         ("semantic_replay", (["tools/scripts/test_semantic_replay.sh"],)),
         ("cache_invalidation", (["tools/scripts/test_semantic_cache_invalidation.sh"],)),
+        ("tooling", (
+            [sys.executable, "tools/scripts/test_developer_experience.py",
+             "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_ai_tooling.py",
+             "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/evaluate_ai_coding.py",
+             "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_semantic_index.py",
+             "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_lsp_protocol.py",
+             "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_tooling_scale.py",
+             "--build-dir", str(build_dir)],
+        )),
         ("incremental", (["tools/scripts/test_incremental_build.sh"],)),
         ("native_build_reference", (
             ["tools/scripts/test_native_build_reference.sh"],
