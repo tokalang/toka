@@ -1,0 +1,94 @@
+// Async Context & Basic Task Smoke Test Suite
+// Copyright (c) 2026 Toka Language Team. All rights reserved.
+
+import std/io::{println}
+import std/task::{sleep_async, block_on}
+import std/context::{background, with_cancel, with_timeout, BackgroundContext}
+
+fn test_timer_context_smoke() -> async i32 {
+    println("[Smoke 1] Starting Timer Context Smoke Test...")
+    auto bg = background()
+    auto res = with_timeout<BackgroundContext>(cede bg, 10)
+    auto ctx# = res.ctx
+    auto canceler = res.canceler.clone()
+
+    auto h = sleep_async(30).start
+    sleep_async(15).await
+
+    assert(ctx.is_canceled(), "[Smoke 1] Context should be canceled after 10ms timeout")
+    h.await
+    canceler.call()
+    println("[Smoke 1] PASSED.")
+    return 0
+}
+
+fn test_cancel_context_smoke() -> async i32 {
+    println("[Smoke 2] Starting Cancel Context Smoke Test...")
+    auto bg = background()
+    auto res = with_cancel<BackgroundContext>(cede bg)
+    auto ctx# = res.ctx
+    auto canceler = res.canceler.clone()
+
+    auto task_h = sleep_async(20).start
+    canceler.call()
+    assert(ctx.is_canceled(), "[Smoke 2] Context must report canceled")
+
+    task_h.await
+    println("[Smoke 2] PASSED.")
+    return 0
+}
+
+fn test_sequential_context_reuse() -> async i32 {
+    println("[Smoke 3] Starting Sequential Context Reuse Smoke Test...")
+    auto bg1 = background()
+    auto res1 = with_timeout<BackgroundContext>(cede bg1, 5)
+    auto ctx1# = res1.ctx
+    auto canceler1 = res1.canceler.clone()
+
+    sleep_async(10).await
+    assert(ctx1.is_canceled(), "[Smoke 3] First context should be canceled")
+    canceler1.call()
+
+    auto bg2 = background()
+    auto res2 = with_timeout<BackgroundContext>(cede bg2, 50)
+    auto ctx2# = res2.ctx
+    auto canceler2 = res2.canceler.clone()
+
+    assert(!ctx2.is_canceled(), "[Smoke 3] Second context must be fresh")
+    canceler2.call()
+
+    println("[Smoke 3] PASSED.")
+    return 0
+}
+
+fn test_task_complete_before_cancel() -> async i32 {
+    println("[Smoke 4] Starting Task Complete Before Cancel Test...")
+    auto bg = background()
+    auto res = with_cancel<BackgroundContext>(cede bg)
+    auto ctx# = res.ctx
+    auto canceler = res.canceler.clone()
+
+    auto fast_task = sleep_async(5).start
+    fast_task.await
+
+    canceler.call()
+    assert(ctx.is_canceled(), "[Smoke 4] Context reflects cancel call")
+
+    println("[Smoke 4] PASSED.")
+    return 0
+}
+
+fn entry_point() -> async i32 {
+    println("--- Starting Async Context Smoke Tests ---")
+    auto _1 = test_timer_context_smoke().await
+    auto _2 = test_cancel_context_smoke().await
+    auto _3 = test_sequential_context_reuse().await
+    auto _4 = test_task_complete_before_cancel().await
+    println("--- Async Context Smoke Tests Completed! ---")
+    return 0
+}
+
+pub fn main() -> i32 {
+    auto handle = entry_point().start
+    return block_on<i32>(handle)
+}

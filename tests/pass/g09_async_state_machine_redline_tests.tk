@@ -1,0 +1,664 @@
+// Phase 0 Model Red-Line Tests: Async Runtime State Machine & Invariants (Approved Specification)
+// Copyright (c) 2026 Toka Language Team. All rights reserved.
+
+import std/io::{println}
+import std/vec::{Vec}
+
+// -----------------------------------------------------------------------------
+// 1. Reference State Machine Types
+// -----------------------------------------------------------------------------
+
+shape TestWaitToken (
+    wait_id: u64,
+    wait_slot_generation: u64
+)
+
+shape TestWaitRegistration (
+    token: TestWaitToken,
+    task_id: u64,
+    task_schedule_generation: u64,
+    state: u32, // 0: Waiting, 1: Won(Ready), 2: Won(Timeout), 3: Won(Canceled)
+    active: bool
+)
+
+shape TestTCB (
+    id: u64,
+    task_schedule_generation: u64,
+    state: u32, // 0: Created, 1: Running, 2: Suspended, 3: Queued, 4: Completed
+    cancel_requested: bool,
+    frame_valid: bool,
+    result: u32, // 0: None, 1: Ok, 2: Canceled
+    result_consumed: bool,
+    handle_detached: bool
+)
+
+shape ScheduledItem (
+    task_id: u64,
+    task_schedule_generation: u64
+)
+
+shape TestScheduler (
+    ready_queue: Vec<ScheduledItem>,
+    wait_slots: Vec<TestWaitRegistration>,
+    tcbs: Vec<TestTCB>,
+    tcb_lookup_count: u64,
+    frame_touch_count: u64,
+    result_publish_count: u64
+)
+
+impl TestScheduler {
+    pub fn new() -> TestScheduler {
+        return TestScheduler(
+            ready_queue = Vec<ScheduledItem>::new(),
+            wait_slots = Vec<TestWaitRegistration>::new(),
+            tcbs = Vec<TestTCB>::new(),
+            tcb_lookup_count = 0,
+            frame_touch_count = 0,
+            result_publish_count = 0
+        )
+    }
+
+    pub fn create_task(self#, id: u64) -> u64 {
+        auto tcb = TestTCB(
+            id = id,
+            task_schedule_generation = 0,
+            state = 0, // Created
+            cancel_requested = false,
+            frame_valid = true,
+            result = 0, // None
+            result_consumed = false,
+            handle_detached = false
+        )
+        self.tcbs#.push(tcb)
+        return id
+    }
+
+    // Task Start: Created(0) -> Queued(1)
+    pub fn start_task(self#, task_id: u64) -> bool {
+        auto i# = 0:u64
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == task_id {
+                auto old = self.tcbs.at(i)
+                assert(old.state == 0:u32, "Task MUST be in Created(0) state to start!")
+                auto queued_tcb = TestTCB(
+                    id = old.id,
+                    task_schedule_generation = 1, // First schedule epoch
+                    state = 3, // Queued
+                    cancel_requested = old.cancel_requested,
+                    frame_valid = old.frame_valid,
+                    result = old.result,
+                    result_consumed = old.result_consumed,
+                    handle_detached = old.handle_detached
+                )
+                self.tcbs#.set(i, queued_tcb)
+                self.ready_queue#.push(ScheduledItem(task_id = task_id, task_schedule_generation = 1))
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    // Worker Dequeues Task: Queued(3) -> Running(1)
+    pub fn pop_worker_task(self#) -> ScheduledItem {
+        auto item = self.ready_queue#.remove(0).unwrap()
+        auto i# = 0:u64
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == item.task_id {
+                auto old = self.tcbs.at(i)
+                // STRICT GUARD: Task MUST be in Queued(3) state to be dequeued by worker
+                assert(old.state == 3:u32, "Worker can ONLY dequeue task in Queued(3) state!")
+                auto running_tcb = TestTCB(
+                    id = old.id,
+                    task_schedule_generation = old.task_schedule_generation,
+                    state = 1, // Running
+                    cancel_requested = old.cancel_requested,
+                    frame_valid = old.frame_valid,
+                    result = old.result,
+                    result_consumed = old.result_consumed,
+                    handle_detached = old.handle_detached
+                )
+                self.tcbs#.set(i, running_tcb)
+                break
+            }
+            i = i + 1
+        }
+        return item
+    }
+
+    // Task Suspends & Registers Wait: Running(1) -> Suspended(2)
+    pub fn suspend_and_register_wait(self#, task_id: u64, slot_idx: u64) -> TestWaitToken {
+        auto tcb_found# = false
+        auto tcb_idx# = 0:u64
+        auto new_tcb_gen# = 1:u64
+
+        auto i# = 0:u64
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == task_id {
+                auto old = self.tcbs.at(i)
+                // STRICT GUARD: Must be Running(1) to suspend
+                assert(old.state == 1:u32, "Task MUST be Running(1) to suspend!")
+                tcb_found = true
+                tcb_idx = i
+                new_tcb_gen = old.task_schedule_generation + 1
+                auto suspended_tcb = TestTCB(
+                    id = old.id,
+                    task_schedule_generation = new_tcb_gen,
+                    state = 2, // Suspended
+                    cancel_requested = old.cancel_requested,
+                    frame_valid = old.frame_valid,
+                    result = old.result,
+                    result_consumed = old.result_consumed,
+                    handle_detached = old.handle_detached
+                )
+                self.tcbs#.set(i, suspended_tcb)
+                break
+            }
+            i = i + 1
+        }
+        assert(tcb_found, "Task TCB not found during suspend!")
+
+        // Determine wait_slot_generation monotonically
+        auto slot_gen# = 1:u64
+        if slot_idx < self.wait_slots.len() {
+            auto existing = self.wait_slots.at(slot_idx)
+            // STRICT RECYCLING PROTOCOL GUARD: Cannot overwrite an active/live slot!
+            assert(!existing.active, "Cannot register wait on an active/live slot! Must be inactive.")
+            slot_gen = existing.token.wait_slot_generation
+        }
+
+        auto token = TestWaitToken(wait_id = slot_idx, wait_slot_generation = slot_gen)
+        auto reg = TestWaitRegistration(
+            token = token,
+            task_id = task_id,
+            task_schedule_generation = new_tcb_gen,
+            state = 0, // Waiting
+            active = true
+        )
+
+        if slot_idx < self.wait_slots.len() {
+            self.wait_slots#.set(slot_idx, reg)
+        } else {
+            self.wait_slots#.push(reg)
+        }
+
+        return token
+    }
+
+    // Atomic Linearization Point: try_wake
+    pub fn try_wake(self#, token: TestWaitToken, reason: u32) -> bool {
+        // Step 1: Validate token freshness BEFORE touching TCB or Frame
+        if token.wait_id >= self.wait_slots.len() {
+            return false // Slot does not exist
+        }
+
+        auto reg = self.wait_slots.at(token.wait_id)
+        if !reg.active {
+            return false // Inactive / Recycled slot
+        }
+
+        if reg.token.wait_slot_generation != token.wait_slot_generation {
+            // STRICT OBSERVABILITY GUARD: Stale token MUST NOT touch TCB or Frame!
+            return false
+        }
+
+        // CAS Guard: Must be in Waiting(0) state to win CAS
+        if reg.state != 0 {
+            return false // Trailing event lost CAS! NO side effects applied.
+        }
+
+        // STEP 2: Execute CAS Transition Waiting(0) -> Won(reason) FIRST!
+        auto updated_reg = TestWaitRegistration(
+            token = reg.token,
+            task_id = reg.task_id,
+            task_schedule_generation = reg.task_schedule_generation,
+            state = reason,
+            active = reg.active
+        )
+        self.wait_slots#.set(token.wait_id, updated_reg)
+
+        // STEP 3: ONLY CAS WINNER applies TCB side effects and schedules
+        self.tcb_lookup_count = self.tcb_lookup_count + 1
+        self.frame_touch_count = self.frame_touch_count + 1
+
+        if reason == 3 {
+            // Cancel winner sets cancel_requested flag on TCB
+            auto i# = 0:u64
+            loop i < self.tcbs.len() {
+                if self.tcbs.at(i).id == reg.task_id {
+                    auto old = self.tcbs.at(i)
+                    auto canceled_tcb = TestTCB(
+                        id = old.id,
+                        task_schedule_generation = old.task_schedule_generation,
+                        state = old.state,
+                        cancel_requested = true,
+                        frame_valid = old.frame_valid,
+                        result = old.result,
+                        result_consumed = old.result_consumed,
+                        handle_detached = old.handle_detached
+                    )
+                    self.tcbs#.set(i, canceled_tcb)
+                    break
+                }
+                i = i + 1
+            }
+        }
+
+        // Schedule task via atomic TCB state machine (Must succeed for CAS winner!)
+        auto sched_ok = self#.try_schedule(reg.task_id, reg.task_schedule_generation)
+        assert(sched_ok, "Atomic CAS winner MUST successfully schedule the task!")
+        return true
+    }
+
+    // Exactly-Once Idempotent Scheduling via TCB State Transition: Suspended(gen) -> Queued(gen)
+    pub fn try_schedule(self#, task_id: u64, gen: u64) -> bool {
+        auto i# = 0:u64
+        auto tcb_found# = false
+        auto tcb_idx# = 0:u64
+
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == task_id {
+                tcb_found = true
+                tcb_idx = i
+                break
+            }
+            i = i + 1
+        }
+
+        if !tcb_found {
+            return false
+        }
+
+        auto tcb = self.tcbs.at(tcb_idx)
+
+        // Atomic TCB Guard: ONLY Suspended(gen) can transition to Queued(gen)
+        if tcb.state != 2 || tcb.task_schedule_generation != gen {
+            return false // Reject if state is Queued(3), Running(1), Completed(4), or generation mismatch!
+        }
+
+        // Transition TCB state from Suspended(2) -> Queued(3)
+        auto queued_tcb = TestTCB(
+            id = tcb.id,
+            task_schedule_generation = tcb.task_schedule_generation,
+            state = 3, // Queued
+            cancel_requested = tcb.cancel_requested,
+            frame_valid = tcb.frame_valid,
+            result = tcb.result,
+            result_consumed = tcb.result_consumed,
+            handle_detached = tcb.handle_detached
+        )
+        self.tcbs#.set(tcb_idx, queued_tcb)
+
+        // Enqueue into Ready Queue
+        self.ready_queue#.push(ScheduledItem(task_id = task_id, task_schedule_generation = gen))
+        return true
+    }
+
+    // Publish Task Result Exactly Once (Requires Running(1) state)
+    pub fn publish_result(self#, task_id: u64, res_val: u32) -> bool {
+        auto i# = 0:u64
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == task_id {
+                auto old = self.tcbs.at(i)
+                // STRICT GUARD: Must be in Running(1) state to publish result
+                if old.state != 1 {
+                    return false
+                }
+                if old.result != 0 {
+                    return false // Result already published!
+                }
+                auto completed_tcb = TestTCB(
+                    id = old.id,
+                    task_schedule_generation = old.task_schedule_generation,
+                    state = 4, // Completed
+                    cancel_requested = old.cancel_requested,
+                    frame_valid = old.frame_valid,
+                    result = res_val,
+                    result_consumed = old.result_consumed,
+                    handle_detached = old.handle_detached
+                )
+                self.tcbs#.set(i, completed_tcb)
+                self.result_publish_count = self.result_publish_count + 1
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    pub fn consume_result(self#, task_id: u64) -> bool {
+        auto i# = 0:u64
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == task_id {
+                auto old = self.tcbs.at(i)
+                if old.state != 4 || old.result == 0 {
+                    return false
+                }
+                auto updated = TestTCB(
+                    id = old.id,
+                    task_schedule_generation = old.task_schedule_generation,
+                    state = old.state,
+                    cancel_requested = old.cancel_requested,
+                    frame_valid = old.frame_valid,
+                    result = old.result,
+                    result_consumed = true,
+                    handle_detached = old.handle_detached
+                )
+                self.tcbs#.set(i, updated)
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    pub fn detach_handle(self#, task_id: u64) -> bool {
+        auto i# = 0:u64
+        loop i < self.tcbs.len() {
+            if self.tcbs.at(i).id == task_id {
+                auto old = self.tcbs.at(i)
+                auto updated = TestTCB(
+                    id = old.id,
+                    task_schedule_generation = old.task_schedule_generation,
+                    state = old.state,
+                    cancel_requested = old.cancel_requested,
+                    frame_valid = old.frame_valid,
+                    result = old.result,
+                    result_consumed = old.result_consumed,
+                    handle_detached = true
+                )
+                self.tcbs#.set(i, updated)
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    pub fn has_active_registration(self, task_id: u64) -> bool {
+        auto i# = 0:u64
+        loop i < self.wait_slots.len() {
+            auto reg = self.wait_slots.at(i)
+            if reg.active && reg.task_id == task_id {
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    // Recycle Registration Slot (MUST NOT recycle active Waiting slot!)
+    pub fn reuse_slot(self#, slot_idx: u64) {
+        if slot_idx < self.wait_slots.len() {
+            auto old = self.wait_slots.at(slot_idx)
+            // STRICT RECYCLING PROTOCOL: Must leave Waiting(0) first!
+            assert(old.state != 0:u32, "Prohibited from recycling a live Waiting slot!")
+            auto recycled = TestWaitRegistration(
+                token = TestWaitToken(wait_id = slot_idx, wait_slot_generation = old.token.wait_slot_generation + 1),
+                task_id = old.task_id,
+                task_schedule_generation = old.task_schedule_generation,
+                state = 0, // Reset to Waiting for next user
+                active = false
+            )
+            self.wait_slots#.set(slot_idx, recycled)
+        }
+    }
+
+    // Mark frame freed ONLY AFTER full RFC Frame Life-Cycle Bound is satisfied!
+    pub fn invalidate_frame(self#, task_idx: u64) {
+        if task_idx < self.tcbs.len() {
+            auto old = self.tcbs.at(task_idx)
+            // STRICT FRAME LIFECYCLE GUARDS:
+            // 1. Must be Completed(4)
+            assert(old.state == 4:u32, "Frame can ONLY be freed after task reaches Completed(4)!")
+            // 2. Result consumed OR handle detached
+            assert(old.result_consumed || old.handle_detached, "Frame can ONLY be freed if result consumed or handle detached!")
+            // 3. No active registrations remaining
+            assert(!self.has_active_registration(old.id), "Frame can ONLY be freed if no active registration exists!")
+
+            auto updated = TestTCB(
+                id = old.id,
+                task_schedule_generation = old.task_schedule_generation,
+                state = old.state,
+                cancel_requested = old.cancel_requested,
+                frame_valid = false,
+                result = old.result,
+                result_consumed = old.result_consumed,
+                handle_detached = old.handle_detached
+            )
+            self.tcbs#.set(task_idx, updated)
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// 2. Six Exact Red-Line Model Tests (100% Final Locked RFC Specification)
+// -----------------------------------------------------------------------------
+
+// Model Red-Line 1: Timer vs Ready Competition on Same Token
+fn test_model_timer_vs_ready_competition() {
+    println("[Model Red-Line 1] Testing Timer vs Ready competition on same token...")
+    auto sched# = TestScheduler::new()
+    auto tid = sched#.create_task(101)
+    sched#.start_task(tid)                                     // Created -> Queued(1)
+    auto _ = sched#.pop_worker_task()                         // Queued(1) -> Running(1)
+    auto token = sched#.suspend_and_register_wait(tid, 0)     // Running(1) -> Suspended(2)
+
+    // Event 1: Ready arrives (CAS Winner)
+    auto win1 = sched#.try_wake(token, 1) // 1: Ready
+    // Event 2: Timeout arrives for same token (CAS Loser)
+    auto win2 = sched#.try_wake(token, 2) // 2: Timeout
+
+    assert(win1, "First event (Ready) must win try_wake")
+    assert(!win2, "Second event (Timeout) must lose try_wake")
+    assert(sched.ready_queue.len() == 1, "Ready queue length must be exactly 1")
+    assert(sched.tcbs.at(0).state == 3:u32, "TCB state must be Queued(3)")
+    println("[Model Red-Line 1] PASSED: Exactly-one winner for concurrent wake.")
+}
+
+// Model Red-Line 2: Cancel vs Ready Competition on Same Token
+fn test_model_cancel_vs_ready_competition() {
+    println("[Model Red-Line 2] Testing Cancel vs Ready competition on same token...")
+    auto sched# = TestScheduler::new()
+    auto tid = sched#.create_task(102)
+    sched#.start_task(tid)                                     // Created -> Queued(1)
+    auto _ = sched#.pop_worker_task()                         // Queued(1) -> Running(1)
+    auto token = sched#.suspend_and_register_wait(tid, 0)     // Running(1) -> Suspended(2)
+
+    // Event 1: Cancel arrives (CAS Winner)
+    auto win1 = sched#.try_wake(token, 3) // 3: Canceled
+    // Event 2: Ready arrives (CAS Loser)
+    auto win2 = sched#.try_wake(token, 1) // 1: Ready
+
+    assert(win1, "First event (Cancel) must win try_wake")
+    assert(!win2, "Second event (Ready) must lose try_wake")
+    assert(sched.ready_queue.len() == 1, "Ready queue length must be exactly 1")
+    assert(sched.tcbs.at(0).cancel_requested, "cancel_requested MUST be set by CAS winner")
+    assert(sched.tcbs.at(0).state == 3:u32, "TCB state must be Queued(3)")
+    println("[Model Red-Line 2] PASSED: Cancel vs Ready competition strictly linearized.")
+}
+
+// Model Red-Line 3: Slot Reuse & Generation Invalidation (Full Lifecycle)
+fn test_model_slot_reuse_generation_invalidation() {
+    println("[Model Red-Line 3] Testing Slot Reuse & Generation Invalidation...")
+    auto sched# = TestScheduler::new()
+    auto tid1 = sched#.create_task(103)
+    sched#.start_task(tid1)
+    auto _1 = sched#.pop_worker_task()
+    auto old_token = sched#.suspend_and_register_wait(tid1, 0) // slot 0, slot_gen 1
+
+    // Step A: tid1 is cancelled and completes full lifecycle
+    auto win_cancel = sched#.try_wake(old_token, 3)
+    assert(win_cancel, "Cancel wins wake for tid1")
+    auto _w1 = sched#.pop_worker_task()
+    sched#.publish_result(tid1, 2) // Completed(Canceled)
+
+    // Step B: Slot 0 (now left Waiting) is recycled, advancing slot_gen to 2
+    sched#.reuse_slot(0)
+
+    // Step C: tid2 created, started, suspended on recycled slot 0 (inactive check passes, slot_gen 2)
+    auto tid2 = sched#.create_task(104)
+    sched#.start_task(tid2)
+    auto _2 = sched#.pop_worker_task()
+    auto new_token = sched#.suspend_and_register_wait(tid2, 0) // slot 0, slot_gen 2
+
+    // Late event for old_token (slot_gen 1) arrives
+    auto stale_win = sched#.try_wake(old_token, 1)
+
+    assert(!stale_win, "Late event with stale generation MUST be discarded")
+    assert(sched.ready_queue.len() == 0, "Ready queue must be empty after stale event")
+
+    // Event for new_token (slot_gen 2) arrives
+    auto fresh_win = sched#.try_wake(new_token, 1)
+    assert(fresh_win, "Fresh token event must succeed")
+    assert(sched.ready_queue.len() == 1, "Ready queue length must be 1")
+    assert(sched.ready_queue.at(0).task_id == tid2, "Scheduled task must be tid2")
+
+    println("[Model Red-Line 3] PASSED: Generation invalidation prevents stale wakeups.")
+}
+
+// Model Red-Line 4A & 4B: Complete vs Cancel Linearization & Result Publication
+fn test_model_complete_vs_cancel_competition() {
+    println("[Model Red-Line 4A] Testing Complete-First Path...")
+    {
+        auto sched# = TestScheduler::new()
+        auto tid = sched#.create_task(105)
+        sched#.start_task(tid)
+        auto _ = sched#.pop_worker_task()
+        auto token = sched#.suspend_and_register_wait(tid, 0)
+
+        // Event: Ready wins wake
+        auto wake_ok = sched#.try_wake(token, 1) // 1: Ready
+        assert(wake_ok, "Ready wake must succeed")
+
+        // Worker dequeues and completes task
+        auto _w = sched#.pop_worker_task()
+        auto pub_ok = sched#.publish_result(tid, 1) // 1: Ok
+        assert(pub_ok, "Normal completion publishes Ok")
+
+        // Trailing cancel attempt (fails CAS and publication)
+        auto late_cancel_wake = sched#.try_wake(token, 3)
+        auto late_cancel_pub = sched#.publish_result(tid, 2) // 2: Canceled
+
+        assert(!late_cancel_wake, "Late cancel wake must be rejected by CAS")
+        assert(!late_cancel_pub, "Late cancel result publish MUST be rejected")
+        assert(sched.result_publish_count == 1, "Result publish count must be 1")
+        assert(sched.tcbs.at(0).result == 1:u32, "Result must be Ok(1)")
+        assert(!sched.tcbs.at(0).cancel_requested, "cancel_requested must remain false")
+        println("[Model Red-Line 4A] PASSED: Complete-first path published Ok exactly once.")
+    }
+
+    println("[Model Red-Line 4B] Testing Cancel-First Path...")
+    {
+        auto sched# = TestScheduler::new()
+        auto tid = sched#.create_task(106)
+        sched#.start_task(tid)
+        auto _ = sched#.pop_worker_task()
+        auto token = sched#.suspend_and_register_wait(tid, 0)
+
+        // Event: Cancel wins wake CAS
+        auto wake_cancel = sched#.try_wake(token, 3) // 3: Canceled
+        assert(wake_cancel, "Cancel wake must succeed")
+        assert(sched.tcbs.at(0).cancel_requested, "cancel_requested MUST be set to true by CAS winner")
+
+        // Worker dequeues task, observes cancel_requested == true, runs cleanup & publishes Canceled
+        auto _w = sched#.pop_worker_task()
+        assert(sched.tcbs.at(0).cancel_requested, "Worker observes cancel_requested == true")
+        auto pub_canceled = sched#.publish_result(tid, 2) // 2: Canceled
+        assert(pub_canceled, "Cleanup publishes Canceled result")
+
+        // Trailing normal completion attempt
+        auto late_ready_wake = sched#.try_wake(token, 1)
+        auto late_ok_pub = sched#.publish_result(tid, 1)
+
+        assert(!late_ready_wake, "Late ready wake must be rejected by CAS")
+        assert(!late_ok_pub, "Late Ok result publish MUST be rejected")
+        assert(sched.result_publish_count == 1, "Result publish count must be 1")
+        assert(sched.tcbs.at(0).result == 2:u32, "Result must be Canceled(2)")
+        println("[Model Red-Line 4B] PASSED: Cancel-first path set cancel_requested and published Canceled exactly once.")
+    }
+}
+
+// Model Red-Line 5: Stale Token Frame Safety Guard (Strict Lifecycle & Ownership Compliance)
+fn test_model_stale_token_frame_safety() {
+    println("[Model Red-Line 5] Testing Stale Token Frame Safety Guard with Full Lifecycle Validation...")
+    auto sched# = TestScheduler::new()
+    auto tid = sched#.create_task(107)
+    sched#.start_task(tid)
+    auto _ = sched#.pop_worker_task()
+    auto token = sched#.suspend_and_register_wait(tid, 0)
+
+    // Complete task full lifecycle to Completed(4)
+    auto wake_cancel = sched#.try_wake(token, 3)
+    assert(wake_cancel, "Cancel wins wake")
+    auto _w = sched#.pop_worker_task()
+    sched#.publish_result(tid, 2) // State becomes Completed(4)
+
+    // Slot 0 recycled and result consumed according to Frame Life-Cycle Bound
+    sched#.reuse_slot(0)
+    auto consumed = sched#.consume_result(tid)
+    assert(consumed, "Result consumed by caller")
+
+    // NOW invalidate_frame is called (passes all 3 guards: Completed, result_consumed, !has_active_registration)
+    sched#.invalidate_frame(0)
+
+    // Reset touch counters
+    sched.tcb_lookup_count = 0
+    sched.frame_touch_count = 0
+
+    // Late stale token event arrives
+    auto stale_win = sched#.try_wake(token, 1)
+
+    assert(!stale_win, "Stale token must be rejected")
+    assert(sched.ready_queue.len() == 0, "Queue must remain empty")
+
+    // OBSERVABILITY ASSERTION: Verify stale token attempt NEVER touched TCB or Frame!
+    assert(sched.tcb_lookup_count == 0, "tcb_lookup_count MUST be zero on stale token attempt")
+    assert(sched.frame_touch_count == 0, "frame_touch_count MUST be zero on stale token attempt")
+
+    println("[Model Red-Line 5] PASSED: Stale token rejected with ZERO TCB/Frame access under strict lifecycle bounds.")
+}
+
+// Model Red-Line 6: Atomic TCB State Machine Idempotency (Post Dequeue Guard)
+fn test_model_double_scheduling_idempotency() {
+    println("[Model Red-Line 6] Testing TCB State Machine Idempotency (Post-Dequeue Guard)...")
+    auto sched# = TestScheduler::new()
+    auto tid = sched#.create_task(108)
+    sched#.start_task(tid)                                     // Created -> Queued(1)
+    auto _1 = sched#.pop_worker_task()                         // Queued(1) -> Running(1)
+    auto token = sched#.suspend_and_register_wait(tid, 0)     // Running(1) -> Suspended(2)
+
+    // 1. First try_wake / try_schedule succeeds (Suspended(2) -> Queued(2))
+    auto win1 = sched#.try_wake(token, 1)
+    assert(win1, "First try_wake must succeed")
+    assert(sched.ready_queue.len() == 1, "Ready queue has 1 item")
+
+    // 2. Worker dequeues task (Queued(2) -> Running(2)). Ready Queue is now EMPTY.
+    auto dequeued_item = sched#.pop_worker_task()
+    assert(dequeued_item.task_id == tid, "Worker dequeued task 108")
+    assert(sched.ready_queue.len() == 0, "Ready queue is now EMPTY!")
+    assert(sched.tcbs.at(0).state == 1:u32, "TCB state is now Running(1)")
+
+    // 3. Late try_schedule for same (task_id, gen=2) arrives while task is Running
+    auto sched2 = sched#.try_schedule(tid, 2)
+    assert(!sched2, "Late try_schedule while Running MUST be rejected by TCB state machine!")
+    assert(sched.ready_queue.len() == 0, "Ready queue MUST remain empty!")
+
+    println("[Model Red-Line 6] PASSED: TCB state machine guarantees exactly-once scheduling even after dequeue.")
+}
+
+pub fn main() -> i32 {
+    println("=========================================================")
+    println("  Running Phase 0 Async Runtime Model Red-Line Tests (Final Approved)")
+    println("=========================================================")
+    test_model_timer_vs_ready_competition()
+    test_model_cancel_vs_ready_competition()
+    test_model_slot_reuse_generation_invalidation()
+    test_model_complete_vs_cancel_competition()
+    test_model_stale_token_frame_safety()
+    test_model_double_scheduling_idempotency()
+    println("=========================================================")
+    println("  ALL Model Red-Line Invariant Tests PASSED 100%!")
+    println("=========================================================")
+    return 0
+}
