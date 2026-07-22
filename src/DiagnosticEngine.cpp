@@ -13,8 +13,10 @@
 // limitations under the License.
 #include "toka/DiagnosticEngine.h"
 #include "toka/InterfaceVersion.h"
+#include "toka/PathUtils.h"
 #include "toka/SourceManager.h"
 #include "toka/AST.h"
+#include <algorithm>
 #include <iostream>
 
 extern bool g_JsonDiagnostics;
@@ -54,11 +56,161 @@ SourceManager *DiagnosticEngine::SrcMgr = nullptr;
 int DiagnosticEngine::ErrorCount = 0;
 bool DiagnosticEngine::PrintingEnabled = true;
 std::vector<DiagnosticRecord> DiagnosticEngine::Records;
+std::optional<size_t> DiagnosticEngine::LastPrimaryRecord;
 
 void DiagnosticEngine::reset() {
   ErrorCount = 0;
   ActiveNode = nullptr;
   Records.clear();
+  LastPrimaryRecord.reset();
+}
+
+const char *DiagnosticEngine::levelName(DiagLevel level) {
+  switch (level) {
+  case DiagLevel::Warning: return "warning";
+  case DiagLevel::Error: return "error";
+  case DiagLevel::Note: return "note";
+  case DiagLevel::Structural: return "structural";
+  }
+  return "error";
+}
+
+void DiagnosticEngine::capture(DiagLoc loc, DiagID id, DiagLevel level,
+                               const std::string &message) {
+  if (!loc.File.empty())
+    loc.File = PathUtils::canonicalize(loc.File);
+  DiagnosticSpan span{loc.File, loc.Line, loc.Col, loc.Length, ""};
+  if (level == DiagLevel::Note && LastPrimaryRecord &&
+      *LastPrimaryRecord < Records.size()) {
+    span.Label = message;
+    Records[*LastPrimaryRecord].Related.push_back(std::move(span));
+    return;
+  }
+
+  DiagnosticRecord record;
+  record.File = loc.File;
+  record.Line = loc.Line;
+  record.Column = loc.Col;
+  record.Length = loc.Length;
+  record.Level = level;
+  record.Code = getCode(id);
+  record.Message = message;
+
+  auto addFix = [&](std::string title, int length, std::string newText) {
+    DiagnosticSpan editSpan{loc.File, loc.Line, loc.Col, length, ""};
+    record.Fixes.push_back(
+        {std::move(title), {{std::move(editSpan), std::move(newText)}}});
+  };
+  if (id == DiagID::ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR) {
+    addFix("Replace 'var' with 'auto'", 3, "auto");
+  } else if (id ==
+             DiagID::ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED) {
+    addFix("Add spaces around '-'", 1, " - ");
+  } else if (id == DiagID::ERR_PARSER_TRAIT_REQUIRES_AT_PREFIX) {
+    addFix("Add the trait '@' prefix", 0, "@");
+  } else if (id == DiagID::ERR_POINTER_SIGIL_MISSING) {
+    size_t marker = message.find("Use 'auto ");
+    if (marker != std::string::npos && marker + 10 < message.size())
+      addFix("Add the inferred pointer sigil", 0,
+             std::string(1, message[marker + 10]));
+  }
+
+  Records.push_back(std::move(record));
+  LastPrimaryRecord = Records.size() - 1;
+}
+
+std::optional<DiagnosticExplanation>
+DiagnosticEngine::explain(const std::string &code) {
+  DiagnosticExplanation result;
+#define DIAG(DiagName, DiagSeverity, DiagCode, DiagMessage)                    \
+  if (code == DiagCode) {                                                     \
+    result.ID = #DiagName;                                                    \
+    result.Code = DiagCode;                                                   \
+    result.Level = DiagLevel::DiagSeverity;                                   \
+    result.MessageTemplate = DiagMessage;                                     \
+  }
+#include "toka/DiagnosticDefs.def"
+#undef DIAG
+  if (result.Code.empty())
+    return std::nullopt;
+  if (code == "E0402")
+    result.Guidance = "Declare the identifier in the visible scope or import "
+                      "the public symbol that defines it.";
+  else if (code == "E0408" || code == "E0409")
+    result.Guidance = "Compare the resolved source and target types, then "
+                      "change the annotation, conversion, or value.";
+  else if (code == "E0438")
+    result.Guidance = "Use the value before its ownership transfer, borrow it, "
+                      "or clone it when duplication is valid.";
+  else if (code == "E01244")
+    result.Guidance = "Replace the removed 'var' keyword with 'auto'.";
+  else if (code == "E01246")
+    result.Guidance = "Write whitespace on both sides of binary '-'.";
+  else if (code == "E0469")
+    result.Guidance = "Return the reference handle with '&name' instead of "
+                      "returning only the referenced value.";
+  else if (code.front() == 'W')
+    result.Guidance = "The program is accepted; remove the warning cause or "
+                      "make the intent explicit.";
+  else
+    result.Guidance = "Use the primary span and related spans to repair the "
+                      "reported language rule, then run 'toka check' again.";
+  return result;
+}
+
+llvm::json::Value DiagnosticEngine::structuredJSON() {
+  auto position = [](int line, int column) {
+    return llvm::json::Object{{"line", std::max(0, line - 1)},
+                              {"character", std::max(0, column - 1)}};
+  };
+  auto span = [&](const DiagnosticSpan &value) {
+    llvm::json::Object range{
+        {"start", position(value.Line, value.Column)},
+        {"end", position(value.Line,
+                         value.Column + std::max(0, value.Length))}};
+    return llvm::json::Object{{"file", value.File},
+                              {"range", std::move(range)},
+                              {"label", value.Label}};
+  };
+  auto editRange = [&](const DiagnosticSpan &value) {
+    return llvm::json::Object{
+        {"start", position(value.Line, value.Column)},
+        {"end", position(value.Line,
+                         value.Column + std::max(0, value.Length))}};
+  };
+  llvm::json::Array diagnostics;
+  for (const DiagnosticRecord &record : Records) {
+    llvm::json::Array related;
+    for (const DiagnosticSpan &item : record.Related)
+      related.emplace_back(span(item));
+    llvm::json::Array fixes;
+    for (const DiagnosticFix &fix : record.Fixes) {
+      llvm::json::Array edits;
+      for (const DiagnosticEdit &edit : fix.Edits)
+        edits.emplace_back(llvm::json::Object{{"file", edit.Range.File},
+                                              {"range", editRange(edit.Range)},
+                                              {"newText", edit.NewText}});
+      fixes.emplace_back(llvm::json::Object{
+          {"title", fix.Title},
+          {"applicability", "machine-applicable"},
+          {"edits", std::move(edits)}});
+    }
+    DiagnosticSpan primary{record.File, record.Line, record.Column,
+                           record.Length, ""};
+    diagnostics.emplace_back(llvm::json::Object{
+        {"code", record.Code},
+        {"severity", levelName(record.Level)},
+        {"message", record.Message},
+        {"primary", span(primary)},
+        {"related", std::move(related)},
+        {"fixes", std::move(fixes)}});
+  }
+  return llvm::json::Object{
+      {"schema", "toka.diagnostics"},
+      {"version", 2},
+      {"compiler_version", TOKA_COMPILER_INTERFACE_VERSION},
+      {"success", ErrorCount == 0},
+      {"diagnostics", std::move(diagnostics)}};
 }
 
 const char *DiagnosticEngine::getFormatString(DiagID id) {
@@ -111,8 +263,7 @@ void DiagnosticEngine::reportImpl(DiagLoc loc, DiagID id,
     ErrorCount++;
   }
 
-  Records.push_back({loc.File, loc.Line, loc.Col, loc.Length, level,
-                     getCode(id), message});
+  capture(loc, id, level, message);
 
   if (!PrintingEnabled)
     return;
@@ -197,8 +348,7 @@ void DiagnosticEngine::reportImpl(SourceLocation loc, int length, DiagID id,
       node_serial = ActiveNode->NodeSerial;
       expansion_context = ActiveNode->ExpansionContext;
     }
-    Records.push_back({fileName, line, col, length, level, getCode(id),
-                       message});
+    capture(DiagLoc{fileName, line, col, length}, id, level, message);
     std::cout << "{\"file\": \"" << escapeJson(fileName) << "\", \"line\": " << line
               << ", \"col\": " << col << ", \"message\": \"" << escapedMsg 
               << "\", \"code\": \"" << getCode(id) << "\", \"level\": " << (int)level

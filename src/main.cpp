@@ -110,7 +110,11 @@ void printHelp() {
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
       << "  --check-json                    Emit JSON Lines diagnostics\n"
+      << "  --diagnostics-json              Emit structured diagnostics JSON\n"
+      << "  --check-only                    Stop after semantic checking\n"
+      << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-index=json           Emit the compiler semantic index\n"
+      << "  --semantic-context=json         Emit bounded semantic context\n"
       << "  --semantic-query <kind>         Query the semantic index\n"
       << "  --query-file <file>             File for a semantic query\n"
       << "  --line <n> --character <n>      Zero-based query position\n"
@@ -134,6 +138,18 @@ public:
     if (toka::SemanticEvidence::isEnabled())
       toka::SemanticEvidence::dumpJSON(std::cout);
   }
+};
+
+class StructuredDiagnosticsDumpGuard {
+public:
+  explicit StructuredDiagnosticsDumpGuard(bool &enabled) : Enabled(enabled) {}
+  ~StructuredDiagnosticsDumpGuard() {
+    if (Enabled)
+      llvm::outs() << toka::DiagnosticEngine::structuredJSON() << '\n';
+  }
+
+private:
+  bool &Enabled;
 };
 
 } // namespace
@@ -290,6 +306,7 @@ static std::string normalizePath(const std::string &path) {
 
 
 int main(int argc, char **argv) {
+  toka::DiagnosticEngine::reset();
   std::vector<std::string> searchPaths;
   std::vector<std::string> trustedSystemRoots = {"lib", "../lib"};
   auto splitEnvPaths = [&](const char* envName, std::vector<std::string> &out) {
@@ -371,7 +388,12 @@ int main(int argc, char **argv) {
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
   bool dumpSemanticIndex = false;
+  bool dumpSemanticContext = false;
+  bool structuredDiagnostics = false;
+  bool checkOnly = false;
+  bool explainJson = false;
   std::string semanticQuery;
+  std::string explainCode;
   std::string queryFile;
   std::string renameTo;
   unsigned queryLine = 0;
@@ -379,6 +401,8 @@ int main(int argc, char **argv) {
   bool experimentalNoCapture = false;
   bool experimentalReadOnly = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard;
+  StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
+      structuredDiagnostics);
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
@@ -409,8 +433,22 @@ int main(int argc, char **argv) {
       return 0;
     } else if (arg == "--check-json") {
       g_JsonDiagnostics = true;
+    } else if (arg == "--diagnostics-json") {
+      structuredDiagnostics = true;
+      toka::DiagnosticEngine::setPrintingEnabled(false);
+    } else if (arg == "--check-only") {
+      checkOnly = true;
+    } else if (arg == "--explain" || arg == "--explain=json") {
+      if (i + 1 >= argc) {
+        llvm::errs() << arg << " requires a diagnostic code\n";
+        return 1;
+      }
+      explainJson = arg == "--explain=json";
+      explainCode = argv[++i];
     } else if (arg == "--semantic-index=json") {
       dumpSemanticIndex = true;
+    } else if (arg == "--semantic-context=json") {
+      dumpSemanticContext = true;
     } else if (arg == "--semantic-query") {
       if (i + 1 >= argc) {
         llvm::errs() << "--semantic-query requires an argument\n";
@@ -540,6 +578,17 @@ int main(int argc, char **argv) {
       compileOnly && emitInterface && configuredBuildDir &&
       configuredBuildDir[0] != '\0';
 
+  if (structuredDiagnostics &&
+      (g_JsonDiagnostics || dumpDependencies || dumpAssignmentStats ||
+       dumpHandleSurfaceStats || dumpSemanticEvidence || dumpMemorySummaries ||
+       dumpMemoryContracts || dumpSemanticIndex || dumpSemanticContext ||
+       !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
+    llvm::errs() << "--diagnostics-json cannot be combined with another "
+                    "JSON, semantic, or evaluation output mode\n";
+    structuredDiagnostics = false;
+    return 1;
+  }
+
   if (dumpSemanticEvidence &&
       (dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
        runTopologyEval || g_JsonDiagnostics)) {
@@ -562,7 +611,7 @@ int main(int argc, char **argv) {
                     "another JSON or evaluation output mode\n";
     return 1;
   }
-  if ((dumpSemanticIndex || !semanticQuery.empty()) &&
+  if ((dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty()) &&
       (dumpMemoryContracts || dumpMemorySummaries || dumpSemanticEvidence ||
        dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
        runTopologyEval || g_JsonDiagnostics)) {
@@ -575,7 +624,39 @@ int main(int argc, char **argv) {
                     "--semantic-query\n";
     return 1;
   }
+  if (dumpSemanticContext && (dumpSemanticIndex || !semanticQuery.empty())) {
+    llvm::errs() << "--semantic-context=json cannot be combined with another "
+                    "semantic output mode\n";
+    return 1;
+  }
   toka::SemanticEvidence::enable(dumpSemanticEvidence);
+
+  if (!explainCode.empty()) {
+    auto explanation = toka::DiagnosticEngine::explain(explainCode);
+    if (!explanation) {
+      llvm::errs() << "error: unknown diagnostic code '" << explainCode << "'\n";
+      return 1;
+    }
+    if (explainJson) {
+      llvm::outs() << llvm::json::Object{
+                          {"schema", "toka.diagnostic-explanation"},
+                          {"version", 1},
+                          {"code", explanation->Code},
+                          {"id", explanation->ID},
+                          {"severity", toka::DiagnosticEngine::levelName(
+                                           explanation->Level)},
+                          {"messageTemplate", explanation->MessageTemplate},
+                          {"guidance", explanation->Guidance}}
+                   << '\n';
+    } else {
+      llvm::outs() << explanation->Code << " ("
+                   << toka::DiagnosticEngine::levelName(explanation->Level)
+                   << ", " << explanation->ID << ")\n"
+                   << explanation->MessageTemplate << "\n\n"
+                   << explanation->Guidance << '\n';
+    }
+    return 0;
+  }
 
   if (runTopologyEval) {
     std::vector<std::string> testFiles;
@@ -817,7 +898,7 @@ int main(int argc, char **argv) {
   }
   profile.mark("sema_check");
 
-  if (dumpSemanticIndex || !semanticQuery.empty()) {
+  if (dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty()) {
     std::vector<toka::Module *> modules;
     modules.reserve(astModules.size());
     for (const auto &ast : astModules)
@@ -826,7 +907,8 @@ int main(int argc, char **argv) {
     llvm::json::Value output = dumpSemanticIndex
                                    ? index.toJSON()
                                    : index.queryJSON(
-                                         semanticQuery,
+                                         dumpSemanticContext ? "context"
+                                                             : semanticQuery,
                                          toka::PathUtils::canonicalize(
                                              queryFile.empty()
                                                  ? sourceFiles.front()
@@ -834,6 +916,11 @@ int main(int argc, char **argv) {
                                          queryLine, queryCharacter, renameTo);
     llvm::outs() << output << '\n';
     profile.mark("semantic_index");
+    profile.finish("tokac");
+    return 0;
+  }
+
+  if (checkOnly) {
     profile.finish("tokac");
     return 0;
   }

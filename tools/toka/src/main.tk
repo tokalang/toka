@@ -15,6 +15,9 @@ fn print_help() {
     println("  init         Initialize a new Toka project in the current directory")
     println("  build        Compile current project to an executable")
     println("  run [file]   Compile and execute a Toka program")
+    println("  check        Type-check source files (--json for structured diagnostics)")
+    println("  explain      Explain a diagnostic code (--json for machine output)")
+    println("  context      Emit bounded semantic context for an AI/editor query")
     println("  test         Run all tests in the tests/ directory")
     println("  doc          Generate API documentation")
     println("  add <url>    Add a package dependency")
@@ -609,6 +612,69 @@ fn cmd_run(use_forge: bool) -> i32 {
     }
 }
 
+fn cmd_check(argc: i32, shift: i32) -> i32 {
+    if argc < 3 + shift {
+        println("Error: 'toka check' requires at least one source file.")
+        return 1
+    }
+    auto command# = Command::new(detect_tokac_path())
+    command#.arg(string::from("--check-only"))
+    command#.arg(string::from("-I"))
+    command#.arg(detect_default_lib_path())
+    auto idx# = 2 + shift
+    loop idx < argc {
+        auto arg = env::get_arg(idx)
+        if arg.eq(string::from("--json")) {
+            command#.arg(string::from("--diagnostics-json"))
+        } else {
+            command#.arg(cede arg)
+        }
+        idx += 1
+    }
+    return command#.status()
+}
+
+fn cmd_explain(argc: i32, shift: i32) -> i32 {
+    if argc < 3 + shift {
+        println("Error: 'toka explain' requires a diagnostic code.")
+        return 1
+    }
+    auto command# = Command::new(detect_tokac_path())
+    auto json# = false
+    auto idx# = 3 + shift
+    loop idx < argc {
+        if env::get_arg(idx).eq(string::from("--json")) { json = true }
+        idx += 1
+    }
+    if json {
+        command#.arg(string::from("--explain=json"))
+    } else {
+        command#.arg(string::from("--explain"))
+    }
+    command#.arg(env::get_arg(2 + shift))
+    return command#.status()
+}
+
+fn cmd_context(argc: i32, shift: i32) -> i32 {
+    if argc < 3 + shift {
+        println("Error: 'toka context' requires a source file.")
+        return 1
+    }
+    auto command# = Command::new(detect_tokac_path())
+    command#.arg(string::from("--semantic-context=json"))
+    command#.arg(string::from("-I"))
+    command#.arg(detect_default_lib_path())
+    auto idx# = 2 + shift
+    loop idx < argc {
+        auto arg = env::get_arg(idx)
+        if !arg.eq(string::from("--json")) {
+            command#.arg(cede arg)
+        }
+        idx += 1
+    }
+    return command#.status()
+}
+
 fn cmd_test() -> i32 {
     println("Running Toka tests...")
     
@@ -944,6 +1010,18 @@ fn main() -> i32 {
             return cmd_run_single(single_file)
         }
         return cmd_run(use_forge)
+    }
+
+    if cmd.eq(string::from("check")) {
+        return cmd_check(argc, shift)
+    }
+
+    if cmd.eq(string::from("explain")) {
+        return cmd_explain(argc, shift)
+    }
+
+    if cmd.eq(string::from("context")) {
+        return cmd_context(argc, shift)
     }
     
     if cmd.eq(string::from("test")) {

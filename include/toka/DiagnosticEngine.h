@@ -14,6 +14,8 @@
 #pragma once
 
 #include "toka/SourceLocation.h"
+#include "llvm/Support/JSON.h"
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -31,6 +33,24 @@ struct DiagLoc {
 
 enum class DiagLevel { Warning, Error, Note, Structural };
 
+struct DiagnosticSpan {
+  std::string File;
+  int Line = 0;
+  int Column = 0;
+  int Length = 1;
+  std::string Label;
+};
+
+struct DiagnosticEdit {
+  DiagnosticSpan Range;
+  std::string NewText;
+};
+
+struct DiagnosticFix {
+  std::string Title;
+  std::vector<DiagnosticEdit> Edits;
+};
+
 struct DiagnosticRecord {
   std::string File;
   int Line = 0;
@@ -39,6 +59,16 @@ struct DiagnosticRecord {
   DiagLevel Level = DiagLevel::Error;
   std::string Code;
   std::string Message;
+  std::vector<DiagnosticSpan> Related;
+  std::vector<DiagnosticFix> Fixes;
+};
+
+struct DiagnosticExplanation {
+  std::string ID;
+  std::string Code;
+  DiagLevel Level = DiagLevel::Error;
+  std::string MessageTemplate;
+  std::string Guidance;
 };
 
 enum class DiagID {
@@ -67,6 +97,10 @@ public:
   static void reset();
   static void setPrintingEnabled(bool enabled) { PrintingEnabled = enabled; }
   static const std::vector<DiagnosticRecord> &records() { return Records; }
+  static llvm::json::Value structuredJSON();
+  static std::optional<DiagnosticExplanation>
+  explain(const std::string &code);
+  static const char *levelName(DiagLevel level);
 
   static bool hasErrors() { return ErrorCount > 0; }
 
@@ -89,6 +123,9 @@ public:
 private:
   static bool PrintingEnabled;
   static std::vector<DiagnosticRecord> Records;
+  static std::optional<size_t> LastPrimaryRecord;
+  static void capture(DiagLoc loc, DiagID id, DiagLevel level,
+                      const std::string &message);
   static void reportImpl(DiagLoc loc, DiagID id, const std::string &message);
   static void reportImpl(SourceLocation loc, DiagID id,
                          const std::string &message);

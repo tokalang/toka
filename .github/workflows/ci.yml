@@ -59,6 +59,8 @@ jobs:
       - name: Verify developer experience
         run: |
           python3 tools/scripts/test_developer_experience.py
+          python3 tools/scripts/test_ai_tooling.py
+          python3 tools/scripts/evaluate_ai_coding.py
           python3 tools/scripts/test_semantic_index.py
           python3 tools/scripts/test_lsp_protocol.py
 

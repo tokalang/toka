@@ -1032,6 +1032,30 @@ llvm::json::Value SemanticIndex::queryJSON(const std::string &query,
     for (const SemanticSymbol *candidate : workspaceSymbols())
       result.emplace_back(symbolJSON(*candidate));
     response["result"] = std::move(result);
+  } else if (query == "context") {
+    llvm::json::Object result;
+    result["symbol"] = target ? llvm::json::Value(symbolJSON(*target))
+                              : llvm::json::Value(nullptr);
+    result["definition"] =
+        target ? llvm::json::Value(locationJSON(target->Declaration))
+               : llvm::json::Value(nullptr);
+    llvm::json::Array referenceValues;
+    if (target) {
+      auto targetReferences = references(target->ID);
+      size_t count = std::min<size_t>(targetReferences.size(), 32);
+      for (size_t i = 0; i < count; ++i)
+        referenceValues.emplace_back(occurrenceJSON(*targetReferences[i]));
+    }
+    result["references"] = std::move(referenceValues);
+    llvm::json::Array visible;
+    auto candidates = completions(file, line, character);
+    size_t count = std::min<size_t>(candidates.size(), 20);
+    for (size_t i = 0; i < count; ++i)
+      visible.emplace_back(symbolJSON(*candidates[i]));
+    result["visibleSymbols"] = std::move(visible);
+    result["truncated"] = candidates.size() > 20 ||
+                          (target && references(target->ID).size() > 32);
+    response["result"] = std::move(result);
   } else if (query == "rename") {
     llvm::json::Object result;
     if (!target) {

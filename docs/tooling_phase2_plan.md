@@ -11,9 +11,9 @@ performance gate are all present.
 | T2-2 | Persistent analysis session | In-memory document overlays; reverse-dependency invalidation; unchanged modules reused; revision statistics exposed | Complete |
 | T2-3 | Semantic LSP core | Hover, definition, references, completion, and rename consume compiler symbol IDs; cross-module/generic/trait/impl/shadowing cases pass | Complete |
 | T2-4 | Extended LSP surface | Signature help, document/workspace symbols, formatting, UTF-16 positions, cancellation-safe protocol behavior | Complete |
-| T2-5 | Structured diagnostics and fixes | Versioned diagnostics contain stable severity names, primary and related spans, notes, and validated edits | Pending |
-| T2-6 | AI-oriented CLI | `toka check --json`, `toka explain CODE`, and bounded semantic-context output are documented and tested | Pending |
-| T2-7 | AI coding evaluation | Fixed tasks measure compile success, diagnostic-repair success, edit precision, and token/turn cost against a recorded baseline | Pending |
+| T2-5 | Structured diagnostics and fixes | Versioned diagnostics contain stable severity names, primary and related spans, notes, and validated edits | Complete |
+| T2-6 | AI-oriented CLI | `toka check --json`, `toka explain CODE`, and bounded semantic-context output are documented and tested | Complete |
+| T2-7 | AI coding evaluation | Fixed tasks measure compile success, diagnostic-repair success, edit precision, and token/turn cost against a recorded baseline | Complete |
 | T2-8 | Real project and service gates | A meaningful 5K+ line multi-module Toka project passes clean/incremental builds; cold/warm latency, memory, crash, and soak thresholds run in CI | Pending |
 
 ## Phase exit criteria

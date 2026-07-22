@@ -1,0 +1,17 @@
+{
+  "schema": "toka.ai-coding-baseline",
+  "version": 1,
+  "minimum_rates": {
+    "compile_success": 1.0,
+    "diagnostic_success": 1.0,
+    "repair_success": 1.0,
+    "edit_precision": 1.0,
+    "semantic_context_success": 1.0
+  },
+  "maximum_cost": {
+    "tool_calls": 8,
+    "repair_rounds": 2,
+    "input_bytes": 10000,
+    "output_bytes": 50000
+  }
+}
