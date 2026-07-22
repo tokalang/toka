@@ -96,6 +96,9 @@ def main():
         installed_tokac = installed_bin / ("tokac" + suffix)
         env = os.environ.copy()
         env["PATH"] = str(installed_bin) + os.pathsep + env.get("PATH", "")
+        # Exercise the installed SDK's own prefix discovery even when the
+        # caller uses TOKA_LIB to build the source-tree toolchain.
+        env.pop("TOKA_LIB", None)
         run([installed_toka, "doctor"], temp_root, env=env)
 
         direct = temp_root / "direct.tk"
