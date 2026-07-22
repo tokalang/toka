@@ -17,7 +17,10 @@
 #include "llvm/TargetParser/Triple.h"
 #include "toka/SourceManager.h"
 #include "toka/PathUtils.h"
+#include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/IR/DebugInfo.h"
 #include <cctype>
+#include <filesystem>
 #include <iostream>
 #include <set>
 #include <typeinfo>
@@ -25,6 +28,150 @@
 extern bool verboseMode;
 
 namespace toka {
+
+void CodeGen::enableDebugInfo(const std::string &sourcePath, bool optimized) {
+  if (m_DebugBuilder)
+    return;
+
+  m_Module->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
+                          llvm::DEBUG_METADATA_VERSION);
+  if (llvm::Triple(m_Module->getTargetTriple()).isOSDarwin())
+    m_Module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 4);
+
+  m_DebugBuilder = std::make_unique<llvm::DIBuilder>(*m_Module);
+  std::filesystem::path path(sourcePath);
+  std::string fileName = path.filename().string();
+  std::string directory = path.parent_path().string();
+  if (directory.empty())
+    directory = ".";
+  llvm::DIFile *file = m_DebugBuilder->createFile(fileName, directory);
+  m_DebugFiles[sourcePath] = file;
+  m_DebugCompileUnit = m_DebugBuilder->createCompileUnit(
+      llvm::dwarf::DW_LANG_C_plus_plus_17, file, "Toka", optimized, "", 0);
+}
+
+void CodeGen::finalizeDebugInfo() {
+  if (m_DebugBuilder)
+    m_DebugBuilder->finalize();
+}
+
+llvm::DIFile *CodeGen::getDebugFile(SourceLocation loc) {
+  if (!m_DebugBuilder || !DiagnosticEngine::SrcMgr || loc.isInvalid())
+    return nullptr;
+  FullSourceLoc full = DiagnosticEngine::SrcMgr->getFullSourceLoc(loc);
+  if (!full.isValid())
+    return nullptr;
+  std::string sourcePath = full.FileName;
+  auto existing = m_DebugFiles.find(sourcePath);
+  if (existing != m_DebugFiles.end())
+    return existing->second;
+
+  std::filesystem::path path(sourcePath);
+  std::string directory = path.parent_path().string();
+  if (directory.empty())
+    directory = ".";
+  llvm::DIFile *file =
+      m_DebugBuilder->createFile(path.filename().string(), directory);
+  m_DebugFiles[sourcePath] = file;
+  return file;
+}
+
+llvm::DIType *CodeGen::getDebugType(llvm::Type *type) {
+  if (!m_DebugBuilder || !type)
+    return nullptr;
+  auto existing = m_DebugTypes.find(type);
+  if (existing != m_DebugTypes.end())
+    return existing->second;
+
+  llvm::DIType *debugType = nullptr;
+  if (type->isIntegerTy()) {
+    unsigned bits = type->getIntegerBitWidth();
+    debugType = m_DebugBuilder->createBasicType(
+        bits == 1 ? "bool" : "i" + std::to_string(bits), bits,
+        bits == 1 ? llvm::dwarf::DW_ATE_boolean : llvm::dwarf::DW_ATE_signed);
+  } else if (type->isFloatingPointTy()) {
+    uint64_t bits = m_Module->getDataLayout().getTypeSizeInBits(type);
+    debugType = m_DebugBuilder->createBasicType(
+        type->isFloatTy() ? "f32" : "f64", bits, llvm::dwarf::DW_ATE_float);
+  } else if (type->isPointerTy()) {
+    uint64_t bits = m_Module->getDataLayout().getPointerSizeInBits();
+    debugType = m_DebugBuilder->createPointerType(
+        m_DebugBuilder->createUnspecifiedType("opaque"), bits);
+  } else if (type->isVoidTy()) {
+    debugType = nullptr;
+  } else {
+    std::string name;
+    llvm::raw_string_ostream stream(name);
+    type->print(stream);
+    debugType = m_DebugBuilder->createUnspecifiedType(stream.str());
+  }
+  m_DebugTypes[type] = debugType;
+  return debugType;
+}
+
+void CodeGen::beginDebugFunction(const FunctionDecl *func,
+                                 llvm::Function *function,
+                                 const std::string &linkageName) {
+  m_CurrentDebugScope = nullptr;
+  m_Builder.SetCurrentDebugLocation(llvm::DebugLoc());
+  if (!m_DebugBuilder || !func || !function || !m_DebugCompileUnit ||
+      !DiagnosticEngine::SrcMgr)
+    return;
+
+  FullSourceLoc full = DiagnosticEngine::SrcMgr->getFullSourceLoc(func->Loc);
+  llvm::DIFile *file = getDebugFile(func->Loc);
+  if (!file || !full.isValid())
+    return;
+
+  llvm::DISubroutineType *type = m_DebugBuilder->createSubroutineType(
+      m_DebugBuilder->getOrCreateTypeArray({}));
+  llvm::DISubprogram::DISPFlags flags =
+      llvm::DISubprogram::SPFlagDefinition;
+  m_CurrentDebugScope = m_DebugBuilder->createFunction(
+      file, func->Name, linkageName, file, full.Line, type, full.Line,
+      llvm::DINode::FlagPrototyped, flags);
+  function->setSubprogram(m_CurrentDebugScope);
+  m_Builder.SetCurrentDebugLocation(llvm::DILocation::get(
+      m_Context, full.Line, full.Column, m_CurrentDebugScope));
+}
+
+void CodeGen::setDebugLocation(const ASTNode *node) {
+  if (!m_DebugBuilder || !m_CurrentDebugScope || !DiagnosticEngine::SrcMgr ||
+      !node ||
+      node->Loc.isInvalid())
+    return;
+  FullSourceLoc full = DiagnosticEngine::SrcMgr->getFullSourceLoc(node->Loc);
+  if (!full.isValid())
+    return;
+  m_Builder.SetCurrentDebugLocation(llvm::DILocation::get(
+      m_Context, full.Line, full.Column, m_CurrentDebugScope));
+}
+
+void CodeGen::emitDebugVariable(const std::string &name, llvm::Value *storage,
+                                llvm::Type *type, SourceLocation loc,
+                                bool isParameter, unsigned argNo) {
+  if (!m_DebugBuilder || !m_CurrentDebugScope || !DiagnosticEngine::SrcMgr ||
+      !storage || !type)
+    return;
+  FullSourceLoc full = DiagnosticEngine::SrcMgr->getFullSourceLoc(loc);
+  llvm::DIFile *file = getDebugFile(loc);
+  if (!file || !full.isValid())
+    return;
+
+  llvm::DIType *debugType = getDebugType(type);
+  llvm::DILocalVariable *variable =
+      isParameter
+          ? m_DebugBuilder->createParameterVariable(
+                m_CurrentDebugScope, name, argNo, file, full.Line, debugType,
+                true)
+          : m_DebugBuilder->createAutoVariable(m_CurrentDebugScope, name, file,
+                                               full.Line, debugType, true);
+  const llvm::DILocation *debugLoc = llvm::DILocation::get(
+      m_Context, full.Line, full.Column, m_CurrentDebugScope);
+  m_DebugBuilder->insertDeclare(storage, variable,
+                                m_DebugBuilder->createExpression(), debugLoc,
+                                m_Builder.GetInsertBlock());
+}
 
 void CodeGen::markMemoryEvent(llvm::Instruction *instruction,
                               const char *event) {
@@ -50,6 +197,8 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
 
   if (m_Builder.GetInsertBlock() && m_Builder.GetInsertBlock()->getTerminator())
     return {};
+
+  setDebugLocation(expr);
 
   // 1. Basic Expressions
   if (auto e = dynamic_cast<const BinaryExpr *>(expr))
@@ -190,6 +339,8 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
 llvm::Value *CodeGen::genStmt(const Stmt *stmt) {
   if (!stmt)
     return nullptr;
+
+  setDebugLocation(stmt);
 
   if (auto s = dynamic_cast<const BlockStmt *>(stmt))
     return genBlockStmt(s);
@@ -445,6 +596,8 @@ CodeGen::GenContext CodeGen::saveContext() {
   ctx.CurrentCoroFinalSuspendBB = m_CurrentCoroFinalSuspendBB;
   ctx.CurrentSRetPtr = m_CurrentSRetPtr;
   ctx.CurrentSRetTy = m_CurrentSRetTy;
+  ctx.CurrentDebugScope = m_CurrentDebugScope;
+  ctx.DebugLocation = m_Builder.getCurrentDebugLocation();
   return ctx;
 }
 
@@ -464,6 +617,8 @@ void CodeGen::restoreContext(const GenContext &ctx) {
   m_CurrentCoroFinalSuspendBB = ctx.CurrentCoroFinalSuspendBB;
   m_CurrentSRetPtr = ctx.CurrentSRetPtr;
   m_CurrentSRetTy = ctx.CurrentSRetTy;
+  m_CurrentDebugScope = ctx.CurrentDebugScope;
+  m_Builder.SetCurrentDebugLocation(ctx.DebugLocation);
   if (ctx.InsertBlock) {
     if (ctx.InsertPoint != ctx.InsertBlock->end())
       m_Builder.SetInsertPoint(ctx.InsertBlock, ctx.InsertPoint);

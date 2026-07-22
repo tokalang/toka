@@ -17,6 +17,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/Type.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -107,6 +108,8 @@ public:
   void resolveSignatures(const Module &ast);
   void generate(const Module &ast);
   void finalizeGlobals();
+  void enableDebugInfo(const std::string &sourcePath, bool optimized);
+  void finalizeDebugInfo();
   bool hasErrors() const { return m_ErrorCount > 0; }
   void print(llvm::raw_ostream &os);
   llvm::Module *getModule() { return m_Module.get(); }
@@ -131,6 +134,21 @@ private:
   llvm::IRBuilder<> m_Builder;
   std::unique_ptr<llvm::Module> m_Module;
   const Module *m_AST = nullptr;
+
+  std::unique_ptr<llvm::DIBuilder> m_DebugBuilder;
+  llvm::DICompileUnit *m_DebugCompileUnit = nullptr;
+  llvm::DISubprogram *m_CurrentDebugScope = nullptr;
+  std::map<std::string, llvm::DIFile *> m_DebugFiles;
+  std::map<llvm::Type *, llvm::DIType *> m_DebugTypes;
+
+  llvm::DIFile *getDebugFile(SourceLocation loc);
+  llvm::DIType *getDebugType(llvm::Type *type);
+  void beginDebugFunction(const FunctionDecl *func, llvm::Function *function,
+                          const std::string &linkageName);
+  void setDebugLocation(const ASTNode *node);
+  void emitDebugVariable(const std::string &name, llvm::Value *storage,
+                         llvm::Type *type, SourceLocation loc,
+                         bool isParameter = false, unsigned argNo = 0);
 
   llvm::Function *m_GlobalInitFunc = nullptr;
   std::unique_ptr<llvm::IRBuilder<>> m_GlobalInitBuilder = nullptr;
@@ -330,6 +348,8 @@ private:
     llvm::BasicBlock *CurrentCoroFinalSuspendBB;
     llvm::Value *CurrentSRetPtr;
     llvm::Type *CurrentSRetTy;
+    llvm::DISubprogram *CurrentDebugScope;
+    llvm::DebugLoc DebugLocation;
   };
 
   GenContext saveContext();

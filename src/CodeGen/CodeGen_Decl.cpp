@@ -259,6 +259,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
   llvm::BasicBlock *bb = llvm::BasicBlock::Create(m_Context, "entry", f);
   m_Builder.SetInsertPoint(bb);
+  beginDebugFunction(func, f, funcName);
   m_ScopeStack.push_back({});
 
   if (func->Effect == EffectKind::Async) {
@@ -431,6 +432,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       m_Builder.CreateStore(&arg, alloca);
       finalStorage = alloca;
     }
+
+    llvm::Type *debugStorageType = allocaType;
+    if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(finalStorage))
+      debugStorageType = alloca->getAllocatedType();
+    emitDebugVariable(argName, finalStorage, debugStorageType, argDecl.Loc,
+                      true, static_cast<unsigned>(idx + 1));
 
     // 4. Register in Symbol Table using Type Object
     TokaSymbol sym;
@@ -1074,6 +1081,9 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   if (!type->isVoidTy()) {
     alloca = createEntryBlockAlloca(type, nullptr, varName);
   }
+
+  if (alloca)
+    emitDebugVariable(varName, alloca, type, var->Loc);
 
   // [Legacy] Bare union alignment
   if (alloca && var->ResolvedType) {

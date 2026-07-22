@@ -97,10 +97,28 @@ def main():
         executable = temp_root / ("direct" + suffix)
         run([installed_tokac, direct, "-o", executable], temp_root, env=env)
         run([executable], temp_root, env=env)
+
+        debug_source = temp_root / "debug.tk"
+        debug_source.write_text(
+            "fn bump(x: i32) -> i32 {\n"
+            "    auto y = x + 1\n"
+            "    return y\n"
+            "}\n"
+            "fn main() -> i32 { return bump(1) - 2 }\n",
+            encoding="utf-8",
+        )
+        debug_ir = temp_root / "debug.ll"
+        run([installed_tokac, "-g", "--emit-llvm", debug_source, "-o", debug_ir],
+            temp_root, env=env)
+        ir = debug_ir.read_text(encoding="utf-8")
+        require("DICompileUnit" in ir and "DISubprogram" in ir and
+                "DILocalVariable" in ir,
+                "tokac -g did not emit function, line, and local-variable metadata")
         run([installed_toka, "new", "smoke"], temp_root, env=env)
         output = run([installed_toka, "run"], temp_root / "smoke", env=env)
         require("Hello, Toka!" in output.stdout, "installed toka project did not run")
-        checks.extend(("cmake-install", "toka-doctor", "installed-compile-run", "installed-new-run"))
+        checks.extend(("cmake-install", "toka-doctor", "installed-compile-run",
+                       "tokac-dwarf-metadata", "installed-new-run"))
 
     print(json.dumps({
         "checks": checks,

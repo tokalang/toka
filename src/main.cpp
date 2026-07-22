@@ -101,6 +101,7 @@ void printHelp() {
       << "  -P, --pkg <name=path>           Map a package name to a path\n"
       << "  -o <file>                       Write output to file\n"
       << "  -c                              Compile without linking\n"
+      << "  -g                              Emit DWARF debug information\n"
       << "  -O0|-O1|-O2|-O3|-Os|-Oz        Select optimization level\n"
       << "  --target <triple>               Select target triple\n"
       << "  --emit-obj                      Emit native object code\n"
@@ -343,6 +344,7 @@ int main(int argc, char **argv) {
   bool disableBorrowCheck = false;
   bool emitObj = false;
   bool compileOnly = false;
+  bool emitDebugInfo = false;
   bool emitInterface = false;
   bool dumpDependencies = false;
   bool dumpJson = false;
@@ -446,6 +448,8 @@ int main(int argc, char **argv) {
     } else if (arg == "-c") {
       compileOnly = true;
       emitObj = true;
+    } else if (arg == "-g") {
+      emitDebugInfo = true;
     } else if (arg == "-O0") {
       optLevel = llvm::OptimizationLevel::O0;
     } else if (arg == "-O1") {
@@ -817,6 +821,9 @@ int main(int argc, char **argv) {
 #else
   codegen.getModule()->setTargetTriple(TargetTriple);
 #endif
+  if (emitDebugInfo)
+    codegen.enableDebugInfo(sourceFiles.front(),
+                            optLevel != llvm::OptimizationLevel::O0);
   // ----------------------------------------------------------------------------
 
   std::unique_ptr<toka::Module> genericModule = sema.extractGenericRegistry();
@@ -863,6 +870,7 @@ int main(int argc, char **argv) {
   if (genericModule) codegen.generate(*genericModule);
 
   codegen.finalizeGlobals();
+  codegen.finalizeDebugInfo();
   profile.mark("codegen_generate");
 
   if (codegen.hasErrors() || toka::DiagnosticEngine::hasErrors()) {
@@ -1131,6 +1139,18 @@ int main(int argc, char **argv) {
         return 1;
       }
 #ifdef __APPLE__
+      if (emitDebugInfo) {
+        auto dsymutil = llvm::sys::findProgramByName("dsymutil");
+        if (!dsymutil) {
+          llvm::errs() << "Debug info error: dsymutil was not found\n";
+          return 1;
+        }
+        std::vector<llvm::StringRef> args = {*dsymutil, finalOutput};
+        if (llvm::sys::ExecuteAndWait(*dsymutil, args) != 0) {
+          llvm::errs() << "Debug info error: dsymutil failed\n";
+          return 1;
+        }
+      }
       // macOS requires ad-hoc signing for binaries linked with LLD to avoid immediately crashing with Trace/BPT trap: 5
       std::string signCmd = "codesign -s - \"" + finalOutput + "\" 2>/dev/null";
       (void)std::system(signCmd.c_str());
