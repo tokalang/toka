@@ -136,7 +136,7 @@ def main():
         "tests/pass/g07_btree_map_test.tk",
         "tests/pass/g07_slab_test.tk",
         "tests/pass/g08_associated_type_basic.tk",
-        "tests/pass/g08_auto_drop.tk",
+        "tests/pass/g08_auto_drop_composite.tk",
         "tests/pass/g08_generic_buffer.tk",
         "tests/pass/g08_pal_stress_test.tk",
         "tests/pass/g08_sret_closure.tk",
