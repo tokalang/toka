@@ -78,7 +78,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
 | `FZ-3` | `Complete` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | `semantic_core/fz3_compiler_reliability_closure.md` and clean revision `3ab00dff` release gates on Linux x64/arm64 and macOS x64/arm64 |
 | `FZ-4` | `Complete` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | `semantic_core/fz4_public_contract_freeze.md`, synchronized specifications, stable diagnostic tests, and ABI-boundary execution coverage |
-| `FZ-5` | `InProgress` | Run the release-candidate moratorium and final 1.0 gate | The previous four-target RC evidence covers revision `3ab00dff`; the explicitly authorized late iterator and callable closures require a fresh clean matrix |
+| `FZ-5` | `InProgress` | Run the release-candidate moratorium and final 1.0 gate | Historical four-target evidence covers `v0.9.8-09-RC`; the active `0.9.9-01` candidate requires current-revision qualification without changing the version to 1.0 |
 
 Work proceeds in phase order. A later phase may collect evidence early, but it
 cannot be declared complete while an earlier semantic blocker can invalidate
@@ -207,16 +207,17 @@ unless it is separately promoted through a new audited decision.
 | `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | Added one fail-closed twelve-stage gate, deterministic JSON, two sustained reference applications, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
 | `FZ-5-P02` | `FZ-5` | `Complete` | The authorized late language closures and later application-driven fixes changed the candidate revision after `3ab00dff` | The clean four-target pre-release matrix passed and annotated pre-release tag `v0.9.8-09-RC` points to revision `a39c6acd` |
+| `FZ-5-P03` | `FZ-5` | `InProgress` | SDK, semantic tooling, AI interfaces, and scale qualification were committed after `v0.9.8-09-RC` | Qualify one frozen `0.9.9-01` revision through the unified local gate and the four supported native runners; this phase does not create a 1.0 version or tag |
 | `FZ-5-E01` | `FZ-5` | `Complete` | Sustained applications exposed avoidable compiler mechanics in ordinary source, including allocation-only text comparison, redundant contextual literal suffixes, and bare-name shape collisions | The bounded `docs/1_0_ergonomics_audit.md` ledger is closed without hidden allocation or ownership action; two consecutive QSLite and native-builder qualifications pass, and further convenience discovery is stopped for 1.0 |
 
 The Toka-native incremental build orchestrator is the sustained `FZ-5`
 reference application. Its workload, finding policy, and finite stop conditions
 are maintained in `native_build_reference_plan.md`; it does not expand the 1.0
 language surface or replace the clean four-platform release gate.
-Local `NB-1` through `NB-3` evidence is complete, including 100 fixed-seed
-mutation cycles. The qualification is now a mandatory stage of the unified RC
-gate. `NB-4` remains in progress until clean `v0.9.8-09-RC` reports cover both
-supported platform families.
+`NB-1` through `NB-4` evidence is complete, including 100 fixed-seed mutation
+cycles and clean `v0.9.8-09-RC` reports across both supported platform
+families. The qualification remains a mandatory stage of every later unified
+candidate gate, including `0.9.9-01`.
 
 QSLite is the second bounded `FZ-5` reference application. Its persistent
 storage workload, corruption policy, toolchain replay requirements, and finite
@@ -325,9 +326,9 @@ The starting baseline already includes:
   source/ABI, runtime, platform, and diagnostic boundaries;
 - completed the FZ-5 unified RC gate, deterministic report, self-contained
   package smoke, and four-target clean matrix at revision `3ab00dff`;
-- completed the local iterator-protocol closure with 320/320 positive tests,
-  242/242 negative tests, 1/1 warning tests, and 12/12 source/source-less
-  semantic replay cases; a replacement four-target RC matrix is still pending;
+- completed the iterator-protocol closure and its replacement four-target
+  `v0.9.8-09-RC` matrix; that report is historical evidence and predates the
+  active `0.9.9-01` tooling candidate;
 - completed the callable-protocol closure with receiver-morphology inference,
   generic/user callables, iterator and thread composition, consuming exact-drop
   execution, stable diagnostics, and a thirteenth replay case;
@@ -360,12 +361,13 @@ Toka 1.0 may be frozen only when all of the following are true:
 - English and Chinese specifications agree with compiler behavior;
 - all backend memory contracts remain non-default unless separately promoted.
 
-The `v0.9.8-08-RC` evidence at revision `3ab00dff` is the historical baseline,
-but it predates the authorized iterator and callable closures and no longer
-satisfies the final-current-revision condition. `v0.9.8-09-RC` is the active
-replacement candidate. This document and `FZ-5` remain `InProgress` until its
-four-target matrix passes and an explicit decision authorizes the 1.0 version
-transition and final release act.
+The `v0.9.8-08-RC` evidence at revision `3ab00dff` and the later
+`v0.9.8-09-RC` evidence at revision `a39c6acd` are historical baselines. The
+active candidate is `0.9.9-01`, which includes later SDK, semantic tooling, AI
+interfaces, and scale qualification. This document and `FZ-5` remain
+`InProgress` until one frozen 0.9.9 candidate passes the current unified local
+gate and four-target matrix. A separate explicit owner decision is still
+required for any future 1.0 version transition and final release act.
 
 At that point the document status changes to `Frozen`, 1.0 semantic expansion
 stops, and new expressive power moves to an additive 1.x proposal or a 2.0

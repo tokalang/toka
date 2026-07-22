@@ -19,8 +19,8 @@ def main():
             data = json.load(f)
     else:
         data = {
-            "spec_version": "0.9.8-02",
-            "compiler_compat": ">=0.9.8-01 <0.9.9",
+            "spec_version": "0.9.9-01",
+            "compiler_compat": ">=0.9.8-01 <0.10.0",
             "diagnostics": {}
         }
 

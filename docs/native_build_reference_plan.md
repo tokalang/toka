@@ -1,6 +1,6 @@
 # Toka Native Build Reference Application Plan
 
-Status: `InProgress`
+Status: `Complete`
 
 This document governs the long-running reference application used to qualify
 Toka for 1.0. The application is the existing Toka-native incremental build
@@ -48,7 +48,7 @@ Only `Pending`, `InProgress`, `Blocked`, `Complete`, and `Deferred` are used.
 | `NB-1` | `Complete` | Convert the orchestrator into a maintained multi-module application | The facade, project declarations, codec, and support modules compile independently; public imports are unchanged and source-less facade replay passes |
 | `NB-2` | `Complete` | Build a deterministic 30-100 module qualification workspace | The generated 31-module dependency tree covers clean/no-op builds, body changes, graph add/remove/cycles, missing output, version mismatch, compile failure, and recovery |
 | `NB-3` | `Complete` | Add a fixed-seed sustained mutation runner | Seed `100098` completed 100 cycles with 10 committed incremental builds, 90 clean restores, native/Python plan equivalence, and equal incremental/clean runtime output |
-| `NB-4` | `InProgress` | Run reliability and usability qualification | Local macOS qualification and deterministic repeat pass; the mandatory `v0.9.8-09-RC` gate stage must pass on both supported platform families |
+| `NB-4` | `Complete` | Run reliability and usability qualification | Local deterministic qualification and the mandatory `v0.9.8-09-RC` gate passed across Linux and macOS platform families; later candidates keep this stage mandatory |
 
 Each stage is independently reviewable. A stage is complete only after its
 evidence is committed with it.
@@ -164,7 +164,7 @@ syntax, a changed ownership/PAL/effects rule, or a broader 1.0 public surface.
 - `.github/workflows/native-build-reference.yml`: optional focused 100-cycle
   Linux x64 and macOS arm64 qualification with uploaded JSON evidence.
 - `tools/scripts/release_gate.py`: mandatory 100-cycle qualification in every
-  supported `v0.9.8-09-RC` matrix row.
+  supported candidate matrix row.
 
 Local evidence on the implementation revision: the source-less replay passed,
 the incremental suite including reference smoke passed, two equal fixed-input

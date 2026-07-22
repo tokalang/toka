@@ -6,9 +6,9 @@ if(APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
 endif()
 
-project(TokaCompiler VERSION 0.9.8 LANGUAGES C CXX)
+project(TokaCompiler VERSION 0.9.9 LANGUAGES C CXX)
 include(GNUInstallDirs)
-set(TOKA_RELEASE_SUFFIX "-09-RC")
+set(TOKA_RELEASE_SUFFIX "-01")
 set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}${TOKA_RELEASE_SUFFIX}")
 
 # Version Control Info

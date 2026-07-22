@@ -4,13 +4,11 @@ Status: `InProgress`
 
 `FZ-5` establishes the release-candidate moratorium, one mandatory gate entry
 point, deterministic evidence, and supported-platform CI. The gate machinery
-is complete. The explicitly authorized late iterator protocol invalidated the
-previous final-revision evidence. The later authorized callable protocol also
-belongs to the replacement revision, as does the authorized typed
-error-propagation closure. Package-supply-chain and QSLite fixes also belong to
-the replacement revision. `v0.9.8-09-RC` preparation is active, but a
-replacement four-target clean matrix is still pending. Preparation alone does
-not create the tag.
+and the historical `v0.9.8-09-RC` four-target matrix are complete. SDK,
+semantic tooling, AI interfaces, and scale qualification were committed after
+that tag, so `0.9.9-01` is now the active evidence candidate. It deliberately
+does not change the public version to 1.0. Preparation alone does not create a
+tag.
 
 ## Unified Entry Point
 
@@ -96,8 +94,8 @@ targets: Linux x64, Linux arm64, macOS x64, and macOS arm64. Every matrix row
 uploads its JSON and stage logs. Test failures are no longer ignored. A release
 archive is uploaded only after its complete row succeeds and the workflow was
 started from a tag or with explicit `publish_release` authorization. Manual
-dispatch can therefore qualify the `v0.9.8-09-RC` label without prematurely
-creating its tag or GitHub Release.
+dispatch can therefore qualify a candidate label, including `v0.9.9-01`,
+without prematurely creating its tag or GitHub Release.
 
 Windows/MSYS2, WSL2, and WASI remain outside the blocking 1.0 matrix according
 to the frozen platform decision.
@@ -118,11 +116,11 @@ revision. This historically closes both `FZ-5-P01` and `FZ-3-P01`, but it does
 not cover the later iterator protocol. `FZ-5-P02` tracks the replacement
 Linux/macOS x64/arm64 matrix required for the current revision.
 
-The local expanded-gate run proves the `v0.9.8-09-RC` preparation is runnable,
-including both sustained applications and version-matched package smoke. It
-records `source_dirty: true` and revision `1662f4f1`, so it is development
-evidence only. `FZ-5-P02` remains open until all four clean reports bind the
-committed preparation revision to the `v0.9.8-09-RC` label.
+The clean four-target matrix later bound revision `a39c6acd` to the annotated
+`v0.9.8-09-RC` tag and closed `FZ-5-P02`. Those reports remain historical
+evidence. `FZ-5-P03` tracks the new `0.9.9-01` candidate and requires the
+expanded gate to include the phase-2 SDK, semantic, AI, and scale contracts
+before a fresh clean matrix is accepted.
 
 No unresolved language-design question remains in the iterator, callable, or
 typed error-propagation scope.
@@ -130,4 +128,4 @@ After its replacement RC is established, work again accepts only blocking
 correctness, safety, platform, package, and documentation fixes; every such fix
 invalidates prior final-gate evidence and requires all four rows again.
 
-Preparation commit subject: `build: prepare v0.9.8-09-RC gate`.
+Current preparation is tracked by `docs/0_9_9_release_plan.md`.

@@ -604,7 +604,7 @@ fn main() -> i32 {
         return 0
     }
     if first == string::from("--version") || first == string::from("-V") {
-        println("tokafmt version 0.9.8-09-RC")
+        println("tokafmt version 0.9.9-01")
         return 0
     }
 
