@@ -96,7 +96,11 @@ or undefined-behavior instrumentation. Audit failures distinguish timeout,
 signal, and sanitizer diagnostics in deterministic text. macOS disables leak
 checking because LeakSanitizer is unavailable and disables libc++ container
 annotation checking because the linked LLVM 20 libraries are not ASan
-instrumented. Linux receives the default sanitizer checks.
+instrumented. Linux keeps the default leak checks. The gate excludes UBSan's
+`vptr` sub-check on every platform because the packaged LLVM libraries are not
+built with matching vptr instrumentation; ASan and all other UBSan checks
+remain enabled. Generic UBSan `runtime error:` output is treated as a
+fail-closed sanitizer diagnostic.
 
 ## Supported-Platform CI
 

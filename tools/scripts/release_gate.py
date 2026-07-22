@@ -292,7 +292,7 @@ def main():
         )),
         ("async", ([sys.executable, "tools/scripts/test_pass.py"] + list(ASYNC_FIXTURES),)),
         ("sanitizer", (
-            ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"],
+            ["cmake", "-S", str(root), "-B", str(asan_dir), "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-O1 -g -fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer", "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined -fno-sanitize=vptr"],
             ["cmake", "--build", str(asan_dir), "--parallel", env["CORES"]],
             [sys.executable, "tools/scripts/audit_fz3_reliability.py", "--tokac", str(asan_dir / "bin" / "tokac"), "--timeout", audit_timeout],
         )),

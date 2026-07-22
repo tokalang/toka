@@ -15,6 +15,7 @@ SANITIZER_MARKERS = (
     "LeakSanitizer",
     "UndefinedBehaviorSanitizer",
     "SUMMARY: UndefinedBehaviorSanitizer",
+    "runtime error:",
 )
 
 
