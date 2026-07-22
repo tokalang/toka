@@ -1,0 +1,8 @@
+pub shape Box<T>(
+    changed: i64,
+    item: T
+)
+
+pub fn make_box() -> Box<i32> {
+    return Box<i32>(changed = 73, item = 9)
+}

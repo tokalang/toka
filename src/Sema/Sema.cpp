@@ -587,6 +587,23 @@ ShapeDecl *Sema::findVisibleShapeDecl(const std::string &shapeName,
   return fallback == ShapeMap.end() ? nullptr : fallback->second;
 }
 
+std::string Sema::genericImplKey(const ShapeDecl *shape) {
+  if (!shape)
+    return {};
+  return shape->CodegenName.empty() ? shape->Name : shape->CodegenName;
+}
+
+std::string Sema::genericImplKey(const std::string &typeName,
+                                 SourceLocation loc) {
+  std::string baseName = typeName;
+  size_t lt = baseName.find('<');
+  if (lt != std::string::npos)
+    baseName = baseName.substr(0, lt);
+  if (ShapeDecl *shape = findVisibleShapeDecl(baseName, loc))
+    return genericImplKey(shape);
+  return baseName;
+}
+
 static bool typeMentionsSelf(const std::string &typeName) {
   std::string type = trimTypeString(typeName);
   size_t pos = 0;
@@ -1341,9 +1358,7 @@ void Sema::declareGlobals(Module &M) {
     if (St->CodegenName.empty())
       St->CodegenName = St->Name;
     auto existingShape = ShapeMap.find(St->Name);
-    if (existingShape != ShapeMap.end() && existingShape->second != St.get() &&
-        existingShape->second->GenericParams.empty() &&
-        St->GenericParams.empty()) {
+    if (existingShape != ShapeMap.end() && existingShape->second != St.get()) {
       existingShape->second->CodegenName =
           shapeCodegenName(*existingShape->second);
       St->CodegenName = shapeCodegenName(M, St->Name);
@@ -2209,8 +2224,8 @@ void Sema::registerGlobals(Module &M) {
     if (lt_check != std::string::npos)
       baseShapeName = baseShapeName.substr(0, lt_check);
 
-    if (ShapeMap.count(baseShapeName) &&
-        !ShapeMap[baseShapeName]->GenericParams.empty()) {
+    ShapeDecl *implShape = findVisibleShapeDecl(baseShapeName, Impl->Loc);
+    if (implShape && !implShape->GenericParams.empty()) {
       typeIsGeneric = true;
     }
 
@@ -2256,10 +2271,7 @@ void Sema::registerGlobals(Module &M) {
         }
       }
 
-      std::string baseName = Impl->TypeName;
-      size_t lt = baseName.find('<');
-      if (lt != std::string::npos)
-        baseName = baseName.substr(0, lt);
+      std::string baseName = genericImplKey(Impl->TypeName, Impl->Loc);
       GenericImplMap[baseName].push_back(Impl.get());
       
       if (Impl->TraitName == "encap") {
@@ -2470,7 +2482,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
   std::string baseName = Impl->TypeName;
   size_t lt = baseName.find('<');
   if (lt != std::string::npos) {
-    baseName = baseName.substr(0, lt);
+    baseName = genericImplKey(baseName, Impl->Loc);
     if (std::find(GenericImplMap[baseName].begin(), GenericImplMap[baseName].end(), Impl) == GenericImplMap[baseName].end()) {
       GenericImplMap[baseName].push_back(Impl);
     }

@@ -2693,7 +2693,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       size_t lt = BaseName.find('<');
       if (lt != std::string::npos) {
         BaseName = BaseName.substr(0, lt);
-        if (GenericImplMap.count(BaseName)) {
+        const std::string implKey = genericImplKey(BaseName, getLoc(Met));
+        if (GenericImplMap.count(implKey)) {
           // [FIX] Pass generic arguments to instantiateGenericImpl
           std::vector<std::shared_ptr<toka::Type>> genericArgs;
           auto soulType = ObjTypeObj->getSoulType();
@@ -2706,7 +2707,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               genericArgs = PST->GenericArgs;
             }
           }
-          for (auto *ImplTemplate : GenericImplMap[BaseName]) {
+          for (auto *ImplTemplate : GenericImplMap[implKey]) {
             instantiateGenericImpl(ImplTemplate, ConcreteTypeName, genericArgs);
           }
         }
@@ -3290,12 +3291,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             size_t generic = sourceBase.find('<');
             if (generic != std::string::npos)
               sourceBase = sourceBase.substr(0, generic);
-            if (GenericImplMap.count(sourceBase)) {
+            const std::string genericKey =
+                genericImplKey(sourceBase, getLoc(Unwrap));
+            if (GenericImplMap.count(genericKey)) {
               std::vector<std::shared_ptr<toka::Type>> genericArgs;
               if (auto sourceShape =
                       std::dynamic_pointer_cast<ShapeType>(errT))
                 genericArgs = sourceShape->GenericArgs;
-              for (auto *impl : GenericImplMap[sourceBase])
+              for (auto *impl : GenericImplMap[genericKey])
                 instantiateGenericImpl(impl, sourceName, genericArgs);
             }
           }

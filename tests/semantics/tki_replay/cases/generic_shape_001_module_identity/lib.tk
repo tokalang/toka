@@ -1,0 +1,22 @@
+// EXPECT_TKI: pub shape Box<T>(remote: i64, item: T)
+// EXPECT_TKI: pub fn make_box() -> Box<i32>
+// EXPECT_TKI: pub fn read_box(value: Box<i32>) -> i64
+
+pub shape Box<T>(
+    remote: i64,
+    item: T
+)
+
+impl<T> Box<T> {
+    pub fn tag(self) -> i64 {
+        return self.remote
+    }
+}
+
+pub fn make_box() -> Box<i32> {
+    return Box<i32>(remote = 73, item = 9)
+}
+
+pub fn read_box(value: Box<i32>) -> i64 {
+    return value.tag()
+}

@@ -594,10 +594,13 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
     }
   }
 
-  // 2. Mangle Name: Name_M_Arg1_Arg2
-  // Simple mangling: Name_M + (Arg1.Name or Arg1.Mangling)
-  // We need a robust mangler. For Proof of Concept:
-  std::string mangledName = templateName + "_M";
+  // Use the declaration's codegen identity as the instance family. It stays
+  // equal to the source name for non-colliding templates, but declareGlobals
+  // assigns a module-scoped identity when two modules declare the same name.
+  std::string templateIdentity = Template->CodegenName.empty()
+                                     ? Template->Name
+                                     : Template->CodegenName;
+  std::string mangledName = templateIdentity + "_M";
   for (auto &Arg : GenericShape->GenericArgs) {
     mangledName += "_" + Arg->getMangledName();
   }
@@ -619,10 +622,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   auto NewDecl = std::make_unique<ShapeDecl>(
       Template->IsPub, mangledName, std::vector<GenericParam>{}, Template->Kind,
       std::vector<ShapeMember>{}, Template->IsPacked);
-  NewDecl->CodegenName = Template->CodegenName.empty()
-                             ? mangledName
-                             : Template->CodegenName +
-                                   mangledName.substr(templateName.size());
+  NewDecl->CodegenName = mangledName;
   NewDecl->Loc = Template->Loc;
 
   ShapeDecl *storedDecl = NewDecl.get();
@@ -750,8 +750,9 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   // m_ShapeProps (HasDrop) and MethodMap are populated before sovereignty
   // checks.
   // [FIX] Moved here to ensure storedDecl->Members is populated first.
-  if (GenericImplMap.count(templateName)) {
-    for (auto *ImplTemplate : GenericImplMap[templateName]) {
+  const std::string implKey = genericImplKey(Template);
+  if (GenericImplMap.count(implKey)) {
+    for (auto *ImplTemplate : GenericImplMap[implKey]) {
       instantiateGenericImpl(ImplTemplate, mangledName,
                              GenericShape->GenericArgs);
     }

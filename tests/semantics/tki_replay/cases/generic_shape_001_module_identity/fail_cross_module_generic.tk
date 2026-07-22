@@ -1,0 +1,16 @@
+// EXPECT_ERROR: E04571
+import ./lib as remote
+
+shape Box<T>(
+    local: i32,
+    marker: u8,
+    item: T
+)
+
+fn accept_local(value: Box<i32>) -> i32 {
+    return value.local
+}
+
+fn main() -> i32 {
+    return accept_local(remote::make_box())
+}

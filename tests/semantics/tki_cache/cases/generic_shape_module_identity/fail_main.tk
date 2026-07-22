@@ -1,0 +1,17 @@
+// EXPECT_ERROR: E0417
+import ./lib as remote
+
+shape Box<T>(
+    remote: bool,
+    marker: u8,
+    item: T
+)
+
+fn main() -> i32 {
+    auto local = Box<i32>(remote = true, marker = 2, item = 7)
+    auto imported = remote::make_box()
+    if local.remote {
+        return imported.remote
+    }
+    return 0
+}

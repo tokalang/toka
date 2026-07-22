@@ -1,0 +1,29 @@
+import ./lib as remote
+
+shape Box<T>(
+    local: i32,
+    marker: u8,
+    item: T
+)
+
+impl<T> Box<T> {
+    fn tag(self) -> i32 {
+        return self.local
+    }
+}
+
+fn main() -> i32 {
+    auto local = Box<i32>(local = 11, marker = 2, item = 7)
+    auto imported = remote::make_box()
+    if local.local != 11 || local.marker != 2 || local.item != 7 ||
+       local.tag() != 11 {
+        return 1
+    }
+    if imported.remote != 73 || imported.item != 9 {
+        return 2
+    }
+    if remote::read_box(imported) != 73 {
+        return 3
+    }
+    return 0
+}

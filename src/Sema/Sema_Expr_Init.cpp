@@ -285,6 +285,11 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
           size_t lt = requestedShapeCore.find("<");
           if (lt != std::string::npos) requestedShapeCore = requestedShapeCore.substr(0, lt);
       }
+      std::string requestedShapeIdentity = requestedShapeCore;
+      if (ShapeDecl *requestedShape =
+              findVisibleShapeDecl(requestedShapeCore, getLoc(Pat))) {
+        requestedShapeIdentity = genericImplKey(requestedShape);
+      }
       
       std::string T_base = T;
       size_t ltT = T.find("_M"); 
@@ -297,7 +302,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
           if (lt != std::string::npos) T_base = T_base.substr(0, lt);
       }
       
-      bool isMatch = (T_base == requestedShapeCore);
+      bool isMatch = (T_base == requestedShapeIdentity);
       
       if (!isMatch) {
           DiagnosticEngine::report(getLoc(Pat), DiagID::ERR_UNKNOWN_SHAPE_IN_PAT, requestedShapeCore);

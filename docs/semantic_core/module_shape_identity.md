@@ -36,9 +36,11 @@ names. Those names are implementation details tied to the compiler build and
 module input; they are not source names, `.tki` API, or a stable binary ABI.
 This rule does not change generic syntax or generic instantiation semantics.
 
-The current evidence closes concrete non-generic shape and enum declarations.
-Same-name generic template instantiation/cache isolation is not inferred from
-that evidence; it is a separate pending correctness audit (`FZ-3-R02`).
+Generic templates use the same declaration identity rule. Their instance
+layout cache and generic-implementation registry are keyed by the resolved
+template identity, so same-named templates in different modules do not share
+members, methods, or instantiated declarations. This is closed by the bounded
+`FZ-3-R02` evidence in `generic_shape_identity_closure.md`.
 
 ## Evidence
 
@@ -46,6 +48,10 @@ that evidence; it is a separate pending correctness audit (`FZ-3-R02`).
   `tests/pass/g09_module_private_shape_isolation.tk`
 - Source and source-less replay:
   `tests/semantics/tki_replay/cases/ergonomics_003_shape_identity`
+- Same-name generic layout, method, nominal mismatch, and TKI replay:
+  `tests/semantics/tki_replay/cases/generic_shape_001_module_identity`
+- Generic cache invalidation and regeneration:
+  `tests/semantics/tki_cache/cases/generic_shape_module_identity`
 - Stable mismatch diagnostic: `E04571`
 - Implementation: `src/Sema/Sema.cpp`, `src/Sema/Sema_Type.cpp`,
   `src/Type.cpp`, `src/CodeGen/CodeGen_Decl.cpp`, and

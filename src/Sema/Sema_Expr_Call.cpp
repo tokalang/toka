@@ -437,14 +437,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         size_t lt = BaseName.find('<');
         if (lt != std::string::npos) {
           BaseName = BaseName.substr(0, lt);
-          if (GenericImplMap.count(BaseName)) {
+          const std::string implKey = genericImplKey(BaseName, getLoc(Call));
+          if (GenericImplMap.count(implKey)) {
             // [FIX] Pass generic arguments to instantiateGenericImpl
             std::vector<std::shared_ptr<toka::Type>> genericArgs;
             auto parsed = Type::fromString(RawPrefix);
             if (auto *ST = dynamic_cast<ShapeType *>(parsed.get())) {
               genericArgs = ST->GenericArgs;
             }
-            for (auto *ImplTemplate : GenericImplMap[BaseName]) {
+            for (auto *ImplTemplate : GenericImplMap[implKey]) {
               instantiateGenericImpl(ImplTemplate, RawPrefix, genericArgs);
             }
             // Retry lookup

@@ -12,7 +12,7 @@ No task in this plan may add syntax or expand the frozen language surface.
 | ID | Status | Deliverable | Exit evidence |
 | --- | --- | --- | --- |
 | `R9-1` | `Complete` | Establish the 0.9.9 candidate line | Compiler, interface, SDK tools, diagnostics, package defaults, and documentation report `0.9.9-01` |
-| `R9-2` | `InProgress` | Close generic-template module identity | Same-name generic shapes are isolated across source, source-less TKI, and cache regeneration, with a minimized reproducer |
+| `R9-2` | `Complete` | Close generic-template module identity | `semantic_core/generic_shape_identity_closure.md`: same-name layouts, generic methods, nominal mismatch, source-less TKI, and cache regeneration are isolated |
 | `R9-3` | `Pending` | Unify the release gate | The single gate includes compiler suites, SDK installation, semantic index, LSP, AI contracts, scale/soak, sanitizer, sustained applications, and package smoke |
 | `R9-4` | `Pending` | Produce current-candidate evidence | A clean local native report passes on the frozen candidate revision; four supported runners execute the identical gate |
 | `R9-5` | `Pending` | Reconcile and freeze the ledger | FZ-5, native-build, tooling, release notes, tags, and reports identify historical versus current evidence without contradiction |

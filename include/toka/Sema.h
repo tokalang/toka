@@ -287,11 +287,15 @@ private:
   void instantiateGenericImpl(
       ImplDecl *Template, const std::string &ConcreteTypeName,
       const std::vector<std::shared_ptr<toka::Type>> &GenericArgs);
+  std::string genericImplKey(const std::string &typeName,
+                             SourceLocation loc = {});
+  static std::string genericImplKey(const ShapeDecl *shape);
 
   std::map<std::string, ShapeProperties> m_ShapeProps;
 
   // Generic Impl Templates (Lazy Instantiation)
-  // Key: TypeName (e.g. "Box")
+  // Key: resolved generic template identity. This is the source name for an
+  // unambiguous template and the module-scoped codegen name on collisions.
   // Value: Vector of Pointers to the Template ImplDecls (owned by Module)
   std::map<std::string, std::vector<ImplDecl *>> GenericImplMap;
 
