@@ -64,6 +64,9 @@ jobs:
           python3 tools/scripts/test_semantic_index.py
           python3 tools/scripts/test_lsp_protocol.py
 
+      - name: Qualify persistent tooling at scale
+        run: python3 tools/scripts/test_tooling_scale.py
+
       - name: Run compiler regression suites
         env:
           CORES: "2"

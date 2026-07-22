@@ -1,0 +1,10 @@
+{
+  "schema": "toka.tooling-scale-gates",
+  "version": 1,
+  "minimum_modules": 20,
+  "minimum_lines": 5000,
+  "soak_edits": 100,
+  "seed": 20260722,
+  "maximum_warm_p95_ms": 100.0,
+  "maximum_rss_mb": 1024.0
+}

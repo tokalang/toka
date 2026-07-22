@@ -52,6 +52,7 @@ bool ModuleResolver::resolveAndParse(const std::string &rawFilename,
                                      bool accumulate) {
     if (!accumulate) {
         m_Visited.clear();
+        m_Visited.insert(m_SkippedModules.begin(), m_SkippedModules.end());
         m_ResolutionRecords.clear();
         m_Dependencies.clear();
         m_Roots.clear();

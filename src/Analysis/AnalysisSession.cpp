@@ -7,6 +7,7 @@
 #include "toka/Sema.h"
 #include <algorithm>
 #include <chrono>
+#include <sstream>
 #include <queue>
 
 namespace toka {
@@ -41,6 +42,18 @@ std::string AnalysisSession::modulePath(const Module &module) {
                                                            : module.SourcePath);
 }
 
+std::string AnalysisSession::importSignature(const std::string &content) {
+  std::istringstream input(content);
+  std::string line;
+  std::string signature;
+  while (std::getline(input, line)) {
+    size_t first = line.find_first_not_of(" \t");
+    if (first != std::string::npos && line.compare(first, 7, "import ") == 0)
+      signature.append(line.substr(first)).push_back('\n');
+  }
+  return signature;
+}
+
 std::map<std::string, std::set<std::string>>
 AnalysisSession::reverseDependencies(
     const std::map<std::string, std::vector<std::string>> &dependencies) {
@@ -62,17 +75,67 @@ AnalysisResult AnalysisSession::analyze(const std::string &rootPath) {
   DiagnosticEngine::init(*Sources);
   DiagnosticEngine::setPrintingEnabled(false);
 
+  std::string canonicalRoot = PathUtils::canonicalize(rootPath);
+  bool rootOnlyOverlayChange = HasIndex && Overlays.count(canonicalRoot) &&
+                               AnalyzedOverlays.count(canonicalRoot) &&
+                               Overlays.size() == AnalyzedOverlays.size();
+  if (rootOnlyOverlayChange) {
+    for (const auto &[path, content] : Overlays) {
+      auto old = AnalyzedOverlays.find(path);
+      bool changed = old == AnalyzedOverlays.end() || old->second != content;
+      if ((path == canonicalRoot) != changed) {
+        rootOnlyOverlayChange = false;
+        break;
+      }
+    }
+  }
+  if (rootOnlyOverlayChange &&
+      importSignature(Overlays.at(canonicalRoot)) !=
+          importSignature(AnalyzedOverlays.at(canonicalRoot)))
+    rootOnlyOverlayChange = false;
+  if (rootOnlyOverlayChange) {
+    for (const auto &[path, fingerprint] : Fingerprints) {
+      if (Overlays.count(path))
+        continue;
+      std::error_code ec;
+      auto current = std::filesystem::last_write_time(path, ec);
+      auto old = FileWriteTimes.find(path);
+      if (ec || old == FileWriteTimes.end() || old->second != current) {
+        rootOnlyOverlayChange = false;
+        break;
+      }
+    }
+  }
+
   std::vector<std::unique_ptr<Module>> parsedModules;
   ModuleResolver resolver(*Sources, SearchPaths, PackageMap, true,
                           TrustedSystemRoots);
   resolver.setSourceOverrides(Overlays);
   resolver.setVersionedSources(true);
+  if (rootOnlyOverlayChange) {
+    std::set<std::string> skipped;
+    for (const auto &[path, fingerprint] : Fingerprints)
+      if (path != canonicalRoot)
+        skipped.insert(path);
+    resolver.setSkippedModules(std::move(skipped));
+  }
   bool parsed = resolver.resolveAndParse(rootPath, parsedModules);
 
-  std::map<std::string, std::string> nextFingerprints;
+  std::map<std::string, std::string> nextFingerprints =
+      rootOnlyOverlayChange ? Fingerprints
+                            : std::map<std::string, std::string>{};
   for (const auto &[path, info] : resolver.getResolutionRecords()) {
     std::string source = info.SourcePath.empty() ? path : info.SourcePath;
     nextFingerprints[PathUtils::canonicalize(source)] = info.ContentHash;
+  }
+  std::map<std::string, std::vector<std::string>> nextDependencies =
+      rootOnlyOverlayChange ? Dependencies : resolver.getDependencies();
+  if (rootOnlyOverlayChange) {
+    auto rootDependencies = resolver.getDependencies().find(canonicalRoot);
+    nextDependencies[canonicalRoot] =
+        rootDependencies == resolver.getDependencies().end()
+            ? std::vector<std::string>{}
+            : rootDependencies->second;
   }
 
   std::set<std::string> changed;
@@ -86,7 +149,7 @@ AnalysisResult AnalysisSession::analyze(const std::string &rootPath) {
       changed.insert(path);
 
   auto oldReverse = reverseDependencies(Dependencies);
-  auto nextReverse = reverseDependencies(resolver.getDependencies());
+  auto nextReverse = reverseDependencies(nextDependencies);
   std::queue<std::string> pending;
   for (const std::string &path : changed)
     pending.push(path);
@@ -129,15 +192,34 @@ AnalysisResult AnalysisSession::analyze(const std::string &rootPath) {
   }
 
   std::vector<std::unique_ptr<Module>> nextModules;
-  nextModules.reserve(parsedModules.size());
-  for (auto &module : parsedModules) {
-    std::string path = modulePath(*module);
-    auto cached = cachedByPath.find(path);
-    if (!invalidated.count(path) && cached != cachedByPath.end()) {
-      nextModules.push_back(std::move(cached->second));
-      ++result.Stats.ReusedModules;
-    } else {
+  if (rootOnlyOverlayChange) {
+    std::map<std::string, std::unique_ptr<Module>> parsedByPath;
+    for (auto &module : parsedModules)
+      parsedByPath[modulePath(*module)] = std::move(module);
+    nextModules.reserve(oldOrder.size() + parsedByPath.size());
+    for (const std::string &path : oldOrder) {
+      auto replacement = parsedByPath.find(path);
+      if (replacement != parsedByPath.end()) {
+        nextModules.push_back(std::move(replacement->second));
+        parsedByPath.erase(replacement);
+      } else {
+        nextModules.push_back(std::move(cachedByPath[path]));
+        ++result.Stats.ReusedModules;
+      }
+    }
+    for (auto &[path, module] : parsedByPath)
       nextModules.push_back(std::move(module));
+  } else {
+    nextModules.reserve(parsedModules.size());
+    for (auto &module : parsedModules) {
+      std::string path = modulePath(*module);
+      auto cached = cachedByPath.find(path);
+      if (!invalidated.count(path) && cached != cachedByPath.end()) {
+        nextModules.push_back(std::move(cached->second));
+        ++result.Stats.ReusedModules;
+      } else {
+        nextModules.push_back(std::move(module));
+      }
     }
   }
   result.Stats.TotalModules = nextModules.size();
@@ -175,7 +257,17 @@ AnalysisResult AnalysisSession::analyze(const std::string &rootPath) {
     HasIndex = true;
     Modules = std::move(nextModules);
     Fingerprints = std::move(nextFingerprints);
-    Dependencies = resolver.getDependencies();
+    Dependencies = std::move(nextDependencies);
+    AnalyzedOverlays = Overlays;
+    FileWriteTimes.clear();
+    for (const auto &[path, fingerprint] : Fingerprints) {
+      if (Overlays.count(path))
+        continue;
+      std::error_code ec;
+      auto timestamp = std::filesystem::last_write_time(path, ec);
+      if (!ec)
+        FileWriteTimes[path] = timestamp;
+    }
   } else {
     for (auto &module : nextModules) {
       if (!module)

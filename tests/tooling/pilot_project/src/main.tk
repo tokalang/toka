@@ -1,0 +1,6 @@
+// Reference entry point for the telemetry scoring pipeline.
+import ./stage_19::{stage_19}
+
+fn main() -> i32 {
+    return stage_19(1)
+}

@@ -14,7 +14,7 @@ performance gate are all present.
 | T2-5 | Structured diagnostics and fixes | Versioned diagnostics contain stable severity names, primary and related spans, notes, and validated edits | Complete |
 | T2-6 | AI-oriented CLI | `toka check --json`, `toka explain CODE`, and bounded semantic-context output are documented and tested | Complete |
 | T2-7 | AI coding evaluation | Fixed tasks measure compile success, diagnostic-repair success, edit precision, and token/turn cost against a recorded baseline | Complete |
-| T2-8 | Real project and service gates | A meaningful 5K+ line multi-module Toka project passes clean/incremental builds; cold/warm latency, memory, crash, and soak thresholds run in CI | Pending |
+| T2-8 | Real project and service gates | A meaningful 5K+ line multi-module Toka project passes clean/incremental builds; cold/warm latency, memory, crash, and soak thresholds run in CI | Complete |
 
 ## Phase exit criteria
 

@@ -78,6 +78,9 @@ public:
 
     void setSourceOverrides(std::map<std::string, std::string> overrides);
     void setVersionedSources(bool enabled) { m_VersionedSources = enabled; }
+    void setSkippedModules(std::set<std::string> modules) {
+        m_SkippedModules = std::move(modules);
+    }
 
 private:
     SourceManager &m_SourceManager;
@@ -89,6 +92,7 @@ private:
     std::vector<std::string> m_Roots;
     std::map<std::string, std::string> m_SourceOverrides;
     bool m_VersionedSources = false;
+    std::set<std::string> m_SkippedModules;
 
     std::set<std::string> m_ProvidedObjects;
     std::set<std::string> m_Visited;

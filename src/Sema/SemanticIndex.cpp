@@ -153,6 +153,15 @@ private:
       VisibleSymbols;
   std::map<std::string, std::map<std::string, std::string>> FieldSymbols;
   std::set<std::string> OccurrenceKeys;
+  mutable std::map<std::string, std::string> NormalizedFiles;
+  mutable std::map<uint32_t, std::vector<std::string>> SourceLines;
+
+  const std::string &normalizedFile(const std::string &file) const {
+    auto found = NormalizedFiles.find(file);
+    if (found != NormalizedFiles.end())
+      return found->second;
+    return NormalizedFiles.emplace(file, normalizeFile(file)).first->second;
+  }
 
   SemanticRange rangeFor(SourceLocation loc, const std::string &name) const {
     SemanticRange range;
@@ -161,7 +170,7 @@ private:
     FullSourceLoc full = SM.getFullSourceLoc(loc);
     if (!full.isValid())
       return range;
-    range.File = normalizeFile(full.FileName);
+    range.File = normalizedFile(full.FileName);
     unsigned line = full.Line > 0 ? full.Line - 1 : 0;
     unsigned column = full.Column > 0 ? full.Column - 1 : 0;
     std::string lineData = SM.getLineData(loc);
@@ -185,16 +194,22 @@ private:
     FullSourceLoc full = SM.getFullSourceLoc(loc);
     if (!full.isValid() || full.Line <= 1)
       return {};
-    std::string_view buffer = SM.getBufferData(loc);
-    std::vector<std::string> lines;
-    size_t start = 0;
-    while (start <= buffer.size()) {
-      size_t end = buffer.find('\n', start);
-      lines.emplace_back(buffer.substr(start, end - start));
-      if (end == std::string_view::npos)
-        break;
-      start = end + 1;
+    uint32_t fileID = SM.getFileID(loc);
+    auto cached = SourceLines.find(fileID);
+    if (cached == SourceLines.end()) {
+      std::string_view buffer = SM.getBufferData(loc);
+      std::vector<std::string> lines;
+      size_t start = 0;
+      while (start <= buffer.size()) {
+        size_t end = buffer.find('\n', start);
+        lines.emplace_back(buffer.substr(start, end - start));
+        if (end == std::string_view::npos)
+          break;
+        start = end + 1;
+      }
+      cached = SourceLines.emplace(fileID, std::move(lines)).first;
     }
+    const std::vector<std::string> &lines = cached->second;
     size_t index = std::min<size_t>(full.Line - 1, lines.size());
     std::vector<std::string> docs;
     while (index > 0) {
@@ -321,13 +336,13 @@ private:
     for (Module *module : Modules) {
       if (!module)
         continue;
-      ModuleByPath[normalizeFile(module->ResolvedPath)] = module;
-      ModuleByPath[normalizeFile(module->SourcePath)] = module;
+      ModuleByPath[normalizedFile(module->ResolvedPath)] = module;
+      ModuleByPath[normalizedFile(module->SourcePath)] = module;
       std::vector<std::string> imports;
       for (const auto &import : module->Imports)
         if (!import->ResolvedPath.empty())
-          imports.push_back(normalizeFile(import->ResolvedPath));
-      Result.ModuleImports[normalizeFile(module->SourcePath)] =
+          imports.push_back(normalizedFile(import->ResolvedPath));
+      Result.ModuleImports[normalizedFile(module->SourcePath)] =
           std::move(imports);
     }
   }
@@ -348,7 +363,7 @@ private:
     for (Module *module : Modules) {
       if (!module)
         continue;
-      std::string moduleScope = "module:" + normalizeFile(module->SourcePath);
+      std::string moduleScope = "module:" + normalizedFile(module->SourcePath);
       for (const auto &alias : module->TypeAliases) {
         std::string id = addSymbol(
             alias.get(), alias->Loc, alias->Name, SemanticSymbolKind::TypeAlias,
@@ -423,7 +438,7 @@ private:
         continue;
       VisibleSymbols[module] = OwnSymbols[module];
       for (const auto &import : module->Imports) {
-        auto target = ModuleByPath.find(normalizeFile(import->ResolvedPath));
+        auto target = ModuleByPath.find(normalizedFile(import->ResolvedPath));
         if (target == ModuleByPath.end())
           continue;
         const auto &targetSymbols = OwnSymbols[target->second];
@@ -509,7 +524,7 @@ private:
       CurrentModule = module;
       ScopeSerial = 0;
       Scopes.clear();
-      pushScope("module:" + normalizeFile(module->SourcePath), module->Loc);
+      pushScope("module:" + normalizedFile(module->SourcePath), module->Loc);
       for (const auto &[name, ids] : VisibleSymbols[module])
         if (!ids.empty())
           define(name, ids.front());

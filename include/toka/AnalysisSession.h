@@ -5,6 +5,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/SemanticIndex.h"
 #include "toka/SourceManager.h"
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <set>
@@ -56,11 +57,14 @@ private:
   std::vector<std::unique_ptr<Module>> Modules;
   std::map<std::string, std::string> Fingerprints;
   std::map<std::string, std::vector<std::string>> Dependencies;
+  std::map<std::string, std::string> AnalyzedOverlays;
+  std::map<std::string, std::filesystem::file_time_type> FileWriteTimes;
   SemanticIndex LastIndex;
   bool HasIndex = false;
   uint64_t Revision = 0;
 
   static std::string modulePath(const Module &module);
+  static std::string importSignature(const std::string &content);
   static std::map<std::string, std::set<std::string>> reverseDependencies(
       const std::map<std::string, std::vector<std::string>> &dependencies);
 };
