@@ -1246,10 +1246,17 @@ int main(int argc, char **argv) {
       if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
           rtFileName = "toka_rt.wasm.o";
       }
+      bool hasRt = false;
+      for (const auto &obj : objectFiles) {
+        if (obj.find("toka_rt") != std::string::npos) {
+          hasRt = true;
+          break;
+        }
+      }
       std::string tokaRtPath;
 
       // 1. Prioritize local relative paths to ensure local development overrides global installations
-      {
+      if (!hasRt) {
         llvm::SmallString<128> localPath1("lib");
         llvm::sys::path::append(localPath1, "sys", rtFileName);
         if (llvm::sys::fs::exists(localPath1)) {
@@ -1264,7 +1271,7 @@ int main(int argc, char **argv) {
       }
 
       // 2. Search in searchPaths (including TOKA_LIB and -I)
-      if (tokaRtPath.empty()) {
+      if (!hasRt && tokaRtPath.empty()) {
         for (const auto &p : searchPaths) {
           llvm::SmallString<128> testPath(p);
           llvm::sys::path::append(testPath, "sys", rtFileName);
@@ -1276,7 +1283,7 @@ int main(int argc, char **argv) {
       }
 
       // 3. Absolute fallback
-      if (tokaRtPath.empty()) {
+      if (!hasRt && tokaRtPath.empty()) {
         llvm::SmallString<128> fallbackPath("/usr/local/lib/toka");
         llvm::sys::path::append(fallbackPath, "sys", rtFileName);
         if (llvm::sys::fs::exists(fallbackPath)) {
@@ -1284,7 +1291,7 @@ int main(int argc, char **argv) {
         }
       }
 
-      if (tokaRtPath.empty()) {
+      if (!hasRt && tokaRtPath.empty()) {
         llvm::errs() << "\033[1;31m[FAILED]\033[0m Core runtime '" << rtFileName << "' not found in search paths. Please ensure TOKA_LIB is set correctly.\n";
         return 1;
       }
@@ -1292,14 +1299,6 @@ int main(int argc, char **argv) {
       // Convert all backslashes to forward slashes to prevent escape sequences in LLD / shells
       for (char &c : tokaRtPath) {
         if (c == '\\') c = '/';
-      }
-
-      bool hasRt = false;
-      for (const auto &obj : objectFiles) {
-        if (obj.find("toka_rt") != std::string::npos) {
-          hasRt = true;
-          break;
-        }
       }
 
       if (!hasRt) {
