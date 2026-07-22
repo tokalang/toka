@@ -56,15 +56,15 @@ enum class Morphology {
 };
 
 struct TokaSymbol {
-  llvm::Value *allocaPtr; // Identity (The stationary "Box" address)
-  llvm::Type *soulType;   // Soul Type (Explicit layout for LLVM 17 GEP/Load)
-  AddressingMode mode;    // Path type
-  Morphology morphology;  // Ownership/Cleanup logic
-  int indirectionLevel;   // Depth (1 for *p, 2 for **p)
-  bool isRebindable;      // # on identity (Swappable address)
-  bool isMutable;         // # on entity (Writable data)
-  bool isContinuous;      // Sequence marker (alloc [N])
-  bool isNullable;        // ?/! marker
+  llvm::Value *allocaPtr = nullptr; // Identity (The stationary "Box" address)
+  llvm::Type *soulType = nullptr;   // Soul Type (Explicit layout for LLVM 17 GEP/Load)
+  AddressingMode mode = AddressingMode::Direct; // Path type
+  Morphology morphology = Morphology::None; // Ownership/Cleanup logic
+  int indirectionLevel = 0; // Depth (1 for *p, 2 for **p)
+  bool isRebindable = false; // # on identity (Swappable address)
+  bool isMutable = false;    // # on entity (Writable data)
+  bool isContinuous = false; // Sequence marker (alloc [N])
+  bool isNullable = false;   // ?/! marker
   std::string typeName;   // Original type string (e.g. "dyn @Shape")
   std::shared_ptr<Type> soulTypeObj; // The new Type Object source of truth
   bool hasDrop = false;
