@@ -20,6 +20,7 @@ Sema/Sema_Template.cpp
 Sema/AccessPath.cpp
     Sema/Sema_AccessPath.cpp
     Sema/SemanticEvidence.cpp
+    Sema/SemanticIndex.cpp
     Sema/MemorySummary.cpp
     Sema/MemoryEvidence.cpp
     Sema/MemoryContract.cpp

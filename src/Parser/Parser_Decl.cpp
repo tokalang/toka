@@ -257,7 +257,9 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
       kind = ShapeKind::Enum;
       while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
         ShapeMember v;
-        v.Name = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIANT).Text;
+        Token variantToken = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIANT);
+        v.Name = variantToken.Text;
+        v.Loc = variantToken.Loc;
         if (match(TokenType::LParen)) {
           v.SubKind = ShapeKind::Tuple;
           while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
@@ -345,6 +347,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
 
           nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           m.Name = nameTok.Text;
+          m.Loc = nameTok.Loc;
           if (!m.Name.empty() && m.Name[0] == '\'') {
               m.IsMorphicExempt = true;
               m.Name = m.Name.substr(1);

@@ -21,6 +21,7 @@
 #include "toka/MemorySummary.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
+#include "toka/SemanticIndex.h"
 #include "toka/SemanticEvidence.h"
 #include "toka/TopologyCacheEval.h"
 #include "toka/TKIExporter.h"
@@ -49,6 +50,7 @@
 #include <filesystem>
 #include <cstdlib>
 #include <chrono>
+#include <charconv>
 #include <set>
 #include <list>
 #include <sstream>
@@ -108,7 +110,22 @@ void printHelp() {
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
       << "  --check-json                    Emit JSON Lines diagnostics\n"
+      << "  --semantic-index=json           Emit the compiler semantic index\n"
+      << "  --semantic-query <kind>         Query the semantic index\n"
+      << "  --query-file <file>             File for a semantic query\n"
+      << "  --line <n> --character <n>      Zero-based query position\n"
+      << "  --rename-to <name>              New name for a rename query\n"
       << "  -v, --verbose                   Enable progress output\n";
+}
+
+bool parseUnsignedArgument(const char *option, const char *value,
+                           unsigned &result) {
+  std::string text(value);
+  auto parsed = std::from_chars(text.data(), text.data() + text.size(), result);
+  if (parsed.ec == std::errc() && parsed.ptr == text.data() + text.size())
+    return true;
+  llvm::errs() << option << " requires a non-negative integer\n";
+  return false;
 }
 
 class SemanticEvidenceDumpGuard {
@@ -353,6 +370,12 @@ int main(int argc, char **argv) {
   bool dumpSemanticEvidence = false;
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
+  bool dumpSemanticIndex = false;
+  std::string semanticQuery;
+  std::string queryFile;
+  std::string renameTo;
+  unsigned queryLine = 0;
+  unsigned queryCharacter = 0;
   bool experimentalNoCapture = false;
   bool experimentalReadOnly = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard;
@@ -386,6 +409,34 @@ int main(int argc, char **argv) {
       return 0;
     } else if (arg == "--check-json") {
       g_JsonDiagnostics = true;
+    } else if (arg == "--semantic-index=json") {
+      dumpSemanticIndex = true;
+    } else if (arg == "--semantic-query") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--semantic-query requires an argument\n";
+        return 1;
+      }
+      semanticQuery = argv[++i];
+    } else if (arg == "--query-file") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--query-file requires an argument\n";
+        return 1;
+      }
+      queryFile = argv[++i];
+    } else if (arg == "--line") {
+      if (i + 1 >= argc ||
+          !parseUnsignedArgument("--line", argv[++i], queryLine))
+        return 1;
+    } else if (arg == "--character") {
+      if (i + 1 >= argc ||
+          !parseUnsignedArgument("--character", argv[++i], queryCharacter))
+        return 1;
+    } else if (arg == "--rename-to") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--rename-to requires an argument\n";
+        return 1;
+      }
+      renameTo = argv[++i];
     } else if (arg == "--disable-borrow-check") {
       disableBorrowCheck = true;
     } else if (arg == "--dump-dependencies") {
@@ -509,6 +560,19 @@ int main(int argc, char **argv) {
        g_JsonDiagnostics)) {
     llvm::errs() << "--dump-memory-contracts=json cannot be combined with "
                     "another JSON or evaluation output mode\n";
+    return 1;
+  }
+  if ((dumpSemanticIndex || !semanticQuery.empty()) &&
+      (dumpMemoryContracts || dumpMemorySummaries || dumpSemanticEvidence ||
+       dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
+       runTopologyEval || g_JsonDiagnostics)) {
+    llvm::errs() << "semantic index output cannot be combined with another "
+                    "JSON or evaluation output mode\n";
+    return 1;
+  }
+  if (dumpSemanticIndex && !semanticQuery.empty()) {
+    llvm::errs() << "--semantic-index=json cannot be combined with "
+                    "--semantic-query\n";
     return 1;
   }
   toka::SemanticEvidence::enable(dumpSemanticEvidence);
@@ -752,6 +816,27 @@ int main(int argc, char **argv) {
     return 1;
   }
   profile.mark("sema_check");
+
+  if (dumpSemanticIndex || !semanticQuery.empty()) {
+    std::vector<toka::Module *> modules;
+    modules.reserve(astModules.size());
+    for (const auto &ast : astModules)
+      modules.push_back(ast.get());
+    toka::SemanticIndex index = toka::SemanticIndex::build(modules, sm);
+    llvm::json::Value output = dumpSemanticIndex
+                                   ? index.toJSON()
+                                   : index.queryJSON(
+                                         semanticQuery,
+                                         toka::PathUtils::canonicalize(
+                                             queryFile.empty()
+                                                 ? sourceFiles.front()
+                                                 : queryFile),
+                                         queryLine, queryCharacter, renameTo);
+    llvm::outs() << output << '\n';
+    profile.mark("semantic_index");
+    profile.finish("tokac");
+    return 0;
+  }
 
   if (emitInterface) {
     for (const auto &ast : astModules) {

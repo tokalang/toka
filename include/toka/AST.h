@@ -1364,6 +1364,7 @@ public:
 enum class ShapeKind { Struct, Tuple, Array, Enum, Union };
 
 struct ShapeMember {
+  SourceLocation Loc;
   std::string Name; // Member or Variant name
   std::string Type;
   int64_t TagValue = -1; // Specific value for tagged enum variants (= 1)
@@ -1394,6 +1395,7 @@ struct ShapeMember {
   ShapeMember &operator=(ShapeMember &&) = default;
 
   ShapeMember(const ShapeMember &other) {
+    Loc = other.Loc;
     Name = other.Name;
     Type = other.Type;
     TagValue = other.TagValue;
@@ -1422,6 +1424,7 @@ struct ShapeMember {
   ShapeMember &operator=(const ShapeMember &other) {
     if (this == &other)
       return *this;
+    Loc = other.Loc;
     Name = other.Name;
     Type = other.Type;
     TagValue = other.TagValue;

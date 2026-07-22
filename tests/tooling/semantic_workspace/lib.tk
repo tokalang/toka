@@ -1,0 +1,9 @@
+/// A value used by semantic tooling tests.
+pub shape Box (
+    value: i32
+)
+
+/// Adds delta to value.
+pub fn add(value: i32, delta: i32) -> i32 {
+    return value + delta
+}
