@@ -1,6 +1,6 @@
 # Toka 1.0 Closure Plan
 
-Status: `InProgress`
+Status: `Frozen`
 
 This document is the single execution index for taking Toka from the current
 0.9.8 line to the 1.0 language and compiler freeze. It records scope, phase
@@ -78,7 +78,7 @@ record is identified by its subject when it cannot contain its own final hash.
 | `FZ-2` | `Complete` | Close high-risk semantic combinations and source/TKI equivalence | `semantic_core/fz2_semantic_tki_closure.md`, closed rule coverage, 10/10 source-less replay, and 12/12 cache regeneration cases |
 | `FZ-3` | `Complete` | Close compiler crashes, miscompiles, ownership cleanup, determinism, and platform reliability | `semantic_core/fz3_compiler_reliability_closure.md` and clean revision `3ab00dff` release gates on Linux x64/arm64 and macOS x64/arm64 |
 | `FZ-4` | `Complete` | Freeze public specification, compatibility policy, diagnostics, and core runtime contract | `semantic_core/fz4_public_contract_freeze.md`, synchronized specifications, stable diagnostic tests, and ABI-boundary execution coverage |
-| `FZ-5` | `InProgress` | Run the release-candidate moratorium and final 1.0 gate | Historical four-target evidence covers `v0.9.8-09-RC`; the active `0.9.9-01` candidate requires current-revision qualification without changing the version to 1.0 |
+| `FZ-5` | `Complete` | Run the release-candidate moratorium and final 1.0 gate | Revision `ca8181129c6d726f1295f5546171e18360b05bcb` passed the current 13-stage gate on all four supported native targets in run `29910583851`; the public version remains `0.9.9-01` |
 
 Work proceeds in phase order. A later phase may collect evidence early, but it
 cannot be declared complete while an earlier semantic blocker can invalidate
@@ -207,7 +207,7 @@ unless it is separately promoted through a new audited decision.
 | `FZ-5-G01` | `FZ-5` | `Complete` | Release checks were split across scripts and the release workflow ignored positive-suite failures | The active schema-version-2 gate has 13 fail-closed stages, including SDK/semantic/AI/scale qualification, deterministic JSON, two sustained reference applications, package smoke, and a four-target workflow with no ignored mandatory failures |
 | `FZ-5-P01` | `FZ-5` | `Complete` | Final RC evidence requires clean native reports that one workstation cannot produce | All four `v0.9.8-08-RC` reports for revision `3ab00dff` have `source_dirty: false` and `result: pass` in run `29202522704` |
 | `FZ-5-P02` | `FZ-5` | `Complete` | The authorized late language closures and later application-driven fixes changed the candidate revision after `3ab00dff` | The clean four-target pre-release matrix passed and annotated pre-release tag `v0.9.8-09-RC` points to revision `a39c6acd` |
-| `FZ-5-P03` | `FZ-5` | `InProgress` | SDK, semantic tooling, AI interfaces, and scale qualification were committed after `v0.9.8-09-RC` | Qualify one frozen `0.9.9-01` revision through the unified local gate and the four supported native runners; this phase does not create a 1.0 version or tag |
+| `FZ-5-P03` | `FZ-5` | `Complete` | SDK, semantic tooling, AI interfaces, and scale qualification were committed after `v0.9.8-09-RC` | Frozen revision `ca8181129c6d726f1295f5546171e18360b05bcb` passed all 13 stages with clean reports on Linux x64/arm64 and macOS x64/arm64 in run `29910583851`; no 1.0 version or tag was created |
 | `FZ-5-E01` | `FZ-5` | `Complete` | Sustained applications exposed avoidable compiler mechanics in ordinary source, including allocation-only text comparison, redundant contextual literal suffixes, and bare-name shape collisions | The bounded `docs/1_0_ergonomics_audit.md` ledger is closed without hidden allocation or ownership action; two consecutive QSLite and native-builder qualifications pass, and further convenience discovery is stopped for 1.0 |
 
 The Toka-native incremental build orchestrator is the sustained `FZ-5`
@@ -329,6 +329,10 @@ The starting baseline already includes:
 - completed the iterator-protocol closure and its replacement four-target
   `v0.9.8-09-RC` matrix; that report is historical evidence and predates the
   active `0.9.9-01` tooling candidate;
+- completed current-candidate qualification at revision
+  `ca8181129c6d726f1295f5546171e18360b05bcb`: release-gate run `29910583851`
+  passed all 13 stages on Linux x64/arm64 and macOS x64/arm64 with clean
+  schema-version-2 reports;
 - completed the callable-protocol closure with receiver-morphology inference,
   generic/user callables, iterator and thread composition, consuming exact-drop
   execution, stable diagnostics, and a thirteenth replay case;
@@ -363,15 +367,17 @@ Toka 1.0 may be frozen only when all of the following are true:
 
 The `v0.9.8-08-RC` evidence at revision `3ab00dff` and the later
 `v0.9.8-09-RC` evidence at revision `a39c6acd` are historical baselines. The
-active candidate is `0.9.9-01`, which includes later SDK, semantic tooling, AI
-interfaces, and scale qualification. This document and `FZ-5` remain
-`InProgress` until one frozen 0.9.9 candidate passes the current unified local
-gate and four-target matrix. A separate explicit owner decision is still
-required for any future 1.0 version transition and final release act.
+current frozen candidate is `0.9.9-01` at revision
+`ca8181129c6d726f1295f5546171e18360b05bcb`; it includes the later SDK,
+semantic tooling, AI interfaces, and scale qualification and passed the
+four-target matrix in run `29910583851`. The document is therefore `Frozen`
+and FZ-5 is complete. A separate explicit owner decision is still required for
+any future 1.0 version transition, tag, or release act.
 
-At that point the document status changes to `Frozen`, 1.0 semantic expansion
-stops, and new expressive power moves to an additive 1.x proposal or a 2.0
-design track.
+1.0 semantic expansion is stopped. New expressive power moves to an additive
+1.x proposal or a 2.0 design track; the intervening 0.9.9 line may continue
+adoption, integration, and blocking-fix validation without reopening this
+freeze.
 
 ## 10. Scope Guard
 

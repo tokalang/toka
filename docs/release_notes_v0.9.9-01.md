@@ -2,8 +2,8 @@
 
 Toka v0.9.9-01 is a release-closure candidate for the language and compiler
 contracts intended for Toka 1.0. It deliberately retains a 0.x version while
-the maintainers collect current-revision release evidence. It does not add a
-new language surface and is not the final 1.0 release.
+the maintainers validate adoption. It does not add a new language surface and
+is not the final 1.0 release.
 
 ## Developer tooling
 
@@ -39,8 +39,11 @@ The schema-version-2 release gate now qualifies the complete compiler corpus,
 installed SDK, semantic index, LSP, AI interfaces, persistent-tooling scale,
 sustained applications, sanitizer audit, and packaged delivery in 13
 fail-closed stages.
-The v0.9.9-01 tag and release archives are created only after the candidate
-revision passes the unified release gate. Interface files and caches remain
+Revision `ca8181129c6d726f1295f5546171e18360b05bcb` passed all 13 stages on
+Linux x64/arm64 and macOS x64/arm64 in release-gate run `29910583851`. The
+qualification did not create a tag, GitHub Release, or release archive; those
+remain separate explicit maintainer actions. Interface files and caches remain
 compiler-version-bound and must be regenerated when upgrading.
 
-Full changes: https://github.com/tokalang/toka/compare/v0.9.8-09-RC...v0.9.9-01
+Qualified changes:
+https://github.com/tokalang/toka/compare/v0.9.8-09-RC...ca8181129c6d726f1295f5546171e18360b05bcb

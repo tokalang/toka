@@ -1,6 +1,6 @@
 # Toka 0.9.9 release-closure plan
 
-Status: `InProgress`
+Status: `Complete`
 
 The 0.9.9 line qualifies the language, compiler, SDK, semantic service, and
 machine-facing tooling intended for Toka 1.0 without changing the public
@@ -14,8 +14,8 @@ No task in this plan may add syntax or expand the frozen language surface.
 | `R9-1` | `Complete` | Establish the 0.9.9 candidate line | Compiler, interface, SDK tools, diagnostics, package defaults, and documentation report `0.9.9-01` |
 | `R9-2` | `Complete` | Close generic-template module identity | `semantic_core/generic_shape_identity_closure.md`: same-name layouts, generic methods, nominal mismatch, source-less TKI, and cache regeneration are isolated |
 | `R9-3` | `Complete` | Unify the release gate | The schema-version-2 gate has 13 fail-closed stages including explicit research-fixture quarantine lists, SDK installation, semantic index, LSP, AI contracts, scale/soak, sanitizer, sustained applications, and package smoke; all six tooling sub-gates and deterministic count aggregation pass |
-| `R9-4` | `Pending` | Produce current-candidate evidence | A clean local native report passes on the frozen candidate revision; four supported runners execute the identical gate |
-| `R9-5` | `Pending` | Reconcile and freeze the ledger | FZ-5, native-build, tooling, release notes, tags, and reports identify historical versus current evidence without contradiction |
+| `R9-4` | `Complete` | Produce current-candidate evidence | Revision `ca8181129c6d726f1295f5546171e18360b05bcb` passed all 13 stages with `source_dirty: false` on Linux x64/arm64 and macOS x64/arm64 in release-gate run `29910583851` |
+| `R9-5` | `Complete` | Reconcile and freeze the ledger | FZ-5, native-build, tooling, release notes, tags, and reports identify historical versus current evidence without contradiction; no 1.0 version, tag, release, or archive was created |
 
 ## Exit conditions
 
@@ -28,6 +28,27 @@ No task in this plan may add syntax or expand the frozen language surface.
   Linux x64/arm64 and macOS x64/arm64 matrix.
 - No `1.0.0` version or tag is created by this phase.
 
-Four-platform reports require their native CI runners. Until those artifacts
-exist, the repository may describe the candidate as prepared or locally
-qualified, but not as a completed final 1.0 release.
+The frozen code candidate is revision
+`ca8181129c6d726f1295f5546171e18360b05bcb`. Release-gate run
+`29910583851` produced four clean schema-version-2 reports, each with all 13
+stages passing. This completes the 1.0 engineering-closure evidence while the
+public version remains `0.9.9-01`; it is not a final 1.0 release act.
+
+## Next phase: 0.9.9-02 adoption validation
+
+The next phase validates the frozen implementation in real work rather than
+adding language features. Its completion targets are:
+
+- two representative internal applications build, test, package, and run on
+  the supported Linux and macOS target families;
+- Go, Python, C/C++, Zig, and Rust integration boundaries are exercised where
+  the applications require them, with reusable package or FFI examples for
+  the paths actually used;
+- AI-assisted editing is measured against the checked-in structured
+  diagnostics, semantic context, formatting, and coding-task contracts, with
+  regressions kept in the release gate;
+- a 30-day sustained adoption window closes with no known P0/P1 correctness,
+  safety, reproducibility, or delivery blocker.
+
+The exact two application choices are an owner decision made when the phase
+starts. They do not reopen the frozen 1.0 language surface.

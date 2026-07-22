@@ -1,6 +1,6 @@
 # FZ-5 Release Candidate Gate
 
-Status: `InProgress`
+Status: `Complete`
 
 `FZ-5` establishes the release-candidate moratorium, one mandatory gate entry
 point, deterministic evidence, and supported-platform CI. The gate machinery
@@ -133,14 +133,30 @@ Linux/macOS x64/arm64 matrix required for the current revision.
 
 The clean four-target matrix later bound revision `a39c6acd` to the annotated
 `v0.9.8-09-RC` tag and closed `FZ-5-P02`. Those reports remain historical
-evidence. `FZ-5-P03` tracks the new `0.9.9-01` candidate and requires the
-13-stage schema-version-2 gate, which now includes the phase-2 SDK, semantic,
-AI, and scale contracts, before a fresh clean matrix is accepted.
+evidence. `FZ-5-P03` is closed by release-gate run `29910583851`: frozen
+revision `ca8181129c6d726f1295f5546171e18360b05bcb` produced clean passing
+schema-version-2 reports on Linux x64/arm64 and macOS x64/arm64. Each target
+passed all 13 stages with the same stable counts:
+
+- positive 317/317, negative 254/254, and warning 1/1;
+- semantic replay 18/18 and cache invalidation 13/13;
+- 6 tooling suites, 56 checks, 5 AI evaluation tasks, and the 21-module,
+  6,024-line, 100-edit scale workload;
+- native build reference 31 modules and 100 cycles;
+- QSLite 300 operations, 10 corruption cases, and 6 toolchain stages;
+- focused async 6/6, ASan/UBSan reliability audit 82/82, and package smoke
+  12/12.
+
+The workflow was dispatched without release-publication authorization, so it
+created no tag, GitHub Release, or release archive. The qualified public
+candidate remains `0.9.9-01`, not 1.0.
 
 No unresolved language-design question remains in the iterator, callable, or
 typed error-propagation scope.
-After its replacement RC is established, work again accepts only blocking
-correctness, safety, platform, package, and documentation fixes; every such fix
-invalidates prior final-gate evidence and requires all four rows again.
+After this replacement candidate was established, work again accepts only
+blocking correctness, safety, platform, package, and documentation fixes;
+every such fix invalidates prior final-gate evidence and requires all four
+rows again.
 
-Current preparation is tracked by `docs/0_9_9_release_plan.md`.
+The completed qualification and next adoption phase are tracked by
+`docs/0_9_9_release_plan.md`.
