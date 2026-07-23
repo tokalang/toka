@@ -253,8 +253,8 @@ extern fn toka_linux_epoll_add_read(reactor_fd: i32, fd: i32, key: u64) -> i32
 extern fn toka_linux_epoll_add_write(reactor_fd: i32, fd: i32, key: u64) -> i32
 extern fn toka_linux_epoll_wait(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32
 extern fn toka_linux_epoll_del_fd(reactor_fd: i32, fd: i32)
-extern fn toka_linux_epoll_del_read(reactor_fd: i32, fd: i32)
-extern fn toka_linux_epoll_del_write(reactor_fd: i32, fd: i32)
+extern fn toka_linux_epoll_del_read(reactor_fd: i32, fd: i32, key: u64)
+extern fn toka_linux_epoll_del_write(reactor_fd: i32, fd: i32, key: u64)
 
 pub fn reactor_create_impl() -> i32 {
     unsafe {
@@ -268,15 +268,15 @@ pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
     }
 }
 
-pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
     unsafe {
-        toka_linux_epoll_del_read(reactor_fd, fd)
+        toka_linux_epoll_del_read(reactor_fd, fd, event_key as u64)
     }
 }
 
-pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
     unsafe {
-        toka_linux_epoll_del_write(reactor_fd, fd)
+        toka_linux_epoll_del_write(reactor_fd, fd, event_key as u64)
     }
 }
 

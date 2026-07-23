@@ -548,11 +548,44 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
     }
 }
 
+fn win_reactor_del(fd: i32, is_write_val: i32) {
+    unsafe {
+        if g_win_reactor == 0:Addr { return }
+        auto *r# = g_win_reactor as *WinReactor
+        auto i# = 0
+        loop i < r.count {
+            auto *curr_fd = (r.fds as usize + (i as usize) * 4:usize) as *i32
+            auto *curr_is_write = (r.is_write as usize + (i as usize) * 4:usize) as *i32
+            if *curr_fd == fd && (is_write_val == -1 || *curr_is_write == is_write_val) {
+                if i < r.count - 1 {
+                    auto last_idx = (r.count - 1) as usize
+                    auto *last_fd = (r.fds as usize + last_idx * 4:usize) as *i32
+                    auto *last_coro = (r.coros as usize + last_idx * 8:usize) as *Addr
+                    auto *last_is_write = (r.is_write as usize + last_idx * 4:usize) as *i32
+
+                    auto *target_fd# = (r.fds as usize + (i as usize) * 4:usize) as *i32
+                    target_fd = last_fd
+                    auto *target_coro# = (r.coros as usize + (i as usize) * 8:usize) as *Addr
+                    target_coro = last_coro
+                    auto *target_is_write# = (r.is_write as usize + (i as usize) * 4:usize) as *i32
+                    target_is_write = last_is_write
+                }
+                r.count = r.count - 1
+                continue
+            }
+            i += 1
+        }
+    }
+}
+
 pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
+    win_reactor_del(fd, -1)
 }
 
-pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
+    win_reactor_del(fd, 0)
 }
 
-pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
+    win_reactor_del(fd, 1)
 }

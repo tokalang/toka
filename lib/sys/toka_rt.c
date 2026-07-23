@@ -1591,9 +1591,13 @@ void toka_linux_epoll_del_fd(int epfd, int fd) {
     }
 }
 
-void toka_linux_epoll_del_read(int epfd, int fd) {
+void toka_linux_epoll_del_read(int epfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
+    if (g_epoll_fd_table[fd].read_key != expected_key) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return;
+    }
     g_epoll_fd_table[fd].read_key = 0;
     uint64_t rem_w = g_epoll_fd_table[fd].write_key;
     toka_mutex_unlock(&g_rt_mutex);
@@ -1608,9 +1612,13 @@ void toka_linux_epoll_del_read(int epfd, int fd) {
     }
 }
 
-void toka_linux_epoll_del_write(int epfd, int fd) {
+void toka_linux_epoll_del_write(int epfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
+    if (g_epoll_fd_table[fd].write_key != expected_key) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return;
+    }
     g_epoll_fd_table[fd].write_key = 0;
     uint64_t rem_r = g_epoll_fd_table[fd].read_key;
     toka_mutex_unlock(&g_rt_mutex);
@@ -1724,12 +1732,14 @@ int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_
         }
     }
     toka_mutex_unlock(&g_rt_mutex);
+    return out_count;
+}
 #endif
 
 #ifndef __linux__
 void toka_linux_epoll_del_fd(int epfd, int fd) {}
-void toka_linux_epoll_del_read(int epfd, int fd) {}
-void toka_linux_epoll_del_write(int epfd, int fd) {}
+void toka_linux_epoll_del_read(int epfd, int fd, uint64_t expected_key) {}
+void toka_linux_epoll_del_write(int epfd, int fd, uint64_t expected_key) {}
 #endif
 
 #ifdef __wasi__

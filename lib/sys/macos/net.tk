@@ -373,8 +373,36 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
 pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
 }
 
-pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
+    unsafe {
+        auto *ev# = unsafe alloc [32] byte as *char
+        if *ev as usize != 0 {
+            auto base = *ev as usize
+            auto *p_ident# = base as *u64
+            p_ident = fd as u64
+            auto *p_filter# = (base + 8) as *i16
+            p_filter = -1:i16
+            auto *p_flags# = (base + 10) as *u16
+            p_flags = 2:u16
+            kevent(reactor_fd, *ev as *void, 1, 0:Addr as *void, 0, 0:Addr as *void)
+            libc_free(*ev as *void)
+        }
+    }
 }
 
-pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
+    unsafe {
+        auto *ev# = unsafe alloc [32] byte as *char
+        if *ev as usize != 0 {
+            auto base = *ev as usize
+            auto *p_ident# = base as *u64
+            p_ident = fd as u64
+            auto *p_filter# = (base + 8) as *i16
+            p_filter = -2:i16
+            auto *p_flags# = (base + 10) as *u16
+            p_flags = 2:u16
+            kevent(reactor_fd, *ev as *void, 1, 0:Addr as *void, 0, 0:Addr as *void)
+            libc_free(*ev as *void)
+        }
+    }
 }

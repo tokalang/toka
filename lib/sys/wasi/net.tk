@@ -99,8 +99,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
 pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
 }
 
-pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
 }
 
-pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32) {
+pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
 }
