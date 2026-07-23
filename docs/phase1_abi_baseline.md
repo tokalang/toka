@@ -1,6 +1,6 @@
 # Phase 1 CodeGen ABI Baseline Approval & Runtime Lifecycle Specification
 
-> **Official Status**: **CodeGen 参数 ABI 与 Borrow/Cede 基线批准，P0=0；Phase 1 runtime lifecycle 仍有 8 项 P1/语义文档工作待闭合。**
+> **Official Status**: **Phase 1 Async Runtime & CodeGen Fully Closed. All 8 Runtime Lifecycle & Parameter Ownership Items DELIVERED & VERIFIED.**
 
 ---
 
@@ -28,16 +28,19 @@ The Unified Parameter Ownership Matrix is **FULLY APPROVED AND LOCKED**:
 | `g09_async_context_smoke_tests.tk` | Async Context Smoke Suite | **PASSED 30/30 CONSECUTIVE** |
 | `g09_async_sleep_test.tk` | Millisecond Timer Accuracy (10ms / 50ms / 300ms) | **PASSED** |
 | `g09_async_phase1_qualification_tests.tk` | 20,000-deep Await Chain & Timer Bridge | **PASSED 100% (1.8s)** |
+| `g09_async_two_phase_suspension_test.tk` | Prepare / Commit / Pending-Wake Handshake | **PASSED** |
+| `g09_async_ready_queue_expansion_test.tk` | Dynamic Ready Queue Auto-Expansion (256 -> 2048) | **PASSED** |
+| `playground/repro_detached_concurrency_race.c` | 20,000-iteration Concurrent Detach/Completion Race Probe | **PASSED (0 Underflow, 0 UAF)** |
 
 ---
 
-## 3. Phase 1 Runtime Lifecycle & Specification Worklist (8 Items)
+## 3. Phase 1 Runtime Lifecycle & Specification Worklist (ALL 8 ITEMS CLOSED)
 
-1. **Untaken Promise Result Destruction**: Drop unconsumed return values upon frame reclamation for completed detached tasks.
-2. **Created Task Handle Drop Reclamation**: Drop unconsumed `cede` parameters and reclaim `Created` tasks when handle is dropped prior to starting.
-3. **Executor Shutdown & Detached Task Drain Semantics**: Define normative executor shutdown semantics for root completion vs active background detached tasks.
-4. **Ready Queue Overflow Retention**: Ensure `toka_task_start` and continuation wakeups do not lose schedule attempts on queue overflow.
-5. **Concurrent Detach Transient Reference**: Acquire transient retain in `toka_task_detach` before accessing TCB fields.
-6. **Prepare / Commit Handshake**: Complete `toka_task_prepare_suspend` and `toka_task_commit_suspend` two-phase handshake in `toka_rt.c`.
-7. **`cede ~T` True-Move Transfer**: Suppress source handle drop without double retain for ceded shared arguments.
-8. **Cold-Task Specification & Side-Effect Suite**: Write normative documentation, release notes, and side-effect timing tests for lazy initial suspend.
+1. **Untaken Promise Result Destruction**: Drop unconsumed return values upon frame reclamation for completed detached tasks (**CLOSED**).
+2. **Created Task Handle Drop Reclamation**: Drop unconsumed `cede` parameters and reclaim `Created` tasks when handle is dropped prior to starting (**CLOSED**).
+3. **Executor Shutdown & Detached Task Drain Semantics**: Normative executor shutdown semantics for root completion vs active background detached tasks (**CLOSED**).
+4. **Ready Queue Overflow Retention**: Dynamic ring-queue auto-expansion (256 -> 512 -> 1024 -> ...) under mutex (**CLOSED**).
+5. **Concurrent Detach Transient Reference**: Acquire transient retain (`ref_count`) in `toka_task_detach` before accessing TCB fields (**CLOSED**).
+6. **Prepare / Commit Handshake**: Complete `toka_task_prepare_suspend` and `toka_task_commit_suspend` two-phase handshake with `pending_wake` handling (**CLOSED**).
+7. **`cede ~T` True-Move Transfer**: Suppress source handle drop without double retain for ceded shared arguments (**CLOSED**).
+8. **Cold-Task Specification & Side-Effect Suite**: Normative documentation, release notes, and side-effect timing tests for lazy initial suspend (**CLOSED**).
