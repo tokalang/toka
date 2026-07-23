@@ -714,6 +714,10 @@ static void ensure_ready_queue_capacity_locked(void) {
         g_ready_tail = 0;
         g_ready_count = 0;
     } else if (g_ready_count == g_ready_capacity) {
+        if (g_ready_capacity > SIZE_MAX / 2 || (g_ready_capacity * 2) > SIZE_MAX / sizeof(TokaScheduledItem)) {
+            fprintf(stderr, "Fatal error: Integer overflow during ready queue capacity calculation.\n");
+            abort();
+        }
         size_t new_capacity = g_ready_capacity * 2;
         TokaScheduledItem *new_queue = (TokaScheduledItem*)calloc(new_capacity, sizeof(TokaScheduledItem));
         if (!new_queue) {
@@ -782,6 +786,10 @@ static void register_frame_map(void *frame, TokaTCB *tcb) {
             abort();
         }
     } else if (g_frame_map_count == g_frame_map_capacity) {
+        if (g_frame_map_capacity > SIZE_MAX / 2 || (g_frame_map_capacity * 2) > SIZE_MAX / sizeof(TokaFrameMapEntry)) {
+            fprintf(stderr, "Fatal error: Integer overflow during frame map capacity calculation.\n");
+            abort();
+        }
         size_t new_cap = g_frame_map_capacity * 2;
         TokaFrameMapEntry *new_map = (TokaFrameMapEntry*)realloc(g_frame_map, new_cap * sizeof(TokaFrameMapEntry));
         if (!new_map) {
@@ -965,10 +973,13 @@ int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb
     }
 }
 
-static _Atomic uint32_t g_active_detached_task_count = 0;
+static uint32_t g_active_detached_task_count = 0;
 
-uint32_t toka_task_active_detached_count() {
-    return atomic_load(&g_active_detached_task_count);
+uint32_t toka_task_active_detached_count(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t cnt = g_active_detached_task_count;
+    toka_mutex_unlock(&g_rt_mutex);
+    return cnt;
 }
 
 void toka_task_complete(void *promise_ptr) {
@@ -982,10 +993,14 @@ void toka_task_complete(void *promise_ptr) {
     if (tcb) {
         atomic_store(&tcb->state, TOKA_TCB_COMPLETED);
 
+        toka_mutex_lock(&g_rt_mutex);
         uint8_t expected_counted = 1;
         if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 0)) {
-            atomic_fetch_sub(&g_active_detached_task_count, 1);
+            if (g_active_detached_task_count > 0) {
+                g_active_detached_task_count--;
+            }
         }
+        toka_mutex_unlock(&g_rt_mutex);
 
         toka_task_try_release_owner(tcb);
     }
@@ -1036,22 +1051,16 @@ void toka_task_detach(void *tcb_ptr) {
     // 2. Mark as detached
     atomic_store(&tcb->detached, 1);
 
-    // 3. Linearized counter increment via detached_counted (0 -> 1)
+    // 3. Linearized counter increment under g_rt_mutex
+    toka_mutex_lock(&g_rt_mutex);
     uint32_t st = atomic_load(&tcb->state);
     if (st != TOKA_TCB_COMPLETED && st != TOKA_TCB_CREATED) {
         uint8_t expected_counted = 0;
         if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 1)) {
-            atomic_fetch_add(&g_active_detached_task_count, 1);
-
-            // Double check if completion happened concurrently while setting detached_counted
-            if (atomic_load(&tcb->state) == TOKA_TCB_COMPLETED) {
-                uint8_t expected_undo = 1;
-                if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_undo, 0)) {
-                    atomic_fetch_sub(&g_active_detached_task_count, 1);
-                }
-            }
+            g_active_detached_task_count++;
         }
     }
+    toka_mutex_unlock(&g_rt_mutex);
 
     // 4. Try release owner if completed or created
     toka_task_try_release_owner(tcb);

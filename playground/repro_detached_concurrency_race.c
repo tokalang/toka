@@ -8,6 +8,7 @@
 #include <assert.h>
 
 extern void* toka_task_create(void *coro_frame, void *promise);
+extern int toka_task_start(void *tcb_ptr);
 extern void toka_task_detach(void *tcb_ptr);
 extern void toka_task_complete(void *promise_ptr);
 extern void toka_task_release(void *tcb_ptr);
@@ -43,6 +44,9 @@ int main(void) {
         TaskPair pair;
         pair.tcb = toka_task_create(NULL, &pair.promise);
 
+        // Start task so state transitions out of Created into Running/Queued to test counted path
+        toka_task_start(pair.tcb);
+
         pthread_t t1, t2;
         pthread_create(&t1, NULL, detach_worker, &pair);
         pthread_create(&t2, NULL, complete_worker, &pair);
@@ -50,7 +54,7 @@ int main(void) {
         pthread_join(t1, NULL);
         pthread_join(t2, NULL);
 
-        // Owner handle release simulation
+        // Release executor reference
         toka_task_release(pair.tcb);
 
         uint32_t count = toka_task_active_detached_count();
