@@ -249,12 +249,12 @@ pub fn net_set_nonblocking_impl(fd: i32) -> bool {
     }
 }
 
-extern fn toka_linux_epoll_add_read(reactor_fd: i32, fd: i32, key: u64) -> i32
-extern fn toka_linux_epoll_add_write(reactor_fd: i32, fd: i32, key: u64) -> i32
+extern fn toka_reactor_add_read(reactor_fd: i32, fd: i32, key: u64) -> i32
+extern fn toka_reactor_add_write(reactor_fd: i32, fd: i32, key: u64) -> i32
 extern fn toka_linux_epoll_wait(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32
-extern fn toka_linux_epoll_del_fd(reactor_fd: i32, fd: i32)
-extern fn toka_linux_epoll_del_read(reactor_fd: i32, fd: i32, key: u64)
-extern fn toka_linux_epoll_del_write(reactor_fd: i32, fd: i32, key: u64)
+extern fn toka_reactor_del_fd(reactor_fd: i32, fd: i32)
+extern fn toka_reactor_del_read(reactor_fd: i32, fd: i32, key: u64)
+extern fn toka_reactor_del_write(reactor_fd: i32, fd: i32, key: u64)
 
 pub fn reactor_create_impl() -> i32 {
     unsafe {
@@ -264,31 +264,31 @@ pub fn reactor_create_impl() -> i32 {
 
 pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
     unsafe {
-        toka_linux_epoll_del_fd(reactor_fd, fd)
+        toka_reactor_del_fd(reactor_fd, fd)
     }
 }
 
 pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
     unsafe {
-        toka_linux_epoll_del_read(reactor_fd, fd, event_key as u64)
+        toka_reactor_del_read(reactor_fd, fd, event_key as u64)
     }
 }
 
 pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
     unsafe {
-        toka_linux_epoll_del_write(reactor_fd, fd, event_key as u64)
+        toka_reactor_del_write(reactor_fd, fd, event_key as u64)
     }
 }
 
 pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
-        return toka_linux_epoll_add_read(reactor_fd, fd, event_key as u64) == 0
+        return toka_reactor_add_read(reactor_fd, fd, event_key as u64) == 0
     }
 }
 
 pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
-        return toka_linux_epoll_add_write(reactor_fd, fd, event_key as u64) == 0
+        return toka_reactor_add_write(reactor_fd, fd, event_key as u64) == 0
     }
 }
 

@@ -548,15 +548,20 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
     }
 }
 
-fn win_reactor_del(fd: i32, is_write_val: i32) {
+fn win_reactor_del(fd: i32, is_write_val: i32, expected_key: Addr) {
     unsafe {
         if g_win_reactor == 0:Addr { return }
         auto *r# = g_win_reactor as *WinReactor
         auto i# = 0
         loop i < r.count {
             auto *curr_fd = (r.fds as usize + (i as usize) * 4:usize) as *i32
+            auto *curr_coro = (r.coros as usize + (i as usize) * 8:usize) as *Addr
             auto *curr_is_write = (r.is_write as usize + (i as usize) * 4:usize) as *i32
             if *curr_fd == fd && (is_write_val == -1 || *curr_is_write == is_write_val) {
+                if expected_key != 0:Addr && *curr_coro != expected_key {
+                    i += 1
+                    continue
+                }
                 if i < r.count - 1 {
                     auto last_idx = (r.count - 1) as usize
                     auto *last_fd = (r.fds as usize + last_idx * 4:usize) as *i32
@@ -579,13 +584,13 @@ fn win_reactor_del(fd: i32, is_write_val: i32) {
 }
 
 pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
-    win_reactor_del(fd, -1)
+    win_reactor_del(fd, -1, 0:Addr)
 }
 
 pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
-    win_reactor_del(fd, 0)
+    win_reactor_del(fd, 0, event_key)
 }
 
 pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
-    win_reactor_del(fd, 1)
+    win_reactor_del(fd, 1, event_key)
 }

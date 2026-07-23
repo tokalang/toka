@@ -1557,27 +1557,48 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
     return 1;
 }
 
+#if defined(__linux__) || defined(__APPLE__)
 #ifdef __linux__
 #include <sys/epoll.h>
+#endif
+#ifdef __APPLE__
+#include <sys/event.h>
+#include <sys/time.h>
+#endif
 
 typedef struct {
     uint64_t read_key;
     uint64_t write_key;
-} TokaEpollFdBinding;
+} TokaReactorFdBinding;
 
-static TokaEpollFdBinding g_epoll_fd_table[65536];
+static TokaReactorFdBinding g_reactor_fd_table[65536];
 
-void toka_linux_epoll_del_fd(int epfd, int fd) {
+void toka_reactor_del_fd(int rfd, int fd) {
     if (fd < 0 || fd >= 65536) return;
     uint64_t r_key = 0, w_key = 0;
     toka_mutex_lock(&g_rt_mutex);
-    r_key = g_epoll_fd_table[fd].read_key;
-    w_key = g_epoll_fd_table[fd].write_key;
-    g_epoll_fd_table[fd].read_key = 0;
-    g_epoll_fd_table[fd].write_key = 0;
-    toka_mutex_unlock(&g_rt_mutex);
+    r_key = g_reactor_fd_table[fd].read_key;
+    w_key = g_reactor_fd_table[fd].write_key;
+    g_reactor_fd_table[fd].read_key = 0;
+    g_reactor_fd_table[fd].write_key = 0;
 
-    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+#ifdef __linux__
+    epoll_ctl(rfd, EPOLL_CTL_DEL, fd, NULL);
+#endif
+#ifdef __APPLE__
+    struct kevent evs[2];
+    int n_evs = 0;
+    if (r_key != 0) {
+        EV_SET(&evs[n_evs++], fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+    }
+    if (w_key != 0) {
+        EV_SET(&evs[n_evs++], fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+    }
+    if (n_evs > 0) {
+        kevent(rfd, evs, n_evs, NULL, 0, NULL);
+    }
+#endif
+    toka_mutex_unlock(&g_rt_mutex);
 
     if (r_key != 0) {
         uint32_t wid = (uint32_t)(r_key >> 32);
@@ -1591,136 +1612,190 @@ void toka_linux_epoll_del_fd(int epfd, int fd) {
     }
 }
 
-void toka_linux_epoll_del_read(int epfd, int fd, uint64_t expected_key) {
+void toka_reactor_del_read(int rfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
-    if (g_epoll_fd_table[fd].read_key != expected_key) {
+    if (g_reactor_fd_table[fd].read_key != expected_key) {
         toka_mutex_unlock(&g_rt_mutex);
         return;
     }
-    g_epoll_fd_table[fd].read_key = 0;
-    uint64_t rem_w = g_epoll_fd_table[fd].write_key;
-    toka_mutex_unlock(&g_rt_mutex);
+    g_reactor_fd_table[fd].read_key = 0;
 
+#ifdef __linux__
+    uint64_t rem_w = g_reactor_fd_table[fd].write_key;
     if (rem_w == 0) {
-        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+        epoll_ctl(rfd, EPOLL_CTL_DEL, fd, NULL);
     } else {
         struct epoll_event ev;
         ev.events = EPOLLOUT | EPOLLONESHOT;
         ev.data.u64 = (uint64_t)fd;
-        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+        epoll_ctl(rfd, EPOLL_CTL_MOD, fd, &ev);
     }
+#endif
+#ifdef __APPLE__
+    struct kevent ev;
+    EV_SET(&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+    kevent(rfd, &ev, 1, NULL, 0, NULL);
+#endif
+    toka_mutex_unlock(&g_rt_mutex);
 }
 
-void toka_linux_epoll_del_write(int epfd, int fd, uint64_t expected_key) {
+void toka_reactor_del_write(int rfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
-    if (g_epoll_fd_table[fd].write_key != expected_key) {
+    if (g_reactor_fd_table[fd].write_key != expected_key) {
         toka_mutex_unlock(&g_rt_mutex);
         return;
     }
-    g_epoll_fd_table[fd].write_key = 0;
-    uint64_t rem_r = g_epoll_fd_table[fd].read_key;
-    toka_mutex_unlock(&g_rt_mutex);
+    g_reactor_fd_table[fd].write_key = 0;
 
+#ifdef __linux__
+    uint64_t rem_r = g_reactor_fd_table[fd].read_key;
     if (rem_r == 0) {
-        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+        epoll_ctl(rfd, EPOLL_CTL_DEL, fd, NULL);
     } else {
         struct epoll_event ev;
         ev.events = EPOLLIN | EPOLLONESHOT;
         ev.data.u64 = (uint64_t)fd;
-        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+        epoll_ctl(rfd, EPOLL_CTL_MOD, fd, &ev);
     }
+#endif
+#ifdef __APPLE__
+    struct kevent ev;
+    EV_SET(&ev, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+    kevent(rfd, &ev, 1, NULL, 0, NULL);
+#endif
+    toka_mutex_unlock(&g_rt_mutex);
 }
 
-int toka_linux_epoll_add_read(int epfd, int fd, uint64_t key) {
+int toka_reactor_add_read(int rfd, int fd, uint64_t key) {
     if (fd < 0 || fd >= 65536) return -1;
     toka_mutex_lock(&g_rt_mutex);
-    g_epoll_fd_table[fd].read_key = key;
+
+    if (g_reactor_fd_table[fd].read_key != 0 && g_reactor_fd_table[fd].read_key != key) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return -1;
+    }
+
+    g_reactor_fd_table[fd].read_key = key;
+
+#ifdef __linux__
     uint32_t events = EPOLLIN | EPOLLONESHOT;
-    if (g_epoll_fd_table[fd].write_key != 0) {
+    if (g_reactor_fd_table[fd].write_key != 0) {
         events |= EPOLLOUT;
     }
-    toka_mutex_unlock(&g_rt_mutex);
 
     struct epoll_event ev;
     ev.events = events;
     ev.data.u64 = (uint64_t)fd;
 
-    int res = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+    int res = epoll_ctl(rfd, EPOLL_CTL_ADD, fd, &ev);
     if (res != 0) {
-        res = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+        res = epoll_ctl(rfd, EPOLL_CTL_MOD, fd, &ev);
     }
     if (res != 0) {
-        toka_mutex_lock(&g_rt_mutex);
-        if (g_epoll_fd_table[fd].read_key == key) {
-            g_epoll_fd_table[fd].read_key = 0;
-        }
+        g_reactor_fd_table[fd].read_key = 0;
         toka_mutex_unlock(&g_rt_mutex);
+        return -1;
     }
-    return res;
+#endif
+#ifdef __APPLE__
+    struct kevent ev;
+    EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_ONESHOT, 0, 0, (void*)(uintptr_t)key);
+    int res = kevent(rfd, &ev, 1, NULL, 0, NULL);
+    if (res != 0) {
+        g_reactor_fd_table[fd].read_key = 0;
+        toka_mutex_unlock(&g_rt_mutex);
+        return -1;
+    }
+#endif
+    toka_mutex_unlock(&g_rt_mutex);
+    return 0;
 }
 
-int toka_linux_epoll_add_write(int epfd, int fd, uint64_t key) {
+int toka_reactor_add_write(int rfd, int fd, uint64_t key) {
     if (fd < 0 || fd >= 65536) return -1;
     toka_mutex_lock(&g_rt_mutex);
-    g_epoll_fd_table[fd].write_key = key;
+
+    if (g_reactor_fd_table[fd].write_key != 0 && g_reactor_fd_table[fd].write_key != key) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return -1;
+    }
+
+    g_reactor_fd_table[fd].write_key = key;
+
+#ifdef __linux__
     uint32_t events = EPOLLOUT | EPOLLONESHOT;
-    if (g_epoll_fd_table[fd].read_key != 0) {
+    if (g_reactor_fd_table[fd].read_key != 0) {
         events |= EPOLLIN;
     }
-    toka_mutex_unlock(&g_rt_mutex);
 
     struct epoll_event ev;
     ev.events = events;
     ev.data.u64 = (uint64_t)fd;
 
-    int res = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+    int res = epoll_ctl(rfd, EPOLL_CTL_ADD, fd, &ev);
     if (res != 0) {
-        res = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+        res = epoll_ctl(rfd, EPOLL_CTL_MOD, fd, &ev);
     }
     if (res != 0) {
-        toka_mutex_lock(&g_rt_mutex);
-        if (g_epoll_fd_table[fd].write_key == key) {
-            g_epoll_fd_table[fd].write_key = 0;
-        }
+        g_reactor_fd_table[fd].write_key = 0;
         toka_mutex_unlock(&g_rt_mutex);
+        return -1;
     }
-    return res;
+#endif
+#ifdef __APPLE__
+    struct kevent ev;
+    EV_SET(&ev, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_ONESHOT, 0, 0, (void*)(uintptr_t)key);
+    int res = kevent(rfd, &ev, 1, NULL, 0, NULL);
+    if (res != 0) {
+        g_reactor_fd_table[fd].write_key = 0;
+        toka_mutex_unlock(&g_rt_mutex);
+        return -1;
+    }
+#endif
+    toka_mutex_unlock(&g_rt_mutex);
+    return 0;
 }
 
+#ifdef __linux__
 int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_events) {
     if (max_events <= 0) return 0;
     int epoll_max = max_events > 64 ? 64 : max_events;
-    struct epoll_event events_buf[64];
 
+    struct epoll_event events_buf[64];
     int n = epoll_wait(epfd, events_buf, epoll_max, timeout_ms);
     if (n <= 0) return n;
 
-    toka_mutex_lock(&g_rt_mutex);
     int out_count = 0;
-    for (int i = 0; i < n; ++i) {
+    toka_mutex_lock(&g_rt_mutex);
+
+    for (int i = 0; i < n; i++) {
         int fd = (int)events_buf[i].data.u64;
         uint32_t ev_mask = events_buf[i].events;
 
         if (fd >= 0 && fd < 65536) {
-            uint64_t r_key = g_epoll_fd_table[fd].read_key;
-            uint64_t w_key = g_epoll_fd_table[fd].write_key;
+            uint64_t r_key = g_reactor_fd_table[fd].read_key;
+            uint64_t w_key = g_reactor_fd_table[fd].write_key;
 
             int read_ready = (ev_mask & (EPOLLIN | EPOLLHUP | EPOLLERR)) && (r_key != 0);
             int write_ready = (ev_mask & (EPOLLOUT | EPOLLHUP | EPOLLERR)) && (w_key != 0);
 
-            if (read_ready && out_count < max_events) {
-                out_keys[out_count++] = r_key;
-                g_epoll_fd_table[fd].read_key = 0;
+            if (read_ready) {
+                if (out_count < max_events) {
+                    out_keys[out_count++] = r_key;
+                    g_reactor_fd_table[fd].read_key = 0;
+                }
             }
-            if (write_ready && out_count < max_events) {
-                out_keys[out_count++] = w_key;
-                g_epoll_fd_table[fd].write_key = 0;
+            if (write_ready) {
+                if (out_count < max_events) {
+                    out_keys[out_count++] = w_key;
+                    g_reactor_fd_table[fd].write_key = 0;
+                }
             }
 
-            uint64_t rem_r = g_epoll_fd_table[fd].read_key;
-            uint64_t rem_w = g_epoll_fd_table[fd].write_key;
+            uint64_t rem_r = g_reactor_fd_table[fd].read_key;
+            uint64_t rem_w = g_reactor_fd_table[fd].write_key;
             if (rem_r != 0 || rem_w != 0) {
                 struct epoll_event mod_ev;
                 mod_ev.events = EPOLLONESHOT;
@@ -1731,8 +1806,57 @@ int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_
             }
         }
     }
+
     toka_mutex_unlock(&g_rt_mutex);
     return out_count;
+}
+#endif
+
+int toka_reactor_wait(int rfd, int timeout_ms, uint64_t *out_keys, int max_events) {
+    if (max_events <= 0) return 0;
+#ifdef __linux__
+    return toka_linux_epoll_wait(rfd, timeout_ms, out_keys, max_events);
+#endif
+#ifdef __APPLE__
+    int k_max = max_events > 64 ? 64 : max_events;
+    struct kevent events_buf[64];
+    struct timespec ts;
+    struct timespec *pts = NULL;
+    if (timeout_ms >= 0) {
+        ts.tv_sec = timeout_ms / 1000;
+        ts.tv_nsec = (timeout_ms % 1000) * 1000000;
+        pts = &ts;
+    }
+    int n = kevent(rfd, NULL, 0, events_buf, k_max, pts);
+    if (n <= 0) return n;
+
+    int out_count = 0;
+    toka_mutex_lock(&g_rt_mutex);
+    for (int i = 0; i < n; i++) {
+        int fd = (int)events_buf[i].ident;
+        uint64_t key = (uint64_t)(uintptr_t)events_buf[i].udata;
+        if (fd >= 0 && fd < 65536 && key != 0) {
+            if (events_buf[i].filter == EVFILT_READ) {
+                if (g_reactor_fd_table[fd].read_key == key) {
+                    g_reactor_fd_table[fd].read_key = 0;
+                    if (out_count < max_events) {
+                        out_keys[out_count++] = key;
+                    }
+                }
+            } else if (events_buf[i].filter == EVFILT_WRITE) {
+                if (g_reactor_fd_table[fd].write_key == key) {
+                    g_reactor_fd_table[fd].write_key = 0;
+                    if (out_count < max_events) {
+                        out_keys[out_count++] = key;
+                    }
+                }
+            }
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return out_count;
+#endif
+    return 0;
 }
 #endif
 
