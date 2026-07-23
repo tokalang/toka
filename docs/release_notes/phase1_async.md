@@ -1,8 +1,10 @@
 # Toka Phase 1 Async Runtime & CodeGen Release Notes
 
+Status: `Phase 1 Async Runtime & CodeGen Fully Closed`
+
 ## Summary
 
-Toka Phase 1 establishes the unified async parameter ownership ABI, lazy cold-task execution timing, and CAS-linearized TaskHandle ownership release.
+Toka Phase 1 establishes the unified async parameter ownership ABI, lazy cold-task execution timing, CAS-linearized TaskHandle ownership release, unstarted Created handle drop reclamation, executor shutdown detached task drain, and dynamic ready queue auto-expansion.
 
 ## Key Delivered Capabilities
 
