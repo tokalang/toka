@@ -939,6 +939,25 @@ int toka_task_commit_suspend(void *coro_frame) {
     }
 }
 
+int toka_task_abort_suspend(void *coro_frame) {
+    TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
+    if (!tcb) return 0;
+
+    while (1) {
+        uint32_t st = atomic_load(&tcb->state);
+        if (st == TOKA_TCB_PREPARING || st == TOKA_TCB_PREPARING_WITH_PENDING_WAKE) {
+            uint32_t expected = st;
+            if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_RUNNING)) {
+                toka_task_release(tcb);
+                return 1; // Aborted back to RUNNING!
+            }
+            continue;
+        }
+        toka_task_release(tcb);
+        return 0;
+    }
+}
+
 int toka_task_try_schedule(uint64_t task_id, uint64_t gen) {
     toka_mutex_lock(&g_rt_mutex);
     TokaTCB *target_tcb = NULL;

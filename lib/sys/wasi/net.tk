@@ -84,11 +84,11 @@ pub fn reactor_create_impl() -> i32 {
     return -1
 }
 
-pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     return false
 }
 
-pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     return false
 }
 

@@ -85,7 +85,7 @@ pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bo
     unsafe {
         auto *ev# = unsafe alloc [32] byte as *char
         if *ev as usize == 0 { return false }
-        
+
         auto base = *ev as usize
         auto *p_ident# = base as *u64
         p_ident = fd as u64
@@ -99,7 +99,7 @@ pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bo
         p_data = 0
         auto *p_udata# = (base + 24) as *Addr
         p_udata = coro_handle
-        
+
         auto res = kevent(reactor_fd, *ev as *void, 1, 0:Addr as *void, 0, 0:Addr as *void)
         libc_free(*ev as *void)
         return res != -1
@@ -110,16 +110,16 @@ pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {
         // Allocate 32 bytes to be safe
         auto *addr_buf# = unsafe alloc [32] byte as *char
-        
+
         if *addr_buf as usize == 0 {
              return -1
         }
-        
+
         if !fill_sockaddr_in(*addr_buf, ip, port) {
             libc_free(*addr_buf as *void)
             return -1
         }
-        
+
         // Use bind
         auto res = bind(fd, *addr_buf as *void, 16)
         libc_free(*addr_buf as *void)
@@ -156,7 +156,7 @@ pub fn net_listen_impl(fd: i32) -> i32 {
 pub fn net_connect_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {
         auto *addr_buf# = unsafe alloc [32] byte as *char
-        
+
         if *addr_buf as usize == 0 {
              return -2
         }
@@ -165,7 +165,7 @@ pub fn net_connect_impl(fd: i32, ip: u32, port: u16) -> i32 {
             libc_free(*addr_buf as *void)
             return -3
         }
-        
+
         // Use connect with correct handle
         auto res = connect(fd, *addr_buf as *void, 16)
         libc_free(*addr_buf as *void)
@@ -179,9 +179,9 @@ pub fn net_accept_impl(fd: i32) -> i32 {
         auto *addr_len_ptr# = unsafe alloc [4] byte as *[u32]
         addr_len_ptr[0] = 16
         auto *addr_buf# = unsafe alloc [16] byte as *void
-        
+
         auto res = libc_accept(fd, *addr_buf, *addr_len_ptr as *u32)
-        
+
         libc_free(*addr_len_ptr as *void)
         libc_free(*addr_buf)
         return res
@@ -227,14 +227,14 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
         auto *addr_buf# = unsafe alloc [32] byte as *char
         auto *addrlen# = unsafe alloc [4] byte as *u32
         addrlen = 16:u32
-        
+
         auto res = libc_recvfrom(fd, *buf as *void, len, 0, *addr_buf as *void, *addrlen)
         if res >= 0:i64 {
             auto *p0 = (*addr_buf as usize + 2) as *u8
             auto *p1 = (*addr_buf as usize + 3) as *u8
             auto *pp# = *out_port
             pp = ((p0 as i32) bshl 8) bor (p1 as i32)
-            
+
             auto *a = (*addr_buf as usize + 4) as *u8
             auto *b = (*addr_buf as usize + 5) as *u8
             auto *c = (*addr_buf as usize + 6) as *u8
@@ -272,39 +272,78 @@ pub fn reactor_create_impl() -> i32 {
     }
 }
 
-pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
         auto *ev# = unsafe alloc [32] byte as *char
         if *ev as usize == 0 {
              return false
         }
-        
+
         auto base = *ev as usize
-        
+
         // ident = fd (u64)
         auto *p_ident# = base as *u64
         p_ident = fd as u64
-        
+
         // filter = EVFILT_READ (-1)
         auto *p_filter# = (base + 8) as *i16
         p_filter = -1:i16
-        
+
         // flags = EV_ADD (1) | EV_ONESHOT (16) | EV_ENABLE (4) = 21 (0x15)
         auto *p_flags# = (base + 10) as *u16
         p_flags = 21:u16
-        
+
         // fflags = 0
         auto *p_fflags# = (base + 12) as *u32
         p_fflags = 0:u32
-        
+
         // data = 0
         auto *p_data# = (base + 16) as *i64
         p_data = 0
-        
-        // udata = coro_handle
+
+        // udata = event_key
         auto *p_udata# = (base + 24) as *Addr
-        p_udata = coro_handle
-        
+        p_udata = event_key
+
+        auto res = kevent(reactor_fd, *ev as *void, 1, 0:Addr as *void, 0, 0:Addr as *void)
+        libc_free(*ev as *void)
+        return res != -1
+    }
+}
+
+pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
+    unsafe {
+        auto *ev# = unsafe alloc [32] byte as *char
+        if *ev as usize == 0 {
+             return false
+        }
+
+        auto base = *ev as usize
+
+        // ident = fd (u64)
+        auto *p_ident# = base as *u64
+        p_ident = fd as u64
+
+        // filter = EVFILT_WRITE (-2)
+        auto *p_filter# = (base + 8) as *i16
+        p_filter = -2:i16
+
+        // flags = EV_ADD (1) | EV_ONESHOT (16) | EV_ENABLE (4) = 21 (0x15)
+        auto *p_flags# = (base + 10) as *u16
+        p_flags = 21:u16
+
+        // fflags = 0
+        auto *p_fflags# = (base + 12) as *u32
+        p_fflags = 0:u32
+
+        // data = 0
+        auto *p_data# = (base + 16) as *i64
+        p_data = 0
+
+        // udata = event_key
+        auto *p_udata# = (base + 24) as *Addr
+        p_udata = event_key
+
         auto res = kevent(reactor_fd, *ev as *void, 1, 0:Addr as *void, 0, 0:Addr as *void)
         libc_free(*ev as *void)
         return res != -1
@@ -317,13 +356,13 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
         if *events as usize == 0 {
             return -1
         }
-        
+
         auto *ts_ptr# = unsafe alloc [16] byte as *void
         if *ts_ptr as usize == 0 {
             libc_free(*events)
             return -1
         }
-        
+
         auto ts_arg# = *ts_ptr as Addr
         if timeout_ms < 0 {
             ts_arg = 0:Addr
@@ -334,9 +373,9 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             auto *tv_nsec# = (ts_base + 8) as *i64
             tv_nsec = ((timeout_ms % 1000) * 1000000) as i64
         }
-        
+
         auto n = kevent(reactor_fd, 0:Addr as *void, 0, *events, max, ts_arg as *void)
-        
+
         // copy udata to out_events
         auto i# = 0
         loop i < n {
@@ -347,7 +386,7 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
             dest = h
             i += 1
         }
-        
+
         libc_free(*events)
         libc_free(*ts_ptr)
         return n

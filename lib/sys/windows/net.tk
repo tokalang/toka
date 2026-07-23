@@ -329,12 +329,12 @@ pub fn reactor_create_impl() -> i32 {
     }
 }
 
-pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
-    return win_reactor_add(fd, coro_handle, false)
+pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
+    return win_reactor_add(fd, event_key, false)
 }
 
-pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
-    return win_reactor_add(fd, coro_handle, true)
+pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
+    return win_reactor_add(fd, event_key, true)
 }
 
 pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32 {

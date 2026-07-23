@@ -277,8 +277,11 @@ pub fn __toka_spawn_blocking(*task: void) {
             if n > 0 {
                 auto i# = 0
                 loop i < n {
-                    auto handle = events_buf[i]
-                    core_task::toka_task_schedule_frame_compat(handle as *void)
+                    auto event_key = events_buf[i] as u64
+                    auto wait_id = (event_key >> 32:u64) as u32
+                    auto slot_gen = (event_key & 0xFFFFFFFF:u64) as u32
+                    core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
+                    core_task::toka_wait_registry_release(wait_id, slot_gen)
                     i += 1
                 }
             }

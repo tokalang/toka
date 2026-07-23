@@ -1,0 +1,88 @@
+// Real Socket AR-P3 Reactor Tokenization Test
+// Exercises real non-blocking TCP socket readiness over OS Reactor (kqueue/epoll) with WaitTokenization
+
+import std/io::{println};
+import std/task::{block_on, sleep_async};
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read};
+
+auto server_received_bytes#: usize = 0;
+auto client_received_bytes#: usize = 0;
+
+pub fn async_socket_server(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener;
+    auto stream# = net_async_accept(owned_listener).await;
+    assert(stream.is_valid(), "Server accepted invalid stream");
+
+    unsafe {
+        auto *buf# = unsafe alloc [128]u8;
+        auto read_res = net_async_read(stream, *buf as *u8, 128:usize).await;
+        assert(read_res.is_ok(), "Server net_async_read failed");
+        server_received_bytes = read_res.unwrap();
+
+        auto write_res = stream#.write_string_async(string::from("ACK_TOK")).await;
+        assert(write_res.is_ok(), "Server write_string_async failed");
+
+        unsafe free [128] *#buf;
+    }
+
+    stream#.close();
+    return 200;
+}
+
+pub fn async_socket_client(port: u16) -> async i32 {
+    sleep_async(50).await;
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+
+    // Exercise connect_async over real OS Reactor WaitTokenization
+    auto stream# = TcpStream::connect_async(addr).await;
+    auto retries# = 0;
+    loop !stream.is_valid() {
+        if retries > 50 {
+            assert(false, "Client connect timeout");
+        }
+        sleep_async(50).await;
+        stream = TcpStream::connect_async(addr).await;
+        retries = retries + 1;
+    }
+    assert(stream.is_valid(), "Client connect_async failed");
+
+    auto write_res = stream#.write_string_async(string::from("HELLO_REACTOR")).await;
+    assert(write_res.is_ok(), "Client write_string_async failed");
+
+    unsafe {
+        auto *buf# = unsafe alloc [128]u8;
+        auto read_res = net_async_read(stream, *buf as *u8, 128:usize).await;
+        assert(read_res.is_ok(), "Client net_async_read failed");
+        client_received_bytes = read_res.unwrap();
+        unsafe free [128] *#buf;
+    }
+
+    stream#.close();
+    return 100;
+}
+
+fn test_real_socket_reactor_tokenization() {
+    server_received_bytes = 0;
+    client_received_bytes = 0;
+    auto test_port: u16 = 19895;
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), test_port);
+    auto listener = TcpListener::bind(addr);
+    assert(listener.is_valid(), "Server listener bind failed");
+
+    auto server_handle = async_socket_server(cede listener).start;
+    auto client_handle = async_socket_client(test_port).start;
+
+    auto s_res = block_on<i32>(server_handle);
+    auto c_res = block_on<i32>(client_handle);
+
+    assert(s_res == 200, "Server return code mismatch");
+    assert(c_res == 100, "Client return code mismatch");
+    assert(server_received_bytes == 13, "Server received bytes mismatch");
+    assert(client_received_bytes == 7, "Client received bytes mismatch");
+}
+
+pub fn main() -> i32 {
+    test_real_socket_reactor_tokenization();
+    println("g09_async_reactor_tokenization_test PASSED (Real Socket Reactor Tokenized)!");
+    return 0;
+}

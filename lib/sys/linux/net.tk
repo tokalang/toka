@@ -255,25 +255,25 @@ pub fn reactor_create_impl() -> i32 {
     }
 }
 
-pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
         // events = EPOLLIN (1) | EPOLLONESHOT (1073741824) = 1073741825:u32
         // 1 = EPOLL_CTL_ADD, 3 = EPOLL_CTL_MOD
-        auto res# = toka_epoll_ctl_handle(reactor_fd, 1, fd, 1073741825:u32, coro_handle)
+        auto res# = toka_epoll_ctl_handle(reactor_fd, 1, fd, 1073741825:u32, event_key)
         if res != 0 {
-             res = toka_epoll_ctl_handle(reactor_fd, 3, fd, 1073741825:u32, coro_handle)
+             res = toka_epoll_ctl_handle(reactor_fd, 3, fd, 1073741825:u32, event_key)
         }
         return res == 0
     }
 }
 
-pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
+pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
         // events = EPOLLOUT (4) | EPOLLONESHOT (1073741824) = 1073741828:u32
         // 1 = EPOLL_CTL_ADD, 3 = EPOLL_CTL_MOD
-        auto res# = toka_epoll_ctl_handle(reactor_fd, 1, fd, 1073741828:u32, coro_handle)
+        auto res# = toka_epoll_ctl_handle(reactor_fd, 1, fd, 1073741828:u32, event_key)
         if res != 0 {
-             res = toka_epoll_ctl_handle(reactor_fd, 3, fd, 1073741828:u32, coro_handle)
+             res = toka_epoll_ctl_handle(reactor_fd, 3, fd, 1073741828:u32, event_key)
         }
         return res == 0
     }

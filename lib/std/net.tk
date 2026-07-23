@@ -5,6 +5,7 @@ import sys/os/net as sysnet
 import sys/libc::{toka_resolve_ipv4}
 import std/io::{@Reader, @Writer}
 import std/task::{get_reactor_fd, sleep_async}
+import core/task as core_task
 
 extern fn __builtin_coro_current_handle() -> *void
 extern fn __builtin_coro_suspend()
@@ -235,8 +236,7 @@ impl TcpStream {
                 return TcpStream(fd=-1, closed=true)
             }
             
-            auto coro = __builtin_coro_current_handle() as Addr
-            if !sysnet::reactor_add_write_impl(get_reactor_fd(), fd, coro) {
+            if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, fd) {
                 sysnet::net_close_impl(fd)
                 return TcpStream(fd=-1, closed=true)
             }
@@ -459,6 +459,52 @@ impl TcpListener {
     }
 }
 
+fn register_async_reactor_read(coro: Addr, fd: i32) -> bool {
+    auto task_id# = 0:u64
+    auto wait_gen# = 0:u64
+    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    if ok != 0 {
+        auto wait_id# = 0:u32
+        auto slot_gen# = 0:u32
+        auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 2:u16, &wait_id as *u32, &slot_gen as *u32)
+        if alloc_ok != 0 {
+            auto event_key = ((wait_id as u64) << 32:u64) | (slot_gen as u64)
+            if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {
+                core_task::toka_wait_registry_release(wait_id, slot_gen)
+                core_task::toka_task_abort_suspend(coro as *void)
+                return false
+            }
+            core_task::toka_task_commit_suspend(coro as *void)
+            return true
+        }
+        core_task::toka_task_abort_suspend(coro as *void)
+    }
+    return false
+}
+
+fn register_async_reactor_write(coro: Addr, fd: i32) -> bool {
+    auto task_id# = 0:u64
+    auto wait_gen# = 0:u64
+    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    if ok != 0 {
+        auto wait_id# = 0:u32
+        auto slot_gen# = 0:u32
+        auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 3:u16, &wait_id as *u32, &slot_gen as *u32)
+        if alloc_ok != 0 {
+            auto event_key = ((wait_id as u64) << 32:u64) | (slot_gen as u64)
+            if !sysnet::reactor_add_write_impl(get_reactor_fd(), fd, event_key as Addr) {
+                core_task::toka_wait_registry_release(wait_id, slot_gen)
+                core_task::toka_task_abort_suspend(coro as *void)
+                return false
+            }
+            core_task::toka_task_commit_suspend(coro as *void)
+            return true
+        }
+        core_task::toka_task_abort_suspend(coro as *void)
+    }
+    return false
+}
+
 // ==== Top Level Async Helpers ====
 pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<usize, string> {
     auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
@@ -480,8 +526,7 @@ pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<u
                     auto eagain = sysnet::get_eagain_impl()
                     
                     if err == eagain {
-                        auto coro = __builtin_coro_current_handle() as Addr
-                        if !sysnet::reactor_add_read_impl(get_reactor_fd(), stream.fd, coro) {
+                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, stream.fd) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async read"))
                             done = true
                             continue
@@ -520,8 +565,7 @@ pub fn net_async_accept(listener: TcpListener) -> async TcpStream {
                     auto eagain = sysnet::get_eagain_impl()
                     
                     if err == eagain {
-                        auto coro = __builtin_coro_current_handle() as Addr
-                        if !sysnet::reactor_add_read_impl(get_reactor_fd(), listener.fd, coro) {
+                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, listener.fd) {
                             ret = TcpStream(fd=-1, closed=true)
                             done = true
                             continue
@@ -559,8 +603,7 @@ pub fn net_async_write(stream: TcpStream, *buf: u8, len: usize) -> async Result<
                     auto eagain = sysnet::get_eagain_impl()
                     
                     if err == eagain {
-                        auto coro = __builtin_coro_current_handle() as Addr
-                        if !sysnet::reactor_add_write_impl(get_reactor_fd(), stream.fd, coro) {
+                        if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, stream.fd) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async write"))
                             done = true
                             continue
