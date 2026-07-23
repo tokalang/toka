@@ -706,12 +706,20 @@ static void ensure_ready_queue_capacity_locked(void) {
     if (g_ready_queue == NULL) {
         g_ready_capacity = 256;
         g_ready_queue = (TokaScheduledItem*)calloc(g_ready_capacity, sizeof(TokaScheduledItem));
+        if (!g_ready_queue) {
+            fprintf(stderr, "Fatal error: Out of memory during Toka ready queue initialization.\n");
+            abort();
+        }
         g_ready_head = 0;
         g_ready_tail = 0;
         g_ready_count = 0;
     } else if (g_ready_count == g_ready_capacity) {
         size_t new_capacity = g_ready_capacity * 2;
         TokaScheduledItem *new_queue = (TokaScheduledItem*)calloc(new_capacity, sizeof(TokaScheduledItem));
+        if (!new_queue) {
+            fprintf(stderr, "Fatal error: Out of memory during Toka ready queue auto-expansion.\n");
+            abort();
+        }
         for (size_t i = 0; i < g_ready_count; ++i) {
             new_queue[i] = g_ready_queue[(g_ready_head + i) % g_ready_capacity];
         }
@@ -769,19 +777,23 @@ static void register_frame_map(void *frame, TokaTCB *tcb) {
     if (g_frame_map == NULL) {
         g_frame_map_capacity = 256;
         g_frame_map = (TokaFrameMapEntry*)calloc(g_frame_map_capacity, sizeof(TokaFrameMapEntry));
+        if (!g_frame_map) {
+            fprintf(stderr, "Fatal error: Out of memory during Toka frame map initialization.\n");
+            abort();
+        }
     } else if (g_frame_map_count == g_frame_map_capacity) {
         size_t new_cap = g_frame_map_capacity * 2;
         TokaFrameMapEntry *new_map = (TokaFrameMapEntry*)realloc(g_frame_map, new_cap * sizeof(TokaFrameMapEntry));
-        if (new_map) {
-            g_frame_map = new_map;
-            g_frame_map_capacity = new_cap;
+        if (!new_map) {
+            fprintf(stderr, "Fatal error: Out of memory during Toka frame map expansion.\n");
+            abort();
         }
+        g_frame_map = new_map;
+        g_frame_map_capacity = new_cap;
     }
-    if (g_frame_map_count < g_frame_map_capacity) {
-        g_frame_map[g_frame_map_count].frame = frame;
-        g_frame_map[g_frame_map_count].tcb = tcb;
-        g_frame_map_count++;
-    }
+    g_frame_map[g_frame_map_count].frame = frame;
+    g_frame_map[g_frame_map_count].tcb = tcb;
+    g_frame_map_count++;
     toka_mutex_unlock(&g_rt_mutex);
 }
 
