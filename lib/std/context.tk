@@ -183,6 +183,18 @@ impl Canceler {
         return Option<string>::None()
     }
 
+    pub fn active_token_count(self) -> usize {
+        auto lock_res = self.state.lock()
+        match lock_res {
+            auto Result::Ok(&lock) => {
+                auto *val = lock.get_ref()
+                return val.wait_ids.len()
+            }
+            _ => {}
+        }
+        return 0:usize
+    }
+
     pub fn clone(self#) -> Canceler
     effects: return <- self.state {
         return Canceler(~state = self.~state)

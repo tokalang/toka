@@ -172,12 +172,7 @@ pub shape TcpStream (
 
 impl TcpStream@encap {
     fn drop(self#) {
-        unsafe {
-            if !self.closed {
-                sysnet::net_close_impl(self.fd)
-                self.closed = true
-            }
-        }
+        self#.close()
     }
 
     pub fn clone(self) = delete
@@ -617,6 +612,7 @@ pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_m
                         core_task::toka_wait_registry_release(io_id, io_gen)
                         core_task::toka_wait_registry_release(tm_id, tm_gen)
                         if is_timeout != 0 {
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), stream.fd)
                             ret = Result<usize, string>::Err(string::from("IO operation timed out"))
                             done = true
                         }
@@ -645,6 +641,7 @@ fn register_async_reactor_read_context(coro: Addr, fd: i32, canceler: Canceler, 
         if alloc_ok != 0 {
             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
             if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {
+                sysnet::reactor_del_fd_impl(get_reactor_fd(), fd)
                 core_task::toka_wait_registry_release(io_id, io_gen)
                 core_task::toka_wait_registry_release(ctx_id, ctx_gen)
                 core_task::toka_task_abort_suspend(coro as *void)
@@ -703,6 +700,7 @@ pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler:
                         core_task::toka_wait_registry_release(io_id, io_gen)
                         core_task::toka_wait_registry_release(ctx_id, ctx_gen)
                         if is_ctx != 0 {
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), stream.fd)
                             auto c_err = canceler.err()
                             if c_err.is_some() {
                                 ret = Result<usize, string>::Err(c_err.unwrap())

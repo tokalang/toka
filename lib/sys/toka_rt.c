@@ -1569,11 +1569,60 @@ static TokaEpollFdBinding g_epoll_fd_table[65536];
 
 void toka_linux_epoll_del_fd(int epfd, int fd) {
     if (fd < 0 || fd >= 65536) return;
+    uint64_t r_key = 0, w_key = 0;
     toka_mutex_lock(&g_rt_mutex);
+    r_key = g_epoll_fd_table[fd].read_key;
+    w_key = g_epoll_fd_table[fd].write_key;
     g_epoll_fd_table[fd].read_key = 0;
     g_epoll_fd_table[fd].write_key = 0;
     toka_mutex_unlock(&g_rt_mutex);
+
     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+
+    if (r_key != 0) {
+        uint32_t wid = (uint32_t)(r_key >> 32);
+        uint32_t wgen = (uint32_t)r_key;
+        toka_wait_registry_try_wake(wid, wgen);
+    }
+    if (w_key != 0) {
+        uint32_t wid = (uint32_t)(w_key >> 32);
+        uint32_t wgen = (uint32_t)w_key;
+        toka_wait_registry_try_wake(wid, wgen);
+    }
+}
+
+void toka_linux_epoll_del_read(int epfd, int fd) {
+    if (fd < 0 || fd >= 65536) return;
+    toka_mutex_lock(&g_rt_mutex);
+    g_epoll_fd_table[fd].read_key = 0;
+    uint64_t rem_w = g_epoll_fd_table[fd].write_key;
+    toka_mutex_unlock(&g_rt_mutex);
+
+    if (rem_w == 0) {
+        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+    } else {
+        struct epoll_event ev;
+        ev.events = EPOLLOUT | EPOLLONESHOT;
+        ev.data.u64 = (uint64_t)fd;
+        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+    }
+}
+
+void toka_linux_epoll_del_write(int epfd, int fd) {
+    if (fd < 0 || fd >= 65536) return;
+    toka_mutex_lock(&g_rt_mutex);
+    g_epoll_fd_table[fd].write_key = 0;
+    uint64_t rem_r = g_epoll_fd_table[fd].read_key;
+    toka_mutex_unlock(&g_rt_mutex);
+
+    if (rem_r == 0) {
+        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+    } else {
+        struct epoll_event ev;
+        ev.events = EPOLLIN | EPOLLONESHOT;
+        ev.data.u64 = (uint64_t)fd;
+        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+    }
 }
 
 int toka_linux_epoll_add_read(int epfd, int fd, uint64_t key) {
@@ -1593,6 +1642,13 @@ int toka_linux_epoll_add_read(int epfd, int fd, uint64_t key) {
     int res = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
     if (res != 0) {
         res = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+    }
+    if (res != 0) {
+        toka_mutex_lock(&g_rt_mutex);
+        if (g_epoll_fd_table[fd].read_key == key) {
+            g_epoll_fd_table[fd].read_key = 0;
+        }
+        toka_mutex_unlock(&g_rt_mutex);
     }
     return res;
 }
@@ -1614,6 +1670,13 @@ int toka_linux_epoll_add_write(int epfd, int fd, uint64_t key) {
     int res = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
     if (res != 0) {
         res = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
+    }
+    if (res != 0) {
+        toka_mutex_lock(&g_rt_mutex);
+        if (g_epoll_fd_table[fd].write_key == key) {
+            g_epoll_fd_table[fd].write_key = 0;
+        }
+        toka_mutex_unlock(&g_rt_mutex);
     }
     return res;
 }
@@ -1661,8 +1724,12 @@ int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_
         }
     }
     toka_mutex_unlock(&g_rt_mutex);
-    return out_count;
-}
+#endif
+
+#ifndef __linux__
+void toka_linux_epoll_del_fd(int epfd, int fd) {}
+void toka_linux_epoll_del_read(int epfd, int fd) {}
+void toka_linux_epoll_del_write(int epfd, int fd) {}
 #endif
 
 #ifdef __wasi__

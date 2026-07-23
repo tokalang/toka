@@ -93,6 +93,7 @@ pub fn unregister_test_server(cede listener: TcpListener) -> async i32 {
         assert(read_res.unwrap() == 4, "Expected 4 bytes read");
 
         // Canceler should have zero tokens lingering after unregister_wait_token
+        assert(canceler.active_token_count() == 0:usize, "Canceler must have zero registered wait tokens after normal IO completion!");
         test_token_unregistered_ok = true;
 
         unsafe free [64] *#buf;
