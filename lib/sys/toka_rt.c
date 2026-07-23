@@ -1241,6 +1241,10 @@ static size_t g_wait_registry_capacity = 0;
 static size_t g_wait_registry_count = 0;
 
 static void ensure_free_slots_locked(size_t needed_slots) {
+    if (needed_slots > UINT32_MAX / 2) {
+        fprintf(stderr, "Fatal error: Requested slots exceed maximum WaitRegistry capacity.\n");
+        abort();
+    }
     if (g_wait_registry == NULL) {
         g_wait_registry_capacity = 256;
         if (needed_slots > g_wait_registry_capacity) {
@@ -1256,13 +1260,14 @@ static void ensure_free_slots_locked(size_t needed_slots) {
             g_wait_registry[i].token.wait_slot_generation = 1;
         }
     } else if (g_wait_registry_capacity - g_wait_registry_count < needed_slots) {
-        if (g_wait_registry_capacity > SIZE_MAX / 2) {
-            fprintf(stderr, "Fatal error: Integer overflow during WaitRegistry capacity calculation.\n");
+        if (g_wait_registry_capacity >= (SIZE_MAX / 2) || g_wait_registry_capacity >= (UINT32_MAX / 2)) {
+            fprintf(stderr, "Fatal error: WaitRegistry capacity overflow protection triggered.\n");
             abort();
         }
         size_t old_cap = g_wait_registry_capacity;
         size_t new_cap = g_wait_registry_capacity * 2;
         while (new_cap - g_wait_registry_count < needed_slots) {
+            if (new_cap >= (UINT32_MAX / 2)) break;
             new_cap *= 2;
         }
         TokaWaitRegistration *new_reg = (TokaWaitRegistration*)realloc(g_wait_registry, new_cap * sizeof(TokaWaitRegistration));
@@ -1407,16 +1412,24 @@ int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t ta
     return 1;
 }
 
+typedef enum {
+    TOKA_WAKE_STALE = 0,
+    TOKA_WAKE_SINGLETON_WON = 1,
+    TOKA_WAKE_PAIR_WON = 2,
+    TOKA_WAKE_PAIR_DUPLICATE = 3,
+    TOKA_WAKE_PAIR_LOST = 4
+} TokaWakeOutcome;
+
 int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
     toka_mutex_lock(&g_rt_mutex);
     if (wait_id >= g_wait_registry_capacity) {
         toka_mutex_unlock(&g_rt_mutex);
-        return 0;
+        return TOKA_WAKE_STALE;
     }
     TokaWaitRegistration *reg = &g_wait_registry[wait_id];
     if (!reg->in_use || reg->token.wait_slot_generation != slot_gen) {
         toka_mutex_unlock(&g_rt_mutex);
-        return 0; // Stale token rejected without inspecting TCB/frame!
+        return TOKA_WAKE_STALE;
     }
 
     if (reg->wait_set) {
@@ -1425,23 +1438,22 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
         uint32_t current_winner = atomic_load(&ws->winner_wait_id);
 
         if (current_winner == target_winner) {
-            // Idempotent duplicate event for the winning token
             toka_mutex_unlock(&g_rt_mutex);
-            return 0;
+            return TOKA_WAKE_PAIR_DUPLICATE;
         }
 
         uint32_t expected = 0;
         if (!atomic_compare_exchange_strong(&ws->winner_wait_id, &expected, target_winner)) {
             atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
             toka_mutex_unlock(&g_rt_mutex);
-            return 0;
+            return TOKA_WAKE_PAIR_LOST;
         }
     }
 
     uint32_t expected = TOKA_WAIT_STATE_WAITING;
     if (!atomic_compare_exchange_strong(&reg->state, &expected, TOKA_WAIT_STATE_WON)) {
         toka_mutex_unlock(&g_rt_mutex);
-        return 0;
+        return TOKA_WAKE_PAIR_LOST;
     }
 
     uint64_t tid = reg->task_id;
@@ -1466,7 +1478,8 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
     if (tcb_to_release) {
         toka_task_release(tcb_to_release);
     }
-    return sched_ok;
+    if (!sched_ok) return TOKA_WAKE_STALE;
+    return is_singleton ? TOKA_WAKE_SINGLETON_WON : TOKA_WAKE_PAIR_WON;
 }
 
 int toka_wait_registry_invalidate(uint32_t wait_id, uint32_t slot_gen) {
@@ -1544,6 +1557,72 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
     return 1;
 }
 
+#ifdef __linux__
+typedef struct {
+    uint64_t read_key;
+    uint64_t write_key;
+} TokaEpollFdBinding;
+
+static TokaEpollFdBinding g_epoll_fd_table[65536];
+
+int toka_linux_epoll_add_read(int epfd, int fd, uint64_t key) {
+    if (fd < 0 || fd >= 65536) return -1;
+    toka_mutex_lock(&g_rt_mutex);
+    g_epoll_fd_table[fd].read_key = key;
+    uint32_t events = 1U | 1073741824U; // EPOLLIN | EPOLLONESHOT
+    uint64_t packed_data = (uint64_t)fd;
+    if (g_epoll_fd_table[fd].write_key != 0) {
+        events |= 4U; // EPOLLOUT
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    int res = toka_epoll_ctl_handle(epfd, 1, fd, events, (void*)packed_data);
+    if (res != 0) {
+        res = toka_epoll_ctl_handle(epfd, 3, fd, events, (void*)packed_data);
+    }
+    return res;
+}
+
+int toka_linux_epoll_add_write(int epfd, int fd, uint64_t key) {
+    if (fd < 0 || fd >= 65536) return -1;
+    toka_mutex_lock(&g_rt_mutex);
+    g_epoll_fd_table[fd].write_key = key;
+    uint32_t events = 4U | 1073741824U; // EPOLLOUT | EPOLLONESHOT
+    uint64_t packed_data = (uint64_t)fd;
+    if (g_epoll_fd_table[fd].read_key != 0) {
+        events |= 1U; // EPOLLIN
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    int res = toka_epoll_ctl_handle(epfd, 1, fd, events, (void*)packed_data);
+    if (res != 0) {
+        res = toka_epoll_ctl_handle(epfd, 3, fd, events, (void*)packed_data);
+    }
+    return res;
+}
+
+int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_events) {
+    uint64_t raw_events[64];
+    int n = toka_epoll_wait_handles(epfd, timeout_ms, (void*)raw_events, max_events > 64 ? 64 : max_events);
+    if (n <= 0) return n;
+
+    toka_mutex_lock(&g_rt_mutex);
+    int out_count = 0;
+    for (int i = 0; i < n; ++i) {
+        int fd = (int)raw_events[i];
+        if (fd >= 0 && fd < 65536) {
+            if (g_epoll_fd_table[fd].read_key != 0) {
+                out_keys[out_count++] = g_epoll_fd_table[fd].read_key;
+                g_epoll_fd_table[fd].read_key = 0;
+            }
+            if (g_epoll_fd_table[fd].write_key != 0) {
+                out_keys[out_count++] = g_epoll_fd_table[fd].write_key;
+                g_epoll_fd_table[fd].write_key = 0;
+            }
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return out_count;
+}
+#endif
 
 #ifdef __wasi__
 extern int __wasm_argc;

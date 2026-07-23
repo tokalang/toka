@@ -1,14 +1,23 @@
 // AR-P4 Context & IO Timeout Integration Qualification Test
-// Tests dual-token WaitRegistry allocation_pair, IO read timeout, and timer vs IO winner CAS.
+// Tests dual-token WaitRegistry allocation_pair, IO read timeout, Context cancellation, and Winner CAS idempotency.
 
 import std/io::{println};
 import std/task::{block_on, sleep_async};
-import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read_timeout, net_async_read};
+import std/context::{background, with_cancel, Canceler};
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read_timeout, net_async_read_context};
 
 auto server_timeout_detected#: bool = false;
+auto server_context_cancel_detected#: bool = false;
 auto server_success_detected#: bool = false;
 
-pub fn async_timeout_server(cede listener: TcpListener) -> async i32 {
+pub fn trigger_cancel_task(cede c: Canceler) -> async i32 {
+    auto owned_c# = cede c;
+    sleep_async(50).await;
+    owned_c.call();
+    return 1;
+}
+
+pub fn async_context_server(cede listener: TcpListener) -> async i32 {
     auto owned_listener# = cede listener;
     auto stream# = net_async_accept(owned_listener).await;
     assert(stream.is_valid(), "Server accepted invalid stream");
@@ -16,14 +25,28 @@ pub fn async_timeout_server(cede listener: TcpListener) -> async i32 {
     unsafe {
         auto *buf# = unsafe alloc [128]u8;
 
-        // 1. First read should time out because client has not sent data yet (timeout_ms = 100ms)
+        // 1. Read timeout test (timeout_ms = 100ms)
         auto timeout_res = net_async_read_timeout(stream, *buf as *u8, 128:usize, 100).await;
         assert(timeout_res.is_err(), "Expected first read to time out");
         server_timeout_detected = true;
 
-        // 2. Second read should succeed because client will send data within 500ms
+        // 2. Context cancellation test while IO operation is suspended
+        auto bg = background();
+        auto cancel_res = with_cancel(bg);
+        auto canceler = cancel_res.canceler;
+
+        // Spawn task to trigger canceler after 50ms while server is suspended on net_async_read_context
+        auto cancel_handle = trigger_cancel_task(cede canceler.clone()).start;
+
+        auto ctx_read_res = net_async_read_context(stream, *buf as *u8, 128:usize, canceler).await;
+        assert(ctx_read_res.is_err(), "Expected read_context to fail with cancellation");
+        assert(ctx_read_res.unwrap_err() == string::from("context canceled"), "Expected error 'context canceled'");
+        server_context_cancel_detected = true;
+        block_on<i32>(cancel_handle);
+
+        // 3. Normal read success when client sends data
         auto success_res = net_async_read_timeout(stream, *buf as *u8, 128:usize, 500).await;
-        assert(success_res.is_ok(), "Expected second read to succeed before timeout");
+        assert(success_res.is_ok(), "Expected read to succeed before timeout");
         assert(success_res.unwrap() == 10, "Read byte count mismatch");
         server_success_detected = true;
 
@@ -34,13 +57,13 @@ pub fn async_timeout_server(cede listener: TcpListener) -> async i32 {
     return 200;
 }
 
-pub fn async_timeout_client(port: u16) -> async i32 {
+pub fn async_context_client(port: u16) -> async i32 {
     sleep_async(20).await;
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     auto stream# = TcpStream::connect_async(addr).await;
     assert(stream.is_valid(), "Client connect_async failed");
 
-    // Sleep 250ms before writing data so that server's first 100ms read times out
+    // Sleep 250ms before writing data so that server's timeout (100ms) and context cancel (50ms) both trigger first
     sleep_async(250).await;
     auto write_res = stream#.write_string_async(string::from("DATA_READY")).await;
     assert(write_res.is_ok(), "Client write_string_async failed");
@@ -49,18 +72,19 @@ pub fn async_timeout_client(port: u16) -> async i32 {
     return 100;
 }
 
-fn test_async_io_timeout_integration() {
+fn test_async_io_context_integration() {
     server_timeout_detected = false;
+    server_context_cancel_detected = false;
     server_success_detected = false;
-    // Bind port 0 for dynamic OS port assignment
+
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16);
     auto listener = TcpListener::bind(addr);
     assert(listener.is_valid(), "Server listener bind failed");
     auto dynamic_port = listener.local_port();
     assert(dynamic_port > 0:u16, "Dynamic port assignment failed");
 
-    auto server_handle = async_timeout_server(cede listener).start;
-    auto client_handle = async_timeout_client(dynamic_port).start;
+    auto server_handle = async_context_server(cede listener).start;
+    auto client_handle = async_context_client(dynamic_port).start;
 
     auto s_res = block_on<i32>(server_handle);
     auto c_res = block_on<i32>(client_handle);
@@ -68,12 +92,13 @@ fn test_async_io_timeout_integration() {
     assert(s_res == 200, "Server return code mismatch");
     assert(c_res == 100, "Client return code mismatch");
     assert(server_timeout_detected, "Server failed to detect IO timeout");
-    assert(server_success_detected, "Server failed to complete valid IO after timeout");
+    assert(server_context_cancel_detected, "Server failed to detect Context cancellation");
+    assert(server_success_detected, "Server failed to complete valid IO after timeout/cancel");
 }
 
 pub fn main() -> i32 {
-    println("[Main] Starting AR-P4 timeout integration test...");
-    test_async_io_timeout_integration();
-    println("g09_async_context_timeout_integration_test PASSED (AR-P4 Timeout & Dual-Token CAS Verified)!");
+    println("[Main] Starting AR-P4 Context & IO Timeout integration test...");
+    test_async_io_context_integration();
+    println("g09_async_context_timeout_integration_test PASSED (AR-P4 Context & IO Timeout Verified)!");
     return 0;
 }

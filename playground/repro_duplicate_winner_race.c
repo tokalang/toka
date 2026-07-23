@@ -1,4 +1,4 @@
-// AR-P4 Duplicate Winner Idempotency Probe
+// AR-P4 Duplicate Winner Dispatcher Probe
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -16,8 +16,16 @@ extern int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
 extern int toka_wait_registry_is_winner(uint32_t wait_id, uint32_t slot_gen);
 extern int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen);
 
+enum {
+    TOKA_WAKE_STALE = 0,
+    TOKA_WAKE_SINGLETON_WON = 1,
+    TOKA_WAKE_PAIR_WON = 2,
+    TOKA_WAKE_PAIR_DUPLICATE = 3,
+    TOKA_WAKE_PAIR_LOST = 4
+};
+
 int main(void) {
-    printf("Starting AR-P4 Duplicate Winner Idempotency Probe...\n");
+    printf("Starting AR-P4 Duplicate Winner Dispatcher Integration Probe...\n");
 
     int dummy_val = 42;
     void *dummy_frame = &dummy_val;
@@ -35,35 +43,36 @@ int main(void) {
     assert(prep_ok && "prepare_suspend failed");
 
     uint32_t id1 = 0, gen1 = 0, id2 = 0, gen2 = 0;
-    // Allocate pair
     int alloc_ok = toka_wait_registry_allocate_pair(tid, gen, 2, 1, &id1, &gen1, &id2, &gen2);
     assert(alloc_ok && "allocate_pair failed");
 
     // 1. First wake on Token 1
-    int wake1 = toka_wait_registry_try_wake(id1, gen1);
-    assert(wake1 == 1 && "First wake on Token 1 must succeed");
+    int outcome1 = toka_wait_registry_try_wake(id1, gen1);
+    assert(outcome1 == TOKA_WAKE_PAIR_WON && "First wake on Token 1 must return TOKA_WAKE_PAIR_WON");
 
-    int is_win1_before = toka_wait_registry_is_winner(id1, gen1);
-    assert(is_win1_before == 1 && "Token 1 must be winner after first wake");
+    // 2. Duplicate wake on Token 1 before coroutine resumes (Simulate dispatcher handling)
+    int outcome_dup = toka_wait_registry_try_wake(id1, gen1);
+    assert(outcome_dup == TOKA_WAKE_PAIR_DUPLICATE && "Duplicate wake must return TOKA_WAKE_PAIR_DUPLICATE");
 
-    // 2. Duplicate wake on Token 1 (same winner event delivered again)
-    int wake1_dup = toka_wait_registry_try_wake(id1, gen1);
-    assert(wake1_dup == 0 && "Duplicate wake must return 0 without scheduling again");
+    // Dispatcher logic check: ONLY release if outcome == TOKA_WAKE_PAIR_LOST (4)
+    if (outcome_dup == TOKA_WAKE_PAIR_LOST) {
+        toka_wait_registry_release(id1, gen1);
+    }
 
-    int is_win1_after = toka_wait_registry_is_winner(id1, gen1);
-    printf("winner before duplicate=%d, after duplicate=%d\n", is_win1_before, is_win1_after);
-    assert(is_win1_after == 1 && "Token 1 MUST REMAIN WINNER after duplicate delivery!");
+    // 3. Coroutine resumes and queries is_winner
+    int is_win1_after_dup = toka_wait_registry_is_winner(id1, gen1);
+    printf("winner status after duplicate delivery in dispatcher=%d\n", is_win1_after_dup);
+    assert(is_win1_after_dup == 1 && "Token 1 MUST REMAIN WINNER after dispatcher processes duplicate event!");
 
-    // 3. Late wake on losing Token 2
-    int wake2 = toka_wait_registry_try_wake(id2, gen2);
-    assert(wake2 == 0 && "Losing token 2 wake must return 0");
-
-    int is_win2 = toka_wait_registry_is_winner(id2, gen2);
-    assert(is_win2 == 0 && "Token 2 must not be winner");
+    // 4. Late wake on losing Token 2 (Simulate dispatcher handling)
+    int outcome2 = toka_wait_registry_try_wake(id2, gen2);
+    assert(outcome2 == TOKA_WAKE_PAIR_LOST && "Losing token 2 must return TOKA_WAKE_PAIR_LOST");
+    if (outcome2 == TOKA_WAKE_PAIR_LOST) {
+        toka_wait_registry_release(id2, gen2);
+    }
 
     toka_wait_registry_release(id1, gen1);
-    toka_wait_registry_release(id2, gen2);
 
-    printf("PASSED! AR-P4 Duplicate Winner Idempotency verified!\n");
+    printf("PASSED! AR-P4 Duplicate Winner Dispatcher Integration verified!\n");
     return 0;
 }

@@ -5,6 +5,7 @@ import sys/os/net as sysnet
 import sys/libc::{toka_resolve_ipv4}
 import std/io::{@Reader, @Writer}
 import std/task::{get_reactor_fd, sleep_async, register_timer_token}
+import std/context::{Canceler}
 import core/task as core_task
 
 extern fn __builtin_coro_current_handle() -> *void
@@ -615,6 +616,91 @@ pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_m
                         core_task::toka_wait_registry_release(tm_id, tm_gen)
                         if is_timeout != 0 {
                             ret = Result<usize, string>::Err(string::from("IO operation timed out"))
+                            done = true
+                        }
+                    } else {
+                        sleep_async(0:i64).await
+                        ret = Result<usize, string>::Err(string::from("Read error"))
+                        done = true
+                    }
+                }
+            }
+        }
+    }
+    return ret
+}
+
+fn register_async_reactor_read_context(coro: Addr, fd: i32, canceler: Canceler, *out_io_id: u32, *out_io_gen: u32, *out_ctx_id: u32, *out_ctx_gen: u32) -> bool {
+    auto task_id# = 0:u64
+    auto wait_gen# = 0:u64
+    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    if ok != 0 {
+        auto io_id# = 0:u32
+        auto io_gen# = 0:u32
+        auto ctx_id# = 0:u32
+        auto ctx_gen# = 0:u32
+        auto alloc_ok = core_task::toka_wait_registry_allocate_pair(task_id, wait_gen, 2:u16, 4:u16, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32)
+        if alloc_ok != 0 {
+            auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
+            if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {
+                core_task::toka_wait_registry_release(io_id, io_gen)
+                core_task::toka_wait_registry_release(ctx_id, ctx_gen)
+                core_task::toka_task_abort_suspend(coro as *void)
+                return false
+            }
+            canceler.register_wait_token(ctx_id, ctx_gen)
+            auto *p0# = *out_io_id
+            p0 = io_id
+            auto *p1# = *out_io_gen
+            p1 = io_gen
+            auto *p2# = *out_ctx_id
+            p2 = ctx_id
+            auto *p3# = *out_ctx_gen
+            p3 = ctx_gen
+            core_task::toka_task_commit_suspend(coro as *void)
+            return true
+        }
+        core_task::toka_task_abort_suspend(coro as *void)
+    }
+    return false
+}
+
+pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler: Canceler) -> async Result<usize, string> {
+    auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
+    unsafe {
+        if stream.closed {
+            ret = Result<usize, string>::Err(string::from("Stream closed"))
+        } else {
+            sysnet::net_set_nonblocking_impl(stream.fd)
+
+            auto done# = false
+            loop !done {
+                auto n: i64 = sysnet::net_read_impl(stream.fd, *buf, len)
+                if n >= 0:i64 {
+                    sleep_async(0:i64).await
+                    ret = Result<usize, string>::Ok(n as usize)
+                    done = true
+                } else {
+                    auto err = sysnet::get_errno_impl()
+                    auto eagain = sysnet::get_eagain_impl()
+
+                    if err == eagain {
+                        auto io_id# = 0:u32
+                        auto io_gen# = 0:u32
+                        auto ctx_id# = 0:u32
+                        auto ctx_gen# = 0:u32
+                        if !register_async_reactor_read_context(__builtin_coro_current_handle() as Addr, stream.fd, canceler, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32) {
+                            ret = Result<usize, string>::Err(string::from("Failed to register async read context"))
+                            done = true
+                            continue
+                        }
+                        __builtin_coro_suspend()
+
+                        auto is_ctx = core_task::toka_wait_registry_is_winner(ctx_id, ctx_gen)
+                        core_task::toka_wait_registry_release(io_id, io_gen)
+                        core_task::toka_wait_registry_release(ctx_id, ctx_gen)
+                        if is_ctx != 0 {
+                            ret = Result<usize, string>::Err(string::from("context canceled"))
                             done = true
                         }
                     } else {

@@ -38,20 +38,20 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
 fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
     unsafe {
         auto *base_ptr = *addr_buf
-        
+
         // Offset 0: family = 2 (u16 on Linux)
         auto *_p_family# = *base_ptr as *u16
         _p_family = 2:u16
-        
+
         // Offset 2: port (u16)
         auto nport: u16 = libc_htons(port as u16)
         auto *_p_port# = (*base_ptr as usize + 2) as *u16
         _p_port = nport
-        
+
         // Offset 4: addr (u32)
         auto *_p_addr# = (*base_ptr as usize + 4) as *u32
         _p_addr = ip as u32
-        
+
         // Offset 8..16: Zero
         auto i#: usize = 8
         loop i < 16 {
@@ -93,16 +93,16 @@ pub fn net_bind_impl(fd: i32, host: usize, port: i32) -> i32 {
     unsafe {
         // Allocate 32 bytes to be safe
         auto *addr_buf = unsafe alloc [32] byte as *char
-        
+
         if *addr_buf as usize == 0 {
              return -1
         }
-        
+
         if !fill_sockaddr_in(*addr_buf, host, port) {
             libc_free(*addr_buf as *void)
             return -1
         }
-        
+
         // Use bind
         auto res = bind(fd, *addr_buf as *void, 16)
         libc_free(*addr_buf as *void)
@@ -139,7 +139,7 @@ pub fn net_listen_impl(fd: i32) -> i32 {
 pub fn net_connect_impl(fd: i32, host: usize, port: i32) -> i32 {
     unsafe {
         auto *addr_buf = unsafe alloc [32] byte as *char
-        
+
         if *addr_buf as usize == 0 {
              return -2
         }
@@ -148,7 +148,7 @@ pub fn net_connect_impl(fd: i32, host: usize, port: i32) -> i32 {
             libc_free(*addr_buf as *void)
             return -3
         }
-        
+
         // Use connect with correct handle
         auto res = connect(fd, *addr_buf as *void, 16)
         libc_free(*addr_buf as *void)
@@ -162,9 +162,9 @@ pub fn net_accept_impl(fd: i32) -> i32 {
         auto *addr_len_ptr# = unsafe alloc [4] byte as *[u32]
         addr_len_ptr[0] = 16
         auto *addr_buf = unsafe alloc [16] byte as *void
-        
+
         auto res = libc_accept(fd, *addr_buf, *addr_len_ptr as *u32)
-        
+
         libc_free(*addr_len_ptr as *void)
         libc_free(*addr_buf)
         return res
@@ -210,14 +210,14 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
         auto *addr_buf = unsafe alloc [32] byte as *char
         auto *addrlen# = unsafe alloc [4] byte as *u32
         addrlen = 16:u32
-        
+
         auto res = libc_recvfrom(fd, *buf as *void, len, 0, *addr_buf as *void, *addrlen)
         if res >= 0:i64 {
             auto *p0 = (*addr_buf as usize + 2) as *u8
             auto *p1 = (*addr_buf as usize + 3) as *u8
             auto *_pp# = *out_port
             _pp = ((p0 as i32) bshl 8) bor (p1 as i32)
-            
+
             auto *a = (*addr_buf as usize + 4) as *u8
             auto *b = (*addr_buf as usize + 5) as *u8
             auto *c = (*addr_buf as usize + 6) as *u8
@@ -249,6 +249,10 @@ pub fn net_set_nonblocking_impl(fd: i32) -> bool {
     }
 }
 
+extern fn toka_linux_epoll_add_read(reactor_fd: i32, fd: i32, key: u64) -> i32
+extern fn toka_linux_epoll_add_write(reactor_fd: i32, fd: i32, key: u64) -> i32
+extern fn toka_linux_epoll_wait(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32
+
 pub fn reactor_create_impl() -> i32 {
     unsafe {
         return epoll_create1(0)
@@ -257,30 +261,18 @@ pub fn reactor_create_impl() -> i32 {
 
 pub fn reactor_add_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
-        // events = EPOLLIN (1) | EPOLLONESHOT (1073741824) = 1073741825:u32
-        // 1 = EPOLL_CTL_ADD, 3 = EPOLL_CTL_MOD
-        auto res# = toka_epoll_ctl_handle(reactor_fd, 1, fd, 1073741825:u32, event_key)
-        if res != 0 {
-             res = toka_epoll_ctl_handle(reactor_fd, 3, fd, 1073741825:u32, event_key)
-        }
-        return res == 0
+        return toka_linux_epoll_add_read(reactor_fd, fd, event_key as u64) == 0
     }
 }
 
 pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) -> bool {
     unsafe {
-        // events = EPOLLOUT (4) | EPOLLONESHOT (1073741824) = 1073741828:u32
-        // 1 = EPOLL_CTL_ADD, 3 = EPOLL_CTL_MOD
-        auto res# = toka_epoll_ctl_handle(reactor_fd, 1, fd, 1073741828:u32, event_key)
-        if res != 0 {
-             res = toka_epoll_ctl_handle(reactor_fd, 3, fd, 1073741828:u32, event_key)
-        }
-        return res == 0
+        return toka_linux_epoll_add_write(reactor_fd, fd, event_key as u64) == 0
     }
 }
 
 pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, max: i32) -> i32 {
     unsafe {
-        return toka_epoll_wait_handles(reactor_fd, timeout_ms, *out_events, max)
+        return toka_linux_epoll_wait(reactor_fd, timeout_ms, *out_events, max)
     }
 }

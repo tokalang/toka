@@ -241,10 +241,10 @@ pub fn __toka_spawn_blocking(*task: void) {
             auto t = top_opt.unwrap()
             if now >= t.expire_at {
                 g_timer_queue#.pop()
-                auto woken = core_task::toka_wait_registry_try_wake(t.wait_id, t.slot_gen)
-                if woken != 0 {
+                auto outcome = core_task::toka_wait_registry_try_wake(t.wait_id, t.slot_gen)
+                if outcome == 1:i32 || outcome == 2:i32 {
                     scheduled_count += 1
-                } else {
+                } else if outcome == 4:i32 {
                     core_task::toka_wait_registry_release(t.wait_id, t.slot_gen)
                 }
             } else {
@@ -288,8 +288,8 @@ pub fn __toka_spawn_blocking(*task: void) {
                     auto event_key = events_buf[i] as u64
                     auto wait_id = (event_key >> 32:u64) as u32
                     auto slot_gen = (event_key & 0xFFFFFFFF:u64) as u32
-                    auto woken = core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
-                    if woken == 0 {
+                    auto outcome = core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
+                    if outcome == 4:i32 {
                         core_task::toka_wait_registry_release(wait_id, slot_gen)
                     }
                     i += 1
