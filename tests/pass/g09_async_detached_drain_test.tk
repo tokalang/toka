@@ -1,0 +1,31 @@
+import std/io::{println};
+import std/task::{block_on, detach_forget, sleep_async};
+
+auto bg_task_completed#: i32 = 0;
+
+fn async_bg_worker() -> async i32 {
+    sleep_async(50).await;
+    bg_task_completed = 1;
+    return 100;
+}
+
+fn async_main_task() -> async i32 {
+    detach_forget<i32>(cede async_bg_worker().start);
+    // Main task completes immediately, before the 50ms background worker!
+    return 42;
+}
+
+fn test_detached_task_drain() {
+    bg_task_completed = 0;
+    auto h = async_main_task().start;
+    auto res = block_on<i32>(h);
+    assert(res == 42, "Main task result mismatch!");
+    // FZ-1 Executor Shutdown Contract: Executor MUST drain all detached tasks before block_on exits!
+    assert(bg_task_completed == 1, "Detached background task failed to drain before block_on exited!");
+}
+
+pub fn main() -> i32 {
+    test_detached_task_drain();
+    println("g09_async_detached_drain_test PASSED!");
+    return 0;
+}

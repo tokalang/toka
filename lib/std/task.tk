@@ -212,8 +212,8 @@ pub fn __toka_spawn_blocking(*task: void) {
             }
         }
 
-        // 2. Check if main task has completed
-        if core_task::toka_tcb_is_done(*task) {
+        // 2. Check if main task has completed AND all active detached tasks have completed
+        if core_task::toka_tcb_is_done(*task) && core_task::toka_task_active_detached_count() == 0:u32 {
             break
         }
         

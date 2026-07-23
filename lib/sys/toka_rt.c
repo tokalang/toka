@@ -919,6 +919,12 @@ int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb
     }
 }
 
+static _Atomic uint32_t g_active_detached_task_count = 0;
+
+uint32_t toka_task_active_detached_count() {
+    return atomic_load(&g_active_detached_task_count);
+}
+
 void toka_task_complete(void *promise_ptr) {
     if (!promise_ptr) return;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
@@ -928,7 +934,10 @@ void toka_task_complete(void *promise_ptr) {
     atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_READYLIVE, memory_order_release, memory_order_relaxed);
 
     if (tcb) {
-        atomic_store(&tcb->state, TOKA_TCB_COMPLETED);
+        uint32_t old_st = atomic_exchange(&tcb->state, TOKA_TCB_COMPLETED);
+        if (old_st != TOKA_TCB_COMPLETED && atomic_load(&tcb->detached)) {
+            atomic_fetch_sub(&g_active_detached_task_count, 1);
+        }
         toka_task_try_release_owner(tcb);
     }
 
@@ -971,7 +980,13 @@ int toka_task_register_continuation(void *child_promise_ptr, void *parent_tcb_pt
 void toka_task_detach(void *tcb_ptr) {
     if (!tcb_ptr) return;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
-    atomic_store(&tcb->detached, 1);
+    uint8_t was_detached = atomic_exchange(&tcb->detached, 1);
+    if (!was_detached) {
+        uint32_t st = atomic_load(&tcb->state);
+        if (st != TOKA_TCB_COMPLETED && st != TOKA_TCB_CREATED) {
+            atomic_fetch_add(&g_active_detached_task_count, 1);
+        }
+    }
     toka_task_try_release_owner(tcb);
 }
 
