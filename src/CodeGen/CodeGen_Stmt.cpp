@@ -235,6 +235,8 @@ void CodeGen::suppressDropForMove(const std::string &name) {
             llvm::ConstantInt::getFalse(m_Context), entry->DropFlag);
       } else {
         entry->HasDrop = false;
+        entry->IsShared = false;
+        entry->IsUniquePointer = false;
       }
     }
     if (matched)

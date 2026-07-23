@@ -1,0 +1,70 @@
+import std/io::{println};
+import std/task::{block_on};
+import core/option::{Option};
+
+auto global_drop_count#: i32 = 0;
+
+shape SharedResource(
+    id: i32
+)
+impl SharedResource@encap {
+    fn drop(self#) {
+        global_drop_count = global_drop_count + 1;
+    }
+    pub fn clone(self) -> SharedResource {
+        return SharedResource(id = self.id);
+    }
+}
+
+fn create_shared_resource(val: i32) -> ~SharedResource {
+    auto ~res = new SharedResource(id = val);
+    return cede ~res;
+}
+
+fn async_cede_consumer(cede ~res: SharedResource) -> async i32 {
+    auto ~consumed = cede ~res;
+    auto val = consumed.id;
+    return val + 100;
+}
+
+fn test_cede_shared_move() {
+    global_drop_count = 0;
+    {
+        auto ~r = create_shared_resource(42);
+        auto h = async_cede_consumer(cede ~r).start;
+        auto val = block_on<i32>(h);
+        assert(val == 142, "cede ~T value result incorrect!");
+    }
+    assert(global_drop_count == 1, "cede ~T true-move failed: drop_count != 1!");
+}
+
+fn test_scalar_bnot_move() {
+    auto value = 1;
+    auto moved = cede ~value;
+    assert(moved == -2, "cede ~value scalar bnot mismatch!");
+}
+
+fn test_match_conditional_move() {
+    global_drop_count = 0;
+    {
+        auto ~x = create_shared_resource(99);
+        auto opt = Option<i32>::Some(10);
+        match opt {
+            Option::Some(v) => {
+                if (v == 999) {
+                    auto ~sink = cede ~x;
+                }
+            }
+            Option::None => {}
+        }
+    }
+    assert(global_drop_count == 1, "match conditional move failed to drop x!");
+}
+
+pub fn main() -> i32 {
+    test_cede_shared_move();
+    test_scalar_bnot_move();
+    test_match_conditional_move();
+    println("g09_async_cede_shared_move_test PASSED!");
+    return 0;
+}

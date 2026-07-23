@@ -3532,6 +3532,12 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         info.HasDrop = hasDrop;
         info.DropFunc = dropFunc;
         info.SoulName = typeName;
+        if (alloca && (hasDrop || isUnique || isShared)) {
+          info.DropFlag = createEntryBlockAlloca(
+              llvm::Type::getInt1Ty(m_Context), nullptr, pName + ".drop.live");
+          m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                                info.DropFlag);
+        }
         m_ScopeStack.back().push_back(info);
       }
     }
@@ -5679,14 +5685,50 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
   // In LLVM IR, we evaluate it to the underlying value explicitly transferring ownership.
   if (ce->Value) {
     const VariableExpr *ve = dynamic_cast<const VariableExpr *>(ce->Value.get());
+    const UnaryExpr *ue = nullptr;
     if (!ve) {
-      if (auto *se = dynamic_cast<const SpreadExpr *>(ce->Value.get())) {
+      if ((ue = dynamic_cast<const UnaryExpr *>(ce->Value.get()))) {
+        ve = dynamic_cast<const VariableExpr *>(ue->RHS.get());
+      } else if (auto *se = dynamic_cast<const SpreadExpr *>(ce->Value.get())) {
         ve = dynamic_cast<const VariableExpr *>(se->Base.get());
       }
     }
+
+    bool isShared = false;
+    if (ce->Value->ResolvedType && ce->Value->ResolvedType->isSharedPtr()) {
+      isShared = true;
+    } else if (ve) {
+      std::string baseName = Type::stripMorphology(ve->Name);
+      if (m_Symbols.count(baseName) && m_Symbols[baseName].morphology == Morphology::Shared) {
+        isShared = true;
+      }
+    } else if (ue && ue->Op == TokenType::Tilde && ue->RHS && ue->RHS->ResolvedType && ue->RHS->ResolvedType->isSharedPtr()) {
+      isShared = true;
+    }
+
     if (ve) {
       suppressDropForMove(ve->Name);
     }
+
+    if (isShared) {
+      const Expr *targetExpr = (ue && ue->Op == TokenType::Tilde) ? ue->RHS.get() : (ve ? ve : ce->Value.get());
+      llvm::Value *identityAddr = emitHandleAddr(targetExpr);
+      if (identityAddr) {
+        llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
+        llvm::StructType *handleTy = llvm::StructType::get(m_Context, {ptrTy, ptrTy});
+
+        // 1. Load current 16-byte handle value WITHOUT calling emitAcquire (NO RETAIN!)
+        llvm::Value *val = m_Builder.CreateLoad(handleTy, identityAddr, "share.cede_val");
+
+        // 2. Zero out the source slot so caller/source cannot decref it
+        llvm::Value *nullHandle = llvm::Constant::getNullValue(handleTy);
+        m_Builder.CreateStore(nullHandle, identityAddr);
+
+        std::string typeName = targetExpr->ResolvedType ? targetExpr->ResolvedType->toString() : "";
+        return PhysEntity(val, typeName, handleTy, false);
+      }
+    }
+
     return genExpr(ce->Value.get());
   }
   return {};

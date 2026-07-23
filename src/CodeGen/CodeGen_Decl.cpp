@@ -573,10 +573,16 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       info.Alloca = finalStorage;
       info.AllocType = argAllocTy;
       info.IsUniquePointer = isOwnedParam && (argDecl.IsUnique || (typeObj && typeObj->isUniquePtr()));
-      info.IsShared = isOwnedParam && argDecl.IsShared;
+      info.IsShared = isOwnedParam && (argDecl.IsShared || (typeObj && typeObj->isSharedPtr()));
       info.HasDrop = isOwnedParam && argHasDrop;
       info.DropFunc = isOwnedParam ? argDropFunc : "";
       info.SoulName = soulName;
+      if (finalStorage && isOwnedParam && (argHasDrop || argDecl.IsUnique || argDecl.IsShared || (typeObj && (typeObj->isUniquePtr() || typeObj->isSharedPtr())))) {
+        info.DropFlag = createEntryBlockAlloca(
+            llvm::Type::getInt1Ty(m_Context), nullptr, argName + ".drop.live");
+        m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                              info.DropFlag);
+      }
       m_ScopeStack.back().push_back(info);
     }
 
