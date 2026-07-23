@@ -274,9 +274,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       
       llvm::Type *promiseType;
       if (actualRetTy->isVoidTy()) {
-          promiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy()});
+          promiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy()});
       } else {
-          promiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), actualRetTy});
+          promiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy(), actualRetTy});
       }
       m_CurrentCoroPromiseType = promiseType;
       m_CurrentCoroPromise = createEntryBlockAlloca(promiseType, nullptr, "coro.promise");
@@ -300,16 +300,27 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::Function *beginFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_begin);
       m_CurrentCoroHandle = m_Builder.CreateCall(beginFn, {m_CurrentCoroId, alloc});
       
+      // Call toka_task_create(coroHandle, promise) to allocate stable TCB
+      llvm::Function *taskCreateFn = m_Module->getFunction("toka_task_create");
+      if (!taskCreateFn) {
+          llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy(), m_Builder.getPtrTy()}, false);
+          taskCreateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_create", m_Module.get());
+      }
+      m_CurrentCoroTCB = m_Builder.CreateCall(taskCreateFn, {m_CurrentCoroHandle, m_CurrentCoroPromise});
+
       m_CurrentCoroSuspendRetBB = llvm::BasicBlock::Create(m_Context, "coro.suspend.ret");
       m_CurrentCoroCleanupBB = llvm::BasicBlock::Create(m_Context, "coro.cleanup.ret");
       
       llvm::Value *statePtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 0);
       m_Builder.CreateStore(m_Builder.getInt8(0), statePtr);
-      llvm::Value *awaiterPtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 1);
-      m_Builder.CreateStore(llvm::ConstantPointerNull::get(m_Builder.getPtrTy()), awaiterPtr);
+      llvm::Value *selfTcbPtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 1);
+      m_Builder.CreateStore(m_CurrentCoroTCB, selfTcbPtr);
+      llvm::Value *continuationPtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 2);
+      m_Builder.CreateStore(llvm::ConstantPointerNull::get(m_Builder.getPtrTy()), continuationPtr);
   } else {
       m_CurrentCoroHandle = nullptr;
       m_CurrentCoroPromise = nullptr;
+      m_CurrentCoroTCB = nullptr;
       m_CurrentCoroId = nullptr;
       m_CurrentCoroPromiseType = nullptr;
       m_CurrentCoroSuspendRetBB = nullptr;
@@ -403,13 +414,69 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     }
 
     llvm::Value *finalStorage = nullptr;
+    bool isOwnedParam = false;
 
-    if (argDecl.IsShared) {
-      // [ABI Fix] For Shared Pointers, the Argument IS the pointer to the
-      // handle. We do NOT alloca/store. We treat the argument as the identity
-      // address. This avoids copying 16-byte structs which breaks ABI on some
-      // platforms.
+    bool isDirectType = typeObj && !typeObj->isPointer() && !typeObj->isReference() && !argDecl.IsShared && !argDecl.IsUnique && !typeObj->isUniquePtr() && !typeObj->isSharedPtr();
+    bool isScalarValue = isDirectType && !needsCapture && !pTy->isStructTy() && !pTy->isArrayTy();
+
+    if (func->Effect == EffectKind::Async) {
+      if (argDecl.IsShared || (typeObj && typeObj->isSharedPtr())) {
+        llvm::Type *sharedStructTy = getLLVMType(typeObj);
+        llvm::AllocaInst *alloca = createEntryBlockAlloca(sharedStructTy, nullptr, argName + ".addr");
+        if (arg.getType()->isPointerTy()) {
+          llvm::Value *loadedStruct = m_Builder.CreateLoad(sharedStructTy, &arg);
+          m_Builder.CreateStore(loadedStruct, alloca);
+        } else {
+          m_Builder.CreateStore(&arg, alloca);
+        }
+        finalStorage = alloca;
+        isOwnedParam = argDecl.IsCeded;
+      } else if ((argDecl.IsUnique || (typeObj && typeObj->isUniquePtr())) && argDecl.IsCeded) {
+        // Single Handle Move for cede ^T (No double indirection!)
+        llvm::AllocaInst *alloca = createEntryBlockAlloca(pTy, nullptr, argName + ".addr");
+        if (arg.getType()->isPointerTy()) {
+          llvm::Value *loadedHeapPtr = m_Builder.CreateLoad(pTy, &arg);
+          m_Builder.CreateStore(loadedHeapPtr, alloca);
+        } else {
+          m_Builder.CreateStore(&arg, alloca);
+        }
+        finalStorage = alloca;
+        isOwnedParam = true;
+      } else if (isScalarValue) {
+        // Direct Uncaptured Scalar Value Parameter (i32, bool, etc.) -> Single valAlloca!
+        llvm::AllocaInst *valAlloca = createEntryBlockAlloca(pTy, nullptr, argName + ".coro_val");
+        if (arg.getType()->isPointerTy()) {
+          llvm::Value *loadedVal = m_Builder.CreateLoad(pTy, &arg);
+          m_Builder.CreateStore(loadedVal, valAlloca);
+        } else {
+          m_Builder.CreateStore(&arg, valAlloca);
+        }
+        finalStorage = valAlloca;
+        isOwnedParam = argDecl.IsCeded;
+      } else if (argDecl.IsCeded) {
+        // Frame Inline Aggregate Value Move (ONLY for cede struct / cede aggregate)
+        llvm::Type *valTy = pTy;
+        llvm::AllocaInst *valAlloca = createEntryBlockAlloca(valTy, nullptr, argName + ".coro_val");
+        if (arg.getType()->isPointerTy()) {
+          llvm::Value *loadedVal = m_Builder.CreateLoad(valTy, &arg);
+          m_Builder.CreateStore(loadedVal, valAlloca);
+        } else {
+          m_Builder.CreateStore(&arg, valAlloca);
+        }
+        llvm::AllocaInst *ptrAlloca = createEntryBlockAlloca(llvm::PointerType::getUnqual(m_Context), nullptr, argName + ".addr");
+        m_Builder.CreateStore(valAlloca, ptrAlloca);
+        finalStorage = ptrAlloca;
+        isOwnedParam = true;
+      } else {
+        // Borrowed Pointer Slot (self#, &ref, value#: i32, non-ceded aggregate borrow)
+        llvm::AllocaInst *frameSlot = createEntryBlockAlloca(llvm::PointerType::getUnqual(m_Context), nullptr, argName + ".addr");
+        m_Builder.CreateStore(&arg, frameSlot);
+        finalStorage = frameSlot;
+        isOwnedParam = false;
+      }
+    } else if (argDecl.IsShared) {
       finalStorage = &arg;
+      isOwnedParam = false;
     } else {
       llvm::AllocaInst *alloca =
           createEntryBlockAlloca(allocaType, nullptr, argName + ".addr");
@@ -501,10 +568,16 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         }
       }
 
-      m_ScopeStack.back().push_back(
-          {argName, finalStorage, argAllocTy, false, false,
-           false, // [Fix] Borrowed Args: IsUnique=false, IsShared=false
-           "", soulName});  // Callee does NOT drop args
+      VariableScopeInfo info;
+      info.Name = argName;
+      info.Alloca = finalStorage;
+      info.AllocType = argAllocTy;
+      info.IsUniquePointer = isOwnedParam && (argDecl.IsUnique || (typeObj && typeObj->isUniquePtr()));
+      info.IsShared = isOwnedParam && argDecl.IsShared;
+      info.HasDrop = isOwnedParam && argHasDrop;
+      info.DropFunc = isOwnedParam ? argDropFunc : "";
+      info.SoulName = soulName;
+      m_ScopeStack.back().push_back(info);
     }
 
     idx++;
@@ -537,6 +610,22 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         m_ScopeStack.back().push_back(std::move(capture));
       }
     }
+  }
+  if (m_CurrentCoroHandle) {
+      // Initial Suspend Point (Created -> Queued -> Running)
+      // Placed AFTER argument binding so all incoming parameters & cede values
+      // are safely moved/captured inside coroutine-owned frame allocas.
+      llvm::Function *saveFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_save);
+      llvm::Function *suspFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_suspend);
+      llvm::Value *initSaveToken = m_Builder.CreateCall(saveFn, {m_CurrentCoroHandle});
+      llvm::Value *initSuspendRes = m_Builder.CreateCall(suspFn, {initSaveToken, m_Builder.getInt1(false)});
+
+      llvm::BasicBlock *initBodyBB = llvm::BasicBlock::Create(m_Context, "coro.init.body", f);
+      llvm::SwitchInst *initSw = m_Builder.CreateSwitch(initSuspendRes, m_CurrentCoroSuspendRetBB, 2);
+      initSw->addCase(m_Builder.getInt8(0), initBodyBB);
+      initSw->addCase(m_Builder.getInt8(1), m_CurrentCoroCleanupBB);
+
+      m_Builder.SetInsertPoint(initBodyBB);
   }
 
   genStmt(func->Body.get());
@@ -686,7 +775,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::IRBuilder<> tmpB(coroEndSharedBB);
       llvm::Function *endFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_end);
       tmpB.CreateCall(endFn, {m_CurrentCoroHandle, tmpB.getInt1(false), llvm::ConstantTokenNone::get(m_Context)});
-      tmpB.CreateRet(m_CurrentCoroHandle);
+      tmpB.CreateRet(m_CurrentCoroTCB);
   }
 
   if (func->Effect == EffectKind::Async && m_CurrentCoroSuspendRetBB) {

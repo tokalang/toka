@@ -9,8 +9,25 @@ extern fn __toka_coro_resume(*handle: void) -> void
 extern fn __toka_coro_done(*handle: void) -> bool
 extern fn __toka_coro_destroy(*handle: void) -> void
 
+extern fn toka_task_start(*tcb: void) -> i32
+extern fn toka_task_try_schedule(id: u64, gen: u64) -> i32
+extern fn toka_task_pop_ready(*out_id: u64, *out_gen: u64, *out_tcb: Addr) -> i32
+extern fn toka_task_schedule_frame_compat(*frame: void) -> i32
+extern fn toka_task_detach(*tcb: void) -> void
+extern fn toka_task_release(*tcb: void) -> void
+extern fn toka_tcb_get_coro_frame(*tcb: void) -> *void
+extern fn toka_tcb_is_done(*tcb: void) -> bool
+extern fn toka_tcb_get_wait_token(*tcb: void, *out_id: u64, *out_gen: u64) -> void
+extern fn toka_task_prepare_suspend(*coro_frame: void, *out_id: u64, *out_gen: u64) -> i32
+extern fn toka_task_publish_result_state(*promise: void, state: u8) -> void
+extern fn toka_task_get_result_state(*promise: void) -> u8
+
 // Hook for standard library scheduler to mark task as detached
-extern fn __toka_detach_task(*handle: void)
+pub fn __toka_detach_task(*handle: void) {
+    if *handle != null {
+        toka_task_detach(*handle)
+    }
+}
 
 pub shape TaskHandle<T>(
     *coro_handle: void

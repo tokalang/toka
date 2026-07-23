@@ -7,6 +7,7 @@ import std/vec::{Vec}
 import sys/libc::{libc_usleep}
 import sys/sync as sys_sync
 import std/time::{Instant}
+import core/task as core_task
 import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy}
 import sys/os/net as sysnet
 
@@ -20,7 +21,8 @@ pub shape TaskPtr(addr: Addr)
 import core/option::{Option}
 
 shape TimerEntry(
-    addr: Addr, // coro handle
+    task_id: u64,
+    wait_gen: u64,
     expire_at: i64
 )
 
@@ -133,31 +135,14 @@ fn unlock_queue() {
 
 pub fn __toka_spawn(*task: void) {
     if *task != null {
-        // tokac has the suspend_never initial execution behavior, meaning it runs synchronously until the first await.
-        // If the task is alive here, it must have been mounted somewhere else (e.g. Timer Queue or another Promise's awaiter).
-        // Forcibly pushing to g_task_queue would cause unexpected immediate double resumption and crash.
+        core_task::toka_task_start(*task)
     }
 }
 
 pub fn __toka_detach_task(*task: void) {
-    if *task == null { return }
-    if __toka_coro_done(*task) {
-        __toka_coro_destroy(*task)
-        return
+    if *task != null {
+        core_task::toka_task_detach(*task)
     }
-
-    auto addr = *task as Addr
-    lock_queue()
-    auto i# = 0:usize
-    loop i < g_detached_tasks.len() {
-        if g_detached_tasks.get(i).addr == addr {
-            unlock_queue()
-            return
-        }
-        i += 1
-    }
-    g_detached_tasks#.push(TaskPtr(addr = addr))
-    unlock_queue()
 }
 
 fn collect_detached_tasks() {
@@ -191,66 +176,75 @@ fn collect_detached_tasks() {
 pub fn __toka_register_timer(*task: void, ms: i32) {
     if *task != null {
         auto expire_time = current_time_ms() + (ms as i64)
-        lock_queue()
-        g_timer_queue#.push(TimerEntry(addr=*task as Addr, expire_at=expire_time))
-        unlock_queue()
+        auto task_id# = 0:u64
+        auto wait_gen# = 0:u64
+        auto ok = core_task::toka_task_prepare_suspend(*task, &task_id as *u64, &wait_gen as *u64)
+        if ok != 0 {
+            lock_queue()
+            g_timer_queue#.push(TimerEntry(task_id=task_id, wait_gen=wait_gen, expire_at=expire_time))
+            unlock_queue()
+        }
     }
 }
 
 // Spawn loop for blocking environments
 pub fn __toka_spawn_blocking(*task: void) {
     if *task == null { return }
-    __toka_spawn(*task)
+    core_task::toka_task_start(*task)
     
-    // Start blocking spin until task enters done state and suspended queues are completely emptied
+    auto task_id# = 0:u64
+    auto task_gen# = 0:u64
+    auto tcb_addr# = 0:Addr
+
     loop true {
         collect_detached_tasks()
-        lock_queue()
-        auto task_q_len = g_task_queue.len()
-        auto timer_q_len = g_timer_queue.len()
-        unlock_queue()
 
-        if __toka_coro_done(*task) && task_q_len == 0 && timer_q_len == 0 {
+        // 1. Consume all ready tasks from C Scheduler Ready Queue
+        loop true {
+            auto popped = core_task::toka_task_pop_ready(&task_id as *u64, &task_gen as *u64, &tcb_addr as *Addr)
+            if popped == 0 { break }
+            if tcb_addr != 0:Addr {
+                auto frame_addr = core_task::toka_tcb_get_coro_frame(tcb_addr as *void) as Addr
+                if frame_addr != 0:Addr {
+                    __toka_coro_resume(frame_addr as *void)
+                }
+                core_task::toka_task_release(tcb_addr as *void)
+            }
+        }
+
+        // 2. Check if main task has completed
+        if core_task::toka_tcb_is_done(*task) {
             break
         }
         
         lock_queue()
         auto now = current_time_ms()
         
-        // Timer Queue check and release expired suspended coroutines to Task Queue
+        // 3. Timer Queue check and release expired suspended coroutines to C Ready Queue
+        auto scheduled_count# = 0
         loop true {
             auto top_opt = g_timer_queue.peek()
             if top_opt.is_none() { break }
             auto t = top_opt.unwrap()
             if now >= t.expire_at {
-                g_task_queue#.push(TaskPtr(addr=t.addr))
+                auto res = core_task::toka_task_try_schedule(t.task_id, t.wait_gen)
+                if res == -1 {
+                    // Queue full, retry next loop!
+                    break
+                }
                 g_timer_queue#.pop()
+                if res == 1 {
+                    scheduled_count += 1
+                }
             } else {
                 break
             }
         }
-        
-        // Attempt to consume coroutines from the ready queue
-        if g_task_queue.len() > 0 {
-            auto tl = g_task_queue.len()
-            auto popped = g_task_queue.get(0)
-            auto k#: usize = 1
-            loop k < tl {
-                g_task_queue#.set(k - 1, g_task_queue.get(k))
-                k += 1
-            }
-            g_task_queue#.pop()
-            unlock_queue()
-            
-            auto addr = popped.addr
-            __toka_coro_resume(addr as *void)
-            collect_detached_tasks()
+        unlock_queue()
+
+        if scheduled_count > 0 {
             continue
         }
-        unlock_queue()
-        
-        // Garbage Collector for dropped TaskHandles
-
         
         if g_reactor_fd == -1 {
             g_reactor_fd = sysnet::reactor_create_impl()
@@ -281,9 +275,7 @@ pub fn __toka_spawn_blocking(*task: void) {
                 auto i# = 0
                 loop i < n {
                     auto handle = events_buf[i]
-                    lock_queue()
-                    g_task_queue#.push(TaskPtr(addr=handle))
-                    unlock_queue()
+                    core_task::toka_task_schedule_frame_compat(handle as *void)
                     i += 1
                 }
             }
@@ -297,7 +289,15 @@ extern fn __builtin_coro_suspend()
 
 pub fn sleep_async(ms: i32) -> async i32 {
     auto *handle = __builtin_coro_current_handle()
-    __toka_register_timer(*handle, ms)
+    auto task_id# = 0:u64
+    auto wait_gen# = 0:u64
+    auto ok = core_task::toka_task_prepare_suspend(*handle, &task_id as *u64, &wait_gen as *u64)
+    if ok != 0 {
+        auto expire_time = current_time_ms() + (ms as i64)
+        lock_queue()
+        g_timer_queue#.push(TimerEntry(task_id=task_id, wait_gen=wait_gen, expire_at=expire_time))
+        unlock_queue()
+    }
     __builtin_coro_suspend()
     return 0
 }

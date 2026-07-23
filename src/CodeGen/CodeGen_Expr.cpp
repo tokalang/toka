@@ -3800,6 +3800,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           return {};
       }
 
+      if (m_CurrentCoroTCB) {
+          llvm::Function *suspRegFn = m_Module->getFunction("toka_task_suspend_and_register");
+          if (!suspRegFn) {
+              llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+              suspRegFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_suspend_and_register", m_Module.get());
+          }
+          m_Builder.CreateCall(suspRegFn, {m_CurrentCoroTCB});
+      }
+
       llvm::Function *saveFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_save);
       llvm::Value *saveToken = m_Builder.CreateCall(saveFn, {m_CurrentCoroHandle});
       
@@ -6334,11 +6343,26 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     PhysEntity handleEnt = genExpr(awaitExpr->Expression.get());
     llvm::Value *handleVal = handleEnt.load(m_Builder);
     
-    llvm::Value *targetCoroHandle = handleVal;
+    llvm::Value *targetTCBPtr = handleVal;
     if (handleVal->getType()->isStructTy()) {
-        targetCoroHandle = m_Builder.CreateExtractValue(handleVal, 0, "await.coro_handle");
+        targetTCBPtr = m_Builder.CreateExtractValue(handleVal, 0, "await.tcb_ptr");
     }
     
+    llvm::Function *getFrameFn = m_Module->getFunction("toka_tcb_get_coro_frame");
+    if (!getFrameFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
+        getFrameFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_tcb_get_coro_frame", m_Module.get());
+    }
+    llvm::Value *targetCoroHandle = m_Builder.CreateCall(getFrameFn, {targetTCBPtr}, "target.coro_handle");
+
+    // Ensure target task is started if still in CREATED state
+    llvm::Function *startFn = m_Module->getFunction("toka_task_start");
+    if (!startFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+        startFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_start", m_Module.get());
+    }
+    m_Builder.CreateCall(startFn, {targetTCBPtr});
+
     llvm::Function *promiseFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_promise);
     llvm::Value *alignment = m_Builder.getInt32(8);
     llvm::Value *fromPromise = m_Builder.getInt1(false);
@@ -6349,25 +6373,37 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     
     llvm::Type *targetPromiseType;
     if (targetInnerTy->isVoidTy()) {
-        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy()});
+        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy()});
     } else {
-        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), targetInnerTy});
+        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy(), targetInnerTy});
     }
     
-    llvm::Value *targetStatePtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 0, "target.state.ptr");
-    llvm::Value *targetState = m_Builder.CreateLoad(m_Builder.getInt8Ty(), targetStatePtr, "target.state");
+    llvm::Function *getStateFn = m_Module->getFunction("toka_task_get_result_state");
+    if (!getStateFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt8Ty(), {m_Builder.getPtrTy()}, false);
+        getStateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_get_result_state", m_Module.get());
+    }
+    llvm::Value *targetState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "target.state");
     
     llvm::Value *isReady = m_Builder.CreateICmpEQ(targetState, m_Builder.getInt8(1), "is_ready");
     
     llvm::BasicBlock *readyBB = llvm::BasicBlock::Create(m_Context, "await.ready", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *suspendCheckBB = llvm::BasicBlock::Create(m_Context, "await.suspend_check", m_Builder.GetInsertBlock()->getParent());
     llvm::BasicBlock *suspendBB = llvm::BasicBlock::Create(m_Context, "await.suspend", m_Builder.GetInsertBlock()->getParent());
     
-    m_Builder.CreateCondBr(isReady, readyBB, suspendBB);
+    m_Builder.CreateCondBr(isReady, readyBB, suspendCheckBB);
+    
+    m_Builder.SetInsertPoint(suspendCheckBB);
+    llvm::Function *awaitPrepFn = m_Module->getFunction("toka_task_await_prepare");
+    if (!awaitPrepFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy(), m_Builder.getPtrTy()}, false);
+        awaitPrepFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_await_prepare", m_Module.get());
+    }
+    llvm::Value *mustSuspend = m_Builder.CreateCall(awaitPrepFn, {targetPromisePtrRaw, m_CurrentCoroTCB});
+    llvm::Value *condSuspend = m_Builder.CreateICmpNE(mustSuspend, m_Builder.getInt32(0));
+    m_Builder.CreateCondBr(condSuspend, suspendBB, readyBB);
     
     m_Builder.SetInsertPoint(suspendBB);
-    
-    llvm::Value *targetAwaiterPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 1, "target.awaiter.ptr");
-    m_Builder.CreateStore(m_CurrentCoroHandle, targetAwaiterPtr);
     
     llvm::Function *saveFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_save);
     llvm::Function *suspFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_suspend);
@@ -6392,7 +6428,7 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.SetInsertPoint(readyBB);
     llvm::Value *targetVal = nullptr;
     if (!targetInnerTy->isVoidTy()) {
-        llvm::Value *targetValPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 2, "target.val.ptr");
+        llvm::Value *targetValPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 3, "target.val.ptr");
         targetVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
     }
     
@@ -6406,10 +6442,31 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
     PhysEntity handleEnt = genExpr(waitExpr->Expression.get());
     llvm::Value *handleVal = handleEnt.load(m_Builder);
     
-    llvm::Value *targetCoroHandle = handleVal;
+    llvm::Value *targetTCBPtr = handleVal;
     if (handleVal->getType()->isStructTy()) {
-        targetCoroHandle = m_Builder.CreateExtractValue(handleVal, 0, "wait.coro_handle");
+        targetTCBPtr = m_Builder.CreateExtractValue(handleVal, 0, "wait.tcb_ptr");
     }
+
+    llvm::Function *startFn = m_Module->getFunction("toka_task_start");
+    if (!startFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+        startFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_start", m_Module.get());
+    }
+    m_Builder.CreateCall(startFn, {targetTCBPtr});
+
+    llvm::Function *spawnFn = m_Module->getFunction("__toka_spawn_blocking");
+    if (!spawnFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+        spawnFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__toka_spawn_blocking", m_Module.get());
+    }
+    m_Builder.CreateCall(spawnFn, {targetTCBPtr});
+
+    llvm::Function *getFrameFn = m_Module->getFunction("toka_tcb_get_coro_frame");
+    if (!getFrameFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
+        getFrameFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_tcb_get_coro_frame", m_Module.get());
+    }
+    llvm::Value *targetCoroHandle = m_Builder.CreateCall(getFrameFn, {targetTCBPtr}, "target.coro_handle");
     
     llvm::Function *promiseFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_promise);
     llvm::Value *alignment = m_Builder.getInt32(8);
@@ -6421,13 +6478,13 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
     
     llvm::Type *targetPromiseType;
     if (targetInnerTy->isVoidTy()) {
-        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy()});
+        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy()});
     } else {
-        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), targetInnerTy});
+        targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy(), targetInnerTy});
     }
     
     if (!targetInnerTy->isVoidTy()) {
-        llvm::Value *targetValPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 2, "target.val.ptr");
+        llvm::Value *targetValPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 3, "target.val.ptr");
         llvm::Value *targetVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
         return PhysEntity(targetVal, waitExpr->ResolvedType->toString(), targetInnerTy, false);
     }
@@ -6524,17 +6581,24 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
 PhysEntity CodeGen::genStartExpr(const StartExpr *E) {
     PhysEntity handleEnt = genExpr(E->Expression.get());
     llvm::Value *handleVal = handleEnt.load(m_Builder);
-    llvm::Value *coroHandle = handleVal;
+    llvm::Value *tcbPtr = handleVal;
     if (handleVal->getType()->isStructTy()) {
-        coroHandle = m_Builder.CreateExtractValue(handleVal, 0, "coro_handle");
+        tcbPtr = m_Builder.CreateExtractValue(handleVal, 0, "tcb_ptr");
     }
+
+    llvm::Function *startFn = m_Module->getFunction("toka_task_start");
+    if (!startFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+        startFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_start", m_Module.get());
+    }
+    m_Builder.CreateCall(startFn, {tcbPtr});
     
     llvm::Function *spawnFn = m_Module->getFunction("__toka_spawn");
     if (!spawnFn) {
         llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
         spawnFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__toka_spawn", m_Module.get());
     }
-    m_Builder.CreateCall(spawnFn, {coroHandle});
+    m_Builder.CreateCall(spawnFn, {tcbPtr});
     
     return handleEnt;
 }

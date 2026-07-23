@@ -588,6 +588,7 @@ CodeGen::GenContext CodeGen::saveContext() {
     ctx.InsertPoint = m_Builder.GetInsertPoint();
   ctx.CurrentCoroHandle = m_CurrentCoroHandle;
   ctx.CurrentCoroPromise = m_CurrentCoroPromise;
+  ctx.CurrentCoroTCB = m_CurrentCoroTCB;
   ctx.CurrentCoroId = m_CurrentCoroId;
   ctx.CurrentCoroPromiseType = m_CurrentCoroPromiseType;
   ctx.CurrentCoroRetTy = m_CurrentCoroRetTy;
@@ -609,6 +610,7 @@ void CodeGen::restoreContext(const GenContext &ctx) {
   m_ScopeStack = ctx.ScopeStack;
   m_CurrentCoroHandle = ctx.CurrentCoroHandle;
   m_CurrentCoroPromise = ctx.CurrentCoroPromise;
+  m_CurrentCoroTCB = ctx.CurrentCoroTCB;
   m_CurrentCoroId = ctx.CurrentCoroId;
   m_CurrentCoroPromiseType = ctx.CurrentCoroPromiseType;
   m_CurrentCoroRetTy = ctx.CurrentCoroRetTy;

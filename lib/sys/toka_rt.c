@@ -614,6 +614,423 @@ void* __toka_get_coro_handle(void* task_handle_ptr) {
     return *(void**)task_handle_ptr;
 }
 
+// =========================================================================
+// Toka Phase 1 Async Runtime C Infrastructure (TCB & Unified Ready Queue)
+// =========================================================================
+#include <stdatomic.h>
+#include <stdint.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+typedef SRWLOCK toka_mutex_t;
+#define TOKA_MUTEX_INIT SRWLOCK_INIT
+static void toka_mutex_lock(toka_mutex_t *m) { AcquireSRWLockExclusive(m); }
+static void toka_mutex_unlock(toka_mutex_t *m) { ReleaseSRWLockExclusive(m); }
+#elif defined(__wasi__)
+typedef int toka_mutex_t;
+#define TOKA_MUTEX_INIT 0
+static void toka_mutex_lock(toka_mutex_t *m) { (void)m; }
+static void toka_mutex_unlock(toka_mutex_t *m) { (void)m; }
+#else
+#include <pthread.h>
+typedef pthread_mutex_t toka_mutex_t;
+#define TOKA_MUTEX_INIT PTHREAD_MUTEX_INITIALIZER
+static void toka_mutex_lock(toka_mutex_t *m) { pthread_mutex_lock(m); }
+static void toka_mutex_unlock(toka_mutex_t *m) { pthread_mutex_unlock(m); }
+#endif
+
+// Promise Header layout matching LLVM CodeGen
+struct TokaPromiseHeader {
+    _Atomic uint8_t result_state;   // 0: Pending, 1: Ok, 2: Canceled/Err
+    void *self_tcb;                 // TokaTCB*
+    _Atomic uintptr_t continuation; // 0: None, 1: Completed, or (uintptr_t)(TokaTCB*)
+};
+
+typedef enum {
+    TOKA_TCB_CREATED = 0,
+    TOKA_TCB_RUNNING = 1,
+    TOKA_TCB_SUSPENDED = 2,
+    TOKA_TCB_QUEUED = 3,
+    TOKA_TCB_COMPLETED = 4
+} TokaTCBState;
+
+typedef struct TokaTCB TokaTCB;
+void toka_task_release(void *tcb_ptr);
+
+typedef struct TokaTCB {
+    uint64_t id;
+    void *coro_frame;
+    void *promise;
+    _Atomic uint64_t task_schedule_generation;
+    _Atomic uint32_t state;
+    _Atomic uint8_t cancel_requested;
+    _Atomic uint32_t ref_count;
+    _Atomic uint8_t detached;
+    _Atomic uint8_t owner_released;
+} TokaTCB;
+
+static void toka_task_try_release_owner(TokaTCB *tcb) {
+    if (!tcb) return;
+    if (atomic_load(&tcb->detached) && atomic_load(&tcb->state) == TOKA_TCB_COMPLETED) {
+        uint8_t expected = 0;
+        if (atomic_compare_exchange_strong(&tcb->owner_released, &expected, 1)) {
+            toka_task_release(tcb);
+        }
+    }
+}
+
+typedef struct {
+    uint64_t task_id;
+    uint64_t task_schedule_generation;
+    TokaTCB *tcb;
+} TokaScheduledItem;
+
+void toka_task_release(void *tcb_ptr);
+
+#define TOKA_MAX_TASKS 65536
+#define TOKA_MAX_READY 65536
+
+static toka_mutex_t g_rt_mutex = TOKA_MUTEX_INIT;
+static _Atomic uint64_t g_next_task_id = 1;
+
+static TokaScheduledItem g_ready_queue[TOKA_MAX_READY];
+static size_t g_ready_head = 0;
+static size_t g_ready_tail = 0;
+static size_t g_ready_count = 0;
+
+typedef struct {
+    void *frame;
+    TokaTCB *tcb;
+} TokaFrameMapEntry;
+
+static TokaFrameMapEntry g_frame_map[TOKA_MAX_TASKS];
+static size_t g_frame_map_count = 0;
+
+static void register_frame_map(void *frame, TokaTCB *tcb) {
+    if (!frame || !tcb) return;
+    toka_mutex_lock(&g_rt_mutex);
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].frame == frame) {
+            g_frame_map[i].tcb = tcb;
+            toka_mutex_unlock(&g_rt_mutex);
+            return;
+        }
+    }
+    if (g_frame_map_count < TOKA_MAX_TASKS) {
+        g_frame_map[g_frame_map_count].frame = frame;
+        g_frame_map[g_frame_map_count].tcb = tcb;
+        g_frame_map_count++;
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+}
+
+static TokaTCB* lookup_tcb_by_frame_retained(void *frame) {
+    if (!frame) return NULL;
+    toka_mutex_lock(&g_rt_mutex);
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].frame == frame) {
+            TokaTCB *tcb = g_frame_map[i].tcb;
+            if (tcb) {
+                atomic_fetch_add(&tcb->ref_count, 1);
+            }
+            toka_mutex_unlock(&g_rt_mutex);
+            return tcb;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return NULL;
+}
+
+static void unregister_frame_map(void *frame) {
+    if (!frame) return;
+    toka_mutex_lock(&g_rt_mutex);
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].frame == frame) {
+            g_frame_map[i] = g_frame_map[g_frame_map_count - 1];
+            g_frame_map_count--;
+            break;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+}
+
+void* toka_task_create(void *coro_frame, void *promise) {
+    TokaTCB *tcb = (TokaTCB*)calloc(1, sizeof(TokaTCB));
+    if (!tcb) return NULL;
+
+    tcb->id = atomic_fetch_add(&g_next_task_id, 1);
+    tcb->coro_frame = coro_frame;
+    tcb->promise = promise;
+    atomic_store(&tcb->task_schedule_generation, 0);
+    atomic_store(&tcb->state, TOKA_TCB_CREATED);
+    atomic_store(&tcb->cancel_requested, 0);
+    atomic_store(&tcb->ref_count, 1);
+    atomic_store(&tcb->detached, 0);
+
+    if (promise) {
+        struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise;
+        hdr->self_tcb = tcb;
+        atomic_store(&hdr->result_state, 0);
+        atomic_store(&hdr->continuation, 0);
+    }
+
+    if (coro_frame) {
+        register_frame_map(coro_frame, tcb);
+    }
+    return (void*)tcb;
+}
+
+int toka_task_start(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+
+    uint32_t expected = TOKA_TCB_CREATED;
+    if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
+        atomic_store(&tcb->task_schedule_generation, 1);
+
+        toka_mutex_lock(&g_rt_mutex);
+        if (g_ready_count < TOKA_MAX_READY) {
+            atomic_fetch_add(&tcb->ref_count, 1);
+            g_ready_queue[g_ready_tail].task_id = tcb->id;
+            g_ready_queue[g_ready_tail].task_schedule_generation = 1;
+            g_ready_queue[g_ready_tail].tcb = tcb;
+            g_ready_tail = (g_ready_tail + 1) % TOKA_MAX_READY;
+            g_ready_count++;
+            toka_mutex_unlock(&g_rt_mutex);
+            return 1;
+        }
+        atomic_store(&tcb->state, TOKA_TCB_CREATED);
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    return 0;
+}
+
+int toka_task_suspend_and_register(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+
+    uint32_t expected = TOKA_TCB_RUNNING;
+    if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_SUSPENDED)) {
+        atomic_fetch_add(&tcb->task_schedule_generation, 1);
+        return 1;
+    }
+    return 0;
+}
+
+int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id, uint64_t *out_gen) {
+    TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
+    if (!tcb) return 0;
+
+    uint32_t expected = TOKA_TCB_RUNNING;
+    if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_SUSPENDED)) {
+        uint64_t new_gen = atomic_fetch_add(&tcb->task_schedule_generation, 1) + 1;
+        if (out_task_id) *out_task_id = tcb->id;
+        if (out_gen) *out_gen = new_gen;
+        toka_task_release(tcb);
+        return 1;
+    }
+    toka_task_release(tcb);
+    return 0;
+}
+
+int toka_task_try_schedule(uint64_t task_id, uint64_t gen) {
+    toka_mutex_lock(&g_rt_mutex);
+    TokaTCB *target_tcb = NULL;
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].tcb && g_frame_map[i].tcb->id == task_id) {
+            target_tcb = g_frame_map[i].tcb;
+            atomic_fetch_add(&target_tcb->ref_count, 1);
+            break;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+
+    if (!target_tcb) return 0;
+
+    if (atomic_load(&target_tcb->task_schedule_generation) != gen) {
+        toka_task_release(target_tcb);
+        return 0; // Stale: Generation mismatch
+    }
+
+    uint32_t expected = TOKA_TCB_SUSPENDED;
+    if (atomic_compare_exchange_strong(&target_tcb->state, &expected, TOKA_TCB_QUEUED)) {
+        toka_mutex_lock(&g_rt_mutex);
+        if (g_ready_count < TOKA_MAX_READY) {
+            atomic_fetch_add(&target_tcb->ref_count, 1);
+            g_ready_queue[g_ready_tail].task_id = target_tcb->id;
+            g_ready_queue[g_ready_tail].task_schedule_generation = gen;
+            g_ready_queue[g_ready_tail].tcb = target_tcb;
+            g_ready_tail = (g_ready_tail + 1) % TOKA_MAX_READY;
+            g_ready_count++;
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_task_release(target_tcb);
+            return 1; // Scheduled
+        }
+        atomic_store(&target_tcb->state, TOKA_TCB_SUSPENDED);
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_task_release(target_tcb);
+        return -1; // Queue Full: Retry
+    }
+    toka_task_release(target_tcb);
+    return 0; // Stale
+}
+
+int toka_task_schedule_frame_compat(void *frame) {
+    TokaTCB *tcb = lookup_tcb_by_frame_retained(frame);
+    if (!tcb) return 0;
+    int res = toka_task_try_schedule(tcb->id, atomic_load(&tcb->task_schedule_generation));
+    toka_task_release(tcb);
+    return res;
+}
+
+int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb_ptr) {
+    while (1) {
+        toka_mutex_lock(&g_rt_mutex);
+        if (g_ready_count == 0) {
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
+
+        TokaScheduledItem item = g_ready_queue[g_ready_head];
+        g_ready_head = (g_ready_head + 1) % TOKA_MAX_READY;
+        g_ready_count--;
+        toka_mutex_unlock(&g_rt_mutex);
+
+        if (!item.tcb) continue;
+
+        uint32_t expected = TOKA_TCB_QUEUED;
+        if (!atomic_compare_exchange_strong(&item.tcb->state, &expected, TOKA_TCB_RUNNING)) {
+            toka_task_release(item.tcb);
+            continue; // Stale item, continue loop
+        }
+
+        if (out_task_id) *out_task_id = item.task_id;
+        if (out_gen) *out_gen = item.task_schedule_generation;
+        if (out_tcb_ptr) *out_tcb_ptr = item.tcb;
+
+        // Transfer Ready Queue Ref to Executor Ref (DO NOT call release here!)
+        return 1;
+    }
+}
+
+void toka_task_complete(void *promise_ptr) {
+    if (!promise_ptr) return;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
+
+    if (tcb) {
+        atomic_store(&tcb->state, TOKA_TCB_COMPLETED);
+        toka_task_try_release_owner(tcb);
+    }
+
+    uintptr_t old_cont = atomic_exchange(&hdr->continuation, 1);
+    if (old_cont > 1) {
+        TokaTCB *awaiter_tcb = (TokaTCB*)old_cont;
+        toka_task_try_schedule(awaiter_tcb->id, atomic_load(&awaiter_tcb->task_schedule_generation));
+        toka_task_release(awaiter_tcb);
+    }
+}
+
+int toka_task_await_prepare(void *child_promise_ptr, void *parent_tcb_ptr) {
+    if (!child_promise_ptr || !parent_tcb_ptr) return 0;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)child_promise_ptr;
+    TokaTCB *parent_tcb = (TokaTCB*)parent_tcb_ptr;
+
+    uint32_t expected_state = TOKA_TCB_RUNNING;
+    if (!atomic_compare_exchange_strong(&parent_tcb->state, &expected_state, TOKA_TCB_SUSPENDED)) {
+        return 0;
+    }
+    atomic_fetch_add(&parent_tcb->task_schedule_generation, 1);
+
+    atomic_fetch_add(&parent_tcb->ref_count, 1);
+
+    uintptr_t expected_cont = 0;
+    uintptr_t desired_cont = (uintptr_t)parent_tcb;
+    if (atomic_compare_exchange_strong(&hdr->continuation, &expected_cont, desired_cont)) {
+        return 1;
+    }
+
+    atomic_fetch_sub(&parent_tcb->ref_count, 1);
+    atomic_store(&parent_tcb->state, TOKA_TCB_RUNNING);
+    return 0;
+}
+
+int toka_task_register_continuation(void *child_promise_ptr, void *parent_tcb_ptr) {
+    return toka_task_await_prepare(child_promise_ptr, parent_tcb_ptr);
+}
+
+void toka_task_detach(void *tcb_ptr) {
+    if (!tcb_ptr) return;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    atomic_store(&tcb->detached, 1);
+    toka_task_try_release_owner(tcb);
+}
+
+void toka_tcb_get_wait_token(void *tcb_ptr, uint64_t *out_task_id, uint64_t *out_gen) {
+    if (!tcb_ptr) return;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    if (out_task_id) *out_task_id = tcb->id;
+    if (out_gen) *out_gen = atomic_load(&tcb->task_schedule_generation);
+}
+
+void toka_task_publish_result_state(void *promise_ptr, uint8_t state) {
+    if (!promise_ptr) return;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    atomic_store_explicit(&hdr->result_state, state, memory_order_release);
+}
+
+uint8_t toka_task_get_result_state(void *promise_ptr) {
+    if (!promise_ptr) return 0;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    return atomic_load_explicit(&hdr->result_state, memory_order_acquire);
+}
+
+static void destroy_coro_frame(void *frame) {
+    if (!frame) return;
+    typedef void (*coro_fn_t)(void*);
+    coro_fn_t *fn_ptrs = (coro_fn_t*)frame;
+    if (fn_ptrs[1]) {
+        fn_ptrs[1](frame);
+    }
+}
+
+void toka_task_release(void *tcb_ptr) {
+    if (!tcb_ptr) return;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    toka_mutex_lock(&g_rt_mutex);
+    if (atomic_fetch_sub(&tcb->ref_count, 1) == 1) {
+        if (tcb->coro_frame) {
+            for (size_t i = 0; i < g_frame_map_count; ++i) {
+                if (g_frame_map[i].tcb == tcb) {
+                    g_frame_map[i] = g_frame_map[g_frame_map_count - 1];
+                    g_frame_map_count--;
+                    break;
+                }
+            }
+        }
+        toka_mutex_unlock(&g_rt_mutex);
+        if (tcb->coro_frame) {
+            destroy_coro_frame(tcb->coro_frame);
+            tcb->coro_frame = NULL;
+        }
+        free(tcb);
+        return;
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+}
+
+void* toka_tcb_get_coro_frame(void *tcb_ptr) {
+    if (!tcb_ptr) return NULL;
+    return ((TokaTCB*)tcb_ptr)->coro_frame;
+}
+
+int toka_tcb_is_done(void *tcb_ptr) {
+    if (!tcb_ptr) return 1;
+    return atomic_load(&((TokaTCB*)tcb_ptr)->state) == TOKA_TCB_COMPLETED;
+}
+
+
 #ifdef __wasi__
 extern int __wasm_argc;
 extern char **__wasm_argv;

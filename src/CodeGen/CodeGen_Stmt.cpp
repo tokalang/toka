@@ -676,7 +676,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
 void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
     if (m_CurrentCoroPromiseType) {
         if (!m_CurrentCoroRetTy->isVoidTy() && retVal) {
-            llvm::Value *valPtr = m_Builder.CreateStructGEP(m_CurrentCoroPromiseType, m_CurrentCoroPromise, 2);
+            llvm::Value *valPtr = m_Builder.CreateStructGEP(m_CurrentCoroPromiseType, m_CurrentCoroPromise, 3);
             if (retVal->getType() != m_CurrentCoroRetTy) {
                 llvm::Type *srcTy = retVal->getType();
                 llvm::Type *dstTy = m_CurrentCoroRetTy;
@@ -697,24 +697,20 @@ void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
             }
             m_Builder.CreateStore(retVal, valPtr);
         }
-        llvm::Value *statePtr = m_Builder.CreateStructGEP(m_CurrentCoroPromiseType, m_CurrentCoroPromise, 0);
-        m_Builder.CreateStore(m_Builder.getInt8(1), statePtr);
+        llvm::Function *pubStateFn = m_Module->getFunction("toka_task_publish_result_state");
+        if (!pubStateFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy(), m_Builder.getInt8Ty()}, false);
+            pubStateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_publish_result_state", m_Module.get());
+        }
+        m_Builder.CreateCall(pubStateFn, {m_CurrentCoroPromise, m_Builder.getInt8(1)});
         
-        llvm::Value *awaiterPtr = m_Builder.CreateStructGEP(m_CurrentCoroPromiseType, m_CurrentCoroPromise, 1);
-        llvm::Value *awaiter = m_Builder.CreateLoad(m_Builder.getPtrTy(), awaiterPtr);
-        llvm::Value *isNotNull = m_Builder.CreateIsNotNull(awaiter);
-        
-        llvm::BasicBlock *resumeBB = llvm::BasicBlock::Create(m_Context, "coro.resume.awaiter", m_Builder.GetInsertBlock()->getParent());
-        llvm::BasicBlock *suspendFinalBB = llvm::BasicBlock::Create(m_Context, "coro.suspend.final", m_Builder.GetInsertBlock()->getParent());
-        
-        m_Builder.CreateCondBr(isNotNull, resumeBB, suspendFinalBB);
-        
-        m_Builder.SetInsertPoint(resumeBB);
-        llvm::Function *resumeFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_resume);
-        m_Builder.CreateCall(resumeFn, {awaiter});
-        m_Builder.CreateBr(suspendFinalBB);
-        
-        m_Builder.SetInsertPoint(suspendFinalBB);
+        // Call runtime toka_task_complete(m_CurrentCoroPromise)
+        llvm::Function *completeFn = m_Module->getFunction("toka_task_complete");
+        if (!completeFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+            completeFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_complete", m_Module.get());
+        }
+        m_Builder.CreateCall(completeFn, {m_CurrentCoroPromise});
     } // Close if (m_CurrentCoroPromiseType)
 
     if (!m_CurrentCoroFinalSuspendBB) {

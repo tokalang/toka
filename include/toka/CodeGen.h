@@ -162,6 +162,7 @@ private:
   bool m_InLHS = false;
   llvm::Value *m_CurrentCoroHandle = nullptr;
   llvm::Value *m_CurrentCoroPromise = nullptr;
+  llvm::Value *m_CurrentCoroTCB = nullptr;
   llvm::Value *m_CurrentCoroId = nullptr;
   llvm::Type *m_CurrentCoroPromiseType = nullptr;
   llvm::Type *m_CurrentCoroRetTy = nullptr;
@@ -340,6 +341,7 @@ private:
     llvm::BasicBlock::iterator InsertPoint;
     llvm::Value *CurrentCoroHandle;
     llvm::Value *CurrentCoroPromise;
+    llvm::Value *CurrentCoroTCB;
     llvm::Value *CurrentCoroId;
     llvm::Type *CurrentCoroPromiseType;
     llvm::Type *CurrentCoroRetTy;

@@ -1,0 +1,69 @@
+// Phase 1 Async Runtime Production Qualification Tests
+// Copyright (c) 2026 Toka Language Team. All rights reserved.
+
+import sys/libc::{libc_printf, libc_fflush}
+import std/task::{sleep_async, block_on}
+
+fn print_msg(*msg: char) {
+    libc_printf(c"%s\n", *msg)
+    libc_fflush(0 as *void)
+}
+
+fn recursive_chain(depth: i32) -> async i32 {
+    if depth <= 0 {
+        return 42
+    }
+    auto sub = recursive_chain(depth - 1).start
+    return sub.await
+}
+
+fn child_fast() -> async i32 {
+    return 100
+}
+
+fn parent_await_fast() -> async i32 {
+    auto handle = child_fast().start
+    return handle.await + 1
+}
+
+fn helper_worker(id: i32) -> async i32 {
+    sleep_async(5).await
+    return id * 2
+}
+
+fn parent_concurrent_helpers() -> async i32 {
+    auto h1 = helper_worker(10).start
+    auto h2 = helper_worker(20).start
+    return h1.await + h2.await
+}
+
+fn main_async() -> async i32 {
+    print_msg(c"[Phase 1 Qualification] 1. Testing 20,000-deep await chain (No Stack Overflow)...")
+    auto res_chain = recursive_chain(20000).await
+    assert(res_chain == 42, "Deep chain result must be 42")
+    print_msg(c"[Phase 1 Qualification] PASSED: 20,000-deep await chain executed without stack overflow.")
+
+    print_msg(c"[Phase 1 Qualification] 2. Testing completion-before-registration...")
+    auto res_fast = parent_await_fast().await
+    assert(res_fast == 101, "Fast completion result must be 101")
+    print_msg(c"[Phase 1 Qualification] PASSED: Completion-before-registration linearized correctly.")
+
+    print_msg(c"[Phase 1 Qualification] 3. Testing concurrent helpers with Timer/Reactor compatibility bridge...")
+    auto res_helpers = parent_concurrent_helpers().await
+    assert(res_helpers == 60, "Concurrent helpers result must be 60")
+    print_msg(c"[Phase 1 Qualification] PASSED: Concurrent helpers & timer bridge verified.")
+
+    return 0
+}
+
+pub fn main() -> i32 {
+    print_msg(c"=========================================================")
+    print_msg(c"  Running Phase 1 Async Runtime Production Qualification")
+    print_msg(c"=========================================================")
+    auto handle = main_async().start
+    block_on<i32>(handle)
+    print_msg(c"=========================================================")
+    print_msg(c"  ALL Phase 1 Async Runtime Qualification Tests PASSED!")
+    print_msg(c"=========================================================")
+    return 0
+}
