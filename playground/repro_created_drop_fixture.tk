@@ -1,0 +1,25 @@
+// Reproduction Fixture: Created-Drop and Root/Detached Shutdown
+// EXPECTED FAIL / Runtime Closure Pending (Step 3)
+// Note: Currently unstarted async calls without .start/.await/.wait trigger E0702 in Sema.
+
+import std/io::{println};
+
+auto body_run_count#: i32 = 0;
+
+fn unstarted_task_fixture(x: i32) -> async i32 {
+    body_run_count = body_run_count + 1;
+    return x + 10;
+}
+
+fn test_unstarted_created_drop() {
+    body_run_count = 0;
+    // Step 3 pending: unstarted handle drop without .start / .await
+    println("[Step 3 Pending] Unstarted handle drop requires Sema & TCB reclamation in Step 3");
+}
+
+pub fn main() -> i32 {
+    println("[Step 1 Fixture] Running unstarted Created-drop fixture...");
+    test_unstarted_created_drop();
+    println("repro_created_drop_fixture (EXPECTED FAIL / Runtime Closure Pending Step 3)");
+    return 0;
+}

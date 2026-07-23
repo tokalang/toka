@@ -1,0 +1,40 @@
+import std/io::{println};
+import std/task::{block_on};
+
+auto side_effect_counter#: i32 = 0;
+
+fn increment_effect() -> i32 {
+    side_effect_counter = side_effect_counter + 1;
+    return side_effect_counter;
+}
+
+fn async_worker() -> async i32 {
+    increment_effect();
+    return 42;
+}
+
+fn test_start_non_inlined() {
+    side_effect_counter = 0;
+
+    // 1. Calling .start enqueues task to ready queue
+    auto h = async_worker().start;
+
+    // CRITICAL OBSERVATION POINT: Immediately after .start and BEFORE block_on/executor pump,
+    // side_effect_counter MUST STILL BE 0 (proves .start DOES NOT inline-execute on calling stack!)
+    assert(side_effect_counter == 0, "Cold-task start failed: body executed inline on caller stack!");
+
+    // 2. Repeated .start call is idempotent
+    h.start;
+    assert(side_effect_counter == 0, "Repeated start executed body inline!");
+
+    // 3. Executor pump via block_on executes body
+    auto res = block_on<i32>(h);
+    assert(res == 42, "Async worker result mismatch!");
+    assert(side_effect_counter == 1, "Side effect count mismatch after execution!");
+}
+
+pub fn main() -> i32 {
+    test_start_non_inlined();
+    println("g09_async_cold_task_semantics PASSED!");
+    return 0;
+}
