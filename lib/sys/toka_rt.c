@@ -1321,6 +1321,92 @@ int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen, uint16_t source_
     return 1;
 }
 
+typedef struct {
+    _Atomic uint32_t winner_flag; // 0 = WAITING, 1 = WON
+    _Atomic uint32_t ref_count;   // 2 for twin tokens
+} TokaWaitSet;
+
+int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t tag1, uint16_t tag2,
+                                     uint32_t *out_id1, uint32_t *out_gen1,
+                                     uint32_t *out_id2, uint32_t *out_gen2) {
+    toka_mutex_lock(&g_rt_mutex);
+    ensure_wait_registry_capacity_locked();
+
+    TokaTCB *tcb = NULL;
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].tcb && g_frame_map[i].tcb->id == task_id) {
+            tcb = g_frame_map[i].tcb;
+            atomic_fetch_add(&tcb->ref_count, 2);
+            break;
+        }
+    }
+    if (!tcb) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+
+    uint32_t slot1 = UINT32_MAX, slot2 = UINT32_MAX;
+    for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+        if (!g_wait_registry[i].in_use) {
+            if (slot1 == UINT32_MAX) slot1 = (uint32_t)i;
+            else if (slot2 == UINT32_MAX) { slot2 = (uint32_t)i; break; }
+        }
+    }
+    if (slot1 == UINT32_MAX || slot2 == UINT32_MAX) {
+        ensure_wait_registry_capacity_locked();
+        slot1 = UINT32_MAX; slot2 = UINT32_MAX;
+        for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+            if (!g_wait_registry[i].in_use) {
+                if (slot1 == UINT32_MAX) slot1 = (uint32_t)i;
+                else if (slot2 == UINT32_MAX) { slot2 = (uint32_t)i; break; }
+            }
+        }
+    }
+
+    if (slot1 == UINT32_MAX || slot2 == UINT32_MAX) {
+        atomic_fetch_sub(&tcb->ref_count, 2);
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+
+    TokaWaitSet *ws = (TokaWaitSet*)calloc(1, sizeof(TokaWaitSet));
+    if (!ws) {
+        atomic_fetch_sub(&tcb->ref_count, 2);
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    atomic_store(&ws->winner_flag, 0);
+    atomic_store(&ws->ref_count, 2);
+
+    TokaWaitRegistration *reg1 = &g_wait_registry[slot1];
+    reg1->in_use = 1;
+    reg1->task_id = task_id;
+    reg1->task_schedule_generation = gen;
+    atomic_store(&reg1->state, TOKA_WAIT_STATE_WAITING);
+    reg1->source_tag = tag1;
+    reg1->wait_set = ws;
+    reg1->tcb = tcb;
+    g_wait_registry_count++;
+
+    TokaWaitRegistration *reg2 = &g_wait_registry[slot2];
+    reg2->in_use = 1;
+    reg2->task_id = task_id;
+    reg2->task_schedule_generation = gen;
+    atomic_store(&reg2->state, TOKA_WAIT_STATE_WAITING);
+    reg2->source_tag = tag2;
+    reg2->wait_set = ws;
+    reg2->tcb = tcb;
+    g_wait_registry_count++;
+
+    if (out_id1) *out_id1 = reg1->token.wait_id;
+    if (out_gen1) *out_gen1 = reg1->token.wait_slot_generation;
+    if (out_id2) *out_id2 = reg2->token.wait_id;
+    if (out_gen2) *out_gen2 = reg2->token.wait_slot_generation;
+
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
 int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
     toka_mutex_lock(&g_rt_mutex);
     if (wait_id >= g_wait_registry_capacity) {
@@ -1331,6 +1417,16 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
     if (!reg->in_use || reg->token.wait_slot_generation != slot_gen) {
         toka_mutex_unlock(&g_rt_mutex);
         return 0; // Stale token rejected without inspecting TCB/frame!
+    }
+
+    if (reg->wait_set) {
+        TokaWaitSet *ws = (TokaWaitSet*)reg->wait_set;
+        uint32_t expected_winner = 0;
+        if (!atomic_compare_exchange_strong(&ws->winner_flag, &expected_winner, 1)) {
+            atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
     }
 
     uint32_t expected = TOKA_WAIT_STATE_WAITING;
@@ -1367,6 +1463,22 @@ int toka_wait_registry_invalidate(uint32_t wait_id, uint32_t slot_gen) {
     return 0;
 }
 
+int toka_wait_registry_is_winner(uint32_t wait_id, uint32_t slot_gen) {
+    toka_mutex_lock(&g_rt_mutex);
+    if (wait_id >= g_wait_registry_capacity) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    TokaWaitRegistration *reg = &g_wait_registry[wait_id];
+    if (!reg->in_use || reg->token.wait_slot_generation != slot_gen) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    int won = (atomic_load(&reg->state) == TOKA_WAIT_STATE_WON);
+    toka_mutex_unlock(&g_rt_mutex);
+    return won;
+}
+
 int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
     toka_mutex_lock(&g_rt_mutex);
     if (wait_id >= g_wait_registry_capacity) {
@@ -1379,6 +1491,15 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
         return 0;
     }
 
+    TokaWaitSet *ws_to_free = NULL;
+    if (reg->wait_set) {
+        TokaWaitSet *ws = (TokaWaitSet*)reg->wait_set;
+        if (atomic_fetch_sub(&ws->ref_count, 1) == 1) {
+            ws_to_free = ws;
+        }
+        reg->wait_set = NULL;
+    }
+
     TokaTCB *tcb_to_release = reg->tcb;
     reg->tcb = NULL;
     reg->in_use = 0;
@@ -1389,6 +1510,7 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
     g_wait_registry_count--;
     toka_mutex_unlock(&g_rt_mutex);
 
+    if (ws_to_free) free(ws_to_free);
     if (tcb_to_release) {
         toka_task_release(tcb_to_release);
     }

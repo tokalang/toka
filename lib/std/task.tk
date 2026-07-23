@@ -133,6 +133,13 @@ fn unlock_queue() {
     sys_sync::sys_mutex_unlock(g_mutex_ptr)
 }
 
+pub fn register_timer_token(wait_id: u32, slot_gen: u32, ms: i32) {
+    auto expire_time = current_time_ms() + (ms as i64)
+    lock_queue()
+    g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
+    unlock_queue()
+}
+
 pub fn __toka_spawn(*task: void) {
     if *task != null {
         core_task::toka_task_start(*task)
@@ -235,9 +242,10 @@ pub fn __toka_spawn_blocking(*task: void) {
             if now >= t.expire_at {
                 g_timer_queue#.pop()
                 auto woken = core_task::toka_wait_registry_try_wake(t.wait_id, t.slot_gen)
-                core_task::toka_wait_registry_release(t.wait_id, t.slot_gen)
                 if woken != 0 {
                     scheduled_count += 1
+                } else {
+                    core_task::toka_wait_registry_release(t.wait_id, t.slot_gen)
                 }
             } else {
                 break
@@ -280,8 +288,10 @@ pub fn __toka_spawn_blocking(*task: void) {
                     auto event_key = events_buf[i] as u64
                     auto wait_id = (event_key >> 32:u64) as u32
                     auto slot_gen = (event_key & 0xFFFFFFFF:u64) as u32
-                    core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
-                    core_task::toka_wait_registry_release(wait_id, slot_gen)
+                    auto woken = core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
+                    if woken == 0 {
+                        core_task::toka_wait_registry_release(wait_id, slot_gen)
+                    }
                     i += 1
                 }
             }

@@ -27,7 +27,9 @@ extern fn toka_task_active_detached_count() -> u32
 extern fn toka_ready_queue_capacity() -> u32
 extern fn toka_ready_queue_count() -> u32
 extern fn toka_wait_registry_allocate(task_id: u64, gen: u64, source_tag: u16, *out_wait_id: u32, *out_slot_gen: u32) -> i32
+extern fn toka_wait_registry_allocate_pair(task_id: u64, gen: u64, tag1: u16, tag2: u16, *out_id1: u32, *out_gen1: u32, *out_id2: u32, *out_gen2: u32) -> i32
 extern fn toka_wait_registry_try_wake(wait_id: u32, slot_gen: u32) -> i32
+extern fn toka_wait_registry_is_winner(wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_wait_registry_invalidate(wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_wait_registry_release(wait_id: u32, slot_gen: u32) -> i32
 
