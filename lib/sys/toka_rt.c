@@ -1558,6 +1558,8 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
 }
 
 #ifdef __linux__
+#include <sys/epoll.h>
+
 typedef struct {
     uint64_t read_key;
     uint64_t write_key;
@@ -1565,19 +1567,32 @@ typedef struct {
 
 static TokaEpollFdBinding g_epoll_fd_table[65536];
 
+void toka_linux_epoll_del_fd(int epfd, int fd) {
+    if (fd < 0 || fd >= 65536) return;
+    toka_mutex_lock(&g_rt_mutex);
+    g_epoll_fd_table[fd].read_key = 0;
+    g_epoll_fd_table[fd].write_key = 0;
+    toka_mutex_unlock(&g_rt_mutex);
+    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+}
+
 int toka_linux_epoll_add_read(int epfd, int fd, uint64_t key) {
     if (fd < 0 || fd >= 65536) return -1;
     toka_mutex_lock(&g_rt_mutex);
     g_epoll_fd_table[fd].read_key = key;
-    uint32_t events = 1U | 1073741824U; // EPOLLIN | EPOLLONESHOT
-    uint64_t packed_data = (uint64_t)fd;
+    uint32_t events = EPOLLIN | EPOLLONESHOT;
     if (g_epoll_fd_table[fd].write_key != 0) {
-        events |= 4U; // EPOLLOUT
+        events |= EPOLLOUT;
     }
     toka_mutex_unlock(&g_rt_mutex);
-    int res = toka_epoll_ctl_handle(epfd, 1, fd, events, (void*)packed_data);
+
+    struct epoll_event ev;
+    ev.events = events;
+    ev.data.u64 = (uint64_t)fd;
+
+    int res = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
     if (res != 0) {
-        res = toka_epoll_ctl_handle(epfd, 3, fd, events, (void*)packed_data);
+        res = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
     }
     return res;
 }
@@ -1586,36 +1601,62 @@ int toka_linux_epoll_add_write(int epfd, int fd, uint64_t key) {
     if (fd < 0 || fd >= 65536) return -1;
     toka_mutex_lock(&g_rt_mutex);
     g_epoll_fd_table[fd].write_key = key;
-    uint32_t events = 4U | 1073741824U; // EPOLLOUT | EPOLLONESHOT
-    uint64_t packed_data = (uint64_t)fd;
+    uint32_t events = EPOLLOUT | EPOLLONESHOT;
     if (g_epoll_fd_table[fd].read_key != 0) {
-        events |= 1U; // EPOLLIN
+        events |= EPOLLIN;
     }
     toka_mutex_unlock(&g_rt_mutex);
-    int res = toka_epoll_ctl_handle(epfd, 1, fd, events, (void*)packed_data);
+
+    struct epoll_event ev;
+    ev.events = events;
+    ev.data.u64 = (uint64_t)fd;
+
+    int res = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
     if (res != 0) {
-        res = toka_epoll_ctl_handle(epfd, 3, fd, events, (void*)packed_data);
+        res = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev);
     }
     return res;
 }
 
 int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_events) {
-    uint64_t raw_events[64];
-    int n = toka_epoll_wait_handles(epfd, timeout_ms, (void*)raw_events, max_events > 64 ? 64 : max_events);
+    if (max_events <= 0) return 0;
+    int epoll_max = max_events > 64 ? 64 : max_events;
+    struct epoll_event events_buf[64];
+
+    int n = epoll_wait(epfd, events_buf, epoll_max, timeout_ms);
     if (n <= 0) return n;
 
     toka_mutex_lock(&g_rt_mutex);
     int out_count = 0;
-    for (int i = 0; i < n; ++i) {
-        int fd = (int)raw_events[i];
+    for (int i = 0; i < n && out_count < max_events; ++i) {
+        int fd = (int)events_buf[i].data.u64;
+        uint32_t ev_mask = events_buf[i].events;
+
         if (fd >= 0 && fd < 65536) {
-            if (g_epoll_fd_table[fd].read_key != 0) {
-                out_keys[out_count++] = g_epoll_fd_table[fd].read_key;
+            uint64_t r_key = g_epoll_fd_table[fd].read_key;
+            uint64_t w_key = g_epoll_fd_table[fd].write_key;
+
+            int read_ready = (ev_mask & (EPOLLIN | EPOLLHUP | EPOLLERR)) && (r_key != 0);
+            int write_ready = (ev_mask & (EPOLLOUT | EPOLLHUP | EPOLLERR)) && (w_key != 0);
+
+            if (read_ready && out_count < max_events) {
+                out_keys[out_count++] = r_key;
                 g_epoll_fd_table[fd].read_key = 0;
             }
-            if (g_epoll_fd_table[fd].write_key != 0) {
-                out_keys[out_count++] = g_epoll_fd_table[fd].write_key;
+            if (write_ready && out_count < max_events) {
+                out_keys[out_count++] = w_key;
                 g_epoll_fd_table[fd].write_key = 0;
+            }
+
+            uint64_t rem_r = g_epoll_fd_table[fd].read_key;
+            uint64_t rem_w = g_epoll_fd_table[fd].write_key;
+            if (rem_r != 0 || rem_w != 0) {
+                struct epoll_event mod_ev;
+                mod_ev.events = EPOLLONESHOT;
+                if (rem_r != 0) mod_ev.events |= EPOLLIN;
+                if (rem_w != 0) mod_ev.events |= EPOLLOUT;
+                mod_ev.data.u64 = (uint64_t)fd;
+                epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &mod_ev);
             }
         }
     }

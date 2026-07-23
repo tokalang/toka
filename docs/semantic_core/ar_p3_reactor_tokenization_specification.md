@@ -22,7 +22,7 @@ Async Runtime Phase 3 (AR-P3) completely eliminates raw coroutine frame pointers
 | **Linux** | `epoll_ctl` / `epoll_wait` | `struct epoll_event.data.u64` | `[Wait_ID (32-bit)] \| [Slot_Gen (32-bit)]` | ONESHOT per IO direction |
 | **macOS / BSD** | `kevent` / `kqueue` | `struct kevent.udata` | `(void*)(uintptr_t)event_key` | `EVFILT_READ` (-1) / `EVFILT_WRITE` (-2) |
 | **Windows** | `select` / `WSAPoll` | Reactor Userdata Table | 64-bit `event_key` lookup | Socket Read/Write Map |
-| **WASI** | Degraded / Non-blocking Yield | Userdata Stub Table | 64-bit `event_key` | Yield Fallback |
+| **WASI** | Unsupported Stub | Stub (-1 / false) | N/A | Unsupported (create returns -1, add returns false) |
 
 ---
 

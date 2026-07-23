@@ -697,6 +697,7 @@ pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler:
                         __builtin_coro_suspend()
 
                         auto is_ctx = core_task::toka_wait_registry_is_winner(ctx_id, ctx_gen)
+                        canceler.unregister_wait_token(ctx_id, ctx_gen)
                         core_task::toka_wait_registry_release(io_id, io_gen)
                         core_task::toka_wait_registry_release(ctx_id, ctx_gen)
                         if is_ctx != 0 {

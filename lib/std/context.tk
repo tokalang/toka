@@ -81,28 +81,53 @@ pub shape Canceler(
     ~state: Mutex<CancelState>
 )
 
+impl CancelState {
+    pub fn trigger(self#, err_msg: string) {
+        if self.canceled {
+            return
+        }
+        self.canceled = true
+        self.err = Option<string>::Some(err_msg)
+
+        loop self.waiters.len() > 0 {
+            auto tx# = self.waiters#.pop().unwrap()
+            auto _ = tx#.send(true)
+        }
+
+        loop self.wait_ids.len() > 0 {
+            auto wid = self.wait_ids#.pop().unwrap()
+            auto wgen = self.wait_gens#.pop().unwrap()
+            core_task::toka_wait_registry_try_wake(wid, wgen)
+        }
+    }
+
+    pub fn unregister_wait_token(self#, wait_id: u32, slot_gen: u32) {
+        auto new_ids = Vec<u32>::new()
+        auto new_gens = Vec<u32>::new()
+        auto removed# = false
+
+        loop self.wait_ids.len() > 0 {
+            auto wid = self.wait_ids#.pop().unwrap()
+            auto wgen = self.wait_gens#.pop().unwrap()
+            if !removed && wid == wait_id && wgen == slot_gen {
+                removed = true
+            } else {
+                new_ids#.push(wid)
+                new_gens#.push(wgen)
+            }
+        }
+        self.wait_ids = cede new_ids
+        self.wait_gens = cede new_gens
+    }
+}
+
 impl Canceler {
     pub fn call(self) {
         auto lock_res = self.state.lock()
         match lock_res {
             auto Result::Ok(&lock) => {
                 auto *val# = lock.get_ref()
-                if val.canceled {
-                    return
-                }
-                val.canceled = true
-                val.err = Option<string>::Some(string::from("context canceled"))
-
-                loop val.waiters.len() > 0 {
-                    auto tx# = val.waiters#.pop().unwrap()
-                    auto _ = tx#.send(true)
-                }
-
-                loop val.wait_ids.len() > 0 {
-                    auto wid = val.wait_ids#.pop().unwrap()
-                    auto wgen = val.wait_gens#.pop().unwrap()
-                    core_task::toka_wait_registry_try_wake(wid, wgen)
-                }
+                val#.trigger(string::from("context canceled"))
             }
             auto Result::Err(err) => {
                 assert(false, "Mutex lock failed in Canceler::call")
@@ -125,6 +150,17 @@ impl Canceler {
             auto Result::Err(err) => {
                 assert(false, "Mutex lock failed in Canceler::register_wait_token")
             }
+        }
+    }
+
+    pub fn unregister_wait_token(self, wait_id: u32, slot_gen: u32) {
+        auto lock_res = self.state.lock()
+        match lock_res {
+            auto Result::Ok(&lock) => {
+                auto *val# = lock.get_ref()
+                val#.unregister_wait_token(wait_id, slot_gen)
+            }
+            _ => {}
         }
     }
 
@@ -222,12 +258,7 @@ fn propagate_cancel(cede canceler: Canceler) -> async i32 {
                 }
 
                 if parent_canceled {
-                    val.canceled = true
-                    val.err = Option<string>::Some(string::from("context canceled"))
-                    loop val.waiters.len() > 0 {
-                        auto tx# = val.waiters#.pop().unwrap()
-                        auto _ = tx#.send(true)
-                    }
+                    val#.trigger(string::from("context canceled"))
                     should_exit = true
                 }
             }
@@ -284,25 +315,26 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
                 val.has_parent = true
                 val.parent_rx = cede rx
             }
-            _ => {}
+            auto Result::Err(err) => {
+            }
         }
-        auto h = propagate_cancel(cede canceler_fn.clone()).start
-        detach_forget<i32>(cede h)
+        auto p_task = propagate_cancel(cede canceler_fn.clone()).start
+        detach_forget<i32>(cede p_task)
     }
 
-    auto ctx = CancelContext<'C>(
+    auto cancel_ctx = CancelContext<'C>(
         parent = cede 'parent,
         ~state = cede ~shared_state
     )
 
     return CancelResult<'C>(
-        ctx = cede ctx,
+        ctx = cede cancel_ctx,
         canceler = canceler_fn
     )
 }
 
 // ------------------------------------------------------
-// 3. TimeoutContext (Timeout and Deadline Cancellation)
+// 3. TimeoutContext (Time-bounded Cancellation)
 // ------------------------------------------------------
 
 pub shape TimeoutContext<'C: @Context> (
@@ -337,7 +369,6 @@ pub shape TimeoutResult<'C: @Context> (
     canceler: Canceler
 )
 
-
 fn timer_helper(ms: i32, cede canceler: Canceler) -> async i32 {
     auto owned_canceler# = cede canceler
     sleep_async(ms).await
@@ -345,16 +376,7 @@ fn timer_helper(ms: i32, cede canceler: Canceler) -> async i32 {
     match lock_res {
         auto Result::Ok(&lock) => {
             auto *val# = lock.get_ref()
-            if val.canceled {
-                return 0
-            }
-            val.canceled = true
-            val.err = Option<string>::Some(string::from("context canceled"))
-
-            loop val.waiters.len() > 0 {
-                auto tx# = val.waiters#.pop().unwrap()
-                auto _ = tx#.send(true)
-            }
+            val#.trigger(string::from("context deadline exceeded"))
         }
         _ => {}
     }
