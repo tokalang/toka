@@ -1,0 +1,29 @@
+import std/io::{println};
+import std/task::{block_on, sleep_async};
+import core/task as core_task;
+
+auto step_progress#: i32 = 0;
+
+fn async_two_phase_worker() -> async i32 {
+    step_progress = 1;
+    // Exercises Prepare -> Commit handshake
+    sleep_async(20).await;
+    step_progress = 2;
+    sleep_async(10).await;
+    step_progress = 3;
+    return 42;
+}
+
+fn test_two_phase_suspension() {
+    step_progress = 0;
+    auto h = async_two_phase_worker().start;
+    auto res = block_on<i32>(h);
+    assert(res == 42, "Worker return value mismatch!");
+    assert(step_progress == 3, "Two-phase suspension failed to progress through all steps!");
+}
+
+pub fn main() -> i32 {
+    test_two_phase_suspension();
+    println("g09_async_two_phase_suspension_test PASSED!");
+    return 0;
+}

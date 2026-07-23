@@ -297,6 +297,7 @@ pub fn sleep_async(ms: i32) -> async i32 {
         lock_queue()
         g_timer_queue#.push(TimerEntry(task_id=task_id, wait_gen=wait_gen, expire_at=expire_time))
         unlock_queue()
+        core_task::toka_task_commit_suspend(*handle)
     }
     __builtin_coro_suspend()
     return 0
