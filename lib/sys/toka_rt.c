@@ -670,6 +670,7 @@ typedef struct TokaTCB {
     _Atomic uint8_t cancel_requested;
     _Atomic uint32_t ref_count;
     _Atomic uint8_t detached;
+    _Atomic uint8_t detached_counted;
     _Atomic uint8_t owner_released;
 } TokaTCB;
 
@@ -771,6 +772,8 @@ void* toka_task_create(void *coro_frame, void *promise) {
     atomic_store(&tcb->cancel_requested, 0);
     atomic_store(&tcb->ref_count, 1);
     atomic_store(&tcb->detached, 0);
+    atomic_store(&tcb->detached_counted, 0);
+    atomic_store(&tcb->owner_released, 0);
 
     if (promise) {
         struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise;
@@ -934,10 +937,13 @@ void toka_task_complete(void *promise_ptr) {
     atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_READYLIVE, memory_order_release, memory_order_relaxed);
 
     if (tcb) {
-        uint32_t old_st = atomic_exchange(&tcb->state, TOKA_TCB_COMPLETED);
-        if (old_st != TOKA_TCB_COMPLETED && atomic_load(&tcb->detached)) {
+        atomic_store(&tcb->state, TOKA_TCB_COMPLETED);
+
+        uint8_t expected_counted = 1;
+        if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 0)) {
             atomic_fetch_sub(&g_active_detached_task_count, 1);
         }
+
         toka_task_try_release_owner(tcb);
     }
 
@@ -980,14 +986,35 @@ int toka_task_register_continuation(void *child_promise_ptr, void *parent_tcb_pt
 void toka_task_detach(void *tcb_ptr) {
     if (!tcb_ptr) return;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
-    uint8_t was_detached = atomic_exchange(&tcb->detached, 1);
-    if (!was_detached) {
-        uint32_t st = atomic_load(&tcb->state);
-        if (st != TOKA_TCB_COMPLETED && st != TOKA_TCB_CREATED) {
+
+    // 1. Transient retain to prevent UAF window during detach execution
+    atomic_fetch_add(&tcb->ref_count, 1);
+
+    // 2. Mark as detached
+    atomic_store(&tcb->detached, 1);
+
+    // 3. Linearized counter increment via detached_counted (0 -> 1)
+    uint32_t st = atomic_load(&tcb->state);
+    if (st != TOKA_TCB_COMPLETED && st != TOKA_TCB_CREATED) {
+        uint8_t expected_counted = 0;
+        if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 1)) {
             atomic_fetch_add(&g_active_detached_task_count, 1);
+
+            // Double check if completion happened concurrently while setting detached_counted
+            if (atomic_load(&tcb->state) == TOKA_TCB_COMPLETED) {
+                uint8_t expected_undo = 1;
+                if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_undo, 0)) {
+                    atomic_fetch_sub(&g_active_detached_task_count, 1);
+                }
+            }
         }
     }
+
+    // 4. Try release owner if completed or created
     toka_task_try_release_owner(tcb);
+
+    // 5. Release transient reference
+    toka_task_release(tcb);
 }
 
 void toka_tcb_get_wait_token(void *tcb_ptr, uint64_t *out_task_id, uint64_t *out_gen) {

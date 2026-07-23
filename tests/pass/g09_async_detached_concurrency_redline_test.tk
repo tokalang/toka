@@ -1,0 +1,76 @@
+import std/io::{println};
+import std/task::{block_on, detach_forget, sleep_async};
+import core/task as core_task;
+
+auto g_counter#: i32 = 0;
+
+fn async_worker(ms: i32) -> async i32 {
+    if ms > 0 {
+        sleep_async(ms).await;
+    }
+    g_counter = g_counter + 1;
+    return ms;
+}
+
+fn test_completion_before_detach() {
+    auto h = async_worker(0).start;
+    // Wait for task to complete first before detaching
+    block_on<i32>(h);
+    // Now detach completed handle -> must not underflow counter
+    detach_forget<i32>(cede h);
+    assert(core_task::toka_task_active_detached_count() == 0:u32, "Completion before detach caused underflow/leak!");
+}
+
+fn test_detach_before_completion() {
+    g_counter = 0;
+    {
+        auto h = async_worker(10).start;
+        detach_forget<i32>(cede h);
+        assert(core_task::toka_task_active_detached_count() == 1:u32, "Detach before completion failed to increment counter!");
+    }
+    // Dummy root task to let executor drain
+    auto root = async_worker(20).start;
+    block_on<i32>(root);
+    assert(g_counter >= 2, "Detached worker failed to complete!");
+    assert(core_task::toka_task_active_detached_count() == 0:u32, "Detach before completion failed to drain!");
+}
+
+fn test_duplicate_detach() {
+    auto h1 = async_worker(10).start;
+    // Detach h1
+    detach_forget<i32>(cede h1);
+    // Counter is 1
+    assert(core_task::toka_task_active_detached_count() == 1:u32, "First detach failed!");
+    // Drain
+    auto root = async_worker(20).start;
+    block_on<i32>(root);
+    assert(core_task::toka_task_active_detached_count() == 0:u32, "Duplicate detach drain failed!");
+}
+
+fn test_multiple_detached_tasks() {
+    g_counter = 0;
+    auto h1 = async_worker(10).start;
+    auto h2 = async_worker(15).start;
+    auto h3 = async_worker(20).start;
+
+    detach_forget<i32>(cede h1);
+    detach_forget<i32>(cede h2);
+    detach_forget<i32>(cede h3);
+
+    assert(core_task::toka_task_active_detached_count() == 3:u32, "Multiple detach failed to count to 3!");
+
+    auto root = async_worker(30).start;
+    block_on<i32>(root);
+
+    assert(core_task::toka_task_active_detached_count() == 0:u32, "Multiple detached tasks failed to drain to 0!");
+    assert(g_counter == 4, "Not all detached workers completed!");
+}
+
+pub fn main() -> i32 {
+    test_completion_before_detach();
+    test_detach_before_completion();
+    test_duplicate_detach();
+    test_multiple_detached_tasks();
+    println("g09_async_detached_concurrency_redline_test PASSED!");
+    return 0;
+}
