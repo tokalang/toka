@@ -81,30 +81,7 @@ pub fn net_getsockopt_error_impl(fd: i32) -> i32 {
     }
 }
 
-pub fn reactor_add_write_impl(reactor_fd: i32, fd: i32, coro_handle: Addr) -> bool {
-    unsafe {
-        auto *ev# = unsafe alloc [32] byte as *char
-        if *ev as usize == 0 { return false }
 
-        auto base = *ev as usize
-        auto *p_ident# = base as *u64
-        p_ident = fd as u64
-        auto *p_filter# = (base + 8) as *i16
-        p_filter = -2:i16
-        auto *p_flags# = (base + 10) as *u16
-        p_flags = 21:u16
-        auto *p_fflags# = (base + 12) as *u32
-        p_fflags = 0:u32
-        auto *p_data# = (base + 16) as *i64
-        p_data = 0
-        auto *p_udata# = (base + 24) as *Addr
-        p_udata = coro_handle
-
-        auto res = kevent(reactor_fd, *ev as *void, 1, 0:Addr as *void, 0, 0:Addr as *void)
-        libc_free(*ev as *void)
-        return res != -1
-    }
-}
 
 pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {

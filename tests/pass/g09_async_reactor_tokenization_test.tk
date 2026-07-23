@@ -64,13 +64,14 @@ pub fn async_socket_client(port: u16) -> async i32 {
 fn test_real_socket_reactor_tokenization() {
     server_received_bytes = 0;
     client_received_bytes = 0;
-    auto test_port: u16 = 19895;
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), test_port);
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16);
     auto listener = TcpListener::bind(addr);
     assert(listener.is_valid(), "Server listener bind failed");
+    auto dynamic_port = listener.local_port();
+    assert(dynamic_port > 0:u16, "Dynamic port assignment failed");
 
     auto server_handle = async_socket_server(cede listener).start;
-    auto client_handle = async_socket_client(test_port).start;
+    auto client_handle = async_socket_client(dynamic_port).start;
 
     auto s_res = block_on<i32>(server_handle);
     auto c_res = block_on<i32>(client_handle);

@@ -80,7 +80,7 @@ impl TimerHeap {
             auto left = 2 * current + 1
             auto right = 2 * current + 2
             auto smallest# = current
-            
+
             if left < len {
                 if self.data.get(left).expire_at < self.data.get(smallest).expire_at {
                     smallest = left
@@ -204,7 +204,7 @@ pub fn __toka_register_timer(*task: void, ms: i32) {
 pub fn __toka_spawn_blocking(*task: void) {
     if *task == null { return }
     core_task::toka_task_start(*task)
-    
+
     auto task_id# = 0:u64
     auto task_gen# = 0:u64
     auto tcb_addr# = 0:Addr
@@ -229,10 +229,10 @@ pub fn __toka_spawn_blocking(*task: void) {
         if core_task::toka_tcb_is_done(*task) && core_task::toka_task_active_detached_count() == 0:u32 {
             break
         }
-        
+
         lock_queue()
         auto now = current_time_ms()
-        
+
         // 3. Timer Queue check and release expired suspended coroutines to C Ready Queue
         auto scheduled_count# = 0
         loop true {
@@ -256,7 +256,7 @@ pub fn __toka_spawn_blocking(*task: void) {
         if scheduled_count > 0 {
             continue
         }
-        
+
         if g_reactor_fd == -1 {
             g_reactor_fd = sysnet::reactor_create_impl()
         }
@@ -273,14 +273,14 @@ pub fn __toka_spawn_blocking(*task: void) {
             }
         }
         unlock_queue()
-        
+
         if timeout_ms < 0 { timeout_ms = 0 }
 
         // Block on the reactor
         unsafe {
             auto events_buf = [0:Addr; 64]
             auto *events_ptr = &events_buf[0] as *Addr
-            
+
             auto n = sysnet::reactor_wait_impl(g_reactor_fd, timeout_ms, *events_ptr, 64)
             if n > 0 {
                 auto i# = 0

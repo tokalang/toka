@@ -49,11 +49,11 @@ int toka_fileno(FILE *f) { return fileno(f); }
 extern int main(int argc, char **argv);
 __attribute__((naked, weak)) void _start() {
     asm volatile (
-        "pop %rdi\n"       
-        "mov %rsp, %rsi\n" 
-        "call main\n"      
-        "mov %rax, %rdi\n" 
-        "mov $60, %rax\n"  
+        "pop %rdi\n"
+        "mov %rsp, %rsi\n"
+        "call main\n"
+        "mov %rax, %rdi\n"
+        "mov $60, %rax\n"
         "syscall\n"
     );
 }
@@ -1240,9 +1240,12 @@ static TokaWaitRegistration *g_wait_registry = NULL;
 static size_t g_wait_registry_capacity = 0;
 static size_t g_wait_registry_count = 0;
 
-static void ensure_wait_registry_capacity_locked(void) {
+static void ensure_free_slots_locked(size_t needed_slots) {
     if (g_wait_registry == NULL) {
         g_wait_registry_capacity = 256;
+        if (needed_slots > g_wait_registry_capacity) {
+            g_wait_registry_capacity = needed_slots * 2;
+        }
         g_wait_registry = (TokaWaitRegistration*)calloc(g_wait_registry_capacity, sizeof(TokaWaitRegistration));
         if (!g_wait_registry) {
             fprintf(stderr, "Fatal error: Out of memory during Toka WaitRegistry initialization.\n");
@@ -1252,13 +1255,16 @@ static void ensure_wait_registry_capacity_locked(void) {
             g_wait_registry[i].token.wait_id = i;
             g_wait_registry[i].token.wait_slot_generation = 1;
         }
-    } else if (g_wait_registry_count == g_wait_registry_capacity) {
-        if (g_wait_registry_capacity > SIZE_MAX / 2 || (g_wait_registry_capacity * 2) > SIZE_MAX / sizeof(TokaWaitRegistration)) {
+    } else if (g_wait_registry_capacity - g_wait_registry_count < needed_slots) {
+        if (g_wait_registry_capacity > SIZE_MAX / 2) {
             fprintf(stderr, "Fatal error: Integer overflow during WaitRegistry capacity calculation.\n");
             abort();
         }
         size_t old_cap = g_wait_registry_capacity;
         size_t new_cap = g_wait_registry_capacity * 2;
+        while (new_cap - g_wait_registry_count < needed_slots) {
+            new_cap *= 2;
+        }
         TokaWaitRegistration *new_reg = (TokaWaitRegistration*)realloc(g_wait_registry, new_cap * sizeof(TokaWaitRegistration));
         if (!new_reg) {
             fprintf(stderr, "Fatal error: Out of memory during Toka WaitRegistry expansion.\n");
@@ -1276,7 +1282,7 @@ static void ensure_wait_registry_capacity_locked(void) {
 
 int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen, uint16_t source_tag, uint32_t *out_wait_id, uint32_t *out_slot_gen) {
     toka_mutex_lock(&g_rt_mutex);
-    ensure_wait_registry_capacity_locked();
+    ensure_free_slots_locked(1);
 
     TokaTCB *tcb = NULL;
     for (size_t i = 0; i < g_frame_map_count; ++i) {
@@ -1299,9 +1305,13 @@ int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen, uint16_t source_
         }
     }
     if (slot_idx == UINT32_MAX) {
-        size_t idx = g_wait_registry_count;
-        ensure_wait_registry_capacity_locked();
-        slot_idx = (uint32_t)idx;
+        ensure_free_slots_locked(1);
+        for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+            if (!g_wait_registry[i].in_use) {
+                slot_idx = (uint32_t)i;
+                break;
+            }
+        }
     }
 
     TokaWaitRegistration *reg = &g_wait_registry[slot_idx];
@@ -1322,15 +1332,15 @@ int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen, uint16_t source_
 }
 
 typedef struct {
-    _Atomic uint32_t winner_flag; // 0 = WAITING, 1 = WON
-    _Atomic uint32_t ref_count;   // 2 for twin tokens
+    _Atomic uint32_t winner_wait_id; // 0 = WAITING, (wait_id + 1) = WON by wait_id
+    _Atomic uint32_t ref_count;      // 2 for twin tokens
 } TokaWaitSet;
 
 int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t tag1, uint16_t tag2,
                                      uint32_t *out_id1, uint32_t *out_gen1,
                                      uint32_t *out_id2, uint32_t *out_gen2) {
     toka_mutex_lock(&g_rt_mutex);
-    ensure_wait_registry_capacity_locked();
+    ensure_free_slots_locked(2);
 
     TokaTCB *tcb = NULL;
     for (size_t i = 0; i < g_frame_map_count; ++i) {
@@ -1352,16 +1362,6 @@ int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t ta
             else if (slot2 == UINT32_MAX) { slot2 = (uint32_t)i; break; }
         }
     }
-    if (slot1 == UINT32_MAX || slot2 == UINT32_MAX) {
-        ensure_wait_registry_capacity_locked();
-        slot1 = UINT32_MAX; slot2 = UINT32_MAX;
-        for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
-            if (!g_wait_registry[i].in_use) {
-                if (slot1 == UINT32_MAX) slot1 = (uint32_t)i;
-                else if (slot2 == UINT32_MAX) { slot2 = (uint32_t)i; break; }
-            }
-        }
-    }
 
     if (slot1 == UINT32_MAX || slot2 == UINT32_MAX) {
         atomic_fetch_sub(&tcb->ref_count, 2);
@@ -1375,7 +1375,7 @@ int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t ta
         toka_mutex_unlock(&g_rt_mutex);
         return 0;
     }
-    atomic_store(&ws->winner_flag, 0);
+    atomic_store(&ws->winner_wait_id, 0);
     atomic_store(&ws->ref_count, 2);
 
     TokaWaitRegistration *reg1 = &g_wait_registry[slot1];
@@ -1421,8 +1421,17 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
 
     if (reg->wait_set) {
         TokaWaitSet *ws = (TokaWaitSet*)reg->wait_set;
-        uint32_t expected_winner = 0;
-        if (!atomic_compare_exchange_strong(&ws->winner_flag, &expected_winner, 1)) {
+        uint32_t target_winner = wait_id + 1;
+        uint32_t current_winner = atomic_load(&ws->winner_wait_id);
+
+        if (current_winner == target_winner) {
+            // Idempotent duplicate event for the winning token
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
+
+        uint32_t expected = 0;
+        if (!atomic_compare_exchange_strong(&ws->winner_wait_id, &expected, target_winner)) {
             atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
             toka_mutex_unlock(&g_rt_mutex);
             return 0;
@@ -1437,9 +1446,27 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
 
     uint64_t tid = reg->task_id;
     uint64_t gen = reg->task_schedule_generation;
+    int is_singleton = (reg->wait_set == NULL);
+
+    TokaTCB *tcb_to_release = NULL;
+    if (is_singleton) {
+        tcb_to_release = reg->tcb;
+        reg->tcb = NULL;
+        reg->in_use = 0;
+        reg->token.wait_slot_generation++;
+        if (reg->token.wait_slot_generation == 0) {
+            reg->token.wait_slot_generation = 1;
+        }
+        g_wait_registry_count--;
+    }
+
     toka_mutex_unlock(&g_rt_mutex);
 
-    return toka_task_try_schedule(tid, gen);
+    int sched_ok = toka_task_try_schedule(tid, gen);
+    if (tcb_to_release) {
+        toka_task_release(tcb_to_release);
+    }
+    return sched_ok;
 }
 
 int toka_wait_registry_invalidate(uint32_t wait_id, uint32_t slot_gen) {

@@ -60,12 +60,16 @@ pub fn background() -> BackgroundContext {
 // 2. CancelContext (Manual/Cascade Cancellation)
 // ------------------------------------------------------
 
+import core/task as core_task
+
 pub shape CancelState(
     canceled: bool,
     err: Option<string>,
     waiters: Vec<Sender<bool>>,
     has_parent: bool,
-    parent_rx: Receiver<bool>
+    parent_rx: Receiver<bool>,
+    wait_ids: Vec<u32>,
+    wait_gens: Vec<u32>
 )
 
 pub shape CancelContext<'C: @Context> (
@@ -93,6 +97,12 @@ impl Canceler {
                     auto tx# = val.waiters#.pop().unwrap()
                     auto _ = tx#.send(true)
                 }
+
+                loop val.wait_ids.len() > 0 {
+                    auto wid = val.wait_ids#.pop().unwrap()
+                    auto wgen = val.wait_gens#.pop().unwrap()
+                    core_task::toka_wait_registry_try_wake(wid, wgen)
+                }
             }
             auto Result::Err(err) => {
                 assert(false, "Mutex lock failed in Canceler::call")
@@ -100,7 +110,25 @@ impl Canceler {
         }
     }
 
-    pub fn clone(self#) -> Canceler 
+    pub fn register_wait_token(self, wait_id: u32, slot_gen: u32) {
+        auto lock_res = self.state.lock()
+        match lock_res {
+            auto Result::Ok(&lock) => {
+                auto *val# = lock.get_ref()
+                if val.canceled {
+                    core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
+                } else {
+                    val.wait_ids#.push(wait_id)
+                    val.wait_gens#.push(slot_gen)
+                }
+            }
+            auto Result::Err(err) => {
+                assert(false, "Mutex lock failed in Canceler::register_wait_token")
+            }
+        }
+    }
+
+    pub fn clone(self#) -> Canceler
     effects: return <- self.state {
         return Canceler(~state = self.~state)
     }
@@ -110,7 +138,7 @@ impl Canceler@encap {
     fn drop(self#) {
     }
 
-    pub fn clone(self) -> Canceler 
+    pub fn clone(self) -> Canceler
     effects: return <- self.state {
         return Canceler(~state = self.~state)
     }
@@ -122,7 +150,7 @@ impl<'C: @Context> CancelContext<'C>@Context {
         auto *val = lock.get_ref()
         return val.canceled || self.parent.is_canceled()
     }
-    
+
     pub fn err(self) -> Option<string> {
         auto lock = self.state.lock().unwrap()
         auto *val = lock.get_ref()
@@ -138,11 +166,11 @@ impl<'C: @Context> CancelContext<'C>@Context {
         }
         return self.parent.err()
     }
-    
+
     pub fn deadline(self) -> Option<Instant> {
         return self.parent.deadline()
     }
-    
+
     pub fn done(self#) -> Option<Receiver<bool>> {
         auto lock = self.state.lock().unwrap()
         auto *val# = lock.get_ref()
@@ -158,7 +186,7 @@ impl<'C: @Context> CancelContext<'C>@Context {
         val.waiters#.push(cede tx)
         return Option<Receiver<bool>>::Some(cede rx)
     }
-    
+
     pub fn value(self, key: string) -> Option<string> {
         return self.parent.value(key)
     }
@@ -170,7 +198,7 @@ fn propagate_cancel(cede canceler: Canceler) -> async i32 {
     loop true {
         auto should_exit# = false
         auto parent_canceled# = false
-        
+
         auto lock_res = owned_canceler.state.lock()
         match lock_res {
             auto Result::Ok(&lock) => {
@@ -206,11 +234,11 @@ fn propagate_cancel(cede canceler: Canceler) -> async i32 {
             auto Result::Err(err) => {
             }
         }
-        
+
         if should_exit {
             break
         }
-        
+
         sleep_async(1).await
     }
     return 0
@@ -226,22 +254,26 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
     auto dummy_pair = channel<bool>()
     auto dummy_rx = cede dummy_pair.rx
     auto dummy_tx = cede dummy_pair.tx
-    
+
+    auto wait_ids = Vec<u32>::new()
+    auto wait_gens = Vec<u32>::new()
     auto state = CancelState(
         canceled = false,
         err = Option<string>::None(),
         waiters = cede waiters,
         has_parent = false,
-        parent_rx = cede dummy_rx
+        parent_rx = cede dummy_rx,
+        wait_ids = cede wait_ids,
+        wait_gens = cede wait_gens
     )
     auto ~shared_state = new Mutex<CancelState>(
         handle = sys_mutex_create(),
         data = cede state
     )
     auto ~shared_state_clone = ~shared_state
-    
+
     auto canceler_fn = Canceler(~state = ~shared_state_clone)
-    
+
     auto parent_done = 'parent#.done()
     if parent_done.is_some() {
         auto rx = parent_done.unwrap()
@@ -257,12 +289,12 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
         auto h = propagate_cancel(cede canceler_fn.clone()).start
         detach_forget<i32>(cede h)
     }
-    
+
     auto ctx = CancelContext<'C>(
         parent = cede 'parent,
         ~state = cede ~shared_state
     )
-    
+
     return CancelResult<'C>(
         ctx = cede ctx,
         canceler = canceler_fn
@@ -282,19 +314,19 @@ impl<'C: @Context> TimeoutContext<'C>@Context {
     pub fn is_canceled(self) -> bool {
         return self.cancel_ctx.is_canceled()
     }
-    
+
     pub fn err(self) -> Option<string> {
         return self.cancel_ctx.err()
     }
-    
+
     pub fn deadline(self) -> Option<Instant> {
         return Option<Instant>::Some(self.deadline_val)
     }
-    
+
     pub fn done(self#) -> Option<Receiver<bool>> {
         return self.cancel_ctx#.done()
     }
-    
+
     pub fn value(self, key: string) -> Option<string> {
         return self.cancel_ctx.value(key)
     }
@@ -332,15 +364,15 @@ fn timer_helper(ms: i32, cede canceler: Canceler) -> async i32 {
 pub fn with_timeout<'C: @Context>(cede 'parent#: C, timeout_ms: i32) -> TimeoutResult<'C> {
     auto res = with_cancel<'C>(cede 'parent)
     auto deadline_val = Instant::now().add(Duration::from_millis(timeout_ms as u64))
-    
+
     auto h_task = timer_helper(timeout_ms, cede res.canceler.clone()).start
     detach_forget<i32>(cede h_task)
-    
+
     auto timeout_ctx = TimeoutContext<'C>(
         cancel_ctx = cede res.ctx,
         deadline_val = deadline_val
     )
-    
+
     return TimeoutResult<'C>(
         ctx = cede timeout_ctx,
         canceler = res.canceler.clone()
@@ -371,19 +403,19 @@ impl<'C: @Context> ValueContext<'C>@Context {
     pub fn is_canceled(self) -> bool {
         return self.parent.is_canceled()
     }
-    
+
     pub fn err(self) -> Option<string> {
         return self.parent.err()
     }
-    
+
     pub fn deadline(self) -> Option<Instant> {
         return self.parent.deadline()
     }
-    
+
     pub fn done(self#) -> Option<Receiver<bool>> {
         return self.parent#.done()
     }
-    
+
     pub fn value(self, key: string) -> Option<string> {
         if self.key == key {
             return Option<string>::Some(self.value.clone())

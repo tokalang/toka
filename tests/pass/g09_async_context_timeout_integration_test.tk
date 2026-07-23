@@ -12,24 +12,24 @@ pub fn async_timeout_server(cede listener: TcpListener) -> async i32 {
     auto owned_listener# = cede listener;
     auto stream# = net_async_accept(owned_listener).await;
     assert(stream.is_valid(), "Server accepted invalid stream");
-    
+
     unsafe {
         auto *buf# = unsafe alloc [128]u8;
-        
+
         // 1. First read should time out because client has not sent data yet (timeout_ms = 100ms)
         auto timeout_res = net_async_read_timeout(stream, *buf as *u8, 128:usize, 100).await;
         assert(timeout_res.is_err(), "Expected first read to time out");
         server_timeout_detected = true;
-        
+
         // 2. Second read should succeed because client will send data within 500ms
         auto success_res = net_async_read_timeout(stream, *buf as *u8, 128:usize, 500).await;
         assert(success_res.is_ok(), "Expected second read to succeed before timeout");
         assert(success_res.unwrap() == 10, "Read byte count mismatch");
         server_success_detected = true;
-        
+
         unsafe free [128] *#buf;
     }
-    
+
     stream#.close();
     return 200;
 }
@@ -39,12 +39,12 @@ pub fn async_timeout_client(port: u16) -> async i32 {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     auto stream# = TcpStream::connect_async(addr).await;
     assert(stream.is_valid(), "Client connect_async failed");
-    
+
     // Sleep 250ms before writing data so that server's first 100ms read times out
     sleep_async(250).await;
     auto write_res = stream#.write_string_async(string::from("DATA_READY")).await;
     assert(write_res.is_ok(), "Client write_string_async failed");
-    
+
     stream#.close();
     return 100;
 }
@@ -52,17 +52,19 @@ pub fn async_timeout_client(port: u16) -> async i32 {
 fn test_async_io_timeout_integration() {
     server_timeout_detected = false;
     server_success_detected = false;
-    auto test_port: u16 = 19898;
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), test_port);
+    // Bind port 0 for dynamic OS port assignment
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16);
     auto listener = TcpListener::bind(addr);
     assert(listener.is_valid(), "Server listener bind failed");
-    
+    auto dynamic_port = listener.local_port();
+    assert(dynamic_port > 0:u16, "Dynamic port assignment failed");
+
     auto server_handle = async_timeout_server(cede listener).start;
-    auto client_handle = async_timeout_client(test_port).start;
-    
+    auto client_handle = async_timeout_client(dynamic_port).start;
+
     auto s_res = block_on<i32>(server_handle);
     auto c_res = block_on<i32>(client_handle);
-    
+
     assert(s_res == 200, "Server return code mismatch");
     assert(c_res == 100, "Client return code mismatch");
     assert(server_timeout_detected, "Server failed to detect IO timeout");
