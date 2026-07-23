@@ -25,6 +25,10 @@ extern fn toka_task_get_result_state(*promise: void) -> u8
 extern fn toka_task_active_detached_count() -> u32
 extern fn toka_ready_queue_capacity() -> u32
 extern fn toka_ready_queue_count() -> u32
+extern fn toka_wait_registry_allocate(task_id: u64, gen: u64, source_tag: u16, *out_wait_id: u32, *out_slot_gen: u32) -> i32
+extern fn toka_wait_registry_try_wake(wait_id: u32, slot_gen: u32) -> i32
+extern fn toka_wait_registry_invalidate(wait_id: u32, slot_gen: u32) -> i32
+extern fn toka_wait_registry_release(wait_id: u32, slot_gen: u32) -> i32
 
 // Hook for standard library scheduler to mark task as detached
 pub fn __toka_detach_task(*handle: void) {

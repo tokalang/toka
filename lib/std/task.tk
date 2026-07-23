@@ -21,8 +21,8 @@ pub shape TaskPtr(addr: Addr)
 import core/option::{Option}
 
 shape TimerEntry(
-    task_id: u64,
-    wait_gen: u64,
+    wait_id: u32,
+    slot_gen: u32,
     expire_at: i64
 )
 
@@ -175,14 +175,20 @@ fn collect_detached_tasks() {
 
 pub fn __toka_register_timer(*task: void, ms: i32) {
     if *task != null {
-        auto expire_time = current_time_ms() + (ms as i64)
         auto task_id# = 0:u64
         auto wait_gen# = 0:u64
         auto ok = core_task::toka_task_prepare_suspend(*task, &task_id as *u64, &wait_gen as *u64)
         if ok != 0 {
-            lock_queue()
-            g_timer_queue#.push(TimerEntry(task_id=task_id, wait_gen=wait_gen, expire_at=expire_time))
-            unlock_queue()
+            auto wait_id# = 0:u32
+            auto slot_gen# = 0:u32
+            auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
+            if alloc_ok != 0 {
+                auto expire_time = current_time_ms() + (ms as i64)
+                lock_queue()
+                g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
+                unlock_queue()
+                core_task::toka_task_commit_suspend(*task)
+            }
         }
     }
 }
@@ -227,13 +233,10 @@ pub fn __toka_spawn_blocking(*task: void) {
             if top_opt.is_none() { break }
             auto t = top_opt.unwrap()
             if now >= t.expire_at {
-                auto res = core_task::toka_task_try_schedule(t.task_id, t.wait_gen)
-                if res == -1 {
-                    // Queue full, retry next loop!
-                    break
-                }
                 g_timer_queue#.pop()
-                if res == 1 {
+                auto woken = core_task::toka_wait_registry_try_wake(t.wait_id, t.slot_gen)
+                core_task::toka_wait_registry_release(t.wait_id, t.slot_gen)
+                if woken != 0 {
                     scheduled_count += 1
                 }
             } else {
@@ -293,11 +296,16 @@ pub fn sleep_async(ms: i32) -> async i32 {
     auto wait_gen# = 0:u64
     auto ok = core_task::toka_task_prepare_suspend(*handle, &task_id as *u64, &wait_gen as *u64)
     if ok != 0 {
-        auto expire_time = current_time_ms() + (ms as i64)
-        lock_queue()
-        g_timer_queue#.push(TimerEntry(task_id=task_id, wait_gen=wait_gen, expire_at=expire_time))
-        unlock_queue()
-        core_task::toka_task_commit_suspend(*handle)
+        auto wait_id# = 0:u32
+        auto slot_gen# = 0:u32
+        auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
+        if alloc_ok != 0 {
+            auto expire_time = current_time_ms() + (ms as i64)
+            lock_queue()
+            g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
+            unlock_queue()
+            core_task::toka_task_commit_suspend(*handle)
+        }
     }
     __builtin_coro_suspend()
     return 0

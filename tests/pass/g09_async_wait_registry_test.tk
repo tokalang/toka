@@ -1,0 +1,34 @@
+import std/io::{println};
+import std/task::{block_on, sleep_async};
+import core/task as core_task;
+
+auto counter#: i32 = 0;
+
+fn async_timer_task_a() -> async i32 {
+    sleep_async(10).await;
+    counter += 10;
+    return 10;
+}
+
+fn async_timer_task_b() -> async i32 {
+    sleep_async(20).await;
+    counter += 20;
+    return 20;
+}
+
+fn test_wait_registry_timers() {
+    counter = 0;
+    auto h1 = async_timer_task_a().start;
+    auto h2 = async_timer_task_b().start;
+    auto r1 = block_on<i32>(h1);
+    auto r2 = block_on<i32>(h2);
+    assert(r1 == 10, "Task A return value mismatch");
+    assert(r2 == 20, "Task B return value mismatch");
+    assert(counter == 30, "Timer execution side effects mismatch");
+}
+
+pub fn main() -> i32 {
+    test_wait_registry_timers();
+    println("g09_async_wait_registry_test PASSED!");
+    return 0;
+}
