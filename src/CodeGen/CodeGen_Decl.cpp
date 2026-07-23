@@ -627,9 +627,15 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::Value *initSuspendRes = m_Builder.CreateCall(suspFn, {initSaveToken, m_Builder.getInt1(false)});
 
       llvm::BasicBlock *initBodyBB = llvm::BasicBlock::Create(m_Context, "coro.init.body", f);
+      llvm::BasicBlock *initDestroyBB = llvm::BasicBlock::Create(m_Context, "coro.init.destroy", f);
+
       llvm::SwitchInst *initSw = m_Builder.CreateSwitch(initSuspendRes, m_CurrentCoroSuspendRetBB, 2);
       initSw->addCase(m_Builder.getInt8(0), initBodyBB);
-      initSw->addCase(m_Builder.getInt8(1), m_CurrentCoroCleanupBB);
+      initSw->addCase(m_Builder.getInt8(1), initDestroyBB);
+
+      m_Builder.SetInsertPoint(initDestroyBB);
+      executeScopeUnwinding(0);
+      m_Builder.CreateBr(m_CurrentCoroCleanupBB);
 
       m_Builder.SetInsertPoint(initBodyBB);
   }

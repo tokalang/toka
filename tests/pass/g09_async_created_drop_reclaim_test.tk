@@ -28,14 +28,12 @@ fn test_unstarted_created_drop() {
         auto ~res = new SharedResource(id = 77);
         auto h = unstarted_task_fixture(cede ~res);
     }
-    println("body_run_count: {}", body_run_count);
-    println("global_drop_count: {}", global_drop_count);
     assert(body_run_count == 0, "Unstarted task body executed!");
     assert(global_drop_count == 1, "Unstarted Created task handle drop failed to reclaim cede parameter!");
 }
 
 pub fn main() -> i32 {
     test_unstarted_created_drop();
-    println("repro_created_drop_fixture PASSED!");
+    println("g09_async_created_drop_reclaim_test PASSED!");
     return 0;
 }

@@ -1097,7 +1097,10 @@ void Sema::checkStmt(Stmt *S) {
           m_ExpectedWritability = Var->IsValueMutable;
       }
       m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
+      bool oldConsuming = m_IsConsumingEffect;
+      m_IsConsumingEffect = true;
       InitTypeObj = checkExpr(Var->Init.get(), declTargetTy);
+      m_IsConsumingEffect = oldConsuming;
       m_ExpectedWritability = oldExpectedWritability;
       InitType = InitTypeObj->toString();
       

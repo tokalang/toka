@@ -1,6 +1,6 @@
 # FZ-1 Async Suspension Closure & Cold-Task Execution Semantics
 
-Status: `Normative Baseline Frozen; Runtime Closure Pending`
+Status: `Phase 1 Async Suspension & Coroutine Lifetime Closure Complete`
 
 `FZ-1` freezes the existing Toka 1.0 async suspension boundary and cold-task execution lifecycle. It adds no syntax and does not broaden task handoff. The goal is to make the already public `fn -> async T`, `.await`, `.wait`, and `.start` model explicit, test-locked, and consistent with PAL, ownership, effects, and `.tki` replay.
 
@@ -33,7 +33,7 @@ Status: `Normative Baseline Frozen; Runtime Closure Pending`
 
 ## Task Handle Lifetime & Executor Shutdown
 
-1. **Unstarted Handle Drop (`Created` State)** (Runtime Closure Pending in Step 3):
+1. **Unstarted Handle Drop (`Created` State)** (Delivered & Verified in Step 3):
    - Dropping a `TaskHandle` in the `Created` state reclaims the coroutine frame and drops any frame-owned parameters (such as `cede` arguments).
    - Dropping an unstarted `TaskHandle` **NEVER** implicitly starts or schedules the task.
 
@@ -62,4 +62,4 @@ Status: `Normative Baseline Frozen; Runtime Closure Pending`
 - `tests/pass/g09_async_cold_task_semantics.tk` verifies cold creation side-effects (0 before start/block_on), non-inlined `.start` execution, idempotent `.start` calls, and side-effect execution upon `block_on` activation.
 - `tests/pass/g09_async_suspension_state.tk` proves frame-local borrow use across `.await`.
 - `tests/pass/g09_async_phase1_qualification_tests.tk` proves 20,000-deep await chain, timer bridge, and completion-before-registration.
-- `playground/repro_created_drop_fixture.tk` is a pending reproduction fixture (`PENDING / NOT EXECUTABLE: unstarted Created handle drop requires Step 3 runtime closure`).
+- `playground/repro_created_drop_fixture.tk` and `tests/pass/g09_async_created_drop_reclaim_test.tk` verify unstarted Created handle drop parameter reclamation without executing task body (`body_run_count == 0`, `global_drop_count == 1`).

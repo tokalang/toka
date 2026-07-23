@@ -639,9 +639,13 @@ static void toka_mutex_lock(toka_mutex_t *m) { pthread_mutex_lock(m); }
 static void toka_mutex_unlock(toka_mutex_t *m) { pthread_mutex_unlock(m); }
 #endif
 
+#define TOKA_RESULT_STATE_PENDING 0
+#define TOKA_RESULT_STATE_READYLIVE 1
+#define TOKA_RESULT_STATE_TAKEN 2
+
 // Promise Header layout matching LLVM CodeGen
 struct TokaPromiseHeader {
-    _Atomic uint8_t result_state;   // 0: Pending, 1: Ok, 2: Canceled/Err
+    _Atomic uint8_t result_state;   // 0: Pending, 1: ReadyLive, 2: Taken
     void *self_tcb;                 // TokaTCB*
     _Atomic uintptr_t continuation; // 0: None, 1: Completed, or (uintptr_t)(TokaTCB*)
 };
@@ -671,7 +675,8 @@ typedef struct TokaTCB {
 
 static void toka_task_try_release_owner(TokaTCB *tcb) {
     if (!tcb) return;
-    if (atomic_load(&tcb->detached) && atomic_load(&tcb->state) == TOKA_TCB_COMPLETED) {
+    uint32_t st = atomic_load(&tcb->state);
+    if (atomic_load(&tcb->detached) && (st == TOKA_TCB_COMPLETED || st == TOKA_TCB_CREATED)) {
         uint8_t expected = 0;
         if (atomic_compare_exchange_strong(&tcb->owner_released, &expected, 1)) {
             toka_task_release(tcb);
@@ -919,6 +924,9 @@ void toka_task_complete(void *promise_ptr) {
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
     TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
 
+    uint8_t expected_res = TOKA_RESULT_STATE_PENDING;
+    atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_READYLIVE, memory_order_release, memory_order_relaxed);
+
     if (tcb) {
         atomic_store(&tcb->state, TOKA_TCB_COMPLETED);
         toka_task_try_release_owner(tcb);
@@ -984,6 +992,16 @@ uint8_t toka_task_get_result_state(void *promise_ptr) {
     if (!promise_ptr) return 0;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
     return atomic_load_explicit(&hdr->result_state, memory_order_acquire);
+}
+
+int toka_task_take_result(void *promise_ptr) {
+    if (!promise_ptr) return 0;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    uint8_t expected = TOKA_RESULT_STATE_READYLIVE;
+    if (atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected, TOKA_RESULT_STATE_TAKEN, memory_order_acq_rel, memory_order_acquire)) {
+        return 1;
+    }
+    return 0;
 }
 
 static void destroy_coro_frame(void *frame) {
