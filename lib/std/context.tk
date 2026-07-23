@@ -164,6 +164,25 @@ impl Canceler {
         }
     }
 
+    pub fn err(self) -> Option<string> {
+        auto lock_res = self.state.lock()
+        match lock_res {
+            auto Result::Ok(&lock) => {
+                auto *val = lock.get_ref()
+                if val.canceled {
+                    match val.err {
+                        auto Option::Some(&err_str) => {
+                            return Option<string>::Some(err_str.clone())
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+        return Option<string>::None()
+    }
+
     pub fn clone(self#) -> Canceler
     effects: return <- self.state {
         return Canceler(~state = self.~state)

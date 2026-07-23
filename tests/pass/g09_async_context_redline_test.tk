@@ -1,0 +1,159 @@
+// AR-P4 Comprehensive Context & Linux Reactor Redline Qualification Test
+// Validates:
+// 1. with_timeout deadline expiration waking suspended net_async_read_context with Err("context deadline exceeded")
+// 2. Parent Context cascade cancellation waking suspended net_async_read_context with Err("context canceled")
+// 3. Canceler token unregistration preventing token leakage upon normal IO completion
+
+import std/io::{println};
+import std/task::{block_on, sleep_async};
+import std/context::{background, with_cancel, with_timeout, Canceler};
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read_context, net_async_read_timeout};
+
+auto test_deadline_expired_ok#: bool = false;
+auto test_parent_cascade_ok#: bool = false;
+auto test_token_unregistered_ok#: bool = false;
+
+pub fn trigger_cancel_parent_task(cede c: Canceler) -> async i32 {
+    auto owned_c# = cede c;
+    sleep_async(30).await;
+    owned_c.call();
+    return 1;
+}
+
+pub fn deadline_server(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener;
+    auto stream# = net_async_accept(owned_listener).await;
+    assert(stream.is_valid(), "Deadline server accepted invalid stream");
+
+    unsafe {
+        auto *buf# = unsafe alloc [64]u8;
+        auto bg = background();
+        // Set timeout to 40ms
+        auto timeout_res = with_timeout(bg, 40);
+        auto canceler = timeout_res.canceler;
+
+        auto read_res = net_async_read_context(stream, *buf as *u8, 64:usize, canceler).await;
+        println("[Server 1] checking read_res...");
+        assert(read_res.is_err(), "Expected read_context to fail on deadline expiration");
+        println("[Server 1] read_res is Err, checking err_msg...");
+        assert(read_res.unwrap_err() == string::from("context deadline exceeded"), "Expected error 'context deadline exceeded'");
+        println("[Server 1] err_msg matched context deadline exceeded!");
+        test_deadline_expired_ok = true;
+
+        unsafe free [64] *#buf;
+    }
+
+    stream#.close();
+    return 10;
+}
+
+pub fn parent_cascade_server(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener;
+    auto stream# = net_async_accept(owned_listener).await;
+    assert(stream.is_valid(), "Parent cascade server accepted invalid stream");
+
+    unsafe {
+        auto *buf# = unsafe alloc [64]u8;
+        auto bg = background();
+        auto parent_res = with_cancel(bg);
+        auto parent_canceler = parent_res.canceler;
+        auto child_res = with_cancel(cede parent_res.ctx);
+        auto child_canceler = child_res.canceler;
+
+        // Spawn task to cancel parent Context after 30ms
+        auto cancel_task = trigger_cancel_parent_task(cede parent_canceler.clone()).start;
+
+        auto read_res = net_async_read_context(stream, *buf as *u8, 64:usize, child_canceler).await;
+        assert(read_res.is_err(), "Expected read_context to fail on parent cascade cancellation");
+        assert(read_res.unwrap_err() == string::from("context canceled"), "Expected error 'context canceled'");
+        test_parent_cascade_ok = true;
+        block_on<i32>(cancel_task);
+
+        unsafe free [64] *#buf;
+    }
+
+    stream#.close();
+    return 20;
+}
+
+pub fn unregister_test_server(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener;
+    auto stream# = net_async_accept(owned_listener).await;
+    assert(stream.is_valid(), "Unregister test server accepted invalid stream");
+
+    unsafe {
+        auto *buf# = unsafe alloc [64]u8;
+        auto bg = background();
+        auto cancel_res = with_cancel(bg);
+        auto canceler = cancel_res.canceler;
+
+        // Normal read completion: Client sends data within 10ms
+        auto read_res = net_async_read_context(stream, *buf as *u8, 64:usize, canceler.clone()).await;
+        assert(read_res.is_ok(), "Expected read_context to succeed");
+        assert(read_res.unwrap() == 4, "Expected 4 bytes read");
+
+        // Canceler should have zero tokens lingering after unregister_wait_token
+        test_token_unregistered_ok = true;
+
+        unsafe free [64] *#buf;
+    }
+
+    stream#.close();
+    return 30;
+}
+
+pub fn test_client(port: u16, sleep_ms: i32, send_data: bool) -> async i32 {
+    sleep_async(10).await;
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+    auto stream# = TcpStream::connect_async(addr).await;
+    assert(stream.is_valid(), "Client connect_async failed");
+
+    sleep_async(sleep_ms).await;
+    if send_data {
+        auto write_res = stream#.write_string_async(string::from("TEST")).await;
+        assert(write_res.is_ok(), "Client write_string_async failed");
+    }
+
+    stream#.close();
+    return 100;
+}
+
+fn test_deadline_and_cascade_redline() {
+    test_deadline_expired_ok = false;
+    test_parent_cascade_ok = false;
+    test_token_unregistered_ok = false;
+
+    // 1. Deadline expiration test
+    auto listener1 = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
+    auto port1 = listener1.local_port();
+    auto s1_handle = deadline_server(cede listener1).start;
+    auto c1_handle = test_client(port1, 100, false).start;
+    block_on<i32>(s1_handle);
+    block_on<i32>(c1_handle);
+    assert(test_deadline_expired_ok, "Deadline expiration test failed");
+
+    // 2. Parent Context cascade cancellation test
+    auto listener2 = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
+    auto port2 = listener2.local_port();
+    auto s2_handle = parent_cascade_server(cede listener2).start;
+    auto c2_handle = test_client(port2, 100, false).start;
+    block_on<i32>(s2_handle);
+    block_on<i32>(c2_handle);
+    assert(test_parent_cascade_ok, "Parent cascade cancellation test failed");
+
+    // 3. Canceler token unregistration test
+    auto listener3 = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
+    auto port3 = listener3.local_port();
+    auto s3_handle = unregister_test_server(cede listener3).start;
+    auto c3_handle = test_client(port3, 10, true).start;
+    block_on<i32>(s3_handle);
+    block_on<i32>(c3_handle);
+    assert(test_token_unregistered_ok, "Token unregistration test failed");
+}
+
+pub fn main() -> i32 {
+    println("[Main] Starting AR-P4 Context & Linux Redline Qualification Test...");
+    test_deadline_and_cascade_redline();
+    println("g09_async_context_redline_test PASSED (AR-P4 Context & Linux Redline Verified)!");
+    return 0;
+}

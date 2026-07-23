@@ -1628,7 +1628,7 @@ int toka_linux_epoll_wait(int epfd, int timeout_ms, uint64_t *out_keys, int max_
 
     toka_mutex_lock(&g_rt_mutex);
     int out_count = 0;
-    for (int i = 0; i < n && out_count < max_events; ++i) {
+    for (int i = 0; i < n; ++i) {
         int fd = (int)events_buf[i].data.u64;
         uint32_t ev_mask = events_buf[i].events;
 

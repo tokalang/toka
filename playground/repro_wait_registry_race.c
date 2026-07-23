@@ -36,7 +36,7 @@ int main(void) {
     printf("Starting 20,000-iteration WaitRegistry Concurrency Probe...\n");
 
     for (int iter = 1; iter <= 20000; iter++) {
-        void *dummy_frame = malloc(128);
+        void *dummy_frame = calloc(1, 128);
         void *tcb = toka_task_create(dummy_frame, NULL);
         toka_task_start(tcb);
 
@@ -84,15 +84,16 @@ int main(void) {
         int old_wake = toka_wait_registry_try_wake(wait_id, slot_gen);
         assert(old_wake == 0);
 
-        // Pop the scheduled task from ready queue to clean up ref_count
+        // Clean up ready queue references and owner reference
         uint64_t final_id = 0, final_gen = 0;
         void *final_tcb = NULL;
         int final_popped = toka_task_pop_ready(&final_id, &final_gen, &final_tcb);
         if (final_popped) {
-            toka_task_release(final_tcb);
+            toka_task_release(final_tcb); // Release ready queue ref
         }
-        toka_task_release(popped_tcb);
-        free(dummy_frame);
+        toka_task_release(popped_tcb);   // Release pop_ready ref
+        toka_task_release(tcb);          // Release owner ref (triggers unregister_frame_map & free)
+        free(dummy_frame);               // Safely free zero-initialized frame memory
     }
 
     printf("PASSED 20,000/20,000 iterations! WaitRegistry Stale Token Rejection & Winner CAS verified!\n");

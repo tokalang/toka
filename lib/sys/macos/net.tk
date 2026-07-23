@@ -369,3 +369,6 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
         return n
     }
 }
+
+pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
+}
