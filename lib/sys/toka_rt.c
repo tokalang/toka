@@ -693,23 +693,67 @@ typedef struct {
 
 void toka_task_release(void *tcb_ptr);
 
-#define TOKA_MAX_TASKS 65536
-#define TOKA_MAX_READY 65536
-
 static toka_mutex_t g_rt_mutex = TOKA_MUTEX_INIT;
 static _Atomic uint64_t g_next_task_id = 1;
 
-static TokaScheduledItem g_ready_queue[TOKA_MAX_READY];
+static TokaScheduledItem *g_ready_queue = NULL;
+static size_t g_ready_capacity = 0;
 static size_t g_ready_head = 0;
 static size_t g_ready_tail = 0;
 static size_t g_ready_count = 0;
+
+static void ensure_ready_queue_capacity_locked(void) {
+    if (g_ready_queue == NULL) {
+        g_ready_capacity = 256;
+        g_ready_queue = (TokaScheduledItem*)calloc(g_ready_capacity, sizeof(TokaScheduledItem));
+        g_ready_head = 0;
+        g_ready_tail = 0;
+        g_ready_count = 0;
+    } else if (g_ready_count == g_ready_capacity) {
+        size_t new_capacity = g_ready_capacity * 2;
+        TokaScheduledItem *new_queue = (TokaScheduledItem*)calloc(new_capacity, sizeof(TokaScheduledItem));
+        for (size_t i = 0; i < g_ready_count; ++i) {
+            new_queue[i] = g_ready_queue[(g_ready_head + i) % g_ready_capacity];
+        }
+        free(g_ready_queue);
+        g_ready_queue = new_queue;
+        g_ready_head = 0;
+        g_ready_tail = g_ready_count;
+        g_ready_capacity = new_capacity;
+    }
+}
+
+static void push_ready_queue_locked(uint64_t task_id, uint64_t gen, TokaTCB *tcb) {
+    ensure_ready_queue_capacity_locked();
+    atomic_fetch_add(&tcb->ref_count, 1);
+    g_ready_queue[g_ready_tail].task_id = task_id;
+    g_ready_queue[g_ready_tail].task_schedule_generation = gen;
+    g_ready_queue[g_ready_tail].tcb = tcb;
+    g_ready_tail = (g_ready_tail + 1) % g_ready_capacity;
+    g_ready_count++;
+}
+
+uint32_t toka_ready_queue_capacity(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t cap = (uint32_t)g_ready_capacity;
+    toka_mutex_unlock(&g_rt_mutex);
+    return cap;
+}
+
+uint32_t toka_ready_queue_count(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t cnt = (uint32_t)g_ready_count;
+    toka_mutex_unlock(&g_rt_mutex);
+    return cnt;
+}
 
 typedef struct {
     void *frame;
     TokaTCB *tcb;
 } TokaFrameMapEntry;
 
-static TokaFrameMapEntry g_frame_map[TOKA_MAX_TASKS];
+static TokaFrameMapEntry *g_frame_map = NULL;
+static size_t g_frame_map_capacity = 0;
 static size_t g_frame_map_count = 0;
 
 static void register_frame_map(void *frame, TokaTCB *tcb) {
@@ -722,7 +766,18 @@ static void register_frame_map(void *frame, TokaTCB *tcb) {
             return;
         }
     }
-    if (g_frame_map_count < TOKA_MAX_TASKS) {
+    if (g_frame_map == NULL) {
+        g_frame_map_capacity = 256;
+        g_frame_map = (TokaFrameMapEntry*)calloc(g_frame_map_capacity, sizeof(TokaFrameMapEntry));
+    } else if (g_frame_map_count == g_frame_map_capacity) {
+        size_t new_cap = g_frame_map_capacity * 2;
+        TokaFrameMapEntry *new_map = (TokaFrameMapEntry*)realloc(g_frame_map, new_cap * sizeof(TokaFrameMapEntry));
+        if (new_map) {
+            g_frame_map = new_map;
+            g_frame_map_capacity = new_cap;
+        }
+    }
+    if (g_frame_map_count < g_frame_map_capacity) {
         g_frame_map[g_frame_map_count].frame = frame;
         g_frame_map[g_frame_map_count].tcb = tcb;
         g_frame_map_count++;
@@ -797,19 +852,9 @@ int toka_task_start(void *tcb_ptr) {
         atomic_store(&tcb->task_schedule_generation, 1);
 
         toka_mutex_lock(&g_rt_mutex);
-        if (g_ready_count < TOKA_MAX_READY) {
-            atomic_fetch_add(&tcb->ref_count, 1);
-            g_ready_queue[g_ready_tail].task_id = tcb->id;
-            g_ready_queue[g_ready_tail].task_schedule_generation = 1;
-            g_ready_queue[g_ready_tail].tcb = tcb;
-            g_ready_tail = (g_ready_tail + 1) % TOKA_MAX_READY;
-            g_ready_count++;
-            toka_mutex_unlock(&g_rt_mutex);
-            return 1;
-        }
-        atomic_store(&tcb->state, TOKA_TCB_CREATED);
+        push_ready_queue_locked(tcb->id, 1, tcb);
         toka_mutex_unlock(&g_rt_mutex);
-        return 0;
+        return 1;
     }
     return 0;
 }
@@ -864,21 +909,10 @@ int toka_task_try_schedule(uint64_t task_id, uint64_t gen) {
     uint32_t expected = TOKA_TCB_SUSPENDED;
     if (atomic_compare_exchange_strong(&target_tcb->state, &expected, TOKA_TCB_QUEUED)) {
         toka_mutex_lock(&g_rt_mutex);
-        if (g_ready_count < TOKA_MAX_READY) {
-            atomic_fetch_add(&target_tcb->ref_count, 1);
-            g_ready_queue[g_ready_tail].task_id = target_tcb->id;
-            g_ready_queue[g_ready_tail].task_schedule_generation = gen;
-            g_ready_queue[g_ready_tail].tcb = target_tcb;
-            g_ready_tail = (g_ready_tail + 1) % TOKA_MAX_READY;
-            g_ready_count++;
-            toka_mutex_unlock(&g_rt_mutex);
-            toka_task_release(target_tcb);
-            return 1; // Scheduled
-        }
-        atomic_store(&target_tcb->state, TOKA_TCB_SUSPENDED);
+        push_ready_queue_locked(target_tcb->id, gen, target_tcb);
         toka_mutex_unlock(&g_rt_mutex);
         toka_task_release(target_tcb);
-        return -1; // Queue Full: Retry
+        return 1; // Scheduled
     }
     toka_task_release(target_tcb);
     return 0; // Stale
@@ -895,30 +929,27 @@ int toka_task_schedule_frame_compat(void *frame) {
 int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb_ptr) {
     while (1) {
         toka_mutex_lock(&g_rt_mutex);
-        if (g_ready_count == 0) {
+        if (g_ready_count == 0 || g_ready_queue == NULL) {
             toka_mutex_unlock(&g_rt_mutex);
             return 0;
         }
 
         TokaScheduledItem item = g_ready_queue[g_ready_head];
-        g_ready_head = (g_ready_head + 1) % TOKA_MAX_READY;
+        g_ready_head = (g_ready_head + 1) % g_ready_capacity;
         g_ready_count--;
         toka_mutex_unlock(&g_rt_mutex);
 
         if (!item.tcb) continue;
 
         uint32_t expected = TOKA_TCB_QUEUED;
-        if (!atomic_compare_exchange_strong(&item.tcb->state, &expected, TOKA_TCB_RUNNING)) {
-            toka_task_release(item.tcb);
-            continue; // Stale item, continue loop
+        if (atomic_compare_exchange_strong(&item.tcb->state, &expected, TOKA_TCB_RUNNING)) {
+            if (out_task_id) *out_task_id = item.task_id;
+            if (out_gen) *out_gen = item.task_schedule_generation;
+            if (out_tcb_ptr) *out_tcb_ptr = item.tcb;
+            return 1;
         }
 
-        if (out_task_id) *out_task_id = item.task_id;
-        if (out_gen) *out_gen = item.task_schedule_generation;
-        if (out_tcb_ptr) *out_tcb_ptr = item.tcb;
-
-        // Transfer Ready Queue Ref to Executor Ref (DO NOT call release here!)
-        return 1;
+        toka_task_release(item.tcb);
     }
 }
 

@@ -1,0 +1,39 @@
+import std/io::{println};
+import std/task::{block_on, detach_forget, sleep_async};
+import core/task as core_task;
+
+auto g_completed_count#: i32 = 0;
+
+fn async_batch_worker(id: i32) -> async i32 {
+    g_completed_count = g_completed_count + 1;
+    return id;
+}
+
+fn test_ready_queue_auto_expansion() {
+    g_completed_count = 0;
+    auto initial_cap = core_task::toka_ready_queue_capacity();
+    println("Initial Ready Queue Capacity: {}", initial_cap);
+
+    // Enqueue 2,000 tasks concurrently to trigger multiple ring-buffer expansions (256 -> 512 -> 1024 -> 2048 -> 4096)
+    auto i# = 0;
+    loop i < 2000 {
+        detach_forget<i32>(cede async_batch_worker(i).start);
+        i += 1;
+    }
+
+    auto expanded_cap = core_task::toka_ready_queue_capacity();
+    println("Expanded Ready Queue Capacity: {}", expanded_cap);
+    assert(expanded_cap >= 2000:u32, "Ready Queue failed to auto-expand to accommodate 2,000 tasks!");
+
+    // Run root task to drain all detached tasks
+    auto root = async_batch_worker(9999).start;
+    block_on<i32>(root);
+
+    assert(g_completed_count == 2001, "Not all 2,000 detached tasks completed during executor drain!");
+}
+
+pub fn main() -> i32 {
+    test_ready_queue_auto_expansion();
+    println("g09_async_ready_queue_expansion_test PASSED!");
+    return 0;
+}

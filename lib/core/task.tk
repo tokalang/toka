@@ -22,6 +22,8 @@ extern fn toka_task_prepare_suspend(*coro_frame: void, *out_id: u64, *out_gen: u
 extern fn toka_task_publish_result_state(*promise: void, state: u8) -> void
 extern fn toka_task_get_result_state(*promise: void) -> u8
 extern fn toka_task_active_detached_count() -> u32
+extern fn toka_ready_queue_capacity() -> u32
+extern fn toka_ready_queue_count() -> u32
 
 // Hook for standard library scheduler to mark task as detached
 pub fn __toka_detach_task(*handle: void) {

@@ -27,7 +27,6 @@ Toka Phase 1 establishes the unified async parameter ownership ABI, lazy cold-ta
 - Runtime executor tracks active detached tasks (`g_active_detached_task_count`).
 - `block_on` continues pumping ready queue, timers, and reactor events until all runtime-owned detached tasks complete before shutting down.
 
----
-
-## Target Semantics (Pending Runtime Closure in Step 5-6)
-- **Ready Queue Saturation Protection**: Dynamic ring-queue auto-expansion (Step 5).
+### 6. Ready Queue Saturation Protection & Auto-Expansion (Step 5)
+- Dynamic ring-buffer ready queue auto-expands (256 -> 512 -> 1024 -> ...) under `g_rt_mutex`.
+- Dynamic frame map auto-expands to prevent TCB map lookup saturation under heavy concurrency.
