@@ -656,7 +656,8 @@ typedef enum {
     TOKA_TCB_SUSPENDED = 2,
     TOKA_TCB_QUEUED = 3,
     TOKA_TCB_COMPLETED = 4,
-    TOKA_TCB_PREPARING = 5
+    TOKA_TCB_PREPARING = 5,
+    TOKA_TCB_PREPARING_WITH_PENDING_WAKE = 6
 } TokaTCBState;
 
 typedef struct TokaTCB TokaTCB;
@@ -669,7 +670,6 @@ typedef struct TokaTCB {
     _Atomic uint64_t task_schedule_generation;
     _Atomic uint32_t state;
     _Atomic uint8_t cancel_requested;
-    _Atomic uint8_t pending_wake;
     _Atomic uint32_t ref_count;
     _Atomic uint8_t detached;
     _Atomic uint8_t detached_counted;
@@ -847,7 +847,6 @@ void* toka_task_create(void *coro_frame, void *promise) {
     atomic_store(&tcb->task_schedule_generation, 0);
     atomic_store(&tcb->state, TOKA_TCB_CREATED);
     atomic_store(&tcb->cancel_requested, 0);
-    atomic_store(&tcb->pending_wake, 0);
     atomic_store(&tcb->ref_count, 1);
     atomic_store(&tcb->detached, 0);
     atomic_store(&tcb->detached_counted, 0);
@@ -900,7 +899,6 @@ int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id, uint64_t 
 
     uint32_t expected = TOKA_TCB_RUNNING;
     if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_PREPARING)) {
-        atomic_store(&tcb->pending_wake, 0);
         uint64_t new_gen = atomic_fetch_add(&tcb->task_schedule_generation, 1) + 1;
         if (out_task_id) *out_task_id = tcb->id;
         if (out_gen) *out_gen = new_gen;
@@ -915,24 +913,30 @@ int toka_task_commit_suspend(void *coro_frame) {
     TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
     if (!tcb) return 0;
 
-    uint32_t expected_preparing = TOKA_TCB_PREPARING;
-    if (!atomic_compare_exchange_strong(&tcb->state, &expected_preparing, TOKA_TCB_SUSPENDED)) {
+    while (1) {
+        uint32_t st = atomic_load(&tcb->state);
+        if (st == TOKA_TCB_PREPARING) {
+            uint32_t expected = TOKA_TCB_PREPARING;
+            if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_SUSPENDED)) {
+                toka_task_release(tcb);
+                return 1; // Committed to SUSPENDED
+            }
+            continue;
+        }
+        if (st == TOKA_TCB_PREPARING_WITH_PENDING_WAKE) {
+            uint32_t expected = TOKA_TCB_PREPARING_WITH_PENDING_WAKE;
+            if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
+                toka_mutex_lock(&g_rt_mutex);
+                push_ready_queue_locked(tcb->id, atomic_load(&tcb->task_schedule_generation), tcb);
+                toka_mutex_unlock(&g_rt_mutex);
+                toka_task_release(tcb);
+                return 1; // Immediately enqueued due to pending wake
+            }
+            continue;
+        }
         toka_task_release(tcb);
         return 0;
     }
-
-    uint8_t was_pending = atomic_exchange(&tcb->pending_wake, 0);
-    if (was_pending) {
-        uint32_t expected_suspended = TOKA_TCB_SUSPENDED;
-        if (atomic_compare_exchange_strong(&tcb->state, &expected_suspended, TOKA_TCB_QUEUED)) {
-            toka_mutex_lock(&g_rt_mutex);
-            push_ready_queue_locked(tcb->id, atomic_load(&tcb->task_schedule_generation), tcb);
-            toka_mutex_unlock(&g_rt_mutex);
-        }
-    }
-
-    toka_task_release(tcb);
-    return 1;
 }
 
 int toka_task_try_schedule(uint64_t task_id, uint64_t gen) {
@@ -954,23 +958,34 @@ int toka_task_try_schedule(uint64_t task_id, uint64_t gen) {
         return 0; // Stale: Generation mismatch
     }
 
-    uint32_t current_state = atomic_load(&target_tcb->state);
-    if (current_state == TOKA_TCB_PREPARING) {
-        atomic_store(&target_tcb->pending_wake, 1);
+    while (1) {
+        uint32_t st = atomic_load(&target_tcb->state);
+        if (st == TOKA_TCB_PREPARING) {
+            uint32_t expected = TOKA_TCB_PREPARING;
+            if (atomic_compare_exchange_strong(&target_tcb->state, &expected, TOKA_TCB_PREPARING_WITH_PENDING_WAKE)) {
+                toka_task_release(target_tcb);
+                return 1; // Atomic pending wake set
+            }
+            continue;
+        }
+        if (st == TOKA_TCB_PREPARING_WITH_PENDING_WAKE) {
+            toka_task_release(target_tcb);
+            return 1; // Already pending wake
+        }
+        if (st == TOKA_TCB_SUSPENDED) {
+            uint32_t expected = TOKA_TCB_SUSPENDED;
+            if (atomic_compare_exchange_strong(&target_tcb->state, &expected, TOKA_TCB_QUEUED)) {
+                toka_mutex_lock(&g_rt_mutex);
+                push_ready_queue_locked(target_tcb->id, gen, target_tcb);
+                toka_mutex_unlock(&g_rt_mutex);
+                toka_task_release(target_tcb);
+                return 1; // Scheduled
+            }
+            continue;
+        }
         toka_task_release(target_tcb);
-        return 1;
+        return 0;
     }
-
-    uint32_t expected = TOKA_TCB_SUSPENDED;
-    if (atomic_compare_exchange_strong(&target_tcb->state, &expected, TOKA_TCB_QUEUED)) {
-        toka_mutex_lock(&g_rt_mutex);
-        push_ready_queue_locked(target_tcb->id, gen, target_tcb);
-        toka_mutex_unlock(&g_rt_mutex);
-        toka_task_release(target_tcb);
-        return 1; // Scheduled
-    }
-    toka_task_release(target_tcb);
-    return 0; // Stale
 }
 
 int toka_task_schedule_frame_compat(void *frame) {
