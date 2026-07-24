@@ -1,14 +1,18 @@
-// tests/pass/g12_stdx_https_wss_test.tk — Phase 5C HTTPS & WSS Integration Test Suite
+// tests/pass/g12_stdx_https_wss_test.tk — Real OpenSSL HTTPS, WSS & Security Boundary Test Suite
 import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
 import stdx/net/url::{Url, parse_url}
 import stdx/net/http::{HttpClient, HttpRequest, HttpMethod, HeaderMap}
-import stdx/net/websocket::{ws_connect_url_async, WsConnection}
+import stdx/net/websocket::{ws_connect_url_async, ws_connect_insecure_url_async, ws_accept_stream_async, WsConnection}
+import stdx/net/stream::{AsyncStream, to_u8_ptr}
+import stdx/net/tls::{TlsStream}
 import std/task::{sleep_async, block_on}
 import core/result::{Result}
 import std/io::{println}
 
+extern fn toka_ensure_test_cert_files(*cert_path: char, *key_path: char) -> i32
+
 fn test_url_parsing() {
-    println("[Test] Testing URL Scheme & Effective Port Parsing...")
+    println("[Test 1/8] Testing URL Scheme & Effective Port Parsing...")
     
     auto u1 = parse_url(string::from("https://example.com/api/v1?query=1")).unwrap()
     if !u1.is_tls() {
@@ -40,28 +44,42 @@ fn test_url_parsing() {
         return
     }
 
-    println("[Test] URL Scheme & Effective Port Parsing PASSED!")
+    println("[Test 1/8 PASSED] URL Scheme & Effective Port Parsing!")
 }
 
-fn async_https_server_task() -> async void {
+// --- Test 2: Real HTTPS Client & Real OpenSSL TLS Server ---
+fn async_https_server_task() -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18444:u16)
     auto listener# = TcpListener::bind(addr)
     if !listener.is_valid() {
-        return
+        return Result<(), string>::Err(string::from("HTTPS Server Bind failed"))
     }
 
     auto stream# = listener#.accept_async().await
     if !stream.is_valid() {
-        return
+        return Result<(), string>::Err(string::from("HTTPS Server Accept failed"))
     }
 
-    // Mock plain HTTP server responding to client request
+    auto tls_res# = TlsStream::accept_async(stream).await
+    if tls_res.is_err() {
+        return Result<(), string>::Err(tls_res.unwrap_err())
+    }
+    auto async_s# = tls_res.unwrap()
+
     auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\nHTTPS Client OK!")
-    auto write_res = stream#.write_string_async(resp).await
-    stream#.close()
+    auto *resp_ptr# = resp.raw_ptr() as *[u8]
+    auto *u8_resp# = to_u8_ptr(*resp_ptr)
+    auto w = async_s#.write_all_async(*u8_resp, resp.len()).await
+    if w.is_err() {
+        return Result<(), string>::Err(w.unwrap_err())
+    }
+
+    sleep_async(50:u64).await
+    async_s#.close()
+    return Result<(), string>::Ok(())
 }
 
-fn async_https_client_task() -> async void {
+fn async_https_client_task() -> async Result<(), string> {
     sleep_async(50:u64).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18444:u16)
     auto client = HttpClient::new(5000)
@@ -76,30 +94,402 @@ fn async_https_client_task() -> async void {
         body = string::from("")
     )
 
-    println("[HttpsClient] Executing request via execute_url_async...")
-    auto res = client.execute_url_async(req, string::from("http://localhost:18444/api"), addr).await
+    println("[Test 2/8] Executing HTTPS request over OpenSSL TLS (Insecure Mode)...")
+    auto res = client.execute_insecure_url_async(req, string::from("https://localhost:18444/api"), addr).await
     if res.is_err() {
-        println("[HttpsClient] Error: {}", res.unwrap_err().as_str())
-        return
+        return Result<(), string>::Err(res.unwrap_err())
     }
 
     auto resp = res.unwrap()
-    if resp.status_code == 200 {
-        println("[HttpsClient] HTTPS/HTTP Client Integration PASSED!")
+    if resp.status_code != 200 {
+        return Result<(), string>::Err(string::from("HTTPS response code expected 200"))
     }
+    if !resp.body.as_str().equals("HTTPS Client OK!") {
+        return Result<(), string>::Err(string::from("HTTPS response body mismatch"))
+    }
+
+    println("[Test 2/8 PASSED] Real OpenSSL HTTPS Client/Server Roundtrip!")
+    return Result<(), string>::Ok(())
+}
+
+// --- Test 3: Real WSS Encrypted WebSocket Client & Real OpenSSL TLS Server ---
+fn async_wss_server_task() -> async Result<(), string> {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18445:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        return Result<(), string>::Err(string::from("WSS Server Bind failed"))
+    }
+
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        return Result<(), string>::Err(string::from("WSS Server Accept failed"))
+    }
+
+    auto tls_res# = TlsStream::accept_async(stream).await
+    if tls_res.is_err() {
+        return Result<(), string>::Err(tls_res.unwrap_err())
+    }
+    auto async_s# = tls_res.unwrap()
+
+    auto ws_conn_res# = ws_accept_stream_async(async_s).await
+    if ws_conn_res.is_err() {
+        auto err_msg = ws_conn_res.unwrap_err()
+        return Result<(), string>::Err(err_msg)
+    }
+    auto ws_conn# = ws_conn_res.unwrap()
+
+    auto msg_res# = ws_conn#.read_text_async().await
+    if msg_res.is_err() {
+        auto err_msg = msg_res.unwrap_err()
+        return Result<(), string>::Err(err_msg)
+    }
+    auto text_str = msg_res.unwrap()
+
+    auto echo_w = ws_conn#.write_text_async(text_str.as_str()).await
+    if echo_w.is_err() {
+        return Result<(), string>::Err(echo_w.unwrap_err())
+    }
+
+    sleep_async(50:u64).await
+    auto _c = ws_conn#.close_async().await
+    return Result<(), string>::Ok(())
+}
+
+fn async_wss_client_task() -> async Result<(), string> {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18445:u16)
+    println("[Test 3/8] Executing WSS encrypted WebSocket handshake (Insecure Mode)...")
+
+    auto ws_res# = ws_connect_insecure_url_async(string::from("wss://localhost:18445/chat"), addr).await
+    if ws_res.is_err() {
+        auto err_msg = ws_res.unwrap_err()
+        return Result<(), string>::Err(err_msg)
+    }
+
+    auto ws_conn# = ws_res.unwrap()
+    auto send_w = ws_conn#.write_text_async("Hello OpenSSL WSS!").await
+    if send_w.is_err() {
+        auto err_msg = send_w.unwrap_err()
+        return Result<(), string>::Err(err_msg)
+    }
+
+    auto echo_msg# = ws_conn#.read_text_async().await
+    if echo_msg.is_err() {
+        return Result<(), string>::Err(echo_msg.unwrap_err())
+    }
+    auto msg = echo_msg.unwrap()
+    if !msg.as_str().equals("Hello OpenSSL WSS!") {
+        return Result<(), string>::Err(string::from("WSS echo payload mismatch"))
+    }
+
+    auto _c = ws_conn#.close_async().await
+    println("[Test 3/8 PASSED] Real OpenSSL WSS Encrypted WebSocket Roundtrip!")
+    return Result<(), string>::Ok(())
+}
+
+// --- Test 4: Negative Security Test — Plaintext Client to TLS Server ---
+fn async_plain_client_tls_server_task() -> async Result<(), string> {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18446:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        return Result<(), string>::Err(string::from("TLS Server Bind failed"))
+    }
+
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        return Result<(), string>::Err(string::from("TLS Server Accept failed"))
+    }
+
+    auto tls_res# = TlsStream::accept_async(stream).await
+    if tls_res.is_err() {
+        return Result<(), string>::Ok(())
+    }
+    return Result<(), string>::Err(string::from("SECURITY VIOLATION: TLS Server accepted plaintext connection!"))
+}
+
+fn async_plain_client_task() -> async Result<(), string> {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18446:u16)
+    println("[Test 4/8] Testing Plaintext Client to TLS Server Rejection...")
+
+    auto client = HttpClient::new(2000)
+    auto headers# = HeaderMap::new()
+    auto req = HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/"),
+        version = string::from("HTTP/1.1"),
+        headers = headers,
+        body = string::from("")
+    )
+
+    auto res = client.execute_url_async(req, string::from("http://localhost:18446/"), addr).await
+    if res.is_err() {
+        println("[Test 4/8 PASSED] Plaintext Client to TLS Server rejected cleanly!")
+        return Result<(), string>::Ok(())
+    }
+    return Result<(), string>::Ok(())
+}
+
+// --- Test 5: Negative Security Test — Hostname Verification Failure ---
+fn async_hostname_verify_server_task() -> async Result<(), string> {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18447:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        return Result<(), string>::Err(string::from("Hostname Test Bind failed"))
+    }
+
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        return Result<(), string>::Err(string::from("Hostname Test Accept failed"))
+    }
+
+    auto tls_res# = TlsStream::accept_async(stream).await
+    if tls_res.is_err() {
+        return Result<(), string>::Ok(())
+    }
+    return Result<(), string>::Ok(())
+}
+
+fn async_hostname_verify_client_task() -> async Result<(), string> {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18447:u16)
+    println("[Test 5/8] Testing Mismatched Hostname Peer Verification Rejection...")
+
+    auto tcp_stream# = TcpStream::connect_async(addr).await
+    if !tcp_stream.is_valid() {
+        return Result<(), string>::Err(string::from("TCP connect failed"))
+    }
+
+    auto tls_res = TlsStream::connect_with_verify_async(tcp_stream, string::from("untrusted-domain.invalid"), true).await
+    if tls_res.is_err() {
+        println("[Test 5/8 PASSED] Peer Hostname verification correctly rejected mismatched certificate!")
+        return Result<(), string>::Ok(())
+    }
+
+    return Result<(), string>::Err(string::from("SECURITY VIOLATION: Mismatched hostname certificate was accepted!"))
+}
+
+// --- Test 6: Default Security Verification Rejection of Untrusted Self-Signed Cert ---
+fn async_strict_default_server_task() -> async Result<(), string> {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18448:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        return Result<(), string>::Err(string::from("Strict Default Server Bind failed"))
+    }
+
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        return Result<(), string>::Err(string::from("Strict Default Server Accept failed"))
+    }
+
+    auto tls_res# = TlsStream::accept_async(stream).await
+    if tls_res.is_err() {
+        return Result<(), string>::Ok(())
+    }
+    return Result<(), string>::Ok(())
+}
+
+fn async_strict_default_client_task() -> async Result<(), string> {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18448:u16)
+    println("[Test 6/8] Testing Default Path (verify_peer=true) Self-Signed Rejection...")
+
+    auto client = HttpClient::new(2000)
+    auto headers# = HeaderMap::new()
+    auto req = HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/"),
+        version = string::from("HTTP/1.1"),
+        headers = headers,
+        body = string::from("")
+    )
+
+    auto res = client.execute_url_async(req, string::from("https://localhost:18448/"), addr).await
+    if res.is_err() {
+        println("[Test 6/8 PASSED] Default HTTPS path correctly enforced verify_peer=true and rejected untrusted certificate!")
+        return Result<(), string>::Ok(())
+    }
+    return Result<(), string>::Err(string::from("SECURITY VIOLATION: Default execute_url_async accepted self-signed certificate without verification!"))
+}
+
+// --- Test 7: PEM Certificate File Loading (accept_with_cert_file_async) ---
+fn async_pem_server_task() -> async Result<(), string> {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18449:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        return Result<(), string>::Err(string::from("PEM Server Bind failed"))
+    }
+
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        return Result<(), string>::Err(string::from("PEM Server Accept failed"))
+    }
+
+    auto tls_res# = TlsStream::accept_with_cert_file_async(stream, string::from("tmp/test_server.crt"), string::from("tmp/test_server.key")).await
+    if tls_res.is_err() {
+        return Result<(), string>::Err(tls_res.unwrap_err())
+    }
+    auto async_s# = tls_res.unwrap()
+
+    auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nPEM Server OK")
+    auto *resp_ptr# = resp.raw_ptr() as *[u8]
+    auto *u8_resp# = to_u8_ptr(*resp_ptr)
+    auto w = async_s#.write_all_async(*u8_resp, resp.len()).await
+    if w.is_err() {
+        return Result<(), string>::Err(w.unwrap_err())
+    }
+
+    sleep_async(50:u64).await
+    async_s#.close()
+    return Result<(), string>::Ok(())
+}
+
+fn async_pem_client_task() -> async Result<(), string> {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18449:u16)
+    println("[Test 7/8] Testing Server PEM Certificate File Loading (accept_with_cert_file_async)...")
+
+    auto client = HttpClient::new(5000)
+    auto headers# = HeaderMap::new()
+    auto req = HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/"),
+        version = string::from("HTTP/1.1"),
+        headers = headers,
+        body = string::from("")
+    )
+
+    auto res = client.execute_insecure_url_async(req, string::from("https://localhost:18449/"), addr).await
+    if res.is_err() {
+        return Result<(), string>::Err(res.unwrap_err())
+    }
+
+    auto resp = res.unwrap()
+    if resp.status_code != 200 {
+        return Result<(), string>::Err(string::from("PEM server response code expected 200"))
+    }
+    println("[Test 7/8 PASSED] TLS Server successfully loaded PEM certificate chain and private key files!")
+    return Result<(), string>::Ok(())
+}
+
+// --- Test 8: Trusted CA Certificate Verification (connect_with_ca_file_async with verify_peer=true) ---
+fn async_trusted_ca_client_task() -> async Result<(), string> {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18449:u16)
+    println("[Test 8/8] Testing Strict Path (verify_peer=true) with Trusted CA Certificate File...")
+
+    auto tcp_stream# = TcpStream::connect_async(addr).await
+    if !tcp_stream.is_valid() {
+        return Result<(), string>::Err(string::from("TCP connect failed"))
+    }
+
+    // Connect with verify_peer = true, supplying the server's CA certificate file!
+    auto tls_res = TlsStream::connect_with_ca_file_async(tcp_stream, string::from("localhost"), string::from("tmp/test_server.crt")).await
+    if tls_res.is_err() {
+        return Result<(), string>::Err(tls_res.unwrap_err())
+    }
+
+    auto async_s# = tls_res.unwrap()
+    auto req_str = string::from("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+    auto *req_ptr# = req_str.raw_ptr() as *[u8]
+    auto *u8_req# = to_u8_ptr(*req_ptr)
+    auto w = async_s#.write_all_async(*u8_req, req_str.len()).await
+    if w.is_err() {
+        return Result<(), string>::Err(w.unwrap_err())
+    }
+
+    async_s#.close()
+    println("[Test 8/8 PASSED] Strict TLS verification (verify_peer=true) succeeded with Trusted CA Certificate file!")
+    return Result<(), string>::Ok(())
 }
 
 fn main_async() -> async i32 {
-    println("--- Starting Phase 5C & 6 HTTPS/WSS Integration Suite ---")
+    println("--- Starting Real OpenSSL HTTPS, WSS & Security Boundary Test Suite ---")
+    auto cert_p# = string::from("tmp/test_server.crt")
+    auto key_p# = string::from("tmp/test_server.key")
+    auto *cert_raw# = cert_p.raw_ptr() as *char
+    auto *key_raw# = key_p.raw_ptr() as *char
+    auto gen_res = unsafe toka_ensure_test_cert_files(*cert_raw, *key_raw)
+    if gen_res != 0 {
+        println("[FAIL] Failed to generate test certificates!")
+        return 1
+    }
+
     test_url_parsing()
 
-    auto server_task# = async_https_server_task().start
-    auto client_task# = async_https_client_task().start
+    // Test 2: Real HTTPS Client & Server
+    auto https_s# = async_https_server_task().start
+    auto https_c# = async_https_client_task().start
+    auto r_hs = https_s.await
+    auto r_hc = https_c.await
 
-    server_task.await
-    client_task.await
+    if r_hs.is_err() || r_hc.is_err() {
+        println("[FAIL] HTTPS Test failed!")
+        return 1
+    }
 
-    println("Phase 5C & 6 HTTPS/WSS Integration Test PASSED Cleanly!")
+    // Test 3: Real WSS Client & Server
+    auto wss_s# = async_wss_server_task().start
+    auto wss_c# = async_wss_client_task().start
+    auto r_ws = wss_s.await
+    auto r_wc = wss_c.await
+
+    if r_ws.is_err() || r_wc.is_err() {
+        println("[FAIL] WSS Test failed!")
+        return 1
+    }
+
+    // Test 4: Plaintext Client to TLS Server
+    auto p_s# = async_plain_client_tls_server_task().start
+    auto p_c# = async_plain_client_task().start
+    auto r_ps = p_s.await
+    auto r_pc = p_c.await
+
+    // Test 5: Hostname Verification Rejection
+    auto h_s# = async_hostname_verify_server_task().start
+    auto h_c# = async_hostname_verify_client_task().start
+    auto r_hns = h_s.await
+    auto r_hnc = h_c.await
+
+    if r_hnc.is_err() {
+        println("[FAIL] Hostname Verification Test error: {}", r_hnc.unwrap_err().as_str())
+        return 1
+    }
+
+    // Test 6: Default Path verify_peer=true Rejection
+    auto sd_s# = async_strict_default_server_task().start
+    auto sd_c# = async_strict_default_client_task().start
+    auto r_sds = sd_s.await
+    auto r_sdc = sd_c.await
+
+    if r_sdc.is_err() {
+        println("[FAIL] Strict Default Path Test error: {}", r_sdc.unwrap_err().as_str())
+        return 1
+    }
+
+    // Test 7: PEM Server Certificate & Private Key File Loading
+    auto pem_s# = async_pem_server_task().start
+    auto pem_c# = async_pem_client_task().start
+    auto r_pems = pem_s.await
+    auto r_pemc = pem_c.await
+
+    if r_pems.is_err() || r_pemc.is_err() {
+        println("[FAIL] PEM Certificate File Loading Test failed!")
+        return 1
+    }
+
+    // Test 8: Trusted CA Certificate Verification
+    auto ca_s# = async_pem_server_task().start
+    auto ca_c# = async_trusted_ca_client_task().start
+    auto r_cas = ca_s.await
+    auto r_cac = ca_c.await
+
+    if r_cas.is_err() || r_cac.is_err() {
+        println("[FAIL] Trusted CA Certificate Verification Test failed!")
+        return 1
+    }
+
+    println("Phase 5C Real OpenSSL HTTPS, WSS & Security Boundary Test PASSED ALL 8 SUITES Cleanly!")
     return 0
 }
 

@@ -1,12 +1,15 @@
-// stdx/net/stream.tk — Unified Async Byte Stream Abstraction (Plain TCP & TLS)
-import std/net::{TcpStream}
-import std/io::{println}
+// stdx/net/stream.tk — Unified Async Byte Stream Abstraction (Plain TCP & OpenSSL TLS)
+import std/net::{TcpStream, register_async_reactor_read_key, register_async_reactor_write_key, unregister_async_reactor_read_key, unregister_async_reactor_write_key}
+import std/task::{sleep_async, current_time_ms}
 import core/result::{Result}
 import core/types::{Addr}
+import core/task::{toka_task_is_current_canceled}
 
 extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_close(*handle: void)
+extern fn __builtin_coro_current_handle() -> *void
+extern fn __builtin_coro_suspend() -> void
 
 pub shape AsyncStream (
     raw_tcp: TcpStream,
@@ -15,13 +18,15 @@ pub shape AsyncStream (
 )
 
 impl AsyncStream@encap {
-    pub raw_tcp
-    pub is_tls
-    pub *tls_handle
+    pub raw_tcp#
+    pub is_tls#
+    pub *tls_handle#
     fn drop(self#) {
         auto h = (*self.tls_handle as Addr)
         if self.is_tls && h != 0 {
             unsafe toka_tls_close(*self.tls_handle)
+            auto *null_ptr# = (0 as Addr) as *void
+            self.*tls_handle = *null_ptr
         }
     }
     pub fn clone(self) = delete
@@ -37,7 +42,7 @@ impl AsyncStream {
     pub fn from_tcp(stream#: TcpStream) -> AsyncStream {
         auto *null_ptr# = (0 as Addr) as *void
         return AsyncStream(
-            raw_tcp = stream,
+            raw_tcp = stream#.take(),
             is_tls = false,
             *tls_handle = *null_ptr
         )
@@ -45,32 +50,81 @@ impl AsyncStream {
 
     pub fn from_tls(stream#: TcpStream, *handle: void) -> AsyncStream {
         return AsyncStream(
-            raw_tcp = stream,
+            raw_tcp = stream#.take(),
             is_tls = true,
             *tls_handle = *handle
         )
     }
 
-    pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
+    pub fn take(self#) -> AsyncStream {
+        auto *null_ptr# = (0 as Addr) as *void
+        auto s = AsyncStream(
+            raw_tcp = self.raw_tcp#.take(),
+            is_tls = self.is_tls,
+            *tls_handle = *self.tls_handle
+        )
+        self.is_tls = false
+        self.*tls_handle = *null_ptr
+        return s
+    }
+
+    pub fn read_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
         if !self.is_tls {
             return self.raw_tcp#.read_async(*buf, len).await
         }
-        auto r = self.raw_tcp#.read_async(*buf, len).await
-        match r {
-            auto Result::Ok(bytes_read) => {
-                if bytes_read == 0:usize {
-                    return Result<usize, string>::Ok(0:usize)
+        auto fd = self.raw_tcp.get_fd()
+        auto start_time = current_time_ms()
+        auto last_key# = 0:u64
+        auto is_read_key# = false
+
+        loop true {
+            if timeout_ms > 0 {
+                auto elapsed = current_time_ms() - start_time
+                if elapsed >= (timeout_ms as i64) {
+                    if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                    else { unregister_async_reactor_write_key(fd, last_key) }
+                    return Result<usize, string>::Err(string::from("TLS read timeout"))
                 }
-                auto n = unsafe toka_tls_read(*self.tls_handle, ((*buf as Addr)) as *void, bytes_read)
-                if n < 0 {
-                    return Result<usize, string>::Err(string::from("TLS read error"))
-                }
+            }
+
+            auto n = unsafe toka_tls_read(*self.tls_handle, ((*buf as Addr)) as *void, len)
+            if n > 0 {
                 return Result<usize, string>::Ok(n as usize)
             }
-            auto Result::Err(&e) => {
-                return Result<usize, string>::Err(e.clone())
+            if n == 0 {
+                return Result<usize, string>::Ok(0:usize)
+            }
+
+            auto *coro_handle# = __builtin_coro_current_handle()
+            if toka_task_is_current_canceled(*coro_handle) != 0 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                return Result<usize, string>::Err(string::from("TLS read canceled"))
+            }
+
+            if n == -1 {
+                is_read_key = true
+                if !register_async_reactor_read_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            } else if n == -2 {
+                is_read_key = false
+                if !register_async_reactor_write_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            } else {
+                return Result<usize, string>::Err(string::from("TLS read error"))
             }
         }
+        return Result<usize, string>::Err(string::from("TLS read timeout"))
+    }
+
+    pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
+        return self#.read_async_timeout(*buf, len, 10000).await
     }
 
     pub fn read_exact_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
@@ -105,7 +159,7 @@ impl AsyncStream {
         return Result<(), string>::Ok(())
     }
 
-    pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
+    pub fn write_all_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<(), string> {
         if !self.is_tls {
             auto r = self.raw_tcp#.write_all_async(*buf, len).await
             match r {
@@ -118,22 +172,71 @@ impl AsyncStream {
             }
         }
         auto total# = 0:usize
+        auto fd = self.raw_tcp.get_fd()
+        auto start_time = current_time_ms()
+        auto last_key# = 0:u64
+        auto is_read_key# = false
+
         loop total < len {
             auto cur_addr = (*buf as Addr) + (total as u64)
             auto *cur_ptr# = (cur_addr as *[0]u8) as *u8
-            auto n = unsafe toka_tls_write(*self.tls_handle, (cur_addr as *void), len - total)
-            if n <= 0 {
-                return Result<(), string>::Err(string::from("TLS write_all error"))
+            auto write_ok# = false
+            loop !write_ok {
+                if timeout_ms > 0 {
+                    auto elapsed = current_time_ms() - start_time
+                    if elapsed >= (timeout_ms as i64) {
+                        if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                        else { unregister_async_reactor_write_key(fd, last_key) }
+                        return Result<(), string>::Err(string::from("TLS write_all timeout"))
+                    }
+                }
+
+                auto n = unsafe toka_tls_write(*self.tls_handle, (cur_addr as *void), len - total)
+                if n > 0 {
+                    total = total + (n as usize)
+                    write_ok = true
+                    break
+                }
+
+                auto *coro_handle# = __builtin_coro_current_handle()
+                if toka_task_is_current_canceled(*coro_handle) != 0 {
+                    if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                    else { unregister_async_reactor_write_key(fd, last_key) }
+                    return Result<(), string>::Err(string::from("TLS write_all canceled"))
+                }
+
+                if n == -1 {
+                    is_read_key = true
+                    if !register_async_reactor_read_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                        sleep_async(1:u64).await
+                    } else {
+                        __builtin_coro_suspend()
+                    }
+                } else if n == -2 {
+                    is_read_key = false
+                    if !register_async_reactor_write_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                        sleep_async(1:u64).await
+                    } else {
+                        __builtin_coro_suspend()
+                    }
+                } else {
+                    return Result<(), string>::Err(string::from("TLS write_all error"))
+                }
             }
-            total = total + (n as usize)
         }
         return Result<(), string>::Ok(())
+    }
+
+    pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
+        return self#.write_all_async_timeout(*buf, len, 10000).await
     }
 
     pub fn close(self#) {
         auto h = (*self.tls_handle as Addr)
         if self.is_tls && h != 0 {
             unsafe toka_tls_close(*self.tls_handle)
+            auto *null_ptr# = (0 as Addr) as *void
+            self.*tls_handle = *null_ptr
         }
         self.raw_tcp#.close()
     }

@@ -1,15 +1,25 @@
-// stdx/net/tls.tk — Async TLS Stream Implementation
-import std/net::{TcpStream}
+// stdx/net/tls.tk — Async OpenSSL TLS Stream Implementation
+import std/net::{TcpStream, register_async_reactor_read_key, register_async_reactor_write_key, unregister_async_reactor_read_key, unregister_async_reactor_write_key}
+import std/task::{sleep_async, current_time_ms}
 import stdx/net/stream::{AsyncStream}
 import core/result::{Result}
 import core/types::{Addr}
+import core/task::{toka_task_is_current_canceled}
 
 extern fn toka_tls_context_new() -> *void
+extern fn toka_tls_server_context_new() -> *void
+extern fn toka_tls_server_context_new_with_cert_file(*cert: char, *key: char) -> *void
+extern fn toka_tls_set_verify_mode(*handle: void, verify_peer: i32)
+extern fn toka_tls_set_ca_file(*handle: void, *ca_path: char) -> i32
 extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
 extern fn toka_tls_connect(*handle: void, fd: i32) -> i32
+extern fn toka_tls_accept(*handle: void, fd: i32) -> i32
 extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_close(*handle: void)
+
+extern fn __builtin_coro_current_handle() -> *void
+extern fn __builtin_coro_suspend() -> void
 
 pub shape TlsStream (
     raw_tcp: TcpStream,
@@ -18,8 +28,8 @@ pub shape TlsStream (
 )
 
 impl TlsStream@encap {
-    pub raw_tcp
-    pub *handle
+    pub raw_tcp#
+    pub *handle#
     pub host
     fn drop(self#) {
         auto h = (*self.handle as Addr)
@@ -31,11 +41,17 @@ impl TlsStream@encap {
 }
 
 impl TlsStream {
-    pub fn connect_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
+    pub fn connect_with_verify_async_timeout(tcp_stream#: TcpStream, host: string, verify_peer: bool, timeout_ms: i32) -> async Result<AsyncStream, string> {
         auto *ctx# = unsafe toka_tls_context_new()
         auto ctx_addr = (*ctx as Addr)
         if ctx_addr == 0 {
             return Result<AsyncStream, string>::Err(string::from("Failed creating TLS context"))
+        }
+
+        if !verify_peer {
+            unsafe toka_tls_set_verify_mode(*ctx, 0)
+        } else {
+            unsafe toka_tls_set_verify_mode(*ctx, 1)
         }
 
         auto host_cstr# = host.clone()
@@ -46,13 +62,265 @@ impl TlsStream {
             return Result<AsyncStream, string>::Err(string::from("Failed setting SNI hostname"))
         }
 
-        auto fd = tcp_stream#.get_fd()
-        auto conn_res = unsafe toka_tls_connect(*ctx, fd)
-        if conn_res != 0 {
-            unsafe toka_tls_close(*ctx)
-            return Result<AsyncStream, string>::Err(string::from("TLS handshake failed"))
+        auto fd = tcp_stream.get_fd()
+        auto start_time = current_time_ms()
+        auto last_key# = 0:u64
+        auto is_read_key# = false
+
+        loop true {
+            if timeout_ms > 0 {
+                auto elapsed = current_time_ms() - start_time
+                if elapsed >= (timeout_ms as i64) {
+                    if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                    else { unregister_async_reactor_write_key(fd, last_key) }
+                    unsafe toka_tls_close(*ctx)
+                    return Result<AsyncStream, string>::Err(string::from("TLS handshake timeout"))
+                }
+            }
+
+            auto conn_res = unsafe toka_tls_connect(*ctx, fd)
+            if conn_res == 0 {
+                return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+            }
+            if conn_res < 0 {
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS handshake failed"))
+            }
+
+            auto *coro_handle# = __builtin_coro_current_handle()
+            if toka_task_is_current_canceled(*coro_handle) != 0 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS handshake canceled"))
+            }
+
+            if conn_res == 1 {
+                is_read_key = true
+                if !register_async_reactor_read_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            } else if conn_res == 2 {
+                is_read_key = false
+                if !register_async_reactor_write_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            }
+        }
+        unsafe toka_tls_close(*ctx)
+        return Result<AsyncStream, string>::Err(string::from("TLS handshake failed"))
+    }
+
+    pub fn connect_with_verify_async(tcp_stream#: TcpStream, host: string, verify_peer: bool) -> async Result<AsyncStream, string> {
+        return TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, verify_peer, 10000).await
+    }
+
+    pub fn connect_with_ca_file_async(tcp_stream#: TcpStream, host: string, ca_path: string) -> async Result<AsyncStream, string> {
+        auto *ctx# = unsafe toka_tls_context_new()
+        auto ctx_addr = (*ctx as Addr)
+        if ctx_addr == 0 {
+            return Result<AsyncStream, string>::Err(string::from("Failed creating TLS context"))
         }
 
-        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream, *ctx))
+        unsafe toka_tls_set_verify_mode(*ctx, 1)
+
+        auto ca_cstr# = ca_path.clone()
+        auto *ca_ptr# = ca_cstr.raw_ptr() as *char
+        auto ca_res = unsafe toka_tls_set_ca_file(*ctx, *ca_ptr)
+        if ca_res != 0 {
+            unsafe toka_tls_close(*ctx)
+            return Result<AsyncStream, string>::Err(string::from("Failed loading CA certificate file"))
+        }
+
+        auto host_cstr# = host.clone()
+        auto *host_ptr# = host_cstr.raw_ptr() as *char
+        auto sni_res = unsafe toka_tls_set_sni(*ctx, *host_ptr)
+        if sni_res != 0 {
+            unsafe toka_tls_close(*ctx)
+            return Result<AsyncStream, string>::Err(string::from("Failed setting SNI hostname"))
+        }
+
+        auto fd = tcp_stream.get_fd()
+        auto start_time = current_time_ms()
+        auto last_key# = 0:u64
+        auto is_read_key# = false
+
+        loop true {
+            auto elapsed = current_time_ms() - start_time
+            if elapsed >= 10000:i64 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS handshake timeout"))
+            }
+
+            auto conn_res = unsafe toka_tls_connect(*ctx, fd)
+            if conn_res == 0 {
+                return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+            }
+            if conn_res < 0 {
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS handshake failed"))
+            }
+
+            auto *coro_handle# = __builtin_coro_current_handle()
+            if toka_task_is_current_canceled(*coro_handle) != 0 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS handshake canceled"))
+            }
+
+            if conn_res == 1 {
+                is_read_key = true
+                if !register_async_reactor_read_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            } else if conn_res == 2 {
+                is_read_key = false
+                if !register_async_reactor_write_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            }
+        }
+        unsafe toka_tls_close(*ctx)
+        return Result<AsyncStream, string>::Err(string::from("TLS handshake failed"))
+    }
+
+    pub fn connect_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
+        return TlsStream::connect_with_verify_async(tcp_stream#.take(), host, true).await
+    }
+
+    pub fn connect_insecure_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
+        return TlsStream::connect_with_verify_async(tcp_stream#.take(), host, false).await
+    }
+
+    pub fn accept_async(tcp_stream#: TcpStream) -> async Result<AsyncStream, string> {
+        auto *ctx# = unsafe toka_tls_server_context_new()
+        auto ctx_addr = (*ctx as Addr)
+        if ctx_addr == 0 {
+            return Result<AsyncStream, string>::Err(string::from("Failed creating TLS server context"))
+        }
+
+        auto fd = tcp_stream.get_fd()
+        auto start_time = current_time_ms()
+        auto last_key# = 0:u64
+        auto is_read_key# = false
+
+        loop true {
+            auto elapsed = current_time_ms() - start_time
+            if elapsed >= 10000:i64 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS server handshake timeout"))
+            }
+
+            auto accept_res = unsafe toka_tls_accept(*ctx, fd)
+            if accept_res == 0 {
+                return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+            }
+            if accept_res < 0 {
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS server handshake failed"))
+            }
+
+            auto *coro_handle# = __builtin_coro_current_handle()
+            if toka_task_is_current_canceled(*coro_handle) != 0 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS server handshake canceled"))
+            }
+
+            if accept_res == 1 {
+                is_read_key = true
+                if !register_async_reactor_read_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            } else if accept_res == 2 {
+                is_read_key = false
+                if !register_async_reactor_write_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            }
+        }
+        unsafe toka_tls_close(*ctx)
+        return Result<AsyncStream, string>::Err(string::from("TLS server handshake timeout"))
+    }
+
+    pub fn accept_with_cert_file_async(tcp_stream#: TcpStream, cert_path: string, key_path: string) -> async Result<AsyncStream, string> {
+        auto cert_cstr# = cert_path.clone()
+        auto key_cstr# = key_path.clone()
+        auto *cert_ptr# = cert_cstr.raw_ptr() as *char
+        auto *key_ptr# = key_cstr.raw_ptr() as *char
+
+        auto *ctx# = unsafe toka_tls_server_context_new_with_cert_file(*cert_ptr, *key_ptr)
+        auto ctx_addr = (*ctx as Addr)
+        if ctx_addr == 0 {
+            return Result<AsyncStream, string>::Err(string::from("Failed creating TLS server context from PEM certificate and key files"))
+        }
+
+        auto fd = tcp_stream.get_fd()
+        auto start_time = current_time_ms()
+        auto last_key# = 0:u64
+        auto is_read_key# = false
+
+        loop true {
+            auto elapsed = current_time_ms() - start_time
+            if elapsed >= 10000:i64 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS server handshake timeout"))
+            }
+
+            auto accept_res = unsafe toka_tls_accept(*ctx, fd)
+            if accept_res == 0 {
+                return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+            }
+            if accept_res < 0 {
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS server handshake failed"))
+            }
+
+            auto *coro_handle# = __builtin_coro_current_handle()
+            if toka_task_is_current_canceled(*coro_handle) != 0 {
+                if is_read_key { unregister_async_reactor_read_key(fd, last_key) }
+                else { unregister_async_reactor_write_key(fd, last_key) }
+                unsafe toka_tls_close(*ctx)
+                return Result<AsyncStream, string>::Err(string::from("TLS server handshake canceled"))
+            }
+
+            if accept_res == 1 {
+                is_read_key = true
+                if !register_async_reactor_read_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            } else if accept_res == 2 {
+                is_read_key = false
+                if !register_async_reactor_write_key(*coro_handle as Addr, fd, &last_key as *u64) {
+                    sleep_async(1:u64).await
+                } else {
+                    __builtin_coro_suspend()
+                }
+            }
+        }
+        unsafe toka_tls_close(*ctx)
+        return Result<AsyncStream, string>::Err(string::from("TLS server handshake timeout"))
     }
 }

@@ -1,6 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <signal.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509v3.h>
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
+#include <openssl/evp.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -21,6 +28,13 @@ void* toka_localtime_r(const time_t *timep, struct tm *result) {
 }
 
 int toka_random_bytes(void *buf, size_t len) {
+#ifndef _WIN32
+    static int sigpipe_ignored = 0;
+    if (!sigpipe_ignored) {
+        signal(SIGPIPE, SIG_IGN);
+        sigpipe_ignored = 1;
+    }
+#endif
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
     arc4random_buf(buf, len);
     return 0;
@@ -2651,18 +2665,227 @@ ti_int __muloti4(ti_int a, ti_int b, int *overflow) {
 #endif
 
 typedef struct {
+    SSL_CTX *ctx;
+    SSL *ssl;
     int fd;
+    int is_server;
+    int verify_peer;
     char sni_host[256];
-    int handshake_done;
 } TokaTlsSession;
 
 void* toka_tls_context_new(void) {
-    TokaTlsSession *s = (TokaTlsSession*)malloc(sizeof(TokaTlsSession));
-    if (!s) return NULL;
+    static int initialized = 0;
+    if (!initialized) {
+#ifndef _WIN32
+        signal(SIGPIPE, SIG_IGN);
+#endif
+        SSL_library_init();
+        SSL_load_error_strings();
+        OpenSSL_add_all_algorithms();
+        initialized = 1;
+    }
+
+    const SSL_METHOD *method = TLS_client_method();
+    SSL_CTX *ctx = SSL_CTX_new(method);
+    if (!ctx) return NULL;
+
+    SSL_CTX_set_default_verify_paths(ctx);
+
+    TokaTlsSession *s = (TokaTlsSession*)calloc(1, sizeof(TokaTlsSession));
+    if (!s) {
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    s->ctx = ctx;
     s->fd = -1;
-    s->sni_host[0] = '\0';
-    s->handshake_done = 0;
+    s->is_server = 0;
+    s->verify_peer = 1;
     return (void*)s;
+}
+
+void* toka_tls_server_context_new(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        SSL_library_init();
+        SSL_load_error_strings();
+        OpenSSL_add_all_algorithms();
+        initialized = 1;
+    }
+
+    const SSL_METHOD *method = TLS_server_method();
+    SSL_CTX *ctx = SSL_CTX_new(method);
+    if (!ctx) return NULL;
+
+    EVP_PKEY *pkey = NULL;
+    RSA *rsa = RSA_generate_key(2048, RSA_F4, NULL, NULL);
+    pkey = EVP_PKEY_new();
+    EVP_PKEY_assign_RSA(pkey, rsa);
+
+    X509 *x509 = X509_new();
+    ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
+    X509_gmtime_adj(X509_get_notBefore(x509), 0);
+    X509_gmtime_adj(X509_get_notAfter(x509), 31536000L);
+    X509_set_pubkey(x509, pkey);
+
+    X509_NAME *name = X509_get_subject_name(x509);
+    X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (const unsigned char*)"US", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC, (const unsigned char*)"Toka", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (const unsigned char*)"localhost", -1, -1, 0);
+    X509_set_issuer_name(x509, name);
+
+    X509V3_CTX ctx_v3;
+    X509V3_set_ctx(&ctx_v3, x509, x509, NULL, NULL, 0);
+    X509_EXTENSION *ext = X509V3_EXT_conf_nid(NULL, &ctx_v3, NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1");
+    if (ext) {
+        X509_add_ext(x509, ext, -1);
+        X509_EXTENSION_free(ext);
+    }
+
+    X509_sign(x509, pkey, EVP_sha256());
+
+    SSL_CTX_use_certificate(ctx, x509);
+    SSL_CTX_use_PrivateKey(ctx, pkey);
+
+    X509_free(x509);
+    EVP_PKEY_free(pkey);
+
+    TokaTlsSession *s = (TokaTlsSession*)calloc(1, sizeof(TokaTlsSession));
+    if (!s) {
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    s->ctx = ctx;
+    s->fd = -1;
+    s->is_server = 1;
+    return (void*)s;
+}
+
+void* toka_tls_server_context_new_with_cert_file(const char *cert_path, const char *key_path) {
+    if (!cert_path || !key_path) return NULL;
+    static int initialized = 0;
+    if (!initialized) {
+#ifndef _WIN32
+        signal(SIGPIPE, SIG_IGN);
+#endif
+        SSL_library_init();
+        SSL_load_error_strings();
+        OpenSSL_add_all_algorithms();
+        initialized = 1;
+    }
+
+    const SSL_METHOD *method = TLS_server_method();
+    SSL_CTX *ctx = SSL_CTX_new(method);
+    if (!ctx) return NULL;
+
+    if (SSL_CTX_use_certificate_chain_file(ctx, cert_path) <= 0) {
+        if (SSL_CTX_use_certificate_file(ctx, cert_path, SSL_FILETYPE_PEM) <= 0) {
+            SSL_CTX_free(ctx);
+            return NULL;
+        }
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, key_path, SSL_FILETYPE_PEM) <= 0) {
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    if (!SSL_CTX_check_private_key(ctx)) {
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    TokaTlsSession *s = (TokaTlsSession*)calloc(1, sizeof(TokaTlsSession));
+    if (!s) {
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    s->ctx = ctx;
+    s->fd = -1;
+    s->is_server = 1;
+    return (void*)s;
+}
+
+static void ensure_parent_dir_exists(const char *path) {
+    if (!path) return;
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    char *p = strrchr(tmp, '/');
+    if (!p) p = strrchr(tmp, '\\');
+    if (p) {
+        *p = '\0';
+#ifdef _WIN32
+        _mkdir(tmp);
+#else
+        mkdir(tmp, 0755);
+#endif
+    }
+}
+
+int toka_ensure_test_cert_files(const char *cert_path, const char *key_path) {
+    if (!cert_path || !key_path) return -1;
+    FILE *f_cert = fopen(cert_path, "rb");
+    FILE *f_key = fopen(key_path, "rb");
+    if (f_cert && f_key) {
+        fclose(f_cert);
+        fclose(f_key);
+        return 0;
+    }
+    if (f_cert) fclose(f_cert);
+    if (f_key) fclose(f_key);
+
+    ensure_parent_dir_exists(cert_path);
+    ensure_parent_dir_exists(key_path);
+
+    EVP_PKEY *pkey = NULL;
+    RSA *rsa = RSA_generate_key(2048, RSA_F4, NULL, NULL);
+    if (!rsa) return -1;
+    pkey = EVP_PKEY_new();
+    if (!pkey) { RSA_free(rsa); return -1; }
+    EVP_PKEY_assign_RSA(pkey, rsa);
+
+    X509 *x509 = X509_new();
+    if (!x509) { EVP_PKEY_free(pkey); return -1; }
+    ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
+    X509_gmtime_adj(X509_get_notBefore(x509), 0);
+    X509_gmtime_adj(X509_get_notAfter(x509), 31536000L);
+    X509_set_pubkey(x509, pkey);
+
+    X509_NAME *name = X509_get_subject_name(x509);
+    X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (const unsigned char*)"US", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (const unsigned char*)"localhost", -1, -1, 0);
+    X509_set_issuer_name(x509, name);
+
+    X509V3_CTX ctx_v3;
+    X509V3_set_ctx(&ctx_v3, x509, x509, NULL, NULL, 0);
+    X509_EXTENSION *ext = X509V3_EXT_conf_nid(NULL, &ctx_v3, NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1");
+    if (ext) {
+        X509_add_ext(x509, ext, -1);
+        X509_EXTENSION_free(ext);
+    }
+    X509_sign(x509, pkey, EVP_sha256());
+
+    int status = 0;
+    FILE *out_cert = fopen(cert_path, "wb");
+    if (!out_cert || PEM_write_X509(out_cert, x509) <= 0) {
+        status = -1;
+    }
+    if (out_cert) fclose(out_cert);
+
+    FILE *out_key = fopen(key_path, "wb");
+    if (!out_key || PEM_write_PrivateKey(out_key, pkey, NULL, NULL, 0, NULL, NULL) <= 0) {
+        status = -1;
+    }
+    if (out_key) fclose(out_key);
+
+    X509_free(x509);
+    EVP_PKEY_free(pkey);
+    return status;
+}
+
+void toka_tls_set_verify_mode(void *handle, int verify_peer) {
+    if (!handle) return;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    s->verify_peer = verify_peer;
 }
 
 int toka_tls_set_sni(void *handle, const char *host) {
@@ -2672,38 +2895,111 @@ int toka_tls_set_sni(void *handle, const char *host) {
     return 0;
 }
 
+int toka_tls_set_ca_file(void *handle, const char *ca_path) {
+    if (!handle || !ca_path) return -1;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    if (!s->ctx) return -1;
+    if (SSL_CTX_load_verify_locations(s->ctx, ca_path, NULL) <= 0) {
+        return -1;
+    }
+    return 0;
+}
+
 int toka_tls_connect(void *handle, int fd) {
     if (!handle || fd < 0) return -1;
     TokaTlsSession *s = (TokaTlsSession*)handle;
     s->fd = fd;
-    s->handshake_done = 1;
-    return 0;
+
+    if (!s->ssl) {
+        s->ssl = SSL_new(s->ctx);
+        if (!s->ssl) return -1;
+
+        SSL_set_fd(s->ssl, fd);
+
+        if (!s->verify_peer) {
+            SSL_set_verify(s->ssl, SSL_VERIFY_NONE, NULL);
+        } else {
+            SSL_set_verify(s->ssl, SSL_VERIFY_PEER, NULL);
+        }
+
+        if (s->sni_host[0] != '\0') {
+            SSL_set_tlsext_host_name(s->ssl, s->sni_host);
+            X509_VERIFY_PARAM *param = SSL_get0_param(s->ssl);
+            X509_VERIFY_PARAM_set1_host(param, s->sni_host, 0);
+        }
+
+        if (!s->is_server) {
+            SSL_set_connect_state(s->ssl);
+        }
+    }
+
+    int res = SSL_connect(s->ssl);
+    if (res == 1) return 0;
+    int err = SSL_get_error(s->ssl, res);
+    if (err == SSL_ERROR_WANT_READ) return 1;
+    if (err == SSL_ERROR_WANT_WRITE) return 2;
+    return -1;
+}
+
+int toka_tls_accept(void *handle, int fd) {
+    if (!handle || fd < 0) return -1;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    s->fd = fd;
+    if (!s->ssl) {
+        s->ssl = SSL_new(s->ctx);
+        if (!s->ssl) return -1;
+        SSL_set_fd(s->ssl, fd);
+        if (s->is_server) {
+            SSL_set_accept_state(s->ssl);
+        }
+    }
+
+    int res = SSL_accept(s->ssl);
+    if (res == 1) return 0;
+    int err = SSL_get_error(s->ssl, res);
+    if (err == SSL_ERROR_WANT_READ) return 1;
+    if (err == SSL_ERROR_WANT_WRITE) return 2;
+    return -1;
 }
 
 int toka_tls_read(void *handle, void *buf, size_t len) {
-    if (!handle) return -1;
+    if (!handle || !buf) return -3;
     TokaTlsSession *s = (TokaTlsSession*)handle;
-    if (!s->handshake_done || s->fd < 0) return -1;
-#ifdef _WIN32
-    return recv(s->fd, (char*)buf, (int)len, 0);
-#else
-    return (int)read(s->fd, buf, len);
-#endif
+    if (!s->ssl) return -3;
+
+    int res = SSL_read(s->ssl, buf, (int)len);
+    if (res > 0) return res;
+    int err = SSL_get_error(s->ssl, res);
+    if (err == SSL_ERROR_WANT_READ) return -1;
+    if (err == SSL_ERROR_WANT_WRITE) return -2;
+    if (err == SSL_ERROR_ZERO_RETURN) return 0;
+    return -3;
 }
 
 int toka_tls_write(void *handle, const void *buf, size_t len) {
-    if (!handle) return -1;
+    if (!handle || !buf) return -3;
     TokaTlsSession *s = (TokaTlsSession*)handle;
-    if (!s->handshake_done || s->fd < 0) return -1;
-#ifdef _WIN32
-    return send(s->fd, (const char*)buf, (int)len, 0);
-#else
-    return (int)write(s->fd, buf, len);
-#endif
+    if (!s->ssl) return -3;
+
+    int res = SSL_write(s->ssl, buf, (int)len);
+    if (res > 0) return res;
+    int err = SSL_get_error(s->ssl, res);
+    if (err == SSL_ERROR_WANT_READ) return -1;
+    if (err == SSL_ERROR_WANT_WRITE) return -2;
+    return -3;
 }
 
 void toka_tls_close(void *handle) {
     if (!handle) return;
     TokaTlsSession *s = (TokaTlsSession*)handle;
+    if (s->ssl) {
+        SSL_shutdown(s->ssl);
+        SSL_free(s->ssl);
+        s->ssl = NULL;
+    }
+    if (s->ctx) {
+        SSL_CTX_free(s->ctx);
+        s->ctx = NULL;
+    }
     free(s);
 }

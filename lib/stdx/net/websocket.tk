@@ -41,14 +41,14 @@ pub shape WsConnection (
 )
 
 impl WsConnection@encap {
-    pub stream
+    pub stream#
     pub is_client
     pub max_payload_size
-    pub surplus_vec
-    pub surplus_offset
-    pub in_fragment
-    pub fragment_is_text
-    pub current_msg_len
+    pub surplus_vec#
+    pub surplus_offset#
+    pub in_fragment#
+    pub fragment_is_text#
+    pub current_msg_len#
     fn drop(self#) {}
     pub fn clone(self) = delete
 }
@@ -349,7 +349,7 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     }
 
     return Result<WsConnection, string>::Ok(WsConnection(
-        stream = stream,
+        stream = stream#.take(),
         is_client = false,
         max_payload_size = 16777216:usize,
         surplus_vec = surplus,
@@ -361,7 +361,7 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
 }
 
 pub fn ws_accept_async(tcp_stream#: TcpStream) -> async Result<WsConnection, string> {
-    return ws_accept_stream_async(AsyncStream::from_tcp(tcp_stream)).await
+    return ws_accept_stream_async(AsyncStream::from_tcp(tcp_stream#.take())).await
 }
 
 pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string) -> async Result<WsConnection, string> {
@@ -551,7 +551,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     }
 
     return Result<WsConnection, string>::Ok(WsConnection(
-        stream = stream,
+        stream = stream#.take(),
         is_client = true,
         max_payload_size = 16777216:usize,
         surplus_vec = surplus,
@@ -563,11 +563,11 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
 }
 
 pub fn ws_connect_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
-    return ws_connect_stream_async(AsyncStream::from_tcp(tcp_stream), host, path).await
+    return ws_connect_stream_async(AsyncStream::from_tcp(tcp_stream#.take()), host, path).await
 }
 
-pub fn ws_connect_tls_async(tcp_stream: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
-    auto tls_res# = TlsStream::connect_async(tcp_stream, host).await
+pub fn ws_connect_tls_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
+    auto tls_res# = TlsStream::connect_async(tcp_stream#.take(), host).await
     if tls_res.is_err() {
         return Result<WsConnection, string>::Err(tls_res.unwrap_err())
     }
@@ -575,20 +575,55 @@ pub fn ws_connect_tls_async(tcp_stream: TcpStream, host: string, path: string) -
     return ws_connect_stream_async(stream, host, path).await
 }
 
-pub fn ws_connect_url_async(url_str: string, addr: SocketAddrV4) -> async Result<WsConnection, string> {
+pub fn ws_connect_tls_insecure_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
+    auto tls_res# = TlsStream::connect_insecure_async(tcp_stream#.take(), host).await
+    if tls_res.is_err() {
+        return Result<WsConnection, string>::Err(tls_res.unwrap_err())
+    }
+    auto stream# = tls_res.unwrap()
+    return ws_connect_stream_async(stream, host, path).await
+}
+
+pub fn ws_connect_url_async(url_str: string, default_addr: SocketAddrV4) -> async Result<WsConnection, string> {
     auto parsed = parse_url(url_str)
     if parsed.is_err() {
         return Result<WsConnection, string>::Err(parsed.unwrap_err())
     }
     auto u = parsed.unwrap()
-    auto tcp_res# = TcpStream::connect_async(addr).await
-    if !tcp_res.is_valid() {
-        return Result<WsConnection, string>::Err(string::from("TCP connect failed"))
+    auto conn_addr# = default_addr
+    if u.port > 0:u16 {
+        conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
     }
+    auto tcp_res# = TcpStream::connect_async_timeout(conn_addr, 10000).await
+    if tcp_res.is_err() {
+        return Result<WsConnection, string>::Err(tcp_res.unwrap_err())
+    }
+    auto tcp_stream# = (cede tcp_res).unwrap()
     if u.is_tls() {
-        return ws_connect_tls_async(tcp_res, u.host, u.path).await
+        return ws_connect_tls_async(tcp_stream#.take(), u.host, u.path).await
     }
-    return ws_connect_async(tcp_res, u.host, u.path).await
+    return ws_connect_async(tcp_stream#.take(), u.host, u.path).await
+}
+
+pub fn ws_connect_insecure_url_async(url_str: string, default_addr: SocketAddrV4) -> async Result<WsConnection, string> {
+    auto parsed = parse_url(url_str)
+    if parsed.is_err() {
+        return Result<WsConnection, string>::Err(parsed.unwrap_err())
+    }
+    auto u = parsed.unwrap()
+    auto conn_addr# = default_addr
+    if u.port > 0:u16 {
+        conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
+    }
+    auto tcp_res# = TcpStream::connect_async_timeout(conn_addr, 10000).await
+    if tcp_res.is_err() {
+        return Result<WsConnection, string>::Err(tcp_res.unwrap_err())
+    }
+    auto tcp_stream# = (cede tcp_res).unwrap()
+    if u.is_tls() {
+        return ws_connect_tls_insecure_async(tcp_stream#.take(), u.host, u.path).await
+    }
+    return ws_connect_async(tcp_stream#.take(), u.host, u.path).await
 }
 
 impl WsConnection {
@@ -894,14 +929,8 @@ impl WsConnection {
             return Result<usize, string>::Err(string::from("Outbound text payload size exceeds 16MB maximum limit"))
         }
 
-        auto head_vec# = Vec<u8>::with_capacity(14)
-        head_vec#.push(0:u8)
-        head_vec#.push(0:u8)
-        auto *head# = head_vec.unsafe_as_raw()
-        auto *head_u8# = to_u8_ptr(*head)
-
-        unsafe head[0] = 0x81:u8
-        auto head_len#: usize = 2
+        auto frame_vec# = Vec<u8>::with_capacity(14 + p_len)
+        frame_vec#.push(0x81:u8)
 
         auto mask_bit#: u8 = 0:u8
         if self.is_client {
@@ -909,24 +938,22 @@ impl WsConnection {
         }
 
         if p_len < 126 {
-            unsafe head[1] = (p_len as u8) + mask_bit
+            frame_vec#.push((p_len as u8) + mask_bit)
         } else {
             if p_len < 65536 {
-                unsafe head[1] = 126:u8 + mask_bit
-                unsafe head[2] = ((p_len >> 8) & 0xFF) as u8
-                unsafe head[3] = (p_len & 0xFF) as u8
-                head_len = 4
+                frame_vec#.push(126:u8 + mask_bit)
+                frame_vec#.push(((p_len >> 8) & 0xFF) as u8)
+                frame_vec#.push((p_len & 0xFF) as u8)
             } else {
-                unsafe head[1] = 127:u8 + mask_bit
-                unsafe head[2] = 0:u8
-                unsafe head[3] = 0:u8
-                unsafe head[4] = 0:u8
-                unsafe head[5] = 0:u8
-                unsafe head[6] = ((p_len >> 24) & 0xFF) as u8
-                unsafe head[7] = ((p_len >> 16) & 0xFF) as u8
-                unsafe head[8] = ((p_len >> 8) & 0xFF) as u8
-                unsafe head[9] = (p_len & 0xFF) as u8
-                head_len = 10
+                frame_vec#.push(127:u8 + mask_bit)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(((p_len >> 24) & 0xFF) as u8)
+                frame_vec#.push(((p_len >> 16) & 0xFF) as u8)
+                frame_vec#.push(((p_len >> 8) & 0xFF) as u8)
+                frame_vec#.push((p_len & 0xFF) as u8)
             }
         }
 
@@ -941,51 +968,35 @@ impl WsConnection {
                 return Result<usize, string>::Err(string::from("Failed generating random mask key"))
             }
 
-            auto k#: usize = 0
-            loop k < 4 {
-                unsafe head[head_len + k] = mask_key[k]
-                k += 1
-            }
-            head_len += 4
+            unsafe frame_vec#.push(mask_key[0])
+            unsafe frame_vec#.push(mask_key[1])
+            unsafe frame_vec#.push(mask_key[2])
+            unsafe frame_vec#.push(mask_key[3])
 
-            auto w_head = self.stream#.write_all_async(*head_u8, head_len).await
-            if w_head.is_err() {
-                return Result<usize, string>::Err(w_head.unwrap_err())
-            }
-
-            if p_len > 0 {
-                auto masked_payload_vec# = Vec<u8>::with_capacity(p_len)
-                auto i_mp#: usize = 0
-                loop i_mp < p_len { masked_payload_vec#.push(0:u8); i_mp += 1 }
-                auto *masked_pay# = masked_payload_vec.unsafe_as_raw()
-                auto *masked_u8# = to_u8_ptr(*masked_pay)
-                auto *s_ptr# = s.raw_ptr() as *[u8]
-                auto i#: usize = 0
-                loop i < p_len {
-                    unsafe masked_pay[i] = (s_ptr[i] as u8) ^ (mask_key[i % 4] as u8)
-                    i += 1
-                }
-                auto w_pay = self.stream#.write_all_async(*masked_u8, p_len).await
-                if w_pay.is_err() {
-                    return Result<usize, string>::Err(w_pay.unwrap_err())
-                }
+            auto *s_ptr# = s.raw_ptr() as *[u8]
+            auto i#: usize = 0
+            loop i < p_len {
+                auto b = (unsafe s_ptr[i] as u8) ^ (unsafe mask_key[i % 4] as u8)
+                frame_vec#.push(b)
+                i += 1
             }
         } else {
-            auto w_head = self.stream#.write_all_async(*head_u8, head_len).await
-            if w_head.is_err() {
-                return Result<usize, string>::Err(w_head.unwrap_err())
-            }
-
-            if p_len > 0 {
-                auto *s_ptr# = s.raw_ptr() as *[u8]
-                auto *u8_s# = to_u8_ptr(*s_ptr)
-                auto w_pay = self.stream#.write_all_async(*u8_s, p_len).await
-                if w_pay.is_err() {
-                    return Result<usize, string>::Err(w_pay.unwrap_err())
-                }
+            auto *s_ptr# = s.raw_ptr() as *[u8]
+            auto i#: usize = 0
+            loop i < p_len {
+                frame_vec#.push(unsafe s_ptr[i] as u8)
+                i += 1
             }
         }
 
+        auto frame_len = frame_vec.len()
+        auto *frame_raw# = frame_vec.unsafe_as_raw()
+        auto *frame_u8# = to_u8_ptr(*frame_raw)
+
+        auto w_res = self.stream#.write_all_async(*frame_u8, frame_len).await
+        if w_res.is_err() {
+            return Result<usize, string>::Err(w_res.unwrap_err())
+        }
         return Result<usize, string>::Ok(p_len)
     }
 
@@ -996,8 +1007,8 @@ impl WsConnection {
         }
 
         auto head_vec# = Vec<u8>::with_capacity(14)
-        head_vec#.push(0:u8)
-        head_vec#.push(0:u8)
+        auto i_h#: usize = 0
+        loop i_h < 14 { head_vec#.push(0:u8); i_h += 1 }
         auto *head# = head_vec.unsafe_as_raw()
         auto *head_u8# = to_u8_ptr(*head)
 
@@ -1101,8 +1112,8 @@ impl WsConnection {
         }
 
         auto head_vec# = Vec<u8>::with_capacity(6)
-        head_vec#.push(0:u8)
-        head_vec#.push(0:u8)
+        auto i_h#: usize = 0
+        loop i_h < 6 { head_vec#.push(0:u8); i_h += 1 }
         auto *head# = head_vec.unsafe_as_raw()
         auto *head_u8# = to_u8_ptr(*head)
 

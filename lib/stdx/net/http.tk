@@ -788,14 +788,33 @@ impl HttpClient {
 
         auto tcp_stream# = (cede conn_res).unwrap()
         if is_tls {
-            auto tls_res# = TlsStream::connect_async(tcp_stream, host).await
+            auto tls_res# = TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, true, self.timeout_ms).await
             if tls_res.is_err() {
                 return Result<HttpResponse, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
             return self.execute_on_stream_async(req, stream).await
         }
-        auto stream# = AsyncStream::from_tcp(tcp_stream)
+        auto stream# = AsyncStream::from_tcp(tcp_stream#.take())
+        return self.execute_on_stream_async(req, stream).await
+    }
+
+    pub fn execute_insecure_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponse, string> {
+        auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
+        if conn_res.is_err() {
+            return Result<HttpResponse, string>::Err(conn_res.unwrap_err())
+        }
+
+        auto tcp_stream# = (cede conn_res).unwrap()
+        if is_tls {
+            auto tls_res# = TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, false, self.timeout_ms).await
+            if tls_res.is_err() {
+                return Result<HttpResponse, string>::Err(tls_res.unwrap_err())
+            }
+            auto stream# = tls_res.unwrap()
+            return self.execute_on_stream_async(req, stream).await
+        }
+        auto stream# = AsyncStream::from_tcp(tcp_stream#.take())
         return self.execute_on_stream_async(req, stream).await
     }
 
@@ -803,7 +822,7 @@ impl HttpClient {
         auto req_wire = req.to_wire_string()
         auto *req_ptr# = req_wire.raw_ptr() as *[u8]
         auto *u8_req# = to_u8_ptr(*req_ptr)
-        auto write_res = stream#.write_all_async(*u8_req, req_wire.len()).await
+        auto write_res = stream#.write_all_async_timeout(*u8_req, req_wire.len(), self.timeout_ms).await
         if write_res.is_err() {
             stream#.close()
             return Result<HttpResponse, string>::Err(string::from("Failed to send HTTP request"))
@@ -817,7 +836,7 @@ impl HttpClient {
 
         auto raw_resp# = string::from("")
         loop {
-            auto read_res = stream#.read_async(*u8_buf, 4096:usize).await
+            auto read_res = stream#.read_async_timeout(*u8_buf, 4096:usize, self.timeout_ms).await
             auto bytes_read# = 0:usize
             auto read_ok# = false
             match read_res {
@@ -857,12 +876,29 @@ impl HttpClient {
         return self.execute_stream_async(req, addr, false, string::from("")).await
     }
 
-    pub fn execute_url_async(self, req: HttpRequest, url_str: string, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+    pub fn execute_url_async(self, req: HttpRequest, url_str: string, default_addr: SocketAddrV4) -> async Result<HttpResponse, string> {
         auto parsed_url = parse_url(url_str)
         if parsed_url.is_err() {
             return Result<HttpResponse, string>::Err(parsed_url.unwrap_err())
         }
         auto u = parsed_url.unwrap()
-        return self.execute_stream_async(req, addr, u.is_tls(), u.host).await
+        auto conn_addr# = default_addr
+        if u.port > 0:u16 {
+            conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
+        }
+        return self.execute_stream_async(req, conn_addr, u.is_tls(), u.host).await
+    }
+
+    pub fn execute_insecure_url_async(self, req: HttpRequest, url_str: string, default_addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+        auto parsed_url = parse_url(url_str)
+        if parsed_url.is_err() {
+            return Result<HttpResponse, string>::Err(parsed_url.unwrap_err())
+        }
+        auto u = parsed_url.unwrap()
+        auto conn_addr# = default_addr
+        if u.port > 0:u16 {
+            conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
+        }
+        return self.execute_insecure_stream_async(req, conn_addr, u.is_tls(), u.host).await
     }
 }

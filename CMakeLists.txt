@@ -130,12 +130,24 @@ add_subdirectory(src)
 
 # Build the native runtime and the user-facing tools into one SDK layout.  The
 # compiler must be built first because the remaining tools are written in Toka.
+find_package(OpenSSL REQUIRED)
+
+if(OPENSSL_SSL_LIBRARY)
+    get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_SSL_LIBRARY}" DIRECTORY)
+    target_compile_definitions(tokac PRIVATE TOKA_OPENSSL_LIB_DIR="${OPENSSL_LIB_DIR}")
+endif()
+
+set(OPENSSL_CFLAGS "")
+if(OPENSSL_INCLUDE_DIR)
+    set(OPENSSL_CFLAGS "-I${OPENSSL_INCLUDE_DIR}")
+endif()
+
 set(TOKA_RUNTIME_OBJECT
     "${CMAKE_BINARY_DIR}/lib/sys/toka_rt${CMAKE_C_OUTPUT_EXTENSION}")
 add_custom_command(
     OUTPUT "${TOKA_RUNTIME_OBJECT}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib/sys"
-    COMMAND ${CMAKE_C_COMPILER} -c "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
+    COMMAND ${CMAKE_C_COMPILER} ${OPENSSL_CFLAGS} -c "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
             -o "${TOKA_RUNTIME_OBJECT}"
     DEPENDS "${CMAKE_SOURCE_DIR}/lib/sys/toka_rt.c"
     VERBATIM

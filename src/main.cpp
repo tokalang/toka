@@ -254,7 +254,12 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     for (const auto &extra : extraObjs) {
         cmd += " \"" + extra + "\"";
     }
-    cmd += " -o \"" + outputFile + "\" -lws2_32 -lshell32 -lbcrypt";
+#ifdef TOKA_OPENSSL_LIB_DIR
+    if (llvm::sys::fs::exists(TOKA_OPENSSL_LIB_DIR)) {
+        cmd += " -L\"" TOKA_OPENSSL_LIB_DIR "\"";
+    }
+#endif
+    cmd += " -o \"" + outputFile + "\" -lws2_32 -lshell32 -lbcrypt -lssl -lcrypto";
     return system(cmd.c_str()) == 0;
 #elif defined(__APPLE__)
     args.push_back("-w");
@@ -272,24 +277,44 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     args.push_back("-syslibroot");
     args.push_back("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk");
 
+    std::string cmake_openssl_flag;
+#ifdef TOKA_OPENSSL_LIB_DIR
+    if (llvm::sys::fs::exists(TOKA_OPENSSL_LIB_DIR)) {
+        cmake_openssl_flag = std::string("-L") + TOKA_OPENSSL_LIB_DIR;
+        args.push_back(cmake_openssl_flag.c_str());
+    }
+#endif
+    if (llvm::sys::fs::exists("/opt/homebrew/opt/openssl@3/lib")) {
+        args.push_back("-L/opt/homebrew/opt/openssl@3/lib");
+    } else if (llvm::sys::fs::exists("/opt/homebrew/lib")) {
+        args.push_back("-L/opt/homebrew/lib");
+    } else if (llvm::sys::fs::exists("/usr/local/opt/openssl/lib")) {
+        args.push_back("-L/usr/local/opt/openssl/lib");
+    } else if (llvm::sys::fs::exists("/usr/local/lib")) {
+        args.push_back("-L/usr/local/lib");
+    }
+
     args.push_back(objFile.c_str());
     for (const auto &extra : extraObjs) {
         args.push_back(extra.c_str());
     }
     args.push_back("-o");
     args.push_back(outputFile.c_str());
+    args.push_back("-lssl");
+    args.push_back("-lcrypto");
     args.push_back("-lSystem");
     return lld::macho::link(args, llvm::outs(), llvm::errs(), false, false);
 #else
-    // Linux and other Unix-like systems.
-    // Use the system 'cc' as the linker driver to automatically correctly resolve
-    // crt1.o, crti.o, crtbegin.o, crtend.o, and crtn.o which are absolutely required
-    // for proper .init_array (global constructors) execution.
     std::string cmd = "cc \"" + objFile + "\"";
     for (const auto &extra : extraObjs) {
         cmd += " \"" + extra + "\"";
     }
-    cmd += " -o \"" + outputFile + "\" -lm -lc";
+#ifdef TOKA_OPENSSL_LIB_DIR
+    if (llvm::sys::fs::exists(TOKA_OPENSSL_LIB_DIR)) {
+        cmd += " -L\"" TOKA_OPENSSL_LIB_DIR "\"";
+    }
+#endif
+    cmd += " -o \"" + outputFile + "\" -lssl -lcrypto -lm -lc";
     return system(cmd.c_str()) == 0;
 #endif
 }

@@ -1,4 +1,4 @@
-// tests/pass/g12_stdx_tls_test.tk — Phase 5B AsyncByteStream & TLS Abstraction Test
+// tests/pass/g12_stdx_tls_test.tk — Phase 5B Real OpenSSL TLS Engine Test Suite
 import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
 import stdx/net/stream::{AsyncStream, to_u8_ptr}
 import stdx/net/tls::{TlsStream}
@@ -8,24 +8,28 @@ import core/types::{Addr}
 import std/io::{println}
 import std/vec::{Vec}
 
-fn async_tls_server_task() -> async void {
+fn async_tls_server_task() -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18443:u16)
     auto listener# = TcpListener::bind(addr)
     if !listener.is_valid() {
-        println("[TlsServer] Bind failed!")
-        return
+        return Result<(), string>::Err(string::from("Bind failed"))
     }
 
     println("[TlsServer] Listening on 127.0.0.1:18443...")
     auto stream# = listener#.accept_async().await
     if !stream.is_valid() {
-        println("[TlsServer] Accept failed!")
-        return
+        return Result<(), string>::Err(string::from("Accept failed"))
     }
 
-    auto async_s# = AsyncStream::from_tcp(stream)
+    println("[TlsServer] Performing server TLS handshake...")
+    auto tls_res# = TlsStream::accept_async(stream).await
+    if tls_res.is_err() {
+        return Result<(), string>::Err(tls_res.unwrap_err())
+    }
+    auto async_s# = tls_res.unwrap()
+    println("[TlsServer] OpenSSL TLS Server Handshake Complete!")
 
-    // Read request payload
+    // Read request payload over TLS
     auto buf# = Vec<u8>::with_capacity(128)
     auto i#: usize = 0
     loop i < 128 { buf#.push(0:u8); i += 1 }
@@ -34,37 +38,46 @@ fn async_tls_server_task() -> async void {
     auto *u8_buf# = to_u8_ptr(*buf_raw)
     auto r = async_s#.read_async(*u8_buf, 128:usize).await
     if r.is_err() {
-        println("[TlsServer] Read failed!")
-        return
+        return Result<(), string>::Err(r.unwrap_err())
     }
     auto bytes_read = r.unwrap()
-    println("[TlsServer] Received {} bytes payload successfully!", bytes_read)
+    if bytes_read == 0:usize {
+        return Result<(), string>::Err(string::from("Server read 0 bytes EOF"))
+    }
+    println("[TlsServer] Received {} bytes encrypted payload over TLS successfully!", bytes_read)
 
-    // Echo response
-    auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello TLS 1.3")
+    // Echo response over TLS
+    auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 17\r\n\r\nHello OpenSSL 1.3")
     auto *resp_ptr# = resp.raw_ptr() as *[u8]
     auto *u8_resp# = to_u8_ptr(*resp_ptr)
     auto w = async_s#.write_all_async(*u8_resp, resp.len()).await
     if w.is_err() {
-        println("[TlsServer] Write failed!")
-        return
+        return Result<(), string>::Err(w.unwrap_err())
     }
 
-    println("[TlsServer] Server session finished.")
+    sleep_async(50:u64).await
+    async_s#.close()
+    println("[TlsServer] TLS Server session finished cleanly.")
+    return Result<(), string>::Ok(())
 }
 
-fn async_tls_client_task() -> async void {
+fn async_tls_client_task() -> async Result<(), string> {
     sleep_async(50:u64).await
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18443:u16)
-    println("[TlsClient] Connecting & Performing TLS handshake with SNI 'localhost'...")
-    auto tls_res = TlsStream::connect_async(TcpStream::connect_async(addr).await, string::from("localhost")).await
+    println("[TlsClient] Connecting to 127.0.0.1:18443...")
+    auto tcp_stream# = TcpStream::connect_async(addr).await
+    if !tcp_stream.is_valid() {
+        return Result<(), string>::Err(string::from("TCP connect failed"))
+    }
+
+    println("[TlsClient] Performing OpenSSL TLS handshake with SNI 'localhost' (insecure mode)...")
+    auto tls_res = TlsStream::connect_insecure_async(tcp_stream, string::from("localhost")).await
     if tls_res.is_err() {
-        println("[TlsClient] TLS connect error: {}", tls_res.unwrap_err().as_str())
-        return
+        return Result<(), string>::Err(tls_res.unwrap_err())
     }
 
     auto tls_stream# = tls_res.unwrap()
-    println("[TlsClient] TLS Handshake complete! Transmitting GET request...")
+    println("[TlsClient] OpenSSL TLS Handshake complete! Transmitting GET request...")
 
     auto req = string::from("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
     auto *req_ptr# = req.raw_ptr() as *[u8]
@@ -72,8 +85,7 @@ fn async_tls_client_task() -> async void {
 
     auto w = tls_stream#.write_all_async(*u8_req, req.len()).await
     if w.is_err() {
-        println("[TlsClient] Write request failed!")
-        return
+        return Result<(), string>::Err(string::from("Write request failed"))
     }
 
     auto buf# = Vec<u8>::with_capacity(256)
@@ -84,26 +96,39 @@ fn async_tls_client_task() -> async void {
     auto *u8_buf# = to_u8_ptr(*buf_raw)
     auto r = tls_stream#.read_async(*u8_buf, 256:usize).await
     if r.is_err() {
-        println("[TlsClient] Read response failed: {}!", r.unwrap_err().as_str())
-        return
+        return Result<(), string>::Err(r.unwrap_err())
     }
     auto n = r.unwrap()
-    println("[TlsClient] Received {} bytes response payload!", n)
+    if n == 0:usize {
+        return Result<(), string>::Err(string::from("Client received 0 bytes response over TLS"))
+    }
+    println("[TlsClient] Received {} bytes response payload over TLS!", n)
 
     tls_stream#.close()
     println("[TlsClient] TLS Client finished successfully.")
+    return Result<(), string>::Ok(())
 }
 
 fn main_async() -> async i32 {
-    println("--- Starting Phase 5B AsyncByteStream & TLS Abstraction Test ---")
+    println("--- Starting Real OpenSSL TLS Engine Qualification Test ---")
     auto server_task# = async_tls_server_task().start
     auto client_task# = async_tls_client_task().start
 
-    server_task.await
-    client_task.await
+    auto s_res = server_task.await
+    auto c_res = client_task.await
 
-    println("Phase 5B TLS Test PASSED Cleanly!")
-    return 0
+    if s_res.is_ok() && c_res.is_ok() {
+        println("Phase 5B Real OpenSSL TLS Test PASSED Cleanly!")
+        return 0
+    }
+
+    if s_res.is_err() {
+        println("[FAIL] Server error: {}", s_res.unwrap_err().as_str())
+    }
+    if c_res.is_err() {
+        println("[FAIL] Client error: {}", c_res.unwrap_err().as_str())
+    }
+    return 1
 }
 
 fn main() -> i32 {

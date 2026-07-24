@@ -4,7 +4,7 @@ import sys/os/base as sys
 import sys/os/net as sysnet
 import sys/libc::{toka_resolve_ipv4, libc_free}
 import std/io::{@Reader, @Writer, println}
-import std/task::{get_reactor_fd, sleep_async, register_timer_token}
+import std/task::{get_reactor_fd, sleep_async, register_timer_token, current_time_ms}
 import std/context::{Canceler}
 import std/async::{race2, RaceWinner}
 import core/result::{Result}
@@ -414,6 +414,26 @@ impl TcpStream {
         return Result<usize, string>::Ok(total)
     }
 
+    pub fn read_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
+        if self.closed || self.fd < 0 {
+            return Result<usize, string>::Err(string::from("Stream closed"))
+        }
+        if timeout_ms > 0 {
+            return net_async_read_timeout_fd(self.fd, *buf, len, timeout_ms).await
+        }
+        return net_async_read_fd(self.fd, *buf, len).await
+    }
+
+    pub fn write_all_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
+        if self.closed || self.fd < 0 {
+            return Result<usize, string>::Err(string::from("Stream closed"))
+        }
+        if timeout_ms > 0 {
+            return net_async_write_timeout_fd(self.fd, *buf, len, timeout_ms).await
+        }
+        return self#.write_all_async(*buf, len).await
+    }
+
     pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
         auto total# = 0:usize
         loop total < len {
@@ -540,7 +560,7 @@ impl TcpListener {
     }
 }
 
-fn register_async_reactor_read(coro: Addr, fd: i32) -> bool {
+pub fn register_async_reactor_read_key(coro: Addr, fd: i32, *out_key: u64) -> bool {
     auto task_id# = 0:u64
     auto wait_gen# = 0:u64
     auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
@@ -555,6 +575,8 @@ fn register_async_reactor_read(coro: Addr, fd: i32) -> bool {
                 core_task::toka_task_abort_suspend(coro as *void)
                 return false
             }
+            auto *p_key# = *out_key
+            p_key = event_key
             core_task::toka_task_commit_suspend(coro as *void)
             return true
         }
@@ -563,7 +585,12 @@ fn register_async_reactor_read(coro: Addr, fd: i32) -> bool {
     return false
 }
 
-fn register_async_reactor_write(coro: Addr, fd: i32) -> bool {
+pub fn register_async_reactor_read(coro: Addr, fd: i32) -> bool {
+    auto unused_key# = 0:u64
+    return register_async_reactor_read_key(coro, fd, &unused_key as *u64)
+}
+
+pub fn register_async_reactor_write_key(coro: Addr, fd: i32, *out_key: u64) -> bool {
     auto task_id# = 0:u64
     auto wait_gen# = 0:u64
     auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
@@ -578,12 +605,37 @@ fn register_async_reactor_write(coro: Addr, fd: i32) -> bool {
                 core_task::toka_task_abort_suspend(coro as *void)
                 return false
             }
+            auto *p_key# = *out_key
+            p_key = event_key
             core_task::toka_task_commit_suspend(coro as *void)
             return true
         }
         core_task::toka_task_abort_suspend(coro as *void)
     }
     return false
+}
+
+pub fn register_async_reactor_write(coro: Addr, fd: i32) -> bool {
+    auto unused_key# = 0:u64
+    return register_async_reactor_write_key(coro, fd, &unused_key as *u64)
+}
+
+pub fn unregister_async_reactor_read_key(fd: i32, key: u64) {
+    if key != 0:u64 {
+        auto wait_id = (key >> 32:u64) as u32
+        auto slot_gen = (key & 0xFFFFFFFF:u64) as u32
+        sysnet::reactor_del_read_impl(get_reactor_fd(), fd, key as Addr)
+        core_task::toka_wait_registry_release(wait_id, slot_gen)
+    }
+}
+
+pub fn unregister_async_reactor_write_key(fd: i32, key: u64) {
+    if key != 0:u64 {
+        auto wait_id = (key >> 32:u64) as u32
+        auto slot_gen = (key & 0xFFFFFFFF:u64) as u32
+        sysnet::reactor_del_write_impl(get_reactor_fd(), fd, key as Addr)
+        core_task::toka_wait_registry_release(wait_id, slot_gen)
+    }
 }
 
 fn register_async_reactor_read_timeout(coro: Addr, fd: i32, timeout_ms: i32, *out_io_id: u32, *out_io_gen: u32, *out_tm_id: u32, *out_tm_gen: u32) -> bool {
@@ -599,6 +651,42 @@ fn register_async_reactor_read_timeout(coro: Addr, fd: i32, timeout_ms: i32, *ou
         if alloc_ok != 0 {
             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
             if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {
+                sysnet::reactor_del_fd_impl(get_reactor_fd(), fd)
+                core_task::toka_wait_registry_release(io_id, io_gen)
+                core_task::toka_wait_registry_release(tm_id, tm_gen)
+                core_task::toka_task_abort_suspend(coro as *void)
+                return false
+            }
+            register_timer_token(tm_id, tm_gen, timeout_ms)
+            auto *p0# = *out_io_id
+            p0 = io_id
+            auto *p1# = *out_io_gen
+            p1 = io_gen
+            auto *p2# = *out_tm_id
+            p2 = tm_id
+            auto *p3# = *out_tm_gen
+            p3 = tm_gen
+            core_task::toka_task_commit_suspend(coro as *void)
+            return true
+        }
+        core_task::toka_task_abort_suspend(coro as *void)
+    }
+    return false
+}
+
+fn register_async_reactor_write_timeout(coro: Addr, fd: i32, timeout_ms: i32, *out_io_id: u32, *out_io_gen: u32, *out_tm_id: u32, *out_tm_gen: u32) -> bool {
+    auto task_id# = 0:u64
+    auto wait_gen# = 0:u64
+    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    if ok != 0 {
+        auto io_id# = 0:u32
+        auto io_gen# = 0:u32
+        auto tm_id# = 0:u32
+        auto tm_gen# = 0:u32
+        auto alloc_ok = core_task::toka_wait_registry_allocate_pair(task_id, wait_gen, 3:u16, 1:u16, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32)
+        if alloc_ok != 0 {
+            auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
+            if !sysnet::reactor_add_write_impl(get_reactor_fd(), fd, event_key as Addr) {
                 sysnet::reactor_del_fd_impl(get_reactor_fd(), fd)
                 core_task::toka_wait_registry_release(io_id, io_gen)
                 core_task::toka_wait_registry_release(tm_id, tm_gen)
@@ -678,12 +766,20 @@ pub fn net_async_read_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, s
                     auto eagain = sysnet::get_eagain_impl()
 
                     if err == eagain {
-                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, fd) {
+                        auto last_key# = 0:u64
+                        if !register_async_reactor_read_key(__builtin_coro_current_handle() as Addr, fd, &last_key as *u64) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async read"))
                             done = true
                             continue
                         }
                         __builtin_coro_suspend()
+
+                        auto *coro_handle# = __builtin_coro_current_handle()
+                        if core_task::toka_task_is_current_canceled(*coro_handle) != 0 {
+                            unregister_async_reactor_read_key(fd, last_key)
+                            ret = Result<usize, string>::Err(string::from("Read canceled"))
+                            done = true
+                        }
                     } else {
                         sleep_async(0:i64).await
                         ret = Result<usize, string>::Err(string::from("Read error"))
@@ -727,13 +823,26 @@ pub fn net_async_read_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32)
                         }
                         __builtin_coro_suspend()
 
+                        auto *coro_handle# = __builtin_coro_current_handle()
+                        auto is_canceled = core_task::toka_task_is_current_canceled(*coro_handle)
                         auto is_timeout = core_task::toka_wait_registry_is_winner(tm_id, tm_gen)
+                        auto is_io = core_task::toka_wait_registry_is_winner(io_id, io_gen)
                         core_task::toka_wait_registry_release(io_id, io_gen)
                         core_task::toka_wait_registry_release(tm_id, tm_gen)
-                        if is_timeout != 0 {
-                            auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
+
+                        auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
+
+                        if is_canceled != 0 {
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), fd, event_key as Addr)
+                            ret = Result<usize, string>::Err(string::from("Read canceled"))
+                            done = true
+                        } else if is_timeout != 0 {
                             sysnet::reactor_del_read_impl(get_reactor_fd(), fd, event_key as Addr)
                             ret = Result<usize, string>::Err(string::from("IO operation timed out"))
+                            done = true
+                        } else if is_io == 0 {
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), fd, event_key as Addr)
+                            ret = Result<usize, string>::Err(string::from("Read canceled"))
                             done = true
                         }
                     } else {
@@ -900,12 +1009,85 @@ pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, 
                     auto eagain = sysnet::get_eagain_impl()
 
                     if err == eagain {
-                        if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, fd) {
+                        auto last_key# = 0:u64
+                        if !register_async_reactor_write_key(__builtin_coro_current_handle() as Addr, fd, &last_key as *u64) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async write"))
                             done = true
                             continue
                         }
                         __builtin_coro_suspend()
+
+                        auto *coro_handle# = __builtin_coro_current_handle()
+                        if core_task::toka_task_is_current_canceled(*coro_handle) != 0 {
+                            unregister_async_reactor_write_key(fd, last_key)
+                            ret = Result<usize, string>::Err(string::from("Write canceled"))
+                            done = true
+                        }
+                    } else {
+                        sleep_async(0:i64).await
+                        ret = Result<usize, string>::Err(string::from("Write error"))
+                        done = true
+                    }
+                }
+            }
+        }
+    }
+    return ret
+}
+
+pub fn net_async_write_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
+    auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
+    unsafe {
+        if fd < 0 {
+            ret = Result<usize, string>::Err(string::from("Stream closed"))
+        } else {
+            sysnet::net_set_nonblocking_impl(fd)
+
+            auto done# = false
+            loop !done {
+                auto n: i64 = sysnet::net_write_impl(fd, *buf, len)
+                if n >= 0:i64 {
+                    sleep_async(0:i64).await
+                    ret = Result<usize, string>::Ok(n as usize)
+                    done = true
+                } else {
+                    auto err = sysnet::get_errno_impl()
+                    auto eagain = sysnet::get_eagain_impl()
+
+                    if err == eagain {
+                        auto io_id# = 0:u32
+                        auto io_gen# = 0:u32
+                        auto tm_id# = 0:u32
+                        auto tm_gen# = 0:u32
+                        if !register_async_reactor_write_timeout(__builtin_coro_current_handle() as Addr, fd, timeout_ms, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32) {
+                            ret = Result<usize, string>::Err(string::from("Failed to register async write timeout"))
+                            done = true
+                            continue
+                        }
+                        __builtin_coro_suspend()
+
+                        auto *coro_handle# = __builtin_coro_current_handle()
+                        auto is_canceled = core_task::toka_task_is_current_canceled(*coro_handle)
+                        auto is_timeout = core_task::toka_wait_registry_is_winner(tm_id, tm_gen)
+                        auto is_io = core_task::toka_wait_registry_is_winner(io_id, io_gen)
+                        core_task::toka_wait_registry_release(io_id, io_gen)
+                        core_task::toka_wait_registry_release(tm_id, tm_gen)
+
+                        auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
+
+                        if is_canceled != 0 {
+                            sysnet::reactor_del_write_impl(get_reactor_fd(), fd, event_key as Addr)
+                            ret = Result<usize, string>::Err(string::from("Write canceled"))
+                            done = true
+                        } else if is_timeout != 0 {
+                            sysnet::reactor_del_write_impl(get_reactor_fd(), fd, event_key as Addr)
+                            ret = Result<usize, string>::Err(string::from("Write timeout"))
+                            done = true
+                        } else if is_io == 0 {
+                            sysnet::reactor_del_write_impl(get_reactor_fd(), fd, event_key as Addr)
+                            ret = Result<usize, string>::Err(string::from("Write canceled"))
+                            done = true
+                        }
                     } else {
                         sleep_async(0:i64).await
                         ret = Result<usize, string>::Err(string::from("Write error"))
