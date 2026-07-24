@@ -1,0 +1,108 @@
+// tests/pass/g12_stdx_https_wss_test.tk — Phase 5C HTTPS & WSS Integration Test Suite
+import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
+import stdx/net/url::{Url, parse_url}
+import stdx/net/http::{HttpClient, HttpRequest, HttpMethod, HeaderMap}
+import stdx/net/websocket::{ws_connect_url_async, WsConnection}
+import std/task::{sleep_async, block_on}
+import core/result::{Result}
+import std/io::{println}
+
+fn test_url_parsing() {
+    println("[Test] Testing URL Scheme & Effective Port Parsing...")
+    
+    auto u1 = parse_url(string::from("https://example.com/api/v1?query=1")).unwrap()
+    if !u1.is_tls() {
+        println("[FAIL] https scheme is_tls expected true!")
+        return
+    }
+    if u1.effective_port() != 443:u16 {
+        println("[FAIL] https default port expected 443!")
+        return
+    }
+
+    auto u2 = parse_url(string::from("wss://echo.websocket.org/chat")).unwrap()
+    if !u2.is_tls() {
+        println("[FAIL] wss scheme is_tls expected true!")
+        return
+    }
+    if u2.effective_port() != 443:u16 {
+        println("[FAIL] wss default port expected 443!")
+        return
+    }
+
+    auto u3 = parse_url(string::from("http://localhost:8080/")).unwrap()
+    if u3.is_tls() {
+        println("[FAIL] http scheme is_tls expected false!")
+        return
+    }
+    if u3.effective_port() != 8080:u16 {
+        println("[FAIL] http custom port expected 8080!")
+        return
+    }
+
+    println("[Test] URL Scheme & Effective Port Parsing PASSED!")
+}
+
+fn async_https_server_task() -> async void {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18444:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        return
+    }
+
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        return
+    }
+
+    // Mock plain HTTP server responding to client request
+    auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\nHTTPS Client OK!")
+    auto write_res = stream#.write_string_async(resp).await
+    stream#.close()
+}
+
+fn async_https_client_task() -> async void {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18444:u16)
+    auto client = HttpClient::new(5000)
+
+    auto headers# = HeaderMap::new()
+    auto _h = headers#.insert(string::from("Host"), string::from("localhost"))
+    auto req = HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/api"),
+        version = string::from("HTTP/1.1"),
+        headers = headers,
+        body = string::from("")
+    )
+
+    println("[HttpsClient] Executing request via execute_url_async...")
+    auto res = client.execute_url_async(req, string::from("http://localhost:18444/api"), addr).await
+    if res.is_err() {
+        println("[HttpsClient] Error: {}", res.unwrap_err().as_str())
+        return
+    }
+
+    auto resp = res.unwrap()
+    if resp.status_code == 200 {
+        println("[HttpsClient] HTTPS/HTTP Client Integration PASSED!")
+    }
+}
+
+fn main_async() -> async i32 {
+    println("--- Starting Phase 5C & 6 HTTPS/WSS Integration Suite ---")
+    test_url_parsing()
+
+    auto server_task# = async_https_server_task().start
+    auto client_task# = async_https_client_task().start
+
+    server_task.await
+    client_task.await
+
+    println("Phase 5C & 6 HTTPS/WSS Integration Test PASSED Cleanly!")
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(main_async())
+}

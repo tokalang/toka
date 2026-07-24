@@ -181,6 +181,10 @@ impl TcpStream@encap {
 }
 
 impl TcpStream {
+    pub fn get_fd(self#) -> i32 {
+        return self.fd
+    }
+
     pub fn disarm(self#) {
         self.fd = -1
         self.closed = true

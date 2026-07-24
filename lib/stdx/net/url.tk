@@ -117,6 +117,21 @@ impl Url {
             fragment = string::from("")
         )
     }
+
+    pub fn is_tls(self) -> bool {
+        auto s = self.scheme.as_str()
+        return s.equals("https") || s.equals("HTTPS") || s.equals("wss") || s.equals("WSS")
+    }
+
+    pub fn effective_port(self) -> u16 {
+        if self.port > 0:u16 {
+            return self.port
+        }
+        if self.is_tls() {
+            return 443:u16
+        }
+        return 80:u16
+    }
 }
 
 pub fn parse_url(input: string) -> Result<Url, string> {

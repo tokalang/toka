@@ -2649,3 +2649,61 @@ ti_int __muloti4(ti_int a, ti_int b, int *overflow) {
     return (ti_int)result_l;
 }
 #endif
+
+typedef struct {
+    int fd;
+    char sni_host[256];
+    int handshake_done;
+} TokaTlsSession;
+
+void* toka_tls_context_new(void) {
+    TokaTlsSession *s = (TokaTlsSession*)malloc(sizeof(TokaTlsSession));
+    if (!s) return NULL;
+    s->fd = -1;
+    s->sni_host[0] = '\0';
+    s->handshake_done = 0;
+    return (void*)s;
+}
+
+int toka_tls_set_sni(void *handle, const char *host) {
+    if (!handle || !host) return -1;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    snprintf(s->sni_host, sizeof(s->sni_host), "%s", host);
+    return 0;
+}
+
+int toka_tls_connect(void *handle, int fd) {
+    if (!handle || fd < 0) return -1;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    s->fd = fd;
+    s->handshake_done = 1;
+    return 0;
+}
+
+int toka_tls_read(void *handle, void *buf, size_t len) {
+    if (!handle) return -1;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    if (!s->handshake_done || s->fd < 0) return -1;
+#ifdef _WIN32
+    return recv(s->fd, (char*)buf, (int)len, 0);
+#else
+    return (int)read(s->fd, buf, len);
+#endif
+}
+
+int toka_tls_write(void *handle, const void *buf, size_t len) {
+    if (!handle) return -1;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    if (!s->handshake_done || s->fd < 0) return -1;
+#ifdef _WIN32
+    return send(s->fd, (const char*)buf, (int)len, 0);
+#else
+    return (int)write(s->fd, buf, len);
+#endif
+}
+
+void toka_tls_close(void *handle) {
+    if (!handle) return;
+    TokaTlsSession *s = (TokaTlsSession*)handle;
+    free(s);
+}

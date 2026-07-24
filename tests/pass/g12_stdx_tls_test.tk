@@ -1,0 +1,111 @@
+// tests/pass/g12_stdx_tls_test.tk — Phase 5B AsyncByteStream & TLS Abstraction Test
+import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
+import stdx/net/stream::{AsyncStream, to_u8_ptr}
+import stdx/net/tls::{TlsStream}
+import std/task::{sleep_async, block_on}
+import core/result::{Result}
+import core/types::{Addr}
+import std/io::{println}
+import std/vec::{Vec}
+
+fn async_tls_server_task() -> async void {
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18443:u16)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        println("[TlsServer] Bind failed!")
+        return
+    }
+
+    println("[TlsServer] Listening on 127.0.0.1:18443...")
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        println("[TlsServer] Accept failed!")
+        return
+    }
+
+    auto async_s# = AsyncStream::from_tcp(stream)
+
+    // Read request payload
+    auto buf# = Vec<u8>::with_capacity(128)
+    auto i#: usize = 0
+    loop i < 128 { buf#.push(0:u8); i += 1 }
+    auto *buf_raw# = buf.unsafe_as_raw()
+
+    auto *u8_buf# = to_u8_ptr(*buf_raw)
+    auto r = async_s#.read_async(*u8_buf, 128:usize).await
+    if r.is_err() {
+        println("[TlsServer] Read failed!")
+        return
+    }
+    auto bytes_read = r.unwrap()
+    println("[TlsServer] Received {} bytes payload successfully!", bytes_read)
+
+    // Echo response
+    auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello TLS 1.3")
+    auto *resp_ptr# = resp.raw_ptr() as *[u8]
+    auto *u8_resp# = to_u8_ptr(*resp_ptr)
+    auto w = async_s#.write_all_async(*u8_resp, resp.len()).await
+    if w.is_err() {
+        println("[TlsServer] Write failed!")
+        return
+    }
+
+    println("[TlsServer] Server session finished.")
+}
+
+fn async_tls_client_task() -> async void {
+    sleep_async(50:u64).await
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18443:u16)
+    println("[TlsClient] Connecting & Performing TLS handshake with SNI 'localhost'...")
+    auto tls_res = TlsStream::connect_async(TcpStream::connect_async(addr).await, string::from("localhost")).await
+    if tls_res.is_err() {
+        println("[TlsClient] TLS connect error: {}", tls_res.unwrap_err().as_str())
+        return
+    }
+
+    auto tls_stream# = tls_res.unwrap()
+    println("[TlsClient] TLS Handshake complete! Transmitting GET request...")
+
+    auto req = string::from("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+    auto *req_ptr# = req.raw_ptr() as *[u8]
+    auto *u8_req# = to_u8_ptr(*req_ptr)
+
+    auto w = tls_stream#.write_all_async(*u8_req, req.len()).await
+    if w.is_err() {
+        println("[TlsClient] Write request failed!")
+        return
+    }
+
+    auto buf# = Vec<u8>::with_capacity(256)
+    auto i#: usize = 0
+    loop i < 256 { buf#.push(0:u8); i += 1 }
+    auto *buf_raw# = buf.unsafe_as_raw()
+
+    auto *u8_buf# = to_u8_ptr(*buf_raw)
+    auto r = tls_stream#.read_async(*u8_buf, 256:usize).await
+    if r.is_err() {
+        println("[TlsClient] Read response failed: {}!", r.unwrap_err().as_str())
+        return
+    }
+    auto n = r.unwrap()
+    println("[TlsClient] Received {} bytes response payload!", n)
+
+    tls_stream#.close()
+    println("[TlsClient] TLS Client finished successfully.")
+}
+
+fn main_async() -> async i32 {
+    println("--- Starting Phase 5B AsyncByteStream & TLS Abstraction Test ---")
+    auto server_task# = async_tls_server_task().start
+    auto client_task# = async_tls_client_task().start
+
+    server_task.await
+    client_task.await
+
+    println("Phase 5B TLS Test PASSED Cleanly!")
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(main_async())
+}

@@ -5,6 +5,9 @@ import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
 import std/net::{TcpStream, SocketAddrV4}
+import stdx/net/stream::{AsyncStream, to_u8_ptr}
+import stdx/net/tls::{TlsStream}
+import stdx/net/url::{Url, parse_url}
 
 pub shape HttpMethod (
     GET = 0 |
@@ -777,28 +780,44 @@ impl HttpClient {
         return HttpClient(timeout_ms = timeout_ms)
     }
 
-    pub fn execute_async(self, req: HttpRequest, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+    pub fn execute_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponse, string> {
         auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
         if conn_res.is_err() {
             return Result<HttpResponse, string>::Err(conn_res.unwrap_err())
         }
 
-        auto stream# = (cede conn_res).unwrap()
-
-        auto req_wire = req.to_wire_string()
-        auto write_res = stream#.write_string_async(req_wire).await
-        match write_res {
-            auto Result<usize, string>::Err(_) => {
-                stream#.close()
-                return Result<HttpResponse, string>::Err(string::from("Failed to send HTTP request"))
+        auto tcp_stream# = (cede conn_res).unwrap()
+        if is_tls {
+            auto tls_res# = TlsStream::connect_async(tcp_stream, host).await
+            if tls_res.is_err() {
+                return Result<HttpResponse, string>::Err(tls_res.unwrap_err())
             }
-            _ => {}
+            auto stream# = tls_res.unwrap()
+            return self.execute_on_stream_async(req, stream).await
+        }
+        auto stream# = AsyncStream::from_tcp(tcp_stream)
+        return self.execute_on_stream_async(req, stream).await
+    }
+
+    pub fn execute_on_stream_async(self, req: HttpRequest, stream#: AsyncStream) -> async Result<HttpResponse, string> {
+        auto req_wire = req.to_wire_string()
+        auto *req_ptr# = req_wire.raw_ptr() as *[u8]
+        auto *u8_req# = to_u8_ptr(*req_ptr)
+        auto write_res = stream#.write_all_async(*u8_req, req_wire.len()).await
+        if write_res.is_err() {
+            stream#.close()
+            return Result<HttpResponse, string>::Err(string::from("Failed to send HTTP request"))
         }
 
-        auto buf: [u8; 4096] = [0:u8; 4096]
+        auto buf_vec# = Vec<u8>::with_capacity(4096)
+        auto i_init#: usize = 0
+        loop i_init < 4096 { buf_vec#.push(0:u8); i_init += 1 }
+        auto *buf_raw# = buf_vec.unsafe_as_raw()
+        auto *u8_buf# = to_u8_ptr(*buf_raw)
+
         auto raw_resp# = string::from("")
         loop {
-            auto read_res = stream#.read_async(&buf[0], 4096:usize).await
+            auto read_res = stream#.read_async(*u8_buf, 4096:usize).await
             auto bytes_read# = 0:usize
             auto read_ok# = false
             match read_res {
@@ -811,7 +830,7 @@ impl HttpClient {
             if !read_ok || bytes_read == 0:usize {
                 break
             }
-            auto chunk_str = string::from_with_len(&buf[0] as *char, bytes_read)
+            auto chunk_str = string::from_raw(*u8_buf, bytes_read)
             raw_resp#.push_str(chunk_str.as_str())
 
             if find_header_boundary(raw_resp.as_str()).index >= 0 {
@@ -832,5 +851,18 @@ impl HttpClient {
         }
 
         return parse_http_response(raw_resp)
+    }
+
+    pub fn execute_async(self, req: HttpRequest, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+        return self.execute_stream_async(req, addr, false, string::from("")).await
+    }
+
+    pub fn execute_url_async(self, req: HttpRequest, url_str: string, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+        auto parsed_url = parse_url(url_str)
+        if parsed_url.is_err() {
+            return Result<HttpResponse, string>::Err(parsed_url.unwrap_err())
+        }
+        auto u = parsed_url.unwrap()
+        return self.execute_stream_async(req, addr, u.is_tls(), u.host).await
     }
 }

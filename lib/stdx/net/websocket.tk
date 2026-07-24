@@ -1,5 +1,8 @@
 // stdx/net/websocket.tk — RFC 6455 Production-Grade WebSocket Implementation
-import std/net::{TcpStream}
+import std/net::{TcpStream, SocketAddrV4}
+import stdx/net/stream::{AsyncStream}
+import stdx/net/tls::{TlsStream}
+import stdx/net/url::{Url, parse_url}
 import std/task::{sleep_async}
 import stdx/crypto/sha1::{Sha1}
 import stdx/encoding/base64
@@ -27,7 +30,7 @@ pub shape WsMessage (
 )
 
 pub shape WsConnection (
-    stream: TcpStream,
+    stream: AsyncStream,
     is_client: bool,
     max_payload_size: usize,
     surplus_vec: Vec<u8>,
@@ -51,7 +54,9 @@ impl WsConnection@encap {
 }
 
 pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
-    return (*raw as Addr) as *u8
+    unsafe {
+        return (&raw[0] as Addr) as *u8
+    }
 }
 
 pub fn to_slice_ptr(*raw: [u8]) -> *[u8] {
@@ -165,7 +170,7 @@ pub fn is_valid_utf8(*buf_slice#: [u8], len: usize) -> bool {
     return true
 }
 
-pub fn ws_accept_async(stream#: TcpStream) -> async Result<WsConnection, string> {
+pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection, string> {
     auto req_str# = string::from("")
     auto headers_done# = false
 
@@ -181,6 +186,9 @@ pub fn ws_accept_async(stream#: TcpStream) -> async Result<WsConnection, string>
 
     auto tries#: usize = 0
     auto buf_vec# = Vec<u8>::with_capacity(1024)
+    auto i_init#: usize = 0
+    loop i_init < 1024 { buf_vec#.push(0:u8); i_init += 1 }
+
     auto *buf_raw# = buf_vec.unsafe_as_raw()
     auto *u8_buf# = to_u8_ptr(*buf_raw)
 
@@ -352,7 +360,11 @@ pub fn ws_accept_async(stream#: TcpStream) -> async Result<WsConnection, string>
     ))
 }
 
-pub fn ws_connect_async(stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
+pub fn ws_accept_async(tcp_stream#: TcpStream) -> async Result<WsConnection, string> {
+    return ws_accept_stream_async(AsyncStream::from_tcp(tcp_stream)).await
+}
+
+pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string) -> async Result<WsConnection, string> {
     auto crlf_crlf# = string::from("")
     crlf_crlf#.push_char(13 as char)
     crlf_crlf#.push_char(10 as char)
@@ -365,6 +377,8 @@ pub fn ws_connect_async(stream#: TcpStream, host: string, path: string) -> async
 
     // Generate Sec-WebSocket-Key (16 bytes secure OS random, base64-encoded)
     auto raw_key_vec# = Vec<u8>::with_capacity(16)
+    auto i_rk#: usize = 0
+    loop i_rk < 16 { raw_key_vec#.push(0:u8); i_rk += 1 }
     auto *raw_key# = raw_key_vec.unsafe_as_raw()
     auto *key_u8# = to_u8_ptr(*raw_key)
     auto rng_ok = unsafe toka_random_bytes(*key_u8, 16:usize)
@@ -405,6 +419,8 @@ pub fn ws_connect_async(stream#: TcpStream, host: string, path: string) -> async
     auto headers_done# = false
     auto tries#: usize = 0
     auto buf_vec# = Vec<u8>::with_capacity(1024)
+    auto i_cl_init#: usize = 0
+    loop i_cl_init < 1024 { buf_vec#.push(0:u8); i_cl_init += 1 }
     auto *buf_raw# = buf_vec.unsafe_as_raw()
     auto *u8_buf# = to_u8_ptr(*buf_raw)
 
@@ -546,12 +562,40 @@ pub fn ws_connect_async(stream#: TcpStream, host: string, path: string) -> async
     ))
 }
 
+pub fn ws_connect_async(tcp_stream#: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
+    return ws_connect_stream_async(AsyncStream::from_tcp(tcp_stream), host, path).await
+}
+
+pub fn ws_connect_tls_async(tcp_stream: TcpStream, host: string, path: string) -> async Result<WsConnection, string> {
+    auto tls_res# = TlsStream::connect_async(tcp_stream, host).await
+    if tls_res.is_err() {
+        return Result<WsConnection, string>::Err(tls_res.unwrap_err())
+    }
+    auto stream# = tls_res.unwrap()
+    return ws_connect_stream_async(stream, host, path).await
+}
+
+pub fn ws_connect_url_async(url_str: string, addr: SocketAddrV4) -> async Result<WsConnection, string> {
+    auto parsed = parse_url(url_str)
+    if parsed.is_err() {
+        return Result<WsConnection, string>::Err(parsed.unwrap_err())
+    }
+    auto u = parsed.unwrap()
+    auto tcp_res# = TcpStream::connect_async(addr).await
+    if !tcp_res.is_valid() {
+        return Result<WsConnection, string>::Err(string::from("TCP connect failed"))
+    }
+    if u.is_tls() {
+        return ws_connect_tls_async(tcp_res, u.host, u.path).await
+    }
+    return ws_connect_async(tcp_res, u.host, u.path).await
+}
+
 impl WsConnection {
     pub fn send_protocol_error_close_async(self#) -> async void {
         auto close_payload# = Vec<u8>::with_capacity(2)
-        auto *cp# = close_payload.unsafe_as_raw()
-        unsafe cp[0] = 0x03:u8 // Close 1002 Protocol Error
-        unsafe cp[1] = 0xEA:u8
+        close_payload#.push(0x03:u8)
+        close_payload#.push(0xEA:u8)
         auto _w = self#.write_control_frame_async(0x08:u8, close_payload).await
     }
 
@@ -570,7 +614,8 @@ impl WsConnection {
         // Delegate remaining bytes to stream#.read_exact_async
         if read_count < len {
             auto rem_len = len - read_count
-            auto cur_addr = ((*buf_slice as Addr)) + (read_count as u64)
+            auto *base_ptr# = to_u8_ptr(*buf_slice)
+            auto cur_addr = ((*base_ptr as Addr)) + (read_count as u64)
             auto *cur_ptr# = (cur_addr as *[0]u8) as *u8
             auto r = self.stream#.read_exact_async(*cur_ptr, rem_len).await
             if r.is_err() {
@@ -587,10 +632,12 @@ impl WsConnection {
         loop true {
             // Read 2-byte header via surplus-aware reader
             auto head_vec# = Vec<u8>::with_capacity(2)
+            head_vec#.push(0:u8)
+            head_vec#.push(0:u8)
             auto *head_raw# = head_vec.unsafe_as_raw()
             auto r_head = self#.read_exact_bytes_async(*head_raw, 2:usize).await
             if r_head.is_err() {
-                return Result<WsMessage, string>::Err(string::from("Failed reading WebSocket frame header"))
+                return Result<WsMessage, string>::Err(r_head.unwrap_err())
             }
 
             auto b0 = unsafe head_raw[0]
@@ -637,6 +684,8 @@ impl WsConnection {
             // Extended Length Reading, Non-minimal length encoding & 64-bit Overflow Validation
             if payload_len == 126 {
                 auto ext2_vec# = Vec<u8>::with_capacity(2)
+                ext2_vec#.push(0:u8)
+                ext2_vec#.push(0:u8)
                 auto *ext2_raw# = ext2_vec.unsafe_as_raw()
                 auto r_ext2 = self#.read_exact_bytes_async(*ext2_raw, 2:usize).await
                 if r_ext2.is_err() {
@@ -650,6 +699,8 @@ impl WsConnection {
             } else {
                 if payload_len == 127 {
                     auto ext8_vec# = Vec<u8>::with_capacity(8)
+                    auto i_8#: usize = 0
+                    loop i_8 < 8 { ext8_vec#.push(0:u8); i_8 += 1 }
                     auto *ext8_raw# = ext8_vec.unsafe_as_raw()
                     auto r_ext8 = self#.read_exact_bytes_async(*ext8_raw, 8:usize).await
                     if r_ext8.is_err() {
@@ -679,17 +730,22 @@ impl WsConnection {
             }
 
             auto mask_vec# = Vec<u8>::with_capacity(4)
-            auto *mask_raw# = mask_vec.unsafe_as_raw()
             if masked {
-                auto r_mask = self#.read_exact_bytes_async(*mask_raw, 4:usize).await
+                auto i_m#: usize = 0
+                loop i_m < 4 { mask_vec#.push(0:u8); i_m += 1 }
+                auto *m_raw# = mask_vec.unsafe_as_raw()
+                auto r_mask = self#.read_exact_bytes_async(*m_raw, 4:usize).await
                 if r_mask.is_err() {
                     return Result<WsMessage, string>::Err(string::from("Failed reading mask key"))
                 }
             }
+            auto *mask_raw# = mask_vec.unsafe_as_raw()
 
             // Read payload data
             auto payload_vec# = Vec<u8>::with_capacity(payload_len)
             if payload_len > 0 {
+                auto i_p#: usize = 0
+                loop i_p < payload_len { payload_vec#.push(0:u8); i_p += 1 }
                 auto *payload_raw# = payload_vec.unsafe_as_raw()
                 auto r_pay = self#.read_exact_bytes_async(*payload_raw, payload_len).await
                 if r_pay.is_err() {
@@ -839,6 +895,8 @@ impl WsConnection {
         }
 
         auto head_vec# = Vec<u8>::with_capacity(14)
+        head_vec#.push(0:u8)
+        head_vec#.push(0:u8)
         auto *head# = head_vec.unsafe_as_raw()
         auto *head_u8# = to_u8_ptr(*head)
 
@@ -874,6 +932,8 @@ impl WsConnection {
 
         if self.is_client {
             auto mask_key_vec# = Vec<u8>::with_capacity(4)
+            auto i_mk#: usize = 0
+            loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
             auto *mask_key# = mask_key_vec.unsafe_as_raw()
             auto *mask_u8# = to_u8_ptr(*mask_key)
             auto rng_ok = unsafe toka_random_bytes(*mask_u8, 4:usize)
@@ -895,6 +955,8 @@ impl WsConnection {
 
             if p_len > 0 {
                 auto masked_payload_vec# = Vec<u8>::with_capacity(p_len)
+                auto i_mp#: usize = 0
+                loop i_mp < p_len { masked_payload_vec#.push(0:u8); i_mp += 1 }
                 auto *masked_pay# = masked_payload_vec.unsafe_as_raw()
                 auto *masked_u8# = to_u8_ptr(*masked_pay)
                 auto *s_ptr# = s.raw_ptr() as *[u8]
@@ -934,6 +996,8 @@ impl WsConnection {
         }
 
         auto head_vec# = Vec<u8>::with_capacity(14)
+        head_vec#.push(0:u8)
+        head_vec#.push(0:u8)
         auto *head# = head_vec.unsafe_as_raw()
         auto *head_u8# = to_u8_ptr(*head)
 
@@ -969,6 +1033,8 @@ impl WsConnection {
 
         if self.is_client {
             auto mask_key_vec# = Vec<u8>::with_capacity(4)
+            auto i_mk#: usize = 0
+            loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
             auto *mask_key# = mask_key_vec.unsafe_as_raw()
             auto *mask_u8# = to_u8_ptr(*mask_key)
             auto rng_ok = unsafe toka_random_bytes(*mask_u8, 4:usize)
@@ -991,6 +1057,8 @@ impl WsConnection {
             if p_len > 0 {
                 auto *pay_raw# = payload.unsafe_as_raw()
                 auto masked_payload_vec# = Vec<u8>::with_capacity(p_len)
+                auto i_mp#: usize = 0
+                loop i_mp < p_len { masked_payload_vec#.push(0:u8); i_mp += 1 }
                 auto *masked_pay# = masked_payload_vec.unsafe_as_raw()
                 auto *masked_u8# = to_u8_ptr(*masked_pay)
                 auto i#: usize = 0
@@ -1033,6 +1101,8 @@ impl WsConnection {
         }
 
         auto head_vec# = Vec<u8>::with_capacity(6)
+        head_vec#.push(0:u8)
+        head_vec#.push(0:u8)
         auto *head# = head_vec.unsafe_as_raw()
         auto *head_u8# = to_u8_ptr(*head)
 
@@ -1047,6 +1117,8 @@ impl WsConnection {
 
         if self.is_client {
             auto mask_key_vec# = Vec<u8>::with_capacity(4)
+            auto i_mk#: usize = 0
+            loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
             auto *mask_key# = mask_key_vec.unsafe_as_raw()
             auto *mask_u8# = to_u8_ptr(*mask_key)
             auto rng_ok = unsafe toka_random_bytes(*mask_u8, 4:usize)
@@ -1069,6 +1141,8 @@ impl WsConnection {
             if p_len > 0 {
                 auto *pay_raw# = payload.unsafe_as_raw()
                 auto masked_payload_vec# = Vec<u8>::with_capacity(p_len)
+                auto i_mp#: usize = 0
+                loop i_mp < p_len { masked_payload_vec#.push(0:u8); i_mp += 1 }
                 auto *masked_pay# = masked_payload_vec.unsafe_as_raw()
                 auto *masked_u8# = to_u8_ptr(*masked_pay)
                 auto i#: usize = 0

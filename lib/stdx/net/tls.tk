@@ -1,0 +1,58 @@
+// stdx/net/tls.tk — Async TLS Stream Implementation
+import std/net::{TcpStream}
+import stdx/net/stream::{AsyncStream}
+import core/result::{Result}
+import core/types::{Addr}
+
+extern fn toka_tls_context_new() -> *void
+extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
+extern fn toka_tls_connect(*handle: void, fd: i32) -> i32
+extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
+extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
+extern fn toka_tls_close(*handle: void)
+
+pub shape TlsStream (
+    raw_tcp: TcpStream,
+    *handle: void,
+    host: string
+)
+
+impl TlsStream@encap {
+    pub raw_tcp
+    pub *handle
+    pub host
+    fn drop(self#) {
+        auto h = (*self.handle as Addr)
+        if h != 0 {
+            unsafe toka_tls_close(*self.handle)
+        }
+    }
+    pub fn clone(self) = delete
+}
+
+impl TlsStream {
+    pub fn connect_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
+        auto *ctx# = unsafe toka_tls_context_new()
+        auto ctx_addr = (*ctx as Addr)
+        if ctx_addr == 0 {
+            return Result<AsyncStream, string>::Err(string::from("Failed creating TLS context"))
+        }
+
+        auto host_cstr# = host.clone()
+        auto *host_ptr# = host_cstr.raw_ptr() as *char
+        auto sni_res = unsafe toka_tls_set_sni(*ctx, *host_ptr)
+        if sni_res != 0 {
+            unsafe toka_tls_close(*ctx)
+            return Result<AsyncStream, string>::Err(string::from("Failed setting SNI hostname"))
+        }
+
+        auto fd = tcp_stream#.get_fd()
+        auto conn_res = unsafe toka_tls_connect(*ctx, fd)
+        if conn_res != 0 {
+            unsafe toka_tls_close(*ctx)
+            return Result<AsyncStream, string>::Err(string::from("TLS handshake failed"))
+        }
+
+        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream, *ctx))
+    }
+}

@@ -1,0 +1,140 @@
+// stdx/net/stream.tk — Unified Async Byte Stream Abstraction (Plain TCP & TLS)
+import std/net::{TcpStream}
+import std/io::{println}
+import core/result::{Result}
+import core/types::{Addr}
+
+extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
+extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
+extern fn toka_tls_close(*handle: void)
+
+pub shape AsyncStream (
+    raw_tcp: TcpStream,
+    is_tls: bool,
+    *tls_handle: void
+)
+
+impl AsyncStream@encap {
+    pub raw_tcp
+    pub is_tls
+    pub *tls_handle
+    fn drop(self#) {
+        auto h = (*self.tls_handle as Addr)
+        if self.is_tls && h != 0 {
+            unsafe toka_tls_close(*self.tls_handle)
+        }
+    }
+    pub fn clone(self) = delete
+}
+
+pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
+    unsafe {
+        return (&raw[0] as Addr) as *u8
+    }
+}
+
+impl AsyncStream {
+    pub fn from_tcp(stream#: TcpStream) -> AsyncStream {
+        auto *null_ptr# = (0 as Addr) as *void
+        return AsyncStream(
+            raw_tcp = stream,
+            is_tls = false,
+            *tls_handle = *null_ptr
+        )
+    }
+
+    pub fn from_tls(stream#: TcpStream, *handle: void) -> AsyncStream {
+        return AsyncStream(
+            raw_tcp = stream,
+            is_tls = true,
+            *tls_handle = *handle
+        )
+    }
+
+    pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
+        if !self.is_tls {
+            return self.raw_tcp#.read_async(*buf, len).await
+        }
+        auto r = self.raw_tcp#.read_async(*buf, len).await
+        match r {
+            auto Result::Ok(bytes_read) => {
+                if bytes_read == 0:usize {
+                    return Result<usize, string>::Ok(0:usize)
+                }
+                auto n = unsafe toka_tls_read(*self.tls_handle, ((*buf as Addr)) as *void, bytes_read)
+                if n < 0 {
+                    return Result<usize, string>::Err(string::from("TLS read error"))
+                }
+                return Result<usize, string>::Ok(n as usize)
+            }
+            auto Result::Err(&e) => {
+                return Result<usize, string>::Err(e.clone())
+            }
+        }
+    }
+
+    pub fn read_exact_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
+        if !self.is_tls {
+            auto r = self.raw_tcp#.read_exact_async(*buf, len).await
+            match r {
+                auto Result::Ok(_) => {
+                    return Result<(), string>::Ok(())
+                }
+                auto Result::Err(&e) => {
+                    return Result<(), string>::Err(e.clone())
+                }
+            }
+        }
+        auto total# = 0:usize
+        loop total < len {
+            auto cur_addr = (*buf as Addr) + (total as u64)
+            auto *cur_ptr# = (cur_addr as *[0]u8) as *u8
+            auto res = self#.read_async(*cur_ptr, len - total).await
+            match res {
+                auto Result::Ok(n) => {
+                    if n == 0:usize {
+                        return Result<(), string>::Err(string::from("Unexpected EOF during TLS read_exact_async"))
+                    }
+                    total = total + n
+                }
+                auto Result::Err(&e) => {
+                    return Result<(), string>::Err(e.clone())
+                }
+            }
+        }
+        return Result<(), string>::Ok(())
+    }
+
+    pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
+        if !self.is_tls {
+            auto r = self.raw_tcp#.write_all_async(*buf, len).await
+            match r {
+                auto Result::Ok(_) => {
+                    return Result<(), string>::Ok(())
+                }
+                auto Result::Err(&e) => {
+                    return Result<(), string>::Err(e.clone())
+                }
+            }
+        }
+        auto total# = 0:usize
+        loop total < len {
+            auto cur_addr = (*buf as Addr) + (total as u64)
+            auto *cur_ptr# = (cur_addr as *[0]u8) as *u8
+            auto n = unsafe toka_tls_write(*self.tls_handle, (cur_addr as *void), len - total)
+            if n <= 0 {
+                return Result<(), string>::Err(string::from("TLS write_all error"))
+            }
+            total = total + (n as usize)
+        }
+        return Result<(), string>::Ok(())
+    }
+
+    pub fn close(self#) {
+        auto h = (*self.tls_handle as Addr)
+        if self.is_tls && h != 0 {
+            unsafe toka_tls_close(*self.tls_handle)
+        }
+        self.raw_tcp#.close()
+    }
+}
