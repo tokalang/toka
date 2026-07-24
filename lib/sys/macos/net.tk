@@ -5,17 +5,23 @@ import sys/os/abi::*
 
 // === Networking ===
 
+extern fn toka_get_errno_impl() -> i32
+
 pub fn get_last_error() -> i32 {
     unsafe {
-        auto *addr# = libc___error()
-        if *addr as usize == 0 { return 0 }
-        return addr
+        return toka_get_errno_impl()
     }
 }
 
 pub fn net_socket_impl() -> i32 {
     unsafe {
         return libc_socket(2, 1, 0)
+    }
+}
+
+pub fn net_dup_impl(fd: i32) -> i32 {
+    unsafe {
+        return libc_dup(fd)
     }
 }
 
@@ -29,7 +35,8 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
     unsafe {
         auto *opt# = unsafe alloc [4] byte as *[i32]
         opt[0] = 1
-        auto res = libc_setsockopt(fd, 65535, 4, *opt as *void, 4)
+        libc_setsockopt(fd, 65535, 4, *opt as *void, 4)
+        auto res = libc_setsockopt(fd, 65535, 512, *opt as *void, 4)
         libc_free(*opt as *void)
         return res
     }
@@ -58,9 +65,7 @@ fn fill_sockaddr_in(*addr_buf: char, ip: u32, port: u16) -> bool {
 
 pub fn get_errno_impl() -> i32 {
     unsafe {
-        auto *addr# = libc___error()
-        if *addr as usize == 0 { return 0 }
-        return addr
+        return toka_get_errno_impl()
     }
 }
 
@@ -165,23 +170,26 @@ pub fn net_accept_impl(fd: i32) -> i32 {
     }
 }
 
+extern fn toka_trace_cleanup_fd(fd: i32)
+
 pub fn net_close_impl(fd: i32) {
     unsafe {
+        if fd >= 0 {
+            toka_trace_cleanup_fd(fd)
+        }
         libc_close(fd)
     }
 }
 
 pub fn net_read_impl(fd: i32, *buf: u8, len: usize) -> i64 {
     unsafe {
-        // Pass *buf (pointer) to libc_read
-        return libc_read(fd, *buf, len as i64)
+        return libc_read(fd, *buf as *void, len) as i64
     }
 }
 
 pub fn net_write_impl(fd: i32, *buf: u8, len: usize) -> i64 {
     unsafe {
-        // Pass *buf (pointer) to libc_write
-        return libc_write(fd, *buf, len as i64)
+        return libc_write(fd, *buf as *void, len) as i64
     }
 }
 
@@ -243,9 +251,13 @@ pub fn net_set_nonblocking_impl(fd: i32) -> bool {
     }
 }
 
+extern fn toka_reactor_register_fd(rfd: i32) -> i32
+
 pub fn reactor_create_impl() -> i32 {
     unsafe {
-        return kqueue()
+        auto rfd = kqueue()
+        toka_reactor_register_fd(rfd)
+        return rfd
     }
 }
 

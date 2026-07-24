@@ -1998,11 +1998,31 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       if (isUnique || isShared) {
           hasDrop = true;
       }
+      const Expr *targetInner = expr->Target.get();
+      while (targetInner) {
+          if (dynamic_cast<const CedeExpr*>(targetInner)) {
+              hasDrop = false;
+              break;
+          }
+          if (auto *ce = dynamic_cast<const CastExpr*>(targetInner)) {
+              targetInner = ce->Expression.get();
+          } else if (auto *ue = dynamic_cast<const UnaryExpr*>(targetInner)) {
+              targetInner = ue->RHS.get();
+          } else if (auto *pe = dynamic_cast<const PostfixExpr*>(targetInner)) {
+              targetInner = pe->LHS.get();
+          } else {
+              break;
+          }
+      }
       
       if (hasDrop) {
           VariableScopeInfo vsi;
           static int matchExtId = 0;
-          vsi.Name = ".match_ext_" + std::to_string(matchExtId++);
+          if (auto *ve = dynamic_cast<const VariableExpr*>(expr->Target.get())) {
+              vsi.Name = ve->Name;
+          } else {
+              vsi.Name = ".match_ext_" + std::to_string(matchExtId++);
+          }
           vsi.Alloca = targetAddr;
           vsi.AllocType = targetType;
           vsi.IsUniquePointer = isUnique;
@@ -2670,7 +2690,15 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
   m_Builder.SetInsertPoint(mergeBB);
   
-  // [New] Clean up match-level temporary scope
+  // [New] Clean up match-level temporary scope (disarm temporaries so match never double-drops targetAddr)
+  if (!m_ScopeStack.empty()) {
+      for (auto &vinfo : m_ScopeStack.back()) {
+          vinfo.HasDrop = false;
+          if (vinfo.DropFlag) {
+              m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context), vinfo.DropFlag);
+          }
+      }
+  }
   executeScopeUnwinding(m_ScopeStack.size() - 1);
   m_ScopeStack.pop_back();
 
@@ -6505,6 +6533,12 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
         llvm::Value *targetValPtrRaw = m_Builder.CreateCall(valuePtrFn, {targetPromisePtrRaw}, "target.val.ptr");
         llvm::Value *targetValPtr = m_Builder.CreatePointerCast(targetValPtrRaw, llvm::PointerType::getUnqual(targetInnerTy));
         readyVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
+        llvm::Function *clearFn = m_Module->getFunction("toka_task_clear_result_payload");
+        if (!clearFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+            clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_clear_result_payload", m_Module.get());
+        }
+        m_Builder.CreateCall(clearFn, {targetPromisePtrRaw});
         return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
     }
     return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", targetInnerTy, false);
@@ -6580,6 +6614,12 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
         llvm::Value *targetValPtrRaw = m_Builder.CreateCall(valuePtrFn, {targetPromisePtrRaw}, "target.val.ptr");
         llvm::Value *targetValPtr = m_Builder.CreatePointerCast(targetValPtrRaw, llvm::PointerType::getUnqual(targetInnerTy));
         llvm::Value *targetVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
+        llvm::Function *clearFn = m_Module->getFunction("toka_task_clear_result_payload");
+        if (!clearFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+            clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_clear_result_payload", m_Module.get());
+        }
+        m_Builder.CreateCall(clearFn, {targetPromisePtrRaw});
         return PhysEntity(targetVal, waitExpr->ResolvedType->toString(), targetInnerTy, false);
     }
     

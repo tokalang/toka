@@ -121,10 +121,18 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
     // If we are returning a local variable by value (Identity), we must
     // SUPPRESS its drop in the current scope because ownership is being
     // transferred to the caller.
-    if (auto *ve = dynamic_cast<const VariableExpr *>(inner)) {
-      std::string varName = Type::stripMorphology(ve->Name);
-
-      suppressDropForMove(varName);
+    const Expr *moveTarget = ret->ReturnValue.get();
+    while (moveTarget) {
+      if (auto *ve = dynamic_cast<const VariableExpr *>(moveTarget)) {
+        suppressDropForMove(ve->Name);
+        break;
+      } else if (auto *pe = dynamic_cast<const PostfixExpr *>(moveTarget)) {
+        moveTarget = pe->LHS.get();
+      } else if (auto *ue = dynamic_cast<const UnaryExpr *>(moveTarget)) {
+        moveTarget = ue->RHS.get();
+      } else {
+        break;
+      }
     }
   }
 
@@ -224,12 +232,10 @@ llvm::Value *CodeGen::genDeleteStmt(const DeleteStmt *del) {
 void CodeGen::suppressDropForMove(const std::string &name) {
   std::string movedName = Type::stripMorphology(name);
   for (int i = (int)m_ScopeStack.size() - 1; i >= 0; --i) {
-    bool matched = false;
     for (auto entry = m_ScopeStack[i].rbegin();
          entry != m_ScopeStack[i].rend(); ++entry) {
       if (Type::stripMorphology(entry->Name) != movedName)
         continue;
-      matched = true;
       if (entry->DropFlag) {
         m_Builder.CreateStore(
             llvm::ConstantInt::getFalse(m_Context), entry->DropFlag);
@@ -239,8 +245,6 @@ void CodeGen::suppressDropForMove(const std::string &name) {
         entry->IsUniquePointer = false;
       }
     }
-    if (matched)
-      return;
   }
 }
 
@@ -253,6 +257,8 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
   for (int i = (int)m_ScopeStack.size() - 1; i >= (int)targetDepth; --i) {
     auto &scope = m_ScopeStack[i];
     for (auto it = scope.rbegin(); it != scope.rend(); ++it) {
+      if (!it->HasDrop)
+        continue;
       llvm::BasicBlock *dropFlagContBB = nullptr;
       if (it->DropFlag) {
         llvm::Function *function = currBB->getParent();
@@ -698,6 +704,8 @@ void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
                         llvm::Value *tempSrcPtr = m_Builder.CreatePointerCast(temp, llvm::PointerType::get(srcTy, 0));
                         m_Builder.CreateStore(retVal, tempSrcPtr);
                         retVal = m_Builder.CreateLoad(dstTy, temp, "coro.ret.cast.res");
+                        uint64_t sizeInBytes = m_Module->getDataLayout().getTypeAllocSize(dstTy);
+                        m_Builder.CreateMemSet(temp, m_Builder.getInt8(0xFF), sizeInBytes, llvm::MaybeAlign());
                     } else {
                         retVal = m_Builder.CreateBitCast(retVal, dstTy);
                     }

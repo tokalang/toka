@@ -1323,6 +1323,24 @@ int toka_task_take_result(void *promise_ptr) {
     return 0;
 }
 
+void toka_task_clear_result_payload(void *promise_ptr) {
+    if (!promise_ptr) return;
+    void *val_ptr = toka_task_result_value_ptr(promise_ptr);
+    if (val_ptr) {
+        memset(val_ptr, 0xFF, 8);
+    }
+}
+
+int32_t toka_get_errno_impl(void) {
+    return (int32_t)errno;
+}
+
+void toka_disarm_enum(void *ptr) {
+    if (ptr) {
+        *(uint8_t*)ptr = 1;
+    }
+}
+
 static void destroy_coro_frame(void *frame) {
     if (!frame) return;
     typedef void (*coro_fn_t)(void*);
@@ -1369,7 +1387,12 @@ void toka_task_release(void *tcb_ptr) {
             free(subs_to_free);
         }
         if (frame_to_destroy) {
-            destroy_coro_frame(frame_to_destroy);
+            uint32_t st = atomic_load(&tcb->state);
+            if (st == TOKA_TCB_COMPLETED) {
+                free(frame_to_destroy);
+            } else {
+                destroy_coro_frame(frame_to_destroy);
+            }
         }
         for (uint32_t i = 0; i < child_count; ++i) {
             toka_task_release(children_to_release[i]);
@@ -2252,6 +2275,20 @@ typedef struct {
 } TokaReactorFdBinding;
 
 static TokaReactorFdBinding g_reactor_fd_table[65536];
+static int g_global_reactor_fd = -1;
+
+void toka_reactor_del_fd(int rfd, int fd);
+
+int32_t toka_reactor_register_fd(int32_t rfd) {
+    g_global_reactor_fd = rfd;
+    return 0;
+}
+
+void toka_trace_cleanup_fd(int32_t fd) {
+    if (g_global_reactor_fd >= 0 && fd >= 0) {
+        toka_reactor_del_fd(g_global_reactor_fd, fd);
+    }
+}
 
 void toka_reactor_del_fd(int rfd, int fd) {
     if (fd < 0 || fd >= 65536) return;

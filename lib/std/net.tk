@@ -2,10 +2,12 @@
 
 import sys/os/base as sys
 import sys/os/net as sysnet
-import sys/libc::{toka_resolve_ipv4}
-import std/io::{@Reader, @Writer}
+import sys/libc::{toka_resolve_ipv4, libc_free}
+import std/io::{@Reader, @Writer, println}
 import std/task::{get_reactor_fd, sleep_async, register_timer_token}
 import std/context::{Canceler}
+import std/async::{race2, RaceWinner}
+import core/result::{Result}
 import core/task as core_task
 
 extern fn __builtin_coro_current_handle() -> *void
@@ -179,6 +181,11 @@ impl TcpStream@encap {
 }
 
 impl TcpStream {
+    pub fn disarm(self#) {
+        self.fd = -1
+        self.closed = true
+    }
+
     pub fn take(self#) -> TcpStream {
         auto s = TcpStream(
             fd = self.fd,
@@ -207,44 +214,93 @@ impl TcpStream {
         }
     }
 
-    pub fn connect_async(addr: SocketAddrV4) -> async TcpStream {
+    pub fn connect_async(cede addr: SocketAddrV4) -> async TcpStream {
+        auto addr_val = cede addr
         unsafe {
-            auto fd = sysnet::net_socket_impl()
-            if fd < 0 {
+            auto *fd_box# = unsafe alloc [4] byte as *[i32]
+            auto *p_free# = &fd_box[0] as *void
+            fd_box[0] = sysnet::net_socket_impl()
+            auto raw_fd# = fd_box[0]
+            if raw_fd < 0 {
+                libc_free(*p_free as *void)
                 return TcpStream(fd=-1, closed=true)
             }
 
-            sysnet::net_set_nonblocking_impl(fd)
+            sysnet::net_set_nonblocking_impl(raw_fd)
 
-            auto ip_num = addr.ip.to_u32()
-            auto res = sysnet::net_connect_impl(fd, ip_num, addr.port)
+            auto ip_num = addr_val.ip.to_u32()
+            auto res = sysnet::net_connect_impl(raw_fd, ip_num, addr_val.port)
 
             if res == 0 {
                 // Connected instantly
-                sleep_async(0:i64).await
-                return TcpStream(fd=fd, closed=false)
+                sleep_async(0).await
+                auto ret = TcpStream(fd=raw_fd, closed=false)
+                raw_fd = -1
+                fd_box[0] = -1
+                libc_free(*p_free as *void)
+                return ret
             }
 
             auto errno = sysnet::get_errno_impl()
             if errno != 36 && errno != 115 && errno != 10035 {
-                sysnet::net_close_impl(fd)
-                sleep_async(0:i64).await
+                sysnet::net_close_impl(raw_fd)
+                raw_fd = -1
+                fd_box[0] = -1
+                libc_free(*p_free as *void)
+                sleep_async(0).await
                 return TcpStream(fd=-1, closed=true)
             }
 
-            if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, fd) {
-                sysnet::net_close_impl(fd)
+            if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, raw_fd) {
+                sysnet::net_close_impl(raw_fd)
+                raw_fd = -1
+                fd_box[0] = -1
+                libc_free(*p_free as *void)
                 return TcpStream(fd=-1, closed=true)
             }
             __builtin_coro_suspend()
 
-            auto get_err = sysnet::net_getsockopt_error_impl(fd)
-            if get_err != 0 {
-                sysnet::net_close_impl(fd)
+            auto *coro_handle = __builtin_coro_current_handle()
+            if core_task::toka_task_is_current_canceled(*coro_handle) != 0 {
+                sysnet::net_close_impl(raw_fd)
+                raw_fd = -1
+                fd_box[0] = -1
+                libc_free(*p_free as *void)
                 return TcpStream(fd=-1, closed=true)
             }
 
-            return TcpStream(fd=fd, closed=false)
+            auto get_err = sysnet::net_getsockopt_error_impl(raw_fd)
+            if get_err != 0 {
+                sysnet::net_close_impl(raw_fd)
+                raw_fd = -1
+                fd_box[0] = -1
+                libc_free(*p_free as *void)
+                return TcpStream(fd=-1, closed=true)
+            }
+
+            auto ret = TcpStream(fd=raw_fd, closed=false)
+            raw_fd = -1
+            fd_box[0] = -1
+            libc_free(*p_free as *void)
+            return ret
+        }
+    }
+
+    pub fn connect_async_timeout(cede addr: SocketAddrV4, timeout_ms: i32) -> async Result<TcpStream, string> {
+        auto conn_task = TcpStream::connect_async(cede addr).start
+        auto timeout_task = sleep_async(timeout_ms).start
+        auto winner# = race2<TcpStream, i32>(cede conn_task, cede timeout_task).await
+
+        match winner {
+            auto RaceWinner<TcpStream, i32>::First(&stream#) => {
+                if stream.fd < 0 {
+                    return Result<TcpStream, string>::Err(string::from("Connection failed"))
+                }
+                return Result<TcpStream, string>::Ok(stream#.take())
+            }
+            auto RaceWinner<TcpStream, i32>::Second(_delay) => {
+                return Result<TcpStream, string>::Err(string::from("Connection timed out"))
+            }
         }
     }
 
@@ -299,17 +355,22 @@ impl TcpStream {
 
     // Helper to write string
     pub fn write_string(self#, s: string) -> Result<usize, string> {
+        auto len = s.len()
         auto *ptr = s.c_str() as *u8
-        return self#.write(*ptr, s.len() as usize)
+        return self#.write(*ptr, len)
     }
 
     pub fn write_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
-        return net_async_write(self, *buf, len).await
+        if self.closed || self.fd < 0 {
+            return Result<usize, string>::Err(string::from("Stream closed"))
+        }
+        return net_async_write_fd(self.fd, *buf, len).await
     }
 
     pub fn write_string_async(self#, s: string) -> async Result<usize, string> {
+        auto len = s.len()
         auto *ptr = s.c_str() as *u8
-        return self#.write_async(*ptr, s.len() as usize).await
+        return self#.write_async(*ptr, len).await
     }
 
     pub fn write_view(self#, v: str) -> Result<usize, string> {
@@ -323,7 +384,10 @@ impl TcpStream {
     }
 
     pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
-        return net_async_read(self, *buf, len).await
+        if self.closed || self.fd < 0 {
+            return Result<usize, string>::Err(string::from("Stream closed"))
+        }
+        return net_async_read_fd(self.fd, *buf, len).await
     }
 
     pub fn read_exact_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
@@ -378,6 +442,10 @@ impl TcpStream {
     pub fn is_valid(self) -> bool {
         return self.fd >= 0
     }
+
+    pub fn get_fd(self) -> i32 {
+        return self.fd
+    }
 }
 
 // ==========================================
@@ -430,6 +498,10 @@ impl TcpListener {
         }
     }
 
+    pub fn get_fd(self) -> i32 {
+        return self.fd
+    }
+
     pub fn local_port(self) -> u16 {
         auto port = sysnet::net_local_port_impl(self.fd)
         if port < 0 { return 0:u16 }
@@ -449,6 +521,14 @@ impl TcpListener {
 
             return TcpStream(fd=client_fd, closed=false)
         }
+    }
+
+    pub fn accept_async(self#) -> async TcpStream {
+        if self.closed || self.fd < 0 {
+            return TcpStream(fd=-1, closed=true)
+        }
+        auto s# = net_async_accept_fd(self.fd).await
+        return s#.take()
     }
 
     pub fn is_valid(self) -> bool {
@@ -540,18 +620,53 @@ fn register_async_reactor_read_timeout(coro: Addr, fd: i32, timeout_ms: i32, *ou
 
 // ==== Top Level Async Helpers ====
 pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<usize, string> {
+    if stream.closed || stream.fd < 0 {
+        return Result<usize, string>::Err(string::from("Stream closed"))
+    }
+    return net_async_read_fd(stream.fd, *buf, len).await
+}
+
+pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
+    if stream.closed || stream.fd < 0 {
+        return Result<usize, string>::Err(string::from("Stream closed"))
+    }
+    return net_async_read_timeout_fd(stream.fd, *buf, len, timeout_ms).await
+}
+
+pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler: Canceler) -> async Result<usize, string> {
+    if stream.closed || stream.fd < 0 {
+        return Result<usize, string>::Err(string::from("Stream closed"))
+    }
+    return net_async_read_context_fd(stream.fd, *buf, len, canceler).await
+}
+
+pub fn net_async_write(stream: TcpStream, *buf: u8, len: usize) -> async Result<usize, string> {
+    if stream.closed || stream.fd < 0 {
+        return Result<usize, string>::Err(string::from("Stream closed"))
+    }
+    return net_async_write_fd(stream.fd, *buf, len).await
+}
+
+pub fn net_async_accept(listener: TcpListener) -> async TcpStream {
+    if listener.closed || listener.fd < 0 {
+        return TcpStream(fd=-1, closed=true)
+    }
+    auto s# = net_async_accept_fd(listener.fd).await
+    return s#.take()
+}
+
+pub fn net_async_read_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, string> {
     auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
     unsafe {
-        if stream.closed {
+        if fd < 0 {
             ret = Result<usize, string>::Err(string::from("Stream closed"))
         } else {
-            sysnet::net_set_nonblocking_impl(stream.fd)
+            sysnet::net_set_nonblocking_impl(fd)
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_read_impl(stream.fd, *buf, len)
+                auto n: i64 = sysnet::net_read_impl(fd, *buf, len)
                 if n >= 0:i64 {
-                    sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
                     done = true
                 } else {
@@ -559,7 +674,7 @@ pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<u
                     auto eagain = sysnet::get_eagain_impl()
 
                     if err == eagain {
-                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, stream.fd) {
+                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, fd) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async read"))
                             done = true
                             continue
@@ -577,17 +692,17 @@ pub fn net_async_read(stream: TcpStream, *buf: u8, len: usize) -> async Result<u
     return ret
 }
 
-pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
+pub fn net_async_read_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
     auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
     unsafe {
-        if stream.closed {
+        if fd < 0 {
             ret = Result<usize, string>::Err(string::from("Stream closed"))
         } else {
-            sysnet::net_set_nonblocking_impl(stream.fd)
+            sysnet::net_set_nonblocking_impl(fd)
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_read_impl(stream.fd, *buf, len)
+                auto n: i64 = sysnet::net_read_impl(fd, *buf, len)
                 if n >= 0:i64 {
                     sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
@@ -601,7 +716,7 @@ pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_m
                         auto io_gen# = 0:u32
                         auto tm_id# = 0:u32
                         auto tm_gen# = 0:u32
-                        if !register_async_reactor_read_timeout(__builtin_coro_current_handle() as Addr, stream.fd, timeout_ms, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32) {
+                        if !register_async_reactor_read_timeout(__builtin_coro_current_handle() as Addr, fd, timeout_ms, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async read timeout"))
                             done = true
                             continue
@@ -613,7 +728,7 @@ pub fn net_async_read_timeout(stream: TcpStream, *buf: u8, len: usize, timeout_m
                         core_task::toka_wait_registry_release(tm_id, tm_gen)
                         if is_timeout != 0 {
                             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
-                            sysnet::reactor_del_read_impl(get_reactor_fd(), stream.fd, event_key as Addr)
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), fd, event_key as Addr)
                             ret = Result<usize, string>::Err(string::from("IO operation timed out"))
                             done = true
                         }
@@ -664,17 +779,17 @@ fn register_async_reactor_read_context(coro: Addr, fd: i32, canceler: Canceler, 
     return false
 }
 
-pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler: Canceler) -> async Result<usize, string> {
+pub fn net_async_read_context_fd(fd: i32, *buf: u8, len: usize, canceler: Canceler) -> async Result<usize, string> {
     auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
     unsafe {
-        if stream.closed {
+        if fd < 0 {
             ret = Result<usize, string>::Err(string::from("Stream closed"))
         } else {
-            sysnet::net_set_nonblocking_impl(stream.fd)
+            sysnet::net_set_nonblocking_impl(fd)
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_read_impl(stream.fd, *buf, len)
+                auto n: i64 = sysnet::net_read_impl(fd, *buf, len)
                 if n >= 0:i64 {
                     sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
@@ -688,7 +803,7 @@ pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler:
                         auto io_gen# = 0:u32
                         auto ctx_id# = 0:u32
                         auto ctx_gen# = 0:u32
-                        if !register_async_reactor_read_context(__builtin_coro_current_handle() as Addr, stream.fd, canceler, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32) {
+                        if !register_async_reactor_read_context(__builtin_coro_current_handle() as Addr, fd, canceler, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async read context"))
                             done = true
                             continue
@@ -701,7 +816,7 @@ pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler:
                         core_task::toka_wait_registry_release(ctx_id, ctx_gen)
                         if is_ctx != 0 {
                             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
-                            sysnet::reactor_del_read_impl(get_reactor_fd(), stream.fd, event_key as Addr)
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), fd, event_key as Addr)
                             auto c_err = canceler.err()
                             if c_err.is_some() {
                                 ret = Result<usize, string>::Err(c_err.unwrap())
@@ -722,58 +837,58 @@ pub fn net_async_read_context(stream: TcpStream, *buf: u8, len: usize, canceler:
     return ret
 }
 
-pub fn net_async_accept(listener: TcpListener) -> async TcpStream {
-    auto ret# = TcpStream(fd=-1, closed=true)
+impl TcpListener {
+    pub fn disarm(self#) {
+        self.fd = -1
+        self.closed = true
+    }
+}
+
+pub fn net_async_accept_fd(listener_fd: i32) -> async TcpStream {
     unsafe {
-        if listener.closed {
-             // closed
+        if listener_fd < 0 {
+            return TcpStream(fd=-1, closed=true)
         } else {
-            sysnet::net_set_nonblocking_impl(listener.fd)
+            sysnet::net_set_nonblocking_impl(listener_fd)
 
             auto done# = false
             loop !done {
-                auto client_fd = sysnet::net_accept_impl(listener.fd)
+                auto client_fd = sysnet::net_accept_impl(listener_fd)
                 if client_fd >= 0 {
                     sysnet::net_set_nonblocking_impl(client_fd)
-                    sleep_async(0:i64).await
-                    ret = TcpStream(fd=client_fd, closed=false)
-                    done = true
+                    return TcpStream(fd=client_fd, closed=false)
                 } else {
                     auto err = sysnet::get_errno_impl()
                     auto eagain = sysnet::get_eagain_impl()
 
                     if err == eagain {
-                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, listener.fd) {
-                            ret = TcpStream(fd=-1, closed=true)
-                            done = true
-                            continue
+                        if !register_async_reactor_read(__builtin_coro_current_handle() as Addr, listener_fd) {
+                            return TcpStream(fd=-1, closed=true)
                         }
                         __builtin_coro_suspend()
                     } else {
                         sleep_async(0:i64).await
-                        ret = TcpStream(fd=-1, closed=true)
-                        done = true
+                        return TcpStream(fd=-1, closed=true)
                     }
                 }
             }
         }
     }
-    return ret
+    return TcpStream(fd=-1, closed=true)
 }
 
-pub fn net_async_write(stream: TcpStream, *buf: u8, len: usize) -> async Result<usize, string> {
+pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, string> {
     auto ret# = Result<usize, string>::Err(string::from("Unreachable"))
     unsafe {
-        if stream.closed {
+        if fd < 0 {
             ret = Result<usize, string>::Err(string::from("Stream closed"))
         } else {
-            sysnet::net_set_nonblocking_impl(stream.fd)
+            sysnet::net_set_nonblocking_impl(fd)
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_write_impl(stream.fd, *buf, len)
+                auto n: i64 = sysnet::net_write_impl(fd, *buf, len)
                 if n >= 0:i64 {
-                    sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
                     done = true
                 } else {
@@ -781,7 +896,7 @@ pub fn net_async_write(stream: TcpStream, *buf: u8, len: usize) -> async Result<
                     auto eagain = sysnet::get_eagain_impl()
 
                     if err == eagain {
-                        if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, stream.fd) {
+                        if !register_async_reactor_write(__builtin_coro_current_handle() as Addr, fd) {
                             ret = Result<usize, string>::Err(string::from("Failed to register async write"))
                             done = true
                             continue

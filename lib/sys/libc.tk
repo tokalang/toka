@@ -89,8 +89,8 @@ extern fn libc_isfinite(x: f64) -> i32
 extern fn libc_exit(status: i32) -> void
 extern fn libc_abort() -> void
 
-extern fn libc_read(fd: i32, *buf: u8, count: usize) -> isize
-extern fn libc_write(fd: i32, *buf: u8, count: usize) -> isize
+extern fn libc_read(fd: i32, *buf: void, count: usize) -> isize
+extern fn libc_write(fd: i32, *buf: void, count: usize) -> isize
 extern fn libc_close(fd: i32) -> i32
 
 // I/O (FILE*)
@@ -125,6 +125,7 @@ extern fn libc_fork() -> i32
 extern fn libc_execvp(*file: char, *argv: void) -> i32
 extern fn libc_waitpid(pid: i32, *status: i32, options: i32) -> i32
 extern fn libc_pipe(*pipefd: i32) -> i32
+extern fn libc_dup(fd: i32) -> i32
 extern fn libc_dup2(oldfd: i32, newfd: i32) -> i32
 extern fn libc_kill(pid: i32, sig: i32) -> i32
 extern fn libc_getenv(*name: char) -> *char

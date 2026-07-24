@@ -1,8 +1,10 @@
 // Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
+import std/io::{println}
 import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
+import std/net::{TcpStream, SocketAddrV4}
 
 pub shape HttpMethod (
     GET = 0 |
@@ -119,7 +121,7 @@ pub fn parse_content_length(cl_str: str) -> Result<usize, string> {
         }
         auto digit = (b as usize) - 48:usize
         // Overflow check (assume max usize limit)
-        if acc > (18446744073709551615:usize - digit) / 10:usize {
+        if acc > (9223372036854775807:usize - digit) / 10:usize {
             return Result<usize, string>::Err(string::from("Content-Length overflow"))
         }
         acc = acc * 10:usize + digit
@@ -156,7 +158,7 @@ impl HeaderMap {
         return Result<bool, string>::Ok(true)
     }
 
-    pub fn get(self, key: str) -> Option<string> {
+    pub fn get(self#, key: str) -> Option<string> {
         auto idx# = 0:usize
         loop idx < self.entries.len() {
             auto *entry_ptr = self.entries.get_ref(idx)
@@ -168,8 +170,8 @@ impl HeaderMap {
         return Option<string>::None
     }
 
-    pub fn contains_key(self, key: str) -> bool {
-        return self.get(key).is_some()
+    pub fn contains_key(self#, key: str) -> bool {
+        return self#.get(key).is_some()
     }
 }
 
@@ -197,6 +199,62 @@ impl HttpRequest@encap {
             headers = self.headers.clone(),
             body = self.body.clone()
         )
+    }
+}
+
+impl HttpRequest {
+    pub fn to_wire_string(self) -> string {
+        auto res# = string::from("")
+        if self.method == HttpMethod::GET {
+            res#.push_str("GET ")
+        } else if self.method == HttpMethod::POST {
+            res#.push_str("POST ")
+        } else if self.method == HttpMethod::PUT {
+            res#.push_str("PUT ")
+        } else if self.method == HttpMethod::DELETE {
+            res#.push_str("DELETE ")
+        } else {
+            res#.push_str("GET ")
+        }
+        res#.push_str(self.path.as_str())
+        res#.push_str(" ")
+        if self.version.len() > 0 {
+            res#.push_str(self.version.as_str())
+        } else {
+            res#.push_str("HTTP/1.1")
+        }
+        res#.push_str("\r\n")
+
+        auto has_host# = false
+        auto has_cl# = false
+        auto idx# = 0:usize
+        loop idx < self.headers.entries.len() {
+            auto *entry_ptr = self.headers.entries.get_ref(idx)
+            if entry_ptr.key.as_str().eq_ignore_ascii_case("host") {
+                has_host = true
+            }
+            if entry_ptr.key.as_str().eq_ignore_ascii_case("content-length") {
+                has_cl = true
+            }
+            res#.push_str(entry_ptr.key.as_str())
+            res#.push_str(": ")
+            res#.push_str(entry_ptr.value.as_str())
+            res#.push_str("\r\n")
+            idx = idx + 1
+        }
+
+        if !has_cl && self.body.len() > 0 {
+            res#.push_str("Content-Length: ")
+            auto len_str = string::from_int(self.body.len())
+            res#.push_str(len_str.as_str())
+            res#.push_str("\r\n")
+        }
+
+        res#.push_str("\r\n")
+        if self.body.len() > 0 {
+            res#.push_str(self.body.as_str())
+        }
+        return res
     }
 }
 
@@ -287,7 +345,7 @@ impl HttpResponse {
             idx = idx + 1
         }
 
-        if !self.headers.contains_key("Content-Type") {
+        if !self.headers#.contains_key("Content-Type") {
             res#.push_str("Content-Type: ")
             res#.push_str(self.content_type.as_str())
             res#.push_str("\r\n")
@@ -357,11 +415,11 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
 
     auto req# = parse_res.unwrap()
 
-    if req.headers.contains_key("transfer-encoding") {
+    if req.headers#.contains_key("transfer-encoding") {
         return Result<HttpRequest, string>::Err(string::from("Unsupported Transfer-Encoding header"))
     }
 
-    auto cl_opt = req.headers.get("content-length")
+    auto cl_opt = req.headers#.get("content-length")
     if cl_opt.is_some() {
         auto cl_str = cl_opt.unwrap()
         auto cl_res = parse_content_length(cl_str.as_str())
@@ -511,4 +569,268 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
         headers = headers,
         body = string::from("")
     ))
+}
+
+pub fn parse_hex_digit(b: byte) -> Result<usize, string> {
+    if b >= 48:byte && b <= 57:byte {
+        return Result<usize, string>::Ok((b as usize) - 48:usize)
+    }
+    if b >= 65:byte && b <= 70:byte {
+        return Result<usize, string>::Ok((b as usize) - 65:usize + 10:usize)
+    }
+    if b >= 97:byte && b <= 102:byte {
+        return Result<usize, string>::Ok((b as usize) - 97:usize + 10:usize)
+    }
+    return Result<usize, string>::Err(string::from("Invalid hex digit in chunk size"))
+}
+
+pub fn parse_chunk_size(chunk_line: str) -> Result<usize, string> {
+    if chunk_line.len() == 0 {
+        return Result<usize, string>::Err(string::from("Empty chunk size line"))
+    }
+    auto idx# = 0:usize
+    auto bytes = chunk_line.as_bytes()
+    auto acc# = 0:usize
+    loop idx < chunk_line.len() {
+        auto b = bytes.at(idx).unwrap()
+        if b == 13:byte || b == 32:byte || b == 59:byte {
+            break
+        }
+        auto d_res = parse_hex_digit(b)
+        if d_res.is_err() {
+            return d_res
+        }
+        acc = acc * 16:usize + d_res.unwrap()
+        idx = idx + 1
+    }
+    return Result<usize, string>::Ok(acc)
+}
+
+pub fn parse_chunked_body(raw_body_str: str) -> Result<string, string> {
+    auto res# = string::from("")
+    auto cur_idx# = 0:usize
+    auto bytes = raw_body_str.as_bytes()
+    auto len = raw_body_str.len()
+
+    loop cur_idx < len {
+        auto size_end# = cur_idx
+        loop size_end < len {
+            if bytes.at(size_end).unwrap() == 10:byte {
+                break
+            }
+            size_end = size_end + 1
+        }
+        if size_end >= len {
+            return Result<string, string>::Err(string::from("Malformed chunked body: incomplete chunk header"))
+        }
+
+        auto line_len = size_end - cur_idx
+        auto line_str = raw_body_str.substr(cur_idx, line_len).trim_end()
+
+        auto chunk_size_res = parse_chunk_size(line_str)
+        if chunk_size_res.is_err() {
+            return Result<string, string>::Err(chunk_size_res.unwrap_err())
+        }
+        auto chunk_size = chunk_size_res.unwrap()
+
+        cur_idx = size_end + 1:usize
+
+        if chunk_size == 0 {
+            return Result<string, string>::Ok(res)
+        }
+
+        if cur_idx + chunk_size > len {
+            return Result<string, string>::Err(string::from("Chunk size exceeds body payload length"))
+        }
+
+        auto chunk_sub = raw_body_str.substr(cur_idx, chunk_size)
+        res#.push_str(chunk_sub)
+
+        cur_idx = cur_idx + chunk_size
+
+        if cur_idx < len && bytes.at(cur_idx).unwrap() == 13:byte { cur_idx = cur_idx + 1 }
+        if cur_idx < len && bytes.at(cur_idx).unwrap() == 10:byte { cur_idx = cur_idx + 1 }
+    }
+
+    return Result<string, string>::Ok(res)
+}
+
+pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) -> Result<HttpResponse, string> {
+    auto boundary = find_header_boundary(resp_str.as_str())
+    if boundary.index < 0 {
+        return Result<HttpResponse, string>::Err(string::from("Malformed HTTP response: missing header boundary"))
+    }
+
+    auto h_len = boundary.index as usize
+    if h_len > max_header_size {
+        return Result<HttpResponse, string>::Err(string::from("Response header size limit exceeded"))
+    }
+
+    auto header_str = string::from_with_len(resp_str.c_str(), h_len)
+    auto body_start = h_len + boundary.delim_len
+    auto resp_len = resp_str.len()
+
+    auto headers# = HeaderMap::new()
+    auto iter# = header_str.split(10)
+    if iter#.is_done() {
+        return Result<HttpResponse, string>::Err(string::from("Empty response headers"))
+    }
+
+    auto status_line_str = iter#.next().trim_end()
+    auto status_parts# = status_line_str.split(32)
+    if status_parts#.is_done() {
+        return Result<HttpResponse, string>::Err(string::from("Empty HTTP status line"))
+    }
+    auto ver_str = status_parts#.next()
+    if status_parts#.is_done() {
+        return Result<HttpResponse, string>::Err(string::from("Missing HTTP status code"))
+    }
+    auto code_str = status_parts#.next()
+
+    if !ver_str.as_str().equals("HTTP/1.1") && !ver_str.as_str().equals("HTTP/1.0") {
+        return Result<HttpResponse, string>::Err(string::from("Invalid or missing HTTP version in status line"))
+    }
+
+    auto code_res = parse_content_length(code_str.trim().as_str())
+    if code_res.is_err() {
+        println("Debug code_str: '{}'", code_str.as_str())
+        return Result<HttpResponse, string>::Err(string::from("Invalid HTTP status code"))
+    }
+    auto status_code = code_res.unwrap() as i32
+
+    loop !iter#.is_done() {
+        auto line# = iter#.next()
+        line = line.trim_end()
+        if line.len() == 0 { continue }
+
+        auto colon_idx = line.find_char(58:char)
+        if colon_idx <= 0 {
+            return Result<HttpResponse, string>::Err(string::from("Malformed response header line"))
+        }
+
+        auto key = string::from(line.substr(0, colon_idx as usize))
+        auto val = string::from(line.substr(colon_idx as usize + 1:usize, line.len() - colon_idx as usize - 1:usize).trim())
+
+        auto _ins = headers#.insert(key, val)
+    }
+
+    auto body_str# = string::from("")
+    auto raw_body_str# = string::from("")
+    if body_start < resp_len {
+        raw_body_str = string::from_with_len((resp_str.c_str() as usize + body_start) as *char, resp_len - body_start)
+    }
+
+    if headers#.contains_key("transfer-encoding") {
+        auto te_val = headers#.get("transfer-encoding").unwrap()
+        if te_val.as_str().eq_ignore_ascii_case("chunked") {
+            auto chunk_res = parse_chunked_body(raw_body_str.as_str())
+            if chunk_res.is_err() {
+                return Result<HttpResponse, string>::Err(chunk_res.unwrap_err())
+            }
+            body_str = chunk_res.unwrap()
+        } else {
+            return Result<HttpResponse, string>::Err(string::from("Unsupported Transfer-Encoding in response"))
+        }
+    } else if headers#.contains_key("content-length") {
+        auto cl_str = headers#.get("content-length").unwrap()
+        auto cl_res = parse_content_length(cl_str.as_str())
+        if cl_res.is_err() {
+            return Result<HttpResponse, string>::Err(cl_res.unwrap_err())
+        }
+        auto target_cl = cl_res.unwrap()
+        if target_cl > raw_body_str.len() {
+            return Result<HttpResponse, string>::Err(string::from("Response body length less than Content-Length"))
+        }
+        if target_cl == raw_body_str.len() {
+            body_str = raw_body_str
+        } else {
+            auto sub_str = raw_body_str.as_str().substr(0, target_cl)
+            body_str = string::from(sub_str)
+        }
+    } else {
+        body_str = raw_body_str
+    }
+
+    auto content_type# = string::from("text/plain")
+    if headers#.contains_key("content-type") {
+        content_type = headers#.get("content-type").unwrap()
+    }
+
+    return Result<HttpResponse, string>::Ok(HttpResponse(
+        status_code = status_code,
+        content_type = content_type,
+        headers = headers,
+        body = body_str
+    ))
+}
+
+pub fn parse_http_response(resp_str: string) -> Result<HttpResponse, string> {
+    return parse_http_response_with_limit(resp_str, 65536)
+}
+
+pub shape HttpClient (
+    timeout_ms: i32
+)
+
+impl HttpClient {
+    pub fn new(timeout_ms: i32) -> HttpClient {
+        return HttpClient(timeout_ms = timeout_ms)
+    }
+
+    pub fn execute_async(self, req: HttpRequest, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
+        auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
+        if conn_res.is_err() {
+            return Result<HttpResponse, string>::Err(conn_res.unwrap_err())
+        }
+
+        auto stream# = (cede conn_res).unwrap()
+
+        auto req_wire = req.to_wire_string()
+        auto write_res = stream#.write_string_async(req_wire).await
+        match write_res {
+            auto Result<usize, string>::Err(_) => {
+                stream#.close()
+                return Result<HttpResponse, string>::Err(string::from("Failed to send HTTP request"))
+            }
+            _ => {}
+        }
+
+        auto buf: [u8; 4096] = [0:u8; 4096]
+        auto raw_resp# = string::from("")
+        loop {
+            auto read_res = stream#.read_async(&buf[0], 4096:usize).await
+            auto bytes_read# = 0:usize
+            auto read_ok# = false
+            match read_res {
+                auto Result<usize, string>::Ok(n) => {
+                    bytes_read = n
+                    read_ok = true
+                }
+                _ => {}
+            }
+            if !read_ok || bytes_read == 0:usize {
+                break
+            }
+            auto chunk_str = string::from_with_len(&buf[0] as *char, bytes_read)
+            raw_resp#.push_str(chunk_str.as_str())
+
+            if find_header_boundary(raw_resp.as_str()).index >= 0 {
+                auto temp_parse = parse_http_response(raw_resp.clone())
+                match temp_parse {
+                    auto Result<HttpResponse, string>::Ok(_) => {
+                        stream#.close()
+                        return temp_parse
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        stream#.close()
+        if raw_resp.len() == 0 {
+            return Result<HttpResponse, string>::Err(string::from("Empty HTTP response received"))
+        }
+
+        return parse_http_response(raw_resp)
+    }
 }

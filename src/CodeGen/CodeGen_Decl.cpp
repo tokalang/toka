@@ -822,6 +822,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
 llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   std::string varName = Type::stripMorphology(var->Name);
+  size_t scopeBeforeInit = 0;
 
   llvm::Value *initVal = nullptr;
   llvm::Type *decayArrayType = nullptr;
@@ -839,6 +840,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       // if TypeName is present.
     } else {
       m_CFStack.push_back({varName, nullptr, nullptr, nullptr});
+      scopeBeforeInit = m_ScopeStack.empty() ? 0 : m_ScopeStack.back().size();
       PhysEntity initEnt = genExpr(var->Init.get());
 
       // [Fix] Array-to-Pointer Decay Interception
@@ -1345,6 +1347,19 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
 
   if (initVal && alloca) {
     m_Builder.CreateStore(initVal, alloca);
+    if (!m_ScopeStack.empty() && scopeBeforeInit < m_ScopeStack.back().size()) {
+      for (size_t i = scopeBeforeInit; i < m_ScopeStack.back().size(); ++i) {
+        auto &vsi = m_ScopeStack.back()[i];
+        if (vsi.Name.empty() || vsi.Name[0] == '.') {
+          vsi.HasDrop = false;
+          vsi.IsShared = false;
+          vsi.IsUniquePointer = false;
+          if (vsi.DropFlag) {
+            m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context), vsi.DropFlag);
+          }
+        }
+      }
+    }
   }
 
   // Automatic Drop Registration

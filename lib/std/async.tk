@@ -100,7 +100,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         toka_wait_registry_release(id1, gen1)
         toka_wait_registry_release(id2, gen2)
         auto res1 = owned_first.await
-        return RaceWinner<'T1, 'T2>::First(res1)
+        return RaceWinner<'T1, 'T2>::First(cede res1)
     } else {
         // Second task won: cancel first task
         task_cancel<'T1>(owned_first)
@@ -123,7 +123,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         toka_wait_registry_release(id1, gen1)
         toka_wait_registry_release(id2, gen2)
         auto res2 = owned_second.await
-        return RaceWinner<'T1, 'T2>::Second(res2)
+        return RaceWinner<'T1, 'T2>::Second(cede res2)
     }
 }
 

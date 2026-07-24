@@ -23,6 +23,12 @@ pub fn net_socket_impl() -> i32 {
     }
 }
 
+pub fn net_dup_impl(fd: i32) -> i32 {
+    unsafe {
+        return libc_dup(fd)
+    }
+}
+
 pub fn net_socket_udp_impl() -> i32 {
     unsafe {
         toka_ensure_wsa_initialized()

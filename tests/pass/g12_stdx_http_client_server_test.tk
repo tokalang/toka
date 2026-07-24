@@ -1,0 +1,174 @@
+// g12_stdx_http_client_server_test.tk — stdx/net/http Production Feature Test
+import std/io::{println}
+import std/net::{TcpStream, TcpListener, Ipv4Addr, SocketAddrV4}
+import std/task::{block_on, sleep_async}
+import stdx/net/http::{
+    HttpRequest, HttpResponse, HttpMethod, HeaderMap, HttpClient,
+    parse_http_request, parse_http_response, parse_chunked_body, parse_chunk_size
+}
+
+fn test_chunked_encoding_decoding() {
+    println("[Test] Testing Chunked Transfer-Encoding Decoder...")
+    auto raw_chunked = "4\r\nWiki\r\n8\r\npedia in\r\nA\r\n\r\n chunks.\r\n0\r\n\r\n"
+    auto res = parse_chunked_body(raw_chunked)
+    assert(res.is_ok(), "Chunked body parsing failed")
+    auto decoded = res.unwrap()
+    assert(decoded.as_str().equals("Wikipedia in\r\n chunks."), "Chunked body decoded text mismatch")
+
+    auto invalid_chunked = "XYZ\r\nBad Data\r\n0\r\n\r\n"
+    auto err_res = parse_chunked_body(invalid_chunked)
+    assert(err_res.is_err(), "Invalid chunk size hex should return error")
+    println("[Test] Chunked Transfer-Encoding Decoder PASSED!")
+}
+
+fn test_http_response_parsing() {
+    println("[Test] Testing HTTP Response Parsing...")
+    auto raw_resp = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nHello World!"
+    auto parse_res = parse_http_response(string::from(raw_resp))
+    if parse_res.is_err() {
+        auto err_str = parse_res.unwrap_err()
+        println("Parse error: {}", err_str.as_str())
+        assert(false, "HTTP response parse failed")
+    } else {
+        auto resp = parse_res.unwrap()
+        assert(resp.status_code == 200, "Status code mismatch")
+        assert(resp.body.as_str().equals("Hello World!"), "Response body mismatch")
+        assert(resp.headers#.contains_key("Content-Type"), "Content-Type header missing")
+        println("[Test] Content-Length response parsed successfully")
+    }
+
+    // Test Chunked Response Parsing
+    auto raw_chunked_resp = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r\nHello\r\n1\r\n \r\n6\r\nWorld!\r\n0\r\n\r\n"
+    auto chunked_parse = parse_http_response(string::from(raw_chunked_resp))
+    auto chunked_resp = chunked_parse.unwrap()
+    assert(chunked_resp.status_code == 200, "Chunked response status mismatch")
+    assert(chunked_resp.body.as_str().equals("Hello World!"), "Chunked response body mismatch")
+    println("[Test] HTTP Response Parsing PASSED!")
+}
+
+fn async_http_server(port: u16) -> async i32 {
+    println("[Server] Starting server listener...")
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        println("[Server] Failed to bind listener")
+        return -1
+    }
+
+    println("[Server] Waiting for connection...")
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        println("[Server] Failed to accept connection")
+        return -2
+    }
+    println("[Server] Accepted client connection!")
+
+    auto buf: [u8; 4096] = [0:u8; 4096]
+    auto read_res = stream#.read_async(&buf[0], 4096:usize).await
+    auto bytes_read# = 0:usize
+    auto read_ok# = false
+    match read_res {
+        auto Result<usize, string>::Ok(n) => {
+            bytes_read = n
+            read_ok = true
+        }
+        _ => {}
+    }
+    if !read_ok {
+        println("[Server] Read error")
+        stream#.close()
+        return -3
+    }
+    println("[Server] Read {} request bytes", bytes_read)
+    auto req_str = string::from_with_len(&buf[0] as *char, bytes_read as u64)
+    auto req_res# = parse_http_request(req_str)
+    auto parse_ok# = false
+    match req_res {
+        auto Result<HttpRequest, string>::Ok(_) => {
+            parse_ok = true
+        }
+        _ => {}
+    }
+    if !parse_ok {
+        println("[Server] Parse HTTP request error")
+        stream#.close()
+        return -4
+    }
+
+    auto resp = HttpResponse::ok(string::from("Async HTTP Response Payload"))
+    auto resp_str = resp.to_string()
+    auto _w = stream#.write_string_async(resp_str).await
+    println("[Server] Sent response to client!")
+
+    sleep_async(10).await
+    stream#.close()
+    println("[Server] Closed stream cleanly.")
+    return 0
+}
+
+fn async_http_client_test(port: u16) -> async i32 {
+    println("[Client] Starting client task...")
+    sleep_async(20).await
+    auto client = HttpClient::new(2000)
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)
+
+    auto headers# = HeaderMap::new()
+    auto _h1 = headers#.insert(string::from("Host"), string::from("127.0.0.1"))
+    auto req = HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/test"),
+        version = string::from("HTTP/1.1"),
+        headers = headers,
+        body = string::from("")
+    )
+
+    println("[Client] Executing HTTP request...")
+    auto resp_res = client.execute_async(req, addr).await
+    if resp_res.is_err() {
+        auto err_str = resp_res.unwrap_err()
+        println("[Client] Request failed: {}", err_str.as_str())
+        assert(false, "HttpClient execute_async failed")
+    } else {
+        auto resp = resp_res.unwrap()
+        assert(resp.status_code == 200, "HttpClient status code mismatch")
+        assert(resp.body.as_str().equals("Async HTTP Response Payload"), "HttpClient body payload mismatch")
+        println("[Test] Async HTTP Client/Server Roundtrip PASSED!")
+    }
+    return 0
+}
+
+fn async_connect_timeout_test() -> async i32 {
+    // Attempt connecting to a non-listening local port with a 10ms timeout
+    auto unreachable_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 59999:u16)
+    auto conn_res = TcpStream::connect_async_timeout(unreachable_addr, 10).await
+    assert(conn_res.is_err(), "connect_async_timeout on non-listening port must fail or time out")
+    println("[Test] TcpStream::connect_async_timeout PASSED!")
+    return 0
+}
+
+fn main_async() -> async i32 {
+    test_chunked_encoding_decoding()
+    test_http_response_parsing()
+
+    auto _t1 = async_connect_timeout_test().await
+
+    auto port: u16 = 38443:u16
+    auto server_task = async_http_server(port).start
+    auto client_task = async_http_client_test(port).start
+
+    auto s_res = server_task.await
+    assert(s_res == 0, "Async HTTP Server failed")
+
+    auto c_res = client_task.await
+    assert(c_res == 0, "Async HTTP Client failed")
+
+    return 0
+}
+
+fn main() -> i32 {
+    println("--- Starting stdx/net/http Production Feature Qualification Suite ---")
+    auto res = block_on<i32>(main_async())
+    assert(res == 0, "stdx/net/http test suite failed")
+    println("g12_stdx_http_client_server_test PASSED Cleanly!")
+    return 0
+}
