@@ -28,16 +28,34 @@ pub shape AsyncReadResult (
     eof: bool
 )
 
+impl AsyncReadResult {
+    pub fn take_buffer(self#) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
+
 pub shape AsyncWriteResult (
     buffer: Vec<u8>,
     bytes_written: usize,
     complete: bool
 )
 
+impl AsyncWriteResult {
+    pub fn take_buffer(self#) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
+
 pub shape AsyncIoError (
     buffer: Vec<u8>,
     message: string
 )
+
+impl AsyncIoError {
+    pub fn take_buffer(self#) -> Vec<u8> {
+        return cede self.buffer
+    }
+}
 
 pub shape Ipv4Addr (
     octets: [u8; 4]
