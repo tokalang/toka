@@ -1,0 +1,23 @@
+// EXPECT_EVIDENCE: ASYNC-EFFECT-001
+import ./lib::{Pair, produce_async_value, produce_async_pair, produce_async_calc}
+import std/task::{block_on}
+
+fn run_cross_module_tests() -> async i32 {
+    auto v1 = produce_async_value(21).await
+    assert(v1 == 43, "produce_async_value returned unexpected payload")
+
+    auto pair = produce_async_pair(10, 20).await
+    assert(pair.a == 11, "produce_async_pair first element mismatch")
+    assert(pair.b == 22, "produce_async_pair second element mismatch")
+
+    auto c1 = produce_async_calc(5).await
+    assert(c1 == 111, "produce_async_calc returned unexpected payload")
+
+    return 0
+}
+
+fn main() -> i32 {
+    auto res = block_on<i32>(run_cross_module_tests())
+    assert(res == 0, "run_cross_module_tests failed")
+    return 0
+}
