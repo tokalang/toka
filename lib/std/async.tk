@@ -1,0 +1,235 @@
+// Copyright (c) 2026 Toka Project. All rights reserved.
+
+// std/async.tk
+// High-level async combinators and structured concurrency.
+
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start};
+import std/task::{sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
+import std/vec::{Vec};
+import std/io::{println};
+
+extern fn __builtin_coro_current_handle() -> *void
+extern fn __builtin_coro_suspend()
+
+pub shape RaceWinner<'T1, 'T2> (
+    First('T1) = 1 |
+    Second('T2) = 2
+)
+
+pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>) -> async RaceWinner<'T1, 'T2> {
+    auto owned_first# = cede first
+    auto owned_second# = cede second
+
+    auto *coro_handle = __builtin_coro_current_handle()
+    auto task_id# = 0:u64
+    auto wait_gen# = 0:u64
+
+    auto id1# = 0:u32
+    auto gen1# = 0:u32
+    auto id2# = 0:u32
+    auto gen2# = 0:u32
+
+    auto prep_ok = toka_task_prepare_suspend(*coro_handle, &task_id as *u64, &wait_gen as *u64)
+    if prep_ok != 0 {
+        auto alloc_ok = toka_wait_registry_allocate_pair(task_id, wait_gen, 1:u16, 2:u16, &id1 as *u32, &gen1 as *u32, &id2 as *u32, &gen2 as *u32)
+        if alloc_ok == 0 {
+            assert(false, "WaitRegistry pair allocation failed in race2")
+        }
+
+        // Subscribe completion notifications for first and second tasks
+        auto sub1 = task_subscribe_completion<'T1>(owned_first, id1, gen1)
+        auto sub2 = task_subscribe_completion<'T2>(owned_second, id2, gen2)
+
+        if !sub1 || !sub2 {
+            if sub1 { task_unsubscribe_completion<'T1>(owned_first, id1, gen1) }
+            if sub2 { task_unsubscribe_completion<'T2>(owned_second, id2, gen2) }
+            toka_wait_registry_release(id1, gen1)
+            toka_wait_registry_release(id2, gen2)
+            assert(false, "Completion subscription failed in race2")
+        }
+
+        // Completion subscriptions are installed before activation so even
+        // cold tasks that complete immediately cannot lose their wakeup.
+        auto *first_start_tcb = task_get_coro_handle<'T1>(owned_first)
+        auto *second_start_tcb = task_get_coro_handle<'T2>(owned_second)
+        auto registered_first# = false
+        auto registered_second# = false
+        if *first_start_tcb != null {
+            registered_first = toka_task_register_cancel_child(*coro_handle, *first_start_tcb) != 0
+        }
+        if *second_start_tcb != null {
+            registered_second = toka_task_register_cancel_child(*coro_handle, *second_start_tcb) != 0
+        }
+        if !registered_first || !registered_second {
+            assert(false, "Cancellation-child registration failed in race2")
+        }
+        if *first_start_tcb != null {
+            toka_task_start(*first_start_tcb)
+        }
+        if *second_start_tcb != null {
+            toka_task_start(*second_start_tcb)
+        }
+
+        toka_task_commit_suspend(*coro_handle)
+    }
+
+    __builtin_coro_suspend()
+
+    // Check which slot won
+    auto winner1 = toka_wait_registry_is_winner(id1, gen1) != 0
+
+    if winner1 {
+        // First task won: cancel second task
+        task_cancel<'T2>(owned_second)
+        auto *second_tcb = task_get_coro_handle<'T2>(owned_second)
+        if *second_tcb != null {
+            toka_task_retain(*second_tcb)
+            loop !toka_tcb_is_done(*second_tcb) {
+                sleep_async(1).await
+            }
+            toka_task_release(*second_tcb)
+        }
+        auto *first_cleanup_tcb = task_get_coro_handle<'T1>(owned_first)
+        auto *second_cleanup_tcb = task_get_coro_handle<'T2>(owned_second)
+        if *first_cleanup_tcb != null {
+            toka_task_unregister_cancel_child(*coro_handle, *first_cleanup_tcb)
+        }
+        if *second_cleanup_tcb != null {
+            toka_task_unregister_cancel_child(*coro_handle, *second_cleanup_tcb)
+        }
+        toka_wait_registry_release(id1, gen1)
+        toka_wait_registry_release(id2, gen2)
+        auto res1 = owned_first.await
+        return RaceWinner<'T1, 'T2>::First(res1)
+    } else {
+        // Second task won: cancel first task
+        task_cancel<'T1>(owned_first)
+        auto *first_tcb = task_get_coro_handle<'T1>(owned_first)
+        if *first_tcb != null {
+            toka_task_retain(*first_tcb)
+            loop !toka_tcb_is_done(*first_tcb) {
+                sleep_async(1).await
+            }
+            toka_task_release(*first_tcb)
+        }
+        auto *first_cleanup_tcb = task_get_coro_handle<'T1>(owned_first)
+        auto *second_cleanup_tcb = task_get_coro_handle<'T2>(owned_second)
+        if *first_cleanup_tcb != null {
+            toka_task_unregister_cancel_child(*coro_handle, *first_cleanup_tcb)
+        }
+        if *second_cleanup_tcb != null {
+            toka_task_unregister_cancel_child(*coro_handle, *second_cleanup_tcb)
+        }
+        toka_wait_registry_release(id1, gen1)
+        toka_wait_registry_release(id2, gen2)
+        auto res2 = owned_second.await
+        return RaceWinner<'T1, 'T2>::Second(res2)
+    }
+}
+
+pub shape TaskRef (
+    *tcb: void
+)
+
+impl TaskRef@encap {
+    pub *tcb
+    pub(std) *
+    fn drop(self#) {
+        if self.*tcb != null {
+            toka_task_release(self.*tcb)
+            self.*tcb = null as *void
+        }
+    }
+
+    pub fn clone(self) -> TaskRef {
+        if self.*tcb != null {
+            toka_task_retain(self.*tcb)
+        }
+        return TaskRef(*tcb = self.*tcb)
+    }
+}
+
+pub fn task_ref_from_handle<'T>(cede handle: TaskHandle<'T>) -> TaskRef {
+    auto owned# = cede handle
+    auto *tcb_ptr = task_get_coro_handle<'T>(owned)
+    if *tcb_ptr != null as *void {
+        toka_task_retain(*tcb_ptr)
+        return TaskRef(*tcb = *tcb_ptr)
+    }
+    return TaskRef(*tcb = null as *void)
+}
+
+impl TaskRef {
+    pub fn from_handle<'T>(cede handle: TaskHandle<'T>) -> TaskRef {
+        return task_ref_from_handle<'T>(cede handle)
+    }
+
+    pub fn is_done(self) -> bool {
+        if self.*tcb != null {
+            return toka_tcb_is_done(self.*tcb)
+        }
+        return true
+    }
+
+    pub fn request_cancel(self) {
+        if self.*tcb != null {
+            toka_task_request_cancel(self.*tcb)
+        }
+    }
+
+    pub fn release(self#) {
+        if self.*tcb != null {
+            toka_task_release(self.*tcb)
+            self.*tcb = null as *void
+        }
+    }
+}
+
+pub shape TaskScope (
+    refs: Vec<TaskRef>
+)
+
+impl TaskScope {
+    pub fn new() -> TaskScope {
+        return TaskScope(refs = Vec<TaskRef>::new())
+    }
+
+    pub fn track_ref(self#, cede tr: TaskRef) {
+        if tr.*tcb != null as *void {
+            toka_task_start(tr.*tcb)
+        }
+        self.refs#.push(cede tr)
+    }
+
+    pub fn track<'T>(self#, cede handle: TaskHandle<'T>) {
+        auto tr = task_ref_from_handle<'T>(cede handle)
+        if tr.*tcb != null as *void {
+            toka_task_start(tr.*tcb)
+        }
+        self.refs#.push(cede tr)
+    }
+
+    pub fn cancel_all(self#) {
+        auto i# = 0:usize
+        loop i < self.refs.len() {
+            auto tr = self.refs.get(i)
+            tr.request_cancel()
+            i += 1
+        }
+    }
+
+    pub fn close(cede self) -> async void {
+        auto scope# = cede self
+        scope#.cancel_all()
+
+        // Mandatory Join: Wait until every tracked task reaches terminal state
+        auto i# = 0:usize
+        loop i < scope.refs.len() {
+            auto tr = scope.refs.get(i)
+            loop !tr.is_done() {
+                sleep_async(1).await
+            }
+            i += 1
+        }
+    }
+}

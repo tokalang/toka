@@ -1,0 +1,50 @@
+// AR-P5 Qualification Test: race2 Async Combinator & Loser Cancellation
+import std/io::{println};
+import std/task::{block_on, sleep_async};
+import std/async::{race2, RaceWinner};
+
+fn fast_worker_task() -> async i32 {
+    println("[FastWorker] Started fast worker task");
+    sleep_async(10).await;
+    println("[FastWorker] Finished fast worker task");
+    return 100;
+}
+
+fn slow_worker_task() -> async i32 {
+    println("[SlowWorker] Started slow worker task");
+    auto res = sleep_async(100).await;
+    if res < 0 { return -1; }
+    println("[SlowWorker] Finished slow worker task");
+    return 200;
+}
+
+fn async_race_runner() -> async i32 {
+    println("[Runner] Starting race2 test...");
+
+    // race2 must activate cold TaskHandles after installing completion subscriptions.
+    auto task1 = fast_worker_task();
+    auto task2 = slow_worker_task();
+
+    auto winner = race2<i32, i32>(cede task1, cede task2).await;
+
+    match winner {
+        auto RaceWinner<i32, i32>::First(val) => {
+            println("[Runner] Race winner: First worker won!");
+            assert(val == 100, "First worker value mismatch");
+        }
+        auto RaceWinner<i32, i32>::Second(val) => {
+            assert(false, "Slow worker should not win race against fast worker");
+        }
+    }
+
+    println("[Runner] race2 test PASSED!");
+    return 1;
+}
+
+fn main() -> i32 {
+    println("--- Starting AR-P5 race2 Combinator Test ---");
+    auto res = block_on<i32>(async_race_runner());
+    assert(res == 1, "Race runner failed");
+    println("g11_async_race2_test PASSED (AR-P5 race2 Verified)!");
+    return 0;
+}

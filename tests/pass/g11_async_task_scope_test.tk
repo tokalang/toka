@@ -1,0 +1,40 @@
+// AR-P5 Qualification Test: TaskScope Structured Concurrency
+import std/io::{println};
+import std/task::{block_on, sleep_async};
+import std/async::{TaskScope, task_ref_from_handle};
+
+fn worker_task(id: i32) -> async i32 {
+    println("[Worker] Started worker");
+    auto res = sleep_async(500).await;
+    if res < 0 { return -1; }
+    println("[Worker] Finished worker");
+    return id;
+}
+
+fn async_scope_runner() -> async i32 {
+    println("[Runner] Starting TaskScope test...");
+
+    auto scope# = TaskScope::new();
+
+    auto t1 = worker_task(1).start;
+    auto t2 = worker_task(2).start;
+    auto t3 = worker_task(3).start;
+
+    scope#.track_ref(cede task_ref_from_handle<i32>(cede t1));
+    scope#.track_ref(cede task_ref_from_handle<i32>(cede t2));
+    scope#.track_ref(cede task_ref_from_handle<i32>(cede t3));
+
+    // Close scope: cancels all workers and waits for them to join
+    scope.close().await;
+
+    println("[Runner] TaskScope closed cleanly, all workers joined!");
+    return 1;
+}
+
+fn main() -> i32 {
+    println("--- Starting AR-P5 TaskScope Test ---");
+    auto res = block_on<i32>(async_scope_runner());
+    assert(res == 1, "TaskScope runner failed");
+    println("g11_async_task_scope_test PASSED (AR-P5 TaskScope Verified)!");
+    return 0;
+}

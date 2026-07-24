@@ -8,7 +8,7 @@ import sys/libc::{libc_usleep}
 import sys/sync as sys_sync
 import std/time::{Instant}
 import core/task as core_task
-import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy}
+import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion}
 import sys/os/net as sysnet
 
 pub fn current_time_ms() -> i64 {
@@ -144,6 +144,47 @@ pub fn __toka_spawn(*task: void) {
     if *task != null {
         core_task::toka_task_start(*task)
     }
+}
+
+import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion, toka_task_unsubscribe_completion, toka_task_retain, toka_tcb_is_canceled}
+
+pub fn task_cancel<'T>(handle: TaskHandle<'T>) {
+    auto *tcb = task_get_coro_handle<'T>(handle)
+    if *tcb != null {
+        toka_task_request_cancel(*tcb)
+    }
+}
+
+pub fn task_is_cancel_requested<'T>(handle: TaskHandle<'T>) -> bool {
+    auto *tcb = task_get_coro_handle<'T>(handle)
+    if *tcb != null {
+        return toka_task_is_cancel_requested(*tcb) != 0
+    }
+    return false
+}
+
+pub fn task_is_canceled<'T>(handle: TaskHandle<'T>) -> bool {
+    auto *tcb = task_get_coro_handle<'T>(handle)
+    if *tcb != null {
+        return toka_tcb_is_canceled(*tcb)
+    }
+    return false
+}
+
+pub fn task_subscribe_completion<'T>(handle: TaskHandle<'T>, wait_id: u32, slot_gen: u32) -> bool {
+    auto *tcb = task_get_coro_handle<'T>(handle)
+    if *tcb != null {
+        return toka_task_subscribe_completion(*tcb, wait_id, slot_gen) != 0
+    }
+    return false
+}
+
+pub fn task_unsubscribe_completion<'T>(handle: TaskHandle<'T>, wait_id: u32, slot_gen: u32) -> bool {
+    auto *tcb = task_get_coro_handle<'T>(handle)
+    if *tcb != null {
+        return toka_task_unsubscribe_completion(*tcb, wait_id, slot_gen) != 0
+    }
+    return false
 }
 
 pub fn __toka_detach_task(*task: void) {
@@ -305,6 +346,9 @@ extern fn __builtin_coro_suspend()
 
 pub fn sleep_async(ms: i32) -> async i32 {
     auto *handle = __builtin_coro_current_handle()
+    if core_task::toka_task_is_current_canceled(*handle) != 0 {
+        return -1
+    }
     auto task_id# = 0:u64
     auto wait_gen# = 0:u64
     auto ok = core_task::toka_task_prepare_suspend(*handle, &task_id as *u64, &wait_gen as *u64)
@@ -321,6 +365,9 @@ pub fn sleep_async(ms: i32) -> async i32 {
         }
     }
     __builtin_coro_suspend()
+    if core_task::toka_task_is_current_canceled(*handle) != 0 {
+        return -1
+    }
     return 0
 }
 

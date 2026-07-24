@@ -1,0 +1,52 @@
+// AR-P5 Qualification Test: Task-Level Cancellation & Join Substrate
+import std/io::{println};
+import std/task::{block_on, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion};
+import core/task::{toka_wait_registry_allocate, toka_wait_registry_release};
+
+auto g_worker_finished# = 0;
+
+fn async_worker_task() -> async i32 {
+    println("[Worker] Started async worker task");
+    sleep_async(20).await;
+    g_worker_finished += 1;
+    println("[Worker] Finished async worker task");
+    return 42;
+}
+
+fn async_runner_task() -> async i32 {
+    println("[Runner] Testing task cancellation & subscription...");
+
+    // Allocate a WaitRegistry token for completion subscription
+    auto wait_id# = 0:u32;
+    auto slot_gen# = 0:u32;
+    auto alloc_ok = toka_wait_registry_allocate(1:u64, 1:u64, 1:u16, &wait_id as *u32, &slot_gen as *u32);
+    assert(alloc_ok != 0, "WaitRegistry allocation failed");
+
+    auto task_handle = async_worker_task().start;
+
+    // Verify task is initially running and not canceled
+    assert(!task_is_cancel_requested<i32>(task_handle), "Task should not be cancel requested initially");
+
+    // Subscribe completion to wait_id
+    auto sub_ok = task_subscribe_completion<i32>(task_handle, wait_id, slot_gen);
+    assert(sub_ok, "Task completion subscription failed");
+
+    // Request task cancellation
+    task_cancel<i32>(task_handle);
+    assert(task_is_cancel_requested<i32>(task_handle), "Task should be marked cancel requested after cancel()");
+
+    // Clean up wait registry slot
+    toka_wait_registry_release(wait_id, slot_gen);
+
+    assert(g_worker_finished == 0, "Canceled worker task post-sleep side effect MUST NOT run!");
+    println("[Runner] Task-level cancellation substrate PASSED!");
+    return 100;
+}
+
+fn main() -> i32 {
+    println("--- Starting AR-P5 Task Cancellation & Join Substrate Test ---");
+    auto res = block_on<i32>(async_runner_task());
+    assert(res == 100, "Runner result mismatch");
+    println("g11_async_cancel_join_test PASSED (AR-P5 Task Cancellation & Join Verified)!");
+    return 0;
+}

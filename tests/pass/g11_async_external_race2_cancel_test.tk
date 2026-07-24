@@ -1,0 +1,42 @@
+// AR-P5 Regression: external race2 cancellation must cancel both child tasks.
+import std/io::{println}
+import std/task::{block_on, sleep_async, task_cancel, task_is_canceled}
+import std/async::{race2, RaceWinner}
+import core/task::{task_get_coro_handle, toka_tcb_is_done}
+
+extern fn toka_rt_live_wait_registry_count() -> u32
+
+auto g_child_side_effects# = 0
+
+fn child_task(delay: i32) -> async i32 {
+    auto res = sleep_async(delay).await
+    if res < 0 { return -1 }
+    g_child_side_effects += 1
+    return delay
+}
+
+fn probe() -> async i32 {
+    auto first = child_task(200).start
+    auto second = child_task(300).start
+    auto raced = race2<i32, i32>(cede first, cede second).start
+
+    sleep_async(10).await
+    task_cancel<RaceWinner<i32, i32>>(raced)
+
+    auto *raced_tcb = task_get_coro_handle<RaceWinner<i32, i32>>(raced)
+    loop !toka_tcb_is_done(*raced_tcb) {
+        sleep_async(1).await
+    }
+    assert(task_is_canceled<RaceWinner<i32, i32>>(raced), "race2 did not publish cancellation")
+    assert(g_child_side_effects == 0, "externally canceled race2 child executed side effect")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "external race2 cancellation leaked wait registrations")
+    return 0
+}
+
+fn main() -> i32 {
+    println("--- Starting AR-P5 external race2 cancellation test ---")
+    auto result = block_on<i32>(probe())
+    assert(result == 0, "external race2 cancellation probe failed")
+    println("g11_async_external_race2_cancel_test PASSED!")
+    return 0
+}

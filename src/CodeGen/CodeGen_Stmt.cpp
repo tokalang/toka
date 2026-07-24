@@ -752,4 +752,45 @@ void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
     m_Builder.SetInsertPoint(llvm::BasicBlock::Create(m_Context, "coro.dead", m_Builder.GetInsertBlock()->getParent()));
 }
 
+void CodeGen::genCoroutineCancelReturn() {
+    if (m_CurrentCoroPromiseType) {
+        llvm::Function *completeCanceledFn = m_Module->getFunction("toka_task_complete_canceled");
+        if (!completeCanceledFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+            completeCanceledFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_complete_canceled", m_Module.get());
+        }
+        m_Builder.CreateCall(completeCanceledFn, {m_CurrentCoroPromise});
+    }
+
+    if (!m_CurrentCoroFinalSuspendBB) {
+        llvm::BasicBlock *savedBB = m_Builder.GetInsertBlock();
+        m_CurrentCoroFinalSuspendBB = llvm::BasicBlock::Create(m_Context, "coro.suspend.final", savedBB->getParent());
+        m_Builder.SetInsertPoint(m_CurrentCoroFinalSuspendBB);
+        llvm::Function *suspendFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_suspend);
+        llvm::BasicBlock *cleanupBB = llvm::BasicBlock::Create(m_Context, "coro.cleanup", savedBB->getParent());
+        llvm::BasicBlock *trapBB = llvm::BasicBlock::Create(m_Context, "coro.trap", savedBB->getParent());
+
+        llvm::Value *suspendRes = m_Builder.CreateCall(suspendFn, {llvm::ConstantTokenNone::get(m_Context), m_Builder.getInt1(true)});
+
+        llvm::SwitchInst *sw = m_Builder.CreateSwitch(suspendRes, m_CurrentCoroSuspendRetBB, 2);
+        sw->addCase(m_Builder.getInt8(0), trapBB);
+        sw->addCase(m_Builder.getInt8(1), cleanupBB);
+
+        m_Builder.SetInsertPoint(trapBB);
+        m_Builder.CreateUnreachable();
+
+        m_Builder.SetInsertPoint(cleanupBB);
+        if (m_CurrentCoroCleanupBB) {
+            m_Builder.CreateBr(m_CurrentCoroCleanupBB);
+        } else {
+            m_Builder.CreateUnreachable();
+        }
+
+        m_Builder.SetInsertPoint(savedBB);
+    }
+
+    m_Builder.CreateBr(m_CurrentCoroFinalSuspendBB);
+    m_Builder.SetInsertPoint(llvm::BasicBlock::Create(m_Context, "coro.dead.cancel", m_Builder.GetInsertBlock()->getParent()));
+}
+
 } // namespace toka

@@ -6427,14 +6427,28 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
     llvm::Value *targetState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "target.state");
     
-    llvm::Value *isReady = m_Builder.CreateICmpEQ(targetState, m_Builder.getInt8(1), "is_ready");
-    
     llvm::BasicBlock *readyBB = llvm::BasicBlock::Create(m_Context, "await.ready", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *canceledBB = llvm::BasicBlock::Create(m_Context, "await.canceled", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *stateDispatchBB = llvm::BasicBlock::Create(m_Context, "await.state_dispatch", m_Builder.GetInsertBlock()->getParent());
     llvm::BasicBlock *suspendCheckBB = llvm::BasicBlock::Create(m_Context, "await.suspend_check", m_Builder.GetInsertBlock()->getParent());
     llvm::BasicBlock *suspendBB = llvm::BasicBlock::Create(m_Context, "await.suspend", m_Builder.GetInsertBlock()->getParent());
-    
-    m_Builder.CreateCondBr(isReady, readyBB, suspendCheckBB);
-    
+
+    llvm::Function *isCurrentCanceledFn = m_Module->getFunction("toka_task_is_current_canceled");
+    if (!isCurrentCanceledFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+        isCurrentCanceledFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_is_current_canceled", m_Module.get());
+    }
+    llvm::Value *entrySelfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "entry.self.canceled");
+    llvm::Value *entryIsSelfCanceled = m_Builder.CreateICmpNE(entrySelfCanceled, m_Builder.getInt32(0));
+    llvm::Value *entryTargetCanceled = m_Builder.CreateICmpEQ(targetState, m_Builder.getInt8(3), "entry.target.canceled");
+    llvm::Value *entryCancel = m_Builder.CreateOr(entryIsSelfCanceled, entryTargetCanceled, "entry.cancel");
+    m_Builder.CreateCondBr(entryCancel, canceledBB, stateDispatchBB);
+
+    m_Builder.SetInsertPoint(stateDispatchBB);
+    llvm::SwitchInst *swState = m_Builder.CreateSwitch(targetState, suspendCheckBB, 2);
+    swState->addCase(m_Builder.getInt8(1), readyBB);
+    swState->addCase(m_Builder.getInt8(3), canceledBB);
+
     m_Builder.SetInsertPoint(suspendCheckBB);
     llvm::Function *awaitPrepFn = m_Module->getFunction("toka_task_await_prepare");
     if (!awaitPrepFn) {
@@ -6443,8 +6457,18 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
     llvm::Value *mustSuspend = m_Builder.CreateCall(awaitPrepFn, {targetPromisePtrRaw, m_CurrentCoroTCB});
     llvm::Value *condSuspend = m_Builder.CreateICmpNE(mustSuspend, m_Builder.getInt32(0));
-    m_Builder.CreateCondBr(condSuspend, suspendBB, readyBB);
     
+    llvm::BasicBlock *postPrepareBB = llvm::BasicBlock::Create(m_Context, "await.post_prepare", m_Builder.GetInsertBlock()->getParent());
+    m_Builder.CreateCondBr(condSuspend, suspendBB, postPrepareBB);
+
+    m_Builder.SetInsertPoint(postPrepareBB);
+    llvm::Value *postState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "post.target.state");
+    llvm::Value *postIsCanceled = m_Builder.CreateICmpEQ(postState, m_Builder.getInt8(3), "post_is_canceled");
+    llvm::Value *postSelfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "post.self.canceled");
+    llvm::Value *postIsSelfCanceled = m_Builder.CreateICmpNE(postSelfCanceled, m_Builder.getInt32(0));
+    llvm::Value *postCancel = m_Builder.CreateOr(postIsCanceled, postIsSelfCanceled, "post.cancel");
+    m_Builder.CreateCondBr(postCancel, canceledBB, readyBB);
+
     m_Builder.SetInsertPoint(suspendBB);
     
     llvm::Function *saveFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_save);
@@ -6465,17 +6489,24 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.CreateBr(m_CurrentCoroCleanupBB);
     
     m_Builder.SetInsertPoint(resumeContBB);
-    m_Builder.CreateBr(readyBB);
-    
+    llvm::Value *resState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "res.target.state");
+    llvm::Value *resIsCanceled = m_Builder.CreateICmpEQ(resState, m_Builder.getInt8(3), "res_is_canceled");
+
+    llvm::Value *selfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "self.canceled");
+    llvm::Value *isSelfCanceled = m_Builder.CreateICmpNE(selfCanceled, m_Builder.getInt32(0));
+
+    llvm::Value *unwindCond = m_Builder.CreateOr(resIsCanceled, isSelfCanceled, "unwind_cond");
+    m_Builder.CreateCondBr(unwindCond, canceledBB, readyBB);
+
+    m_Builder.SetInsertPoint(canceledBB);
+    genCoroutineCancelReturn();
+
     m_Builder.SetInsertPoint(readyBB);
-    llvm::Value *targetVal = nullptr;
+    llvm::Value *readyVal = nullptr;
     if (!targetInnerTy->isVoidTy()) {
         llvm::Value *targetValPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 3, "target.val.ptr");
-        targetVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
-    }
-    
-    if (targetVal) {
-        return PhysEntity(targetVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
+        readyVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
+        return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
     }
     return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", targetInnerTy, false);
 }
@@ -6524,6 +6555,29 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
     } else {
         targetPromiseType = llvm::StructType::get(m_Context, {m_Builder.getInt8Ty(), m_Builder.getPtrTy(), m_Builder.getPtrTy(), targetInnerTy});
     }
+
+    llvm::Function *getStateFn = m_Module->getFunction("toka_task_get_result_state");
+    if (!getStateFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt8Ty(), {m_Builder.getPtrTy()}, false);
+        getStateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_get_result_state", m_Module.get());
+    }
+    llvm::Value *targetState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "wait.target.state");
+    llvm::Value *isCanceled = m_Builder.CreateICmpEQ(targetState, m_Builder.getInt8(3), "wait.target.canceled");
+    llvm::BasicBlock *canceledBB = llvm::BasicBlock::Create(m_Context, "wait.canceled", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *readyBB = llvm::BasicBlock::Create(m_Context, "wait.ready", m_Builder.GetInsertBlock()->getParent());
+    m_Builder.CreateCondBr(isCanceled, canceledBB, readyBB);
+
+    m_Builder.SetInsertPoint(canceledBB);
+    llvm::Function *unhandledCancelFn = m_Module->getFunction("toka_task_unhandled_cancellation");
+    if (!unhandledCancelFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {}, false);
+        unhandledCancelFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_unhandled_cancellation", m_Module.get());
+        unhandledCancelFn->addFnAttr(llvm::Attribute::NoReturn);
+    }
+    m_Builder.CreateCall(unhandledCancelFn);
+    m_Builder.CreateUnreachable();
+
+    m_Builder.SetInsertPoint(readyBB);
     
     if (!targetInnerTy->isVoidTy()) {
         llvm::Value *targetValPtr = m_Builder.CreateStructGEP(targetPromiseType, targetPromisePtrRaw, 3, "target.val.ptr");

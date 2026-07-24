@@ -609,6 +609,13 @@ void toka_panic_impl(const char* msg_buf, size_t msg_len, const char* file_buf, 
     abort();
 }
 
+void toka_task_unhandled_cancellation(void) {
+    FILE* stream = get_stderr_stream();
+    fprintf(stream, "\n*** runtime error: unhandled task cancellation at synchronous wait ***\n\n");
+    fflush(stream);
+    abort();
+}
+
 void* __toka_get_coro_handle(void* task_handle_ptr) {
     if (!task_handle_ptr) return NULL;
     return *(void**)task_handle_ptr;
@@ -642,6 +649,9 @@ static void toka_mutex_unlock(toka_mutex_t *m) { pthread_mutex_unlock(m); }
 #define TOKA_RESULT_STATE_PENDING 0
 #define TOKA_RESULT_STATE_READYLIVE 1
 #define TOKA_RESULT_STATE_TAKEN 2
+#define TOKA_RESULT_STATE_CANCELED 3
+
+#define TOKA_WAKE_GROUP_CANCELLED 0xFFFFFFFF
 
 // Promise Header layout matching LLVM CodeGen
 struct TokaPromiseHeader {
@@ -650,6 +660,8 @@ struct TokaPromiseHeader {
     _Atomic uintptr_t continuation; // 0: None, 1: Completed, or (uintptr_t)(TokaTCB*)
 };
 
+#define TOKA_NO_WAIT_ID 0xFFFFFFFF
+
 typedef enum {
     TOKA_TCB_CREATED = 0,
     TOKA_TCB_RUNNING = 1,
@@ -657,11 +669,24 @@ typedef enum {
     TOKA_TCB_QUEUED = 3,
     TOKA_TCB_COMPLETED = 4,
     TOKA_TCB_PREPARING = 5,
-    TOKA_TCB_PREPARING_WITH_PENDING_WAKE = 6
+    TOKA_TCB_PREPARING_WITH_PENDING_WAKE = 6,
+    TOKA_TCB_COMPLETED_CANCELED = 7
 } TokaTCBState;
+
+static inline int toka_tcb_is_terminal(uint32_t st) {
+    return (st == TOKA_TCB_COMPLETED || st == TOKA_TCB_COMPLETED_CANCELED);
+}
 
 typedef struct TokaTCB TokaTCB;
 void toka_task_release(void *tcb_ptr);
+int toka_task_request_cancel(void *tcb_ptr);
+int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
+int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen);
+
+typedef struct TokaCompletionSubscriber {
+    uint32_t wait_id;
+    uint32_t slot_gen;
+} TokaCompletionSubscriber;
 
 typedef struct TokaTCB {
     uint64_t id;
@@ -674,12 +699,24 @@ typedef struct TokaTCB {
     _Atomic uint8_t detached;
     _Atomic uint8_t detached_counted;
     _Atomic uint8_t owner_released;
+    _Atomic uint32_t active_wait_id;
+    _Atomic uint32_t active_slot_gen;
+    _Atomic uintptr_t active_child_tcb;
+    _Atomic uintptr_t parent_tcb;
+    TokaCompletionSubscriber *subscribers;
+    uint32_t subscriber_count;
+    uint32_t subscriber_capacity;
+    TokaTCB **cancel_children;
+    uint32_t cancel_child_count;
+    uint32_t cancel_child_capacity;
 } TokaTCB;
+
+static void toka_wait_registry_cancel_active(TokaTCB *tcb);
 
 static void toka_task_try_release_owner(TokaTCB *tcb) {
     if (!tcb) return;
     uint32_t st = atomic_load(&tcb->state);
-    if (atomic_load(&tcb->detached) && (st == TOKA_TCB_COMPLETED || st == TOKA_TCB_CREATED)) {
+    if (atomic_load(&tcb->detached) && (toka_tcb_is_terminal(st) || st == TOKA_TCB_CREATED)) {
         uint8_t expected = 0;
         if (atomic_compare_exchange_strong(&tcb->owner_released, &expected, 1)) {
             toka_task_release(tcb);
@@ -807,18 +844,27 @@ static void register_frame_map(void *frame, TokaTCB *tcb) {
     toka_mutex_unlock(&g_rt_mutex);
 }
 
+static _Thread_local TokaTCB *g_current_tcb = NULL;
+
 static TokaTCB* lookup_tcb_by_frame_retained(void *frame) {
-    if (!frame) return NULL;
     toka_mutex_lock(&g_rt_mutex);
-    for (size_t i = 0; i < g_frame_map_count; ++i) {
-        if (g_frame_map[i].frame == frame) {
-            TokaTCB *tcb = g_frame_map[i].tcb;
-            if (tcb) {
-                atomic_fetch_add(&tcb->ref_count, 1);
+    if (frame) {
+        for (size_t i = 0; i < g_frame_map_count; ++i) {
+            if (g_frame_map[i].frame == frame) {
+                TokaTCB *tcb = g_frame_map[i].tcb;
+                if (tcb) {
+                    atomic_fetch_add(&tcb->ref_count, 1);
+                }
+                toka_mutex_unlock(&g_rt_mutex);
+                return tcb;
             }
-            toka_mutex_unlock(&g_rt_mutex);
-            return tcb;
         }
+    }
+    if (g_current_tcb) {
+        TokaTCB *tcb = g_current_tcb;
+        atomic_fetch_add(&tcb->ref_count, 1);
+        toka_mutex_unlock(&g_rt_mutex);
+        return tcb;
     }
     toka_mutex_unlock(&g_rt_mutex);
     return NULL;
@@ -851,6 +897,9 @@ void* toka_task_create(void *coro_frame, void *promise) {
     atomic_store(&tcb->detached, 0);
     atomic_store(&tcb->detached_counted, 0);
     atomic_store(&tcb->owner_released, 0);
+    atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
+    atomic_store(&tcb->active_slot_gen, 0);
+    atomic_store(&tcb->active_child_tcb, 0);
 
     if (promise) {
         struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise;
@@ -902,6 +951,12 @@ int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id, uint64_t 
         uint64_t new_gen = atomic_fetch_add(&tcb->task_schedule_generation, 1) + 1;
         if (out_task_id) *out_task_id = tcb->id;
         if (out_gen) *out_gen = new_gen;
+
+        if (atomic_load(&tcb->cancel_requested)) {
+            uint32_t prep_st = TOKA_TCB_PREPARING;
+            atomic_compare_exchange_strong(&tcb->state, &prep_st, TOKA_TCB_PREPARING_WITH_PENDING_WAKE);
+        }
+
         toka_task_release(tcb);
         return 1;
     }
@@ -926,6 +981,7 @@ int toka_task_commit_suspend(void *coro_frame) {
         if (st == TOKA_TCB_PREPARING_WITH_PENDING_WAKE) {
             uint32_t expected = TOKA_TCB_PREPARING_WITH_PENDING_WAKE;
             if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
+                toka_wait_registry_cancel_active(tcb);
                 toka_mutex_lock(&g_rt_mutex);
                 push_ready_queue_locked(tcb->id, atomic_load(&tcb->task_schedule_generation), tcb);
                 toka_mutex_unlock(&g_rt_mutex);
@@ -1032,6 +1088,7 @@ int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb
 
         uint32_t expected = TOKA_TCB_QUEUED;
         if (atomic_compare_exchange_strong(&item.tcb->state, &expected, TOKA_TCB_RUNNING)) {
+            g_current_tcb = item.tcb;
             if (out_task_id) *out_task_id = item.task_id;
             if (out_gen) *out_gen = item.task_schedule_generation;
             if (out_tcb_ptr) *out_tcb_ptr = item.tcb;
@@ -1051,6 +1108,18 @@ uint32_t toka_task_active_detached_count(void) {
     return cnt;
 }
 
+static void toka_task_clear_await_link(TokaTCB *child_tcb, TokaTCB *parent_tcb) {
+    if (!parent_tcb) return;
+    toka_mutex_lock(&g_rt_mutex);
+    if (child_tcb && atomic_load(&child_tcb->parent_tcb) == (uintptr_t)parent_tcb) {
+        atomic_store(&child_tcb->parent_tcb, 0);
+    }
+    if (!child_tcb || atomic_load(&parent_tcb->active_child_tcb) == (uintptr_t)child_tcb) {
+        atomic_store(&parent_tcb->active_child_tcb, 0);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+}
+
 void toka_task_complete(void *promise_ptr) {
     if (!promise_ptr) return;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
@@ -1060,7 +1129,10 @@ void toka_task_complete(void *promise_ptr) {
     atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_READYLIVE, memory_order_release, memory_order_relaxed);
 
     if (tcb) {
-        atomic_store(&tcb->state, TOKA_TCB_COMPLETED);
+        uint32_t final_st = atomic_load(&tcb->cancel_requested) ? TOKA_TCB_COMPLETED_CANCELED : TOKA_TCB_COMPLETED;
+        atomic_store(&tcb->state, final_st);
+        atomic_store(&tcb->active_child_tcb, 0);
+        atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
 
         toka_mutex_lock(&g_rt_mutex);
         uint8_t expected_counted = 1;
@@ -1069,7 +1141,22 @@ void toka_task_complete(void *promise_ptr) {
                 g_active_detached_task_count--;
             }
         }
+        TokaCompletionSubscriber *subs = NULL;
+        uint32_t sub_count = tcb->subscriber_count;
+        if (sub_count > 0 && tcb->subscribers) {
+            subs = tcb->subscribers;
+            tcb->subscribers = NULL;
+            tcb->subscriber_count = 0;
+            tcb->subscriber_capacity = 0;
+        }
         toka_mutex_unlock(&g_rt_mutex);
+
+        if (subs) {
+            for (uint32_t i = 0; i < sub_count; i++) {
+                toka_wait_registry_try_wake(subs[i].wait_id, subs[i].slot_gen);
+            }
+            free(subs);
+        }
 
         toka_task_try_release_owner(tcb);
     }
@@ -1077,6 +1164,56 @@ void toka_task_complete(void *promise_ptr) {
     uintptr_t old_cont = atomic_exchange(&hdr->continuation, 1);
     if (old_cont > 1) {
         TokaTCB *awaiter_tcb = (TokaTCB*)old_cont;
+        toka_task_clear_await_link(tcb, awaiter_tcb);
+        toka_task_try_schedule(awaiter_tcb->id, atomic_load(&awaiter_tcb->task_schedule_generation));
+        toka_task_release(awaiter_tcb);
+    }
+}
+
+void toka_task_complete_canceled(void *promise_ptr) {
+    if (!promise_ptr) return;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
+
+    uint8_t expected_res = TOKA_RESULT_STATE_PENDING;
+    atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_CANCELED, memory_order_release, memory_order_relaxed);
+
+    if (tcb) {
+        atomic_store(&tcb->state, TOKA_TCB_COMPLETED_CANCELED);
+        atomic_store(&tcb->active_child_tcb, 0);
+        atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
+
+        toka_mutex_lock(&g_rt_mutex);
+        uint8_t expected_counted = 1;
+        if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 0)) {
+            if (g_active_detached_task_count > 0) {
+                g_active_detached_task_count--;
+            }
+        }
+        TokaCompletionSubscriber *subs = NULL;
+        uint32_t sub_count = tcb->subscriber_count;
+        if (sub_count > 0 && tcb->subscribers) {
+            subs = tcb->subscribers;
+            tcb->subscribers = NULL;
+            tcb->subscriber_count = 0;
+            tcb->subscriber_capacity = 0;
+        }
+        toka_mutex_unlock(&g_rt_mutex);
+
+        if (subs) {
+            for (uint32_t i = 0; i < sub_count; i++) {
+                toka_wait_registry_try_wake(subs[i].wait_id, subs[i].slot_gen);
+            }
+            free(subs);
+        }
+
+        toka_task_try_release_owner(tcb);
+    }
+
+    uintptr_t old_cont = atomic_exchange(&hdr->continuation, 1);
+    if (old_cont > 1) {
+        TokaTCB *awaiter_tcb = (TokaTCB*)old_cont;
+        toka_task_clear_await_link(tcb, awaiter_tcb);
         toka_task_try_schedule(awaiter_tcb->id, atomic_load(&awaiter_tcb->task_schedule_generation));
         toka_task_release(awaiter_tcb);
     }
@@ -1094,6 +1231,12 @@ int toka_task_await_prepare(void *child_promise_ptr, void *parent_tcb_ptr) {
     atomic_fetch_add(&parent_tcb->task_schedule_generation, 1);
 
     atomic_fetch_add(&parent_tcb->ref_count, 1);
+    if (hdr->self_tcb) {
+        toka_mutex_lock(&g_rt_mutex);
+        atomic_store(&parent_tcb->active_child_tcb, (uintptr_t)hdr->self_tcb);
+        atomic_store(&((TokaTCB*)hdr->self_tcb)->parent_tcb, (uintptr_t)parent_tcb);
+        toka_mutex_unlock(&g_rt_mutex);
+    }
 
     uintptr_t expected_cont = 0;
     uintptr_t desired_cont = (uintptr_t)parent_tcb;
@@ -1101,6 +1244,7 @@ int toka_task_await_prepare(void *child_promise_ptr, void *parent_tcb_ptr) {
         return 1;
     }
 
+    toka_task_clear_await_link((TokaTCB*)hdr->self_tcb, parent_tcb);
     atomic_fetch_sub(&parent_tcb->ref_count, 1);
     atomic_store(&parent_tcb->state, TOKA_TCB_RUNNING);
     return 0;
@@ -1123,7 +1267,7 @@ void toka_task_detach(void *tcb_ptr) {
     // 3. Linearized counter increment under g_rt_mutex
     toka_mutex_lock(&g_rt_mutex);
     uint32_t st = atomic_load(&tcb->state);
-    if (st != TOKA_TCB_COMPLETED && st != TOKA_TCB_CREATED) {
+    if (!toka_tcb_is_terminal(st) && st != TOKA_TCB_CREATED) {
         uint8_t expected_counted = 0;
         if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 1)) {
             g_active_detached_task_count++;
@@ -1164,6 +1308,10 @@ int toka_task_take_result(void *promise_ptr) {
     if (atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected, TOKA_RESULT_STATE_TAKEN, memory_order_acq_rel, memory_order_acquire)) {
         return 1;
     }
+    uint8_t st = atomic_load_explicit(&hdr->result_state, memory_order_acquire);
+    if (st == TOKA_RESULT_STATE_CANCELED) {
+        return -1;
+    }
     return 0;
 }
 
@@ -1179,6 +1327,11 @@ static void destroy_coro_frame(void *frame) {
 void toka_task_release(void *tcb_ptr) {
     if (!tcb_ptr) return;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    void *frame_to_destroy = NULL;
+    TokaCompletionSubscriber *subs_to_free = NULL;
+    TokaTCB **children_to_release = NULL;
+    uint32_t child_count = 0;
+
     toka_mutex_lock(&g_rt_mutex);
     if (atomic_fetch_sub(&tcb->ref_count, 1) == 1) {
         if (tcb->coro_frame) {
@@ -1189,16 +1342,101 @@ void toka_task_release(void *tcb_ptr) {
                     break;
                 }
             }
-        }
-        toka_mutex_unlock(&g_rt_mutex);
-        if (tcb->coro_frame) {
-            destroy_coro_frame(tcb->coro_frame);
+            frame_to_destroy = tcb->coro_frame;
             tcb->coro_frame = NULL;
         }
+        subs_to_free = tcb->subscribers;
+        tcb->subscribers = NULL;
+        tcb->subscriber_count = 0;
+        tcb->subscriber_capacity = 0;
+        children_to_release = tcb->cancel_children;
+        child_count = tcb->cancel_child_count;
+        tcb->cancel_children = NULL;
+        tcb->cancel_child_count = 0;
+        tcb->cancel_child_capacity = 0;
+
+        toka_mutex_unlock(&g_rt_mutex);
+
+        if (subs_to_free) {
+            free(subs_to_free);
+        }
+        if (frame_to_destroy) {
+            destroy_coro_frame(frame_to_destroy);
+        }
+        for (uint32_t i = 0; i < child_count; ++i) {
+            toka_task_release(children_to_release[i]);
+        }
+        free(children_to_release);
         free(tcb);
         return;
     }
     toka_mutex_unlock(&g_rt_mutex);
+}
+
+void toka_task_retain(void *tcb_ptr) {
+    if (!tcb_ptr) return;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    atomic_fetch_add(&tcb->ref_count, 1);
+}
+
+int toka_task_register_cancel_child(void *parent_frame, void *child_ptr) {
+    if (!parent_frame || !child_ptr) return 0;
+    TokaTCB *parent = lookup_tcb_by_frame_retained(parent_frame);
+    if (!parent) return 0;
+    TokaTCB *child = (TokaTCB*)child_ptr;
+    int request_cancel = 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    for (uint32_t i = 0; i < parent->cancel_child_count; ++i) {
+        if (parent->cancel_children[i] == child) {
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_task_release(parent);
+            return 1;
+        }
+    }
+    if (parent->cancel_child_count >= parent->cancel_child_capacity) {
+        uint32_t new_cap = parent->cancel_child_capacity == 0 ? 2 : parent->cancel_child_capacity * 2;
+        TokaTCB **new_children = (TokaTCB**)realloc(parent->cancel_children, new_cap * sizeof(TokaTCB*));
+        if (!new_children) {
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_task_release(parent);
+            return 0;
+        }
+        parent->cancel_children = new_children;
+        parent->cancel_child_capacity = new_cap;
+    }
+    atomic_fetch_add(&child->ref_count, 1);
+    parent->cancel_children[parent->cancel_child_count++] = child;
+    request_cancel = atomic_load(&parent->cancel_requested) != 0;
+    toka_mutex_unlock(&g_rt_mutex);
+
+    if (request_cancel) {
+        toka_task_request_cancel(child);
+    }
+    toka_task_release(parent);
+    return 1;
+}
+
+int toka_task_unregister_cancel_child(void *parent_frame, void *child_ptr) {
+    if (!parent_frame || !child_ptr) return 0;
+    TokaTCB *parent = lookup_tcb_by_frame_retained(parent_frame);
+    if (!parent) return 0;
+    TokaTCB *removed = NULL;
+    toka_mutex_lock(&g_rt_mutex);
+    for (uint32_t i = 0; i < parent->cancel_child_count; ++i) {
+        if (parent->cancel_children[i] == (TokaTCB*)child_ptr) {
+            removed = parent->cancel_children[i];
+            for (uint32_t j = i + 1; j < parent->cancel_child_count; ++j) {
+                parent->cancel_children[j - 1] = parent->cancel_children[j];
+            }
+            parent->cancel_child_count--;
+            break;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    if (removed) toka_task_release(removed);
+    toka_task_release(parent);
+    return removed != NULL;
 }
 
 void* toka_tcb_get_coro_frame(void *tcb_ptr) {
@@ -1208,7 +1446,13 @@ void* toka_tcb_get_coro_frame(void *tcb_ptr) {
 
 int toka_tcb_is_done(void *tcb_ptr) {
     if (!tcb_ptr) return 1;
-    return atomic_load(&((TokaTCB*)tcb_ptr)->state) == TOKA_TCB_COMPLETED;
+    uint32_t st = atomic_load(&((TokaTCB*)tcb_ptr)->state);
+    return (st == TOKA_TCB_COMPLETED || st == TOKA_TCB_COMPLETED_CANCELED);
+}
+
+int toka_tcb_is_canceled(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    return atomic_load(&((TokaTCB*)tcb_ptr)->state) == TOKA_TCB_COMPLETED_CANCELED;
 }
 
 // === AR-P2 Generation-based WaitRegistry ===
@@ -1327,6 +1571,8 @@ int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen, uint16_t source_
     reg->source_tag = source_tag;
     reg->wait_set = NULL;
     reg->tcb = tcb;
+    atomic_store(&tcb->active_wait_id, reg->token.wait_id);
+    atomic_store(&tcb->active_slot_gen, reg->token.wait_slot_generation);
     g_wait_registry_count++;
 
     if (out_wait_id) *out_wait_id = reg->token.wait_id;
@@ -1403,10 +1649,78 @@ int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t ta
     reg2->tcb = tcb;
     g_wait_registry_count++;
 
+    atomic_store(&tcb->active_wait_id, reg1->token.wait_id);
+    atomic_store(&tcb->active_slot_gen, reg1->token.wait_slot_generation);
+
     if (out_id1) *out_id1 = reg1->token.wait_id;
     if (out_gen1) *out_gen1 = reg1->token.wait_slot_generation;
     if (out_id2) *out_id2 = reg2->token.wait_id;
     if (out_gen2) *out_gen2 = reg2->token.wait_slot_generation;
+
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
+int toka_wait_registry_allocate_nway(uint64_t task_id, uint64_t gen, uint16_t tag_base, uint32_t count,
+                                      uint32_t *out_ids, uint32_t *out_gens) {
+    if (count == 0 || !out_ids || !out_gens) return 0;
+    toka_mutex_lock(&g_rt_mutex);
+    ensure_free_slots_locked(count);
+
+    TokaTCB *tcb = NULL;
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].tcb && g_frame_map[i].tcb->id == task_id) {
+            tcb = g_frame_map[i].tcb;
+            atomic_fetch_add(&tcb->ref_count, (int32_t)count);
+            break;
+        }
+    }
+    if (!tcb) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+
+    uint32_t found = 0;
+    for (size_t i = 0; i < g_wait_registry_capacity && found < count; ++i) {
+        if (!g_wait_registry[i].in_use) {
+            out_ids[found] = (uint32_t)i;
+            found++;
+        }
+    }
+
+    if (found < count) {
+        atomic_fetch_sub(&tcb->ref_count, (int32_t)count);
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+
+    TokaWaitSet *ws = (TokaWaitSet*)calloc(1, sizeof(TokaWaitSet));
+    if (!ws) {
+        atomic_fetch_sub(&tcb->ref_count, (int32_t)count);
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    atomic_store(&ws->winner_wait_id, 0);
+    atomic_store(&ws->ref_count, (int32_t)count);
+
+    for (uint32_t k = 0; k < count; ++k) {
+        uint32_t slot = out_ids[k];
+        TokaWaitRegistration *reg = &g_wait_registry[slot];
+        reg->in_use = 1;
+        reg->task_id = task_id;
+        reg->task_schedule_generation = gen;
+        atomic_store(&reg->state, TOKA_WAIT_STATE_WAITING);
+        reg->source_tag = tag_base + (uint16_t)k;
+        reg->wait_set = ws;
+        reg->tcb = tcb;
+        g_wait_registry_count++;
+
+        out_ids[k] = reg->token.wait_id;
+        out_gens[k] = reg->token.wait_slot_generation;
+    }
+
+    atomic_store(&tcb->active_wait_id, out_ids[0]);
+    atomic_store(&tcb->active_slot_gen, out_gens[0]);
 
     toka_mutex_unlock(&g_rt_mutex);
     return 1;
@@ -1437,6 +1751,12 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
         uint32_t target_winner = wait_id + 1;
         uint32_t current_winner = atomic_load(&ws->winner_wait_id);
 
+        if (current_winner == TOKA_WAKE_GROUP_CANCELLED) {
+            atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
+            toka_mutex_unlock(&g_rt_mutex);
+            return TOKA_WAKE_PAIR_LOST;
+        }
+
         if (current_winner == target_winner) {
             toka_mutex_unlock(&g_rt_mutex);
             return TOKA_WAKE_PAIR_DUPLICATE;
@@ -1462,6 +1782,10 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
 
     TokaTCB *tcb_to_release = NULL;
     if (is_singleton) {
+        if (reg->tcb) {
+            atomic_store(&reg->tcb->active_wait_id, TOKA_NO_WAIT_ID);
+            atomic_store(&reg->tcb->active_slot_gen, 0);
+        }
         tcb_to_release = reg->tcb;
         reg->tcb = NULL;
         reg->in_use = 0;
@@ -1514,6 +1838,13 @@ int toka_wait_registry_is_winner(uint32_t wait_id, uint32_t slot_gen) {
         toka_mutex_unlock(&g_rt_mutex);
         return 0;
     }
+    if (reg->wait_set) {
+        TokaWaitSet *ws = (TokaWaitSet*)reg->wait_set;
+        if (atomic_load(&ws->winner_wait_id) == TOKA_WAKE_GROUP_CANCELLED) {
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
+    }
     int won = (atomic_load(&reg->state) == TOKA_WAIT_STATE_WON);
     toka_mutex_unlock(&g_rt_mutex);
     return won;
@@ -1540,6 +1871,10 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
         reg->wait_set = NULL;
     }
 
+    if (reg->tcb) {
+        atomic_store(&reg->tcb->active_wait_id, TOKA_NO_WAIT_ID);
+        atomic_store(&reg->tcb->active_slot_gen, 0);
+    }
     TokaTCB *tcb_to_release = reg->tcb;
     reg->tcb = NULL;
     reg->in_use = 0;
@@ -1555,6 +1890,343 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
         toka_task_release(tcb_to_release);
     }
     return 1;
+}
+
+typedef struct {
+    TokaWaitSet *wait_set_to_free;
+    TokaTCB *tcb_to_release;
+    uint32_t tcb_release_count;
+} TokaWaitSetCancelCleanup;
+
+static int toka_wait_set_cancel_group_and_wake_locked(
+    TokaWaitSet *ws,
+    TokaWaitSetCancelCleanup *cleanup,
+    int force_cancel
+) {
+    if (!ws || !cleanup) return 0;
+    if (force_cancel) {
+        uint32_t previous = atomic_exchange(&ws->winner_wait_id, TOKA_WAKE_GROUP_CANCELLED);
+        if (previous == TOKA_WAKE_GROUP_CANCELLED) return 0;
+    } else {
+        uint32_t expected = 0;
+        if (!atomic_compare_exchange_strong(&ws->winner_wait_id, &expected, TOKA_WAKE_GROUP_CANCELLED)) {
+            return 0;
+        }
+    }
+
+    TokaTCB *tcb_to_wake = NULL;
+    uint64_t tid = 0, gen = 0;
+    for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+        TokaWaitRegistration *reg = &g_wait_registry[i];
+        if (reg->in_use && reg->wait_set == ws) {
+            atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
+            if (!tcb_to_wake && reg->tcb) {
+                tcb_to_wake = reg->tcb;
+                tid = reg->task_id;
+                gen = reg->task_schedule_generation;
+            }
+            if (reg->tcb) {
+                if (!cleanup->tcb_to_release) {
+                    cleanup->tcb_to_release = reg->tcb;
+                } else if (cleanup->tcb_to_release != reg->tcb) {
+                    fprintf(stderr, "Fatal error: WaitSet registrations reference different tasks.\n");
+                    abort();
+                }
+                cleanup->tcb_release_count++;
+            }
+            reg->tcb = NULL;
+            reg->wait_set = NULL;
+            reg->in_use = 0;
+            reg->token.wait_slot_generation++;
+            if (reg->token.wait_slot_generation == 0) {
+                reg->token.wait_slot_generation = 1;
+            }
+            g_wait_registry_count--;
+        }
+    }
+
+    if (tcb_to_wake) {
+        atomic_store(&tcb_to_wake->active_wait_id, TOKA_NO_WAIT_ID);
+        atomic_store(&tcb_to_wake->active_slot_gen, 0);
+        uint32_t expected_st = TOKA_TCB_SUSPENDED;
+        if (atomic_compare_exchange_strong(&tcb_to_wake->state, &expected_st, TOKA_TCB_QUEUED)) {
+            push_ready_queue_locked(tid, gen, tcb_to_wake);
+        }
+    }
+    cleanup->wait_set_to_free = ws;
+    atomic_store(&ws->ref_count, 0);
+    return 1;
+}
+
+static void toka_wait_set_finish_cancel_cleanup(TokaWaitSetCancelCleanup *cleanup) {
+    if (!cleanup) return;
+    for (uint32_t i = 0; i < cleanup->tcb_release_count; ++i) {
+        toka_task_release(cleanup->tcb_to_release);
+    }
+    free(cleanup->wait_set_to_free);
+}
+
+static void toka_wait_registry_cancel_active(TokaTCB *tcb) {
+    if (!tcb) return;
+    TokaWaitSetCancelCleanup cleanup = {0};
+    uint32_t singleton_id = TOKA_NO_WAIT_ID;
+    uint32_t singleton_gen = 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t wid = atomic_load(&tcb->active_wait_id);
+    uint32_t wgen = atomic_load(&tcb->active_slot_gen);
+    if (wid != TOKA_NO_WAIT_ID && wid < g_wait_registry_capacity) {
+        TokaWaitRegistration *reg = &g_wait_registry[wid];
+        if (reg->in_use && reg->token.wait_slot_generation == wgen) {
+            if (reg->wait_set) {
+                toka_wait_set_cancel_group_and_wake_locked(
+                    (TokaWaitSet*)reg->wait_set,
+                    &cleanup,
+                    1
+                );
+            } else {
+                singleton_id = wid;
+                singleton_gen = wgen;
+            }
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+
+    toka_wait_set_finish_cancel_cleanup(&cleanup);
+    if (singleton_id != TOKA_NO_WAIT_ID) {
+        toka_wait_registry_release(singleton_id, singleton_gen);
+    }
+    atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
+    atomic_store(&tcb->active_slot_gen, 0);
+}
+
+int toka_wait_set_cancel_group_and_wake(void *wait_set_ptr) {
+    if (!wait_set_ptr) return 0;
+    TokaWaitSetCancelCleanup cleanup = {0};
+    toka_mutex_lock(&g_rt_mutex);
+    int canceled = toka_wait_set_cancel_group_and_wake_locked(
+        (TokaWaitSet*)wait_set_ptr,
+        &cleanup,
+        0
+    );
+    toka_mutex_unlock(&g_rt_mutex);
+    toka_wait_set_finish_cancel_cleanup(&cleanup);
+    return canceled;
+}
+
+int toka_task_request_cancel(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    atomic_store(&tcb->cancel_requested, 1);
+
+    TokaTCB *child_tcb = NULL;
+    TokaTCB **cancel_children = NULL;
+    uint32_t cancel_child_count = 0;
+    toka_mutex_lock(&g_rt_mutex);
+    uintptr_t child_val = atomic_load(&tcb->active_child_tcb);
+    if (child_val != 0) {
+        child_tcb = (TokaTCB*)child_val;
+        atomic_fetch_add(&child_tcb->ref_count, 1);
+    }
+    cancel_child_count = tcb->cancel_child_count;
+    if (cancel_child_count > 0) {
+        cancel_children = (TokaTCB**)malloc(cancel_child_count * sizeof(TokaTCB*));
+        if (!cancel_children) {
+            toka_mutex_unlock(&g_rt_mutex);
+            fprintf(stderr, "Fatal error: unable to snapshot cancellation children.\n");
+            abort();
+        }
+        for (uint32_t i = 0; i < cancel_child_count; ++i) {
+            cancel_children[i] = tcb->cancel_children[i];
+            atomic_fetch_add(&cancel_children[i]->ref_count, 1);
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    if (child_tcb) {
+        toka_task_request_cancel(child_tcb);
+        toka_task_release(child_tcb);
+    }
+    for (uint32_t i = 0; i < cancel_child_count; ++i) {
+        toka_task_request_cancel(cancel_children[i]);
+        toka_task_release(cancel_children[i]);
+    }
+    free(cancel_children);
+
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t expected_st = TOKA_TCB_CREATED;
+    if (atomic_compare_exchange_strong(&tcb->state, &expected_st, TOKA_TCB_COMPLETED_CANCELED)) {
+        toka_mutex_unlock(&g_rt_mutex);
+        if (tcb->promise) {
+            toka_task_complete_canceled(tcb->promise);
+        } else {
+            toka_task_try_release_owner(tcb);
+        }
+        return 1;
+    }
+    uint32_t wid = atomic_load(&tcb->active_wait_id);
+    uint32_t wgen = atomic_load(&tcb->active_slot_gen);
+    uint32_t st = atomic_load(&tcb->state);
+    if (wid != TOKA_NO_WAIT_ID && wid < g_wait_registry_capacity) {
+        TokaWaitRegistration *reg = &g_wait_registry[wid];
+        if (reg->in_use && reg->wait_set) {
+            TokaWaitSetCancelCleanup cleanup = {0};
+            toka_wait_set_cancel_group_and_wake_locked(
+                (TokaWaitSet*)reg->wait_set,
+                &cleanup,
+                1
+            );
+            if (st == TOKA_TCB_PREPARING) {
+                uint32_t expected = TOKA_TCB_PREPARING;
+                atomic_compare_exchange_strong(
+                    &tcb->state,
+                    &expected,
+                    TOKA_TCB_PREPARING_WITH_PENDING_WAKE
+                );
+            }
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_wait_set_finish_cancel_cleanup(&cleanup);
+            return 1;
+        }
+    }
+    if (st == TOKA_TCB_SUSPENDED) {
+        if (wid != TOKA_NO_WAIT_ID && wid < g_wait_registry_capacity) {
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_wait_registry_try_wake(wid, wgen);
+        } else {
+            toka_mutex_unlock(&g_rt_mutex);
+            uint32_t expected = TOKA_TCB_SUSPENDED;
+            if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
+                toka_mutex_lock(&g_rt_mutex);
+                uint64_t gen = atomic_load(&tcb->task_schedule_generation);
+                push_ready_queue_locked(tcb->id, gen, tcb);
+                toka_mutex_unlock(&g_rt_mutex);
+            }
+        }
+        return 1;
+    }
+    if (st == TOKA_TCB_PREPARING) {
+        uint32_t expected = TOKA_TCB_PREPARING;
+        atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_PREPARING_WITH_PENDING_WAKE);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
+int toka_task_is_cancel_requested(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    TokaTCB *curr = tcb;
+    int canceled = 0;
+    toka_mutex_lock(&g_rt_mutex);
+    while (curr) {
+        if (atomic_load(&curr->cancel_requested)) {
+            canceled = 1;
+            break;
+        }
+        curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return canceled;
+}
+
+int toka_task_is_current_canceled(void *coro_frame) {
+    if (!coro_frame) return 0;
+    TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
+    int canceled = 0;
+    TokaTCB *curr = tcb;
+    toka_mutex_lock(&g_rt_mutex);
+    while (curr) {
+        if (atomic_load(&curr->cancel_requested)) {
+            canceled = 1;
+            break;
+        }
+        curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    if (tcb) {
+        toka_task_release(tcb);
+    }
+    return canceled;
+}
+
+uint32_t toka_rt_live_tcb_count(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t cnt = 0;
+    for (size_t i = 0; i < g_frame_map_count; ++i) {
+        if (g_frame_map[i].tcb) cnt++;
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return cnt;
+}
+
+uint32_t toka_rt_live_wait_registry_count(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t cnt = g_wait_registry_count;
+    toka_mutex_unlock(&g_rt_mutex);
+    return cnt;
+}
+
+void toka_rt_dump_wait_registry(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+        TokaWaitRegistration *reg = &g_wait_registry[i];
+        if (reg->in_use) {
+            fprintf(stderr, "wait[%zu] gen=%u state=%u tag=%u task=%llu tcb_state=%u set=%p\n",
+                    i,
+                    reg->token.wait_slot_generation,
+                    atomic_load(&reg->state),
+                    (unsigned)reg->source_tag,
+                    (unsigned long long)reg->task_id,
+                    reg->tcb ? atomic_load(&reg->tcb->state) : 999u,
+                    reg->wait_set);
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+}
+
+int toka_task_subscribe_completion(void *tcb_ptr, uint32_t wait_id, uint32_t slot_gen) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t st = atomic_load(&tcb->state);
+    if (st == TOKA_TCB_COMPLETED || st == TOKA_TCB_COMPLETED_CANCELED) {
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_wait_registry_try_wake(wait_id, slot_gen);
+        return 1;
+    }
+    if (tcb->subscriber_count >= tcb->subscriber_capacity) {
+        uint32_t new_cap = tcb->subscriber_capacity == 0 ? 4 : tcb->subscriber_capacity * 2;
+        TokaCompletionSubscriber *new_subs = (TokaCompletionSubscriber*)realloc(tcb->subscribers, new_cap * sizeof(TokaCompletionSubscriber));
+        if (!new_subs) {
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
+        tcb->subscribers = new_subs;
+        tcb->subscriber_capacity = new_cap;
+    }
+    tcb->subscribers[tcb->subscriber_count].wait_id = wait_id;
+    tcb->subscribers[tcb->subscriber_count].slot_gen = slot_gen;
+    tcb->subscriber_count++;
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
+int toka_task_unsubscribe_completion(void *tcb_ptr, uint32_t wait_id, uint32_t slot_gen) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    toka_mutex_lock(&g_rt_mutex);
+    for (uint32_t i = 0; i < tcb->subscriber_count; i++) {
+        if (tcb->subscribers[i].wait_id == wait_id && tcb->subscribers[i].slot_gen == slot_gen) {
+            for (uint32_t j = i + 1; j < tcb->subscriber_count; j++) {
+                tcb->subscribers[j - 1] = tcb->subscribers[j];
+            }
+            tcb->subscriber_count--;
+            toka_mutex_unlock(&g_rt_mutex);
+            return 1;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return 0;
 }
 
 #if defined(__linux__) || defined(__APPLE__)

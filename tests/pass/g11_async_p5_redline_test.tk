@@ -1,0 +1,121 @@
+// AR-P5 Redline Qualification Test Suite: Linearized Cancellation, Loser Cleanup & TaskScope UAF Resistance
+import std/io::{println};
+import std/task::{block_on, sleep_async, task_is_cancel_requested, task_is_canceled, task_cancel};
+import std/async::{race2, RaceWinner, TaskScope, TaskRef, task_ref_from_handle};
+import core/task::{task_get_coro_handle, toka_tcb_is_done};
+
+auto g_side_effect_count# = 0;
+auto g_after_cancel_await# = 0;
+
+fn fast_worker() -> async i32 {
+    sleep_async(10).await;
+    return 100;
+}
+
+fn slow_worker_with_side_effects() -> async i32 {
+    println("[SlowWorker] Started worker");
+    auto res = sleep_async(200).await;
+    if res < 0 {
+        return -1; // Canceled: side effect MUST NOT execute!
+    }
+    g_side_effect_count += 1;
+    println("[SlowWorker] Finished worker POST-SLEEP side effect!");
+    return 200;
+}
+
+fn test_race2_loser_cleanup_guarantee() -> async i32 {
+    println("[Probe 1] Testing race2 Loser Cleanup & Side-Effect Elimination Guarantee...");
+
+    auto t1 = fast_worker().start;
+    auto t2 = slow_worker_with_side_effects().start;
+
+    auto winner = race2<i32, i32>(cede t1, cede t2).await;
+
+    match winner {
+        auto RaceWinner<i32, i32>::First(val) => {
+            assert(val == 100, "Fast worker value mismatch");
+        }
+        auto RaceWinner<i32, i32>::Second(val) => {
+            assert(false, "Slow worker should not win race");
+        }
+    }
+    assert(g_side_effect_count == 0, "Probe 1 failed: post-sleep side effect executed on loser!");
+    println("[Probe 1] PASSED: race2 Loser Cleanup & Side-Effect Elimination Verified!");
+    return 1;
+}
+
+fn test_task_scope_uaf_resistance() -> async i32 {
+    println("[Probe 2] Testing TaskScope UAF Resistance & Retained Lifetime...");
+
+    auto scope# = TaskScope::new();
+
+    auto t1 = slow_worker_with_side_effects().start;
+    auto t2 = slow_worker_with_side_effects().start;
+
+    scope#.track_ref(cede task_ref_from_handle<i32>(cede t1));
+    scope#.track_ref(cede task_ref_from_handle<i32>(cede t2));
+
+    // Handles t1 and t2 fall out of scope / are dropped here, but TaskScope retains TCB refs
+    scope.close().await;
+
+    assert(g_side_effect_count == 0, "Probe 2 failed: post-sleep side effect executed in scope!");
+    println("[Probe 2] PASSED: TaskScope UAF Resistance Verified!");
+    return 1;
+}
+
+fn test_cancellation_stress_loop() -> async i32 {
+    println("[Probe 3] Testing cancellation stress loop...");
+    auto i# = 0;
+    loop i < 5 {
+        auto w1 = fast_worker().start;
+        auto w2 = slow_worker_with_side_effects().start;
+        auto res = race2<i32, i32>(cede w1, cede w2).await;
+        match res {
+            auto RaceWinner<i32, i32>::First(_) => {}
+            _ => { assert(false, "Stress loop race winner mismatch"); }
+        }
+        i += 1;
+    }
+    assert(g_side_effect_count == 0, "Probe 3 failed: post-sleep side effect executed in stress loop!");
+    println("[Probe 3] PASSED: Cancellation stress loop verified!");
+    return 1;
+}
+
+fn await_canceled_cold_task() -> async i32 {
+    auto task = slow_worker_with_side_effects();
+    task_cancel<i32>(task);
+    assert(task_is_cancel_requested<i32>(task), "Task should be marked cancel requested");
+    task.await;
+    g_after_cancel_await += 1;
+    return 0;
+}
+
+fn test_cold_task_cancel_and_await() -> async i32 {
+    println("[Probe 4] Testing true cold task cancellation and immediate .await propagation...");
+    auto waiter = await_canceled_cold_task().start;
+    auto *waiter_tcb = task_get_coro_handle<i32>(waiter);
+    loop !toka_tcb_is_done(*waiter_tcb) {
+        sleep_async(1).await;
+    }
+    assert(task_is_canceled<i32>(waiter), "Probe 4 failed: cancellation did not propagate through .await");
+    assert(g_after_cancel_await == 0, "Probe 4 failed: execution continued after canceled .await");
+    assert(g_side_effect_count == 0, "Probe 4 failed: cold task side effect executed!");
+    println("[Probe 4] PASSED: Cold task cancellation propagated without fabricating a value!");
+    return 1;
+}
+
+fn p5_redline_main() -> async i32 {
+    test_race2_loser_cleanup_guarantee().await;
+    test_task_scope_uaf_resistance().await;
+    test_cancellation_stress_loop().await;
+    test_cold_task_cancel_and_await().await;
+    return 0;
+}
+
+fn main() -> i32 {
+    println("--- Starting AR-P5 Redline Qualification Test Suite ---");
+    auto res = block_on<i32>(p5_redline_main());
+    assert(res == 0, "Redline suite failed");
+    println("g11_async_p5_redline_test PASSED (All AR-P5 Redline Invariants Verified)!");
+    return 0;
+}
