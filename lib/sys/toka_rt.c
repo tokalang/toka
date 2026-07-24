@@ -1,8 +1,14 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 #ifdef _WIN32
 #include <windows.h>
+#include <bcrypt.h>
+#elif defined(__linux__)
+#include <sys/random.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 void* toka_localtime_r(const time_t *timep, struct tm *result) {
@@ -11,6 +17,27 @@ void* toka_localtime_r(const time_t *timep, struct tm *result) {
     return NULL;
 #else
     return localtime_r(timep, result);
+#endif
+}
+
+int toka_random_bytes(void *buf, size_t len) {
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+    arc4random_buf(buf, len);
+    return 0;
+#elif defined(_WIN32)
+    return (BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0) ? 0 : -1;
+#elif defined(__linux__)
+    ssize_t res = getrandom(buf, len, 0);
+    if (res == (ssize_t)len) {
+        return 0;
+    }
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd < 0) return -1;
+    ssize_t r = read(fd, buf, len);
+    close(fd);
+    return (r == (ssize_t)len) ? 0 : -1;
+#else
+    return -1;
 #endif
 }
 

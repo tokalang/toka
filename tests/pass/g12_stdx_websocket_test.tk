@@ -1,0 +1,187 @@
+// tests/pass/g12_stdx_websocket_test.tk — Extended Qualification Suite for WebSocket RFC 6455
+import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
+import std/task::{sleep_async, block_on}
+import std/io::{println}
+import stdx/net/websocket::{ws_accept_async, ws_connect_async, WsConnection, WsMessage}
+import core/result::{Result}
+import std/vec::{Vec}
+import core/types::{Addr}
+
+fn run_websocket_server(port: u16) -> async Result<(), string> {
+    println("[WsServer] Starting WebSocket server listener...")
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto listener# = TcpListener::bind(addr)
+    if !listener.is_valid() {
+        println("[WsServer] Bind failed!")
+        return Result<(), string>::Err(string::from("Bind failed"))
+    }
+
+    println("[WsServer] Waiting for client handshake...")
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        println("[WsServer] Accept failed!")
+        return Result<(), string>::Err(string::from("Accept failed"))
+    }
+
+    auto ws_res = ws_accept_async(stream).await
+    if ws_res.is_err() {
+        println("[WsServer] Handshake failed!")
+        return Result<(), string>::Err(ws_res.unwrap_err())
+    }
+
+    println("[WsServer] Handshake accepted successfully!")
+    auto ws# = ws_res.unwrap()
+
+    // 1. Read first text message (tests basic text read & surplus byte handling)
+    auto msg1_res = ws#.read_text_async().await
+    if msg1_res.is_err() {
+        println("[WsServer] Failed reading text msg1!")
+        return Result<(), string>::Err(msg1_res.unwrap_err())
+    }
+    auto text1 = msg1_res.unwrap()
+    println("[WsServer] Received text 1: {} ", text1.as_str())
+
+    // Reply text 1
+    auto w1 = ws#.write_text_async("Hello WebSocket Client 1!").await
+    if w1.is_err() {
+        return Result<(), string>::Err(w1.unwrap_err())
+    }
+
+    // 2. Read second text message
+    auto msg2_res = ws#.read_text_async().await
+    if msg2_res.is_err() {
+        println("[WsServer] Failed reading text msg2!")
+        return Result<(), string>::Err(msg2_res.unwrap_err())
+    }
+    auto text2 = msg2_res.unwrap()
+    println("[WsServer] Received text 2: {} ", text2.as_str())
+
+    // Reply text 2
+    auto w2 = ws#.write_text_async("Hello WebSocket Client 2!").await
+    if w2.is_err() {
+        return Result<(), string>::Err(w2.unwrap_err())
+    }
+
+    // 3. Read binary payload
+    auto bin_res = ws#.read_message_async().await
+    if bin_res.is_err() {
+        println("[WsServer] Failed reading binary message!")
+        return Result<(), string>::Err(bin_res.unwrap_err())
+    }
+    auto bin_msg = bin_res.unwrap()
+    println("[WsServer] Received binary payload of {} bytes", bin_msg.binary_data.len().to_string().as_str())
+
+    // Echo binary back
+    auto w_bin = ws#.write_binary_async(bin_msg.binary_data).await
+    if w_bin.is_err() {
+        return Result<(), string>::Err(w_bin.unwrap_err())
+    }
+
+    // 4. Read Ping or Close frame
+    auto final_res = ws#.read_message_async().await
+    if final_res.is_err() {
+        println("[WsServer] Closed WebSocket cleanly.")
+    }
+
+    return Result<(), string>::Ok(())
+}
+
+fn run_websocket_client(port: u16) -> async Result<(), string> {
+    // Sleep briefly to ensure server listener is active
+    sleep_async(100).await
+
+    println("[WsClient] Starting WebSocket client task...")
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto stream# = TcpStream::connect_async(addr).await
+    if !stream.is_valid() {
+        println("[WsClient] Connect failed!")
+        return Result<(), string>::Err(string::from("Connect failed"))
+    }
+
+    println("[WsClient] Initiating WebSocket Client Handshake...")
+    auto ws_res = ws_connect_async(stream, string::from("127.0.0.1"), string::from("/ws")).await
+    if ws_res.is_err() {
+        println("[WsClient] Client Handshake failed!")
+        return Result<(), string>::Err(ws_res.unwrap_err())
+    }
+
+    println("[WsClient] Client Handshake connected successfully!")
+    auto ws# = ws_res.unwrap()
+
+    // Send first text message
+    auto w1 = ws#.write_text_async("Hello WebSocket Server 1!").await
+    if w1.is_err() {
+        return Result<(), string>::Err(w1.unwrap_err())
+    }
+
+    auto resp1 = ws#.read_text_async().await
+    if resp1.is_err() {
+        return Result<(), string>::Err(resp1.unwrap_err())
+    }
+    auto r1 = resp1.unwrap()
+    println("[WsClient] Received response text 1: {} ", r1.as_str())
+
+    // Send second text message
+    auto w2 = ws#.write_text_async("Hello WebSocket Server 2!").await
+    if w2.is_err() {
+        return Result<(), string>::Err(w2.unwrap_err())
+    }
+
+    auto resp2 = ws#.read_text_async().await
+    if resp2.is_err() {
+        return Result<(), string>::Err(resp2.unwrap_err())
+    }
+    auto r2 = resp2.unwrap()
+    println("[WsClient] Received response text 2: {} ", r2.as_str())
+
+    // Send binary message
+    auto bin_vec# = Vec<u8>::new()
+    bin_vec#.push(0xDE:u8)
+    bin_vec#.push(0xAD:u8)
+    bin_vec#.push(0xBE:u8)
+    bin_vec#.push(0xEF:u8)
+
+    auto w_bin = ws#.write_binary_async(bin_vec).await
+    if w_bin.is_err() {
+        return Result<(), string>::Err(w_bin.unwrap_err())
+    }
+
+    auto bin_resp = ws#.read_message_async().await
+    if bin_resp.is_err() {
+        return Result<(), string>::Err(bin_resp.unwrap_err())
+    }
+    println("[WsClient] Received binary response PASSED!")
+
+    // Send Ping frame
+    auto ping_payload# = Vec<u8>::new()
+    ping_payload#.push(0x01:u8)
+    ping_payload#.push(0x02:u8)
+    auto _w_ping = ws#.write_control_frame_async(0x09:u8, ping_payload).await
+
+    // Send Close frame
+    auto _close = ws#.close_async().await
+
+    return Result<(), string>::Ok(())
+}
+
+fn main_async() -> async i32 {
+    println("--- Starting stdx/net/websocket Extended Qualification Suite ---")
+    auto port: u16 = 18099:u16
+
+    auto s_handle = run_websocket_server(port).start
+    auto c_handle = run_websocket_client(port).start
+
+    auto c_res = c_handle.await
+    auto s_res = s_handle.await
+
+    if c_res.is_ok() && s_res.is_ok() {
+        println("g12_stdx_websocket_test PASSED Cleanly!")
+        return 0
+    }
+    println("g12_stdx_websocket_test FAILED!")
+    return 1
+}
+
+fn main() -> i32 {
+    return block_on<i32>(main_async())
+}
