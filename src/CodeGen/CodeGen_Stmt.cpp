@@ -678,7 +678,13 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
 void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
     if (m_CurrentCoroPromiseType) {
         if (!m_CurrentCoroRetTy->isVoidTy() && retVal) {
-            llvm::Value *valPtr = m_Builder.CreateStructGEP(m_CurrentCoroPromiseType, m_CurrentCoroPromise, 3);
+            llvm::Function *valuePtrFn = m_Module->getFunction("toka_task_result_value_ptr");
+            if (!valuePtrFn) {
+                llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
+                valuePtrFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_result_value_ptr", m_Module.get());
+            }
+            llvm::Value *valPtrRaw = m_Builder.CreateCall(valuePtrFn, {m_CurrentCoroPromise}, "coro.ret.value.ptr");
+            llvm::Value *valPtr = m_Builder.CreatePointerCast(valPtrRaw, llvm::PointerType::getUnqual(m_CurrentCoroRetTy));
             if (retVal->getType() != m_CurrentCoroRetTy) {
                 llvm::Type *srcTy = retVal->getType();
                 llvm::Type *dstTy = m_CurrentCoroRetTy;

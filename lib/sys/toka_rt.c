@@ -1301,6 +1301,14 @@ uint8_t toka_task_get_result_state(void *promise_ptr) {
     return atomic_load_explicit(&hdr->result_state, memory_order_acquire);
 }
 
+// Stable ABI accessor for the typed result payload that follows the promise
+// header. CodeGen must use this accessor instead of depending on the private
+// header field offsets.
+void *toka_task_result_value_ptr(void *promise_ptr) {
+    if (!promise_ptr) return NULL;
+    return (void *)((char *)promise_ptr + sizeof(struct TokaPromiseHeader));
+}
+
 int toka_task_take_result(void *promise_ptr) {
     if (!promise_ptr) return 0;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;

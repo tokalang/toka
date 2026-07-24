@@ -311,12 +311,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       m_CurrentCoroSuspendRetBB = llvm::BasicBlock::Create(m_Context, "coro.suspend.ret");
       m_CurrentCoroCleanupBB = llvm::BasicBlock::Create(m_Context, "coro.cleanup.ret");
       
-      llvm::Value *statePtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 0);
-      m_Builder.CreateStore(m_Builder.getInt8(0), statePtr);
-      llvm::Value *selfTcbPtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 1);
-      m_Builder.CreateStore(m_CurrentCoroTCB, selfTcbPtr);
-      llvm::Value *continuationPtr = m_Builder.CreateStructGEP(promiseType, m_CurrentCoroPromise, 2);
-      m_Builder.CreateStore(llvm::ConstantPointerNull::get(m_Builder.getPtrTy()), continuationPtr);
+      // Promise header initialization is owned by toka_task_create. Keep the
+      // private header layout out of CodeGen so cross-module ABI changes only
+      // require updating the runtime boundary.
   } else {
       m_CurrentCoroHandle = nullptr;
       m_CurrentCoroPromise = nullptr;
