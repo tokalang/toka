@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <time.h>
 #include <signal.h>
 #include <openssl/ssl.h>
@@ -2963,7 +2964,7 @@ int toka_tls_accept(void *handle, int fd) {
 }
 
 int toka_tls_read(void *handle, void *buf, size_t len) {
-    if (!handle || !buf) return -3;
+    if (!handle || (!buf && len != 0) || len > (size_t)INT_MAX) return -3;
     TokaTlsSession *s = (TokaTlsSession*)handle;
     if (!s->ssl) return -3;
 
@@ -2977,7 +2978,7 @@ int toka_tls_read(void *handle, void *buf, size_t len) {
 }
 
 int toka_tls_write(void *handle, const void *buf, size_t len) {
-    if (!handle || !buf) return -3;
+    if (!handle || (!buf && len != 0) || len > (size_t)INT_MAX) return -3;
     TokaTlsSession *s = (TokaTlsSession*)handle;
     if (!s->ssl) return -3;
 
