@@ -1,0 +1,46 @@
+import std/io::{println}
+import std/vec::{Vec}
+import std/task::{block_on}
+import std/net::{TcpStream, AsyncReadResult, AsyncWriteResult, AsyncIoError}
+import core/result::{Result}
+
+fn read_probe(cede stream: TcpStream, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+    auto owned_stream# = cede stream
+    return owned_stream#.read_into_async(cede buf, 16:usize, 1).await
+}
+
+fn write_probe(cede stream: TcpStream, cede buf: Vec<u8>) -> async Result<AsyncWriteResult, AsyncIoError> {
+    auto owned_stream# = cede stream
+    return owned_stream#.write_from_async(cede buf, 1).await
+}
+
+fn main() -> i32 {
+    println("--- Phase 6 owner-carrying buffer ABI probe ---")
+    auto closed = TcpStream(fd = -1, closed = true)
+
+    auto read_buf# = Vec<u8>::with_capacity(16)
+    auto read_res = block_on<Result<AsyncReadResult, AsyncIoError>>(read_probe(cede closed, cede read_buf))
+    match read_res {
+        auto Result::Err(&e) => {
+            if e.buffer.len() != 0:usize {
+                return 1
+            }
+        }
+        _ => { return 2 }
+    }
+
+    auto write_buf# = Vec<u8>::new()
+    auto closed2 = TcpStream(fd = -1, closed = true)
+    auto write_res = block_on<Result<AsyncWriteResult, AsyncIoError>>(write_probe(cede closed2, cede write_buf))
+    match write_res {
+        auto Result::Err(&e) => {
+            if e.buffer.len() != 0:usize {
+                return 3
+            }
+        }
+        _ => { return 4 }
+    }
+
+    println("g13_net_buffer_abi_test PASSED")
+    return 0
+}

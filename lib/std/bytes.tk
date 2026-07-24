@@ -1,0 +1,117 @@
+// Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+
+import core/types::{usize, Addr, byte}
+import core/result::{Result}
+import core/option::{Option}
+import core/str::{bytes}
+import core/memory::{copy_memory}
+import std/vec::{Vec}
+
+pub shape Bytes (
+    nul *#buf#: [u8] = null as *[u8],
+    len#: usize = 0,
+    cap#: usize = 0
+)
+
+impl Bytes@encap {
+    fn drop(self#) {
+        unsafe {
+            if self.*buf != null {
+                unsafe free [self.len]self.*#buf
+                self.*buf = null as *[u8]
+            }
+        }
+    }
+
+    pub fn clone(self) -> Bytes {
+        unsafe {
+            if self.cap == 0 || self.len == 0 {
+                return Bytes(*buf = null as *[u8], len = 0, cap = 0)
+            }
+            auto *new_buf# = unsafe alloc [self.cap] u8 as *[u8]
+            auto i# = 0:usize
+            loop i < self.len {
+                new_buf[i] = self.buf[i]
+                i += 1
+            }
+            return Bytes(*buf = *new_buf, len = self.len, cap = self.cap)
+        }
+    }
+}
+
+impl Bytes {
+    pub fn new() -> Bytes {
+        return Bytes(*buf = null as *[u8], len = 0, cap = 0)
+    }
+
+    pub fn with_capacity(cap: usize) -> Bytes {
+        if cap == 0 {
+            return Bytes::new()
+        }
+        unsafe {
+            auto *p# = unsafe alloc [cap] u8 as *[u8]
+            return Bytes(*buf = *p, len = 0, cap = cap)
+        }
+    }
+
+    pub fn from_vec(cede v: Vec<u8>) -> Bytes {
+        unsafe {
+            auto owned# = cede v
+            auto l = owned.len()
+            auto c = owned.cap()
+            auto *p# = owned#.unsafe_into_raw()
+            return Bytes(*buf = *p, len = l, cap = c)
+        }
+    }
+
+    pub fn into_vec(self#) -> Vec<u8> {
+        unsafe {
+            auto l = self.len
+            auto c = self.cap
+            auto *p# = self.*buf
+            self.len = 0
+            self.cap = 0
+            self.*buf = null as *[u8]
+            return Vec<u8>(*buf = *p, len = l, cap = c)
+        }
+    }
+
+    pub fn set_len(self#, new_len: usize) {
+        if new_len <= self.cap {
+            self.len = new_len
+        }
+    }
+
+    pub fn len(self) -> usize {
+        return self.len
+    }
+
+    pub fn capacity(self) -> usize {
+        return self.cap
+    }
+
+    pub fn is_empty(self) -> bool {
+        return self.len == 0
+    }
+
+    pub fn raw_ptr(self) -> *u8 {
+        unsafe {
+            if self.len == 0 || self.*buf == null {
+                return null as *u8
+            }
+            return self.*buf as *u8
+        }
+    }
+
+    pub fn as_slice(self) -> bytes <- self {
+        unsafe {
+            if self.len == 0 || self.*buf == null {
+                return bytes(&buf = null as *[byte] as &[byte], len = 0)
+            }
+            auto base_addr = self.*buf as Addr
+            auto ret = bytes(&buf = null as *[byte] as &[byte], len = self.len)
+            copy_memory(&ret as Addr, &base_addr as Addr, 8)
+            return ret
+        }
+    }
+}

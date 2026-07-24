@@ -318,6 +318,17 @@ impl<'T> Vec<'T> {
         }
     }
 
+    // Set the logical length without initializing or moving elements.
+    // This is restricted to buffer adapters that initialize the selected range
+    // through an FFI read before exposing it to safe code.
+    pub fn unsafe_set_len(self#, new_len: usize) {
+        unsafe {
+            if new_len <= self.cap {
+                self.len = new_len
+            }
+        }
+    }
+
     // Set value at index
     pub fn set(self#, index: usize, cede 'val: T) {
         unsafe {
