@@ -24,6 +24,7 @@ extern fn toka_tls_set_ca_file(*handle: void, *ca_path: char) -> i32
 extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
 extern fn toka_tls_connect(*handle: void, fd: i32) -> i32
 extern fn toka_tls_accept(*handle: void, fd: i32) -> i32
+extern fn toka_tls_backend_available() -> i32
 
 // Error type for network operations
 alias NetResult<T> = Result<T, string>
@@ -32,6 +33,10 @@ alias NetResult<T> = Result<T, string>
 // should use TcpStream::tls_* for I/O and handshakes.
 pub fn net_tls_context_new() -> *void {
     unsafe { return toka_tls_context_new() }
+}
+
+pub fn net_tls_backend_available() -> bool {
+    unsafe { return toka_tls_backend_available() != 0 }
 }
 
 pub fn net_tls_server_context_new() -> *void {

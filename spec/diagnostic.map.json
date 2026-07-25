@@ -2321,6 +2321,90 @@
       "message": "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'",
       "description": "Started tasks cannot carry PAL borrow dependencies across the execution boundary"
     },
+    "E04585": {
+      "id": "ERR_SEMA_WAIT_INSIDE_ASYNC",
+      "level": "Error",
+      "message": "'.wait' cannot be used inside an async function because it blocks the task executor; use '.await'",
+      "description": "'.wait' cannot be used inside an async function because it blocks the task executor; use '.await'"
+    },
+    "E04586": {
+      "id": "ERR_SEMA_BARE_ARRAY_INIT_EXCLUDED",
+      "level": "Error",
+      "message": "Bare '[N]T(...)' array initialization is outside the Toka 1.0 language; use '[value; count]' for a fixed array value or 'new [N]T(...)' for owned storage",
+      "description": "Bare '[N]T(...)' array initialization is outside the Toka 1.0 language"
+    },
+    "E04587": {
+      "id": "ERR_SEMA_ITERABLE_TRAIT_REQUIRED",
+      "level": "Error",
+      "message": "Type '{}' has an iter method but does not implement the formal @Iterable protocol",
+      "description": "Types with iter methods must implement the formal @Iterable protocol"
+    },
+    "E04588": {
+      "id": "ERR_SEMA_ITERATOR_TRAIT_REQUIRED",
+      "level": "Error",
+      "message": "Iterator type '{}' does not implement the required {} protocol",
+      "description": "Iterator types must implement the required iterator protocol"
+    },
+    "E04589": {
+      "id": "ERR_SEMA_ITERATOR_DEPENDENCY_REQUIRED",
+      "level": "Error",
+      "message": "{} for type '{}' must declare '<- self' so PAL can preserve the source lifetime",
+      "description": "Iterator methods must declare their source lifetime dependency"
+    },
+    "E04590": {
+      "id": "ERR_SEMA_CALLABLE_MUTABLE_REQUIRED",
+      "level": "Error",
+      "message": "Callable '{}' requires exclusive invocation; use '{}#(...)' and a writable binding",
+      "description": "Mutable callable invocation requires an exclusive writable binding"
+    },
+    "E04591": {
+      "id": "ERR_SEMA_CALLABLE_CONSUME_REQUIRED",
+      "level": "Error",
+      "message": "Callable '{}' consumes its environment; invoke it with 'cede {}(...)'",
+      "description": "Consuming callable invocation requires an explicit cede"
+    },
+    "E04592": {
+      "id": "ERR_SEMA_CALLABLE_NOT_WRITABLE",
+      "level": "Error",
+      "message": "Callable '{}' requires exclusive invocation, but its binding is not writable",
+      "description": "Exclusive callable invocation requires a writable binding"
+    },
+    "E04593": {
+      "id": "ERR_SEMA_CALLABLE_PROTOCOL_REQUIRED",
+      "level": "Error",
+      "message": "Type '{}' defines callable behavior but does not implement the formal @Callable protocol",
+      "description": "Callable behavior requires the formal @Callable protocol"
+    },
+    "E04594": {
+      "id": "ERR_SEMA_ERROR_CONVERSION_REQUIRED",
+      "level": "Error",
+      "message": "Cannot propagate error type '{}' as '{}'; implement '{}@ErrorInto<{}>'",
+      "description": "Error propagation requires an explicit ErrorInto conversion"
+    },
+    "E04595": {
+      "id": "ERR_SEMA_PROPAGATION_COMPLEX_MOVE",
+      "level": "Error",
+      "message": "Propagation with '!' cannot consume the partial path '{}'; bind the Result to a local value and propagate that binding",
+      "description": "Propagation cannot consume a partial move path"
+    },
+    "E04596": {
+      "id": "ERR_SEMA_MAIN_RETURN_CONTRACT",
+      "level": "Error",
+      "message": "Toka 1.0 main must return i32 or void, including async main; move fallible work into a Result-returning helper and handle it at the entry boundary",
+      "description": "The Toka main entry point must return i32 or void"
+    },
+    "E04597": {
+      "id": "ERR_SEMA_ERROR_CONVERSION_SIGNATURE",
+      "level": "Error",
+      "message": "@ErrorInto<{}>::into_error must have signature 'pub fn into_error(cede self) -> {}'",
+      "description": "ErrorInto conversions must use the required into_error signature"
+    },
+    "E04598": {
+      "id": "ERR_SEMA_INTEGER_LITERAL_OUT_OF_RANGE",
+      "level": "Error",
+      "message": "Integer literal '{}' is out of range for type '{}'",
+      "description": "Integer literals must fit their target type"
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

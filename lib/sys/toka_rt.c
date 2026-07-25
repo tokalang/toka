@@ -3,12 +3,14 @@
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
+#ifdef TOKA_HAS_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <openssl/evp.h>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -2665,6 +2667,9 @@ ti_int __muloti4(ti_int a, ti_int b, int *overflow) {
 }
 #endif
 
+#ifdef TOKA_HAS_OPENSSL
+int toka_tls_backend_available(void) { return 1; }
+
 typedef struct {
     SSL_CTX *ctx;
     SSL *ssl;
@@ -3004,3 +3009,58 @@ void toka_tls_close(void *handle) {
     }
     free(s);
 }
+#else
+// Keep the TLS C ABI available for non-TLS programs.  The std layer can link
+// against the runtime without OpenSSL; TLS callers receive a deterministic
+// unsupported-backend result instead of a link or loader failure.
+int toka_tls_backend_available(void) { return 0; }
+void* toka_tls_context_new(void) { return NULL; }
+void* toka_tls_server_context_new(void) { return NULL; }
+void* toka_tls_server_context_new_with_cert_file(const char *cert_path, const char *key_path) {
+    (void)cert_path;
+    (void)key_path;
+    return NULL;
+}
+void toka_tls_set_verify_mode(void *handle, int verify_peer) {
+    (void)handle;
+    (void)verify_peer;
+}
+int toka_tls_set_ca_file(void *handle, const char *ca_path) {
+    (void)handle;
+    (void)ca_path;
+    return -4;
+}
+int toka_tls_set_sni(void *handle, const char *host) {
+    (void)handle;
+    (void)host;
+    return -4;
+}
+int toka_tls_connect(void *handle, int fd) {
+    (void)handle;
+    (void)fd;
+    return -4;
+}
+int toka_tls_accept(void *handle, int fd) {
+    (void)handle;
+    (void)fd;
+    return -4;
+}
+int toka_tls_read(void *handle, void *buf, size_t len) {
+    (void)handle;
+    (void)buf;
+    (void)len;
+    return -4;
+}
+int toka_tls_write(void *handle, const void *buf, size_t len) {
+    (void)handle;
+    (void)buf;
+    (void)len;
+    return -4;
+}
+void toka_tls_close(void *handle) { (void)handle; }
+int toka_ensure_test_cert_files(const char *cert_path, const char *key_path) {
+    (void)cert_path;
+    (void)key_path;
+    return -4;
+}
+#endif

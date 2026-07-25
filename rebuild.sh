@@ -32,6 +32,33 @@ if ! command -v "$LLVM_CLANG" >/dev/null 2>&1 && [ ! -f "$LLVM_CLANG" ]; then
     exit 1
 fi
 
+# OpenSSL is an optional TLS backend.  Non-TLS programs must still be able to
+# build and link when the headers/libraries are absent, so resolve the include
+# path when available and otherwise compile the runtime with TLS stubs.
+OPENSSL_CFLAGS=""
+if command -v pkg-config >/dev/null 2>&1; then
+    OPENSSL_CFLAGS="$(pkg-config --cflags openssl 2>/dev/null || true)"
+fi
+if [ -z "$OPENSSL_CFLAGS" ]; then
+    for openssl_prefix in \
+        "$(brew --prefix openssl@3 2>/dev/null || true)" \
+        "/opt/homebrew/opt/openssl@3" \
+        "/usr/local/opt/openssl@3" \
+        "/usr/local/opt/openssl"; do
+        if [ -n "$openssl_prefix" ] && [ -f "$openssl_prefix/include/openssl/ssl.h" ]; then
+            OPENSSL_CFLAGS="-I$openssl_prefix/include"
+            break
+        fi
+    done
+fi
+OPENSSL_RUNTIME_FLAGS=""
+if [ -n "$OPENSSL_CFLAGS" ]; then
+    OPENSSL_RUNTIME_FLAGS="-DTOKA_HAS_OPENSSL=1 $OPENSSL_CFLAGS"
+    echo "   -> OpenSSL detected; TLS backend enabled."
+else
+    echo "   -> OpenSSL not detected; TLS backend disabled (non-TLS builds remain supported)."
+fi
+
 echo "====================================="
 echo "0. Generating Diagnostics Definition"
 echo "====================================="
@@ -47,9 +74,9 @@ export PATH="$BIN_DIR:$PATH"
 
 echo "   -> Compiling Toka Runtime (toka_rt.o / toka_rt.obj)..."
 if [ "$(uname)" == "Darwin" ]; then
-    $LLVM_CLANG -isysroot $(xcrun --show-sdk-path) -c lib/sys/toka_rt.c -o lib/sys/toka_rt.o
+    $LLVM_CLANG $OPENSSL_RUNTIME_FLAGS -isysroot $(xcrun --show-sdk-path) -c lib/sys/toka_rt.c -o lib/sys/toka_rt.o
 else
-    $LLVM_CLANG -c lib/sys/toka_rt.c -o lib/sys/toka_rt.o
+    $LLVM_CLANG $OPENSSL_RUNTIME_FLAGS -c lib/sys/toka_rt.c -o lib/sys/toka_rt.o
     cp lib/sys/toka_rt.o lib/sys/toka_rt.obj 2>/dev/null || true
 fi
 
@@ -91,35 +118,18 @@ echo ""
 echo "====================================="
 echo "4. Building Toka Language Server (tokalsp)"
 echo "====================================="
-cd tools/tokalsp
-echo "   -> Compiling and Linking tools/tokalsp/main.tk with internal LLD..."
-tokac -I "$ROOT_DIR/lib" main.tk "$ROOT_DIR/lib/sys/toka_rt.o" -o tokalsp
-
-echo "   -> Installing tokalsp to $BIN_DIR/tokalsp..."
-cp tokalsp "$BIN_DIR/tokalsp"
-
-# Clean up build artifacts in tools/tokalsp
-rm -f tokalsp
-
-cd "$ROOT_DIR"
+echo "   -> tokalsp is built by the CMake step above (tools/tokalsp/main.cpp)."
+if [ ! -x "$BIN_DIR/tokalsp" ]; then
+    make -C build tokalsp
+fi
 
 echo ""
 echo "====================================="
 echo "5. Building Toka Incremental Engine (forge)"
 echo "====================================="
-cd tools/forge
-echo "   -> Compiling and Linking tools/forge/src/main.tk with internal LLD..."
-tokac -I "$ROOT_DIR/lib" src/main.tk "$ROOT_DIR/lib/sys/toka_rt.o" -o forge
-
-echo "   -> Installing forge to $BIN_DIR/forge..."
-cp forge "$BIN_DIR/forge"
-
-# Clean up build artifacts in tools/forge
-rm -f forge
-
-cd "$ROOT_DIR"
+echo "   -> forge is currently a legacy Toka tool and is not part of the CMake SDK build; skipping."
 
 echo ""
-echo "✨ Rebuild Successful! 'tokac', 'toka', 'tokafmt', 'tokalsp', and 'forge' are ready in build/bin."
+echo "✨ Rebuild Successful! 'tokac', 'toka', 'tokafmt', and 'tokalsp' are ready in build/bin."
 echo "Make sure to add $BIN_DIR to your PATH if you haven't already:"
 echo "    export PATH=\"$ROOT_DIR/build/bin:\$PATH\""

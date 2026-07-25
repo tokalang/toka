@@ -80,6 +80,33 @@ else
     CLANG="clang"
 fi
 
+# The worker mode exits before the runtime compilation section below, so
+# resolve OpenSSL link flags up front for direct LLVM test linking as well.
+OPENSSL_CFLAGS=""
+OPENSSL_LIBS=""
+if command -v pkg-config &> /dev/null; then
+    OPENSSL_CFLAGS="$(pkg-config --cflags openssl 2>/dev/null || true)"
+    OPENSSL_LIBS="$(pkg-config --libs openssl 2>/dev/null || true)"
+fi
+if [ -z "$OPENSSL_CFLAGS" ]; then
+    for openssl_prefix in \
+        "$(brew --prefix openssl@3 2>/dev/null || true)" \
+        "/opt/homebrew/opt/openssl@3" \
+        "/usr/local/opt/openssl@3" \
+        "/usr/local/opt/openssl"; do
+        if [ -n "$openssl_prefix" ] && [ -f "$openssl_prefix/include/openssl/ssl.h" ]; then
+            OPENSSL_CFLAGS="-I$openssl_prefix/include"
+            OPENSSL_LIBS="-L$openssl_prefix/lib -lssl -lcrypto"
+            break
+        fi
+    done
+fi
+
+OPENSSL_RUNTIME_FLAGS=""
+if [ -n "$OPENSSL_CFLAGS" ]; then
+    OPENSSL_RUNTIME_FLAGS="-DTOKA_HAS_OPENSSL=1 $OPENSSL_CFLAGS"
+fi
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -164,7 +191,7 @@ run_worker() {
             rm -f "$log_file" "$exe_file" "$tmp_obj"
             exit 1
         fi
-        if ! "$CLANGXX" $SYSROOT_FLAGS "$tmp_obj" lib/sys/llvm_shim.o lib/sys/toka_rt.o $LLVM_LDFLAGS_LIBS $EXTRA_LIBS -o "$exe_file" >> "$log_file" 2>&1; then
+        if ! "$CLANGXX" $SYSROOT_FLAGS "$tmp_obj" lib/sys/llvm_shim.o lib/sys/toka_rt.o $LLVM_LDFLAGS_LIBS $OPENSSL_LIBS $EXTRA_LIBS -o "$exe_file" >> "$log_file" 2>&1; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Linking failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -409,7 +436,7 @@ fi
 
 # Compile runtime objects dynamically for the local architecture
 rm -f lib/sys/toka_rt.o
-"$CLANG" $SYSROOT_FLAGS -c lib/sys/toka_rt.c -o lib/sys/toka_rt.o || { echo "Failed to compile toka_rt.c"; exit 1; }
+"$CLANG" $OPENSSL_RUNTIME_FLAGS $SYSROOT_FLAGS -c lib/sys/toka_rt.c -o lib/sys/toka_rt.o || { echo "Failed to compile toka_rt.c"; exit 1; }
 
 rm -f lib/sys/llvm_shim.o
 SHIM_CXXFLAGS="$LLVM_CPPFLAGS"

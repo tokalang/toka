@@ -259,7 +259,10 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
         cmd += " -L\"" TOKA_OPENSSL_LIB_DIR "\"";
     }
 #endif
-    cmd += " -o \"" + outputFile + "\" -lws2_32 -lshell32 -lbcrypt -lssl -lcrypto";
+    cmd += " -o \"" + outputFile + "\" -lws2_32 -lshell32 -lbcrypt";
+#ifdef TOKA_HAS_OPENSSL
+    cmd += " -lssl -lcrypto";
+#endif
     return system(cmd.c_str()) == 0;
 #elif defined(__APPLE__)
     args.push_back("-w");
@@ -284,6 +287,7 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
         args.push_back(cmake_openssl_flag.c_str());
     }
 #endif
+#ifdef TOKA_HAS_OPENSSL
     if (llvm::sys::fs::exists("/opt/homebrew/opt/openssl@3/lib")) {
         args.push_back("-L/opt/homebrew/opt/openssl@3/lib");
     } else if (llvm::sys::fs::exists("/opt/homebrew/lib")) {
@@ -293,6 +297,7 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     } else if (llvm::sys::fs::exists("/usr/local/lib")) {
         args.push_back("-L/usr/local/lib");
     }
+#endif
 
     args.push_back(objFile.c_str());
     for (const auto &extra : extraObjs) {
@@ -300,8 +305,10 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     }
     args.push_back("-o");
     args.push_back(outputFile.c_str());
+#ifdef TOKA_HAS_OPENSSL
     args.push_back("-lssl");
     args.push_back("-lcrypto");
+#endif
     args.push_back("-lSystem");
     return lld::macho::link(args, llvm::outs(), llvm::errs(), false, false);
 #else
@@ -314,7 +321,11 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
         cmd += " -L\"" TOKA_OPENSSL_LIB_DIR "\"";
     }
 #endif
-    cmd += " -o \"" + outputFile + "\" -lssl -lcrypto -lm -lc";
+    cmd += " -o \"" + outputFile + "\"";
+#ifdef TOKA_HAS_OPENSSL
+    cmd += " -lssl -lcrypto";
+#endif
+    cmd += " -lm -lc";
     return system(cmd.c_str()) == 0;
 #endif
 }

@@ -5,6 +5,7 @@
 import std/net::{
     TcpStream,
     net_tls_context_new,
+    net_tls_backend_available,
     net_tls_server_context_new,
     net_tls_server_context_new_with_cert_file,
     net_tls_set_verify_mode,
@@ -38,6 +39,9 @@ impl TlsStream@encap {
 
 impl TlsStream {
     pub fn connect_with_verify_async_timeout(tcp_stream#: TcpStream, host: string, verify_peer: bool, timeout_ms: i32) -> async Result<AsyncStream, string> {
+        if !net_tls_backend_available() {
+            return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
+        }
         auto *ctx# = net_tls_context_new()
         auto ctx_addr = (*ctx as Addr)
         if ctx_addr == 0 {
@@ -63,6 +67,9 @@ impl TlsStream {
     }
 
     pub fn connect_with_ca_file_async(tcp_stream#: TcpStream, host: string, ca_path: string) -> async Result<AsyncStream, string> {
+        if !net_tls_backend_available() {
+            return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
+        }
         auto *ctx# = net_tls_context_new()
         auto ctx_addr = (*ctx as Addr)
         if ctx_addr == 0 {
@@ -96,6 +103,9 @@ impl TlsStream {
     }
 
     pub fn accept_async(tcp_stream#: TcpStream) -> async Result<AsyncStream, string> {
+        if !net_tls_backend_available() {
+            return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
+        }
         auto *ctx# = net_tls_server_context_new()
         auto ctx_addr = (*ctx as Addr)
         if ctx_addr == 0 {
@@ -111,6 +121,9 @@ impl TlsStream {
     }
 
     pub fn accept_with_cert_file_async(tcp_stream#: TcpStream, cert_path: string, key_path: string) -> async Result<AsyncStream, string> {
+        if !net_tls_backend_available() {
+            return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
+        }
         auto *ctx# = net_tls_server_context_new_with_cert_file(cert_path, key_path)
         auto ctx_addr = (*ctx as Addr)
         if ctx_addr == 0 {

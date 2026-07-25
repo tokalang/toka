@@ -130,16 +130,23 @@ add_subdirectory(src)
 
 # Build the native runtime and the user-facing tools into one SDK layout.  The
 # compiler must be built first because the remaining tools are written in Toka.
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL QUIET)
 
-if(OPENSSL_SSL_LIBRARY)
+if(OpenSSL_FOUND)
     get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_SSL_LIBRARY}" DIRECTORY)
     target_compile_definitions(tokac PRIVATE TOKA_OPENSSL_LIB_DIR="${OPENSSL_LIB_DIR}")
+    target_compile_definitions(tokac PRIVATE TOKA_HAS_OPENSSL=1)
+    message(STATUS "OpenSSL found; TLS backend enabled")
+else()
+    message(STATUS "OpenSSL not found; TLS backend disabled (non-TLS builds remain supported)")
 endif()
 
 set(OPENSSL_CFLAGS "")
-if(OPENSSL_INCLUDE_DIR)
-    set(OPENSSL_CFLAGS "-I${OPENSSL_INCLUDE_DIR}")
+if(OpenSSL_FOUND)
+    list(APPEND OPENSSL_CFLAGS "-DTOKA_HAS_OPENSSL=1")
+    if(OPENSSL_INCLUDE_DIR)
+        list(APPEND OPENSSL_CFLAGS "-I${OPENSSL_INCLUDE_DIR}")
+    endif()
 endif()
 
 set(TOKA_RUNTIME_OBJECT
