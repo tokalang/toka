@@ -1,6 +1,6 @@
 # Toka 1.0 Release Review Report
 
-**Revision Under Audit**: `HEAD` (Target Release Candidate Tag: `v0.9.9-rc1`)
+**Revision Under Audit**: `956c6e94` (Target Release Candidate Tag: `v0.9.9-rc1`)
 **Status**: Pre-Release Review Audit (Pending Multi-Platform Artifact Verification)
 **Date**: 2026-07-25
 
