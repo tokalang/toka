@@ -1,3 +1,4 @@
+import std/vec::{Vec}
 
 
 pub fn encode_str(data: str) -> string {
@@ -45,4 +46,46 @@ pub fn encode_bytes(*data: [u8], len: usize) -> string {
     }
 
     return res
+}
+
+// Owner-safe adapter for protocol code. The legacy pointer entry point above
+// remains for compatibility, but new async code should pass an owned Vec.
+pub fn encode_vec(data: Vec<u8>) -> string {
+    auto res# = string::from("")
+    auto chars# = string::from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+    auto i#: usize = 0
+    auto len = data.len()
+    loop i < len {
+        auto a = data.get(i) as u32
+        auto b#: u32 = 0
+        auto c#: u32 = 0
+        auto rem = len - i
+        if rem > 1 { b = data.get(i + 1) as u32 }
+        if rem > 2 { c = data.get(i + 2) as u32 }
+        auto triple = (a << 16) | (b << 8) | c
+        res#.push_char(chars.as_str().at(((triple >> 18) & 0x3f) as usize).unwrap() as char)
+        res#.push_char(chars.as_str().at(((triple >> 12) & 0x3f) as usize).unwrap() as char)
+        if rem > 1 {
+            res#.push_char(chars.as_str().at(((triple >> 6) & 0x3f) as usize).unwrap() as char)
+        } else {
+            res#.push_char('=' as char)
+        }
+        if rem > 2 {
+            res#.push_char(chars.as_str().at((triple & 0x3f) as usize).unwrap() as char)
+        } else {
+            res#.push_char('=' as char)
+        }
+        i += 3
+    }
+    return res
+}
+
+pub fn encode_fixed20(data: [u8; 20]) -> string {
+    auto v# = Vec<u8>::with_capacity(20)
+    auto i#: usize = 0
+    loop i < 20 {
+        v#.push(data[i])
+        i += 1
+    }
+    return encode_vec(cede v)
 }

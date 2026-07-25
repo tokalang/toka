@@ -1,5 +1,5 @@
 // stdx/net/websocket.tk — RFC 6455 Production-Grade WebSocket Implementation
-import std/net::{TcpStream, SocketAddrV4}
+import std/net::{TcpStream, SocketAddrV4, net_random_bytes}
 import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
 import stdx/net/url::{Url, parse_url}
@@ -10,8 +10,6 @@ import core/result::{Result}
 import core/types::{Addr}
 import std/io::{println}
 import std/vec::{Vec}
-
-extern fn toka_random_bytes(*buf: void, len: usize) -> i32
 
 pub shape WsOpcode (
     CONTINUATION = 0x0 |
@@ -53,14 +51,14 @@ impl WsConnection@encap {
     pub fn clone(self) = delete
 }
 
-pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
-    unsafe {
-        return (&raw[0] as Addr) as *u8
-    }
+fn string_byte(s: str, idx: usize) -> u8 {
+    return s.as_bytes().at(idx).unwrap() as u8
 }
 
-pub fn to_slice_ptr(*raw: [u8]) -> *[u8] {
-    return (*raw as Addr) as *[u8]
+// Legacy source-compatibility shim. WebSocket implementation code no longer
+// uses this entry point; new code should use Vec/Bytes stream adapters.
+pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
+    unsafe { return (&raw[0] as Addr) as *u8 }
 }
 
 pub fn to_lower_char(c: char) -> char {
@@ -75,9 +73,8 @@ pub fn to_lower_string(s: str) -> string {
     auto res# = string::from("")
     auto i#: usize = 0
     auto len = s.len()
-    auto *ptr# = s.raw_ptr() as *[char]
     loop i < len {
-        unsafe res#.push_char(to_lower_char(ptr[i]))
+        res#.push_char(to_lower_char(s.at(i).unwrap() as char))
         i += 1
     }
     return res
@@ -101,19 +98,17 @@ pub fn has_exact_token(val_str: str, target: str) -> bool {
 
 pub fn is_valid_base64_key(s: str) -> bool {
     if s.len() != 24 { return false }
-    auto *ptr# = s.raw_ptr() as *[char]
-    unsafe {
-        if ptr[22] != (61 as char) || ptr[23] != (61 as char) {
-            return false
-        }
+    if s.at(22).unwrap() as char != (61 as char) || s.at(23).unwrap() as char != (61 as char) {
+        return false
+    }
         // Base64 padding bits check for 16-byte raw nonce: 22nd char low 4 bits MUST be 0 ('A', 'Q', 'g', 'w')
-        auto p21 = ptr[21]
+        auto p21 = s.at(21).unwrap() as char
         if p21 != (65 as char) && p21 != (81 as char) && p21 != (103 as char) && p21 != (119 as char) {
             return false
         }
         auto i#: usize = 0
         loop i < 22 {
-            auto c = ptr[i] as i32
+            auto c = s.at(i).unwrap() as i32
             auto is_alpha = (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
             auto is_num = (c >= 48 && c <= 57)
             auto is_sym = (c == 43 || c == 47)
@@ -122,29 +117,28 @@ pub fn is_valid_base64_key(s: str) -> bool {
             }
             i += 1
         }
-    }
     return true
 }
 
-pub fn is_valid_utf8(*buf_slice#: [u8], len: usize) -> bool {
+pub fn is_valid_utf8(buf_slice: Vec<u8>) -> bool {
     auto i#: usize = 0
-    unsafe {
-        loop i < len {
-            auto b = buf_slice[i] as u32
+    auto len = buf_slice.len()
+    loop i < len {
+            auto b = buf_slice.get(i) as u32
             if b <= 0x7F:u32 {
                 i += 1
             } else {
                 if ((b & 0xE0:u32) == 0xC0:u32) {
                     if i + 1 >= len { return false }
-                    auto b1 = buf_slice[i + 1] as u32
+                    auto b1 = buf_slice.get(i + 1) as u32
                     if ((b1 & 0xC0:u32) != 0x80:u32) { return false }
                     if b < 0xC2:u32 { return false }
                     i += 2
                 } else {
                     if ((b & 0xF0:u32) == 0xE0:u32) {
                         if i + 2 >= len { return false }
-                        auto b1 = buf_slice[i + 1] as u32
-                        auto b2 = buf_slice[i + 2] as u32
+                        auto b1 = buf_slice.get(i + 1) as u32
+                        auto b2 = buf_slice.get(i + 2) as u32
                         if (((b1 & 0xC0:u32) != 0x80:u32) || ((b2 & 0xC0:u32) != 0x80:u32)) { return false }
                         if b == 0xE0:u32 && b1 < 0xA0:u32 { return false }
                         if b == 0xED:u32 && b1 >= 0xA0:u32 { return false }
@@ -152,9 +146,9 @@ pub fn is_valid_utf8(*buf_slice#: [u8], len: usize) -> bool {
                     } else {
                         if ((b & 0xF8:u32) == 0xF0:u32) {
                             if i + 3 >= len { return false }
-                            auto b1 = buf_slice[i + 1] as u32
-                            auto b2 = buf_slice[i + 2] as u32
-                            auto b3 = buf_slice[i + 3] as u32
+                            auto b1 = buf_slice.get(i + 1) as u32
+                            auto b2 = buf_slice.get(i + 2) as u32
+                            auto b3 = buf_slice.get(i + 3) as u32
                             if (((b1 & 0xC0:u32) != 0x80:u32) || ((b2 & 0xC0:u32) != 0x80:u32) || ((b3 & 0xC0:u32) != 0x80:u32)) { return false }
                             if b == 0xF0:u32 && b1 < 0x90:u32 { return false }
                             if b > 0xF4:u32 || (b == 0xF4:u32 && b1 > 0x8F:u32) { return false }
@@ -166,7 +160,6 @@ pub fn is_valid_utf8(*buf_slice#: [u8], len: usize) -> bool {
                 }
             }
         }
-    }
     return true
 }
 
@@ -189,23 +182,18 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     auto i_init#: usize = 0
     loop i_init < 1024 { buf_vec#.push(0:u8); i_init += 1 }
 
-    auto *buf_raw# = buf_vec.unsafe_as_raw()
-    auto *u8_buf# = to_u8_ptr(*buf_raw)
-
     auto total_read_bytes# = Vec<u8>::new()
     auto header_end_idx#: usize = 0
 
     loop !headers_done {
-        auto read_res = stream#.read_async(*u8_buf, 1024:usize).await
+        auto read_res = stream#.read_into_async(cede buf_vec, 1024:usize, 10000).await
         auto bytes_read# = 0:usize
-        match read_res {
-            auto Result<usize, string>::Ok(n) => {
-                bytes_read = n
-            }
-            auto Result<usize, string>::Err(&e) => {
-                return Result<WsConnection, string>::Err(e.clone())
-            }
+        if read_res.is_err() {
+            return Result<WsConnection, string>::Err(read_res.unwrap_err().message.clone())
         }
+        auto rr# = read_res.unwrap()
+        bytes_read = rr.bytes_read
+        buf_vec = rr#.take_buffer()
 
         if bytes_read == 0 {
             return Result<WsConnection, string>::Err(string::from("Connection closed before headers"))
@@ -213,12 +201,15 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
 
         auto i#: usize = 0
         loop i < bytes_read {
-            unsafe total_read_bytes#.push(buf_raw[i])
+            total_read_bytes#.push(buf_vec.get(i))
             i += 1
         }
 
-        auto temp_chunk = string::from_raw(*u8_buf, bytes_read)
-        req_str#.push_str(temp_chunk.as_str())
+        auto i_text#: usize = 0
+        loop i_text < bytes_read {
+            req_str#.push_byte_raw(buf_vec.get(i_text))
+            i_text += 1
+        }
 
         auto rv = req_str.as_view()
         auto crlf_opt = rv.index_of_str(crlf_crlf.as_view())
@@ -320,18 +311,20 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     auto sha1# = Sha1::new()
     sha1#.update(swk.as_view())
     auto hash_res = sha1#.finalize()
-    auto sha1_addr = (&hash_res as Addr)
-    auto *sha1_ptr# = sha1_addr as *[u8]
-    auto b64_res = base64::encode_bytes(*sha1_ptr, 20:usize)
+    auto b64_res = base64::encode_fixed20(hash_res)
 
     // Single complete buffer transmission via write_all_async to eliminate partial write
     auto resp_str# = string::from("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ")
     resp_str#.push_str(b64_res.as_str())
     resp_str#.push_str("\r\n\r\n")
 
-    auto *resp_ptr# = resp_str.raw_ptr() as *[u8]
-    auto *u8_resp# = to_u8_ptr(*resp_ptr)
-    auto w_res = stream#.write_all_async(*u8_resp, resp_str.len()).await
+    auto resp_buf# = Vec<u8>::with_capacity(resp_str.len())
+    auto resp_i#: usize = 0
+    loop resp_i < resp_str.len() {
+        resp_buf#.push(string_byte(resp_str.as_str(), resp_i))
+        resp_i += 1
+    }
+    auto w_res = stream#.write_from_async(cede resp_buf, 10000).await
     if w_res.is_err() {
         return Result<WsConnection, string>::Err(string::from("Failed sending handshake response"))
     }
@@ -340,10 +333,9 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     auto surplus# = Vec<u8>::new()
     auto total_read_len = total_read_bytes.len()
     if total_read_len > header_end_idx {
-        auto *tot_raw# = total_read_bytes.unsafe_as_raw()
         auto k# = header_end_idx
         loop k < total_read_len {
-            unsafe surplus#.push(tot_raw[k])
+            surplus#.push(total_read_bytes.get(k))
             k += 1
         }
     }
@@ -379,14 +371,13 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     auto raw_key_vec# = Vec<u8>::with_capacity(16)
     auto i_rk#: usize = 0
     loop i_rk < 16 { raw_key_vec#.push(0:u8); i_rk += 1 }
-    auto *raw_key# = raw_key_vec.unsafe_as_raw()
-    auto *key_u8# = to_u8_ptr(*raw_key)
-    auto rng_ok = unsafe toka_random_bytes(*key_u8, 16:usize)
-    if rng_ok != 0 {
-        return Result<WsConnection, string>::Err(string::from("OS secure random bytes generation failed"))
+    auto rng_res = net_random_bytes(cede raw_key_vec)
+    if rng_res.is_err() {
+        return Result<WsConnection, string>::Err(rng_res.unwrap_err())
     }
+    auto raw_key# = rng_res.unwrap()
 
-    auto sec_key = base64::encode_bytes(*raw_key, 16:usize)
+    auto sec_key = base64::encode_vec(raw_key.clone())
 
     // Compute expected Sec-WebSocket-Accept
     auto expected_swk# = sec_key.clone()
@@ -394,9 +385,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     auto sha1# = Sha1::new()
     sha1#.update(expected_swk.as_view())
     auto hash_res = sha1#.finalize()
-    auto sha1_addr = (&hash_res as Addr)
-    auto *sha1_ptr# = sha1_addr as *[u8]
-    auto expected_accept = base64::encode_bytes(*sha1_ptr, 20:usize)
+    auto expected_accept = base64::encode_fixed20(hash_res)
 
     // Send HTTP Upgrade Request via write_all_async
     auto req_buf# = string::from("GET ")
@@ -407,9 +396,13 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     req_buf#.push_str(sec_key.as_str())
     req_buf#.push_str("\r\nSec-WebSocket-Version: 13\r\n\r\n")
 
-    auto *req_ptr# = req_buf.raw_ptr() as *[u8]
-    auto *u8_req# = to_u8_ptr(*req_ptr)
-    auto write_res = stream#.write_all_async(*u8_req, req_buf.len()).await
+    auto req_bytes# = Vec<u8>::with_capacity(req_buf.len())
+    auto req_i#: usize = 0
+    loop req_i < req_buf.len() {
+        req_bytes#.push(string_byte(req_buf.as_str(), req_i))
+        req_i += 1
+    }
+    auto write_res = stream#.write_from_async(cede req_bytes, 10000).await
     if write_res.is_err() {
         return Result<WsConnection, string>::Err(string::from("Failed to send WebSocket handshake request"))
     }
@@ -421,23 +414,18 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     auto buf_vec# = Vec<u8>::with_capacity(1024)
     auto i_cl_init#: usize = 0
     loop i_cl_init < 1024 { buf_vec#.push(0:u8); i_cl_init += 1 }
-    auto *buf_raw# = buf_vec.unsafe_as_raw()
-    auto *u8_buf# = to_u8_ptr(*buf_raw)
-
     auto total_read_bytes# = Vec<u8>::new()
     auto header_end_idx#: usize = 0
 
     loop !headers_done {
-        auto read_res = stream#.read_async(*u8_buf, 1024:usize).await
+        auto read_res = stream#.read_into_async(cede buf_vec, 1024:usize, 10000).await
         auto bytes_read# = 0:usize
-        match read_res {
-            auto Result<usize, string>::Ok(n) => {
-                bytes_read = n
-            }
-            auto Result<usize, string>::Err(&e) => {
-                return Result<WsConnection, string>::Err(e.clone())
-            }
+        if read_res.is_err() {
+            return Result<WsConnection, string>::Err(read_res.unwrap_err().message.clone())
         }
+        auto rr# = read_res.unwrap()
+        bytes_read = rr.bytes_read
+        buf_vec = rr#.take_buffer()
 
         if bytes_read == 0 {
             return Result<WsConnection, string>::Err(string::from("Server closed connection during handshake"))
@@ -445,12 +433,15 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
 
         auto i#: usize = 0
         loop i < bytes_read {
-            unsafe total_read_bytes#.push(buf_raw[i])
+            total_read_bytes#.push(buf_vec.get(i))
             i += 1
         }
 
-        auto temp_chunk = string::from_raw(*u8_buf, bytes_read)
-        resp_str#.push_str(temp_chunk.as_str())
+        auto i_text#: usize = 0
+        loop i_text < bytes_read {
+            resp_str#.push_byte_raw(buf_vec.get(i_text))
+            i_text += 1
+        }
 
         auto rv = resp_str.as_view()
         auto crlf_opt = rv.index_of_str(crlf_crlf.as_view())
@@ -542,10 +533,9 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     auto surplus# = Vec<u8>::new()
     auto total_read_len = total_read_bytes.len()
     if total_read_len > header_end_idx {
-        auto *tot_raw# = total_read_bytes.unsafe_as_raw()
         auto k# = header_end_idx
         loop k < total_read_len {
-            unsafe surplus#.push(tot_raw[k])
+            surplus#.push(total_read_bytes.get(k))
             k += 1
         }
     }
@@ -634,30 +624,33 @@ impl WsConnection {
         auto _w = self#.write_control_frame_async(0x08:u8, close_payload).await
     }
 
-    pub fn read_exact_bytes_async(self#, *buf_slice#: [u8], len: usize) -> async Result<(), string> {
-        auto read_count#: usize = 0
-        auto *surplus_raw# = self.surplus_vec.unsafe_as_raw()
-        auto surplus_len = self.surplus_vec.len()
-
-        // Drain surplus buffer first
-        loop read_count < len && self.surplus_offset < surplus_len {
-            unsafe buf_slice[read_count] = surplus_raw[self.surplus_offset]
-            self.surplus_offset += 1
-            read_count += 1
-        }
-
-        // Delegate remaining bytes to stream#.read_exact_async
-        if read_count < len {
-            auto rem_len = len - read_count
-            auto *base_ptr# = to_u8_ptr(*buf_slice)
-            auto cur_addr = ((*base_ptr as Addr)) + (read_count as u64)
-            auto *cur_ptr# = (cur_addr as *[0]u8) as *u8
-            auto r = self.stream#.read_exact_async(*cur_ptr, rem_len).await
-            if r.is_err() {
-                return Result<(), string>::Err(r.unwrap_err())
+    pub fn read_exact_owned_async(self#, len: usize) -> async Result<Vec<u8>, string> {
+        auto out# = Vec<u8>::with_capacity(len)
+        loop out.len() < len {
+            if self.surplus_offset < self.surplus_vec.len() {
+                out#.push(self.surplus_vec#.get(self.surplus_offset))
+                self.surplus_offset += 1
+                continue
+            }
+            auto want = len - out.len()
+            auto chunk# = Vec<u8>::with_capacity(want)
+            auto read_res = self.stream#.read_into_async(cede chunk, want, 10000).await
+            if read_res.is_err() {
+                return Result<Vec<u8>, string>::Err(read_res.unwrap_err().message.clone())
+            }
+            auto rr# = read_res.unwrap()
+            auto rr_bytes = rr.bytes_read
+            auto rr_buf# = rr#.take_buffer()
+            if rr_bytes == 0 {
+                return Result<Vec<u8>, string>::Err(string::from("Unexpected EOF while reading WebSocket frame"))
+            }
+            auto i#: usize = 0
+            loop i < rr_bytes {
+                out#.push(rr_buf#.get(i))
+                i += 1
             }
         }
-        return Result<(), string>::Ok(())
+        return Result<Vec<u8>, string>::Ok(cede out)
     }
 
     pub fn read_message_async(self#) -> async Result<WsMessage, string> {
@@ -669,14 +662,13 @@ impl WsConnection {
             auto head_vec# = Vec<u8>::with_capacity(2)
             head_vec#.push(0:u8)
             head_vec#.push(0:u8)
-            auto *head_raw# = head_vec.unsafe_as_raw()
-            auto r_head = self#.read_exact_bytes_async(*head_raw, 2:usize).await
-            if r_head.is_err() {
-                return Result<WsMessage, string>::Err(r_head.unwrap_err())
+            auto head_res = self#.read_exact_owned_async(2:usize).await
+            if head_res.is_err() {
+                return Result<WsMessage, string>::Err(head_res.unwrap_err())
             }
-
-            auto b0 = unsafe head_raw[0]
-            auto b1 = unsafe head_raw[1]
+            auto head_raw# = head_res.unwrap()
+            auto b0 = head_raw.get(0)
+            auto b1 = head_raw.get(1)
 
             auto fin = (b0 & 0x80:u8) != 0:u8
             auto rsv = b0 & 0x70:u8
@@ -721,12 +713,12 @@ impl WsConnection {
                 auto ext2_vec# = Vec<u8>::with_capacity(2)
                 ext2_vec#.push(0:u8)
                 ext2_vec#.push(0:u8)
-                auto *ext2_raw# = ext2_vec.unsafe_as_raw()
-                auto r_ext2 = self#.read_exact_bytes_async(*ext2_raw, 2:usize).await
-                if r_ext2.is_err() {
+                auto ext2_res = self#.read_exact_owned_async(2:usize).await
+                if ext2_res.is_err() {
                     return Result<WsMessage, string>::Err(string::from("Failed reading 16-bit extended length"))
                 }
-                payload_len = ((unsafe ext2_raw[0] as usize) << 8) | (unsafe ext2_raw[1] as usize)
+                auto ext2_raw# = ext2_res.unwrap()
+                payload_len = ((ext2_raw.get(0) as usize) << 8) | (ext2_raw.get(1) as usize)
                 if payload_len < 126 {
                     self#.send_protocol_error_close_async().await
                     return Result<WsMessage, string>::Err(string::from("RFC 6455 Protocol Error: Non-minimal length encoding for 16-bit payload"))
@@ -736,15 +728,15 @@ impl WsConnection {
                     auto ext8_vec# = Vec<u8>::with_capacity(8)
                     auto i_8#: usize = 0
                     loop i_8 < 8 { ext8_vec#.push(0:u8); i_8 += 1 }
-                    auto *ext8_raw# = ext8_vec.unsafe_as_raw()
-                    auto r_ext8 = self#.read_exact_bytes_async(*ext8_raw, 8:usize).await
-                    if r_ext8.is_err() {
+                    auto ext8_res = self#.read_exact_owned_async(8:usize).await
+                    if ext8_res.is_err() {
                         return Result<WsMessage, string>::Err(string::from("Failed reading 64-bit extended length"))
                     }
+                    auto ext8_raw# = ext8_res.unwrap()
 
                     // Validate high 32 bits (overflow check)
-                    auto hi = ((unsafe ext8_raw[0] as usize) << 24) | ((unsafe ext8_raw[1] as usize) << 16) | ((unsafe ext8_raw[2] as usize) << 8) | (unsafe ext8_raw[3] as usize)
-                    auto lo = ((unsafe ext8_raw[4] as usize) << 24) | ((unsafe ext8_raw[5] as usize) << 16) | ((unsafe ext8_raw[6] as usize) << 8) | (unsafe ext8_raw[7] as usize)
+                    auto hi = ((ext8_raw.get(0) as usize) << 24) | ((ext8_raw.get(1) as usize) << 16) | ((ext8_raw.get(2) as usize) << 8) | (ext8_raw.get(3) as usize)
+                    auto lo = ((ext8_raw.get(4) as usize) << 24) | ((ext8_raw.get(5) as usize) << 16) | ((ext8_raw.get(6) as usize) << 8) | (ext8_raw.get(7) as usize)
 
                     if hi != 0 || lo > self.max_payload_size {
                         self#.send_protocol_error_close_async().await
@@ -768,32 +760,31 @@ impl WsConnection {
             if masked {
                 auto i_m#: usize = 0
                 loop i_m < 4 { mask_vec#.push(0:u8); i_m += 1 }
-                auto *m_raw# = mask_vec.unsafe_as_raw()
-                auto r_mask = self#.read_exact_bytes_async(*m_raw, 4:usize).await
-                if r_mask.is_err() {
+                auto mask_res = self#.read_exact_owned_async(4:usize).await
+                if mask_res.is_err() {
                     return Result<WsMessage, string>::Err(string::from("Failed reading mask key"))
                 }
+                mask_vec = cede mask_res.unwrap()
             }
-            auto *mask_raw# = mask_vec.unsafe_as_raw()
 
             // Read payload data
             auto payload_vec# = Vec<u8>::with_capacity(payload_len)
             if payload_len > 0 {
                 auto i_p#: usize = 0
                 loop i_p < payload_len { payload_vec#.push(0:u8); i_p += 1 }
-                auto *payload_raw# = payload_vec.unsafe_as_raw()
-                auto r_pay = self#.read_exact_bytes_async(*payload_raw, payload_len).await
-                if r_pay.is_err() {
+                auto payload_res = self#.read_exact_owned_async(payload_len).await
+                if payload_res.is_err() {
                     return Result<WsMessage, string>::Err(string::from("Failed reading WebSocket payload data"))
                 }
+                payload_vec = cede payload_res.unwrap()
             }
 
             // Unmask if masked
             if masked && payload_len > 0 {
-                auto *payload_raw# = payload_vec.unsafe_as_raw()
                 auto j#: usize = 0
                 loop j < payload_len {
-                    unsafe payload_raw[j] = (payload_raw[j] as u8) ^ (mask_raw[j % 4] as u8)
+                    auto masked_byte = (payload_vec.get(j) as u8) ^ (mask_vec.get(j % 4) as u8)
+                    payload_vec#.set(j, masked_byte)
                     j += 1
                 }
             }
@@ -819,17 +810,20 @@ impl WsConnection {
                         }
                         // Validate 2-byte code if payload >= 2
                         if payload_len >= 2 {
-                            auto *p_close# = payload_vec.unsafe_as_raw()
-                            auto code = ((unsafe p_close[0] as i32) << 8) | (unsafe p_close[1] as i32)
+                            auto code = ((payload_vec.get(0) as i32) << 8) | (payload_vec.get(1) as i32)
                             if (code < 1000 || code > 4999 || code == 1004 || code == 1005 || code == 1006 || code == 1015) {
                                 self#.send_protocol_error_close_async().await
                                 return Result<WsMessage, string>::Err(string::from("RFC 6455 Protocol Error: Invalid Close status code"))
                             }
                             // Validate Close reason UTF-8 encoding
                             if payload_len > 2 {
-                                auto reason_addr = ((*p_close as Addr)) + 2:u64
-                                auto *reason_raw# = (reason_addr as *[0]u8) as *[u8]
-                                if !is_valid_utf8(*reason_raw, payload_len - 2) {
+                                auto reason# = Vec<u8>::with_capacity(payload_len - 2)
+                                auto reason_i#: usize = 2
+                                loop reason_i < payload_len {
+                                    reason#.push(payload_vec.get(reason_i))
+                                    reason_i += 1
+                                }
+                                if !is_valid_utf8(reason) {
                                     self#.send_protocol_error_close_async().await
                                     return Result<WsMessage, string>::Err(string::from("RFC 6455 Protocol Error: Close reason payload MUST be valid UTF-8"))
                                 }
@@ -876,10 +870,9 @@ impl WsConnection {
 
             // Append raw payload bytes across fragments into msg_bin
             if payload_len > 0 {
-                auto *p_raw# = payload_vec.unsafe_as_raw()
                 auto k#: usize = 0
                 loop k < payload_len {
-                    unsafe msg_bin#.push(p_raw[k])
+                    msg_bin#.push(payload_vec.get(k))
                     k += 1
                 }
             }
@@ -890,14 +883,16 @@ impl WsConnection {
                 if is_text {
                     auto total_bin_len = msg_bin.len()
                     if total_bin_len > 0 {
-                        auto *bin_raw# = msg_bin.unsafe_as_raw()
-                        auto *bin_u8# = to_u8_ptr(*bin_raw)
                         // Validate UTF-8 across the fully concatenated message
-                        if !is_valid_utf8(*bin_raw, total_bin_len) {
+                        if !is_valid_utf8(msg_bin.clone()) {
                             self#.send_protocol_error_close_async().await
                             return Result<WsMessage, string>::Err(string::from("RFC 6455 Protocol Error: Text message payload MUST be valid UTF-8"))
                         }
-                        msg_text = string::from_raw(*bin_u8, total_bin_len)
+                        auto text_i#: usize = 0
+                        loop text_i < total_bin_len {
+                            msg_text#.push_byte_raw(msg_bin.get(text_i))
+                            text_i += 1
+                        }
                     }
                 }
 
@@ -961,41 +956,34 @@ impl WsConnection {
             auto mask_key_vec# = Vec<u8>::with_capacity(4)
             auto i_mk#: usize = 0
             loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
-            auto *mask_key# = mask_key_vec.unsafe_as_raw()
-            auto *mask_u8# = to_u8_ptr(*mask_key)
-            auto rng_ok = unsafe toka_random_bytes(*mask_u8, 4:usize)
-            if rng_ok != 0 {
-                return Result<usize, string>::Err(string::from("Failed generating random mask key"))
+            auto mask_res = net_random_bytes(cede mask_key_vec)
+            if mask_res.is_err() {
+                return Result<usize, string>::Err(mask_res.unwrap_err())
             }
+            auto mask_key# = mask_res.unwrap()
 
-            unsafe frame_vec#.push(mask_key[0])
-            unsafe frame_vec#.push(mask_key[1])
-            unsafe frame_vec#.push(mask_key[2])
-            unsafe frame_vec#.push(mask_key[3])
+            frame_vec#.push(mask_key.get(0))
+            frame_vec#.push(mask_key.get(1))
+            frame_vec#.push(mask_key.get(2))
+            frame_vec#.push(mask_key.get(3))
 
-            auto *s_ptr# = s.raw_ptr() as *[u8]
             auto i#: usize = 0
             loop i < p_len {
-                auto b = (unsafe s_ptr[i] as u8) ^ (unsafe mask_key[i % 4] as u8)
+                auto b = string_byte(s, i) ^ mask_key.get(i % 4)
                 frame_vec#.push(b)
                 i += 1
             }
         } else {
-            auto *s_ptr# = s.raw_ptr() as *[u8]
             auto i#: usize = 0
             loop i < p_len {
-                frame_vec#.push(unsafe s_ptr[i] as u8)
+                frame_vec#.push(string_byte(s, i))
                 i += 1
             }
         }
 
-        auto frame_len = frame_vec.len()
-        auto *frame_raw# = frame_vec.unsafe_as_raw()
-        auto *frame_u8# = to_u8_ptr(*frame_raw)
-
-        auto w_res = self.stream#.write_all_async(*frame_u8, frame_len).await
+        auto w_res = self.stream#.write_from_async(cede frame_vec, 10000).await
         if w_res.is_err() {
-            return Result<usize, string>::Err(w_res.unwrap_err())
+            return Result<usize, string>::Err(w_res.unwrap_err().message.clone())
         }
         return Result<usize, string>::Ok(p_len)
     }
@@ -1006,39 +994,30 @@ impl WsConnection {
             return Result<usize, string>::Err(string::from("Outbound binary payload size exceeds 16MB maximum limit"))
         }
 
-        auto head_vec# = Vec<u8>::with_capacity(14)
-        auto i_h#: usize = 0
-        loop i_h < 14 { head_vec#.push(0:u8); i_h += 1 }
-        auto *head# = head_vec.unsafe_as_raw()
-        auto *head_u8# = to_u8_ptr(*head)
-
-        unsafe head[0] = 0x82:u8
-        auto head_len#: usize = 2
-
+        auto frame_vec# = Vec<u8>::with_capacity(14 + p_len)
+        frame_vec#.push(0x82:u8)
         auto mask_bit#: u8 = 0:u8
         if self.is_client {
             mask_bit = 0x80:u8
         }
 
         if p_len < 126 {
-            unsafe head[1] = (p_len as u8) + mask_bit
+            frame_vec#.push((p_len as u8) + mask_bit)
         } else {
             if p_len < 65536 {
-                unsafe head[1] = 126:u8 + mask_bit
-                unsafe head[2] = ((p_len >> 8) & 0xFF) as u8
-                unsafe head[3] = (p_len & 0xFF) as u8
-                head_len = 4
+                frame_vec#.push(126:u8 + mask_bit)
+                frame_vec#.push(((p_len >> 8) & 0xFF) as u8)
+                frame_vec#.push((p_len & 0xFF) as u8)
             } else {
-                unsafe head[1] = 127:u8 + mask_bit
-                unsafe head[2] = 0:u8
-                unsafe head[3] = 0:u8
-                unsafe head[4] = 0:u8
-                unsafe head[5] = 0:u8
-                unsafe head[6] = ((p_len >> 24) & 0xFF) as u8
-                unsafe head[7] = ((p_len >> 16) & 0xFF) as u8
-                unsafe head[8] = ((p_len >> 8) & 0xFF) as u8
-                unsafe head[9] = (p_len & 0xFF) as u8
-                head_len = 10
+                frame_vec#.push(127:u8 + mask_bit)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(0:u8)
+                frame_vec#.push(((p_len >> 24) & 0xFF) as u8)
+                frame_vec#.push(((p_len >> 16) & 0xFF) as u8)
+                frame_vec#.push(((p_len >> 8) & 0xFF) as u8)
+                frame_vec#.push((p_len & 0xFF) as u8)
             }
         }
 
@@ -1046,56 +1025,33 @@ impl WsConnection {
             auto mask_key_vec# = Vec<u8>::with_capacity(4)
             auto i_mk#: usize = 0
             loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
-            auto *mask_key# = mask_key_vec.unsafe_as_raw()
-            auto *mask_u8# = to_u8_ptr(*mask_key)
-            auto rng_ok = unsafe toka_random_bytes(*mask_u8, 4:usize)
-            if rng_ok != 0 {
-                return Result<usize, string>::Err(string::from("Failed generating random mask key"))
+            auto mask_res = net_random_bytes(cede mask_key_vec)
+            if mask_res.is_err() {
+                return Result<usize, string>::Err(mask_res.unwrap_err())
             }
+            auto mask_key# = mask_res.unwrap()
 
             auto k#: usize = 0
             loop k < 4 {
-                unsafe head[head_len + k] = mask_key[k]
+                frame_vec#.push(mask_key.get(k))
                 k += 1
             }
-            head_len += 4
-
-            auto w_head = self.stream#.write_all_async(*head_u8, head_len).await
-            if w_head.is_err() {
-                return Result<usize, string>::Err(w_head.unwrap_err())
-            }
-
-            if p_len > 0 {
-                auto *pay_raw# = payload.unsafe_as_raw()
-                auto masked_payload_vec# = Vec<u8>::with_capacity(p_len)
-                auto i_mp#: usize = 0
-                loop i_mp < p_len { masked_payload_vec#.push(0:u8); i_mp += 1 }
-                auto *masked_pay# = masked_payload_vec.unsafe_as_raw()
-                auto *masked_u8# = to_u8_ptr(*masked_pay)
-                auto i#: usize = 0
-                loop i < p_len {
-                    unsafe masked_pay[i] = (pay_raw[i] as u8) ^ (mask_key[i % 4] as u8)
-                    i += 1
-                }
-                auto w_pay = self.stream#.write_all_async(*masked_u8, p_len).await
-                if w_pay.is_err() {
-                    return Result<usize, string>::Err(w_pay.unwrap_err())
-                }
+            auto i#: usize = 0
+            loop i < p_len {
+                frame_vec#.push(payload.get(i) ^ mask_key.get(i % 4))
+                i += 1
             }
         } else {
-            auto w_head = self.stream#.write_all_async(*head_u8, head_len).await
-            if w_head.is_err() {
-                return Result<usize, string>::Err(w_head.unwrap_err())
+            auto i#: usize = 0
+            loop i < p_len {
+                frame_vec#.push(payload.get(i))
+                i += 1
             }
+        }
 
-            if p_len > 0 {
-                auto *pay_raw# = payload.unsafe_as_raw()
-                auto *pay_u8# = to_u8_ptr(*pay_raw)
-                auto w_pay = self.stream#.write_all_async(*pay_u8, p_len).await
-                if w_pay.is_err() {
-                    return Result<usize, string>::Err(w_pay.unwrap_err())
-                }
-            }
+        auto w_res = self.stream#.write_from_async(cede frame_vec, 10000).await
+        if w_res.is_err() {
+            return Result<usize, string>::Err(w_res.unwrap_err().message.clone())
         }
 
         return Result<usize, string>::Ok(p_len)
@@ -1111,75 +1067,45 @@ impl WsConnection {
             return Result<usize, string>::Err(string::from("RFC 6455 Error: Control frame payload MUST NOT exceed 125 bytes"))
         }
 
-        auto head_vec# = Vec<u8>::with_capacity(6)
-        auto i_h#: usize = 0
-        loop i_h < 6 { head_vec#.push(0:u8); i_h += 1 }
-        auto *head# = head_vec.unsafe_as_raw()
-        auto *head_u8# = to_u8_ptr(*head)
-
-        unsafe head[0] = 0x80:u8 + opcode
+        auto frame_vec# = Vec<u8>::with_capacity(6 + p_len)
+        frame_vec#.push(0x80:u8 + opcode)
 
         auto mask_bit#: u8 = 0:u8
         if self.is_client {
             mask_bit = 0x80:u8
         }
-        unsafe head[1] = (p_len as u8) + mask_bit
-        auto head_len#: usize = 2
+        frame_vec#.push((p_len as u8) + mask_bit)
 
         if self.is_client {
             auto mask_key_vec# = Vec<u8>::with_capacity(4)
             auto i_mk#: usize = 0
             loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
-            auto *mask_key# = mask_key_vec.unsafe_as_raw()
-            auto *mask_u8# = to_u8_ptr(*mask_key)
-            auto rng_ok = unsafe toka_random_bytes(*mask_u8, 4:usize)
-            if rng_ok != 0 {
-                return Result<usize, string>::Err(string::from("Failed generating random mask key for control frame"))
+            auto mask_res = net_random_bytes(cede mask_key_vec)
+            if mask_res.is_err() {
+                return Result<usize, string>::Err(mask_res.unwrap_err())
             }
+            auto mask_key# = mask_res.unwrap()
 
             auto k#: usize = 0
             loop k < 4 {
-                unsafe head[head_len + k] = mask_key[k]
+                frame_vec#.push(mask_key.get(k))
                 k += 1
             }
-            head_len += 4
-
-            auto w1 = self.stream#.write_all_async(*head_u8, head_len).await
-            if w1.is_err() {
-                return Result<usize, string>::Err(w1.unwrap_err())
-            }
-
-            if p_len > 0 {
-                auto *pay_raw# = payload.unsafe_as_raw()
-                auto masked_payload_vec# = Vec<u8>::with_capacity(p_len)
-                auto i_mp#: usize = 0
-                loop i_mp < p_len { masked_payload_vec#.push(0:u8); i_mp += 1 }
-                auto *masked_pay# = masked_payload_vec.unsafe_as_raw()
-                auto *masked_u8# = to_u8_ptr(*masked_pay)
-                auto i#: usize = 0
-                loop i < p_len {
-                    unsafe masked_pay[i] = (pay_raw[i] as u8) ^ (mask_key[i % 4] as u8)
-                    i += 1
-                }
-                auto w2 = self.stream#.write_all_async(*masked_u8, p_len).await
-                if w2.is_err() {
-                    return Result<usize, string>::Err(w2.unwrap_err())
-                }
+            auto i#: usize = 0
+            loop i < p_len {
+                frame_vec#.push(payload.get(i) ^ mask_key.get(i % 4))
+                i += 1
             }
         } else {
-            auto w1 = self.stream#.write_all_async(*head_u8, 2:usize).await
-            if w1.is_err() {
-                return Result<usize, string>::Err(w1.unwrap_err())
+            auto i#: usize = 0
+            loop i < p_len {
+                frame_vec#.push(payload.get(i))
+                i += 1
             }
-
-            if p_len > 0 {
-                auto *pay_raw# = payload.unsafe_as_raw()
-                auto *pay_u8# = to_u8_ptr(*pay_raw)
-                auto w2 = self.stream#.write_all_async(*pay_u8, p_len).await
-                if w2.is_err() {
-                    return Result<usize, string>::Err(w2.unwrap_err())
-                }
-            }
+        }
+        auto w_res = self.stream#.write_from_async(cede frame_vec, 10000).await
+        if w_res.is_err() {
+            return Result<usize, string>::Err(w_res.unwrap_err().message.clone())
         }
         return Result<usize, string>::Ok(p_len)
     }

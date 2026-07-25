@@ -25,6 +25,7 @@ extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
 extern fn toka_tls_connect(*handle: void, fd: i32) -> i32
 extern fn toka_tls_accept(*handle: void, fd: i32) -> i32
 extern fn toka_tls_backend_available() -> i32
+extern fn toka_random_bytes(*buf: void, len: usize) -> i32
 
 // Error type for network operations
 alias NetResult<T> = Result<T, string>
@@ -37,6 +38,21 @@ pub fn net_tls_context_new() -> *void {
 
 pub fn net_tls_backend_available() -> bool {
     unsafe { return toka_tls_backend_available() != 0 }
+}
+
+// Randomness adapter keeps the C pointer ABI below std. Higher-level protocol
+// libraries receive an owned buffer back and never need to hold a pointer.
+pub fn net_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string> {
+    auto owned# = cede buffer
+    if owned.len() == 0:usize {
+        return Result<Vec<u8>, string>::Ok(cede owned)
+    }
+    auto *ptr# = owned.unsafe_get(0)
+    auto status = unsafe toka_random_bytes(*ptr, owned.len())
+    if status != 0 {
+        return Result<Vec<u8>, string>::Err(string::from("OS secure random bytes generation failed"))
+    }
+    return Result<Vec<u8>, string>::Ok(cede owned)
 }
 
 pub fn net_tls_server_context_new() -> *void {

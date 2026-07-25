@@ -5,6 +5,7 @@ import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
 import std/net::{TcpStream, SocketAddrV4, AsyncReadResult, AsyncIoError}
+import std/bytes::{Bytes}
 import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
 import stdx/net/url::{parse_url}
@@ -939,6 +940,32 @@ impl HttpResponseStream {
             return Option<string>::Some(view.value(self.raw_header_buf))
         }
         return Option<string>::None
+    }
+
+    // Owner-carrying convenience API. Callers that need binary-safe or
+    // allocation-conscious response handling can consume the stream directly
+    // without converting the body through string.
+    pub fn read_all_bytes_async(self#, timeout_ms: i32) -> async Result<Bytes, string> {
+        auto body# = Vec<u8>::with_capacity(4096)
+        auto chunk# = Vec<u8>::with_capacity(4096)
+        loop {
+            auto read_res = self#.read_chunk_into_async(cede chunk, 4096:usize, timeout_ms).await
+            if read_res.is_err() {
+                return Result<Bytes, string>::Err(read_res.unwrap_err().message.clone())
+            }
+            auto rr# = read_res.unwrap()
+            auto n_read = rr.bytes_read
+            chunk = rr#.take_buffer()
+            if n_read == 0:usize {
+                break
+            }
+            auto i#: usize = 0
+            loop i < n_read {
+                body#.push(chunk#.get(i))
+                i += 1
+            }
+        }
+        return Result<Bytes, string>::Ok(Bytes::from_vec(cede body))
     }
 
     pub fn read_non_chunked_into_async(self#, cede owner#: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
