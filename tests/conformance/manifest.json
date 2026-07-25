@@ -19,6 +19,14 @@
       "description": "Postfix ! error propagation and Result unwrapping"
     },
     {
+      "id": "syntax_match_guard_merge_01",
+      "path": "syntax/match_guard_loop_merge.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Match guard expressions, branch state merge, and loop fallbacks"
+    },
+    {
       "id": "ownership_borrow_cede_move_01",
       "path": "ownership/borrow_cede_move.tk",
       "type": "run",
@@ -98,6 +106,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Standard vector iter() and next() iteration protocol"
+    },
+    {
+      "id": "std_iterator_borrow_01",
+      "path": "std/iterator_borrow.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Borrowed iterator next_ref() lifetime and ref matching"
     }
   ]
 }

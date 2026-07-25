@@ -1,0 +1,51 @@
+import std/io::{println}
+import core/option::{Option}
+
+alias OptI32 = Option<i32>
+
+fn process_number(opt: Option<i32>) -> i32 {
+    auto result#: i32 = 0
+    match opt {
+        auto OptI32::Some(val) if val > 10 => {
+            result = val * 2
+        }
+        auto OptI32::Some(val) => {
+            result = val + 1
+        }
+        auto OptI32::None => {
+            result = -1
+        }
+    }
+    return result
+}
+
+fn sum_filtered_loop(threshold: i32) -> i32 {
+    auto i#: i32 = 0
+    auto sum#: i32 = 0
+    loop i < 10 {
+        i += 1
+        auto opt = Option<i32>::Some(i)
+        match opt {
+            auto OptI32::Some(val) if val >= threshold => {
+                sum += val
+            }
+            _ => {
+                // Skip values below threshold
+            }
+        }
+    }
+    return sum
+}
+
+fn main() -> i32 {
+    // 1. Match guard branch result merge
+    assert(process_number(Option<i32>::Some(20)) == 40, "Match guard > 10 branch failed")
+    assert(process_number(Option<i32>::Some(5)) == 6, "Match fallback branch failed")
+    assert(process_number(Option<i32>::None) == -1, "Match None branch failed")
+
+    // 2. Loop & Match Guard State Merge
+    assert(sum_filtered_loop(8) == 8 + 9 + 10, "Loop match guard state merge failed")
+
+    println("[Conformance] Match Guard & Loop State Merge PASSED!")
+    return 0
+}

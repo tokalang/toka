@@ -1,0 +1,32 @@
+import std/io::{println}
+import std/vec::{Vec}
+import core/option::{Option}
+
+alias OptRefI32 = Option<&i32>
+
+fn main() -> i32 {
+    auto v# = Vec<i32>::new()
+    v#.push(100)
+    v#.push(200)
+
+    auto sum#: i32 = 0
+    auto it# = v.iter()
+    auto done#: bool = false
+
+    loop !done {
+        auto opt = it#.next_ref()
+        match opt {
+            auto OptRefI32::Some(&ref_val) => {
+                auto val: i32 = ref_val
+                sum += val
+            }
+            auto OptRefI32::None => {
+                done = true
+            }
+        }
+    }
+
+    assert(sum == 300, "Borrowed iterator next_ref sum mismatch")
+    println("[Conformance] Borrowed Iterator next_ref Lifetime PASSED!")
+    return 0
+}
