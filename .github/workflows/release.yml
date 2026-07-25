@@ -55,17 +55,18 @@ jobs:
           wget --timeout=15 --tries=3 https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo -E ./llvm.sh 20
-          sudo apt-get install -y cmake ninja-build liblld-20-dev lld-20 libpolly-20-dev libzstd-dev
+          sudo apt-get install -y cmake ninja-build liblld-20-dev lld-20 libpolly-20-dev libzstd-dev libssl-dev
 
       - name: Install LLVM 20 (macOS)
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          brew install llvm@20 lld@20 zstd
+          brew install llvm@20 lld@20 zstd openssl@3
           echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
           echo "LLVM_DIR=$(brew --prefix llvm@20)/lib/cmake/llvm" >> "$GITHUB_ENV"
           echo "LLD_DIR=$(brew --prefix lld@20)/lib/cmake/lld" >> "$GITHUB_ENV"
           echo "ZSTD_LIBRARY=$(brew --prefix zstd)/lib/libzstd.dylib" >> "$GITHUB_ENV"
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
       - name: Configure compiler
         run: |
@@ -73,7 +74,8 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             ${LLVM_DIR:+-DLLVM_DIR="$LLVM_DIR"} \
             ${LLD_DIR:+-DLLD_DIR="$LLD_DIR"} \
-            ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"}
+            ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"} \
+            ${OPENSSL_ROOT_DIR:+-DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"}
 
       - name: Resolve version label
         id: version

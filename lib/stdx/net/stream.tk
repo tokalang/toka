@@ -15,11 +15,12 @@ impl AsyncStream@encap {
     pub is_tls#
     pub *tls_handle#
     fn drop(self#) {
-        auto h = (*self.tls_handle as Addr)
-        if self.is_tls && h != 0 {
-            self.raw_tcp#.tls_close(*self.tls_handle)
-            auto *null_ptr# = (0 as Addr) as *void
-            self.*tls_handle = *null_ptr
+        if self.is_tls {
+            auto h = (*self.tls_handle as Addr)
+            if h != 0 {
+                self.raw_tcp#.tls_close(*self.tls_handle)
+                self.is_tls = false
+            }
         }
     }
     pub fn clone(self) = delete
@@ -125,12 +126,11 @@ impl AsyncStream {
         if len > 0:usize {
             auto *buf_ptr# = owned.unsafe_get(0)
             auto write_res = self#.write_all_async_timeout(*buf_ptr, len, timeout_ms).await
-            match write_res {
-                auto Result<(), string>::Ok(_) => { written = len }
-                auto Result<(), string>::Err(&e) => {
-                    failed = true
-                    message = e.clone()
-                }
+            if write_res.is_err() {
+                failed = true
+                message = write_res.unwrap_err()
+            } else {
+                written = len
             }
         }
         if failed {
@@ -198,11 +198,12 @@ impl AsyncStream {
     }
 
     pub fn close(self#) {
-        auto h = (*self.tls_handle as Addr)
-        if self.is_tls && h != 0 {
-            self.raw_tcp#.tls_close(*self.tls_handle)
-            auto *null_ptr# = (0 as Addr) as *void
-            self.*tls_handle = *null_ptr
+        if self.is_tls {
+            auto h = (*self.tls_handle as Addr)
+            if h != 0 {
+                self.raw_tcp#.tls_close(*self.tls_handle)
+                self.is_tls = false
+            }
         }
         self.raw_tcp#.close()
     }

@@ -425,9 +425,19 @@ private:
         if (binary->AssignmentKind == AssignmentSemanticKind::Handle)
           effects |= bit(MemoryRootEffect::Rebind);
         addLocal(Summary, lhsRoots, effects);
+        std::string lhsVarName = "";
         if (auto *variable =
                 dynamic_cast<const VariableExpr *>(binary->LHS.get())) {
-          mergeAlias(variable->Name, provenanceRoots(binary->RHS.get()));
+          lhsVarName = variable->Name;
+        } else if (auto *unary =
+                       dynamic_cast<const UnaryExpr *>(binary->LHS.get())) {
+          if (auto *varInUnary =
+                  dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
+            lhsVarName = varInUnary->Name;
+          }
+        }
+        if (!lhsVarName.empty()) {
+          mergeAlias(lhsVarName, provenanceRoots(binary->RHS.get()));
         } else {
           addLocal(Summary, provenanceRoots(binary->RHS.get()),
                    bit(MemoryRootEffect::Capture) |
@@ -626,13 +636,19 @@ private:
       visitExpr(expr->Expression.get());
     } else if (auto *decl = dynamic_cast<const VariableDecl *>(stmt)) {
       visitExpr(decl->Init.get());
+      std::string stripped = Type::stripMorphology(decl->Name);
+      Aliases[stripped].insert(stripped);
       mergeAlias(decl->Name, provenanceRoots(decl->Init.get()));
     } else if (auto *decl = dynamic_cast<const DestructuringDecl *>(stmt)) {
       visitExpr(decl->Init.get());
       RootSet initRoots = roots(decl->Init.get());
-      for (const auto &variable : decl->Variables)
-        if (!variable.IsWildcard)
+      for (const auto &variable : decl->Variables) {
+        if (!variable.IsWildcard) {
+          std::string stripped = Type::stripMorphology(variable.Name);
+          Aliases[stripped].insert(stripped);
           mergeAlias(variable.Name, initRoots);
+        }
+      }
     } else if (auto *value = dynamic_cast<const DeleteStmt *>(stmt)) {
       visitExpr(value->Expression.get());
       addLocal(Summary, FunctionMemoryEffect::Free);

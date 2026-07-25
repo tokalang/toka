@@ -243,14 +243,17 @@ unsigned int toka_resolve_ipv4(const char* host) {
 
 void toka_print_str(const char* s) {
     printf("%s", s);
+    fflush(stdout);
 }
 
 void toka_print_i32(int val) {
     printf("%d", val);
+    fflush(stdout);
 }
 
 void toka_print_f64(double val) {
     printf("%g", val);
+    fflush(stdout);
 }
 
 // =========================================================================
@@ -786,6 +789,13 @@ static size_t g_ready_tail = 0;
 static size_t g_ready_count = 0;
 
 static void ensure_ready_queue_capacity_locked(void) {
+#ifndef _WIN32
+    static int sigpipe_ignored = 0;
+    if (!sigpipe_ignored) {
+        signal(SIGPIPE, SIG_IGN);
+        sigpipe_ignored = 1;
+    }
+#endif
     if (g_ready_queue == NULL) {
         g_ready_capacity = 256;
         g_ready_queue = (TokaScheduledItem*)calloc(g_ready_capacity, sizeof(TokaScheduledItem));
@@ -2596,8 +2606,22 @@ int toka_reactor_wait(int rfd, int timeout_ms, uint64_t *out_keys, int max_event
     for (int i = 0; i < n; i++) {
         int fd = (int)events_buf[i].ident;
         uint64_t key = (uint64_t)(uintptr_t)events_buf[i].udata;
-        if (fd >= 0 && fd < 65536 && key != 0) {
-            if (events_buf[i].filter == EVFILT_READ) {
+        if (fd >= 0 && fd < 65536) {
+            int is_eof = (events_buf[i].flags & (EV_EOF | EV_ERROR)) != 0;
+            if (is_eof) {
+                if (g_reactor_fd_table[fd].read_key != 0) {
+                    if (out_count < max_events) {
+                        out_keys[out_count++] = g_reactor_fd_table[fd].read_key;
+                    }
+                    g_reactor_fd_table[fd].read_key = 0;
+                }
+                if (g_reactor_fd_table[fd].write_key != 0) {
+                    if (out_count < max_events) {
+                        out_keys[out_count++] = g_reactor_fd_table[fd].write_key;
+                    }
+                    g_reactor_fd_table[fd].write_key = 0;
+                }
+            } else if (events_buf[i].filter == EVFILT_READ) {
                 if (g_reactor_fd_table[fd].read_key == key) {
                     g_reactor_fd_table[fd].read_key = 0;
                     if (out_count < max_events) {
@@ -2827,6 +2851,8 @@ static void ensure_parent_dir_exists(const char *path) {
     }
 }
 
+static int generate_test_cert_pair(const char *cert_path, const char *key_path);
+
 int toka_ensure_test_cert_files(const char *cert_path, const char *key_path) {
     if (!cert_path || !key_path) return -1;
     FILE *f_cert = fopen(cert_path, "rb");
@@ -2841,7 +2867,10 @@ int toka_ensure_test_cert_files(const char *cert_path, const char *key_path) {
 
     ensure_parent_dir_exists(cert_path);
     ensure_parent_dir_exists(key_path);
+    return generate_test_cert_pair(cert_path, key_path);
+}
 
+static int generate_test_cert_pair(const char *cert_path, const char *key_path) {
     EVP_PKEY *pkey = NULL;
     RSA *rsa = RSA_generate_key(2048, RSA_F4, NULL, NULL);
     if (!rsa) return -1;
@@ -2863,6 +2892,11 @@ int toka_ensure_test_cert_files(const char *cert_path, const char *key_path) {
 
     X509V3_CTX ctx_v3;
     X509V3_set_ctx(&ctx_v3, x509, x509, NULL, NULL, 0);
+    X509_EXTENSION *ext_ca = X509V3_EXT_conf_nid(NULL, &ctx_v3, NID_basic_constraints, "critical,CA:TRUE");
+    if (ext_ca) {
+        X509_add_ext(x509, ext_ca, -1);
+        X509_EXTENSION_free(ext_ca);
+    }
     X509_EXTENSION *ext = X509V3_EXT_conf_nid(NULL, &ctx_v3, NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1");
     if (ext) {
         X509_add_ext(x509, ext, -1);
@@ -2944,6 +2978,7 @@ int toka_tls_connect(void *handle, int fd) {
     int err = SSL_get_error(s->ssl, res);
     if (err == SSL_ERROR_WANT_READ) return 1;
     if (err == SSL_ERROR_WANT_WRITE) return 2;
+    ERR_clear_error();
     return -1;
 }
 
@@ -2965,6 +3000,7 @@ int toka_tls_accept(void *handle, int fd) {
     int err = SSL_get_error(s->ssl, res);
     if (err == SSL_ERROR_WANT_READ) return 1;
     if (err == SSL_ERROR_WANT_WRITE) return 2;
+    ERR_clear_error();
     return -1;
 }
 
@@ -2998,8 +3034,8 @@ int toka_tls_write(void *handle, const void *buf, size_t len) {
 void toka_tls_close(void *handle) {
     if (!handle) return;
     TokaTlsSession *s = (TokaTlsSession*)handle;
+    ERR_clear_error();
     if (s->ssl) {
-        SSL_shutdown(s->ssl);
         SSL_free(s->ssl);
         s->ssl = NULL;
     }
@@ -3008,6 +3044,7 @@ void toka_tls_close(void *handle) {
         s->ctx = NULL;
     }
     free(s);
+    ERR_clear_error();
 }
 #else
 // Keep the TLS C ABI available for non-TLS programs.  The std layer can link

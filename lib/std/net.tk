@@ -497,12 +497,11 @@ impl TcpStream {
         } else if len > 0:usize {
             auto *buf_ptr# = owned.unsafe_get(0)
             auto write_res = self#.write_all_async_timeout(*buf_ptr, len, timeout_ms).await
-            match write_res {
-                auto Result<usize, string>::Ok(n) => { written = n }
-                auto Result<usize, string>::Err(&e) => {
-                    failed = true
-                    message = e.clone()
-                }
+            if write_res.is_err() {
+                failed = true
+                message = write_res.unwrap_err()
+            } else {
+                written = len
             }
         }
 
@@ -1428,7 +1427,6 @@ pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, 
                             done = true
                         }
                     } else {
-                        sleep_async(0:i64).await
                         ret = Result<usize, string>::Err(string::from("Write error"))
                         done = true
                     }
@@ -1451,7 +1449,6 @@ pub fn net_async_write_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32
             loop !done {
                 auto n: i64 = sysnet::net_write_impl(fd, *buf, len)
                 if n >= 0:i64 {
-                    sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
                     done = true
                 } else {
@@ -1493,7 +1490,6 @@ pub fn net_async_write_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32
                             done = true
                         }
                     } else {
-                        sleep_async(0:i64).await
                         ret = Result<usize, string>::Err(string::from("Write error"))
                         done = true
                     }

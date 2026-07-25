@@ -8,14 +8,13 @@ import core/types::{Addr}
 import std/io::{println}
 import std/vec::{Vec}
 
-fn async_tls_server_task() -> async Result<(), string> {
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18443:u16)
-    auto listener# = TcpListener::bind(addr)
+fn async_tls_server_task(cede listener: TcpListener) -> async Result<(), string> {
+    auto listener# = cede listener
     if !listener.is_valid() {
         return Result<(), string>::Err(string::from("Bind failed"))
     }
 
-    println("[TlsServer] Listening on 127.0.0.1:18443...")
+    println("[TlsServer] Listening on local port...")
     auto stream# = listener#.accept_async().await
     if !stream.is_valid() {
         return Result<(), string>::Err(string::from("Accept failed"))
@@ -61,10 +60,10 @@ fn async_tls_server_task() -> async Result<(), string> {
     return Result<(), string>::Ok(())
 }
 
-fn async_tls_client_task() -> async Result<(), string> {
+fn async_tls_client_task(port: u16) -> async Result<(), string> {
     sleep_async(50:u64).await
-    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 18443:u16)
-    println("[TlsClient] Connecting to 127.0.0.1:18443...")
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    println("[TlsClient] Connecting to 127.0.0.1...")
     auto tcp_stream# = TcpStream::connect_async(addr).await
     if !tcp_stream.is_valid() {
         return Result<(), string>::Err(string::from("TCP connect failed"))
@@ -111,11 +110,17 @@ fn async_tls_client_task() -> async Result<(), string> {
 
 fn main_async() -> async i32 {
     println("--- Starting Real OpenSSL TLS Engine Qualification Test ---")
-    auto server_task# = async_tls_server_task().start
-    auto client_task# = async_tls_client_task().start
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !listener.is_valid() {
+        println("[FAIL] Listener bind failed")
+        return 1
+    }
+    auto port = listener.local_port()
+    auto server_task# = async_tls_server_task(cede listener).start
+    auto client_task# = async_tls_client_task(port).start
 
-    auto s_res = server_task.await
     auto c_res = client_task.await
+    auto s_res = server_task.await
 
     if s_res.is_ok() && c_res.is_ok() {
         println("Phase 5B Real OpenSSL TLS Test PASSED Cleanly!")

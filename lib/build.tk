@@ -11,6 +11,8 @@ pub import build/project::{Executable, Library}
 import build/internal/support::{__path_normalize, __path_canonicalize, __calculate_fnv1a}
 import build/internal/codec::{__deserialize_nested_shape, __deserialize_shape}
 
+extern fn toka_tls_backend_available() -> i32
+
 pub shape ModuleOutputs (
     interface: string = string::from(""),
     object: string = string::from(""),
@@ -1293,6 +1295,30 @@ fn run_build_impl(
                 if is_windows {
                     cmd2#.arg(string::from("-lws2_32"))
                     cmd2#.arg(string::from("-lshell32"))
+                } else {
+                    if toka_tls_backend_available() != 0 {
+                        auto openssl_root = libc_getenv(c"OPENSSL_ROOT_DIR") as Addr
+                        if openssl_root != 0:Addr {
+                            auto openssl_dir# = string::from_cstr(openssl_root as *char)
+                            auto lib_dir# = openssl_dir.clone()
+                            lib_dir#.push_str("/lib")
+                            cmd2#.arg(string::from("-L"))
+                            cmd2#.arg(cede lib_dir)
+                            cmd2#.arg(string::from("-lssl"))
+                            cmd2#.arg(string::from("-lcrypto"))
+                        } else if libc_access(c"/opt/homebrew/opt/openssl@3/lib/libssl.dylib", 0) == 0 {
+                            cmd2#.arg(string::from("-L/opt/homebrew/opt/openssl@3/lib"))
+                            cmd2#.arg(string::from("-lssl"))
+                            cmd2#.arg(string::from("-lcrypto"))
+                        } else if libc_access(c"/usr/local/opt/openssl@3/lib/libssl.dylib", 0) == 0 {
+                            cmd2#.arg(string::from("-L/usr/local/opt/openssl@3/lib"))
+                            cmd2#.arg(string::from("-lssl"))
+                            cmd2#.arg(string::from("-lcrypto"))
+                        } else {
+                            cmd2#.arg(string::from("-lssl"))
+                            cmd2#.arg(string::from("-lcrypto"))
+                        }
+                    }
                 }
 
                 cmd2#.arg(string::from("-o"))

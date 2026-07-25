@@ -108,6 +108,53 @@ def get_sysroot_flags():
         return " ".join(flags)
     return ""
 
+def get_openssl_flags():
+    cflags = []
+    ldflags = []
+    
+    openssl_root = os.environ.get("OPENSSL_ROOT_DIR")
+    inc_dirs = []
+    lib_dirs = []
+    
+    if openssl_root:
+        inc_dirs.append(os.path.join(openssl_root, "include"))
+        lib_dirs.append(os.path.join(openssl_root, "lib"))
+        
+    if sys.platform == "darwin":
+        brew_prefixes = [
+            "/opt/homebrew/opt/openssl@3",
+            "/usr/local/opt/openssl@3",
+            "/opt/homebrew/opt/openssl",
+            "/usr/local/opt/openssl",
+        ]
+        for p in brew_prefixes:
+            if os.path.exists(os.path.join(p, "include", "openssl", "ssl.h")):
+                inc_dirs.append(os.path.join(p, "include"))
+                lib_dirs.append(os.path.join(p, "lib"))
+                break
+
+    inc_dirs.extend(["/usr/include", "/usr/local/include"])
+    
+    has_openssl = False
+    chosen_inc = None
+    for inc in inc_dirs:
+        if os.path.exists(os.path.join(inc, "openssl", "ssl.h")):
+            has_openssl = True
+            chosen_inc = inc
+            break
+            
+    if has_openssl:
+        cflags.append("-DTOKA_HAS_OPENSSL=1")
+        if chosen_inc and chosen_inc not in ["/usr/include", "/usr/local/include"]:
+            cflags.append("-I" + chosen_inc)
+        for lib in lib_dirs:
+            if os.path.exists(lib):
+                ldflags.append("-L" + lib)
+                break
+        ldflags.extend(["-lssl", "-lcrypto"])
+        
+    return " ".join(cflags), " ".join(ldflags)
+
 def rebuild_runtime(clang, clangxx, sysroot, cxxflags):
     # Always force rebuild toka_rt.o and llvm_shim.o
     safe_print("Compiling native runtime and shim objects...")
@@ -122,6 +169,9 @@ def rebuild_runtime(clang, clangxx, sysroot, cxxflags):
     cmd_rt = [clang]
     if sysroot:
         cmd_rt.extend(sysroot.split())
+    openssl_cflags, _ = get_openssl_flags()
+    if openssl_cflags:
+        cmd_rt.extend(openssl_cflags.split())
     cmd_rt.extend(["-c", "lib/sys/toka_rt.c", "-o", "lib/sys/toka_rt.o"])
     
     rt_res = subprocess.run(cmd_rt, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -181,6 +231,9 @@ def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
         if sysroot:
             link_cmd.extend(sysroot.split())
         link_cmd.extend([tmp_obj, "lib/sys/llvm_shim.o", "lib/sys/toka_rt.o"])
+        _, openssl_ldflags = get_openssl_flags()
+        if openssl_ldflags:
+            link_cmd.extend(openssl_ldflags.split())
         if ldflags_libs:
             link_cmd.extend(ldflags_libs.split())
         if sys.platform in ["win32", "cygwin", "msys"]:

@@ -16,26 +16,7 @@ import stdx/net/stream::{AsyncStream}
 import core/result::{Result}
 import core/types::{Addr}
 
-pub shape TlsStream (
-    raw_tcp: TcpStream,
-    *handle: void,
-    host: string
-)
-
-impl TlsStream@encap {
-    pub raw_tcp#
-    pub *handle#
-    pub host
-    fn drop(self#) {
-        auto h = (*self.handle as Addr)
-        if h != 0 {
-            self.raw_tcp#.tls_close(*self.handle)
-            auto *null_ptr# = (0 as Addr) as *void
-            self.*handle = *null_ptr
-        }
-    }
-    pub fn clone(self) = delete
-}
+pub shape TlsStream ()
 
 impl TlsStream {
     pub fn connect_with_verify_async_timeout(tcp_stream#: TcpStream, host: string, verify_peer: bool, timeout_ms: i32) -> async Result<AsyncStream, string> {
