@@ -1,6 +1,6 @@
 # Toka 1.0 Release Review Report
 
-**Revision Under Audit**: `956c6e94` (Target Release Candidate Tag: `v0.9.9-rc1`)
+**Revision Under Audit**: `b19b10f7` (Target Release Candidate Tag: `v0.9.9-rc1`)
 **Status**: Pre-Release Review Audit (Pending Multi-Platform Artifact Verification)
 **Date**: 2026-07-25
 
@@ -27,6 +27,7 @@ This document serves as the official Release Review Report for Toka 1.0 qualific
 ## 3. Pre-Release Verification Evidence
 
 ### Local Test Matrix (macOS ARM64 Baseline)
+- **Full Pass Suite**: 358/358 PASSED (`python3 tools/scripts/test_pass.py`)
 - **Toka 1.0 Conformance Test Suite**: 14/14 PASSED (`python3 tools/run_conformance.py`)
 - **Source-Less `.tki` Semantic Replay Suite**: 20/20 PASSED (`tools/scripts/test_semantic_replay.sh`)
 - **Plaintext No-OpenSSL Script**: 3/3 PASSED (`tools/test_no_openssl.sh`)
