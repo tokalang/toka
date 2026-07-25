@@ -4,10 +4,10 @@ import std/io::{println}
 import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
-import std/net::{TcpStream, SocketAddrV4}
-import stdx/net/stream::{AsyncStream, to_u8_ptr}
+import std/net::{TcpStream, SocketAddrV4, AsyncReadResult, AsyncIoError}
+import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
-import stdx/net/url::{Url, parse_url}
+import stdx/net/url::{parse_url}
 
 pub shape HttpMethod (
     GET = 0 |
@@ -17,9 +17,61 @@ pub shape HttpMethod (
     UNKNOWN = 4
 )
 
+// HttpHeaderView is a non-owning borrowed offset view into a parent raw_header_buf: Vec<u8>.
+// Accessing name() or value() borrows raw_buf# by reference, constructing an owned string return value.
+pub shape HttpHeaderView (
+    name_offset: usize,
+    name_len: usize,
+    value_offset: usize,
+    value_len: usize
+)
+
+impl HttpHeaderView@encap {
+    pub name_offset, name_len, value_offset, value_len
+    fn drop(self#) {}
+    pub fn clone(self) -> HttpHeaderView {
+        return HttpHeaderView(
+            name_offset = self.name_offset,
+            name_len = self.name_len,
+            value_offset = self.value_offset,
+            value_len = self.value_len
+        )
+    }
+}
+
+impl HttpHeaderView {
+    pub fn name(self, raw_buf#: Vec<u8>) -> string {
+        if self.name_offset + self.name_len > raw_buf.len() {
+            return string::from("")
+        }
+        auto res# = string::from("")
+        auto i# = self.name_offset
+        auto end = self.name_offset + self.name_len
+        loop i < end {
+            res#.push_byte_raw(raw_buf#.get(i))
+            i += 1
+        }
+        return res
+    }
+
+    pub fn value(self, raw_buf#: Vec<u8>) -> string {
+        if self.value_offset + self.value_len > raw_buf.len() {
+            return string::from("")
+        }
+        auto res# = string::from("")
+        auto i# = self.value_offset
+        auto end = self.value_offset + self.value_len
+        loop i < end {
+            res#.push_byte_raw(raw_buf#.get(i))
+            i += 1
+        }
+        return res
+    }
+}
+
 pub shape HeaderEntry (
     key: string,
-    value#: string
+    value: string
 )
 
 impl HeaderEntry@encap {
@@ -27,7 +79,10 @@ impl HeaderEntry@encap {
     pub value
     fn drop(self#) {}
     pub fn clone(self) -> HeaderEntry {
-        return HeaderEntry(key = self.key.clone(), value = self.value.clone())
+        return HeaderEntry(
+            key = string::from(self.key.as_str()),
+            value = string::from(self.value.as_str())
+        )
     }
 }
 
@@ -38,15 +93,15 @@ pub shape HeaderMap (
 impl HeaderMap@encap {
     pub entries
     fn drop(self#) {}
-    pub fn clone(self) -> HeaderMap {
+    pub fn clone(self#) -> HeaderMap {
         auto new_entries# = Vec<HeaderEntry>::new()
         auto idx# = 0:usize
         loop idx < self.entries.len() {
-            auto entry = self.entries.get(idx)
-            new_entries#.push(cede entry.clone())
+            auto entry = self.entries#.get(idx).clone()
+            new_entries#.push(cede entry)
             idx = idx + 1
         }
-        return HeaderMap(entries = new_entries)
+        return HeaderMap(entries = cede new_entries)
     }
 }
 
@@ -147,15 +202,19 @@ impl HeaderMap {
         }
         auto norm_key = key.to_ascii_lowercase()
         auto idx# = 0:usize
+        auto found# = false
+        auto found_idx#: usize = 0
         loop idx < self.entries.len() {
-            auto *entry_ptr = self.entries.get_ref(idx)
-            if entry_ptr.key.as_str().eq_ignore_ascii_case(key.as_str()) {
-                unsafe {
-                    entry_ptr.value = value
-                }
-                return Result<bool, string>::Ok(true)
+            auto entry = self.entries#.get(idx).clone()
+            if entry.key.as_str().eq_ignore_ascii_case(key.as_str()) {
+                found = true
+                found_idx = idx
+                break
             }
             idx = idx + 1
+        }
+        if found {
+            auto _old = self.entries#.remove(found_idx)
         }
         self.entries#.push(cede HeaderEntry(key = norm_key, value = value))
         return Result<bool, string>::Ok(true)
@@ -164,9 +223,9 @@ impl HeaderMap {
     pub fn get(self#, key: str) -> Option<string> {
         auto idx# = 0:usize
         loop idx < self.entries.len() {
-            auto *entry_ptr = self.entries.get_ref(idx)
-            if entry_ptr.key.as_str().eq_ignore_ascii_case(key) {
-                return Option<string>::Some(entry_ptr.value.clone())
+            auto entry = self.entries#.get(idx).clone()
+            if entry.key.as_str().eq_ignore_ascii_case(key) {
+                return Option<string>::Some(string::from(entry.value.as_str()))
             }
             idx = idx + 1
         }
@@ -194,12 +253,12 @@ impl HttpRequest@encap {
     pub body
     fn drop(self#) {}
 
-    pub fn clone(self) -> HttpRequest {
+    pub fn clone(self#) -> HttpRequest {
         return HttpRequest(
             method = self.method,
             path = self.path.clone(),
             version = self.version.clone(),
-            headers = self.headers.clone(),
+            headers = self.headers#.clone(),
             body = self.body.clone()
         )
     }
@@ -232,16 +291,16 @@ impl HttpRequest {
         auto has_cl# = false
         auto idx# = 0:usize
         loop idx < self.headers.entries.len() {
-            auto *entry_ptr = self.headers.entries.get_ref(idx)
-            if entry_ptr.key.as_str().eq_ignore_ascii_case("host") {
+            auto entry = self.headers.entries#.get(idx).clone()
+            if entry.key.as_str().eq_ignore_ascii_case("host") {
                 has_host = true
             }
-            if entry_ptr.key.as_str().eq_ignore_ascii_case("content-length") {
+            if entry.key.as_str().eq_ignore_ascii_case("content-length") {
                 has_cl = true
             }
-            res#.push_str(entry_ptr.key.as_str())
+            res#.push_str(entry.key.as_str())
             res#.push_str(": ")
-            res#.push_str(entry_ptr.value.as_str())
+            res#.push_str(entry.value.as_str())
             res#.push_str("\r\n")
             idx = idx + 1
         }
@@ -259,6 +318,17 @@ impl HttpRequest {
         }
         return res
     }
+
+    pub fn to_wire_bytes(self) -> Vec<u8> {
+        auto wire_str = self.to_wire_string()
+        auto bytes# = Vec<u8>::with_capacity(wire_str.len())
+        auto idx# = 0:usize
+        loop idx < wire_str.len() {
+            bytes#.push(wire_str.as_bytes().at(idx).unwrap() as u8)
+            idx += 1
+        }
+        return bytes
+    }
 }
 
 pub shape HttpResponse (
@@ -275,11 +345,11 @@ impl HttpResponse@encap {
     pub body
     fn drop(self#) {}
 
-    pub fn clone(self) -> HttpResponse {
+    pub fn clone(self#) -> HttpResponse {
         return HttpResponse(
             status_code = self.status_code,
             content_type = self.content_type.clone(),
-            headers = self.headers.clone(),
+            headers = self.headers#.clone(),
             body = self.body.clone()
         )
     }
@@ -333,17 +403,17 @@ impl HttpResponse {
 
         auto idx# = 0:usize
         loop idx < self.headers.entries.len() {
-            auto *entry_ptr = self.headers.entries.get_ref(idx)
-            if entry_ptr.key.eq(string::from("connection")) {
+            auto entry = self.headers.entries#.get(idx).clone()
+            if entry.key.as_str().eq_ignore_ascii_case("connection") {
                 has_connection = true
             }
-            if entry_ptr.key.eq(string::from("content-length")) {
+            if entry.key.as_str().eq_ignore_ascii_case("content-length") {
                 idx = idx + 1
                 continue
             }
-            res#.push_str(entry_ptr.key.as_str())
+            res#.push_str(entry.key.as_str())
             res#.push_str(": ")
-            res#.push_str(entry_ptr.value.as_str())
+            res#.push_str(entry.value.as_str())
             res#.push_str("\r\n")
             idx = idx + 1
         }
@@ -395,6 +465,44 @@ pub fn find_header_boundary(req_str: str) -> HeaderBoundary {
     return HeaderBoundary(index = -1, delim_len = 0:usize)
 }
 
+pub fn find_header_boundary_vec(buf#: Vec<u8>) -> HeaderBoundary {
+    auto len = buf.len()
+    if len < 2 { return HeaderBoundary(index = -1, delim_len = 0:usize) }
+    auto idx#: usize = 0
+    loop idx + 1 < len {
+        auto b0 = buf#.get(idx) as i32
+        auto b1 = buf#.get(idx + 1) as i32
+        if b0 == 13 {
+            if idx + 3 < len {
+                auto b2 = buf#.get(idx + 2) as i32
+                auto b3 = buf#.get(idx + 3) as i32
+                if b0 == 13 && b1 == 10 && b2 == 13 && b3 == 10 {
+                    return HeaderBoundary(index = idx as i32, delim_len = 4:usize)
+                }
+            }
+        }
+        if b0 == 10 && b1 == 10 {
+            return HeaderBoundary(index = idx as i32, delim_len = 2:usize)
+        }
+        idx += 1
+    }
+    return HeaderBoundary(index = -1, delim_len = 0:usize)
+}
+
+pub fn string_slice(s: string, start: usize, len: usize) -> string {
+    auto end# = start + len
+    if end > s.len() { end = s.len() }
+    auto res# = string::from("")
+    auto i#: usize = start
+    auto bytes = s.as_str().as_bytes()
+    loop i < end {
+        res#.push_byte_raw(bytes.at(i).unwrap() as u8)
+        i += 1
+    }
+    return res
+}
+
+
 pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) -> Result<HttpRequest, string> {
     auto boundary = find_header_boundary(req_str.as_str())
     if boundary.index < 0 {
@@ -406,7 +514,7 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
         return Result<HttpRequest, string>::Err(string::from("Header size limit exceeded"))
     }
 
-    auto header_str = string::from_with_len(req_str.c_str(), h_len)
+    auto header_str = string_slice(req_str, 0, h_len)
     auto body_start = h_len + boundary.delim_len
     auto req_len = req_str.len()
     auto body_str# = string::from("")
@@ -432,7 +540,6 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
         auto target_cl = cl_res.unwrap()
 
         if body_start < req_len {
-            auto *body_ptr = (req_str.c_str() as usize + body_start) as *char
             auto actual_body_len = req_len - body_start
 
             if target_cl > actual_body_len {
@@ -441,7 +548,7 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
             if target_cl < actual_body_len {
                 return Result<HttpRequest, string>::Err(string::from("Trailing bytes after Content-Length payload unsupported in Phase 1"))
             }
-            body_str = string::from_with_len(*body_ptr, target_cl)
+            body_str = string_slice(req_str, body_start, target_cl)
         } else {
             if target_cl > 0:usize {
                 return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
@@ -472,7 +579,7 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
 
     auto first_line# = iter#.next()
     if first_line.ends_with("\r") {
-        first_line = string::from_with_len(first_line.c_str(), first_line.len() - 1:usize)
+        first_line = string_slice(first_line, 0, first_line.len() - 1:usize)
     }
 
     // Verify request line contains exactly 2 space delimiters (3 tokens)
@@ -537,8 +644,8 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
         }
 
         // Do NOT trim key! RFC 7230 forbids OWs before colon or in field-name.
-        auto key = string::from_with_len(line.c_str(), colon_idx as usize)
-        auto val_raw = string::from_with_len((line.c_str() as usize + colon_idx as usize + 1) as *char, (line.len() - colon_idx as usize - 1) as usize)
+        auto key = string_slice(line, 0, colon_idx as usize)
+        auto val_raw = string_slice(line, colon_idx as usize + 1:usize, line.len() - colon_idx as usize - 1:usize)
         auto val = val_raw.trim()
 
         if key.to_ascii_lowercase().eq(string::from("content-length")) {
@@ -669,7 +776,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
         return Result<HttpResponse, string>::Err(string::from("Response header size limit exceeded"))
     }
 
-    auto header_str = string::from_with_len(resp_str.c_str(), h_len)
+    auto header_str = string_slice(resp_str, 0, h_len)
     auto body_start = h_len + boundary.delim_len
     auto resp_len = resp_str.len()
 
@@ -696,7 +803,6 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
 
     auto code_res = parse_content_length(code_str.trim().as_str())
     if code_res.is_err() {
-        println("Debug code_str: '{}'", code_str.as_str())
         return Result<HttpResponse, string>::Err(string::from("Invalid HTTP status code"))
     }
     auto status_code = code_res.unwrap() as i32
@@ -711,8 +817,8 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
             return Result<HttpResponse, string>::Err(string::from("Malformed response header line"))
         }
 
-        auto key = string::from(line.substr(0, colon_idx as usize))
-        auto val = string::from(line.substr(colon_idx as usize + 1:usize, line.len() - colon_idx as usize - 1:usize).trim())
+        auto key = string_slice(line, 0, colon_idx as usize)
+        auto val = string_slice(line, colon_idx as usize + 1:usize, line.len() - colon_idx as usize - 1:usize).trim()
 
         auto _ins = headers#.insert(key, val)
     }
@@ -720,7 +826,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
     auto body_str# = string::from("")
     auto raw_body_str# = string::from("")
     if body_start < resp_len {
-        raw_body_str = string::from_with_len((resp_str.c_str() as usize + body_start) as *char, resp_len - body_start)
+        raw_body_str = string_slice(resp_str, body_start, resp_len - body_start)
     }
 
     if headers#.contains_key("transfer-encoding") {
@@ -771,6 +877,472 @@ pub fn parse_http_response(resp_str: string) -> Result<HttpResponse, string> {
     return parse_http_response_with_limit(resp_str, 65536)
 }
 
+pub shape HttpResponseStream (
+    status_code: i32,
+    raw_header_buf#: Vec<u8>,
+    headers: Vec<HttpHeaderView>,
+    stream#: AsyncStream,
+    content_length_remaining#: i64,
+    chunk_remaining#: usize,
+    is_chunked: bool,
+    chunk_state#: i32,
+    surplus_buf#: Vec<u8>,
+    bytes_read_total#: usize,
+    max_body_limit: usize,
+    err_message#: string
+)
+
+impl HttpResponseStream@encap {
+    pub status_code, headers, is_chunked
+    fn drop(self#) {}
+    pub fn clone(self) -> HttpResponseStream {
+        return HttpResponseStream(
+            status_code = self.status_code,
+            raw_header_buf = self.raw_header_buf.clone(),
+            headers = self.headers.clone(),
+            stream = AsyncStream::from_tcp(TcpStream(fd=-1, closed=true)),
+            content_length_remaining = self.content_length_remaining,
+            chunk_remaining = self.chunk_remaining,
+            is_chunked = self.is_chunked,
+            chunk_state = self.chunk_state,
+            surplus_buf = self.surplus_buf.clone(),
+            bytes_read_total = self.bytes_read_total,
+            max_body_limit = self.max_body_limit,
+            err_message = self.err_message.clone()
+        )
+    }
+}
+
+impl HttpResponseStream {
+    pub fn get_header_count(self) -> usize {
+        return self.headers.len()
+    }
+
+    pub fn get_header_view(self, idx: usize) -> Option<HttpHeaderView> {
+        if idx < self.headers.len() {
+            return Option<HttpHeaderView>::Some(self.headers.get(idx).clone())
+        }
+        return Option<HttpHeaderView>::None
+    }
+
+    pub fn header_name(self#, idx: usize) -> Option<string> {
+        if idx < self.headers.len() {
+            auto view = self.headers#.get(idx).clone()
+            return Option<string>::Some(view.name(self.raw_header_buf))
+        }
+        return Option<string>::None
+    }
+
+    pub fn header_value(self#, idx: usize) -> Option<string> {
+        if idx < self.headers.len() {
+            auto view = self.headers#.get(idx).clone()
+            return Option<string>::Some(view.value(self.raw_header_buf))
+        }
+        return Option<string>::None
+    }
+
+    pub fn read_non_chunked_into_async(self#, cede owner#: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto owned# = cede owner
+        if self.content_length_remaining == 0:i64 {
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = 0:usize,
+                eof = true
+            ))
+        }
+
+        if self.bytes_read_total >= self.max_body_limit {
+            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = string::from("HTTP body limit exceeded")
+            ))
+        }
+
+        if self.surplus_buf.len() > 0 {
+            auto avail = self.surplus_buf.len()
+            auto to_copy# = max_len
+            if to_copy > avail { to_copy = avail }
+            if self.content_length_remaining > 0:i64 {
+                auto cl_usize = self.content_length_remaining as usize
+                if to_copy > cl_usize { to_copy = cl_usize }
+            }
+            if self.bytes_read_total + to_copy > self.max_body_limit {
+                to_copy = self.max_body_limit - self.bytes_read_total
+            }
+
+            owned#.clear()
+            auto i# = 0:usize
+            loop i < to_copy {
+                owned#.push(self.surplus_buf#.get(i))
+                i += 1
+            }
+
+            auto new_surplus# = Vec<u8>::with_capacity(avail - to_copy)
+            auto j# = to_copy
+            loop j < avail {
+                new_surplus#.push(self.surplus_buf#.get(j))
+                j += 1
+            }
+            self.surplus_buf = cede new_surplus
+            self.bytes_read_total = self.bytes_read_total + to_copy
+
+            if self.content_length_remaining > 0:i64 {
+                self.content_length_remaining = self.content_length_remaining - (to_copy as i64)
+            }
+
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = to_copy,
+                eof = false
+            ))
+        }
+
+        auto read_limit# = max_len
+        if self.content_length_remaining > 0:i64 {
+            auto cl_usize = self.content_length_remaining as usize
+            if read_limit > cl_usize { read_limit = cl_usize }
+        }
+        if self.bytes_read_total + read_limit > self.max_body_limit {
+            read_limit = self.max_body_limit - self.bytes_read_total
+        }
+
+        auto read_res = self.stream#.read_into_async(cede owned, read_limit, timeout_ms).await
+        if read_res.is_ok() {
+            auto res# = read_res.unwrap()
+            if res.bytes_read > 0 {
+                if self.content_length_remaining > 0:i64 {
+                    self.content_length_remaining = self.content_length_remaining - (res.bytes_read as i64)
+                }
+                self.bytes_read_total = self.bytes_read_total + res.bytes_read
+                return Result<AsyncReadResult, AsyncIoError>::Ok(res)
+            }
+            if self.content_length_remaining > 0:i64 {
+                return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                    buffer = cede res#.take_buffer(),
+                    message = string::from("Unexpected EOF before Content-Length satisfied")
+                ))
+            }
+            return Result<AsyncReadResult, AsyncIoError>::Ok(res)
+        } else {
+            return Result<AsyncReadResult, AsyncIoError>::Err(read_res.unwrap_err())
+        }
+    }
+
+    pub fn read_chunk_into_async(self#, cede owner#: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto owned# = cede owner
+        if max_len == 0 {
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = 0:usize,
+                eof = true
+            ))
+        }
+
+        if !self.is_chunked {
+            return self#.read_non_chunked_into_async(cede owned, max_len, timeout_ms).await
+        }
+
+        auto copied_bytes#: usize = 0
+        auto is_done# = false
+
+        loop !is_done {
+            if self.chunk_state == 5 {
+                is_done = true
+                break
+            }
+            if self.chunk_state == 4 {
+                is_done = true
+                break
+            }
+            if self.chunk_state == 0 {
+                auto crlf_pos#: i32 = -1
+                auto idx#: usize = 0
+                loop idx + 1 < self.surplus_buf.len() {
+                    if self.surplus_buf#.get(idx) == 13:u8 && self.surplus_buf#.get(idx + 1) == 10:u8 {
+                        crlf_pos = idx as i32
+                        break
+                    }
+                    idx += 1
+                }
+
+                if crlf_pos < 0 {
+                    if self.surplus_buf.len() > 1024:usize {
+                        self.err_message = string::from("Chunk header line exceeds 1024 bytes limit")
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto chunk_in# = Vec<u8>::with_capacity(512)
+                    auto net_r = self.stream#.read_into_async(cede chunk_in, 512:usize, timeout_ms).await
+                    if net_r.is_err() {
+                        self.err_message = net_r.unwrap_err().message.clone()
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto nr# = net_r.unwrap()
+                    if nr.bytes_read == 0 {
+                        self.err_message = string::from("Unexpected EOF during chunk header read")
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto k#: usize = 0
+                    loop k < nr.bytes_read {
+                        self.surplus_buf#.push(nr.buffer#.get(k))
+                        k += 1
+                    }
+                    continue
+                }
+
+                auto line_len = crlf_pos as usize
+                if line_len == 0 {
+                    self.err_message = string::from("Empty chunk header size")
+                    self.chunk_state = 5
+                    is_done = true
+                    break
+                }
+
+                auto hex_val#: usize = 0
+                auto valid_hex# = false
+                auto parse_err# = false
+                auto h_i#: usize = 0
+                loop h_i < line_len {
+                    auto b = self.surplus_buf#.get(h_i)
+                    if b == 59:u8 { break }
+                    if b == 32:u8 || b == 9:u8 {
+                        h_i += 1
+                        continue
+                    }
+                    auto digit#: usize = 0
+                    if b >= 48:u8 && b <= 57:u8 {
+                        digit = (b as usize) - 48:usize
+                        valid_hex = true
+                    } else if b >= 65:u8 && b <= 70:u8 {
+                        digit = (b as usize) - 55:usize
+                        valid_hex = true
+                    } else if b >= 97:u8 && b <= 102:u8 {
+                        digit = (b as usize) - 87:usize
+                        valid_hex = true
+                    } else {
+                        parse_err = true
+                        break
+                    }
+                    hex_val = hex_val * 16:usize + digit
+                    h_i += 1
+                }
+
+                if parse_err || !valid_hex {
+                    self.err_message = string::from("Invalid hex digit in chunk size")
+                    self.chunk_state = 5
+                    is_done = true
+                    break
+                }
+
+                auto drain_len = (crlf_pos as usize) + 2:usize
+                auto rem_surplus# = Vec<u8>::with_capacity(self.surplus_buf.len() - drain_len)
+                auto d_i# = drain_len
+                loop d_i < self.surplus_buf.len() {
+                    rem_surplus#.push(self.surplus_buf#.get(d_i))
+                    d_i += 1
+                }
+                self.surplus_buf = cede rem_surplus
+
+                if hex_val == 0:usize {
+                    self.chunk_state = 3
+                } else {
+                    self.chunk_remaining = hex_val
+                    self.chunk_state = 1
+                }
+                continue
+            }
+
+            if self.chunk_state == 1 {
+                if self.surplus_buf.len() == 0 {
+                    auto read_size# = 4096:usize
+                    if read_size > self.chunk_remaining { read_size = self.chunk_remaining }
+                    auto in_buf# = Vec<u8>::with_capacity(read_size)
+                    auto net_r = self.stream#.read_into_async(cede in_buf, read_size, timeout_ms).await
+                    if net_r.is_err() {
+                        self.err_message = net_r.unwrap_err().message.clone()
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto nr# = net_r.unwrap()
+                    if nr.bytes_read == 0 {
+                        self.err_message = string::from("Unexpected EOF during chunk payload read")
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto k#: usize = 0
+                    loop k < nr.bytes_read {
+                        self.surplus_buf#.push(nr.buffer#.get(k))
+                        k += 1
+                    }
+                }
+
+                auto avail = self.surplus_buf.len()
+                auto to_copy# = max_len
+                if to_copy > avail { to_copy = avail }
+                if to_copy > self.chunk_remaining { to_copy = self.chunk_remaining }
+
+                if self.bytes_read_total + to_copy > self.max_body_limit {
+                    self.err_message = string::from("HTTP body limit exceeded")
+                    self.chunk_state = 5
+                    is_done = true
+                    break
+                } else {
+                    owned#.clear()
+                    auto c_i# = 0:usize
+                    loop c_i < to_copy {
+                        owned#.push(self.surplus_buf#.get(c_i))
+                        c_i += 1
+                    }
+
+                    auto next_surplus# = Vec<u8>::with_capacity(avail - to_copy)
+                    auto s_i# = to_copy
+                    loop s_i < avail {
+                        next_surplus#.push(self.surplus_buf#.get(s_i))
+                        s_i += 1
+                    }
+                    self.surplus_buf = cede next_surplus
+
+                    self.chunk_remaining = self.chunk_remaining - to_copy
+                    self.bytes_read_total = self.bytes_read_total + to_copy
+
+                    if self.chunk_remaining == 0 {
+                        self.chunk_state = 2
+                    }
+                    copied_bytes = to_copy
+                    is_done = true
+                    break
+                }
+            }
+
+            if self.chunk_state == 2 {
+                if self.surplus_buf.len() < 2:usize {
+                    auto crlf_in# = Vec<u8>::with_capacity(128)
+                    auto net_r = self.stream#.read_into_async(cede crlf_in, 128:usize, timeout_ms).await
+                    if net_r.is_err() {
+                        self.err_message = net_r.unwrap_err().message.clone()
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto nr# = net_r.unwrap()
+                    if nr.bytes_read == 0 {
+                        self.err_message = string::from("Unexpected EOF waiting for chunk CRLF")
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto k#: usize = 0
+                    loop k < nr.bytes_read {
+                        self.surplus_buf#.push(nr.buffer#.get(k))
+                        k += 1
+                    }
+                    continue
+                }
+
+                if self.surplus_buf#.get(0) != 13:u8 || self.surplus_buf#.get(1) != 10:u8 {
+                    self.err_message = string::from("Invalid chunk CRLF delimiter")
+                    self.chunk_state = 5
+                    is_done = true
+                    break
+                }
+
+                auto c_surplus# = Vec<u8>::with_capacity(self.surplus_buf.len() - 2:usize)
+                auto c_i# = 2:usize
+                loop c_i < self.surplus_buf.len() {
+                    c_surplus#.push(self.surplus_buf#.get(c_i))
+                    c_i += 1
+                }
+                self.surplus_buf = cede c_surplus
+                self.chunk_state = 0
+                continue
+            }
+
+            if self.chunk_state == 3 {
+                auto crlf_pos#: i32 = -1
+                auto idx#: usize = 0
+                loop idx + 1 < self.surplus_buf.len() {
+                    if self.surplus_buf#.get(idx) == 13:u8 && self.surplus_buf#.get(idx + 1) == 10:u8 {
+                        crlf_pos = idx as i32
+                        break
+                    }
+                    idx += 1
+                }
+
+                if crlf_pos < 0 {
+                    auto tr_in# = Vec<u8>::with_capacity(512)
+                    auto net_r = self.stream#.read_into_async(cede tr_in, 512:usize, timeout_ms).await
+                    if net_r.is_err() {
+                        self.err_message = net_r.unwrap_err().message.clone()
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto nr# = net_r.unwrap()
+                    if nr.bytes_read == 0 {
+                        self.err_message = string::from("Unexpected EOF during chunk trailer read")
+                        self.chunk_state = 5
+                        is_done = true
+                        break
+                    }
+                    auto k#: usize = 0
+                    loop k < nr.bytes_read {
+                        self.surplus_buf#.push(nr.buffer#.get(k))
+                        k += 1
+                    }
+                    continue
+                }
+
+                auto line_len = crlf_pos as usize
+                auto drain_len = line_len + 2:usize
+                auto next_surplus# = Vec<u8>::with_capacity(self.surplus_buf.len() - drain_len)
+                auto d_i# = drain_len
+                loop d_i < self.surplus_buf.len() {
+                    next_surplus#.push(self.surplus_buf#.get(d_i))
+                    d_i += 1
+                }
+                self.surplus_buf = cede next_surplus
+
+                if line_len == 0 {
+                    self.chunk_state = 4
+                    is_done = true
+                    break
+                }
+                continue
+            }
+        }
+
+        if self.chunk_state == 5 {
+            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = self.err_message.clone()
+            ))
+        } else if self.chunk_state == 4 {
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = 0:usize,
+                eof = true
+            ))
+        } else {
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = copied_bytes,
+                eof = false
+            ))
+        }
+    }
+
+    pub fn close(self#) {
+        self.stream#.close()
+    }
+}
+
 pub shape HttpClient (
     timeout_ms: i32
 )
@@ -780,17 +1352,17 @@ impl HttpClient {
         return HttpClient(timeout_ms = timeout_ms)
     }
 
-    pub fn execute_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponse, string> {
+    pub fn execute_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
         auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
         if conn_res.is_err() {
-            return Result<HttpResponse, string>::Err(conn_res.unwrap_err())
+            return Result<HttpResponseStream, string>::Err(conn_res.unwrap_err())
         }
 
         auto tcp_stream# = (cede conn_res).unwrap()
         if is_tls {
             auto tls_res# = TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, true, self.timeout_ms).await
             if tls_res.is_err() {
-                return Result<HttpResponse, string>::Err(tls_res.unwrap_err())
+                return Result<HttpResponseStream, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
             return self.execute_on_stream_async(req, stream).await
@@ -799,17 +1371,17 @@ impl HttpClient {
         return self.execute_on_stream_async(req, stream).await
     }
 
-    pub fn execute_insecure_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponse, string> {
+    pub fn execute_insecure_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
         auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
         if conn_res.is_err() {
-            return Result<HttpResponse, string>::Err(conn_res.unwrap_err())
+            return Result<HttpResponseStream, string>::Err(conn_res.unwrap_err())
         }
 
         auto tcp_stream# = (cede conn_res).unwrap()
         if is_tls {
             auto tls_res# = TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, false, self.timeout_ms).await
             if tls_res.is_err() {
-                return Result<HttpResponse, string>::Err(tls_res.unwrap_err())
+                return Result<HttpResponseStream, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
             return self.execute_on_stream_async(req, stream).await
@@ -818,62 +1390,228 @@ impl HttpClient {
         return self.execute_on_stream_async(req, stream).await
     }
 
-    pub fn execute_on_stream_async(self, req: HttpRequest, stream#: AsyncStream) -> async Result<HttpResponse, string> {
-        auto req_wire = req.to_wire_string()
-        auto *req_ptr# = req_wire.raw_ptr() as *[u8]
-        auto *u8_req# = to_u8_ptr(*req_ptr)
-        auto write_res = stream#.write_all_async_timeout(*u8_req, req_wire.len(), self.timeout_ms).await
+    pub fn execute_on_stream_async(self, req: HttpRequest, cede stream#: AsyncStream) -> async Result<HttpResponseStream, string> {
+        auto req_bytes = req.to_wire_bytes()
+        auto write_res = stream#.write_from_async(cede req_bytes, self.timeout_ms).await
         if write_res.is_err() {
             stream#.close()
-            return Result<HttpResponse, string>::Err(string::from("Failed to send HTTP request"))
+            return Result<HttpResponseStream, string>::Err(string::from("Failed to send HTTP request"))
         }
 
-        auto buf_vec# = Vec<u8>::with_capacity(4096)
-        auto i_init#: usize = 0
-        loop i_init < 4096 { buf_vec#.push(0:u8); i_init += 1 }
-        auto *buf_raw# = buf_vec.unsafe_as_raw()
-        auto *u8_buf# = to_u8_ptr(*buf_raw)
+        auto raw_header_buf# = Vec<u8>::with_capacity(4096)
+        auto read_chunk# = Vec<u8>::with_capacity(4096)
 
-        auto raw_resp# = string::from("")
+        auto boundary_idx#: i32 = -1
+        auto delim_len#: usize = 0
+
         loop {
-            auto read_res = stream#.read_async_timeout(*u8_buf, 4096:usize, self.timeout_ms).await
-            auto bytes_read# = 0:usize
-            auto read_ok# = false
-            match read_res {
-                auto Result<usize, string>::Ok(n) => {
-                    bytes_read = n
-                    read_ok = true
-                }
-                _ => {}
-            }
-            if !read_ok || bytes_read == 0:usize {
+            auto read_res = stream#.read_into_async(cede read_chunk, 4096:usize, self.timeout_ms).await
+            if read_res.is_err() {
+                auto err# = read_res.unwrap_err()
+                read_chunk = err#.take_buffer()
                 break
             }
-            auto chunk_str = string::from_raw(*u8_buf, bytes_read)
-            raw_resp#.push_str(chunk_str.as_str())
+            auto res# = read_res.unwrap()
+            auto n_read = res.bytes_read
+            if n_read == 0 {
+                read_chunk = res#.take_buffer()
+                break
+            }
 
-            if find_header_boundary(raw_resp.as_str()).index >= 0 {
-                auto temp_parse = parse_http_response(raw_resp.clone())
-                match temp_parse {
-                    auto Result<HttpResponse, string>::Ok(_) => {
-                        stream#.close()
-                        return temp_parse
-                    }
-                    _ => {}
-                }
+            auto read_chunk# = res#.take_buffer()
+            auto k#: usize = 0
+            loop k < n_read {
+                raw_header_buf#.push(read_chunk#.get(k))
+                k += 1
+            }
+
+            auto b = find_header_boundary_vec(raw_header_buf)
+            if b.index >= 0 {
+                boundary_idx = b.index
+                delim_len = b.delim_len
+                break
             }
         }
 
-        stream#.close()
-        if raw_resp.len() == 0 {
-            return Result<HttpResponse, string>::Err(string::from("Empty HTTP response received"))
+        if boundary_idx < 0 {
+            stream#.close()
+            return Result<HttpResponseStream, string>::Err(string::from("Malformed HTTP response: missing header boundary"))
         }
 
-        return parse_http_response(raw_resp)
+        auto h_len = boundary_idx as usize
+        auto header_str# = string::from("")
+        auto h_i#: usize = 0
+        loop h_i < h_len {
+            header_str#.push_char(raw_header_buf#.get(h_i) as char)
+            h_i += 1
+        }
+
+        auto resp_headers# = HeaderMap::new()
+        auto iter# = header_str.split(10)
+        if iter#.is_done() {
+            stream#.close()
+            return Result<HttpResponseStream, string>::Err(string::from("Empty response headers"))
+        }
+
+        auto status_line_str = iter#.next().trim_end()
+        auto status_parts# = status_line_str.split(32)
+        if status_parts#.is_done() {
+            stream#.close()
+            return Result<HttpResponseStream, string>::Err(string::from("Empty HTTP status line"))
+        }
+        auto ver_str = status_parts#.next()
+        if status_parts#.is_done() {
+            stream#.close()
+            return Result<HttpResponseStream, string>::Err(string::from("Missing HTTP status code"))
+        }
+        auto code_str = status_parts#.next()
+
+        if !ver_str.as_str().equals("HTTP/1.1") && !ver_str.as_str().equals("HTTP/1.0") {
+            stream#.close()
+            return Result<HttpResponseStream, string>::Err(string::from("Invalid or missing HTTP version in status line"))
+        }
+
+        auto code_res = parse_content_length(code_str.trim().as_str())
+        if code_res.is_err() {
+            stream#.close()
+            return Result<HttpResponseStream, string>::Err(string::from("Invalid HTTP status code"))
+        }
+        auto status_code = code_res.unwrap() as i32
+
+        auto headers_view# = Vec<HttpHeaderView>::new()
+        auto line_offset#: usize = status_line_str.len() + 2:usize
+
+        loop !iter#.is_done() {
+            auto line# = iter#.next()
+            auto orig_l = line.len()
+            line = line.trim_end()
+            auto cur_len = line.len()
+            if cur_len == 0 {
+                line_offset += orig_l + 1:usize
+                continue
+            }
+
+            auto colon_idx = line.find_char(58:char)
+            if colon_idx <= 0 {
+                stream#.close()
+                return Result<HttpResponseStream, string>::Err(string::from("Malformed response header line"))
+            }
+
+            auto key = string::from(line.substr(0, colon_idx as usize))
+            auto val = string::from(line.substr(colon_idx as usize + 1:usize, cur_len - colon_idx as usize - 1:usize).trim())
+
+            auto name_off = line_offset
+            auto name_l = colon_idx as usize
+            auto val_off# = line_offset + colon_idx as usize + 1:usize
+            loop val_off < line_offset + cur_len {
+                auto b = raw_header_buf#.get(val_off)
+                if b != 32:u8 && b != 9:u8 { break }
+                val_off += 1
+            }
+            auto val_l = (line_offset + cur_len) - val_off
+
+            headers_view#.push(cede HttpHeaderView(
+                name_offset = name_off,
+                name_len = name_l,
+                value_offset = val_off,
+                value_len = val_l
+            ))
+
+            auto _ins = resp_headers#.insert(key, val)
+            line_offset += orig_l + 1:usize
+        }
+
+        auto total_buf_len = raw_header_buf.len()
+        auto body_start = h_len + delim_len
+        auto surplus_buf# = Vec<u8>::new()
+        if total_buf_len > body_start {
+            auto s_idx#: usize = body_start
+            loop s_idx < total_buf_len {
+                auto sb = raw_header_buf#.get(s_idx)
+                surplus_buf#.push(sb)
+                s_idx += 1
+            }
+        }
+
+        auto cl_rem#: i64 = -1:i64
+        auto cl_opt = resp_headers#.get("content-length")
+        if cl_opt.is_some() {
+            auto cl_res = parse_content_length(cl_opt.unwrap().as_str())
+            if cl_res.is_err() {
+                stream#.close()
+                return Result<HttpResponseStream, string>::Err(string::from("Invalid Content-Length header value"))
+            }
+            cl_rem = cl_res.unwrap() as i64
+        }
+
+        auto is_chunked# = false
+        auto te_opt = resp_headers#.get("transfer-encoding")
+        if te_opt.is_some() {
+            if te_opt.unwrap().clone().to_ascii_lowercase().eq(string::from("chunked")) {
+                is_chunked = true
+            }
+        }
+
+        return Result<HttpResponseStream, string>::Ok(HttpResponseStream(
+            status_code = status_code,
+            raw_header_buf = cede raw_header_buf,
+            headers = cede headers_view,
+            stream = cede stream,
+            content_length_remaining = cl_rem,
+            chunk_remaining = 0:usize,
+            is_chunked = is_chunked,
+            chunk_state = 0,
+            surplus_buf = cede surplus_buf,
+            bytes_read_total = 0:usize,
+            max_body_limit = 10485760:usize,
+            err_message = string::from("")
+        ))
     }
 
     pub fn execute_async(self, req: HttpRequest, addr: SocketAddrV4) -> async Result<HttpResponse, string> {
-        return self.execute_stream_async(req, addr, false, string::from("")).await
+        auto s_res# = self.execute_stream_async(req, addr, false, string::from("")).await
+        if s_res.is_err() {
+            return Result<HttpResponse, string>::Err(s_res.unwrap_err())
+        }
+        auto stream_obj# = s_res.unwrap()
+        auto body_vec# = Vec<u8>::with_capacity(4096)
+        auto chunk_buf# = Vec<u8>::with_capacity(4096)
+
+        loop {
+            auto read_res = stream_obj#.read_chunk_into_async(cede chunk_buf, 4096:usize, self.timeout_ms).await
+            if read_res.is_err() {
+                auto err# = read_res.unwrap_err()
+                stream_obj#.close()
+                return Result<HttpResponse, string>::Err(err.message.clone())
+            }
+            auto res# = read_res.unwrap()
+            auto n_read = res.bytes_read
+            chunk_buf = res#.take_buffer()
+            if n_read == 0 {
+                break
+            }
+            auto k#: usize = 0
+            loop k < n_read {
+                body_vec#.push(chunk_buf#.get(k))
+                k += 1
+            }
+        }
+        auto status_code = stream_obj.status_code
+        stream_obj#.close()
+
+        auto body_str# = string::from("")
+        auto b_idx#: usize = 0
+        loop b_idx < body_vec.len() {
+            auto b_val = body_vec#.get(b_idx)
+            body_str#.push_byte_raw(b_val)
+            b_idx += 1
+        }
+        return Result<HttpResponse, string>::Ok(HttpResponse(
+            status_code = status_code,
+            content_type = string::from("text/plain"),
+            headers = HeaderMap::new(),
+            body = body_str
+        ))
     }
 
     pub fn execute_url_async(self, req: HttpRequest, url_str: string, default_addr: SocketAddrV4) -> async Result<HttpResponse, string> {
@@ -886,7 +1624,49 @@ impl HttpClient {
         if u.port > 0:u16 {
             conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
         }
-        return self.execute_stream_async(req, conn_addr, u.is_tls(), u.host).await
+        auto s_res# = self.execute_stream_async(req, conn_addr, u.is_tls(), u.host).await
+        if s_res.is_err() {
+            return Result<HttpResponse, string>::Err(s_res.unwrap_err())
+        }
+        auto stream_obj# = s_res.unwrap()
+        auto body_vec# = Vec<u8>::with_capacity(4096)
+        auto chunk_buf# = Vec<u8>::with_capacity(4096)
+
+        loop {
+            auto read_res = stream_obj#.read_chunk_into_async(cede chunk_buf, 4096:usize, self.timeout_ms).await
+            if read_res.is_err() {
+                auto err# = read_res.unwrap_err()
+                stream_obj#.close()
+                return Result<HttpResponse, string>::Err(err.message.clone())
+            }
+            auto res# = read_res.unwrap()
+            auto n_read = res.bytes_read
+            chunk_buf = res#.take_buffer()
+            if n_read == 0 {
+                break
+            }
+            auto k#: usize = 0
+            loop k < n_read {
+                body_vec#.push(chunk_buf#.get(k))
+                k += 1
+            }
+        }
+        auto status_code = stream_obj.status_code
+        stream_obj#.close()
+
+        auto body_str# = string::from("")
+        auto b_idx#: usize = 0
+        loop b_idx < body_vec.len() {
+            auto b_val = body_vec#.get(b_idx)
+            body_str#.push_byte_raw(b_val)
+            b_idx += 1
+        }
+        return Result<HttpResponse, string>::Ok(HttpResponse(
+            status_code = status_code,
+            content_type = string::from("text/plain"),
+            headers = HeaderMap::new(),
+            body = body_str
+        ))
     }
 
     pub fn execute_insecure_url_async(self, req: HttpRequest, url_str: string, default_addr: SocketAddrV4) -> async Result<HttpResponse, string> {
@@ -899,6 +1679,48 @@ impl HttpClient {
         if u.port > 0:u16 {
             conn_addr = SocketAddrV4::new(default_addr.ip, u.port)
         }
-        return self.execute_insecure_stream_async(req, conn_addr, u.is_tls(), u.host).await
+        auto s_res# = self.execute_insecure_stream_async(req, conn_addr, u.is_tls(), u.host).await
+        if s_res.is_err() {
+            return Result<HttpResponse, string>::Err(s_res.unwrap_err())
+        }
+        auto stream_obj# = s_res.unwrap()
+        auto body_vec# = Vec<u8>::with_capacity(4096)
+        auto chunk_buf# = Vec<u8>::with_capacity(4096)
+
+        loop {
+            auto read_res = stream_obj#.read_chunk_into_async(cede chunk_buf, 4096:usize, self.timeout_ms).await
+            if read_res.is_err() {
+                auto err# = read_res.unwrap_err()
+                stream_obj#.close()
+                return Result<HttpResponse, string>::Err(err.message.clone())
+            }
+            auto res# = read_res.unwrap()
+            auto n_read = res.bytes_read
+            chunk_buf = res#.take_buffer()
+            if n_read == 0 {
+                break
+            }
+            auto k#: usize = 0
+            loop k < n_read {
+                body_vec#.push(chunk_buf#.get(k))
+                k += 1
+            }
+        }
+        auto status_code = stream_obj.status_code
+        stream_obj#.close()
+
+        auto body_str# = string::from("")
+        auto b_idx#: usize = 0
+        loop b_idx < body_vec.len() {
+            auto b_val = body_vec#.get(b_idx)
+            body_str#.push_byte_raw(b_val)
+            b_idx += 1
+        }
+        return Result<HttpResponse, string>::Ok(HttpResponse(
+            status_code = status_code,
+            content_type = string::from("text/plain"),
+            headers = HeaderMap::new(),
+            body = body_str
+        ))
     }
 }

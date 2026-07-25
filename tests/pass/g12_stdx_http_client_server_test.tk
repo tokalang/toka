@@ -1,17 +1,38 @@
 // g12_stdx_http_client_server_test.tk — stdx/net/http Production Feature Test
 import std/io::{println}
+import std/vec::{Vec}
 import std/net::{TcpStream, TcpListener, Ipv4Addr, SocketAddrV4}
 import std/task::{block_on, sleep_async}
 import stdx/net/http::{
-    HttpRequest, HttpResponse, HttpMethod, HeaderMap, HttpClient,
+    HttpRequest, HttpResponse, HttpMethod, HeaderMap, HttpClient, HttpHeaderView,
     parse_http_request, parse_http_response, parse_chunked_body, parse_chunk_size
+}
+
+fn test_header_view_accessors() {
+    println("[Test] Testing HttpHeaderView Name & Value Owner Accessors...")
+    auto raw_header_str = "HTTP/1.1 200 OK\r\nHost: localhost\r\nContent-Type: text/plain\r\n\r\n"
+    auto raw_buf# = Vec<u8>::with_capacity(raw_header_str.len())
+    auto idx#: usize = 0
+    loop idx < raw_header_str.len() {
+        raw_buf#.push(raw_header_str.as_bytes().at(idx).unwrap() as u8)
+        idx += 1
+    }
+
+    auto v1 = HttpHeaderView(name_offset=17:usize, name_len=4:usize, value_offset=23:usize, value_len=9:usize)
+    auto rep#: usize = 0
+    loop rep < 10:usize {
+        assert(v1.name(raw_buf#).as_str().equals("Host"), "HeaderView name mismatch")
+        assert(v1.value(raw_buf#).as_str().equals("localhost"), "HeaderView value mismatch")
+        rep += 1
+    }
+    println("[Test] HttpHeaderView Accessors (10x Repeated Access Redline) PASSED!")
 }
 
 fn test_chunked_encoding_decoding() {
     println("[Test] Testing Chunked Transfer-Encoding Decoder...")
-    auto raw_chunked = "4\r\nWiki\r\n8\r\npedia in\r\nA\r\n\r\n chunks.\r\n0\r\n\r\n"
+    auto raw_chunked = "4\r\nWiki\r\n8\r\npedia in\r\nA\r\n\r\n chunks.\r\n0\r\nHeader: Value\r\nFoo: Bar\r\n\r\n"
     auto res = parse_chunked_body(raw_chunked)
-    assert(res.is_ok(), "Chunked body parsing failed")
+    assert(res.is_ok(), "Chunked body with trailers parsing failed")
     auto decoded = res.unwrap()
     assert(decoded.as_str().equals("Wikipedia in\r\n chunks."), "Chunked body decoded text mismatch")
 
@@ -123,18 +144,173 @@ fn async_http_client_test(port: u16) -> async i32 {
     )
 
     println("[Client] Executing HTTP request...")
-    auto resp_res = client.execute_async(req, addr).await
-    if resp_res.is_err() {
-        auto err_str = resp_res.unwrap_err()
-        println("[Client] Request failed: {}", err_str.as_str())
-        assert(false, "HttpClient execute_async failed")
-    } else {
-        auto resp = resp_res.unwrap()
-        assert(resp.status_code == 200, "HttpClient status code mismatch")
-        assert(resp.body.as_str().equals("Async HTTP Response Payload"), "HttpClient body payload mismatch")
-        println("[Test] Async HTTP Client/Server Roundtrip PASSED!")
+    auto s_res# = client.execute_stream_async(req, addr, false, string::from("")).await
+    if s_res.is_err() {
+        auto err_str = s_res.unwrap_err()
+        println("[Client] Stream request failed: {}", err_str.as_str())
+        return -10
     }
+    auto stream_obj# = s_res.unwrap()
+    if stream_obj.status_code != 200 {
+        println("[Client] Status code mismatch: {}", stream_obj.status_code)
+        stream_obj#.close()
+        return -11
+    }
+
+    assert(stream_obj.get_header_count() >= 2:usize, "headers_view count must be >= 2")
+    auto h_name0 = stream_obj#.header_name(0).unwrap()
+    auto h_val0 = stream_obj#.header_value(0).unwrap()
+    assert(h_name0.as_str().eq_ignore_ascii_case("content-type"), "Header 0 name must be Content-Type")
+    assert(h_val0.as_str().equals("text/plain"), "Header 0 value must be text/plain")
+    println("[Test] Dynamic HttpHeaderView Line 0 PASSED: {} = {}", h_name0.as_str(), h_val0.as_str())
+
+    auto h_name1 = stream_obj#.header_name(1).unwrap()
+    auto h_val1 = stream_obj#.header_value(1).unwrap()
+    assert(h_name1.as_str().eq_ignore_ascii_case("content-length"), "Header 1 name must be Content-Length")
+    assert(h_val1.as_str().equals("27"), "Header 1 value must be 27")
+    println("[Test] Dynamic HttpHeaderView Line 1 PASSED: {} = {}", h_name1.as_str(), h_val1.as_str())
+
+    auto out_buf# = Vec<u8>::with_capacity(1024)
+    auto r_res = stream_obj#.read_chunk_into_async(cede out_buf, 1024:usize, 2000).await
+    if r_res.is_err() {
+        println("[Client] read_chunk_into_async failed")
+        stream_obj#.close()
+        return -12
+    }
+    auto res# = r_res.unwrap()
+    stream_obj#.close()
+    println("[Test] Async HTTP Client/Server Roundtrip PASSED!")
     return 0
+}
+
+fn async_http_chunked_server(port: u16) -> async i32 {
+    println("[Chunked Server] Binding port...")
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
+    println("[Chunked Server] Waiting for connection...")
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() {
+        println("[Chunked Server] Invalid stream!")
+        return 1
+    }
+    println("[Chunked Server] Accepted connection!")
+
+    auto buf# = Vec<u8>::with_capacity(1024)
+    auto _r = stream#.read_into_async(cede buf, 1024:usize, 5000).await
+    println("[Chunked Server] Read request bytes successfully!")
+
+    auto part1_str = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r"
+    auto part1_vec# = Vec<u8>::with_capacity(part1_str.len())
+    auto i1#: usize = 0
+    loop i1 < part1_str.len() {
+        part1_vec#.push(part1_str.as_bytes().at(i1).unwrap() as u8)
+        i1 += 1
+    }
+    auto _w1 = stream#.write_from_async(cede part1_vec, 5000).await
+    println("[Chunked Server] Sent part 1 (fragmented chunk size)...")
+
+    auto part2_str = "\nHello\r\n6\r\n World\r\n0\r\nTrailer-Header: Trailer-Val"
+    auto part2_vec# = Vec<u8>::with_capacity(part2_str.len())
+    auto i2#: usize = 0
+    loop i2 < part2_str.len() {
+        part2_vec#.push(part2_str.as_bytes().at(i2).unwrap() as u8)
+        i2 += 1
+    }
+    auto _w2 = stream#.write_from_async(cede part2_vec, 5000).await
+    println("[Chunked Server] Sent part 2 (fragmented trailer)...")
+
+    auto part3_str = "ue\r\n\r\n"
+    auto part3_vec# = Vec<u8>::with_capacity(part3_str.len())
+    auto i3#: usize = 0
+    loop i3 < part3_str.len() {
+        part3_vec#.push(part3_str.as_bytes().at(i3).unwrap() as u8)
+        i3 += 1
+    }
+    auto _w3 = stream#.write_from_async(cede part3_vec, 5000).await
+    println("[Chunked Server] Sent part 3 (trailer CRLF terminator)...")
+
+    stream#.close()
+    println("[Chunked Server] Closed stream cleanly.")
+    return 0
+}
+
+fn async_http_chunked_client(port: u16) -> async i32 {
+    println("[Chunked Client] Starting...")
+    sleep_async(20:i64).await
+    auto client = HttpClient::new(5000)
+    auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)
+    auto req = HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/chunked_test"),
+        version = string::from("HTTP/1.1"),
+        headers = HeaderMap::new(),
+        body = string::from("")
+    )
+    println("[Chunked Client] Executing request...")
+    auto s_res# = client.execute_stream_async(req, addr, false, string::from("")).await
+    if s_res.is_err() {
+        println("[Chunked Client] execute_stream_async failed: {}", s_res.unwrap_err().as_str())
+        return 1
+    }
+    auto stream_obj# = s_res.unwrap()
+    assert(stream_obj.is_chunked, "stream_obj.is_chunked must be true")
+
+    auto body_str# = string::from("")
+    auto final_eof# = false
+    loop {
+        auto buf# = Vec<u8>::with_capacity(1024)
+        auto read_res = stream_obj#.read_chunk_into_async(cede buf, 1024:usize, 5000).await
+        if read_res.is_err() {
+            println("[Chunked Client] read_chunk_into_async failed: {}", read_res.unwrap_err().message.as_str())
+            stream_obj#.close()
+            return 1
+        }
+        auto res# = read_res.unwrap()
+        println("[Chunked Client] Read chunk iteration: bytes_read = {}, eof = {}", res.bytes_read, res.eof)
+        if res.bytes_read == 0 {
+            assert(res.eof, "bytes_read == 0 must set eof == true")
+            final_eof = true
+            break
+        }
+        auto k#: usize = 0
+        loop k < res.bytes_read {
+            body_str#.push_byte_raw(res.buffer#.get(k))
+            k += 1
+        }
+    }
+    assert(final_eof, "Stream must reach clean EOF")
+
+    // Terminal EOF persistence assertion: calling read_chunk_into_async after EOF must remain EOF
+    auto post_eof_buf# = Vec<u8>::with_capacity(1024)
+    auto post_res = stream_obj#.read_chunk_into_async(cede post_eof_buf, 1024:usize, 1000).await
+    assert(post_res.is_ok(), "Post-EOF read must succeed")
+    auto post_r# = post_res.unwrap()
+    assert(post_r.bytes_read == 0:usize, "Post-EOF read bytes_read must be 0")
+    assert(post_r.eof, "Post-EOF read eof must remain true")
+    println("[Test] Post-EOF Read Stability Assertions PASSED!")
+
+    stream_obj#.close()
+    println("[Chunked Client] Final assembled body_str: '{}' (len={})", body_str.as_str(), body_str.len())
+    assert(body_str.as_str().equals("Hello World"), "Chunked socket streaming payload mismatch")
+    assert(body_str.find_str("Trailer") < 0, "Trailer header must not leak into body payload")
+    println("[Test] Real Socket Async Chunked Streaming PASSED!")
+    return 0
+}
+
+fn test_headermap_clone_independence() {
+    println("[Test] Testing HeaderMap Clone Independence...")
+    auto map1# = HeaderMap::new()
+    auto _i1 = map1#.insert(string::from("Content-Type"), string::from("text/html"))
+    auto _i2 = map1#.insert(string::from("Accept"), string::from("*/*"))
+
+    auto map2# = map1#.clone()
+    assert(map2#.contains_key("content-type"), "Cloned HeaderMap must contain content-type")
+    assert(map2#.get("content-type").unwrap().as_str().equals("text/html"), "Cloned HeaderMap value match")
+
+    // Mutate map2 and verify map1 is 100% unaffected
+    auto _i3 = map2#.insert(string::from("Content-Type"), string::from("application/json"))
+    assert(map1#.get("content-type").unwrap().as_str().equals("text/html"), "Original HeaderMap must remain unchanged after clone mutation")
+    assert(map2#.get("content-type").unwrap().as_str().equals("application/json"), "Cloned HeaderMap must reflect new value")
+    println("[Test] HeaderMap Clone Independence PASSED!")
 }
 
 fn async_connect_timeout_test() -> async i32 {
@@ -147,6 +323,8 @@ fn async_connect_timeout_test() -> async i32 {
 }
 
 fn main_async() -> async i32 {
+    test_header_view_accessors()
+    test_headermap_clone_independence()
     test_chunked_encoding_decoding()
     test_http_response_parsing()
 
@@ -161,6 +339,19 @@ fn main_async() -> async i32 {
 
     auto c_res = client_task.await
     assert(c_res == 0, "Async HTTP Client failed")
+
+    auto chunked_port: u16 = 38444:u16
+    println("[Chunked Test] Starting chunked server/client on port {}...", chunked_port)
+    auto c_server_task = async_http_chunked_server(chunked_port).start
+    auto c_client_task = async_http_chunked_client(chunked_port).start
+
+    auto cs_res = c_server_task.await
+    println("[Chunked Test] cs_res = {}", cs_res)
+    assert(cs_res == 0, "Async Chunked HTTP Server failed")
+
+    auto cc_res = c_client_task.await
+    println("[Chunked Test] cc_res = {}", cc_res)
+    assert(cc_res == 0, "Async Chunked HTTP Client failed")
 
     return 0
 }

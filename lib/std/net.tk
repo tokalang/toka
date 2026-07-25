@@ -711,7 +711,7 @@ impl TcpStream {
                 }
             }
 
-            auto n = unsafe toka_tls_read(*handle, ((*buf as Addr)) as *void, len)
+            auto n = unsafe toka_tls_read(*handle, *buf, len)
             if n > 0 { return Result<usize, string>::Ok(n as usize) }
             if n == 0 { return Result<usize, string>::Ok(0:usize) }
 
@@ -765,6 +765,7 @@ impl TcpStream {
 
         loop total < len {
             auto cur_addr = (*buf as Addr) + (total as u64)
+            auto *cur_buf# = (cur_addr as *[0]u8) as *u8
             auto write_ok# = false
             loop !write_ok {
                 if timeout_ms > 0 {
@@ -776,7 +777,7 @@ impl TcpStream {
                     }
                 }
 
-                auto n = unsafe toka_tls_write(*handle, (cur_addr as *void), len - total)
+                auto n = unsafe toka_tls_write(*handle, *cur_buf, len - total)
                 if n > 0 {
                     total = total + (n as usize)
                     write_ok = true

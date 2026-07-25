@@ -1,5 +1,6 @@
 // tests/pass/g12_stdx_https_wss_test.tk — Real OpenSSL HTTPS, WSS & Security Boundary Test Suite
 import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
+import std/vec::{Vec}
 import stdx/net/url::{Url, parse_url}
 import stdx/net/http::{HttpClient, HttpRequest, HttpMethod, HeaderMap}
 import stdx/net/websocket::{ws_connect_url_async, ws_connect_insecure_url_async, ws_accept_stream_async, WsConnection}
@@ -66,12 +67,19 @@ fn async_https_server_task() -> async Result<(), string> {
     }
     auto async_s# = tls_res.unwrap()
 
-    auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\nHTTPS Client OK!")
-    auto *resp_ptr# = resp.raw_ptr() as *[u8]
-    auto *u8_resp# = to_u8_ptr(*resp_ptr)
-    auto w = async_s#.write_all_async(*u8_resp, resp.len()).await
+    auto req_buf# = Vec<u8>::with_capacity(512)
+    auto _r = async_s#.read_into_async(cede req_buf, 512:usize, 5000).await
+
+    auto resp_s = string::from("HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\nHTTPS Client OK!")
+    auto resp_bytes# = Vec<u8>::with_capacity(resp_s.len())
+    auto idx#: usize = 0
+    loop idx < resp_s.len() {
+        resp_bytes#.push(resp_s.as_bytes().at(idx).unwrap() as u8)
+        idx += 1
+    }
+    auto w = async_s#.write_from_async(cede resp_bytes, 5000).await
     if w.is_err() {
-        return Result<(), string>::Err(w.unwrap_err())
+        return Result<(), string>::Err(w.unwrap_err().message.clone())
     }
 
     sleep_async(50:u64).await
@@ -105,7 +113,7 @@ fn async_https_client_task() -> async Result<(), string> {
         return Result<(), string>::Err(string::from("HTTPS response code expected 200"))
     }
     if !resp.body.as_str().equals("HTTPS Client OK!") {
-        return Result<(), string>::Err(string::from("HTTPS response body mismatch"))
+        return Result<(), string>::Err(string::from("HTTPS body mismatch"))
     }
 
     println("[Test 2/8 PASSED] Real OpenSSL HTTPS Client/Server Roundtrip!")
@@ -424,6 +432,8 @@ fn main_async() -> async i32 {
     auto r_hc = https_c.await
 
     if r_hs.is_err() || r_hc.is_err() {
+        if r_hs.is_err() { println("[FAIL Server] {}", r_hs.unwrap_err().as_str()) }
+        if r_hc.is_err() { println("[FAIL Client] {}", r_hc.unwrap_err().as_str()) }
         println("[FAIL] HTTPS Test failed!")
         return 1
     }
