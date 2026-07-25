@@ -1,0 +1,48 @@
+import stdx/serde/json::{to_json, deserialize_shape, ToJson, serialize_shape}
+import std/io::{println}
+import core/string::{string}
+
+pub shape ServiceConfig (
+    service: string = string::from(""),
+    port: i32 = 0,
+    active: bool = false
+)
+
+impl ServiceConfig@ToJson {
+    pub fn write_json(self, buf#: string) -> string {
+        return serialize_shape(self, buf)
+    }
+}
+
+fn main() -> i32 {
+    println("--- Starting Micro-Slice 4: Real stdx/serde/json Serialization & Deserialization ---")
+
+    // 1. Structural Serialization
+    auto cfg1 = ServiceConfig(
+        service = string::from("Toka-REST-Service"),
+        port = 8080,
+        active = true
+    )
+    auto json_str = to_json(cfg1)
+    println("[JSON Slice 1/3] Serialized: {}", json_str.as_view())
+    assert(json_str.contains_char('{'), "JSON string must start with object brace")
+    assert(json_str.len() > 20:usize, "JSON string length validation")
+
+    // 2. Typed Deserialization
+    auto cfg2_res = deserialize_shape<ServiceConfig>(json_str.as_view())
+    assert(cfg2_res.is_ok(), "deserialize_shape must succeed on valid JSON")
+    auto cfg2 = cfg2_res.unwrap()
+    assert(cfg2.port == 8080, "Deserialized port mismatch")
+    assert(cfg2.active == true, "Deserialized active status mismatch")
+    assert(cfg2.service.eq(string::from("Toka-REST-Service")), "Deserialized service name mismatch")
+    println("[JSON Slice 2/3] Round-trip Typed Deserialization PASSED!")
+
+    // 3. Error Handling Test on Malformed JSON
+    auto bad_json = "{\"service\": \"broken\""
+    auto bad_res = deserialize_shape<ServiceConfig>(bad_json)
+    assert(bad_res.is_err(), "deserialize_shape must return Err on malformed JSON")
+    println("[JSON Slice 3/3] Malformed JSON Error Handling PASSED!")
+
+    println("Micro-Slice 4: Real stdx/serde/json Micro-Slice PASSED ALL SUITES Cleanly!")
+    return 0
+}

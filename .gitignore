@@ -17,6 +17,7 @@ Toka*.md
 .VSCodeCounter/
 !CMakeLists.txt
 build/
+build_asan/
 !lib/build/
 !lib/build/**
 build-linux/

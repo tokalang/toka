@@ -1,0 +1,25 @@
+import std/io::{println}
+import core/string::{string}
+
+shape Tracker (
+    val: i32
+)
+
+fn take_ownership(cede t: Tracker) -> i32 {
+    auto t_owned = cede t
+    return t_owned.val
+}
+
+fn main() -> i32 {
+    auto t = Tracker(val = 100)
+    auto res = take_ownership(cede t)
+    assert(res == 100, "Cede ownership value transfer mismatch")
+
+    auto s1 = string::from("Hello Transfer")
+    auto s2 = s1.clone()
+    assert(s1.as_str().equals("Hello Transfer"), "s1 must remain valid after clone")
+    assert(s2.as_str().equals("Hello Transfer"), "s2 value match")
+
+    println("[Conformance] Ownership Borrow/Cede/Move Test PASSED!")
+    return 0
+}

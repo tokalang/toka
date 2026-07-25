@@ -67,6 +67,13 @@ jobs:
       - name: Qualify persistent tooling at scale
         run: python3 tools/scripts/test_tooling_scale.py
 
+      - name: Run Toka 1.0 Discovery Conformance Suite
+        run: |
+          set -euo pipefail
+          python3 tools/run_conformance.py
+          ./tools/test_no_openssl.sh
+          ./tools/build_sanitized.sh runtime-asan
+
       - name: Run compiler regression suites
         env:
           CORES: "2"

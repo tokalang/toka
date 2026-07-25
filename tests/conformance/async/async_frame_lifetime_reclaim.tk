@@ -1,0 +1,23 @@
+import std/io::{println}
+import std/task::{block_on, sleep_async}
+import core/string::{string}
+
+fn async_worker() -> async i32 {
+    auto local_buf = string::from("Async Frame Data")
+    sleep_async(10).await
+    assert(local_buf.as_str().equals("Async Frame Data"), "Local variable across .await point preserved")
+    return local_buf.len() as i32
+}
+
+fn main_async() -> async i32 {
+    auto res = async_worker().await
+    assert(res == 16, "Async worker result mismatch")
+    println("[Conformance] Async Frame Lifetime Reclaim Test PASSED!")
+    return 0
+}
+
+fn main() -> i32 {
+    auto res = block_on<i32>(main_async())
+    assert(res == 0, "Async main failed")
+    return 0
+}

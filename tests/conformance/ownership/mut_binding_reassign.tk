@@ -1,0 +1,26 @@
+import std/io::{println}
+import core/string::{string}
+
+shape Config (
+    name: string
+)
+
+impl Config@encap {
+    pub name
+    fn drop(self#) {}
+    pub fn clone(self) -> Config {
+        return Config(name = string::from(self.name.as_str()))
+    }
+}
+
+fn main() -> i32 {
+    // 1. Stack value reassignment
+    auto c# = Config(name = string::from("Initial"))
+    assert(c.name.as_str().equals("Initial"), "Initial stack string value mismatch")
+
+    c = Config(name = string::from("Replaced"))
+    assert(c.name.as_str().equals("Replaced"), "Replaced stack string value mismatch")
+
+    println("[Conformance] Variable Rebinding & Value Reassignment PASSED!")
+    return 0
+}

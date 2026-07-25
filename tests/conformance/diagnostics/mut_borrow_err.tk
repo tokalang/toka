@@ -1,0 +1,18 @@
+// Conformance compile-fail test: mutating immutable binding without '#' sigil
+
+shape Point (
+    x: i32,
+    y: i32
+)
+
+impl Point {
+    pub fn mutate_x(self) {
+        self.x = 10
+    }
+}
+
+fn main() -> i32 {
+    auto p = Point(x = 0, y = 0)
+    p.mutate_x()
+    return 0
+}

@@ -1,0 +1,17 @@
+import std/process::{Command, Output, ExitStatus}
+import std/io::{println}
+import core/string::{string}
+
+fn main() -> i32 {
+    auto cmd# = Command::new(string::from("echo"))
+    cmd#.arg(string::from("Subprocess Conformance"))
+    
+    auto output_res = cmd#.output()
+    assert(output_res.is_ok(), "Command::output must succeed")
+    auto out = output_res.unwrap()
+    assert(out.status.success(), "ExitStatus must be 0")
+    assert(out.stdout.as_str().equals("Subprocess Conformance\n") || out.stdout.as_str().equals("Subprocess Conformance"), "Stdout content mismatch")
+
+    println("[Conformance] Subprocess Execution Conformance Test PASSED!")
+    return 0
+}

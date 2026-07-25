@@ -1,0 +1,28 @@
+import std/io::{println}
+import core/result::{Result}
+import core/option::{Option}
+
+fn fallible_step(fail: bool) -> Result<i32, string> {
+    if fail {
+        return Result<i32, string>::Err(string::from("step failed"))
+    }
+    return Result<i32, string>::Ok(100)
+}
+
+fn execute_pipeline(fail: bool) -> Result<i32, string> {
+    auto v = fallible_step(fail)!
+    return Result<i32, string>::Ok(v + 50)
+}
+
+fn main() -> i32 {
+    auto ok_res = execute_pipeline(false)
+    assert(ok_res.is_ok(), "execute_pipeline(false) must return Ok")
+    assert(ok_res.unwrap() == 150, "Postfix ! value propagation mismatch")
+
+    auto err_res = execute_pipeline(true)
+    assert(err_res.is_err(), "execute_pipeline(true) must return Err")
+    assert(err_res.unwrap_err().as_str().equals("step failed"), "Postfix ! error propagation mismatch")
+
+    println("[Conformance] Postfix ! Error Propagation PASSED!")
+    return 0
+}

@@ -1,0 +1,36 @@
+import std/io::{println}
+import std/vec::{Vec}
+import core/option::{Option}
+
+alias OptI32 = Option<i32>
+
+fn main() -> i32 {
+    auto v# = Vec<i32>::new()
+    v#.push(10)
+    v#.push(20)
+    v#.push(30)
+
+    auto sum#: i32 = 0
+    auto count#: usize = 0
+    auto it# = v.iter()
+    auto done#: bool = false
+
+    loop !done {
+        auto opt = it#.next()
+        match opt {
+            auto OptI32::Some(val) => {
+                sum += val
+                count += 1
+            }
+            auto OptI32::None => {
+                done = true
+            }
+        }
+    }
+
+    assert(count == 3:usize, "Iterator count mismatch")
+    assert(sum == 60, "Iterator sum mismatch")
+
+    println("[Conformance] Standard Vector Iterator Protocol PASSED!")
+    return 0
+}

@@ -1,0 +1,41 @@
+import std/process::{Command, Output, ExitStatus, ProcessError}
+import std/io::{println}
+import core/string::{string}
+
+fn main() -> i32 {
+    println("--- Starting Micro-Slice 3: Subprocess & OS Execution (Post-1.0 Profile) ---")
+
+    // 1. Command Output Capture
+    auto cmd# = Command::new(string::from("echo"))
+    cmd#.arg(string::from("Hello Toka Subprocess"))
+    
+    auto output_res = cmd#.output()
+    assert(output_res.is_ok(), "Command::output must succeed for echo")
+    auto out = output_res.unwrap()
+    assert(out.status.success(), "ExitStatus must be successful")
+    assert(out.stdout.as_str().equals("Hello Toka Subprocess\n") || out.stdout.as_str().equals("Hello Toka Subprocess"), "Captured stdout mismatch")
+    println("[Subprocess Slice 1/3] Command Output Capture PASSED!")
+
+    // 2. Child Process Spawn & Wait Status
+    auto spawn_cmd# = Command::new(string::from("echo"))
+    spawn_cmd#.arg(string::from("Spawned Process Execution"))
+    auto child_res = spawn_cmd#.try_spawn()
+    assert(child_res.is_ok(), "Command::try_spawn must succeed")
+    auto child# = child_res.unwrap()
+    assert(child.is_valid(), "Child handle must be valid before wait")
+    
+    auto wait_res = child#.wait_status()
+    assert(wait_res.is_ok(), "Child::wait_status must succeed")
+    auto status = wait_res.unwrap()
+    assert(status.success(), "Child exit status must be 0")
+    println("[Subprocess Slice 2/3] Process Spawn & Wait Status PASSED!")
+
+    // 3. Error Handling on Non-Existent Program Execution
+    auto bad_cmd# = Command::new(string::from("non_existent_toka_binary_xyz"))
+    auto bad_res = bad_cmd#.try_status()
+    assert(bad_res.is_err(), "Execution of invalid binary must return Error")
+    println("[Subprocess Slice 3/3] Invalid Program Error Handling PASSED!")
+
+    println("Micro-Slice 3: Subprocess & OS Execution PASSED ALL SUITES Cleanly!")
+    return 0
+}

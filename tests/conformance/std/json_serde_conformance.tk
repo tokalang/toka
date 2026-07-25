@@ -1,0 +1,30 @@
+import stdx/serde/json::{to_json, deserialize_shape, ToJson, serialize_shape}
+import std/io::{println}
+import core/string::{string}
+
+pub shape TestPayload (
+    id: i32 = 0,
+    title: string = string::from(""),
+    enabled: bool = false
+)
+
+impl TestPayload@ToJson {
+    pub fn write_json(self, buf#: string) -> string {
+        return serialize_shape(self, buf)
+    }
+}
+
+fn main() -> i32 {
+    auto payload = TestPayload(id = 42, title = string::from("Conformance"), enabled = true)
+    auto json_str = to_json(payload)
+    
+    auto decoded_res = deserialize_shape<TestPayload>(json_str.as_view())
+    assert(decoded_res.is_ok(), "deserialize_shape must succeed")
+    auto decoded = decoded_res.unwrap()
+    assert(decoded.id == 42, "Decoded payload ID mismatch")
+    assert(decoded.enabled == true, "Decoded payload enabled status mismatch")
+    assert(decoded.title.eq(string::from("Conformance")), "Decoded payload title mismatch")
+
+    println("[Conformance] Real stdx/serde/json Conformance Test PASSED!")
+    return 0
+}

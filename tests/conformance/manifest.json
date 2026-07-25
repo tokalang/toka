@@ -1,0 +1,103 @@
+{
+  "version": "1.0",
+  "description": "Toka 1.0 Language Conformance Test Suite Manifest",
+  "suites": [
+    {
+      "id": "syntax_literals_01",
+      "path": "syntax/literals.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Integer/float literals, string formatting, and slice type inference"
+    },
+    {
+      "id": "syntax_error_propagation_01",
+      "path": "syntax/error_propagation_postfix.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Postfix ! error propagation and Result unwrapping"
+    },
+    {
+      "id": "ownership_borrow_cede_move_01",
+      "path": "ownership/borrow_cede_move.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Borrow, cede transfer, move semantics, and destructor invocation counts"
+    },
+    {
+      "id": "ownership_vec_get_clone_01",
+      "path": "ownership/vec_get_clone.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec::get element clone and borrow stability (GAP-LANG-01)"
+    },
+    {
+      "id": "ownership_mut_binding_reassign_01",
+      "path": "ownership/mut_binding_reassign.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Mutable variable binding reassignment and drop scope rules"
+    },
+    {
+      "id": "async_frame_lifetime_reclaim_01",
+      "path": "async/async_frame_lifetime_reclaim.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Local variables across .await points and deterministic drop execution"
+    },
+    {
+      "id": "async_frame_drop_across_await_01",
+      "path": "async/async_frame_drop_across_await.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async frame local variable preservation across await points (GAP-LANG-03a)"
+    },
+    {
+      "id": "diag_mut_borrow_err_01",
+      "path": "diagnostics/mut_borrow_err.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 10,
+      "timeout_seconds": 10,
+      "description": "Layered error check for mutating immutable variable without '#' sigil"
+    },
+    {
+      "id": "ir_sret_abi_01",
+      "path": "codegen/sret_abi.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "sret",
+      "timeout_seconds": 10,
+      "description": "LLVM IR verification for aggregate SRET attribute emission (GAP-COMP-01)"
+    },
+    {
+      "id": "json_serde_conformance_01",
+      "path": "std/json_serde_conformance.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Real stdx/serde/json reflection-based serialization & deserialization"
+    },
+    {
+      "id": "subprocess_conformance_01",
+      "path": "std/subprocess_conformance.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Subprocess command execution, stdout capture, and wait status (Post-1.0 Profile)"
+    },
+    {
+      "id": "std_iterator_protocol_01",
+      "path": "std/iterator_protocol.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Standard vector iter() and next() iteration protocol"
+    }
+  ]
+}

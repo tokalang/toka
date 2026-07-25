@@ -1,0 +1,40 @@
+import std/io::{println}
+import std/task::{block_on, sleep_async}
+import core/string::{string}
+
+shape ManagedResource (
+    id: i32,
+    &drop_count#: i32
+)
+
+impl ManagedResource@encap {
+    pub *
+    fn drop(self#) {
+        self.drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn async_worker(flag#: i32) -> async i32 {
+    auto res = ManagedResource(id = 999, &drop_count = &flag)
+    assert(flag == 0, "drop_count must be 0 before await point")
+    sleep_async(5).await
+    assert(res.id == 999, "Managed resource ID preserved across await point")
+    assert(flag == 0, "drop_count must still be 0 while local variable is alive in async frame")
+    return res.id
+}
+
+fn main_async() -> async i32 {
+    auto drop_count# = 0
+    auto val = async_worker(drop_count).await
+    assert(val == 999, "Async worker value mismatch")
+    assert(drop_count == 1, "ManagedResource must be dropped EXACTLY ONCE upon async frame exit")
+    println("[Conformance] Async Frame Local Drop Across Await & Observable Destructor PASSED (drop_count=1)!")
+    return 0
+}
+
+fn main() -> i32 {
+    auto res = block_on<i32>(main_async())
+    assert(res == 0, "Async main failed")
+    return 0
+}

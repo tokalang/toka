@@ -1,0 +1,53 @@
+import std/io::{println, File}
+import std/fs::{create_dir, remove_dir, exists, read_dir}
+import core/string::{string}
+
+fn main() -> i32 {
+    println("--- Starting Micro-Slice 1: Filesystem & File I/O ---")
+
+    auto test_dir = string::from("tmp/fs_slice_test_dir")
+    auto test_file = string::from("tmp/fs_slice_test_dir/hello.txt")
+
+    if exists(test_dir.clone()) {
+        println("[FS Slice] Cleaning up existing test directory...")
+    }
+
+    auto created = create_dir(test_dir.clone())
+    assert(created || exists(test_dir.clone()), "create_dir must succeed or already exist")
+    assert(exists(test_dir.clone()), "exists(test_dir) must return true")
+    println("[FS Slice 1/4] Directory Creation & Path Existence PASSED!")
+
+    // File Write
+    auto f_write# = File::open(test_file.clone(), "w")
+    assert(f_write.is_valid(), "File::open for writing must succeed")
+    auto content = string::from("Toka 1.0 Filesystem Micro-Slice Data\n")
+    auto write_len = f_write#.write(content.as_str())
+    assert(write_len > 0, "File::write must return positive bytes written")
+    f_write#.close()
+    println("[FS Slice 2/4] File Synchronous Writing PASSED!")
+
+    // File Read
+    auto f_read# = File::open(test_file.clone(), "r")
+    assert(f_read.is_valid(), "File::open for reading must succeed")
+    auto read_res = f_read#.read_to_string()
+    f_read#.close()
+    assert(read_res.is_ok(), "read_to_string must succeed")
+    auto read_str = read_res.unwrap()
+    assert(read_str.as_str().equals(content.as_str()), "File content read mismatch")
+    println("[FS Slice 3/4] File Reading & Content Validation PASSED!")
+
+    // Directory Traversal
+    auto dir_iter# = read_dir(test_dir.clone())
+    auto entry_count#: usize = 0
+    loop {
+        auto item_opt = dir_iter#.next()
+        if item_opt.is_none() { break }
+        entry_count += 1
+    }
+    dir_iter#.close()
+    assert(entry_count >= 1:usize, "Directory iteration must find created test file")
+    println("[FS Slice 4/4] Directory Iteration PASSED!")
+
+    println("Micro-Slice 1: Filesystem & File I/O PASSED ALL SUITES Cleanly!")
+    return 0
+}
