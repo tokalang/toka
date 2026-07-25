@@ -1,0 +1,22 @@
+import core/option::{Option}
+
+pub shape ComplexPayload (
+    id: i32,
+    code: i32,
+    tag: i32
+)
+
+impl ComplexPayload@encap {
+    pub id, code, tag
+    fn drop(self#) {}
+    pub fn clone(self) -> ComplexPayload {
+        return ComplexPayload(id = self.id, code = self.code, tag = self.tag)
+    }
+}
+
+pub fn make_complex_option(id: i32) -> Option<ComplexPayload> {
+    if id <= 0 {
+        return Option<ComplexPayload>::None
+    }
+    return Option<ComplexPayload>::Some(ComplexPayload(id = id, code = id * 10, tag = 999))
+}

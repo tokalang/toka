@@ -1,0 +1,21 @@
+import ./lib::{make_complex_option, ComplexPayload}
+
+alias OptPayload = Option<ComplexPayload>
+
+pub fn main() -> i32 {
+    auto opt1 = make_complex_option(5)
+    assert(opt1.is_some(), "make_complex_option(5) must return Some")
+
+    match opt1 {
+        auto OptPayload::Some(&payload) => {
+            assert(payload.id == 5, "id mismatch")
+            assert(payload.code == 50, "code mismatch")
+            assert(payload.tag == 999, "tag mismatch")
+        }
+        _ => assert(false, "unexpected match branch")
+    }
+
+    auto opt2 = make_complex_option(-1)
+    assert(opt2.is_none(), "make_complex_option(-1) must return None")
+    return 0
+}
