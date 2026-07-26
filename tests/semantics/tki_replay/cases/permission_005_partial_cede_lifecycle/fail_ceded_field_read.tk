@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E0410
+import ./lib::{Pair}
+
+fn main() -> i32 {
+    auto pair = Pair(left = 1, right = 2)
+    auto taken = cede pair.left
+    return pair.left
+}

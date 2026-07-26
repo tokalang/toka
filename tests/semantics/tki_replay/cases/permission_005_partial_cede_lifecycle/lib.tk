@@ -1,0 +1,5 @@
+// EXPECT_TKI: pub shape Pair(left: i32, right: i32)
+pub shape Pair(
+    left: i32,
+    right: i32
+)

@@ -100,7 +100,8 @@ double-drop a custom container field or silently leak its remaining fields.
 5. **Evidence:** positive exactly-once cleanup, reinitialization,
    branch-join, and cancellation-across-`await` coverage plus negative
    use-after-move and explicit-custom-drop rejection are in the conformance
-   suite. Add source-less replay before widening eligibility.
+   suite. `permission_005_partial_cede_lifecycle` adds source-less replay for
+   field liveness and sibling availability before widening eligibility.
 
 ## 6. Exit criterion
 
