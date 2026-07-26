@@ -32,6 +32,25 @@ fn rebind_live_payload() {
     ^token = new Token(id = 7)
 }
 
+fn shared_clear_payload() {
+    auto nul ~#token#: Token? = null
+    ~token = new Token(id = 8)
+    token = none
+}
+
+fn shared_rebind_after_empty_payload() {
+    auto nul ~#token#: Token? = null
+    ~token = new Token(id = 9)
+    token = none
+    ~token = new Token(id = 10)
+}
+
+fn shared_rebind_live_payload() {
+    auto nul ~#token#: Token? = null
+    ~token = new Token(id = 11)
+    ~token = new Token(id = 12)
+}
+
 fn main() -> i32 {
     clear_payload()
     if g_drop_count != 1 {
@@ -52,5 +71,21 @@ fn main() -> i32 {
     if g_drop_count != 7 {
         return 4
     }
+
+    shared_clear_payload()
+    if g_drop_count != 8 {
+        return 5
+    }
+
+    shared_rebind_after_empty_payload()
+    if g_drop_count != 10 {
+        return 6
+    }
+
+    shared_rebind_live_payload()
+    if g_drop_count != 12 {
+        return 7
+    }
+
     return 0
 }

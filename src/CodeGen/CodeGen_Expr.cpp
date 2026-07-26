@@ -151,7 +151,28 @@ void CodeGen::emitRelease(llvm::Value *sharedHandle, const TokaSymbol &sym, std:
     if (sym.soulTypeObj) {
       cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
     }
-    emitDropCascade(data, cleanName);
+    std::shared_ptr<Type> soulType =
+        sym.soulTypeObj ? sym.soulTypeObj->getSoulType() : nullptr;
+    if (soulType && soulType->IsNullable && sym.soulType &&
+        sym.soulType->isStructTy()) {
+      llvm::StructType *nullableType =
+          llvm::cast<llvm::StructType>(sym.soulType);
+      llvm::Value *payload = m_Builder.CreateLoad(
+          nullableType, data, "nullable_soul.shared_release_payload");
+      llvm::Value *present = m_Builder.CreateExtractValue(
+          payload, 1, "nullable_soul.shared_release_present");
+      llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
+          m_Context, "nullable_soul.shared_release_drop", f);
+      llvm::BasicBlock *afterPayloadDropBB = llvm::BasicBlock::Create(
+          m_Context, "nullable_soul.shared_release_done", f);
+      m_Builder.CreateCondBr(present, dropPayloadBB, afterPayloadDropBB);
+      m_Builder.SetInsertPoint(dropPayloadBB);
+      emitDropCascade(data, cleanName);
+      m_Builder.CreateBr(afterPayloadDropBB);
+      m_Builder.SetInsertPoint(afterPayloadDropBB);
+    } else {
+      emitDropCascade(data, cleanName);
+    }
   }
 
   llvm::Function *freeFn = m_Module->getFunction("free");

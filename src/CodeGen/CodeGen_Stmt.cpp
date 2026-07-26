@@ -464,7 +464,35 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                       m_Builder.SetInsertPoint(afterBB);
                   }
               } else {
-                  emitDropCascade(data, cleanName);
+                  TokaSymbol *sym = nullptr;
+                  if (m_Symbols.count(it->Name))
+                    sym = &m_Symbols[it->Name];
+                  std::shared_ptr<Type> soulType =
+                      sym && sym->soulTypeObj ? sym->soulTypeObj->getSoulType()
+                                               : nullptr;
+                  if (soulType && soulType->IsNullable && sym->soulType &&
+                      sym->soulType->isStructTy()) {
+                    llvm::StructType *nullableType =
+                        llvm::cast<llvm::StructType>(sym->soulType);
+                    llvm::Value *payload = m_Builder.CreateLoad(
+                        nullableType, data,
+                        "nullable_soul.shared_scope_payload");
+                    llvm::Value *present = m_Builder.CreateExtractValue(
+                        payload, 1, "nullable_soul.shared_scope_present");
+                    llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
+                        m_Context, "nullable_soul.shared_scope_drop", f);
+                    llvm::BasicBlock *afterPayloadDropBB =
+                        llvm::BasicBlock::Create(
+                            m_Context, "nullable_soul.shared_scope_done", f);
+                    m_Builder.CreateCondBr(present, dropPayloadBB,
+                                            afterPayloadDropBB);
+                    m_Builder.SetInsertPoint(dropPayloadBB);
+                    emitDropCascade(data, cleanName);
+                    m_Builder.CreateBr(afterPayloadDropBB);
+                    m_Builder.SetInsertPoint(afterPayloadDropBB);
+                  } else {
+                    emitDropCascade(data, cleanName);
+                  }
               }
             }
             m_Builder.CreateBr(realFreeBB);
