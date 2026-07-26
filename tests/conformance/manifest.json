@@ -500,6 +500,24 @@
       "description": "A whole unique cede cannot remove a field's blocked payload ceiling"
     },
     {
+      "id": "diag_direct_unique_move_invalidates_source_01",
+      "path": "diagnostics/direct_unique_move_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0438",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A direct hatted unique move invalidates its source"
+    },
+    {
+      "id": "diag_direct_unique_move_preserves_field_ceiling_01",
+      "path": "diagnostics/direct_unique_move_preserves_field_ceiling.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A direct hatted unique move cannot remove a field's blocked payload ceiling"
+    },
+    {
       "id": "diag_cede_member_cannot_rebuild_payload_permission_01",
       "path": "diagnostics/cede_member_cannot_rebuild_payload_permission.tk",
       "type": "compile-fail",
@@ -564,6 +582,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A cede unique transfer creates a fresh owner whose declaration controls payload writes"
+    },
+    {
+      "id": "ownership_direct_unique_move_creates_independent_owner_01",
+      "path": "ownership/direct_unique_move_creates_independent_owner.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct hatted unique move creates an independent owner with the destination declaration's payload capability"
     },
     {
       "id": "ownership_cede_capture_preserves_permission_01",

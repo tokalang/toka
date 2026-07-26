@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0443
+import ./lib::{Cell}
+
+fn main() -> i32 {
+    auto ^source# = new Cell(value = 1)
+    auto ^view# = ^source
+    view.value = 2
+    return 0
+}

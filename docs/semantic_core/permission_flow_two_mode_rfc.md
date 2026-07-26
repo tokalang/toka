@@ -40,9 +40,11 @@ This applies uniformly to aliases, shared handles, references, raw-pointer
 views in safe code, parameters, returns, receiver views, field projections,
 and pattern bindings. A use-site `#` is still only an intent request.
 
-Independent whole-object `cede` is not an exception to this rule: it consumes
-the old owner and creates a **fresh owner**, not a shared view. That fresh
-owner may derive P from its own declaration, subject to the referent ceiling.
+An explicit whole-object unique transfer is not an exception to this rule: it
+consumes the old owner and creates a **fresh owner**, not a shared view. Toka
+has two visible spellings for that transfer: `cede ^p` and a direct hatted
+unique move such as `auto ^q = ^p`. That fresh owner may derive P from its own
+declaration, subject to the referent ceiling.
 
 ## 2. Terms
 
@@ -73,7 +75,9 @@ well-formedness condition on Shared flow.
 
 ### OWN-FLOW-01: Independent flow
 
-For a whole-binding `cede` from an owned value or `^` unique source:
+For a whole-binding explicit unique transfer—either `cede` from an owned value
+or `^` unique source, or a direct hatted unique move—from an owned value or
+`^` unique source:
 
 1. The exact source path must be non-null, not moved, and PAL-invalidatable.
 2. The source is invalidated exactly once when the transfer succeeds.
@@ -90,6 +94,9 @@ unique owner:
 ```toka
 auto ^p = new Data(...)
 auto ^#q# = cede ^p
+
+// Equivalent direct hatted unique move:
+auto ^#r# = ^q
 ```
 
 It is not valid if the object carries a `$`/freeze/sealed ceiling that forbids
