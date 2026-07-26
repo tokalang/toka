@@ -75,8 +75,9 @@ incomplete and must not be represented as a closed 1.0 guarantee.
    tests for local destructuring and receiver promotion.
 3. Add canonical-path null guard evidence. Initially reject unsupported guarded
    forms rather than guessing.
-4. Leave partial moves rejected until per-field state and drop semantics are
-   designed explicitly.
+4. Preserve existing library-invariant partial transfers without treating them
+   as a general ownership guarantee. Implement the bounded direct-field model
+   in `partial_cede_lifecycle_rfc.md` before widening that surface.
 
 ## Release conclusion
 
