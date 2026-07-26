@@ -67,6 +67,22 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   return Type->IsWritable;
 }
 
+static AccessCapability deriveDestructureFieldCapability(
+    AccessCapability capability, const std::shared_ptr<toka::Type> &fieldType) {
+  if (!fieldType ||
+      !(fieldType->isPointer() || fieldType->isSmartPointer() ||
+        fieldType->isReference()))
+    return capability;
+
+  bool fieldPayloadWritable = requiresPayloadWrite(fieldType);
+  capability.PayloadWritable = capability.PayloadFlowRestricted
+                                   ? capability.PayloadWritable &&
+                                         fieldPayloadWritable
+                                   : fieldPayloadWritable;
+  capability.PayloadFlowRestricted = true;
+  return capability;
+}
+
 bool Sema::allPathsReturn(Stmt *S) {
   if (!S)
     return false;
@@ -1673,6 +1689,10 @@ void Sema::checkStmt(Stmt *S) {
     }
   } else if (auto *Destruct = dynamic_cast<DestructuringDecl *>(S)) {
     auto initType = checkExpr(Destruct->Init.get());
+    PermissionFlow initFlow = getPermissionFlow(Destruct->Init.get());
+    AccessCapability initCapability = initFlow.DirectCapability;
+    if (initFlow.Kind == PermissionFlowKind::Shared)
+      initCapability.PayloadFlowRestricted = true;
     auto declType = toka::Type::fromString(Destruct->TypeName);
 
     // Basic check: declType should match initType
@@ -1859,8 +1879,14 @@ void Sema::checkStmt(Stmt *S) {
           }
 
           SymbolInfo Info;
-          std::string fullType = getPhysicalTypeName(SD->Members[memberIndex]);
+          // A destructured field's declaration is its authority.  Build the
+          // physical type directly from that declaration rather than using a
+          // cache as the permission source.
+          std::string fullType =
+              synthesizePhysicalType(SD->Members[memberIndex]);
           auto baseTypeObj = toka::Type::fromString(fullType);
+          AccessCapability fieldCapability =
+              deriveDestructureFieldCapability(initCapability, baseTypeObj);
           auto soulType = baseTypeObj->withAttributes(
               Destruct->Variables[i].IsValueMutable,
               Destruct->Variables[i].IsValueNullable,
@@ -1895,6 +1921,10 @@ void Sema::checkStmt(Stmt *S) {
 
           Info.IsDeclaredVariable = true;
           Info.IsDeclaredMutable = Destruct->Variables[i].IsValueMutable;
+          if (fieldCapability.PayloadFlowRestricted) {
+            Info.PayloadFlowWritable = fieldCapability.PayloadWritable;
+            Info.HasPayloadFlowCeiling = true;
+          }
           Info.DeclLoc = Destruct->Loc;
           CurrentScope->define(Destruct->Variables[i].Name, Info);
         }

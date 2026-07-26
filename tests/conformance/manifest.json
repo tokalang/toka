@@ -265,6 +265,15 @@
       "description": "A guard pattern cannot upgrade a read-only reference payload"
     },
     {
+      "id": "diag_destructure_shared_view_cannot_amplify_payload_01",
+      "path": "diagnostics/destructure_shared_view_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A destructuring binder cannot upgrade a read-only reference field"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",

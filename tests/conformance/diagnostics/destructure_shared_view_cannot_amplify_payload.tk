@@ -1,0 +1,11 @@
+shape RefBox(
+    &slot: i32
+)
+
+fn main() -> i32 {
+    auto value = 1
+    auto box = RefBox(&slot = &value)
+    auto RefBox(&view# = .&slot) = box
+    view = 2
+    return 0
+}
