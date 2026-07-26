@@ -8,8 +8,9 @@ endif()
 
 project(TokaCompiler VERSION 0.9.9 LANGUAGES C CXX)
 include(GNUInstallDirs)
-set(TOKA_RELEASE_SUFFIX "-01")
-set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}${TOKA_RELEASE_SUFFIX}")
+set(TOKA_RELEASE_VERSION "${TokaCompiler_VERSION}-01" CACHE STRING
+    "Version string reported by a release build")
+set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION}")
 
 # Version Control Info
 find_package(Git)

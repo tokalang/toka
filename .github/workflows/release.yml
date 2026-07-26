@@ -68,15 +68,6 @@ jobs:
           echo "ZSTD_LIBRARY=$(brew --prefix zstd)/lib/libzstd.dylib" >> "$GITHUB_ENV"
           echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
-      - name: Configure compiler
-        run: |
-          set -euo pipefail
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            ${LLVM_DIR:+-DLLVM_DIR="$LLVM_DIR"} \
-            ${LLD_DIR:+-DLLD_DIR="$LLD_DIR"} \
-            ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"} \
-            ${OPENSSL_ROOT_DIR:+-DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"}
-
       - name: Resolve version label
         id: version
         shell: bash
@@ -90,6 +81,18 @@ jobs:
             label="v0.9.9-01"
           fi
           echo "label=$label" >> "$GITHUB_OUTPUT"
+
+      - name: Configure compiler
+        run: |
+          set -euo pipefail
+          release_version="${{ steps.version.outputs.label }}"
+          release_version="${release_version#v}"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DTOKA_RELEASE_VERSION="$release_version" \
+            ${LLVM_DIR:+-DLLVM_DIR="$LLVM_DIR"} \
+            ${LLD_DIR:+-DLLD_DIR="$LLD_DIR"} \
+            ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"} \
+            ${OPENSSL_ROOT_DIR:+-DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"}
 
       - name: Run unified RC gate
         env:

@@ -195,6 +195,20 @@ fn detect_tokac_path() -> string {
     return string::from("tokac")
 }
 
+fn print_manager_version() {
+    auto compiler# = Command::new(detect_tokac_path())
+    compiler#.arg(string::from("--version"))
+    auto result = compiler#.output()
+    if result.is_ok() {
+        auto output = result.unwrap()
+        if output.status.success() {
+            println("toka manager {}", output.stdout)
+            return
+        }
+    }
+    println("toka manager version unavailable")
+}
+
 fn get_basename(path: string) -> string {
     auto idx_opt = path.as_str().last_index_of('/' as char)
     auto idx_opt2 = path.as_str().last_index_of('\\' as char)
@@ -1050,7 +1064,7 @@ fn main() -> i32 {
     }
 
     if cmd.eq(string::from("--version")) || cmd.eq(string::from("-V")) {
-        println("toka manager version 0.9.9-01")
+        print_manager_version()
         return 0
     }
     
