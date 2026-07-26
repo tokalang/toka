@@ -1,0 +1,32 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn branch_cleanup(take_first: bool) -> i32 {
+    {
+        auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+        if take_first {
+            auto taken = cede values[0]
+            assert(taken.id == 1, "ceded branch element stays owned")
+        }
+        assert(values[1].id == 2, "live fixed-array sibling survives branch join")
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    assert(branch_cleanup(true) == 0, "taken branch")
+    assert(g_drop_count == 2, "taken branch drops each resource once")
+    assert(branch_cleanup(false) == 0, "untaken branch")
+    assert(g_drop_count == 4, "untaken branch keeps both fixed-array elements")
+    return 0
+}

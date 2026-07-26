@@ -1,0 +1,22 @@
+import ./lib::{Token}
+
+fn check_branch(take_first: bool, drops#: i32) -> i32 {
+    {
+        auto values: [Token; 2] = [Token(id = 1, &drops = &drops), Token(id = 2, &drops = &drops)]
+        if take_first {
+            auto taken = cede values[0]
+            if taken.id != 1 { return 1 }
+        }
+        if values[1].id != 2 { return 2 }
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    auto drops# = 0
+    if check_branch(true, drops) != 0 { return 1 }
+    if drops != 2 { return 2 }
+    if check_branch(false, drops) != 0 { return 3 }
+    if drops != 4 { return 4 }
+    return 0
+}

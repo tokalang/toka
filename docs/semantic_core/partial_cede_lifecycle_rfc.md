@@ -107,11 +107,12 @@ double-drop a custom container field or silently leak its remaining fields.
 5. **Evidence:** positive exactly-once cleanup, reinitialization,
    branch-join, and cancellation-across-`await` coverage plus negative
    use-after-move and explicit-custom-drop rejection are in the conformance
-   suite. `cede_fixed_array_index_lifecycle` adds exactly-once fixed-array
-   cleanup and reinitialization; dynamic resource index rejection prevents an
-   untracked lifecycle path. `permission_005_partial_cede_lifecycle` replays
-   the direct-field and fixed-array constant-index paths source-less before
-   widening eligibility.
+   suite. Fixed-array constant-index coverage now includes normal scope exit,
+   reinitialization, return unwinding, and `if`-join liveness; dynamic resource
+   index rejection prevents an untracked lifecycle path. Cancellation across
+   `await` remains evidenced for the direct-field slice only.
+   `permission_005_partial_cede_lifecycle` replays the direct-field and
+   fixed-array constant-index paths source-less before widening eligibility.
 
 ## 6. Exit criterion
 

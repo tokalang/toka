@@ -614,6 +614,22 @@
       "description": "Fixed-array elements drop exactly once, and a ceded constant index can be reinitialized safely"
     },
     {
+      "id": "ownership_cede_fixed_array_index_return_cleanup_01",
+      "path": "ownership/cede_fixed_array_index_return_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A fixed-array index cede unwinds its local and live sibling exactly once on return"
+    },
+    {
+      "id": "ownership_cede_fixed_array_index_branch_join_01",
+      "path": "ownership/cede_fixed_array_index_branch_join.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A fixed-array index cede propagates element liveness through an if-branch join"
+    },
+    {
       "id": "ownership_cede_direct_field_branch_join_01",
       "path": "ownership/cede_direct_field_branch_join.tk",
       "type": "run",
@@ -638,6 +654,15 @@
       "expected_span_line": 13,
       "timeout_seconds": 10,
       "description": "A cede from a fixed-array constant index invalidates that exact element"
+    },
+    {
+      "id": "diag_cede_fixed_array_index_branch_join_invalidates_source_01",
+      "path": "diagnostics/cede_fixed_array_index_branch_join_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "A fixed-array element ceded on one if branch is unavailable after the join"
     },
     {
       "id": "diag_cede_dynamic_resource_array_index_rejected_01",

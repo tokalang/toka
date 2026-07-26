@@ -1,0 +1,15 @@
+import ./lib::{Token}
+
+auto drops# = 0
+
+fn take_and_return() -> i32 {
+    auto values: [Token; 2] = [Token(id = 1, &drops = &drops), Token(id = 2, &drops = &drops)]
+    auto taken = cede values[0]
+    return taken.id
+}
+
+fn main() -> i32 {
+    if take_and_return() != 1 { return 1 }
+    if drops != 2 { return 2 }
+    return 0
+}
