@@ -1,0 +1,8 @@
+import ./lib::{Cell}
+import std/task::{block_on}
+
+fn main() -> i32 {
+    auto ^source# = new Cell(value = 1)
+    auto handle = source#.take_mut_async().start
+    return block_on<i32>(handle) - 14
+}
