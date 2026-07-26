@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04573
+import ./lib::{ReadonlyRefBox}
+
+fn main() -> i32 {
+    auto value = 1
+    auto box = ReadonlyRefBox(&slot = &value)
+    auto ReadonlyRefBox(&view# = .&slot) = box
+    view = 2
+    return 0
+}

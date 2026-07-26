@@ -4,6 +4,16 @@ pub shape Holder(
     ~cell#: Cell
 )
 
+// EXPECT_TKI: pub shape ReadonlyRefBox(&slot: i32)
+pub shape ReadonlyRefBox(
+    &slot: i32
+)
+
+// EXPECT_TKI: pub shape WritableRefBox(&slot#: i32)
+pub shape WritableRefBox(
+    &slot#: i32
+)
+
 pub fn expose(~p#: Cell) -> ~Cell# {
     return ~p
 }

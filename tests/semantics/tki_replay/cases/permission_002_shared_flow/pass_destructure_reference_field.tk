@@ -1,0 +1,12 @@
+import ./lib::{WritableRefBox}
+
+fn main() -> i32 {
+    auto value# = 1
+    auto box = WritableRefBox(&slot = &value)
+    auto WritableRefBox(&view# = .&slot) = box
+    view = 2
+    if (value != 2) {
+        return 1
+    }
+    return 0
+}
