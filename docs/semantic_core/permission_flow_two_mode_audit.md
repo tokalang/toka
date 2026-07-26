@@ -14,8 +14,9 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 ## Evidence basis
 
 - `python3 tools/run_conformance.py`: 51 passed, 0 failed on 2026-07-27;
-- isolated source-less replay for `permission_001_capability` and
-  `permission_002_shared_flow`: 2 passed, 0 failed on 2026-07-26;
+- all 24 populated source-less replay cases: 24 passed, 0 failed in two
+  bounded batches on 2026-07-27 (the workspace also contains an empty,
+  non-case directory named `permission_003_pattern_flow`);
 - static permission logic: `include/toka/Sema.h`,
   `src/Sema/Sema_Expr.cpp`, `src/Sema/Sema_Expr_Binary.cpp`, and call checking;
 - transfer logic: `src/Sema/Sema_Expr.cpp` (`CedeExpr`),
