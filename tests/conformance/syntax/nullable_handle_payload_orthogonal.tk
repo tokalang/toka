@@ -23,6 +23,45 @@ fn check_shared_handle() -> i32 {
     return outcome - 7
 }
 
+fn check_reference_payload() -> i32 {
+    auto node#: Node? = none
+    {
+        auto &view = &node
+        guard view {
+            return 1
+        } else {
+        }
+    }
+
+    node = Node(val = 8)
+    auto &view = &node
+    guard view {
+        if view.val != 8 {
+            return 2
+        }
+    } else {
+        return 3
+    }
+    return 0
+}
+
+fn check_value_payload() -> i32 {
+    auto node#: Node? = none
+    guard node {
+        return 1
+    } else {
+        node = Node(val = 4)
+    }
+    guard node {
+        if node.val != 4 {
+            return 2
+        }
+    } else {
+        return 3
+    }
+    return 0
+}
+
 fn main() -> i32 {
     // The outer ^# handle stays live while its nullable payload changes.
     auto nul ^#node#: Node? = new Node(val = 7)
@@ -67,6 +106,12 @@ fn main() -> i32 {
 
     if check_shared_handle() != 0 {
         return 5
+    }
+    if check_reference_payload() != 0 {
+        return 7
+    }
+    if check_value_payload() != 0 {
+        return 8
     }
     return outcome - 14
 }

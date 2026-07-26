@@ -3080,8 +3080,11 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   bool isNullableSoul = (guard->Condition->ResolvedType && guard->Condition->ResolvedType->IsNullable && !guard->Condition->ResolvedType->isPointer());
 
   if (isNullableSoul) {
-    llvm::Value *isNullVal = m_Builder.CreateExtractValue(condVal, 1, "guard_is_null");
-    condBool = m_Builder.CreateICmpEQ(isNullVal, llvm::ConstantInt::get(isNullVal->getType(), 0), "guard_not_null");
+    llvm::Value *present =
+        m_Builder.CreateExtractValue(condVal, 1, "guard_payload_present");
+    condBool = m_Builder.CreateICmpNE(
+        present, llvm::ConstantInt::get(present->getType(), 0),
+        "guard_payload_available");
   } else if (condVal->getType()->isPointerTy()) {
     condBool = m_Builder.CreateIsNotNull(condVal, "guard_not_null");
   } else if (condVal->getType()->isStructTy() && condVal->getType()->getStructNumElements() == 2) {
