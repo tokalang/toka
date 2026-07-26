@@ -1,0 +1,8 @@
+import ./lib::{Cell, mutate_async_unique_parameter}
+import std/task::{block_on}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    auto handle = mutate_async_unique_parameter(cede ^source).start
+    return block_on<i32>(handle) - 12
+}
