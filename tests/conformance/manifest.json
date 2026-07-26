@@ -386,6 +386,24 @@
       "description": "A nullable payload needs a same-binding guard before cede into a non-null cede return"
     },
     {
+      "id": "diag_cede_nullable_payload_method_requires_guard_01",
+      "path": "diagnostics/cede_nullable_payload_method_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A nullable payload needs a same-binding guard before a consuming method receiver"
+    },
+    {
+      "id": "diag_cede_nullable_payload_method_arg_requires_guard_01",
+      "path": "diagnostics/cede_nullable_payload_method_arg_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A nullable payload needs a same-binding guard before cede into a consuming method argument"
+    },
+    {
       "id": "diag_cede_unique_preserves_blocked_field_01",
       "path": "diagnostics/cede_unique_preserves_blocked_field.tk",
       "type": "compile-fail",
@@ -584,6 +602,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A payload guard permits cede into a non-null cede parameter"
+    },
+    {
+      "id": "ownership_cede_nullable_payload_method_after_guard_01",
+      "path": "ownership/cede_nullable_payload_method_after_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A payload guard permits a consuming method receiver"
     },
     {
       "id": "ownership_shared_view_return_preserves_payload_capability_01",

@@ -1,0 +1,13 @@
+shape Token(id: i32)
+
+impl Token {
+    pub fn take(cede self) -> i32 {
+        auto owned = cede self
+        return owned.id
+    }
+}
+
+fn main() -> i32 {
+    auto ^source#: Token? = new Token(id = 1)
+    return source.take()
+}

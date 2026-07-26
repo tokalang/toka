@@ -86,6 +86,18 @@ narrowNullableSoul(const std::shared_ptr<Type> &type) {
   return narrowed;
 }
 
+static bool isNullableType(const std::shared_ptr<Type> &type) {
+  if (!type)
+    return false;
+  auto soul = type->getSoulType();
+  return type->IsNullable || (soul && soul->IsNullable);
+}
+
+static bool isNullableCedeSource(const Expr *expr) {
+  auto *cede = dynamic_cast<const CedeExpr *>(expr);
+  return cede && cede->Value && isNullableType(cede->Value->ResolvedType);
+}
+
 AccessCapability Sema::getAccessCapability(Expr *E) {
   if (!E)
     return {};
@@ -3127,6 +3139,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
             // [NEW] Cede Ownership check for Method Call
             if (FD->Args[0].IsCeded) {
+                const bool receiverAllowsNull =
+                    FD->Args[0].IsPointerNullable ||
+                    FD->Args[0].IsValueNullable;
+                if (!receiverAllowsNull &&
+                    isNullableType(Met->Object->ResolvedType)) {
+                  error(Met->Object.get(),
+                        DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+                }
                 std::string objPath = getPathString(Met->Object.get());
                 if (!objPath.empty()) {
                     CurrentScope->markMoved(objPath, Met->Loc);
@@ -3177,6 +3197,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
                 if (i < expectedArgs) {
                   const auto &param = FD->Args[i + 1];
+                  if (param.IsCeded &&
+                      isNullableCedeSource(Met->Args[i].get()) &&
+                      !param.IsPointerNullable &&
+                      !param.IsValueNullable) {
+                    error(Met->Args[i].get(),
+                          DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+                  }
                   bool paramIsHatted = param.IsRawPointer || param.IsUnique ||
                                         param.IsShared || param.IsReference;
                   AccessCapability argCapability =
