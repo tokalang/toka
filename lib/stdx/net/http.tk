@@ -1392,10 +1392,10 @@ impl HttpClient {
                 return Result<HttpResponseStream, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
-            return self.execute_on_stream_async(req, stream).await
+            return self.execute_on_stream_async(req, cede stream).await
         }
         auto stream# = AsyncStream::from_tcp(tcp_stream#.take())
-        return self.execute_on_stream_async(req, stream).await
+        return self.execute_on_stream_async(req, cede stream).await
     }
 
     pub fn execute_insecure_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
@@ -1411,10 +1411,10 @@ impl HttpClient {
                 return Result<HttpResponseStream, string>::Err(tls_res.unwrap_err())
             }
             auto stream# = tls_res.unwrap()
-            return self.execute_on_stream_async(req, stream).await
+            return self.execute_on_stream_async(req, cede stream).await
         }
         auto stream# = AsyncStream::from_tcp(tcp_stream#.take())
-        return self.execute_on_stream_async(req, stream).await
+        return self.execute_on_stream_async(req, cede stream).await
     }
 
     pub fn execute_on_stream_async(self, req: HttpRequest, cede stream#: AsyncStream) -> async Result<HttpResponseStream, string> {

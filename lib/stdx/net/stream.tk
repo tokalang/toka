@@ -19,8 +19,10 @@ impl AsyncStream@encap {
             auto h = (*self.tls_handle as Addr)
             if h != 0 {
                 self.raw_tcp#.tls_close(*self.tls_handle)
-                self.is_tls = false
             }
+            auto *null_ptr# = (0 as Addr) as *void
+            self.*tls_handle = *null_ptr
+            self.is_tls = false
         }
     }
     pub fn clone(self) = delete
@@ -202,8 +204,10 @@ impl AsyncStream {
             auto h = (*self.tls_handle as Addr)
             if h != 0 {
                 self.raw_tcp#.tls_close(*self.tls_handle)
-                self.is_tls = false
             }
+            auto *null_ptr# = (0 as Addr) as *void
+            self.*tls_handle = *null_ptr
+            self.is_tls = false
         }
         self.raw_tcp#.close()
     }
