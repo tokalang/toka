@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E04571
+import ./lib::{CallableMutator, Cell, ReadonlyHolder}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = ReadonlyHolder(~cell = ~source)
+    auto callback = CallableMutator()
+    return callback(holder.~cell)
+}

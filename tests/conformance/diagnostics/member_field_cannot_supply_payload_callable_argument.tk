@@ -1,0 +1,19 @@
+shape Cell(value: i32)
+
+shape Holder(~cell: Cell)
+
+shape Mutator()
+
+impl Mutator@Callable {
+    fn call(self, value#: Cell) {
+        value.value = 2
+    }
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder = Holder(~cell = ~source)
+    auto callback = Mutator()
+    callback(holder.~cell)
+    return 0
+}
