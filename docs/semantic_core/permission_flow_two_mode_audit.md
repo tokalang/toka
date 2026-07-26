@@ -13,7 +13,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 46 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 50 passed, 0 failed on 2026-07-27;
 - isolated source-less replay for `permission_001_capability` and
   `permission_002_shared_flow`: 2 passed, 0 failed on 2026-07-26;
 - static permission logic: `include/toka/Sema.h`,
@@ -35,7 +35,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 | `cede` requires invalidation and marks a source moved | A whole `^` binding is PAL-invalidated and reports `E0438` after transfer; cede parameters have dedicated call checks. Local resource transfer still supports documented member/index paths, but `PermissionFlow` explicitly classifies those paths as Shared. | **Partial**: per-field move/drop state remains unmodeled. |
 | Independent sources re-root a fresh binding under referent ceilings | A fresh unique binding obtains its own declaration permissions and a whole `^` source is invalidated (`cede_unique_creates_independent_owner` and `cede_unique_source_invalidated`). `cede` member/index/spread paths retain their direct payload ceiling rather than becoming independent. | **Partial**: no universal carried referent ceiling exists for frozen/nullable transfer. |
 | Shared sources cannot gain payload authority | `~`/`&` classification uses the direct RHS capability. Negative tests cover a two-hop Shared chain, `cede ~`, mutable call arguments, return signatures, fields, match/guard reference patterns, and a readonly-reference destructuring field. Positive run tests show declared writable reference fields and imported `Option<&T#>` match/guard binders preserve—not invent—Payload permission. `permission_002_shared_flow` repeats readonly/writable destructuring, match, and guard outcomes source-less. Safe raw payload access remains gated by `unsafe`. | **Partial**: independent-transfer and nullable semantics remain open. |
-| Nullable to non-null `cede` requires a same-path guard | Generic type compatibility models only broad nullability covariance. | **Does not conform**: no cede-specific guard/dominance proof exists. |
+| Nullable to non-null `cede` requires a same-path guard | Local initialization rejects a nullable `cede` source for a non-null indirection (`cede_nullable_source_requires_guard`, `E04599`). The existing `guard` narrowing of the same local binding permits the transfer (`cede_nullable_source_after_guard`). | **Partial**: only a direct local binding has guard evidence; member/index paths have no canonical-path proof and remain conservatively rejected. |
 | Fields/freeze ceilings survive independent flow | `BindingPermission` contains blocked flags and member checks compute some final flags. | **Does not conform**: no audited transfer fact establishes a persistent referent ceiling across all initializer/call/return paths. |
 | Patterns and destructuring use direct flow derivation | Match and guard callers derive `PermissionFlow` from their target and pass the direct capability to `checkPattern`. Destructuring computes the initializer flow once, records each binder's own `BindingPermission`, and applies each handle field's declared P as its one-hop ceiling. Imported readonly/writable reference-field destructuring, match, and guard paths have source-backed/source-less replay. The match runtime test also covers a local type alias so payload type metadata survives alias lowering. | **Partial**: independent-transfer and nullable semantics remain open. |
 | Partial moves do not establish independent authority | `cede` classifies member/index/spread paths as Shared, and a writable destination cannot amplify a readonly member (`cede_member_cannot_rebuild_payload_permission`). | **Partial**: local resource transfer remains supported, but there is no formal per-field move/drop state. |
@@ -44,8 +44,10 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 ## Concrete implementation gaps
 
 1. `CedeExpr` now classifies member/index/spread paths as Shared, so they do
-   not rebuild payload authority. Its invalidation and move marking are still
-   generic, with no nullable proof or per-field drop state.
+   not rebuild payload authority. Local initialization rejects nullable-to-
+   non-null transfer unless the existing direct-binding `guard` narrowing has
+   removed nullability. Its invalidation and move marking are still generic,
+   with no canonical projected-path proof or per-field drop state.
 2. Local initialization and destructuring in `src/Sema/Sema_Stmt.cpp`, plus
    match/guard binding in `src/Sema/Sema_Expr_Init.cpp`, store a one-hop
    payload ceiling without rewriting the declaration. Destructuring also

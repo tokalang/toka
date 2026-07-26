@@ -1140,6 +1140,25 @@ void Sema::checkStmt(Stmt *S) {
       m_IsConsumingEffect = oldConsuming;
       m_ExpectedWritability = oldExpectedWritability;
       InitType = InitTypeObj->toString();
+
+      // `cede` does not prove that a nullable source is non-null.  A guard
+      // narrows the source binding in its success scope, so this check uses
+      // the direct source expression's resolved type rather than trying to
+      // recover provenance from an earlier owner.
+      if (auto *cede = dynamic_cast<CedeExpr *>(Var->Init.get())) {
+        const bool targetIsNonNullIndirection =
+            (Var->IsRawPointer || Var->IsUnique || Var->IsShared ||
+             Var->IsReference) &&
+            !Var->IsPointerNullable;
+        auto sourceType = cede->Value ? cede->Value->ResolvedType : nullptr;
+        if (targetIsNonNullIndirection && sourceType &&
+            sourceType->IsNullable) {
+          DiagnosticEngine::report(
+              getLoc(Var),
+              DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+          HasError = true;
+        }
+      }
       
       if (Var->IsReference && Var->Init) {
         Expr *initExpr = Var->Init.get();
