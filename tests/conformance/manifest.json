@@ -340,9 +340,10 @@
     {
       "id": "ownership_pattern_shared_view_preserves_payload_capability_01",
       "path": "ownership/pattern_shared_view_preserves_payload_capability.tk",
-      "type": "compile-pass",
+      "type": "run",
+      "expected_exit_code": 0,
       "timeout_seconds": 10,
-      "description": "A match pattern preserves the writable payload capability of its direct reference source"
+      "description": "A match pattern writes through the direct writable reference source"
     },
     {
       "id": "ownership_destructure_shared_view_preserves_payload_capability_01",

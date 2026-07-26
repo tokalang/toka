@@ -2144,6 +2144,42 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
             llvm::Value *payloadAddr =
                 m_Builder.CreateStructGEP(targetType, targetAddr, 1);
 
+            if (variant->Type == "void" &&
+                subPat->SubPatterns.size() == 1 &&
+                subPat->SubPatterns[0]->IsReference) {
+              // A specialized generic enum can retain `void` in its AST
+              // variant. Its reference payload is nevertheless stored as a
+              // pointer in the physical enum slot; bind the referenced value,
+              // rather than the slot address itself.
+              llvm::Value *payloadRef = m_Builder.CreateLoad(
+                  llvm::PointerType::getUnqual(m_Context), payloadAddr,
+                  "enum_ref_payload");
+              std::shared_ptr<Type> payloadTypeObj = nullptr;
+              std::shared_ptr<Type> targetTypeObj = nullptr;
+              size_t scopePos = subPat->Name.rfind("::");
+              if (scopePos != std::string::npos) {
+                std::string patternShape = subPat->Name.substr(0, scopePos);
+                auto alias = m_TypeAliases.find(patternShape);
+                targetTypeObj = Type::fromString(
+                    alias == m_TypeAliases.end() ? patternShape : alias->second);
+              }
+              if (!targetTypeObj && expr->Target)
+                targetTypeObj = expr->Target->ResolvedType;
+              if (targetTypeObj && !targetTypeObj->isShape()) {
+                auto alias = m_TypeAliases.find(targetTypeObj->toString());
+                if (alias != m_TypeAliases.end())
+                  targetTypeObj = Type::fromString(alias->second);
+              }
+              if (targetTypeObj && targetTypeObj->isShape()) {
+                auto targetShape = std::static_pointer_cast<ShapeType>(
+                    targetTypeObj);
+                if (targetShape->GenericArgs.size() == 1)
+                  payloadTypeObj = targetShape->GenericArgs[0];
+              }
+              genPatternBinding(subPat->SubPatterns[0].get(), payloadRef,
+                                llvm::PointerType::getUnqual(m_Context),
+                                payloadTypeObj);
+            } else {
             llvm::Type *payloadLayoutType = nullptr;
             std::vector<llvm::Type *> fieldTypes;
 
@@ -2218,6 +2254,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 genPatternBinding(subPat->SubPatterns[i].get(), fieldAddr,
                                   fieldTy, subTypeObj);
               }
+            }
             }
           }
           m_Builder.CreateBr(armBodyBB);
@@ -3500,6 +3537,11 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
       }
       if (soul) {
         typeName = soul->getSoulName();
+        // A reference binder stores an address, but its entity is the
+        // referenced payload. Keep the payload LLVM type here so subsequent
+        // reads load `T` once rather than interpreting `T` as another pointer.
+        if (pat->IsReference)
+          sym.soulType = getLLVMType(soul);
       }
       sym.soulTypeObj = targetTypeObj;
     }

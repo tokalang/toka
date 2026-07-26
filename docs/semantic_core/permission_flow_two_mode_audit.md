@@ -29,17 +29,17 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 | RFC rule | Current evidence | Assessment |
 |---|---|---|
-| Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings retain a payload ceiling, and declaration boundaries enforce it for payload assignment, mutable calls, returns, fields, match/guard binders, and destructuring reference fields. `permission_002_shared_flow` verifies source-backed/source-less agreement for readonly and writable imported reference fields and guard binders. | **Partial**: source-less/runtime match lowering plus nullable/independent-transfer semantics remain open. |
+| Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings retain a payload ceiling, and declaration boundaries enforce it for payload assignment, mutable calls, returns, fields, match/guard binders, and destructuring reference fields. `permission_002_shared_flow` verifies source-backed/source-less agreement for readonly and writable imported reference fields, match binders, and guard binders. | **Partial**: nullable/independent-transfer semantics remain open. |
 | Static authority is declaration/signature-backed; syntax is intent only | `BindingPermission`, `AccessCapability`, and `AccessIntent` route ordinary assignment and calls through declaration facts. The conformance suite includes direct, call, receiver, and raw negative cases. | **Conforms (Layer 1)** |
 | Existing assignment cannot redeclare H/P | Existing targets are checked against their declared access capability. A later assignment does not update the target declaration. | **Conforms (Layer 1)** |
 | `cede` requires invalidation and marks a source moved | `CedeExpr` calls PAL invalidation for a path and marks an underlying variable moved; cede parameters have dedicated call checks. | **Partial**: useful prerequisites exist, but the rule applies generically rather than only to classified whole independent sources. |
 | Independent sources re-root a fresh binding under referent ceilings | Initializers record the new declaration permission and move unique variables. | **Partial**: there is no Independent classifier, no universal referent-ceiling fact carried through transfer, and no explicit whole-binding rule. |
-| Shared sources cannot gain payload authority | `~`/`&` classification uses the direct RHS capability. Negative tests cover a two-hop Shared chain, `cede ~`, mutable call arguments, return signatures, fields, match/guard reference patterns, and a readonly-reference destructuring field. Positive run tests show declared writable reference fields and imported `Option<&T#>` guard binders preserve—not invent—Payload permission. `permission_002_shared_flow` repeats readonly/writable destructuring and guard outcomes source-less. Safe raw payload access remains gated by `unsafe`. | **Partial**: source-less/runtime match lowering, independent-transfer, and nullable semantics remain open. |
+| Shared sources cannot gain payload authority | `~`/`&` classification uses the direct RHS capability. Negative tests cover a two-hop Shared chain, `cede ~`, mutable call arguments, return signatures, fields, match/guard reference patterns, and a readonly-reference destructuring field. Positive run tests show declared writable reference fields and imported `Option<&T#>` match/guard binders preserve—not invent—Payload permission. `permission_002_shared_flow` repeats readonly/writable destructuring, match, and guard outcomes source-less. Safe raw payload access remains gated by `unsafe`. | **Partial**: independent-transfer and nullable semantics remain open. |
 | Nullable to non-null `cede` requires a same-path guard | Generic type compatibility models only broad nullability covariance. | **Does not conform**: no cede-specific guard/dominance proof exists. |
 | Fields/freeze ceilings survive independent flow | `BindingPermission` contains blocked flags and member checks compute some final flags. | **Does not conform**: no audited transfer fact establishes a persistent referent ceiling across all initializer/call/return paths. |
-| Patterns and destructuring use direct flow derivation | Match and guard callers derive `PermissionFlow` from their target and pass the direct capability to `checkPattern`. Destructuring computes the initializer flow once, records each binder's own `BindingPermission`, and applies each handle field's declared P as its one-hop ceiling. Imported readonly/writable reference-field destructuring and guard paths have source-backed/source-less replay. | **Partial**: source-less/runtime match lowering, independent-transfer, and nullable semantics remain open. |
+| Patterns and destructuring use direct flow derivation | Match and guard callers derive `PermissionFlow` from their target and pass the direct capability to `checkPattern`. Destructuring computes the initializer flow once, records each binder's own `BindingPermission`, and applies each handle field's declared P as its one-hop ceiling. Imported readonly/writable reference-field destructuring, match, and guard paths have source-backed/source-less replay. The match runtime test also covers a local type alias so payload type metadata survives alias lowering. | **Partial**: independent-transfer and nullable semantics remain open. |
 | Partial moves are excluded until modeled | Member-resource move checks exist in local initialization. | **Partial**: cede itself accepts general expressions and only has narrow root marking for member paths. There is no formal per-field move state. |
-| `.tki` replay preserves flow facts | `permission_002_shared_flow` checks interface emission, source-backed/source-less semantic-evidence equality, writable imported reference-field and guard run cases, and readonly rejection for each path. | **Partial**: source-less match and general two-mode independent-transfer replay remain open. |
+| `.tki` replay preserves flow facts | `permission_002_shared_flow` checks interface emission, source-backed/source-less semantic-evidence equality, writable imported reference-field, match, and guard run cases, and readonly rejection for each path. | **Partial**: no general two-mode independent-transfer replay exists. |
 
 ## Concrete implementation gaps
 
@@ -58,22 +58,20 @@ incomplete and must not be represented as a closed 1.0 guarantee.
    compatibility. It cannot serve as the authority-flow decision because it is
    intentionally bidirectional in several non-permission cases and has no
    path, move, guard, or PAL inputs.
-4. Source-less `.tki` replay covers imported reference-field destructuring and
-   guard flow propagation. It does not yet exercise match propagation,
-   independent transfer, or nullable guard proofs.
+4. Source-less `.tki` replay covers imported reference-field destructuring,
+   match, and guard flow propagation. It does not yet exercise independent
+   transfer or nullable guard proofs.
 
 ## Recommended implementation order
 
-1. Add source-less replay for match propagation, including a runtime reference
-   binder case.
-2. Implement **whole-binding unique `cede` only**. Require `^`/owned source,
+1. Implement **whole-binding unique `cede` only**. Require `^`/owned source,
    PAL invalidation, non-null proof, and source invalidation; derive the fresh
    binding from its declaration capped by the carried ceiling.
-3. Route `~`, `&`, and safe `*` through one Shared derivation and add negative
+2. Route `~`, `&`, and safe `*` through one Shared derivation and add negative
    tests for local destructuring and receiver promotion.
-4. Add canonical-path null guard evidence. Initially reject unsupported guarded
+3. Add canonical-path null guard evidence. Initially reject unsupported guarded
    forms rather than guessing.
-5. Leave partial moves rejected until per-field state and drop semantics are
+4. Leave partial moves rejected until per-field state and drop semantics are
    designed explicitly.
 
 ## Release conclusion

@@ -643,8 +643,31 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
           llvm::Value *payloadRef = m_Builder.CreateLoad(
               llvm::PointerType::getUnqual(m_Context), payloadAddr,
               "enum_ref_payload");
+          std::shared_ptr<Type> payloadTypeObj = nullptr;
+          std::shared_ptr<Type> targetTypeObj = nullptr;
+          size_t scopePos = gbs->Pat->Name.rfind("::");
+          if (scopePos != std::string::npos) {
+            std::string patternShape = gbs->Pat->Name.substr(0, scopePos);
+            auto alias = m_TypeAliases.find(patternShape);
+            targetTypeObj = Type::fromString(
+                alias == m_TypeAliases.end() ? patternShape : alias->second);
+          }
+          if (!targetTypeObj && gbs->Target)
+            targetTypeObj = gbs->Target->ResolvedType;
+          if (targetTypeObj && !targetTypeObj->isShape()) {
+            auto alias = m_TypeAliases.find(targetTypeObj->toString());
+            if (alias != m_TypeAliases.end())
+              targetTypeObj = Type::fromString(alias->second);
+          }
+          if (targetTypeObj && targetTypeObj->isShape()) {
+            auto targetShape = std::static_pointer_cast<ShapeType>(
+                targetTypeObj);
+            if (targetShape->GenericArgs.size() == 1)
+              payloadTypeObj = targetShape->GenericArgs[0];
+          }
           genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
-                            llvm::PointerType::getUnqual(m_Context), nullptr);
+                            llvm::PointerType::getUnqual(m_Context),
+                            payloadTypeObj);
           return nullptr;
       }
       llvm::Value *payloadAddr = m_Builder.CreateStructGEP(targetType, targetAddr, 1, "enum_payload_addr");

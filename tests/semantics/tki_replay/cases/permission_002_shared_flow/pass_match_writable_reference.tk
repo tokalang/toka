@@ -1,9 +1,10 @@
+import ./lib::{writable_option}
 import core/option::{Option}
 
 fn main() -> i32 {
     auto value# = 1
-    auto opt = Option<&i32#>::Some(&value)
-    match opt {
+    auto option = writable_option(value)
+    match option {
         auto Option<&i32#>::Some(&view#) => {
             view = 2
         }

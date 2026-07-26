@@ -1,0 +1,15 @@
+// EXPECT_ERROR: E04573
+import ./lib::{readonly_option}
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto value = 1
+    auto option = readonly_option(value)
+    match option {
+        auto Option<&i32>::Some(&view#) => {
+            view = 2
+        }
+        auto Option<&i32>::None => {}
+    }
+    return 0
+}
