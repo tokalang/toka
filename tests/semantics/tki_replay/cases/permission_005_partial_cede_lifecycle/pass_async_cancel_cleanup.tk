@@ -1,0 +1,23 @@
+import ./lib::{make_pair}
+import std/task::{sleep_async, block_on, task_cancel}
+
+auto drops# = 0
+
+fn worker() -> async i32 {
+    auto pair = make_pair(drops)
+    auto taken = cede pair.left
+    sleep_async(100).await
+    return taken.id + pair.right.id
+}
+
+fn coordinator() -> async i32 {
+    auto handle = worker().start
+    task_cancel<i32>(handle)
+    sleep_async(10).await
+    if drops != 2 { return 1 }
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}
