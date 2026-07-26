@@ -676,7 +676,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
       
       if (!variant->SubMembers.empty()) {
           for (const auto& f : variant->SubMembers) fieldTypes.push_back(resolveType(f.Type, false));
-          payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, true);
+          payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, false);
       } else if (!variant->Type.empty()) {
           payloadLayoutType = resolveType(variant->Type, false);
       }

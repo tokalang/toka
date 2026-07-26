@@ -2138,10 +2138,14 @@ void CodeGen::genShape(const ShapeDecl *sh) {
     m_StructFieldNames[sh->Name] = fieldNames;
     m_StructFieldNames[shapeName] = fieldNames;
   } else if (sh->Kind == ShapeKind::Enum) {
-    // Tagged enum: { i8 tag, [Payload] }
+    // Tagged enum: { i8 tag, [aligned payload storage] }.  Payloads are
+    // viewed through their concrete field types, so the backing storage must
+    // retain the maximum ABI alignment of every variant.
     uint64_t maxPayloadSize = 0;
+    uint64_t maxPayloadAlign = 1;
     for (const auto &variant : sh->Members) {
       uint64_t variantSize = 0;
+      uint64_t variantAlign = 1;
       if (!variant.SubMembers.empty()) {
         std::vector<llvm::Type *> fieldTypes;
         for (const auto &field : variant.SubMembers) {
@@ -2157,10 +2161,14 @@ void CodeGen::genShape(const ShapeDecl *sh) {
           }
           fieldTypes.push_back(t);
         }
-        // Use packed layout to estimate consistent payload size
+        // Enum payloads are accessed through their concrete field types.  Do
+        // not pack them: placing an i32 payload immediately after the i8 tag
+        // would otherwise create an unaligned address on strict-alignment
+        // targets such as arm64.
         llvm::StructType *st =
-            llvm::StructType::get(m_Context, fieldTypes, true);
+            llvm::StructType::get(m_Context, fieldTypes, false);
         variantSize = DL.getTypeAllocSize(st).getFixedValue();
+        variantAlign = DL.getABITypeAlign(st).value();
       } else if (!variant.Type.empty() && variant.Type != "void") {
         llvm::Type *t = nullptr;
         if (variant.ResolvedType) {
@@ -2174,16 +2182,24 @@ void CodeGen::genShape(const ShapeDecl *sh) {
         }
         if (!t->isVoidTy()) {
           variantSize = DL.getTypeAllocSize(t).getFixedValue();
+          variantAlign = DL.getABITypeAlign(t).value();
         }
       }
       maxPayloadSize = std::max(maxPayloadSize, variantSize);
+      maxPayloadAlign = std::max(maxPayloadAlign, variantAlign);
     }
     body.push_back(llvm::Type::getInt8Ty(m_Context)); // Tag
     if (maxPayloadSize > 0) {
-      body.push_back(llvm::ArrayType::get(llvm::Type::getInt8Ty(m_Context),
-                                          maxPayloadSize));
+      llvm::Type *storageUnit = llvm::IntegerType::get(
+          m_Context, static_cast<unsigned>(maxPayloadAlign * 8));
+      uint64_t storageUnits =
+          (maxPayloadSize + maxPayloadAlign - 1) / maxPayloadAlign;
+      body.push_back(llvm::ArrayType::get(storageUnit, storageUnits));
     }
-    st->setBody(body, sh->IsPacked);
+    // The tag and payload storage must receive ordinary ABI padding.  The
+    // payload is later viewed as its concrete type, so a packed enum can
+    // produce unaligned loads/stores for aggregate variants.
+    st->setBody(body, false);
 
     std::vector<std::string> fieldNames;
     for (const auto &member : sh->Members) {

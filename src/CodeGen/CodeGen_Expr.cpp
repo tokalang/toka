@@ -2148,12 +2148,10 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 subPat->SubPatterns.size() == 1 &&
                 subPat->SubPatterns[0]->IsReference) {
               // A specialized generic enum can retain `void` in its AST
-              // variant. Its reference payload is nevertheless stored as a
-              // pointer in the physical enum slot; bind the referenced value,
-              // rather than the slot address itself.
-              llvm::Value *payloadRef = m_Builder.CreateLoad(
-                  llvm::PointerType::getUnqual(m_Context), payloadAddr,
-                  "enum_ref_payload");
+              // variant.  Whether its physical payload is a pointer comes
+              // from the resolved generic argument, not from the pattern:
+              // `Some(&value)` borrows an owned `T`, whereas `Some(&view)`
+              // may unwrap an actual `&T` payload.
               std::shared_ptr<Type> payloadTypeObj = nullptr;
               std::shared_ptr<Type> targetTypeObj = nullptr;
               size_t scopePos = subPat->Name.rfind("::");
@@ -2176,9 +2174,18 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 if (targetShape->GenericArgs.size() == 1)
                   payloadTypeObj = targetShape->GenericArgs[0];
               }
-              genPatternBinding(subPat->SubPatterns[0].get(), payloadRef,
-                                llvm::PointerType::getUnqual(m_Context),
-                                payloadTypeObj);
+              if (payloadTypeObj && !payloadTypeObj->isReference()) {
+                genPatternBinding(subPat->SubPatterns[0].get(), payloadAddr,
+                                  getLLVMType(payloadTypeObj),
+                                  payloadTypeObj);
+              } else {
+                llvm::Value *payloadRef = m_Builder.CreateLoad(
+                    llvm::PointerType::getUnqual(m_Context), payloadAddr,
+                    "enum_ref_payload");
+                genPatternBinding(subPat->SubPatterns[0].get(), payloadRef,
+                                  llvm::PointerType::getUnqual(m_Context),
+                                  payloadTypeObj);
+              }
             } else {
             llvm::Type *payloadLayoutType = nullptr;
             std::vector<llvm::Type *> fieldTypes;
@@ -2192,7 +2199,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 }
               }
               payloadLayoutType =
-                  llvm::StructType::get(m_Context, fieldTypes, true);
+                  llvm::StructType::get(m_Context, fieldTypes, false);
             } else if (!variant->Type.empty()) {
               if (variant->ResolvedType) {
                   payloadLayoutType = getLLVMType(variant->ResolvedType);
@@ -2518,7 +2525,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                     fieldTypes.push_back(resolveType(f.Type, false));
                   }
                 }
-                payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, true);
+                payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, false);
               } else if (!variant->Type.empty()) {
                 if (variant->ResolvedType) {
                   payloadLayoutType = getLLVMType(variant->ResolvedType);
@@ -3647,7 +3654,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
             for (const auto &f : variant->SubMembers) {
               fieldTypes.push_back(f.ResolvedType ? getLLVMType(f.ResolvedType) : resolveType(f.Type, false));
             }
-            payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, true);
+            payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, false);
           } else if (!variant->Type.empty()) {
             payloadLayoutType = variant->ResolvedType ? getLLVMType(variant->ResolvedType) : resolveType(variant->Type, false);
           }
@@ -4763,7 +4770,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                     fieldTypes.push_back(resolveType(f.Type, false));
                 }
               }
-              payloadType = llvm::StructType::get(m_Context, fieldTypes, true);
+              payloadType = llvm::StructType::get(m_Context, fieldTypes, false);
             } else if (!targetVar->Type.empty()) {
               if (targetVar->ResolvedType) {
                   payloadType = getLLVMType(targetVar->ResolvedType);

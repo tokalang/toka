@@ -341,7 +341,8 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
                           fieldTypes.push_back(resolveType(payloadTypes[k], false));
                       }
                   }
-                  payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, true);
+                  payloadLayoutType =
+                      llvm::StructType::get(m_Context, fieldTypes, false);
               } else {
                   if (payloadTypeObjs[0]) {
                       payloadLayoutType = getLLVMType(payloadTypeObjs[0]);
