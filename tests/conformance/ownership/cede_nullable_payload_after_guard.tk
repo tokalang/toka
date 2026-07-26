@@ -1,0 +1,36 @@
+import core/traits::{@encap}
+
+auto g_nullable_cede_drops# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_nullable_cede_drops += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn transfer_after_payload_guard() -> i32 {
+    auto ^source#: Token? = new Token(id = 7)
+    guard source {
+        auto ^target = cede ^source
+        if target.id != 7 {
+            return 1
+        }
+        return 0
+    } else {
+        return 2
+    }
+    return 3
+}
+
+fn main() -> i32 {
+    if transfer_after_payload_guard() != 0 {
+        return 1
+    }
+    if g_nullable_cede_drops != 1 {
+        return 2
+    }
+    return 0
+}

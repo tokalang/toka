@@ -46,6 +46,46 @@ static Expr *unwrapCedeDirectSource(Expr *E) {
   return E;
 }
 
+// A bare guard observes the payload view of a binding.  When that view is
+// nullable, the then-branch must retain the binding morphology while removing
+// nullability from its terminal soul.  Clearing only the outer pointer flag
+// would leave `^T?` as a nullable payload and make a subsequent whole `cede`
+// disagree with its non-null destination representation.
+static std::shared_ptr<Type>
+narrowNullableSoul(const std::shared_ptr<Type> &type) {
+  if (!type)
+    return type;
+
+  auto pointer = std::dynamic_pointer_cast<PointerType>(type);
+  if (!pointer)
+    return type->withAttributes(type->IsWritable, false, type->IsBlocked);
+
+  auto pointee = narrowNullableSoul(pointer->PointeeType);
+  std::shared_ptr<PointerType> narrowed;
+  switch (type->typeKind) {
+  case Type::RawPtr:
+    narrowed = std::make_shared<RawPointerType>(pointee);
+    break;
+  case Type::UniquePtr:
+    narrowed = std::make_shared<UniquePointerType>(pointee);
+    break;
+  case Type::SharedPtr:
+    narrowed = std::make_shared<SharedPointerType>(pointee);
+    break;
+  case Type::Reference:
+    narrowed = std::make_shared<ReferenceType>(pointee);
+    break;
+  default:
+    return type;
+  }
+
+  narrowed->IsWritable = type->IsWritable;
+  narrowed->IsNullable = type->IsNullable;
+  narrowed->IsBlocked = type->IsBlocked;
+  narrowed->IsCede = type->IsCede;
+  return narrowed;
+}
+
 AccessCapability Sema::getAccessCapability(Expr *E) {
   if (!E)
     return {};
@@ -1960,7 +2000,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       enterScope();
       SymbolInfo nonNullInfo = *infoPtr;
       if (nonNullInfo.TypeObj) {
-        nonNullInfo.TypeObj = nonNullInfo.TypeObj->withAttributes(nonNullInfo.TypeObj->IsWritable, false, nonNullInfo.TypeObj->IsBlocked);
+        bool guardsHandle = condType->isPointer() || condType->isReference() ||
+                            condType->isSmartPointer();
+        nonNullInfo.TypeObj =
+            guardsHandle
+                ? nonNullInfo.TypeObj->withAttributes(
+                      nonNullInfo.TypeObj->IsWritable, false,
+                      nonNullInfo.TypeObj->IsBlocked)
+                : narrowNullableSoul(nonNullInfo.TypeObj);
       }
       CurrentScope->define(actualName, nonNullInfo);
 

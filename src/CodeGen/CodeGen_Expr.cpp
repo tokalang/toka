@@ -3091,7 +3091,12 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   llvm::Value *condBool = nullptr;
   bool isNullableSoul = (guard->Condition->ResolvedType && guard->Condition->ResolvedType->IsNullable && !guard->Condition->ResolvedType->isPointer());
 
-  if (isNullableSoul) {
+  // A nullable payload behind a handle remains in its owning wrapper.  The
+  // guard above has already proven that wrapper present; shadowing it as a
+  // stack value would both extract from a pointer and destroy the handle
+  // representation needed by `cede ^binding` in the then-branch.  Only a
+  // direct nullable value uses the temporary unwrapped symbol.
+  if (isNullableSoul && !deepGuardHandle) {
     llvm::Value *present =
         m_Builder.CreateExtractValue(condVal, 1, "guard_payload_present");
     condBool = m_Builder.CreateICmpNE(
@@ -3140,7 +3145,7 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   TokaSymbol oldSym;
   bool shadowed = false;
   std::string baseName;
-  if (isNullableSoul) {
+  if (isNullableSoul && !deepGuardHandle) {
       if (auto *v = dynamic_cast<const VariableExpr *>(guard->Condition.get())) {
           baseName = v->Name;
           while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' || baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!')) baseName = baseName.substr(1);

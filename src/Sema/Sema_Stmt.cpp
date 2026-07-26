@@ -1151,8 +1151,12 @@ void Sema::checkStmt(Stmt *S) {
              Var->IsReference) &&
             !Var->IsPointerNullable;
         auto sourceType = cede->Value ? cede->Value->ResolvedType : nullptr;
-        if (targetIsNonNullIndirection && sourceType &&
-            sourceType->IsNullable) {
+        auto sourceSoul = sourceType ? sourceType->getSoulType() : nullptr;
+        const bool sourceIsNullable =
+            sourceType &&
+            (sourceType->IsNullable ||
+             (sourceSoul && sourceSoul->IsNullable));
+        if (targetIsNonNullIndirection && sourceIsNullable) {
           DiagnosticEngine::report(
               getLoc(Var),
               DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);

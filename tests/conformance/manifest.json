@@ -359,6 +359,15 @@
       "description": "A nullable cede source needs a same-binding non-null guard before entering a non-null destination"
     },
     {
+      "id": "diag_cede_nullable_payload_requires_guard_01",
+      "path": "diagnostics/cede_nullable_payload_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "A nullable unique payload needs a same-binding non-null guard before entering a non-null destination"
+    },
+    {
       "id": "diag_cede_unique_preserves_blocked_field_01",
       "path": "diagnostics/cede_unique_preserves_blocked_field.tk",
       "type": "compile-fail",
@@ -541,6 +550,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A guard narrows the same nullable unique binding before cede into a non-null destination"
+    },
+    {
+      "id": "ownership_cede_nullable_payload_after_guard_01",
+      "path": "ownership/cede_nullable_payload_after_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A payload guard preserves a nullable unique owner for cede and drops its transferred resource exactly once"
     },
     {
       "id": "ownership_shared_view_return_preserves_payload_capability_01",
