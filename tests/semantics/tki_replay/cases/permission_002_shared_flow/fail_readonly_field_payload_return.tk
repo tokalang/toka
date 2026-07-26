@@ -1,0 +1,13 @@
+// EXPECT_ERROR: E04573
+import ./lib::{Cell, ReadonlyHolder}
+
+fn expose(holder#: ReadonlyHolder) -> ~Cell# {
+    return holder.~cell
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = ReadonlyHolder(~cell = ~source)
+    auto ~view# = expose(holder)
+    return 0
+}

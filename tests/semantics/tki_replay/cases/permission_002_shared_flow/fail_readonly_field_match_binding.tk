@@ -1,0 +1,16 @@
+// EXPECT_ERROR: E04573
+import ./lib::{Cell, ReadonlyHolder}
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = ReadonlyHolder(~cell = ~source)
+    auto opt = Option<~Cell>::Some(holder.~cell)
+    match opt {
+        auto Option<~Cell>::Some(~view#) => {
+            view.value = 12
+        }
+        auto Option<~Cell>::None => {}
+    }
+    return 0
+}

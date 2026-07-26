@@ -1,0 +1,16 @@
+shape Cell(value: i32)
+
+shape Holder(
+    ~cell: Cell
+)
+
+fn expose(holder#: Holder) -> ~Cell# {
+    return holder.~cell
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = Holder(~cell = ~source)
+    auto ~view# = expose(holder)
+    return 0
+}

@@ -365,6 +365,33 @@
       "description": "A fresh binding from a readonly handle array element retains its Payload ceiling"
     },
     {
+      "id": "diag_member_field_cannot_supply_payload_return_01",
+      "path": "diagnostics/member_field_cannot_supply_payload_return.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "A readonly handle field cannot satisfy a payload-writable return signature"
+    },
+    {
+      "id": "diag_member_field_cannot_supply_payload_match_binding_01",
+      "path": "diagnostics/member_field_cannot_supply_payload_match_binding.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "A match binder from a readonly handle field retains its Payload ceiling"
+    },
+    {
+      "id": "diag_member_field_cannot_supply_payload_guard_binding_01",
+      "path": "diagnostics/member_field_cannot_supply_payload_guard_binding.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "A guard binder from a readonly handle field retains its Payload ceiling"
+    },
+    {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",
