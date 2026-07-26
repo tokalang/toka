@@ -76,6 +76,76 @@
       "description": "Layered error check for mutating immutable variable without '#' sigil"
     },
     {
+      "id": "diag_handle_identity_not_payload_unique_01",
+      "path": "diagnostics/handle_identity_not_payload_writable_unique.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A rebindable unique handle parameter does not authorize payload mutation"
+    },
+    {
+      "id": "diag_handle_identity_not_payload_raw_01",
+      "path": "diagnostics/handle_identity_not_payload_writable_raw.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A rebindable raw handle parameter does not authorize payload mutation"
+    },
+    {
+      "id": "diag_handle_identity_not_payload_shared_01",
+      "path": "diagnostics/handle_identity_not_payload_writable_shared.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A rebindable shared handle parameter does not authorize payload mutation"
+    },
+    {
+      "id": "diag_handle_identity_not_payload_reference_01",
+      "path": "diagnostics/handle_identity_not_payload_writable_reference.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A rebindable reference parameter does not authorize payload mutation"
+    },
+    {
+      "id": "diag_handle_identity_not_payload_paths_01",
+      "path": "diagnostics/handle_identity_not_payload_writable_paths.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "Handle-only permission cannot escape through a member payload path"
+    },
+    {
+      "id": "diag_handle_identity_not_payload_index_01",
+      "path": "diagnostics/handle_identity_not_payload_writable_index.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "Handle-only permission cannot escape through an indexed payload path"
+    },
+    {
+      "id": "ownership_handle_payload_permission_01",
+      "path": "ownership/handle_payload_permission.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Payload-side '#' authorizes mutation without handle rebinding"
+    },
+    {
+      "id": "ownership_handle_rebind_permission_01",
+      "path": "ownership/handle_rebind_permission.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Handle-side '#' authorizes runtime rebinding and combines independently with payload-side '#'"
+    },
+    {
       "id": "ir_sret_abi_01",
       "path": "codegen/sret_abi.tk",
       "type": "ir-verify",

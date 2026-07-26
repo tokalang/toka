@@ -153,6 +153,7 @@ const char *toString(SemanticOperation value) {
   case SemanticOperation::SharedPayloadBorrow: return "SharedPayloadBorrow";
   case SemanticOperation::ExclusivePayloadBorrow: return "ExclusivePayloadBorrow";
   case SemanticOperation::HandleViewBorrow: return "HandleViewBorrow";
+  case SemanticOperation::HandleRebind: return "HandleRebind";
   case SemanticOperation::ExclusiveMutation: return "ExclusiveMutation";
   case SemanticOperation::Invalidation: return "Invalidation";
   case SemanticOperation::OwnershipTransfer: return "OwnershipTransfer";

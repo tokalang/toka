@@ -432,7 +432,12 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     recordAssignmentLoweringCarrier(
         assignmentSite, AssignmentLoweringCarrier::EnvelopeRebind);
     verifyLowering(AssignmentLoweringCarrier::EnvelopeRebind);
-    emitEnvelopeRebind(lhsAlloca, rhsVal, *symLHS, lhsExpr);
+    llvm::Value *handleAddr = lhsAlloca;
+    if (symLHS->isCallerHandleSlot) {
+      handleAddr = m_Builder.CreateLoad(m_Builder.getPtrTy(), lhsAlloca,
+                                        "rebind.caller_handle_slot");
+    }
+    emitEnvelopeRebind(handleAddr, rhsVal, *symLHS, lhsExpr);
   } else {
     // Scene A: Soul Assignment
     llvm::Value *soulAddr = emitEntityAddr(lhsExpr);

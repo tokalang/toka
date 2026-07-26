@@ -35,6 +35,7 @@ enum class PALOperationClass {
   SharedPayloadBorrow,
   ExclusivePayloadBorrow,
   HandleViewBorrow,
+  HandleRebind,
   ExclusiveMutation,
   Invalidation
 };

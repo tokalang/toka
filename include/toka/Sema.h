@@ -55,10 +55,15 @@ struct SymbolInfo {
 
   void *ReferencedModule = nullptr; // Pointer to ModuleScope (opaque here)
 
-  // Helpers redirection to TypeObj
-  bool IsMutable() const {
-    // Map to TypeObj IsWritable attribute (handles #)
-    return TypeObj && TypeObj->IsWritable;
+  // Permission queries deliberately name the layer they authorize.  A hatted
+  // binding may be rebindable without granting write access to its payload;
+  // callers must never use one query as a substitute for the other.
+  bool IsHandleRebindable() const {
+    // For a value binding, identity and payload are the same storage layer;
+    // self# may therefore authorize rebinding a handle field.  For a handle
+    // binding, the outer writable bit is the legacy representation of its
+    // identity attribute and must not be interpreted as soul writability.
+    return IsRebindable || (TypeObj && TypeObj->IsWritable);
   }
 
   bool IsReference() const { return TypeObj && TypeObj->isReference(); }

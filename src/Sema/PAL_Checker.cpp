@@ -120,6 +120,7 @@ PALChecker::verifyInvalidation(const AccessPath &path) {
 
 bool PALChecker::operationRequiresExclusive(PALOperationClass op) const {
   return op == PALOperationClass::ExclusivePayloadBorrow ||
+         op == PALOperationClass::HandleRebind ||
          op == PALOperationClass::ExclusiveMutation ||
          op == PALOperationClass::Invalidation;
 }
@@ -144,6 +145,8 @@ PALChecker::verifyOperation(const AccessPath &path, PALOperationClass op) {
   if (op == PALOperationClass::PayloadWrite)
     return verifyPayloadWrite(path);
   if (op == PALOperationClass::Invalidation)
+    return verifyInvalidation(path);
+  if (op == PALOperationClass::HandleRebind)
     return verifyInvalidation(path);
   if (operationRequiresExclusive(op))
     return verifyExclusiveMutation(path);

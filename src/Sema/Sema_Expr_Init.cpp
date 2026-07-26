@@ -149,7 +149,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
         
         std::string t1 = sym1.TypeObj ? sym1.TypeObj->toString() : "";
         std::string t2 = sym2.TypeObj ? sym2.TypeObj->toString() : "";
-        if (t1 != t2 || sym1.IsMutable() != sym2.IsMutable() || 
+        if (t1 != t2 ||
+            sym1.IsSoulMutable() != sym2.IsSoulMutable() ||
+            sym1.IsHandleRebindable() != sym2.IsHandleRebindable() ||
             sym1.IsReference() != sym2.IsReference() ||
             sym1.IsMorphicExempt != sym2.IsMorphicExempt) {
           matches = false;

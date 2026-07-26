@@ -451,7 +451,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
             canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
         if (!isUnsetInit && lhsPath) {
             PALOperationClass lhsOperation =
-                (isRebind || isRefAssign) ? PALOperationClass::ExclusiveMutation
+                (isRebind || isRefAssign) ? PALOperationClass::HandleRebind
                                           : PALOperationClass::PayloadWrite;
             auto conflict = PALCheckerState.verifyOperation(lhsPath, lhsOperation);
             bool authorized = false;
@@ -499,7 +499,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
             isLHSWritable = true;
         }
         
-        if (InfoPtr->IsMutable()) {
+        // This assignment reaches a payload path.  Handle rebindability
+        // (for example ^#p) is not payload write permission.
+        if (InfoPtr->IsSoulMutable()) {
             isLHSWritable = true;
         }
       }

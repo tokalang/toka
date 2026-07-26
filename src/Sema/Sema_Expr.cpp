@@ -725,7 +725,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         SymbolInfo *Info = nullptr;
         if (CurrentScope->findSymbol(baseVar, Info)) {
             if (wantMutable && pathToBorrow == baseVar) {
-                if (!Info->IsMutable()) {
+                if (!Info->IsSoulMutable()) {
                     error(Addr, DiagID::ERR_BORROW_IMMUT, baseVar);
                 }
             }
@@ -1260,7 +1260,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (shouldCollapse) {
            if (Info.IsSoulMutable()) usageMutable = true;
         } else {
-           if (Info.IsRebindable || Info.IsMutable()) usageMutable = true;
+           if (Info.IsHandleRebindable()) usageMutable = true;
         }
 
         bool effectiveNull = current->IsNullable || ve->IsValueNullable;
@@ -1271,7 +1271,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // Identity view (Collapse disabled)
     if (!shouldCollapse && current) {
       bool identWritable = ve->IsValueMutable;
-      if (Info.IsRebindable || Info.IsMutable()) {
+      if (Info.IsHandleRebindable()) {
         identWritable = true;
       }
       return current->withAttributes(identWritable, current->IsNullable);
@@ -3368,7 +3368,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::string lhsInfo = lhsObj->toString();
     if (auto *Var = dynamic_cast<VariableExpr *>(Post->LHS.get())) {
       SymbolInfo Info;
-      if (CurrentScope->lookup(Var->Name, Info) && !Info.IsMutable()) {
+      if (CurrentScope->lookup(Var->Name, Info) && !Info.IsSoulMutable()) {
         error(Post, DiagID::ERR_IMMUTABLE_MOD, Var->Name);
       }
     }

@@ -41,6 +41,7 @@ enum class SemanticOperation {
   SharedPayloadBorrow,
   ExclusivePayloadBorrow,
   HandleViewBorrow,
+  HandleRebind,
   ExclusiveMutation,
   Invalidation,
   OwnershipTransfer,

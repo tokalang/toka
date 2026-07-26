@@ -1,6 +1,6 @@
 # Toka 1.0 Qualification Evidence Ledger
 
-**Status**: Qualification & Discovery Ledger (Tier 1 RC3 Closed)
+**Status**: Qualification & Discovery Ledger (RC3 evidence retained; post-RC3 P0 requalification pending)
 **Authority Hierarchy**:
 - Normative language and compiler rules are governed by [`docs/1_0_freeze_decision_list.md`](1_0_freeze_decision_list.md) and [`docs/1_0_closure_plan.md`](1_0_closure_plan.md).
 - This ledger tracks empirical evidence (conformance tests, benchmark logs, sanitizer build smoke, micro-slices) for production qualification.
@@ -25,6 +25,7 @@
 | **GAP-LANG-02** | **Layered Diagnostic Conformance**<br>Lock stable diagnostic codes (`E0417`, `E0443`), levels, and line/col spans without freezing text formatting. | Language | `P1` | Yes | `closed` | [mut_borrow_err.tk](file:///Users/zhyi/GitDP/toka/tests/conformance/diagnostics/mut_borrow_err.tk) & `spec/diagnostic.map.json` |
 | **GAP-LANG-03a** | **Async Frame Local Lifetime Across `.await`**<br>Local variables retained across `.await` points must preserve state and execute deterministic destructors on scope exit (`drop_count == 1`). | Language | `P0` | Yes | `closed` | [async_frame_drop_across_await.tk](file:///Users/zhyi/GitDP/toka/tests/conformance/async/async_frame_drop_across_await.tk) & `tests/conformance/manifest.json` |
 | **GAP-LANG-03b** | **Async Task Cancellation Destructors**<br>Rich cancellation and exactly-once destructor invocation upon task handle cancellation. | Language | `P2` | Post-1.0 | `planned` | `docs/1_0_closure_plan.md#cancellation` |
+| **GAP-LANG-04** | **Handle Identity / Payload Write Separation**<br>A handle-side `#` (`*#p`, `^#p`, `~#p`, `&#p`) authorizes only rebinding that handle; it must not authorize a bare, member, or indexed payload write. | Language | `P0` | Yes | `verified` | `tests/conformance/diagnostics/handle_identity_not_payload_writable_*.tk`, `ownership_handle_payload_permission_01`, and `ownership_handle_rebind_permission_01` |
 
 ### B. Compiler & Lowering
 
@@ -63,6 +64,6 @@
 ## 3. Freeze Gate Exit Criteria
 
 Toka 1.0 will enter Freeze Mode only when:
-1. All P0 and P1 gaps transition to status `closed` upon completion of `docs/1_0_release_review.md` backed by the Tier 1 `v0.9.9-rc3` multi-platform execution report.
+1. All P0 and P1 gaps transition to status `closed` upon completion of `docs/1_0_release_review.md` backed by a Tier 1 multi-platform execution report for the current revision. RC3 is historical evidence only after GAP-LANG-04.
 2. All declared production vertical micro-slices execute cleanly.
 3. PR Gate and Release Candidate Gate runs pass cleanly without regression.

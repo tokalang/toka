@@ -534,7 +534,8 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
     std::string actualName = Var->Name;
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
       baseType = Info->TypeObj;
-      if (Info->IsMutable()) {
+      // Indexing is a payload operation; do not inherit a handle-only #.
+      if (Info->IsSoulMutable()) {
         baseType = baseType->withAttributes(true, baseType->IsNullable);
       }
       if (Info->TypeObj &&
@@ -607,14 +608,23 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
       auto pointee = baseType->getPointeeType();
       if (pointee) {
         auto resolvedPointee = resolveType(pointee, true);
+        // A pointer handle's # is identity-only.  The indexed payload may
+        // inherit only the pointee/slice/element payload permission.
+        bool payloadWritable = resolvedPointee->IsWritable;
         if (auto slice = std::dynamic_pointer_cast<toka::SliceType>(resolvedPointee)) {
           // [Safety Pillar 3] Uninit subscript ban
           if (slice->ElementType->isUninit() && !m_InUnsafeContext) {
              error(Idx, DiagID::ERR_SEMA_CANNOT_SAFELY_SUBSCRIPT_INTO_AN_UNINITIAL);
           }
-          resultType = slice->ElementType->withAttributes(baseType->IsWritable || slice->IsWritable || slice->ElementType->IsWritable, slice->ElementType->IsNullable);
+          resultType = slice->ElementType->withAttributes(
+              payloadWritable || slice->IsWritable ||
+                  slice->ElementType->IsWritable,
+              slice->ElementType->IsNullable);
         } else if (auto arr = std::dynamic_pointer_cast<toka::ArrayType>(resolvedPointee)) {
-          resultType = arr->ElementType->withAttributes(baseType->IsWritable || arr->IsWritable || arr->ElementType->IsWritable, arr->ElementType->IsNullable);
+          resultType = arr->ElementType->withAttributes(
+              payloadWritable || arr->IsWritable ||
+                  arr->ElementType->IsWritable,
+              arr->ElementType->IsNullable);
         } else {
           error(Idx, DiagID::ERR_SEMA_ARRAY_INDEXING_IS_ONLY_PERMITTED_ON_ARRAY, baseType->toString());
           std::cerr << "DEBUG: E0406 generated for node type " << Idx->toString() << "\n";

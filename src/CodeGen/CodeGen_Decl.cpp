@@ -538,6 +538,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
     // Explicit permission/flag overrides from AST if not in Type String
     sym.isRebindable = argDecl.IsRebindable;
+    sym.isCallerHandleSlot =
+        needsCapture && argDecl.IsRebindable && !argDecl.IsShared;
     sym.isMutable = isMutable;
 
     m_Symbols[argName] = sym;

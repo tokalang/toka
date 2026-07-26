@@ -1,0 +1,27 @@
+shape Cell(
+    value: i32
+)
+
+fn reset(^#p: Cell) {
+    ^#p = new Cell(value = 12)
+}
+
+fn both(^#p#: Cell) {
+    p.value = 14
+    ^#p = new Cell(value = 15)
+}
+
+fn overwrite_index(^p#: [i32]) {
+    p[0] = 14
+}
+
+fn main() -> i32 {
+    auto ^#first = new Cell(value = 1)
+    reset(^#first)
+    if first.value != 12 { return 1 }
+
+    auto ^#second# = new Cell(value = 2)
+    both(^#second)
+    if second.value != 15 { return 2 }
+    return 0
+}

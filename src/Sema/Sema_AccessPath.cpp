@@ -19,6 +19,8 @@ SemanticOperation semanticOperation(PALOperationClass operation) {
     return SemanticOperation::ExclusivePayloadBorrow;
   case PALOperationClass::HandleViewBorrow:
     return SemanticOperation::HandleViewBorrow;
+  case PALOperationClass::HandleRebind:
+    return SemanticOperation::HandleRebind;
   case PALOperationClass::ExclusiveMutation:
     return SemanticOperation::ExclusiveMutation;
   case PALOperationClass::Invalidation:

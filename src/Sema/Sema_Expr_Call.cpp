@@ -1778,7 +1778,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         PALOperationClass access = PALOperationClass::SharedPayloadBorrow;
         if (isCallerCeded || (isCededParam && !isCedeParamImplicitlyExempt)) {
           access = PALOperationClass::Invalidation;
-        } else if (paramIsValueMutable || (paramIsHatted && paramIsRebindable)) {
+        } else if (paramIsHatted && paramIsRebindable) {
+          access = PALOperationClass::HandleRebind;
+        } else if (paramIsValueMutable) {
           access = PALOperationClass::ExclusivePayloadBorrow;
         } else if (paramIsHatted) {
           access = PALOperationClass::HandleViewBorrow;

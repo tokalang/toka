@@ -51,7 +51,7 @@ fn main() -> i32 {
     // 7. Verify get_mut allows mutation
     auto e3_mut_opt = slab#.get_mut(id3)
     assert(e3_mut_opt.is_some(), "should retrieve mutable e3")
-    auto &#e3_mut = e3_mut_opt.unwrap()
+    auto &e3_mut# = e3_mut_opt.unwrap()
     e3_mut.val = 35
     
     auto &e3_updated = slab.get(id3).unwrap()

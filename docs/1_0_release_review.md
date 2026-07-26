@@ -1,14 +1,14 @@
 # Toka 1.0 Release Review Report
 
 **Revision Under Audit**: `d0b15ae1` (Target Release Candidate Tag: `v0.9.9-rc3`)
-**Status**: Tier 1 Release Candidate Gate Passed (Final Tag Decision Pending)
+**Status**: Historical RC3 Gate Passed; superseded for final-tag purposes by post-RC3 GAP-LANG-04 requalification
 **Date**: 2026-07-25
 
 ---
 
 ## 1. Review Executive Summary
 
-This document serves as the official Release Review Report for Toka 1.0 qualification. All normative language specifications, compiler lowering rules, diagnostic maps, and qualification micro-slices have been integrated and verified locally. The Tier 1 multi-platform qualification for the `v0.9.9-rc3` candidate has passed; the corresponding P0/P1 entries in [`docs/1_0_gap_ledger.md`](1_0_gap_ledger.md) are closed. No release tag or GitHub Release has been created by this review.
+This document records the official Release Review for the `v0.9.9-rc3` candidate. Its Tier 1 evidence remains valid for that revision, but a later P0 language fix (GAP-LANG-04: handle identity / payload write separation) requires a fresh current-revision Tier 1 qualification before any final-tag decision. No release tag or GitHub Release has been created by this review.
 
 ---
 

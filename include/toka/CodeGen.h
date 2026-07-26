@@ -62,6 +62,10 @@ struct TokaSymbol {
   Morphology morphology = Morphology::None; // Ownership/Cleanup logic
   int indirectionLevel = 0; // Depth (1 for *p, 2 for **p)
   bool isRebindable = false; // # on identity (Swappable address)
+  // A rebindable non-shared parameter is captured as an alloca containing
+  // the caller's handle-slot address.  Rebinding must store through that
+  // address, never overwrite the callee's capture slot.
+  bool isCallerHandleSlot = false;
   bool isMutable = false;    // # on entity (Writable data)
   bool isContinuous = false; // Sequence marker (alloc [N])
   bool isNullable = false;   // ?/! marker
