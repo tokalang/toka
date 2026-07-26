@@ -131,6 +131,14 @@
       "description": "Async cede unique parameters receive a direct owned handle and an independent Payload root"
     },
     {
+      "id": "async_cede_shared_parameter_preserves_payload_capability_01",
+      "path": "async/async_cede_shared_parameter_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async cede shared parameters preserve declared Payload capability"
+    },
+    {
       "id": "std_generic_encap_guard_lifetime_01",
       "path": "std/generic_encap_guard_lifetime.tk",
       "type": "run",
@@ -488,6 +496,15 @@
       "expected_span_line": 18,
       "timeout_seconds": 10,
       "description": "Method cede parameters retain the direct Payload ceiling of a shared projection"
+    },
+    {
+      "id": "diag_async_cede_shared_projection_cannot_supply_payload_parameter_01",
+      "path": "diagnostics/async_cede_shared_projection_cannot_supply_payload_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "An async cede parameter cannot promote a readonly shared projection before task start"
     },
     {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
