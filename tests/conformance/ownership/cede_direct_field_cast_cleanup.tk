@@ -1,0 +1,26 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+shape Pair(left: Token, right: Token)
+
+fn main() -> i32 {
+    {
+        auto pair = Pair(left = Token(id = 1), right = Token(id = 2))
+        auto taken = cede (pair.left as Token)
+        assert(taken.id == 1, "cast does not change the moved field")
+        assert(pair.right.id == 2, "cast cede preserves sibling liveness")
+    }
+    assert(g_drop_count == 2,
+           "cast around direct field cede drops each resource exactly once")
+    return 0
+}

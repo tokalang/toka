@@ -33,6 +33,19 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static Expr *unwrapCedeDirectSource(Expr *E) {
+  while (E) {
+    if (auto *unary = dynamic_cast<UnaryExpr *>(E)) {
+      E = unary->RHS.get();
+    } else if (auto *cast = dynamic_cast<CastExpr *>(E)) {
+      E = cast->Expression.get();
+    } else {
+      break;
+    }
+  }
+  return E;
+}
+
 AccessCapability Sema::getAccessCapability(Expr *E) {
   if (!E)
     return {};
@@ -113,18 +126,9 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
 
   if (auto *Cede = dynamic_cast<CedeExpr *>(E)) {
     PermissionFlow flow = getPermissionFlow(Cede->Value.get());
-    Expr *directSource = Cede->Value.get();
-    while (true) {
-      if (auto *unary = dynamic_cast<UnaryExpr *>(directSource)) {
-        directSource = unary->RHS.get();
-      } else if (auto *cast = dynamic_cast<CastExpr *>(directSource)) {
-        // A cast changes the static presentation, not the direct ownership
-        // source. It cannot turn a member transfer into an independent one.
-        directSource = cast->Expression.get();
-      } else {
-        break;
-      }
-    }
+    // A cast changes the static presentation, not the direct ownership
+    // source. It cannot turn a member transfer into an independent one.
+    Expr *directSource = unwrapCedeDirectSource(Cede->Value.get());
 
     // A whole binding or a fresh owned rvalue may establish an independent
     // owner. A member, index, or spread instead remains a view of its host:
@@ -2567,14 +2571,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
       }
 
-      Expr *underlying = ce->Value.get();
-      while (true) {
-        if (auto *un = dynamic_cast<UnaryExpr *>(underlying)) {
-          underlying = un->RHS.get();
-        } else {
-          break;
-        }
-      }
+      Expr *underlying = unwrapCedeDirectSource(ce->Value.get());
       if (auto *Var = dynamic_cast<VariableExpr *>(underlying)) {
         SymbolInfo *Info = nullptr;
         std::string actualName;

@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0439
+import ./lib::{make_custom_pair, Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto pair = make_custom_pair(drops)
+    auto taken = cede (pair.left as Token)
+    return taken.id
+}

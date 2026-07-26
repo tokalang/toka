@@ -399,6 +399,14 @@
       "description": "A direct field cede keeps sibling fields live and drops each resource exactly once"
     },
     {
+      "id": "ownership_cede_direct_field_cast_cleanup_01",
+      "path": "ownership/cede_direct_field_cast_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A cast around direct field cede preserves exact field cleanup"
+    },
+    {
       "id": "ownership_cede_direct_field_reinitialize_01",
       "path": "ownership/cede_direct_field_reinitialize.tk",
       "type": "run",
@@ -424,6 +432,15 @@
       "description": "A direct field cede invalidates that field without invalidating its live sibling"
     },
     {
+      "id": "diag_cede_direct_field_cast_invalidates_source_01",
+      "path": "diagnostics/cede_direct_field_cast_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "A cast cannot hide direct field cede invalidation"
+    },
+    {
       "id": "diag_cede_direct_field_custom_drop_rejected_01",
       "path": "diagnostics/cede_direct_field_custom_drop_rejected.tk",
       "type": "compile-fail",
@@ -431,6 +448,15 @@
       "expected_span_line": 19,
       "timeout_seconds": 10,
       "description": "A direct field cede cannot bypass a user-defined aggregate destructor"
+    },
+    {
+      "id": "diag_cede_direct_field_cast_custom_drop_rejected_01",
+      "path": "diagnostics/cede_direct_field_cast_custom_drop_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0439",
+      "expected_span_line": 20,
+      "timeout_seconds": 10,
+      "description": "A cast cannot bypass the custom-drop direct-field cede boundary"
     },
     {
       "id": "ownership_cede_nullable_source_after_guard_01",

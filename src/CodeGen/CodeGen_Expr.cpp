@@ -5776,18 +5776,24 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
   // Cede is a move semantic marker checked heavily in Sema. 
   // In LLVM IR, we evaluate it to the underlying value explicitly transferring ownership.
   if (ce->Value) {
-    const VariableExpr *ve = dynamic_cast<const VariableExpr *>(ce->Value.get());
+    const Expr *directSource = ce->Value.get();
+    while (auto *cast = dynamic_cast<const CastExpr *>(directSource))
+      directSource = cast->Expression.get();
+
+    const VariableExpr *ve = dynamic_cast<const VariableExpr *>(directSource);
     const UnaryExpr *ue = nullptr;
     if (!ve) {
-      if ((ue = dynamic_cast<const UnaryExpr *>(ce->Value.get()))) {
-        ve = dynamic_cast<const VariableExpr *>(ue->RHS.get());
-      } else if (auto *se = dynamic_cast<const SpreadExpr *>(ce->Value.get())) {
+      if ((ue = dynamic_cast<const UnaryExpr *>(directSource))) {
+        directSource = ue->RHS.get();
+        ve = dynamic_cast<const VariableExpr *>(directSource);
+      } else if (auto *se = dynamic_cast<const SpreadExpr *>(directSource)) {
         ve = dynamic_cast<const VariableExpr *>(se->Base.get());
       }
     }
 
     bool isShared = false;
-    if (ce->Value->ResolvedType && ce->Value->ResolvedType->isSharedPtr()) {
+    if ((ce->Value->ResolvedType && ce->Value->ResolvedType->isSharedPtr()) ||
+        (directSource->ResolvedType && directSource->ResolvedType->isSharedPtr())) {
       isShared = true;
     } else if (ve) {
       std::string baseName = Type::stripMorphology(ve->Name);
@@ -5800,8 +5806,7 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
 
     if (ve) {
       suppressDropForMove(ve->Name);
-    } else if (auto *member =
-                   dynamic_cast<const MemberExpr *>(ce->Value.get())) {
+    } else if (auto *member = dynamic_cast<const MemberExpr *>(directSource)) {
       suppressDropForPartialMove(member);
     }
 
