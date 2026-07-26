@@ -13,7 +13,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 57 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 58 passed, 0 failed on 2026-07-27;
 - all 24 populated source-less replay cases: 24 passed, 0 failed in two
   bounded batches on 2026-07-27 (the workspace also contains an empty,
   non-case directory named `permission_003_pattern_flow`);
@@ -33,7 +33,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 | RFC rule | Current evidence | Assessment |
 |---|---|---|
 | Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings retain a payload ceiling, and declaration boundaries enforce it for payload assignment, mutable calls, returns, fields, match/guard binders, and destructuring reference fields. `permission_002_shared_flow` verifies source-backed/source-less agreement for readonly and writable imported reference fields, match binders, and guard binders. | **Partial**: nullable/independent-transfer semantics remain open. |
-| Static authority is declaration/signature-backed; syntax is intent only | `BindingPermission`, `AccessCapability`, and `AccessIntent` route ordinary assignment and calls through declaration facts. The conformance suite includes direct, call, receiver, and raw negative cases. | **Conforms (Layer 1)** |
+| Static authority is declaration/signature-backed; syntax is intent only | `BindingPermission`, `AccessCapability`, and `AccessIntent` route ordinary assignment and calls through declaration facts. Explicit `cede` captures create a fresh binding while preserving the source declaration's capability and direct-flow ceiling; the capture-list sigils themselves grant nothing. The conformance suite includes direct, call, receiver, raw, and explicit-capture cases. | **Conforms (Layer 1)** |
 | Existing assignment cannot redeclare H/P | Existing targets are checked against their declared access capability. A later assignment does not update the target declaration. | **Conforms (Layer 1)** |
 | `cede` requires invalidation and marks a source moved | A whole `^` binding is PAL-invalidated and reports `E0438` after transfer; cede parameters have dedicated call checks. For a direct named field of a local compiler-managed record, `InitMask` now marks only that field unset and a CodeGen drop mask prevents double drop. Coroutine cancellation unwinds the same mask before completing the task. Member/index/spread paths remain Shared-flow for authority. | **Partial**: custom-drop, index, spread, enum, and source-less lifecycle evidence remain open. |
 | Independent sources re-root a fresh binding under referent ceilings | A fresh unique binding obtains its own declaration permissions and a whole `^` source is invalidated (`cede_unique_creates_independent_owner` and `cede_unique_source_invalidated`). `cede` member/index/spread paths retain their direct payload ceiling rather than becoming independent. | **Partial**: no universal carried referent ceiling exists for frozen/nullable transfer. |

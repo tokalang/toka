@@ -473,6 +473,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   // Determine Captures
   std::vector<ShapeMember> members;
+  std::map<std::string, SymbolInfo> explicitCaptureBindings;
   for (const auto &capture : Clo->ExplicitCaptures) {
     std::string name = Type::stripMorphology(capture.Name);
     if (!name.empty() && name != "*")
@@ -547,6 +548,19 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             }
             sm.Type = infoPtr->TypeObj->toString(); 
             sm.ResolvedType = infoPtr->TypeObj; // [Fix] Pre-resolve
+            // An explicit capture is a new binding, but it carries the
+            // captured declaration's authority and any direct-flow ceiling.
+            // The capture-list sigils select the transfer; they cannot erase
+            // a real payload capability and force later body checks to treat
+            // a writable captured field as read-only.
+            SymbolInfo captureInfo = *infoPtr;
+            captureInfo.SymbolID = 0;
+            captureInfo.Moved = false;
+            captureInfo.MoveLoc = SourceLocation{};
+            captureInfo.IsFunctionParameter = false;
+            captureInfo.IsDeclaredVariable = true;
+            captureInfo.TypeObj = sm.ResolvedType;
+            explicitCaptureBindings[sm.Name] = std::move(captureInfo);
             if (explicitMode == CaptureMode::ExplicitCede) {
                 // Mark original variable as Consumed/Moved in the parent scope!
                 CurrentScope->Parent->markMoved(varName, Clo->Loc);
@@ -646,7 +660,12 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   for (auto &memb : SyntheticShape->Members) {
     if (memb.ResolvedType) {
        SymbolInfo Info;
+       auto explicitIt = explicitCaptureBindings.find(memb.Name);
+       if (explicitIt != explicitCaptureBindings.end()) {
+         Info = explicitIt->second;
+       }
        Info.TypeObj = memb.ResolvedType; // Pre-resolved!
+       Info.IsDeclaredVariable = true;
        // If it's a reference capture, the user writes `x`, but it's a reference under the hood. 
        // We want it to be considered as the exact physical type.
        CurrentScope->define(memb.Name, Info);

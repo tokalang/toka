@@ -47,12 +47,12 @@ impl<'T: @Send> WaitQueue<'T> {
 }
 
 pub shape ChannelPair<'T: @Send>(
-    tx: Sender<'T>,
-    rx: Receiver<'T>
+    tx#: Sender<'T>,
+    rx#: Receiver<'T>
 )
 
 pub fn channel<'T: @Send>() -> ChannelPair<'T> {
-    auto ~inner = new AsyncChannel<'T>(
+    auto ~inner# = new AsyncChannel<'T>(
         state = Mutex<WaitQueue<'T> >::new(WaitQueue<'T>::new(-1:i32)),
         cond_not_empty = CondVar<WaitQueue<'T> >::new(),
         cond_not_full = CondVar<WaitQueue<'T> >::new()
@@ -65,7 +65,7 @@ pub fn channel<'T: @Send>() -> ChannelPair<'T> {
 }
 
 pub fn sync_channel<'T: @Send>(bound: i32) -> ChannelPair<'T> {
-    auto ~inner = new AsyncChannel<'T>(
+    auto ~inner# = new AsyncChannel<'T>(
         state = Mutex<WaitQueue<'T> >::new(WaitQueue<'T>::new(bound)),
         cond_not_empty = CondVar<WaitQueue<'T> >::new(),
         cond_not_full = CondVar<WaitQueue<'T> >::new()
@@ -85,7 +85,7 @@ impl<'T: @Send> Sender<'T> {
             return Sender<'T>(~channel = self.~channel)
         }
         auto lguard = lguard_res.unwrap()
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         q.senders = q.senders + 1
         return Sender<'T>(~channel = self.~channel)
     }
@@ -93,7 +93,7 @@ impl<'T: @Send> Sender<'T> {
     pub fn send(self#, val: cede 'T) -> Result<(), Error> {
         auto lguard = self.channel.state.lock()!
         
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         if q.closed {
             return Result<(), Error>::Err(Error::new(1:i32, string::from("Send on closed channel")))
         }
@@ -125,7 +125,7 @@ impl<'T: @Send> Receiver<'T> {
     pub fn recv(self#) -> Result<Option<'T>, Error> {
         auto lguard = self.channel.state.lock()!
 
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         loop q.queue.len() == 0 {
             if q.closed && q.queue.len() == 0 {
                 return Result<Option<'T>, Error>::Ok(Option<'T>::None())
@@ -142,7 +142,7 @@ impl<'T: @Send> Receiver<'T> {
 
     pub fn try_recv(self#) -> Result<Option<Option<'T> >, Error> {
         auto lguard = self.channel.state.lock()!
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         if q.queue.len() > 0 {
             auto item = q.queue#.pop_front()
             if q.capacity >= 0 {
@@ -165,7 +165,7 @@ impl<'T: @Send> Sender<'T>@encap {
             return
         }
         auto lguard = lguard_res.unwrap()
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         q.senders = q.senders - 1
         if q.senders == 0 {
             q.closed = true
@@ -179,7 +179,7 @@ impl<'T: @Send> Sender<'T>@encap {
             return Sender<'T>(~channel = self.~channel)
         }
         auto lguard = lguard_res.unwrap()
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         q.senders = q.senders + 1
         return Sender<'T>(~channel = self.~channel)
     }

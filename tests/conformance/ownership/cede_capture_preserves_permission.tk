@@ -1,0 +1,14 @@
+shape Cell (
+    value#: i32
+)
+
+fn main() -> i32 {
+    auto cell# = Cell(value = 1)
+    auto invoke#: fn#() -> i32 = { [cede cell#] =>
+        cell.value = 2
+        return cell.value
+    }
+    assert(invoke#() == 2,
+           "cede capture retains declared payload capability")
+    return 0
+}

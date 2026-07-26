@@ -366,6 +366,14 @@
       "description": "A cede unique transfer creates a fresh owner whose declaration controls payload writes"
     },
     {
+      "id": "ownership_cede_capture_preserves_permission_01",
+      "path": "ownership/cede_capture_preserves_permission.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An explicit cede capture preserves its source binding's declared payload capability"
+    },
+    {
       "id": "ownership_cede_direct_field_cleanup_01",
       "path": "ownership/cede_direct_field_cleanup.tk",
       "type": "run",
