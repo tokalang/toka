@@ -274,6 +274,15 @@
       "description": "A destructuring binder cannot upgrade a read-only reference field"
     },
     {
+      "id": "diag_cede_unique_source_invalidated_01",
+      "path": "diagnostics/cede_unique_source_invalidated.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0438",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A whole unique cede invalidates the source binding exactly once"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",
