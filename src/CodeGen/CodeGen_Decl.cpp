@@ -2852,6 +2852,27 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       return PhysEntity(sretAlloc, expr->ResolvedType->getSoulName(), getLLVMType(expr->ResolvedType), true);
   }
 
+  // Async methods, like ordinary async calls, return a raw TCB pointer from
+  // their coroutine factory.  The language expression is a TaskHandle<T>;
+  // preserving that wrapper is required before `.start`/`.await` can extract
+  // the TCB.  Returning the raw pointer here made method-produced tasks be
+  // interpreted as a pointer to TaskHandle storage.
+  if (isMethodAsync) {
+    if (!expr->ResolvedType) {
+      error(expr, DiagID::ERR_CODEGEN_INTERNAL_CODEGEN_ERROR_ASYNC_CALL_MISS);
+      return nullptr;
+    }
+    const std::string taskName = expr->ResolvedType->toString();
+    llvm::Type *handleTy = m_StructTypes[taskName];
+    if (!handleTy) {
+      error(expr, DiagID::ERR_CODEGEN_INTERNAL_CODEGEN_ERROR_ASYNC_CALL_MISS);
+      return nullptr;
+    }
+    llvm::Value *handle = llvm::UndefValue::get(handleTy);
+    handle = m_Builder.CreateInsertValue(handle, ci, 0, "task.wrap");
+    return PhysEntity(handle, taskName, handleTy, false);
+  }
+
   std::string retTypeName = "";
   if (fd)
     retTypeName = fd->ReturnType;

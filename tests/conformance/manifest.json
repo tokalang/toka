@@ -139,6 +139,14 @@
       "description": "Async cede shared parameters preserve declared Payload capability"
     },
     {
+      "id": "async_cede_unique_receiver_taskhandle_lifecycle_01",
+      "path": "async/async_cede_unique_receiver_taskhandle_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async consuming unique receivers produce a TaskHandle and drop the transferred resource exactly once"
+    },
+    {
       "id": "std_generic_encap_guard_lifetime_01",
       "path": "std/generic_encap_guard_lifetime.tk",
       "type": "run",

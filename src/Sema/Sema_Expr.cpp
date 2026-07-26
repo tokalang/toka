@@ -3347,9 +3347,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (!FD->Args.empty() &&
             Type::stripMorphology(FD->Args[0].Name) == "self") {
             if (FD->Effect == EffectKind::Async) {
+              // A `cede self` receiver is the method-call spelling of an
+              // ownership transfer.  Unlike ordinary arguments it has no
+              // separate call-site `cede` wrapper, so the execution-boundary
+              // check must use the receiver declaration as the transfer fact.
               checkStartBoundaryArgument(
                   Met->Object.get(), ObjTypeObj, FD->Args[0].IsCeded,
-                  dynamic_cast<CedeExpr *>(Met->Object.get()) != nullptr,
+                  FD->Args[0].IsCeded ||
+                      dynamic_cast<CedeExpr *>(Met->Object.get()) != nullptr,
                   "self");
             }
             // [NEW] Cede Ownership check for Method Call
