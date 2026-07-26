@@ -409,6 +409,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               expectedTy = resolveType(toka::Type::fromString(tyStr), false);
           }
           auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+          if (MetAST && i < MetAST->Args.size()) {
+            const auto &param = MetAST->Args[i];
+            AccessCapability argCapability =
+                getAccessCapability(Call->Args[i].get());
+            AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+            const bool paramIsHatted =
+                param.IsRawPointer || param.IsUnique || param.IsShared ||
+                param.IsReference;
+            const bool lacksHandleCapability =
+                paramIsHatted && param.IsRebindable &&
+                (!argCapability.HandleRebindable ||
+                 !argIntent.HandleRebind);
+            const bool lacksPayloadCapability =
+                param.IsValueMutable && !param.IsCeded &&
+                (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+            if (lacksHandleCapability || lacksPayloadCapability) {
+              error(Call->Args[i].get(),
+                    DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+                    std::to_string(i + 1),
+                    expectedTy ? expectedTy->getSoulName()
+                               : "capable argument",
+                    argTy ? argTy->getSoulName() : "unknown");
+            }
+          }
           if (MetAST && MetAST->Effect == EffectKind::Async &&
               i < MetAST->Args.size()) {
             checkStartBoundaryArgument(
@@ -468,6 +492,31 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     expectedTy = resolveType(toka::Type::fromString(tyStr), false);
                 }
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                if (MetAST && i < MetAST->Args.size()) {
+                  const auto &param = MetAST->Args[i];
+                  AccessCapability argCapability =
+                      getAccessCapability(Call->Args[i].get());
+                  AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+                  const bool paramIsHatted =
+                      param.IsRawPointer || param.IsUnique || param.IsShared ||
+                      param.IsReference;
+                  const bool lacksHandleCapability =
+                      paramIsHatted && param.IsRebindable &&
+                      (!argCapability.HandleRebindable ||
+                       !argIntent.HandleRebind);
+                  const bool lacksPayloadCapability =
+                      param.IsValueMutable && !param.IsCeded &&
+                      (!argCapability.PayloadWritable ||
+                       !argIntent.PayloadWrite);
+                  if (lacksHandleCapability || lacksPayloadCapability) {
+                    error(Call->Args[i].get(),
+                          DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+                          std::to_string(i + 1),
+                          expectedTy ? expectedTy->getSoulName()
+                                     : "capable argument",
+                          argTy ? argTy->getSoulName() : "unknown");
+                  }
+                }
                 if (MetAST && MetAST->Effect == EffectKind::Async &&
                     i < MetAST->Args.size()) {
                   checkStartBoundaryArgument(
@@ -836,6 +885,27 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
                 auto expectedTy = toka::Type::fromString(invokeFn->Args[i + 1].Type);
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                const auto &param = invokeFn->Args[i + 1];
+                AccessCapability argCapability =
+                    getAccessCapability(Call->Args[i].get());
+                AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+                const bool paramIsHatted =
+                    param.IsRawPointer || param.IsUnique || param.IsShared ||
+                    param.IsReference;
+                const bool lacksHandleCapability =
+                    paramIsHatted && param.IsRebindable &&
+                    (!argCapability.HandleRebindable ||
+                     !argIntent.HandleRebind);
+                const bool lacksPayloadCapability =
+                    param.IsValueMutable && !param.IsCeded &&
+                    (!argCapability.PayloadWritable ||
+                     !argIntent.PayloadWrite);
+                if (lacksHandleCapability || lacksPayloadCapability) {
+                    error(Call->Args[i].get(),
+                          DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+                          std::to_string(i + 1), expectedTy->getSoulName(),
+                          argTy->getSoulName());
+                }
                 std::string expectedBase = Type::stripMorphology(invokeFn->Args[i + 1].Type);
                 std::string actualBase = argTy->getSoulName();
                 if (expectedBase != actualBase && expectedBase != "unknown" && actualBase != "unknown") {
@@ -954,6 +1024,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
             auto expectedTy = resolveType(fnTy->ParamTypes[i], false);
             auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+            AccessCapability argCapability =
+                getAccessCapability(Call->Args[i].get());
+            AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+            const bool paramIsHatted =
+                expectedTy->isPointer() || expectedTy->isSmartPointer() ||
+                expectedTy->isReference();
+            const bool paramNeedsPayload =
+                paramIsHatted
+                    ? (expectedTy->getPointeeType() &&
+                       expectedTy->getPointeeType()->IsWritable)
+                    : expectedTy->IsWritable;
+            const bool lacksHandleCapability =
+                paramIsHatted && expectedTy->IsWritable &&
+                (!argCapability.HandleRebindable ||
+                 !argIntent.HandleRebind);
+            const bool lacksPayloadCapability =
+                paramNeedsPayload &&
+                (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+            if (lacksHandleCapability || lacksPayloadCapability) {
+                error(Call->Args[i].get(),
+                      DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+                      std::to_string(i + 1), expectedTy->getSoulName(),
+                      argTy->getSoulName());
+            }
             if (!isTypeCompatible(fnTy->ParamTypes[i], argTy)) {
                 DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                          "Argument " + std::to_string(i + 1), fnTy->ParamTypes[i]->getSoulName(), argTy->getSoulName());
@@ -971,6 +1065,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
             auto expectedTy = resolveType(fnTy->ParamTypes[i], false);
             auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+            AccessCapability argCapability =
+                getAccessCapability(Call->Args[i].get());
+            AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+            const bool paramIsHatted =
+                expectedTy->isPointer() || expectedTy->isSmartPointer() ||
+                expectedTy->isReference();
+            const bool paramNeedsPayload =
+                paramIsHatted
+                    ? (expectedTy->getPointeeType() &&
+                       expectedTy->getPointeeType()->IsWritable)
+                    : expectedTy->IsWritable;
+            const bool lacksHandleCapability =
+                paramIsHatted && expectedTy->IsWritable &&
+                (!argCapability.HandleRebindable ||
+                 !argIntent.HandleRebind);
+            const bool lacksPayloadCapability =
+                paramNeedsPayload &&
+                (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+            if (lacksHandleCapability || lacksPayloadCapability) {
+                error(Call->Args[i].get(),
+                      DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+                      std::to_string(i + 1), expectedTy->getSoulName(),
+                      argTy->getSoulName());
+            }
             if (!isTypeCompatible(fnTy->ParamTypes[i], argTy)) {
                 DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                          "Argument " + std::to_string(i + 1), fnTy->ParamTypes[i]->getSoulName(), argTy->getSoulName());
@@ -1724,6 +1842,40 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         paramIsRebindable = Ext->Args[i].IsRebindable;
         paramIsValueMutable = Ext->Args[i].IsValueMutable;
         cedeParamLoc = Ext->Args[i].Loc;
+    }
+
+    // Callable values have no FunctionDecl/ExternDecl metadata at this point,
+    // so recover the same two requirements from their physical parameter type.
+    if (!Fn && !Ext && paramType) {
+      paramIsHatted = paramType->isPointer() || paramType->isSmartPointer() ||
+                       paramType->isReference();
+      if (paramIsHatted) {
+        paramIsRebindable = paramType->IsWritable;
+        auto pointee = paramType->getPointeeType();
+        paramIsValueMutable = pointee && pointee->IsWritable;
+      } else {
+        paramIsValueMutable = paramType->IsWritable;
+      }
+    }
+
+    // Type compatibility is intentionally permissive for value construction
+    // (for example, `auto x# = 1`).  It is not an authority check for a
+    // mutable call parameter.  Callee requirements must be a subset of the
+    // caller path's declared capabilities.
+    AccessCapability argCapability = getAccessCapability(Call->Args[i].get());
+    AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
+    bool lacksHandleCapability =
+        paramIsHatted && paramIsRebindable &&
+        (!argCapability.HandleRebindable || !argIntent.HandleRebind);
+    bool lacksPayloadCapability =
+        paramIsValueMutable && !isCededParam &&
+        (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+    if (lacksHandleCapability || lacksPayloadCapability) {
+      error(Call->Args[i].get(),
+            DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
+            std::to_string(i + 1),
+            paramType ? diagnosticTypeName(paramType) : "capable argument",
+            diagnosticTypeName(argType));
     }
 
     bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;

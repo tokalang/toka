@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04571
+import ./lib::{Cell, overwrite}
+
+fn main() -> i32 {
+    auto ^#handle_only = new Cell(value = 1)
+    overwrite(^#handle_only)
+    return 0
+}

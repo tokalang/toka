@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04571
+import ./lib::{Cell, reset}
+
+fn main() -> i32 {
+    auto ^payload_only# = new Cell(value = 1)
+    reset(^#payload_only)
+    return 0
+}

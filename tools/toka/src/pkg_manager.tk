@@ -94,7 +94,7 @@ pub fn build_pkg_mappings() -> Vec<string> {
     if result.is_err() { return mappings }
     auto output = result.unwrap()
     if !output.status.success() { return mappings }
-    auto lines = output.stdout.split('\n' as i32)
+    auto lines# = output.stdout.split('\n' as i32)
     loop !lines.is_done() {
         auto line = lines#.next()
         if !line.is_empty() {

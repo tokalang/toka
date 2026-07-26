@@ -130,6 +130,78 @@
       "description": "Handle-only permission cannot escape through an indexed payload path"
     },
     {
+      "id": "diag_handle_use_site_cannot_forge_rebind_01",
+      "path": "diagnostics/handle_use_site_cannot_forge_rebind.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "A use-site handle '#' cannot manufacture rebinding capability"
+    },
+    {
+      "id": "diag_call_handle_only_cannot_supply_payload_01",
+      "path": "diagnostics/call_handle_only_cannot_supply_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A handle-only caller cannot satisfy a payload-write parameter"
+    },
+    {
+      "id": "diag_call_payload_only_cannot_supply_rebind_01",
+      "path": "diagnostics/call_payload_only_cannot_supply_rebind.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A payload-only caller cannot satisfy a handle-rebind parameter"
+    },
+    {
+      "id": "diag_call_readonly_value_cannot_supply_payload_01",
+      "path": "diagnostics/call_readonly_value_cannot_supply_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "A read-only value cannot satisfy a payload-write parameter"
+    },
+    {
+      "id": "diag_method_use_site_cannot_forge_payload_01",
+      "path": "diagnostics/method_use_site_cannot_forge_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A use-site payload '#' cannot manufacture mutable method receiver capability"
+    },
+    {
+      "id": "diag_static_call_handle_only_cannot_supply_payload_01",
+      "path": "diagnostics/static_call_handle_only_cannot_supply_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Static method calls enforce declared payload capability for arguments"
+    },
+    {
+      "id": "diag_callable_argument_cannot_forge_payload_01",
+      "path": "diagnostics/callable_argument_cannot_forge_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "Callable invocation cannot use a read-only argument for a payload-write parameter"
+    },
+    {
+      "id": "diag_raw_payload_write_requires_unsafe_01",
+      "path": "diagnostics/raw_payload_write_requires_unsafe.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04572",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "A raw handle does not grant safe payload write without an unsafe context"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",
@@ -144,6 +216,22 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Handle-side '#' authorizes runtime rebinding and combines independently with payload-side '#'"
+    },
+    {
+      "id": "ownership_call_permission_capability_matrix_01",
+      "path": "ownership/call_permission_capability_matrix.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Declared payload and handle capabilities satisfy only their matching call requirements"
+    },
+    {
+      "id": "ownership_callable_argument_permission_matrix_01",
+      "path": "ownership/callable_argument_permission_matrix.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Callable invocation accepts a parameter only when the caller declaration grants payload write"
     },
     {
       "id": "ir_sret_abi_01",

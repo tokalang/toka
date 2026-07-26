@@ -1,0 +1,13 @@
+shape Cell(value#: i32)
+
+impl Cell {
+    fn set(self#, value: i32) {
+        self.value = value
+    }
+}
+
+fn main() -> i32 {
+    auto ^#handle_only = new Cell(value = 1)
+    handle_only#.set(2)
+    return 0
+}

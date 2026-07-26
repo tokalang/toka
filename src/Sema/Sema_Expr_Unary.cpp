@@ -131,9 +131,17 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       std::shared_ptr<toka::Type> physType = Info->TypeObj;
       EffectiveInfo = resolveBorrowSource(EffectiveInfo, EffectiveName);
 
+      // In an assignment target, a handle view must obtain its writability
+      // from the bound declaration.  A use-site # only requests that view;
+      // it cannot create the capability.
+      bool handleViewWritable =
+          m_InLHS ? Info->IsHandleRebindable()
+                  : (Unary->IsRebindable ||
+                     (m_IsAssignmentTarget && Info->IsHandleRebindable()));
+
       if (Unary->Op == TokenType::Ampersand) {
         auto innerType = rhsType;
-        bool handleMutable = Unary->IsRebindable;
+        bool handleMutable = handleViewWritable;
         bool soulMutable = rhsType->IsWritable;
 
         auto refType = std::make_shared<toka::ReferenceType>(innerType);
@@ -193,8 +201,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       if (Unary->Op == TokenType::Star) {
         if (physType && physType->isRawPointer()) {
           return physType->withAttributes(
-              Unary->IsRebindable ||
-                  (m_IsAssignmentTarget && Info->IsRebindable),
+              handleViewWritable,
               Unary->HasNull || physType->IsNullable);
         }
         // [New] Array-to-Pointer Decay for Variable Elevation
@@ -206,8 +213,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           return res;
         }
         auto res = std::make_shared<toka::RawPointerType>(rhsType);
-        res->IsWritable =
-            Unary->IsRebindable || (m_IsAssignmentTarget && Info->IsRebindable);
+        res->IsWritable = handleViewWritable;
         res->IsNullable = Unary->HasNull;
         return res;
       }
@@ -230,13 +236,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         }
         if (physType && physType->isUniquePtr()) {
           return physType->withAttributes(
-              Unary->IsRebindable ||
-                  (m_IsAssignmentTarget && Info->IsRebindable),
+              handleViewWritable,
               Unary->HasNull || physType->IsNullable);
         }
         auto res = std::make_shared<toka::UniquePointerType>(rhsType);
-        res->IsWritable =
-            Unary->IsRebindable || (m_IsAssignmentTarget && Info->IsRebindable);
+        res->IsWritable = handleViewWritable;
         res->IsNullable = Unary->HasNull;
         return res;
       }
@@ -259,13 +263,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         }
         if (physType && physType->isSharedPtr()) {
           return physType->withAttributes(
-              Unary->IsRebindable ||
-                  (m_IsAssignmentTarget && Info->IsRebindable),
+              handleViewWritable,
               Unary->HasNull || physType->IsNullable);
         }
         auto res = std::make_shared<toka::SharedPointerType>(rhsType);
-        res->IsWritable =
-            Unary->IsRebindable || (m_IsAssignmentTarget && Info->IsRebindable);
+        res->IsWritable = handleViewWritable;
         res->IsNullable = Unary->HasNull;
         return res;
       }

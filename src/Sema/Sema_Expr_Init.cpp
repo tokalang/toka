@@ -257,15 +257,19 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     }
 
     if (Pat->IsReference && !TargetPath.empty()) {
-        Info.BorrowedFrom = TargetPath;
+      Info.BorrowedFrom = TargetPath;
         Info.LifeDependencySet.insert(TargetPath);
         
         // Also inherit any transitive dependencies if the target path is a known symbol
         SymbolInfo *targetInfo = nullptr;
         if (CurrentScope->findSymbol(TargetPath, targetInfo)) {
             Info.LifeDependencySet.insert(targetInfo->LifeDependencySet.begin(), targetInfo->LifeDependencySet.end());
-        }
+      }
     }
+
+    // Pattern bindings are declarations too.  Preserve their payload-side
+    // capability rather than relying on a later use-site # to recreate it.
+    Info.IsDeclaredMutable = Pat->IsValueMutable;
 
     CurrentScope->define(Pat->Name, Info);
     break;

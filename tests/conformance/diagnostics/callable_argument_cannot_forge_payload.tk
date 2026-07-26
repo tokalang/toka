@@ -1,0 +1,14 @@
+shape Mutator()
+
+impl Mutator@Callable {
+    fn call(self, value#: i32) {
+        value = 2
+    }
+}
+
+fn main() -> i32 {
+    auto callback = Mutator()
+    auto value = 1
+    callback(value)
+    return 0
+}

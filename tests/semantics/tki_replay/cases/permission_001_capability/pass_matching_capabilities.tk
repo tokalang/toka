@@ -1,0 +1,16 @@
+import ./lib::{Cell, overwrite, reset, overwrite_value}
+
+fn main() -> i32 {
+    auto ^payload_only# = new Cell(value = 1)
+    overwrite(^payload_only)
+    if payload_only.value != 9 { return 1 }
+
+    auto ^#handle_only = new Cell(value = 1)
+    reset(^#handle_only)
+    if handle_only.value != 8 { return 2 }
+
+    auto value# = 1
+    overwrite_value(value)
+    if value != 4 { return 3 }
+    return 0
+}

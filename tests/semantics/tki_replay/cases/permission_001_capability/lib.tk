@@ -1,0 +1,16 @@
+// EXPECT_TKI: pub fn overwrite(^p#: Cell)
+// EXPECT_TKI: pub fn reset(^#p: Cell)
+// EXPECT_TKI: pub fn overwrite_value(value#: i32)
+pub shape Cell(value#: i32)
+
+pub fn overwrite(^p#: Cell) {
+    p.value = 9
+}
+
+pub fn reset(^#p: Cell) {
+    ^p = new Cell(value = 8)
+}
+
+pub fn overwrite_value(value#: i32) {
+    value = 4
+}

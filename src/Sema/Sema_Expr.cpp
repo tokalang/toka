@@ -33,6 +33,116 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+AccessCapability Sema::getAccessCapability(Expr *E) {
+  if (!E)
+    return {};
+
+  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+    return getAccessCapability(Cast->Expression.get());
+  if (auto *Cede = dynamic_cast<CedeExpr *>(E))
+    return getAccessCapability(Cede->Value.get());
+  if (auto *Addr = dynamic_cast<AddressOfExpr *>(E))
+    return getAccessCapability(Addr->Expression.get());
+  if (auto *Post = dynamic_cast<PostfixExpr *>(E))
+    return getAccessCapability(Post->LHS.get());
+
+  if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
+    SymbolInfo *Info = nullptr;
+    std::string actualName = Var->Name;
+    if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
+        Info) {
+      bool isPlainOwnedValue =
+          Info->IsDeclaredVariable && !Info->IsFunctionParameter &&
+          Info->Permission.Morphology == BindingMorphology::None &&
+          Info->TypeObj && !Info->TypeObj->isPointer() &&
+          !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference();
+      // Raw pointer payload access is an unsafe capability.  Handle-side #
+      // remains identity-only and cannot manufacture it.
+      bool rawPayloadCapability =
+          m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
+          !Info->IsHandleRebindable();
+      bool valueBindingCanRebindMemberHandle =
+          Info->TypeObj && !Info->TypeObj->isPointer() &&
+          !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference() &&
+          Info->Permission.SoulWritable;
+      return {Info->Permission.SoulWritable || isPlainOwnedValue ||
+                  rawPayloadCapability,
+              Info->Permission.IdentityRebindable ||
+                  valueBindingCanRebindMemberHandle};
+    }
+    return {};
+  }
+
+  if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
+    // A hat chooses which existing handle is viewed; its # is an intent, not
+    // a new grant.  The underlying declaration remains the authority.
+    return getAccessCapability(Unary->RHS.get());
+  }
+
+  if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
+    auto base = getAccessCapability(Member->Object.get());
+    // A member cannot bypass a read-only payload path.  The member checker
+    // applies field-level insulation separately; this capability query must
+    // retain the proven parent path rather than infer authority from a
+    // collapsed read-view type.
+    return {base.PayloadWritable, false};
+  }
+
+  if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
+    auto base = getAccessCapability(Index->Array.get());
+    return {base.PayloadWritable, false};
+  }
+
+  // A non-place expression is a fresh value.  For an indirect result, retain
+  // only the capability carried by its declared pointee; for all other
+  // rvalues, no caller-owned payload exists to protect.
+  if (E->ResolvedType &&
+      (E->ResolvedType->isPointer() || E->ResolvedType->isSmartPointer() ||
+       E->ResolvedType->isReference())) {
+    auto pointee = E->ResolvedType->getPointeeType();
+    return {pointee && pointee->IsWritable, false};
+  }
+  return {true, false};
+}
+
+AccessIntent Sema::getAccessIntent(Expr *E) {
+  if (!E)
+    return {};
+
+  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+    return getAccessIntent(Cast->Expression.get());
+  if (auto *Cede = dynamic_cast<CedeExpr *>(E))
+    return getAccessIntent(Cede->Value.get());
+  if (auto *Post = dynamic_cast<PostfixExpr *>(E)) {
+    auto intent = getAccessIntent(Post->LHS.get());
+    if (Post->Op == TokenType::TokenWrite || Post->Op == TokenType::Bang)
+      intent.PayloadWrite = true;
+    return intent;
+  }
+  if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
+    SymbolInfo *Info = nullptr;
+    std::string actualName = Var->Name;
+    if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
+        Info) {
+      return {Var->IsValueMutable || Info->Permission.SoulWritable, false};
+    }
+    return {};
+  }
+  if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
+    auto intent = getAccessIntent(Unary->RHS.get());
+    intent.HandleRebind = Unary->IsRebindable;
+    return intent;
+  }
+  if (auto *Member = dynamic_cast<MemberExpr *>(E))
+    return getAccessIntent(Member->Object.get());
+  if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E))
+    return getAccessIntent(Index->Array.get());
+
+  // Fresh rvalues have no caller storage to protect, so their ownership is
+  // sufficient intent for a mutable-by-value callee.
+  return {true, false};
+}
+
 static std::map<std::string, bool> captureVisibleUniqueMoved(Scope *ScopePtr) {
   std::map<std::string, bool> moved;
   for (Scope *S = ScopePtr; S; S = S->Parent) {
@@ -1256,11 +1366,29 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Toka 1.3] Permission View: Inherit inherent mutability.
         // With explicit suffixes banned in expressions, variables inherently exhibit 
         // their declared mutability.
-        bool usageMutable = ve->IsValueMutable;
+        // A suffix # is an intent at a use site.  A plain owned value has a
+        // local payload capability, while a handle must declare payload-side
+        // writability.  Intent alone never upgrades a handle-only binding.
+        bool isPlainOwnedValue =
+            Info.IsDeclaredVariable && !Info.IsFunctionParameter &&
+            Info.Permission.Morphology == BindingMorphology::None &&
+            Info.TypeObj && !Info.TypeObj->isPointer() &&
+            !Info.TypeObj->isSmartPointer() && !Info.TypeObj->isReference();
+        bool rawPayloadCapability =
+            m_InUnsafeContext && Info.TypeObj && Info.TypeObj->isRawPointer() &&
+            !Info.IsHandleRebindable();
+        bool payloadCapability =
+            Info.Permission.SoulWritable || isPlainOwnedValue ||
+            rawPayloadCapability;
+        bool payloadIntent = ve->IsValueMutable || Info.Permission.SoulWritable;
+        bool usageMutable = false;
         if (shouldCollapse) {
-           if (Info.IsSoulMutable()) usageMutable = true;
+           usageMutable = payloadCapability && payloadIntent;
         } else {
-           if (Info.IsHandleRebindable()) usageMutable = true;
+           usageMutable =
+               Info.Permission.IdentityRebindable ||
+               (!Info.TypeObj->isPointer() && !Info.TypeObj->isSmartPointer() &&
+                !Info.TypeObj->isReference() && Info.Permission.SoulWritable);
         }
 
         bool effectiveNull = current->IsNullable || ve->IsValueNullable;
@@ -1270,10 +1398,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     // Identity view (Collapse disabled)
     if (!shouldCollapse && current) {
-      bool identWritable = ve->IsValueMutable;
-      if (Info.IsHandleRebindable()) {
-        identWritable = true;
-      }
+      bool identWritable =
+          Info.Permission.IdentityRebindable ||
+          (!Info.TypeObj->isPointer() && !Info.TypeObj->isSmartPointer() &&
+           !Info.TypeObj->isReference() && Info.Permission.SoulWritable);
       return current->withAttributes(identWritable, current->IsNullable);
     }
 
@@ -2792,10 +2920,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (VE->IsValueMutable)
               isExplicitlyMutable = true;
           }
-          if (!isExplicitlyMutable) {
+          AccessCapability receiverCapability =
+              getAccessCapability(Met->Object.get());
+          if (!isExplicitlyMutable || !receiverCapability.PayloadWritable) {
             error(Met, DiagID::ERR_IMMUTABLE_MOD,
                   "Method '" + Met->Method +
-                      "' requires explicit mutable argument (use '#')");
+                      "' requires a declared mutable payload capability (use '#' only to request it)");
           }
           if (requiresMutableBorrow) {
             Expr *objExpr = Met->Object.get();
@@ -2872,6 +3002,32 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 
                 auto argTy = checkExpr(Met->Args[i].get(), expectedParamTy);
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
+
+                if (i < expectedArgs) {
+                  const auto &param = FD->Args[i + 1];
+                  bool paramIsHatted = param.IsRawPointer || param.IsUnique ||
+                                        param.IsShared || param.IsReference;
+                  AccessCapability argCapability =
+                      getAccessCapability(Met->Args[i].get());
+                  AccessIntent argIntent =
+                      getAccessIntent(Met->Args[i].get());
+                  bool lacksHandleCapability =
+                      paramIsHatted && param.IsRebindable &&
+                      (!argCapability.HandleRebindable ||
+                       !argIntent.HandleRebind);
+                  bool lacksPayloadCapability =
+                      param.IsValueMutable && !param.IsCeded &&
+                      (!argCapability.PayloadWritable ||
+                       !argIntent.PayloadWrite);
+                  if (lacksHandleCapability || lacksPayloadCapability) {
+                    error(Met->Args[i].get(),
+                          DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED,
+                          std::to_string(i + 1),
+                          expectedParamTy ? expectedParamTy->toString()
+                                          : "capable argument",
+                          argTy ? argTy->toString() : "unknown");
+                  }
+                }
                 if (FD->Effect == EffectKind::Async && i < expectedArgs) {
                   checkStartBoundaryArgument(
                       Met->Args[i].get(), argTy, FD->Args[i + 1].IsCeded,

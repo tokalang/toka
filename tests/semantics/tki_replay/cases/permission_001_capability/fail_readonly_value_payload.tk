@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04571
+import ./lib::{overwrite_value}
+
+fn main() -> i32 {
+    auto value = 1
+    overwrite_value(value)
+    return 0
+}

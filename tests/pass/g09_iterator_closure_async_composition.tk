@@ -4,10 +4,10 @@ import std/vec::{Vec}
 shape MapperState(value: i32)
 shape OncePayload(value: i32)
 
-fn sum_mapped<F: @Callable>(values: Vec<i32>, mapper#: F) -> i32 {
+fn sum_mapped<F: @Callable>(values: Vec<i32>, mapper: F) -> i32 {
     auto total# = 0
     for auto value in values {
-        total += mapper#(value)
+        total += mapper(value)
     }
     return total
 }

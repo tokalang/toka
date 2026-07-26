@@ -1745,6 +1745,11 @@ void Sema::registerGlobals(Module &M) {
                                : toka::Type::fromString(
                                      synthesizePhysicalType(*v));
       globalInfo.IsRebindable = v->IsRebindable;
+      globalInfo.Permission = BindingPermission::fromLegacy(
+          v->IsRawPointer, v->IsUnique, v->IsShared, v->IsReference,
+          v->IsRebindable, v->IsPointerNullable, v->IsRebindBlocked,
+          v->IsValueMutable, v->IsValueNullable, v->IsValueBlocked,
+          v->IsMorphicExempt);
       globalInfo.CodegenName = v->Name;
       globalInfo.ASTPtr = v;
       CurrentScope->define(v->Name, globalInfo);
@@ -2652,6 +2657,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     }
 
     Info.IsRebindable = Arg.IsRebindable;
+    Info.Permission = BindingPermission::fromLegacy(
+        Arg.IsRawPointer, Arg.IsUnique, Arg.IsShared, Arg.IsReference,
+        Arg.IsRebindable, Arg.IsPointerNullable, Arg.IsRebindBlocked,
+        Arg.IsValueMutable, Arg.IsValueNullable, Arg.IsValueBlocked,
+        Arg.IsMorphicExempt);
     Info.IsMorphicExempt = Arg.IsMorphicExempt; // [NEW]
     Info.IsDeclaredMutable = Arg.IsValueMutable;
     Info.IsDeclaredVariable = true;

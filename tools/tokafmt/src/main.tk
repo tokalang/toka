@@ -535,7 +535,7 @@ fn format_file(path: string, write: bool, check: bool) -> i32 {
     file#.close()
     if content.len() == 0 { return 0 }
 
-    auto lexer = Lexer::new(content.as_str())
+    auto lexer# = Lexer::new(content.as_str())
     auto printer# = Printer::new()
     auto formatted = printer#.format(lexer)
     if check {

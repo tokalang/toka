@@ -1,0 +1,7 @@
+shape Cell(value#: i32)
+
+fn main() -> i32 {
+    auto ^fixed = new Cell(value = 1)
+    ^#fixed = new Cell(value = 7)
+    return 0
+}

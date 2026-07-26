@@ -33,6 +33,7 @@ struct SymbolInfo {
   std::string CodegenName;
   uint64_t SymbolID = 0;
   SourceLocation DeclLoc;
+  BindingPermission Permission;
 
   bool IsTypeAlias = false; // [NEW] For Generic Params (T -> i32)
   bool Moved = false;
@@ -120,6 +121,20 @@ struct SymbolInfo {
   uint64_t ComptimeFieldSize = 0;
 
   void *ASTPtr = nullptr; // Pointer to the underlying AST node (FunctionDecl, VariableDecl, ExternDecl etc.)
+};
+
+// Capabilities originate only at declarations and signatures.  A member or
+// index path may preserve or restrict those capabilities, but never create
+// one.  Surface syntax may request a capability, but must never manufacture
+// it.
+struct AccessCapability {
+  bool PayloadWritable = false;
+  bool HandleRebindable = false;
+};
+
+struct AccessIntent {
+  bool PayloadWrite = false;
+  bool HandleRebind = false;
 };
 
 class Scope {
@@ -574,6 +589,8 @@ private:
   bool checkVisibility(ASTNode *Node, ShapeDecl *SD);
   bool isTypeCompatible(std::shared_ptr<toka::Type> Target,
                         std::shared_ptr<toka::Type> Source);
+  AccessCapability getAccessCapability(Expr *E);
+  AccessIntent getAccessIntent(Expr *E);
 
   bool checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 
                         const std::vector<std::string> &TraitBounds, 

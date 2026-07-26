@@ -1,0 +1,11 @@
+shape Cell(value#: i32)
+
+fn overwrite(^p#: Cell) {
+    p.value = 9
+}
+
+fn main() -> i32 {
+    auto ^#handle_only = new Cell(value = 1)
+    overwrite(^#handle_only)
+    return 0
+}

@@ -375,7 +375,7 @@ fn cmd_add(pkg_url_or_name: string) -> i32 {
             }
         } else {
             // Direct URL parsing
-            auto iter = pkg_url.split('/' as i32)
+            auto iter# = pkg_url.split('/' as i32)
             loop !iter.is_done() {
                 auto part = iter#.next()
                 if !part.is_empty() {

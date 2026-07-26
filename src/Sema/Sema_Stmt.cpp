@@ -1474,6 +1474,7 @@ void Sema::checkStmt(Stmt *S) {
     LocalPermission.SoulWritable =
         Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
     LocalPermission.SoulNullable = Var->IsValueNullable;
+    Info.Permission = LocalPermission;
 
     std::string fullType =
         Sema::synthesizePhysicalType(LocalPermission, baseType, false);

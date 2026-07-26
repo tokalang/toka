@@ -376,7 +376,7 @@ pub fn sleep(ms: i32) {
 }
 
 // Event loop, blocks until the specified main coroutine enters the done state
-pub fn block_on<T>(handle#: TaskHandle<T>) -> T {
+pub fn block_on<T>(handle: TaskHandle<T>) -> T {
     __toka_spawn_blocking(handle.*coro_handle)
     return handle.wait
 }

@@ -562,7 +562,7 @@ pub fn ws_connect_tls_async(tcp_stream#: TcpStream, host: string, path: string) 
         auto err_msg = tls_res.unwrap_err()
         return Result<WsConnection, string>::Err(err_msg)
     }
-    auto stream = tls_res.unwrap()
+    auto stream# = tls_res.unwrap()
     return ws_connect_stream_async(stream, host, path).await
 }
 
@@ -572,7 +572,7 @@ pub fn ws_connect_tls_insecure_async(tcp_stream#: TcpStream, host: string, path:
         auto err_msg = tls_res.unwrap_err()
         return Result<WsConnection, string>::Err(err_msg)
     }
-    auto stream = tls_res.unwrap()
+    auto stream# = tls_res.unwrap()
     return ws_connect_stream_async(stream, host, path).await
 }
 

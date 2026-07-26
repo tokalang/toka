@@ -1,0 +1,9 @@
+fn overwrite(value#: i32) {
+    value = 2
+}
+
+fn main() -> i32 {
+    auto value = 1
+    overwrite(value)
+    return 0
+}
