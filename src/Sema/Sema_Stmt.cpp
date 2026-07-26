@@ -1920,6 +1920,12 @@ void Sema::checkStmt(Stmt *S) {
           }
 
           Info.IsDeclaredVariable = true;
+          // The destructured binding has its own declared handle/payload
+          // permission.  Later expression checks must consult that
+          // declaration, then intersect it with the direct-source flow
+          // ceiling below; leaving Permission at its default would silently
+          // erase an explicit binding such as `&view#`.
+          Info.Permission = Destruct->Variables[i].Permission;
           Info.IsDeclaredMutable = Destruct->Variables[i].IsValueMutable;
           if (fieldCapability.PayloadFlowRestricted) {
             Info.PayloadFlowWritable = fieldCapability.PayloadWritable;

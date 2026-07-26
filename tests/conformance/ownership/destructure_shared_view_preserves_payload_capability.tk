@@ -1,0 +1,16 @@
+// Direct shared flow preserves, but cannot amplify, the payload capability
+// declared by the referenced field.
+shape RefBox(
+    &slot#: i32
+)
+
+fn main() -> i32 {
+    auto value# = 1
+    auto box = RefBox(&slot = &value)
+    auto RefBox(&view# = .&slot) = box
+    view = 2
+    if (value != 2) {
+        return 1
+    }
+    return 0
+}

@@ -1,7 +1,7 @@
 # Audit: Current Implementation Against Two-Mode Permission Flow
 
-**Audit target:** the working implementation after `24651565`
-(`docs(sema): specify two-mode permission flow`)
+**Audit target:** the working implementation after writable-reference
+destructuring closure.
 
 **Audit date:** 2026-07-26
 
@@ -13,7 +13,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 45 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 46 passed, 0 failed on 2026-07-27;
 - isolated source-less replay for `permission_001_capability` and
   `permission_002_shared_flow`: 2 passed, 0 failed on 2026-07-26;
 - static permission logic: `include/toka/Sema.h`,
@@ -29,15 +29,15 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 | RFC rule | Current evidence | Assessment |
 |---|---|---|
-| Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings retain a payload ceiling, and declaration boundaries enforce it for payload assignment, mutable calls, returns, fields, match/guard binders, and readonly-reference destructuring. | **Partial**: other destructuring forms plus nullable/independent-transfer semantics remain open. |
+| Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings retain a payload ceiling, and declaration boundaries enforce it for payload assignment, mutable calls, returns, fields, match/guard binders, and destructuring reference fields. | **Partial**: source-less destructuring plus nullable/independent-transfer semantics remain open. |
 | Static authority is declaration/signature-backed; syntax is intent only | `BindingPermission`, `AccessCapability`, and `AccessIntent` route ordinary assignment and calls through declaration facts. The conformance suite includes direct, call, receiver, and raw negative cases. | **Conforms (Layer 1)** |
 | Existing assignment cannot redeclare H/P | Existing targets are checked against their declared access capability. A later assignment does not update the target declaration. | **Conforms (Layer 1)** |
 | `cede` requires invalidation and marks a source moved | `CedeExpr` calls PAL invalidation for a path and marks an underlying variable moved; cede parameters have dedicated call checks. | **Partial**: useful prerequisites exist, but the rule applies generically rather than only to classified whole independent sources. |
 | Independent sources re-root a fresh binding under referent ceilings | Initializers record the new declaration permission and move unique variables. | **Partial**: there is no Independent classifier, no universal referent-ceiling fact carried through transfer, and no explicit whole-binding rule. |
-| Shared sources cannot gain payload authority | `~`/`&` classification uses the direct RHS capability. Negative tests cover a two-hop Shared chain, `cede ~`, mutable call arguments, return signatures, fields, match/guard reference patterns, and a readonly-reference destructuring field; `permission_002_shared_flow` repeats field/signature evidence source-less. Safe raw payload access remains gated by `unsafe`. | **Partial**: source-less destructuring coverage and writable-reference destructuring behaviour remain open. |
+| Shared sources cannot gain payload authority | `~`/`&` classification uses the direct RHS capability. Negative tests cover a two-hop Shared chain, `cede ~`, mutable call arguments, return signatures, fields, match/guard reference patterns, and a readonly-reference destructuring field. A positive run test shows a declared writable reference field preserves—not invents—Payload permission. `permission_002_shared_flow` repeats field/signature evidence source-less. Safe raw payload access remains gated by `unsafe`. | **Partial**: source-less destructuring coverage remains open. |
 | Nullable to non-null `cede` requires a same-path guard | Generic type compatibility models only broad nullability covariance. | **Does not conform**: no cede-specific guard/dominance proof exists. |
 | Fields/freeze ceilings survive independent flow | `BindingPermission` contains blocked flags and member checks compute some final flags. | **Does not conform**: no audited transfer fact establishes a persistent referent ceiling across all initializer/call/return paths. |
-| Patterns and destructuring use direct flow derivation | Match and guard callers derive `PermissionFlow` from their target and pass the direct capability to `checkPattern`. Destructuring computes the initializer flow once and applies each handle field's declared P as its one-hop ceiling. | **Partial**: readonly-reference destructuring is covered; writable-reference destructuring, source-less replay, and writable-reference guard CodeGen still need dedicated coverage. |
+| Patterns and destructuring use direct flow derivation | Match and guard callers derive `PermissionFlow` from their target and pass the direct capability to `checkPattern`. Destructuring computes the initializer flow once, records each binder's own `BindingPermission`, and applies each handle field's declared P as its one-hop ceiling. | **Partial**: readonly and writable reference destructuring are covered; source-less replay and writable-reference guard CodeGen still need dedicated coverage. |
 | Partial moves are excluded until modeled | Member-resource move checks exist in local initialization. | **Partial**: cede itself accepts general expressions and only has narrow root marking for member paths. There is no formal per-field move state. |
 | `.tki` replay preserves flow facts | The static declaration/signature facts have replay coverage. | **Open**: no two-mode flow fact or dedicated replay matrix exists. |
 
@@ -49,9 +49,10 @@ incomplete and must not be represented as a closed 1.0 guarantee.
    independent-transfer rule and it has no nullable proof.
 2. Local initialization and destructuring in `src/Sema/Sema_Stmt.cpp`, plus
    match/guard binding in `src/Sema/Sema_Expr_Init.cpp`, store a one-hop
-   payload ceiling without rewriting the declaration. The destructuring slice
-   covers readonly-reference fields; writable-reference destructuring requires
-   separate evidence and repair before this row can be promoted.
+   payload ceiling without rewriting the declaration. Destructuring also
+   preserves the binder's declared `BindingPermission`, so a writable
+   reference field retains its declared Payload capability while a readonly
+   field remains capped. Source-less replay is still absent for this path.
 3. `isTypeCompatible` in `src/Sema/Sema_Type.cpp` is morphology/type
    compatibility. It cannot serve as the authority-flow decision because it is
    intentionally bidirectional in several non-permission cases and has no
@@ -61,8 +62,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 ## Recommended implementation order
 
-1. Establish writable-reference destructuring behaviour, then add source-less
-   replay for destructuring and pattern propagation.
+1. Add source-less replay for destructuring and pattern propagation.
 2. Implement **whole-binding unique `cede` only**. Require `^`/owned source,
    PAL invalidation, non-null proof, and source invalidation; derive the fresh
    binding from its declaration capped by the carried ceiling.

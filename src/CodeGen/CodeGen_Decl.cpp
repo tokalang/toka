@@ -1820,9 +1820,25 @@ llvm::Value *CodeGen::genDestructuringDecl(const DestructuringDecl *dest) {
         error(dest, DiagID::ERR_CODEGEN_CANNOT_TAKE_REFERENCE_OF_A_TEMPORARY_V);
         return nullptr;
       }
-      // [L-Value Destructuring] GEP to get address of member
-      finalVal =
-          m_Builder.CreateStructGEP(st, initEnt.value, memberIndex, vName + ".addr");
+      llvm::Value *memberAddr =
+          m_Builder.CreateStructGEP(st, initEnt.value, memberIndex,
+                                    vName + ".addr");
+      bool sourceFieldIsReference = false;
+      if (m_Shapes.count(shapeName) &&
+          memberIndex < m_Shapes[shapeName]->Members.size()) {
+        sourceFieldIsReference =
+            m_Shapes[shapeName]->Members[memberIndex].IsReference;
+      }
+      if (sourceFieldIsReference) {
+        // A reference field already stores its referent address.  Forward
+        // that address so `&view = .&field` remains a view of the referent,
+        // rather than becoming a reference to the field's pointer slot.
+        finalVal = m_Builder.CreateLoad(memberTy, memberAddr, vName);
+      } else {
+        // A value field has no stored referent address; its member slot is
+        // the reference target.
+        finalVal = memberAddr;
+      }
     } else {
       if (initEnt.isAddress) {
         // [L-Value to R-Value] GEP + Load

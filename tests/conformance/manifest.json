@@ -345,6 +345,14 @@
       "description": "A match pattern preserves the writable payload capability of its direct reference source"
     },
     {
+      "id": "ownership_destructure_shared_view_preserves_payload_capability_01",
+      "path": "ownership/destructure_shared_view_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Destructuring preserves writable payload capability declared by a direct reference field"
+    },
+    {
       "id": "ir_sret_abi_01",
       "path": "codegen/sret_abi.tk",
       "type": "ir-verify",
