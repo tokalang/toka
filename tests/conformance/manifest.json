@@ -399,6 +399,22 @@
       "description": "A direct field cede keeps sibling fields live and drops each resource exactly once"
     },
     {
+      "id": "ownership_cede_direct_field_return_cleanup_01",
+      "path": "ownership/cede_direct_field_return_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct field cede unwinds its local and live sibling exactly once on return"
+    },
+    {
+      "id": "ownership_cede_direct_field_loop_cleanup_01",
+      "path": "ownership/cede_direct_field_loop_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct field cede inside a bounded loop preserves sibling liveness and exact cleanup"
+    },
+    {
       "id": "ownership_cede_direct_field_cast_cleanup_01",
       "path": "ownership/cede_direct_field_cast_cleanup.tk",
       "type": "run",
@@ -430,6 +446,15 @@
       "expected_span_line": 9,
       "timeout_seconds": 10,
       "description": "A direct field cede invalidates that field without invalidating its live sibling"
+    },
+    {
+      "id": "diag_cede_direct_field_match_join_invalidates_source_01",
+      "path": "diagnostics/cede_direct_field_match_join_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 22,
+      "timeout_seconds": 10,
+      "description": "A direct field ceded on one match arm is unavailable after the join"
     },
     {
       "id": "diag_cede_direct_field_cast_invalidates_source_01",
