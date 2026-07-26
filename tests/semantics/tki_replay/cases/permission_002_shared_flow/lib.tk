@@ -56,6 +56,14 @@ pub fn expose(~p#: Cell) -> ~Cell# {
     return ~p
 }
 
+impl Cell {
+    // EXPECT_TKI: pub fn consume_mut(cede self#: Cell) -> cede Cell
+    pub fn consume_mut(cede self#) -> cede Cell {
+        self.value = 15
+        return cede self
+    }
+}
+
 // EXPECT_TKI: pub fn writable_option(p#: i32) -> Option<&i32#>
 pub fn writable_option(p#: i32) -> Option<&i32#> {
     return Option<&i32#>::Some(&p)
