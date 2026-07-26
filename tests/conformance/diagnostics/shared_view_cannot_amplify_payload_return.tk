@@ -1,0 +1,9 @@
+shape Cell(
+    value: i32
+)
+
+fn expose(~p: Cell) -> ~Cell# {
+    return ~p
+}
+
+fn main() -> i32 { return 0 }

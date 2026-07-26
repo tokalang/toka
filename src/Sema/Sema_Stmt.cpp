@@ -57,6 +57,16 @@ static bool isReadOnlyReferenceType(const std::shared_ptr<toka::Type> &Type) {
   return !pointee || !pointee->IsWritable;
 }
 
+static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
+  if (!Type)
+    return false;
+  if (Type->isPointer() || Type->isSmartPointer() || Type->isReference()) {
+    auto pointee = Type->getPointeeType();
+    return pointee && pointee->IsWritable;
+  }
+  return Type->IsWritable;
+}
+
 bool Sema::allPathsReturn(Stmt *S) {
   if (!S)
     return false;
@@ -921,6 +931,17 @@ void Sema::checkStmt(Stmt *S) {
     bool bypassNullRet = false;
     if (m_InUnsafeContext && expectedRetObj && expectedRetObj->isRawPointer() && ExprTypeObj && ExprTypeObj->isNullType()) {
         bypassNullRet = true;
+    }
+
+    // A return signature is a declaration boundary.  A Shared direct source
+    // may not promise more payload authority than it currently carries.
+    PermissionFlow returnFlow = getPermissionFlow(Ret->ReturnValue.get());
+    if (returnFlow.Kind == PermissionFlowKind::Shared &&
+        requiresPayloadWrite(expectedRetObj) &&
+        !returnFlow.DirectCapability.PayloadWritable) {
+      error(Ret->ReturnValue.get(),
+            DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
     }
 
     // Strict Ownership/Morphology Check for Return

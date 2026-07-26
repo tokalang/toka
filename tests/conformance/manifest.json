@@ -229,6 +229,24 @@
       "description": "A shared-flow payload ceiling is enforced at a mutable call boundary"
     },
     {
+      "id": "diag_shared_view_cannot_amplify_payload_return_01",
+      "path": "diagnostics/shared_view_cannot_amplify_payload_return.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A return signature cannot amplify a shared source payload capability"
+    },
+    {
+      "id": "diag_shared_view_cannot_amplify_payload_field_01",
+      "path": "diagnostics/shared_view_cannot_amplify_payload_field.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A writable shared field cannot be initialized from a weaker shared view"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",
@@ -275,6 +293,22 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A cede unique transfer creates a fresh owner whose declaration controls payload writes"
+    },
+    {
+      "id": "ownership_shared_view_return_preserves_payload_capability_01",
+      "path": "ownership/shared_view_return_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A shared return preserves payload capability supplied by its direct source"
+    },
+    {
+      "id": "ownership_shared_view_field_preserves_payload_capability_01",
+      "path": "ownership/shared_view_field_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A writable shared field accepts and preserves a writable shared source"
     },
     {
       "id": "ir_sret_abi_01",

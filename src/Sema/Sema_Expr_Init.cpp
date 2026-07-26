@@ -28,6 +28,16 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
+  if (!Type)
+    return false;
+  if (Type->isPointer() || Type->isSmartPointer() || Type->isReference()) {
+    auto pointee = Type->getPointeeType();
+    return pointee && pointee->IsWritable;
+  }
+  return Type->IsWritable;
+}
+
 void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                         bool SourceIsMutable, const std::string &TargetPath) {
   if (!Pat)
@@ -981,6 +991,17 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         checkExpr(pair.second.get(), memberTypeObj);
     memberMasks[pair.first] = m_LastInitMask;
 
+    // A field declaration is a declaration boundary.  It cannot turn a
+    // Shared direct source into a payload-writable view for later readers.
+    PermissionFlow memberFlow = getPermissionFlow(pair.second.get());
+    if (memberFlow.Kind == PermissionFlowKind::Shared &&
+        requiresPayloadWrite(memberTypeObj) &&
+        !memberFlow.DirectCapability.PayloadWritable) {
+      error(pair.second.get(),
+            DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
+    }
+
     if (isTypeCompatible(memberTypeObj, exprTypeObj) &&
         !memberTypeObj->equals(*exprTypeObj)) {
       auto origLoc = pair.second->Loc;
@@ -1050,6 +1071,15 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         std::shared_ptr<toka::Type> exprTypeObj =
             checkExpr(cloned.get(), memberTypeObj);
         memberMasks[defField.Name] = m_LastInitMask;
+
+        PermissionFlow memberFlow = getPermissionFlow(cloned.get());
+        if (memberFlow.Kind == PermissionFlowKind::Shared &&
+            requiresPayloadWrite(memberTypeObj) &&
+            !memberFlow.DirectCapability.PayloadWritable) {
+          error(cloned.get(),
+                DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+          HasError = true;
+        }
 
         if (isTypeCompatible(memberTypeObj, exprTypeObj) &&
             !memberTypeObj->equals(*exprTypeObj)) {
@@ -1166,6 +1196,15 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
     m_LastInitMask = ~0ULL; // Variant initializer is complete if one field is set
+
+    PermissionFlow memberFlow = getPermissionFlow(pair.second.get());
+    if (memberFlow.Kind == PermissionFlowKind::Shared &&
+        requiresPayloadWrite(memberTypeObj) &&
+        !memberFlow.DirectCapability.PayloadWritable) {
+      error(pair.second.get(),
+            DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
+    }
 
     bool bypassNullStruct = false;
     if (m_InUnsafeContext && memberTypeObj && memberTypeObj->isRawPointer() && exprTypeObj && exprTypeObj->isNullType()) {

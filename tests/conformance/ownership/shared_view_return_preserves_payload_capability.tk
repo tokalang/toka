@@ -1,0 +1,15 @@
+shape Cell(
+    value: i32
+)
+
+fn expose(~p#: Cell) -> ~Cell# {
+    return ~p
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto ~view# = expose(~source)
+    view.value = 2
+    if source.value != 2 { return 1 }
+    return 0
+}
