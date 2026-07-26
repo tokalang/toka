@@ -330,7 +330,7 @@ DIAG(ERR_SEMA_TYPE_IS_NOT_INDEXABLE, Error, "E04489", "type '{}' is not indexabl
 DIAG(ERR_SEMA_MORPHOLOGY_SYMBOLS_ARE_ONLY_ALLOWED_AT__2, Error, "E04490", "Morphology symbols (^, *, ~, &) are only allowed at the terminal of an access chain, got '{}'")
 DIAG(ERR_SEMA_PERMISSION_SYMBOLS_ARE_ONLY_ALLOWED_AT__2, Error, "E04491", "Permission symbols (#, ?, $) are only allowed at the terminal of an access chain, got '{}{}'")
 DIAG(ERR_SEMA_IDENTITY_INTRUSION_MANAGED_MEMORY_CANNOT, Error, "E04492", "Identity Intrusion: Managed memory ('{}') cannot be degraded to raw pointer ('{}'). Violation of Allocation Sourcing.")
-DIAG(ERR_SEMA_GUARD_CONDITION_MUST_BE_A_VARIABLE, Error, "E04493", "guard condition must be a variable")
+DIAG(ERR_SEMA_GUARD_CONDITION_MUST_BE_A_VARIABLE, Error, "E04493", "guard condition must be a variable or direct local nullable path")
 DIAG(ERR_SEMA_GUARD_CONDITION_MUST_BE_A_NULLABLE_TYPE, Error, "E04494", "guard condition must be a nullable type")
 DIAG(ERR_SEMA_TOKA_1_0_DOES_NOT_SUPPORT_YIELDING_VALUES, Error, "E04495", "Toka 1.0 does not support yielding values from loops. Loops cannot be used as expressions.")
 DIAG(ERR_SEMA_CANNOT_REFLECT_UNINSTANTIATED_OR_PRIMITIV, Error, "E04496", "Cannot reflect uninstantiated or primitive shape: {}")

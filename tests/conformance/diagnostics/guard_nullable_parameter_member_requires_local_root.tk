@@ -1,0 +1,15 @@
+shape Token(id: i32)
+shape Pair(item: Token?)
+
+fn consume(pair: Pair) -> i32 {
+    guard pair.item {
+        auto target: Token = cede pair.item
+        return target.id
+    } else {
+        return 0
+    }
+}
+
+fn main() -> i32 {
+    return consume(Pair(item = Token(id = 7)))
+}

@@ -419,6 +419,22 @@
       "description": "A nullable index cannot cede into an explicitly non-null destination"
     },
     {
+      "id": "diag_guard_nullable_dynamic_index_requires_exact_path_01",
+      "path": "diagnostics/guard_nullable_dynamic_index_requires_exact_path.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04493",
+      "timeout_seconds": 10,
+      "description": "A dynamic index cannot establish the exact local nullable path proof required by guard"
+    },
+    {
+      "id": "diag_guard_nullable_parameter_member_requires_local_root_01",
+      "path": "diagnostics/guard_nullable_parameter_member_requires_local_root.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04493",
+      "timeout_seconds": 10,
+      "description": "A caller-supplied member cannot establish a local nullable path proof through guard"
+    },
+    {
       "id": "diag_cede_nullable_payload_call_requires_guard_01",
       "path": "diagnostics/cede_nullable_payload_call_requires_guard.tk",
       "type": "compile-fail",
