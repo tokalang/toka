@@ -404,6 +404,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             subject, param.Name, param.Loc);
       };
 
+  auto isIndependentCedeTransfer = [&](Expr *argument,
+                                        const FunctionDecl::Arg &param) {
+    return param.IsCeded && dynamic_cast<CedeExpr *>(argument) != nullptr &&
+           getPermissionFlow(argument).Kind == PermissionFlowKind::Independent;
+  };
+
   // 3. Resolve Static Methods / Enum Variants
   size_t pos = CallName.find("::");
   if (pos != std::string::npos) {
@@ -477,7 +483,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 (!argCapability.HandleRebindable ||
                  !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
-                param.IsValueMutable && !param.IsCeded &&
+                param.IsValueMutable &&
+                !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
                 (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
               error(Call->Args[i].get(),
@@ -562,7 +569,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                       (!argCapability.HandleRebindable ||
                        !argIntent.HandleRebind);
                   const bool lacksPayloadCapability =
-                      param.IsValueMutable && !param.IsCeded &&
+                      param.IsValueMutable &&
+                      !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
                       (!argCapability.PayloadWritable ||
                        !argIntent.PayloadWrite);
                   if (lacksHandleCapability || lacksPayloadCapability) {
@@ -956,7 +964,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     (!argCapability.HandleRebindable ||
                      !argIntent.HandleRebind);
                 const bool lacksPayloadCapability =
-                    param.IsValueMutable && !param.IsCeded &&
+                    param.IsValueMutable &&
+                    !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
                     (!argCapability.PayloadWritable ||
                      !argIntent.PayloadWrite);
                 if (lacksHandleCapability || lacksPayloadCapability) {

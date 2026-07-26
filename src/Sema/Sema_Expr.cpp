@@ -3425,12 +3425,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       getAccessCapability(Met->Args[i].get());
                   AccessIntent argIntent =
                       getAccessIntent(Met->Args[i].get());
+                  bool isIndependentCedeTransfer =
+                      param.IsCeded &&
+                      dynamic_cast<CedeExpr *>(Met->Args[i].get()) != nullptr &&
+                      getPermissionFlow(Met->Args[i].get()).Kind ==
+                          PermissionFlowKind::Independent;
                   bool lacksHandleCapability =
                       paramIsHatted && param.IsRebindable &&
                       (!argCapability.HandleRebindable ||
                        !argIntent.HandleRebind);
                   bool lacksPayloadCapability =
-                      param.IsValueMutable && !param.IsCeded &&
+                      param.IsValueMutable && !isIndependentCedeTransfer &&
                       (!argCapability.PayloadWritable ||
                        !argIntent.PayloadWrite);
                   if (lacksHandleCapability || lacksPayloadCapability) {

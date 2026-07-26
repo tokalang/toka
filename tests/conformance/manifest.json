@@ -446,6 +446,42 @@
       "description": "Ceding a shared projection cannot bypass a payload-writable parameter requirement"
     },
     {
+      "id": "diag_cede_shared_projection_cannot_supply_static_payload_parameter_01",
+      "path": "diagnostics/cede_shared_projection_cannot_supply_static_payload_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 17,
+      "timeout_seconds": 10,
+      "description": "Static cede parameters retain the direct Payload ceiling of a shared projection"
+    },
+    {
+      "id": "diag_cede_shared_projection_cannot_supply_generic_static_payload_parameter_01",
+      "path": "diagnostics/cede_shared_projection_cannot_supply_generic_static_payload_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "Generic static cede parameters retain the direct Payload ceiling of a shared projection"
+    },
+    {
+      "id": "diag_cede_shared_projection_cannot_supply_callable_payload_parameter_01",
+      "path": "diagnostics/cede_shared_projection_cannot_supply_callable_payload_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 18,
+      "timeout_seconds": 10,
+      "description": "Callable cede parameters retain the direct Payload ceiling of a shared projection"
+    },
+    {
+      "id": "diag_cede_shared_projection_cannot_supply_method_payload_parameter_01",
+      "path": "diagnostics/cede_shared_projection_cannot_supply_method_payload_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04510",
+      "expected_span_line": 18,
+      "timeout_seconds": 10,
+      "description": "Method cede parameters retain the direct Payload ceiling of a shared projection"
+    },
+    {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",

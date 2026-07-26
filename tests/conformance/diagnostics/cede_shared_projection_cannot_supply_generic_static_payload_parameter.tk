@@ -1,0 +1,17 @@
+shape Cell(value: i32)
+
+shape Holder(~cell: Cell)
+shape Mutator<T>()
+
+impl<T> Mutator<T> {
+    fn overwrite(cede ~p#: T) -> i32 {
+        auto ~consumed = cede ~p
+        return 0
+    }
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder = Holder(~cell = ~source)
+    return Mutator<Cell>::overwrite(cede holder.~cell)
+}
