@@ -810,6 +810,14 @@
       "description": "A same-path non-null branch permits a member cede into a non-null destination"
     },
     {
+      "id": "ownership_cede_nullable_member_after_guard_path_01",
+      "path": "ownership/cede_nullable_member_after_guard_path.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct local member guard permits a same-path cede into a non-null destination"
+    },
+    {
       "id": "ownership_cede_nullable_index_preserves_inference_01",
       "path": "ownership/cede_nullable_index_preserves_inference.tk",
       "type": "run",
@@ -826,12 +834,28 @@
       "description": "A same-path non-null branch permits a fixed-array index cede into a non-null destination"
     },
     {
+      "id": "ownership_cede_nullable_index_after_guard_path_01",
+      "path": "ownership/cede_nullable_index_after_guard_path.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct local fixed-array index guard permits a same-path cede into a non-null destination"
+    },
+    {
       "id": "ownership_cede_nullable_path_guard_resource_cleanup_01",
       "path": "ownership/cede_nullable_path_guard_resource_cleanup.tk",
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Guarded nullable member and fixed-array index cedes preserve exact resource cleanup"
+    },
+    {
+      "id": "ownership_cede_nullable_guard_path_resource_cleanup_01",
+      "path": "ownership/cede_nullable_guard_path_resource_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Direct local member and fixed-array index guards preserve exact nullable cede cleanup"
     },
     {
       "id": "ownership_cede_nullable_payload_call_after_guard_01",

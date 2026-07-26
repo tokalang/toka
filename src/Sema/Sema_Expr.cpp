@@ -1980,7 +1980,46 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    // A projection guard may refine only an exact compiler-managed local
+    // path.  This keeps the proof local to the observed member/index and
+    // avoids synthesizing a fact for a dynamic index, a sibling, or a caller
+    // supplied alias.
+    std::string guardedPath;
+    bool isProjectionGuard = false;
     if (!varExpr) {
+      if (auto *member = dynamic_cast<MemberExpr *>(guard->Condition.get())) {
+        if (auto *root = dynamic_cast<VariableExpr *>(member->Object.get())) {
+          SymbolInfo *rootInfo = nullptr;
+          std::string actualRoot;
+          if (CurrentScope->findVariableWithDeref(root->Name, rootInfo,
+                                                  actualRoot) &&
+              rootInfo && rootInfo->IsDeclaredVariable &&
+              !rootInfo->IsFunctionParameter) {
+            guardedPath = getPathString(member);
+            isProjectionGuard = !guardedPath.empty();
+          }
+        }
+      } else if (auto *index =
+                     dynamic_cast<ArrayIndexExpr *>(guard->Condition.get())) {
+        if (index->Indices.size() == 1 &&
+            dynamic_cast<NumberExpr *>(index->Indices[0].get())) {
+          if (auto *root =
+                  dynamic_cast<VariableExpr *>(index->Array.get())) {
+            SymbolInfo *rootInfo = nullptr;
+            std::string actualRoot;
+            if (CurrentScope->findVariableWithDeref(root->Name, rootInfo,
+                                                    actualRoot) &&
+                rootInfo && rootInfo->IsDeclaredVariable &&
+                !rootInfo->IsFunctionParameter) {
+              guardedPath = getPathString(index);
+              isProjectionGuard = !guardedPath.empty();
+            }
+          }
+        }
+      }
+    }
+
+    if (!varExpr && !isProjectionGuard) {
       error(guard->Condition.get(), DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_VARIABLE);
       return std::make_shared<VoidType>();
     }
@@ -2031,7 +2070,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     PALChecker palThen = palBefore;
     PALChecker palElse = palBefore;
 
-    if (CurrentScope->findVariableWithDeref(varExpr->Name, infoPtr, actualName)) {
+    if (varExpr &&
+        CurrentScope->findVariableWithDeref(varExpr->Name, infoPtr,
+                                            actualName)) {
       bool isPtrNullable = false;
       bool isSoulNullable = false;
       if (auto ptrT = std::dynamic_pointer_cast<toka::PointerType>(condType)) {
@@ -2065,8 +2106,23 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       movedThen = captureMoved();
       palThen = PALCheckerState.snapshot();
     } else {
+      bool isPtrNullable = false;
+      bool isSoulNullable = false;
+      if (auto ptrT = std::dynamic_pointer_cast<toka::PointerType>(condType)) {
+        isPtrNullable = ptrT->IsNullable;
+      } else if (condType->IsNullable) {
+        isSoulNullable = true;
+      }
+      if (!isPtrNullable && !isSoulNullable && !condType->isVoid()) {
+        error(guard->Condition.get(),
+              DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_NULLABLE_TYPE);
+      }
       enterScope();
+      if (isProjectionGuard)
+        m_NarrowedPaths.insert(guardedPath);
       checkStmt(guard->Then.get());
+      if (isProjectionGuard)
+        m_NarrowedPaths.erase(guardedPath);
       exitScope();
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();

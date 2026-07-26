@@ -6034,10 +6034,37 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
       }
     }
 
-    PhysEntity moved = genExpr(ce->Value.get());
-    llvm::Value *movedValue = moved.load(m_Builder);
     llvm::Type *targetTy = ce->ResolvedType ? getLLVMType(ce->ResolvedType)
                                              : nullptr;
+
+    // A narrowed member/index keeps its declared nullable carrier in storage
+    // even though Sema presents the exact guarded path as T.  Materializing
+    // through genExpr would use that refined T as the load type.  Recover the
+    // physical GEP element type instead, then extract the carrier payload.
+    if ((dynamic_cast<const MemberExpr *>(directSource) ||
+         dynamic_cast<const ArrayIndexExpr *>(directSource)) &&
+        targetTy) {
+      if (llvm::Value *sourceAddr = genAddr(directSource)) {
+        llvm::Type *sourceTy = nullptr;
+        if (auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(sourceAddr))
+          sourceTy = gep->getResultElementType();
+        if (auto *carrier = llvm::dyn_cast_or_null<llvm::StructType>(sourceTy)) {
+          if (carrier->getNumElements() == 2 &&
+              carrier->getElementType(0) == targetTy &&
+              carrier->getElementType(1)->isIntegerTy(1)) {
+            llvm::Value *stored =
+                m_Builder.CreateLoad(sourceTy, sourceAddr, "cede.carrier");
+            llvm::Value *payload =
+                m_Builder.CreateExtractValue(stored, 0, "cede.nonnull");
+            return PhysEntity(payload, ce->ResolvedType->toString(), targetTy,
+                              false);
+          }
+        }
+      }
+    }
+
+    PhysEntity moved = genExpr(ce->Value.get());
+    llvm::Value *movedValue = moved.load(m_Builder);
 
     // Sema may refine an exact nullable path in a proven non-null branch.
     // The storage retains its `{T, present}` carrier, so lower the cede by

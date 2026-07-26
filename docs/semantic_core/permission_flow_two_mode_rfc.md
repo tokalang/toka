@@ -143,11 +143,22 @@ if record.item is null {
 }
 ```
 
-The same rule applies to a fixed-array index such as `values[0]`. The fact is
-not propagated to siblings, to a different path, or beyond the conditional.
-Bare `guard` continues to narrow a named binding; projection guards use the
-branch form above. No implicit `cede` conversion from nullable to non-null is
-permitted without that proof.
+The same rule applies to a fixed-array index such as `values[0]`. A `guard`
+may express the same proof for an exact direct local member or fixed-array
+constant index:
+
+```toka
+guard record.item {
+    auto item: Item = cede record.item
+} else {
+    return
+}
+```
+
+This remains a branch-local proof. It is not propagated to siblings, a
+different path, a dynamic index, a caller-supplied root, or beyond the guard.
+No implicit `cede` conversion from nullable to non-null is permitted without
+that proof.
 
 ## 6. Patterns and partial moves
 
