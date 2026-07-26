@@ -1,0 +1,34 @@
+import core/traits::{@encap}
+
+auto g_body_runs# = 0
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+impl Token {
+    fn consume(cede self#) -> async i32 {
+        g_body_runs += 1
+        auto owned = cede self
+        return owned.id
+    }
+}
+
+fn create_then_drop_cold_task() {
+    auto ^source# = new Token(id = 1)
+    auto handle = source#.consume()
+}
+
+fn main() -> i32 {
+    create_then_drop_cold_task()
+    if g_body_runs != 0 {
+        return 1
+    }
+    return g_drop_count - 1
+}
