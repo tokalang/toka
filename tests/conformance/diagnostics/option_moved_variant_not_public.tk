@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E04551
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto state = Option<i32>::Moved(1)
+    return 0
+}

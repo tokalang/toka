@@ -3,8 +3,7 @@ extern fn libc_exit(status: i32) -> void
 
 pub shape Option<'T> (
     Some('T) = 1 |
-    None = 0 |
-    Moved(i32) = 2
+    None = 0
 )
 
 impl<'T> Option<'T> {

@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E04551
+import core/result::{Result}
+
+fn main() -> i32 {
+    auto state = Result<i32, i32>::Moved(1)
+    return 0
+}

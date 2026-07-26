@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E0409
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto value: Option<i32> = none
+    return 0
+}

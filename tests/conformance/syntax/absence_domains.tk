@@ -1,0 +1,12 @@
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto missing: Option<i32?> = Option<i32?>::None
+    auto empty: Option<i32?> = Option<i32?>::Some(none)
+    auto present: Option<i32?> = Option<i32?>::Some(7)
+
+    assert(missing.is_none(), "Option::None is an absent result")
+    assert(empty.is_some(), "Some(none) is a present result with empty payload")
+    assert(present.is_some(), "Some(value) is a present result with payload")
+    return 0
+}
