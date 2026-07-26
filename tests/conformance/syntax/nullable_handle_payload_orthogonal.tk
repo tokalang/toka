@@ -29,6 +29,16 @@ fn main() -> i32 {
     auto outcome# = 0
 
     node = none
+    auto handle_is_live# = 0
+    guard ^node {
+        handle_is_live = 1
+    } else {
+        handle_is_live = 2
+    }
+    if handle_is_live != 1 {
+        return 6
+    }
+
     guard node {
         outcome = 1
     } else {
