@@ -15,7 +15,7 @@ must not be represented as a closed 1.0 guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 124 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 127 passed, 0 failed on 2026-07-27;
 - all 25 populated source-less replay cases: 25 passed, 0 failed in bounded
   batches on 2026-07-27;
 - `permission_005_partial_cede_lifecycle`: isolated source-backed/source-less

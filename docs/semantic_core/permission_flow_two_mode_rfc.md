@@ -20,7 +20,9 @@ The already-frozen static rule is:
 
 This RFC specifies only the next layer: what happens when a value flows into a
 **fresh** binding. It does not weaken the static rule, and it does not make
-`cede` an unrestricted privilege-escalation mechanism.
+`cede` an unrestricted privilege-escalation mechanism.  Its authority rules
+are implemented for the bounded transfer forms documented here; the remaining
+generalization work is tracked explicitly rather than implied by the syntax.
 
 The effective permission for an operation remains:
 
@@ -163,14 +165,19 @@ that proof.
 ## 6. Patterns and partial moves
 
 Pattern binding must use the same classifier and derivation rules as local
-initialization. Until explicit owned move-pattern semantics and per-field move
-state are implemented, patterns are conservative Shared/borrow bindings: they
-must not re-root payload authority.
+initialization. Until explicit owned move-pattern semantics are implemented,
+patterns are conservative Shared/borrow bindings: they must not re-root
+payload authority.
 
-The first implementation supports only whole-binding independent `cede`.
-Partial moves from members, indexes, or destructuring remain a conservative
-rejection. This avoids inventing incomplete-object drop semantics as an
-incidental part of permission flow.
+Whole-binding `cede` is the general Independent form. Partial projections are
+always Shared for authority, but have a separate, deliberately bounded
+lifecycle implementation: a direct named field of an eligible local
+compiler-managed record and a constant index of an eligible local fixed array
+may be ceded using exact per-projection liveness and drop masks. Other member,
+index, destructuring, spread, enum, or custom-drop forms remain rejected or
+are limited to their library representation invariant. The lifecycle contract
+and its evidence are normative in `partial_cede_lifecycle_rfc.md`; none of
+these bounded partial forms re-root Payload authority.
 
 ## 7. Call and return boundaries
 
@@ -187,7 +194,7 @@ Before this RFC can be promoted from Proposed:
 - negative tests for every shared-source attempt to obtain P through a fresh
   binding, argument, return, method receiver, field, or pattern;
 - positive and negative whole-`^` `cede` tests, including source invalidation
-  and frozen referent ceilings;
+  and `$` referent ceilings;
 - nullable guarded and unguarded transfer tests over canonical paths;
 - `.tki` replay preserving flow-relevant signature facts;
 - PAL conflict tests proving transfer does not bypass active borrows; and
