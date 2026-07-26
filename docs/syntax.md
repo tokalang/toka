@@ -831,8 +831,33 @@ String-like values appear in several layers:
 | Form | Role |
 | :--- | :--- |
 | `"..."` | `str` text view |
+| `"""..."""` | raw `str` text view |
 | `c"..."` | C string literal |
 | `string::from("...")` | owned mutable `string` |
+
+Raw `str` literals use a quote fence with three or more double quotes. The
+closing fence must contain exactly the same number of quotes as the opening
+fence, so a longer fence can contain a shorter quote run:
+
+```toka
+auto path = """C:\Users\toka\config.json"""
+auto quoted = """"
+    Markdown can contain """ without escaping.
+    """"
+```
+
+Raw literals do not process escapes or interpolation and have the same static,
+read-only `str` representation as ordinary text literals. The fence has no
+prefix; in particular, `c"""..."""` is not a raw C string.
+
+A single-line raw literal closes on its opening line. A multiline raw literal
+starts when only spaces or tabs occur between its opening fence and the next
+line break. Its opening line break and the line break immediately before the
+closing fence are structural and are not part of the value. The closing fence
+must appear on an otherwise blank line; its indentation is removed from every
+non-blank content line, while additional indentation is preserved. Blank lines
+are normalized to empty lines, and CRLF, CR, and LF source line endings become
+`\n` in the resulting `str`.
 
 Formatting uses `{}` placeholders.
 

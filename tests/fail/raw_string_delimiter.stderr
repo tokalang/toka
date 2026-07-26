@@ -1,0 +1,5 @@
+error[E01251]: Raw string closing delimiter must contain exactly 3 double quotes and appear on its own line
+ --> tests/fail/raw_string_delimiter.tk:4:5
+   |
+ 4 |     """"
+   |     ^

@@ -1,0 +1,5 @@
+error[E01250]: Raw string content line does not match the closing delimiter indentation
+ --> tests/fail/raw_string_indentation.tk:4:1
+   |
+ 4 |        second
+   | ^

@@ -1,0 +1,4 @@
+pub fn main() -> i32 {
+    auto text = """missing
+    return text.len()
+}

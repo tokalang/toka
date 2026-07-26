@@ -1,0 +1,7 @@
+pub fn main() -> i32 {
+    auto text = """
+        first
+       second
+        """
+    return text.len()
+}

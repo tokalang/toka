@@ -12,12 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/Lexer.h"
+#include "toka/DiagnosticEngine.h"
 #include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace toka {
+
+namespace {
+
+size_t quoteRunLength(const char *ptr) {
+  const char *start = ptr;
+  while (*ptr == '"')
+    ++ptr;
+  return static_cast<size_t>(ptr - start);
+}
+
+bool isHorizontalWhitespace(char c) { return c == ' ' || c == '\t'; }
+
+bool isBlankRawLine(const std::string &line) {
+  for (char c : line) {
+    if (!isHorizontalWhitespace(c))
+      return false;
+  }
+  return true;
+}
+
+bool startsWith(const std::string &text, const std::string &prefix) {
+  return text.size() >= prefix.size() &&
+         text.compare(0, prefix.size(), prefix) == 0;
+}
+
+} // namespace
 
 static std::unordered_map<std::string, TokenType> Keywords = {
     {"let", TokenType::KwLet},
@@ -164,6 +191,8 @@ Token Lexer::nextToken() {
     t = Token{TokenType::EndOfFile, "", m_Line, m_Column};
   } else if (isDigit(peek())) {
     t = number();
+  } else if (peek() == '"' && quoteRunLength(m_Current) >= 3) {
+    t = rawViewString();
   } else if (peek() == 'c' && peekNext() == '"') {
     uint32_t startCol = m_Column;
     advance(); // c
@@ -730,6 +759,142 @@ Token Lexer::viewString() {
     advance();
 
   return Token{TokenType::ViewString, text, m_Line, m_Column};
+}
+
+SourceLocation Lexer::locationAt(const char *ptr) const {
+  ptrdiff_t offset = ptr - m_Source;
+  return SourceLocation(m_StartLoc.getRawEncoding() +
+                        static_cast<uint32_t>(offset));
+}
+
+void Lexer::consumeLineBreak() {
+  if (peek() == '\r') {
+    advance();
+    if (peek() == '\n') {
+      advance();
+    } else {
+      ++m_Line;
+      m_Column = 1;
+    }
+    return;
+  }
+  advance();
+}
+
+Token Lexer::rawViewString() {
+  struct RawLine {
+    std::string Text;
+    const char *Start;
+  };
+
+  const char *literalStart = m_Current;
+  int startLine = m_Line;
+  int startColumn = m_Column;
+  size_t delimiterLength = quoteRunLength(m_Current);
+
+  for (size_t i = 0; i < delimiterLength; ++i)
+    advance();
+
+  const char *afterIndent = m_Current;
+  while (isHorizontalWhitespace(*afterIndent))
+    ++afterIndent;
+  bool isMultiline = *afterIndent == '\n' || *afterIndent == '\r';
+
+  if (!isMultiline) {
+    std::string text;
+    while (peek() != '\0' && peek() != '\n' && peek() != '\r') {
+      if (peek() == '"') {
+        size_t runLength = quoteRunLength(m_Current);
+        if (runLength == delimiterLength) {
+          for (size_t i = 0; i < runLength; ++i)
+            advance();
+          return Token{TokenType::ViewString, text, startLine, startColumn};
+        }
+        for (size_t i = 0; i < runLength; ++i)
+          text += advance();
+        continue;
+      }
+      text += advance();
+    }
+
+    DiagnosticEngine::report(
+        locationAt(literalStart), DiagID::ERR_LEXER_UNTERMINATED_RAW_STRING,
+        delimiterLength);
+    return Token{TokenType::ViewString, text, startLine, startColumn};
+  }
+
+  while (m_Current < afterIndent)
+    advance();
+  consumeLineBreak();
+
+  std::vector<RawLine> lines;
+  std::string currentLine;
+  const char *lineStart = m_Current;
+
+  while (peek() != '\0') {
+    if (currentLine.empty()) {
+      const char *delimiter = m_Current;
+      while (isHorizontalWhitespace(*delimiter))
+        ++delimiter;
+      size_t runLength = quoteRunLength(delimiter);
+      const char *afterDelimiter = delimiter + runLength;
+      const char *lineEnd = afterDelimiter;
+      while (isHorizontalWhitespace(*lineEnd))
+        ++lineEnd;
+
+      if (runLength == delimiterLength &&
+          (*lineEnd == '\0' || *lineEnd == '\n' || *lineEnd == '\r')) {
+        std::string baseline(m_Current, delimiter);
+        while (m_Current < afterDelimiter)
+          advance();
+
+        std::string text;
+        for (size_t i = 0; i < lines.size(); ++i) {
+          const RawLine &line = lines[i];
+          std::string stripped;
+          if (!isBlankRawLine(line.Text)) {
+            if (!startsWith(line.Text, baseline)) {
+              DiagnosticEngine::report(
+                  locationAt(line.Start),
+                  DiagID::ERR_LEXER_RAW_STRING_INDENTATION);
+              stripped = line.Text;
+            } else {
+              stripped = line.Text.substr(baseline.size());
+            }
+          }
+          if (i != 0)
+            text += '\n';
+          text += stripped;
+        }
+        return Token{TokenType::ViewString, text, startLine, startColumn};
+      }
+    }
+
+    if (peek() == '\n' || peek() == '\r') {
+      lines.push_back(RawLine{currentLine, lineStart});
+      currentLine.clear();
+      consumeLineBreak();
+      lineStart = m_Current;
+      continue;
+    }
+
+    if (peek() == '"' && quoteRunLength(m_Current) >= delimiterLength) {
+      DiagnosticEngine::report(
+          locationAt(m_Current), DiagID::ERR_LEXER_RAW_STRING_DELIMITER,
+          delimiterLength);
+      size_t runLength = quoteRunLength(m_Current);
+      for (size_t i = 0; i < runLength; ++i)
+        advance();
+      return Token{TokenType::ViewString, currentLine, startLine, startColumn};
+    }
+
+    currentLine += advance();
+  }
+
+  DiagnosticEngine::report(
+      locationAt(literalStart), DiagID::ERR_LEXER_UNTERMINATED_RAW_STRING,
+      delimiterLength);
+  return Token{TokenType::ViewString, currentLine, startLine, startColumn};
 }
 
 } // namespace toka

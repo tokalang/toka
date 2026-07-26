@@ -1,0 +1,38 @@
+pub fn main() -> i32 {
+    auto path = """C:\Users\toka\config\n.json"""
+    if path != "C:\\Users\\toka\\config\\n.json" {
+        return 1
+    }
+
+    auto query = """
+        SELECT id, name
+          FROM users
+        WHERE status = 'active'
+        """
+    if query != "SELECT id, name\n  FROM users\nWHERE status = 'active'" {
+        return 2
+    }
+
+    auto quoted = """"
+        Markdown says """ raw.
+        """"
+    if quoted != "Markdown says \"\"\" raw." {
+        return 3
+    }
+
+    auto template = """${name}\t"""
+    if template != "${name}\\t" {
+        return 4
+    }
+
+    auto blankLine = """
+        first
+
+        third
+        """
+    if blankLine != "first\n\nthird" {
+        return 5
+    }
+
+    return 0
+}

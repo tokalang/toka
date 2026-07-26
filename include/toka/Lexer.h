@@ -41,8 +41,11 @@ private:
   Token number();
   Token string();
   Token viewString();
+  Token rawViewString();
   Token charLiteral();
   Token punctuation();
+  SourceLocation locationAt(const char *ptr) const;
+  void consumeLineBreak();
 
   char peek() const { return *m_Current; }
   char peekNext() const {

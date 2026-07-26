@@ -1,0 +1,5 @@
+error[E01249]: Unterminated raw string literal; expected a closing delimiter with 3 double quotes
+ --> tests/fail/raw_string_unterminated.tk:2:17
+   |
+ 2 |     auto text = """missing
+   |                 ^

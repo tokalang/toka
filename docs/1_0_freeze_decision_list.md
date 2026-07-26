@@ -94,6 +94,11 @@ later release.
   the same conversion: obtaining a view through a raw pointer requires an
   explicit dereference or `.as_str()` call. Toka 1.0 does not hide raw-pointer
   provenance, nullability, or dereference behind a safe-view conversion.
+- Raw `str` literals: an unprefixed fence of three or more double quotes
+  produces the same static, read-only `str` as an ordinary text literal,
+  without escape or interpolation processing. Multiline fences use the closing
+  fence indentation as their stripping baseline and normalize source line
+  endings to `\n`. Raw C strings are not part of this surface.
 - Escaping borrow dependencies: for 1.0, any borrow-like value that crosses a
   function boundary must have an explicit dependency annotation in the
   signature. This applies uniformly to private and public functions; later

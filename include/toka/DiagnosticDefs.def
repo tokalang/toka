@@ -294,6 +294,9 @@ DIAG(ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED, Error,   "E01245", "Dynamic tr
 DIAG(ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED, Error,   "E01246", "Binary '-' operator must be surrounded by spaces")
 DIAG(ERR_PARSER_SHAPE_HEADER_DEPENDENCY_REMOVED, Error,   "E01247", "Shape header dependency syntax is removed. Borrow-like fields carry dependencies directly; use function effects for returned member dependencies.")
 DIAG(ERR_PARSER_SHAPE_MEMBER_DEPENDENCY_UNSUPPORTED, Error,   "E01248", "Shape member dependency annotations are not supported in Toka 1.0. Return borrowed views through functions and declare their dependencies in the function signature or effects block.")
+DIAG(ERR_LEXER_UNTERMINATED_RAW_STRING, Error,   "E01249", "Unterminated raw string literal; expected a closing delimiter with {} double quotes")
+DIAG(ERR_LEXER_RAW_STRING_INDENTATION, Error,   "E01250", "Raw string content line does not match the closing delimiter indentation")
+DIAG(ERR_LEXER_RAW_STRING_DELIMITER, Error,   "E01251", "Raw string closing delimiter must contain exactly {} double quotes and appear on its own line")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")
