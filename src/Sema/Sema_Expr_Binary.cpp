@@ -541,7 +541,22 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (isUnsetInit)
       isLHSWritable = true;
 
-    if (!isLHSWritable) {
+    // A declaration may request payload writability, but a shared view may
+    // only preserve or restrict the capability of its direct source.  This
+    // is independent of the physical type's writable marker, which is still
+    // needed for ABI and overload compatibility.
+    AccessCapability lhsCapability = getAccessCapability(Bin->LHS.get());
+    bool payloadFlowDenied =
+        assignmentKind == AssignmentSemanticKind::Payload &&
+        lhsCapability.PayloadFlowRestricted &&
+        !lhsCapability.PayloadWritable;
+    if (payloadFlowDenied) {
+      error(Bin->LHS.get(),
+            DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
+    }
+
+    if (!isLHSWritable && !payloadFlowDenied) {
       error(Bin, DiagID::ERR_SEMA_CANNOT_ASSIGN_TO_IMMUTABLE_ENTITY_MISSING);
       HasError = true;
     }

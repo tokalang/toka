@@ -1,16 +1,18 @@
 # Audit: Current Implementation Against Two-Mode Permission Flow
 
-**Audit target:** `359d315f` (`fix(sema): enforce declaration-backed permissions`)
+**Audit target:** the working implementation after `24651565`
+(`docs(sema): specify two-mode permission flow`)
 
 **Audit date:** 2026-07-26
 
-**Result:** the static authority layer is implemented and evidenced; the
-two-mode flow RFC is **not yet implemented**. It must not be represented as a
-closed 1.0 guarantee.
+**Result:** the static authority layer is implemented and evidenced. A first
+direct-source Shared-flow slice is implemented for local initialization and
+subsequent assignment/call use; the full two-mode RFC remains incomplete and
+must not be represented as a closed 1.0 guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 32 passed, 0 failed on 2026-07-26;
+- `python3 tools/run_conformance.py`: 37 passed, 0 failed on 2026-07-26;
 - `tools/scripts/test_semantic_replay.sh`: all listed source-less replay cases
   passed on 2026-07-26;
 - static permission logic: `include/toka/Sema.h`,
@@ -26,12 +28,12 @@ closed 1.0 guarantee.
 
 | RFC rule | Current evidence | Assessment |
 |---|---|---|
-| Iron rule: a shared view never amplifies Payload authority | The static checker rejects direct use-site escalation for established bindings, but no common flow result is propagated through fresh aliases, returns, and patterns. | **Partial**: this is the governing target invariant, not yet a universal implementation guarantee. |
+| Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings retain a payload ceiling, and `getAccessCapability` carries it through payload assignment and mutable calls. | **Partial**: local initialization and calls conform; returns, fields, and patterns are not yet routed through the fact. |
 | Static authority is declaration/signature-backed; syntax is intent only | `BindingPermission`, `AccessCapability`, and `AccessIntent` route ordinary assignment and calls through declaration facts. The conformance suite includes direct, call, receiver, and raw negative cases. | **Conforms (Layer 1)** |
 | Existing assignment cannot redeclare H/P | Existing targets are checked against their declared access capability. A later assignment does not update the target declaration. | **Conforms (Layer 1)** |
 | `cede` requires invalidation and marks a source moved | `CedeExpr` calls PAL invalidation for a path and marks an underlying variable moved; cede parameters have dedicated call checks. | **Partial**: useful prerequisites exist, but the rule applies generically rather than only to classified whole independent sources. |
 | Independent sources re-root a fresh binding under referent ceilings | Initializers record the new declaration permission and move unique variables. | **Partial**: there is no Independent classifier, no universal referent-ceiling fact carried through transfer, and no explicit whole-binding rule. |
-| Shared sources cannot gain payload authority | Pointer compatibility permits writable-to-readonly decay; safe raw payload access is gated by `unsafe`. | **Partial**: `~`, `&`, `*`, and ordinary aliases do not flow through one shared-capability ceiling, so this is not a universal guarantee. |
+| Shared sources cannot gain payload authority | `~`/`&` local initializer classification uses the direct RHS capability. New negative tests cover a two-hop Shared chain, `cede ~`, and mutable call arguments. Safe raw payload access remains gated by `unsafe`. | **Partial**: the direct-local slice conforms; return, field, and pattern propagation remain open. |
 | Nullable to non-null `cede` requires a same-path guard | Generic type compatibility models only broad nullability covariance. | **Does not conform**: no cede-specific guard/dominance proof exists. |
 | Fields/freeze ceilings survive independent flow | `BindingPermission` contains blocked flags and member checks compute some final flags. | **Does not conform**: no audited transfer fact establishes a persistent referent ceiling across all initializer/call/return paths. |
 | Patterns use identical flow derivation | `checkPattern` accepts `SourceIsMutable`, but match and guard binding currently pass `false`; pattern binders derive their own attributes. | **Does not conform**: pattern flow is outside the classifier and may not re-root or preserve capabilities consistently. |
@@ -40,12 +42,13 @@ closed 1.0 guarantee.
 
 ## Concrete implementation gaps
 
-1. `CedeExpr` in `src/Sema/Sema_Expr.cpp` treats `cede` as a generic wrapper:
-   it invalidates/marks a source but does not classify `^` versus `~`/`&`/`*`,
-   derive a flow ceiling, require whole binding, or prove nullable refinement.
-2. Local initialization in `src/Sema/Sema_Stmt.cpp` infers moves for unique
-   RHS variables, but does not record how the fresh LHS derived P or preserve a
-   referent immutability ceiling.
+1. `CedeExpr` in `src/Sema/Sema_Expr.cpp` still performs generic invalidation
+   and move marking. `PermissionFlow` now classifies its direct RHS for local
+   initialization, but cede is not yet restricted to a formal whole-binding
+   independent-transfer rule and it has no nullable proof.
+2. Local initialization in `src/Sema/Sema_Stmt.cpp` now stores a one-hop
+   Shared payload ceiling without rewriting the LHS declaration. Return,
+   field-initializer, and pattern construction do not yet store that fact.
 3. `isTypeCompatible` in `src/Sema/Sema_Type.cpp` is morphology/type
    compatibility. It cannot serve as the authority-flow decision because it is
    intentionally bidirectional in several non-permission cases and has no
@@ -56,10 +59,10 @@ closed 1.0 guarantee.
 
 ## Recommended implementation order
 
-1. Add an internal `PermissionFlow` classification/result for every fresh
-   initializer, cede argument, return, and pattern binder. It should contain
-   mode (`Independent`, `Shared`, `UnsafeRaw`), incoming payload ceiling,
-   null-state, and source path.
+1. Extend the current internal `PermissionFlow` classification/result from
+   local initializers to returns, field initializers, and pattern binders. It
+   should retain mode (`Independent`, `Shared`, `UnsafeRaw`), direct payload
+   ceiling, null-state, and source path only.
 2. Implement **whole-binding unique `cede` only**. Require `^`/owned source,
    PAL invalidation, non-null proof, and source invalidation; derive the fresh
    binding from its declaration capped by the carried ceiling.

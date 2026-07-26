@@ -1,0 +1,14 @@
+shape Cell(
+    value: i32
+)
+
+fn overwrite(~p#: Cell) {
+    p.value = 2
+}
+
+fn main() -> i32 {
+    auto ~#source = new Cell(value = 1)
+    auto ~view# = ~source
+    overwrite(~view)
+    return 0
+}

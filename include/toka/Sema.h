@@ -34,6 +34,11 @@ struct SymbolInfo {
   uint64_t SymbolID = 0;
   SourceLocation DeclLoc;
   BindingPermission Permission;
+  // A binding's declaration is its authority.  Shared flow may impose a
+  // stricter payload ceiling inherited from its direct source; it must not
+  // rewrite the declaration itself or require provenance traversal.
+  bool PayloadFlowWritable = true;
+  bool HasPayloadFlowCeiling = false;
 
   bool IsTypeAlias = false; // [NEW] For Generic Params (T -> i32)
   bool Moved = false;
@@ -130,11 +135,27 @@ struct SymbolInfo {
 struct AccessCapability {
   bool PayloadWritable = false;
   bool HandleRebindable = false;
+  bool PayloadFlowRestricted = false;
 };
 
 struct AccessIntent {
   bool PayloadWrite = false;
   bool HandleRebind = false;
+};
+
+enum class PermissionFlowKind {
+  Fresh,
+  Independent,
+  Shared,
+  UnsafeRaw,
+};
+
+// This is deliberately a one-hop fact.  DirectCapability describes the RHS
+// expression currently being transferred; its bindings have already applied
+// any earlier shared-flow ceiling.
+struct PermissionFlow {
+  PermissionFlowKind Kind = PermissionFlowKind::Fresh;
+  AccessCapability DirectCapability;
 };
 
 class Scope {
@@ -591,6 +612,7 @@ private:
                         std::shared_ptr<toka::Type> Source);
   AccessCapability getAccessCapability(Expr *E);
   AccessIntent getAccessIntent(Expr *E);
+  PermissionFlow getPermissionFlow(Expr *E);
 
   bool checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 
                         const std::vector<std::string> &TraitBounds, 

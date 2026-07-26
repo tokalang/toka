@@ -1475,6 +1475,19 @@ void Sema::checkStmt(Stmt *S) {
         Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
     LocalPermission.SoulNullable = Var->IsValueNullable;
     Info.Permission = LocalPermission;
+    if (Var->Init) {
+      // Shared flow is checked only against the direct initializer.  Earlier
+      // hops have already reduced that initializer's capability, so this
+      // local intersection prevents escalation without provenance tracing.
+      PermissionFlow flow = getPermissionFlow(Var->Init.get());
+      // Raw access is governed by the explicit unsafe boundary, not by a
+      // persistent safe-view ceiling.  It therefore remains outside this
+      // shared-flow propagation rule.
+      if (flow.Kind == PermissionFlowKind::Shared) {
+        Info.PayloadFlowWritable = flow.DirectCapability.PayloadWritable;
+        Info.HasPayloadFlowCeiling = true;
+      }
+    }
 
     std::string fullType =
         Sema::synthesizePhysicalType(LocalPermission, baseType, false);

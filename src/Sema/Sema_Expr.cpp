@@ -65,10 +65,12 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
           Info->TypeObj && !Info->TypeObj->isPointer() &&
           !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference() &&
           Info->Permission.SoulWritable;
-      return {Info->Permission.SoulWritable || isPlainOwnedValue ||
-                  rawPayloadCapability,
+      return {(Info->Permission.SoulWritable || isPlainOwnedValue ||
+                  rawPayloadCapability) &&
+                  Info->PayloadFlowWritable,
               Info->Permission.IdentityRebindable ||
-                  valueBindingCanRebindMemberHandle};
+                  valueBindingCanRebindMemberHandle,
+              Info->HasPayloadFlowCeiling};
     }
     return {};
   }
@@ -85,12 +87,12 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
     // applies field-level insulation separately; this capability query must
     // retain the proven parent path rather than infer authority from a
     // collapsed read-view type.
-    return {base.PayloadWritable, false};
+    return {base.PayloadWritable, false, base.PayloadFlowRestricted};
   }
 
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
     auto base = getAccessCapability(Index->Array.get());
-    return {base.PayloadWritable, false};
+    return {base.PayloadWritable, false, base.PayloadFlowRestricted};
   }
 
   // A non-place expression is a fresh value.  For an indirect result, retain
@@ -103,6 +105,75 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
     return {pointee && pointee->IsWritable, false};
   }
   return {true, false};
+}
+
+PermissionFlow Sema::getPermissionFlow(Expr *E) {
+  if (!E)
+    return {};
+
+  if (auto *Cede = dynamic_cast<CedeExpr *>(E)) {
+    return getPermissionFlow(Cede->Value.get());
+  }
+  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+    return getPermissionFlow(Cast->Expression.get());
+  if (auto *Post = dynamic_cast<PostfixExpr *>(E))
+    return getPermissionFlow(Post->LHS.get());
+  if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
+    PermissionFlow flow = getPermissionFlow(Member->Object.get());
+    flow.DirectCapability = getAccessCapability(E);
+    return flow;
+  }
+  if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
+    PermissionFlow flow = getPermissionFlow(Index->Array.get());
+    flow.DirectCapability = getAccessCapability(E);
+    return flow;
+  }
+  if (auto *Address = dynamic_cast<AddressOfExpr *>(E)) {
+    PermissionFlow flow;
+    flow.Kind = PermissionFlowKind::Shared;
+    flow.DirectCapability = getAccessCapability(Address->Expression.get());
+    return flow;
+  }
+  if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
+    PermissionFlow flow = getPermissionFlow(Unary->RHS.get());
+    flow.DirectCapability = getAccessCapability(E);
+    return flow;
+  }
+
+  PermissionFlow flow;
+  flow.DirectCapability = getAccessCapability(E);
+
+  if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
+    SymbolInfo *Info = nullptr;
+    std::string actualName = Var->Name;
+    if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
+        Info) {
+      switch (Info->Permission.Morphology) {
+      case BindingMorphology::Unique:
+        flow.Kind = PermissionFlowKind::Independent;
+        return flow;
+      case BindingMorphology::Shared:
+      case BindingMorphology::Reference:
+        flow.Kind = PermissionFlowKind::Shared;
+        return flow;
+      case BindingMorphology::Raw:
+        flow.Kind = PermissionFlowKind::UnsafeRaw;
+        return flow;
+      case BindingMorphology::None:
+        break;
+      }
+    }
+  }
+
+  if (E->ResolvedType) {
+    if (E->ResolvedType->isSharedPtr() || E->ResolvedType->isReference())
+      flow.Kind = PermissionFlowKind::Shared;
+    else if (E->ResolvedType->isRawPointer())
+      flow.Kind = PermissionFlowKind::UnsafeRaw;
+    else if (E->ResolvedType->isUniquePtr())
+      flow.Kind = PermissionFlowKind::Independent;
+  }
+  return flow;
 }
 
 AccessIntent Sema::getAccessIntent(Expr *E) {

@@ -102,7 +102,15 @@ For `~`, `&`, and non-moving alias propagation:
 
 1. The LHS H remains a property of the new handle slot and comes from its
    declaration.
-2. The LHS P is capped by both its declaration and the incoming referent P.
+2. The LHS P is capped by both its declaration and the **direct RHS** payload
+   capability:
+
+   ```text
+   effective-P(LHS) = declared-P(LHS) ∩ effective-P(direct RHS)
+   ```
+
+   The direct RHS already carries any ceiling established by an earlier hop;
+   no implementation may walk back to the allocation or other initial source.
    A readonly/shared source cannot become payload-writable merely because the
    destination spells `#`.
 3. `cede` is not a payload-upgrade operator for Shared sources. If syntax

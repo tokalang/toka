@@ -202,6 +202,33 @@
       "description": "A raw handle does not grant safe payload write without an unsafe context"
     },
     {
+      "id": "diag_shared_view_cannot_amplify_payload_01",
+      "path": "diagnostics/shared_view_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A chain of shared views cannot amplify its direct source payload capability"
+    },
+    {
+      "id": "diag_cede_shared_view_cannot_amplify_payload_01",
+      "path": "diagnostics/cede_shared_view_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "Ceding a shared handle transfers no additional payload capability"
+    },
+    {
+      "id": "diag_shared_view_cannot_supply_payload_call_01",
+      "path": "diagnostics/shared_view_cannot_supply_payload_call.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A shared-flow payload ceiling is enforced at a mutable call boundary"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",
@@ -232,6 +259,22 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Callable invocation accepts a parameter only when the caller declaration grants payload write"
+    },
+    {
+      "id": "ownership_shared_view_preserves_payload_capability_01",
+      "path": "ownership/shared_view_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A shared view preserves writable payload capability supplied by its direct source"
+    },
+    {
+      "id": "ownership_cede_unique_creates_independent_owner_01",
+      "path": "ownership/cede_unique_creates_independent_owner.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A cede unique transfer creates a fresh owner whose declaration controls payload writes"
     },
     {
       "id": "ir_sret_abi_01",
