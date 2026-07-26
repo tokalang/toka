@@ -554,7 +554,36 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                     m_Builder.SetInsertPoint(afterBB);
                 }
             } else {
-                emitDropCascade(dataPtr, cleanName);
+                bool nullableSoul = false;
+                llvm::StructType *nullableType = nullptr;
+                auto symbol = m_Symbols.find(it->Name);
+                if (symbol != m_Symbols.end() && symbol->second.soulTypeObj &&
+                    symbol->second.soulTypeObj->getSoulType()->IsNullable &&
+                    symbol->second.soulType &&
+                    symbol->second.soulType->isStructTy()) {
+                  nullableSoul = true;
+                  nullableType =
+                      llvm::cast<llvm::StructType>(symbol->second.soulType);
+                }
+                if (nullableSoul) {
+                  llvm::Value *payload = m_Builder.CreateLoad(
+                      nullableType, dataPtr, "nullable_soul.scope_payload");
+                  llvm::Value *present = m_Builder.CreateExtractValue(
+                      payload, 1, "nullable_soul.scope_present");
+                  llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
+                      m_Context, "nullable_soul.scope_drop", f);
+                  llvm::BasicBlock *afterPayloadDropBB =
+                      llvm::BasicBlock::Create(m_Context,
+                                                "nullable_soul.scope_done", f);
+                  m_Builder.CreateCondBr(present, dropPayloadBB,
+                                         afterPayloadDropBB);
+                  m_Builder.SetInsertPoint(dropPayloadBB);
+                  emitDropCascade(dataPtr, cleanName);
+                  m_Builder.CreateBr(afterPayloadDropBB);
+                  m_Builder.SetInsertPoint(afterPayloadDropBB);
+                } else {
+                  emitDropCascade(dataPtr, cleanName);
+                }
             }
           }
 

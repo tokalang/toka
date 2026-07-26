@@ -1,0 +1,35 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn clear_payload() {
+    auto ^#token#: Token? = new Token(id = 1)
+    token = none
+}
+
+fn replace_payload() {
+    auto ^#token#: Token? = new Token(id = 2)
+    token = Token(id = 3)
+}
+
+fn main() -> i32 {
+    clear_payload()
+    if g_drop_count != 1 {
+        return 1
+    }
+
+    replace_payload()
+    if g_drop_count != 3 {
+        return 2
+    }
+    return 0
+}

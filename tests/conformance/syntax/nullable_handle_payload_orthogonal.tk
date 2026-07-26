@@ -1,5 +1,28 @@
 shape Node(val: i32)
 
+fn check_shared_handle() -> i32 {
+    auto nul ~#node#: Node? = null
+    auto outcome# = 0
+
+    guard node {
+        outcome = 1
+    } else {
+        ~node = new Node(val = 6)
+    }
+    node = none
+    guard node {
+        outcome = 2
+    } else {
+        node = Node(val = 7)
+    }
+    guard node {
+        outcome = node.val
+    } else {
+        outcome = 3
+    }
+    return outcome - 7
+}
+
 fn main() -> i32 {
     // The outer ^# handle stays live while its nullable payload changes.
     auto nul ^#node#: Node? = new Node(val = 7)
@@ -18,5 +41,22 @@ fn main() -> i32 {
         outcome = 2
     }
 
-    return outcome - 9
+    // An empty handle is distinct from an allocated handle with an empty
+    // payload.  A handle rebind establishes a fresh present payload.
+    auto nul ^#absent#: Node? = null
+    guard absent {
+        return 3
+    } else {
+        ^absent = new Node(val = 5)
+    }
+    guard absent {
+        outcome = outcome + absent.val
+    } else {
+        return 4
+    }
+
+    if check_shared_handle() != 0 {
+        return 5
+    }
+    return outcome - 14
 }

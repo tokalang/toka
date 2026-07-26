@@ -24,7 +24,7 @@
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
-      "description": "A nullable payload can become none and present again without rebinding its live unique handle"
+      "description": "Nullable handle and payload states remain distinct across payload writes, deep guards, and a handle rebind"
     },
     {
       "id": "syntax_error_propagation_01",
@@ -65,6 +65,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Mutable variable binding reassignment and drop scope rules"
+    },
+    {
+      "id": "ownership_nullable_unique_payload_drop_01",
+      "path": "ownership/nullable_unique_payload_drop.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Replacing or clearing a nullable unique payload drops each live resource exactly once"
     },
     {
       "id": "async_frame_lifetime_reclaim_01",

@@ -1284,6 +1284,15 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     return nullptr;
   }
 
+  std::shared_ptr<Type> nullableSoulType =
+      var->ResolvedType ? var->ResolvedType->getSoulType() : nullptr;
+  if (dynamic_cast<const NewExpr *>(var->Init.get()) && initVal &&
+      initVal->getType()->isPointerTy() && nullableSoulType &&
+      nullableSoulType->IsNullable && elemTy && elemTy->isStructTy()) {
+    initVal = wrapFreshAllocationAsNullableSoul(
+        initVal, llvm::cast<llvm::StructType>(elemTy));
+  }
+
   if (var->Init && initVal) {
     // Move Semantics for Unique
     if (var->IsUnique) {
@@ -1430,6 +1439,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                      
   if (var->ResolvedType) {
       sym.soulTypeObj = var->ResolvedType;
+      sym.soulType = getLLVMType(var->ResolvedType->getSoulType());
   }
   
   sym.isRebindable = var->IsRebindable;
@@ -1439,6 +1449,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       (elemTy && elemTy->isArrayTy()) ||
       (dynamic_cast<const AllocExpr *>(var->Init.get()) &&
        dynamic_cast<const AllocExpr *>(var->Init.get())->IsArray);
+
   m_Symbols[varName] = sym;
 
   m_NamedValues[varName] = alloca;

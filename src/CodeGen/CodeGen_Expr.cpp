@@ -280,6 +280,46 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
   }
 }
 
+llvm::Value *CodeGen::wrapFreshAllocationAsNullableSoul(
+    llvm::Value *payloadPtr, llvm::StructType *soulType) {
+  if (!payloadPtr || !payloadPtr->getType()->isPointerTy() || !soulType ||
+      soulType->getNumElements() != 2 ||
+      !soulType->getElementType(1)->isIntegerTy(1))
+    return payloadPtr;
+
+  llvm::Function *mallocFn = m_Module->getFunction("malloc");
+  if (!mallocFn) {
+    mallocFn = llvm::Function::Create(
+        llvm::FunctionType::get(m_Builder.getPtrTy(), {getIntPtrTy()}, false),
+        llvm::Function::ExternalLinkage, "malloc", m_Module.get());
+  }
+  llvm::Function *freeFn = m_Module->getFunction("free");
+  if (!freeFn) {
+    freeFn = llvm::Function::Create(
+        llvm::FunctionType::get(llvm::Type::getVoidTy(m_Context),
+                                {m_Builder.getPtrTy()}, false),
+        llvm::Function::ExternalLinkage, "free", m_Module.get());
+  }
+
+  llvm::CallInst *wrapperPtr = m_Builder.CreateCall(
+      mallocFn,
+      {llvm::ConstantInt::get(getIntPtrTy(),
+                              m_Module->getDataLayout().getTypeAllocSize(soulType))},
+      "nullable_soul_alloc");
+  markMemoryEvent(wrapperPtr, "allocate");
+
+  llvm::Value *payload = m_Builder.CreateLoad(
+      soulType->getElementType(0), payloadPtr, "nullable_soul_payload");
+  llvm::Value *payloadAddr =
+      m_Builder.CreateStructGEP(soulType, wrapperPtr, 0, "nullable_soul_value");
+  llvm::Value *presentAddr = m_Builder.CreateStructGEP(
+      soulType, wrapperPtr, 1, "nullable_soul_present");
+  m_Builder.CreateStore(payload, payloadAddr);
+  m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context), presentAddr);
+  markMemoryEvent(m_Builder.CreateCall(freeFn, {payloadPtr}), "deallocate");
+  return wrapperPtr;
+}
+
 PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
                                    const BinaryExpr *assignmentSite) {
   auto verifyLowering = [&](AssignmentLoweringCarrier carrier) {
@@ -431,6 +471,14 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   }
   if (effectiveRebind && symLHS && lhsAlloca) {
     // Scene B: Envelope Rebind
+    std::shared_ptr<Type> targetSoulType =
+        symLHS->soulTypeObj ? symLHS->soulTypeObj->getSoulType() : nullptr;
+    if (dynamic_cast<const NewExpr *>(rhsExpr) && targetSoulType &&
+        targetSoulType->IsNullable && symLHS->soulType &&
+        symLHS->soulType->isStructTy()) {
+      rhsVal = wrapFreshAllocationAsNullableSoul(
+          rhsVal, llvm::cast<llvm::StructType>(symLHS->soulType));
+    }
     if (symLHS->morphology == Morphology::Shared &&
         rhsVal->getType()->isPointerTy()) {
       // Correctly pass the Handle Struct type
@@ -459,6 +507,28 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     std::shared_ptr<Type> targetSoulType =
         symLHS && symLHS->soulTypeObj ? symLHS->soulTypeObj->getSoulType()
                                       : nullptr;
+    bool replacesNullableSoul = targetSoulType && targetSoulType->IsNullable &&
+                                symLHS && symLHS->hasDrop && destTy &&
+                                destTy->isStructTy() &&
+                                destTy->getStructNumElements() == 2 &&
+                                destTy->getStructElementType(1)->isIntegerTy(1);
+    if (replacesNullableSoul) {
+      llvm::StructType *nullableType = llvm::cast<llvm::StructType>(destTy);
+      llvm::Value *oldPayload =
+          m_Builder.CreateLoad(nullableType, soulAddr, "nullable_soul.old");
+      llvm::Value *wasPresent = m_Builder.CreateExtractValue(
+          oldPayload, 1, "nullable_soul.was_present");
+      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+      llvm::BasicBlock *dropBB =
+          llvm::BasicBlock::Create(m_Context, "nullable_soul.drop", function);
+      llvm::BasicBlock *continueBB = llvm::BasicBlock::Create(
+          m_Context, "nullable_soul.drop_done", function);
+      m_Builder.CreateCondBr(wasPresent, dropBB, continueBB);
+      m_Builder.SetInsertPoint(dropBB);
+      emitDropCascade(soulAddr, targetSoulType->getSoulName());
+      m_Builder.CreateBr(continueBB);
+      m_Builder.SetInsertPoint(continueBB);
+    }
     if (targetSoulType && targetSoulType->IsNullable && destTy &&
         destTy->isStructTy() &&
         destTy->getStructNumElements() == 2 &&
@@ -2877,6 +2947,51 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   }
 
   llvm::Value *condVal = nullptr;
+  llvm::Value *deepGuardHandle = nullptr;
+  llvm::StructType *deepGuardSoulType = nullptr;
+
+  // A bare guard on a nullable handle normally denotes payload-path
+  // availability.  Do not materialize that payload before testing the handle:
+  // getEntityAddr() dereferences unique/raw handles and would otherwise load
+  // through null.  When the soul is nullable, the second branch below also
+  // checks its presence bit.
+  if (auto *var = dynamic_cast<const VariableExpr *>(guard->Condition.get())) {
+    std::string baseName = Type::stripMorphology(var->Name);
+    auto symbol = m_Symbols.find(baseName);
+    if (symbol != m_Symbols.end()) {
+      TokaSymbol &sym = symbol->second;
+      std::shared_ptr<Type> declaredType = sym.soulTypeObj;
+      std::shared_ptr<Type> soulType =
+          declaredType ? declaredType->getSoulType() : nullptr;
+      bool checksNullableHandle = declaredType && declaredType->IsNullable;
+      bool checksNullableSoul = soulType && soulType->IsNullable;
+      if ((sym.morphology == Morphology::Unique ||
+           sym.morphology == Morphology::Raw ||
+           sym.morphology == Morphology::Shared) &&
+          (checksNullableHandle || checksNullableSoul)) {
+        llvm::Value *identityAddr = emitHandleAddr(var);
+        if (identityAddr) {
+          if (sym.morphology == Morphology::Shared) {
+            llvm::StructType *handleType = llvm::StructType::get(
+                m_Context, {m_Builder.getPtrTy(), m_Builder.getPtrTy()});
+            llvm::Value *handle = m_Builder.CreateLoad(
+                handleType, identityAddr, "guard.shared_handle.load");
+            condVal = m_Builder.CreateExtractValue(
+                handle, 0, "guard.shared_handle.data");
+          } else {
+            condVal = m_Builder.CreateLoad(m_Builder.getPtrTy(), identityAddr,
+                                           "guard.handle.load");
+          }
+          if (checksNullableSoul && sym.soulType &&
+              sym.soulType->isStructTy()) {
+            deepGuardHandle = condVal;
+            deepGuardSoulType = llvm::cast<llvm::StructType>(sym.soulType);
+          }
+        }
+      }
+    }
+  }
+
   if (auto *unary = dynamic_cast<const UnaryExpr *>(guard->Condition.get())) {
     if (unary->Op == TokenType::Caret || unary->Op == TokenType::Star ||
         unary->Op == TokenType::Tilde || unary->Op == TokenType::Ampersand) {
@@ -2948,7 +3063,19 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(m_Context, "guard_else");
   llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(m_Context, "guard_cont");
 
-  m_Builder.CreateCondBr(condBool, thenBB, elseBB);
+  if (deepGuardHandle && deepGuardSoulType) {
+    llvm::BasicBlock *payloadCheckBB =
+        llvm::BasicBlock::Create(m_Context, "guard_payload_check", f);
+    m_Builder.CreateCondBr(condBool, payloadCheckBB, elseBB);
+    m_Builder.SetInsertPoint(payloadCheckBB);
+    llvm::Value *payload = m_Builder.CreateLoad(
+        deepGuardSoulType, deepGuardHandle, "guard_payload.load");
+    llvm::Value *present =
+        m_Builder.CreateExtractValue(payload, 1, "guard_payload.present");
+    m_Builder.CreateCondBr(present, thenBB, elseBB);
+  } else {
+    m_Builder.CreateCondBr(condBool, thenBB, elseBB);
+  }
 
   m_Builder.SetInsertPoint(thenBB);
   m_CFStack.push_back({"", mergeBB, nullptr, resultAddr, m_ScopeStack.size()});

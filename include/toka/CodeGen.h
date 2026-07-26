@@ -279,6 +279,8 @@ private:
   llvm::Value *emitEntityAddr(const Expr *expr); // "Soul" - actual data address
   llvm::Value *
   emitHandleAddr(const Expr *expr); // "Handle" - identity/sleeve (alloca)
+  llvm::Value *wrapFreshAllocationAsNullableSoul(llvm::Value *payloadPtr,
+                                                  llvm::StructType *soulType);
 
   llvm::Value *genStmt(const Stmt *stmt);
   llvm::Function *genFunction(const FunctionDecl *func,
