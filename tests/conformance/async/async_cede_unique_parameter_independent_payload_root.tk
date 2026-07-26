@@ -1,0 +1,15 @@
+import std/task::{block_on}
+
+shape Cell(value: i32)
+
+fn mutate(cede ^p#: Cell) -> async i32 {
+    p.value = 2
+    auto ^consumed = cede ^p
+    return consumed.value
+}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    auto handle = mutate(cede ^source).start
+    return block_on<i32>(handle) - 2
+}

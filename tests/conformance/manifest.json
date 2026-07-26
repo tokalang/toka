@@ -123,6 +123,14 @@
       "description": "Cancellation unwinds fixed-array constant-index cede locals before publishing task completion"
     },
     {
+      "id": "async_cede_unique_parameter_independent_payload_root_01",
+      "path": "async/async_cede_unique_parameter_independent_payload_root.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async cede unique parameters receive a direct owned handle and an independent Payload root"
+    },
+    {
       "id": "std_generic_encap_guard_lifetime_01",
       "path": "std/generic_encap_guard_lifetime.tk",
       "type": "run",
