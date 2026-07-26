@@ -419,6 +419,15 @@
       "description": "Generic instantiation preserves a payload-writable parameter requirement"
     },
     {
+      "id": "diag_closure_capture_cannot_amplify_projected_payload_01",
+      "path": "diagnostics/closure_capture_cannot_amplify_projected_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 10,
+      "timeout_seconds": 10,
+      "description": "An explicit closure capture retains the Payload ceiling of its shared projected view"
+    },
+    {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",
