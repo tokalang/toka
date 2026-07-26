@@ -247,6 +247,24 @@
       "description": "A writable shared field cannot be initialized from a weaker shared view"
     },
     {
+      "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
+      "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "A match pattern cannot upgrade a read-only reference payload"
+    },
+    {
+      "id": "diag_guard_shared_view_cannot_amplify_payload_01",
+      "path": "diagnostics/guard_shared_view_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A guard pattern cannot upgrade a read-only reference payload"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",
@@ -309,6 +327,13 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A writable shared field accepts and preserves a writable shared source"
+    },
+    {
+      "id": "ownership_pattern_shared_view_preserves_payload_capability_01",
+      "path": "ownership/pattern_shared_view_preserves_payload_capability.tk",
+      "type": "compile-pass",
+      "timeout_seconds": 10,
+      "description": "A match pattern preserves the writable payload capability of its direct reference source"
     },
     {
       "id": "ir_sret_abi_01",

@@ -2656,14 +2656,25 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Arg.ResolvedType = Info.TypeObj;
     }
 
+    bool morphicPayloadWritable = false;
+    if (Arg.IsMorphicExempt && Info.TypeObj) {
+      auto payloadType = Info.TypeObj;
+      if (payloadType->isPointer() || payloadType->isSmartPointer() ||
+          payloadType->isReference())
+        payloadType = payloadType->getPointeeType();
+      morphicPayloadWritable = payloadType && payloadType->IsWritable;
+    }
+    bool declaredPayloadWritable =
+        Arg.IsValueMutable || morphicPayloadWritable;
+
     Info.IsRebindable = Arg.IsRebindable;
     Info.Permission = BindingPermission::fromLegacy(
         Arg.IsRawPointer, Arg.IsUnique, Arg.IsShared, Arg.IsReference,
         Arg.IsRebindable, Arg.IsPointerNullable, Arg.IsRebindBlocked,
-        Arg.IsValueMutable, Arg.IsValueNullable, Arg.IsValueBlocked,
+        declaredPayloadWritable, Arg.IsValueNullable, Arg.IsValueBlocked,
         Arg.IsMorphicExempt);
     Info.IsMorphicExempt = Arg.IsMorphicExempt; // [NEW]
-    Info.IsDeclaredMutable = Arg.IsValueMutable;
+    Info.IsDeclaredMutable = declaredPayloadWritable;
     Info.IsDeclaredVariable = true;
     Info.DeclLoc = argLoc;
     Info.IsCeded = Arg.IsCeded;

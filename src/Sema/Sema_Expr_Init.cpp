@@ -38,10 +38,39 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   return Type->IsWritable;
 }
 
+static AccessCapability
+restrictPatternCapability(AccessCapability capability,
+                          const std::string &targetType) {
+  auto target = toka::Type::fromString(targetType);
+  if (!target ||
+      !(target->isPointer() || target->isSmartPointer() ||
+        target->isReference()))
+    return capability;
+
+  // A pointer/reference payload extracted from an aggregate is itself a
+  // shared view, even when the aggregate value was independently owned.
+  // A nested handle is a direct source in its own right.  Its declared
+  // payload permission is the ceiling for a fresh aggregate; if the
+  // aggregate itself already arrived through a shared view, preserve that
+  // earlier ceiling as well.  In particular, an Option<&T#> must not inherit
+  // the unrelated outer Option payload bit.
+  bool targetPayloadWritable = requiresPayloadWrite(target);
+  capability.PayloadWritable = capability.PayloadFlowRestricted
+                                   ? capability.PayloadWritable &&
+                                         targetPayloadWritable
+                                   : targetPayloadWritable;
+  capability.PayloadFlowRestricted = true;
+  return capability;
+}
+
 void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
-                        bool SourceIsMutable, const std::string &TargetPath) {
+                        AccessCapability SourceCapability,
+                        const std::string &TargetPath) {
   if (!Pat)
     return;
+
+  SourceCapability =
+      restrictPatternCapability(SourceCapability, TargetType);
 
   std::string T = resolveType(TargetType);
   while (!T.empty() && (T.back() == '#' || T.back() == '?' || T.back() == '!')) {
@@ -58,8 +87,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       error(Pat, DiagID::ERR_SEMA_INVALID_RANGE_PATTERN_STRUCTURE);
       break;
     }
-    checkPattern(Pat->SubPatterns[0].get(), TargetType, SourceIsMutable, TargetPath);
-    checkPattern(Pat->SubPatterns[1].get(), TargetType, SourceIsMutable, TargetPath);
+    checkPattern(Pat->SubPatterns[0].get(), TargetType, SourceCapability, TargetPath);
+    checkPattern(Pat->SubPatterns[1].get(), TargetType, SourceCapability, TargetPath);
 
     std::string resolvedT = resolveType(T, true);
     auto targetObj = toka::Type::fromString(resolvedT);
@@ -135,7 +164,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     
     for (auto &sub : Pat->SubPatterns) {
       CurrentScope = new Scope(originalScope);
-      checkPattern(sub.get(), TargetType, SourceIsMutable, TargetPath);
+      checkPattern(sub.get(), TargetType, SourceCapability, TargetPath);
       branchSymbols.push_back(CurrentScope->Symbols);
       Scope* temp = CurrentScope;
       CurrentScope = originalScope;
@@ -231,18 +260,25 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     if (Pat->IsReference)
       fullType = "&";
     fullType += T;
-    // Patterns usually don't have rebind/nullable sigils unless
-    // explicit? In match arms, we trust the inferred type T. But wait,
-    // T comes from resolveType(TargetType).
-    Info.TypeObj = toka::Type::fromString(fullType);
 
     if (!Pat->Name.empty() && Pat->Name[0] == '\'') {
         Info.IsMorphicExempt = true;
     }
 
+    bool bindingPayloadWritable = Pat->IsValueMutable;
+    if (isMorphicExempt) {
+      // A generic pattern binder transports the instantiated type itself.
+      // It is not a request to downgrade (or upgrade) that type's payload
+      // capability; the flow ceiling below still prevents shared promotion.
+      bindingPayloadWritable =
+          bindingPayloadWritable ||
+          requiresPayloadWrite(toka::Type::fromString(TargetType));
+    }
+    if (bindingPayloadWritable)
+      fullType += "#";
+    Info.TypeObj = toka::Type::fromString(fullType);
+
     if (Info.TypeObj) {
-        Info.TypeObj = Info.TypeObj->withAttributes(Pat->IsValueMutable, false);
-        
         // [Safety Gate] Prevent implicit destructure copying of Resources
         if (!Pat->IsReference && !Info.IsMorphicExempt) {
             std::string soulName = Info.TypeObj->getSoulName();
@@ -266,6 +302,30 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
         }
     }
 
+    if (Info.TypeObj) {
+      switch (Info.TypeObj->typeKind) {
+      case toka::Type::UniquePtr:
+        Info.Permission.Morphology = BindingMorphology::Unique;
+        break;
+      case toka::Type::SharedPtr:
+        Info.Permission.Morphology = BindingMorphology::Shared;
+        break;
+      case toka::Type::Reference:
+        Info.Permission.Morphology = BindingMorphology::Reference;
+        break;
+      case toka::Type::RawPtr:
+        Info.Permission.Morphology = BindingMorphology::Raw;
+        break;
+      default:
+        break;
+      }
+    }
+    Info.Permission.SoulWritable = bindingPayloadWritable;
+    if (SourceCapability.PayloadFlowRestricted) {
+      Info.PayloadFlowWritable = SourceCapability.PayloadWritable;
+      Info.HasPayloadFlowCeiling = true;
+    }
+
     if (Pat->IsReference && !TargetPath.empty()) {
       Info.BorrowedFrom = TargetPath;
         Info.LifeDependencySet.insert(TargetPath);
@@ -279,7 +339,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 
     // Pattern bindings are declarations too.  Preserve their payload-side
     // capability rather than relying on a later use-site # to recreate it.
-    Info.IsDeclaredMutable = Pat->IsValueMutable;
+    Info.IsDeclaredMutable = bindingPayloadWritable;
+    Info.IsDeclaredVariable = true;
 
     CurrentScope->define(Pat->Name, Info);
     break;
@@ -558,7 +619,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                 }
               }
 
-              checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(SD->Members[memberIndex]), SourceIsMutable, TargetPath);
+              checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(SD->Members[memberIndex]), SourceCapability, TargetPath);
             }
           }
         }
@@ -604,7 +665,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       if (i == elisionIndex) continue;
                       size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
-                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceIsMutable, TargetPath);
+                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath);
                     }
                   }
                 } else {
@@ -616,7 +677,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                   } else {
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       checkPattern(Pat->SubPatterns[i].get(),
-                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceIsMutable, TargetPath);
+                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath);
                     }
                   }
                 }
@@ -644,7 +705,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     HasError = true;
                   } else {
                     checkPattern(Pat->SubPatterns[0].get(), foundMemb->Type,
-                                 SourceIsMutable, TargetPath);
+                                 SourceCapability, TargetPath);
                   }
                 }
               }

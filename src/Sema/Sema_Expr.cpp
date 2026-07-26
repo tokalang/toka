@@ -3674,6 +3674,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     std::string targetPath = getPathString(me->Target.get());
+    PermissionFlow targetFlow = getPermissionFlow(me->Target.get());
+    AccessCapability targetCapability = targetFlow.DirectCapability;
+    if (targetFlow.Kind == PermissionFlowKind::Shared)
+      targetCapability.PayloadFlowRestricted = true;
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
     for (auto &pair : CurrentScope->Symbols) {
@@ -3699,7 +3703,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (auto &arm : me->Arms) {
       restoreMatchEntryState();
       enterScope();
-      checkPattern(arm->Pat.get(), targetType, false, targetPath);
+      checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath);
       if (arm->Guard) {
         auto guardTypeObj = checkExpr(arm->Guard.get());
         if (!arm->Guard->ResolvedType->isBoolean()) {

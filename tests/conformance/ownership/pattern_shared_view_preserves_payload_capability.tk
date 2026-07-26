@@ -1,0 +1,13 @@
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto value# = 1
+    auto opt = Option<&i32#>::Some(&value)
+    match opt {
+        auto Option<&i32#>::Some(&view#) => {
+            view = 2
+        }
+        auto Option<&i32#>::None => {}
+    }
+    return 0
+}

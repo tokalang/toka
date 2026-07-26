@@ -1922,8 +1922,12 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     std::string targetPath = getPathString(GuardBind->Target.get());
+    PermissionFlow targetFlow = getPermissionFlow(GuardBind->Target.get());
+    AccessCapability targetCapability = targetFlow.DirectCapability;
+    if (targetFlow.Kind == PermissionFlowKind::Shared)
+      targetCapability.PayloadFlowRestricted = true;
     // Check Pattern and bind variables into CurrentScope
-    checkPattern(GuardBind->Pat.get(), targetType, false, targetPath);
+    checkPattern(GuardBind->Pat.get(), targetType, targetCapability, targetPath);
 
     bool isReceiver = false;
     if (!m_ControlFlowStack.empty()) {
