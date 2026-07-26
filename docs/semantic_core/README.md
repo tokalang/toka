@@ -50,6 +50,11 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `fz2_semantic_tki_closure.md` closes the high-risk PAL/ownership/effects/
   async combinations, removed-syntax revalidation, and same-version interface
   replay matrix.
+- `permission_flow_two_mode_rfc.md` proposes the next ownership-flow layer:
+  independent transfer versus shared propagation, without weakening
+  declaration-backed authority.
+- `permission_flow_two_mode_audit.md` records the implementation gap between
+  that proposed flow model and the current compiler.
 
 ## Rule Status
 
