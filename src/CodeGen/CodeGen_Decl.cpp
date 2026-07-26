@@ -1458,6 +1458,36 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   // Redundant IncRef removed because genExpr (via genVariableExpr) now
   // handle ownership transfer (Acquire) for RValues.
 
+  // A fixed array may carry nullable elements even though its literal
+  // initializer produced bare values.  Materialize each declared `{T,
+  // present}` element before the ordinary VariableDecl compatibility path.
+  if (initVal && initVal->getType() != type && type->isArrayTy() &&
+      initVal->getType()->isArrayTy()) {
+    auto *targetArrayTy = llvm::cast<llvm::ArrayType>(type);
+    auto *sourceArrayTy = llvm::cast<llvm::ArrayType>(initVal->getType());
+    llvm::Type *targetElemTy = targetArrayTy->getElementType();
+    llvm::Type *sourceElemTy = sourceArrayTy->getElementType();
+    if (targetArrayTy->getNumElements() == sourceArrayTy->getNumElements() &&
+        targetElemTy->isStructTy() &&
+        targetElemTy->getStructNumElements() == 2 &&
+        targetElemTy->getStructElementType(0) == sourceElemTy &&
+        targetElemTy->getStructElementType(1)->isIntegerTy(1)) {
+      llvm::Value *wrappedArray = llvm::UndefValue::get(targetArrayTy);
+      for (uint64_t i = 0; i < targetArrayTy->getNumElements(); ++i) {
+        llvm::Value *element =
+            m_Builder.CreateExtractValue(initVal, {static_cast<unsigned>(i)});
+        llvm::Value *wrappedElement = llvm::UndefValue::get(targetElemTy);
+        wrappedElement = m_Builder.CreateInsertValue(wrappedElement, element,
+                                                      {0});
+        wrappedElement = m_Builder.CreateInsertValue(
+            wrappedElement, llvm::ConstantInt::getTrue(m_Context), {1});
+        wrappedArray = m_Builder.CreateInsertValue(
+            wrappedArray, wrappedElement, {static_cast<unsigned>(i)});
+      }
+      initVal = wrappedArray;
+    }
+  }
+
   // [Chapter 6 Extension] Nullable Soul Wrapper for VariableDecl
   if (initVal && initVal->getType() != type && type->isStructTy() &&
       type->getStructNumElements() == 2 &&

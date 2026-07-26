@@ -35,6 +35,14 @@
       "description": "Auto value inference preserves nullable payload representation"
     },
     {
+      "id": "syntax_nullable_repeat_array_initialization_01",
+      "path": "syntax/nullable_repeat_array_initialization.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Nullable fixed-array repeat initialization preserves element representation"
+    },
+    {
       "id": "syntax_error_propagation_01",
       "path": "syntax/error_propagation_postfix.tk",
       "type": "run",
@@ -385,6 +393,15 @@
       "description": "A nullable member cannot cede into an explicitly non-null destination"
     },
     {
+      "id": "diag_cede_nullable_index_requires_guard_for_nonnull_destination_01",
+      "path": "diagnostics/cede_nullable_index_requires_guard_for_nonnull_destination.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "A nullable index cannot cede into an explicitly non-null destination"
+    },
+    {
       "id": "diag_cede_nullable_payload_call_requires_guard_01",
       "path": "diagnostics/cede_nullable_payload_call_requires_guard.tk",
       "type": "compile-fail",
@@ -672,6 +689,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A nullable member can cede into an explicitly nullable destination"
+    },
+    {
+      "id": "ownership_cede_nullable_index_preserves_inference_01",
+      "path": "ownership/cede_nullable_index_preserves_inference.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Ceding a nullable index into auto preserves its nullable payload representation"
     },
     {
       "id": "ownership_cede_nullable_payload_call_after_guard_01",

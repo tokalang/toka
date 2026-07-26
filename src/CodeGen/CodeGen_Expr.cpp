@@ -6374,12 +6374,27 @@ PhysEntity CodeGen::genArrayExpr(const ArrayExpr *expr) {
   std::vector<llvm::Constant *> consts;
   std::vector<llvm::Value *> values;
   bool allConst = true;
+  llvm::Type *declaredElemTy = nullptr;
+  if (expr->ResolvedType && expr->ResolvedType->isArray()) {
+    declaredElemTy =
+        getLLVMType(expr->ResolvedType->getArrayElementType());
+  }
 
   for (auto &e : expr->Elements) {
     PhysEntity v_ent = genExpr(e.get()).load(m_Builder);
     llvm::Value *v = v_ent.load(m_Builder);
     if (!v)
       return nullptr;
+    if (declaredElemTy && v->getType() != declaredElemTy &&
+        declaredElemTy->isStructTy() &&
+        declaredElemTy->getStructNumElements() == 2 &&
+        declaredElemTy->getStructElementType(0) == v->getType() &&
+        declaredElemTy->getStructElementType(1)->isIntegerTy(1)) {
+      llvm::Value *wrapped = llvm::UndefValue::get(declaredElemTy);
+      wrapped = m_Builder.CreateInsertValue(wrapped, v, {0});
+      v = m_Builder.CreateInsertValue(
+          wrapped, llvm::ConstantInt::getTrue(m_Context), {1});
+    }
     values.push_back(v);
     if (auto *c = llvm::dyn_cast<llvm::Constant>(v)) {
       consts.push_back(c);
@@ -6571,6 +6586,27 @@ PhysEntity CodeGen::genRepeatedArrayExpr(const RepeatedArrayExpr *expr) {
     return nullptr;
   }
   llvm::Type *elemTy = val->getType();
+
+  // The initializer expression can be a bare `T` while the declared array
+  // element is `T?`.  Preserve the semantic element layout rather than
+  // constructing `[N x T]` and leaving VariableDecl to reconcile it with
+  // `[N x {T, present}]` later.
+  if (expr->ResolvedType && expr->ResolvedType->isArray()) {
+    auto declaredElem = expr->ResolvedType->getArrayElementType();
+    llvm::Type *declaredElemTy = getLLVMType(declaredElem);
+    if (declaredElemTy && declaredElemTy != elemTy) {
+      if (declaredElemTy->isStructTy() &&
+          declaredElemTy->getStructNumElements() == 2 &&
+          declaredElemTy->getStructElementType(0) == elemTy &&
+          declaredElemTy->getStructElementType(1)->isIntegerTy(1)) {
+        llvm::Value *wrapped = llvm::UndefValue::get(declaredElemTy);
+        wrapped = m_Builder.CreateInsertValue(wrapped, val, {0});
+        val = m_Builder.CreateInsertValue(
+            wrapped, llvm::ConstantInt::getTrue(m_Context), {1});
+      }
+      elemTy = declaredElemTy;
+    }
+  }
 
   llvm::ArrayType *arrTy = llvm::ArrayType::get(elemTy, count);
   if (auto *c = llvm::dyn_cast<llvm::Constant>(val)) {

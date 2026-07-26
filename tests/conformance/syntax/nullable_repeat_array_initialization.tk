@@ -1,0 +1,11 @@
+shape Token(id: i32)
+
+fn main() -> i32 {
+    auto arr: [Token?; 2] = [Token(id = 7); 2]
+    auto target = arr[1]
+    guard target {
+        return target.id - 7
+    } else {
+        return 1
+    }
+}
