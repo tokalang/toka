@@ -368,6 +368,42 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
   std::shared_ptr<toka::FunctionType> funcType = nullptr;
 
+  // Every callable route has the same consuming-parameter contract.  Static
+  // methods and callable values do not reach the ordinary function-call loop,
+  // so keep the nullable guard and explicit-transfer checks here rather than
+  // letting those alternate routes weaken a declared `cede` parameter.
+  auto checkCedeArgument =
+      [&](Expr *argument, const FunctionDecl::Arg &param,
+          const std::shared_ptr<Type> &argumentType,
+          const std::shared_ptr<Type> &destinationType) {
+        if (!param.IsCeded)
+          return;
+
+        const bool callerCeded = dynamic_cast<CedeExpr *>(argument) != nullptr;
+        if (callerCeded && isNullableCedeSource(argument) &&
+            !isNullableCedeDestination(destinationType)) {
+          error(argument, DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+        }
+
+        const bool isExempt = canImplicitlyPassToCede(argumentType);
+        if (!callerCeded && !isExempt) {
+          error(argument,
+                DiagID::ERR_SEMA_ARGUMENT_MUST_BE_EXPLICITLY_PASSED_WITH_2);
+          if (param.Loc.isValid())
+            DiagnosticEngine::report(param.Loc, DiagID::NOTE_GENERIC,
+                                     "cede parameter declared here");
+        }
+        const std::string subject = getPathString(argument);
+        recordDecision(
+            argument, SemanticRuleID::OwnCede001,
+            SemanticOperation::CedeObligation,
+            (!callerCeded && !isExempt) ? SemanticDecision::Reject
+                                        : SemanticDecision::Allow,
+            (!callerCeded && !isExempt) ? SemanticReason::MissingExplicitCede
+                                        : SemanticReason::CedeConsumed,
+            subject, param.Name, param.Loc);
+      };
+
   // 3. Resolve Static Methods / Enum Variants
   size_t pos = CallName.find("::");
   if (pos != std::string::npos) {
@@ -429,6 +465,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
           if (MetAST && i < MetAST->Args.size()) {
             const auto &param = MetAST->Args[i];
+            checkCedeArgument(Call->Args[i].get(), param, argTy, expectedTy);
             AccessCapability argCapability =
                 getAccessCapability(Call->Args[i].get());
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
@@ -512,6 +549,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
                 if (MetAST && i < MetAST->Args.size()) {
                   const auto &param = MetAST->Args[i];
+                  checkCedeArgument(Call->Args[i].get(), param, argTy,
+                                    expectedTy);
                   AccessCapability argCapability =
                       getAccessCapability(Call->Args[i].get());
                   AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
@@ -904,6 +943,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 auto expectedTy = toka::Type::fromString(invokeFn->Args[i + 1].Type);
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
                 const auto &param = invokeFn->Args[i + 1];
+                checkCedeArgument(Call->Args[i].get(), param, argTy,
+                                  expectedTy);
                 AccessCapability argCapability =
                     getAccessCapability(Call->Args[i].get());
                 AccessIntent argIntent = getAccessIntent(Call->Args[i].get());

@@ -404,6 +404,51 @@
       "description": "A nullable payload needs a same-binding guard before cede into a consuming method argument"
     },
     {
+      "id": "diag_cede_nullable_payload_static_call_requires_guard_01",
+      "path": "diagnostics/cede_nullable_payload_static_call_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A nullable payload needs a same-binding guard before cede into a consuming static method"
+    },
+    {
+      "id": "diag_cede_nullable_payload_generic_static_call_requires_guard_01",
+      "path": "diagnostics/cede_nullable_payload_generic_static_call_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A nullable payload needs a same-binding guard before cede into a lazily instantiated static method"
+    },
+    {
+      "id": "diag_cede_nullable_payload_callable_requires_guard_01",
+      "path": "diagnostics/cede_nullable_payload_callable_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A nullable payload needs a same-binding guard before cede into a consuming callable"
+    },
+    {
+      "id": "diag_static_cede_parameter_requires_explicit_transfer_01",
+      "path": "diagnostics/static_cede_parameter_requires_explicit_transfer.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04570",
+      "expected_span_line": 19,
+      "timeout_seconds": 10,
+      "description": "A static consuming method requires explicit cede for a resource argument"
+    },
+    {
+      "id": "diag_callable_cede_parameter_requires_explicit_transfer_01",
+      "path": "diagnostics/callable_cede_parameter_requires_explicit_transfer.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04570",
+      "expected_span_line": 21,
+      "timeout_seconds": 10,
+      "description": "A consuming callable requires explicit cede for a resource argument"
+    },
+    {
       "id": "diag_cede_unique_preserves_blocked_field_01",
       "path": "diagnostics/cede_unique_preserves_blocked_field.tk",
       "type": "compile-fail",
@@ -610,6 +655,22 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A payload guard permits a consuming method receiver"
+    },
+    {
+      "id": "ownership_cede_nullable_payload_static_call_after_guard_01",
+      "path": "ownership/cede_nullable_payload_static_call_after_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A payload guard permits cede into a consuming static method"
+    },
+    {
+      "id": "ownership_cede_nullable_payload_callable_after_guard_01",
+      "path": "ownership/cede_nullable_payload_callable_after_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A payload guard permits cede into a consuming callable"
     },
     {
       "id": "ownership_shared_view_return_preserves_payload_capability_01",

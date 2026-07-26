@@ -1,0 +1,12 @@
+import ./lib::{Cell}
+
+fn main() -> i32 {
+    auto ^source#: Cell? = new Cell(value = 7)
+    auto result# = 2
+    guard source {
+        result = Cell::consume_static(cede source)
+    } else {
+        result = 2
+    }
+    return result - 7
+}

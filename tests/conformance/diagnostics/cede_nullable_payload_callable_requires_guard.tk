@@ -1,0 +1,15 @@
+shape Token(id: i32)
+shape Consumer()
+
+impl Consumer@Callable {
+    fn call(self, cede token: Token) -> i32 {
+        auto owned = cede token
+        return owned.id
+    }
+}
+
+fn main() -> i32 {
+    auto consumer = Consumer()
+    auto ^source#: Token? = new Token(id = 2)
+    return consumer(cede source)
+}
