@@ -1,0 +1,15 @@
+// EXPECT_ERROR: E0410
+import ./lib::{Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto selector = 0
+    auto values: [Token; 1] = [Token(id = 1, &drops = &drops)]
+    match selector {
+        0 => {
+            auto taken = cede values[0]
+        }
+        _ => {}
+    }
+    return values[0].id
+}

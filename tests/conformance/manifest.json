@@ -115,6 +115,14 @@
       "description": "Cancellation unwinds direct-field cede locals before publishing task completion"
     },
     {
+      "id": "async_cede_fixed_array_index_cancel_cleanup_01",
+      "path": "async/async_cede_fixed_array_index_cancel_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Cancellation unwinds fixed-array constant-index cede locals before publishing task completion"
+    },
+    {
       "id": "std_generic_encap_guard_lifetime_01",
       "path": "std/generic_encap_guard_lifetime.tk",
       "type": "run",
@@ -630,6 +638,14 @@
       "description": "A fixed-array index cede propagates element liveness through an if-branch join"
     },
     {
+      "id": "ownership_cede_fixed_array_index_loop_cleanup_01",
+      "path": "ownership/cede_fixed_array_index_loop_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A fixed-array index cede inside a bounded loop preserves sibling liveness and exact cleanup"
+    },
+    {
       "id": "ownership_cede_direct_field_branch_join_01",
       "path": "ownership/cede_direct_field_branch_join.tk",
       "type": "run",
@@ -663,6 +679,15 @@
       "expected_span_line": 15,
       "timeout_seconds": 10,
       "description": "A fixed-array element ceded on one if branch is unavailable after the join"
+    },
+    {
+      "id": "diag_cede_fixed_array_index_match_join_invalidates_source_01",
+      "path": "diagnostics/cede_fixed_array_index_match_join_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 19,
+      "timeout_seconds": 10,
+      "description": "A fixed-array element ceded on one match arm is unavailable after the join"
     },
     {
       "id": "diag_cede_dynamic_resource_array_index_rejected_01",

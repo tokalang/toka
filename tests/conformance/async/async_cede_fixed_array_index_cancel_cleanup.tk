@@ -1,0 +1,33 @@
+import core/traits::{@encap}
+import std/task::{sleep_async, block_on, task_cancel}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn worker() -> async i32 {
+    auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+    auto taken = cede values[0]
+    sleep_async(100).await
+    return taken.id + values[1].id
+}
+
+fn coordinator() -> async i32 {
+    auto handle = worker().start
+    task_cancel<i32>(handle)
+    sleep_async(10).await
+    assert(g_drop_count == 2,
+           "canceled async fixed-array cede drops every live resource once")
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}
