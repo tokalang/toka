@@ -263,7 +263,28 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
       if (sym.soulTypeObj) {
         cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
       }
-      emitDropCascade(oldVal, cleanName);
+      std::shared_ptr<Type> soulType =
+          sym.soulTypeObj ? sym.soulTypeObj->getSoulType() : nullptr;
+      if (soulType && soulType->IsNullable && sym.soulType &&
+          sym.soulType->isStructTy()) {
+        llvm::StructType *nullableType =
+            llvm::cast<llvm::StructType>(sym.soulType);
+        llvm::Value *payload = m_Builder.CreateLoad(
+            nullableType, oldVal, "nullable_soul.rebind_payload");
+        llvm::Value *present = m_Builder.CreateExtractValue(
+            payload, 1, "nullable_soul.rebind_present");
+        llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
+            m_Context, "nullable_soul.rebind_drop", f);
+        llvm::BasicBlock *afterPayloadDropBB = llvm::BasicBlock::Create(
+            m_Context, "nullable_soul.rebind_done", f);
+        m_Builder.CreateCondBr(present, dropPayloadBB, afterPayloadDropBB);
+        m_Builder.SetInsertPoint(dropPayloadBB);
+        emitDropCascade(oldVal, cleanName);
+        m_Builder.CreateBr(afterPayloadDropBB);
+        m_Builder.SetInsertPoint(afterPayloadDropBB);
+      } else {
+        emitDropCascade(oldVal, cleanName);
+      }
     }
     llvm::Function *freeFn = m_Module->getFunction("free");
     if (freeFn) {

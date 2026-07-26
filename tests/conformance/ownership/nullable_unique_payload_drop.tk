@@ -21,6 +21,12 @@ fn replace_payload() {
     token = Token(id = 3)
 }
 
+fn rebind_after_empty_payload() {
+    auto ^#token#: Token? = new Token(id = 4)
+    token = none
+    ^token = new Token(id = 5)
+}
+
 fn main() -> i32 {
     clear_payload()
     if g_drop_count != 1 {
@@ -30,6 +36,11 @@ fn main() -> i32 {
     replace_payload()
     if g_drop_count != 3 {
         return 2
+    }
+
+    rebind_after_empty_payload()
+    if g_drop_count != 5 {
+        return 3
     }
     return 0
 }
