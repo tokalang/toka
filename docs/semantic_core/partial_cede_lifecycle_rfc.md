@@ -77,7 +77,11 @@ library-invariant treatment for the following until each has its own proof:
 - spreads;
 - enum payload projections;
 - aggregates with user-defined `drop` / `@encap` cleanup;
-- partial moves across an async suspension boundary.
+
+The same direct-field model is valid across `await`: the mask is a coroutine
+frame local, and cancellation now executes scope unwinding before publishing
+the canceled result.  This is evidenced only for the direct-field slice; it
+does not widen the unsupported projection forms above.
 
 This avoids a superficially safe compiler transformation that would either
 double-drop a custom container field or silently leak its remaining fields.
@@ -91,12 +95,12 @@ double-drop a custom container field or silently leak its remaining fields.
    and dispatches field drops conditionally at scope exit.
 3. **Control flow:** preserve the mask through `if`, `guard`, `match`, loops,
    return unwinding, and error propagation.
-4. **Eligibility:** diagnose custom-drop, index, spread, enum, and async
-   cases rather than assuming the generic record algorithm applies.
-5. **Evidence:** positive exactly-once cleanup, reinitialization, and
-   branch-join coverage plus negative use-after-move and explicit-custom-drop
-   rejection are in the conformance suite. Add source-less replay and
-   async-rejection cases before widening eligibility.
+4. **Eligibility:** diagnose custom-drop cases and retain index, spread, and
+   enum projections outside the generic record algorithm.
+5. **Evidence:** positive exactly-once cleanup, reinitialization,
+   branch-join, and cancellation-across-`await` coverage plus negative
+   use-after-move and explicit-custom-drop rejection are in the conformance
+   suite. Add source-less replay before widening eligibility.
 
 ## 6. Exit criterion
 

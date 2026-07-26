@@ -67,6 +67,14 @@
       "description": "Async frame local variable preservation across await points (GAP-LANG-03a)"
     },
     {
+      "id": "async_cede_direct_field_cancel_cleanup_01",
+      "path": "async/async_cede_direct_field_cancel_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Cancellation unwinds direct-field cede locals before publishing task completion"
+    },
+    {
       "id": "diag_mut_borrow_err_01",
       "path": "diagnostics/mut_borrow_err.tk",
       "type": "compile-fail",

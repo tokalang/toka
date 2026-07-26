@@ -869,6 +869,12 @@ void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
 }
 
 void CodeGen::genCoroutineCancelReturn() {
+    // Cancellation is a terminal scope exit, not merely a promise-state
+    // change.  Run the same ownership cleanup as an ordinary return before
+    // publishing completion, so awaiters cannot observe a canceled task whose
+    // local resources (including partial-cede drop masks) are still live.
+    executeScopeUnwinding(0);
+
     if (m_CurrentCoroPromiseType) {
         llvm::Function *completeCanceledFn = m_Module->getFunction("toka_task_complete_canceled");
         if (!completeCanceledFn) {
