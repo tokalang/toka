@@ -661,6 +661,14 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
         resultType->withAttributes(isBaseWritable, resultType->IsNullable);
   }
 
+  // A null comparison narrows only the exact indexed path in the proven
+  // non-null branch.  Do not alter the array declaration or any sibling
+  // element: this is a branch-local value-state fact, not authority flow.
+  if (m_NarrowedPaths.count(getPathString(Idx))) {
+    resultType = resultType->withAttributes(resultType->IsWritable, false,
+                                            resultType->IsBlocked);
+  }
+
   return resultType;
 }
 

@@ -1772,45 +1772,82 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto condTypeObj = checkExpr(ie->Condition.get());
     std::string condType = condTypeObj->toString();
 
-    // Type Narrowing for 'is' check
+    // Type narrowing for null checks is branch-sensitive.  `x is null`
+    // proves x nullable in its then branch and non-null only in its else
+    // branch; `x is! null` proves non-null in its then branch.  A path
+    // narrowing is therefore an observation of that exact branch, never a
+    // permission grant or a fact that survives the conditional.
     std::string narrowedVar;
     SymbolInfo originalInfo;
     bool narrowed = false;
+    bool narrowThen = false;
+    bool narrowElse = false;
+    VariableExpr *narrowedVariable = nullptr;
 
     if (auto *bin = dynamic_cast<BinaryExpr *>(ie->Condition.get())) {
-      if (bin->Op == "is") {
+      const bool comparesNull =
+          dynamic_cast<NullExpr *>(bin->RHS.get()) ||
+          dynamic_cast<NoneExpr *>(bin->RHS.get());
+      if (bin->Op == "is" || bin->Op == "is!") {
+        narrowThen = (bin->Op == "is" && !comparesNull) ||
+                      (bin->Op == "is!" && comparesNull);
+        narrowElse = bin->Op == "is" && comparesNull;
+      }
+
+      if (narrowThen || narrowElse) {
         Expr *lhs = bin->LHS.get();
         std::string path = getPathString(lhs);
         if (!path.empty()) {
-          m_NarrowedPaths.insert(path);
           narrowed = true;
           narrowedVar = path;
         }
 
-        VariableExpr *varExpr = dynamic_cast<VariableExpr *>(lhs);
-        if (!varExpr) {
+        narrowedVariable = dynamic_cast<VariableExpr *>(lhs);
+        if (!narrowedVariable) {
           if (auto *un = dynamic_cast<UnaryExpr *>(lhs)) {
-            varExpr = dynamic_cast<VariableExpr *>(un->RHS.get());
+            narrowedVariable = dynamic_cast<VariableExpr *>(un->RHS.get());
           }
         }
 
-        if (varExpr) {
+        if (narrowedVariable) {
           SymbolInfo *infoPtr = nullptr;
-          if (CurrentScope->findSymbol(varExpr->Name, infoPtr)) {
+          if (CurrentScope->findSymbol(narrowedVariable->Name, infoPtr)) {
             if (!narrowed) {
-              narrowedVar = varExpr->Name;
+              narrowedVar = narrowedVariable->Name;
               narrowed = true;
             }
             originalInfo = *infoPtr;
-            // Sync TypeObj: Narrow type to non-nullable
-            if (infoPtr->TypeObj) {
-              infoPtr->TypeObj = infoPtr->TypeObj->withAttributes(
-                  infoPtr->TypeObj->IsWritable, false);
-            }
           }
         }
       }
     }
+
+    auto applyNarrowing = [&]() {
+      if (!narrowed)
+        return;
+      m_NarrowedPaths.insert(narrowedVar);
+      if (!narrowedVariable)
+        return;
+      SymbolInfo *infoPtr = nullptr;
+      if (CurrentScope->findSymbol(narrowedVariable->Name, infoPtr) &&
+          infoPtr && infoPtr->TypeObj) {
+        infoPtr->TypeObj = infoPtr->TypeObj->withAttributes(
+            infoPtr->TypeObj->IsWritable, false);
+      }
+    };
+
+    auto restoreNarrowing = [&]() {
+      if (!narrowed)
+        return;
+      if (narrowedVariable) {
+        SymbolInfo *infoPtr = nullptr;
+        if (CurrentScope->findSymbol(narrowedVariable->Name, infoPtr) &&
+            infoPtr) {
+          *infoPtr = originalInfo;
+        }
+      }
+      m_NarrowedPaths.erase(narrowedVar);
+    };
 
     bool isReceiver = false;
     if (!m_ControlFlowStack.empty()) {
@@ -1828,6 +1865,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     auto palBefore = PALCheckerState.snapshot();
 
+    if (narrowThen)
+      applyNarrowing();
     checkStmt(ie->Then.get());
 
     std::map<std::string, uint64_t> masksThen;
@@ -1838,16 +1877,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     auto palThen = PALCheckerState.snapshot();
 
-    // Restore if narrowed
-    if (narrowed) {
-      if (CurrentScope->lookup(narrowedVar, originalInfo)) {
-        SymbolInfo *infoPtr = nullptr;
-        if (CurrentScope->findSymbol(narrowedVar, infoPtr)) {
-          *infoPtr = originalInfo;
-        }
-      }
-      m_NarrowedPaths.erase(narrowedVar);
-    }
+    if (narrowThen)
+      restoreNarrowing();
 
     std::string thenType = m_ControlFlowStack.back().ExpectedType;
     auto thenTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -1868,12 +1899,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+      if (narrowElse)
+        applyNarrowing();
       checkStmt(ie->Else.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
       elseReturns = allPathsJump(ie->Else.get());
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
+      if (narrowElse)
+        restoreNarrowing();
 
       // Intersection Rule
       if (thenReturns && elseReturns) {

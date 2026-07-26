@@ -6034,7 +6034,29 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
       }
     }
 
-    return genExpr(ce->Value.get());
+    PhysEntity moved = genExpr(ce->Value.get());
+    llvm::Value *movedValue = moved.load(m_Builder);
+    llvm::Type *targetTy = ce->ResolvedType ? getLLVMType(ce->ResolvedType)
+                                             : nullptr;
+
+    // Sema may refine an exact nullable path in a proven non-null branch.
+    // The storage retains its `{T, present}` carrier, so lower the cede by
+    // extracting T only when the semantic result is the carrier's payload.
+    // This preserves the physical representation for nullable destinations
+    // while keeping a guarded `cede values[i]` ABI-compatible with `T`.
+    if (movedValue && targetTy && movedValue->getType() != targetTy) {
+      if (auto *carrier = llvm::dyn_cast<llvm::StructType>(movedValue->getType())) {
+        if (carrier->getNumElements() == 2 &&
+            carrier->getElementType(0) == targetTy &&
+            carrier->getElementType(1)->isIntegerTy(1)) {
+          llvm::Value *payload =
+              m_Builder.CreateExtractValue(movedValue, 0, "cede.nonnull");
+          return PhysEntity(payload, ce->ResolvedType->toString(), targetTy,
+                            false);
+        }
+      }
+    }
+    return moved;
   }
   return {};
 }

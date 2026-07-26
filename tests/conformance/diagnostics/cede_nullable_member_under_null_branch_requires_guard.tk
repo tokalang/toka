@@ -1,0 +1,11 @@
+shape Token(id: i32)
+shape Pair(item: Token?)
+
+fn main() -> i32 {
+    auto pair = Pair(item = none)
+    if pair.item is null {
+        auto target: Token = cede pair.item
+        return target.id
+    }
+    return 0
+}

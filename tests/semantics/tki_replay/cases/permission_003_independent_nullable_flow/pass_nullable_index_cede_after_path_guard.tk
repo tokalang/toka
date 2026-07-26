@@ -1,0 +1,11 @@
+import ./lib::{Cell}
+
+fn main() -> i32 {
+    auto values: [Cell?; 1] = [Cell(value = 9)]
+    if values[0] is null {
+        return 1
+    } else {
+        auto target: Cell = cede values[0]
+        return target.value - 9
+    }
+}

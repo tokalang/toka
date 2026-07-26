@@ -133,9 +133,21 @@ Independent flow from a nullable source to a non-null destination requires a
 dominating guard over the **same canonical path**. A guard refines the current
 null-state only; it neither adds H/P authority nor removes a referent ceiling.
 
-No implicit `cede` conversion from nullable to non-null is permitted without
-that proof. The initial implementation may conservatively reject all such
-transfers until path-sensitive guard evidence is available.
+The implemented projection form is branch-local and direction-sensitive:
+
+```toka
+if record.item is null {
+    // record.item remains nullable here
+} else {
+    auto item: Item = cede record.item // same path, proven non-null
+}
+```
+
+The same rule applies to a fixed-array index such as `values[0]`. The fact is
+not propagated to siblings, to a different path, or beyond the conditional.
+Bare `guard` continues to narrow a named binding; projection guards use the
+branch form above. No implicit `cede` conversion from nullable to non-null is
+permitted without that proof.
 
 ## 6. Patterns and partial moves
 

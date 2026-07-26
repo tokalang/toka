@@ -401,6 +401,15 @@
       "description": "A nullable member cannot cede into an explicitly non-null destination"
     },
     {
+      "id": "diag_cede_nullable_member_under_null_branch_requires_guard_01",
+      "path": "diagnostics/cede_nullable_member_under_null_branch_requires_guard.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "A path is not non-null inside the true branch of an is-null check"
+    },
+    {
       "id": "diag_cede_nullable_index_requires_guard_for_nonnull_destination_01",
       "path": "diagnostics/cede_nullable_index_requires_guard_for_nonnull_destination.tk",
       "type": "compile-fail",
@@ -793,12 +802,36 @@
       "description": "A nullable member can cede into an explicitly nullable destination"
     },
     {
+      "id": "ownership_cede_nullable_member_after_path_guard_01",
+      "path": "ownership/cede_nullable_member_after_path_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A same-path non-null branch permits a member cede into a non-null destination"
+    },
+    {
       "id": "ownership_cede_nullable_index_preserves_inference_01",
       "path": "ownership/cede_nullable_index_preserves_inference.tk",
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Ceding a nullable index into auto preserves its nullable payload representation"
+    },
+    {
+      "id": "ownership_cede_nullable_index_after_path_guard_01",
+      "path": "ownership/cede_nullable_index_after_path_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A same-path non-null branch permits a fixed-array index cede into a non-null destination"
+    },
+    {
+      "id": "ownership_cede_nullable_path_guard_resource_cleanup_01",
+      "path": "ownership/cede_nullable_path_guard_resource_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Guarded nullable member and fixed-array index cedes preserve exact resource cleanup"
     },
     {
       "id": "ownership_cede_nullable_payload_call_after_guard_01",

@@ -1,0 +1,11 @@
+shape Token(id: i32)
+
+fn main() -> i32 {
+    auto values: [Token?; 1] = [Token(id = 11)]
+    if values[0] is null {
+        return 1
+    } else {
+        auto target: Token = cede values[0]
+        return target.id - 11
+    }
+}
