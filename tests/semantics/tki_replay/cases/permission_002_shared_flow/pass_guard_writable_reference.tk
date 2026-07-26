@@ -1,0 +1,15 @@
+import ./lib::{writable_option}
+import core/option::{Option}
+
+fn main() -> i32 {
+    auto value# = 1
+    auto option = writable_option(value)
+    guard auto Option<&i32#>::Some(&view#) = option else {
+        return 1
+    }
+    view = 2
+    if (value != 2) {
+        return 2
+    }
+    return 0
+}

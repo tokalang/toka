@@ -1,3 +1,5 @@
+import core/option::{Option}
+
 pub shape Cell(value: i32)
 
 pub shape Holder(
@@ -16,4 +18,14 @@ pub shape WritableRefBox(
 
 pub fn expose(~p#: Cell) -> ~Cell# {
     return ~p
+}
+
+// EXPECT_TKI: pub fn writable_option(p#: i32) -> Option<&i32#>
+pub fn writable_option(p#: i32) -> Option<&i32#> {
+    return Option<&i32#>::Some(&p)
+}
+
+// EXPECT_TKI: pub fn readonly_option(p: i32) -> Option<&i32>
+pub fn readonly_option(p: i32) -> Option<&i32> {
+    return Option<&i32>::None
 }

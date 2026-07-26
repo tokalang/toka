@@ -634,6 +634,19 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
   m_Builder.SetInsertPoint(contBB);
   
   if (variant && !gbs->Pat->SubPatterns.empty()) {
+      if (variant->Type == "void" && gbs->Pat->SubPatterns.size() == 1 &&
+          gbs->Pat->SubPatterns[0]->IsReference) {
+          llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
+              targetType, targetAddr, 1, "enum_payload_addr");
+          // `payloadAddr` addresses the enum storage. A reference binder needs
+          // the pointer stored in that slot, not the slot's own address.
+          llvm::Value *payloadRef = m_Builder.CreateLoad(
+              llvm::PointerType::getUnqual(m_Context), payloadAddr,
+              "enum_ref_payload");
+          genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
+                            llvm::PointerType::getUnqual(m_Context), nullptr);
+          return nullptr;
+      }
       llvm::Value *payloadAddr = m_Builder.CreateStructGEP(targetType, targetAddr, 1, "enum_payload_addr");
       llvm::Type *payloadLayoutType = nullptr;
       std::vector<llvm::Type*> fieldTypes;
@@ -665,7 +678,6 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
               } else if (variant->ResolvedType) {
                   subTypeObj = variant->ResolvedType;
               }
-
               genPatternBinding(gbs->Pat->SubPatterns[i].get(), fieldAddr, fieldTy, subTypeObj);
           }
       }
