@@ -2844,6 +2844,36 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 
     if (auto *var = dynamic_cast<const VariableExpr *>(movedObject)) {
       suppressDropForMove(var->Name);
+
+      // A consuming method declared as `cede self` receives a direct value
+      // payload.  For a unique receiver, the call/factory has copied that
+      // payload into callee-owned storage, so the source handle's heap slot
+      // must be released here after the call.  The callee owns the payload
+      // destructor; freeing here releases only the now-empty allocation.
+      const std::string receiverName =
+          Type::stripMorphology(var->codegenName());
+      const auto receiver = m_Symbols.find(receiverName);
+      const bool receiverIsUnique =
+          (var->ResolvedType && var->ResolvedType->isUniquePtr()) ||
+          (receiver != m_Symbols.end() &&
+           receiver->second.morphology == Morphology::Unique);
+      const bool selfReceivesPayloadByValue =
+          !fd->Args[0].IsUnique &&
+          !(fd->Args[0].ResolvedType &&
+            fd->Args[0].ResolvedType->isUniquePtr());
+      if (receiverIsUnique && selfReceivesPayloadByValue &&
+          finalObjVal->getType()->isPointerTy()) {
+        llvm::Function *freeFn = m_Module->getFunction("free");
+        if (!freeFn) {
+          freeFn = llvm::Function::Create(
+              llvm::FunctionType::get(m_Builder.getVoidTy(),
+                                      {m_Builder.getPtrTy()}, false),
+              llvm::Function::ExternalLinkage, "free", m_Module.get());
+        }
+        m_Builder.CreateCall(
+            freeFn, m_Builder.CreateBitCast(finalObjVal,
+                                             m_Builder.getPtrTy()));
+      }
     }
   }
 

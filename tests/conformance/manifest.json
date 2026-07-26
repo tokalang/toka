@@ -75,6 +75,14 @@
       "description": "Vec::get element clone and borrow stability (GAP-LANG-01)"
     },
     {
+      "id": "codegen_cede_unique_receiver_heap_release_01",
+      "path": "codegen/cede_unique_receiver_heap_release.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "call void @free(ptr %ptr.peel_soul1)",
+      "timeout_seconds": 10,
+      "description": "A by-value consuming unique receiver releases its transferred heap slot after the callee captures the payload"
+    },
+    {
       "id": "ownership_mut_binding_reassign_01",
       "path": "ownership/mut_binding_reassign.tk",
       "type": "run",

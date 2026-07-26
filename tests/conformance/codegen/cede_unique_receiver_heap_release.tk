@@ -1,0 +1,13 @@
+shape Payload(value: i32)
+
+impl Payload {
+    fn consume(cede self#) -> i32 {
+        auto owned = cede self
+        return owned.value
+    }
+}
+
+fn main() -> i32 {
+    auto ^source# = new Payload(value = 7)
+    return source#.consume() - 7
+}
