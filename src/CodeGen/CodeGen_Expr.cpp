@@ -629,6 +629,8 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     if (store) {
       if (auto *member = dynamic_cast<const MemberExpr *>(targetLHS))
         restoreDropForMemberAssignment(member);
+      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(targetLHS))
+        restoreDropForIndexAssignment(index);
     }
   }
 
@@ -6009,6 +6011,8 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
       suppressDropForMove(ve->Name);
     } else if (auto *member = dynamic_cast<const MemberExpr *>(directSource)) {
       suppressDropForPartialMove(member);
+    } else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(directSource)) {
+      suppressDropForPartialMove(index);
     }
 
     if (isShared) {

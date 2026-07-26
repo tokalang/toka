@@ -208,6 +208,9 @@ private:
     bool HasDrop;
     std::string DropFunc;
     std::string SoulName; // [New] Correct type name for destructor lookup
+    // Fixed arrays need the semantic element type for recursive cleanup; a
+    // string soul name alone cannot describe their element layout.
+    std::shared_ptr<Type> DropType;
     llvm::Value *DropFlag = nullptr;
     // Compiler-managed record values use this field-level liveness mask after
     // a direct member `cede`. Custom destructors retain whole-object control.
@@ -217,9 +220,13 @@ private:
 
   void suppressDropForMove(const std::string &name);
   void suppressDropForPartialMove(const MemberExpr *member);
+  void suppressDropForPartialMove(const ArrayIndexExpr *index);
   void restoreDropForMemberAssignment(const MemberExpr *member);
+  void restoreDropForIndexAssignment(const ArrayIndexExpr *index);
   int getDirectMemberDropIndex(const VariableScopeInfo &entry,
                                const MemberExpr *member) const;
+  int getDirectArrayDropIndex(const VariableScopeInfo &entry,
+                              const ArrayIndexExpr *index) const;
 
   // Assignment Strategy Dispatcher (Step 2)
   PhysEntity emitAssignment(const Expr *lhs, const Expr *rhs,
@@ -336,6 +343,11 @@ private:
   llvm::Value *genDeleteStmt(const DeleteStmt *stmt);
   llvm::Value *genFreeStmt(const FreeStmt *stmt);
   void emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName);
+  void emitDropForType(llvm::Value *ptrAddr,
+                       const std::shared_ptr<Type> &type);
+  void emitDropForTypeWithMask(llvm::Value *ptrAddr,
+                               const std::shared_ptr<Type> &type,
+                               llvm::Value *dropMaskAddr);
   void emitDropCascadeWithMask(llvm::Value *ptrAddr,
                                const std::string &typeName,
                                llvm::Value *dropMaskAddr);

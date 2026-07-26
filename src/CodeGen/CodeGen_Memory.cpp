@@ -215,6 +215,94 @@ PhysEntity CodeGen::genAllocExpr(const AllocExpr *ae) {
   return castedPtr;
 }
 
+void CodeGen::emitDropForType(llvm::Value *ptrAddr,
+                              const std::shared_ptr<Type> &type) {
+  if (!ptrAddr || !type)
+    return;
+
+  if (type->isArray()) {
+    auto elementType = type->getArrayElementType();
+    auto *arrayType = llvm::dyn_cast<llvm::ArrayType>(getLLVMType(type));
+    if (!elementType || !arrayType)
+      return;
+    for (uint64_t i = 0; i < arrayType->getNumElements(); ++i) {
+      llvm::Value *elementAddr = m_Builder.CreateInBoundsGEP(
+          arrayType, ptrAddr,
+          {m_Builder.getInt32(0), m_Builder.getInt32(static_cast<unsigned>(i))},
+          "drop.array.element");
+      emitDropForType(elementAddr, elementType);
+    }
+    return;
+  }
+
+  if (type->IsNullable) {
+    auto *nullableType = llvm::dyn_cast<llvm::StructType>(getLLVMType(type));
+    if (nullableType && nullableType->getNumElements() == 2 &&
+        nullableType->getStructElementType(1)->isIntegerTy(1)) {
+      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+      llvm::BasicBlock *dropPayload =
+          llvm::BasicBlock::Create(m_Context, "drop.nullable.live", function);
+      llvm::BasicBlock *dropDone =
+          llvm::BasicBlock::Create(m_Context, "drop.nullable.done", function);
+      llvm::Value *presentAddr = m_Builder.CreateStructGEP(
+          nullableType, ptrAddr, 1, "drop.nullable.present.addr");
+      llvm::Value *present = m_Builder.CreateLoad(
+          llvm::Type::getInt1Ty(m_Context), presentAddr,
+          "drop.nullable.present");
+      m_Builder.CreateCondBr(present, dropPayload, dropDone);
+      m_Builder.SetInsertPoint(dropPayload);
+      llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
+          nullableType, ptrAddr, 0, "drop.nullable.payload.addr");
+      emitDropForType(payloadAddr,
+                      type->withAttributes(type->IsWritable, false,
+                                           type->IsBlocked));
+      if (!m_Builder.GetInsertBlock()->getTerminator())
+        m_Builder.CreateBr(dropDone);
+      m_Builder.SetInsertPoint(dropDone);
+      return;
+    }
+  }
+
+  emitDropCascade(ptrAddr, type->getSoulName());
+}
+
+void CodeGen::emitDropForTypeWithMask(
+    llvm::Value *ptrAddr, const std::shared_ptr<Type> &type,
+    llvm::Value *dropMaskAddr) {
+  if (!ptrAddr || !type || !dropMaskAddr || !type->isArray()) {
+    emitDropForType(ptrAddr, type);
+    return;
+  }
+  auto elementType = type->getArrayElementType();
+  auto *arrayType = llvm::dyn_cast<llvm::ArrayType>(getLLVMType(type));
+  if (!elementType || !arrayType || arrayType->getNumElements() > 64) {
+    emitDropForType(ptrAddr, type);
+    return;
+  }
+  for (uint64_t i = 0; i < arrayType->getNumElements(); ++i) {
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *dropElement = llvm::BasicBlock::Create(
+        m_Context, "drop.array.element.live", function);
+    llvm::BasicBlock *nextElement = llvm::BasicBlock::Create(
+        m_Context, "drop.array.element.done", function);
+    llvm::Value *mask = m_Builder.CreateLoad(
+        llvm::Type::getInt64Ty(m_Context), dropMaskAddr, "drop.array.mask");
+    llvm::Value *isLive = m_Builder.CreateICmpNE(
+        m_Builder.CreateAnd(mask, m_Builder.getInt64(1ULL << i)),
+        m_Builder.getInt64(0), "drop.array.element.is_live");
+    m_Builder.CreateCondBr(isLive, dropElement, nextElement);
+    m_Builder.SetInsertPoint(dropElement);
+    llvm::Value *elementAddr = m_Builder.CreateInBoundsGEP(
+        arrayType, ptrAddr,
+        {m_Builder.getInt32(0), m_Builder.getInt32(static_cast<unsigned>(i))},
+        "drop.array.element");
+    emitDropForType(elementAddr, elementType);
+    if (!m_Builder.GetInsertBlock()->getTerminator())
+      m_Builder.CreateBr(nextElement);
+    m_Builder.SetInsertPoint(nextElement);
+  }
+}
+
 void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName) {
   if (typeName.empty() || !ptrAddr) return;
   

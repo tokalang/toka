@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04600
+import ./lib::{Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto values: [Token; 1] = [Token(id = 1, &drops = &drops)]
+    auto index = 0
+    auto taken = cede values[index]
+    return taken.id
+}

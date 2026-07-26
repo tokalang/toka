@@ -1,0 +1,14 @@
+import core/traits::{@encap}
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    auto values: [Token; 1] = [Token(id = 7)]
+    auto taken = cede values[0]
+    return values[0].id + taken.id
+}

@@ -971,6 +971,21 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           }
         }
       }
+    } else if (auto *Index = dynamic_cast<ArrayIndexExpr *>(LHSExpr)) {
+      auto *Root = dynamic_cast<VariableExpr *>(Index->Array.get());
+      auto *constant = Index->Indices.size() == 1
+                           ? dynamic_cast<NumberExpr *>(Index->Indices[0].get())
+                           : nullptr;
+      if (Root && constant && constant->Value < 64) {
+        SymbolInfo *Info = nullptr;
+        std::string actualName;
+        if (CurrentScope->findVariableWithDeref(Root->Name, Info, actualName) &&
+            Info && Info->TypeObj && Info->TypeObj->isArray()) {
+          auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
+          if (array && constant->Value < array->Size)
+            Info->InitMask |= (1ULL << constant->Value);
+        }
+      }
     }
 
     return lhsType;

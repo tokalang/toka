@@ -1,0 +1,32 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn leave_array_intact() {
+    auto values: [Token; 2] = [Token(id = 1); 2]
+}
+
+fn cede_and_reinitialize_index() {
+    auto values: [Token; 1] = [Token(id = 7)]
+    auto taken = cede values[0]
+    values[0] = Token(id = 9)
+    assert(taken.id == 7, "ceded fixed-array element remains owned by its destination")
+}
+
+fn main() -> i32 {
+    leave_array_intact()
+    assert(g_drop_count == 2, "fixed-array scope exit drops every live element")
+
+    cede_and_reinitialize_index()
+    assert(g_drop_count == 4, "ceded index and replacement each drop exactly once")
+    return 0
+}

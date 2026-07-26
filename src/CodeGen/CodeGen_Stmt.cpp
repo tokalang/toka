@@ -270,6 +270,22 @@ int CodeGen::getDirectMemberDropIndex(const VariableScopeInfo &entry,
   return -1;
 }
 
+int CodeGen::getDirectArrayDropIndex(const VariableScopeInfo &entry,
+                                     const ArrayIndexExpr *index) const {
+  if (!index || !entry.DropType || !entry.DropType->isArray() ||
+      index->Indices.size() != 1)
+    return -1;
+  auto *root = dynamic_cast<const VariableExpr *>(index->Array.get());
+  auto *constant = dynamic_cast<const NumberExpr *>(index->Indices[0].get());
+  if (!root || !constant || Type::stripMorphology(root->Name) !=
+                               Type::stripMorphology(entry.Name))
+    return -1;
+  auto array = std::dynamic_pointer_cast<ArrayType>(entry.DropType);
+  if (!array || constant->Value >= array->Size || constant->Value >= 64)
+    return -1;
+  return static_cast<int>(constant->Value);
+}
+
 void CodeGen::suppressDropForPartialMove(const MemberExpr *member) {
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();
@@ -291,6 +307,27 @@ void CodeGen::suppressDropForPartialMove(const MemberExpr *member) {
   }
 }
 
+void CodeGen::suppressDropForPartialMove(const ArrayIndexExpr *index) {
+  for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (!entry->DropMask)
+        continue;
+      const int position = getDirectArrayDropIndex(*entry, index);
+      if (position < 0 || position >= 64)
+        continue;
+      llvm::Value *mask = m_Builder.CreateLoad(
+          llvm::Type::getInt64Ty(m_Context), entry->DropMask,
+          "drop.mask.current");
+      llvm::Value *cleared = m_Builder.CreateAnd(
+          mask, m_Builder.getInt64(~(1ULL << position)),
+          "drop.mask.cleared");
+      m_Builder.CreateStore(cleared, entry->DropMask);
+      return;
+    }
+  }
+}
+
 void CodeGen::restoreDropForMemberAssignment(const MemberExpr *member) {
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();
@@ -306,6 +343,27 @@ void CodeGen::restoreDropForMemberAssignment(const MemberExpr *member) {
           "drop.mask.current");
       llvm::Value *restored = m_Builder.CreateOr(
           mask, m_Builder.getInt64(1ULL << index), "drop.mask.restored");
+      m_Builder.CreateStore(restored, entry->DropMask);
+      return;
+    }
+  }
+}
+
+void CodeGen::restoreDropForIndexAssignment(const ArrayIndexExpr *index) {
+  for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (!entry->DropMask)
+        continue;
+      const int position = getDirectArrayDropIndex(*entry, index);
+      if (position < 0 || position >= 64)
+        continue;
+      llvm::Value *mask = m_Builder.CreateLoad(
+          llvm::Type::getInt64Ty(m_Context), entry->DropMask,
+          "drop.mask.current");
+      llvm::Value *restored = m_Builder.CreateOr(
+          mask, m_Builder.getInt64(1ULL << position),
+          "drop.mask.restored");
       m_Builder.CreateStore(restored, entry->DropMask);
       return;
     }
@@ -627,11 +685,18 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
           currBB = contBB;
         }
       } else if (it->HasDrop && it->Alloca) {
-        std::string cleanName = it->SoulName;
-        if (it->DropMask)
+        if (it->DropType && it->DropType->isArray()) {
+          if (it->DropMask)
+            emitDropForTypeWithMask(it->Alloca, it->DropType, it->DropMask);
+          else
+            emitDropForType(it->Alloca, it->DropType);
+        } else {
+          std::string cleanName = it->SoulName;
+          if (it->DropMask)
           emitDropCascadeWithMask(it->Alloca, cleanName, it->DropMask);
-        else
+          else
           emitDropCascade(it->Alloca, cleanName);
+        }
       }
 
       if (dropFlagContBB) {

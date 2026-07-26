@@ -1,7 +1,8 @@
 # RFC: Partial `cede` Lifecycle
 
-**Status:** Initial direct-field slice implemented; required work remains
-before partial `cede` becomes a general language guarantee.
+**Status:** Direct-field and fixed-array constant-index slices implemented;
+required work remains before partial `cede` becomes a general language
+guarantee.
 
 **Depends on:** `PERM-STATIC-01`, `OWN-FLOW-01`, and `OWN-FLOW-02`.
 
@@ -24,11 +25,13 @@ The compiler already has two useful but separate mechanisms:
   joins;
 - CodeGen `DropFlag` prevents double-dropping a complete local binding.
 
-The first slice now installs a runtime `i64` drop mask for a local,
-compiler-managed record with at most 64 direct fields.  A direct field `cede`
-clears its bit; reassigning the field restores it; scope unwinding drops only
-the live fields.  Static `InitMask` uses the same numbering, so the transferred
-field is rejected on later read while a live sibling remains usable.
+The first slices install a runtime `i64` drop mask for a local,
+compiler-managed record with at most 64 direct fields and for a local fixed
+array with at most 64 elements. A direct field or constant array-index `cede`
+clears its bit; reassigning that projection restores it; scope unwinding drops
+only the live projections. Static `InitMask` uses the same numbering, so a
+transferred field or fixed-array element is rejected on later read while a live
+sibling or element remains usable.
 
 Several container implementations still use partial transfers under their own
 representation invariant (for example, a Vec removes an element from its
@@ -68,12 +71,14 @@ partial cede         = exact-path invalidation + live-mask transition
 
 ## 4. Deliberate initial limit
 
-The initial implementation supports only direct named fields of local,
-compiler-managed, non-custom-drop record shapes.  It rejects a direct field
-transfer from a local aggregate with an explicit `drop`; it retains the current
-library-invariant treatment for the following until each has its own proof:
+The initial implementation supports direct named fields of local,
+compiler-managed, non-custom-drop record shapes and constant indexes of local
+fixed arrays of at most 64 value elements. It rejects a direct field transfer
+from a local aggregate with an explicit `drop`, and rejects a dynamic resource
+array index in ordinary code. It retains the current library-invariant
+treatment for the following until each has its own proof:
 
-- dynamic array indexes;
+- dynamic array indexes and indexes through container internals;
 - spreads;
 - enum payload projections;
 - aggregates with user-defined `drop` / `@encap` cleanup;
@@ -88,11 +93,13 @@ double-drop a custom container field or silently leak its remaining fields.
 
 ## 5. Required implementation slices
 
-1. **Sema (implemented):** exact direct-field `InitMask` clearing rejects
-   use-after-partial-cede and permits a reinitialization to restore the field.
+1. **Sema (implemented):** exact direct-field and fixed-array constant-index
+   `InitMask` clearing rejects use-after-partial-cede and permits a
+   reinitialization to restore the projection.
 2. **CodeGen (implemented):** a per-local `i64` drop mask for eligible
-   aggregates clears on direct partial `cede`, restores on direct assignment,
-   and dispatches field drops conditionally at scope exit.
+   aggregates and fixed arrays clears on supported partial `cede`, restores on
+   direct assignment, and dispatches recursive element drops conditionally at
+   scope exit.
 3. **Control flow:** preserve the mask through `if`, `guard`, `match`, loops,
    return unwinding, and error propagation.
 4. **Eligibility:** diagnose custom-drop cases and retain index, spread, and
@@ -100,8 +107,11 @@ double-drop a custom container field or silently leak its remaining fields.
 5. **Evidence:** positive exactly-once cleanup, reinitialization,
    branch-join, and cancellation-across-`await` coverage plus negative
    use-after-move and explicit-custom-drop rejection are in the conformance
-   suite. `permission_005_partial_cede_lifecycle` adds source-less replay for
-   field liveness and sibling availability before widening eligibility.
+   suite. `cede_fixed_array_index_lifecycle` adds exactly-once fixed-array
+   cleanup and reinitialization; dynamic resource index rejection prevents an
+   untracked lifecycle path. `permission_005_partial_cede_lifecycle` replays
+   the direct-field and fixed-array constant-index paths source-less before
+   widening eligibility.
 
 ## 6. Exit criterion
 

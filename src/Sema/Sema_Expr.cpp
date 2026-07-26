@@ -2671,6 +2671,38 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
           }
         }
+      } else if (auto *Index = dynamic_cast<ArrayIndexExpr *>(underlying)) {
+        // A fixed local array can share the same bounded liveness model as a
+        // direct record field when its element is selected by a constant
+        // index.  A dynamic resource index has no stable static projection,
+        // so reject it rather than silently losing its cleanup obligation.
+        auto *Root = dynamic_cast<VariableExpr *>(Index->Array.get());
+        auto *constant = Index->Indices.size() == 1
+                             ? dynamic_cast<NumberExpr *>(Index->Indices[0].get())
+                             : nullptr;
+        if (Root) {
+          SymbolInfo *RootInfo = nullptr;
+          std::string actualRootName;
+          if (CurrentScope->findVariableWithDeref(Root->Name, RootInfo,
+                                                  actualRootName) &&
+              RootInfo && RootInfo->IsDeclaredVariable &&
+              !RootInfo->IsFunctionParameter && RootInfo->TypeObj &&
+              RootInfo->TypeObj->isArray()) {
+            auto array =
+                std::dynamic_pointer_cast<ArrayType>(RootInfo->TypeObj);
+            if (array && constant && constant->Value < array->Size &&
+                constant->Value < 64) {
+              RootInfo->InitMask &= ~(1ULL << constant->Value);
+            } else {
+              auto sourceSoul = innerTy ? innerTy->getSoulType() : nullptr;
+              if (sourceSoul && sourceSoul->isShape() &&
+                  hasDrop(sourceSoul->getSoulName())) {
+                error(ce, DiagID::ERR_SEMA_CEDE_DYNAMIC_ARRAY_INDEX_UNSUPPORTED,
+                      Index->toString());
+              }
+            }
+          }
+        }
       }
     }
     if (!innerTy) return nullptr;

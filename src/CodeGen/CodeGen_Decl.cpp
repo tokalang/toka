@@ -1647,6 +1647,29 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
 
     std::string dropFunc = "";
     bool hasDrop = false;
+    std::shared_ptr<Type> dropValueType = var->ResolvedType;
+    while (dropValueType &&
+           (dropValueType->isPointer() || dropValueType->isReference() ||
+            dropValueType->isSmartPointer())) {
+      dropValueType = dropValueType->getPointeeType();
+    }
+
+    std::function<bool(const std::shared_ptr<Type> &)> typeNeedsDrop =
+        [&](const std::shared_ptr<Type> &candidate) {
+          if (!candidate)
+            return false;
+          if (candidate->isArray())
+            return typeNeedsDrop(candidate->getArrayElementType());
+          // Handle cleanup has a distinct ownership protocol in
+          // executeScopeUnwinding. Do not route an array element handle
+          // through the value-destructor cascade until that protocol has an
+          // element-level implementation.
+          if (candidate->isPointer() || candidate->isReference() ||
+              candidate->isSmartPointer())
+            return false;
+          const auto soul = candidate->getSoulType();
+          return soul && m_Shapes.count(soul->getSoulName());
+        };
 
     if (!typeName.empty()) {
       if (m_Shapes.count(typeName)) {
@@ -1683,6 +1706,11 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       }
     }
 
+    if (dropValueType && dropValueType->isArray()) {
+      hasDrop = typeNeedsDrop(dropValueType);
+      dropFunc.clear();
+    }
+
     // [Fix] Scope Registration Logic
     // We must register ALL variables (including references and raw pointers)
     // so they can be looked up for Identity Rebinds. However, we must Ensure
@@ -1708,6 +1736,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     info.IsShared = var->IsShared;
     info.HasDrop = hasDrop;
     info.DropFunc = dropFunc;
+    if (dropValueType && dropValueType->isArray())
+      info.DropType = dropValueType;
     if (m_Symbols.count(varName)) {
         auto soul = m_Symbols[varName].soulTypeObj;
         info.SoulName = soul ? soul->getSoulType()->getSoulName() : "";
@@ -1735,6 +1765,17 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       info.DropMask = createEntryBlockAlloca(
           llvm::Type::getInt64Ty(m_Context), nullptr, varName + ".drop.mask");
       m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
+    }
+    if (alloca && hasDrop && info.DropType && info.DropType->isArray()) {
+      auto array = std::dynamic_pointer_cast<ArrayType>(info.DropType);
+      if (array && array->Size <= 64) {
+        const uint64_t fullMask =
+            array->Size == 64 ? ~0ULL : ((1ULL << array->Size) - 1ULL);
+        info.DropMask = createEntryBlockAlloca(
+            llvm::Type::getInt64Ty(m_Context), nullptr,
+            varName + ".array.drop.mask");
+        m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
+      }
     }
 
     m_ScopeStack.back().push_back(info);

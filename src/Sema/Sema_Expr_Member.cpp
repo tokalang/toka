@@ -534,6 +534,17 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
     std::string actualName = Var->Name;
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
       baseType = Info->TypeObj;
+      if (!m_InLHS && Info && Info->TypeObj && Info->TypeObj->isArray() &&
+          Idx->Indices.size() == 1) {
+        if (auto *constant = dynamic_cast<NumberExpr *>(Idx->Indices[0].get())) {
+          auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
+          if (array && constant->Value < array->Size && constant->Value < 64 &&
+              !(Info->InitMask & (1ULL << constant->Value))) {
+            error(Idx->Array.get(), DiagID::ERR_USE_UNSET,
+                  actualName + "[" + std::to_string(constant->Value) + "]");
+          }
+        }
+      }
       // Indexing is a payload operation; do not inherit a handle-only #.
       if (Info->IsSoulMutable()) {
         baseType = baseType->withAttributes(true, baseType->IsNullable);

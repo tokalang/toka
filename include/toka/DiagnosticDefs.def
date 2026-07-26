@@ -432,6 +432,7 @@ DIAG(ERR_SEMA_MAIN_RETURN_CONTRACT, Error, "E04596", "Toka 1.0 main must return 
 DIAG(ERR_SEMA_ERROR_CONVERSION_SIGNATURE, Error, "E04597", "@ErrorInto<{}>::into_error must have signature 'pub fn into_error(cede self) -> {}'")
 DIAG(ERR_SEMA_INTEGER_LITERAL_OUT_OF_RANGE, Error, "E04598", "Integer literal '{}' is out of range for type '{}'")
 DIAG(ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD, Error, "E04599", "Cannot cede a nullable source into a non-null destination without a same-path non-null guard")
+DIAG(ERR_SEMA_CEDE_DYNAMIC_ARRAY_INDEX_UNSUPPORTED, Error, "E04600", "Cannot cede a resource through dynamic array index '{}'; bind a fixed index or use a container operation with its own ownership invariant")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

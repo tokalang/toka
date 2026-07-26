@@ -606,6 +606,14 @@
       "description": "Assigning a direct field after cede restores that field's cleanup obligation"
     },
     {
+      "id": "ownership_cede_fixed_array_index_lifecycle_01",
+      "path": "ownership/cede_fixed_array_index_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Fixed-array elements drop exactly once, and a ceded constant index can be reinitialized safely"
+    },
+    {
       "id": "ownership_cede_direct_field_branch_join_01",
       "path": "ownership/cede_direct_field_branch_join.tk",
       "type": "run",
@@ -621,6 +629,24 @@
       "expected_span_line": 9,
       "timeout_seconds": 10,
       "description": "A direct field cede invalidates that field without invalidating its live sibling"
+    },
+    {
+      "id": "diag_cede_fixed_array_index_invalidates_source_01",
+      "path": "diagnostics/cede_fixed_array_index_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "A cede from a fixed-array constant index invalidates that exact element"
+    },
+    {
+      "id": "diag_cede_dynamic_resource_array_index_rejected_01",
+      "path": "diagnostics/cede_dynamic_resource_array_index_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04600",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "A dynamic resource index is rejected until it has a general lifecycle proof"
     },
     {
       "id": "diag_cede_direct_field_match_join_invalidates_source_01",
