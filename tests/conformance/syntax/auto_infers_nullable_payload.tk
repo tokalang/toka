@@ -1,0 +1,11 @@
+shape Token(id: i32)
+
+fn main() -> i32 {
+    auto source: Token? = Token(id = 2)
+    auto inferred = source
+    guard inferred {
+        return inferred.id - 2
+    } else {
+        return 0
+    }
+}

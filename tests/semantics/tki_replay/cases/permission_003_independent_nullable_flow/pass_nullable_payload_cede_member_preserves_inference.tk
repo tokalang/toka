@@ -1,0 +1,13 @@
+import ./lib::{Cell}
+
+shape Pair(item: Cell?)
+
+fn main() -> i32 {
+    auto pair = Pair(item = Cell(value = 7))
+    auto target = cede pair.item
+    guard target {
+        return target.value - 7
+    } else {
+        return 1
+    }
+}

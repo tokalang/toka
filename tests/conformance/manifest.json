@@ -27,6 +27,14 @@
       "description": "Nullable handle and payload states remain distinct across payload writes, deep guards, and a handle rebind"
     },
     {
+      "id": "syntax_auto_infers_nullable_payload_01",
+      "path": "syntax/auto_infers_nullable_payload.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Auto value inference preserves nullable payload representation"
+    },
+    {
       "id": "syntax_error_propagation_01",
       "path": "syntax/error_propagation_postfix.tk",
       "type": "run",
@@ -368,6 +376,15 @@
       "description": "A nullable unique payload needs a same-binding non-null guard before entering a non-null destination"
     },
     {
+      "id": "diag_cede_nullable_member_requires_guard_for_nonnull_destination_01",
+      "path": "diagnostics/cede_nullable_member_requires_guard_for_nonnull_destination.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04599",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A nullable member cannot cede into an explicitly non-null destination"
+    },
+    {
       "id": "diag_cede_nullable_payload_call_requires_guard_01",
       "path": "diagnostics/cede_nullable_payload_call_requires_guard.tk",
       "type": "compile-fail",
@@ -639,6 +656,22 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A payload guard preserves a nullable unique owner for cede and drops its transferred resource exactly once"
+    },
+    {
+      "id": "ownership_cede_nullable_member_preserves_inference_01",
+      "path": "ownership/cede_nullable_member_preserves_inference.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Ceding a nullable member into auto preserves its nullable payload representation"
+    },
+    {
+      "id": "ownership_cede_nullable_member_explicit_nullable_destination_01",
+      "path": "ownership/cede_nullable_member_explicit_nullable_destination.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A nullable member can cede into an explicitly nullable destination"
     },
     {
       "id": "ownership_cede_nullable_payload_call_after_guard_01",

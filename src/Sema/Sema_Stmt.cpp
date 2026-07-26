@@ -1176,17 +1176,26 @@ void Sema::checkStmt(Stmt *S) {
       // the direct source expression's resolved type rather than trying to
       // recover provenance from an earlier owner.
       if (auto *cede = dynamic_cast<CedeExpr *>(Var->Init.get())) {
-        const bool targetIsNonNullIndirection =
-            (Var->IsRawPointer || Var->IsUnique || Var->IsShared ||
-             Var->IsReference) &&
-            !Var->IsPointerNullable;
+        auto targetSoul =
+            declTargetTy ? declTargetTy->getSoulType() : nullptr;
+        const bool targetAllowsNull =
+            Var->IsPointerNullable || Var->IsValueNullable ||
+            (declTargetTy &&
+             (declTargetTy->IsNullable ||
+              (targetSoul && targetSoul->IsNullable)));
+        // `auto value = cede nullable` infers a nullable value.  Any written
+        // value type or handle morphology is a destination declaration and
+        // must therefore state whether it accepts nullability explicitly.
+        const bool hasDeclaredDestination =
+            !inferredType || Var->IsRawPointer || Var->IsUnique ||
+            Var->IsShared || Var->IsReference;
         auto sourceType = cede->Value ? cede->Value->ResolvedType : nullptr;
         auto sourceSoul = sourceType ? sourceType->getSoulType() : nullptr;
         const bool sourceIsNullable =
             sourceType &&
             (sourceType->IsNullable ||
              (sourceSoul && sourceSoul->IsNullable));
-        if (targetIsNonNullIndirection && sourceIsNullable) {
+        if (hasDeclaredDestination && !targetAllowsNull && sourceIsNullable) {
           DiagnosticEngine::report(
               getLoc(Var),
               DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
@@ -1563,7 +1572,15 @@ void Sema::checkStmt(Stmt *S) {
     // the soul/value rather than as a rebindable identity marker.
     LocalPermission.SoulWritable =
         Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
-    LocalPermission.SoulNullable = Var->IsValueNullable;
+    // `auto` value inference preserves nullable payload representation.  This
+    // is not a permission upgrade: it keeps the `{T, present}` layout carried
+    // by the direct initializer instead of silently treating `T?` as `T`.
+    // In particular, `auto value = cede record.nullable_field` remains a
+    // nullable destination until a same-path guard proves otherwise.
+    LocalPermission.SoulNullable =
+        Var->IsValueNullable ||
+        (inferredType && morph.empty() && InitTypeObj &&
+         InitTypeObj->IsNullable);
     Info.Permission = LocalPermission;
     if (Var->Init) {
       // Shared flow is checked only against the direct initializer.  Earlier
