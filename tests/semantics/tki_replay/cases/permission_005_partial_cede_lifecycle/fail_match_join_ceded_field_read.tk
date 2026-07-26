@@ -1,0 +1,15 @@
+// EXPECT_ERROR: E0410
+import ./lib::{make_pair}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto selector = 0
+    auto pair = make_pair(drops)
+    match selector {
+        0 => {
+            auto taken = cede pair.left
+        }
+        _ => {}
+    }
+    return pair.left.id
+}

@@ -1,0 +1,15 @@
+import ./lib::{make_pair}
+
+auto drops# = 0
+
+fn take_and_return() -> i32 {
+    auto pair = make_pair(drops)
+    auto taken = cede pair.left
+    return taken.id
+}
+
+fn main() -> i32 {
+    if take_and_return() != 1 { return 1 }
+    if drops != 2 { return 2 }
+    return 0
+}
