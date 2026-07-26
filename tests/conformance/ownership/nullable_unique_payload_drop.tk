@@ -27,6 +27,11 @@ fn rebind_after_empty_payload() {
     ^token = new Token(id = 5)
 }
 
+fn rebind_live_payload() {
+    auto ^#token#: Token? = new Token(id = 6)
+    ^token = new Token(id = 7)
+}
+
 fn main() -> i32 {
     clear_payload()
     if g_drop_count != 1 {
@@ -41,6 +46,11 @@ fn main() -> i32 {
     rebind_after_empty_payload()
     if g_drop_count != 5 {
         return 3
+    }
+
+    rebind_live_payload()
+    if g_drop_count != 7 {
+        return 4
     }
     return 0
 }
