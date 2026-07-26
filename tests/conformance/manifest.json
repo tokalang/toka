@@ -75,6 +75,14 @@
       "description": "Cancellation unwinds direct-field cede locals before publishing task completion"
     },
     {
+      "id": "std_generic_encap_guard_lifetime_01",
+      "path": "std/generic_encap_guard_lifetime.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Generic Result reference binding preserves an explicit @encap guard until scope exit"
+    },
+    {
       "id": "diag_mut_borrow_err_01",
       "path": "diagnostics/mut_borrow_err.tk",
       "type": "compile-fail",

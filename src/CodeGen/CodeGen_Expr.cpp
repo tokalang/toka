@@ -2157,22 +2157,30 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
               // `Some(&value)` borrows an owned `T`, whereas `Some(&view)`
               // may unwrap an actual `&T` payload.
               std::shared_ptr<Type> payloadTypeObj = nullptr;
-              std::shared_ptr<Type> targetTypeObj = nullptr;
-              size_t scopePos = subPat->Name.rfind("::");
-              if (scopePos != std::string::npos) {
-                std::string patternShape = subPat->Name.substr(0, scopePos);
-                auto alias = m_TypeAliases.find(patternShape);
-                targetTypeObj = Type::fromString(
-                    alias == m_TypeAliases.end() ? patternShape : alias->second);
+              if (variant->SubMembers.size() == 1 &&
+                  variant->SubMembers[0].ResolvedType) {
+                payloadTypeObj = variant->SubMembers[0].ResolvedType;
               }
-              if (!targetTypeObj && expr->Target)
+              std::shared_ptr<Type> targetTypeObj = nullptr;
+              // Prefer the matched expression: it retains the concrete
+              // generic arguments, unlike the `Result::Ok`-style pattern.
+              if (expr->Target)
                 targetTypeObj = expr->Target->ResolvedType;
+              if (!targetTypeObj) {
+                size_t scopePos = subPat->Name.rfind("::");
+                if (scopePos != std::string::npos) {
+                  std::string patternShape = subPat->Name.substr(0, scopePos);
+                  auto alias = m_TypeAliases.find(patternShape);
+                  targetTypeObj = Type::fromString(
+                      alias == m_TypeAliases.end() ? patternShape : alias->second);
+                }
+              }
               if (targetTypeObj && !targetTypeObj->isShape()) {
                 auto alias = m_TypeAliases.find(targetTypeObj->toString());
                 if (alias != m_TypeAliases.end())
                   targetTypeObj = Type::fromString(alias->second);
               }
-              if (targetTypeObj && targetTypeObj->isShape()) {
+              if (!payloadTypeObj && targetTypeObj && targetTypeObj->isShape()) {
                 auto targetShape = std::static_pointer_cast<ShapeType>(
                     targetTypeObj);
                 if (targetShape->GenericArgs.size() == 1)

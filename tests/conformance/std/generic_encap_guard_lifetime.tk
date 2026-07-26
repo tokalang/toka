@@ -1,0 +1,26 @@
+import std/sync::{Mutex}
+import core/result::{Result}
+
+fn main() -> i32 {
+    auto mutex# = Mutex<i32>::new(1)
+
+    {
+        guard auto Result::Ok(&first) = mutex#.lock() else {
+            return 1
+        }
+        auto *value# = first.get_ref()
+        value = 2
+    }
+
+    // The first guard's `MutexLock<T>` must be released at scope exit.  This
+    // second acquisition covers both generic Result payload borrowing and the
+    // explicit @encap destructor carried by its instantiated payload.
+    guard auto Result::Ok(&second) = mutex#.lock() else {
+        return 2
+    }
+    auto *value = second.get_ref()
+    if value != 2 {
+        return 3
+    }
+    return 0
+}

@@ -636,6 +636,28 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   NewShapeTy->Decl = storedDecl;
   GenericShapeCache[mangledName] = NewShapeTy; // Cache base version
 
+  // Preserve the source-level destructor boundary on instantiated generic
+  // records.  A field-level drop mask is only sound for compiler-generated
+  // structural destructors; an `@encap drop` may enforce whole-object
+  // invariants.  Generic templates are instantiated before the normal
+  // non-generic shape pass, so derive this fact directly from their impl
+  // templates.
+  const std::string implKey = genericImplKey(Template);
+  if (GenericImplMap.count(implKey)) {
+    for (auto *implTemplate : GenericImplMap[implKey]) {
+      if (getTraitFamilyName(implTemplate->TraitName) != "encap")
+        continue;
+      for (const auto &method : implTemplate->Methods) {
+        if (method->Name == "drop") {
+          storedDecl->HasExplicitDrop = true;
+          break;
+        }
+      }
+      if (storedDecl->HasExplicitDrop)
+        break;
+    }
+  }
+
   // Now resolve members with recursion enabled using substMap...
   // Wait, we need to return ResultTy but the members are in storedDecl.
   // storedDecl is shared by all attributes versions. Correct.
@@ -750,7 +772,6 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   // m_ShapeProps (HasDrop) and MethodMap are populated before sovereignty
   // checks.
   // [FIX] Moved here to ensure storedDecl->Members is populated first.
-  const std::string implKey = genericImplKey(Template);
   if (GenericImplMap.count(implKey)) {
     for (auto *ImplTemplate : GenericImplMap[implKey]) {
       instantiateGenericImpl(ImplTemplate, mangledName,

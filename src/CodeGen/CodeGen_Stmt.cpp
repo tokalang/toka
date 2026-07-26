@@ -705,36 +705,54 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
           gbs->Pat->SubPatterns[0]->IsReference) {
           llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
               targetType, targetAddr, 1, "enum_payload_addr");
-          // `payloadAddr` addresses the enum storage. A reference binder needs
-          // the pointer stored in that slot, not the slot's own address.
-          llvm::Value *payloadRef = m_Builder.CreateLoad(
-              llvm::PointerType::getUnqual(m_Context), payloadAddr,
-              "enum_ref_payload");
           std::shared_ptr<Type> payloadTypeObj = nullptr;
-          std::shared_ptr<Type> targetTypeObj = nullptr;
-          size_t scopePos = gbs->Pat->Name.rfind("::");
-          if (scopePos != std::string::npos) {
-            std::string patternShape = gbs->Pat->Name.substr(0, scopePos);
-            auto alias = m_TypeAliases.find(patternShape);
-            targetTypeObj = Type::fromString(
-                alias == m_TypeAliases.end() ? patternShape : alias->second);
+          if (variant->SubMembers.size() == 1 &&
+              variant->SubMembers[0].ResolvedType) {
+            payloadTypeObj = variant->SubMembers[0].ResolvedType;
           }
-          if (!targetTypeObj && gbs->Target)
+          std::shared_ptr<Type> targetTypeObj = nullptr;
+          // The target carries the instantiated generic arguments.  The
+          // pattern spelling (for example `Result::Ok`) only names the
+          // uninstantiated shape and must therefore be a fallback.
+          if (gbs->Target)
             targetTypeObj = gbs->Target->ResolvedType;
+          if (!targetTypeObj) {
+            size_t scopePos = gbs->Pat->Name.rfind("::");
+            if (scopePos != std::string::npos) {
+              std::string patternShape = gbs->Pat->Name.substr(0, scopePos);
+              auto alias = m_TypeAliases.find(patternShape);
+              targetTypeObj = Type::fromString(
+                  alias == m_TypeAliases.end() ? patternShape : alias->second);
+            }
+          }
           if (targetTypeObj && !targetTypeObj->isShape()) {
             auto alias = m_TypeAliases.find(targetTypeObj->toString());
             if (alias != m_TypeAliases.end())
               targetTypeObj = Type::fromString(alias->second);
           }
-          if (targetTypeObj && targetTypeObj->isShape()) {
+          if (!payloadTypeObj && targetTypeObj && targetTypeObj->isShape()) {
             auto targetShape = std::static_pointer_cast<ShapeType>(
                 targetTypeObj);
             if (targetShape->GenericArgs.size() == 1)
               payloadTypeObj = targetShape->GenericArgs[0];
           }
-          genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
-                            llvm::PointerType::getUnqual(m_Context),
-                            payloadTypeObj);
+          if (payloadTypeObj && !payloadTypeObj->isReference()) {
+            // A `&binding` of an owned generic payload borrows its enum
+            // storage.  Loading the first word here would turn a value such
+            // as `MutexLock { handle, data }` into a fabricated pointer.
+            genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadAddr,
+                              getLLVMType(payloadTypeObj),
+                              payloadTypeObj);
+          } else {
+            // A reference-valued payload stores the referent address in the
+            // enum storage; only that case loads the slot itself.
+            llvm::Value *payloadRef = m_Builder.CreateLoad(
+                llvm::PointerType::getUnqual(m_Context), payloadAddr,
+                "enum_ref_payload");
+            genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
+                              llvm::PointerType::getUnqual(m_Context),
+                              payloadTypeObj);
+          }
           return nullptr;
       }
       llvm::Value *payloadAddr = m_Builder.CreateStructGEP(targetType, targetAddr, 1, "enum_payload_addr");
