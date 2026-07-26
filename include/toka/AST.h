@@ -19,6 +19,7 @@
 #include "toka/ComptimeValue.h"
 #include "toka/MemorySummary.h"
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1812,6 +1813,9 @@ public:
   std::vector<EncapEntry> EncapEntries;
   std::vector<AssociatedTypeDecl> AssociatedTypes;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
+  // True only for the compiler-generated resource destructor.  Such an impl
+  // supplies lifetime behavior, not an encapsulation boundary.
+  bool IsStructuralDrop = false;
 
   ImplDecl(const std::string &name,
            std::vector<std::unique_ptr<FunctionDecl>> methods,
@@ -1856,6 +1860,9 @@ public:
   bool IsInterface = false;
   bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
+  // `.tki` transport fact: these shapes have compiler-generated structural
+  // destructors, not source-defined `@encap drop` implementations.
+  std::set<std::string> InterfaceStructuralDropShapes;
   std::map<std::string, FunctionMemorySummary> TrustedMemorySummaries;
   std::string MemoryEvidenceStatus = "NotApplicable";
   std::string MemoryEvidenceReason;

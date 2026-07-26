@@ -299,6 +299,9 @@ void TKIExporter::exportModule(const Module &module) {
 
     // 3. Export Shapes
     for (const auto &decl : module.Shapes) {
+        if (!decl->HasExplicitDrop && !decl->MangledDestructorName.empty()) {
+            writeln("// @tki structural_drop: " + decl->Name);
+        }
         exportShape(*decl);
     }
     if (!module.Shapes.empty()) writeln();

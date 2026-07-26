@@ -1,5 +1,9 @@
-// EXPECT_TKI: pub shape Pair(left: i32, right: i32)
+// EXPECT_TKI: @tki structural_drop: Pair
+import core/traits::{@encap}
+pub shape Token(id: i32, &drops#: i32)
+impl Token@encap { pub * fn drop(self#) { self.drops += 1 } pub fn clone(self) = delete }
 pub shape Pair(
-    left: i32,
-    right: i32
+    left: Token,
+    right: Token
 )
+pub fn make_pair(drops#: i32) -> Pair <- drops { return Pair(left = Token(id = 1, &drops = &drops), right = Token(id = 2, &drops = &drops)) }

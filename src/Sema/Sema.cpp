@@ -2279,14 +2279,14 @@ void Sema::registerGlobals(Module &M) {
       std::string baseName = genericImplKey(Impl->TypeName, Impl->Loc);
       GenericImplMap[baseName].push_back(Impl.get());
       
-      if (Impl->TraitName == "encap") {
+      if (Impl->TraitName == "encap" && !Impl->IsStructuralDrop) {
         EncapMap[baseName] = Impl->EncapEntries;
       }
 
       continue; // Skip standard registration for templates
     }
 
-    if (Impl->TraitName == "encap") {
+    if (Impl->TraitName == "encap" && !Impl->IsStructuralDrop) {
       std::string encapBaseName = Impl->TypeName;
       size_t lt_encap = encapBaseName.find('<');
       if (lt_encap != std::string::npos) encapBaseName = encapBaseName.substr(0, lt_encap);
@@ -3050,20 +3050,24 @@ void Sema::analyzeShapes(Module &M) {
       continue;
     auto &props = m_ShapeProps[S->Name];
 
-    // Check if Shape has explicit drop
+    // Check if Shape has explicit drop.  Interfaces carry a dedicated marker
+    // for compiler-generated structural destructors, whose exported `drop`
+    // signature is otherwise indistinguishable from a user implementation.
     bool hasExplicitDrop = false;
-    // Look in Impl blocks for "drop"
-    for (auto &I : M.Impls) {
-      if (I->TypeName == S->Name) {
-        for (auto &M : I->Methods) {
-          if (M->Name == "drop") {
-            hasExplicitDrop = true;
-            break;
+    if (!(M.IsInterface && M.InterfaceStructuralDropShapes.count(S->Name))) {
+      // Look in Impl blocks for "drop".
+      for (auto &I : M.Impls) {
+        if (I->TypeName == S->Name) {
+          for (auto &M : I->Methods) {
+            if (M->Name == "drop") {
+              hasExplicitDrop = true;
+              break;
+            }
           }
         }
+        if (hasExplicitDrop)
+          break;
       }
-      if (hasExplicitDrop)
-        break;
     }
     S->HasExplicitDrop = hasExplicitDrop;
 
@@ -3073,7 +3077,9 @@ void Sema::analyzeShapes(Module &M) {
       HasError = true;
     }
 
-    if (props.HasDrop && !hasExplicitDrop) {
+    const bool hasStructuralDrop =
+        M.IsInterface && M.InterfaceStructuralDropShapes.count(S->Name);
+    if (props.HasDrop && !hasExplicitDrop && !hasStructuralDrop) {
       // [Ch 7] Synthesize default drop impl for resource-managing shapes
       std::vector<FunctionDecl::Arg> args;
       FunctionDecl::Arg dropArg;
@@ -3107,6 +3113,7 @@ void Sema::analyzeShapes(Module &M) {
 
       auto impl =
           std::make_unique<ImplDecl>(S->Name, std::move(methods), "encap");
+      impl->IsStructuralDrop = true;
 
       // Register and Add to Module
       registerImpl(impl.get());

@@ -483,6 +483,24 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
       isWithinRoot(canonicalPath, m_TrustedSystemRoots);
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
+  if (finalIsInterface) {
+    std::istringstream interfaceLines(code);
+    std::string line;
+    static const std::string prefix = "// @tki structural_drop: ";
+    while (std::getline(interfaceLines, line)) {
+      if (line.rfind(prefix, 0) == 0) {
+        const std::string name = line.substr(prefix.size());
+        if (!name.empty())
+          module->InterfaceStructuralDropShapes.insert(name);
+      }
+    }
+    for (const auto &impl : module->Impls) {
+      if (impl->TraitName == "encap" &&
+          module->InterfaceStructuralDropShapes.count(impl->TypeName)) {
+        impl->IsStructuralDrop = true;
+      }
+    }
+  }
   if (module->HasBackingObject) {
     std::string evidenceReason;
     MemoryEvidenceStatus evidenceStatus = MemoryEvidenceCache::load(

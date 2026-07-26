@@ -1,8 +1,9 @@
 // EXPECT_ERROR: E0410
-import ./lib::{Pair}
+import ./lib::{make_pair}
 
 fn main() -> i32 {
-    auto pair = Pair(left = 1, right = 2)
+    auto drops# = 0
+    auto pair = make_pair(drops)
     auto taken = cede pair.left
-    return pair.left
+    return pair.left.id
 }
