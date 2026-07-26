@@ -1,0 +1,15 @@
+import ./lib::{make_pair, Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    {
+        auto pair = make_pair(drops)
+        auto taken = cede pair.left
+        pair.left = Token(id = 3, &drops = &drops)
+        if taken.id != 1 { return 1 }
+        if pair.left.id != 3 { return 2 }
+        if pair.right.id != 2 { return 3 }
+    }
+    if drops != 3 { return 4 }
+    return 0
+}

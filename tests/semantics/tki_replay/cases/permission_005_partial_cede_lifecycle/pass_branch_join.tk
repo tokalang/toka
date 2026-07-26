@@ -1,0 +1,22 @@
+import ./lib::{make_pair}
+
+fn check_branch(take_left: bool, drops#: i32) -> i32 {
+    {
+        auto pair = make_pair(drops)
+        if take_left {
+            auto taken = cede pair.left
+            if taken.id != 1 { return 1 }
+        }
+        if pair.right.id != 2 { return 2 }
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    auto drops# = 0
+    if check_branch(true, drops) != 0 { return 1 }
+    if drops != 2 { return 2 }
+    if check_branch(false, drops) != 0 { return 3 }
+    if drops != 4 { return 4 }
+    return 0
+}
