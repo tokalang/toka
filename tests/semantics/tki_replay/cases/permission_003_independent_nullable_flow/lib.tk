@@ -2,10 +2,17 @@
 // EXPECT_TKI: pub fn consume(cede cell: Cell) -> i32
 // EXPECT_TKI: pub fn consume_static(cede cell: Cell) -> i32
 // EXPECT_TKI: pub fn take(cede self
+// EXPECT_TKI: pub fn mutate_unique_parameter(cede ^cell#: Cell) -> i32
 pub shape Cell(value: i32)
 
 pub fn consume(cede cell: Cell) -> i32 {
     auto owned = cede cell
+    return owned.value
+}
+
+pub fn mutate_unique_parameter(cede ^cell#: Cell) -> i32 {
+    cell.value = 11
+    auto ^owned = cede ^cell
     return owned.value
 }
 

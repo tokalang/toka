@@ -1921,13 +1921,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // (for example, `auto x# = 1`).  It is not an authority check for a
     // mutable call parameter.  Callee requirements must be a subset of the
     // caller path's declared capabilities.
+    bool isCallerCeded =
+        dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr;
+    PermissionFlow argFlow = getPermissionFlow(Call->Args[i].get());
+    // A cede parameter receives a fresh P root only from a whole independent
+    // transfer.  `cede ~view` and every other Shared/raw source still carry
+    // their direct payload ceiling into the callee; cede transfers a handle,
+    // not referent write authority.
+    bool isIndependentCedeTransfer =
+        isCededParam && isCallerCeded &&
+        argFlow.Kind == PermissionFlowKind::Independent;
     AccessCapability argCapability = getAccessCapability(Call->Args[i].get());
     AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
     bool lacksHandleCapability =
         paramIsHatted && paramIsRebindable &&
         (!argCapability.HandleRebindable || !argIntent.HandleRebind);
     bool lacksPayloadCapability =
-        paramIsValueMutable && !isCededParam &&
+        paramIsValueMutable && !isIndependentCedeTransfer &&
         (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
     if (lacksHandleCapability || lacksPayloadCapability) {
       error(Call->Args[i].get(),
@@ -1937,7 +1947,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             diagnosticTypeName(argType));
     }
 
-    bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
     if (isCededParam && isCallerCeded &&
         isNullableCedeSource(Call->Args[i].get()) &&
         !isNullableCedeDestination(paramType)) {

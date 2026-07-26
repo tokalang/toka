@@ -420,6 +420,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
     llvm::Value *finalStorage = nullptr;
     bool isOwnedParam = false;
+    // A ceded unique argument arrives through the caller's temporary handle
+    // slot.  After loading that slot into callee-owned storage it has one
+    // fewer physical indirection than an ordinary in-place capture.
+    bool storesMovedUniqueHandleDirectly = false;
 
     bool isDirectType = typeObj && !typeObj->isPointer() && !typeObj->isReference() && !argDecl.IsShared && !argDecl.IsUnique && !typeObj->isUniquePtr() && !typeObj->isSharedPtr();
     bool isScalarValue = isDirectType && !needsCapture && !pTy->isStructTy() && !pTy->isArrayTy();
@@ -447,6 +451,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         }
         finalStorage = alloca;
         isOwnedParam = true;
+        storesMovedUniqueHandleDirectly = true;
       } else if (isScalarValue) {
         // Direct Uncaptured Scalar Value Parameter (i32, bool, etc.) -> Single valAlloca!
         llvm::AllocaInst *valAlloca = createEntryBlockAlloca(pTy, nullptr, argName + ".coro_val");
@@ -479,6 +484,23 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         finalStorage = frameSlot;
         isOwnedParam = false;
       }
+    } else if ((argDecl.IsUnique ||
+                (typeObj && typeObj->isUniquePtr())) &&
+               argDecl.IsCeded) {
+      // Keep synchronous `cede ^T` ABI identical to the coroutine path: the
+      // callee owns the heap handle, not the caller's temporary handle slot.
+      llvm::AllocaInst *alloca =
+          createEntryBlockAlloca(pTy, nullptr, argName + ".addr");
+      if (arg.getType()->isPointerTy()) {
+        llvm::Value *loadedHeapPtr =
+            m_Builder.CreateLoad(pTy, &arg, argName + ".moved_handle");
+        m_Builder.CreateStore(loadedHeapPtr, alloca);
+      } else {
+        m_Builder.CreateStore(&arg, alloca);
+      }
+      finalStorage = alloca;
+      isOwnedParam = true;
+      storesMovedUniqueHandleDirectly = true;
     } else if (argDecl.IsShared) {
       finalStorage = &arg;
       isOwnedParam = false;
@@ -530,7 +552,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         sym.soulType = getLLVMType(typeObj);
     }
 
-    if (needsCapture) {
+    if (needsCapture && !storesMovedUniqueHandleDirectly) {
       sym.mode = AddressingMode::Pointer;
       // If captured, we add a level of indirection (ptr -> ptr*)
       sym.indirectionLevel++;
@@ -539,7 +561,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     // Explicit permission/flag overrides from AST if not in Type String
     sym.isRebindable = argDecl.IsRebindable;
     sym.isCallerHandleSlot =
-        needsCapture && argDecl.IsRebindable && !argDecl.IsShared;
+        needsCapture && !storesMovedUniqueHandleDirectly &&
+        argDecl.IsRebindable && !argDecl.IsShared;
     sym.isMutable = isMutable;
 
     m_Symbols[argName] = sym;

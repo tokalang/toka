@@ -15,6 +15,13 @@ pub fn overwrite(~p#: Cell) -> i32 {
     return 0
 }
 
+// EXPECT_TKI: pub fn cede_overwrite(cede ~p#: Cell) -> i32
+pub fn cede_overwrite(cede ~p#: Cell) -> i32 {
+    p.value = 13
+    auto ~consumed = cede ~p
+    return consumed.value
+}
+
 pub fn generic_overwrite<T>(~p#: T) -> i32 {
     return 0
 }

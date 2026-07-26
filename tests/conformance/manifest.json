@@ -437,6 +437,15 @@
       "description": "An extern declaration retains a payload-writable parameter requirement"
     },
     {
+      "id": "diag_cede_shared_projection_cannot_supply_payload_parameter_01",
+      "path": "diagnostics/cede_shared_projection_cannot_supply_payload_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "Ceding a shared projection cannot bypass a payload-writable parameter requirement"
+    },
+    {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",
@@ -700,12 +709,28 @@
       "description": "A shared view preserves writable payload capability supplied by its direct source"
     },
     {
+      "id": "ownership_cede_shared_parameter_preserves_payload_capability_01",
+      "path": "ownership/cede_shared_parameter_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A cede shared parameter preserves payload authority supplied by its direct source"
+    },
+    {
       "id": "ownership_cede_unique_creates_independent_owner_01",
       "path": "ownership/cede_unique_creates_independent_owner.tk",
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A cede unique transfer creates a fresh owner whose declaration controls payload writes"
+    },
+    {
+      "id": "ownership_cede_unique_parameter_creates_independent_payload_root_01",
+      "path": "ownership/cede_unique_parameter_creates_independent_payload_root.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A cede unique parameter receives a fresh Payload root from a whole unique transfer"
     },
     {
       "id": "ownership_direct_unique_move_creates_independent_owner_01",
