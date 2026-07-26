@@ -392,6 +392,15 @@
       "description": "A guard binder from a readonly handle field retains its Payload ceiling"
     },
     {
+      "id": "diag_member_field_cannot_supply_payload_mutable_receiver_01",
+      "path": "diagnostics/member_field_cannot_supply_payload_mutable_receiver.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "A readonly handle field cannot satisfy a mutable method receiver"
+    },
+    {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",
