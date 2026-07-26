@@ -1,0 +1,24 @@
+shape Token(id: i32)
+
+fn consume(cede token: Token) -> i32 {
+    auto owned = cede token
+    return owned.id
+}
+
+fn call_after_guard() -> i32 {
+    auto ^source#: Token? = new Token(id = 7)
+    auto result# = 2
+    guard source {
+        result = consume(cede source)
+    } else {
+        result = 2
+    }
+    return result
+}
+
+fn main() -> i32 {
+    if call_after_guard() != 7 {
+        return 1
+    }
+    return 0
+}

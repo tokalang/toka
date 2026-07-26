@@ -26,6 +26,24 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static bool isNullableCedeSource(const Expr *expr) {
+  auto *cede = dynamic_cast<const CedeExpr *>(expr);
+  if (!cede || !cede->Value || !cede->Value->ResolvedType)
+    return false;
+
+  auto sourceType = cede->Value->ResolvedType;
+  auto sourceSoul = sourceType->getSoulType();
+  return sourceType->IsNullable ||
+         (sourceSoul && sourceSoul->IsNullable);
+}
+
+static bool isNullableCedeDestination(const std::shared_ptr<Type> &type) {
+  if (!type)
+    return false;
+  auto soul = type->getSoulType();
+  return type->IsNullable || (soul && soul->IsNullable);
+}
+
 static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
                                                Scope *CurrentScope) {
   if (!Node || !CurrentScope)
@@ -978,6 +996,12 @@ void Sema::checkStmt(Stmt *S) {
           DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
                                    "cede return declared here");
       } else if (Ret->ReturnValue) {
+        if (isNullableCedeSource(Ret->ReturnValue.get()) &&
+            !isNullableCedeDestination(expectedRetObj)) {
+          error(Ret->ReturnValue.get(),
+                DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+          HasError = true;
+        }
         recordDecision(Ret, SemanticRuleID::OwnCede002,
                        SemanticOperation::OwnershipTransfer,
                        SemanticDecision::Allow, SemanticReason::CedeConsumed,

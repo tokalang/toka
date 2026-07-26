@@ -1,0 +1,10 @@
+shape Token(id: i32)
+
+fn make() -> cede Token {
+    auto ^source#: Token? = new Token(id = 1)
+    return cede source
+}
+
+fn main() -> i32 {
+    return 0
+}

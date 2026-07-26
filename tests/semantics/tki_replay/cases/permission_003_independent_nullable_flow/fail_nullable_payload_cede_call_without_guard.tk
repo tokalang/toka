@@ -1,0 +1,7 @@
+// EXPECT_ERROR: E04599
+import ./lib::{Cell, consume}
+
+fn main() -> i32 {
+    auto ^source#: Cell? = new Cell(value = 1)
+    return consume(cede source)
+}

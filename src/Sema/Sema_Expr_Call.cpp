@@ -60,6 +60,24 @@ static ClosureExpr *findClosureExpr(Expr *E) {
   return nullptr;
 }
 
+static bool isNullableCedeSource(const Expr *expr) {
+  auto *cede = dynamic_cast<const CedeExpr *>(expr);
+  if (!cede || !cede->Value || !cede->Value->ResolvedType)
+    return false;
+
+  auto sourceType = cede->Value->ResolvedType;
+  auto sourceSoul = sourceType->getSoulType();
+  return sourceType->IsNullable ||
+         (sourceSoul && sourceSoul->IsNullable);
+}
+
+static bool isNullableCedeDestination(const std::shared_ptr<Type> &type) {
+  if (!type)
+    return false;
+  auto soul = type->getSoulType();
+  return type->IsNullable || (soul && soul->IsNullable);
+}
+
 // Stage 5c: Object-Oriented Call Expression Check
 std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
@@ -1879,6 +1897,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     bool isCallerCeded = dynamic_cast<CedeExpr*>(Call->Args[i].get()) != nullptr;
+    if (isCededParam && isCallerCeded &&
+        isNullableCedeSource(Call->Args[i].get()) &&
+        !isNullableCedeDestination(paramType)) {
+      error(Call->Args[i].get(),
+            DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+    }
     bool calleeIsAsync =
         (Fn && Fn->Effect == EffectKind::Async) ||
         (Ext && Ext->Effect == EffectKind::Async);

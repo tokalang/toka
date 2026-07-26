@@ -1,0 +1,11 @@
+shape Token(id: i32)
+
+fn consume(cede token: Token) -> i32 {
+    auto owned = cede token
+    return owned.id
+}
+
+fn main() -> i32 {
+    auto ^source#: Token? = new Token(id = 1)
+    return consume(cede source)
+}

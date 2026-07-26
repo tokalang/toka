@@ -1,0 +1,12 @@
+import ./lib::{Cell, consume}
+
+fn main() -> i32 {
+    auto ^source#: Cell? = new Cell(value = 7)
+    auto result# = 2
+    guard source {
+        result = consume(cede source)
+    } else {
+        result = 2
+    }
+    return result - 7
+}
