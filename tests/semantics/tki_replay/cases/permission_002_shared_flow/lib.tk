@@ -6,6 +6,15 @@ pub shape Holder(
     ~cell#: Cell
 )
 
+pub shape ReadonlyHolder(
+    ~cell: Cell
+)
+
+pub fn overwrite(~p#: Cell) -> i32 {
+    p.value = 12
+    return 0
+}
+
 // EXPECT_TKI: pub shape ReadonlyRefBox(&slot: i32)
 pub shape ReadonlyRefBox(
     &slot: i32

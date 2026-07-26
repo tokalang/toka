@@ -338,6 +338,33 @@
       "description": "A writable shared field cannot be initialized from a weaker shared view"
     },
     {
+      "id": "diag_member_field_cannot_supply_payload_capability_01",
+      "path": "diagnostics/member_field_cannot_supply_payload_capability.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04571",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A readonly handle field cannot supply Payload capability to a writable call parameter"
+    },
+    {
+      "id": "diag_member_field_cannot_rebuild_payload_in_fresh_binding_01",
+      "path": "diagnostics/member_field_cannot_rebuild_payload_in_fresh_binding.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A fresh binding from a readonly handle field retains its Payload ceiling"
+    },
+    {
+      "id": "diag_index_element_cannot_rebuild_payload_in_fresh_binding_01",
+      "path": "diagnostics/index_element_cannot_rebuild_payload_in_fresh_binding.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "A fresh binding from a readonly handle array element retains its Payload ceiling"
+    },
+    {
       "id": "diag_pattern_shared_view_cannot_amplify_payload_01",
       "path": "diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
       "type": "compile-fail",

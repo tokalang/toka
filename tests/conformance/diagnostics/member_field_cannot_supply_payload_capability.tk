@@ -1,0 +1,16 @@
+shape Cell(value: i32)
+
+shape Holder(
+    ~cell: Cell
+)
+
+fn overwrite(~p#: Cell) {
+    p.value = 12
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = Holder(~cell = ~source)
+    overwrite(holder.~cell)
+    return 0
+}

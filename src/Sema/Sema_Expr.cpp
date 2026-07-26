@@ -148,15 +148,70 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
 
   if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
     auto base = getAccessCapability(Member->Object.get());
-    // A member cannot bypass a read-only payload path.  The member checker
-    // applies field-level insulation separately; this capability query must
-    // retain the proven parent path rather than infer authority from a
-    // collapsed read-view type.
+    // A member is a declaration boundary.  Its own P declaration caps the
+    // parent path: a writable record must not turn a `~field: T` into a
+    // payload-writable handle merely by projecting it.  Do not infer this
+    // from MemberExpr::ResolvedType, because member surface syntax can carry
+    // an intent marker which is not authority.
+    auto objType = Member->Object ? Member->Object->ResolvedType : nullptr;
+    if (!objType)
+      return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+    auto resolvedObject = resolveType(objType->getSoulType(), true);
+    auto shapeType =
+        std::dynamic_pointer_cast<ShapeType>(resolvedObject);
+    ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+    if (!shape)
+      shape = findVisibleShapeDecl(resolvedObject->getSoulName(), Member->Loc);
+    if (!shape)
+      return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+
+    MemberAccessIntent access = parseMemberAccess(Member->Member);
+    for (const auto &field : shape->Members) {
+      if (Type::stripMorphology(field.Name) != access.MemberName)
+        continue;
+      auto fieldType = Type::fromString(synthesizePhysicalType(field));
+      bool insulated = fieldType &&
+                       (fieldType->isPointer() ||
+                        fieldType->isSmartPointer() ||
+                        fieldType->isReference());
+      bool fieldPayloadWritable =
+          !field.IsValueBlocked &&
+          (field.IsValueMutable || (!insulated && base.PayloadWritable));
+      return {base.PayloadWritable && fieldPayloadWritable, false,
+              base.PayloadFlowRestricted};
+    }
     return {base.PayloadWritable, false, base.PayloadFlowRestricted};
   }
 
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
     auto base = getAccessCapability(Index->Array.get());
+    // Index syntax may carry the array binding's handle attributes, while the
+    // element declaration carries its own payload capability.  Recover the
+    // physical element type so an array of `~T` cannot become `~T#` merely
+    // because the array binding itself is writable.
+    std::shared_ptr<Type> arrayType;
+    if (auto *Var = dynamic_cast<VariableExpr *>(Index->Array.get())) {
+      SymbolInfo *info = nullptr;
+      std::string actualName = Var->Name;
+      if (CurrentScope->findVariableWithDeref(Var->Name, info, actualName) &&
+          info)
+        arrayType = info->TypeObj;
+    }
+    if (!arrayType && Index->Array)
+      arrayType = Index->Array->ResolvedType;
+    if (!arrayType)
+      return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+    auto resolvedArray = resolveType(arrayType, true);
+    auto elementType = resolvedArray && resolvedArray->isArray()
+                           ? resolvedArray->getArrayElementType()
+                           : nullptr;
+    if (elementType && (elementType->isPointer() ||
+                        elementType->isSmartPointer() ||
+                        elementType->isReference())) {
+      auto elementSoul = elementType->getPointeeType();
+      return {base.PayloadWritable && elementSoul && elementSoul->IsWritable,
+              false, base.PayloadFlowRestricted};
+    }
     return {base.PayloadWritable, false, base.PayloadFlowRestricted};
   }
 
@@ -200,11 +255,48 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
   if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
     PermissionFlow flow = getPermissionFlow(Member->Object.get());
     flow.DirectCapability = getAccessCapability(E);
+    // The direct source is the projected field, not the aggregate that owns
+    // it.  A shared/reference/unique field is therefore a view for flow
+    // purposes even when its aggregate is an owned local value.  Otherwise a
+    // readonly field could be misclassified as Fresh and regain P at a new
+    // binding boundary.
+    if (Member->ResolvedType) {
+      if (Member->ResolvedType->isRawPointer())
+        flow.Kind = PermissionFlowKind::UnsafeRaw;
+      else if (Member->ResolvedType->isPointer() ||
+               Member->ResolvedType->isSmartPointer() ||
+               Member->ResolvedType->isReference())
+        flow.Kind = PermissionFlowKind::Shared;
+    }
     return flow;
   }
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
     PermissionFlow flow = getPermissionFlow(Index->Array.get());
     flow.DirectCapability = getAccessCapability(E);
+    // Array elements follow the same direct-source rule as fields: an
+    // indirect element is a view of its array storage, not a fresh authority
+    // root created by the index expression.
+    std::shared_ptr<Type> arrayType;
+    if (auto *Var = dynamic_cast<VariableExpr *>(Index->Array.get())) {
+      SymbolInfo *info = nullptr;
+      std::string actualName = Var->Name;
+      if (CurrentScope->findVariableWithDeref(Var->Name, info, actualName) &&
+          info)
+        arrayType = info->TypeObj;
+    }
+    if (!arrayType && Index->Array)
+      arrayType = Index->Array->ResolvedType;
+    auto resolvedArray = arrayType ? resolveType(arrayType, true) : nullptr;
+    auto directElement = resolvedArray && resolvedArray->isArray()
+                             ? resolvedArray->getArrayElementType()
+                             : Index->ResolvedType;
+    if (directElement) {
+      if (directElement->isRawPointer())
+        flow.Kind = PermissionFlowKind::UnsafeRaw;
+      else if (directElement->isPointer() || directElement->isSmartPointer() ||
+               directElement->isReference())
+        flow.Kind = PermissionFlowKind::Shared;
+    }
     return flow;
   }
   if (auto *Address = dynamic_cast<AddressOfExpr *>(E)) {

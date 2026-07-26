@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04573
+import ./lib::{Cell, ReadonlyHolder}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = ReadonlyHolder(~cell = ~source)
+    auto ~view# = holder.~cell
+    view.value = 12
+    return 0
+}
