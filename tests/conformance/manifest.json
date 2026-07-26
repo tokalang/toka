@@ -283,6 +283,15 @@
       "description": "A whole unique cede invalidates the source binding exactly once"
     },
     {
+      "id": "diag_cede_member_cannot_rebuild_payload_permission_01",
+      "path": "diagnostics/cede_member_cannot_rebuild_payload_permission.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A ceded member remains capped by its declared payload permission"
+    },
+    {
       "id": "ownership_handle_payload_permission_01",
       "path": "ownership/handle_payload_permission.tk",
       "type": "run",

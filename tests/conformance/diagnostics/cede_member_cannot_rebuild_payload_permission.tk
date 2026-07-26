@@ -1,0 +1,8 @@
+shape Box(value: i32)
+
+fn main() -> i32 {
+    auto ^box = new Box(value = 1)
+    auto value# = cede box.value
+    value = 2
+    return 0
+}

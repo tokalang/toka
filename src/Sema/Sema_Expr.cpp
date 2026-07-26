@@ -112,7 +112,21 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
     return {};
 
   if (auto *Cede = dynamic_cast<CedeExpr *>(E)) {
-    return getPermissionFlow(Cede->Value.get());
+    PermissionFlow flow = getPermissionFlow(Cede->Value.get());
+    Expr *directSource = Cede->Value.get();
+    while (auto *unary = dynamic_cast<UnaryExpr *>(directSource))
+      directSource = unary->RHS.get();
+
+    // A whole binding or a fresh owned rvalue may establish an independent
+    // owner. A member, index, or spread instead remains a view of its host:
+    // `cede` transfers that local resource but cannot recreate payload
+    // authority beyond the direct path's existing ceiling.
+    if (dynamic_cast<MemberExpr *>(directSource) ||
+        dynamic_cast<ArrayIndexExpr *>(directSource) ||
+        dynamic_cast<SpreadExpr *>(directSource)) {
+      flow.Kind = PermissionFlowKind::Shared;
+    }
+    return flow;
   }
   if (auto *Cast = dynamic_cast<CastExpr *>(E))
     return getPermissionFlow(Cast->Expression.get());
