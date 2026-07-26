@@ -19,6 +19,14 @@
       "description": "Option<T?> distinguishes a missing result, an empty payload, and a present payload"
     },
     {
+      "id": "syntax_nullable_handle_payload_orthogonal_01",
+      "path": "syntax/nullable_handle_payload_orthogonal.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A nullable payload can become none and present again without rebinding its live unique handle"
+    },
+    {
       "id": "syntax_error_propagation_01",
       "path": "syntax/error_propagation_postfix.tk",
       "type": "run",

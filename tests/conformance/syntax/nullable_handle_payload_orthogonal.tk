@@ -1,0 +1,22 @@
+shape Node(val: i32)
+
+fn main() -> i32 {
+    // The outer ^# handle stays live while its nullable payload changes.
+    auto nul ^#node#: Node? = new Node(val = 7)
+    auto outcome# = 0
+
+    node = none
+    guard node {
+        outcome = 1
+    } else {
+        node = Node(val = 9)
+    }
+
+    guard node {
+        outcome = node.val
+    } else {
+        outcome = 2
+    }
+
+    return outcome - 9
+}

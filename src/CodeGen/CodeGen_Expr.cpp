@@ -401,9 +401,17 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   if (!rhsVal)
     return nullptr;
 
-  // [Fix] Smart Pointer Assignment Ambiguity
+  // Sema has already classified ordinary assignments as either a handle
+  // rebind or a payload write.  Do not re-infer that decision from the LLVM
+  // shape of the RHS: `none` is represented as a null pointer, but assigning
+  // it to the nullable soul of `^#p#: T?` is still a payload write.
   bool effectiveRebind = hasRebind;
-  if (effectiveRebind && !explicitRebind && symLHS && rhsVal) {
+  if (assignmentSite &&
+      (assignmentSite->AssignmentKind == AssignmentSemanticKind::Payload ||
+       assignmentSite->AssignmentKind == AssignmentSemanticKind::Handle)) {
+    effectiveRebind =
+        assignmentSite->AssignmentKind == AssignmentSemanticKind::Handle;
+  } else if (effectiveRebind && !explicitRebind && symLHS && rhsVal) {
     bool isHandleType = rhsVal->getType()->isStructTy(); // SharedPtr
     if (rhsVal->getType()->isPointerTy()) {
       // Could be RawPtr, UniquePtr, or promoted SharedPtr source
@@ -442,16 +450,20 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     // Scene A: Soul Assignment
     llvm::Value *soulAddr = emitEntityAddr(lhsExpr);
     llvm::Type *destTy = rhsVal->getType();
-    if (symLHS && symLHS->morphology == Morphology::None)
+    if (symLHS)
       destTy = symLHS->soulType;
 
-    // [Chapter 6 Extension] Nullable Soul Assignment Wrapping
-    if (lhsExpr->ResolvedType && lhsExpr->ResolvedType->IsNullable &&
-        !lhsExpr->ResolvedType->isPointer() &&
-        !lhsExpr->ResolvedType->isSmartPointer() &&
-        !lhsExpr->ResolvedType->isReference() &&
-        !lhsExpr->ResolvedType->isVoid()) {
-      llvm::Type *targetStructTy = getLLVMType(lhsExpr->ResolvedType);
+    // Nullable souls are stored as { T, i1 }.  Inspect the destination
+    // storage type rather than the outer handle type, so a nullable payload
+    // remains independent from a nullable/rebindable handle.
+    std::shared_ptr<Type> targetSoulType =
+        symLHS && symLHS->soulTypeObj ? symLHS->soulTypeObj->getSoulType()
+                                      : nullptr;
+    if (targetSoulType && targetSoulType->IsNullable && destTy &&
+        destTy->isStructTy() &&
+        destTy->getStructNumElements() == 2 &&
+        destTy->getStructElementType(1)->isIntegerTy(1)) {
+      llvm::Type *targetStructTy = destTy;
       if (rhsVal->getType() != targetStructTy) {
         // Wrapping T into { T, i1 }
         llvm::Value *wrapped = llvm::UndefValue::get(targetStructTy);
