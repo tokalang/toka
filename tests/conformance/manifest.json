@@ -292,6 +292,15 @@
       "description": "A nullable cede source needs a same-binding non-null guard before entering a non-null destination"
     },
     {
+      "id": "diag_cede_unique_preserves_blocked_field_01",
+      "path": "diagnostics/cede_unique_preserves_blocked_field.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A whole unique cede cannot remove a field's blocked payload ceiling"
+    },
+    {
       "id": "diag_cede_member_cannot_rebuild_payload_permission_01",
       "path": "diagnostics/cede_member_cannot_rebuild_payload_permission.tk",
       "type": "compile-fail",

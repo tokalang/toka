@@ -13,7 +13,7 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 50 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 51 passed, 0 failed on 2026-07-27;
 - isolated source-less replay for `permission_001_capability` and
   `permission_002_shared_flow`: 2 passed, 0 failed on 2026-07-26;
 - static permission logic: `include/toka/Sema.h`,
@@ -36,10 +36,10 @@ incomplete and must not be represented as a closed 1.0 guarantee.
 | Independent sources re-root a fresh binding under referent ceilings | A fresh unique binding obtains its own declaration permissions and a whole `^` source is invalidated (`cede_unique_creates_independent_owner` and `cede_unique_source_invalidated`). `cede` member/index/spread paths retain their direct payload ceiling rather than becoming independent. | **Partial**: no universal carried referent ceiling exists for frozen/nullable transfer. |
 | Shared sources cannot gain payload authority | `~`/`&` classification uses the direct RHS capability. Negative tests cover a two-hop Shared chain, `cede ~`, mutable call arguments, return signatures, fields, match/guard reference patterns, and a readonly-reference destructuring field. Positive run tests show declared writable reference fields and imported `Option<&T#>` match/guard binders preserve—not invent—Payload permission. `permission_002_shared_flow` repeats readonly/writable destructuring, match, and guard outcomes source-less. Safe raw payload access remains gated by `unsafe`. | **Partial**: independent-transfer and nullable semantics remain open. |
 | Nullable to non-null `cede` requires a same-path guard | Local initialization rejects a nullable `cede` source for a non-null indirection (`cede_nullable_source_requires_guard`, `E04599`). The existing `guard` narrowing of the same local binding permits the transfer (`cede_nullable_source_after_guard`). | **Partial**: only a direct local binding has guard evidence; member/index paths have no canonical-path proof and remain conservatively rejected. |
-| Fields/freeze ceilings survive independent flow | `BindingPermission` contains blocked flags and member checks compute some final flags. | **Does not conform**: no audited transfer fact establishes a persistent referent ceiling across all initializer/call/return paths. |
+| Fields/freeze ceilings survive independent flow | A field's declared `$` ceiling remains attached to its shape after whole-unique transfer: `cede_unique_preserves_blocked_field` rejects the write with `E0443`, and `permission_004_referent_ceiling` repeats that outcome source-less from the exported field declaration. | **Partial**: this proves declared field ceilings; there is no separate general freeze/sealed-object ceiling or all-boundary propagation model. |
 | Patterns and destructuring use direct flow derivation | Match and guard callers derive `PermissionFlow` from their target and pass the direct capability to `checkPattern`. Destructuring computes the initializer flow once, records each binder's own `BindingPermission`, and applies each handle field's declared P as its one-hop ceiling. Imported readonly/writable reference-field destructuring, match, and guard paths have source-backed/source-less replay. The match runtime test also covers a local type alias so payload type metadata survives alias lowering. | **Partial**: independent-transfer and nullable semantics remain open. |
 | Partial moves do not establish independent authority | `cede` classifies member/index/spread paths as Shared, and a writable destination cannot amplify a readonly member (`cede_member_cannot_rebuild_payload_permission`). | **Partial**: local resource transfer remains supported, but there is no formal per-field move/drop state. |
-| `.tki` replay preserves flow facts | `permission_002_shared_flow` checks interface emission, source-backed/source-less semantic-evidence equality, writable imported reference-field, match, and guard run cases, and readonly rejection for each path. | **Partial**: no general two-mode independent-transfer replay exists. |
+| `.tki` replay preserves flow facts | `permission_002_shared_flow` checks interface emission, source-backed/source-less semantic-evidence equality, writable imported reference-field, match, and guard run cases, and readonly rejection for each path. `permission_003_independent_nullable_flow` adds a source-backed/source-less pair for guarded whole-unique transfer and unguarded nullable rejection. `permission_004_referent_ceiling` proves exported `$` field ceilings remain effective after whole transfer. | **Partial**: no general freeze/sealed-object ceiling exists to replay. |
 
 ## Concrete implementation gaps
 
@@ -60,8 +60,10 @@ incomplete and must not be represented as a closed 1.0 guarantee.
    intentionally bidirectional in several non-permission cases and has no
    path, move, guard, or PAL inputs.
 4. Source-less `.tki` replay covers imported reference-field destructuring,
-   match, and guard flow propagation. It does not yet exercise independent
-   transfer or nullable guard proofs.
+   match, and guard flow propagation, direct guarded unique transfer,
+   unguarded nullable rejection, and an exported `$` field ceiling. It does
+   not yet exercise a general freeze/sealed-object ceiling because none is
+   currently represented in the language model.
 
 ## Recommended implementation order
 
