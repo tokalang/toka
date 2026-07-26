@@ -515,7 +515,19 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     // Scene B: Envelope Rebind
     std::shared_ptr<Type> targetSoulType =
         symLHS->soulTypeObj ? symLHS->soulTypeObj->getSoulType() : nullptr;
-    if (dynamic_cast<const NewExpr *>(rhsExpr) && targetSoulType &&
+    const Expr *freshAllocation = rhsExpr;
+    while (freshAllocation) {
+      if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(freshAllocation)) {
+        freshAllocation = unsafeExpr->Expression.get();
+      } else if (auto *castExpr = dynamic_cast<const CastExpr *>(freshAllocation)) {
+        freshAllocation = castExpr->Expression.get();
+      } else {
+        break;
+      }
+    }
+    if ((dynamic_cast<const NewExpr *>(freshAllocation) ||
+         dynamic_cast<const AllocExpr *>(freshAllocation)) &&
+        targetSoulType &&
         targetSoulType->IsNullable && symLHS->soulType &&
         symLHS->soulType->isStructTy()) {
       rhsVal = wrapFreshAllocationAsNullableSoul(
