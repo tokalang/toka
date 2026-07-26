@@ -15,6 +15,10 @@ pub fn overwrite(~p#: Cell) -> i32 {
     return 0
 }
 
+pub fn generic_overwrite<T>(~p#: T) -> i32 {
+    return 0
+}
+
 pub shape CallableMutator()
 
 impl CallableMutator@Callable {

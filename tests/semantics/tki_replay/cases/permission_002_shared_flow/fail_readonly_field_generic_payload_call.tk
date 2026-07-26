@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04571
+import ./lib::{Cell, generic_overwrite, ReadonlyHolder}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = ReadonlyHolder(~cell = ~source)
+    return generic_overwrite<Cell>(holder.~cell)
+}
