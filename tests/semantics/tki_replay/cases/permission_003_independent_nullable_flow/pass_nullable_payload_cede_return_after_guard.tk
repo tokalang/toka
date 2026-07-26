@@ -1,0 +1,15 @@
+import ./lib::{Cell}
+
+fn make() -> cede Cell {
+    auto ^source#: Cell? = new Cell(value = 7)
+    guard source {
+        return cede source
+    } else {
+        return cede new Cell(value = 0)
+    }
+}
+
+fn main() -> i32 {
+    auto cell = make()
+    return cell.value - 7
+}

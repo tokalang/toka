@@ -649,6 +649,14 @@
       "description": "A payload guard permits cede into a non-null cede parameter"
     },
     {
+      "id": "ownership_cede_nullable_payload_return_after_guard_01",
+      "path": "ownership/cede_nullable_payload_return_after_guard.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A payload guard permits cede into a non-null cede return"
+    },
+    {
       "id": "ownership_cede_nullable_payload_method_after_guard_01",
       "path": "ownership/cede_nullable_payload_method_after_guard.tk",
       "type": "run",

@@ -125,6 +125,12 @@ bool Sema::allPathsReturn(Stmt *S) {
         return true;
       return false;
     }
+    if (auto *Guard = dynamic_cast<GuardExpr *>(E)) {
+      if (Guard->Else && allPathsReturn(Guard->Then.get()) &&
+          allPathsReturn(Guard->Else.get()))
+        return true;
+      return false;
+    }
     if (auto *Match = dynamic_cast<MatchExpr *>(E)) {
       for (const auto &Arm : Match->Arms) {
         if (!allPathsReturn(Arm->Body.get()))

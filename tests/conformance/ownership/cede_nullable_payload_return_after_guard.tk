@@ -1,0 +1,18 @@
+shape Token(id: i32)
+
+fn make() -> cede Token {
+    auto ^source#: Token? = new Token(id = 7)
+    guard source {
+        return cede source
+    } else {
+        return cede new Token(id = 0)
+    }
+}
+
+fn main() -> i32 {
+    auto token = make()
+    if token.id != 7 {
+        return 1
+    }
+    return 0
+}
