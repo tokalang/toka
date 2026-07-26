@@ -114,8 +114,17 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
   if (auto *Cede = dynamic_cast<CedeExpr *>(E)) {
     PermissionFlow flow = getPermissionFlow(Cede->Value.get());
     Expr *directSource = Cede->Value.get();
-    while (auto *unary = dynamic_cast<UnaryExpr *>(directSource))
-      directSource = unary->RHS.get();
+    while (true) {
+      if (auto *unary = dynamic_cast<UnaryExpr *>(directSource)) {
+        directSource = unary->RHS.get();
+      } else if (auto *cast = dynamic_cast<CastExpr *>(directSource)) {
+        // A cast changes the static presentation, not the direct ownership
+        // source. It cannot turn a member transfer into an independent one.
+        directSource = cast->Expression.get();
+      } else {
+        break;
+      }
+    }
 
     // A whole binding or a fresh owned rvalue may establish an independent
     // owner. A member, index, or spread instead remains a view of its host:
