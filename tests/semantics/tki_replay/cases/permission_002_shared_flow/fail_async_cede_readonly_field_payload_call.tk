@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04571
+import ./lib::{Cell, ReadonlyHolder, async_cede_overwrite}
+import std/task::{block_on}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto holder# = ReadonlyHolder(~cell = ~source)
+    auto handle = async_cede_overwrite(cede holder.~cell).start
+    return block_on<i32>(handle)
+}
