@@ -1,6 +1,5 @@
 import std/task::{sleep, block_on, __toka_spawn_blocking}
 import std/io::{println}
-import sys/libc::{libc_exit}
 
 // Used to demonstrate interruption of the second subtask
 fn worker_b() -> async i32 {
@@ -36,7 +35,6 @@ pub fn main() -> async i32 {
     // This line is where the coroutine "out-of-order execution / dispatching" magic takes place.
     block_on<i32>(event_loop_sentinel())
     
-    println("4. [Async Main] All done, shutting down the process safely.")
-    libc_exit(0)
+    println("4. [Async Main] Root task returned through the native entry wrapper.")
     return 0
 }

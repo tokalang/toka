@@ -1,0 +1,5 @@
+import std/io::{println}
+
+pub fn main() -> async void {
+    println("async void main executed through the native entry wrapper")
+}

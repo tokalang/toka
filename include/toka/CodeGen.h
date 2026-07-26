@@ -273,6 +273,8 @@ private:
   llvm::Function *genFunction(const FunctionDecl *func,
                               const std::string &overrideName = "",
                               bool declOnly = false);
+  void genAsyncMainEntrypoint(llvm::Function *asyncMain,
+                              const FunctionDecl *func);
   void genGlobal(const Stmt *stmt);
   void genExtern(const ExternDecl *ext);
   void genShape(const ShapeDecl *sh);

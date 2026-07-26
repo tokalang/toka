@@ -898,7 +898,12 @@ bool MemorySummaryAnalysis::verifyIR(const std::vector<Module *> &modules,
     const auto &summary = function->MemorySummary;
     if (summary.FunctionName.rfind("@trait:", 0) == 0)
       continue;
-    const llvm::Function *ir = irModule.getFunction(summary.FunctionName);
+    std::string irName = summary.FunctionName;
+    // An async source `main` lowers to an internal coroutine factory plus a
+    // native process-entry wrapper. The memory summary describes the factory.
+    if (function->Name == "main" && function->Effect == EffectKind::Async)
+      irName = "__toka_async_main";
+    const llvm::Function *ir = irModule.getFunction(irName);
     if (!ir || ir->isDeclaration())
       continue;
     bool allocates = false;

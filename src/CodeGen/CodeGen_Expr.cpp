@@ -4506,9 +4506,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
   std::string calleeName = call->Callee;
   if (call->ResolvedFn) {
-    calleeName = call->ResolvedFn->CodegenName.empty()
-                     ? call->ResolvedFn->Name
-                     : call->ResolvedFn->CodegenName;
+    if (call->ResolvedFn->Name == "main" &&
+        call->ResolvedFn->Effect == EffectKind::Async &&
+        call->ResolvedFn->CodegenName.empty()) {
+      calleeName = "__toka_async_main";
+    } else {
+      calleeName = call->ResolvedFn->CodegenName.empty()
+                       ? call->ResolvedFn->Name
+                       : call->ResolvedFn->CodegenName;
+    }
   } else if (call->ResolvedExtern) {
     calleeName = call->ResolvedExtern->Name;
     genExtern(call->ResolvedExtern);

@@ -72,11 +72,19 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   if (func->IsDeleted)
     return nullptr;
 
+  const bool isAsyncEntrypoint =
+      overrideName.empty() && func->Name == "main" &&
+      func->Effect == EffectKind::Async;
   std::string funcName = overrideName.empty()
                              ? (func->CodegenName.empty() ? func->Name
                                                            : func->CodegenName)
                              : overrideName;
-  if (funcName == "main") {
+  if (isAsyncEntrypoint) {
+    // A coroutine factory returns its TCB pointer, which is not a native C
+    // entry-point ABI. Keep the source coroutine internal and synthesize the
+    // ordinary process entry point after its body has been generated.
+    funcName = "__toka_async_main";
+  } else if (funcName == "main") {
     llvm::Triple triple(toka::Parser::TargetTriple);
     if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
       funcName = "__main_void";
@@ -817,7 +825,219 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       }
   }
 
+  if (isAsyncEntrypoint) {
+    genAsyncMainEntrypoint(f, func);
+  }
+
   return f;
+}
+
+void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
+                                     const FunctionDecl *func) {
+  llvm::Triple triple(toka::Parser::TargetTriple);
+  const bool isWasm = triple.isOSWASI() ||
+                      triple.getArch() == llvm::Triple::wasm32 ||
+                      triple.getArch() == llvm::Triple::wasm64;
+  const std::string entryName = isWasm ? "__main_void" : "main";
+  if (m_Module->getFunction(entryName))
+    return;
+
+  llvm::Type *entryRetTy = isWasm ? m_Builder.getVoidTy()
+                                  : m_Builder.getInt32Ty();
+  llvm::FunctionType *entryTy =
+      llvm::FunctionType::get(entryRetTy, {}, false);
+  llvm::Function *entry = llvm::Function::Create(
+      entryTy, llvm::Function::ExternalLinkage, entryName, m_Module.get());
+  llvm::BasicBlock *entryBB =
+      llvm::BasicBlock::Create(m_Context, "entry", entry);
+  m_Builder.SetInsertPoint(entryBB);
+
+  llvm::Value *tcb = m_Builder.CreateCall(asyncMain, {}, "async_main.tcb");
+
+  llvm::Function *detachFn = m_Module->getFunction("toka_task_detach");
+  if (!detachFn) {
+    llvm::FunctionType *ft = llvm::FunctionType::get(
+        m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+    detachFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                      "toka_task_detach", m_Module.get());
+  }
+
+  std::shared_ptr<Type> sourceRet = func->ResolvedReturnType
+                                        ? func->ResolvedReturnType
+                                        : Type::fromString(func->ReturnType);
+  const bool returnsVoid = sourceRet && sourceRet->getSoulName() == "void";
+
+  llvm::BasicBlock *runDoneBB =
+      llvm::BasicBlock::Create(m_Context, "async_main.run_done", entry);
+  llvm::Function *spawnFn = m_Module->getFunction("__toka_spawn_blocking");
+  if (spawnFn && !spawnFn->isDeclaration()) {
+    m_Builder.CreateCall(spawnFn, {tcb});
+    m_Builder.CreateBr(runDoneBB);
+  } else {
+    // A program with an async `main` but no std/task import still needs to
+    // execute a ready root task. Standard suspension points import std/task
+    // and therefore take the full executor path above; this fallback is only
+    // for immediately-ready roots.
+    llvm::Function *startFn = m_Module->getFunction("toka_task_start");
+    if (!startFn) {
+      llvm::FunctionType *ft = llvm::FunctionType::get(
+          m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+      startFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                       "toka_task_start", m_Module.get());
+    }
+    llvm::Function *isDoneFn = m_Module->getFunction("toka_tcb_is_done");
+    if (!isDoneFn) {
+      llvm::FunctionType *ft = llvm::FunctionType::get(
+          m_Builder.getInt1Ty(), {m_Builder.getPtrTy()}, false);
+      isDoneFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                         "toka_tcb_is_done", m_Module.get());
+    }
+    llvm::Function *popFn = m_Module->getFunction("toka_task_pop_ready");
+    if (!popFn) {
+      llvm::FunctionType *ft = llvm::FunctionType::get(
+          m_Builder.getInt32Ty(),
+          {m_Builder.getPtrTy(), m_Builder.getPtrTy(), m_Builder.getPtrTy()},
+          false);
+      popFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                      "toka_task_pop_ready", m_Module.get());
+    }
+    llvm::Function *releaseFn = m_Module->getFunction("toka_task_release");
+    if (!releaseFn) {
+      llvm::FunctionType *ft = llvm::FunctionType::get(
+          m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+      releaseFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                          "toka_task_release", m_Module.get());
+    }
+    llvm::Function *getFrameForRunFn =
+        m_Module->getFunction("toka_tcb_get_coro_frame");
+    if (!getFrameForRunFn) {
+      llvm::FunctionType *ft = llvm::FunctionType::get(
+          m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
+      getFrameForRunFn = llvm::Function::Create(
+          ft, llvm::Function::ExternalLinkage, "toka_tcb_get_coro_frame",
+          m_Module.get());
+    }
+
+    llvm::AllocaInst *taskId =
+        m_Builder.CreateAlloca(m_Builder.getInt64Ty(), nullptr, "async_main.task_id");
+    llvm::AllocaInst *taskGen =
+        m_Builder.CreateAlloca(m_Builder.getInt64Ty(), nullptr, "async_main.task_gen");
+    llvm::AllocaInst *queuedTcb =
+        m_Builder.CreateAlloca(m_Builder.getPtrTy(), nullptr, "async_main.queued_tcb");
+    m_Builder.CreateCall(startFn, {tcb});
+
+    llvm::BasicBlock *pollBB =
+        llvm::BasicBlock::Create(m_Context, "async_main.poll", entry);
+    llvm::BasicBlock *popBB =
+        llvm::BasicBlock::Create(m_Context, "async_main.pop", entry);
+    llvm::BasicBlock *resumeBB =
+        llvm::BasicBlock::Create(m_Context, "async_main.resume", entry);
+    llvm::BasicBlock *executorFailedBB =
+        llvm::BasicBlock::Create(m_Context, "async_main.executor_failed", entry);
+    m_Builder.CreateBr(pollBB);
+
+    m_Builder.SetInsertPoint(pollBB);
+    llvm::Value *done = m_Builder.CreateCall(isDoneFn, {tcb});
+    m_Builder.CreateCondBr(done, runDoneBB, popBB);
+
+    m_Builder.SetInsertPoint(popBB);
+    llvm::Value *popped = m_Builder.CreateCall(popFn, {taskId, taskGen, queuedTcb});
+    llvm::Value *hasReady =
+        m_Builder.CreateICmpNE(popped, m_Builder.getInt32(0));
+    m_Builder.CreateCondBr(hasReady, resumeBB, executorFailedBB);
+
+    m_Builder.SetInsertPoint(resumeBB);
+    llvm::Value *queued =
+        m_Builder.CreateLoad(m_Builder.getPtrTy(), queuedTcb, "async_main.queued");
+    llvm::Value *frameForRun =
+        m_Builder.CreateCall(getFrameForRunFn, {queued});
+    llvm::Function *resumeFn = llvm::Intrinsic::getOrInsertDeclaration(
+        m_Module.get(), llvm::Intrinsic::coro_resume);
+    m_Builder.CreateCall(resumeFn, {frameForRun});
+    m_Builder.CreateCall(releaseFn, {queued});
+    m_Builder.CreateBr(pollBB);
+
+    m_Builder.SetInsertPoint(executorFailedBB);
+    m_Builder.CreateCall(detachFn, {tcb});
+    if (isWasm)
+      m_Builder.CreateRetVoid();
+    else
+      m_Builder.CreateRet(m_Builder.getInt32(1));
+  }
+
+  m_Builder.SetInsertPoint(runDoneBB);
+
+  llvm::Function *getFrameFn = m_Module->getFunction("toka_tcb_get_coro_frame");
+  if (!getFrameFn) {
+    llvm::FunctionType *ft = llvm::FunctionType::get(
+        m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
+    getFrameFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                         "toka_tcb_get_coro_frame", m_Module.get());
+  }
+  llvm::Value *frame = m_Builder.CreateCall(getFrameFn, {tcb});
+  llvm::Function *promiseFn = llvm::Intrinsic::getOrInsertDeclaration(
+      m_Module.get(), llvm::Intrinsic::coro_promise);
+  llvm::Value *promise = m_Builder.CreateCall(
+      promiseFn, {frame, m_Builder.getInt32(8), m_Builder.getInt1(false)});
+
+  llvm::Function *getStateFn = m_Module->getFunction("toka_task_get_result_state");
+  if (!getStateFn) {
+    llvm::FunctionType *ft = llvm::FunctionType::get(
+        m_Builder.getInt8Ty(), {m_Builder.getPtrTy()}, false);
+    getStateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                         "toka_task_get_result_state", m_Module.get());
+  }
+  llvm::Value *state = m_Builder.CreateCall(getStateFn, {promise});
+  llvm::Value *isReady =
+      m_Builder.CreateICmpEQ(state, m_Builder.getInt8(1), "async_main.ready");
+  llvm::BasicBlock *readyBB =
+      llvm::BasicBlock::Create(m_Context, "async_main.ready", entry);
+  llvm::BasicBlock *failedBB =
+      llvm::BasicBlock::Create(m_Context, "async_main.failed", entry);
+  m_Builder.CreateCondBr(isReady, readyBB, failedBB);
+
+  m_Builder.SetInsertPoint(failedBB);
+  m_Builder.CreateCall(detachFn, {tcb});
+  if (isWasm)
+    m_Builder.CreateRetVoid();
+  else
+    m_Builder.CreateRet(m_Builder.getInt32(1));
+
+  m_Builder.SetInsertPoint(readyBB);
+  if (returnsVoid) {
+    m_Builder.CreateCall(detachFn, {tcb});
+    if (isWasm)
+      m_Builder.CreateRetVoid();
+    else
+      m_Builder.CreateRet(m_Builder.getInt32(0));
+    return;
+  }
+
+  llvm::Function *valuePtrFn =
+      m_Module->getFunction("toka_task_result_value_ptr");
+  if (!valuePtrFn) {
+    llvm::FunctionType *ft = llvm::FunctionType::get(
+        m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
+    valuePtrFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                         "toka_task_result_value_ptr", m_Module.get());
+  }
+  llvm::Value *valuePtr = m_Builder.CreateCall(valuePtrFn, {promise});
+  llvm::Value *result = m_Builder.CreateLoad(m_Builder.getInt32Ty(), valuePtr,
+                                               "async_main.result");
+  llvm::Function *clearFn =
+      m_Module->getFunction("toka_task_clear_result_payload");
+  if (!clearFn) {
+    llvm::FunctionType *ft = llvm::FunctionType::get(
+        m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+    clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                      "toka_task_clear_result_payload", m_Module.get());
+  }
+  m_Builder.CreateCall(clearFn, {promise});
+  m_Builder.CreateCall(detachFn, {tcb});
+  if (isWasm)
+    m_Builder.CreateRetVoid();
+  else
+    m_Builder.CreateRet(result);
 }
 
 llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
