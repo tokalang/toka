@@ -1678,6 +1678,24 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                             info.DropFlag);
     }
 
+    // Direct member `cede` can be made safe for compiler-managed records: a
+    // per-field mask lets scope cleanup skip only the transferred field.  Do
+    // not install this mechanism for custom destructors, whose whole-object
+    // invariant is opaque to the compiler.
+    auto shapeIt = m_Shapes.find(info.SoulName);
+    if (alloca && hasDrop && shapeIt != m_Shapes.end() &&
+        !shapeIt->second->HasExplicitDrop &&
+        (shapeIt->second->Kind == ShapeKind::Struct ||
+         shapeIt->second->Kind == ShapeKind::Tuple) &&
+        shapeIt->second->Members.size() <= 64) {
+      const size_t fieldCount = shapeIt->second->Members.size();
+      const uint64_t fullMask =
+          fieldCount == 64 ? ~0ULL : ((1ULL << fieldCount) - 1ULL);
+      info.DropMask = createEntryBlockAlloca(
+          llvm::Type::getInt64Ty(m_Context), nullptr, varName + ".drop.mask");
+      m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
+    }
+
     m_ScopeStack.back().push_back(info);
 
     if (closureEnvAddr && closureEnvType && !closureEnvTypeName.empty()) {

@@ -358,6 +358,48 @@
       "description": "A cede unique transfer creates a fresh owner whose declaration controls payload writes"
     },
     {
+      "id": "ownership_cede_direct_field_cleanup_01",
+      "path": "ownership/cede_direct_field_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct field cede keeps sibling fields live and drops each resource exactly once"
+    },
+    {
+      "id": "ownership_cede_direct_field_reinitialize_01",
+      "path": "ownership/cede_direct_field_reinitialize.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Assigning a direct field after cede restores that field's cleanup obligation"
+    },
+    {
+      "id": "ownership_cede_direct_field_branch_join_01",
+      "path": "ownership/cede_direct_field_branch_join.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct field cede propagates field liveness through an if-branch join"
+    },
+    {
+      "id": "diag_cede_direct_field_invalidates_source_01",
+      "path": "diagnostics/cede_direct_field_invalidates_source.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A direct field cede invalidates that field without invalidating its live sibling"
+    },
+    {
+      "id": "diag_cede_direct_field_custom_drop_rejected_01",
+      "path": "diagnostics/cede_direct_field_custom_drop_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0439",
+      "expected_span_line": 19,
+      "timeout_seconds": 10,
+      "description": "A direct field cede cannot bypass a user-defined aggregate destructor"
+    },
+    {
       "id": "ownership_cede_nullable_source_after_guard_01",
       "path": "ownership/cede_nullable_source_after_guard.tk",
       "type": "run",

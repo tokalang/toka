@@ -1,0 +1,39 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token (
+    id: i32
+)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+shape Pair (
+    left: Token,
+    right: Token
+)
+
+fn branch_cleanup(take_left: bool) -> i32 {
+    {
+        auto pair = Pair(left = Token(id = 1), right = Token(id = 2))
+        if take_left {
+            auto taken = cede pair.left
+            assert(taken.id == 1, "ceded branch field stays owned")
+        }
+        assert(pair.right.id == 2, "live sibling survives branch join")
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    assert(branch_cleanup(true) == 0, "taken branch")
+    assert(g_drop_count == 2, "taken branch drops each resource once")
+    assert(branch_cleanup(false) == 0, "untaken branch")
+    assert(g_drop_count == 4, "untaken branch keeps both aggregate fields")
+    return 0
+}

@@ -490,6 +490,10 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     llvm::StoreInst *store = emitSoulAssignment(soulAddr, rhsVal, destTy);
     if (carrier == AssignmentLoweringCarrier::EnvelopeRebind)
       markMemoryEvent(store, "rebind");
+    if (store) {
+      if (auto *member = dynamic_cast<const MemberExpr *>(targetLHS))
+        restoreDropForMemberAssignment(member);
+    }
   }
 
   m_InLHS = false;
@@ -5788,6 +5792,9 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
 
     if (ve) {
       suppressDropForMove(ve->Name);
+    } else if (auto *member =
+                   dynamic_cast<const MemberExpr *>(ce->Value.get())) {
+      suppressDropForPartialMove(member);
     }
 
     if (isShared) {

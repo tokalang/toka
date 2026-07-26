@@ -3065,6 +3065,7 @@ void Sema::analyzeShapes(Module &M) {
       if (hasExplicitDrop)
         break;
     }
+    S->HasExplicitDrop = hasExplicitDrop;
 
     if (props.HasRawPtr && !hasExplicitDrop) {
       DiagnosticEngine::report(getLoc(S.get()), DiagID::ERR_UNSAFE_RAW_PTR,

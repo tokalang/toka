@@ -1388,7 +1388,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     // Unset Check: Only check if NOT in LHS
-    if (!m_InLHS) {
+    // A member path needs the selected field to be initialized, not every
+    // field of its aggregate base.  Whole-value reads remain subject to the
+    // full InitMask check below.
+    if (!m_InLHS && !m_IsMemberBase && !m_InIntermediatePath) {
       bool isFullyInit = true;
       if (Info.InitMask == 0) {
         isFullyInit = false;
@@ -2571,6 +2574,37 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 error(ce, DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER, Var->Name);
             }
             CurrentScope->markMoved(actualName, ce->Loc);
+        }
+      } else if (auto *Member = dynamic_cast<MemberExpr *>(underlying)) {
+        // A direct field transfer from a local compiler-managed record leaves
+        // that field uninitialized.  Keep legacy container/index transfers
+        // outside this narrow rule; they require their own representation
+        // invariants rather than a record field drop mask.
+        auto *Root = dynamic_cast<VariableExpr *>(Member->Object.get());
+        if (Root) {
+          SymbolInfo *RootInfo = nullptr;
+          std::string actualRootName;
+          if (CurrentScope->findVariableWithDeref(Root->Name, RootInfo,
+                                                  actualRootName) &&
+              RootInfo && RootInfo->IsDeclaredVariable &&
+              !RootInfo->IsFunctionParameter && RootInfo->TypeObj &&
+              RootInfo->TypeObj->isShape()) {
+            auto shapeType =
+                std::dynamic_pointer_cast<ShapeType>(RootInfo->TypeObj);
+            ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+            if (shape && shape->HasExplicitDrop) {
+              // A user drop body owns the aggregate invariant.  The compiler
+              // cannot remove one field from that body safely, so this narrow
+              // direct-field model rejects the transfer rather than leaving a
+              // double-drop or leak path open.
+              error(ce, DiagID::ERR_MOVE_MEMBER_DROP, Member->Member,
+                    shape->Name);
+            } else if (shape && (shape->Kind == ShapeKind::Struct ||
+                                 shape->Kind == ShapeKind::Tuple) &&
+                       Member->Index >= 0 && Member->Index < 64) {
+              RootInfo->InitMask &= ~(1ULL << Member->Index);
+            }
+          }
         }
       }
     }

@@ -209,10 +209,17 @@ private:
     std::string DropFunc;
     std::string SoulName; // [New] Correct type name for destructor lookup
     llvm::Value *DropFlag = nullptr;
+    // Compiler-managed record values use this field-level liveness mask after
+    // a direct member `cede`. Custom destructors retain whole-object control.
+    llvm::Value *DropMask = nullptr;
   };
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
 
   void suppressDropForMove(const std::string &name);
+  void suppressDropForPartialMove(const MemberExpr *member);
+  void restoreDropForMemberAssignment(const MemberExpr *member);
+  int getDirectMemberDropIndex(const VariableScopeInfo &entry,
+                               const MemberExpr *member) const;
 
   // Assignment Strategy Dispatcher (Step 2)
   PhysEntity emitAssignment(const Expr *lhs, const Expr *rhs,
@@ -327,6 +334,9 @@ private:
   llvm::Value *genDeleteStmt(const DeleteStmt *stmt);
   llvm::Value *genFreeStmt(const FreeStmt *stmt);
   void emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName);
+  void emitDropCascadeWithMask(llvm::Value *ptrAddr,
+                               const std::string &typeName,
+                               llvm::Value *dropMaskAddr);
 
   // Helpers
   llvm::AllocaInst *createEntryBlockAlloca(llvm::Type *type, llvm::Value *ArraySize = nullptr, const std::string &varName = "");

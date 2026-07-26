@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/CodeGen.h"
+#include "toka/MemberAccess.h"
 #include "toka/Type.h"
 #include <cctype>
 #include <iostream>
@@ -244,6 +245,69 @@ void CodeGen::suppressDropForMove(const std::string &name) {
         entry->IsShared = false;
         entry->IsUniquePointer = false;
       }
+    }
+  }
+}
+
+int CodeGen::getDirectMemberDropIndex(const VariableScopeInfo &entry,
+                                      const MemberExpr *member) const {
+  if (!member)
+    return -1;
+  auto *root = dynamic_cast<const VariableExpr *>(member->Object.get());
+  if (!root || Type::stripMorphology(root->Name) !=
+                   Type::stripMorphology(entry.Name))
+    return -1;
+  if (member->Index >= 0)
+    return member->Index;
+  auto fieldsIt = m_StructFieldNames.find(entry.SoulName);
+  if (fieldsIt == m_StructFieldNames.end())
+    return -1;
+  const std::string requested = stripMemberAccessMarkers(member->Member);
+  for (size_t i = 0; i < fieldsIt->second.size(); ++i) {
+    if (stripMemberAccessMarkers(fieldsIt->second[i]) == requested)
+      return static_cast<int>(i);
+  }
+  return -1;
+}
+
+void CodeGen::suppressDropForPartialMove(const MemberExpr *member) {
+  for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (!entry->DropMask)
+        continue;
+      const int index =
+          getDirectMemberDropIndex(*entry, member);
+      if (index < 0 || index >= 64)
+        continue;
+      llvm::Value *mask = m_Builder.CreateLoad(
+          llvm::Type::getInt64Ty(m_Context), entry->DropMask,
+          "drop.mask.current");
+      llvm::Value *cleared = m_Builder.CreateAnd(
+          mask, m_Builder.getInt64(~(1ULL << index)), "drop.mask.cleared");
+      m_Builder.CreateStore(cleared, entry->DropMask);
+      return;
+    }
+  }
+}
+
+void CodeGen::restoreDropForMemberAssignment(const MemberExpr *member) {
+  for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (!entry->DropMask)
+        continue;
+      const int index =
+          getDirectMemberDropIndex(*entry, member);
+      if (index < 0 || index >= 64)
+        continue;
+      llvm::Value *mask = m_Builder.CreateLoad(
+          llvm::Type::getInt64Ty(m_Context), entry->DropMask,
+          "drop.mask.current");
+      llvm::Value *restored = m_Builder.CreateOr(
+          mask, m_Builder.getInt64(1ULL << index), "drop.mask.restored");
+      m_Builder.CreateStore(restored, entry->DropMask);
+      return;
     }
   }
 }
@@ -507,7 +571,10 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
         }
       } else if (it->HasDrop && it->Alloca) {
         std::string cleanName = it->SoulName;
-        emitDropCascade(it->Alloca, cleanName);
+        if (it->DropMask)
+          emitDropCascadeWithMask(it->Alloca, cleanName, it->DropMask);
+        else
+          emitDropCascade(it->Alloca, cleanName);
       }
 
       if (dropFlagContBB) {

@@ -1,7 +1,7 @@
 # RFC: Partial `cede` Lifecycle
 
-**Status:** Draft; required before partial `cede` becomes a general language
-guarantee.
+**Status:** Initial direct-field slice implemented; required work remains
+before partial `cede` becomes a general language guarantee.
 
 **Depends on:** `PERM-STATIC-01`, `OWN-FLOW-01`, and `OWN-FLOW-02`.
 
@@ -24,11 +24,16 @@ The compiler already has two useful but separate mechanisms:
   joins;
 - CodeGen `DropFlag` prevents double-dropping a complete local binding.
 
-Today a partial `cede` is permitted by library code, but it does not install a
-general field-level drop obligation.  Several container implementations remain
-safe only because their own code restores an invariant before custom `drop`
-runs (for example, a Vec removes an element from its logical length).  This is
-useful existing behaviour, not a sufficient general language model.
+The first slice now installs a runtime `i64` drop mask for a local,
+compiler-managed record with at most 64 direct fields.  A direct field `cede`
+clears its bit; reassigning the field restores it; scope unwinding drops only
+the live fields.  Static `InitMask` uses the same numbering, so the transferred
+field is rejected on later read while a live sibling remains usable.
+
+Several container implementations still use partial transfers under their own
+representation invariant (for example, a Vec removes an element from its
+logical length before custom `drop` runs).  That is useful existing behaviour,
+not a sufficient general language model.
 
 ## 3. Proposed model
 
@@ -63,10 +68,10 @@ partial cede         = exact-path invalidation + live-mask transition
 
 ## 4. Deliberate initial limit
 
-The first implementation must support only direct named fields of
-compiler-managed, non-custom-drop record shapes.  It must reject or retain the
-current library-invariant treatment for the following until each has its own
-proof:
+The initial implementation supports only direct named fields of local,
+compiler-managed, non-custom-drop record shapes.  It rejects a direct field
+transfer from a local aggregate with an explicit `drop`; it retains the current
+library-invariant treatment for the following until each has its own proof:
 
 - dynamic array indexes;
 - spreads;
@@ -79,18 +84,19 @@ double-drop a custom container field or silently leak its remaining fields.
 
 ## 5. Required implementation slices
 
-1. **Sema:** introduce an exact field-clearing operation on `InitMask`; reject
-   use-after-partial-cede and require reinitialization before whole use.
-2. **CodeGen:** add a per-local `i64` drop mask for eligible aggregates, clear
-   it on direct partial `cede`, and dispatch field drops conditionally at scope
-   exit.
+1. **Sema (implemented):** exact direct-field `InitMask` clearing rejects
+   use-after-partial-cede and permits a reinitialization to restore the field.
+2. **CodeGen (implemented):** a per-local `i64` drop mask for eligible
+   aggregates clears on direct partial `cede`, restores on direct assignment,
+   and dispatches field drops conditionally at scope exit.
 3. **Control flow:** preserve the mask through `if`, `guard`, `match`, loops,
    return unwinding, and error propagation.
 4. **Eligibility:** diagnose custom-drop, index, spread, enum, and async
    cases rather than assuming the generic record algorithm applies.
-5. **Evidence:** add positive reinitialization, negative use-after-move,
-   branch-join, exactly-once drop, source-less replay, and async-rejection
-   cases before widening eligibility.
+5. **Evidence:** positive exactly-once cleanup, reinitialization, and
+   branch-join coverage plus negative use-after-move and explicit-custom-drop
+   rejection are in the conformance suite. Add source-less replay and
+   async-rejection cases before widening eligibility.
 
 ## 6. Exit criterion
 

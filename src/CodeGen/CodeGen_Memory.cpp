@@ -408,6 +408,58 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
   }
 }
 
+void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
+                                      const std::string &typeName,
+                                      llvm::Value *dropMaskAddr) {
+  if (!ptrAddr || !dropMaskAddr || !m_Shapes.count(typeName)) {
+    emitDropCascade(ptrAddr, typeName);
+    return;
+  }
+
+  const ShapeDecl *shape = m_Shapes[typeName];
+  if ((shape->Kind != ShapeKind::Struct && shape->Kind != ShapeKind::Tuple) ||
+      shape->HasExplicitDrop || shape->Members.size() > 64) {
+    emitDropCascade(ptrAddr, typeName);
+    return;
+  }
+  llvm::StructType *structTy = m_StructTypes[typeName];
+  if (!structTy)
+    return;
+
+  for (size_t i = 0; i < shape->Members.size(); ++i) {
+    std::string rawType = shape->Members[i].Type;
+    while (!rawType.empty() && rawType.front() == '(' && rawType.back() == ')')
+      rawType = rawType.substr(1, rawType.size() - 2);
+    if (rawType.empty() || rawType.front() == '*' || rawType.front() == '^' ||
+        rawType.front() == '~' || rawType.front() == '&' ||
+        rawType.front() == '#')
+      continue;
+    const std::string memberType = Type::stripMorphology(rawType);
+    if (!m_Shapes.count(memberType))
+      continue;
+
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *dropField =
+        llvm::BasicBlock::Create(m_Context, "drop.field.live", function);
+    llvm::BasicBlock *nextField =
+        llvm::BasicBlock::Create(m_Context, "drop.field.done", function);
+    llvm::Value *mask = m_Builder.CreateLoad(
+        llvm::Type::getInt64Ty(m_Context), dropMaskAddr, "drop.mask");
+    llvm::Value *isLive = m_Builder.CreateICmpNE(
+        m_Builder.CreateAnd(mask, m_Builder.getInt64(1ULL << i)),
+        m_Builder.getInt64(0), "drop.field.is_live");
+    m_Builder.CreateCondBr(isLive, dropField, nextField);
+
+    m_Builder.SetInsertPoint(dropField);
+    llvm::Value *fieldAddr = m_Builder.CreateStructGEP(
+        structTy, ptrAddr, static_cast<unsigned>(i), "drop.field.gep");
+    emitDropCascade(fieldAddr, memberType);
+    if (!m_Builder.GetInsertBlock()->getTerminator())
+      m_Builder.CreateBr(nextField);
+    m_Builder.SetInsertPoint(nextField);
+  }
+}
+
 llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
   llvm::Function *freeHook = m_Module->getFunction("free");
 

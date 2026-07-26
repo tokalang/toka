@@ -1496,6 +1496,9 @@ public:
 
   // [NEW] Cache for the mangled name of the destructor (drop method)
   std::string MangledDestructorName;
+  // Distinguishes a source-level `@encap drop` from the compiler-generated
+  // structural destructor used for resource-containing records.
+  bool HasExplicitDrop = false;
 };
 
 // Deprecated: Use ShapeDecl

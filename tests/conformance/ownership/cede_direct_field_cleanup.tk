@@ -1,0 +1,30 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token (
+    id: i32
+)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+shape Pair (
+    left: Token,
+    right: Token
+)
+
+fn main() -> i32 {
+    {
+        auto pair = Pair(left = Token(id = 1), right = Token(id = 2))
+        auto taken = cede pair.left
+        assert(pair.right.id == 2, "remaining direct field stays available")
+        assert(taken.id == 1, "ceded field stays owned by its new binding")
+    }
+    assert(g_drop_count == 2, "partial cede drops each field exactly once")
+    return 0
+}
