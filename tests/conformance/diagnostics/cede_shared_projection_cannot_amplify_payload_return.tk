@@ -1,0 +1,10 @@
+shape Cell(value: i32)
+shape Holder(~cell: Cell)
+
+fn expose(holder#: Holder) -> cede ~Cell# {
+    return cede holder.~cell
+}
+
+fn main() -> i32 {
+    return 0
+}

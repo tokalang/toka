@@ -1,0 +1,11 @@
+shape Cell(value: i32)
+
+shape ReadonlyHolder(~cell: Cell)
+shape WritableHolder(~cell#: Cell)
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto readonly = ReadonlyHolder(~cell = ~source)
+    auto writable = WritableHolder(~cell = cede readonly.~cell)
+    return 0
+}

@@ -327,6 +327,24 @@
       "description": "Ceding a shared handle transfers no additional payload capability"
     },
     {
+      "id": "diag_cede_shared_projection_cannot_amplify_payload_field_01",
+      "path": "diagnostics/cede_shared_projection_cannot_amplify_payload_field.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A cede shared projection cannot initialize a payload-writable aggregate field"
+    },
+    {
+      "id": "diag_cede_shared_projection_cannot_amplify_payload_return_01",
+      "path": "diagnostics/cede_shared_projection_cannot_amplify_payload_return.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "A cede shared projection cannot satisfy a payload-writable return signature"
+    },
+    {
       "id": "diag_shared_view_cannot_supply_payload_call_01",
       "path": "diagnostics/shared_view_cannot_supply_payload_call.tk",
       "type": "compile-fail",
