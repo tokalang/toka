@@ -435,6 +435,15 @@
       "description": "A readonly handle field cannot satisfy a mutable method receiver"
     },
     {
+      "id": "diag_cede_shared_projection_cannot_supply_mutable_receiver_01",
+      "path": "diagnostics/cede_shared_projection_cannot_supply_mutable_receiver.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A consuming receiver cannot promote a readonly shared projection"
+    },
+    {
       "id": "diag_member_field_cannot_supply_payload_callable_argument_01",
       "path": "diagnostics/member_field_cannot_supply_payload_callable_argument.tk",
       "type": "compile-fail",
@@ -794,6 +803,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A cede shared parameter preserves payload authority supplied by its direct source"
+    },
+    {
+      "id": "ownership_cede_shared_receiver_preserves_payload_capability_01",
+      "path": "ownership/cede_shared_receiver_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A consuming shared receiver preserves declared Payload capability"
     },
     {
       "id": "ownership_cede_unique_creates_independent_owner_01",
