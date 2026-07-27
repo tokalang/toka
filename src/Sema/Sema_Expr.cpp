@@ -3367,9 +3367,66 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   error(Met->Object.get(),
                         DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
                 }
-                std::string objPath = getPathString(Met->Object.get());
-                if (!objPath.empty()) {
-                    CurrentScope->markMoved(objPath, Met->Loc);
+                Expr *receiver = Met->Object.get();
+                while (auto *postfix =
+                           dynamic_cast<PostfixExpr *>(receiver)) {
+                  receiver = postfix->LHS.get();
+                }
+
+                if (auto *member = dynamic_cast<MemberExpr *>(receiver)) {
+                  // A consuming receiver is an implicit whole transfer of
+                  // that receiver.  For an eligible direct field, use the
+                  // same bounded partial-cede liveness rule as `cede x.f`.
+                  // Anything else remains outside this local record model.
+                  auto *root =
+                      dynamic_cast<VariableExpr *>(member->Object.get());
+                  SymbolInfo *rootInfo = nullptr;
+                  std::string actualRootName;
+                  bool supportedDirectField = false;
+                  bool reportedLifecycleError = false;
+                  if (root && CurrentScope->findVariableWithDeref(
+                                  root->Name, rootInfo, actualRootName) &&
+                      rootInfo && rootInfo->IsDeclaredVariable &&
+                      !rootInfo->IsFunctionParameter && rootInfo->TypeObj &&
+                      rootInfo->TypeObj->isShape()) {
+                    auto shapeType = std::dynamic_pointer_cast<ShapeType>(
+                        rootInfo->TypeObj);
+                    ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+                    if (shape && shape->HasExplicitDrop) {
+                      error(Met, DiagID::ERR_MOVE_MEMBER_DROP, member->Member,
+                            shape->Name);
+                      reportedLifecycleError = true;
+                    } else if (shape &&
+                               (shape->Kind == ShapeKind::Struct ||
+                                shape->Kind == ShapeKind::Tuple)) {
+                      for (size_t i = 0; i < shape->Members.size(); ++i) {
+                        if (stripMemberAccessMarkers(shape->Members[i].Name) ==
+                            stripMemberAccessMarkers(member->Member)) {
+                          if (i < 64) {
+                            rootInfo->InitMask &= ~(1ULL << i);
+                            supportedDirectField = true;
+                          }
+                          break;
+                        }
+                      }
+                    }
+                  }
+                  if (!supportedDirectField && !reportedLifecycleError) {
+                    error(Met, DiagID::ERR_SEMA_CEDE_RECEIVER_PROJECTION_UNSUPPORTED,
+                          member->Member);
+                  }
+                } else if (auto *var =
+                               dynamic_cast<VariableExpr *>(receiver)) {
+                  CurrentScope->markMoved(var->Name, Met->Loc);
+                } else if (auto *index =
+                               dynamic_cast<ArrayIndexExpr *>(receiver)) {
+                  // Explicit `cede values[0]` has a separately qualified
+                  // fixed-index transfer path.  Do not silently treat a
+                  // consuming method receiver as equivalent until its call
+                  // ABI, source-slot release, and drop-mask proof are shared.
+                  error(Met,
+                        DiagID::ERR_SEMA_CEDE_RECEIVER_PROJECTION_UNSUPPORTED,
+                        index->toString());
                 }
             }
         }

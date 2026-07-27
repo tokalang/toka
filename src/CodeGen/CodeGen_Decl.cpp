@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/CodeGen.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/MemberAccess.h"
 #include "toka/Type.h"
 #include "toka/Parser.h"
 #include "toka/PathUtils.h"
@@ -2838,6 +2839,23 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   llvm::CallInst *ci = m_Builder.CreateCall(callee, args);
 
   if (!isStatic && fd && !fd->Args.empty() && fd->Args[0].IsCeded) {
+    const bool selfReceivesPayloadByValue =
+        !fd->Args[0].IsUnique &&
+        !(fd->Args[0].ResolvedType &&
+          fd->Args[0].ResolvedType->isUniquePtr());
+    auto releaseTransferredUniqueHeapSlot = [&]() {
+      llvm::Function *freeFn = m_Module->getFunction("free");
+      if (!freeFn) {
+        freeFn = llvm::Function::Create(
+            llvm::FunctionType::get(m_Builder.getVoidTy(),
+                                    {m_Builder.getPtrTy()}, false),
+            llvm::Function::ExternalLinkage, "free", m_Module.get());
+      }
+      m_Builder.CreateCall(
+          freeFn,
+          m_Builder.CreateBitCast(finalObjVal, m_Builder.getPtrTy()));
+    };
+
     const Expr *movedObject = expr->Object.get();
     while (auto *postfix = dynamic_cast<const PostfixExpr *>(movedObject))
       movedObject = postfix->LHS.get();
@@ -2857,22 +2875,46 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
           (var->ResolvedType && var->ResolvedType->isUniquePtr()) ||
           (receiver != m_Symbols.end() &&
            receiver->second.morphology == Morphology::Unique);
-      const bool selfReceivesPayloadByValue =
-          !fd->Args[0].IsUnique &&
-          !(fd->Args[0].ResolvedType &&
-            fd->Args[0].ResolvedType->isUniquePtr());
       if (receiverIsUnique && selfReceivesPayloadByValue &&
           finalObjVal->getType()->isPointerTy()) {
-        llvm::Function *freeFn = m_Module->getFunction("free");
-        if (!freeFn) {
-          freeFn = llvm::Function::Create(
-              llvm::FunctionType::get(m_Builder.getVoidTy(),
-                                      {m_Builder.getPtrTy()}, false),
-              llvm::Function::ExternalLinkage, "free", m_Module.get());
+        releaseTransferredUniqueHeapSlot();
+      }
+    } else if (auto *member = dynamic_cast<const MemberExpr *>(movedObject)) {
+      bool memberIsUnique = member->ResolvedType &&
+                            member->ResolvedType->isUniquePtr();
+      if (!memberIsUnique && member->Object->ResolvedType) {
+        const std::string ownerSoul =
+            member->Object->ResolvedType->getSoulName();
+        auto shape = m_Shapes.find(ownerSoul);
+        if (shape != m_Shapes.end()) {
+          for (const auto &field : shape->second->Members) {
+            if (stripMemberAccessMarkers(field.Name) ==
+                stripMemberAccessMarkers(member->Member)) {
+              memberIsUnique = field.IsUnique;
+              break;
+            }
+          }
         }
-        m_Builder.CreateCall(
-            freeFn, m_Builder.CreateBitCast(finalObjVal,
-                                             m_Builder.getPtrTy()));
+      }
+
+      bool hasTrackedDirectField = false;
+      for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+        for (const auto &entry : m_ScopeStack[i]) {
+          if (entry.DropMask && getDirectMemberDropIndex(entry, member) >= 0) {
+            hasTrackedDirectField = true;
+            break;
+          }
+        }
+        if (hasTrackedDirectField)
+          break;
+      }
+
+      if (hasTrackedDirectField) {
+        suppressDropForPartialMove(member);
+        if (memberIsUnique && selfReceivesPayloadByValue &&
+            finalObjVal->getType()->isPointerTy()) {
+          releaseTransferredUniqueHeapSlot();
+        }
       }
     }
   }

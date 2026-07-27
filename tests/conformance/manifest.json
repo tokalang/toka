@@ -163,6 +163,14 @@
       "description": "Dropping an unstarted consuming unique-receiver task skips its body and destroys the transferred payload exactly once"
     },
     {
+      "id": "async_cede_unique_field_receiver_lifecycle_01",
+      "path": "async/async_cede_unique_field_receiver_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Started and cold consuming unique field-receiver tasks release the source field and destroy the transferred payload exactly once"
+    },
+    {
       "id": "std_generic_encap_guard_lifetime_01",
       "path": "std/generic_encap_guard_lifetime.tk",
       "type": "run",
@@ -843,6 +851,50 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A consuming unique receiver receives an independent Payload root"
+    },
+    {
+      "id": "ownership_cede_unique_field_receiver_lifecycle_01",
+      "path": "ownership/cede_unique_field_receiver_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A consuming local field receiver clears its owner field and drops its payload exactly once; unique fields also release the old heap slot"
+    },
+    {
+      "id": "diag_cede_unique_field_receiver_invalidates_field_01",
+      "path": "diagnostics/cede_unique_field_receiver_invalidates_field.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0410",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "A consuming unique field receiver leaves that exact field unset"
+    },
+    {
+      "id": "diag_cede_unique_field_receiver_custom_drop_rejected_01",
+      "path": "diagnostics/cede_unique_field_receiver_custom_drop_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0439",
+      "expected_span_line": 21,
+      "timeout_seconds": 10,
+      "description": "A consuming field receiver is rejected when custom aggregate drop owns the lifecycle invariant"
+    },
+    {
+      "id": "diag_cede_field_receiver_nonlocal_rejected_01",
+      "path": "diagnostics/cede_field_receiver_nonlocal_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04601",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "A consuming member receiver is rejected outside the bounded local direct-field lifecycle model"
+    },
+    {
+      "id": "diag_cede_index_receiver_rejected_01",
+      "path": "diagnostics/cede_index_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04601",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A consuming indexed receiver is rejected until it shares the qualified fixed-index transfer lifecycle"
     },
     {
       "id": "ownership_cede_unique_creates_independent_owner_01",

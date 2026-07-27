@@ -1,0 +1,17 @@
+shape Token(value: i32)
+
+impl Token {
+    fn consume(cede self#) -> i32 {
+        auto owned = cede self
+        return owned.value
+    }
+}
+
+fn consume_from_index() -> i32 {
+    auto values: [Token; 1] = [Token(value = 7); 1]
+    return values[0]#.consume()
+}
+
+fn main() -> i32 {
+    return 0
+}

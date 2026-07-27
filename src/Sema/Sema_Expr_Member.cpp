@@ -145,7 +145,8 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
                                       getLoc(Memb));
           if (SD) {
             for (int i = 0; i < (int)SD->Members.size(); ++i) {
-              if (SD->Members[i].Name == Memb->Member) {
+              if (stripMemberAccessMarkers(SD->Members[i].Name) ==
+                  stripMemberAccessMarkers(Memb->Member)) {
                 if (i < 64 && !(maskToCheck & (1ULL << i))) {
                   DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_USE_UNSET,
                                            objVar->Name + "." + Memb->Member);

@@ -1,0 +1,16 @@
+shape Token(value: i32)
+
+impl Token {
+    fn consume(cede self#) -> i32 {
+        auto owned = cede self
+        return owned.value
+    }
+}
+
+shape Holder(^item#: Token)
+
+fn main() -> i32 {
+    auto holder = Holder(^item = new Token(value = 7))
+    auto consumed = holder.item#.consume()
+    return holder.item.value
+}
