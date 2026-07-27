@@ -51,6 +51,41 @@ struct SemanticRange {
   SemanticPosition End;
 };
 
+// These facts are declaration-backed capabilities, not inferred intentions at
+// a particular call site.  They let an AI or editor decide how to construct a
+// legal call without scraping a rendered signature.
+struct SemanticParameterContract {
+  std::string Name;
+  std::string Type;
+  std::string Morphology;
+  std::string Flow;
+  bool PayloadWritable = false;
+  bool PayloadBlocked = false;
+  bool HandleRebindable = false;
+  bool HandleBlocked = false;
+  bool HandleNullable = false;
+  bool PayloadNullable = false;
+};
+
+struct SemanticCallableContract {
+  std::string Effect;
+  bool Variadic = false;
+  std::vector<SemanticParameterContract> Parameters;
+  std::string ReturnType;
+  std::vector<std::string> ReturnDependencies;
+};
+
+struct SemanticFieldContract {
+  std::string Morphology;
+  std::string Flow;
+  bool PayloadWritable = false;
+  bool PayloadBlocked = false;
+  bool HandleRebindable = false;
+  bool HandleBlocked = false;
+  bool HandleNullable = false;
+  bool PayloadNullable = false;
+};
+
 struct SemanticSymbol {
   std::string ID;
   std::string Name;
@@ -62,6 +97,8 @@ struct SemanticSymbol {
   std::string Documentation;
   bool IsPublic = false;
   SemanticRange Declaration;
+  std::optional<SemanticCallableContract> CallableContract;
+  std::optional<SemanticFieldContract> FieldContract;
 };
 
 struct SemanticOccurrence {

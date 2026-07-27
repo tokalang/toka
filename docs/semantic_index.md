@@ -41,6 +41,47 @@ unchanged declaration location, kind, name, and container.
 - Declarations, fields, variants, traits, aliases, globals, parameters,
   locals, reads, writes, calls, and type uses are represented.
 
+## Declaration contracts
+
+Function, method, extern-function, and field declaration symbols additionally
+carry an optional `contract` object. This is the compiler's normalized record
+of the declaration's ownership and permission surface; it is not a statement
+that an arbitrary use site has gained that permission.
+
+Callable contracts have this shape:
+
+```json
+{
+  "kind": "callable",
+  "effect": "sync | async | wait",
+  "variadic": false,
+  "parameters": [{
+    "name": "p",
+    "type": "^Cell#",
+    "morphology": "value | unique | shared | reference | raw",
+    "flow": "value | unique | shared | borrow | unsafe-raw | cede",
+    "payloadWritable": true,
+    "payloadBlocked": false,
+    "handleRebindable": false,
+    "handleBlocked": false,
+    "handleNullable": false,
+    "payloadNullable": false
+  }],
+  "return": { "type": "i32", "dependencies": [] }
+}
+```
+
+`return.dependencies` contains resolved borrow-dependency names when a Toka
+function declares them. Extern declarations have the same shape but no
+source-level dependency list. A field uses the same morphology, flow, and
+permission flags with `"kind": "field"`.
+
+Tools must treat a contract as a declaration capability: a use-site marker
+expresses intent and is still constrained by the declared capability and PAL.
+This distinction prevents an AI tool from suggesting a `#` marker as though it
+could create payload or handle authority. The field is optional so consumers
+must tolerate its absence for symbol kinds without a declaration contract.
+
 The index is an internal SDK protocol for Toka 1.x. Consumers must check its
 schema and version rather than assuming forward-compatible fields.
 
@@ -49,3 +90,6 @@ schema and version rather than assuming forward-compatible fields.
 `python3 tools/scripts/test_semantic_index.py` checks deterministic output,
 cross-module definition and references, shadowing, safe rename, typed
 completion, and document symbols against a checked-in workspace.
+`python3 tools/scripts/test_ai_tooling.py` additionally checks deterministic
+callable and field contract serialization, including `cede`, H/P permissions,
+and async effects.

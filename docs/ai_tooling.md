@@ -39,6 +39,21 @@ For bulk navigation and refactoring queries, use the semantic-index interface
 documented in [semantic_index.md](semantic_index.md). For a persistent editor
 session, use [tokalsp](lsp.md).
 
+## Public API contracts
+
+`tokac --semantic-index=json` emits declaration contracts for callable and
+field symbols. A contract records the declared morphology, transfer mode
+(`cede`, borrow, shared, and so on), H/P permissions, nullability, async
+effect, and return borrow dependencies. It is the machine-readable source of
+truth for API intent.
+
+An AI edit workflow must distinguish three layers: declaration capability,
+use-site intent, and PAL's current alias/interference decision. In particular,
+a `#` written at a call site is not authority to upgrade a parameter, field,
+or receiver beyond its declaration contract. Read the contract before proposing
+an ownership or permission-changing edit, then verify the edit with `toka
+check --json`.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

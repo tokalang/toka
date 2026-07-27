@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <set>
 #include <sstream>
+#include <type_traits>
 #include <unordered_map>
 
 namespace toka {
@@ -71,8 +72,157 @@ llvm::json::Object locationJSON(const SemanticRange &range) {
                                    {"end", positionJSON(range.End)}}}};
 }
 
+const char *effectName(EffectKind effect) {
+  switch (effect) {
+  case EffectKind::None:
+    return "sync";
+  case EffectKind::Async:
+    return "async";
+  case EffectKind::Wait:
+    return "wait";
+  }
+  return "sync";
+}
+
+template <typename Arg>
+std::string morphologyName(const Arg &arg) {
+  if (arg.IsRawPointer)
+    return "raw";
+  if (arg.IsUnique)
+    return "unique";
+  if (arg.IsShared)
+    return "shared";
+  if (arg.IsReference)
+    return "reference";
+  return "value";
+}
+
+template <typename Arg>
+std::string flowName(const Arg &arg) {
+  if (arg.IsCeded)
+    return "cede";
+  if (arg.IsReference)
+    return "borrow";
+  if (arg.IsRawPointer)
+    return "unsafe-raw";
+  if (arg.IsShared)
+    return "shared";
+  if (arg.IsUnique)
+    return "unique";
+  return "value";
+}
+
+template <typename Arg>
+SemanticParameterContract parameterContract(const Arg &arg) {
+  SemanticParameterContract contract;
+  contract.Name = stripped(arg.Name);
+  contract.Type = typeName(arg.ResolvedType, arg.Type);
+  contract.Morphology = morphologyName(arg);
+  contract.Flow = flowName(arg);
+  contract.PayloadWritable = arg.IsValueMutable;
+  contract.PayloadBlocked = arg.IsValueBlocked;
+  contract.HandleRebindable = arg.IsRebindable;
+  contract.HandleBlocked = arg.IsRebindBlocked;
+  contract.HandleNullable = arg.IsPointerNullable;
+  contract.PayloadNullable = arg.IsValueNullable;
+  return contract;
+}
+
+template <typename Decl>
+SemanticCallableContract callableContract(const Decl &function) {
+  SemanticCallableContract contract;
+  contract.Effect = effectName(function.Effect);
+  contract.Variadic = function.IsVariadic;
+  if constexpr (std::is_same_v<Decl, FunctionDecl>)
+    contract.ReturnType = typeName(function.ResolvedReturnType,
+                                   function.ReturnType);
+  else
+    contract.ReturnType = function.ReturnType;
+  for (const auto &arg : function.Args)
+    contract.Parameters.push_back(parameterContract(arg));
+  if constexpr (std::is_same_v<Decl, FunctionDecl>)
+    contract.ReturnDependencies = function.LifeDependencies;
+  return contract;
+}
+
+SemanticFieldContract fieldContract(const ShapeMember &member) {
+  SemanticFieldContract contract;
+  if (member.IsRawPointer)
+    contract.Morphology = "raw";
+  else if (member.IsUnique)
+    contract.Morphology = "unique";
+  else if (member.IsShared)
+    contract.Morphology = "shared";
+  else if (member.IsReference)
+    contract.Morphology = "reference";
+  else
+    contract.Morphology = "value";
+  if (member.IsReference)
+    contract.Flow = "borrow";
+  else if (member.IsRawPointer)
+    contract.Flow = "unsafe-raw";
+  else if (member.IsShared)
+    contract.Flow = "shared";
+  else if (member.IsUnique)
+    contract.Flow = "unique";
+  else
+    contract.Flow = "value";
+  contract.PayloadWritable = member.IsValueMutable;
+  contract.PayloadBlocked = member.IsValueBlocked;
+  contract.HandleRebindable = member.IsRebindable;
+  contract.HandleBlocked = member.IsRebindBlocked;
+  contract.HandleNullable = member.IsPointerNullable;
+  contract.PayloadNullable = member.IsValueNullable;
+  return contract;
+}
+
+llvm::json::Object parameterContractJSON(
+    const SemanticParameterContract &contract) {
+  return llvm::json::Object{
+      {"name", contract.Name},
+      {"type", contract.Type},
+      {"morphology", contract.Morphology},
+      {"flow", contract.Flow},
+      {"payloadWritable", contract.PayloadWritable},
+      {"payloadBlocked", contract.PayloadBlocked},
+      {"handleRebindable", contract.HandleRebindable},
+      {"handleBlocked", contract.HandleBlocked},
+      {"handleNullable", contract.HandleNullable},
+      {"payloadNullable", contract.PayloadNullable}};
+}
+
+llvm::json::Object callableContractJSON(
+    const SemanticCallableContract &contract) {
+  llvm::json::Array parameters;
+  for (const auto &parameter : contract.Parameters)
+    parameters.emplace_back(parameterContractJSON(parameter));
+  llvm::json::Array dependencies;
+  for (const auto &dependency : contract.ReturnDependencies)
+    dependencies.emplace_back(dependency);
+  return llvm::json::Object{
+      {"kind", "callable"},
+      {"effect", contract.Effect},
+      {"variadic", contract.Variadic},
+      {"parameters", std::move(parameters)},
+      {"return", llvm::json::Object{{"type", contract.ReturnType},
+                                      {"dependencies", std::move(dependencies)}}}};
+}
+
+llvm::json::Object fieldContractJSON(const SemanticFieldContract &contract) {
+  return llvm::json::Object{
+      {"kind", "field"},
+      {"morphology", contract.Morphology},
+      {"flow", contract.Flow},
+      {"payloadWritable", contract.PayloadWritable},
+      {"payloadBlocked", contract.PayloadBlocked},
+      {"handleRebindable", contract.HandleRebindable},
+      {"handleBlocked", contract.HandleBlocked},
+      {"handleNullable", contract.HandleNullable},
+      {"payloadNullable", contract.PayloadNullable}};
+}
+
 llvm::json::Object symbolJSON(const SemanticSymbol &symbol) {
-  return llvm::json::Object{{"id", symbol.ID},
+  llvm::json::Object result{{"id", symbol.ID},
                             {"name", symbol.Name},
                             {"kind", toString(symbol.Kind)},
                             {"detail", symbol.Detail},
@@ -82,6 +232,11 @@ llvm::json::Object symbolJSON(const SemanticSymbol &symbol) {
                             {"public", symbol.IsPublic},
                             {"documentation", symbol.Documentation},
                             {"declaration", locationJSON(symbol.Declaration)}};
+  if (symbol.CallableContract)
+    result["contract"] = callableContractJSON(*symbol.CallableContract);
+  else if (symbol.FieldContract)
+    result["contract"] = fieldContractJSON(*symbol.FieldContract);
+  return result;
 }
 
 llvm::json::Object occurrenceJSON(const SemanticOccurrence &occurrence) {
@@ -241,7 +396,11 @@ private:
                         std::string name, SemanticSymbolKind kind,
                         std::string detail, std::string type,
                         std::string container, std::string scope,
-                        bool isPublic) {
+                        bool isPublic,
+                        std::optional<SemanticCallableContract> callable =
+                            std::nullopt,
+                        std::optional<SemanticFieldContract> field =
+                            std::nullopt) {
     name = stripped(std::move(name));
     SemanticRange declaration = rangeFor(loc, name);
     std::string key = declaration.File + ":" +
@@ -260,6 +419,8 @@ private:
     symbol.Documentation = documentation(loc);
     symbol.IsPublic = isPublic;
     symbol.Declaration = declaration;
+    symbol.CallableContract = std::move(callable);
+    symbol.FieldContract = std::move(field);
     Result.Symbols[id] = std::move(symbol);
     if (node)
       NodeSymbols[node] = id;
@@ -354,7 +515,7 @@ private:
         addSymbol(function, function->Loc, function->Name, kind,
                   functionDetail(*function),
                   typeName(function->ResolvedReturnType, function->ReturnType),
-                  container, container, isPublic);
+                  container, container, isPublic, callableContract(*function));
     FunctionSymbols[function] = id;
     addOwn(module, function->Name, id);
   }
@@ -384,7 +545,8 @@ private:
           std::string memberID = addSymbol(
               nullptr, member.Loc, member.Name, memberKind,
               member.Name + ": " + member.Type,
-              typeName(member.ResolvedType, member.Type), id, id, shape->IsPub);
+              typeName(member.ResolvedType, member.Type), id, id, shape->IsPub,
+              std::nullopt, fieldContract(member));
           FieldSymbols[shape->Name][member.Name] = memberID;
         }
       }
@@ -401,7 +563,8 @@ private:
         std::string id = addSymbol(
             external.get(), external->Loc, external->Name,
             SemanticSymbolKind::ExternFunction, externDetail(*external),
-            external->ReturnType, "", moduleScope, false);
+            external->ReturnType, "", moduleScope, false,
+            callableContract(*external));
         ExternSymbols[external.get()] = id;
         addOwn(module, external->Name, id);
       }

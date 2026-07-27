@@ -118,10 +118,37 @@ def main():
             isinstance(result["truncated"], bool),
             "bounded semantic context is incomplete")
 
+    contract_source = root / "tests/conformance/async/async_cede_unique_parameter_independent_payload_root.tk"
+    first_index = run([tokac, "--semantic-index=json", contract_source]).stdout
+    second_index = run([tokac, "--semantic-index=json", contract_source]).stdout
+    require(first_index == second_index,
+            "semantic index API contracts are not deterministic")
+    index = json.loads(first_index)
+    mutate = next(symbol for symbol in index["symbols"]
+                  if symbol["name"] == "mutate" and symbol["kind"] == "function")
+    callable_contract = mutate["contract"]
+    parameter = callable_contract["parameters"][0]
+    require(callable_contract["kind"] == "callable" and
+            callable_contract["effect"] == "async" and
+            callable_contract["return"] == {"dependencies": [], "type": "i32"} and
+            parameter["name"] == "p" and parameter["type"] == "^Cell#" and
+            parameter["morphology"] == "unique" and parameter["flow"] == "cede" and
+            parameter["payloadWritable"] and not parameter["handleRebindable"],
+            "callable ownership and permission contract is incomplete")
+    value = next(symbol for symbol in index["symbols"]
+                 if symbol["name"] == "value" and symbol["kind"] == "field")
+    field_contract = value["contract"]
+    require(field_contract["kind"] == "field" and
+            field_contract["morphology"] == "value" and
+            field_contract["flow"] == "value" and
+            not field_contract["payloadWritable"],
+            "field ownership and permission contract is incomplete")
+
     checks = [
         "diagnostic-schema", "multi-span", "machine-fix", "fix-application",
         "compiler-explain", "unknown-code", "toka-explain", "toka-check",
         "semantic-context", "context-determinism", "context-bound",
+        "api-contracts", "contract-determinism",
     ]
     print(json.dumps({
         "checks": checks,
