@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0440
+import ./lib::{Cell}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    auto &borrow = &source
+    auto ^target = ^source
+    return 0
+}
