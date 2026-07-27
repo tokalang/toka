@@ -1,0 +1,9 @@
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto ^#destination = new Cell(value = 1)
+    auto ^source = new Cell(value = 2)
+    ^destination = cede ^source
+    destination.value = 3
+    return 0
+}

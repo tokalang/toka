@@ -1,0 +1,10 @@
+import ./lib::{Cell}
+
+fn main() -> i32 {
+    auto ^#destination = new Cell(value = 1)
+    auto ^source = new Cell(value = 2)
+    ^destination = cede ^source
+    destination.value = 3
+    return 0
+}
+// EXPECT_ERROR: E0443

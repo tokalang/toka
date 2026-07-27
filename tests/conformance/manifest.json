@@ -699,6 +699,15 @@
       "description": "An enum guard payload reference protects its enclosing source from cede"
     },
     {
+      "id": "diag_cede_existing_handle_only_lhs_cannot_gain_payload_write_01",
+      "path": "diagnostics/cede_existing_handle_only_lhs_cannot_gain_payload_write.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "Cede into an existing handle-rebindable binding does not create payload write authority"
+    },
+    {
       "id": "diag_destructure_reference_field_cede_conflict_01",
       "path": "diagnostics/destructure_reference_field_cede_conflict.tk",
       "type": "compile-fail",

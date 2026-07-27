@@ -33,11 +33,13 @@ fixed-array/protocol reference iteration now preserve their direct source
 storage and register PAL borrows. Enum payloads conservatively register their
 enclosing enum target because no separately nameable payload path exists.
 `nested_pattern_reference_*`, `enum*_payload_reference_cede_conflict`,
-`destructure_reference_*`, `for_reference_fixed_array_*`, and
+`destructure_reference_*`, `for_reference_fixed_array_*`,
+`cede_existing_handle_only_lhs_cannot_gain_payload_write`, and
 `g08_iterator_pal_protocol.tk` provide positive/disjoint/conflicting evidence.
 GAP-LANG-04 remains **in progress**: this closes syntactic direct-source
-routing only; it does not decide broader independent-`cede` referent ceilings
-or add provenance traversal.
+routing and the existing-LHS no-redeclaration boundary only; it does not
+decide broader independent-`cede` referent ceilings or add provenance
+traversal.
 
 ### B. Compiler & Lowering
 
