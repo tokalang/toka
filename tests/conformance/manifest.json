@@ -861,6 +861,14 @@
       "description": "An ordinary writable shared receiver preserves declared Payload capability"
     },
     {
+      "id": "ownership_shared_field_new_initialization_lifecycle_01",
+      "path": "ownership/shared_field_new_initialization_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A fresh allocation directly initializes a shared field with one owned reference-count handle"
+    },
+    {
       "id": "ownership_cede_unique_receiver_creates_independent_payload_root_01",
       "path": "ownership/cede_unique_receiver_creates_independent_payload_root.tk",
       "type": "run",

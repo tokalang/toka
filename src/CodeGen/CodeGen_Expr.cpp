@@ -53,6 +53,20 @@ static bool assignmentLowersThroughEnvelopeCarrier(const Expr *expr) {
          (expr && expr->ResolvedType && expr->ResolvedType->isReference());
 }
 
+static bool isFreshAllocationExpr(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+    } else {
+      break;
+    }
+  }
+  return dynamic_cast<const NewExpr *>(expr) ||
+         dynamic_cast<const AllocExpr *>(expr);
+}
+
 void CodeGen::emitAcquire(llvm::Value *sharedHandle, std::shared_ptr<Type> pointeeType) {
   if (!sharedHandle || !sharedHandle->getType()->isStructTy())
     return;
@@ -1702,6 +1716,18 @@ PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
   }
 
   llvm::Type *srcType = val->getType();
+
+  // Sema represents `new T(...)` flowing into `~T` as an implicit cast.
+  // A pointer-sized temporary cannot be reinterpreted as a shared handle;
+  // create the first owning { data_ptr, ref_count_ptr } handle instead.
+  if (cast->ResolvedType && cast->ResolvedType->isSharedPtr() &&
+      isFreshAllocationExpr(cast->Expression.get()) &&
+      srcType->isPointerTy() && targetType->isStructTy()) {
+    TokaSymbol sharedValue;
+    sharedValue.morphology = Morphology::Shared;
+    return PhysEntity(emitPromotion(val, targetType, sharedValue),
+                      cast->TargetType, targetType, false);
+  }
 
   // [Safety Pillar 2] Fat Pointer Downgrade. Extract raw address from Struct.
   if (srcType->isStructTy() && targetType->isPointerTy()) {
@@ -6304,7 +6330,10 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
           m_Builder.CreateStructGEP(st, alloca, idx, "field_" + f.first);
     }
 
-    if (f.second && f.second->ResolvedType &&
+    const bool ownsFreshSharedHandle = f.second && f.second->ResolvedType &&
+                                       f.second->ResolvedType->isSharedPtr() &&
+                                       isFreshAllocationExpr(f.second.get());
+    if (!ownsFreshSharedHandle && f.second && f.second->ResolvedType &&
         f.second->ResolvedType->isSharedPtr()) {
       emitAcquire(fieldVal, f.second->ResolvedType->getPointeeType());
     }
