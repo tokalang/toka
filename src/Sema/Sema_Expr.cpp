@@ -135,17 +135,18 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
       bool rawPayloadCapability =
           m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
           !Info->IsHandleRebindable();
+      const bool declaredPayloadWritable = Info->IsSoulMutable();
       bool valueBindingCanRebindMemberHandle =
           Info->TypeObj && !Info->TypeObj->isPointer() &&
           !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference() &&
-          Info->Permission.SoulWritable;
+          declaredPayloadWritable;
       return applyPathFlowCeiling(
-          {(Info->Permission.SoulWritable || isPlainOwnedValue ||
+          {(declaredPayloadWritable || isPlainOwnedValue ||
             rawPayloadCapability) &&
                Info->PayloadFlowWritable,
            Info->Permission.IdentityRebindable ||
                valueBindingCanRebindMemberHandle,
-           Info->HasPayloadFlowCeiling});
+           Info->HasPayloadFlowCeiling && !Info->PayloadFlowWritable});
     }
     return {};
   }
