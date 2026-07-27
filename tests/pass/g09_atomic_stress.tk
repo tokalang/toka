@@ -14,9 +14,9 @@ impl Counter@encap {
 pub fn main() -> i32 {
     println("Testing atomic reference counting for ~Mutex...")
     {
-        auto xxx = Mutex<Counter>::new(Counter(val=0))
+        auto xxx = Mutex<Counter>::new(cede Counter(val=0))
     }
-    auto ~m = Mutex<Counter>::make(Counter(val=0))
+    auto ~m = Mutex<Counter>::make(cede Counter(val=0))
     
     auto ~m1 = ~m
     auto ~m2 = ~m

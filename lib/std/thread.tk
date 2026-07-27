@@ -17,6 +17,9 @@ pub fn yield_now() {
     }
 }
 
+/// A spawned thread consumes its callback and invokes it exactly once.  The
+/// callback may require mutable access to its captured environment, but the
+/// binding that transfers it does not itself require payload write authority.
 pub alias ThreadClosure<'T> = fn#() -> cede 'T
 
 shape ClosureBox<'T>(closure: fn#() -> cede 'T, self_ptr: Addr)
@@ -27,7 +30,7 @@ shape TrampBox(f: fn() -> Addr)
 /// Note: To capture variables from the environment safely across threads,
 /// use the `[cede ...]` capture list in the closure to consume variables
 /// by value (move semantics).
-pub fn thread_spawn<'T: @Send>(cede f#: fn#() -> cede 'T) -> JoinHandle<'T> {
+pub fn thread_spawn<'T: @Send>(cede f: cede fn#() -> cede 'T) -> JoinHandle<'T> {
     unsafe {
         // 1. Box the closure explicitly via sys_alloc_thread_env to avoid compiler managed auto-drop
         auto f_arg = sys_alloc_thread_env(sizeof(ClosureBox<'T>) as usize)
