@@ -1,14 +1,14 @@
 shape Cell(value: i32)
 
 shape Holder(
-    ~cell#: Cell
+    ~#cell#: Cell
 )
 
 fn main() -> i32 {
     auto holder = Holder(~cell = new Cell(value = 2))
     auto ~source = new Cell(value = 1)
-    holder.~cell = cede ~source
-    holder.~cell = new Cell(value = 4)
+    holder.~#cell = cede ~source
+    holder.~#cell = new Cell(value = 4)
     holder.cell.value = 5
     return holder.cell.value - 5
 }
