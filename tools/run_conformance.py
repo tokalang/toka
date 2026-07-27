@@ -8,6 +8,9 @@ def main():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     manifest_path = os.path.join(root_dir, "tests", "conformance", "manifest.json")
     tokac_bin = os.path.join(root_dir, "build", "bin", "tokac")
+    source_lib_dir = os.path.join(root_dir, "lib")
+    build_lib_dir = os.path.join(root_dir, "build", "lib")
+    runtime_object = os.path.join(build_lib_dir, "sys", "toka_rt.o")
     tmp_dir = os.path.join(root_dir, "tmp")
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -18,6 +21,20 @@ def main():
     if not os.path.exists(tokac_bin):
         print(f"[ERROR] Compiler binary not found at {tokac_bin}. Build tokac first.")
         sys.exit(1)
+
+    if not os.path.exists(runtime_object):
+        print(f"[ERROR] Core runtime object not found at {runtime_object}. Build the toka_rt target first.")
+        sys.exit(1)
+
+    # A source checkout keeps Toka modules in lib/, while CMake writes the
+    # host runtime object to build/lib/.  Use both locations so conformance
+    # runs against a clean build rather than an ignored local lib/sys/*.o.
+    tool_env = os.environ.copy()
+    lib_paths = [source_lib_dir, build_lib_dir]
+    inherited_lib = tool_env.get("TOKA_LIB")
+    if inherited_lib:
+        lib_paths.append(inherited_lib)
+    tool_env["TOKA_LIB"] = os.pathsep.join(lib_paths)
 
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
@@ -46,7 +63,7 @@ def main():
         try:
             if test_type == "ir-verify":
                 cmd = [tokac_bin, "--emit-llvm", test_full_path, "-o", out_ll]
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec)
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
                 if res.returncode != 0:
                     print(f"[FAILED] [{test_id}] LLVM IR generation failed unexpectedly:")
                     print(res.stdout + res.stderr)
@@ -72,7 +89,7 @@ def main():
 
             elif test_type == "compile-fail":
                 cmd = [tokac_bin, test_full_path, "-o", out_bin]
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec)
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
                 if res.returncode == 0:
                     print(f"[FAILED] [{test_id}] Expected compilation failure but succeeded.")
                     failed_count += 1
@@ -98,7 +115,7 @@ def main():
 
             elif test_type in ("run", "compile-pass"):
                 cmd = [tokac_bin, test_full_path, "-o", out_bin]
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec)
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
                 if res.returncode != 0:
                     print(f"[FAILED] [{test_id}] Compilation failed unexpectedly:")
                     print(res.stdout + res.stderr)
@@ -111,7 +128,7 @@ def main():
                     continue
 
                 # Execute binary with timeout
-                run_res = subprocess.run([out_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec)
+                run_res = subprocess.run([out_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
                 exp_exit = item.get("expected_exit_code", 0)
                 if run_res.returncode != exp_exit:
                     print(f"[FAILED] [{test_id}] Execution exit code mismatch: got {run_res.returncode}, expected {exp_exit}")
