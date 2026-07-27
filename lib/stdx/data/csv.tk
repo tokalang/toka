@@ -1,0 +1,196 @@
+// RFC 4180 core CSV parser and writer.
+
+import std/vec::{Vec}
+
+pub shape CsvError(
+    line: usize,
+    column: usize,
+    message: string
+)
+
+shape CsvWidth(
+    columns: usize,
+    established: bool
+)
+
+fn parse_error(line: usize, column: usize, message: string) -> CsvError {
+    return CsvError(line = line, column = column, message = message)
+}
+
+fn append_record(records#: Vec<Vec<string>>, cede row: Vec<string>,
+                 width: CsvWidth, line: usize, column: usize)
+                 -> Result<CsvWidth, CsvError> {
+    if width.established && row.len() != width.columns {
+        return Result<CsvWidth, CsvError>::Err(parse_error(
+            line, column, string::from("inconsistent field count")))
+    }
+    auto next_width = CsvWidth(columns = row.len(), established = true)
+    if width.established {
+        next_width.columns = width.columns
+    }
+    records#.push(cede row)
+    return Result<CsvWidth, CsvError>::Ok(next_width)
+}
+
+// Parse RFC 4180 records into owned fields. Every returned string owns its
+// bytes; callers never retain a view into `input`.
+pub fn parse_records(input: str) -> Result<Vec<Vec<string>>, CsvError> {
+    auto records# = Vec<Vec<string>>::new()
+    auto row# = Vec<string>::new()
+    auto field# = string::from("")
+    auto width# = CsvWidth(columns = 0:usize, established = false)
+    auto in_quotes# = false
+    auto quote_closed# = false
+    auto record_started# = false
+    auto i#: usize = 0
+    auto line#: usize = 1
+    auto column#: usize = 1
+
+    loop i < input.len() {
+        auto byte = input.byte_at(i) as u8
+        if in_quotes {
+            if byte == 34:u8 {
+                if i + 1 < input.len() && input.byte_at(i + 1) as u8 == 34:u8 {
+                    field#.push_byte_raw(34:u8)
+                    i = i + 2
+                    column = column + 2
+                } else {
+                    in_quotes = false
+                    quote_closed = true
+                    i = i + 1
+                    column = column + 1
+                }
+                continue
+            }
+            if byte == 13:u8 {
+                if i + 1 >= input.len() || input.byte_at(i + 1) as u8 != 10:u8 {
+                    return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+                        line, column, string::from("bare CR in quoted field")))
+                }
+                field#.push_byte_raw(13:u8)
+                field#.push_byte_raw(10:u8)
+                i = i + 2
+                line = line + 1
+                column = 1
+                continue
+            }
+            if byte == 10:u8 {
+                return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+                    line, column, string::from("bare LF in quoted field")))
+            }
+            field#.push_byte_raw(byte)
+            i = i + 1
+            column = column + 1
+            continue
+        }
+
+        if quote_closed {
+            if byte != 44:u8 && byte != 13:u8 {
+                return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+                    line, column, string::from("unexpected byte after closing quote")))
+            }
+            quote_closed = false
+        }
+
+        if byte == 44:u8 {
+            row#.push(cede field)
+            field = string::from("")
+            record_started = true
+            i = i + 1
+            column = column + 1
+            continue
+        }
+        if byte == 34:u8 {
+            if field.len() != 0 {
+                return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+                    line, column, string::from("quote must begin a field")))
+            }
+            in_quotes = true
+            record_started = true
+            i = i + 1
+            column = column + 1
+            continue
+        }
+        if byte == 13:u8 {
+            if i + 1 >= input.len() || input.byte_at(i + 1) as u8 != 10:u8 {
+                return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+                    line, column, string::from("record terminator must be CRLF")))
+            }
+            row#.push(cede field)
+            auto appended = append_record(records, cede row, width, line, column)
+            if appended.is_err() {
+                return Result<Vec<Vec<string>>, CsvError>::Err(appended.unwrap_err())
+            }
+            width = appended.unwrap()
+            row = Vec<string>::new()
+            field = string::from("")
+            record_started = false
+            i = i + 2
+            line = line + 1
+            column = 1
+            continue
+        }
+        if byte == 10:u8 {
+            return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+                line, column, string::from("record terminator must be CRLF")))
+        }
+
+        field#.push_byte_raw(byte)
+        record_started = true
+        i = i + 1
+        column = column + 1
+    }
+
+    if in_quotes {
+        return Result<Vec<Vec<string>>, CsvError>::Err(parse_error(
+            line, column, string::from("unclosed quoted field")))
+    }
+    if record_started {
+        row#.push(cede field)
+        auto appended = append_record(records, cede row, width, line, column)
+        if appended.is_err() {
+            return Result<Vec<Vec<string>>, CsvError>::Err(appended.unwrap_err())
+        }
+    }
+    return Result<Vec<Vec<string>>, CsvError>::Ok(cede records)
+}
+
+fn write_field(field: string, output#: string) {
+    auto quoted# = false
+    auto i#: usize = 0
+    loop i < field.len() {
+        auto byte = field.as_str().byte_at(i) as u8
+        if byte == 44:u8 || byte == 34:u8 || byte == 13:u8 || byte == 10:u8 {
+            quoted = true
+        }
+        i = i + 1
+    }
+    if quoted { output#.push_byte_raw(34:u8) }
+    i = 0:usize
+    loop i < field.len() {
+        auto byte = field.as_str().byte_at(i) as u8
+        if byte == 34:u8 { output#.push_byte_raw(34:u8) }
+        output#.push_byte_raw(byte)
+        i = i + 1
+    }
+    if quoted { output#.push_byte_raw(34:u8) }
+}
+
+pub fn write_records(records: Vec<Vec<string>>) -> string {
+    auto output# = string::from("")
+    auto row_index#: usize = 0
+    loop row_index < records.len() {
+        auto row = records.get(row_index).clone()
+        auto field_index#: usize = 0
+        loop field_index < row.len() {
+            if field_index > 0 { output#.push_byte_raw(44:u8) }
+            auto field = row.get(field_index).clone()
+            write_field(field, output)
+            field_index = field_index + 1:usize
+        }
+        output#.push_byte_raw(13:u8)
+        output#.push_byte_raw(10:u8)
+        row_index = row_index + 1
+    }
+    return output
+}
