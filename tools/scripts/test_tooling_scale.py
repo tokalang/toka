@@ -143,7 +143,7 @@ def main():
                                      "version": edit_index + 2},
                     "contentChanges": [{"text": final_text}],
                 })
-                diagnostics = client.diagnostics(main_uri)
+                diagnostics = client.diagnostics(main_uri, timeout=60)
                 warm_round_trip_ms.append(
                     (time.perf_counter() - started) * 1000.0)
                 if diagnostics:
