@@ -32,7 +32,7 @@ extern fn println(fmt: str, ...) -> void
 
 // Specific Result Types to avoid Generic Instantiation B
 pub shape File (
-    *handle: void, // FILE*
+    *#handle: void, // FILE*
     opened: bool,
     owned: bool
 )
@@ -49,7 +49,7 @@ impl File {
             auto mode_len = mode.byte_count()
             if mode_len > 7 {
                 return File(
-                    *handle = ADDR0 as *void,
+                    *handle = ADDR0 as *#void,
                     opened = false,
                     owned = true
                 )
@@ -65,13 +65,13 @@ impl File {
             auto *p = libc_fopen(path.c_str(), &temp_buf[0] as *char)
             if *p == (ADDR0 as *void) {
                 return File(
-                    *handle = ADDR0 as *void,
+                    *handle = ADDR0 as *#void,
                     opened = false,
                     owned = true
                 )
             }
             return File(
-                *handle = *p,
+                *handle = *#p,
                 opened = true,
                 owned = true
             )
@@ -99,7 +99,7 @@ impl File@encap {
 
     pub fn take(self#) -> File {
         auto f = File(
-            *handle = self.*handle,
+            *handle = self.*#handle,
             opened = self.opened,
             owned = self.owned
         )
@@ -246,7 +246,7 @@ auto g_stdin_handle#: Addr = 0:Addr
 pub fn get_stdin() -> File {
     unsafe {
         if g_stdin_handle == 0:Addr { g_stdin_handle = libc_fdopen(0, c"r") as Addr }
-        return File(*handle = g_stdin_handle as *void, opened = (g_stdin_handle != 0:Addr), owned = false)
+        return File(*handle = g_stdin_handle as *#void, opened = (g_stdin_handle != 0:Addr), owned = false)
     }
 }
 
@@ -254,7 +254,7 @@ auto g_stdout_handle#: Addr = 0:Addr
 pub fn get_stdout() -> File {
     unsafe {
         if g_stdout_handle == 0:Addr { g_stdout_handle = libc_fdopen(1, c"w") as Addr }
-        return File(*handle = g_stdout_handle as *void, opened = (g_stdout_handle != 0:Addr), owned = false)
+        return File(*handle = g_stdout_handle as *#void, opened = (g_stdout_handle != 0:Addr), owned = false)
     }
 }
 
@@ -262,7 +262,7 @@ auto g_stderr_handle#: Addr = 0:Addr
 pub fn get_stderr() -> File {
     unsafe {
         if g_stderr_handle == 0:Addr { g_stderr_handle = libc_fdopen(2, c"w") as Addr }
-        return File(*handle = g_stderr_handle as *void, opened = (g_stderr_handle != 0:Addr), owned = false)
+        return File(*handle = g_stderr_handle as *#void, opened = (g_stderr_handle != 0:Addr), owned = false)
     }
 }
 

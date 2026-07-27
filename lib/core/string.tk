@@ -39,7 +39,7 @@ impl char {
 }
 
 pub shape string (
-    nul *buf#: [char] = null as *[char],
+    nul *#buf#: [char] = null as *[char],
     len#: usize = 0,
     cap#: usize = 0
 )

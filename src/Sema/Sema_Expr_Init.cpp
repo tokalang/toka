@@ -38,6 +38,23 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   return Type->IsWritable;
 }
 
+// A raw-handle field is a fresh storage slot.  Its H permission belongs to
+// the field declaration, not to the opaque pointer value supplied by the
+// initializer.  This is deliberately limited to raw-pointer field
+// initialization: it neither grants payload write permission nor relaxes
+// argument/assignment compatibility for an existing binding.
+static bool isFieldInitializerCompatible(
+    const std::shared_ptr<toka::Type> &destination,
+    const std::shared_ptr<toka::Type> &source) {
+  if (!destination || !source || !destination->isRawPointer() ||
+      !source->isRawPointer())
+    return false;
+  auto destinationPointee = destination->getPointeeType();
+  auto sourcePointee = source->getPointeeType();
+  return destinationPointee && sourcePointee &&
+         destinationPointee->equals(*sourcePointee);
+}
+
 static AccessCapability
 restrictPatternCapability(AccessCapability capability,
                           const std::string &targetType) {
@@ -1103,7 +1120,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       HasError = true;
     }
 
-    if (isTypeCompatible(memberTypeObj, exprTypeObj) &&
+    if ((isTypeCompatible(memberTypeObj, exprTypeObj) ||
+         isFieldInitializerCompatible(memberTypeObj, exprTypeObj)) &&
         !memberTypeObj->equals(*exprTypeObj)) {
       auto origLoc = pair.second->Loc;
       pair.second = std::make_unique<CastExpr>(std::move(pair.second),
@@ -1118,7 +1136,9 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         bypassNullStruct = true;
     }
 
-    if (!bypassNullStruct && !isTypeCompatible(memberTypeObj, exprTypeObj)) {
+    if (!bypassNullStruct &&
+        !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
+          isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
       error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, pair.first,
             memberTypeObj->toString(), exprTypeObj->toString());
     }
@@ -1182,7 +1202,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
           HasError = true;
         }
 
-        if (isTypeCompatible(memberTypeObj, exprTypeObj) &&
+        if ((isTypeCompatible(memberTypeObj, exprTypeObj) ||
+             isFieldInitializerCompatible(memberTypeObj, exprTypeObj)) &&
             !memberTypeObj->equals(*exprTypeObj)) {
           auto origLoc = cloned->Loc;
           cloned = std::make_unique<CastExpr>(std::move(cloned),
@@ -1197,7 +1218,9 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
             bypassNullStruct = true;
         }
 
-        if (!bypassNullStruct && !isTypeCompatible(memberTypeObj, exprTypeObj)) {
+        if (!bypassNullStruct &&
+            !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
+              isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
           error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, defField.Name,
                 memberTypeObj->toString(), exprTypeObj->toString());
         }
@@ -1312,7 +1335,9 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
         bypassNullStruct = true;
     }
 
-    if (!bypassNullStruct && !isTypeCompatible(memberTypeObj, exprTypeObj)) {
+    if (!bypassNullStruct &&
+        !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
+          isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
       error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, pair.first,
             memberTypeObj->toString(), exprTypeObj->toString());
     }

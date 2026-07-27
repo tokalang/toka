@@ -6,6 +6,6 @@ fn main() -> i32 {
     auto &slot# = &left
 
     slot = 3
-    &slot = &right
+    &#slot = &right
     return 0
 }

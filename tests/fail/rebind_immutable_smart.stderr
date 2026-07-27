@@ -4,17 +4,12 @@ error[E0448]: Pointer morphology mismatch: expected explicit '~' (from LHS/Targe
  9 |     auto ~head = new Node(next = unset, val = 1)
    |                      ^
 error[E0448]: Pointer morphology mismatch: expected explicit '~' (from LHS/Target), found 'value' (from RHS/Source)
- --> tests/fail/rebind_immutable_smart.tk:13:17
+ --> tests/fail/rebind_immutable_smart.tk:13:18
     |
- 13 |     ~head = new Node(next = unset, val = 2) // CHECK: error: Cannot assign to immutable entity
-    |                 ^
+ 13 |     ~#head = new Node(next = unset, val = 2) // CHECK: error: Cannot assign to immutable entity
+    |                  ^
 error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
- --> tests/fail/rebind_immutable_smart.tk:13:11
-    |
- 13 |     ~head = new Node(next = unset, val = 2) // CHECK: error: Cannot assign to immutable entity
-    |           ^
-error[E0443]: Cannot modify immutable entity '~Node'
  --> tests/fail/rebind_immutable_smart.tk:13:5
     |
- 13 |     ~head = new Node(next = unset, val = 2) // CHECK: error: Cannot assign to immutable entity
+ 13 |     ~#head = new Node(next = unset, val = 2) // CHECK: error: Cannot assign to immutable entity
     |     ^

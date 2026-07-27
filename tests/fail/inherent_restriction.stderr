@@ -28,6 +28,11 @@ error[E04491]: Permission symbols (#, ?, $) are only allowed at the terminal of 
     |
  12 |     d#.y = 20 // EXPECT: error[E0443]:
     |     ^
+error[E04573]: Covenant Violation: Cannot elevate write permission from ReadOnly soul to Writable container.
+ --> tests/fail/inherent_restriction.tk:12:7
+    |
+ 12 |     d#.y = 20 // EXPECT: error[E0443]:
+    |       ^
 error[E0443]: Cannot modify immutable entity 'i32$'
  --> tests/fail/inherent_restriction.tk:12:7
     |

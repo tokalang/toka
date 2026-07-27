@@ -128,7 +128,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
 }
 
 pub shape TaskRef (
-    *tcb: void
+    *#tcb: void
 )
 
 impl TaskRef@encap {

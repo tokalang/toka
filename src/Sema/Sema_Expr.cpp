@@ -192,24 +192,26 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
       // payload-writable.  This does not grant authority through a shared or
       // reference aggregate view: those remain indirect and retain the
       // parent's direct capability as the ceiling.
-      bool directValueAggregate = objType && !objType->isPointer() &&
-                                  !objType->isSmartPointer() &&
-                                  !objType->isReference() &&
-                                  !base.PayloadFlowRestricted;
       const bool fieldPayloadDeclared =
           field.IsValueMutable || field.Permission.SoulWritable;
       const bool fieldPayloadBlocked =
           field.IsValueBlocked || field.Permission.SoulBlocked;
+      // A field declaration is an authority source in its own right.  An
+      // outer handle that only grants H therefore does not erase `field#`.
+      // Conversely, a handle/reference field without P establishes a
+      // restricted direct source: deeper projections cannot recover P from
+      // their own syntax or from a later field declaration.
+      const bool fieldStartsRestrictedFlow =
+          insulated && !fieldPayloadDeclared;
       bool fieldPayloadWritable =
-          !fieldPayloadBlocked &&
+          !base.PayloadFlowRestricted && !fieldPayloadBlocked &&
           (fieldPayloadDeclared || (!insulated && base.PayloadWritable));
       bool fieldHandleRebindable =
           field.IsRebindable && !field.IsRebindBlocked;
       return applyPathFlowCeiling(
-          {(directValueAggregate || base.PayloadWritable) &&
-               fieldPayloadWritable,
+          {fieldPayloadWritable,
            fieldHandleRebindable,
-           base.PayloadFlowRestricted});
+           base.PayloadFlowRestricted || fieldStartsRestrictedFlow});
     }
     return applyPathFlowCeiling(
         {base.PayloadWritable, false, base.PayloadFlowRestricted});

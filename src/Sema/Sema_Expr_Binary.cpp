@@ -314,7 +314,12 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         }
     }
 
-    if (auto *Memb = dynamic_cast<MemberExpr *>(RHSScan)) {
+    // A cede expression validates direct field transfer itself, including
+    // the user-drop restriction.  Do not report that same restriction again
+    // from the enclosing assignment.
+    if (!dynamic_cast<CedeExpr *>(RHSExpr) &&
+        dynamic_cast<MemberExpr *>(RHSScan)) {
+      auto *Memb = static_cast<MemberExpr *>(RHSScan);
       // [Move Restriction Rule] Prohibit moving member out of shape
       // that has drop() Rule applies if we are moving any resource
       bool memberIsResource = rhsType->isUniquePtr();
@@ -587,6 +592,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     bool payloadCapabilityDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
         !lhsCapability.PayloadWritable;
+    bool handleCapabilityDenied =
+        assignmentKind == AssignmentSemanticKind::Handle &&
+        !lhsCapability.HandleRebindable;
     bool payloadFlowDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
         lhsCapability.PayloadFlowRestricted &&
@@ -597,7 +605,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       HasError = true;
     }
 
-    if (!isLHSWritable && !payloadFlowDenied) {
+    if (!isLHSWritable && !payloadFlowDenied && !handleCapabilityDenied) {
       error(Bin, DiagID::ERR_SEMA_CANNOT_ASSIGN_TO_IMMUTABLE_ENTITY_MISSING);
       HasError = true;
     }
@@ -694,6 +702,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (payloadCapabilityDenied && !payloadFlowDenied && !isLHSUnset) {
       error(Bin->LHS.get(),
             DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
+    }
+
+    // Like payload P, H comes only from the declaration or parameter
+    // signature.  A use-site `#` records an attempted rebind; it must not
+    // turn a payload-only `^p#`, `*p#`, or `&p#` into a rebindable handle.
+    if (handleCapabilityDenied && !isLHSUnset) {
+      error(Bin->LHS.get(),
+            DiagID::ERR_SEMA_CANNOT_ASSIGN_TO_IMMUTABLE_ENTITY_MISSING);
       HasError = true;
     }
 

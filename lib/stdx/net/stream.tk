@@ -7,7 +7,7 @@ import core/types::{Addr}
 pub shape AsyncStream (
     raw_tcp: TcpStream,
     is_tls: bool,
-    *tls_handle: void
+    *#tls_handle: void
 )
 
 impl AsyncStream@encap {
@@ -57,7 +57,7 @@ impl AsyncStream {
         auto s = AsyncStream(
             raw_tcp = self.raw_tcp#.take(),
             is_tls = self.is_tls,
-            *tls_handle = *self.tls_handle
+            *tls_handle = self.*tls_handle
         )
         self.is_tls = false
         self.*tls_handle = *null_ptr

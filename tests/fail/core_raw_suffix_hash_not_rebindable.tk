@@ -5,6 +5,6 @@ fn main() -> i32 {
     auto right# = 2
     auto *p# = *#left
 
-    *p = *#right
+    *#p = *#right
     return 0
 }

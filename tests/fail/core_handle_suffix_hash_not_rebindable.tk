@@ -7,6 +7,6 @@ shape Cell(
 fn main() -> i32 {
     auto ^cell# = new Cell(value = 10)
     cell.value = 11
-    ^cell = new Cell(value = 20)
+    ^#cell = new Cell(value = 20)
     return 0
 }

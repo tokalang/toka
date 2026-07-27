@@ -3,7 +3,7 @@ error[E0437]: Method 'drop' is private to 'string' and cannot be accessed from m
     |
  20 |     s.drop()
     |      ^
-error[E0443]: Cannot modify immutable entity 'Method 'drop' requires explicit mutable argument (use '#')'
+error[E0443]: Cannot modify immutable entity 'Method 'drop' requires a declared mutable payload capability (use '#' only to request it)'
  --> tests/fail/encap_method_priv.tk:20:6
     |
  20 |     s.drop()
