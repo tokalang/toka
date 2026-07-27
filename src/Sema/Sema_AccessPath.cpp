@@ -154,7 +154,9 @@ AccessPath Sema::canonicalizeAccessPath(const AccessPath &Path) {
       break;
     }
 
-    AccessPath source = makeAccessPath(info->BorrowedFrom);
+    AccessPath source = info->BorrowedPath
+                            ? info->BorrowedPath
+                            : makeAccessPath(info->BorrowedFrom);
     if (!source)
       break;
     source.Projections.insert(source.Projections.end(),
@@ -232,8 +234,9 @@ bool Sema::isBorrowAccessAuthorized(const AccessPath &Path,
     return false;
   }
 
-  AccessPath borrowed =
-      canonicalizeAccessPath(makeAccessPath(info->BorrowedFrom));
+  AccessPath borrowed = canonicalizeAccessPath(
+      info->BorrowedPath ? info->BorrowedPath
+                         : makeAccessPath(info->BorrowedFrom));
   AccessPath conflict = canonicalizeAccessPath(ConflictPath);
   return borrowed && conflict && accessPathsMayOverlap(borrowed, conflict);
 }
@@ -328,7 +331,9 @@ SymbolInfo *Sema::resolveBorrowSource(SymbolInfo *Info,
   while (current && current->SymbolID != 0 &&
          visited.insert(current->SymbolID).second &&
          !current->BorrowedFrom.empty()) {
-    AccessPath source = makeAccessPath(current->BorrowedFrom);
+    AccessPath source = current->BorrowedPath
+                            ? current->BorrowedPath
+                            : makeAccessPath(current->BorrowedFrom);
     if (!source || source.RootID == 0)
       break;
     SymbolInfo *next = nullptr;

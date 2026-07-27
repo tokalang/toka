@@ -56,6 +56,10 @@ struct SymbolInfo {
   // Borrow Tracking
   std::string BorrowedFrom =
       ""; // If this is a reference, name of the source variable
+  // The structured source path is PAL's authority and alias identity.  Keep
+  // BorrowedFrom for legacy lifetime/dependency bookkeeping, which names the
+  // root binding only and therefore cannot distinguish indexed projections.
+  AccessPath BorrowedPath;
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
 

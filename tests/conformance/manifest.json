@@ -1089,6 +1089,14 @@
       "description": "A shared borrow of one constant fixed-array index does not block a payload write to a distinct index"
     },
     {
+      "id": "ownership_mutable_borrow_fixed_array_index_write_01",
+      "path": "ownership/mutable_borrow_fixed_array_index_write.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A mutable borrow retains write access to its exact fixed-array index"
+    },
+    {
       "id": "ownership_cede_fixed_array_index_return_cleanup_01",
       "path": "ownership/cede_fixed_array_index_return_cleanup.tk",
       "type": "run",

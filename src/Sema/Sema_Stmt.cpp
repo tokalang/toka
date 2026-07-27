@@ -1524,6 +1524,7 @@ void Sema::checkStmt(Stmt *S) {
             borrowPath = canonicalizeAccessPath(
                 makeAccessPath(borrowExpr->RHS.get()));
           }
+          Info.BorrowedPath = borrowPath;
           PALCheckerState.commitTransient(borrowPath);
       }
       for (const auto &dep : Info.LifeDependencySet) {

@@ -1380,14 +1380,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
        const std::string conflictPath = conflict->displayPath();
        SymbolInfo veInfo;
        if (CurrentScope->lookup(actualName, veInfo)) {
-         if (veInfo.BorrowedFrom == conflictPath) {
-            authorized = true;
+         if ((!veInfo.BorrowedPath.empty() &&
+              canonicalizeAccessPath(veInfo.BorrowedPath) ==
+                  canonicalizeAccessPath(conflict->Path)) ||
+             veInfo.BorrowedFrom == conflictPath) {
+           authorized = true;
          }
        }
        if (!authorized && !borrower.empty()) {
             SymbolInfo borrowerInfo;
-            if (CurrentScope->lookup(borrower, borrowerInfo) && borrowerInfo.BorrowedFrom == conflictPath) {
-               authorized = true;
+            if (CurrentScope->lookup(borrower, borrowerInfo) &&
+                ((!borrowerInfo.BorrowedPath.empty() &&
+                  canonicalizeAccessPath(borrowerInfo.BorrowedPath) ==
+                      canonicalizeAccessPath(conflict->Path)) ||
+                 borrowerInfo.BorrowedFrom == conflictPath)) {
+              authorized = true;
             } else if (actualName == borrower) {
                authorized = true; // writing to myself
             }

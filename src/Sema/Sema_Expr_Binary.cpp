@@ -463,12 +463,20 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                if (!m_ControlFlowStack.empty())
                  borrower = m_ControlFlowStack.back().Label;
                  
-               if (CurrentScope->lookup(actualName, info) && info.BorrowedFrom == conflictPath) {
+               if (CurrentScope->lookup(actualName, info) &&
+                   ((!info.BorrowedPath.empty() &&
+                     canonicalizeAccessPath(info.BorrowedPath) ==
+                         canonicalizeAccessPath(conflict->Path)) ||
+                    info.BorrowedFrom == conflictPath)) {
                   authorized = true;
                } else if (!borrower.empty()) {
                    SymbolInfo borrowerInfo;
-                   if (CurrentScope->lookup(borrower, borrowerInfo) && borrowerInfo.BorrowedFrom == conflictPath) {
-                      authorized = true;
+                   if (CurrentScope->lookup(borrower, borrowerInfo) &&
+                       ((!borrowerInfo.BorrowedPath.empty() &&
+                         canonicalizeAccessPath(borrowerInfo.BorrowedPath) ==
+                             canonicalizeAccessPath(conflict->Path)) ||
+                        borrowerInfo.BorrowedFrom == conflictPath)) {
+                     authorized = true;
                    } else if (actualName == borrower) {
                       authorized = true;
                    }
