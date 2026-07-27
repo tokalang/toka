@@ -1,0 +1,18 @@
+fn increment(value#: i64) {
+    value = value + 1
+}
+
+shape Counter(value#: i64)
+
+impl Counter {
+    fn increment(self) {
+        increment(self.value)
+    }
+}
+
+fn main() -> i32 {
+    auto counter = Counter(value = 1)
+    counter.increment()
+    if counter.value != 2 { return 1 }
+    return 0
+}

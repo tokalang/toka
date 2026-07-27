@@ -196,9 +196,13 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
                                   !objType->isSmartPointer() &&
                                   !objType->isReference() &&
                                   !base.PayloadFlowRestricted;
+      const bool fieldPayloadDeclared =
+          field.IsValueMutable || field.Permission.SoulWritable;
+      const bool fieldPayloadBlocked =
+          field.IsValueBlocked || field.Permission.SoulBlocked;
       bool fieldPayloadWritable =
-          !field.IsValueBlocked &&
-          (field.IsValueMutable || (!insulated && base.PayloadWritable));
+          !fieldPayloadBlocked &&
+          (fieldPayloadDeclared || (!insulated && base.PayloadWritable));
       bool fieldHandleRebindable =
           field.IsRebindable && !field.IsRebindBlocked;
       return applyPathFlowCeiling(
@@ -406,8 +410,16 @@ AccessIntent Sema::getAccessIntent(Expr *E) {
     intent.HandleRebind = Unary->IsRebindable;
     return intent;
   }
-  if (auto *Member = dynamic_cast<MemberExpr *>(E))
-    return getAccessIntent(Member->Object.get());
+  if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
+    // A field declaration is the authority requested by a mutable callee.
+    // Ordinary member access has no suffix syntax for repeating that request;
+    // inheriting the aggregate binding's intent would therefore incorrectly
+    // erase a `field#: T` declaration.  Capability is still checked
+    // independently by the caller, so a shared/reference projection cannot
+    // gain payload write access here.
+    auto capability = getAccessCapability(Member);
+    return {capability.PayloadWritable, false};
+  }
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E))
     return getAccessIntent(Index->Array.get());
 

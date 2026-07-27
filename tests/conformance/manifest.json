@@ -1552,6 +1552,14 @@
       "description": "A by-value aggregate preserves payload authority declared by its shared field"
     },
     {
+      "id": "ownership_primitive_payload_parameter_authority_01",
+      "path": "ownership/primitive_payload_parameter_authority.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A primitive field declared payload-writable satisfies a payload-writable parameter"
+    },
+    {
       "id": "ownership_pattern_shared_view_preserves_payload_capability_01",
       "path": "ownership/pattern_shared_view_preserves_payload_capability.tk",
       "type": "run",
