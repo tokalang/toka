@@ -1,0 +1,11 @@
+import ./lib::{Counter}
+
+fn main() -> i32 {
+    auto counter = Counter(reads = 0, ordinary = 9)
+    auto &shared = &counter
+
+    shared.reads = 4
+    if shared.reads != 4 { return 1 }
+    if counter.reads != 4 { return 2 }
+    return 0
+}

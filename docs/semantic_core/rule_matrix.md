@@ -108,6 +108,32 @@ Primary references:
   rejection after source-less import.
 - Coverage closure: none known for the frozen shared-borrow validity rule.
 
+### PAL-INTERIOR-001: A `field#` declaration grants local interior mutation
+
+- Status: Core guarantee
+- Source form: `auto &shared = &object; shared.interior_field = value`
+  where `interior_field#` is declared on the shape.
+- Decision: the field declaration is the Payload capability source. It remains
+  writable through a shared aggregate view without making ordinary sibling
+  fields writable. Borrows of that field use the normal PAL shared/exclusive
+  operation classes; an exclusive borrow still rejects overlapping access.
+- Rationale: this is Toka's zero-cost, field-level interior mutability. It is
+  not a use-site permission elevation and is not a thread-safety proof.
+- Implementation areas: `src/Sema/Sema_Expr.cpp`,
+  `src/Sema/Sema_Expr_Member.cpp`, `src/Sema/Sema_Expr_Binary.cpp`, and
+  `src/Sema/PAL_Checker.cpp`.
+- Positive tests: `tests/pass/g04_token_interior_mut.tk`,
+  `tests/pass/g08_pal_stress_test_borrow.tk`, and
+  `tests/conformance/ownership/interior_mutable_field_shared_view.tk`.
+- Negative tests:
+  `tests/conformance/diagnostics/interior_mutable_sibling_requires_declaration.tk`
+  , `tests/conformance/diagnostics/interior_mutable_field_exclusive_borrow_conflict.tk`,
+  and `tests/fail/pal_member_mut_borrow_payload_write.tk`.
+- Replay tests:
+  `tests/semantics/tki_replay/cases/interior_mutability_001_field` verifies
+  that exported field-level capability is preserved for both source-backed and
+  source-less consumers.
+
 ### PAL-PATH-001: Overlap is path-prefix based, with disjoint fields allowed
 
 - Status: Core guarantee

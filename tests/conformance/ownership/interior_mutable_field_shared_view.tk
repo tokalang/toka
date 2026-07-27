@@ -1,0 +1,16 @@
+shape Counter(
+    reads#: i32,
+    ordinary: i32
+)
+
+fn main() -> i32 {
+    auto counter = Counter(reads = 0, ordinary = 9)
+    auto &shared = &counter
+
+    shared.reads = shared.reads + 1
+
+    if shared.reads != 1 { return 1 }
+    if counter.reads != 1 { return 2 }
+    if shared.ordinary != 9 { return 3 }
+    return 0
+}

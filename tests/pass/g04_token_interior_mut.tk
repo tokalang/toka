@@ -10,10 +10,9 @@ fn process_info(info: CounterInfo) {
     // Even if info is borrowed, we allow direct overwrite on fields decorated with #:
     info.accesses = info.accesses + 1
     
-    // Core iron law: derivation of any borrow tokens from #: fields is strictly prohibited
-    // If the following two lines are uncommented, a compilation error should be triggered
-    // auto &acc_ref = info.&accesses  // [Compile Error Expected]
-    // auto &acc_mut# = info.&accesses  // [Compile Error Expected]
+    // Borrowing an interior-mutable field follows the ordinary PAL rules.
+    // A shared borrow remains valid across this non-invalidating write; an
+    // exclusive borrow still rejects overlapping accesses.
     
     // Borrowing regular fields is unaffected
     auto &name_ref = info.&name

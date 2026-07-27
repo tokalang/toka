@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E0441
+import ./lib::{Counter}
+
+fn main() -> i32 {
+    auto counter = Counter(reads = 0, ordinary = 9)
+    auto &exclusive# = counter.&reads
+    counter.reads = 1
+    return exclusive
+}

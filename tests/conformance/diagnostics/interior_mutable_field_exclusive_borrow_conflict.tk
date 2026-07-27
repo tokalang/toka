@@ -1,0 +1,10 @@
+shape Counter(
+    reads#: i32
+)
+
+fn main() -> i32 {
+    auto counter = Counter(reads = 0)
+    auto &exclusive# = counter.&reads
+    counter.reads = 1
+    return exclusive
+}

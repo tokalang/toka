@@ -75,6 +75,32 @@
       "description": "Vec::get element clone and borrow stability (GAP-LANG-01)"
     },
     {
+      "id": "ownership_interior_mutable_field_shared_view_01",
+      "path": "ownership/interior_mutable_field_shared_view.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A field declared with payload # remains writable through a shared aggregate view without making sibling fields writable"
+    },
+    {
+      "id": "diag_interior_mutable_sibling_requires_declaration_01",
+      "path": "diagnostics/interior_mutable_sibling_requires_declaration.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "An interior-mutable field declaration does not grant payload write authority to an ordinary sibling field"
+    },
+    {
+      "id": "diag_interior_mutable_field_exclusive_borrow_conflict_01",
+      "path": "diagnostics/interior_mutable_field_exclusive_borrow_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0441",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "An exclusive borrow of an interior-mutable field still rejects an overlapping write"
+    },
+    {
       "id": "codegen_cede_unique_receiver_heap_release_01",
       "path": "codegen/cede_unique_receiver_heap_release.tk",
       "type": "ir-verify",

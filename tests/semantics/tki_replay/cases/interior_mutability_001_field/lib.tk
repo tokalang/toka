@@ -1,0 +1,4 @@
+pub shape Counter(
+    reads#: i32,
+    ordinary: i32
+)

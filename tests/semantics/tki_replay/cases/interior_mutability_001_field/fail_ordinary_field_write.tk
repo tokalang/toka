@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E04573
+import ./lib::{Counter}
+
+fn main() -> i32 {
+    auto counter = Counter(reads = 0, ordinary = 9)
+    auto &shared = &counter
+    shared.ordinary = 10
+    return 0
+}

@@ -143,8 +143,11 @@ later release.
   that borrow path, not a global freeze promise for every ordinary payload
   write on the original storage; invalidating replacement of a parent path
   remains rejected.
-- Interior mutability boundary: payload-side `#` can express local interior
-  mutability, but it is not a thread-safety proof. Cross-thread sharing must be
+- Interior mutability boundary: a field declared with payload-side `#` is its
+  own local write-capability source and remains writable through a shared
+  aggregate view; ordinary sibling fields do not inherit that capability.
+  Borrowing such a field follows the normal PAL shared/exclusive operation
+  classes. This is not a thread-safety proof: cross-thread sharing must be
   mediated by appropriate library types and trait bounds such as
   `Atomic`/`Mutex`/`RwLock`, `Send`, and `Sync`.
 - Execution-boundary capture rule: thread / task handoff must not carry hidden
