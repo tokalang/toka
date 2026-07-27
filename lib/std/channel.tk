@@ -192,7 +192,7 @@ impl<'T: @Send> Receiver<'T>@encap {
             return
         }
         auto lguard = lguard_res.unwrap()
-        auto *q = lguard.get_ref()
+        auto *q# = lguard.get_ref()
         q.receivers = q.receivers - 1
         if q.receivers == 0 {
             q.closed = true
