@@ -1,0 +1,18 @@
+import std/io::{File, @Reader}
+import stdx/io/bufio::{BufferedReader}
+
+shape ReaderWrapper<'R: @Reader>(
+    reader#: BufferedReader<'R>
+)
+
+impl<'R: @Reader> ReaderWrapper<'R> {
+    pub fn new(reader: cede 'R) -> ReaderWrapper<'R> {
+        return ReaderWrapper<'R>(reader = BufferedReader<'R>::new(cede reader))
+    }
+}
+
+fn main() -> i32 {
+    auto file# = File::open(string::from("generic_reader_bound.tmp"), "r")
+    auto wrapper = ReaderWrapper<File>::new(cede file#.take())
+    return 0
+}

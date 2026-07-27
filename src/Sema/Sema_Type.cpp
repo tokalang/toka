@@ -574,6 +574,18 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
     return GenericShape;
   }
 
+  // A generic template may contain a field such as BufferedReader<'R>.  Its
+  // argument is dependent until the enclosing template is instantiated, so a
+  // concrete trait-bound lookup here would incorrectly reject 'R (and leave
+  // later semantic passes with a null type).  Preserve the dependent type;
+  // the normal instantiation path substitutes and validates the concrete
+  // argument before materializing the nested shape.
+  for (const auto &arg : GenericShape->GenericArgs) {
+    const std::string name = arg ? arg->toString() : "";
+    if (!name.empty() && name.front() == '\'')
+      return GenericShape;
+  }
+
   // [NEW] Check Trait Bounds and Morphic Exemption
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     auto &Param = Template->GenericParams[i];
@@ -589,7 +601,10 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
 
     if (!Param.TraitBounds.empty()) {
       if (!checkTraitBounds(Template->Loc, Param.Name, Param.TraitBounds, ArgType->toString())) {
-        return nullptr;
+        // The diagnostic is already recorded by checkTraitBounds.  Keep a
+        // non-null type here so later semantic recovery cannot dereference a
+        // null resolved type before the compiler reports that failure.
+        return GenericShape;
       }
     }
   }
