@@ -7,28 +7,27 @@ bound.  Its small executor is implemented with `std` only.  It deliberately
 does not test `dyn Fetcher`: Rust native async trait methods have their own
 object-safety boundary, so a `dyn` comparison would not establish an advantage.
 
-Toka accepts and runs a concrete trait method when it is spelled in Toka's
-existing return-async form, `fn fetch(self) -> async i32`.  That is important:
-there is no honest claim that Toka merely lacks the parser surface.
+Before the 1.0 closure, the compiler accepted a concrete trait method spelled
+`fn fetch(self) -> async i32`, but it later rejected a started generic
+borrowed-receiver call with `E04583`.  That half-supported surface was not an
+async-trait contract.
 
-The corresponding static generic caller with a borrowed `self`/`worker` path
-is rejected with `E04583` when it awaits the trait method.  Toka treats the
-async call as an execution boundary and forbids the borrowed receiver from
-crossing it.  An owned/`cede` receiver protocol might offer a later safe
-subset, but is not assumed by this case.
+Toka now rejects the trait declaration itself with `E0618`, before it can enter
+trait dispatch metadata or a `.tki`.  The adjacent ordinary `fn -> async T`
+baseline still compiles and runs, demonstrating that the closure is narrow: it
+does not weaken the frozen async-function surface.
 
 ## Classification
 
-This is a **current async-interface protocol boundary**, with an implemented
-but unfrozen surface subset.  `docs/1_0_scope.md` currently lists async traits
-as post-1.0, while concrete return-async trait methods compile.  The generic
-borrowed-receiver form that Rust accepts is rejected.  Therefore the evidence
-does not support either extreme claim: neither "Toka has no async traits" nor
-"the async-trait contract is already closed."
+This is a **current async-interface protocol boundary**.  Rust accepts the
+static generic `async fn` trait method in the comparison.  Toka 1.0 now
+rejects all async trait declarations consistently with its published scope,
+while retaining ordinary async functions.  This is an explicit 1.0 exclusion,
+not evidence of a PAL or lifetime-model limitation.
 
 ## Boundary still open
 
-This evidence does not settle owned/`cede` receiver design, dyn dispatch,
-associated types, object ABI, cancellation, source-less `.tki` replay, public
-cross-module visibility, or receiver-borrow suspension.  Those questions need
-an async-interface RFC before any accepted subset can be advertised or frozen.
+An eventual extension must settle owned/`cede` receiver design, borrowed
+receiver suspension, dyn dispatch, associated types, object ABI, cancellation,
+source-less `.tki` replay, and public cross-module visibility.  Those questions
+need an async-interface RFC before any async trait subset can be admitted.

@@ -1,0 +1,5 @@
+pub trait @RemoteFetcher {
+    pub fn fetch(self) -> async i32
+}
+
+// EXPECT: error[E0618]

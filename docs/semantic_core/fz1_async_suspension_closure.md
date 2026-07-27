@@ -14,6 +14,9 @@ Status: `Phase 1 Async Suspension & Coroutine Lifetime Closure Complete`
 - Dependencies carried by an async result remain ordinary declared lifetime dependencies after `.await` or `.wait`.
 - `.start` remains a detached execution boundary: non-borrowing scalars may cross by value, owned shapes/resources require a cede parameter and cede argument, and borrowed/raw/dependency-bearing state is rejected.
 - Raw pointers remain outside the PAL safe-borrow guarantee.
+- Async trait declarations are outside the frozen 1.0 surface. A trait method
+  declared `-> async T` is rejected with `E0618` before trait dispatch metadata
+  or a `.tki` can be produced; ordinary `fn -> async T` remains supported.
 
 ---
 
@@ -61,5 +64,8 @@ Status: `Phase 1 Async Suspension & Coroutine Lifetime Closure Complete`
 
 - `tests/pass/g09_async_cold_task_semantics.tk` verifies cold creation side-effects (0 before start/block_on), non-inlined `.start` execution, idempotent `.start` calls, and side-effect execution upon `block_on` activation.
 - `tests/pass/g09_async_suspension_state.tk` proves frame-local borrow use across `.await`.
+- `tests/fail/trait_async_method.tk` and
+  `tests/fail/trait_async_method_cross_module.tk` lock the local and imported
+  async-trait exclusion with `E0618`.
 - `tests/pass/g09_async_phase1_qualification_tests.tk` proves 20,000-deep await chain, timer bridge, and completion-before-registration.
 - `playground/repro_created_drop_fixture.tk` and `tests/pass/g09_async_created_drop_reclaim_test.tk` verify unstarted Created handle drop parameter reclamation without executing task body (`body_run_count == 0`, `global_drop_count == 1`).

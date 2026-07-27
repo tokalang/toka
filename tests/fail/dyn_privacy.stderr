@@ -1,5 +1,5 @@
 error[E0437]: Method 'get_secret' is private to 'trait SecretIdentity' and cannot be accessed from module 'dyn_privacy'
- --> tests/fail/dyn_privacy.tk:35:30
+ --> tests/fail/dyn_privacy.tk:22:30
     |
- 35 |     println("Secret: {}", obj.get_secret())
+ 22 |     println("Secret: {}", obj.get_secret())
     |                              ^

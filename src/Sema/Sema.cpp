@@ -1026,6 +1026,19 @@ void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
     return;
   CheckedAssociatedTypeTraits.insert(Trait);
 
+  // Ordinary `fn -> async T` is part of the frozen 1.0 async surface. A trait
+  // declaration adds interface, receiver, dispatch, and source-less replay
+  // obligations that are deferred to the async-interface RFC. Reject it before
+  // it can enter MethodMap or a `.tki`.
+  for (const auto &method : Trait->Methods) {
+    if (method->Effect == EffectKind::Async) {
+      DiagnosticEngine::report(
+          method->Loc, DiagID::ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0,
+          method->Name, Trait->Name);
+      HasError = true;
+    }
+  }
+
   std::set<std::string> genericNames;
   for (const auto &gp : Trait->GenericParams) {
     genericNames.insert(gp.Name);

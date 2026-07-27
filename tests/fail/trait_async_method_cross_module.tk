@@ -1,0 +1,7 @@
+import ./trait_async_method_cross_module_lib::{@RemoteFetcher}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0618]

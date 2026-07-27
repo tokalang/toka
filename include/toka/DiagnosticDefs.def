@@ -144,6 +144,7 @@ DIAG(ERR_ASSOC_TYPE_IN_INHERENT_IMPL, Error,   "E0614", "Associated type '{}' ca
 DIAG(ERR_ASSOC_TYPE_PROJECTION_NOT_FOUND, Error,   "E0615", "Associated type projection '{}' is not bound")
 DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated type '{}' conflicts with a generic parameter of trait '@{}'")
 DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error,   "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
+DIAG(ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0, Error, "E0618", "Async method '{}' in trait '@{}' is outside the frozen Toka 1.0 surface")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")

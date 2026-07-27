@@ -78,16 +78,15 @@ language.  Those require separate questions and separate experiments.
   [`dynamic_borrowing_exploration.md`](../../docs/semantic_core/dynamic_borrowing_exploration.md)
   to build an API sketch and tests before deciding whether an RFC is justified.
 
-## EXP-005 — Resolve the static async-trait contract mismatch
+## EXP-005 — Defer async traits behind an explicit interface RFC
 
-- Status: audit required; not an implementation gap claim
-- Evidence: `expressiveness/08_async_trait_protocol` compiles and runs a
-  concrete Toka trait method returning `async i32`, but rejects the generic
-  borrowed-receiver await with `E04583`. `docs/1_0_scope.md` still lists async
-  traits as post-1.0.
-- Decision: either qualify/freeze the accepted static subset with an
-  async-interface RFC, or reject it until receiver lifetimes, cancellation,
-  cross-module/TKI replay, visibility, and dyn interaction are specified.
+- Status: resolved for 1.0; future RFC required
+- Evidence: `expressiveness/08_async_trait_protocol` confirms ordinary async
+  functions remain runnable while trait async declarations are rejected with
+  `E0618` before trait/TKI registration.
+- Decision: keep the rejection until an async-interface RFC specifies receiver
+  lifetimes, cancellation, cross-module/TKI replay, visibility, and dyn
+  interaction.
 - Non-goal: treating the Rust `async fn` keyword spelling as the capability.
 
 ## EXP-006 — Evaluate fallible entry and universal error erasure separately

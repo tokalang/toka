@@ -1,0 +1,14 @@
+import std/task::{block_on}
+
+fn fetch() -> async i32 {
+    return 17
+}
+
+fn concrete_call() -> i32 {
+    return block_on<i32>(fetch())
+}
+
+fn main() -> i32 {
+    assert(concrete_call() == 17, "ordinary async function")
+    return 0
+}

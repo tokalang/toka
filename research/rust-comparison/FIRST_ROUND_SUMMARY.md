@@ -14,7 +14,7 @@ ranking.  It aggregates only the runnable cases in this directory.
 | Lazy consuming iterator | Current 1.0 boundary | Rust's standard iterator can own a source and mutable callback for deferred iteration. Toka supports the eager generic callback baseline but has no frozen consuming/lazy iterator protocol. |
 | Ordinary borrowed iteration | Observed parity | Toka `next_ref` and Rust `iter()` both traverse borrowed elements without consuming the collection. |
 | Dyn object with associated type | Current 1.0 boundary | Rust can erase `Readable<Item = i32>` as a trait object. Toka rejects `dyn @Readable<Item = i32>` with `E0617` under its fixed 1.0 dyn-object ABI rule. |
-| Async trait protocol | Current interface boundary | Toka accepts a concrete `fn -> async T` trait method, but rejects the generic borrowed-receiver await that Rust accepts with `E04583`. The accepted subset remains unfrozen. |
+| Async trait protocol | Current 1.0 boundary | Rust accepts the static generic async-trait method. Toka retains ordinary `fn -> async T` but rejects async trait declarations before trait/TKI registration with `E0618`. |
 | Fallible entry and error erasure | Current 1.0 boundary | Rust supports `main -> Result` with `Box<dyn Error>`. Toka keeps typed helper errors and requires `i32`/`void` main, rejecting `main -> Result` with `E04596`. |
 | Shared-write diagnostic | Quality comparison | Both reject invalid shared-field writes. Toka keeps its authority-specific diagnostic sequence and now adds a field-authority note; Rust gives one direct mutability message, whose suggested `&mut` is not always the desired interior-mutability repair. |
 | Panic recovery | Semantic/runtime tradeoff | In an unwind-enabled build Rust can catch a panic and run `Drop`; Toka 1.0 defines panic as non-returning process termination with no cleanup promise after the panic point. |
@@ -51,9 +51,8 @@ roadmaps.
 5. Treat dynamic `RefCell`-style borrowing as an exploration only; it is not a
    demonstrated Toka gap because static `field#`, `Mutex`, and `RwMutex` already
    cover different interior-mutability policies.
-6. Audit whether the accepted static async-trait form should be qualified and
-   frozen, or deliberately rejected until an async-interface RFC closes its
-   TKI, cancellation, visibility, and dyn boundaries.
+6. Keep async trait declarations excluded until an async-interface RFC closes
+   receiver, TKI, cancellation, visibility, and dyn boundaries.
 
 The design candidates are recorded in
 [`scoped_borrowed_task_rfc.md`](../../docs/semantic_core/scoped_borrowed_task_rfc.md)

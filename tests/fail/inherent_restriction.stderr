@@ -33,6 +33,11 @@ error[E04573]: Covenant Violation: Cannot elevate write permission from ReadOnly
     |
  12 |     d#.y = 20 // EXPECT: error[E0443]:
     |       ^
+note: payload-write authority is local to the target field declaration; a shared aggregate view cannot make an ordinary sibling field writable
+ --> tests/fail/inherent_restriction.tk:12:7
+    |
+ 12 |     d#.y = 20 // EXPECT: error[E0443]:
+    |       ^
 error[E0443]: Cannot modify immutable entity 'i32$'
  --> tests/fail/inherent_restriction.tk:12:7
     |

@@ -103,8 +103,8 @@ run_rust_pass dyn_associated_type_object_rust "$BASE/07_dyn_associated_type_obje
 run_toka_fail dyn_associated_type_object_toka_boundary "$BASE/07_dyn_associated_type_object/toka_1_0_boundary.tk" E0617
 
 run_rust_pass async_trait_protocol_rust "$BASE/08_async_trait_protocol/rust.rs"
-run_toka_pass async_trait_protocol_toka_baseline "$BASE/08_async_trait_protocol/toka_concrete_async_baseline.tk"
-run_toka_fail async_trait_protocol_toka_borrowed_boundary "$BASE/08_async_trait_protocol/toka_borrowed_receiver_boundary.tk" E04583
+run_toka_pass async_trait_protocol_toka_ordinary_baseline "$BASE/08_async_trait_protocol/toka_ordinary_async_baseline.tk"
+run_toka_fail async_trait_protocol_toka_1_0_boundary "$BASE/08_async_trait_protocol/toka_trait_async_1_0_boundary.tk" E0618
 
 run_rust_pass error_entry_and_erasure_rust "$BASE/09_error_entry_and_erasure/rust.rs"
 run_toka_pass error_entry_and_erasure_toka_baseline "$BASE/09_error_entry_and_erasure/toka_typed_entry_baseline.tk"

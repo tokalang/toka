@@ -12,23 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 import std/io::println
-
-pub trait @SecretIdentity {
-    // Defined as private (no pub)
-    fn get_secret(self) -> i32
-}
-
-pub shape Spy(id: i32)
-
-// Strict match: implementation is also private (no pub)
-impl Spy@SecretIdentity {
-    fn get_secret(self) -> i32 {
-        return self.id
-    }
-}
+import ./dyn_privacy_provider/lib::{Spy, @SecretIdentity}
 
 // Function accepting trait object
-// Since get_secret is private in the Trait definition, this should NOT be allowed outside the defining module.
+// The trait declaration is in dyn_privacy_provider, so this is an external call.
 fn reveal_secret(obj: dyn @SecretIdentity) {
     // This calls get_secret on the interface.
     // If the interface method is private, this should fail compilation.
