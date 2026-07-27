@@ -37,11 +37,13 @@ enclosing enum target because no separately nameable payload path exists.
 `cede_existing_handle_only_lhs_cannot_gain_payload_write`,
 `cede_shared_existing_lhs_cannot_amplify_payload`, and
 `cede_shared_field_rebind_*`, `reference_field_rebind_cannot_amplify_payload`,
+`index_handle_rebind_is_not_a_1_0_surface`, and
 `g08_iterator_pal_protocol.tk` provide positive/disjoint/conflicting evidence.
 GAP-LANG-04 remains **in progress**: this closes syntactic direct-source
-routing and the existing-LHS no-redeclaration boundary only; it does not
-decide broader independent-`cede` referent ceilings or add provenance
-traversal.
+routing and the existing-LHS no-redeclaration boundary only. Indexed elements
+have payload and partial-`cede` operations but no independent handle-rebind
+surface in 1.0; it does not decide broader independent-`cede` referent
+ceilings or add provenance traversal.
 
 ### B. Compiler & Lowering
 

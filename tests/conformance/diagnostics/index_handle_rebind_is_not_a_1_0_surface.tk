@@ -1,0 +1,10 @@
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto ~source = new Cell(value = 1)
+    auto values#: [~Cell; 1] = [~source]
+    auto ~replacement = new Cell(value = 2)
+    ~values[0] = cede ~replacement
+    return 0
+}
+// EXPECT_ERROR: E0408
