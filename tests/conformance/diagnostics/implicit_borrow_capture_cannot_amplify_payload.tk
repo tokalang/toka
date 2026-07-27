@@ -1,0 +1,11 @@
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto ^#cell = new Cell(value = 1)
+    auto callback#: fn#() = { =>
+        cell.value = 2
+        return
+    }
+    callback#()
+    return 0
+}

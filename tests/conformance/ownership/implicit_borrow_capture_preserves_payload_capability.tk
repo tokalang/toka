@@ -1,0 +1,14 @@
+shape Cell(value#: i32)
+
+fn main() -> i32 {
+    auto cell# = Cell(value = 1)
+    auto callback#: fn#() = { =>
+        cell.value = 2
+        return
+    }
+
+    callback#()
+    assert(cell.value == 2,
+           "an implicit borrow capture preserves declared payload capability")
+    return 0
+}

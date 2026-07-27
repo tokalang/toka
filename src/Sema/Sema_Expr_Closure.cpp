@@ -473,7 +473,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   // Determine Captures
   std::vector<ShapeMember> members;
-  std::map<std::string, SymbolInfo> explicitCaptureBindings;
+  std::map<std::string, SymbolInfo> captureBindings;
   for (const auto &capture : Clo->ExplicitCaptures) {
     std::string name = Type::stripMorphology(capture.Name);
     if (!name.empty() && name != "*")
@@ -560,15 +560,31 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             captureInfo.IsFunctionParameter = false;
             captureInfo.IsDeclaredVariable = true;
             captureInfo.TypeObj = sm.ResolvedType;
-            explicitCaptureBindings[sm.Name] = std::move(captureInfo);
+            captureBindings[sm.Name] = std::move(captureInfo);
             if (explicitMode == CaptureMode::ExplicitCede) {
                 // Mark original variable as Consumed/Moved in the parent scope!
                 CurrentScope->Parent->markMoved(varName, Clo->Loc);
             }
         } else {
-            // Implicit capture means Borrow (Reference)
+            // Implicit capture means Borrow (Reference).  It is a new view,
+            // not a new authority root: retain the directly captured payload
+            // capability and its existing flow ceiling, but never retain
+            // handle rebinding permission.
             sm.Type = "&" + infoPtr->TypeObj->toString();
             sm.ResolvedType = std::make_shared<toka::ReferenceType>(infoPtr->TypeObj); // [Fix] Pre-resolve reference
+
+            SymbolInfo captureInfo = *infoPtr;
+            captureInfo.SymbolID = 0;
+            captureInfo.Moved = false;
+            captureInfo.MoveLoc = SourceLocation{};
+            captureInfo.IsFunctionParameter = false;
+            captureInfo.IsDeclaredVariable = true;
+            captureInfo.Permission.Morphology = BindingMorphology::Reference;
+            captureInfo.Permission.IdentityRebindable = false;
+            captureInfo.Permission.IdentityNullable = false;
+            captureInfo.Permission.IdentityBlocked = false;
+            captureInfo.TypeObj = sm.ResolvedType;
+            captureBindings[sm.Name] = std::move(captureInfo);
         }
 
         members.push_back(sm);
@@ -660,9 +676,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   for (auto &memb : SyntheticShape->Members) {
     if (memb.ResolvedType) {
        SymbolInfo Info;
-       auto explicitIt = explicitCaptureBindings.find(memb.Name);
-       if (explicitIt != explicitCaptureBindings.end()) {
-         Info = explicitIt->second;
+       auto captureIt = captureBindings.find(memb.Name);
+       if (captureIt != captureBindings.end()) {
+         Info = captureIt->second;
        }
        Info.TypeObj = memb.ResolvedType; // Pre-resolved!
        Info.IsDeclaredVariable = true;

@@ -1560,6 +1560,23 @@
       "description": "A primitive field declared payload-writable satisfies a payload-writable parameter"
     },
     {
+      "id": "ownership_implicit_borrow_capture_preserves_payload_capability_01",
+      "path": "ownership/implicit_borrow_capture_preserves_payload_capability.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An implicit borrowed closure capture preserves, but does not elevate, payload capability"
+    },
+    {
+      "id": "diag_implicit_borrow_capture_cannot_amplify_payload_01",
+      "path": "diagnostics/implicit_borrow_capture_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0443",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "An implicit borrowed closure capture cannot manufacture payload capability"
+    },
+    {
       "id": "ownership_pattern_shared_view_preserves_payload_capability_01",
       "path": "ownership/pattern_shared_view_preserves_payload_capability.tk",
       "type": "run",
