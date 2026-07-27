@@ -1012,7 +1012,7 @@ fn run_build_impl(
                 println("error: failed to deserialize current graph: {}", current_graph_res.unwrap_err())
                 return 1
             }
-            auto current_graph = current_graph_res.unwrap()
+            auto current_graph# = current_graph_res.unwrap()
             populate_submodule_outputs(current_graph, build_dir)
 
             auto old_manifest# = DependencyManifest(..)

@@ -10,7 +10,7 @@ pub fn main() -> i32 {
         auto raw_f# = File::open(path.clone(), "w")
         assert(raw_f.is_valid(), "Failed to open raw file for writing")
         
-        auto writer# = BufferedWriter<File>::new(raw_f#.take())
+        auto writer# = BufferedWriter<File>::new(cede raw_f#.take())
         
         writer#.write_string(string::from("Line 1: Hello from standard bufio!\n")).unwrap()
         writer#.write_string(string::from("Line 2: Fast buffered writing without syscall storm.\n")).unwrap()
@@ -24,7 +24,7 @@ pub fn main() -> i32 {
         auto raw_f# = File::open(path.clone(), "r")
         assert(raw_f.is_valid(), "Failed to open raw file for reading")
         
-        auto reader# = BufferedReader<File>::new(raw_f#.take())
+        auto reader# = BufferedReader<File>::new(cede raw_f#.take())
         
         // Read Line 1
         auto l1_res = reader#.read_line().unwrap()
