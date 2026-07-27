@@ -1123,6 +1123,14 @@
       "description": "A direct match mutable reference writes its exact fixed-array index"
     },
     {
+      "id": "ownership_guard_mutable_reference_fixed_index_write_01",
+      "path": "ownership/guard_mutable_reference_fixed_index_write.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A direct guard mutable reference writes its exact fixed-array index"
+    },
+    {
       "id": "ownership_cede_fixed_array_index_return_cleanup_01",
       "path": "ownership/cede_fixed_array_index_return_cleanup.tk",
       "type": "run",

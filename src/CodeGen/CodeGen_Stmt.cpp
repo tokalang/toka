@@ -723,9 +723,34 @@ llvm::Value *CodeGen::genUnreachableStmt(const UnreachableStmt *stmt) {
 }
 
 llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
-  PhysEntity targetVal_ent = genExpr(gbs->Target.get());
-  llvm::Value *targetVal = targetVal_ent.load(m_Builder);
-  llvm::Type *targetType = targetVal->getType();
+  // A direct reference binding must retain the guard target's storage
+  // identity.  Staging its loaded value in an alloca would make `&binding`
+  // point at the copy rather than the guarded lvalue.
+  const bool hasDirectReferencePattern =
+      gbs->Pat && gbs->Pat->PatternKind == MatchArm::Pattern::Variable &&
+      gbs->Pat->IsReference;
+  llvm::Value *targetAddr = nullptr;
+  llvm::Value *targetVal = nullptr;
+  llvm::Type *targetType = nullptr;
+  bool usesSourceAddr = false;
+
+  if (hasDirectReferencePattern && gbs->Target &&
+      gbs->Target->ResolvedType) {
+    targetAddr = genAddr(gbs->Target.get());
+    targetType = getLLVMType(gbs->Target->ResolvedType);
+    if (targetAddr && targetType && !targetType->isVoidTy()) {
+      targetVal = m_Builder.CreateLoad(targetType, targetAddr, "guard_target");
+      usesSourceAddr = true;
+    } else {
+      targetAddr = nullptr;
+    }
+  }
+
+  if (!targetVal) {
+    PhysEntity targetValEnt = genExpr(gbs->Target.get());
+    targetVal = targetValEnt.load(m_Builder);
+    targetType = targetVal->getType();
+  }
   
   std::string targetTypeStr = "unknown";
   if (targetType->isStructTy() && m_TypeToName.count(targetType)) {
@@ -734,15 +759,17 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
       targetTypeStr = gbs->Target->ResolvedType->toString();
   }
 
-  llvm::AllocaInst *targetAddr = createEntryBlockAlloca(targetType, nullptr, "guard_target_addr");
-  m_Builder.CreateStore(targetVal, targetAddr);
+  if (!targetAddr) {
+    targetAddr = createEntryBlockAlloca(targetType, nullptr, "guard_target_addr");
+    m_Builder.CreateStore(targetVal, targetAddr);
+  }
 
   std::string baseShapeName = targetTypeStr;
   if (baseShapeName.find('<') != std::string::npos) {
     baseShapeName = baseShapeName.substr(0, baseShapeName.find('<'));
   }
 
-  if (gbs->Target && gbs->Target->ExtendLifetime && !m_ScopeStack.empty()) {
+  if (!usesSourceAddr && gbs->Target && gbs->Target->ExtendLifetime && !m_ScopeStack.empty()) {
       bool hasDrop = false;
       if (!baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
           hasDrop = true;
@@ -808,7 +835,7 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
   // Actually, wait, if ExtendLifetime is false, then we MUST drop it.
   
   if (!baseShapeName.empty() && m_Shapes.count(baseShapeName)) {
-      if (!gbs->Target || !gbs->Target->ExtendLifetime) {
+      if (!usesSourceAddr && (!gbs->Target || !gbs->Target->ExtendLifetime)) {
           emitDropCascade(targetAddr, targetTypeStr);
       }
   }

@@ -57,7 +57,8 @@ Primary references:
 - Positive tests: `tests/pass/g03_borrow_ok.tk`,
   `tests/pass/g08_pal_stress_test_borrow.tk`,
   `tests/conformance/ownership/mutable_borrow_fixed_array_index_write.tk`,
-  `tests/conformance/ownership/match_mutable_reference_fixed_index_write.tk`
+  `tests/conformance/ownership/match_mutable_reference_fixed_index_write.tk`,
+  `tests/conformance/ownership/guard_mutable_reference_fixed_index_write.tk`
 - Negative tests: `tests/fail/borrow.tk`, `tests/fail/borrow_field.tk`,
   `tests/fail/safety_double_mut.tk`,
   `tests/fail/pal_member_mut_borrow_duplicate.tk`,
