@@ -1073,6 +1073,14 @@
       "description": "Fixed-array elements drop exactly once, and a ceded constant index can be reinitialized safely"
     },
     {
+      "id": "ownership_cede_fixed_array_disjoint_borrow_01",
+      "path": "ownership/cede_fixed_array_disjoint_borrow.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A borrow of one constant fixed-array index does not block ceding a distinct constant index"
+    },
+    {
       "id": "ownership_cede_fixed_array_index_return_cleanup_01",
       "path": "ownership/cede_fixed_array_index_return_cleanup.tk",
       "type": "run",

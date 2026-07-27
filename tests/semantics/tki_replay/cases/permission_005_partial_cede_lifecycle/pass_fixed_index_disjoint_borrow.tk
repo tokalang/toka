@@ -1,0 +1,13 @@
+import ./lib::{Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    {
+        auto values: [Token; 2] = [Token(id = 1, &drops = &drops), Token(id = 2, &drops = &drops)]
+        auto &borrow = &(values[0])
+        auto taken = cede values[1]
+        if borrow.id != 1 { return 1 }
+        if taken.id != 2 { return 2 }
+    }
+    return drops - 2
+}

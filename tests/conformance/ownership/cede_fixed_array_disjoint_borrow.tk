@@ -1,0 +1,23 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    {
+        auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+        auto &borrow = &(values[0])
+        auto taken = cede values[1]
+        if borrow.id != 1 { return 1 }
+        if taken.id != 2 { return 2 }
+    }
+    return g_drop_count - 2
+}

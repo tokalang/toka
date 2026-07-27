@@ -99,8 +99,13 @@ AccessPathOverlap classifyAccessPathOverlap(const AccessPath &lhs,
       continue;
     }
 
-    // Index, dereference, and unknown provenance remain conservative until a
-    // later alias analysis can prove them disjoint.
+    if (left.Kind == AccessProjectionKind::ConstantIndex &&
+        right.Kind == AccessProjectionKind::ConstantIndex) {
+      return AccessPathOverlap::NoOverlap;
+    }
+
+    // Dynamic indexes, dereferences, and unknown provenance remain
+    // conservative until a later alias analysis can prove them disjoint.
     uncertain = true;
   }
 
