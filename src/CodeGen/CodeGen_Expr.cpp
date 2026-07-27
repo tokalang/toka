@@ -3647,7 +3647,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     vBaseName.pop_back();
 
   // 4. Extract into Loop Variable
-  llvm::Value *bindingValue = fe->IsReference ? elemPtr : elem;
+  // Array elements are loaded values, so an array reference iterator must
+  // store the element address.  Protocol `next_ref()` already returns that
+  // address as its payload and must keep the loaded payload instead.
+  llvm::Value *bindingValue = (fe->IsReference && isArray) ? elemPtr : elem;
   llvm::AllocaInst *vAlloca =
       createEntryBlockAlloca(bindingValue->getType(), nullptr, vBaseName);
   m_Builder.CreateStore(bindingValue, vAlloca);
