@@ -400,7 +400,8 @@ void Sema::checkStmt(Stmt *S) {
             }
           }
         }
-        if (info.IsDeclaredVariable && !info.HasBeenUsed) {
+        if (info.IsDeclaredVariable && !info.HasBeenUsed &&
+            !info.HasPayloadBeenUsed) {
           if (Type::stripMorphology(name) != "self") {
             std::string stripped = name;
             size_t idx = 0;

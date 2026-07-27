@@ -1298,6 +1298,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       SymbolInfo *InfoPtr = nullptr;
       if (CurrentScope->findVariableWithDeref(ve->Name, InfoPtr, actualName)) {
         InfoPtr->HasBeenMutated = true;
+        if (m_IsMemberBase) {
+          // `p.field = ...` uses p's payload projection, but not necessarily
+          // its handle view. Preserve that distinction for W0402/W0407.
+          InfoPtr->HasPayloadBeenUsed = true;
+        }
       }
     }
 

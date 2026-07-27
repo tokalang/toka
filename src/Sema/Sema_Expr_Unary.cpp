@@ -123,6 +123,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       if (Unary->Op == TokenType::Star || Unary->Op == TokenType::Caret ||
           Unary->Op == TokenType::Tilde || Unary->Op == TokenType::Ampersand) {
         Info->HasHandleBeenUsed = true;
+        if (m_InLHS || m_IsAssignmentTarget) {
+          // A handle rebind is a real handle use, even though it does not
+          // imply payload access.
+          Info->HasBeenUsed = true;
+        }
       }
 
       // [Fix] Trace to Source for Borrow Registration/Check

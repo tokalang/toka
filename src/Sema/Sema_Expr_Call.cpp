@@ -926,6 +926,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               !symPtr->IsDeclaredMutable) {
             error(Call, DiagID::ERR_SEMA_CALLABLE_NOT_WRITABLE, CallName);
           }
+          if (required == CallableReceiverMode::Mutable && symPtr) {
+            // An exclusive callable invocation may mutate its captured
+            // payload.  It consumes mutable capability just like a writable
+            // argument or receiver call for warning purposes.
+            symPtr->HasBeenMutated = true;
+          }
 
           AccessPath callablePath =
               canonicalizeAccessPath(makeAccessPath(CallName));
@@ -1025,6 +1031,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (required == CallableReceiverMode::Mutable && symPtr &&
             !symPtr->IsDeclaredMutable) {
           error(Call, DiagID::ERR_SEMA_CALLABLE_NOT_WRITABLE, CallName);
+        }
+        if (required == CallableReceiverMode::Mutable && symPtr) {
+          // See the formal-callable path above: an exclusive invocation is a
+          // mutable use even if the closure body is opaque at this call site.
+          symPtr->HasBeenMutated = true;
         }
         if (required != CallableReceiverMode::Consuming &&
             Call->CallableReceiver == CallableReceiverMode::Consuming)
@@ -1954,6 +1965,32 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             std::to_string(i + 1),
             paramType ? diagnosticTypeName(paramType) : "capable argument",
             diagnosticTypeName(argType));
+      if (lacksPayloadCapability) {
+        DiagnosticEngine::report(
+            getLoc(Call->Args[i].get()), DiagID::NOTE_GENERIC,
+            "payload-write authority comes from the binding or parameter declaration; a use-site '#' can request it but cannot create it");
+      } else {
+        DiagnosticEngine::report(
+            getLoc(Call->Args[i].get()), DiagID::NOTE_GENERIC,
+            "handle-rebind authority comes from the binding or parameter declaration; a use-site '#' can request it but cannot create it");
+      }
+    }
+
+    if (paramIsValueMutable && !isCededParam &&
+        !lacksPayloadCapability) {
+      Expr *argExpr = Call->Args[i].get();
+      while (auto *un = dynamic_cast<UnaryExpr *>(argExpr))
+        argExpr = un->RHS.get();
+      if (auto *VE = dynamic_cast<VariableExpr *>(argExpr)) {
+        std::string actualName = VE->Name;
+        SymbolInfo *InfoPtr = nullptr;
+        if (CurrentScope->findVariableWithDeref(VE->Name, InfoPtr,
+                                                actualName)) {
+          // Passing a binding to a payload-writable parameter is a mutable
+          // use, even though the mutation occurs in the callee body.
+          InfoPtr->HasBeenMutated = true;
+        }
+      }
     }
 
     if (isCededParam && isCallerCeded &&

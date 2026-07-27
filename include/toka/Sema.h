@@ -111,6 +111,10 @@ struct SymbolInfo {
   bool IsDeclaredMutable = false;
   bool HasBeenMutated = false;
   bool HasBeenUsed = false;
+  // A payload projection such as `p.field` is a meaningful use even when the
+  // handle view of `p` is intentionally unused. Keep it distinct from a
+  // whole-binding read so H/P-aware warnings can remain precise.
+  bool HasPayloadBeenUsed = false;
   bool HasHandleBeenUsed = false;
   bool IsDeclaredVariable = false;
   const ImportDecl* ImportingDecl = nullptr;

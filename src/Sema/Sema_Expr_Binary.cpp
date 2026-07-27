@@ -702,6 +702,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (payloadCapabilityDenied && !payloadFlowDenied && !isLHSUnset) {
       error(Bin->LHS.get(),
             DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      if (auto *member = dynamic_cast<MemberExpr *>(Bin->LHS.get())) {
+        DiagnosticEngine::report(
+            getLoc(member), DiagID::NOTE_GENERIC,
+            "payload-write authority is local to the target field declaration; a shared aggregate view cannot make an ordinary sibling field writable");
+      }
       HasError = true;
     }
 
