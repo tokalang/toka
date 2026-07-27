@@ -16,6 +16,7 @@
 #include "toka/MemberAccess.h"
 #include "toka/Type.h"
 #include <cctype>
+#include <functional>
 #include <iostream>
 #include <set>
 #include <typeinfo>
@@ -723,18 +724,29 @@ llvm::Value *CodeGen::genUnreachableStmt(const UnreachableStmt *stmt) {
 }
 
 llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
-  // A direct reference binding must retain the guard target's storage
-  // identity.  Staging its loaded value in an alloca would make `&binding`
-  // point at the copy rather than the guarded lvalue.
-  const bool hasDirectReferencePattern =
-      gbs->Pat && gbs->Pat->PatternKind == MatchArm::Pattern::Variable &&
-      gbs->Pat->IsReference;
+  // A reference binding must retain the guard target's storage identity.
+  // This applies equally to a top-level `&binding` and to a reference nested
+  // in a destructuring pattern.  Staging its loaded value in an alloca would
+  // make that binding point at a copy rather than the guarded lvalue.
+  std::function<bool(const MatchArm::Pattern *)> hasReferenceBinding =
+      [&](const MatchArm::Pattern *pat) {
+        if (!pat)
+          return false;
+        if (pat->PatternKind == MatchArm::Pattern::Variable &&
+            pat->IsReference)
+          return true;
+        for (const auto &sub : pat->SubPatterns) {
+          if (hasReferenceBinding(sub.get()))
+            return true;
+        }
+        return false;
+      };
   llvm::Value *targetAddr = nullptr;
   llvm::Value *targetVal = nullptr;
   llvm::Type *targetType = nullptr;
   bool usesSourceAddr = false;
 
-  if (hasDirectReferencePattern && gbs->Target &&
+  if (hasReferenceBinding(gbs->Pat.get()) && gbs->Target &&
       gbs->Target->ResolvedType) {
     targetAddr = genAddr(gbs->Target.get());
     targetType = getLLVMType(gbs->Target->ResolvedType);
@@ -945,6 +957,9 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
       genPatternBinding(gbs->Pat.get(), payloadAddr, payloadType, subTypeObj);
   } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Variable) {
       genPatternBinding(gbs->Pat.get(), targetAddr, targetType, gbs->Target->ResolvedType);
+  } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Decons) {
+      genPatternBinding(gbs->Pat.get(), targetAddr, targetType,
+                        gbs->Target->ResolvedType);
   }
   
   return nullptr;

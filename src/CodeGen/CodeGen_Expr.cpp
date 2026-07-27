@@ -2848,7 +2848,8 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
               if (m_Shapes.count(shapeName)) {
                 const auto *sh = m_Shapes[shapeName];
                 for (size_t m = 0; m < sh->Members.size(); ++m) {
-                  if (sh->Members[m].Name == pat->SubPatternNames[i]) {
+                  if (sh->Members[m].Name ==
+                      Type::stripMorphology(pat->SubPatternNames[i])) {
                     memberIndex = m;
                     break;
                   }
@@ -4028,7 +4029,8 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
             if (m_Shapes.count(shapeName)) {
               const auto *sh = m_Shapes[shapeName];
               for (size_t m = 0; m < sh->Members.size(); ++m) {
-                if (sh->Members[m].Name == pat->SubPatternNames[i]) {
+                if (sh->Members[m].Name ==
+                    Type::stripMorphology(pat->SubPatternNames[i])) {
                   memberIndex = m;
                   break;
                 }

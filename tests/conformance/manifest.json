@@ -1131,6 +1131,14 @@
       "description": "A direct guard mutable reference writes its exact fixed-array index"
     },
     {
+      "id": "ownership_nested_pattern_mutable_reference_write_01",
+      "path": "ownership/nested_pattern_mutable_reference_write.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Nested match and guard mutable references write their source struct field"
+    },
+    {
       "id": "ownership_cede_fixed_array_index_return_cleanup_01",
       "path": "ownership/cede_fixed_array_index_return_cleanup.tk",
       "type": "run",

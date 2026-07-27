@@ -1,0 +1,25 @@
+shape Point(x: i32, y: i32)
+
+fn match_reference_writes_field() -> i32 {
+    auto point# = Point(x = 1, y = 2)
+    match point {
+        auto Point(&x# = .&x, ..) => {
+            x = 3
+        }
+    }
+    if point.x != 3 { return 1 }
+    return point.y - 2
+}
+
+fn guard_reference_writes_field() -> i32 {
+    auto point# = Point(x = 4, y = 5)
+    guard auto Point(&x# = .&x, ..) = point else { return 1 }
+    x = 6
+    if point.x != 6 { return 2 }
+    return point.y - 5
+}
+
+fn main() -> i32 {
+    if match_reference_writes_field() != 0 { return 1 }
+    return guard_reference_writes_field()
+}
