@@ -15,7 +15,7 @@ fn guard_reference_writes_field() -> i32 {
     auto point# = Point(x = 4, y = 5)
     guard auto Point(&x# = .&x, ..) = point else { return 1 }
     x = 6
-    if point.x != 6 { return 2 }
+    if x != 6 { return 2 }
     return point.y - 5
 }
 

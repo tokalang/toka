@@ -1,0 +1,13 @@
+import ./lib::{make_pair}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto pair = make_pair(drops)
+    match pair {
+        auto Pair(&borrow = .&left, ..) => {
+            auto taken = cede pair.left
+            return taken.id
+        }
+    }
+}
+// EXPECT_ERROR: E0440

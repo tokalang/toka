@@ -641,7 +641,24 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                 }
               }
 
-              checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(SD->Members[memberIndex]), SourceCapability, TargetPath);
+              // A nested binder borrows this member, not the enclosing
+              // aggregate.  Preserve the structural field projection so PAL
+              // can reject a move of the same field while retaining the
+              // existing disjoint-field behavior.
+              const std::string memberName =
+                  toka::Type::stripMorphology(SD->Members[memberIndex].Name);
+              std::string memberPath = TargetPath;
+              if (!memberPath.empty())
+                memberPath += "." + memberName;
+              AccessPath memberAccessPath = TargetAccessPath;
+              if (memberAccessPath) {
+                memberAccessPath.Projections.push_back(
+                    AccessProjection::field(memberName,
+                                            Pat->SubPatterns[i]->Loc));
+              }
+              checkPattern(Pat->SubPatterns[i].get(),
+                           getPhysicalTypeName(SD->Members[memberIndex]),
+                           SourceCapability, memberPath, memberAccessPath);
             }
           }
         }
