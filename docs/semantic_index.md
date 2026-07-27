@@ -20,6 +20,9 @@ Run a focused query using zero-based LSP line and character positions:
 ```sh
 tokac --semantic-query definition \
   --query-file path/to/main.tk --line 12 --character 8 path/to/main.tk
+# Equivalent SDK command:
+toka query definition path/to/main.tk \
+  --query-file path/to/main.tk --line 12 --character 8 --json
 ```
 
 Supported query names are `symbolAt`, `hover`, `definition`, `references`,
@@ -94,4 +97,4 @@ cross-module definition and references, shadowing, safe rename, typed
 completion, and document symbols against a checked-in workspace.
 `python3 tools/scripts/test_ai_tooling.py` additionally checks deterministic
 callable and field contract serialization, including `cede`, H/P permissions,
-and async effects.
+async effects, and the equivalent `toka query references` impact result.

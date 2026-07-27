@@ -56,6 +56,19 @@ or receiver beyond its declaration contract. Read the contract before proposing
 an ownership or permission-changing edit, then verify the edit with `toka
 check --json`.
 
+For a public API change, locate the declaration with `toka query definition`
+or inspect it through `toka index --json`, then run `toka query references` at
+the declaration position before editing. The result is compiler-resolved,
+complete symbol identity data rather than a text search. A deterministic AI
+loop is therefore:
+
+```text
+index contract -> query references -> edit -> check --json -> project tests
+```
+
+The final project-test command remains project-defined; the compiler never
+pretends that a source-only check proves runtime behavior.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

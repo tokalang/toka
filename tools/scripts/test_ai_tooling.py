@@ -148,12 +148,25 @@ def main():
     ).stdout)
     require(manager_index == index,
             "toka index does not preserve the compiler API contract index")
+    direct_references = json.loads(run([
+        tokac, "--semantic-query", "references", semantic_source,
+        "--query-file", semantic_source, "--line", "13", "--character", "12",
+    ]).stdout)
+    manager_references = json.loads(run([
+        toka, "query", "references", semantic_source,
+        "--query-file", semantic_source, "--line", "13", "--character", "12",
+        "--json",
+    ]).stdout)
+    require(manager_references == direct_references and
+            manager_references["query"] == "references" and
+            len(manager_references["result"]) >= 2,
+            "toka query does not preserve semantic impact references")
 
     checks = [
         "diagnostic-schema", "multi-span", "machine-fix", "fix-application",
         "compiler-explain", "unknown-code", "toka-explain", "toka-check",
         "semantic-context", "context-determinism", "context-bound",
-        "api-contracts", "contract-determinism", "toka-index",
+        "api-contracts", "contract-determinism", "toka-index", "toka-query",
     ]
     print(json.dumps({
         "checks": checks,
