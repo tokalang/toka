@@ -2118,9 +2118,39 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
   bool isCeded = dynamic_cast<const CedeExpr*>(expr->Target.get()) != nullptr;
 
-  PhysEntity targetVal_ent = genExpr(expr->Target.get());
-  llvm::Value *targetVal = targetVal_ent.load(m_Builder);
-  llvm::Type *targetType = targetVal->getType();
+  bool hasDirectReferencePattern = false;
+  for (const auto &arm : expr->Arms) {
+    if (arm->Pat && arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
+        arm->Pat->IsReference) {
+      hasDirectReferencePattern = true;
+      break;
+    }
+  }
+
+  // A direct reference pattern must borrow an addressable scrutinee, not a
+  // staging copy of its loaded value.  Generate the source address first so
+  // an index expression is evaluated exactly once and the same storage feeds
+  // both pattern matching and the binder.
+  llvm::Value *targetAddr = nullptr;
+  llvm::Type *targetType = nullptr;
+  llvm::Value *targetVal = nullptr;
+  PhysEntity targetValEnt;
+  if (hasDirectReferencePattern && expr->Target && expr->Target->ResolvedType) {
+    targetAddr = genAddr(expr->Target.get());
+    targetType = getLLVMType(expr->Target->ResolvedType);
+    if (targetAddr && targetType && !targetType->isVoidTy()) {
+      targetVal = m_Builder.CreateLoad(targetType, targetAddr, "match_target");
+      targetValEnt = PhysEntity(targetAddr, "", targetType, true);
+    } else {
+      targetAddr = nullptr;
+    }
+  }
+
+  if (!targetVal) {
+    targetValEnt = genExpr(expr->Target.get());
+    targetVal = targetValEnt.load(m_Builder);
+    targetType = targetVal->getType();
+  }
   std::string targetSemaType = expr->Target->ResolvedType ? expr->Target->ResolvedType->toString() : "";
 
   std::string shapeName;
@@ -2144,10 +2174,11 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   }
 
   // Use the physical address if it already exists, otherwise create a temporary staging block
-  llvm::Value *targetAddr = nullptr;
   bool isNewlyAllocated = false;
-  if (targetVal_ent.isAddress) {
-      targetAddr = targetVal_ent.value;
+  if (targetAddr) {
+      // Direct reference pattern uses the original lvalue address above.
+  } else if (targetValEnt.isAddress) {
+      targetAddr = targetValEnt.value;
   } else {
       targetAddr = createEntryBlockAlloca(targetType, nullptr, "match_target_addr");
       m_Builder.CreateStore(targetVal, targetAddr);
