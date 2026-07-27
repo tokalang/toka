@@ -1,6 +1,7 @@
-import std/io::{println}
+import std/io::{println, File, remove_file}
 import std/vec::{Vec}
-import stdx/data/csv::{parse_records, write_records}
+import stdx/data/csv::{parse_records, write_records, read_record, write_record}
+import stdx/io/bufio::{BufferedReader, BufferedWriter}
 
 fn assert_field(records: Vec<Vec<string>>, row: usize, column: usize, expected: str) {
     auto record = records.get(row).clone()
@@ -54,10 +55,49 @@ fn test_errors() {
     assert(uneven.is_err(), "unequal record width must fail")
 }
 
+fn test_streaming_adapters() {
+    auto path = string::from("toka_csv_streaming_test.tmp")
+    {
+        auto file# = File::open(path.clone(), "w")
+        assert(file.is_valid(), "CSV test output file must open")
+        auto writer# = BufferedWriter<File>::new(cede file#.take())
+        auto record# = Vec<string>::new()
+        record#.push(cede string::from("1"))
+        record#.push(cede string::from("one\r\ntwo"))
+        assert(write_record<File>(writer, cede record).is_ok(), "streaming CSV write must succeed")
+        assert(writer#.flush().is_ok(), "streaming CSV flush must succeed")
+    }
+    {
+        auto file# = File::open(path.clone(), "r")
+        assert(file.is_valid(), "CSV test input file must open")
+        auto reader# = BufferedReader<File>::new(cede file#.take())
+        auto next = read_record<File>(reader, 64)
+        assert(next.is_ok(), "streaming CSV read must not fail")
+        auto record_opt = next.unwrap()
+        assert(record_opt.is_some(), "streaming CSV record must read")
+        auto record = record_opt.unwrap()
+        auto field = record.get(1).clone()
+        assert(field.as_str().equals("one\r\ntwo"), "streaming CSV field mismatch")
+        auto eof = read_record<File>(reader, 64)
+        assert(eof.is_ok(), "streaming CSV EOF read must not fail")
+        auto eof_record = eof.unwrap()
+        assert(eof_record.is_none(), "streaming CSV reader must stabilize at EOF")
+    }
+    {
+        auto file# = File::open(path.clone(), "r")
+        assert(file.is_valid(), "bounded CSV test input file must open")
+        auto reader# = BufferedReader<File>::new(cede file#.take())
+        auto bounded = read_record<File>(reader, 4)
+        assert(bounded.is_err(), "streaming CSV record limit must be enforced")
+    }
+    remove_file(path)
+}
+
 fn main() -> i32 {
     test_parse_rfc4180_core()
     test_write_round_trip()
     test_errors()
+    test_streaming_adapters()
     println("g14_stdx_csv_test PASSED!")
     return 0
 }

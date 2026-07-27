@@ -25,12 +25,22 @@ pub shape CsvError (
 
 pub fn parse_records(input: str) -> Result<Vec<Vec<string>>, CsvError>
 pub fn write_records(records: Vec<Vec<string>>) -> string
+pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: usize)
+    -> Result<Option<Vec<string>>, CsvError>
+pub fn write_record<'W: @Writer>(writer#: BufferedWriter<'W>, cede record: Vec<string>)
+    -> Result<(), CsvError>
 ```
 
 `parse_records` owns every returned field. It must not expose a borrowed field
 view whose backing input may be dropped. `write_records` emits CRLF row
 terminators, quotes fields containing comma, quote, CR, or LF, and doubles a
 quote inside a quoted field.
+
+The synchronous streaming helpers build on the existing `BufferedReader` and
+`BufferedWriter` contracts rather than introducing a second reader/writer
+owner type. `read_record` accumulates exactly one logical record, enforces the
+caller-provided byte limit, and returns owned fields. `write_record` emits one
+record; flushing remains the caller's batching decision.
 
 The parser accepts CRLF records, quoted fields, escaped quotes, empty fields,
 and a final record without a trailing CRLF. It rejects malformed quoting,
@@ -46,8 +56,8 @@ line/column coordinates.
 - No zero-copy field API in the first release. A later borrowed-view reader
   must have an explicit owner-carrying contract rather than retaining raw
   pointers across a call or async suspension.
-- No async reader in the first release. The streaming I/O adapter comes after
-  the pure parser is qualified.
+- No async reader in the first release. The synchronous adapter deliberately
+  reuses `stdx/io/bufio`; async streaming remains a later, separate contract.
 
 ## Delivery slices
 

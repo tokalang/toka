@@ -1,6 +1,8 @@
 // RFC 4180 core CSV parser and writer.
 
 import std/vec::{Vec}
+import std/io::{@Reader, @Writer}
+import stdx/io/bufio::{BufferedReader, BufferedWriter}
 
 pub shape CsvError(
     line: usize,
@@ -193,4 +195,89 @@ pub fn write_records(records: Vec<Vec<string>>) -> string {
         row_index = row_index + 1
     }
     return output
+}
+
+fn quotes_closed(input: str) -> bool {
+    auto in_quotes# = false
+    auto i#: usize = 0
+    loop i < input.len() {
+        auto byte = input.byte_at(i) as u8
+        if byte == 34:u8 {
+            if in_quotes && i + 1 < input.len() &&
+               input.byte_at(i + 1) as u8 == 34:u8 {
+                i = i + 2
+                continue
+            }
+            in_quotes = !in_quotes
+        }
+        i = i + 1
+    }
+    return !in_quotes
+}
+
+// Read one logical record through the existing buffered reader. This keeps
+// the adapter generic without introducing another owning wrapper around R.
+pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: usize)
+                             -> Result<Option<Vec<string>>, CsvError> {
+    auto record# = string::from("")
+    auto line#: usize = 1
+    loop true {
+        auto line_result = reader#.read_line()
+        if line_result.is_err() {
+            return Result<Option<Vec<string>>, CsvError>::Err(parse_error(
+                line, 1:usize, line_result.unwrap_err()))
+        }
+        auto fragment = line_result.unwrap()
+        if fragment.len() == 0:usize {
+            if record.len() == 0:usize {
+                return Result<Option<Vec<string>>, CsvError>::Ok(Option<Vec<string>>::None)
+            }
+            if !quotes_closed(record.as_str()) {
+                return Result<Option<Vec<string>>, CsvError>::Err(parse_error(
+                    line, 1:usize, string::from("unclosed quoted field at EOF")))
+            }
+        } else {
+            if record.len() + fragment.len() > max_record_bytes {
+                return Result<Option<Vec<string>>, CsvError>::Err(parse_error(
+                    line, 1:usize, string::from("CSV record size limit exceeded")))
+            }
+            record#.push_str(fragment.as_str())
+            line = line + 1:usize
+            if !quotes_closed(record.as_str()) {
+                continue
+            }
+        }
+
+        auto parsed = parse_records(record.as_str())
+        if parsed.is_err() {
+            return Result<Option<Vec<string>>, CsvError>::Err(parsed.unwrap_err())
+        }
+        auto rows = parsed.unwrap()
+        if rows.len() != 1:usize {
+            return Result<Option<Vec<string>>, CsvError>::Err(parse_error(
+                1:usize, 1:usize, string::from("expected exactly one CSV record")))
+        }
+        auto row = rows.get(0:usize).clone()
+        return Result<Option<Vec<string>>, CsvError>::Ok(
+            Option<Vec<string>>::Some(cede row))
+    }
+}
+
+// Write one owned record through the existing buffered writer. The caller
+// controls flushing, which keeps batching policy explicit.
+pub fn write_record<'W: @Writer>(writer#: BufferedWriter<'W>, cede record: Vec<string>)
+                              -> Result<(), CsvError> {
+    auto records# = Vec<Vec<string>>::new()
+    records#.push(cede record)
+    auto wire = write_records(records)
+    auto written = writer#.write_string(wire.clone())
+    if written.is_err() {
+        return Result<(), CsvError>::Err(parse_error(
+            1:usize, 1:usize, written.unwrap_err()))
+    }
+    if written.unwrap() != wire.len() {
+        return Result<(), CsvError>::Err(parse_error(
+            1:usize, 1:usize, string::from("short CSV write")))
+    }
+    return Result<(), CsvError>::Ok(())
 }
