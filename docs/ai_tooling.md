@@ -41,11 +41,13 @@ session, use [tokalsp](lsp.md).
 
 ## Public API contracts
 
-`tokac --semantic-index=json` emits declaration contracts for callable and
-field symbols. A contract records the declared morphology, transfer mode
-(`cede`, borrow, shared, and so on), H/P permissions, nullability, async
-effect, and return borrow dependencies. It is the machine-readable source of
-truth for API intent.
+`toka index --json path/to/main.tk` emits declaration contracts for callable
+and field symbols. It is the SDK entry point for the compiler semantic index
+(`tokac --semantic-index=json` is the equivalent low-level invocation). A
+contract records the declared morphology, transfer mode (`cede`, borrow,
+shared, and so on), H/P permissions, nullability, async effect, and return
+borrow dependencies. It is the machine-readable source of truth for API
+intent.
 
 An AI edit workflow must distinguish three layers: declaration capability,
 use-site intent, and PAL's current alias/interference decision. In particular,

@@ -18,6 +18,7 @@ fn print_help() {
     println("  check        Type-check source files (--json for structured diagnostics)")
     println("  explain      Explain a diagnostic code (--json for machine output)")
     println("  context      Emit bounded semantic context for an AI/editor query")
+    println("  index        Emit compiler-owned semantic index JSON for API tooling")
     println("  test         Run all tests in the tests/ directory")
     println("  doc          Generate API documentation")
     println("  add <url>    Add a package dependency")
@@ -689,6 +690,26 @@ fn cmd_context(argc: i32, shift: i32) -> i32 {
     return command#.status()
 }
 
+fn cmd_index(argc: i32, shift: i32) -> i32 {
+    if argc < 3 + shift {
+        println("Error: 'toka index' requires a source file.")
+        return 1
+    }
+    auto command# = Command::new(detect_tokac_path())
+    command#.arg(string::from("--semantic-index=json"))
+    command#.arg(string::from("-I"))
+    command#.arg(detect_default_lib_path())
+    auto idx# = 2 + shift
+    loop idx < argc {
+        auto arg = env::get_arg(idx)
+        if !arg.eq(string::from("--json")) {
+            command#.arg(cede arg)
+        }
+        idx += 1
+    }
+    return command#.status()
+}
+
 fn cmd_test() -> i32 {
     println("Running Toka tests...")
     
@@ -1036,6 +1057,10 @@ fn main() -> i32 {
 
     if cmd.eq(string::from("context")) {
         return cmd_context(argc, shift)
+    }
+
+    if cmd.eq(string::from("index")) {
+        return cmd_index(argc, shift)
     }
     
     if cmd.eq(string::from("test")) {

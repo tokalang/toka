@@ -143,12 +143,17 @@ def main():
             field_contract["flow"] == "value" and
             not field_contract["payloadWritable"],
             "field ownership and permission contract is incomplete")
+    manager_index = json.loads(run(
+        [toka, "index", "--json", contract_source]
+    ).stdout)
+    require(manager_index == index,
+            "toka index does not preserve the compiler API contract index")
 
     checks = [
         "diagnostic-schema", "multi-span", "machine-fix", "fix-application",
         "compiler-explain", "unknown-code", "toka-explain", "toka-check",
         "semantic-context", "context-determinism", "context-bound",
-        "api-contracts", "contract-determinism",
+        "api-contracts", "contract-determinism", "toka-index",
     ]
     print(json.dumps({
         "checks": checks,

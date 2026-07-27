@@ -11,6 +11,8 @@ Emit the complete workspace index:
 
 ```sh
 tokac --semantic-index=json path/to/main.tk
+# Equivalent SDK command:
+toka index --json path/to/main.tk
 ```
 
 Run a focused query using zero-based LSP line and character positions:
