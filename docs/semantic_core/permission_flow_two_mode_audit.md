@@ -1,21 +1,22 @@
 # Audit: Current Implementation Against Two-Mode Permission Flow
 
-**Audit target:** the working implementation after writable-reference
-destructuring closure.
+**Audit target:** the working implementation after direct-source PAL closure
+for nested patterns, destructuring, and reference iteration.
 
 **Audit date:** 2026-07-27
 
 **Result:** the static authority layer is implemented and evidenced. A first
 direct-source Shared-flow slice is implemented for local initialization,
-assignment/call use, returns, field initialization, match/guard pattern
-binding, and readonly-reference destructuring. Direct nullable payload guard
-and fresh-rebind lowering is also closed across value, reference, unique,
-shared, and unsafe raw paths. The full two-mode RFC remains incomplete and
-must not be represented as a closed 1.0 guarantee.
+assignment/call use, returns, field initialization, nested match/guard pattern
+binding, readonly-reference destructuring, and fixed-array/protocol reference
+iteration. Direct nullable payload guard and fresh-rebind lowering is also
+closed across value, reference, unique, shared, and unsafe raw paths. The full
+two-mode RFC remains incomplete and must not be represented as a closed 1.0
+guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 157 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 177 passed, 0 failed on 2026-07-27;
 - all 25 populated source-less replay cases: 25 passed, 0 failed in bounded
   batches on 2026-07-27;
 - `permission_005_partial_cede_lifecycle`: isolated source-backed/source-less
@@ -31,6 +32,23 @@ must not be represented as a closed 1.0 guarantee.
 - type compatibility: `src/Sema/Sema_Type.cpp`;
 - pattern binding: `src/Sema/Sema_Expr_Init.cpp`, `src/Sema/Sema_Stmt.cpp`,
   and `src/Sema/Sema_Expr.cpp`.
+
+## Current direct-source PAL evidence
+
+- Nested `match` and `guard` reference patterns now retain their exact member
+  projection in PAL. A borrow of `pair.left` rejects `cede pair.left` while
+  still allowing disjoint `cede pair.right`; the source-backed and source-less
+  `nested_pattern_reference_*` cases cover both outcomes.
+- Ordinary destructuring has the same exact-field registration. The
+  `destructure_reference_*` cases distinguish a conflicting ceded field from
+  a disjoint one.
+- A reference `for` loop over a fixed array retains the collection borrow for
+  its lifetime and CodeGen binds each iteration variable to the real element,
+  not a temporary payload slot. `for_reference_fixed_array_*` and
+  `g08_iterator_pal_protocol.tk` cover fixed-array and protocol iterator
+  lowering respectively.
+- These are direct-source facts only. They do not add provenance traversal or
+  alter the still-open independent-versus-Shared `cede` semantics.
 
 ## Findings
 
@@ -73,6 +91,11 @@ must not be represented as a closed 1.0 guarantee.
    unguarded nullable rejection, and an exported `$` field ceiling. It does
    not yet exercise a general freeze/sealed-object ceiling because none is
    currently represented in the language model.
+
+5. Direct-source PAL coverage now includes nested match/guard patterns,
+   ordinary destructuring, and fixed-array/protocol reference iteration. Enum
+   payload aliases and unsupported projection forms remain conservative direct
+   sources; no provenance traversal is introduced by this closure.
 
 ## Recommended implementation order
 
