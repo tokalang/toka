@@ -33,13 +33,18 @@ only the live projections. Static `InitMask` uses the same numbering, so a
 transferred field or fixed-array element is rejected on later read while a live
 sibling or element remains usable.
 
-An eligible `obj.field#.consuming_method()` whose receiver is declared
+An eligible owned `obj.field#.consuming_method()` whose receiver is declared
 `cede self` is the method-call spelling of a direct-field transfer: it clears
 the same static and runtime bit.  For a unique field whose payload is copied
 into callee-owned storage, CodeGen also releases the old source heap slot after
-the call captures that payload.  This extension is deliberately limited to the
-same local direct-field model; nonlocal and indexed consuming receivers are
-rejected rather than bypassing the lifecycle proof.
+the call captures that payload. Shared, borrowed, and raw views are rejected
+at this by-value ABI boundary: they may call ordinary `self#` methods under
+their declared payload capability, but cannot transfer their referent through
+`cede self`. A fresh `new T(...)#.method()` is another owned source: after the
+callee or coroutine factory captures its payload, CodeGen releases the
+temporary heap slot. This extension is deliberately limited to the same local
+direct-field model; nonlocal and indexed consuming receivers are rejected
+rather than bypassing the lifecycle proof.
 
 Several container implementations still use partial transfers under their own
 representation invariant (for example, a Vec removes an element from its
@@ -58,9 +63,9 @@ bit i = 0  field i is unset or has been ceded
 
 It is the same field numbering used by `InitMask`.
 
-1. A direct `cede base.field_i`, or an eligible local direct-field consuming
-   receiver, first satisfies PAL invalidation for the exact projection, then
-   clears bit `i`.
+1. A direct `cede base.field_i`, or an eligible owned local direct-field
+   consuming receiver, first satisfies PAL invalidation for the exact
+   projection, then clears bit `i`.
 2. A read of `base.field_i` requires bit `i = 1`; an assignment initializes it
    again and sets bit `i = 1`.
 3. A whole-value read requires all declared field bits; a whole `cede base`
@@ -84,10 +89,11 @@ The initial implementation supports direct named fields of local,
 compiler-managed, non-custom-drop record shapes and constant indexes of local
 fixed arrays of at most 64 value elements. It rejects a direct field transfer
 from a local aggregate with an explicit `drop`, and rejects a dynamic resource
-array index in ordinary code.  A consuming method receiver is implemented only
-for the direct-field subset; nonlocal and indexed receiver projections are
-rejected with `E04601` until they share the full source-slot and drop-mask
-proof. It retains the current library-invariant
+array index in ordinary code. A consuming method receiver is implemented only
+for owned values and the direct-field subset; shared, borrowed, and raw
+receivers are rejected with `E04602`, while nonlocal and indexed receiver
+projections are rejected with `E04601` until they share the full source-slot
+and drop-mask proof. It retains the current library-invariant
 treatment for the following until each has its own proof:
 
 - dynamic array indexes and indexes through container internals;

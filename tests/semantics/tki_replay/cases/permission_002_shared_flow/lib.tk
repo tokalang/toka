@@ -57,8 +57,13 @@ pub fn expose(~p#: Cell) -> ~Cell# {
 }
 
 impl Cell {
-    // EXPECT_TKI: pub fn consume_mut(cede self#: Cell) -> cede Cell
-    pub fn consume_mut(cede self#) -> cede Cell {
+    pub fn mutate(self#) -> i32 {
+        self.value = 15
+        return self.value
+    }
+
+    // EXPECT_TKI: pub fn consume_owned(cede self#: Cell) -> cede Cell
+    pub fn consume_owned(cede self#) -> cede Cell {
         self.value = 15
         return cede self
     }

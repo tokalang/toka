@@ -1,0 +1,14 @@
+// EXPECT_ERROR: E04602
+shape Token(value: i32)
+
+impl Token {
+    fn consume(cede self#) -> i32 {
+        auto owned = cede self
+        return owned.value
+    }
+}
+
+fn main() -> i32 {
+    auto ~source# = new Token(value = 7)
+    return source#.consume()
+}

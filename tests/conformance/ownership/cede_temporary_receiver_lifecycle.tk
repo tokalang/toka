@@ -1,0 +1,26 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(value: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+impl Token {
+    fn consume(cede self#) -> i32 {
+        auto owned = cede self
+        return owned.value
+    }
+}
+
+fn main() -> i32 {
+    if new Token(value = 7)#.consume() != 7 {
+        return 1
+    }
+    return g_drop_count - 1
+}

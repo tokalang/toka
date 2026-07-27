@@ -2916,6 +2916,14 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
           releaseTransferredUniqueHeapSlot();
         }
       }
+    } else if (dynamic_cast<const NewExpr *>(movedObject)) {
+      // A fresh `new T(...)#.consume()` has no named source binding whose
+      // scope cleanup can release the allocation. The by-value receiver ABI
+      // has already copied its payload into callee-owned storage, so release
+      // that now-empty unique heap slot just as for a named unique receiver.
+      if (selfReceivesPayloadByValue && finalObjVal->getType()->isPointerTy()) {
+        releaseTransferredUniqueHeapSlot();
+      }
     }
   }
 

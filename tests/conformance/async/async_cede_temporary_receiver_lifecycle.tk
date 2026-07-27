@@ -1,0 +1,28 @@
+import core/traits::{@encap}
+import std/task::{block_on}
+
+auto g_drop_count# = 0
+
+shape Token(value: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+impl Token {
+    fn consume(cede self#) -> async i32 {
+        auto owned = cede self
+        return owned.value
+    }
+}
+
+fn main() -> i32 {
+    auto handle = new Token(value = 7)#.consume().start
+    if block_on<i32>(handle) != 7 {
+        return 1
+    }
+    return g_drop_count - 1
+}

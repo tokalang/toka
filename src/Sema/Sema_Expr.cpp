@@ -3359,6 +3359,59 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
             // [NEW] Cede Ownership check for Method Call
             if (FD->Args[0].IsCeded) {
+                PermissionFlow receiverFlow =
+                    getPermissionFlow(Met->Object.get());
+                bool directFieldOwnsPayload = false;
+                bool hasDirectFieldDeclaration = false;
+                Expr *ownershipSource = Met->Object.get();
+                while (auto *postfix =
+                           dynamic_cast<PostfixExpr *>(ownershipSource)) {
+                  ownershipSource = postfix->LHS.get();
+                }
+                if (auto *member =
+                        dynamic_cast<MemberExpr *>(ownershipSource)) {
+                  auto ownerType = member->Object
+                                       ? resolveType(member->Object->ResolvedType,
+                                                     true)
+                                       : nullptr;
+                  auto ownerShape = std::dynamic_pointer_cast<ShapeType>(
+                      ownerType ? ownerType->getSoulType() : nullptr);
+                  ShapeDecl *shape = ownerShape ? ownerShape->Decl : nullptr;
+                  if (!shape && ownerType) {
+                    shape = findVisibleShapeDecl(ownerType->getSoulName(),
+                                                 member->Loc);
+                  }
+                  if (shape) {
+                    for (const auto &field : shape->Members) {
+                      if (stripMemberAccessMarkers(field.Name) ==
+                          stripMemberAccessMarkers(member->Member)) {
+                        hasDirectFieldDeclaration = true;
+                        MemberAccessIntent declaredField =
+                            parseMemberAccess(field.Name);
+                        directFieldOwnsPayload =
+                            !field.IsShared && !field.IsReference &&
+                            !field.IsRawPointer &&
+                            declaredField.Prefix.find('~') ==
+                                std::string::npos &&
+                            declaredField.Prefix.find('&') ==
+                                std::string::npos &&
+                            declaredField.Prefix.find('*') ==
+                                std::string::npos;
+                        break;
+                      }
+                    }
+                  }
+                }
+                const bool receiverOwnsPayload =
+                    hasDirectFieldDeclaration
+                        ? directFieldOwnsPayload
+                        : (receiverFlow.Kind != PermissionFlowKind::Shared &&
+                           receiverFlow.Kind != PermissionFlowKind::UnsafeRaw);
+                if (!receiverOwnsPayload) {
+                  error(Met->Object.get(),
+                        DiagID::ERR_SEMA_CEDE_RECEIVER_NOT_OWNED,
+                        getPathString(Met->Object.get()));
+                } else {
                 const bool receiverAllowsNull =
                     FD->Args[0].IsPointerNullable ||
                     FD->Args[0].IsValueNullable;
@@ -3427,6 +3480,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   error(Met,
                         DiagID::ERR_SEMA_CEDE_RECEIVER_PROJECTION_UNSUPPORTED,
                         index->toString());
+                }
                 }
             }
         }

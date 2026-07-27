@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04602
+import ./lib::{Cell}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto result = source#.consume_owned()
+    return result.value
+}

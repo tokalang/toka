@@ -83,6 +83,14 @@
       "description": "A by-value consuming unique receiver releases its transferred heap slot after the callee captures the payload"
     },
     {
+      "id": "codegen_cede_temporary_receiver_heap_release_01",
+      "path": "ownership/cede_temporary_receiver_lifecycle.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "call void @free(ptr %new_alloc)",
+      "timeout_seconds": 10,
+      "description": "A by-value consuming fresh receiver releases its temporary heap slot after the callee captures the payload"
+    },
+    {
       "id": "ownership_mut_binding_reassign_01",
       "path": "ownership/mut_binding_reassign.tk",
       "type": "run",
@@ -161,6 +169,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Dropping an unstarted consuming unique-receiver task skips its body and destroys the transferred payload exactly once"
+    },
+    {
+      "id": "async_cede_temporary_receiver_lifecycle_01",
+      "path": "async/async_cede_temporary_receiver_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A started consuming temporary receiver task captures its payload before releasing the temporary heap slot"
     },
     {
       "id": "async_cede_unique_field_receiver_lifecycle_01",
@@ -842,7 +858,7 @@
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
-      "description": "A consuming shared receiver preserves declared Payload capability"
+      "description": "An ordinary writable shared receiver preserves declared Payload capability"
     },
     {
       "id": "ownership_cede_unique_receiver_creates_independent_payload_root_01",
@@ -895,6 +911,42 @@
       "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A consuming indexed receiver is rejected until it shares the qualified fixed-index transfer lifecycle"
+    },
+    {
+      "id": "diag_cede_shared_receiver_rejected_01",
+      "path": "diagnostics/cede_shared_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04602",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "A shared view cannot enter a by-value consuming receiver ABI"
+    },
+    {
+      "id": "diag_cede_shared_field_receiver_rejected_01",
+      "path": "diagnostics/cede_shared_field_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04602",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "A shared field view cannot enter a by-value consuming receiver ABI"
+    },
+    {
+      "id": "diag_cede_reference_receiver_rejected_01",
+      "path": "diagnostics/cede_reference_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04602",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A borrowed receiver cannot enter a by-value consuming receiver ABI"
+    },
+    {
+      "id": "diag_cede_raw_receiver_rejected_01",
+      "path": "diagnostics/cede_raw_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04602",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A raw receiver cannot enter a by-value consuming receiver ABI"
     },
     {
       "id": "ownership_cede_unique_creates_independent_owner_01",

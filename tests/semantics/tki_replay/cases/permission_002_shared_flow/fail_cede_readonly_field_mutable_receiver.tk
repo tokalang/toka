@@ -4,6 +4,5 @@ import ./lib::{Cell, ReadonlyHolder}
 fn main() -> i32 {
     auto ~source# = new Cell(value = 1)
     auto holder = ReadonlyHolder(~cell = ~source)
-    auto result = holder.~cell.consume_mut()
-    return result.value
+    return holder.~cell.mutate()
 }

@@ -1,14 +1,13 @@
 shape Cell(value: i32)
 
 impl Cell {
-    fn overwrite(cede self#) -> cede Cell {
+    fn overwrite(self#) -> i32 {
         self.value = 2
-        return cede self
+        return self.value
     }
 }
 
 fn main() -> i32 {
     auto ~source# = new Cell(value = 1)
-    auto result = source#.overwrite()
-    return result.value - 2
+    return source#.overwrite() - 2
 }
