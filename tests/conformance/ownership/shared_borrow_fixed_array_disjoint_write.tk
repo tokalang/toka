@@ -1,0 +1,9 @@
+fn main() -> i32 {
+    auto values#: [i32; 2] = [1, 2]
+    auto &borrow = &values[0]
+
+    values[1] = 3
+
+    if borrow != 1 { return 1 }
+    return values[1] - 3
+}

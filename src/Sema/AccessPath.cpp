@@ -133,20 +133,10 @@ bool accessPathIsLegacyPrefix(const AccessPath &prefix,
       prefix.RootName != full.RootName)
     return false;
 
-  std::vector<std::string> prefixFields;
-  std::vector<std::string> fullFields;
-  for (const auto &projection : prefix.Projections) {
-    if (projection.Kind == AccessProjectionKind::Field)
-      prefixFields.push_back(projection.Name);
-  }
-  for (const auto &projection : full.Projections) {
-    if (projection.Kind == AccessProjectionKind::Field)
-      fullFields.push_back(projection.Name);
-  }
-  if (prefixFields.size() > fullFields.size())
+  if (prefix.Projections.size() > full.Projections.size())
     return false;
-  return std::equal(prefixFields.begin(), prefixFields.end(),
-                    fullFields.begin());
+  return std::equal(prefix.Projections.begin(), prefix.Projections.end(),
+                    full.Projections.begin());
 }
 
 } // namespace toka

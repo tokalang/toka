@@ -84,7 +84,8 @@ Primary references:
   `src/Sema/Sema_Expr_Binary.cpp`, `src/Sema/Sema_Expr_Member.cpp`
 - Positive tests: `tests/pass/g08_pal_shared_borrow_payload_write.tk`,
   `tests/pass/g08_pal_member_shared_borrow_payload_write.tk`,
-  `tests/pass/g08_pal_shared_borrow_array_payload_write.tk`
+  `tests/pass/g08_pal_shared_borrow_array_payload_write.tk`,
+  `tests/conformance/ownership/shared_borrow_fixed_array_disjoint_write.tk`
 - Negative tests: `tests/fail/borrow_move.tk`,
   `tests/fail/cede_borrowed.tk`, `tests/fail/fail_pal_move_locked.tk`
 - Interface replay requirements: escaping shared borrow dependencies must be
@@ -99,14 +100,16 @@ Primary references:
 - Status: Core guarantee
 - Source form: borrow `obj.left`, mutate/read `obj.right`
 - Operation class: path overlap for all PAL operation classes
-- Decision: overlapping path prefixes conflict; disjoint fields may be borrowed
-  and mutated independently when represented as distinct source paths.
+- Decision: overlapping path prefixes conflict; disjoint fields and distinct
+  constant fixed-array indices may be borrowed and mutated independently when
+  represented as distinct source paths.
 - Rationale: PAL is a local Path-Anchored Ledger.
 - Primary diagnostics: `E0441`, `E0442`, `E0443`
 - Implementation areas: `PALChecker::pathsOverlap`,
   `PALChecker::verifyOperation`
 - Positive tests: `tests/pass/g08_pal_stress_test_borrow.tk`,
-  `tests/pass/g08_pal_stress_test.tk`
+  `tests/pass/g08_pal_stress_test.tk`,
+  `tests/conformance/ownership/shared_borrow_fixed_array_disjoint_write.tk`
 - Negative tests: `tests/fail/fail_pal_path_prefix.tk`,
   `tests/fail/borrow_field.tk`
 - Interface replay requirements: member morphology and field structure needed
