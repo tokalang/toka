@@ -56,6 +56,9 @@ and
 [`owned_lazy_iterator_rfc.md`](../../docs/semantic_core/owned_lazy_iterator_rfc.md).
 The dynamic-borrowing question is tracked separately in
 [`dynamic_borrowing_exploration.md`](../../docs/semantic_core/dynamic_borrowing_exploration.md).
+The already drafted post-1.0 resource-cleanup RFC is
+[`droptime_spec.md`](../../docs/droptime_spec.md); its cleanup guarantee is
+normal-exit-only and therefore does not change the panic comparison boundary.
 
 ## Current reproducibility status
 

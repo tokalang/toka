@@ -64,6 +64,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `dynamic_borrowing_exploration.md` records the evidence required before a
   single-thread, runtime-checked borrowing container can become an RFC; it is
   not a current Toka gap or implementation commitment.
+- [`../droptime_spec.md`](../droptime_spec.md) is the post-1.0 `droptime`
+  resource-cleanup specification/RFC: it freezes a local, raw-handle-anchored
+  cleanup contract while retaining the 1.0 non-unwinding panic boundary.
 
 ## Rule Status
 
