@@ -4150,6 +4150,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     std::string targetPath = getPathString(me->Target.get());
+    AccessPath targetAccessPath =
+        canonicalizeAccessPath(makeAccessPath(me->Target.get()));
     PermissionFlow targetFlow = getPermissionFlow(me->Target.get());
     AccessCapability targetCapability = targetFlow.DirectCapability;
     if (targetFlow.Kind == PermissionFlowKind::Shared)
@@ -4179,7 +4181,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (auto &arm : me->Arms) {
       restoreMatchEntryState();
       enterScope();
-      checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath);
+      checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath,
+                   targetAccessPath);
       if (arm->Guard) {
         auto guardTypeObj = checkExpr(arm->Guard.get());
         if (!arm->Guard->ResolvedType->isBoolean()) {

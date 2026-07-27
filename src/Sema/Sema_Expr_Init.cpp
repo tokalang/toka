@@ -65,7 +65,8 @@ restrictPatternCapability(AccessCapability capability,
 
 void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                         AccessCapability SourceCapability,
-                        const std::string &TargetPath) {
+                        const std::string &TargetPath,
+                        const AccessPath &TargetAccessPath) {
   if (!Pat)
     return;
 
@@ -328,12 +329,31 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 
     if (Pat->IsReference && !TargetPath.empty()) {
       Info.BorrowedFrom = TargetPath;
-        Info.LifeDependencySet.insert(TargetPath);
-        
-        // Also inherit any transitive dependencies if the target path is a known symbol
-        SymbolInfo *targetInfo = nullptr;
-        if (CurrentScope->findSymbol(TargetPath, targetInfo)) {
-            Info.LifeDependencySet.insert(targetInfo->LifeDependencySet.begin(), targetInfo->LifeDependencySet.end());
+      Info.BorrowedPath = TargetAccessPath
+                              ? TargetAccessPath
+                              : canonicalizeAccessPath(makeAccessPath(TargetPath));
+      Info.LifeDependencySet.insert(TargetPath);
+
+      // Also inherit any transitive dependencies if the target path is a known symbol
+      SymbolInfo *targetInfo = nullptr;
+      if (CurrentScope->findSymbol(TargetPath, targetInfo)) {
+        Info.LifeDependencySet.insert(targetInfo->LifeDependencySet.begin(),
+                                      targetInfo->LifeDependencySet.end());
+      }
+
+      // A direct match/guard reference binder is an active lexical borrow.
+      // Nested pattern projections intentionally remain outside this narrow
+      // path-registration slice until their own projection mapping is added.
+      if (TargetAccessPath &&
+          !PALCheckerState.recordBorrow(TargetAccessPath,
+                                        bindingPayloadWritable, Pat->Loc)) {
+        error(Pat, DiagID::ERR_BORROW_MUT,
+              PALCheckerState.lastConflict()->displayPath());
+        recordPALConflict(Pat,
+                          bindingPayloadWritable
+                              ? PALOperationClass::ExclusivePayloadBorrow
+                              : PALOperationClass::SharedPayloadBorrow,
+                          TargetAccessPath, *PALCheckerState.lastConflict());
       }
     }
 
@@ -343,6 +363,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     Info.IsDeclaredVariable = true;
 
     CurrentScope->define(Pat->Name, Info);
+    if (Pat->IsReference && TargetAccessPath)
+      PALCheckerState.commitTransient(TargetAccessPath);
     break;
   }
 

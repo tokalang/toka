@@ -583,7 +583,8 @@ private:
   std::shared_ptr<toka::Type> checkCallExpr(CallExpr *Call); // New Object API
   void checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     AccessCapability SourceCapability,
-                    const std::string &TargetPath = "");
+                    const std::string &TargetPath = "",
+                    const AccessPath &TargetAccessPath = {});
 
   // Decoupled Initialization Helpers
   std::shared_ptr<toka::Type> checkShapeInit(InitStructExpr *Init);

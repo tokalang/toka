@@ -645,6 +645,24 @@
       "description": "A partial cede cannot invalidate a borrowed fixed-array element"
     },
     {
+      "id": "diag_match_reference_fixed_index_cede_conflict_01",
+      "path": "diagnostics/match_reference_fixed_index_cede_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A direct match reference binding protects its fixed-array index from cede"
+    },
+    {
+      "id": "diag_guard_reference_fixed_index_cede_conflict_01",
+      "path": "diagnostics/guard_reference_fixed_index_cede_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "A direct guard reference binding protects its fixed-array index from cede"
+    },
+    {
       "id": "diag_direct_unique_move_borrow_conflict_01",
       "path": "diagnostics/direct_unique_move_borrow_conflict.tk",
       "type": "compile-fail",

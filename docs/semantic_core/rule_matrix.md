@@ -61,7 +61,9 @@ Primary references:
   `tests/fail/safety_double_mut.tk`,
   `tests/fail/pal_member_mut_borrow_duplicate.tk`,
   `tests/fail/pal_member_mut_borrow_payload_read.tk`,
-  `tests/fail/pal_member_mut_borrow_payload_write.tk`
+  `tests/fail/pal_member_mut_borrow_payload_write.tk`,
+  `tests/conformance/diagnostics/match_reference_fixed_index_cede_conflict.tk`,
+  `tests/conformance/diagnostics/guard_reference_fixed_index_cede_conflict.tk`
 - Interface replay requirements: no callee-body dependence for local borrow
   facts; escaping borrowed views use `EFF-*` rules.
 - Coverage closure: `tests/pass/g08_pal_stress_test_borrow.tk` exercises deep
