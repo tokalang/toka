@@ -1,0 +1,6 @@
+import ./lib::{ReceiverHolder, ReceiverToken}
+
+fn main() -> i32 {
+    auto holder = ReceiverHolder(item = ReceiverToken(id = 7))
+    return holder.item#.consume() - 7
+}

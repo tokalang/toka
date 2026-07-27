@@ -18,3 +18,13 @@ impl CustomPair@encap {
     pub fn clone(self) = delete
 }
 pub fn make_custom_pair(drops#: i32) -> CustomPair <- drops { return CustomPair(left = Token(id = 1, &drops = &drops), right = Token(id = 2, &drops = &drops)) }
+
+pub shape ReceiverToken(id: i32)
+impl ReceiverToken {
+    pub fn consume(cede self#) -> i32 {
+        auto owned = cede self
+        return owned.id
+    }
+}
+
+pub shape ReceiverHolder(item#: ReceiverToken)

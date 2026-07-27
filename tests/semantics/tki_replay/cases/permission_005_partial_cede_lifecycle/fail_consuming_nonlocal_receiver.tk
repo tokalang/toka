@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04601
+import ./lib::{ReceiverHolder, ReceiverToken}
+
+fn consume_from_parameter(holder#: ReceiverHolder) -> i32 {
+    return holder.item#.consume()
+}
+
+fn main() -> i32 {
+    return 0
+}
