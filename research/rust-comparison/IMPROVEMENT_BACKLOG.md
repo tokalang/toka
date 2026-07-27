@@ -54,3 +54,26 @@ release blocker unless independently entered into the 1.0 gap ledger.
 These cases do not compare performance, compilation speed, ecosystem scale,
 unsafe escape hatches, thread safety, or the full expressive power of either
 language.  Those require separate questions and separate experiments.
+
+## EXP-004 — Consider explicitly bound associated types on dyn objects
+
+- Status: evidence only; no RFC yet
+- Evidence: `expressiveness/07_dyn_associated_type_object` shows that Rust can
+  erase `dyn Readable<Item = i32>`, while Toka 1.0 rejects the corresponding
+  `dyn @Readable<Item = i32>` form with `E0617`.
+- Improvement question: whether a post-1.0 dyn ABI can encode an explicitly
+  bound associated type without weakening existing object-safety, visibility,
+  or source-less `.tki` contracts.
+- Non-goal: treating this as a PAL limitation or adding syntax before an ABI
+  and object-safety design exists.
+
+## SEM-001 — Investigate a dynamic-borrowing container only on evidence
+
+- Status: exploratory; not a current gap
+- Context: `field#` is static field-level authority, while `Mutex` and
+  `RwMutex` already provide synchronization-oriented runtime policies.
+- Question: whether single-thread runtime borrow checking offers a use case
+  that is clearer than the existing mechanisms.
+- Next step: use the contract in
+  [`dynamic_borrowing_exploration.md`](../../docs/semantic_core/dynamic_borrowing_exploration.md)
+  to build an API sketch and tests before deciding whether an RFC is justified.

@@ -13,7 +13,9 @@ ranking.  It aggregates only the runnable cases in this directory.
 | Detached non-borrowing work | Observed parity | Ordinary Rust `thread::spawn` also rejects a borrowed parent capture unless a separate scoped protocol is used; both languages accept detached work with non-borrowing input. |
 | Lazy consuming iterator | Current 1.0 boundary | Rust's standard iterator can own a source and mutable callback for deferred iteration. Toka supports the eager generic callback baseline but has no frozen consuming/lazy iterator protocol. |
 | Ordinary borrowed iteration | Observed parity | Toka `next_ref` and Rust `iter()` both traverse borrowed elements without consuming the collection. |
+| Dyn object with associated type | Current 1.0 boundary | Rust can erase `Readable<Item = i32>` as a trait object. Toka rejects `dyn @Readable<Item = i32>` with `E0617` under its fixed 1.0 dyn-object ABI rule. |
 | Shared-write diagnostic | Quality comparison | Both reject invalid shared-field writes. Toka keeps its authority-specific diagnostic sequence and now adds a field-authority note; Rust gives one direct mutability message, whose suggested `&mut` is not always the desired interior-mutability repair. |
+| Panic recovery | Semantic/runtime tradeoff | In an unwind-enabled build Rust can catch a panic and run `Drop`; Toka 1.0 defines panic as non-returning process termination with no cleanup promise after the panic point. |
 
 ## Claims the evidence does **not** support
 
@@ -44,19 +46,25 @@ roadmaps.
 4. Add one parser/view parity case only if it is a real open question; current
    repository evidence already rules out a blanket "Toka has no zero-copy view"
    claim.
+5. Treat dynamic `RefCell`-style borrowing as an exploration only; it is not a
+   demonstrated Toka gap because static `field#`, `Mutex`, and `RwMutex` already
+   cover different interior-mutability policies.
 
 The design candidates are recorded in
 [`scoped_borrowed_task_rfc.md`](../../docs/semantic_core/scoped_borrowed_task_rfc.md)
 and
 [`owned_lazy_iterator_rfc.md`](../../docs/semantic_core/owned_lazy_iterator_rfc.md).
+The dynamic-borrowing question is tracked separately in
+[`dynamic_borrowing_exploration.md`](../../docs/semantic_core/dynamic_borrowing_exploration.md).
 
 ## Current reproducibility status
 
 ```bash
 bash research/rust-comparison/run_expressiveness.sh
 bash research/rust-comparison/run_diagnostics.sh
+bash research/rust-comparison/run_semantics.sh
 ```
 
-Both commands passed when this summary was written.  They use the local Toka
+All three commands passed when this summary was written.  They use the local Toka
 compiler and `rustc` from `PATH`; no network, GitHub Action, or benchmark suite
 is involved.

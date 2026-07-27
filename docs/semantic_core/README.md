@@ -61,6 +61,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `owned_lazy_iterator_rfc.md` proposes the first post-1.0 owned lazy-adapter
   slice (`Map<I,F>` over a consuming source); borrowed/lending adapters remain
   explicitly outside that proposal.
+- `dynamic_borrowing_exploration.md` records the evidence required before a
+  single-thread, runtime-checked borrowing container can become an RFC; it is
+  not a current Toka gap or implementation commitment.
 
 ## Rule Status
 

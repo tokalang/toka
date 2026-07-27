@@ -48,6 +48,7 @@ From the repository root:
 ```bash
 bash research/rust-comparison/run_expressiveness.sh
 bash research/rust-comparison/run_diagnostics.sh
+bash research/rust-comparison/run_semantics.sh
 ```
 
 The runner requires a built `build/bin/tokac`.  It runs Rust counterparts only
@@ -66,6 +67,13 @@ The first slice is deliberately narrow: source-level expression of authority.
 | `04_lazy_consuming_iterator` | Can an adapter own a consumed iterator and mutable callback state, then be consumed later? |
 | `05_borrowed_iterator_baseline` | Can each language iterate through borrowed elements without consuming the collection? |
 | `06_detached_non_borrowing_baseline` | Do both languages support ordinary detached work when input does not borrow its parent scope? |
+| `07_dyn_associated_type_object` | Can a dynamically dispatched trait/object fix an associated output type at the erasure boundary? |
+
+Semantic/runtime tradeoffs live separately from expression cases:
+
+| Case | Question |
+|---|---|
+| `semantics/01_panic_recovery_boundary` | Can a panic be caught with cleanup, or is it an explicit process-termination boundary? |
 
 Future dimensions should remain separate directories: diagnostics, generic
 abstraction, async/concurrency, runtime profile, tooling, and ecosystem.  A

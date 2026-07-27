@@ -99,4 +99,7 @@ run_toka_pass detached_non_borrowing_toka "$BASE/06_detached_non_borrowing_basel
 run_rust_pass detached_non_borrowing_rust "$BASE/06_detached_non_borrowing_baseline/rust.rs"
 run_rust_fail detached_borrowed_rust "$BASE/06_detached_non_borrowing_baseline/rust_reject_borrowed.rs"
 
+run_rust_pass dyn_associated_type_object_rust "$BASE/07_dyn_associated_type_object/rust.rs"
+run_toka_fail dyn_associated_type_object_toka_boundary "$BASE/07_dyn_associated_type_object/toka_1_0_boundary.tk" E0617
+
 echo "All expression comparison cases passed."
