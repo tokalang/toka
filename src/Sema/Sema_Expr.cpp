@@ -102,6 +102,15 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
   if (!E)
     return {};
 
+  auto applyPathFlowCeiling = [&](AccessCapability capability) {
+    AccessPath path = canonicalizeAccessPath(makeAccessPath(E));
+    if (path && m_PayloadFlowRestrictedPaths.count(path)) {
+      capability.PayloadWritable = false;
+      capability.PayloadFlowRestricted = true;
+    }
+    return capability;
+  };
+
   if (auto *Cast = dynamic_cast<CastExpr *>(E))
     return getAccessCapability(Cast->Expression.get());
   if (auto *Cede = dynamic_cast<CedeExpr *>(E))
@@ -130,12 +139,13 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
           Info->TypeObj && !Info->TypeObj->isPointer() &&
           !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference() &&
           Info->Permission.SoulWritable;
-      return {(Info->Permission.SoulWritable || isPlainOwnedValue ||
-                  rawPayloadCapability) &&
-                  Info->PayloadFlowWritable,
-              Info->Permission.IdentityRebindable ||
-                  valueBindingCanRebindMemberHandle,
-              Info->HasPayloadFlowCeiling};
+      return applyPathFlowCeiling(
+          {(Info->Permission.SoulWritable || isPlainOwnedValue ||
+            rawPayloadCapability) &&
+               Info->PayloadFlowWritable,
+           Info->Permission.IdentityRebindable ||
+               valueBindingCanRebindMemberHandle,
+           Info->HasPayloadFlowCeiling});
     }
     return {};
   }
@@ -155,7 +165,8 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
     // an intent marker which is not authority.
     auto objType = Member->Object ? Member->Object->ResolvedType : nullptr;
     if (!objType)
-      return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+      return applyPathFlowCeiling(
+          {base.PayloadWritable, false, base.PayloadFlowRestricted});
     auto resolvedObject = resolveType(objType->getSoulType(), true);
     auto shapeType =
         std::dynamic_pointer_cast<ShapeType>(resolvedObject);
@@ -163,7 +174,8 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
     if (!shape)
       shape = findVisibleShapeDecl(resolvedObject->getSoulName(), Member->Loc);
     if (!shape)
-      return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+      return applyPathFlowCeiling(
+          {base.PayloadWritable, false, base.PayloadFlowRestricted});
 
     MemberAccessIntent access = parseMemberAccess(Member->Member);
     for (const auto &field : shape->Members) {
@@ -177,10 +189,15 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
       bool fieldPayloadWritable =
           !field.IsValueBlocked &&
           (field.IsValueMutable || (!insulated && base.PayloadWritable));
-      return {base.PayloadWritable && fieldPayloadWritable, false,
-              base.PayloadFlowRestricted};
+      bool fieldHandleRebindable =
+          field.IsRebindable && !field.IsRebindBlocked;
+      return applyPathFlowCeiling(
+          {base.PayloadWritable && fieldPayloadWritable,
+           fieldHandleRebindable,
+           base.PayloadFlowRestricted});
     }
-    return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+    return applyPathFlowCeiling(
+        {base.PayloadWritable, false, base.PayloadFlowRestricted});
   }
 
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
@@ -200,7 +217,8 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
     if (!arrayType && Index->Array)
       arrayType = Index->Array->ResolvedType;
     if (!arrayType)
-      return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+      return applyPathFlowCeiling(
+          {base.PayloadWritable, false, base.PayloadFlowRestricted});
     auto resolvedArray = resolveType(arrayType, true);
     auto elementType = resolvedArray && resolvedArray->isArray()
                            ? resolvedArray->getArrayElementType()
@@ -209,10 +227,12 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
                         elementType->isSmartPointer() ||
                         elementType->isReference())) {
       auto elementSoul = elementType->getPointeeType();
-      return {base.PayloadWritable && elementSoul && elementSoul->IsWritable,
-              false, base.PayloadFlowRestricted};
+      return applyPathFlowCeiling(
+          {base.PayloadWritable && elementSoul && elementSoul->IsWritable,
+           false, base.PayloadFlowRestricted});
     }
-    return {base.PayloadWritable, false, base.PayloadFlowRestricted};
+    return applyPathFlowCeiling(
+        {base.PayloadWritable, false, base.PayloadFlowRestricted});
   }
 
   // A non-place expression is a fresh value.  For an indirect result, retain
@@ -222,9 +242,9 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
       (E->ResolvedType->isPointer() || E->ResolvedType->isSmartPointer() ||
        E->ResolvedType->isReference())) {
     auto pointee = E->ResolvedType->getPointeeType();
-    return {pointee && pointee->IsWritable, false};
+    return applyPathFlowCeiling({pointee && pointee->IsWritable, false});
   }
-  return {true, false};
+  return applyPathFlowCeiling({true, false});
 }
 
 PermissionFlow Sema::getPermissionFlow(Expr *E) {
@@ -437,6 +457,7 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
+  state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
   state.PAL = PALCheckerState.snapshot();
   return state;
 }
@@ -448,6 +469,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
   std::map<std::string, bool> mergedMoved = states.front().Moved;
+  std::set<AccessPath> mergedPayloadFlowRestrictions =
+      states.front().PayloadFlowRestrictedPaths;
   PALChecker mergedPAL = states.front().PAL;
 
   for (size_t i = 1; i < states.size(); ++i) {
@@ -473,12 +496,20 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       pair.second = pair.second || moved;
     }
 
+    // A branch join must not erase a restriction that is present on another
+    // reachable path.  Subsequent unconditional rebinding explicitly removes
+    // the exact path from the current state.
+    mergedPayloadFlowRestrictions.insert(
+        state.PayloadFlowRestrictedPaths.begin(),
+        state.PayloadFlowRestrictedPaths.end());
+
     PALCheckerState.restore(mergedPAL);
     PALCheckerState.mergeBranches(palBase, mergedPAL, true, state.PAL, true);
     mergedPAL = PALCheckerState.snapshot();
   }
 
   restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved);
+  m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
 }
 

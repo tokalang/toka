@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04573
+import ./lib::{Cell, Holder}
+
+fn main() -> i32 {
+    auto holder = Holder(~cell = new Cell(value = 2))
+    auto ~source = new Cell(value = 1)
+    holder.~cell = cede ~source
+    holder.cell.value = 3
+    return 0
+}

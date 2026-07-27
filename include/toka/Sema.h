@@ -443,6 +443,11 @@ private:
   struct AnalysisState {
     std::map<std::string, uint64_t> InitMasks;
     std::map<std::string, bool> Moved;
+    // Path-local shared-flow ceilings survive control-flow joins.  Presence
+    // means that at least one reachable path has installed a direct source
+    // whose payload is not writable; the conservative join keeps that
+    // restriction until a later unconditional rebind replaces it.
+    std::set<AccessPath> PayloadFlowRestrictedPaths;
     PALChecker PAL;
   };
 
@@ -472,6 +477,12 @@ private:
 
   // Path Narrowing
   std::set<std::string> m_NarrowedPaths;
+
+  // Unlike a binding declaration, a projected handle can be rebound during
+  // a statement sequence.  Keep its one-hop shared-flow ceiling by exact
+  // access path so a field or constant-index target never falls back to its
+  // original declared P after receiving a readonly shared source.
+  std::set<AccessPath> m_PayloadFlowRestrictedPaths;
 
 
 

@@ -36,6 +36,7 @@ enclosing enum target because no separately nameable payload path exists.
 `destructure_reference_*`, `for_reference_fixed_array_*`,
 `cede_existing_handle_only_lhs_cannot_gain_payload_write`,
 `cede_shared_existing_lhs_cannot_amplify_payload`, and
+`cede_shared_field_rebind_*`, `reference_field_rebind_cannot_amplify_payload`,
 `g08_iterator_pal_protocol.tk` provide positive/disjoint/conflicting evidence.
 GAP-LANG-04 remains **in progress**: this closes syntactic direct-source
 routing and the existing-LHS no-redeclaration boundary only; it does not

@@ -1,0 +1,15 @@
+shape Holder(
+    &slot#: i32
+)
+
+fn transfer(&#source: i32) {
+    auto backing# = 1
+    auto holder = Holder(&slot = &backing)
+    holder.&slot = &source
+    holder.slot = 3
+}
+
+fn main() -> i32 {
+    return 0
+}
+// EXPECT_ERROR: E04573

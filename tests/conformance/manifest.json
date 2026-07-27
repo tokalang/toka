@@ -717,6 +717,41 @@
       "description": "A shared cede rebind preserves its direct source payload ceiling"
     },
     {
+      "id": "diag_cede_shared_field_rebind_cannot_amplify_payload_01",
+      "path": "diagnostics/cede_shared_field_rebind_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A shared cede rebind on a field preserves its direct source payload ceiling"
+    },
+    {
+      "id": "diag_cede_shared_field_rebind_branch_cannot_amplify_payload_01",
+      "path": "diagnostics/cede_shared_field_rebind_branch_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "A branch-local shared cede ceiling survives the control-flow join"
+    },
+    {
+      "id": "cede_shared_field_rebind_reset_restores_declared_payload_01",
+      "path": "ownership/cede_shared_field_rebind_reset_restores_declared_payload.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A later independent field rebind replaces the previous shared-flow ceiling"
+    },
+    {
+      "id": "diag_reference_field_rebind_cannot_amplify_payload_01",
+      "path": "diagnostics/reference_field_rebind_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "A reference field rebind preserves its direct source payload ceiling"
+    },
+    {
       "id": "diag_destructure_reference_field_cede_conflict_01",
       "path": "diagnostics/destructure_reference_field_cede_conflict.tk",
       "type": "compile-fail",

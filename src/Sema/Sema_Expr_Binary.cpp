@@ -89,6 +89,9 @@ static bool selectsHandleIdentity(const Expr *E) {
     }
   }
 
+  if (auto *M = dynamic_cast<const MemberExpr *>(E))
+    return Type::stripMorphology(M->Member) != M->Member;
+
   auto *U = dynamic_cast<const UnaryExpr *>(E);
   return U && (U->Op == TokenType::Caret || U->Op == TokenType::Tilde ||
                U->Op == TokenType::Ampersand);
@@ -579,6 +582,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // is independent of the physical type's writable marker, which is still
     // needed for ABI and overload compatibility.
     AccessCapability lhsCapability = getAccessCapability(Bin->LHS.get());
+    if (isRebind && lhsCapability.HandleRebindable)
+      isLHSWritable = true;
     bool payloadFlowDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
         lhsCapability.PayloadFlowRestricted &&
@@ -678,7 +683,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       lhsType =
           lhsType->withAttributes(true, lhsType->IsNullable); // Valid Mutation
 
-    if (!lhsType->IsWritable && !isRefAssign) {
+    if (!isRebind && !lhsType->IsWritable && !isRefAssign) {
       error(Bin->LHS.get(), DiagID::ERR_IMMUTABLE_MOD, LHS);
     }
 
@@ -830,6 +835,27 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     m_LastLifeDependencies.clear();
     m_LastFieldDependencies.clear();
 
+    // A handle rebind replaces the direct source that bounds the target's
+    // effective payload authority.  Reference rebinds return early below,
+    // so keep the update in one helper shared by both reference and ordinary
+    // handle assignments.
+    auto updateHandleFlowCeiling = [&]() {
+      if (isUnsetInit)
+        return;
+      AccessPath targetPath =
+          canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
+      if (!targetPath)
+        return;
+      PermissionFlow flow = getPermissionFlow(Bin->RHS.get());
+      if ((flow.Kind == PermissionFlowKind::Shared ||
+           flow.Kind == PermissionFlowKind::UnsafeRaw) &&
+          !flow.DirectCapability.PayloadWritable) {
+        m_PayloadFlowRestrictedPaths.insert(targetPath);
+      } else {
+        m_PayloadFlowRestrictedPaths.erase(targetPath);
+      }
+    };
+
     if (isRefAssign && !isUnsetInit) {
       // If LHS is Ref (&#), RHS must be Ref (&)
       if (!rhsType->isReference()) {
@@ -844,6 +870,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       } else {
         error(Bin, DiagID::ERR_TYPE_MISMATCH, RHS + " (ref)", LHS);
       }
+      updateHandleFlowCeiling();
       return lhsType;
     }
 
@@ -909,41 +936,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // Rebinding an existing indirect binding preserves its declaration but
     // replaces the direct source that limits its effective payload authority.
     // A shared/reference/raw RHS therefore installs its one-hop ceiling on
-    // the target; an independent or fresh source leaves only the target's
-    // declared ceiling.  This is a flow update, never a declaration rewrite.
-    if (assignmentKind == AssignmentSemanticKind::Handle && !isUnsetInit) {
-      Expr *binding = Bin->LHS.get();
-      while (binding) {
-        if (auto *cast = dynamic_cast<CastExpr *>(binding)) {
-          binding = cast->Expression.get();
-        } else if (auto *unary = dynamic_cast<UnaryExpr *>(binding)) {
-          binding = unary->RHS.get();
-        } else if (auto *postfix = dynamic_cast<PostfixExpr *>(binding)) {
-          binding = postfix->LHS.get();
-        } else {
-          break;
-        }
-      }
-
-      if (auto *variable = dynamic_cast<VariableExpr *>(binding)) {
-        SymbolInfo *targetInfo = nullptr;
-        std::string actualName = variable->Name;
-        if (CurrentScope->findVariableWithDeref(variable->Name, targetInfo,
-                                                actualName) &&
-            targetInfo) {
-          PermissionFlow flow = getPermissionFlow(Bin->RHS.get());
-          if (flow.Kind == PermissionFlowKind::Shared ||
-              flow.Kind == PermissionFlowKind::UnsafeRaw) {
-            targetInfo->PayloadFlowWritable =
-                flow.DirectCapability.PayloadWritable;
-            targetInfo->HasPayloadFlowCeiling = true;
-          } else {
-            targetInfo->PayloadFlowWritable = true;
-            targetInfo->HasPayloadFlowCeiling = false;
-          }
-        }
-      }
-    }
+    // the exact target path; an independent or fresh source leaves only the
+    // target's declared ceiling.  This is a flow update, never a declaration
+    // rewrite.
+    if (assignmentKind == AssignmentSemanticKind::Handle)
+      updateHandleFlowCeiling();
 
     // [Fix] Update InitMask logic for 'unset' variables
     Expr *LHSExpr = Bin->LHS.get();

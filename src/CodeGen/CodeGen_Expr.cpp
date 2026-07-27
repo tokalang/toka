@@ -525,6 +525,32 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
       effectiveRebind = false;
     }
   }
+
+  // A morphic member such as `holder.~field` has no standalone symbol-table
+  // entry, but its storage is still a handle slot.  Materialize the exact
+  // field address and its declared handle metadata so Sema's Handle result is
+  // lowered through the same envelope-rebind carrier as a local binding.
+  TokaSymbol memberHandle;
+  if (effectiveRebind && !symLHS) {
+    const MemberExpr *member = getTerminalAssignmentMember(targetLHS);
+    if (member && terminalAssignmentMemberHasMorphology(targetLHS) &&
+        member->ResolvedType) {
+      llvm::Value *memberHandleAddr = emitEntityAddr(lhsExpr);
+      if (memberHandleAddr) {
+        fillSymbolMetadata(memberHandle, member->ResolvedType,
+                           getLLVMType(member->ResolvedType));
+        memberHandle.isRebindable = true;
+        auto soul = member->ResolvedType->getSoulType();
+        if (soul && m_Shapes.count(soul->getSoulName())) {
+          memberHandle.hasDrop = true;
+          memberHandle.dropFunc =
+              m_Shapes[soul->getSoulName()]->MangledDestructorName;
+        }
+        symLHS = &memberHandle;
+        lhsAlloca = memberHandleAddr;
+      }
+    }
+  }
   if (effectiveRebind && symLHS && lhsAlloca) {
     // Scene B: Envelope Rebind
     std::shared_ptr<Type> targetSoulType =
