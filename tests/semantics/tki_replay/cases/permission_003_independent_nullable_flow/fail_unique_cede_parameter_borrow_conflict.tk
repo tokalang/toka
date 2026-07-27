@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E0440
+import ./lib::{Cell, mutate_unique_parameter}
+
+fn main() -> i32 {
+    auto ^source = new Cell(value = 1)
+    auto &borrow = &source
+    return mutate_unique_parameter(cede ^source)
+}

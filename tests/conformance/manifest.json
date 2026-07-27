@@ -618,6 +618,15 @@
       "description": "A whole unique cede invalidates the source binding exactly once"
     },
     {
+      "id": "diag_cede_unique_parameter_borrow_conflict_01",
+      "path": "diagnostics/cede_unique_parameter_borrow_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A consuming unique parameter cannot invalidate a source with an active borrow"
+    },
+    {
       "id": "diag_cede_nullable_source_requires_guard_01",
       "path": "diagnostics/cede_nullable_source_requires_guard.tk",
       "type": "compile-fail",
