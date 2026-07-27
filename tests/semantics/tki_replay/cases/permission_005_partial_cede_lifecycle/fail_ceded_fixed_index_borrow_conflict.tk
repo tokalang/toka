@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0440
+import ./lib::{Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto values: [Token; 1] = [Token(id = 1, &drops = &drops)]
+    auto &borrow = &(values[0])
+    auto taken = cede values[0]
+    return taken.id
+}

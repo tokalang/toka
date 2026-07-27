@@ -1516,8 +1516,15 @@ void Sema::checkStmt(Stmt *S) {
 
       Info.BorrowedFrom = m_LastBorrowSource;
       if (!m_LastBorrowSource.empty()) {
-          PALCheckerState.commitTransient(
-              canonicalizeAccessPath(makeAccessPath(m_LastBorrowSource)));
+          AccessPath borrowPath =
+              canonicalizeAccessPath(makeAccessPath(m_LastBorrowSource));
+          if (auto *borrowExpr =
+                  dynamic_cast<UnaryExpr *>(Var->Init.get());
+              borrowExpr && borrowExpr->Op == TokenType::Ampersand) {
+            borrowPath = canonicalizeAccessPath(
+                makeAccessPath(borrowExpr->RHS.get()));
+          }
+          PALCheckerState.commitTransient(borrowPath);
       }
       for (const auto &dep : Info.LifeDependencySet) {
           PALCheckerState.commitTransient(

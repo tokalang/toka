@@ -113,7 +113,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     auto conflict = PALCheckerState.verifyAccess(
         canonicalizeAccessPath(memberPath));
     if (conflict &&
-        !isBorrowAccessAuthorized(memberPath, conflict->displayPath())) {
+        !isBorrowAccessAuthorized(memberPath, conflict->Path)) {
       DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_BORROW_MUT,
                                conflict->displayPath());
       HasError = true;

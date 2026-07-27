@@ -45,7 +45,7 @@ struct PALConflict {
   PathState State = PathState::Free;
   SourceLocation OriginLoc;
 
-  std::string displayPath() const { return Path.toLegacyString(); }
+  std::string displayPath() const { return Path.toDebugString(); }
 };
 
 /// Toka's PAL (Path-Anchored Ledger) System

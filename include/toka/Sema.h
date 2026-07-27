@@ -503,7 +503,7 @@ private:
                       SourceLocation OriginLoc = {});
   SourceLocation findPathDeclaration(const std::string &Path);
   bool isBorrowAccessAuthorized(const AccessPath &Path,
-                                const std::string &ConflictPath);
+                                const AccessPath &ConflictPath);
   std::string getPathString(Expr *E);
   SymbolInfo *resolveBorrowSource(SymbolInfo *Info,
                                   std::string &EffectiveName);

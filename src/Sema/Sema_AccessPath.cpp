@@ -222,8 +222,8 @@ SourceLocation Sema::findPathDeclaration(const std::string &Path) {
 }
 
 bool Sema::isBorrowAccessAuthorized(const AccessPath &Path,
-                                    const std::string &ConflictPath) {
-  if (!Path || Path.RootID == 0 || ConflictPath.empty() || !CurrentScope)
+                                    const AccessPath &ConflictPath) {
+  if (!Path || Path.RootID == 0 || !ConflictPath || !CurrentScope)
     return false;
 
   SymbolInfo *info = nullptr;
@@ -234,7 +234,7 @@ bool Sema::isBorrowAccessAuthorized(const AccessPath &Path,
 
   AccessPath borrowed =
       canonicalizeAccessPath(makeAccessPath(info->BorrowedFrom));
-  AccessPath conflict = canonicalizeAccessPath(makeAccessPath(ConflictPath));
+  AccessPath conflict = canonicalizeAccessPath(ConflictPath);
   return borrowed && conflict && accessPathsMayOverlap(borrowed, conflict);
 }
 

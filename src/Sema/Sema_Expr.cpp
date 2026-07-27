@@ -2784,6 +2784,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get()))
       call->CallableReceiver = CallableReceiverMode::Consuming;
     auto innerTy = checkExpr(ce->Value.get());
+    bool canInvalidate = true;
     
     // [Fix] Enforce tracking move semantics and borrow check for `cede` expression universally.
     if (ce->Value) {
@@ -2797,23 +2798,27 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   ce, PALOperationClass::Invalidation,
                   canonicalizeAccessPath(makeAccessPath(ce->Value.get())),
                   *conflict);
+              canInvalidate = false;
           }
-          size_t dotPos = pathToMove.find('.');
-          if (dotPos != std::string::npos) {
-            std::string rootName = pathToMove.substr(0, dotPos);
-            SymbolInfo *RootInfo = nullptr;
-            std::string actualRootName;
-            if (CurrentScope->findVariableWithDeref(rootName, RootInfo,
-                                                    actualRootName)) {
-              if (RootInfo && RootInfo->IsFunctionParameter &&
-                  RootInfo->IsCeded) {
-                CurrentScope->markMoved(actualRootName, ce->Loc);
+          if (canInvalidate) {
+            size_t dotPos = pathToMove.find('.');
+            if (dotPos != std::string::npos) {
+              std::string rootName = pathToMove.substr(0, dotPos);
+              SymbolInfo *RootInfo = nullptr;
+              std::string actualRootName;
+              if (CurrentScope->findVariableWithDeref(rootName, RootInfo,
+                                                      actualRootName)) {
+                if (RootInfo && RootInfo->IsFunctionParameter &&
+                    RootInfo->IsCeded) {
+                  CurrentScope->markMoved(actualRootName, ce->Loc);
+                }
               }
             }
           }
       }
 
-      Expr *underlying = unwrapCedeDirectSource(ce->Value.get());
+      Expr *underlying =
+          canInvalidate ? unwrapCedeDirectSource(ce->Value.get()) : nullptr;
       if (auto *Var = dynamic_cast<VariableExpr *>(underlying)) {
         SymbolInfo *Info = nullptr;
         std::string actualName;
