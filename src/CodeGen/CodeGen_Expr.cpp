@@ -3324,10 +3324,20 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", m_Builder.getInt32Ty(), false);
   }
 
-  PhysEntity collVal_ent = genExpr(fe->Collection.get()).load(m_Builder);
+  PhysEntity collSourceEnt = genExpr(fe->Collection.get());
+  PhysEntity collVal_ent = collSourceEnt.load(m_Builder);
   llvm::Value *collVal = collVal_ent.load(m_Builder);
   if (!collVal)
     return nullptr;
+
+  // Keep the original array storage for reference iteration.  Loading an
+  // array into an rvalue and then taking an element address would otherwise
+  // bind `&value` to a per-iteration staging copy.
+  llvm::Value *arraySourceAddr = nullptr;
+  if (collSourceEnt.isAddress && collSourceEnt.irType &&
+      collSourceEnt.irType->isArrayTy()) {
+    arraySourceAddr = collSourceEnt.value;
+  }
 
   llvm::Function *f = m_Builder.GetInsertBlock()->getParent();
 
@@ -3586,7 +3596,12 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   llvm::Value *elem = nullptr;
 
   if (isArray) {
-    if (collVal->getType()->isPointerTy()) {
+    if (arraySourceAddr) {
+      elemPtr = m_Builder.CreateGEP(
+          collSourceEnt.irType, arraySourceAddr,
+          {llvm::ConstantInt::get(llvm::Type::getInt32Ty(m_Context), 0),
+           currIdx});
+    } else if (collVal->getType()->isPointerTy()) {
       std::string collTypeName = collVal_ent.typeName;
       if (collTypeName.size() > 0 && collTypeName[0] == '[') {
         // Pointer to array literal or alloca'd array
@@ -3632,9 +3647,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     vBaseName.pop_back();
 
   // 4. Extract into Loop Variable
+  llvm::Value *bindingValue = fe->IsReference ? elemPtr : elem;
   llvm::AllocaInst *vAlloca =
-      createEntryBlockAlloca(elem->getType(), nullptr, vBaseName);
-  m_Builder.CreateStore(elem, vAlloca);
+      createEntryBlockAlloca(bindingValue->getType(), nullptr, vBaseName);
+  m_Builder.CreateStore(bindingValue, vAlloca);
 
   // Register in legacy and new symbol tables
   m_NamedValues[vBaseName] = vAlloca;

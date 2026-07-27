@@ -690,6 +690,15 @@
       "description": "A destructuring reference binding protects its source field from cede"
     },
     {
+      "id": "diag_for_reference_fixed_array_cede_conflict_01",
+      "path": "diagnostics/for_reference_fixed_array_cede_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A fixed-array reference iteration protects all dynamic candidate elements from cede"
+    },
+    {
       "id": "diag_direct_unique_move_borrow_conflict_01",
       "path": "diagnostics/direct_unique_move_borrow_conflict.tk",
       "type": "compile-fail",
@@ -1180,6 +1189,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A destructuring reference borrow permits cede of a disjoint struct field"
+    },
+    {
+      "id": "ownership_for_reference_fixed_array_lifetime_01",
+      "path": "ownership/for_reference_fixed_array_lifetime.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A fixed-array reference iteration reads source storage and releases its borrow after the loop"
     },
     {
       "id": "ownership_cede_fixed_array_index_return_cleanup_01",

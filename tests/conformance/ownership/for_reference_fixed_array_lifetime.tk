@@ -1,0 +1,17 @@
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+    auto total# = 0
+    for auto &value in values {
+        total += value.id
+    }
+    if total != 3 { return 1 }
+    auto taken = cede values[0]
+    return taken.id - 1
+}

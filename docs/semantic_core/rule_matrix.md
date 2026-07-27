@@ -61,7 +61,8 @@ Primary references:
   `tests/conformance/ownership/guard_mutable_reference_fixed_index_write.tk`,
   `tests/conformance/ownership/nested_pattern_mutable_reference_write.tk`,
   `tests/conformance/ownership/nested_pattern_reference_disjoint_field_cede.tk`,
-  `tests/conformance/ownership/destructure_reference_disjoint_field_cede.tk`
+  `tests/conformance/ownership/destructure_reference_disjoint_field_cede.tk`,
+  `tests/conformance/ownership/for_reference_fixed_array_lifetime.tk`
 - Negative tests: `tests/fail/borrow.tk`, `tests/fail/borrow_field.tk`,
   `tests/fail/safety_double_mut.tk`,
   `tests/fail/pal_member_mut_borrow_duplicate.tk`,
@@ -71,7 +72,8 @@ Primary references:
   `tests/conformance/diagnostics/guard_reference_fixed_index_cede_conflict.tk`,
   `tests/conformance/diagnostics/nested_match_reference_field_cede_conflict.tk`,
   `tests/conformance/diagnostics/nested_guard_reference_field_cede_conflict.tk`,
-  `tests/conformance/diagnostics/destructure_reference_field_cede_conflict.tk`
+  `tests/conformance/diagnostics/destructure_reference_field_cede_conflict.tk`,
+  `tests/conformance/diagnostics/for_reference_fixed_array_cede_conflict.tk`
 - Interface replay requirements: no callee-body dependence for local borrow
   facts; escaping borrowed views use `EFF-*` rules.
 - Coverage closure: `tests/pass/g08_pal_stress_test_borrow.tk` exercises deep

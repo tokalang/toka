@@ -2610,7 +2610,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
-    if (!isArray) {
+    // Array reference iteration has the same dynamic-element aliasing
+    // property as a BorrowIterator.  The current element is not statically
+    // known, so retain a conservative borrow of the collection for the loop
+    // body; otherwise a `cede values[i]` can invalidate the live iteration
+    // reference.
+    if (!isArray || fe->IsReference) {
       iteratorSourcePath =
           canonicalizeAccessPath(makeAccessPath(fe->Collection.get()));
       iteratorSourceName = getPathString(fe->Collection.get());

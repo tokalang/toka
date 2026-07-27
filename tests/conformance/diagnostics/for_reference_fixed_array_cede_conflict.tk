@@ -1,0 +1,16 @@
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+    for auto &value in values {
+        auto taken = cede values[1]
+        return taken.id
+    }
+    return 0
+}
+// EXPECT_ERROR: E0440
