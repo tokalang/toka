@@ -1,8 +1,8 @@
 // EXPECT_ERROR: E04573
-import ./lib::{Cell, Holder}
+import ./lib::{Cell, PayloadHolder}
 
 fn main() -> i32 {
     auto ~#source = new Cell(value = 1)
-    auto holder = Holder(~cell = ~source)
+    auto holder = PayloadHolder(~cell = ~source)
     return 0
 }

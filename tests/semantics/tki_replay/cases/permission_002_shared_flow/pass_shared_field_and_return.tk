@@ -1,9 +1,9 @@
-import ./lib::{Cell, Holder, expose}
+import ./lib::{Cell, PayloadHolder, expose}
 
 fn main() -> i32 {
     auto ~source# = new Cell(value = 1)
     auto ~view# = expose(~source)
-    auto holder = Holder(~cell = ~view)
+    auto holder = PayloadHolder(~cell = ~view)
     view.value = 2
     auto ~field_view# = holder.~cell
     field_view.value = 3
