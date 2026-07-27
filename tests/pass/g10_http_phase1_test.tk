@@ -22,7 +22,7 @@ fn test_async_client(local_port: u16) -> async i32 {
             retries = retries + 1
         }
 
-        auto reader# = AsyncBufferedReader::new(stream#.take())
+        auto reader# = AsyncBufferedReader::new(cede stream#.take())
 
         auto req_line = string::from("GET /strict HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
         auto *req_ptr# = req_line.c_str() as *u8

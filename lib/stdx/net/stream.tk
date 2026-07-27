@@ -77,7 +77,7 @@ impl AsyncStream {
 
     // Owner-based adapter shared by TCP and TLS. Raw pointers remain confined
     // to this stream adapter and are not exposed to stdx protocol parsers.
-    pub fn read_into_async(self#, cede owner#: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
         auto owned# = cede owner
         if !self.is_tls {
             return self.raw_tcp#.read_into_async(cede owned, max_len, timeout_ms).await
@@ -116,7 +116,7 @@ impl AsyncStream {
         ))
     }
 
-    pub fn write_from_async(self#, cede owner#: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
         auto owned# = cede owner
         if !self.is_tls {
             return self.raw_tcp#.write_from_async(cede owned, timeout_ms).await

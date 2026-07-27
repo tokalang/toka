@@ -94,11 +94,11 @@ pub shape HeaderMap (
 impl HeaderMap@encap {
     pub entries
     fn drop(self#) {}
-    pub fn clone(self#) -> HeaderMap {
+    pub fn clone(self) -> HeaderMap {
         auto new_entries# = Vec<HeaderEntry>::new()
         auto idx# = 0:usize
         loop idx < self.entries.len() {
-            auto entry = self.entries#.get(idx).clone()
+            auto entry = self.entries.get(idx).clone()
             new_entries#.push(cede entry)
             idx = idx + 1
         }
@@ -221,10 +221,10 @@ impl HeaderMap {
         return Result<bool, string>::Ok(true)
     }
 
-    pub fn get(self#, key: str) -> Option<string> {
+    pub fn get(self, key: str) -> Option<string> {
         auto idx# = 0:usize
         loop idx < self.entries.len() {
-            auto entry = self.entries#.get(idx).clone()
+            auto entry = self.entries.get(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case(key) {
                 return Option<string>::Some(string::from(entry.value.as_str()))
             }
@@ -233,8 +233,8 @@ impl HeaderMap {
         return Option<string>::None
     }
 
-    pub fn contains_key(self#, key: str) -> bool {
-        return self#.get(key).is_some()
+    pub fn contains_key(self, key: str) -> bool {
+        return self.get(key).is_some()
     }
 }
 
@@ -292,7 +292,7 @@ impl HttpRequest {
         auto has_cl# = false
         auto idx# = 0:usize
         loop idx < self.headers.entries.len() {
-            auto entry = self.headers.entries#.get(idx).clone()
+            auto entry = self.headers.entries.get(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case("host") {
                 has_host = true
             }
@@ -404,7 +404,7 @@ impl HttpResponse {
 
         auto idx# = 0:usize
         loop idx < self.headers.entries.len() {
-            auto entry = self.headers.entries#.get(idx).clone()
+            auto entry = self.headers.entries.get(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case("connection") {
                 has_connection = true
             }
@@ -419,7 +419,7 @@ impl HttpResponse {
             idx = idx + 1
         }
 
-        if !self.headers#.contains_key("Content-Type") {
+        if !self.headers.contains_key("Content-Type") {
             res#.push_str("Content-Type: ")
             res#.push_str(self.content_type.as_str())
             res#.push_str("\r\n")

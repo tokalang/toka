@@ -484,7 +484,7 @@ impl TcpStream {
 
     // Owner-based adapter. The Vec is held by the coroutine frame while the
     // legacy pointer API is suspended and is returned on every outcome.
-    pub fn write_from_async(self#, cede owner#: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+    pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
         auto owned# = cede owner
         auto len = owned.len()
         auto failed# = false
@@ -543,7 +543,7 @@ impl TcpStream {
 
     // Owner-based adapter. The returned Vec length is the initialized byte
     // count; capacity is retained for a subsequent read by the caller.
-    pub fn read_into_async(self#, cede owner#: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
         auto owned# = cede owner
         auto failed# = false
         auto message# = string::from("")
