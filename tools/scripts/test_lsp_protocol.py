@@ -72,10 +72,11 @@ class LspClient:
             message["params"] = params
         self.send(message)
 
-    def diagnostics(self, uri):
+    def diagnostics(self, uri, timeout=15):
         return self.receive(
             lambda item: item.get("method") == "textDocument/publishDiagnostics"
-            and item.get("params", {}).get("uri") == uri
+            and item.get("params", {}).get("uri") == uri,
+            timeout=timeout,
         )["params"]["diagnostics"]
 
     def fail_with_stderr(self, message):

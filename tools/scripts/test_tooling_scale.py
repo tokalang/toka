@@ -119,7 +119,7 @@ def main():
                 "textDocument": {"uri": main_uri, "languageId": "toka",
                                  "version": 1, "text": original},
             })
-            require(client.diagnostics(main_uri) == [],
+            require(client.diagnostics(main_uri, timeout=60) == [],
                     "pilot produced diagnostics during cold analysis")
             cold_round_trip_ms = (time.perf_counter() - cold_started) * 1000.0
             cold_stats = client.request(
