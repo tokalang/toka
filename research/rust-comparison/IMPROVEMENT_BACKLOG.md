@@ -1,0 +1,56 @@
+# Improvement candidates discovered by comparison cases
+
+This is a two-way design backlog.  A candidate exists because a real comparison
+case exposed an ergonomic, diagnostic, or abstraction cost.  It is not a
+release blocker unless independently entered into the 1.0 gap ledger.
+
+## EXP-001 — Make H/P diagnostics capability-aware
+
+- Status: implemented locally; verified by comparison diagnostics and pending
+  ordinary release review
+- Evidence: `expressiveness/01_handle_payload_permissions` rejects an attempted
+  use-site elevation with `E04571` (`expected ^Cell#, got ^#Cell`).  This is
+  correct, but it presents the distinction as a morphology mismatch rather
+  than naming the semantic rule: use-site `#` requests a capability and cannot
+  create one absent from the declaration/signature.
+- Improvement: retain `E04571`, but add a targeted note explaining whether the
+  missing axis is handle replacement or payload write, and point to the
+  parameter/binding declaration that controls it.
+- Non-goal: changing the frozen H/P authority rule.
+
+## EXP-002 — Avoid misleading unused-variable warnings for payload use
+
+- Status: implemented locally; verified by comparison diagnostics and pending
+  ordinary release review
+- Evidence: the valid `fn overwrite_payload(^p#: Cell) { p.value = 13 }` case
+  emits `W0402` for `p` and `W0407` for the unused handle view.  The latter is
+  useful; the former suggests that the complete variable is unused even though
+  its payload is used.  Similarly, a payload-only mutation performed in a
+  callee can trigger a mutable-binding warning at the caller.
+- Improvement: make unused analysis H/P-aware.  Report an unused Handle view
+  only when appropriate, suppress the generic whole-binding unused warning
+  after a payload use, and distinguish local mutation from capability consumed
+  by a call.
+- Non-goal: suppressing legitimate unused-capability warnings.
+
+## EXP-003 — Explain field-level interior-mutability failures in field terms
+
+- Status: implemented locally; verified by comparison diagnostics and pending
+  ordinary release review
+- Evidence: `expressiveness/02_field_interior_mutability` correctly rejects
+  `shared.ordinary = 10` with `E04572`, `E04573`, and `E0443`.  The combined
+  messages are technically correct but do not state that `reads#` is local to
+  that field and does not grant a sibling capability.
+- Improvement: preserve the stable codes, but add a primary or follow-up note:
+  "`ordinary` is not declared with payload-side `#`; a shared aggregate view
+  cannot write it."  This directly teaches the intended 1.0 model.  The first
+  implementation keeps the frozen diagnostic-code sequence and adds the
+  authority explanation as a note; reducing cascades requires a separately
+  audited diagnostic compatibility change.
+- Non-goal: allowing writes to ordinary sibling fields or weakening PAL.
+
+## What this does not establish
+
+These cases do not compare performance, compilation speed, ecosystem scale,
+unsafe escape hatches, thread safety, or the full expressive power of either
+language.  Those require separate questions and separate experiments.

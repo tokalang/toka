@@ -1,0 +1,31 @@
+// This establishes the supported baseline: eager generic callback composition.
+
+import std/vec::{Vec}
+
+shape Accumulator(value: i32)
+
+impl Accumulator@Callable {
+    pub fn call(self#, value: i32) -> i32 {
+        self.value = self.value + value
+        return self.value
+    }
+}
+
+fn sum_mapped<F: @Callable>(values: Vec<i32>, f#: F) -> i32 {
+    auto total# = 0
+    for auto value in values {
+        total += f#(value)
+    }
+    return total
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    values#.push(2)
+    values#.push(3)
+    auto callback# = Accumulator(value = 0)
+
+    if sum_mapped(values, callback) != 10 { return 1 }
+    return 0
+}

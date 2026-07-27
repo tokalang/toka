@@ -1,0 +1,27 @@
+import std/vec::{Vec}
+import core/option::{Option}
+
+alias OptRefI32 = Option<&i32>
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(100)
+    values#.push(200)
+
+    auto sum#: i32 = 0
+    auto iter# = values.iter()
+    auto done#: bool = false
+    loop !done {
+        auto item = iter#.next_ref()
+        match item {
+            auto OptRefI32::Some(&value) => {
+                auto copied: i32 = value
+                sum += copied
+            }
+            auto OptRefI32::None => { done = true }
+        }
+    }
+
+    if sum != 300 { return 1 }
+    return 0
+}

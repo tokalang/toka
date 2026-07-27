@@ -55,6 +55,12 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   declaration-backed authority.
 - `permission_flow_two_mode_audit.md` records the implementation gap between
   that proposed flow model and the current compiler.
+- `scoped_borrowed_task_rfc.md` proposes a post-1.0 lexical task-scope model
+  for borrowed children without weakening the detached execution boundary or
+  exposing user-written lifetime syntax.
+- `owned_lazy_iterator_rfc.md` proposes the first post-1.0 owned lazy-adapter
+  slice (`Map<I,F>` over a consuming source); borrowed/lending adapters remain
+  explicitly outside that proposal.
 
 ## Rule Status
 

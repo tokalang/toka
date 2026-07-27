@@ -1,0 +1,13 @@
+// This is intentionally the current detached-task boundary, not a proposed
+// spelling for a missing scoped-task construct.  Toka 1.0 rejects the borrowed
+// `str` input when the task is started across an execution boundary.
+
+fn worker(view: str) -> async i32 {
+    return view.len() as i32
+}
+
+fn main() -> i32 {
+    auto view = "borrowed"
+    worker(view).start
+    return 0
+}
