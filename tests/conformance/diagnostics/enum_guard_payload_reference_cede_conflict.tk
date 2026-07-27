@@ -1,0 +1,11 @@
+import core/option::{Option}
+
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto option = Option<Cell>::Some(Cell(value = 1))
+    guard auto Option<Cell>::Some(&view#) = option else { return 1 }
+    auto moved = cede option
+    view.value = 2
+    return 0
+}

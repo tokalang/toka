@@ -8,6 +8,15 @@ pub shape Pair(
 )
 pub fn make_pair(drops#: i32) -> Pair <- drops { return Pair(left = Token(id = 1, &drops = &drops), right = Token(id = 2, &drops = &drops)) }
 
+pub shape EnumCell(value: i32)
+pub shape MaybeCell(
+    Some(EnumCell) = 1 |
+    None = 0
+)
+pub fn make_maybe_cell() -> MaybeCell {
+    return MaybeCell::Some(EnumCell(value = 1))
+}
+
 pub shape CustomPair(
     left: Token,
     right: Token

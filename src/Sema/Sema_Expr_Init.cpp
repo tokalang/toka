@@ -342,8 +342,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       }
 
       // A direct match/guard reference binder is an active lexical borrow.
-      // Nested pattern projections intentionally remain outside this narrow
-      // path-registration slice until their own projection mapping is added.
+      // Recursive struct patterns extend TargetAccessPath with their exact
+      // field projection. Enum payloads retain their enclosing target path
+      // conservatively because payload projections have no source spelling.
       if (TargetAccessPath &&
           !PALCheckerState.recordBorrow(TargetAccessPath,
                                         bindingPayloadWritable, Pat->Loc)) {
@@ -704,7 +705,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       if (i == elisionIndex) continue;
                       size_t memberIndex = (i < elisionIndex) ? i : (i + elidedFields - 1);
-                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath);
+                      checkPattern(Pat->SubPatterns[i].get(), getPhysicalTypeName(foundMemb->SubMembers[memberIndex]), SourceCapability, TargetPath, TargetAccessPath);
                     }
                   }
                 } else {
@@ -716,7 +717,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                   } else {
                     for (size_t i = 0; i < Pat->SubPatterns.size(); ++i) {
                       checkPattern(Pat->SubPatterns[i].get(),
-                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath);
+                                   getPhysicalTypeName(foundMemb->SubMembers[i]), SourceCapability, TargetPath, TargetAccessPath);
                     }
                   }
                 }
@@ -744,7 +745,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     HasError = true;
                   } else {
                     checkPattern(Pat->SubPatterns[0].get(), foundMemb->Type,
-                                 SourceCapability, TargetPath);
+                                 SourceCapability, TargetPath, TargetAccessPath);
                   }
                 }
               }

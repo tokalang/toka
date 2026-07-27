@@ -1,0 +1,10 @@
+import ./lib::{MaybeCell, make_maybe_cell}
+
+fn main() -> i32 {
+    auto option = make_maybe_cell()
+    guard auto MaybeCell::Some(&view#) = option else { return 1 }
+    auto moved = cede option
+    view.value = 2
+    return 0
+}
+// EXPECT_ERROR: E0440

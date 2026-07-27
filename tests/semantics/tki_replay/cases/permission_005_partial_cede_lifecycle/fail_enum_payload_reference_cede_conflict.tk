@@ -1,0 +1,15 @@
+import ./lib::{MaybeCell, make_maybe_cell}
+
+fn main() -> i32 {
+    auto option = make_maybe_cell()
+    match option {
+        auto MaybeCell::Some(&view#) => {
+            auto moved = cede option
+            view.value = 2
+        }
+        auto MaybeCell::None => {}
+    }
+    return 0
+}
+// EXPECT_ERROR: E0440
+// EXPECT_TKI: @tki structural_drop: MaybeCell

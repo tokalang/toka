@@ -681,6 +681,24 @@
       "description": "A nested guard reference binding protects its source field from cede"
     },
     {
+      "id": "diag_enum_payload_reference_cede_conflict_01",
+      "path": "diagnostics/enum_payload_reference_cede_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 9,
+      "timeout_seconds": 10,
+      "description": "An enum payload reference binding protects its enclosing source from cede"
+    },
+    {
+      "id": "diag_enum_guard_payload_reference_cede_conflict_01",
+      "path": "diagnostics/enum_guard_payload_reference_cede_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "An enum guard payload reference protects its enclosing source from cede"
+    },
+    {
       "id": "diag_destructure_reference_field_cede_conflict_01",
       "path": "diagnostics/destructure_reference_field_cede_conflict.tk",
       "type": "compile-fail",

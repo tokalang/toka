@@ -16,7 +16,7 @@ guarantee.
 
 ## Evidence basis
 
-- `python3 tools/run_conformance.py`: 177 passed, 0 failed on 2026-07-27;
+- `python3 tools/run_conformance.py`: 179 passed, 0 failed on 2026-07-27;
 - all 25 populated source-less replay cases: 25 passed, 0 failed in bounded
   batches on 2026-07-27;
 - `permission_005_partial_cede_lifecycle`: isolated source-backed/source-less
@@ -47,6 +47,11 @@ guarantee.
   not a temporary payload slot. `for_reference_fixed_array_*` and
   `g08_iterator_pal_protocol.tk` cover fixed-array and protocol iterator
   lowering respectively.
+- Enum `match` and `guard` payload reference binders retain their enclosing
+  enum target as a conservative PAL path. They therefore block invalidating
+  `cede` of that target while the binder is live; source-backed and
+  source-less `enum*_payload_reference_cede_conflict` cases cover both entry
+  points.
 - These are direct-source facts only. They do not add provenance traversal or
   alter the still-open independent-versus-Shared `cede` semantics.
 
@@ -92,10 +97,11 @@ guarantee.
    not yet exercise a general freeze/sealed-object ceiling because none is
    currently represented in the language model.
 
-5. Direct-source PAL coverage now includes nested match/guard patterns,
-   ordinary destructuring, and fixed-array/protocol reference iteration. Enum
-   payload aliases and unsupported projection forms remain conservative direct
-   sources; no provenance traversal is introduced by this closure.
+5. Direct-source PAL coverage now includes nested struct and enum
+   match/guard patterns, ordinary destructuring, and fixed-array/protocol
+   reference iteration. Enum payloads use their enclosing enum target as a
+   conservative direct source because they lack a separately nameable source
+   projection; no provenance traversal is introduced by this closure.
 
 ## Recommended implementation order
 
