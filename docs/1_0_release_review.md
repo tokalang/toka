@@ -1,14 +1,14 @@
 # Toka 1.0 Release Review Report
 
-**Revision Under Audit**: `d0b15ae1` (Target Release Candidate Tag: `v0.9.9-rc3`)
-**Status**: Historical RC3 Gate Passed; superseded for final-tag purposes by post-RC3 GAP-LANG-04 requalification
-**Date**: 2026-07-25
+**Revision Under Audit**: `01e6e88be4aef4593fd630355c9763755ed05bd4` (Pre-release Tag: `v0.9.9-rc4`)
+**Status**: Current-revision Tier 1 gate passed; GitHub pre-release published
+**Date**: 2026-07-27
 
 ---
 
 ## 1. Review Executive Summary
 
-This document records the official Release Review for the `v0.9.9-rc3` candidate. Its Tier 1 evidence remains valid for that revision, but a later P0 language fix (GAP-LANG-04: handle identity / payload write separation) requires a fresh current-revision Tier 1 qualification before any final-tag decision. No release tag or GitHub Release has been created by this review.
+This document records the official Release Review for the `v0.9.9-rc4` pre-release. The current revision includes the GAP-LANG-04 handle identity / payload write separation closure and its release qualification. Its Tier 1 gate completed successfully before the annotated tag was created; the tag resolves exactly to the audited revision. This is a pre-release, not a final `v1.0.0` freeze tag.
 
 ---
 
@@ -16,17 +16,17 @@ This document records the official Release Review for the `v0.9.9-rc3` candidate
 
 | Platform | Architecture | OS / Runtime | Qualification Profile | Release Gate Status |
 |---|---|---|---|---|
-| **Linux x86_64** | `x86_64` | Ubuntu 22.04 / glibc | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30189209349/job/89759184095) |
-| **Linux aarch64** | `aarch64` | Ubuntu 24.04 / glibc | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30189209349/job/89759184109) |
-| **macOS ARM64** | `arm64` | macOS 15 (Apple Silicon) | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30189209349/job/89759184054) |
-| **macOS x86_64** | `x86_64` | macOS 15 Intel | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30189209349/job/89759184082) |
+| **Linux x86_64** | `x86_64` | Ubuntu 22.04 / glibc | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30246461701/job/89914541403) |
+| **Linux aarch64** | `aarch64` | Ubuntu 24.04 / glibc | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30246461701/job/89914541452) |
+| **macOS ARM64** | `arm64` | macOS 15 (Apple Silicon) | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30246461701/job/89914541621) |
+| **macOS x86_64** | `x86_64` | macOS 15 Intel | Tier 1 Primary Release | [PASSED](https://github.com/tokalang/toka/actions/runs/30246461701/job/89914541459) |
 | **Windows x86_64** | `x86_64` | Windows Native (MSYS2) | Tier 2 Secondary Release | Non-blocking Profile |
 
 ---
 
 ## 3. Pre-Release Verification Evidence
 
-### Local Test Matrix (macOS ARM64 Baseline)
+### Historical Local Test Matrix (RC3 macOS ARM64 Baseline)
 - **Full Pass Suite**: 358/358 PASSED (`python3 tools/scripts/test_pass.py`)
 - **Toka 1.0 Conformance Test Suite**: 14/14 PASSED (`python3 tools/run_conformance.py`)
 - **Source-Less `.tki` Semantic Replay Suite**: 20/20 PASSED (`tools/scripts/test_semantic_replay.sh`)
@@ -35,17 +35,23 @@ This document records the official Release Review for the `v0.9.9-rc3` candidate
 - **Release Notes Document**: [release_notes_v0.9.9-rc3.md](release_notes_v0.9.9-rc3.md)
 - **Code Hygiene Check**: CLEAN (`git diff --check`, 0 whitespace errors)
 
-### Tier 1 RC3 Evidence
+### Tier 1 RC4 Evidence
 
-- **Gate Run**: [30189209349](https://github.com/tokalang/toka/actions/runs/30189209349), `success`.
-- **Source under audit**: `d0b15ae1`; the workflow head `60bb7ed0` adds only this review metadata.
+- **Gate Run**: [30246461701](https://github.com/tokalang/toka/actions/runs/30246461701), `success`.
+- **Source under audit**: `01e6e88be4aef4593fd630355c9763755ed05bd4`, clean on every target.
 - **Result**: all four Tier 1 jobs passed the complete 13-stage unified release gate (`build`, `pass`, `fail`, `warn`, `semantic_replay`, `cache_invalidation`, `tooling`, `incremental`, `native_build_reference`, `qslite`, `async`, `sanitizer`, and `package_smoke`).
+- **Artifact checks**: each target reports `source_dirty=false`; the pass/fail/replay stages report 346/346 passing positive cases, 257/257 passing expected-failure cases, and 25/25 semantic replay cases. The tooling stage completed 56 checks and the sanitizer stage completed 82 mutations.
+- **Published pre-release**: [`v0.9.9-rc4`](https://github.com/tokalang/toka/releases/tag/v0.9.9-rc4). Its annotated tag resolves to the audited source revision above. The tag was published only after qualification; the Release Gate workflow was temporarily disabled during the tag push and immediately re-enabled, so no duplicate release job was started.
 
 ---
 
 ## 4. Multi-Platform Release Gate Procedure
 
 1. **Push Main Branch**: Push verified commits to `main`.
-2. **Manual Workflow Dispatch / Tag Trigger**: Trigger `.github/workflows/release.yml` with `tag_name=v0.9.9-rc3` and `publish_release=false` via GitHub Actions workflow_dispatch.
+2. **Manual Workflow Dispatch**: Trigger `.github/workflows/release.yml` with the intended candidate label and `publish_release=false` via GitHub Actions workflow_dispatch.
 3. **Artifact Collection**: Verify all 13 release gate stages (`build`, `pass`, `fail`, `warn`, `semantic_replay`, `cache_invalidation`, `tooling`, `incremental`, `native_build_reference`, `qslite`, `async`, `sanitizer`, `package_smoke`) pass cleanly across all Tier 1 targets.
-4. **Final Closure**: Complete for RC3. A final release tag remains an explicit maintainer decision.
+4. **Pre-release Closure**: Complete for RC4. A final `v1.0.0` tag remains an explicit maintainer decision.
+
+### Historical RC3 Evidence
+
+The prior [RC3 gate run 30189209349](https://github.com/tokalang/toka/actions/runs/30189209349) remains valid historical evidence for `d0b15ae1`, but RC4 is the release-qualified baseline after GAP-LANG-04.

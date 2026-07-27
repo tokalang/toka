@@ -1,6 +1,6 @@
 # Toka 1.0 Qualification Evidence Ledger
 
-**Status**: Qualification & Discovery Ledger (RC3 evidence retained; post-RC3 P0 requalification pending)
+**Status**: Qualification & Discovery Ledger (RC4 current-revision Tier 1 qualification complete)
 **Authority Hierarchy**:
 - Normative language and compiler rules are governed by [`docs/1_0_freeze_decision_list.md`](1_0_freeze_decision_list.md) and [`docs/1_0_closure_plan.md`](1_0_closure_plan.md).
 - This ledger tracks empirical evidence (conformance tests, benchmark logs, sanitizer build smoke, micro-slices) for production qualification.
@@ -10,7 +10,7 @@
 ## 1. CI Gate & Qualification Tiering
 
 - **Pull Request Gate (`.github/workflows/ci.yml`)**: Automated on every PR and commit on `main`. Enforces Conformance Suite (14/14), Plaintext No-OpenSSL Script (`tools/test_no_openssl.sh`), and Runtime ASan Build Smoke (`tools/build_sanitized.sh runtime-asan`).
-- **Release Candidate Gate (`.github/workflows/release.yml`)**: Validated for the `v0.9.9-rc3` dry-run candidate via `tools/scripts/release_gate.py` (13-stage release qualification across Linux x64/arm64 and macOS x64/arm64); evidence: [Run 30189209349](https://github.com/tokalang/toka/actions/runs/30189209349).
+- **Release Candidate Gate (`.github/workflows/release.yml`)**: Validated for the `v0.9.9-rc4` dry-run candidate via `tools/scripts/release_gate.py` (13-stage release qualification across Linux x64/arm64 and macOS x64/arm64); evidence: [Run 30246461701](https://github.com/tokalang/toka/actions/runs/30246461701), source `01e6e88be4aef4593fd630355c9763755ed05bd4`.
 - **Manual / Scheduled Sanitizer Gate (`tools/build_sanitized.sh`)**: `runtime-tsan` and `compiler-asan` are available for manual developer validation or dedicated scheduled builds.
 
 ---
@@ -25,7 +25,7 @@
 | **GAP-LANG-02** | **Layered Diagnostic Conformance**<br>Lock stable diagnostic codes (`E0417`, `E0443`), levels, and line/col spans without freezing text formatting. | Language | `P1` | Yes | `closed` | [mut_borrow_err.tk](file:///Users/zhyi/GitDP/toka/tests/conformance/diagnostics/mut_borrow_err.tk) & `spec/diagnostic.map.json` |
 | **GAP-LANG-03a** | **Async Frame Local Lifetime Across `.await`**<br>Local variables retained across `.await` points must preserve state and execute deterministic destructors on scope exit (`drop_count == 1`). | Language | `P0` | Yes | `closed` | [async_frame_drop_across_await.tk](file:///Users/zhyi/GitDP/toka/tests/conformance/async/async_frame_drop_across_await.tk) & `tests/conformance/manifest.json` |
 | **GAP-LANG-03b** | **Async Task Cancellation Destructors**<br>Rich cancellation and exactly-once destructor invocation upon task handle cancellation. | Language | `P2` | Post-1.0 | `planned` | `docs/1_0_closure_plan.md#cancellation` |
-| **GAP-LANG-04** | **Handle Identity / Payload Write Separation**<br>For an existing binding, effective authority is `declaration/signature capability ∩ use-site intent ∩ PAL permission`. A handle-side `#` (`*#p`, `^#p`, `~#p`, `&#p`) authorizes only rebinding that handle; it cannot authorize bare, member, indexed, call-argument, callable, or mutable-receiver payload writes. Shared flow additionally enforces `effective-P(LHS) = declared-P(LHS) ∩ effective-P(direct RHS)` without provenance traversal at local, call, return, field, match/guard, and destructuring declaration boundaries. Whole-unique `cede` creates a fresh root whose H/P comes from its declaration, subject to the existing `$` field ceiling and same-path nullable guard rules. | Language | `P0` | Yes | `verified` | Conformance: `handle_identity_not_payload_writable_*.tk`, `call_*_cannot_supply_*.tk`, `static_call_handle_only_cannot_supply_payload.tk`, `callable_argument_cannot_forge_payload.tk`, `raw_payload_write_requires_unsafe.tk`, `method_use_site_cannot_forge_payload.tk`, `ownership_call_permission_capability_matrix_01`, `ownership_callable_argument_permission_matrix_01`, `shared_view_cannot_amplify_payload*.tk`, `cede_shared_*rebind*.tk`, `reference_field_rebind_cannot_amplify_payload.tk`, `cede_unique_readonly_source_creates_writable_owner.tk`, and guarded-nullable cases. Source-less replay: `permission_001_capability` through `permission_005_partial_cede_lifecycle` (25/25 case set). |
+| **GAP-LANG-04** | **Handle Identity / Payload Write Separation**<br>For an existing binding, effective authority is `declaration/signature capability ∩ use-site intent ∩ PAL permission`. A handle-side `#` (`*#p`, `^#p`, `~#p`, `&#p`) authorizes only rebinding that handle; it cannot authorize bare, member, indexed, call-argument, callable, or mutable-receiver payload writes. Shared flow additionally enforces `effective-P(LHS) = declared-P(LHS) ∩ effective-P(direct RHS)` without provenance traversal at local, call, return, field, match/guard, and destructuring declaration boundaries. Whole-unique `cede` creates a fresh root whose H/P comes from its declaration, subject to the existing `$` field ceiling and same-path nullable guard rules. | Language | `P0` | Yes | `closed` | Conformance: `handle_identity_not_payload_writable_*.tk`, `call_*_cannot_supply_*.tk`, `static_call_handle_only_cannot_supply_payload.tk`, `callable_argument_cannot_forge_payload.tk`, `raw_payload_write_requires_unsafe.tk`, `method_use_site_cannot_forge_payload.tk`, `ownership_call_permission_capability_matrix_01`, `ownership_callable_argument_permission_matrix_01`, `shared_view_cannot_amplify_payload*.tk`, `cede_shared_*rebind*.tk`, `reference_field_rebind_cannot_amplify_payload.tk`, `cede_unique_readonly_source_creates_writable_owner.tk`, and guarded-nullable cases. Source-less replay: `permission_001_capability` through `permission_005_partial_cede_lifecycle` (25/25 case set). Release: [RC4 Tier 1 run 30246461701](https://github.com/tokalang/toka/actions/runs/30246461701), all four targets passed. |
 
 **Current direct-source PAL closure (2026-07-27):** nested struct and enum
 `match`/`guard` reference patterns, ordinary destructuring, and
@@ -39,15 +39,15 @@ enclosing enum target because no separately nameable payload path exists.
 `cede_shared_field_rebind_*`, `reference_field_rebind_cannot_amplify_payload`,
 `index_handle_rebind_is_not_a_1_0_surface`, and
 `g08_iterator_pal_protocol.tk` provide positive/disjoint/conflicting evidence.
-GAP-LANG-04 is **verified for the frozen 1.0 surface**: direct-source routing,
+GAP-LANG-04 is **closed for the frozen 1.0 surface**: direct-source routing,
 existing-LHS non-redeclaration, whole-unique fresh roots, the bounded `$`
 field ceiling, and same-path nullable guards all have conformance and
 source-less replay evidence. Indexed elements have payload and partial-`cede`
 operations but no independent handle-rebind surface in 1.0. A general
 freeze/sealed-object referent ceiling is not represented by frozen syntax and
 is therefore a 1.x design proposal, not an unresolved 1.0 implementation
-gap. This item becomes `closed` only after the current revision passes the
-Tier 1 multi-platform Release Review.
+gap. The current revision passed the Tier 1 multi-platform Release Review in
+[run 30246461701](https://github.com/tokalang/toka/actions/runs/30246461701).
 
 ### B. Compiler & Lowering
 
