@@ -708,6 +708,15 @@
       "description": "Cede into an existing handle-rebindable binding does not create payload write authority"
     },
     {
+      "id": "diag_cede_shared_existing_lhs_cannot_amplify_payload_01",
+      "path": "diagnostics/cede_shared_existing_lhs_cannot_amplify_payload.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 7,
+      "timeout_seconds": 10,
+      "description": "A shared cede rebind preserves its direct source payload ceiling"
+    },
+    {
       "id": "diag_destructure_reference_field_cede_conflict_01",
       "path": "diagnostics/destructure_reference_field_cede_conflict.tk",
       "type": "compile-fail",

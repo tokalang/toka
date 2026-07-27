@@ -75,6 +75,25 @@ static bool terminalMemberHasMorphology(const Expr *E) {
   return M && toka::Type::stripMorphology(M->Member) != M->Member;
 }
 
+// An explicit ^, ~, or & on an assignment target selects the binding
+// identity.  It must not be silently reinterpreted as an implicit payload
+// assignment merely because the RHS happens to match the pointee type.
+static bool selectsHandleIdentity(const Expr *E) {
+  while (E) {
+    if (auto *C = dynamic_cast<const CastExpr *>(E)) {
+      E = C->Expression.get();
+    } else if (auto *P = dynamic_cast<const PostfixExpr *>(E)) {
+      E = P->LHS.get();
+    } else {
+      break;
+    }
+  }
+
+  auto *U = dynamic_cast<const UnaryExpr *>(E);
+  return U && (U->Op == TokenType::Caret || U->Op == TokenType::Tilde ||
+               U->Op == TokenType::Ampersand);
+}
+
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // 1. Resolve Operands using New API
@@ -184,8 +203,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // Generic Implicit Dereference for Smart Pointers (Soul Interaction)
   // If one side is Smart Pointer and other side matches its Pointee,
   // decay Smart Pointer.
+  const bool explicitHandleTarget =
+      isAssign && selectsHandleIdentity(Bin->LHS.get());
   bool assignmentLHSWasSmartPointerPayloadDecay = false;
-  if (lhsType->isUniquePtr() || lhsType->isSharedPtr()) {
+  if (!explicitHandleTarget &&
+      (lhsType->isUniquePtr() || lhsType->isSharedPtr())) {
     if (auto inner = lhsType->getPointeeType()) {
       if (isTypeCompatible(inner, rhsType)) {
         assignmentLHSWasSmartPointerPayloadDecay = isAssign;
@@ -210,7 +232,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     isUnsetInit = true;
     m_IsUnsetInitCall = false;
   }
-  if (isAssign && !assignmentLHSWasSmartPointerPayloadDecay) {
+  if (isAssign && !explicitHandleTarget &&
+      !assignmentLHSWasSmartPointerPayloadDecay) {
     Expr *NakedLHS = Bin->LHS.get();
     while (auto *C = dynamic_cast<CastExpr *>(NakedLHS))
       NakedLHS = C->Expression.get();
@@ -349,7 +372,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     }
 
     // Implicit Dereference Assignment Logic (Soul Mutation)
-    if (!isImplicitDerefAssign && !isSmartNew && !isRefAssign &&
+    if (!isImplicitDerefAssign && !explicitHandleTarget && !isSmartNew &&
+        !isRefAssign &&
         (lhsType->isUniquePtr() || lhsType->isSharedPtr())) {
       auto inner = lhsType->getPointeeType();
       // If RHS matches Inner, we are assigning to the Soul (implicit *s
@@ -368,7 +392,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // e.g. "p = ..." where p is smart pointer, or "~#p = ..."
     // Constitution 1.3: Reference rebinding is ALSO a Reseat operation.
     if (!isImplicitDerefAssign) {
-      if (lhsType->isPointer() || lhsType->isSmartPointer() || isRefAssign) {
+      if (explicitHandleTarget || lhsType->isPointer() ||
+          lhsType->isSmartPointer() || isRefAssign) {
         isRebind = true;
       }
     }
@@ -572,7 +597,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // [Constitution] Soul Permission Elevation Audit
     // RHS soul must not exceed LHS soul's permissions if they share
     // objects (Shared/Ref)
-    if (lhsType->isSharedPtr() || lhsType->isReference()) {
+    if (!isRebind && (lhsType->isSharedPtr() || lhsType->isReference())) {
       auto lhsSoul = lhsType->getPointeeType();
       auto rhsSoul = rhsType->getPointeeType();
       if (lhsSoul && rhsSoul) {
@@ -879,6 +904,45 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         !isTypeCompatible(lhsCompatType, rhsType) && LHS != "unknown" &&
         RHS != "unknown") {
       error(Bin, DiagID::ERR_TYPE_MISMATCH, RHS + " (assign)", LHS);
+    }
+
+    // Rebinding an existing indirect binding preserves its declaration but
+    // replaces the direct source that limits its effective payload authority.
+    // A shared/reference/raw RHS therefore installs its one-hop ceiling on
+    // the target; an independent or fresh source leaves only the target's
+    // declared ceiling.  This is a flow update, never a declaration rewrite.
+    if (assignmentKind == AssignmentSemanticKind::Handle && !isUnsetInit) {
+      Expr *binding = Bin->LHS.get();
+      while (binding) {
+        if (auto *cast = dynamic_cast<CastExpr *>(binding)) {
+          binding = cast->Expression.get();
+        } else if (auto *unary = dynamic_cast<UnaryExpr *>(binding)) {
+          binding = unary->RHS.get();
+        } else if (auto *postfix = dynamic_cast<PostfixExpr *>(binding)) {
+          binding = postfix->LHS.get();
+        } else {
+          break;
+        }
+      }
+
+      if (auto *variable = dynamic_cast<VariableExpr *>(binding)) {
+        SymbolInfo *targetInfo = nullptr;
+        std::string actualName = variable->Name;
+        if (CurrentScope->findVariableWithDeref(variable->Name, targetInfo,
+                                                actualName) &&
+            targetInfo) {
+          PermissionFlow flow = getPermissionFlow(Bin->RHS.get());
+          if (flow.Kind == PermissionFlowKind::Shared ||
+              flow.Kind == PermissionFlowKind::UnsafeRaw) {
+            targetInfo->PayloadFlowWritable =
+                flow.DirectCapability.PayloadWritable;
+            targetInfo->HasPayloadFlowCeiling = true;
+          } else {
+            targetInfo->PayloadFlowWritable = true;
+            targetInfo->HasPayloadFlowCeiling = false;
+          }
+        }
+      }
     }
 
     // [Fix] Update InitMask logic for 'unset' variables

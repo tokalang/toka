@@ -34,7 +34,8 @@ storage and register PAL borrows. Enum payloads conservatively register their
 enclosing enum target because no separately nameable payload path exists.
 `nested_pattern_reference_*`, `enum*_payload_reference_cede_conflict`,
 `destructure_reference_*`, `for_reference_fixed_array_*`,
-`cede_existing_handle_only_lhs_cannot_gain_payload_write`, and
+`cede_existing_handle_only_lhs_cannot_gain_payload_write`,
+`cede_shared_existing_lhs_cannot_amplify_payload`, and
 `g08_iterator_pal_protocol.tk` provide positive/disjoint/conflicting evidence.
 GAP-LANG-04 remains **in progress**: this closes syntactic direct-source
 routing and the existing-LHS no-redeclaration boundary only; it does not

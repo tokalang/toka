@@ -1,0 +1,9 @@
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto ~#source = new Cell(value = 1)
+    auto ~#target# = new Cell(value = 2)
+    ~target = cede ~source
+    target.value = 3
+    return 0
+}
