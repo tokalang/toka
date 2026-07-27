@@ -25,7 +25,7 @@
 | **GAP-LANG-02** | **Layered Diagnostic Conformance**<br>Lock stable diagnostic codes (`E0417`, `E0443`), levels, and line/col spans without freezing text formatting. | Language | `P1` | Yes | `closed` | [mut_borrow_err.tk](file:///Users/zhyi/GitDP/toka/tests/conformance/diagnostics/mut_borrow_err.tk) & `spec/diagnostic.map.json` |
 | **GAP-LANG-03a** | **Async Frame Local Lifetime Across `.await`**<br>Local variables retained across `.await` points must preserve state and execute deterministic destructors on scope exit (`drop_count == 1`). | Language | `P0` | Yes | `closed` | [async_frame_drop_across_await.tk](file:///Users/zhyi/GitDP/toka/tests/conformance/async/async_frame_drop_across_await.tk) & `tests/conformance/manifest.json` |
 | **GAP-LANG-03b** | **Async Task Cancellation Destructors**<br>Rich cancellation and exactly-once destructor invocation upon task handle cancellation. | Language | `P2` | Post-1.0 | `planned` | `docs/1_0_closure_plan.md#cancellation` |
-| **GAP-LANG-04** | **Handle Identity / Payload Write Separation**<br>For an existing binding, effective authority is `declaration/signature capability ∩ use-site intent ∩ PAL permission`. A handle-side `#` (`*#p`, `^#p`, `~#p`, `&#p`) authorizes only rebinding that handle; it cannot authorize bare, member, indexed, call-argument, callable, or mutable-receiver payload writes. Shared flow additionally enforces `effective-P(LHS) = declared-P(LHS) ∩ effective-P(direct RHS)` without provenance traversal at local, call, return, field, match/guard, and destructuring declaration boundaries. Whole independent `cede` and nullable closure remain separate work. | Language | `P0` | Yes | `in_progress` | Layer 1 evidence: `tests/conformance/diagnostics/handle_identity_not_payload_writable_*.tk`, `call_*_cannot_supply_*.tk`, `static_call_handle_only_cannot_supply_payload.tk`, `callable_argument_cannot_forge_payload.tk`, `raw_payload_write_requires_unsafe.tk`, `method_use_site_cannot_forge_payload.tk`, `ownership_call_permission_capability_matrix_01`, `ownership_callable_argument_permission_matrix_01`, `shared_view_cannot_amplify_payload*.tk`, `cede_shared_view_cannot_amplify_payload.tk`, `shared_view_cannot_supply_payload_call.tk`, `shared_view_preserves_payload_capability.tk`, `shared_view_return_preserves_payload_capability.tk`, `shared_view_field_preserves_payload_capability.tk`, `pattern_shared_view_*.tk`, `guard_shared_view_*.tk`, `destructure_shared_view_cannot_amplify_payload.tk`, `destructure_shared_view_preserves_payload_capability.tk`, `cede_unique_creates_independent_owner.tk`, and source-less `permission_001_capability` / `permission_002_shared_flow` replay |
+| **GAP-LANG-04** | **Handle Identity / Payload Write Separation**<br>For an existing binding, effective authority is `declaration/signature capability ∩ use-site intent ∩ PAL permission`. A handle-side `#` (`*#p`, `^#p`, `~#p`, `&#p`) authorizes only rebinding that handle; it cannot authorize bare, member, indexed, call-argument, callable, or mutable-receiver payload writes. Shared flow additionally enforces `effective-P(LHS) = declared-P(LHS) ∩ effective-P(direct RHS)` without provenance traversal at local, call, return, field, match/guard, and destructuring declaration boundaries. Whole-unique `cede` creates a fresh root whose H/P comes from its declaration, subject to the existing `$` field ceiling and same-path nullable guard rules. | Language | `P0` | Yes | `verified` | Conformance: `handle_identity_not_payload_writable_*.tk`, `call_*_cannot_supply_*.tk`, `static_call_handle_only_cannot_supply_payload.tk`, `callable_argument_cannot_forge_payload.tk`, `raw_payload_write_requires_unsafe.tk`, `method_use_site_cannot_forge_payload.tk`, `ownership_call_permission_capability_matrix_01`, `ownership_callable_argument_permission_matrix_01`, `shared_view_cannot_amplify_payload*.tk`, `cede_shared_*rebind*.tk`, `reference_field_rebind_cannot_amplify_payload.tk`, `cede_unique_readonly_source_creates_writable_owner.tk`, and guarded-nullable cases. Source-less replay: `permission_001_capability` through `permission_005_partial_cede_lifecycle` (25/25 case set). |
 
 **Current direct-source PAL closure (2026-07-27):** nested struct and enum
 `match`/`guard` reference patterns, ordinary destructuring, and
@@ -39,11 +39,15 @@ enclosing enum target because no separately nameable payload path exists.
 `cede_shared_field_rebind_*`, `reference_field_rebind_cannot_amplify_payload`,
 `index_handle_rebind_is_not_a_1_0_surface`, and
 `g08_iterator_pal_protocol.tk` provide positive/disjoint/conflicting evidence.
-GAP-LANG-04 remains **in progress**: this closes syntactic direct-source
-routing and the existing-LHS no-redeclaration boundary only. Indexed elements
-have payload and partial-`cede` operations but no independent handle-rebind
-surface in 1.0; it does not decide broader independent-`cede` referent
-ceilings or add provenance traversal.
+GAP-LANG-04 is **verified for the frozen 1.0 surface**: direct-source routing,
+existing-LHS non-redeclaration, whole-unique fresh roots, the bounded `$`
+field ceiling, and same-path nullable guards all have conformance and
+source-less replay evidence. Indexed elements have payload and partial-`cede`
+operations but no independent handle-rebind surface in 1.0. A general
+freeze/sealed-object referent ceiling is not represented by frozen syntax and
+is therefore a 1.x design proposal, not an unresolved 1.0 implementation
+gap. This item becomes `closed` only after the current revision passes the
+Tier 1 multi-platform Release Review.
 
 ### B. Compiler & Lowering
 
