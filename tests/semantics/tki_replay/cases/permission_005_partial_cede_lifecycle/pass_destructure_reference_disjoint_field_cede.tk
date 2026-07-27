@@ -1,0 +1,10 @@
+import ./lib::{make_pair}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto pair = make_pair(drops)
+    auto Pair(&borrow = .&left, ..) = pair
+    if borrow.id != 1 { return 1 }
+    auto taken = cede pair.right
+    return taken.id - 2
+}

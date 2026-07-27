@@ -1771,6 +1771,9 @@ void Sema::checkStmt(Stmt *S) {
     AccessCapability initCapability = initFlow.DirectCapability;
     if (initFlow.Kind == PermissionFlowKind::Shared)
       initCapability.PayloadFlowRestricted = true;
+    const std::string initPath = getPathString(Destruct->Init.get());
+    const AccessPath initAccessPath = canonicalizeAccessPath(
+        makeAccessPath(Destruct->Init.get()));
     auto declType = toka::Type::fromString(Destruct->TypeName);
 
     // Basic check: declType should match initType
@@ -2010,6 +2013,34 @@ void Sema::checkStmt(Stmt *S) {
             Info.HasPayloadFlowCeiling = true;
           }
           Info.DeclLoc = Destruct->Loc;
+
+          if (Destruct->Variables[i].IsReference && initAccessPath) {
+            const std::string memberName = toka::Type::stripMorphology(
+                SD->Members[memberIndex].Name);
+            std::string memberPath = initPath;
+            if (!memberPath.empty())
+              memberPath += "." + memberName;
+            AccessPath memberAccessPath = initAccessPath;
+            memberAccessPath.Projections.push_back(
+                AccessProjection::field(memberName, Destruct->Loc));
+
+            Info.BorrowedFrom = memberPath;
+            Info.BorrowedPath = memberAccessPath;
+            Info.LifeDependencySet.insert(memberPath);
+            if (!PALCheckerState.recordBorrow(
+                    memberAccessPath,
+                    Destruct->Variables[i].IsValueMutable, Destruct->Loc)) {
+              error(Destruct, DiagID::ERR_BORROW_MUT,
+                    PALCheckerState.lastConflict()->displayPath());
+              recordPALConflict(
+                  Destruct,
+                  Destruct->Variables[i].IsValueMutable
+                      ? PALOperationClass::ExclusivePayloadBorrow
+                      : PALOperationClass::SharedPayloadBorrow,
+                  memberAccessPath, *PALCheckerState.lastConflict());
+            }
+            PALCheckerState.commitTransient(memberAccessPath);
+          }
           CurrentScope->define(Destruct->Variables[i].Name, Info);
         }
       } else {

@@ -681,6 +681,15 @@
       "description": "A nested guard reference binding protects its source field from cede"
     },
     {
+      "id": "diag_destructure_reference_field_cede_conflict_01",
+      "path": "diagnostics/destructure_reference_field_cede_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 13,
+      "timeout_seconds": 10,
+      "description": "A destructuring reference binding protects its source field from cede"
+    },
+    {
       "id": "diag_direct_unique_move_borrow_conflict_01",
       "path": "diagnostics/direct_unique_move_borrow_conflict.tk",
       "type": "compile-fail",
@@ -1163,6 +1172,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "A nested reference borrow permits cede of a disjoint struct field"
+    },
+    {
+      "id": "ownership_destructure_reference_disjoint_field_cede_01",
+      "path": "ownership/destructure_reference_disjoint_field_cede.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A destructuring reference borrow permits cede of a disjoint struct field"
     },
     {
       "id": "ownership_cede_fixed_array_index_return_cleanup_01",

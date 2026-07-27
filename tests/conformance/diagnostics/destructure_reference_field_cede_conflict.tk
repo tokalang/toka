@@ -1,0 +1,16 @@
+shape Token(id: i32)
+
+impl Token@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+shape Pair(left: Token, right: Token)
+
+fn main() -> i32 {
+    auto pair = Pair(left = Token(id = 1), right = Token(id = 2))
+    auto Pair(&borrow = .&left, ..) = pair
+    auto taken = cede pair.left
+    return taken.id
+}
+// EXPECT_ERROR: E0440
