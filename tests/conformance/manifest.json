@@ -438,6 +438,15 @@
       "description": "A readonly handle field cannot supply Payload capability to a writable call parameter"
     },
     {
+      "id": "diag_member_field_payload_write_requires_declaration_01",
+      "path": "diagnostics/member_field_payload_write_requires_declaration.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04573",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A writable outer binding cannot supply undeclared Payload capability through a shared field"
+    },
+    {
       "id": "diag_member_field_cannot_rebuild_payload_in_fresh_binding_01",
       "path": "diagnostics/member_field_cannot_rebuild_payload_in_fresh_binding.tk",
       "type": "compile-fail",

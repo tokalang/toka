@@ -584,6 +584,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     AccessCapability lhsCapability = getAccessCapability(Bin->LHS.get());
     if (isRebind && lhsCapability.HandleRebindable)
       isLHSWritable = true;
+    bool payloadCapabilityDenied =
+        assignmentKind == AssignmentSemanticKind::Payload &&
+        !lhsCapability.PayloadWritable;
     bool payloadFlowDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
         lhsCapability.PayloadFlowRestricted &&
@@ -682,6 +685,17 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (!isRebind && (isLHSWritable || isLHSUnset))
       lhsType =
           lhsType->withAttributes(true, lhsType->IsNullable); // Valid Mutation
+
+    // A writable outer aggregate is not an authority source for a nested
+    // field.  Once the field path has been resolved, its declaration-derived
+    // capability is decisive unless this is the one permitted initialization
+    // of an unset slot.  In particular, `node#.shared_field.payload = ...`
+    // cannot manufacture P for a `~field: T` declaration.
+    if (payloadCapabilityDenied && !payloadFlowDenied && !isLHSUnset) {
+      error(Bin->LHS.get(),
+            DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+      HasError = true;
+    }
 
     if (!isRebind && !lhsType->IsWritable && !isRefAssign) {
       error(Bin->LHS.get(), DiagID::ERR_IMMUTABLE_MOD, LHS);

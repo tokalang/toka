@@ -1,7 +1,7 @@
 import std/io::println
 
 shape Atomic<T> (
-    t:T
+    t#: T
 )
 // --- Base Types ---
 impl<T> Atomic<T> {
@@ -31,7 +31,7 @@ shape RcWrapper<T>(
 
 // --- Smart Pointer Core ---
 shape SharedPtr<T>(
-    *#wrapper: RcWrapper<T>
+    *#wrapper#: RcWrapper<T>
 )
 
 impl<T> SharedPtr<T>@encap {
@@ -56,7 +56,7 @@ impl<T> SharedPtr<T> {
             )
             // cb_ptr.ref_count#.store(1)
             println("make++++ wrapper:{} data:{} val = {}", *cb_ptr as OAddr, *data_ptr as OAddr, data_ptr as OAddr)
-            return SharedPtr<T>(*wrapper = *cb_ptr)
+            return SharedPtr<T>(*wrapper = *#cb_ptr)
         }
     }
 
@@ -77,7 +77,7 @@ impl<T> SharedPtr<T> {
 
         // [Hat Rule]: Raw pointer must be explicitly unpacked (*ptr) to access members
         if self.*wrapper != null {
-            self.wrapper.ref_count#.fetch_add()
+            unsafe self.wrapper.ref_count#.fetch_add()
         }
     }
 
@@ -89,7 +89,7 @@ impl<T> SharedPtr<T> {
         }
 
         // [Hat Rule]: (*ptr).member
-        self.wrapper.ref_count#.fetch_sub()
+        unsafe self.wrapper.ref_count#.fetch_sub()
 
         println("try xdrop for addr {} with ref_count={}", self.wrapper.*data as OAddr, self.wrapper.ref_count.load())   
 
@@ -125,7 +125,7 @@ impl<T> SharedPtr<T> {
                 ref_count = Atomic<u64>(t = 1),
                 *data = *val_ptr
             )
-            return SharedPtr<T>(*wrapper = *cb)
+            return SharedPtr<T>(*wrapper = *#cb)
         }
     }
 }

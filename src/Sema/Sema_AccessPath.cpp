@@ -225,12 +225,18 @@ SourceLocation Sema::findPathDeclaration(const std::string &Path) {
 
 bool Sema::isBorrowAccessAuthorized(const AccessPath &Path,
                                     const AccessPath &ConflictPath) {
-  if (!Path || Path.RootID == 0 || !ConflictPath || !CurrentScope)
+  if (!Path || !ConflictPath || !CurrentScope)
     return false;
 
   SymbolInfo *info = nullptr;
-  if (!CurrentScope->findSymbolByID(Path.RootID, info) || !info ||
-      info->BorrowedFrom.empty()) {
+  if (Path.RootID != 0) {
+    CurrentScope->findSymbolByID(Path.RootID, info);
+  }
+  if (!info && !Path.RootName.empty()) {
+    std::string actualName = Path.RootName;
+    CurrentScope->findVariableWithDeref(Path.RootName, info, actualName);
+  }
+  if (!info || info->BorrowedFrom.empty()) {
     return false;
   }
 
@@ -238,7 +244,16 @@ bool Sema::isBorrowAccessAuthorized(const AccessPath &Path,
       info->BorrowedPath ? info->BorrowedPath
                          : makeAccessPath(info->BorrowedFrom));
   AccessPath conflict = canonicalizeAccessPath(ConflictPath);
-  return borrowed && conflict && accessPathsMayOverlap(borrowed, conflict);
+  if (borrowed && conflict && accessPathsMayOverlap(borrowed, conflict))
+    return true;
+
+  // Pattern binders may originate from enum payloads, whose legacy spelling
+  // has no independently printable projection.  The structured path is still
+  // preferred above; this root-only fallback merely recognizes the binder's
+  // own recorded source when both sides name that same root.
+  return Path.Projections.empty() && conflict.Projections.empty() &&
+         !conflict.RootName.empty() &&
+         Type::stripMorphology(info->BorrowedFrom) == conflict.RootName;
 }
 
 std::string Sema::getPathString(Expr *E) {

@@ -2003,9 +2003,24 @@ llvm::Value *CodeGen::genDestructuringDecl(const DestructuringDecl *dest) {
 
     TokaSymbol sym;
     sym.allocaPtr = alloca;
-    // Use memberTy (the 'Meat') as the soul type.
-    fillSymbolMetadata(sym, "", false, false, false, v.IsReference,
-                       v.IsValueMutable, v.IsValueNullable, memberTy);
+    // A reference field stores its referent address.  Keep the field's
+    // semantic reference type here, rather than treating the LLVM pointer
+    // storage itself as the referent.  The latter makes a later use of the
+    // destructured binding peel one pointer too many.
+    std::shared_ptr<toka::Type> bindingType;
+    if (m_Shapes.count(shapeName) &&
+        memberIndex < m_Shapes[shapeName]->Members.size()) {
+      bindingType = m_Shapes[shapeName]->Members[memberIndex].ResolvedType;
+    }
+    if (v.IsReference && bindingType && bindingType->isReference()) {
+      auto pointeeType = bindingType->getPointeeType();
+      fillSymbolMetadata(sym, bindingType,
+                         pointeeType ? getLLVMType(pointeeType) : memberTy);
+    } else {
+      // Use memberTy (the 'Meat') as the soul type.
+      fillSymbolMetadata(sym, "", false, false, false, v.IsReference,
+                         v.IsValueMutable, v.IsValueNullable, memberTy);
+    }
     sym.typeName = deducedType; // Set typeName in symbol
     sym.isRebindable = false;
     sym.isContinuous = memberTy->isArrayTy();

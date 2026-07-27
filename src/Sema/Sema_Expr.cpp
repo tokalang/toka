@@ -1431,9 +1431,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // is authorized to access its own source.
     bool authorized = false;
     if (conflict) {
+       authorized = isBorrowAccessAuthorized(makeAccessPath(ve),
+                                              conflict->Path);
        const std::string conflictPath = conflict->displayPath();
        SymbolInfo veInfo;
-       if (CurrentScope->lookup(actualName, veInfo)) {
+       if (!authorized && CurrentScope->lookup(actualName, veInfo)) {
          if ((!veInfo.BorrowedPath.empty() &&
               canonicalizeAccessPath(veInfo.BorrowedPath) ==
                   canonicalizeAccessPath(conflict->Path)) ||
@@ -2010,24 +2012,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
 
     // Save Mask & Moved State for Intersection Rule
-    std::map<std::string, uint64_t> masksBefore;
-    std::map<std::string, bool> movedBefore;
-    for (auto &pair : CurrentScope->Symbols) {
-      masksBefore[pair.first] = pair.second.InitMask;
-      movedBefore[pair.first] = pair.second.Moved;
-    }
+    // A branch may appear inside a nested block while mutating a binding from
+    // an enclosing scope.  Snapshot the visible bindings, not just the
+    // current block, so a terminating arm cannot leave its parent local in an
+    // unset state on the reachable sibling path.
+    auto masksBefore = captureVisibleInitMasks(CurrentScope);
+    auto movedBefore = captureVisibleMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
     if (narrowThen)
       applyNarrowing();
     checkStmt(ie->Then.get());
 
-    std::map<std::string, uint64_t> masksThen;
-    std::map<std::string, bool> movedThen;
-    for (auto &pair : CurrentScope->Symbols) {
-      masksThen[pair.first] = pair.second.InitMask;
-      movedThen[pair.first] = pair.second.Moved;
-    }
+    auto masksThen = captureVisibleInitMasks(CurrentScope);
+    auto movedThen = captureVisibleMoved(CurrentScope);
     auto palThen = PALCheckerState.snapshot();
 
     if (narrowThen)
@@ -2043,12 +2041,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool elseReturns = false;
     if (ie->Else) {
       // Restore Before Else
-      for (auto &pair : masksBefore) {
-        CurrentScope->Symbols[pair.first].InitMask = pair.second;
-      }
-      for (auto &pair : movedBefore) {
-        CurrentScope->Symbols[pair.first].Moved = pair.second;
-      }
+      restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
@@ -2073,31 +2066,32 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         PALCheckerState.restore(palElse);
       } else if (elseReturns) {
         // State is purely from Then branch
-        for (auto &pair : CurrentScope->Symbols) {
-          if (masksThen.count(pair.first))
-            pair.second.InitMask = masksThen[pair.first];
-          if (movedThen.count(pair.first))
-            pair.second.Moved = movedThen[pair.first];
-        }
+        restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen);
         PALCheckerState.restore(palThen);
       } else {
         // Actual Intersection
-        for (auto &pair : CurrentScope->Symbols) {
+        for (const auto &pair : masksBefore) {
+          SymbolInfo *info = nullptr;
+          if (!CurrentScope->findSymbol(pair.first, info) || !info)
+            continue;
           uint64_t thenM = masksThen.count(pair.first) ? masksThen[pair.first] : 0;
-          pair.second.InitMask &= thenM;
+          info->InitMask &= thenM;
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
-          pair.second.Moved = pair.second.Moved || thenMoved;
+          info->Moved = info->Moved || thenMoved;
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
       }
     } else {
-      for (auto &pair : CurrentScope->Symbols) {
-        pair.second.InitMask = masksBefore[pair.first];
+      for (const auto &pair : masksBefore) {
+        SymbolInfo *info = nullptr;
+        if (!CurrentScope->findSymbol(pair.first, info) || !info)
+          continue;
+        info->InitMask = pair.second;
         if (thenReturns) {
-            pair.second.Moved = movedBefore[pair.first];
+            info->Moved = movedBefore[pair.first];
         } else {
-            bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
-            pair.second.Moved = movedBefore[pair.first] || thenMoved;
+          bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
+            info->Moved = movedBefore[pair.first] || thenMoved;
         }
       }
       if (thenReturns) {
@@ -3559,13 +3553,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Rule] Borrowing check for Method Call
         std::string objPath = getPathString(Met->Object.get());
         if (!objPath.empty()) {
-           AccessPath objectPath =
-               canonicalizeAccessPath(makeAccessPath(Met->Object.get()));
+           AccessPath receiverPath = makeAccessPath(Met->Object.get());
+           AccessPath objectPath = canonicalizeAccessPath(receiverPath);
            auto conflict =
                requiresMutableBorrow
                    ? PALCheckerState.verifyExclusiveMutation(objectPath)
                    : PALCheckerState.verifyAccess(objectPath);
-           if (conflict) {
+           // A mutable reference is allowed to use the exact path it already
+           // borrowed.  Treat method receivers the same way as variable and
+           // member accesses; otherwise `&value#` pattern bindings cannot
+           // even call an ordinary read-only method on themselves.
+           if (conflict && !isBorrowAccessAuthorized(receiverPath,
+                                                      conflict->Path)) {
                DiagnosticEngine::report(getLoc(Met), DiagID::ERR_BORROW_MUT,
                                         conflict->displayPath());
                HasError = true;

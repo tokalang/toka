@@ -1,18 +1,18 @@
 import std/io::println
 
 shape Engine(
-    val: i32
+    val#: i32
 )
 
 shape Node(
-    val: i32,
-    ~left: Engine,
-    ~right: Engine,
+    val#: i32,
+    ~left#: Engine,
+    ~right#: Engine,
     reads#: i32
 )
 
 shape Scene(
-    ^root: Node
+    ^root#: Node
 )
 
 shape RefMemner(
@@ -78,10 +78,10 @@ shape EngineView(
 )
 
 fn main() -> i32 {
-    auto ~leftEngine = new Engine(val = 10)
-    auto ~rightEngine = new Engine(val = 20)
+    auto ~leftEngine# = new Engine(val = 10)
+    auto ~rightEngine# = new Engine(val = 20)
     
-    auto ^rootNode = new Node(val = 1, ~left = ~leftEngine, ~right = ~rightEngine, reads = 0)
+    auto ^rootNode# = new Node(val = 1, ~left = ~leftEngine, ~right = ~rightEngine, reads = 0)
     auto scene# = Scene(^root = ^rootNode)
     
     // 1. Transient Borrow check
@@ -124,7 +124,7 @@ fn main() -> i32 {
 
     // 4. Interior mutability on immutable active lock
     {
-        auto &immut_ref = scene.&root
+        auto &immut_ref# = scene.&root
         // Immutable lock active via immut_ref!
         // We cannot write immut_ref.val = 55 (PAL E0443)
         // But we CAN write to #: fields (Interior Mutability)

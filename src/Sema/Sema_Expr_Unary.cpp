@@ -175,20 +175,30 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         if (!m_InLHS) {
           std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
+             AccessPath sourcePath = makeAccessPath(Unary->RHS.get());
+             AccessPath canonicalSourcePath =
+                 canonicalizeAccessPath(sourcePath);
              // Toka Path-Anchored Check
              if (!PALCheckerState.recordBorrow(
-                     canonicalizeAccessPath(makeAccessPath(Unary->RHS.get())),
+                     canonicalSourcePath,
                      isExclusive, Unary->Loc)) {
-                error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
-                if (PALCheckerState.lastConflict()) {
+                const auto &conflict = PALCheckerState.lastConflict();
+                // Reborrowing an already-held reference is permitted only
+                // for that reference's own recorded source path.  It is
+                // needed for returning a view bound by a mutable pattern;
+                // unrelated overlapping borrows remain rejected.
+                if (!conflict ||
+                    !isBorrowAccessAuthorized(sourcePath, conflict->Path)) {
+                  error(Unary, DiagID::ERR_BORROW_MUT, pathToBorrow);
+                }
+                if (conflict &&
+                    !isBorrowAccessAuthorized(sourcePath, conflict->Path)) {
                   recordPALConflict(
                       Unary,
                       isExclusive
                           ? PALOperationClass::ExclusivePayloadBorrow
                           : PALOperationClass::SharedPayloadBorrow,
-                      canonicalizeAccessPath(
-                          makeAccessPath(Unary->RHS.get())),
-                      *PALCheckerState.lastConflict());
+                      canonicalSourcePath, *conflict);
                 }
              }
              m_LastBorrowSource = pathToBorrow; // keep this so RHS knows what it borrowed
