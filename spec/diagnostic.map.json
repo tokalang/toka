@@ -1790,8 +1790,8 @@
     "E04493": {
       "id": "ERR_SEMA_GUARD_CONDITION_MUST_BE_A_VARIABLE",
       "level": "Error",
-      "message": "guard condition must be a variable",
-      "description": "guard condition must be a variable"
+      "message": "guard condition must be a variable or direct local nullable path",
+      "description": "guard condition must be a variable or direct local nullable path"
     },
     "E04494": {
       "id": "ERR_SEMA_GUARD_CONDITION_MUST_BE_A_NULLABLE_TYPE",
@@ -2422,6 +2422,30 @@
       "level": "Error",
       "message": "Integer literal '{}' is out of range for type '{}'",
       "description": "Integer literals must fit their target type"
+    },
+    "E04599": {
+      "id": "ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD",
+      "level": "Error",
+      "message": "Cannot cede a nullable source into a non-null destination without a same-path non-null guard",
+      "description": "Nullable cede sources require a same-path non-null guard before transfer"
+    },
+    "E04600": {
+      "id": "ERR_SEMA_CEDE_DYNAMIC_ARRAY_INDEX_UNSUPPORTED",
+      "level": "Error",
+      "message": "Cannot cede a resource through dynamic array index '{}'; bind a fixed index or use a container operation with its own ownership invariant",
+      "description": "Dynamic array element cede is outside the bounded partial-transfer model"
+    },
+    "E04601": {
+      "id": "ERR_SEMA_CEDE_RECEIVER_PROJECTION_UNSUPPORTED",
+      "level": "Error",
+      "message": "Cannot consume receiver projection '{}' outside the supported local direct-field cede model",
+      "description": "Only qualified direct-field receivers participate in the bounded partial-transfer model"
+    },
+    "E04602": {
+      "id": "ERR_SEMA_CEDE_RECEIVER_NOT_OWNED",
+      "level": "Error",
+      "message": "Cannot pass non-owned receiver '{}' to 'cede self'; consuming receivers require an owned value or unique receiver",
+      "description": "A consuming method receiver requires a uniquely owned source"
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

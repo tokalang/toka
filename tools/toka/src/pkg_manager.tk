@@ -248,9 +248,9 @@ pub shape PkgMeta(
 impl PkgMeta@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes {
         auto res = deserialize_shape<PkgMeta>(json)
-        match res {
-            auto Result<PkgMeta, str>::Ok(&obj) => {
-                self = cede obj
+        match cede res {
+            auto Result<PkgMeta, str>::Ok('obj) => {
+                self = cede 'obj
                 return json_skip_value(json)
             }
             _ => {
