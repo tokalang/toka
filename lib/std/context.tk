@@ -307,7 +307,7 @@ fn propagate_cancel(cede canceler: Canceler) -> async i32 {
 }
 
 pub shape CancelResult<'C: @Context> (
-    ctx: CancelContext<'C>,
+    ctx#: CancelContext<'C>,
     canceler: Canceler
 )
 
@@ -369,7 +369,7 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
 // ------------------------------------------------------
 
 pub shape TimeoutContext<'C: @Context> (
-    cancel_ctx: CancelContext<'C>,
+    cancel_ctx#: CancelContext<'C>,
     deadline_val: Instant
 )
 
@@ -396,7 +396,7 @@ impl<'C: @Context> TimeoutContext<'C>@Context {
 }
 
 pub shape TimeoutResult<'C: @Context> (
-    ctx: TimeoutContext<'C>,
+    ctx#: TimeoutContext<'C>,
     canceler: Canceler
 )
 
@@ -447,7 +447,7 @@ pub fn with_deadline<'C: @Context>(cede 'parent#: C, deadline: Instant) -> Timeo
 // ------------------------------------------------------
 
 pub shape ValueContext<'C: @Context> (
-    'parent: C,
+    'parent#: C,
     key: string,
     value: string
 )
@@ -477,9 +477,9 @@ impl<'C: @Context> ValueContext<'C>@Context {
     }
 }
 
-pub fn with_value<'C: @Context>(parent: cede 'C, key: string, val: string) -> ValueContext<'C> {
+pub fn with_value<'C: @Context>(cede 'parent#: C, key: string, val: string) -> ValueContext<'C> {
     return ValueContext<'C>(
-        parent = cede parent,
+        parent = cede 'parent,
         key = key,
         value = val
     )

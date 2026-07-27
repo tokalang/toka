@@ -31,8 +31,8 @@ pub fn async_context_server(cede listener: TcpListener) -> async i32 {
         server_timeout_detected = true;
 
         // 2. Context cancellation test while IO operation is suspended
-        auto bg = background();
-        auto cancel_res = with_cancel(bg);
+        auto bg# = background();
+        auto cancel_res = with_cancel(cede bg);
         auto canceler = cancel_res.canceler;
 
         // Spawn task to trigger canceler after 50ms while server is suspended on net_async_read_context
@@ -78,7 +78,7 @@ fn test_async_io_context_integration() {
     server_success_detected = false;
 
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16);
-    auto listener = TcpListener::bind(addr);
+    auto listener# = TcpListener::bind(addr);
     assert(listener.is_valid(), "Server listener bind failed");
     auto dynamic_port = listener.local_port();
     assert(dynamic_port > 0:u16, "Dynamic port assignment failed");

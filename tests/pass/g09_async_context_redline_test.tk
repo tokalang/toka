@@ -22,8 +22,8 @@ pub fn deadline_server(cede listener: TcpListener) -> async i32 {
 
     unsafe {
         auto *buf# = unsafe alloc [64]u8;
-        auto bg = background();
-        auto timeout_res = with_timeout(bg, 30);
+        auto bg# = background();
+        auto timeout_res = with_timeout(cede bg, 30);
         auto canceler = timeout_res.canceler;
 
         auto read_res = net_async_read_context(stream, *buf as *u8, 64:usize, canceler).await;
@@ -49,10 +49,11 @@ pub fn parent_cascade_server(cede listener: TcpListener) -> async i32 {
 
     unsafe {
         auto *buf# = unsafe alloc [64]u8;
-        auto bg = background();
-        auto parent_res = with_cancel(bg);
+        auto bg# = background();
+        auto parent_res = with_cancel(cede bg);
         auto parent_canceler = parent_res.canceler;
-        auto child_res = with_cancel(cede parent_res.ctx);
+        auto parent_ctx# = parent_res.ctx;
+        auto child_res = with_cancel(cede parent_ctx);
         auto child_canceler = child_res.canceler;
 
         auto cancel_task = trigger_cancel_parent_task(cede parent_canceler.clone()).start;
@@ -81,8 +82,8 @@ pub fn unregister_test_server(cede listener: TcpListener) -> async i32 {
 
     unsafe {
         auto *buf# = unsafe alloc [64]u8;
-        auto bg = background();
-        auto cancel_res = with_cancel(bg);
+        auto bg# = background();
+        auto cancel_res = with_cancel(cede bg);
         auto canceler = cancel_res.canceler;
 
         auto count_before = canceler.active_token_count();
@@ -123,7 +124,7 @@ fn test_deadline_and_cascade_redline() {
     test_token_unregistered_ok = false;
 
     // 1. Deadline expiration test
-    auto listener1 = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
+    auto listener1# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
     auto port1 = listener1.local_port();
     auto s1_handle = deadline_server(cede listener1).start;
     auto c1_handle = test_client(port1, 50, false).start;
@@ -132,7 +133,7 @@ fn test_deadline_and_cascade_redline() {
     assert(test_deadline_expired_ok, "Deadline expiration test failed");
 
     // 2. Parent Context cascade cancellation test
-    auto listener2 = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
+    auto listener2# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
     auto port2 = listener2.local_port();
     auto s2_handle = parent_cascade_server(cede listener2).start;
     auto c2_handle = test_client(port2, 50, false).start;
@@ -141,7 +142,7 @@ fn test_deadline_and_cascade_redline() {
     assert(test_parent_cascade_ok, "Parent cascade cancellation test failed");
 
     // 3. Canceler token unregistration test
-    auto listener3 = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
+    auto listener3# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16));
     auto port3 = listener3.local_port();
     auto s3_handle = unregister_test_server(cede listener3).start;
     auto c3_handle = test_client(port3, 5, true).start;

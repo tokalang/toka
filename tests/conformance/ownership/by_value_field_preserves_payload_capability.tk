@@ -1,0 +1,20 @@
+shape Cell(
+    value: i32
+)
+
+shape SenderLike(
+    ~cell#: Cell
+)
+
+fn relay(sender: SenderLike) -> SenderLike {
+    return SenderLike(~cell = sender.~cell)
+}
+
+fn main() -> i32 {
+    auto ~source# = new Cell(value = 1)
+    auto sender = SenderLike(~cell = ~source)
+    auto cloned = relay(sender)
+    cloned.cell.value = 2
+    if source.value != 2 { return 1 }
+    return 0
+}

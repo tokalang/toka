@@ -7,7 +7,7 @@ import std/channel::{Receiver}
 
 fn test_cancel() -> async i32 {
     println("1. Starting test_cancel...")
-    auto bg = background()
+    auto bg# = background()
     println("2. Background context created")
     auto res = with_cancel<BackgroundContext>(cede bg)
     println("3. with_cancel completed")
@@ -71,7 +71,7 @@ fn worker(cede rx: Receiver<bool>) -> async i32 {
 
 fn test_timeout() -> async i32 {
     println("1. Starting test_timeout...")
-    auto bg = background()
+    auto bg# = background()
     println("2. Background context created")
     auto res = with_timeout<BackgroundContext>(cede bg, 20)
     println("3. with_timeout completed")
@@ -105,7 +105,7 @@ fn test_timeout() -> async i32 {
 
 fn test_propagation() -> async i32 {
     println("  [test_prop] starting test_propagation")
-    auto bg = background()
+    auto bg# = background()
     auto parent_res = with_cancel<BackgroundContext>(cede bg)
     auto parent_ctx# = parent_res.ctx
     auto parent_canceler = parent_res.canceler.clone()
@@ -138,9 +138,9 @@ fn test_propagation() -> async i32 {
 }
 
 fn test_value() -> async i32 {
-    auto bg = background()
-    auto ctx1 = with_value<BackgroundContext>(cede bg, string::from("key1"), string::from("val1"))
-    auto ctx2 = with_value<ValueContext<BackgroundContext>>(cede ctx1, string::from("key2"), string::from("val2"))
+    auto bg# = background()
+    auto ctx1# = with_value<BackgroundContext>(cede bg, string::from("key1"), string::from("val1"))
+    auto ctx2# = with_value<ValueContext<BackgroundContext>>(cede ctx1, string::from("key2"), string::from("val2"))
     
     auto v1 = ctx2.value(string::from("key1"))
     assert(v1.is_some(), "key1 should be found")

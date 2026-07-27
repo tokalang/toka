@@ -65,7 +65,7 @@ fn test_real_socket_reactor_tokenization() {
     server_received_bytes = 0;
     client_received_bytes = 0;
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16);
-    auto listener = TcpListener::bind(addr);
+    auto listener# = TcpListener::bind(addr);
     assert(listener.is_valid(), "Server listener bind failed");
     auto dynamic_port = listener.local_port();
     assert(dynamic_port > 0:u16, "Dynamic port assignment failed");

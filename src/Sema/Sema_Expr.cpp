@@ -186,13 +186,24 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
                        (fieldType->isPointer() ||
                         fieldType->isSmartPointer() ||
                         fieldType->isReference());
+      // A field declaration is its own authority boundary.  A by-value
+      // aggregate parameter may therefore project a field that was declared
+      // payload-writable, even when the aggregate binding itself is not
+      // payload-writable.  This does not grant authority through a shared or
+      // reference aggregate view: those remain indirect and retain the
+      // parent's direct capability as the ceiling.
+      bool directValueAggregate = objType && !objType->isPointer() &&
+                                  !objType->isSmartPointer() &&
+                                  !objType->isReference() &&
+                                  !base.PayloadFlowRestricted;
       bool fieldPayloadWritable =
           !field.IsValueBlocked &&
           (field.IsValueMutable || (!insulated && base.PayloadWritable));
       bool fieldHandleRebindable =
           field.IsRebindable && !field.IsRebindBlocked;
       return applyPathFlowCeiling(
-          {base.PayloadWritable && fieldPayloadWritable,
+          {(directValueAggregate || base.PayloadWritable) &&
+               fieldPayloadWritable,
            fieldHandleRebindable,
            base.PayloadFlowRestricted});
     }

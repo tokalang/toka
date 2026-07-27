@@ -406,12 +406,12 @@ impl TcpStream {
         auto timeout_task = sleep_async(timeout_ms).start
         auto winner# = race2<TcpStream, i32>(cede conn_task, cede timeout_task).await
 
-        match winner {
-            auto RaceWinner<TcpStream, i32>::First(&stream#) => {
-                if stream.fd < 0 {
+        match cede winner {
+            auto RaceWinner<TcpStream, i32>::First('stream) => {
+                if 'stream.fd < 0 {
                     return Result<TcpStream, string>::Err(string::from("Connection failed"))
                 }
-                return Result<TcpStream, string>::Ok(stream#.take())
+                return Result<TcpStream, string>::Ok(cede 'stream)
             }
             auto RaceWinner<TcpStream, i32>::Second(_delay) => {
                 return Result<TcpStream, string>::Err(string::from("Connection timed out"))
