@@ -1,0 +1,20 @@
+fn choose(value: bool) -> i32 {
+    auto selected = match value {
+        true => {
+            pass 1
+        }
+        false => {
+            pass 0
+        }
+        default => {
+            pass 0
+        }
+    }
+    return selected
+}
+
+fn main() -> i32 {
+    assert(choose(true) == 1, "default-arm match")
+    assert(choose(false) == 0, "default-arm match")
+    return 0
+}

@@ -1,0 +1,17 @@
+fn choose(value: bool) -> i32 {
+    auto selected = match value {
+        true => {
+            pass 1
+        }
+        false => {
+            pass 0
+        }
+    }
+    return selected
+}
+
+fn main() -> i32 {
+    return choose(true)
+}
+
+// EXPECT: error[E0553]

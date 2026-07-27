@@ -49,6 +49,7 @@ From the repository root:
 bash research/rust-comparison/run_expressiveness.sh
 bash research/rust-comparison/run_diagnostics.sh
 bash research/rust-comparison/run_semantics.sh
+bash research/rust-comparison/run_ergonomics.sh
 ```
 
 The runner requires a built `build/bin/tokac`.  It runs Rust counterparts only
@@ -68,12 +69,21 @@ The first slice is deliberately narrow: source-level expression of authority.
 | `05_borrowed_iterator_baseline` | Can each language iterate through borrowed elements without consuming the collection? |
 | `06_detached_non_borrowing_baseline` | Do both languages support ordinary detached work when input does not borrow its parent scope? |
 | `07_dyn_associated_type_object` | Can a dynamically dispatched trait/object fix an associated output type at the erasure boundary? |
+| `08_async_trait_protocol` | Can a static trait interface expose and consume an async method? |
+| `09_error_entry_and_erasure` | Can the entry point return a fallible value and erase heterogeneous errors? |
 
 Semantic/runtime tradeoffs live separately from expression cases:
 
 | Case | Question |
 |---|---|
 | `semantics/01_panic_recovery_boundary` | Can a panic be caught with cleanup, or is it an explicit process-termination boundary? |
+
+Conservative surface and ergonomics differences are separate again:
+
+| Case | Question |
+|---|---|
+| `ergonomics/01_non_enum_exhaustiveness` | Does matching all values of a non-enum domain remove the wildcard requirement? |
+| `ergonomics/02_partial_result_propagation` | Can a Result field be propagated directly while preserving partial-move cleanup? |
 
 Future dimensions should remain separate directories: diagnostics, generic
 abstraction, async/concurrency, runtime profile, tooling, and ecosystem.  A

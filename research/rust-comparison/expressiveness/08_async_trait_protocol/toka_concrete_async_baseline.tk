@@ -1,0 +1,23 @@
+import std/task::{block_on}
+
+trait @Fetcher {
+    pub fn fetch(self) -> async i32
+}
+
+shape Immediate()
+
+impl Immediate@Fetcher {
+    pub fn fetch(self) -> async i32 {
+        return 17
+    }
+}
+
+fn concrete_call() -> i32 {
+    auto worker = Immediate()
+    return block_on<i32>(worker.fetch())
+}
+
+fn main() -> i32 {
+    assert(concrete_call() == 17, "concrete async trait call")
+    return 0
+}

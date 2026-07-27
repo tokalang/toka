@@ -77,3 +77,32 @@ language.  Those require separate questions and separate experiments.
 - Next step: use the contract in
   [`dynamic_borrowing_exploration.md`](../../docs/semantic_core/dynamic_borrowing_exploration.md)
   to build an API sketch and tests before deciding whether an RFC is justified.
+
+## EXP-005 — Resolve the static async-trait contract mismatch
+
+- Status: audit required; not an implementation gap claim
+- Evidence: `expressiveness/08_async_trait_protocol` compiles and runs a
+  concrete Toka trait method returning `async i32`, but rejects the generic
+  borrowed-receiver await with `E04583`. `docs/1_0_scope.md` still lists async
+  traits as post-1.0.
+- Decision: either qualify/freeze the accepted static subset with an
+  async-interface RFC, or reject it until receiver lifetimes, cancellation,
+  cross-module/TKI replay, visibility, and dyn interaction are specified.
+- Non-goal: treating the Rust `async fn` keyword spelling as the capability.
+
+## EXP-006 — Evaluate fallible entry and universal error erasure separately
+
+- Status: evidence only; no RFC yet
+- Evidence: `expressiveness/09_error_entry_and_erasure` demonstrates Rust's
+  `main -> Result` and `Box<dyn Error>` against Toka's typed helper-result
+  baseline and `E04596` entry rejection.
+- Non-goal: weakening one-step typed `@ErrorInto` conversion or presenting
+  `?`/`!` punctuation as the design question.
+
+## ERG-001 / ERG-002 — Keep conservative surface differences small and honest
+
+- Evidence: `ergonomics/01_non_enum_exhaustiveness` and
+  `ergonomics/02_partial_result_propagation` lock Toka's wildcard and
+  whole-binding propagation requirements against runnable Rust forms.
+- Status: no RFC.  Revisit only if real Toka programs show material friction;
+  both relaxations require nontrivial value-domain or partial-move evidence.
