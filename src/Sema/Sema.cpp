@@ -1092,6 +1092,31 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
     required[assoc.Name] = &assoc;
   }
 
+  // `@Callable::Output` is not a second declaration that users must keep in
+  // sync with `call`.  It is the return type already declared by `call`, made
+  // available to generic adapters such as owned `Map<I, F>`.
+  const bool derivesCallableOutput =
+      getTraitFamilyName(Trait->Name) == "Callable";
+  if (derivesCallableOutput && required.count("Output")) {
+    bool hasOutput = false;
+    for (const auto &assoc : Impl->AssociatedTypes) {
+      if (assoc.Name == "Output") {
+        hasOutput = true;
+        break;
+      }
+    }
+    if (!hasOutput) {
+      for (const auto &method : Impl->Methods) {
+        if (method && method->Name == "call") {
+          Impl->AssociatedTypes.push_back(
+              AssociatedTypeDecl{"Output", method->ReturnType, false,
+                                 method->Loc});
+          break;
+        }
+      }
+    }
+  }
+
   std::map<std::string, const AssociatedTypeDecl *> provided;
   for (const auto &assoc : Impl->AssociatedTypes) {
     if (provided.count(assoc.Name)) {
@@ -1216,6 +1241,31 @@ std::string Sema::resolveAssociatedTypeProjection(const std::string &typeName,
   auto fam = AssociatedTypeMap.find(familyKey);
   if (fam != AssociatedTypeMap.end()) {
     return fam->second.Type;
+  }
+
+  // Closures synthesize their `@Callable` implementation directly instead of
+  // constructing a source-level ImplDecl.  Derive the same Output projection
+  // from their generated call method (and from explicit callable shapes when
+  // their metadata is available through MethodMap).
+  if (getTraitFamilyName(exactTrait) == "Callable" && assocName == "Output") {
+    auto selfTy = toka::Type::fromString(resolvedSelf);
+    if (auto fnTy = std::dynamic_pointer_cast<toka::FunctionType>(selfTy))
+      return fnTy->ReturnType ? fnTy->ReturnType->toString() : "";
+    if (auto dynFnTy = std::dynamic_pointer_cast<toka::DynFnType>(selfTy))
+      return dynFnTy->ReturnType ? dynFnTy->ReturnType->toString() : "";
+
+    auto impl = ImplMap.find(resolvedSelf + "@Callable");
+    if (impl != ImplMap.end()) {
+      auto call = impl->second.find("call");
+      if (call != impl->second.end() && call->second)
+        return resolveType(call->second->ReturnType, force);
+    }
+    auto methods = MethodMap.find(resolvedSelf);
+    if (methods != MethodMap.end()) {
+      auto call = methods->second.find("call");
+      if (call != methods->second.end())
+        return resolveType(call->second, force);
+    }
   }
 
   return "";
@@ -3582,6 +3632,27 @@ FunctionDecl *Sema::instantiateGenericFunction(
   }
 
   auto applySubst = [&](std::string &s) {
+    // Function-type spellings cannot be substituted textually into
+    // `F@Callable::Output`: without this special case, the projection binds
+    // to the function return spelling rather than to F. Resolve the derived
+    // result before ordinary textual substitution.
+    for (auto const &[K, V] : substMap) {
+      if (s != K + "@Callable::Output")
+        continue;
+      auto callableType = toka::Type::fromString(V);
+      if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(callableType)) {
+        if (fn->ReturnType) {
+          s = fn->ReturnType->toString();
+          return;
+        }
+      }
+      if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(callableType)) {
+        if (dynFn->ReturnType) {
+          s = dynFn->ReturnType->toString();
+          return;
+        }
+      }
+    }
     for (auto const &[K, V] : substMap) {
       size_t pos = 0;
       while ((pos = s.find(K, pos)) != std::string::npos) {

@@ -1,0 +1,14 @@
+import core/option::{Option}
+import std/vec::{Vec}
+import ./lib::{map_doubler}
+
+pub fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(3)
+    auto source = values.into_iter()
+    auto mapped# = map_doubler(cede source)
+    match mapped#.next() {
+        Option<i32>::Some(value) => return value - 6
+        Option<i32>::None => return 1
+    }
+}

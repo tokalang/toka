@@ -11,7 +11,7 @@ ranking.  It aggregates only the runnable cases in this directory.
 | Field-level interior mutability | Observed distinction | Toka's `field#` permits only that field to be written through a shared aggregate view. Rust expresses an equivalent operational pattern with `Cell<T>` and rejects the ordinary-field variant. |
 | Scoped borrowed concurrency | Current 1.0 boundary | Rust `thread::scope` safely permits a borrowed child. Toka detached `.start` rejects borrowed input with `E04583`; current `TaskScope` is runtime task management rather than lexical borrowed-child semantics. |
 | Detached non-borrowing work | Observed parity | Ordinary Rust `thread::spawn` also rejects a borrowed parent capture unless a separate scoped protocol is used; both languages accept detached work with non-borrowing input. |
-| Lazy consuming iterator | Current 1.0 boundary | Rust's standard iterator can own a source and mutable callback for deferred iteration. Toka supports the eager generic callback baseline but has no frozen consuming/lazy iterator protocol. |
+| Lazy consuming iterator | Observed owned-flow parity; deferred lending surface | Rust's standard iterator can own a source and mutable callback for deferred iteration. Toka's post-1.0 `@IntoIterable` + concrete `Map<I,F>` now proves the same owned stateful map shape; borrowed/lending adapters, consuming `for`, opaque returns, and a general adapter family remain deferred. |
 | Ordinary borrowed iteration | Observed parity | Toka `next_ref` and Rust `iter()` both traverse borrowed elements without consuming the collection. |
 | Dyn object with associated type | Current 1.0 boundary | Rust can erase `Readable<Item = i32>` as a trait object. Toka rejects `dyn @Readable<Item = i32>` with `E0617` under its fixed 1.0 dyn-object ABI rule. |
 | Async trait protocol | Current 1.0 boundary | Rust accepts the static generic async-trait method. Toka retains ordinary `fn -> async T` but rejects async trait declarations before trait/TKI registration with `E0618`. |
@@ -34,15 +34,15 @@ roadmaps.
 | Candidate | User value | Engineering cost / semantic risk | Preliminary ROI |
 |---|---:|---:|---|
 | H/P-aware diagnostics and warnings (`EXP-001` through `EXP-003`) | High immediate learnability; no new source feature | Low to medium; compiler diagnostic/dataflow refinement | **High**. First note/warning slice is implemented locally; frozen error codes remain unchanged. |
-| Consuming/lazy iterator protocol | High library composability and parity with common systems-language idioms | Medium; needs ownership, adapter, `for`, and return-abstraction decisions | **Promising**, but begin with an RFC and one owned `Map<I,F>` vertical slice. |
+| Consuming/lazy iterator protocol | High library composability and parity with common systems-language idioms | Medium; first owned `Map<I,F>` vertical slice is implemented, while `for`, opaque returns, and lending remain open | **Promising**. Evaluate the concrete slice before expanding surface area. |
 | Scoped borrowed concurrency | High for structured parallelism and scoped task ergonomics | High; needs lexical scope, scheduler completion, PAL scope anchors, escape checks, and thread-safety interaction | **Potentially high**, but design-first. Do not implement as a small library patch. |
 
 ## Next research tests before a decision
 
 1. Review the scoped-task RFC before choosing syntax or an implementation
    slice; keep detached `.start` unchanged.
-2. Review the owned `Map<I,F>` RFC before adding traits; keep borrowed/lending
-   adapters out of the first slice.
+2. Evaluate the implemented owned `Map<I,F>` slice before adding `for`, opaque
+   returns, or borrowed/lending adapters.
 3. Decide separately whether stable diagnostic-code cascades should be reduced;
    the current implementation intentionally preserves them.
 4. Add one parser/view parity case only if it is a real open question; current

@@ -1,0 +1,21 @@
+import std/iter::{map}
+import std/vec::{Vec}
+
+shape Counter(value#: i32)
+
+impl Counter@Callable {
+    pub fn call(self#, value: i32) -> i32 {
+        self.value += value
+        return self.value
+    }
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    auto source = values.into_iter()
+    auto mapper# = Counter(value = 0)
+    auto mapped = map(cede source, cede mapper)
+    mapper#(1)
+    return 0
+}

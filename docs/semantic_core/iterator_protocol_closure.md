@@ -54,8 +54,10 @@ declarations.
 
 ## Deferred Boundary
 
-Toka 1.0 does not add a consuming-loop syntax, consuming iterator facet,
-async-iterator facet, or language-provided combinator family. Value iteration
-does not cede the source; `Item` remains subject to ordinary ownership and copy
-rules. Those capabilities require separate design and must extend, rather than
-reinterpret, this synchronous protocol.
+Toka 1.0 did not add a consuming-loop syntax, consuming iterator facet,
+async-iterator facet, or language-provided combinator family. The post-1.0
+owned slice adds separate `@IntoIterable` and concrete `Map<I,F>` without
+changing shared `@Iterable::iter(self)` or `for`. Consuming-loop syntax,
+async/lending iteration, and further combinator families remain separate
+design work; they must extend, rather than reinterpret, this synchronous
+protocol.

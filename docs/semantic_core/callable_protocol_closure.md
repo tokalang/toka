@@ -45,6 +45,8 @@ Generic functions may constrain `F: @Callable`. Concrete user callables retain
 their receiver contract through specialization. Erased `fn`, `fn#`, and
 `cede fn` values carry the same mode in their function type, so returned values
 and interface imports do not silently fall back to shared invocation.
+`F@Callable::Output` is derived from the return type of `call`; a callable
+implementation never repeats that result metadata manually.
 
 ## Composition Closure
 
@@ -76,13 +78,12 @@ and interface imports do not silently fall back to shared invocation.
 
 ## Deferred Boundary
 
-The callable protocol is sufficient for eager generic algorithms and for
-callbacks used while traversing an existing collection. A standard lazy
-`map`/`filter` adapter that owns a mutable callback is not added in this
-closure: the frozen `for` protocol starts from shared `@Iterable::iter(self)`,
-while such an adapter needs either consuming iteration or a separately frozen
-iterator-as-iterable rule. That work remains post-1.0 rather than weakening the
-receiver contract or hiding mutation behind shared invocation.
+The callable protocol is sufficient for eager generic algorithms and callbacks
+used while traversing an existing collection. The post-1.0 owned slice adds
+lazy `Map<I,F>` through the separate `@IntoIterable` protocol; it does not
+change the frozen shared `@Iterable::iter(self)` or hide mutation behind shared
+invocation. Borrowed/lending adapters, a filter family, consuming `for`, and
+iterator-as-iterable behavior remain separately deferred.
 
 This closure changes the frozen public surface after `v0.9.8-08-RC`. It does
 not create a new RC or tag; FZ-5 remains `InProgress` until a later explicitly

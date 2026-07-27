@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@encap, @Iterable, @Iterator, @BorrowIterator}
+import core/traits::{@encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
 import sys/libc::*
 import core/option::{Option}
 
@@ -345,6 +345,37 @@ pub shape VecIterator<'T> (
     len#: usize = 0,
     pos#: usize = 0
 )
+
+// Owned iteration is separate from VecIterator: the latter is a borrowed
+// cursor returned by @Iterable::iter and therefore carries a source
+// dependency. VecIntoIterator owns the Vec and may move each element out.
+pub shape VecIntoIterator<'T> (
+    source#: Vec<'T>
+)
+
+impl<'T> VecIntoIterator<'T>@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+impl<'T> Vec<'T>@IntoIterable {
+    type IntoIter = VecIntoIterator<'T>
+
+    pub fn into_iter(cede self) -> IntoIter {
+        return VecIntoIterator<'T>(source = cede self)
+    }
+}
+
+impl<'T> VecIntoIterator<'T>@Iterator {
+    type Item = 'T
+
+    // Vec::remove(0) keeps the public consuming order identical to ordinary
+    // Vec iteration. A future storage-level drain cursor may optimize this
+    // without changing the owned-iterator protocol.
+    pub fn next(self#) -> Option<Item> {
+        return self.source#.remove(0)
+    }
+}
 
 impl<'T> Vec<'T>@Iterable {
     type Iter = VecIterator<'T>

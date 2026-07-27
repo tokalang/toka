@@ -1,0 +1,20 @@
+import std/iter::{map}
+import std/vec::{Vec}
+
+shape Identity()
+
+impl Identity@Callable {
+    pub fn call(self, value: i32) -> i32 {
+        return value
+    }
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    auto source = values.into_iter()
+    auto mapper# = Identity()
+    auto mapped = map(cede source, cede mapper)
+    mapped.next()
+    return 0
+}

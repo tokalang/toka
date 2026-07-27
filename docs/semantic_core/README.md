@@ -58,9 +58,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `scoped_borrowed_task_rfc.md` proposes a post-1.0 lexical task-scope model
   for borrowed children without weakening the detached execution boundary or
   exposing user-written lifetime syntax.
-- `owned_lazy_iterator_rfc.md` proposes the first post-1.0 owned lazy-adapter
-  slice (`Map<I,F>` over a consuming source); borrowed/lending adapters remain
-  explicitly outside that proposal.
+- `owned_lazy_iterator_rfc.md` records the implemented first post-1.0 owned
+  lazy-adapter slice (`Map<I,F>` over a consuming source); borrowed/lending
+  adapters remain explicitly deferred.
 - `dynamic_borrowing_exploration.md` records the evidence required before a
   single-thread, runtime-checked borrowing container can become an RFC; it is
   not a current Toka gap or implementation commitment.

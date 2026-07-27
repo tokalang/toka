@@ -1,7 +1,8 @@
 # RFC: Owned Lazy Iterator Adapters
 
-**Status:** Proposed post-1.0 extension. No source syntax, trait, or library
-behavior is changed by this document.
+**Status:** First owned slice implemented post-1.0. Borrowed/lending adapters,
+consuming-loop syntax, async iteration, and opaque adapter returns remain
+deferred.
 
 **Depends on:** frozen `@Callable`, `cede`, `@encap`, and synchronous iterator
 protocols.
@@ -30,18 +31,21 @@ state. It is not a borrowed/lending iterator proposal.
 
 ## 3. Minimal owned protocol
 
-The first slice should introduce a separate consuming source facet, with names
-to be chosen during syntax design. Its semantic shape is:
+The first slice introduces a separate consuming source facet. Its semantic
+shape is:
 
 ```text
 IntoIterable::into_iter(cede self) -> IntoIter
 Map<I, F> owns I and F
-Map::next(self#) -> Option<Item>
+Map::next(self#) -> Option<F@Callable::Output>
 ```
 
 `Map<I, F>` is an ordinary concrete `@encap` shape. It owns the source and
 callable; its exclusive `next(self#)` advances `I` and invokes `F` with the
-receiver mode declared by `F`. The first public construction function returns
+receiver mode declared by `F`. Its item is the derived
+`F@Callable::Output`: every `@Callable` implementation (including a compiler
+generated closure) derives that result from the return type of `call`, rather
+than duplicating it in source. The first public construction function returns
 the concrete `Map<I,F>` type, not an opaque iterator trait object.
 
 ```text
@@ -82,14 +86,16 @@ That separation avoids silently changing the meaning of the frozen shared
 
 ## 6. Implementation slices
 
-1. **Trait/library design:** add the consuming source facet and a concrete
-   `Map<I,F>` for value-producing iterators.
-2. **Ownership evidence:** prove source/callback invalidation after adapter
-   construction and exactly-once destruction on exhaustion, early drop, and
-   error/unwind paths.
-3. **Composition:** add a second owned adapter only after `Map` can be nested
-   without erasing callable receiver mode or cleanup state.
-4. **Surface integration:** separately decide consuming `for` or
+1. **Implemented trait/library slice:** `@IntoIterable`, `VecIntoIterator<T>`,
+   and concrete `Map<I,F>` over `@Iterator` sources. Generic deduction
+   preserves direct ceded source and callable types; `F@Callable::Output` is
+   derived from `call` rather than repeated in each implementation.
+2. **Implemented ownership evidence:** source/callback invalidation, mutable
+   callback state, early adapter drop of a captured resource, nested `Map`,
+   and source-less replay.
+3. **Deferred composition:** add a second owned adapter only after `Map` can
+   be nested without erasing callable receiver mode or cleanup state.
+4. **Deferred surface integration:** separately decide consuming `for` or
    iterator-as-iterable behavior.
 
 ## 7. Acceptance evidence
@@ -98,11 +104,17 @@ The first executable suite must demonstrate:
 
 - a stateful callback whose output changes across successive `next` calls;
 - source and callback reuse rejected after construction;
-- early adapter drop releases source and callback exactly once;
+- early adapter drop releases a live callback capture exactly once;
 - nested owned `Map` composition;
 - compile-fail coverage for shared invocation of a mutable adapter and for a
   consuming callback in the repeatable adapter form;
 - source-less replay of the consuming source and callable receiver contracts.
+
+The current `Vec<T>` storage implementation still instantiates generic clone
+support in paths that require cloneable resource elements. This pre-existing
+container limitation is not relaxed by this adapter slice: exact-drop evidence
+for a resource-bearing *source* needs a separate Vec ownership audit before it
+can be claimed here.
 
 ## 8. Borrowed/lending adapters remain open
 

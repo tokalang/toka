@@ -1,0 +1,40 @@
+// Toka counterpart to rust.rs: an owned source and exclusive stateful callback
+// are transferred into a concrete lazy adapter and consumed later.
+
+import core/option::{Option}
+import std/iter::{map}
+import std/vec::{Vec}
+
+shape Counter(value#: i32)
+
+impl Counter@Callable {
+    pub fn call(self#, value: i32) -> i32 {
+        self.value += 1
+        return value * self.value
+    }
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(2)
+    values#.push(2)
+    values#.push(2)
+
+    auto source = values.into_iter()
+    auto counter# = Counter(value = 0)
+    auto mapped# = map(cede source, cede counter)
+
+    match mapped#.next() {
+        Option<i32>::Some(value) => { if value != 2 { return 1 } }
+        Option<i32>::None => return 2
+    }
+    match mapped#.next() {
+        Option<i32>::Some(value) => { if value != 4 { return 3 } }
+        Option<i32>::None => return 4
+    }
+    match mapped#.next() {
+        Option<i32>::Some(value) => { if value != 6 { return 5 } }
+        Option<i32>::None => return 6
+    }
+    return 0
+}

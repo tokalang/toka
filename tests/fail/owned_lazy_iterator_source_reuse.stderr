@@ -1,0 +1,10 @@
+error[E0438]: Use of moved value: 'values'
+ --> tests/fail/owned_lazy_iterator_source_reuse.tk:18:5
+    |
+ 18 |     values#.push(2)
+    |     ^
+note: value moved here
+ --> tests/fail/owned_lazy_iterator_source_reuse.tk:15:25
+    |
+ 15 |     auto source = values.into_iter()
+    |                         ^

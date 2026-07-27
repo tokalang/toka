@@ -1,0 +1,100 @@
+import core/option::{Option}
+import std/iter::{map}
+import std/vec::{Vec}
+
+auto adapter_drop_count# = 0
+
+shape Counter(value#: i32)
+shape IsFour()
+shape DropToken()
+shape DropMapper(token: DropToken)
+
+impl Counter@Callable {
+    pub fn call(self#, value: i32) -> i32 {
+        self.value += 1
+        return value * self.value
+    }
+}
+
+impl IsFour@Callable {
+    pub fn call(self, value: i32) -> bool {
+        return value == 4
+    }
+}
+
+impl DropToken@encap {
+    fn drop(self#) {
+        adapter_drop_count += 1
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl DropMapper@Callable {
+    pub fn call(self#, value: i32) -> i32 {
+        return value
+    }
+}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(2)
+    values#.push(2)
+    values#.push(2)
+
+    auto source = values.into_iter()
+    auto counter# = Counter(value = 0)
+    auto mapped# = map(cede source, cede counter)
+
+    match mapped#.next() {
+        Option<i32>::Some(value) => { if value != 2 { return 1 } }
+        Option<i32>::None => return 2
+    }
+    match mapped#.next() {
+        Option<i32>::Some(value) => { if value != 4 { return 3 } }
+        Option<i32>::None => return 4
+    }
+    match mapped#.next() {
+        Option<i32>::Some(value) => { if value != 6 { return 5 } }
+        Option<i32>::None => return 6
+    }
+    match mapped#.next() {
+        Option<i32>::Some(_) => return 7
+        Option<i32>::None => {}
+    }
+
+    auto nested_values# = Vec<i32>::new()
+    nested_values#.push(2)
+    auto nested_source = nested_values.into_iter()
+    auto scale# = Counter(value = 1)
+    auto first = map(cede nested_source, cede scale)
+    auto is_four# = IsFour()
+    auto second# = map(cede first, cede is_four)
+    match second#.next() {
+        Option<bool>::Some(value) => { if !value { return 8 } }
+        Option<bool>::None => return 9
+    }
+
+    {
+        auto drop_values# = Vec<i32>::new()
+        drop_values#.push(1)
+        auto drop_source = drop_values.into_iter()
+        auto drop_mapper# = DropMapper(token = DropToken())
+        auto _early_drop = map(cede drop_source, cede drop_mapper)
+    }
+    if adapter_drop_count != 1 { return 10 }
+
+    auto closure_values# = Vec<i32>::new()
+    closure_values#.push(3)
+    auto closure_source = closure_values.into_iter()
+    auto increment#: fn#(i32) -> i32 = { value =>
+        return value + 1
+    }
+    auto closure_map# = map(cede closure_source, cede increment)
+    match closure_map#.next() {
+        Option<i32>::Some(value) => { if value != 4 { return 11 } }
+        Option<i32>::None => return 12
+    }
+
+    return 0
+}

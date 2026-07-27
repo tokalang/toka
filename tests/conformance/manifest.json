@@ -1668,6 +1668,14 @@
       "description": "Standard vector iter() and next() iteration protocol"
     },
     {
+      "id": "std_owned_lazy_iterator_01",
+      "path": "std/owned_lazy_iterator.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Owned Vec into_iter(), lazy Map<I,F>, callable output projection, nesting, and early-drop cleanup"
+    },
+    {
       "id": "std_iterator_borrow_01",
       "path": "std/iterator_borrow.tk",
       "type": "run",

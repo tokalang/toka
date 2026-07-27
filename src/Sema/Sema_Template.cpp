@@ -28,6 +28,26 @@ static std::string
 substituteTypeString(const std::string &Input,
                      const std::map<std::string, std::string> &Map) {
   if (Input.empty()) return "";
+
+  // Preserve the binding of a callable result projection when the substituted
+  // callable is a function type.  `fn(A) -> R@Callable::Output` would parse
+  // as a projection on R, not on the original generic F.
+  for (const auto &[K, V] : Map) {
+    if (Input != K + "@Callable::Output")
+      continue;
+    auto callable = toka::Type::fromString(V);
+    if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(callable)) {
+      if (fn->ReturnType)
+        return fn->ReturnType->toString();
+    }
+    if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(callable)) {
+      if (dynFn->ReturnType)
+        return dynFn->ReturnType->toString();
+    }
+    // A named callable is resolved through the regular associated-type table
+    // after the generic template is instantiated.
+    return V + "@Callable::Output";
+  }
   
   auto typeObj = toka::Type::fromString(Input);
   if (!typeObj) return Input;

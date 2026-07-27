@@ -1,0 +1,15 @@
+error[E04591]: Callable 'mapper' consumes its environment; invoke it with 'cede mapper(...)'
+ --> lib/std/iter.tk:17:12
+    |
+ 17 |     return mapper#(cede value)
+    |            ^
+error[E04571]: Type mismatch for argument 2: expected cede fn(i32) -> i32#, got cede fn(i32) -> i32
+ --> tests/fail/owned_lazy_iterator_consuming_callable.tk:9:36
+   |
+ 9 |     auto mapped = map(cede source, cede once)
+   |                                    ^
+note: payload-write authority comes from the binding or parameter declaration; a use-site '#' can request it but cannot create it
+ --> tests/fail/owned_lazy_iterator_consuming_callable.tk:9:36
+   |
+ 9 |     auto mapped = map(cede source, cede once)
+   |                                    ^

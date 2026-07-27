@@ -37,8 +37,11 @@ pub trait @Send {}
 pub trait @Sync {}
 
 // Invocation permission is carried by call(self), call(self#), or
-// call(cede self), not by separate nominal callable traits.
-pub trait @Callable {}
+// call(cede self), not by separate nominal callable traits. Output is derived
+// from that call declaration; implementations do not repeat it manually.
+pub trait @Callable {
+    type Output
+}
 
 // Error propagation performs at most one explicit, consuming conversion.
 pub trait @ErrorInto<Target> {
@@ -48,6 +51,14 @@ pub trait @ErrorInto<Target> {
 pub trait @Iterator {
     type Item
     pub fn next(self#) -> Option<Item>
+}
+
+// A consuming source facet is deliberately separate from @Iterable::iter.
+// It transfers the source into an owned cursor and carries no borrow
+// dependency back to the original collection.
+pub trait @IntoIterable {
+    type IntoIter
+    pub fn into_iter(cede self) -> IntoIter
 }
 
 pub trait @BorrowIterator {

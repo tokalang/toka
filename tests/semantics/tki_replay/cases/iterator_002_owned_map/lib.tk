@@ -1,0 +1,18 @@
+import std/iter::{Map, map}
+import std/vec::{VecIntoIterator}
+
+pub shape Doubler()
+
+impl Doubler@Callable {
+    pub fn call(self, value: i32) -> i32 {
+        return value * 2
+    }
+}
+
+// EXPECT_TKI: pub fn map_doubler(cede source: VecIntoIterator<i32>) -> Map<VecIntoIterator<i32>,Doubler>
+pub fn map_doubler(
+    cede source: VecIntoIterator<i32>
+) -> Map<VecIntoIterator<i32>, Doubler> {
+    auto mapper# = Doubler()
+    return map(cede source, cede mapper)
+}

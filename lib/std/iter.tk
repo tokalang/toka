@@ -1,0 +1,39 @@
+import core/option::{Option}
+import core/traits::{@encap, @Iterator, @Callable}
+
+// A concrete owned lazy adapter. Its result type is derived from the existing
+// call signature of F, so callers do not duplicate callback output metadata.
+pub shape Map<'I, 'F> (
+    source#: I,
+    mapper#: F
+)
+
+impl<'I, 'F> Map<'I, 'F>@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn invoke_mut<'F: @Callable, 'T>(mapper#: F, cede value: T) -> F@Callable::Output {
+    return mapper#(cede value)
+}
+
+impl<'I: @Iterator, 'F: @Callable> Map<'I, 'F>@Iterator {
+    type Item = F@Callable::Output
+
+    pub fn next(self#) -> Option<Item> {
+        auto next = self.source#.next()
+        match cede next {
+            auto Option::Some('value) => {
+                return Option<Item>::Some(invoke_mut(self.mapper, cede 'value))
+            }
+            auto Option::None => return Option<Item>::None
+        }
+    }
+}
+
+pub fn map<'I: @Iterator, 'F: @Callable>(
+    cede source: I,
+    cede mapper#: F
+) -> Map<'I, 'F> {
+    return Map<'I, 'F>(source = cede source, mapper = cede mapper)
+}

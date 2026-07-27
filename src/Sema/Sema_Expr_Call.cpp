@@ -869,6 +869,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   std::string actualCallName = CallName;
   if (CurrentScope->findVariableWithDeref(CallName, symPtr, actualCallName)) {
     sym = *symPtr;
+    // A callable invocation is still a use of its binding.  It must observe
+    // the same cede invalidation state as a field read or ordinary variable
+    // expression; otherwise a transferred callback could be invoked again.
+    if (symPtr->Moved) {
+      error(Call, DiagID::ERR_USE_MOVED, actualCallName);
+      recordDecision(Call, SemanticRuleID::OwnMove001,
+                     SemanticOperation::OwnershipTransfer,
+                     SemanticDecision::Reject, SemanticReason::AlreadyMoved,
+                     Type::stripMorphology(actualCallName),
+                     Type::stripMorphology(actualCallName), symPtr->MoveLoc);
+      if (symPtr->MoveLoc.isValid())
+        DiagnosticEngine::report(symPtr->MoveLoc, DiagID::NOTE_GENERIC,
+                                 "value moved here");
+      return toka::Type::fromString("unknown");
+    }
     symPtr->HasBeenUsed = true;
     if (symPtr->ImportingDecl) {
       const_cast<ImportDecl*>(symPtr->ImportingDecl)->HasBeenUsed = true;
@@ -1976,9 +1991,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
     }
 
-    if (paramIsValueMutable && !isCededParam &&
-        !lacksPayloadCapability) {
+    if (paramIsValueMutable && !lacksPayloadCapability) {
       Expr *argExpr = Call->Args[i].get();
+      while (auto *cede = dynamic_cast<CedeExpr *>(argExpr))
+        argExpr = cede->Value.get();
       while (auto *un = dynamic_cast<UnaryExpr *>(argExpr))
         argExpr = un->RHS.get();
       if (auto *VE = dynamic_cast<VariableExpr *>(argExpr)) {
@@ -1986,8 +2002,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         SymbolInfo *InfoPtr = nullptr;
         if (CurrentScope->findVariableWithDeref(VE->Name, InfoPtr,
                                                 actualName)) {
-          // Passing a binding to a payload-writable parameter is a mutable
-          // use, even though the mutation occurs in the callee body.
+          // Passing or transferring a binding to a payload-writable parameter
+          // is a mutable use, even when the callee performs that mutation
+          // later through a retained owner.
           InfoPtr->HasBeenMutated = true;
         }
       }

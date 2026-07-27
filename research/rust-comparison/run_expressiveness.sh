@@ -90,6 +90,14 @@ run_rust_pass scoped_borrowed_concurrency_rust "$BASE/03_scoped_borrowed_concurr
 run_toka_fail scoped_borrowed_concurrency_toka_boundary "$BASE/03_scoped_borrowed_concurrency/toka_1_0_boundary.tk" E04583
 
 run_toka_pass lazy_iterator_eager_baseline "$BASE/04_lazy_consuming_iterator/toka_eager_callback_baseline.tk"
+run_toka_pass lazy_iterator_toka_owned_map "$BASE/04_lazy_consuming_iterator/toka_owned_lazy_map.tk"
+"$TOKAC" "$BASE/04_lazy_consuming_iterator/toka_owned_lazy_map.tk" -o "$WORK/lazy_iterator_toka_warning_profile" >"$WORK/lazy_iterator_toka_warning_profile.log" 2>&1
+if grep -q W0401 "$WORK/lazy_iterator_toka_warning_profile.log"; then
+    echo "FAIL toka: owned Map transfer emitted a misleading W0401" >&2
+    cat "$WORK/lazy_iterator_toka_warning_profile.log" >&2
+    exit 1
+fi
+echo "PASS toka warning profile: owned Map transfer consumes mutable callback capability"
 run_rust_pass lazy_iterator_rust "$BASE/04_lazy_consuming_iterator/rust.rs"
 
 run_toka_pass borrowed_iterator_toka "$BASE/05_borrowed_iterator_baseline/toka_pass.tk"

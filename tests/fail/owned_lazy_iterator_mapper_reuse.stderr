@@ -1,0 +1,10 @@
+error[E0438]: Use of moved value: 'mapper'
+ --> tests/fail/owned_lazy_iterator_mapper_reuse.tk:19:5
+    |
+ 19 |     mapper#(1)
+    |     ^
+note: value moved here
+ --> tests/fail/owned_lazy_iterator_mapper_reuse.tk:18:36
+    |
+ 18 |     auto mapped = map(cede source, cede mapper)
+    |                                    ^

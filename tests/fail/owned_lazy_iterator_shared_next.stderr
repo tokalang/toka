@@ -1,0 +1,5 @@
+error[E0443]: Cannot modify immutable entity 'Method 'next' requires a declared mutable payload capability (use '#' only to request it)'
+ --> tests/fail/owned_lazy_iterator_shared_next.tk:18:11
+    |
+ 18 |     mapped.next()
+    |           ^
