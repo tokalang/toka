@@ -56,7 +56,7 @@ pub fn task_get_coro_handle<'T>(handle: TaskHandle<'T>) -> *void {
 }
 
 pub shape TaskHandle<T>(
-    *coro_handle: void
+    *#coro_handle: void
 )
 
 impl<T> TaskHandle<T>@encap {
