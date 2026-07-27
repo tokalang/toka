@@ -627,6 +627,15 @@
       "description": "A consuming unique parameter cannot invalidate a source with an active borrow"
     },
     {
+      "id": "diag_cede_direct_field_borrow_conflict_01",
+      "path": "diagnostics/cede_direct_field_borrow_conflict.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0440",
+      "expected_span_line": 6,
+      "timeout_seconds": 10,
+      "description": "A partial cede cannot invalidate a borrowed direct field"
+    },
+    {
       "id": "diag_direct_unique_move_borrow_conflict_01",
       "path": "diagnostics/direct_unique_move_borrow_conflict.tk",
       "type": "compile-fail",

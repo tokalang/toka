@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E0440
+import ./lib::{make_pair}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto pair = make_pair(drops)
+    auto &borrow = &(pair.left)
+    auto taken = cede pair.left
+    return taken.id
+}
