@@ -1,0 +1,174 @@
+import official/postgres::{PostgresDecode, PostgresMessage, decode_backend_one, package_name, simple_query_message, startup_message}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+import stdx/encoding/hex
+
+fn bytes(input: str) -> Vec<u8> {
+    auto output# = Vec<u8>::with_capacity(input.len())
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        output#.push(input.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn append_u16(out#: Vec<u8>, value: u16) {
+    out#.push((value >> 8:u16) as u8)
+    out#.push(value as u8)
+}
+
+fn append_u32(out#: Vec<u8>, value: u32) {
+    out#.push((value >> 24:u32) as u8)
+    out#.push((value >> 16:u32) as u8)
+    out#.push((value >> 8:u32) as u8)
+    out#.push(value as u8)
+}
+
+fn append_text(out#: Vec<u8>, value: str) {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        out#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+}
+
+fn append_cstring(out#: Vec<u8>, value: str) {
+    append_text(out, value)
+    out#.push(0:u8)
+}
+
+fn frame(tag: u8, cede body: Vec<u8>) -> Vec<u8> {
+    auto owned# = cede body
+    auto output# = Vec<u8>::with_capacity(1:usize + 4:usize + owned.len())
+    output#.push(tag)
+    append_u32(output, (owned.len() + 4:usize) as u32)
+    auto index#: usize = 0:usize
+    loop index < owned.len() {
+        output#.push(owned.get(index))
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn test_frontend_encoding() {
+    auto startup = startup_message("alice", "notes").unwrap()
+    auto startup_owner = Bytes::from_vec(cede startup)
+    assert(hex::encode(startup_owner.as_slice()).equals(
+               "00000021000300007573657200616c696365006461746162617365006e6f7465730000"),
+           "StartupMessage must use protocol v3, named parameters, and final terminator")
+
+    auto query = simple_query_message("SELECT 1").unwrap()
+    auto query_owner = Bytes::from_vec(cede query)
+    assert(hex::encode(query_owner.as_slice()).equals("510000000d53454c454354203100"),
+           "Query message must have tag, inclusive length, and NUL terminator")
+    assert(startup_message("", "notes").is_err(), "empty startup user is rejected")
+    assert(simple_query_message("").is_err(), "empty query is rejected")
+    assert(startup_message("bad\x00name", "notes").is_err(), "startup values cannot inject a protocol terminator")
+    assert(simple_query_message("SELECT\x001").is_err(), "query cannot inject a protocol terminator")
+}
+
+fn test_authentication_and_fragmentation() {
+    auto auth# = Vec<u8>::new()
+    append_u32(auth, 10:u32)
+    append_cstring(auth, "SCRAM-SHA-256")
+    auth#.push(0:u8)
+    auto packet = frame('R' as u8, cede auth)
+    auto fragment# = Vec<u8>::new()
+    auto index#: usize = 0:usize
+    loop index < 8:usize {
+        fragment#.push(packet.get(index))
+        index = index + 1:usize
+    }
+    match decode_backend_one(fragment).unwrap() {
+        auto PostgresDecode::NeedMore() => {}
+        _ => assert(false, "incomplete backend frame must not be consumed")
+    }
+    match decode_backend_one(packet).unwrap() {
+        auto PostgresDecode::Complete('decoded) => match 'decoded.message {
+            auto PostgresMessage::AuthenticationSasl('mechanisms) => {
+                assert('mechanisms.len() == 1:usize, "one offered SASL mechanism")
+                assert('mechanisms.get(0:usize).equals("SCRAM-SHA-256"), "SCRAM mechanism name")
+            }
+            _ => assert(false, "authentication SASL frame")
+        }
+        _ => assert(false, "complete SASL frame")
+    }
+}
+
+fn test_rows_errors_and_limits() {
+    auto description# = Vec<u8>::new()
+    append_u16(description, 1:u16)
+    append_cstring(description, "id")
+    append_u32(description, 0:u32)
+    append_u16(description, 0:u16)
+    append_u32(description, 23:u32)
+    append_u16(description, 4:u16)
+    append_u32(description, 4294967295:u32)
+    append_u16(description, 0:u16)
+    match decode_backend_one(frame('T' as u8, cede description)).unwrap() {
+        auto PostgresDecode::Complete('decoded) => match 'decoded.message {
+            auto PostgresMessage::RowDescription('columns) => {
+                assert('columns.len() == 1:usize, "row description column count")
+                assert('columns.get(0:usize).name.equals("id"), "row description column name")
+                assert('columns.get(0:usize).type_oid == 23:u32, "row description OID")
+            }
+            _ => assert(false, "expected RowDescription")
+        }
+        _ => assert(false, "row description completion")
+    }
+
+    auto row# = Vec<u8>::new()
+    append_u16(row, 2:u16)
+    append_u32(row, 3:u32)
+    row#.push('a' as u8)
+    row#.push(0:u8)
+    row#.push('b' as u8)
+    append_u32(row, 4294967295:u32)
+    match decode_backend_one(frame('D' as u8, cede row)).unwrap() {
+        auto PostgresDecode::Complete('decoded) => match 'decoded.message {
+            auto PostgresMessage::DataRow('values) => {
+                assert('values.len() == 2:usize, "data row column count")
+                match 'values.get(0:usize) {
+                    auto Option::Some('value) => assert(hex::encode('value.as_slice()).equals("610062"), "data row preserves binary value")
+                    _ => assert(false, "first data row value")
+                }
+                assert('values.get(1:usize).is_none(), "data row preserves null")
+            }
+            _ => assert(false, "expected DataRow")
+        }
+        _ => assert(false, "data row completion")
+    }
+
+    auto failure# = Vec<u8>::new()
+    failure#.push('S' as u8)
+    append_cstring(failure, "ERROR")
+    failure#.push('C' as u8)
+    append_cstring(failure, "23505")
+    failure#.push('M' as u8)
+    append_cstring(failure, "duplicate key")
+    failure#.push(0:u8)
+    match decode_backend_one(frame('E' as u8, cede failure)).unwrap() {
+        auto PostgresDecode::Complete('decoded) => match 'decoded.message {
+            auto PostgresMessage::Error('server_error) => {
+                assert('server_error.sqlstate.equals("23505"), "server SQLSTATE")
+                assert('server_error.message.equals("duplicate key"), "server message")
+            }
+            _ => assert(false, "expected ErrorResponse")
+        }
+        _ => assert(false, "error response completion")
+    }
+
+    auto malformed# = Vec<u8>::new()
+    malformed#.push('Z' as u8)
+    append_u32(malformed, 3:u32)
+    assert(decode_backend_one(malformed).is_err(), "frame lengths below four are rejected")
+}
+
+fn main() -> i32 {
+    assert(package_name().equals("postgres"), "public package name")
+    test_frontend_encoding()
+    test_authentication_and_fragmentation()
+    test_rows_errors_and_limits()
+    return 0
+}

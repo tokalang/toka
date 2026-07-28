@@ -1,0 +1,386 @@
+// Public entry module for official/postgres.
+//
+// Phase 1 is deliberately a wire codec, not a prematurely advertised client.
+// It owns every decoded binary field and never exposes a pointer into a receive
+// buffer.  The later transport slice consumes these frames over AsyncStream.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+
+const PROTOCOL_V3: u32 = 196608:u32
+const MAX_FRAME_BYTES: usize = 16777216:usize
+const MAX_COLUMNS: usize = 4096:usize
+
+pub shape PostgresError (
+    kind: string,
+    position: usize,
+    message: string
+)
+
+pub shape PostgresServerError (
+    sqlstate: string,
+    message: string
+)
+
+pub shape PostgresColumn (
+    name: string,
+    type_oid: u32
+)
+
+pub shape PostgresMessage (
+    AuthenticationOk() = 0 |
+    AuthenticationSasl(Vec<string>) = 1 |
+    AuthenticationSaslContinue(string) = 2 |
+    AuthenticationSaslFinal(string) = 3 |
+    AuthenticationCleartextPassword() = 4 |
+    AuthenticationMd5() = 5 |
+    AuthenticationUnsupported(i32) = 6 |
+    ParameterStatus(string, string) = 7 |
+    BackendKeyData(i32, i32) = 8 |
+    ReadyForQuery(u8) = 9 |
+    Error(PostgresServerError) = 10 |
+    Notice(PostgresServerError) = 11 |
+    RowDescription(Vec<PostgresColumn>) = 12 |
+    DataRow(Vec<Option<Bytes>>) = 13 |
+    CommandComplete(string) = 14 |
+    Unknown(u8, Bytes) = 15
+)
+
+pub shape PostgresBackendFrame (
+    message: PostgresMessage,
+    consumed: usize
+)
+
+pub shape PostgresDecode (
+    NeedMore() = 0 |
+    Complete(PostgresBackendFrame) = 1
+)
+
+shape ParsedText (
+    value: string,
+    next: usize
+)
+
+fn error(kind: str, position: usize, message: str) -> PostgresError {
+    return PostgresError(
+        kind = string::from(kind),
+        position = position,
+        message = string::from(message)
+    )
+}
+
+fn protocol_error(position: usize, message: str) -> PostgresError {
+    return error("protocol", position, message)
+}
+
+fn limit_error(position: usize, message: str) -> PostgresError {
+    return error("limit", position, message)
+}
+
+fn append_u16_be(out#: Vec<u8>, value: u16) {
+    out#.push((value >> 8:u16) as u8)
+    out#.push(value as u8)
+}
+
+fn append_u32_be(out#: Vec<u8>, value: u32) {
+    out#.push((value >> 24:u32) as u8)
+    out#.push((value >> 16:u32) as u8)
+    out#.push((value >> 8:u32) as u8)
+    out#.push(value as u8)
+}
+
+fn append_text(out#: Vec<u8>, value: str) {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        out#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+}
+
+fn append_cstring(out#: Vec<u8>, value: str) {
+    append_text(out, value)
+    out#.push(0:u8)
+}
+
+fn contains_nul(value: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        if value.byte_at(index) as u8 == 0:u8 { return true }
+        index = index + 1:usize
+    }
+    return false
+}
+
+fn read_u16_be(input: Vec<u8>, offset: usize) -> u16 {
+    return ((input.get(offset) as u16) << 8:u16) |
+           (input.get(offset + 1:usize) as u16)
+}
+
+fn read_u32_be(input: Vec<u8>, offset: usize) -> u32 {
+    return ((input.get(offset) as u32) << 24:u32) |
+           ((input.get(offset + 1:usize) as u32) << 16:u32) |
+           ((input.get(offset + 2:usize) as u32) << 8:u32) |
+           (input.get(offset + 3:usize) as u32)
+}
+
+fn text_range(input: Vec<u8>, start: usize, end: usize) -> string {
+    auto output# = string::from("")
+    auto index#: usize = start
+    loop index < end {
+        output#.push_byte_raw(input.get(index))
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn bytes_range(input: Vec<u8>, start: usize, end: usize) -> Bytes {
+    auto output# = Vec<u8>::with_capacity(end - start)
+    auto index#: usize = start
+    loop index < end {
+        output#.push(input.get(index))
+        index = index + 1:usize
+    }
+    return Bytes::from_vec(cede output)
+}
+
+fn parse_cstring(input: Vec<u8>, start: usize, end: usize) -> Result<ParsedText, PostgresError> {
+    auto cursor#: usize = start
+    loop cursor < end {
+        if input.get(cursor) == 0:u8 {
+            return Result<ParsedText, PostgresError>::Ok(ParsedText(
+                value = text_range(input, start, cursor),
+                next = cursor + 1:usize
+            ))
+        }
+        cursor = cursor + 1:usize
+    }
+    return Result<ParsedText, PostgresError>::Err(protocol_error(start, "PostgreSQL string is missing NUL terminator"))
+}
+
+fn parse_server_error(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresServerError, PostgresError> {
+    auto sqlstate# = string::from("")
+    auto message# = string::from("PostgreSQL server error")
+    auto cursor#: usize = start
+    loop cursor < end {
+        auto field = input.get(cursor)
+        cursor = cursor + 1:usize
+        if field == 0:u8 {
+            if cursor != end {
+                return Result<PostgresServerError, PostgresError>::Err(protocol_error(cursor, "bytes follow PostgreSQL error terminator"))
+            }
+            return Result<PostgresServerError, PostgresError>::Ok(PostgresServerError(
+                sqlstate = string::from(sqlstate.as_str()),
+                message = string::from(message.as_str())
+            ))
+        }
+        auto parsed = parse_cstring(input, cursor, end)
+        if parsed.is_err() { return Result<PostgresServerError, PostgresError>::Err(parsed.unwrap_err()) }
+        auto field_value = parsed.unwrap()
+        if field == 'C' as u8 { sqlstate = string::from(field_value.value.as_str()) }
+        if field == 'M' as u8 { message = string::from(field_value.value.as_str()) }
+        cursor = field_value.next
+    }
+    return Result<PostgresServerError, PostgresError>::Err(protocol_error(start, "PostgreSQL error response is missing terminator"))
+}
+
+fn parse_authentication(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMessage, PostgresError> {
+    if end - start < 4:usize {
+        return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "PostgreSQL authentication frame is too short"))
+    }
+    auto code = read_u32_be(input, start) as i32
+    if code == 0:i32 {
+        if end != start + 4:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "AuthenticationOk has unexpected data")) }
+        return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationOk())
+    }
+    if code == 3:i32 {
+        if end != start + 4:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "cleartext authentication has unexpected data")) }
+        return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationCleartextPassword())
+    }
+    if code == 5:i32 {
+        if end != start + 8:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "MD5 authentication must contain a four-byte salt")) }
+        return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationMd5())
+    }
+    if code == 10:i32 {
+        auto mechanisms# = Vec<string>::new()
+        auto cursor#: usize = start + 4:usize
+        loop cursor < end {
+            if input.get(cursor) == 0:u8 {
+                if cursor + 1:usize != end { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "SASL mechanism list has bytes after terminator")) }
+                return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationSasl(cede mechanisms))
+            }
+            auto parsed = parse_cstring(input, cursor, end)
+            if parsed.is_err() { return Result<PostgresMessage, PostgresError>::Err(parsed.unwrap_err()) }
+            auto mechanism = parsed.unwrap()
+            mechanisms#.push(cede mechanism.value)
+            cursor = mechanism.next
+        }
+        return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "SASL mechanism list is missing final terminator"))
+    }
+    if code == 11:i32 {
+        return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationSaslContinue(
+            text_range(input, start + 4:usize, end)
+        ))
+    }
+    if code == 12:i32 {
+        return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationSaslFinal(
+            text_range(input, start + 4:usize, end)
+        ))
+    }
+    return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::AuthenticationUnsupported(code))
+}
+
+fn parse_parameter_status(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMessage, PostgresError> {
+    auto name = parse_cstring(input, start, end)
+    if name.is_err() { return Result<PostgresMessage, PostgresError>::Err(name.unwrap_err()) }
+    auto parsed_name = name.unwrap()
+    auto value = parse_cstring(input, parsed_name.next, end)
+    if value.is_err() { return Result<PostgresMessage, PostgresError>::Err(value.unwrap_err()) }
+    auto parsed_value = value.unwrap()
+    if parsed_value.next != end { return Result<PostgresMessage, PostgresError>::Err(protocol_error(parsed_value.next, "bytes follow ParameterStatus")) }
+    return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::ParameterStatus(
+        cede parsed_name.value, cede parsed_value.value
+    ))
+}
+
+fn parse_row_description(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMessage, PostgresError> {
+    if end - start < 2:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "RowDescription is too short")) }
+    auto count = read_u16_be(input, start) as usize
+    if count > MAX_COLUMNS { return Result<PostgresMessage, PostgresError>::Err(limit_error(start, "RowDescription column count exceeds limit")) }
+    auto columns# = Vec<PostgresColumn>::with_capacity(count)
+    auto cursor#: usize = start + 2:usize
+    auto index#: usize = 0:usize
+    loop index < count {
+        auto name = parse_cstring(input, cursor, end)
+        if name.is_err() { return Result<PostgresMessage, PostgresError>::Err(name.unwrap_err()) }
+        auto parsed_name = name.unwrap()
+        cursor = parsed_name.next
+        if end - cursor < 18:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "RowDescription field metadata is truncated")) }
+        auto type_oid = read_u32_be(input, cursor + 6:usize)
+        columns#.push(cede PostgresColumn(name = cede parsed_name.value, type_oid = type_oid))
+        cursor = cursor + 18:usize
+        index = index + 1:usize
+    }
+    if cursor != end { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "bytes follow RowDescription")) }
+    return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::RowDescription(cede columns))
+}
+
+fn parse_data_row(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMessage, PostgresError> {
+    if end - start < 2:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "DataRow is too short")) }
+    auto count = read_u16_be(input, start) as usize
+    if count > MAX_COLUMNS { return Result<PostgresMessage, PostgresError>::Err(limit_error(start, "DataRow column count exceeds limit")) }
+    auto values# = Vec<Option<Bytes>>::with_capacity(count)
+    auto cursor#: usize = start + 2:usize
+    auto index#: usize = 0:usize
+    loop index < count {
+        if end - cursor < 4:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "DataRow value length is truncated")) }
+        auto encoded_length = read_u32_be(input, cursor)
+        cursor = cursor + 4:usize
+        if encoded_length == 4294967295:u32 {
+            values#.push(cede Option<Bytes>::None)
+        } else {
+            auto value_length = encoded_length as usize
+            if value_length > MAX_FRAME_BYTES || value_length > end - cursor {
+                return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "DataRow value exceeds frame boundary"))
+            }
+            values#.push(cede Option<Bytes>::Some(bytes_range(input, cursor, cursor + value_length)))
+            cursor = cursor + value_length
+        }
+        index = index + 1:usize
+    }
+    if cursor != end { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "bytes follow DataRow")) }
+    return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::DataRow(cede values))
+}
+
+pub fn startup_message(user: str, database: str) -> Result<Vec<u8>, PostgresError> {
+    if user.len() == 0:usize || database.len() == 0:usize {
+        return Result<Vec<u8>, PostgresError>::Err(error("input", 0:usize, "PostgreSQL user and database must not be empty"))
+    }
+    if contains_nul(user) || contains_nul(database) {
+        return Result<Vec<u8>, PostgresError>::Err(error("input", 0:usize, "PostgreSQL startup values must not contain NUL"))
+    }
+    auto payload# = Vec<u8>::new()
+    append_u32_be(payload, PROTOCOL_V3)
+    append_cstring(payload, "user")
+    append_cstring(payload, user)
+    append_cstring(payload, "database")
+    append_cstring(payload, database)
+    payload#.push(0:u8)
+    if payload.len() + 4:usize > MAX_FRAME_BYTES {
+        return Result<Vec<u8>, PostgresError>::Err(limit_error(0:usize, "StartupMessage exceeds frame limit"))
+    }
+    auto frame# = Vec<u8>::with_capacity(payload.len() + 4:usize)
+    append_u32_be(frame, (payload.len() + 4:usize) as u32)
+    auto index#: usize = 0:usize
+    loop index < payload.len() {
+        frame#.push(payload.get(index))
+        index = index + 1:usize
+    }
+    return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+pub fn simple_query_message(sql: str) -> Result<Vec<u8>, PostgresError> {
+    if sql.len() == 0:usize { return Result<Vec<u8>, PostgresError>::Err(error("input", 0:usize, "PostgreSQL query must not be empty")) }
+    if contains_nul(sql) { return Result<Vec<u8>, PostgresError>::Err(error("input", 0:usize, "PostgreSQL query must not contain NUL")) }
+    if sql.len() + 6:usize > MAX_FRAME_BYTES { return Result<Vec<u8>, PostgresError>::Err(limit_error(0:usize, "PostgreSQL query exceeds frame limit")) }
+    auto frame# = Vec<u8>::with_capacity(sql.len() + 6:usize)
+    frame#.push('Q' as u8)
+    append_u32_be(frame, (sql.len() + 5:usize) as u32)
+    append_cstring(frame, sql)
+    return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+pub fn decode_backend_one(input: Vec<u8>) -> Result<PostgresDecode, PostgresError> {
+    if input.len() < 5:usize { return Result<PostgresDecode, PostgresError>::Ok(PostgresDecode::NeedMore()) }
+    auto tag = input.get(0:usize)
+    auto length = read_u32_be(input, 1:usize) as usize
+    if length < 4:usize { return Result<PostgresDecode, PostgresError>::Err(protocol_error(1:usize, "PostgreSQL frame length is less than four")) }
+    if length + 1:usize > MAX_FRAME_BYTES { return Result<PostgresDecode, PostgresError>::Err(limit_error(1:usize, "PostgreSQL frame exceeds 16 MiB limit")) }
+    auto total = length + 1:usize
+    if input.len() < total { return Result<PostgresDecode, PostgresError>::Ok(PostgresDecode::NeedMore()) }
+    auto start: usize = 5:usize
+    auto end = total
+    auto parsed = if tag == 'R' as u8 {
+        pass parse_authentication(input, start, end)
+    } else if tag == 'S' as u8 {
+        pass parse_parameter_status(input, start, end)
+    } else if tag == 'K' as u8 {
+        if end - start != 8:usize { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "BackendKeyData must contain eight bytes")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::BackendKeyData(read_u32_be(input, start) as i32, read_u32_be(input, start + 4:usize) as i32)) }
+    } else if tag == 'Z' as u8 {
+        if end - start != 1:usize { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "ReadyForQuery must contain one byte")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::ReadyForQuery(input.get(start))) }
+    } else if tag == 'E' as u8 {
+        auto server_error = parse_server_error(input, start, end)
+        if server_error.is_err() { pass Result<PostgresMessage, PostgresError>::Err(server_error.unwrap_err()) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::Error(server_error.unwrap())) }
+    } else if tag == 'N' as u8 {
+        auto notice = parse_server_error(input, start, end)
+        if notice.is_err() { pass Result<PostgresMessage, PostgresError>::Err(notice.unwrap_err()) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::Notice(notice.unwrap())) }
+    } else if tag == 'T' as u8 {
+        pass parse_row_description(input, start, end)
+    } else if tag == 'D' as u8 {
+        pass parse_data_row(input, start, end)
+    } else if tag == 'C' as u8 {
+        auto command = parse_cstring(input, start, end)
+        if command.is_err() { pass Result<PostgresMessage, PostgresError>::Err(command.unwrap_err()) }
+        else {
+            auto parsed_command = command.unwrap()
+            if parsed_command.next != end { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(parsed_command.next, "bytes follow CommandComplete")) }
+            else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::CommandComplete(cede parsed_command.value)) }
+        }
+    } else {
+        pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::Unknown(tag, bytes_range(input, start, end)))
+    }
+    if parsed.is_err() { return Result<PostgresDecode, PostgresError>::Err(parsed.unwrap_err()) }
+    return Result<PostgresDecode, PostgresError>::Ok(PostgresDecode::Complete(PostgresBackendFrame(
+        message = cede parsed.unwrap(),
+        consumed = total
+    )))
+}
+
+pub fn package_name() -> string {
+    return string::from("postgres")
+}

@@ -1,0 +1,22 @@
+// Static manifest for the official/postgres package.
+pub const PACKAGE = (
+    name = "postgres",
+    identity = "official/postgres",
+    version = "0.1.0",
+    kind = "library",
+    license = "Apache-2.0",
+    compiler = "0.9.9-01",
+    entry_modules = ("lib/official/postgres.tk"),
+    targets = ("macos", "linux"),
+    dependencies = (),
+    native = (required = false, sources = (), libraries = ())
+)
+
+pub const AI_CONTRACT = (
+    schema = "toka-official-package-v1",
+    summary = "Bounded PostgreSQL v3 wire codec; client transport is introduced only after TLS and SCRAM qualification.",
+    capabilities = ("encode startup and simple-query messages", "incrementally decode bounded PostgreSQL backend frames", "preserve binary row values"),
+    non_goals = ("published database client", "TLS transport", "authentication", "prepared statements", "transactions", "pooling"),
+    safety = ("all frame lengths and row fields are validated before allocation; decoded binary data owns its bytes; no raw pointers or native dependencies"),
+    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/protocol_v1.tk -o /tmp/postgres_protocol_v1 && /tmp/postgres_protocol_v1; python3 tests/qualify_package.py")
+)
