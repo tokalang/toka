@@ -1,0 +1,45 @@
+import std/io::{println}
+import stdx/serde/toml::{TomlDocument}
+
+fn test_owned_configuration_parse() {
+    auto parsed = TomlDocument::parse("# service configuration\nname = \"toka\"\nenabled = true\nports = [8080, 8443]\n[server]\nretries = 3_0\nlabel = 'edge'\n")
+    assert(parsed.is_ok(), "common TOML configuration must parse")
+    auto document = parsed.unwrap()
+    assert(document.len() == 5:usize, "TOML document must retain every key/value entry")
+
+    auto name = document.get("name")
+    assert(name.is_some(), "top-level string key must be available")
+    assert(name.unwrap().as_string().unwrap().as_str().equals("toka"), "basic strings must decode")
+
+    auto enabled = document.get("enabled")
+    assert(enabled.is_some(), "boolean key must be available")
+    assert(enabled.unwrap().as_bool().unwrap(), "boolean values must retain their type")
+
+    auto ports = document.get("ports")
+    assert(ports.is_some(), "array key must be available")
+    auto port_value = ports.unwrap()
+    assert(port_value.array_len().unwrap() == 2:usize, "arrays must retain their elements")
+    assert(port_value.array_at(1:usize).unwrap().as_i64().unwrap() == 8443:i64,
+           "array values must retain integer payloads")
+
+    auto retries = document.get("server.retries")
+    assert(retries.is_some(), "table entries must use deterministic dotted keys")
+    assert(retries.unwrap().as_i64().unwrap() == 30:i64, "integer separators must be accepted")
+    assert(document.get("server.label").unwrap().as_string().unwrap().as_str().equals("edge"),
+           "literal strings must preserve their payload")
+}
+
+fn test_rejections() {
+    assert(TomlDocument::parse("name = \"unterminated").is_err(), "unterminated strings must fail")
+    assert(TomlDocument::parse("name = 1\nname = 2").is_err(), "duplicate keys must fail")
+    assert(TomlDocument::parse("[server\nport = 1").is_err(), "bad table headers must fail")
+    assert(TomlDocument::parse("items = [1,,2]").is_err(), "empty array elements must fail")
+    assert(TomlDocument::parse("ratio = 1.5").is_err(), "unsupported v1 values must fail explicitly")
+}
+
+fn main() -> i32 {
+    test_owned_configuration_parse()
+    test_rejections()
+    println("g15_stdx_toml_test PASSED!")
+    return 0
+}
