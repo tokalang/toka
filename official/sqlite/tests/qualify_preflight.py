@@ -62,27 +62,26 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="toka-sqlite-") as temporary:
         work = Path(temporary)
         bridge_object = work / "sqlite_preflight.o"
-        program_ir = work / "preflight.ll"
-        program = work / "preflight"
         run([compiler, "-c", str(PACKAGE / "native" / "sqlite_preflight.c"),
              "-o", str(bridge_object), *pkg_config("sqlite3", "--cflags")], cwd=ROOT)
-        run([str(tokac), "-I", str(ROOT / "lib"), "-I", str(PACKAGE / "lib"),
-             "--emit-llvm", str(PACKAGE / "tests" / "preflight.tk"),
-             "-o", str(program_ir)], cwd=ROOT)
+        for source_name in ("preflight", "vertical"):
+            program_ir = work / (source_name + ".ll")
+            program = work / source_name
+            run([str(tokac), "-I", str(ROOT / "lib"), "-I", str(PACKAGE / "lib"),
+                 "--emit-llvm", str(PACKAGE / "tests" / (source_name + ".tk")),
+                 "-o", str(program_ir)], cwd=ROOT)
 
-        link_args = [compiler, str(program_ir), str(bridge_object), str(runtime),
-                     "-o", str(program), *pkg_config("sqlite3", "--libs")]
-        # A runtime built with optional TLS support still needs its own link
-        # dependencies when this package performs a standalone native link.
-        # This is inherited runtime configuration, not a SQLite dependency.
-        link_args.extend(optional_pkg_libs("openssl"))
-        if platform.system() == "Darwin":
-            sdk = run(["xcrun", "--show-sdk-path"], cwd=ROOT).stdout.strip()
-            link_args.extend(["-isysroot", sdk])
-        run(link_args, cwd=ROOT)
-        result = run([str(program)], cwd=ROOT)
-        if result.returncode != 0:
-            raise RuntimeError("SQLite native bridge preflight returned a non-zero status")
+            link_args = [compiler, str(program_ir), str(bridge_object), str(runtime),
+                         "-o", str(program), *pkg_config("sqlite3", "--libs")]
+            # A runtime built with optional TLS support still needs its own link
+            # dependencies when this package performs a standalone native link.
+            # This is inherited runtime configuration, not a SQLite dependency.
+            link_args.extend(optional_pkg_libs("openssl"))
+            if platform.system() == "Darwin":
+                sdk = run(["xcrun", "--show-sdk-path"], cwd=ROOT).stdout.strip()
+                link_args.extend(["-isysroot", sdk])
+            run(link_args, cwd=ROOT)
+            run([str(program)], cwd=ROOT)
 
     print("official/sqlite native preflight: PASSED")
     return 0

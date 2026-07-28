@@ -1,0 +1,24 @@
+import official/sqlite::{Database}
+
+extern fn toka_sqlite_live_handle_count() -> i32
+
+fn close_by_scope() {
+    auto opened = Database::open(":memory:")
+    assert(opened.is_ok(), "RAII probe open")
+    auto database# = opened.unwrap()
+    assert(database#.execute("CREATE TABLE scope_probe (value INTEGER);").is_ok(), "RAII probe execute")
+}
+
+fn main() -> i32 {
+    auto opened = Database::open(":memory:")
+    assert(opened.is_ok(), "SQLite open must return a safe Database")
+    auto database# = opened.unwrap()
+    assert(database#.execute("CREATE TABLE items (value INTEGER);").is_ok(), "create table")
+    assert(database#.execute("INSERT INTO items VALUES (7);").is_ok(), "insert row")
+    assert(database#.close().is_ok(), "explicit close")
+    assert(database.is_closed(), "close must disarm RAII cleanup")
+    assert(database#.close().is_ok(), "close must be idempotent")
+    close_by_scope()
+    assert(toka_sqlite_live_handle_count() == 0:i32, "scope cleanup must close an unclosed database exactly once")
+    return 0
+}

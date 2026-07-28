@@ -1,17 +1,18 @@
 # `official/sqlite` bridge v1
 
-Status: **Phase 0 native preflight**. This package is intentionally opt-in;
+Status: **Phase 1 database lifecycle slice**. This package is intentionally opt-in;
 the repository's compiler, `std`, and `stdx` builds must not acquire a SQLite
 link dependency.
 
-`official/sqlite` will be a synchronous, safe bridge to the system SQLite C
+`official/sqlite` is a synchronous, safe bridge to the system SQLite C
 library. SQLite handles and raw C pointers remain in the package's private
-native boundary. The public Toka API will use owned values and structured
-errors only.
+native boundary. The public Toka API uses owned values and structured errors
+only.
 
 ## Frozen v1 direction
 
-- `Database::open`, `execute`, and `prepare`;
+- `Database::open`, `execute`, explicit idempotent `close`, and RAII close;
+- `prepare` and `Statement` bind/step/reset/finalization;
 - `Statement` bind, step, reset, and exactly-once finalization;
 - owned scalar/text row values, never SQLite-owned pointer views;
 - explicit `Transaction` commit or rollback, with rollback on ordinary scope

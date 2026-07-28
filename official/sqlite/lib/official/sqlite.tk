@@ -1,4 +1,74 @@
-// Public entry module.  The safe database API follows the native ABI preflight.
+import core/result::{Result}
+import core/types::{Addr, ADDR0}
+
+extern fn toka_sqlite_open_path(path: Addr) -> Addr
+extern fn toka_sqlite_execute(handle: Addr, sql: Addr) -> i32
+extern fn toka_sqlite_close(handle: Addr) -> i32
+
+pub shape SqliteError (
+    code: i32,
+    message: string
+)
+
+pub shape Database (
+    handle#: Addr,
+    closed#: bool
+)
+
+fn sqlite_error(code: i32, operation: str) -> SqliteError {
+    auto message# = string::from("SQLite ")
+    message#.push_str(operation)
+    message#.push_str(" failed (code ")
+    message#.push_str(string::from_i64(code as i64).as_str())
+    message#.push_byte_raw(')' as u8)
+    return SqliteError(code = code, message = message)
+}
+
+impl SqliteError {
+    pub fn code(self) -> i32 { return self.code }
+    pub fn message(self) -> string { return string::from(self.message.as_str()) }
+}
+
+impl Database {
+    pub fn open(path: str) -> Result<Database, SqliteError> {
+        if path.len() == 0:usize {
+            return Result<Database, SqliteError>::Err(sqlite_error(14:i32, "open empty path"))
+        }
+        auto owned_path = string::from(path)
+        auto handle = toka_sqlite_open_path(owned_path.c_str() as Addr)
+        if handle == ADDR0 {
+            return Result<Database, SqliteError>::Err(sqlite_error(14:i32, "open"))
+        }
+        return Result<Database, SqliteError>::Ok(Database(handle = handle, closed = false))
+    }
+
+    pub fn execute(self#, sql: str) -> Result<i32, SqliteError> {
+        if self.closed { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "execute on closed database")) }
+        auto owned_sql = string::from(sql)
+        auto code = toka_sqlite_execute(self.handle, owned_sql.c_str() as Addr)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "execute")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn close(self#) -> Result<i32, SqliteError> {
+        if self.closed { return Result<i32, SqliteError>::Ok(0:i32) }
+        auto code = toka_sqlite_close(self.handle)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "close")) }
+        self.handle = ADDR0
+        self.closed = true
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn is_closed(self) -> bool { return self.closed }
+
+    fn drop(self#) {
+        if !self.closed {
+            toka_sqlite_close(self.handle)
+            self.handle = ADDR0
+            self.closed = true
+        }
+    }
+}
 
 pub fn package_name() -> string {
     return string::from("sqlite")
