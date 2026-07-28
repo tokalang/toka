@@ -1,0 +1,45 @@
+import std/context::{background, with_cancel, Canceler}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener}
+import std/task::{block_on, sleep_async}
+
+fn cancel_soon(cede canceler: Canceler) -> async i32 {
+    auto owned_canceler# = cede canceler
+    sleep_async(5:i32).await
+    owned_canceler.call()
+    return 0
+}
+
+fn wait_for_canceled_accept(cede listener: TcpListener, cede canceler: Canceler) -> async i32 {
+    auto owned_listener# = cede listener
+    auto owned_canceler# = cede canceler
+    auto accepted = owned_listener#.accept_async_context(owned_canceler).await
+    match accepted {
+        auto Result::Ok(&stream) => {
+            assert(false, "canceled accept must not return a connection")
+        }
+        auto Result::Err(&err) => {
+            assert(err.equals("context canceled"), "canceled accept returns the context error")
+        }
+    }
+    return 0
+}
+
+fn run() -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 0:u16))
+    assert(listener.is_valid(), "bind loopback listener")
+
+    auto cancellation = with_cancel(cede background())
+    auto accept_task = wait_for_canceled_accept(cede listener, cede cancellation.canceler.clone()).start
+    auto cancel_task = cancel_soon(cede cancellation.canceler.clone()).start
+
+    auto accept_result = accept_task.await
+    auto cancel_result = cancel_task.await
+    assert(accept_result == 0:i32, "accept task finished after cancellation")
+    assert(cancel_result == 0:i32, "cancellation task finished")
+    assert(cancellation.canceler.active_token_count() == 0:usize, "canceled accept unregisters its losing wait token")
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(run())
+}

@@ -949,6 +949,16 @@ impl TcpListener {
         return s#.take()
     }
 
+    // Wait for listener readiness and cancellation as one WaitRegistry pair.
+    // Cancellation never closes the listener behind an in-flight accept, so
+    // ownership of this TcpListener remains entirely with its caller.
+    pub fn accept_async_context(self#, canceler: Canceler) -> async Result<TcpStream, string> {
+        if self.closed || self.fd < 0 {
+            return Result<TcpStream, string>::Err(string::from("Listener closed"))
+        }
+        return net_async_accept_context_fd(self.fd, canceler).await
+    }
+
     pub fn is_valid(self) -> bool {
         return self.fd >= 0
     }
@@ -1382,6 +1392,80 @@ pub fn net_async_accept_fd(listener_fd: i32) -> async TcpStream {
         }
     }
     return TcpStream(fd=-1, closed=true)
+}
+
+pub fn net_async_accept_context_fd(listener_fd: i32, canceler: Canceler) -> async Result<TcpStream, string> {
+    auto ret# = Result<TcpStream, string>::Err(string::from("Unreachable"))
+    unsafe {
+        if listener_fd < 0 {
+            ret = Result<TcpStream, string>::Err(string::from("Listener closed"))
+        } else {
+            sysnet::net_set_nonblocking_impl(listener_fd)
+
+            auto done# = false
+            loop !done {
+                auto cancellation = canceler.err()
+                if cancellation.is_some() {
+                    ret = Result<TcpStream, string>::Err(cancellation.unwrap())
+                    done = true
+                    continue
+                }
+
+                auto client_fd = sysnet::net_accept_impl(listener_fd)
+                if client_fd >= 0 {
+                    // Do not hand a newly accepted connection to application
+                    // code once cancellation is observable.
+                    auto after_accept = canceler.err()
+                    if after_accept.is_some() {
+                        sysnet::net_close_impl(client_fd)
+                        ret = Result<TcpStream, string>::Err(after_accept.unwrap())
+                    } else {
+                        sysnet::net_set_nonblocking_impl(client_fd)
+                        ret = Result<TcpStream, string>::Ok(TcpStream(fd=client_fd, closed=false))
+                    }
+                    done = true
+                } else {
+                    auto err = sysnet::get_errno_impl()
+                    auto eagain = sysnet::get_eagain_impl()
+
+                    if err == eagain {
+                        auto io_id# = 0:u32
+                        auto io_gen# = 0:u32
+                        auto ctx_id# = 0:u32
+                        auto ctx_gen# = 0:u32
+                        if !register_async_reactor_read_context(__builtin_coro_current_handle() as Addr, listener_fd, canceler, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32) {
+                            ret = Result<TcpStream, string>::Err(string::from("Failed to register async accept context"))
+                            done = true
+                            continue
+                        }
+                        __builtin_coro_suspend()
+
+                        auto is_ctx = core_task::toka_wait_registry_is_winner(ctx_id, ctx_gen)
+                        canceler.unregister_wait_token(ctx_id, ctx_gen)
+                        core_task::toka_wait_registry_release(io_id, io_gen)
+                        core_task::toka_wait_registry_release(ctx_id, ctx_gen)
+
+                        auto cancellation_after_wait = canceler.err()
+                        if is_ctx != 0 || cancellation_after_wait.is_some() {
+                            auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
+                            sysnet::reactor_del_read_impl(get_reactor_fd(), listener_fd, event_key as Addr)
+                            if cancellation_after_wait.is_some() {
+                                ret = Result<TcpStream, string>::Err(cancellation_after_wait.unwrap())
+                            } else {
+                                ret = Result<TcpStream, string>::Err(string::from("context canceled"))
+                            }
+                            done = true
+                        }
+                    } else {
+                        sleep_async(0:i64).await
+                        ret = Result<TcpStream, string>::Err(string::from("Accept error"))
+                        done = true
+                    }
+                }
+            }
+        }
+    }
+    return ret
 }
 
 pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, string> {
