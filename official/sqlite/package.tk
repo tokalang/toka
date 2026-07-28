@@ -1,0 +1,22 @@
+// Static manifest for the official/sqlite package.
+pub const PACKAGE = (
+    name = "sqlite",
+    identity = "official/sqlite",
+    version = "0.1.0",
+    kind = "library",
+    license = "Apache-2.0",
+    compiler = "0.9.9-01",
+    entry_modules = ("lib/official/sqlite.tk"),
+    targets = ("macos", "linux"),
+    dependencies = (),
+    native = (required = true, libraries = ("sqlite3"))
+)
+
+pub const AI_CONTRACT = (
+    schema = "toka-official-package-v1",
+    summary = "Safe, synchronous bridge to the system SQLite C library.",
+    capabilities = ("native SQLite ABI preflight"),
+    non_goals = ("ORM", "SQL parser", "connection pool", "async database API"),
+    safety = ("SQLite is an opt-in package dependency; no public API exposes native handles"),
+    qualification = ("python3 tests/qualify_preflight.py")
+)

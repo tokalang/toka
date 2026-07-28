@@ -1,0 +1,5 @@
+// Public entry module.  The safe database API follows the native ABI preflight.
+
+pub fn package_name() -> string {
+    return string::from("sqlite")
+}
