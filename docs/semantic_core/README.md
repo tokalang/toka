@@ -76,6 +76,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   no-CodeGen/TKI/cache publication rule.
 - [`../typed_hole_goals_v1.md`](../typed_hole_goals_v1.md) freezes the
   independent requirement-only JSON protocol for incomplete typed-hole edits.
+- [`../conditional_facts_v1.md`](../conditional_facts_v1.md) defines the
+  separate, conservative editor-only binding facts for symbols conditional on
+  a typed-hole requirement.
 - `dynamic_borrowing_exploration.md` records the evidence required before a
   single-thread, runtime-checked borrowing container can become an RFC; it is
   not a current Toka gap or implementation commitment.

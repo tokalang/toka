@@ -64,6 +64,36 @@ static bool isHoleWrapper(const Expr *expr) {
   return false;
 }
 
+// Conditional hole facts are deliberately narrower than general provenance.
+// A direct binding can inherit the requirement set of a direct source binding;
+// arbitrary expressions, calls, and control-flow joins require a later dataflow
+// slice and must not be guessed here.
+static std::set<uint64_t>
+directConditionalHoleDependencies(const Expr *expr, Scope *scope) {
+  while (expr) {
+    if (auto *hole = dynamic_cast<const HoleExpr *>(expr))
+      return {hole->HoleId};
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+      continue;
+    }
+    if (auto *pass = dynamic_cast<const PassExpr *>(expr)) {
+      expr = pass->Value.get();
+      continue;
+    }
+    auto *variable = dynamic_cast<const VariableExpr *>(expr);
+    if (!variable || !scope)
+      return {};
+    SymbolInfo *info = nullptr;
+    std::string actualName;
+    if (!scope->findVariableWithDeref(variable->Name, info, actualName) ||
+        !info)
+      return {};
+    return info->ConditionalHoleIds;
+  }
+  return {};
+}
+
 static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
                                                Scope *CurrentScope) {
   if (!Node || !CurrentScope)
@@ -1688,6 +1718,13 @@ void Sema::checkStmt(Stmt *S) {
       Info.TypeObj = toka::Type::fromString(fullType);
     }
 
+    // Only a complete contextual hole may seed a conditional binding.  An
+    // inferred `auto value = hole` is underconstrained and must remain
+    // unavailable rather than being mislabeled as conditional.
+    if (Var->Init && InitTypeObj && !InitTypeObj->isUnknown())
+      Info.ConditionalHoleIds =
+          directConditionalHoleDependencies(Var->Init.get(), CurrentScope);
+
     std::string dependencySoul =
         Info.TypeObj ? Info.TypeObj->getSoulName() : "";
     bool isBorrowedViewValue =
@@ -1759,6 +1796,13 @@ void Sema::checkStmt(Stmt *S) {
 
     Info.IsDeclaredVariable = true;
     CurrentScope->define(Var->Name, Info);
+    if (!Info.ConditionalHoleIds.empty()) {
+      SemanticEvidence::recordConditionalFact(
+          Var->Name, Info.TypeObj ? Info.TypeObj->toString() : Var->TypeName,
+          std::vector<uint64_t>(Info.ConditionalHoleIds.begin(),
+                                Info.ConditionalHoleIds.end()),
+          Var->Loc);
+    }
 
     // Move Logic: If initializing from a Unique Variable, move it.
     if (Var->Init && Info.IsUnique()) {

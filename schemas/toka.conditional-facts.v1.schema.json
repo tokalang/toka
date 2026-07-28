@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.conditional-facts.v1.schema.json",
+  "title": "Toka Typed Hole Conditional Facts v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "facts"],
+  "properties": {
+    "schema": { "const": "toka.conditional-facts" },
+    "version": { "const": 1 },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "column"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "type", "status", "conditional_on", "location"],
+      "properties": {
+        "symbol": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "const": "conditional" },
+        "conditional_on": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 1 },
+          "uniqueItems": true
+        },
+        "location": { "$ref": "#/$defs/location" }
+      }
+    }
+  }
+}

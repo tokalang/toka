@@ -13,6 +13,7 @@ std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
 std::vector<HoleGoalRecord> SemanticEvidence::HoleGoals;
+std::vector<ConditionalFactRecord> SemanticEvidence::ConditionalFacts;
 
 namespace {
 
@@ -146,6 +147,18 @@ bool HoleGoalRecord::operator==(const HoleGoalRecord &rhs) const {
          Location == rhs.Location;
 }
 
+bool ConditionalFactRecord::operator<(
+    const ConditionalFactRecord &rhs) const {
+  return std::tie(Symbol, Type, ConditionalOn, Location) <
+         std::tie(rhs.Symbol, rhs.Type, rhs.ConditionalOn, rhs.Location);
+}
+
+bool ConditionalFactRecord::operator==(
+    const ConditionalFactRecord &rhs) const {
+  return Symbol == rhs.Symbol && Type == rhs.Type &&
+         ConditionalOn == rhs.ConditionalOn && Location == rhs.Location;
+}
+
 void SemanticEvidence::enable(bool value) {
   Enabled = value;
   reset();
@@ -158,6 +171,7 @@ void SemanticEvidence::reset() {
   CedeObligations.clear();
   CapabilityCalls.clear();
   HoleGoals.clear();
+  ConditionalFacts.clear();
 }
 
 void SemanticEvidence::record(SemanticRuleID rule,
@@ -368,6 +382,46 @@ void SemanticEvidence::dumpHoleGoalsJSON(std::ostream &out) {
       }
       out << "]}";
     }
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+void SemanticEvidence::recordConditionalFact(
+    std::string symbol, std::string type, std::vector<uint64_t> conditionalOn,
+    SourceLocation location) {
+  if (!Enabled || conditionalOn.empty())
+    return;
+  std::sort(conditionalOn.begin(), conditionalOn.end());
+  conditionalOn.erase(
+      std::unique(conditionalOn.begin(), conditionalOn.end()),
+      conditionalOn.end());
+  ConditionalFacts.push_back({std::move(symbol), std::move(type),
+                              std::move(conditionalOn),
+                              resolveLocation(location)});
+}
+
+void SemanticEvidence::dumpConditionalFactsJSON(std::ostream &out) {
+  std::sort(ConditionalFacts.begin(), ConditionalFacts.end());
+  ConditionalFacts.erase(
+      std::unique(ConditionalFacts.begin(), ConditionalFacts.end()),
+      ConditionalFacts.end());
+  out << "{\"schema\":\"toka.conditional-facts\",\"version\":1,\"facts\":[";
+  for (size_t i = 0; i < ConditionalFacts.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &fact = ConditionalFacts[i];
+    out << "{\"symbol\":\"" << escapeJSON(fact.Symbol)
+        << "\",\"type\":\"" << escapeJSON(fact.Type)
+        << "\",\"status\":\"conditional\",\"conditional_on\":[";
+    for (size_t dependency = 0; dependency < fact.ConditionalOn.size();
+         ++dependency) {
+      if (dependency != 0)
+        out << ',';
+      out << fact.ConditionalOn[dependency];
+    }
+    out << "],\"location\":";
+    dumpLocation(out, fact.Location);
     out << '}';
   }
   out << "]}\n";

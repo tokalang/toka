@@ -138,6 +138,17 @@ contracts. The command remains fail-closed: it exits nonzero and does not
 produce an object, interface, cache entry, or publication receipt. An AI must
 replace the hole and run a normal check before treating the edit as valid.
 
+For direct typed bindings that remain dependent on a hole, request the separate
+conditional editor facts:
+
+```sh
+toka conditional-facts --json path/to/main.tk
+```
+
+`toka.conditional-facts` v1 is deliberately not Public Semantic Evidence and
+only covers direct binding aliases. It records an incomplete dependency, never
+an `Allow` decision or a completed initialization.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

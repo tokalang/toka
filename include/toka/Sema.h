@@ -63,6 +63,13 @@ struct SymbolInfo {
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
 
+  // An incomplete typed-hole binding is useful to editor tooling only as a
+  // conditional fact.  It is never a completed initialization or ordinary
+  // semantic-evidence Allow.  This set records the direct hole requirements
+  // on which this binding depends; each direct binding transfer reuses the
+  // source set rather than tracing arbitrary provenance.
+  std::set<uint64_t> ConditionalHoleIds;
+
   // A closure value must retain its capture facts after the literal is bound.
   // Unknown function values are intentionally not treated as boundary-safe.
   bool HasClosureBoundarySummary = false;

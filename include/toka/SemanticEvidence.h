@@ -173,6 +173,16 @@ struct HoleGoalRecord {
   bool operator==(const HoleGoalRecord &rhs) const;
 };
 
+struct ConditionalFactRecord {
+  std::string Symbol;
+  std::string Type;
+  std::vector<uint64_t> ConditionalOn;
+  SemanticEvidenceLocation Location;
+
+  bool operator<(const ConditionalFactRecord &rhs) const;
+  bool operator==(const ConditionalFactRecord &rhs) const;
+};
+
 class SemanticEvidence {
 public:
   static constexpr unsigned SchemaVersion = 1;
@@ -209,6 +219,10 @@ public:
       bool payloadWrite, bool nullable,
       std::vector<std::string> requiredDependencies, SourceLocation location);
   static void dumpHoleGoalsJSON(std::ostream &out);
+  static void recordConditionalFact(std::string symbol, std::string type,
+                                    std::vector<uint64_t> conditionalOn,
+                                    SourceLocation location);
+  static void dumpConditionalFactsJSON(std::ostream &out);
 
 private:
   static bool Enabled;
@@ -216,6 +230,7 @@ private:
   static std::vector<CedeObligationRecord> CedeObligations;
   static std::vector<CapabilityCallRecord> CapabilityCalls;
   static std::vector<HoleGoalRecord> HoleGoals;
+  static std::vector<ConditionalFactRecord> ConditionalFacts;
 };
 
 const char *toString(SemanticRuleID value);

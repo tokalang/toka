@@ -22,6 +22,7 @@ fn print_help() {
     println("  cede-obligations  Emit cede transfer-obligation evidence JSON")
     println("  capabilities Emit H/P call capability evidence JSON")
     println("  hole-goals   Emit typed-hole requirement evidence JSON")
+    println("  conditional-facts Emit typed-hole conditional binding facts JSON")
     println("  index        Emit compiler-owned semantic index JSON for API tooling")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
@@ -794,6 +795,26 @@ fn cmd_hole_goals(argc: i32, shift: i32) -> i32 {
     return command#.status()
 }
 
+fn cmd_conditional_facts(argc: i32, shift: i32) -> i32 {
+    if argc < 3 + shift {
+        println("Error: 'toka conditional-facts' requires a source file.")
+        return 1
+    }
+    auto command# = Command::new(detect_tokac_path())
+    command#.arg(string::from("--conditional-facts=json"))
+    command#.arg(string::from("-I"))
+    command#.arg(detect_default_lib_path())
+    auto idx# = 2 + shift
+    loop idx < argc {
+        auto arg = env::get_arg(idx)
+        if !arg.eq(string::from("--json")) {
+            command#.arg(cede arg)
+        }
+        idx += 1
+    }
+    return command#.status()
+}
+
 fn cmd_index(argc: i32, shift: i32) -> i32 {
     if argc < 3 + shift {
         println("Error: 'toka index' requires a source file.")
@@ -1215,6 +1236,10 @@ fn main() -> i32 {
 
     if cmd.eq(string::from("hole-goals")) {
         return cmd_hole_goals(argc, shift)
+    }
+
+    if cmd.eq(string::from("conditional-facts")) {
+        return cmd_conditional_facts(argc, shift)
     }
 
     if cmd.eq(string::from("index")) {
