@@ -30,6 +30,8 @@ fn client(port: u16) -> async i32 {
 }
 
 fn run() -> async i32 {
+    assert(HttpResponse::created(string::from("stored")).to_string().as_str().starts_with("HTTP/1.1 201 Created\r\n"), "created response wire status")
+    assert(HttpResponse::bad_request(string::from("invalid")).to_string().as_str().starts_with("HTTP/1.1 400 Bad Request\r\n"), "bad request wire status")
     auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 38555:u16)
     auto listener# = TcpListener::bind(address)
     assert(listener.is_valid(), "listener bind")
