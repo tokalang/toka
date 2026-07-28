@@ -1,0 +1,12 @@
+fn select() -> i32 {
+    auto answer: i32 = hole
+    auto slot#: i32 = 0
+    slot = answer
+    slot = 0
+    auto observed: i32 = slot
+    return observed
+}
+
+fn main() -> i32 {
+    return select()
+}

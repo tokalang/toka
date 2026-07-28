@@ -14,6 +14,9 @@ SOURCE = ROOT / "tests/tooling/typed_hole/conditional_binding_facts.tk"
 EXPRESSION_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_expression_facts.tk"
 IF_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_if_facts.tk"
 MATCH_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_match_facts.tk"
+ASSIGNMENT_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_assignment_facts.tk"
+ASSIGNMENT_RESET_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_assignment_reset.tk"
+LOOP_BOUNDARY_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_loop_boundary.tk"
 UNDERCONSTRAINED = ROOT / "tests/tooling/typed_hole/underconstrained.tk"
 
 
@@ -105,6 +108,28 @@ def main():
             "conditional match join did not preserve the live arm dependency")
     require(all(fact["conditional_on"] == [1] for fact in match_facts),
             "conditional match join lost the source hole")
+
+    assignment_result = run([tokac, "--conditional-facts=json", "--check-only",
+                             ASSIGNMENT_SOURCE], 1)
+    assignment_facts = json.loads(assignment_result.stdout)["facts"]
+    require([fact["symbol"] for fact in assignment_facts] ==
+                ["answer", "observed"],
+            "conditional assignment did not update the later declaration")
+    require(all(fact["conditional_on"] == [1]
+                for fact in assignment_facts),
+            "conditional assignment lost the source hole")
+
+    reset_result = run([tokac, "--conditional-facts=json", "--check-only",
+                        ASSIGNMENT_RESET_SOURCE], 1)
+    reset_facts = json.loads(reset_result.stdout)["facts"]
+    require([fact["symbol"] for fact in reset_facts] == ["answer"],
+            "a complete direct assignment did not clear the stale dependency")
+
+    loop_result = run([tokac, "--conditional-facts=json", "--check-only",
+                       LOOP_BOUNDARY_SOURCE], 1)
+    loop_facts = json.loads(loop_result.stdout)["facts"]
+    require([fact["symbol"] for fact in loop_facts] == ["answer"],
+            "loop assignment leaked beyond the v1 dataflow boundary")
 
     unavailable = run([tokac, "--conditional-facts=json", "--check-only",
                        UNDERCONSTRAINED], 1)

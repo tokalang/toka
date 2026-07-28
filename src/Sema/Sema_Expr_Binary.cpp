@@ -97,6 +97,27 @@ static bool selectsHandleIdentity(const Expr *E) {
                U->Op == TokenType::Ampersand);
 }
 
+// Conditional hole state is associated only with a whole local binding.
+// A member, index, or raw dereference needs a path-sensitive fact model and
+// remains outside this first assignment-flow slice.
+static const VariableExpr *directBindingAssignmentTarget(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+    } else if (auto *unary = dynamic_cast<const UnaryExpr *>(expr)) {
+      if (unary->Op != TokenType::Caret && unary->Op != TokenType::Tilde &&
+          unary->Op != TokenType::Ampersand)
+        return nullptr;
+      expr = unary->RHS.get();
+    } else {
+      break;
+    }
+  }
+  return dynamic_cast<const VariableExpr *>(expr);
+}
+
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
@@ -1159,6 +1180,24 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
           if (array && constant->Value < array->Size)
             Info->InitMask |= (1ULL << constant->Value);
+        }
+      }
+    }
+
+    // A simple local assignment replaces the direct value source of that
+    // binding.  Carry the incomplete-input dependency for later declarations,
+    // but deliberately do not emit an assignment event in protocol v1: its
+    // records are declaration facts and have no temporal overwrite field.
+    if (Bin->Op == "=") {
+      if (const auto *target =
+              directBindingAssignmentTarget(Bin->LHS.get())) {
+        SymbolInfo *info = nullptr;
+        std::string actualName;
+        if (CurrentScope->findVariableWithDeref(target->Name, info,
+                                                actualName) &&
+            info) {
+          info->ConditionalHoleIds =
+              collectConditionalHoleDependencies(Bin->RHS.get());
         }
       }
     }

@@ -478,6 +478,28 @@ static std::map<std::string, bool> captureVisibleMoved(Scope *ScopePtr) {
   return moved;
 }
 
+static std::map<std::string, std::set<uint64_t>>
+captureVisibleConditionalHoleIds(Scope *ScopePtr) {
+  std::map<std::string, std::set<uint64_t>> dependencies;
+  for (Scope *S = ScopePtr; S; S = S->Parent) {
+    for (const auto &pair : S->Symbols) {
+      if (!dependencies.count(pair.first))
+        dependencies[pair.first] = pair.second.ConditionalHoleIds;
+    }
+  }
+  return dependencies;
+}
+
+static void restoreVisibleConditionalHoleIds(
+    Scope *ScopePtr,
+    const std::map<std::string, std::set<uint64_t>> &dependencies) {
+  for (const auto &pair : dependencies) {
+    SymbolInfo *info = nullptr;
+    if (ScopePtr->findSymbol(pair.first, info) && info)
+      info->ConditionalHoleIds = pair.second;
+  }
+}
+
 static void restoreVisibleAnalysisState(
     Scope *ScopePtr, const std::map<std::string, uint64_t> &masks,
     const std::map<std::string, bool> &moved) {
@@ -497,6 +519,7 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
+  state.ConditionalHoleIds = captureVisibleConditionalHoleIds(CurrentScope);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
   state.PAL = PALCheckerState.snapshot();
   return state;
@@ -509,6 +532,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
   std::map<std::string, bool> mergedMoved = states.front().Moved;
+  std::map<std::string, std::set<uint64_t>> mergedConditionalHoleIds =
+      states.front().ConditionalHoleIds;
   std::set<AccessPath> mergedPayloadFlowRestrictions =
       states.front().PayloadFlowRestrictedPaths;
   PALChecker mergedPAL = states.front().PAL;
@@ -536,6 +561,11 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       pair.second = pair.second || moved;
     }
 
+    for (const auto &pair : state.ConditionalHoleIds) {
+      auto &dependencies = mergedConditionalHoleIds[pair.first];
+      dependencies.insert(pair.second.begin(), pair.second.end());
+    }
+
     // A branch join must not erase a restriction that is present on another
     // reachable path.  Subsequent unconditional rebinding explicitly removes
     // the exact path from the current state.
@@ -549,6 +579,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   }
 
   restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved);
+  restoreVisibleConditionalHoleIds(CurrentScope, mergedConditionalHoleIds);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
 }
@@ -2093,6 +2124,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // unset state on the reachable sibling path.
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
+    auto conditionalBefore = captureVisibleConditionalHoleIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
     if (narrowThen)
@@ -2101,6 +2133,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto masksThen = captureVisibleInitMasks(CurrentScope);
     auto movedThen = captureVisibleMoved(CurrentScope);
+    auto conditionalThen = captureVisibleConditionalHoleIds(CurrentScope);
     auto palThen = PALCheckerState.snapshot();
 
     if (narrowThen)
@@ -2117,6 +2150,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (ie->Else) {
       // Restore Before Else
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
+      restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
@@ -2126,6 +2160,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
       elseReturns = allPathsJump(ie->Else.get());
+      auto conditionalElse = captureVisibleConditionalHoleIds(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
       if (narrowElse)
@@ -2135,13 +2170,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (thenReturns && elseReturns) {
         // No reachable continuation; keep the incoming PAL state for any
         // subsequent dead-code diagnostics.
+        restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
         PALCheckerState.restore(palBefore);
       } else if (thenReturns) {
-        // State is purely from Else branch. Leave as is.
+        // State is purely from Else branch.  Restore the editor-only state
+        // explicitly because narrowing restoration may have replaced a full
+        // SymbolInfo after the snapshot was taken.
+        restoreVisibleConditionalHoleIds(CurrentScope, conditionalElse);
         PALCheckerState.restore(palElse);
       } else if (elseReturns) {
         // State is purely from Then branch
         restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen);
+        restoreVisibleConditionalHoleIds(CurrentScope, conditionalThen);
         PALCheckerState.restore(palThen);
       } else {
         // Actual Intersection
@@ -2153,6 +2193,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           info->InitMask &= thenM;
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           info->Moved = info->Moved || thenMoved;
+        }
+        for (const auto &pair : conditionalBefore) {
+          SymbolInfo *info = nullptr;
+          if (!CurrentScope->findSymbol(pair.first, info) || !info)
+            continue;
+          std::set<uint64_t> dependencies =
+              conditionalThen.count(pair.first)
+                  ? conditionalThen[pair.first]
+                  : std::set<uint64_t>{};
+          if (conditionalElse.count(pair.first)) {
+            dependencies.insert(conditionalElse[pair.first].begin(),
+                                conditionalElse[pair.first].end());
+          }
+          info->ConditionalHoleIds = std::move(dependencies);
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
       }
@@ -2167,6 +2221,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         } else {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
             info->Moved = movedBefore[pair.first] || thenMoved;
+        }
+      }
+      for (const auto &pair : conditionalBefore) {
+        SymbolInfo *info = nullptr;
+        if (!CurrentScope->findSymbol(pair.first, info) || !info)
+          continue;
+        if (thenReturns) {
+          info->ConditionalHoleIds = pair.second;
+        } else {
+          std::set<uint64_t> dependencies = pair.second;
+          if (conditionalThen.count(pair.first)) {
+            dependencies.insert(conditionalThen[pair.first].begin(),
+                                conditionalThen[pair.first].end());
+          }
+          info->ConditionalHoleIds = std::move(dependencies);
         }
       }
       if (thenReturns) {
@@ -2479,6 +2548,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
     }
+    auto conditionalBefore = captureVisibleConditionalHoleIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2543,6 +2613,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (!tookOver)
       m_ControlFlowStack.pop_back();
+
+    // Loop iteration count and back-edge reachability are not modeled by the
+    // conditional-facts v1 protocol.  Do not leak a body-local assignment
+    // fact past the loop until that dedicated fixed-point slice exists.
+    restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
 
     return std::make_shared<VoidType>();
   } else if (auto *fe = dynamic_cast<ForExpr *>(E)) {
@@ -2730,6 +2805,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
+    auto conditionalBefore = captureVisibleConditionalHoleIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2893,6 +2969,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                          breakStates.end());
       mergeAnalysisStates(afterStates, palBefore);
     }
+
+    // As with `loop`, conditional-facts v1 does not model iteration or the
+    // `for ... or` reachability split.  Preserve the incoming fact state.
+    restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
 
     if (isReceiver) {
       if (bodyType == "void" && !bodyJumps)

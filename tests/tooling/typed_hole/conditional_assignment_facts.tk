@@ -1,0 +1,15 @@
+fn select(flag: bool) -> i32 {
+    auto answer: i32 = hole
+    auto slot#: i32 = 0
+    if flag {
+        slot = answer
+    } else {
+        slot = 0
+    }
+    auto observed: i32 = slot
+    return observed
+}
+
+fn main() -> i32 {
+    return select(true)
+}

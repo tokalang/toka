@@ -204,8 +204,11 @@ The target model carries the same transitive `conditional_on` set to every
 dependent result. The implemented v1 protocol deliberately starts narrower:
 it records a typed direct binding and carries that set through direct aliases,
 non-transfer expression operands, resolved calls, and `if`/`match` value joins.
-`cede`, borrowed or provenance-sensitive forms, and other control-flow forms
-currently produce no conditional fact rather than a guessed one. The fact
+It also updates direct local-binding state on ordinary assignment, allowing a
+later declaration to report the dependency, and conservatively joins that
+state across `if`. `cede`, borrowed or provenance-sensitive forms, path
+projections, compound assignment, loops, and escaping calls currently produce
+no conditional fact rather than a guessed one. The fact
 lattice is:
 
 | Status | Meaning |
@@ -276,8 +279,9 @@ errors independent of the hole are not.
 4. Add diagnostic cascade suppression and `toka.hole-goals` v1.
 5. Add the conservative binding/expression/call conditional-fact protocol
    (implemented).
-6. Extend conditional propagation through loops, assignments, and escaping
-   call returns only with a dedicated dataflow design and evidence suite.
+6. Extend conditional propagation through projected/compound assignments,
+   loops, and escaping call returns only with a dedicated dataflow design and
+   evidence suite.
 7. Only then evaluate labels, type/pattern/declaration holes, generic
    constraints, operators, or any future resource-hole design.
 

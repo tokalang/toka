@@ -32,6 +32,13 @@ compiler otherwise omits a fact rather than guessing ownership, provenance, or
 branch reachability. Such omission must not be interpreted as authoritative
 success.
 
+A direct assignment to a whole local binding updates its internal dependency
+state, so that a later declaration initialized from the binding is conditional
+as well. v1 does not emit a separate assignment record: the wire format has no
+temporal overwrite field. Member, index, dereference, compound-assignment, and
+loop/escaping-call propagation remain outside this slice. A regular `if`
+merges its reachable whole-binding states by union.
+
 Each record contains the binding name, resolved declared type, conditional hole
 IDs, and declaration location. Consumers must replace the hole and run a
 normal check before considering any dependent binding complete. The ABI gate

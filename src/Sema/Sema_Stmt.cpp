@@ -200,6 +200,15 @@ static void collectConditionalHoleDependenciesFromStmt(
   }
 }
 
+std::set<uint64_t>
+Sema::collectConditionalHoleDependencies(const Expr *expr) {
+  std::set<uint64_t> dependencies =
+      directConditionalHoleDependencies(expr, CurrentScope);
+  ::toka::collectConditionalHoleDependencies(expr, CurrentScope,
+                                             dependencies);
+  return dependencies;
+}
+
 static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
                                                Scope *CurrentScope) {
   if (!Node || !CurrentScope)
@@ -1831,9 +1840,7 @@ void Sema::checkStmt(Stmt *S) {
     // then extends it through non-transfer expressions and resolved calls.
     if (Var->Init && InitTypeObj && !InitTypeObj->isUnknown()) {
       Info.ConditionalHoleIds =
-          directConditionalHoleDependencies(Var->Init.get(), CurrentScope);
-      collectConditionalHoleDependencies(Var->Init.get(), CurrentScope,
-                                         Info.ConditionalHoleIds);
+          collectConditionalHoleDependencies(Var->Init.get());
     }
 
     std::string dependencySoul =

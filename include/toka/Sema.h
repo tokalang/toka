@@ -67,7 +67,9 @@ struct SymbolInfo {
   // conditional fact.  It is never a completed initialization or ordinary
   // semantic-evidence Allow.  This set records the direct hole requirements
   // on which this binding depends; each direct binding transfer reuses the
-  // source set rather than tracing arbitrary provenance.
+  // source set rather than tracing arbitrary provenance.  A narrow,
+  // non-transfer expression and whole-binding assignment flow may carry the
+  // same set forward; this remains editor-only state.
   std::set<uint64_t> ConditionalHoleIds;
 
   // A closure value must retain its capture facts after the literal is bound.
@@ -463,6 +465,9 @@ private:
   struct AnalysisState {
     std::map<std::string, uint64_t> InitMasks;
     std::map<std::string, bool> Moved;
+    // Editor-only incompleteness state.  It follows local value flow but
+    // never grants an operation or substitutes for PAL.
+    std::map<std::string, std::set<uint64_t>> ConditionalHoleIds;
     // Path-local shared-flow ceilings survive control-flow joins.  Presence
     // means that at least one reachable path has installed a direct source
     // whose payload is not writable; the conservative join keeps that
@@ -601,6 +606,7 @@ private:
   checkUnaryExpr(UnaryExpr *Unary); // New Object API
   std::shared_ptr<toka::Type>
   checkBinaryExpr(BinaryExpr *Bin); // New Object API
+  std::set<uint64_t> collectConditionalHoleDependencies(const Expr *expr);
   bool validateIntegerLiteralRange(
       ASTNode *site, NumberExpr *literal,
       const std::shared_ptr<toka::Type> &targetType, bool isNegative);
