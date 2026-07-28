@@ -1,5 +1,6 @@
 
 import std/vec::{Vec}
+import core/str::{bytes}
 import stdx/encoding/hex
 
 const SHA256_K: [u32; 64] = [
@@ -124,6 +125,21 @@ impl Sha256 {
         auto len = usize(data.len())
         auto *ptr# = data.buf() as *[u8]
         self#.update_bytes(*ptr, len)
+    }
+
+    pub fn update_view(self#, input: bytes) {
+        auto i#: usize = 0:usize
+        loop i < input.len() {
+            auto b = input.at(i).unwrap() as u8
+            self.data[self.datalen] = b
+            self.datalen = self.datalen + 1
+            if self.datalen == 64 {
+                self#.process_block(&SHA256_K)
+                self.bitlen = self.bitlen + 512
+                self.datalen = 0
+            }
+            i = i + 1:usize
+        }
     }
 
     pub fn update_bytes(self#, *buf: [u8], len: usize) {

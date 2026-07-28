@@ -26,6 +26,19 @@ fn test_abc() -> i32 {
     return 0
 }
 
+fn test_abc_view() -> i32 {
+    auto input = string::from("abc")
+    auto sha# = Sha256::new()
+    sha#.update_view(input.as_str().as_bytes())
+    auto hash = sha#.finalize_hex()
+    auto expected_hash = string::from("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    if !hash.as_str().equals(expected_hash.as_str()) {
+        println("abc view hash mismatch")
+        return 1
+    }
+    return 0
+}
+
 fn test_hello_world() -> i32 {
     auto sha# = Sha256::new()
     sha#.update(string::from("hello world").as_view())
@@ -41,6 +54,7 @@ fn test_hello_world() -> i32 {
 fn main() -> i32 {
     if test_empty_string() != 0 { return 1 }
     if test_abc() != 0 { return 1 }
+    if test_abc_view() != 0 { return 1 }
     if test_hello_world() != 0 { return 1 }
     
     println("All SHA-256 tests passed successfully!")

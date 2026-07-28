@@ -1,0 +1,52 @@
+import core/str::{bytes}
+import std/bytes::{bytes_from_array}
+import stdx/crypto/hmac::{hmac_sha256_hex}
+
+fn repeated_byte_20(value: u8) -> [u8; 20] {
+    return [value; 20]
+}
+
+fn repeated_byte_50(value: u8) -> [u8; 50] {
+    return [value; 50]
+}
+
+fn repeated_byte_131(value: u8) -> [u8; 131] {
+    return [value; 131]
+}
+
+fn assert_hmac(key: bytes, message: bytes, expected: str) {
+    auto actual = hmac_sha256_hex(key, message)
+    assert(actual.as_str().equals(expected), "HMAC-SHA-256 vector mismatch")
+}
+
+fn main() -> i32 {
+    // RFC 4231, case 1.
+    auto key1 = repeated_byte_20(0x0b:u8)
+    auto message1 = string::from("Hi There")
+    assert_hmac(
+        bytes_from_array<20>(key1), message1.as_str().as_bytes(),
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7")
+
+    // RFC 4231, case 2.
+    auto key2 = string::from("Jefe")
+    auto message2 = string::from("what do ya want for nothing?")
+    assert_hmac(
+        key2.as_str().as_bytes(), message2.as_str().as_bytes(),
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+
+    // RFC 4231, case 3.
+    auto key3 = repeated_byte_20(0xaa:u8)
+    auto message3 = repeated_byte_50(0xdd:u8)
+    assert_hmac(
+        bytes_from_array<20>(key3), bytes_from_array<50>(message3),
+        "773ea91e36800e46854db8ebd09181a729590e9fe10fef8f0aee42c72a86eeb")
+
+    // RFC 4231, case 6: a key longer than the SHA-256 block is hashed first.
+    auto key4 = repeated_byte_131(0xaa:u8)
+    auto message4 = string::from("Test Using Larger Than Block-Size Key - Hash Key First")
+    assert_hmac(
+        bytes_from_array<131>(key4), message4.as_str().as_bytes(),
+        "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54")
+
+    return 0
+}

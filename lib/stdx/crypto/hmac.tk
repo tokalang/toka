@@ -1,0 +1,57 @@
+// HMAC-SHA-256 (RFC 2104 / RFC 4231).
+
+import core/str::{bytes}
+import std/bytes::{bytes_from_array}
+import stdx/crypto/sha256::{Sha256}
+import stdx/encoding/hex
+
+const BLOCK_LEN: usize = 64
+
+fn normalized_key(key: bytes) -> [u8; 64] {
+    auto block#: [u8; 64] = [0:u8; 64]
+    if key.len() > BLOCK_LEN {
+        auto hash# = Sha256::new()
+        hash#.update_view(key)
+        auto digest = hash#.finalize()
+        auto index#: usize = 0:usize
+        loop index < 32:usize {
+            block[index] = digest[index]
+            index = index + 1:usize
+        }
+        return block
+    }
+
+    auto index#: usize = 0:usize
+    loop index < key.len() {
+        block[index] = key.at(index).unwrap() as u8
+        index = index + 1:usize
+    }
+    return block
+}
+
+pub fn hmac_sha256(key: bytes, message: bytes) -> [u8; 32] {
+    auto key_block = normalized_key(key)
+    auto inner_pad#: [u8; 64] = [0:u8; 64]
+    auto outer_pad#: [u8; 64] = [0:u8; 64]
+    auto index#: usize = 0:usize
+    loop index < BLOCK_LEN {
+        inner_pad[index] = key_block[index] ^ 0x36:u8
+        outer_pad[index] = key_block[index] ^ 0x5c:u8
+        index = index + 1:usize
+    }
+
+    auto inner# = Sha256::new()
+    inner#.update_view(bytes_from_array<64>(inner_pad))
+    inner#.update_view(message)
+    auto inner_digest = inner#.finalize()
+
+    auto outer# = Sha256::new()
+    outer#.update_view(bytes_from_array<64>(outer_pad))
+    outer#.update_view(bytes_from_array<32>(inner_digest))
+    return outer#.finalize()
+}
+
+pub fn hmac_sha256_hex(key: bytes, message: bytes) -> string {
+    auto digest = hmac_sha256(key, message)
+    return hex::encode(bytes_from_array<32>(digest))
+}

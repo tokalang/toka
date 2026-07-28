@@ -1,6 +1,10 @@
 import std/bytes::{bytes_from_array}
 import core/types::{byte}
 
+fn first_from_parameter(data: [u8; 4]) -> byte {
+    return bytes_from_array<4>(data).at(0:usize).unwrap()
+}
+
 fn main() -> i32 {
     auto input#: [u8; 4] = [0:u8; 4]
     input[1] = 127:u8
@@ -14,9 +18,10 @@ fn main() -> i32 {
     if view.at(3:usize).unwrap() != 255:byte { return 5 }
     input[1] = 42:u8
     if view.at(1:usize).unwrap() != 42:byte { return 6 }
+    if first_from_parameter(input) != 0:byte { return 7 }
 
     auto empty: [u8; 0] = [0:u8; 0]
     auto empty_view = bytes_from_array<0>(empty)
-    if empty_view.len() != 0:usize { return 7 }
+    if empty_view.len() != 0:usize { return 8 }
     return 0
 }
