@@ -2,20 +2,27 @@
 
 # Toka Programming Language
 
-**Toka is a no-GC systems programming language that keeps performance and static safety as baselines while making real systems semantics explicit and everyday code easier to read, write, and maintain.**
+**Toka is a no-GC systems programming language built around predictable performance, static safety, and AI-verifiable semantics. It makes real systems boundaries explicit for both programmers and tools.**
 
 ## Design Goal
 
 ### Baselines
 
-Toka starts from two baselines:
+Toka starts from three baselines:
 
 - **Zero-cost performance:** low-level representation and resource costs should remain predictable, without a GC or hidden runtime layer becoming the default answer.
 - **Strong static safety:** dangerous paths should be explicit enough for the compiler to check, with safety treated as a requirement rather than a convenience feature.
+- **AI-verifiable semantics:** important compiler conclusions should be available as stable, machine-readable facts. An AI-assisted repair must be able to identify the relevant contract, make a minimal change, and verify the result against the compiler and targeted tests.
 
-With those two baselines kept in place, Toka asks how close systems code can get to simple, direct, and maintainable expression without hiding the semantics that make systems programming hard. Source code should match the programmer's intent and the program's actual behavior: ownership transfer, mutation, rebinding, nullability, error propagation, async suspension, and low-level representation should be visible where they matter, statically checkable, and still compact in everyday code.
+With those three baselines kept in place, Toka asks how close systems code can get to simple, direct, and maintainable expression without hiding the semantics that make systems programming hard. Source code should match the programmer's intent and the program's actual behavior: ownership transfer, mutation, rebinding, nullability, error propagation, async suspension, and low-level representation should be visible where they matter, statically checkable, and still compact in everyday code.
 
 Toka does not pursue minimal syntax for its own sake. It pursues the minimum surface needed to expose real systems semantics. Each piece of surface complexity should earn its place by making a boundary visible that would otherwise become implicit, distant, or harder to audit.
+
+This is also an AI-assisted development requirement: the same ownership,
+capability, async, and interface boundaries that programmers read should be
+available to tools as deterministic compiler evidence. Toka does not treat AI
+as a text generator outside the language; it treats AI-assisted editing as a
+consumer of the language's semantic contracts.
 
 ### The Tension
 
@@ -167,9 +174,30 @@ Toka uses a compact token system:
 
 Control-flow costs are intended to stay visible. `async` marks yielding functions, `.await` marks suspension points, and postfix `!` propagates `Result` / `Option` failure paths without hiding the early return.
 
-### Native Tooling
+### Native and AI Tooling
 
-The `toka` CLI supports project workflows such as `toka new`, `toka run`, `toka build`, package resolution, and build orchestration through `package.tk` / `build.tk`. The compiler also emits dependency metadata used by the incremental build path. `tokalsp` provides diagnostics, hover, definition, references, completion, and rename over standard LSP transport; see [LSP support](docs/lsp.md). Machine-facing diagnostics, fixes, explanations, and bounded context are documented in [AI tooling](docs/ai_tooling.md).
+The `toka` CLI supports project workflows such as `toka new`, `toka run`, `toka build`, package resolution, and build orchestration through `package.tk` / `build.tk`. The compiler also emits dependency metadata used by the incremental build path. `tokalsp` provides diagnostics, hover, definition, references, completion, and rename over standard LSP transport; see [LSP support](docs/lsp.md).
+
+Beyond diagnostics, Toka exposes versioned machine-readable semantic protocols.
+They currently cover public compiler decisions, `cede` transfer obligations,
+TaskHandle lifecycle contracts, and H/P call-capability decisions. These facts
+let tools distinguish a missing transfer from an unconsumed parameter, explain
+why a payload write is denied, and select lifecycle redlines for an async edit.
+
+```text
+semantic context -> compiler evidence -> minimal edit -> compiler re-check -> targeted redline tests
+```
+
+```bash
+toka evidence --json main.tk
+toka cede-obligations --json main.tk
+toka capabilities --json main.tk
+```
+
+Machine-facing diagnostics, semantic evidence, and bounded context are
+documented in [AI tooling](docs/ai_tooling.md). The protocols are explanation
+and verification interfaces, not a promise that any particular model will
+write correct code without review.
 
 ## Current Status
 
@@ -193,6 +221,7 @@ Toka may be interesting if you want:
 - Static resource-flow checks without explicit lifetime parameters.
 - A language where mutation, rebinding, nullability, and resource transfer are visible at the call site.
 - A compact toolchain for experiments, systems tools, runtimes, and infrastructure code.
+- AI-assisted systems development where ownership, authority, and lifecycle constraints must be compiler-explainable and independently verifiable.
 
 Toka may not be the right choice yet if you need:
 
