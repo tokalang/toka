@@ -1,0 +1,127 @@
+// Deterministic JSON Lines logging for services.  This module owns no global
+// sink: applications choose whether to render, print, or route a line.
+
+import core/option::{Option}
+import std/io::{print_line}
+import std/vec::{Vec}
+import stdx/log/log::{LogLevel, LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR}
+
+pub shape JsonField (
+    key: string,
+    value: string
+)
+
+impl JsonField@encap {
+    pub key
+    pub value
+    fn drop(self#) {}
+    pub fn clone(self) -> JsonField {
+        return JsonField(
+            key = string::from(self.key.as_str()),
+            value = string::from(self.value.as_str())
+        )
+    }
+}
+
+impl JsonField {
+    pub fn new(key: string, value: string) -> JsonField {
+        return JsonField(key = key, value = value)
+    }
+}
+
+fn append_json_string(out#: string, value: str) {
+    out#.push_byte_raw(34:u8)
+    auto index# = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if byte == 34:u8 {
+            out#.push_str("\\\"")
+        } else if byte == 92:u8 {
+            out#.push_str("\\\\")
+        } else if byte == 8:u8 {
+            out#.push_str("\\b")
+        } else if byte == 12:u8 {
+            out#.push_str("\\f")
+        } else if byte == 10:u8 {
+            out#.push_str("\\n")
+        } else if byte == 13:u8 {
+            out#.push_str("\\r")
+        } else if byte == 9:u8 {
+            out#.push_str("\\t")
+        } else if byte < 32:u8 {
+            auto high = byte bshr 4:u8
+            auto low = byte band 15:u8
+            out#.push_str("\\u00")
+            if high < 10:u8 { out#.push_byte_raw(48:u8 + high) }
+            else { out#.push_byte_raw(87:u8 + high) }
+            if low < 10:u8 { out#.push_byte_raw(48:u8 + low) }
+            else { out#.push_byte_raw(87:u8 + low) }
+        } else {
+            out#.push_byte_raw(byte)
+        }
+        index += 1
+    }
+    out#.push_byte_raw(34:u8)
+}
+
+fn append_level(out#: string, level: LogLevel) {
+    if level == LOG_DEBUG { append_json_string(out, "debug") }
+    else if level == LOG_INFO { append_json_string(out, "info") }
+    else if level == LOG_WARN { append_json_string(out, "warn") }
+    else { append_json_string(out, "error") }
+}
+
+pub shape JsonLogger (
+    level: LogLevel
+)
+
+impl JsonLogger@encap {
+    pub *
+    fn drop(self#) {}
+    pub fn clone(self) -> JsonLogger {
+        return JsonLogger(level = self.level)
+    }
+}
+
+impl JsonLogger {
+    pub fn new(level: LogLevel) -> JsonLogger {
+        return JsonLogger(level = level)
+    }
+
+    pub fn set_level(self#, level: LogLevel) {
+        self.level = level
+    }
+
+    // Returns None before allocating when this event is below the configured
+    // threshold.  Field order is caller order, making output deterministic.
+    pub fn format(self, level: LogLevel, message: string, fields#: Vec<JsonField>) -> Option<string> {
+        if level < self.level {
+            return Option<string>::None
+        }
+
+        auto line# = string::from("{\"level\":")
+        append_level(line, level)
+        line#.push_str(",\"message\":")
+        append_json_string(line, message.as_view())
+
+        auto index# = 0:usize
+        loop index < fields.len() {
+            auto field = fields#.get(index).clone()
+            line#.push_str(",")
+            append_json_string(line, field.key.as_view())
+            line#.push_str(":")
+            append_json_string(line, field.value.as_view())
+            index += 1
+        }
+        line#.push_str("}")
+        return Option<string>::Some(cede line)
+    }
+
+    pub fn emit(self, level: LogLevel, message: string, fields#: Vec<JsonField>) {
+        auto line = self.format(level, message, fields)
+        match line {
+            auto Option::Some(&rendered) => print_line(string::from(rendered.as_str()))
+            _ => {}
+        }
+    }
+}

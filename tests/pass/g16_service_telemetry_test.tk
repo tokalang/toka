@@ -1,0 +1,39 @@
+import std/vec::{Vec}
+import stdx/log/json::{JsonField, JsonLogger}
+import stdx/log/log::{LOG_DEBUG, LOG_INFO}
+import stdx/metrics/prometheus::{PrometheusRegistry, is_valid_metric_name}
+
+fn test_json_logging() {
+    auto logger = JsonLogger::new(LOG_INFO)
+    auto fields# = Vec<JsonField>::new()
+    fields#.push(cede JsonField::new(string::from("request_id"), string::from("a\"b")))
+    fields#.push(cede JsonField::new(string::from("newline"), string::from("first\nsecond")))
+
+    auto rendered = logger.format(LOG_INFO, string::from("ready\u{0001}"), fields)
+    assert(rendered.is_some(), "info event passes configured level")
+    auto line = rendered.unwrap()
+    assert(line.equals("{\"level\":\"info\",\"message\":\"ready\\u0001\",\"request_id\":\"a\\\"b\",\"newline\":\"first\\nsecond\"}"), "JSON line escapes control bytes and preserves field order")
+
+    auto filtered_fields# = Vec<JsonField>::new()
+    assert(logger.format(LOG_DEBUG, string::from("hidden"), filtered_fields).is_none(), "filtered event allocates no rendered line")
+}
+
+fn test_prometheus_registry() {
+    auto registry# = PrometheusRegistry::new()
+    assert(registry#.register_counter(string::from("http_requests_total")).is_ok(), "register counter")
+    assert(registry#.register_gauge(string::from("http_inflight")).is_ok(), "register gauge")
+    assert(registry#.inc_counter("http_requests_total", 3:i64).is_ok(), "increment counter")
+    assert(registry#.set_gauge("http_inflight", 2:i64).is_ok(), "set gauge")
+    assert(registry#.inc_counter("http_inflight", 1:i64).is_err(), "counter operation rejects gauge")
+    assert(registry#.inc_counter("http_requests_total", -1:i64).is_err(), "negative counter increment rejected")
+    assert(!is_valid_metric_name("9invalid"), "invalid metric name rejected")
+
+    auto rendered = registry.render()
+    assert(rendered.equals("# TYPE http_requests_total counter\nhttp_requests_total 3\n# TYPE http_inflight gauge\nhttp_inflight 2\n"), "Prometheus rendering is deterministic")
+}
+
+fn main() -> i32 {
+    test_json_logging()
+    test_prometheus_registry()
+    return 0
+}

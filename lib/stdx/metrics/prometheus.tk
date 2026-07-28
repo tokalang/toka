@@ -1,0 +1,161 @@
+// Minimal in-process Prometheus text registry.  It deliberately does not own
+// a global registry, labels, HTTP export, or aggregation policy.
+
+import core/result::{Result}
+import std/vec::{Vec}
+
+pub alias MetricKind = i32
+pub const METRIC_COUNTER: MetricKind = 1
+pub const METRIC_GAUGE: MetricKind = 2
+
+pub shape MetricEntry (
+    name: string,
+    kind: MetricKind,
+    value: i64
+)
+
+impl MetricEntry@encap {
+    pub name
+    pub kind
+    pub value
+    fn drop(self#) {}
+    pub fn clone(self) -> MetricEntry {
+        return MetricEntry(
+            name = string::from(self.name.as_str()),
+            kind = self.kind,
+            value = self.value
+        )
+    }
+}
+
+pub fn is_valid_metric_name(name: str) -> bool {
+    if name.len() == 0:usize { return false }
+    auto first = name.byte_at(0:usize) as u8
+    if !((first >= 65:u8 && first <= 90:u8) ||
+         (first >= 97:u8 && first <= 122:u8) ||
+         first == 95:u8 || first == 58:u8) {
+        return false
+    }
+
+    auto index# = 1:usize
+    loop index < name.len() {
+        auto byte = name.byte_at(index) as u8
+        if !((byte >= 65:u8 && byte <= 90:u8) ||
+             (byte >= 97:u8 && byte <= 122:u8) ||
+             (byte >= 48:u8 && byte <= 57:u8) ||
+             byte == 95:u8 || byte == 58:u8) {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+pub shape PrometheusRegistry (
+    entries: Vec<MetricEntry>
+)
+
+impl PrometheusRegistry@encap {
+    pub entries
+    fn drop(self#) {}
+    pub fn clone(self) -> PrometheusRegistry {
+        auto copied# = Vec<MetricEntry>::new()
+        auto index# = 0:usize
+        loop index < self.entries.len() {
+            copied#.push(cede self.entries.get(index).clone())
+            index += 1
+        }
+        return PrometheusRegistry(entries = cede copied)
+    }
+}
+
+impl PrometheusRegistry {
+    pub fn new() -> PrometheusRegistry {
+        return PrometheusRegistry(entries = Vec<MetricEntry>::new())
+    }
+
+    fn index_of(self, name: str) -> i64 {
+        auto index# = 0:usize
+        loop index < self.entries.len() {
+            auto entry = self.entries.get(index).clone()
+            if entry.name.equals(name) {
+                return index as i64
+            }
+            index += 1
+        }
+        return -1:i64
+    }
+
+    fn register(self#, name: string, kind: MetricKind) -> Result<i32, string> {
+        if !is_valid_metric_name(name.as_view()) {
+            return Result<i32, string>::Err(string::from("invalid Prometheus metric name"))
+        }
+        if self.index_of(name.as_view()) >= 0:i64 {
+            return Result<i32, string>::Err(string::from("metric already registered"))
+        }
+        self.entries#.push(cede MetricEntry(name = name, kind = kind, value = 0:i64))
+        return Result<i32, string>::Ok(0:i32)
+    }
+
+    pub fn register_counter(self#, name: string) -> Result<i32, string> {
+        return self#.register(name, METRIC_COUNTER)
+    }
+
+    pub fn register_gauge(self#, name: string) -> Result<i32, string> {
+        return self#.register(name, METRIC_GAUGE)
+    }
+
+    pub fn inc_counter(self#, name: str, delta: i64) -> Result<i32, string> {
+        if delta < 0:i64 {
+            return Result<i32, string>::Err(string::from("counter increment must be non-negative"))
+        }
+        auto index = self.index_of(name)
+        if index < 0:i64 {
+            return Result<i32, string>::Err(string::from("unknown metric"))
+        }
+        auto entry# = self.entries#.remove(index as usize).unwrap()
+        if entry.kind != METRIC_COUNTER {
+            self.entries#.insert(index as usize, cede entry)
+            return Result<i32, string>::Err(string::from("metric is not a counter"))
+        }
+        entry.value += delta
+        self.entries#.insert(index as usize, cede entry)
+        return Result<i32, string>::Ok(0:i32)
+    }
+
+    pub fn set_gauge(self#, name: str, value: i64) -> Result<i32, string> {
+        auto index = self.index_of(name)
+        if index < 0:i64 {
+            return Result<i32, string>::Err(string::from("unknown metric"))
+        }
+        auto entry# = self.entries#.remove(index as usize).unwrap()
+        if entry.kind != METRIC_GAUGE {
+            self.entries#.insert(index as usize, cede entry)
+            return Result<i32, string>::Err(string::from("metric is not a gauge"))
+        }
+        entry.value = value
+        self.entries#.insert(index as usize, cede entry)
+        return Result<i32, string>::Ok(0:i32)
+    }
+
+    pub fn render(self) -> string {
+        auto out# = string::from("")
+        auto index# = 0:usize
+        loop index < self.entries.len() {
+            auto entry = self.entries.get(index).clone()
+            out#.push_str("# TYPE ")
+            out#.push_str(entry.name.as_str())
+            out#.push_str(" ")
+            if entry.kind == METRIC_COUNTER { out#.push_str("counter") }
+            else { out#.push_str("gauge") }
+            out#.push_str("\n")
+            out#.push_str(entry.name.as_str())
+            out#.push_str(" ")
+            auto value_string = string::from_i64(entry.value)
+            out#.push_str(value_string.as_str())
+            out#.push_str("\n")
+            index += 1
+        }
+        return out
+    }
+}
