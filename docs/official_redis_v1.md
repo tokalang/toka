@@ -1,7 +1,7 @@
 # `official/redis` v1 — Bounded RESP2 Client RFC
 
-Status: **design frozen for the first implementation slice; no package has yet
-been released**.
+Status: **RESP2 codec slice implemented and deterministically qualified; async
+stream client remains unimplemented and unreleased**.
 
 ## 1. Role and placement
 
@@ -14,7 +14,7 @@ The package fills a real production gap: cache, session, rate-limit, and
 lightweight queue workloads. It is deliberately a Redis protocol client, not a
 cache framework or distributed-systems abstraction.
 
-## 2. v1 public surface
+## 2. v1 target public surface
 
 ```toka
 import official/redis::{RedisClient, RedisCommand, RedisValue}
@@ -25,7 +25,7 @@ auto reply = client#.execute_async(
 ).await!
 ```
 
-The first slice provides:
+The complete v1 package is intended to provide:
 
 - `RedisClient::connect_async`, `close`, and one serial `execute_async` path;
 - `RedisCommand::new`, `arg_text`, and `arg_bytes`; binary arguments are owned
@@ -35,6 +35,11 @@ The first slice provides:
   wrappers over `execute_async`;
 - `RedisError` carrying an error class, byte position where relevant, and an
   owned message.
+
+The implemented codec slice exports `RedisCommand`, `RedisArgument`,
+`RedisValue`, `RedisDecode`, `RedisError`, and `decode_one`. It has no socket
+or task dependency: callers retain an owned receive buffer and retry
+`decode_one` after appending more bytes when it returns `NeedMore`.
 
 `RedisValue::Error` represents a valid Redis `-ERR` reply. Transport failures,
 limits, malformed frames, timeout, and cancellation are `RedisError` results.
@@ -76,9 +81,9 @@ from a requested TLS connection.
 3. **Qualification** — deterministic mock-server tests for fragmented frames,
    binary bulk payloads, nested arrays, malformed lengths, EOF, timeout, and
    cancellation; add real Redis integration only as an optional gate.
-4. **Package release** — add `package.tk`, `AI_CONTRACT`, import smoke,
-   lock/offline evidence, and a scope-aligned README after the executable
-   slices are green.
+4. **Package release** — extend the existing `package.tk`, `AI_CONTRACT`,
+   import smoke, lock/offline evidence, and scope-aligned README once the
+   stream slice is green.
 
 ## 6. Canonical fixture corpus
 

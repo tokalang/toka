@@ -1,0 +1,22 @@
+// Static manifest for the official/redis package.
+pub const PACKAGE = (
+    name = "redis",
+    identity = "official/redis",
+    version = "0.1.0",
+    kind = "library",
+    license = "Apache-2.0",
+    compiler = "0.9.9-01",
+    entry_modules = ("lib/official/redis.tk"),
+    targets = ("macos", "linux"),
+    dependencies = (),
+    native = (required = false, libraries = ())
+)
+
+pub const AI_CONTRACT = (
+    schema = "toka-official-package-v1",
+    summary = "Bounded, binary-safe RESP2 command codec for Redis clients.",
+    capabilities = ("encode RESP2 commands", "incrementally decode RESP2 values", "preserve binary bulk strings"),
+    non_goals = ("network client", "RESP3", "pipelining", "cluster", "connection pool"),
+    safety = ("decoder has explicit byte, nesting, and aggregate limits; incomplete frames never consume input"),
+    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/codec_v1.tk -o /tmp/redis_codec_v1 && /tmp/redis_codec_v1")
+)

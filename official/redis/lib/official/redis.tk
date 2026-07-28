@@ -1,0 +1,398 @@
+// Public entry module for official/redis.
+//
+// This first slice is deliberately transport-free. It freezes the RESP2 wire
+// contract before a client owns sockets, timeouts, cancellation, or reconnect
+// policy.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+
+const MAX_LINE_BYTES: usize = 65536:usize
+const MAX_BULK_BYTES: usize = 67108864:usize
+const MAX_AGGREGATE_DEPTH: usize = 64:usize
+const MAX_AGGREGATE_ITEMS: usize = 1000000:usize
+
+pub shape RedisError (
+    kind: string,
+    position: usize,
+    message: string
+)
+
+pub shape RedisValue (
+    SimpleString(string) = 0 |
+    Error(string) = 1 |
+    Integer(i64) = 2 |
+    Bulk(Bytes) = 3 |
+    Array(Vec<RedisValue>) = 4 |
+    Null() = 5
+)
+
+pub shape RedisReply (
+    value: RedisValue,
+    consumed: usize
+)
+
+pub shape RedisDecode (
+    NeedMore() = 0 |
+    Complete(RedisReply) = 1
+)
+
+pub shape RedisArgument (
+    Text(string) = 0 |
+    Binary(Bytes) = 1
+)
+
+pub shape RedisCommand (
+    name: string,
+    args#: Vec<RedisArgument>
+)
+
+fn protocol_error(position: usize, message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("protocol"),
+        position = position,
+        message = string::from(message)
+    )
+}
+
+fn limit_error(position: usize, message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("limit"),
+        position = position,
+        message = string::from(message)
+    )
+}
+
+fn append_text(out#: Vec<u8>, input: str) {
+    auto index#: usize = 0
+    loop index < input.len() {
+        out#.push(input.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+}
+
+fn append_decimal(out#: Vec<u8>, value: i64) {
+    auto rendered = string::from_i64(value)
+    append_text(out, rendered.as_str())
+}
+
+fn append_bulk_header(out#: Vec<u8>, length: usize) {
+    out#.push('$' as u8)
+    append_decimal(out, length as i64)
+    out#.push('\r' as u8)
+    out#.push('\n' as u8)
+}
+
+fn append_text_bulk(out#: Vec<u8>, value: str) {
+    append_bulk_header(out, value.len())
+    append_text(out, value)
+    out#.push('\r' as u8)
+    out#.push('\n' as u8)
+}
+
+fn append_binary_bulk(out#: Vec<u8>, value: Bytes) {
+    append_bulk_header(out, value.len())
+    auto view = value.as_slice()
+    auto index#: usize = 0
+    loop index < view.len() {
+        out#.push(view.at(index).unwrap() as u8)
+        index = index + 1:usize
+    }
+    out#.push('\r' as u8)
+    out#.push('\n' as u8)
+}
+
+fn find_crlf(buffer: Vec<u8>, start: usize) -> i64 {
+    if start > buffer.len() { return -1:i64 }
+    auto cursor# = start
+    loop cursor + 1:usize < buffer.len() {
+        if buffer.get(cursor) == '\r' as u8 && buffer.get(cursor + 1:usize) == '\n' as u8 {
+            return cursor as i64
+        }
+        if cursor - start >= MAX_LINE_BYTES { return -2:i64 }
+        cursor = cursor + 1:usize
+    }
+    if buffer.len() - start > MAX_LINE_BYTES { return -2:i64 }
+    return -1:i64
+}
+
+fn parse_i64(buffer: Vec<u8>, start: usize, end: usize) -> Result<i64, RedisError> {
+    if start == end {
+        return Result<i64, RedisError>::Err(protocol_error(start, "missing RESP integer"))
+    }
+    auto cursor# = start
+    auto negative# = false
+    if buffer.get(cursor) == '-' as u8 {
+        negative = true
+        cursor = cursor + 1:usize
+        if cursor == end {
+            return Result<i64, RedisError>::Err(protocol_error(start, "missing digits after '-'"))
+        }
+    }
+
+    auto magnitude#: i64 = 0:i64
+    loop cursor < end {
+        auto byte = buffer.get(cursor)
+        if byte < '0' as u8 || byte > '9' as u8 {
+            return Result<i64, RedisError>::Err(protocol_error(cursor, "invalid RESP integer digit"))
+        }
+        auto digit = (byte - '0' as u8) as i64
+        if magnitude > 922337203685477580:i64 ||
+           (magnitude == 922337203685477580:i64 && digit > 7:i64) {
+            if negative && magnitude == 922337203685477580:i64 && digit == 8:i64 {
+                cursor = cursor + 1:usize
+                if cursor == end { return Result<i64, RedisError>::Ok(-9223372036854775807:i64 - 1:i64) }
+            }
+            return Result<i64, RedisError>::Err(protocol_error(cursor, "RESP integer out of i64 range"))
+        }
+        magnitude = magnitude * 10:i64 + digit
+        cursor = cursor + 1:usize
+    }
+    if negative { return Result<i64, RedisError>::Ok(-magnitude) }
+    return Result<i64, RedisError>::Ok(magnitude)
+}
+
+fn text_from_range(buffer: Vec<u8>, start: usize, end: usize) -> string {
+    auto value# = string::from("")
+    auto cursor# = start
+    loop cursor < end {
+        value#.push_byte_raw(buffer.get(cursor))
+        cursor = cursor + 1:usize
+    }
+    return value
+}
+
+fn bytes_from_range(buffer: Vec<u8>, start: usize, end: usize) -> Bytes {
+    auto value# = Vec<u8>::with_capacity(end - start)
+    auto cursor# = start
+    loop cursor < end {
+        value#.push(buffer.get(cursor))
+        cursor = cursor + 1:usize
+    }
+    return Bytes::from_vec(cede value)
+}
+
+fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode, RedisError> {
+    if start >= buffer.len() { return Result<RedisDecode, RedisError>::Ok(RedisDecode::NeedMore()) }
+    if depth >= MAX_AGGREGATE_DEPTH {
+        return Result<RedisDecode, RedisError>::Err(limit_error(start, "RESP aggregate nesting limit exceeded"))
+    }
+
+    auto prefix = buffer.get(start)
+    if prefix != '+' as u8 && prefix != '-' as u8 && prefix != ':' as u8 &&
+       prefix != '$' as u8 && prefix != '*' as u8 {
+        return Result<RedisDecode, RedisError>::Err(protocol_error(start, "unknown RESP2 frame prefix"))
+    }
+
+    auto line_end = find_crlf(buffer, start + 1:usize)
+    if line_end == -2:i64 {
+        return Result<RedisDecode, RedisError>::Err(limit_error(start, "RESP line exceeds limit"))
+    }
+    if line_end < 0:i64 { return Result<RedisDecode, RedisError>::Ok(RedisDecode::NeedMore()) }
+    auto end = line_end as usize
+    auto after_line = end + 2:usize
+
+    if prefix == '+' as u8 {
+        return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+            value = RedisValue::SimpleString(text_from_range(buffer, start + 1:usize, end)),
+            consumed = after_line
+        )))
+    }
+    if prefix == '-' as u8 {
+        return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+            value = RedisValue::Error(text_from_range(buffer, start + 1:usize, end)),
+            consumed = after_line
+        )))
+    }
+
+    auto parsed_count = parse_i64(buffer, start + 1:usize, end)
+    if parsed_count.is_err() { return Result<RedisDecode, RedisError>::Err(parsed_count.unwrap_err()) }
+    auto count = parsed_count.unwrap()
+
+    if prefix == ':' as u8 {
+        return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+            value = RedisValue::Integer(count),
+            consumed = after_line
+        )))
+    }
+    if prefix == '$' as u8 {
+        if count == -1:i64 {
+            return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+                value = RedisValue::Null(),
+                consumed = after_line
+            )))
+        }
+        if count < 0:i64 {
+            return Result<RedisDecode, RedisError>::Err(protocol_error(start, "invalid negative RESP bulk length"))
+        }
+        if count as usize > MAX_BULK_BYTES {
+            return Result<RedisDecode, RedisError>::Err(limit_error(start, "RESP bulk length exceeds limit"))
+        }
+        auto bulk_length = count as usize
+        if bulk_length > buffer.len() - after_line { return Result<RedisDecode, RedisError>::Ok(RedisDecode::NeedMore()) }
+        auto data_end = after_line + bulk_length
+        if data_end + 2:usize > buffer.len() { return Result<RedisDecode, RedisError>::Ok(RedisDecode::NeedMore()) }
+        if buffer.get(data_end) != '\r' as u8 || buffer.get(data_end + 1:usize) != '\n' as u8 {
+            return Result<RedisDecode, RedisError>::Err(protocol_error(data_end, "RESP bulk payload is not terminated by CRLF"))
+        }
+        return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+            value = RedisValue::Bulk(bytes_from_range(buffer, after_line, data_end)),
+            consumed = data_end + 2:usize
+        )))
+    }
+
+    if count == -1:i64 {
+        return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+            value = RedisValue::Null(),
+            consumed = after_line
+        )))
+    }
+    if count < 0:i64 {
+        return Result<RedisDecode, RedisError>::Err(protocol_error(start, "invalid negative RESP array length"))
+    }
+    if count as usize > MAX_AGGREGATE_ITEMS {
+        return Result<RedisDecode, RedisError>::Err(limit_error(start, "RESP aggregate item count exceeds limit"))
+    }
+
+    auto values# = Vec<RedisValue>::with_capacity(count as usize)
+    auto cursor# = after_line
+    auto index#: usize = 0
+    loop index < count as usize {
+        auto nested = decode_at(buffer, cursor, depth + 1:usize)
+        if nested.is_err() { return Result<RedisDecode, RedisError>::Err(nested.unwrap_err()) }
+        match nested.unwrap() {
+            auto RedisDecode::NeedMore() => return Result<RedisDecode, RedisError>::Ok(RedisDecode::NeedMore())
+            auto RedisDecode::Complete(&reply) => {
+                cursor = cursor + reply.consumed
+                values#.push(cede reply.value.clone())
+            }
+        }
+        index = index + 1:usize
+    }
+    return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
+        value = RedisValue::Array(cede values),
+        consumed = cursor - start
+    )))
+}
+
+impl RedisArgument@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> RedisArgument {
+        match self {
+            auto RedisArgument::Text(&value) => return RedisArgument::Text(string::from(value.as_str()))
+            auto RedisArgument::Binary(&value) => return RedisArgument::Binary(value.clone())
+        }
+    }
+}
+
+impl RedisValue@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> RedisValue {
+        match self {
+            auto RedisValue::SimpleString(&value) => return RedisValue::SimpleString(string::from(value.as_str()))
+            auto RedisValue::Error(&value) => return RedisValue::Error(string::from(value.as_str()))
+            auto RedisValue::Integer(value) => return RedisValue::Integer(value)
+            auto RedisValue::Bulk(&value) => return RedisValue::Bulk(value.clone())
+            auto RedisValue::Array(&values) => {
+                auto copied# = Vec<RedisValue>::with_capacity(values.len())
+                auto index#: usize = 0
+                loop index < values.len() {
+                    copied#.push(cede values.get(index).clone())
+                    index = index + 1:usize
+                }
+                return RedisValue::Array(cede copied)
+            }
+            auto RedisValue::Null() => return RedisValue::Null()
+        }
+    }
+}
+
+impl RedisValue {
+    pub fn as_text(self) -> Option<string> {
+        match self {
+            auto RedisValue::SimpleString(&value) => return Option<string>::Some(string::from(value.as_str()))
+            auto RedisValue::Error(&value) => return Option<string>::Some(string::from(value.as_str()))
+            _ => return Option<string>::None()
+        }
+    }
+
+    pub fn as_integer(self) -> Option<i64> {
+        match self {
+            auto RedisValue::Integer(value) => return Option<i64>::Some(value)
+            _ => return Option<i64>::None()
+        }
+    }
+
+    pub fn bulk(self) -> Option<Bytes> {
+        match self {
+            auto RedisValue::Bulk(&value) => return Option<Bytes>::Some(value.clone())
+            _ => return Option<Bytes>::None()
+        }
+    }
+
+    pub fn array_len(self) -> Option<usize> {
+        match self {
+            auto RedisValue::Array(&values) => return Option<usize>::Some(values.len())
+            _ => return Option<usize>::None()
+        }
+    }
+
+    pub fn array_at(self, index: usize) -> Option<RedisValue> {
+        match self {
+            auto RedisValue::Array(&values) => {
+                if index < values.len() { return Option<RedisValue>::Some(values.get(index).clone()) }
+                return Option<RedisValue>::None()
+            }
+            _ => return Option<RedisValue>::None()
+        }
+    }
+}
+
+impl RedisCommand {
+    pub fn new(name: str) -> RedisCommand {
+        return RedisCommand(name = string::from(name), args = Vec<RedisArgument>::new())
+    }
+
+    pub fn arg_text(self#, value: str) {
+        self.args#.push(cede RedisArgument::Text(string::from(value)))
+    }
+
+    pub fn arg_bytes(self#, cede value: Bytes) {
+        self.args#.push(cede RedisArgument::Binary(cede value))
+    }
+
+    pub fn into_wire(self) -> Result<Vec<u8>, RedisError> {
+        if self.name.len() == 0:usize {
+            return Result<Vec<u8>, RedisError>::Err(protocol_error(0:usize, "Redis command name must not be empty"))
+        }
+        auto wire# = Vec<u8>::new()
+        wire#.push('*' as u8)
+        append_decimal(wire, (self.args.len() + 1:usize) as i64)
+        wire#.push('\r' as u8)
+        wire#.push('\n' as u8)
+        append_text_bulk(wire, self.name.as_str())
+
+        auto index#: usize = 0
+        loop index < self.args.len() {
+            auto argument = self.args.get(index).clone()
+            match argument {
+                auto RedisArgument::Text(&value) => append_text_bulk(wire, value.as_str())
+                auto RedisArgument::Binary(&value) => append_binary_bulk(wire, value)
+            }
+            index = index + 1:usize
+        }
+        return Result<Vec<u8>, RedisError>::Ok(wire)
+    }
+}
+
+pub fn decode_one(buffer: Vec<u8>) -> Result<RedisDecode, RedisError> {
+    return decode_at(buffer, 0:usize, 0:usize)
+}
+
+pub fn package_name() -> string {
+    return string::from("redis")
+}
