@@ -110,7 +110,7 @@ fn test_bulk_and_incremental_decode() {
 fn test_nested_and_errors() {
     match decode("*2\r\n:1\r\n*1\r\n+OK\r\n").unwrap() {
         auto RedisDecode::Complete(&reply) => {
-            assert(reply.consumed == 18:usize, "nested aggregate consumed count")
+            assert(reply.consumed == 17:usize, "nested aggregate consumed count")
             auto root = reply.value.clone()
             assert(root.array_len().unwrap() == 2:usize, "outer array length")
             assert(root.array_at(0:usize).unwrap().as_integer().unwrap() == 1:i64, "outer integer")

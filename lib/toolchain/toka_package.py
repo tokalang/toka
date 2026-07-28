@@ -726,10 +726,25 @@ def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
         root = package_root(entry, state)
         if tree_sha256(root) != entry.content_sha256:
             raise PackageError("package content verification failed: " + alias)
-        module = root / "lib" / alias / "mod.tk"
-        if not module.is_file():
-            raise PackageError("package module is missing: " + str(module))
-        mappings.append(alias + "=" + str(module))
+        legacy_module = root / "lib" / alias / "mod.tk"
+        if legacy_module.is_file():
+            mappings.append(alias + "=" + str(legacy_module))
+            continue
+
+        # Official packages use their published import identity as the entry
+        # path. Keep the existing lock alias for resolution, but map the
+        # compiler's exact `official/name` import to the declared convention.
+        official_module = root / "lib" / "official" / (alias + ".tk")
+        if official_module.is_file():
+            mappings.append("official/" + alias + "=" + str(official_module))
+            continue
+
+        raise PackageError(
+            "package module is missing: expected "
+            + str(legacy_module)
+            + " or "
+            + str(official_module)
+        )
     return mappings
 
 

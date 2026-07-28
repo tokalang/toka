@@ -233,13 +233,13 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
     if prefix == '+' as u8 {
         return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
             value = RedisValue::SimpleString(text_from_range(buffer, start + 1:usize, end)),
-            consumed = after_line
+            consumed = after_line - start
         )))
     }
     if prefix == '-' as u8 {
         return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
             value = RedisValue::Error(text_from_range(buffer, start + 1:usize, end)),
-            consumed = after_line
+            consumed = after_line - start
         )))
     }
 
@@ -250,14 +250,14 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
     if prefix == ':' as u8 {
         return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
             value = RedisValue::Integer(count),
-            consumed = after_line
+            consumed = after_line - start
         )))
     }
     if prefix == '$' as u8 {
         if count == -1:i64 {
             return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
                 value = RedisValue::Null(),
-                consumed = after_line
+                consumed = after_line - start
             )))
         }
         if count < 0:i64 {
@@ -275,14 +275,14 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
         }
         return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
             value = RedisValue::Bulk(bytes_from_range(buffer, after_line, data_end)),
-            consumed = data_end + 2:usize
+            consumed = data_end + 2:usize - start
         )))
     }
 
     if count == -1:i64 {
         return Result<RedisDecode, RedisError>::Ok(RedisDecode::Complete(RedisReply(
             value = RedisValue::Null(),
-            consumed = after_line
+            consumed = after_line - start
         )))
     }
     if count < 0:i64 {
@@ -298,11 +298,11 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
     loop index < count as usize {
         auto nested = decode_at(buffer, cursor, depth + 1:usize)
         if nested.is_err() { return Result<RedisDecode, RedisError>::Err(nested.unwrap_err()) }
-        match nested.unwrap() {
+        match cede nested.unwrap() {
             auto RedisDecode::NeedMore() => return Result<RedisDecode, RedisError>::Ok(RedisDecode::NeedMore())
-            auto RedisDecode::Complete(&reply) => {
-                cursor = cursor + reply.consumed
-                values#.push(cede reply.value.clone())
+            auto RedisDecode::Complete('reply) => {
+                cursor = cursor + 'reply.consumed
+                values#.push(cede 'reply.value)
             }
         }
         index = index + 1:usize
@@ -429,7 +429,7 @@ impl RedisCommand {
             }
             index = index + 1:usize
         }
-        return Result<Vec<u8>, RedisError>::Ok(wire)
+        return Result<Vec<u8>, RedisError>::Ok(cede wire)
     }
 }
 

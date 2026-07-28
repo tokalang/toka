@@ -52,6 +52,22 @@ def write_package(root: Path, name: str, dependencies: list[tuple[str, str]]) ->
     module.write_text("pub fn value() -> i32 { return 1 }\n", encoding="utf-8")
 
 
+def write_official_package(root: Path, name: str) -> None:
+    root.mkdir(parents=True)
+    (root / "package.tk").write_text(
+        "pub const PACKAGE = (\n"
+        f'    name = "{name}",\n'
+        f'    identity = "official/{name}",\n'
+        '    version = "1.0.0",\n'
+        "    dependencies = ()\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    module = root / "lib" / "official" / (name + ".tk")
+    module.parent.mkdir(parents=True)
+    module.write_text("pub fn value() -> i32 { return 1 }\n", encoding="utf-8")
+
+
 def make_archive(source: Path, archive: Path) -> None:
     with tarfile.open(archive, "w:gz") as output:
         for path in sorted(source.rglob("*")):
@@ -192,6 +208,18 @@ def test_path_graph(root: Path) -> None:
     malformed.write_text("broken\n", encoding="utf-8")
     expect_error(lambda: resolve(project), "malformed")
     malformed.write_bytes(previous)
+
+
+def test_official_mapping(root: Path) -> None:
+    workspace = root / "official-mapping"
+    project = workspace / "consumer"
+    dependency = workspace / "redis"
+    write_official_package(dependency, "redis")
+    write_package(project, "consumer", [("redis", '"../redis"')])
+    resolve(project)
+    mappings = compiler_mappings(project / "package.lock", project / ".toka")
+    expected = "official/redis=" + str((dependency / "lib" / "official" / "redis.tk").resolve())
+    assert mappings == [expected], mappings
 
 
 def test_cycles_and_conflicts(root: Path) -> None:
@@ -371,6 +399,7 @@ def main() -> int:
         test_hash_and_lock(root)
         test_safe_extract(root)
         test_path_graph(root)
+        test_official_mapping(root)
         test_cycles_and_conflicts(root)
         test_registry_and_rollback(root)
         test_git_and_remove(root)

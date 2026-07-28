@@ -1,7 +1,8 @@
 # `official/redis` v1 — Bounded RESP2 Client RFC
 
 Status: **RESP2 codec and one serial plaintext TCP client implemented and
-deterministically qualified; convenience APIs and package release remain open**.
+qualified through deterministic, locked, and offline local-consumer evidence;
+convenience APIs and a published package release remain open**.
 
 ## 1. Role and placement
 
@@ -83,11 +84,12 @@ from a requested TLS connection.
    incrementally decode one reply, and enforce close-on-poison semantics.
 3. **Qualification** — codec and deterministic TCP mock-server tests cover
    fragmented frames, binary bulk payloads, nested arrays, malformed lengths,
-   EOF, and timeout. A task cancellation probe and optional real Redis
-   integration remain future evidence, not release claims.
-4. **Package release** — extend the existing `package.tk`, `AI_CONTRACT`,
-   import smoke, lock/offline evidence, and scope-aligned README once the
-   stream slice is green.
+   EOF, timeout, and cancellation after a write. Optional real Redis
+   integration remains future evidence, not a release claim.
+4. **Package release** — the existing `package.tk`, `AI_CONTRACT`, public
+   import smoke, and lock/offline replay are locally qualified. A published
+   version, registry archive, and real-service compatibility gate remain
+   separate release decisions.
 
 ## 6. Canonical fixture corpus
 
