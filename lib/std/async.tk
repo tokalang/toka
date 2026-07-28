@@ -277,3 +277,10 @@ impl TaskScope {
         scope#.join_async().await
     }
 }
+
+// Consume a typed task into a scope without exposing its TCB or requiring the
+// caller to name its result type. Generic deduction recovers 'T from the
+// TaskHandle wrapper at this call boundary.
+pub fn spawn_into<'T>(scope#: TaskScope, cede task: TaskHandle<'T>) {
+    scope#.track_ref(cede task_ref_from_handle<'T>(cede task))
+}

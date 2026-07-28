@@ -1298,8 +1298,56 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
         }
 
-        if (!isGeneric)
+        if (!isGeneric) {
+          // A generic parameter may be carried by a single-parameter shape
+          // such as TaskHandle<'T>.  The ordinary direct-T deduction above
+          // deliberately stays simple, but this common wrapper form must not
+          // force callers to spell a redundant type argument just to hand a
+          // typed handle to a generic library function.
+          const size_t open = PType.find('<');
+          const size_t close = PType.rfind('>');
+          if (open != std::string::npos && close == PType.size() - 1 &&
+              PType.find(',', open) == std::string::npos) {
+            const std::string outer = PType.substr(0, open);
+            const std::string inner = PType.substr(open + 1, close - open - 1);
+            std::string matchedGeneric;
+            for (const auto &gp : Fn->GenericParams) {
+              if (inner == gp.Name ||
+                  (gp.IsMorphic && !gp.Name.empty() && gp.Name[0] == '\'' &&
+                   inner == gp.Name.substr(1))) {
+                matchedGeneric = gp.Name;
+                break;
+              }
+            }
+
+            if (!matchedGeneric.empty()) {
+              Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
+              auto argType = checkExpr(Call->Args[i].get());
+              precheckedArgTypes[i] = argType;
+              const std::string argName =
+                  argType ? Type::stripMorphology(argType->toString()) : "";
+              const std::string prefix = outer + "_M_";
+              if (argType && !argType->isUnknown() &&
+                  argName.rfind(prefix, 0) == 0) {
+                auto candidate = toka::Type::fromString(
+                    resolveType(argName.substr(prefix.size())));
+                candidate = candidate->withAttributes(
+                    false, candidate->IsNullable, candidate->IsBlocked);
+                if (Deduced.count(matchedGeneric)) {
+                  if (!Deduced[matchedGeneric]->equals(*candidate)) {
+                    error(Call, DiagID::ERR_SEMA_TYPE_DEDUCTION_CONFLICT_FOR_VS,
+                          matchedGeneric, Deduced[matchedGeneric]->toString(),
+                          candidate->toString());
+                    deductionFailed = true;
+                  }
+                } else {
+                  Deduced[matchedGeneric] = candidate;
+                }
+              }
+            }
+          }
           continue;
+        }
 
         if (auto *hole = dynamic_cast<HoleExpr *>(Call->Args[i].get())) {
           SemanticEvidence::recordHoleGoal(

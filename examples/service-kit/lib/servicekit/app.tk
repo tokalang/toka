@@ -4,7 +4,7 @@
 import core/option::{Option}
 import core/result::{Result}
 import official/sqlite::{Database, SqliteError, Step}
-import std/async::{TaskScope, task_ref_from_handle}
+import std/async::{TaskScope, spawn_into}
 import std/context::{Canceler}
 import std/net::{SocketAddrV4}
 import stdx/log/log::{LogLevel}
@@ -318,7 +318,7 @@ pub fn serve_until_canceled_async(cede config: ServiceConfig, cede listener: Tcp
         auto connection# = accepted.unwrap()
         auto worker_config = config.clone_for_worker()
         auto worker = serve_connection_async(cede worker_config, cede connection).start
-        scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+        spawn_into(scope, cede worker)
     }
     return Result<bool, string>::Err(string::from("unreachable service loop exit"))
 }

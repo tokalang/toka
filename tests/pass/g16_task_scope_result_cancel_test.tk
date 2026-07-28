@@ -1,5 +1,5 @@
 import core/result::{Result}
-import std/async::{TaskScope, task_ref_from_handle}
+import std/async::{TaskScope, spawn_into}
 import std/context::{background, with_cancel, Canceler}
 import std/net::{Ipv4Addr, SocketAddrV4, TcpListener}
 import std/task::{block_on, sleep_async}
@@ -12,7 +12,7 @@ fn slow_result_worker() -> async Result<i32, string> {
 fn run() -> async i32 {
     auto scope# = TaskScope::new()
     auto worker = slow_result_worker().start
-    scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+    spawn_into(scope, cede worker)
     auto drained = scope#.shutdown_async(0:i32).await
     assert(!drained, "canceling a Result-returning task must not cancel the TaskScope awaiter")
     return 0
@@ -21,7 +21,7 @@ fn run() -> async i32 {
 fn nested_shutdown_result() -> async Result<bool, string> {
     auto scope# = TaskScope::new()
     auto worker = slow_result_worker().start
-    scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+    spawn_into(scope, cede worker)
     auto drained = scope#.shutdown_async(0:i32).await
     return Result<bool, string>::Ok(drained)
 }
@@ -38,7 +38,7 @@ fn canceled_accept_shutdown(cede listener: TcpListener, cede canceler: Canceler)
     auto canceler# = cede canceler
     auto scope# = TaskScope::new()
     auto worker = slow_result_worker().start
-    scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+    spawn_into(scope, cede worker)
     auto accepted = listener#.accept_async_context(canceler).await
     if accepted.is_ok() {
         return Result<bool, string>::Err(string::from("unexpected test connection"))
