@@ -1,0 +1,459 @@
+// Public entry module for official/router.
+//
+// The router owns only deterministic method/path recognition. It deliberately
+// does not own HTTP connections, handler execution, middleware, or responses.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/vec::{Vec}
+import stdx/net/http::{HttpMethod}
+
+pub shape RouterError (
+    kind: string,
+    message: string
+)
+
+pub shape RouteParam (
+    name: string,
+    value: string
+)
+
+pub shape RouteMatch (
+    name: string,
+    params: Vec<RouteParam>
+)
+
+shape RouteSegment (
+    Literal(string) = 0 |
+    Parameter(string) = 1
+)
+
+shape Route (
+    method: HttpMethod,
+    name: string,
+    segments: Vec<RouteSegment>,
+    literal_count: usize
+)
+
+pub shape Router (
+    routes#: Vec<Route>
+)
+
+impl RouterError@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> RouterError {
+        return RouterError(
+            kind = string::from(self.kind.as_str()),
+            message = string::from(self.message.as_str())
+        )
+    }
+}
+
+impl RouteParam@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> RouteParam {
+        return RouteParam(
+            name = string::from(self.name.as_str()),
+            value = string::from(self.value.as_str())
+        )
+    }
+}
+
+impl RouteMatch@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> RouteMatch {
+        auto copied# = Vec<RouteParam>::with_capacity(self.params.len())
+        auto index#: usize = 0:usize
+        loop index < self.params.len() {
+            copied#.push(cede self.params.get(index).clone())
+            index = index + 1:usize
+        }
+        return RouteMatch(
+            name = string::from(self.name.as_str()),
+            params = cede copied
+        )
+    }
+}
+
+impl RouteSegment@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> RouteSegment {
+        match self {
+            auto RouteSegment::Literal(&value) => return RouteSegment::Literal(string::from(value.as_str()))
+            auto RouteSegment::Parameter(&value) => return RouteSegment::Parameter(string::from(value.as_str()))
+        }
+    }
+}
+
+impl Route@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> Route {
+        auto copied# = Vec<RouteSegment>::with_capacity(self.segments.len())
+        auto index#: usize = 0:usize
+        loop index < self.segments.len() {
+            copied#.push(cede self.segments.get(index).clone())
+            index = index + 1:usize
+        }
+        return Route(
+            method = self.method,
+            name = string::from(self.name.as_str()),
+            segments = cede copied,
+            literal_count = self.literal_count
+        )
+    }
+}
+
+impl Router@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) = delete
+}
+
+fn error(kind: str, message: str) -> RouterError {
+    return RouterError(kind = string::from(kind), message = string::from(message))
+}
+
+fn valid_parameter_name(value: str) -> bool {
+    if value.len() == 0:usize { return false }
+    auto first = value.byte_at(0:usize) as u8
+    if !((first >= 'a' as u8 && first <= 'z' as u8) ||
+         (first >= 'A' as u8 && first <= 'Z' as u8) ||
+         first == '_' as u8) {
+        return false
+    }
+    auto index#: usize = 1:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if !((byte >= 'a' as u8 && byte <= 'z' as u8) ||
+             (byte >= 'A' as u8 && byte <= 'Z' as u8) ||
+             (byte >= '0' as u8 && byte <= '9' as u8) ||
+             byte == '_' as u8) {
+            return false
+        }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn has_reserved_path_byte(value: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if byte == '?' as u8 || byte == '#' as u8 { return true }
+        index = index + 1:usize
+    }
+    return false
+}
+
+fn parse_pattern(pattern: str) -> Result<Vec<RouteSegment>, RouterError> {
+    if pattern.len() == 0:usize || pattern.byte_at(0:usize) as u8 != '/' as u8 {
+        return Result<Vec<RouteSegment>, RouterError>::Err(error("invalid_pattern", "route pattern must start with '/'"))
+    }
+    if has_reserved_path_byte(pattern) {
+        return Result<Vec<RouteSegment>, RouterError>::Err(error("invalid_pattern", "route pattern must not contain '?' or '#'"))
+    }
+
+    auto segments# = Vec<RouteSegment>::new()
+    if pattern.len() == 1:usize {
+        return Result<Vec<RouteSegment>, RouterError>::Ok(cede segments)
+    }
+
+    auto start#: usize = 1:usize
+    auto index#: usize = 1:usize
+    loop index < pattern.len() {
+        if pattern.byte_at(index) as u8 == '/' as u8 {
+            if index == start {
+                return Result<Vec<RouteSegment>, RouterError>::Err(error("invalid_pattern", "route pattern must not contain empty segments"))
+            }
+            auto raw = pattern.substr(start, index - start)
+            if raw.byte_at(0:usize) as u8 == ':' as u8 {
+                auto parameter = raw.substr(1:usize, raw.len() - 1:usize)
+                if !valid_parameter_name(parameter) {
+                    return Result<Vec<RouteSegment>, RouterError>::Err(error("invalid_parameter", "route parameter names must be ASCII identifiers"))
+                }
+                segments#.push(cede RouteSegment::Parameter(string::from(parameter)))
+            } else {
+                segments#.push(cede RouteSegment::Literal(string::from(raw)))
+            }
+            start = index + 1:usize
+        }
+        index = index + 1:usize
+    }
+
+    if start == pattern.len() {
+        return Result<Vec<RouteSegment>, RouterError>::Err(error("invalid_pattern", "route pattern must not end with '/'"))
+    }
+    auto raw = pattern.substr(start, pattern.len() - start)
+    if raw.byte_at(0:usize) as u8 == ':' as u8 {
+        auto parameter = raw.substr(1:usize, raw.len() - 1:usize)
+        if !valid_parameter_name(parameter) {
+            return Result<Vec<RouteSegment>, RouterError>::Err(error("invalid_parameter", "route parameter names must be ASCII identifiers"))
+        }
+        segments#.push(cede RouteSegment::Parameter(string::from(parameter)))
+    } else {
+        segments#.push(cede RouteSegment::Literal(string::from(raw)))
+    }
+    return Result<Vec<RouteSegment>, RouterError>::Ok(cede segments)
+}
+
+fn target_segments(target: str) -> Option<Vec<string>> {
+    if target.len() == 0:usize || target.byte_at(0:usize) as u8 != '/' as u8 {
+        return Option<Vec<string>>::None()
+    }
+
+    auto path_end# = target.len()
+    auto query_index#: usize = 0:usize
+    loop query_index < target.len() {
+        if target.byte_at(query_index) as u8 == '?' as u8 {
+            path_end = query_index
+            break
+        }
+        query_index = query_index + 1:usize
+    }
+
+    auto segments# = Vec<string>::new()
+    if path_end == 1:usize { return Option<Vec<string>>::Some(cede segments) }
+
+    auto start#: usize = 1:usize
+    auto index#: usize = 1:usize
+    loop index < path_end {
+        if target.byte_at(index) as u8 == '/' as u8 {
+            if index == start { return Option<Vec<string>>::None() }
+            segments#.push(cede string::from(target.substr(start, index - start)))
+            start = index + 1:usize
+        }
+        index = index + 1:usize
+    }
+    if start == path_end { return Option<Vec<string>>::None() }
+    segments#.push(cede string::from(target.substr(start, path_end - start)))
+    return Option<Vec<string>>::Some(cede segments)
+}
+
+fn literal_count(segments: Vec<RouteSegment>) -> usize {
+    auto count#: usize = 0:usize
+    auto index#: usize = 0:usize
+    loop index < segments.len() {
+        match segments.get(index).clone() {
+            auto RouteSegment::Literal(_) => count = count + 1:usize
+            _ => {}
+        }
+        index = index + 1:usize
+    }
+    return count
+}
+
+fn same_shape(left: Route, right: Route) -> bool {
+    if left.segments.len() != right.segments.len() { return false }
+    auto index#: usize = 0:usize
+    loop index < left.segments.len() {
+        match left.segments.get(index).clone() {
+            auto RouteSegment::Literal(&left_literal) => match right.segments.get(index).clone() {
+                auto RouteSegment::Literal(&right_literal) => {
+                    if !left_literal.as_str().equals(right_literal.as_str()) { return false }
+                }
+                _ => return false
+            }
+            auto RouteSegment::Parameter(_) => match right.segments.get(index).clone() {
+                auto RouteSegment::Parameter(_) => {}
+                _ => return false
+            }
+        }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn shapes_overlap(left: Route, right: Route) -> bool {
+    if left.segments.len() != right.segments.len() { return false }
+    auto index#: usize = 0:usize
+    loop index < left.segments.len() {
+        match left.segments.get(index).clone() {
+            auto RouteSegment::Literal(&left_literal) => match right.segments.get(index).clone() {
+                auto RouteSegment::Literal(&right_literal) => {
+                    if !left_literal.as_str().equals(right_literal.as_str()) { return false }
+                }
+                _ => {}
+            }
+            _ => {}
+        }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn route_matches(route: Route, target: Vec<string>) -> bool {
+    if route.segments.len() != target.len() { return false }
+    auto index#: usize = 0:usize
+    loop index < route.segments.len() {
+        match route.segments.get(index).clone() {
+            auto RouteSegment::Literal(&literal) => {
+                if !literal.as_str().equals(target.get(index).as_str()) { return false }
+            }
+            _ => {}
+        }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn route_match(route: Route, target: Vec<string>) -> RouteMatch {
+    auto params# = Vec<RouteParam>::new()
+    auto index#: usize = 0:usize
+    loop index < route.segments.len() {
+        match route.segments.get(index).clone() {
+            auto RouteSegment::Parameter(&name) => {
+                params#.push(cede RouteParam(
+                    name = string::from(name.as_str()),
+                    value = string::from(target.get(index).as_str())
+                ))
+            }
+            _ => {}
+        }
+        index = index + 1:usize
+    }
+    return RouteMatch(name = string::from(route.name.as_str()), params = cede params)
+}
+
+impl RouterError {
+    pub fn kind(self) -> string { return string::from(self.kind.as_str()) }
+    pub fn message(self) -> string { return string::from(self.message.as_str()) }
+}
+
+impl RouteMatch {
+    pub fn route_name(self) -> string { return string::from(self.name.as_str()) }
+
+    pub fn param(self, name: str) -> Option<string> {
+        auto index#: usize = 0:usize
+        loop index < self.params.len() {
+            auto parameter = self.params.get(index).clone()
+            if parameter.name.as_str().equals(name) {
+                return Option<string>::Some(string::from(parameter.value.as_str()))
+            }
+            index = index + 1:usize
+        }
+        return Option<string>::None()
+    }
+}
+
+impl Router {
+    pub fn new() -> Router {
+        return Router(routes = Vec<Route>::new())
+    }
+
+    pub fn add(self#, method: HttpMethod, pattern: str, name: str) -> Result<(), RouterError> {
+        if method == HttpMethod::UNKNOWN {
+            return Result<(), RouterError>::Err(error("invalid_method", "route method must be a known HTTP method"))
+        }
+        if name.len() == 0:usize {
+            return Result<(), RouterError>::Err(error("invalid_name", "route name must not be empty"))
+        }
+
+        auto parsed = parse_pattern(pattern)
+        if parsed.is_err() { return Result<(), RouterError>::Err(parsed.unwrap_err()) }
+        auto segments = parsed.unwrap()
+        auto parameter_index#: usize = 0:usize
+        loop parameter_index < segments.len() {
+            match segments.get(parameter_index).clone() {
+                auto RouteSegment::Parameter(&parameter) => {
+                    auto previous# = 0:usize
+                    loop previous < parameter_index {
+                        match segments.get(previous).clone() {
+                            auto RouteSegment::Parameter(&earlier) => {
+                                if earlier.as_str().equals(parameter.as_str()) {
+                                    return Result<(), RouterError>::Err(error("duplicate_parameter", "route parameter names must be unique"))
+                                }
+                            }
+                            _ => {}
+                        }
+                        previous = previous + 1:usize
+                    }
+                }
+                _ => {}
+            }
+            parameter_index = parameter_index + 1:usize
+        }
+
+        auto candidate = Route(
+            method = method,
+            name = string::from(name),
+            segments = cede segments,
+            literal_count = 0:usize
+        )
+        candidate.literal_count = literal_count(candidate.segments)
+
+        auto index#: usize = 0:usize
+        loop index < self.routes.len() {
+            auto existing = self.routes.get(index).clone()
+            if existing.method == candidate.method {
+                if same_shape(existing, candidate) {
+                    return Result<(), RouterError>::Err(error("duplicate_route", "route method and shape are already registered"))
+                }
+                if existing.literal_count == candidate.literal_count && shapes_overlap(existing, candidate) {
+                    return Result<(), RouterError>::Err(error("ambiguous_route", "overlapping routes must differ in literal specificity"))
+                }
+            }
+            index = index + 1:usize
+        }
+
+        self.routes#.push(cede candidate)
+        return Result<(), RouterError>::Ok(())
+    }
+
+    // Query text is excluded from route selection. Percent decoding and slash
+    // normalization are deliberately left to application-specific policy.
+    pub fn recognize(self, method: HttpMethod, target: str) -> Option<RouteMatch> {
+        auto parsed = target_segments(target)
+        if parsed.is_none() { return Option<RouteMatch>::None() }
+        auto segments = parsed.unwrap()
+        auto found# = false
+        auto best_index#: usize = 0:usize
+        auto best_literal_count#: usize = 0:usize
+        auto index#: usize = 0:usize
+        loop index < self.routes.len() {
+            auto route = self.routes.get(index).clone()
+            if route.method == method && route_matches(route, segments) {
+                if !found || route.literal_count > best_literal_count {
+                    found = true
+                    best_index = index
+                    best_literal_count = route.literal_count
+                }
+            }
+            index = index + 1:usize
+        }
+        if !found { return Option<RouteMatch>::None() }
+        return Option<RouteMatch>::Some(route_match(self.routes.get(best_index).clone(), segments))
+    }
+
+    // The result is insertion-ordered and contains each method at most once.
+    // A caller uses an empty result for 404 and a non-empty result for 405.
+    pub fn allowed_methods(self, target: str) -> Vec<HttpMethod> {
+        auto methods# = Vec<HttpMethod>::new()
+        auto parsed = target_segments(target)
+        if parsed.is_none() { return cede methods }
+        auto segments = parsed.unwrap()
+        auto index#: usize = 0:usize
+        loop index < self.routes.len() {
+            auto route = self.routes.get(index).clone()
+            if route_matches(route, segments) {
+                auto duplicate# = false
+                auto seen#: usize = 0:usize
+                loop seen < methods.len() {
+                    if methods.get(seen) == route.method { duplicate = true }
+                    seen = seen + 1:usize
+                }
+                if !duplicate { methods#.push(route.method) }
+            }
+            index = index + 1:usize
+        }
+        return cede methods
+    }
+}
+
+pub fn package_name() -> string {
+    return string::from("router")
+}
