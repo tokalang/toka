@@ -69,6 +69,23 @@ index contract -> query references -> edit -> check --json -> project tests
 The final project-test command remains project-defined; the compiler never
 pretends that a source-only check proves runtime behavior.
 
+## Ephemeral semantic diff
+
+Before applying an AI-proposed edit, compare the original and candidate root
+sources without writing either one:
+
+```sh
+toka preview --base /work/base/main.tk --candidate /work/candidate/main.tk
+```
+
+The [Ephemeral Semantic Diff Preview v1](semantic_diff_preview_v1.md) joins
+the independently versioned diagnostic, semantic-index, and Public Semantic
+Evidence protocols into one deterministic preview. It reports public API and
+H/P contract deltas, root diagnostics, raw/unsafe contract surface, and the
+compiler decisions introduced or removed by the candidate. It is explicitly
+read-only and short-lived; persistent overlays and incomplete-edit support are
+later phases rather than hidden behavior in this command.
+
 For a failed ownership, borrowing, transfer, dependency, or execution-boundary
 check, ask the compiler for the corresponding decision facts:
 

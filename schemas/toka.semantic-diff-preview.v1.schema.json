@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.semantic-diff-preview.v1.schema.json",
+  "title": "Toka Ephemeral Semantic Diff Preview v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "version", "inputs", "analyses", "diagnostics", "public_api",
+    "capabilities", "unsafe_surface", "evidence", "summary"
+  ],
+  "properties": {
+    "schema": { "const": "toka.semantic-diff-preview" },
+    "version": { "const": 1 },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "candidate"],
+      "properties": {
+        "base": { "$ref": "#/$defs/input" },
+        "candidate": { "$ref": "#/$defs/input" }
+      }
+    },
+    "analyses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "candidate"],
+      "properties": {
+        "base": { "$ref": "#/$defs/analysis" },
+        "candidate": { "$ref": "#/$defs/analysis" }
+      }
+    },
+    "diagnostics": { "$ref": "#/$defs/list_diff" },
+    "public_api": { "$ref": "#/$defs/symbol_diff" },
+    "capabilities": { "$ref": "#/$defs/symbol_diff" },
+    "unsafe_surface": { "$ref": "#/$defs/list_diff" },
+    "evidence": { "$ref": "#/$defs/list_diff" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changed_records", "has_changes", "read_only"],
+      "properties": {
+        "changed_records": { "type": "integer", "minimum": 0 },
+        "has_changes": { "type": "boolean" },
+        "read_only": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "check_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "exit_code", "success"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "exit_code": { "type": "integer" },
+        "success": { "type": "boolean" }
+      }
+    },
+    "output_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "exit_code"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "exit_code": { "type": "integer" }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check", "evidence", "index"],
+      "properties": {
+        "check": { "$ref": "#/$defs/check_status" },
+        "evidence": { "$ref": "#/$defs/output_status" },
+        "index": { "$ref": "#/$defs/output_status" }
+      }
+    },
+    "list_diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "removed"],
+      "properties": {
+        "added": { "type": "array" },
+        "removed": { "type": "array" }
+      }
+    },
+    "symbol_diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "removed", "changed"],
+      "properties": {
+        "added": { "type": "array" },
+        "removed": { "type": "array" },
+        "changed": { "type": "array" }
+      }
+    }
+  }
+}

@@ -20,6 +20,7 @@ fn print_help() {
     println("  context      Emit bounded semantic context for an AI/editor query")
     println("  evidence     Emit public semantic evidence JSON for a compiler check")
     println("  index        Emit compiler-owned semantic index JSON for API tooling")
+    println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
     println("  test         Run all tests in the tests/ directory")
     println("  doc          Generate API documentation")
@@ -196,6 +197,24 @@ fn detect_tokac_path() -> string {
         }
     }
     return string::from("tokac")
+}
+
+fn detect_semantic_preview_path() -> string {
+    auto exe_path = env::get_arg(0)
+    if !exe_path.is_empty() {
+        auto exe_dir = get_dirname(exe_path)
+        auto build_dir = get_dirname(exe_dir)
+        auto source_root = get_dirname(build_dir)
+        auto source_script# = source_root.clone()
+        source_script#.push_str("/tools/scripts/semantic_diff_preview.py")
+        if exists(source_script.clone()) {
+            return source_script
+        }
+    }
+    auto lib_path = detect_default_lib_path()
+    auto installed_script# = lib_path.clone()
+    installed_script#.push_str("/toolchain/semantic_diff_preview.py")
+    return installed_script
 }
 
 fn print_manager_version() {
@@ -732,6 +751,23 @@ fn cmd_index(argc: i32, shift: i32) -> i32 {
     return command#.status()
 }
 
+fn cmd_preview(argc: i32, shift: i32) -> i32 {
+    if argc < 6 + shift {
+        println("Error: 'toka preview' requires --base <file> and --candidate <file>.")
+        return 1
+    }
+    auto command# = Command::new(string::from("python3"))
+    command#.arg(detect_semantic_preview_path())
+    command#.arg(string::from("--tokac"))
+    command#.arg(detect_tokac_path())
+    auto idx# = 2 + shift
+    loop idx < argc {
+        command#.arg(env::get_arg(idx))
+        idx += 1
+    }
+    return command#.status()
+}
+
 fn cmd_query(argc: i32, shift: i32) -> i32 {
     if argc < 4 + shift {
         println("Error: 'toka query' requires a query name and source file.")
@@ -1108,6 +1144,10 @@ fn main() -> i32 {
 
     if cmd.eq(string::from("index")) {
         return cmd_index(argc, shift)
+    }
+
+    if cmd.eq(string::from("preview")) {
+        return cmd_preview(argc, shift)
     }
 
     if cmd.eq(string::from("query")) {

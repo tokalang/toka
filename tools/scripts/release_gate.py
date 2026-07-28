@@ -271,6 +271,8 @@ def main():
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_semantic_index.py",
              "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_semantic_diff_preview.py",
+             "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_lsp_protocol.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_tooling_scale.py",
