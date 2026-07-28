@@ -5,7 +5,9 @@ the reserved `hole` token, distinct AST identity, fail-closed diagnostics, and
 the no-emission boundary. Phase 2 passes already-resolved contracts from local
 declarations, assignments, boolean conditions, normal calls, and explicit
 generic calls. Phase 3 exposes those requirements through the independent
-`hole-goals` JSON protocol. Conditional symbol facts remain a subsequent phase.
+`hole-goals` JSON protocol. Phase 4 verifies that semantic rejection prevents
+object/interface output and rejects transfer requirements. Conditional symbol
+facts remain a subsequent phase.
 
 ## Decision
 

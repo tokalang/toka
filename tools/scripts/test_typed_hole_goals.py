@@ -124,6 +124,12 @@ def main():
             unsupported["contract"] is None,
             "cede hole is not unsupported")
 
+    _, cede_parameter = compile_goals(
+        tokac, SOURCE_DIR / "cede_parameter_unsupported.tk")
+    require(cede_parameter["status"] == "unsupported" and
+            cede_parameter["contract"] is None,
+            "cede parameter hole was not rejected as an unsupported transfer")
+
     wrapper = run([toka, "hole-goals", "--json", "--check-only",
                    SOURCE_DIR / "explicit_contract.tk"], 1)
     require(json.loads(wrapper.stdout) == json.loads(first),

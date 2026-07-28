@@ -1070,7 +1070,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   if (dynamic_cast<HoleExpr *>(E)) {
     auto *hole = static_cast<HoleExpr *>(E);
     if (m_ExpectedType && !m_ExpectedType->isUnknown() &&
-        !m_ExpectedType->IsCede) {
+        !m_ExpectedType->IsCede && !m_ExpectedCedeTransfer) {
       auto expected = resolveType(m_ExpectedType, true);
       auto soul = expected ? expected->getSoulType() : nullptr;
       std::string morphology = "value";
@@ -1105,7 +1105,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       return m_ExpectedType;
     }
     const HoleGoalStatus status =
-        m_ExpectedType && m_ExpectedType->IsCede
+        m_ExpectedCedeTransfer || (m_ExpectedType && m_ExpectedType->IsCede)
             ? HoleGoalStatus::Unsupported
             : HoleGoalStatus::Underconstrained;
     SemanticEvidence::recordHoleGoal(hole->HoleId, status, false, "", "",

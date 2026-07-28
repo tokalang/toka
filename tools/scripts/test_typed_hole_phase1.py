@@ -23,6 +23,7 @@ CASES = {
     "call_contract.tk": "E04603",
     "explicit_generic_contract.tk": "E04603",
     "generic_inference_underconstrained.tk": "E04604",
+    "cede_parameter_unsupported.tk": "E04605",
 }
 RESERVED_IDENTIFIER = "reserved_identifier.tk"
 
@@ -69,9 +70,14 @@ def main():
             "the reserved hole keyword was accepted as an identifier")
 
     with tempfile.TemporaryDirectory(prefix="toka-hole-boundary-") as temp:
-        output = Path(temp) / "must-not-exist"
+        temp_dir = Path(temp)
+        output = temp_dir / "must-not-exist"
         run([tokac, source_dir / "explicit_contract.tk", "-o", output], 1)
-        require(not output.exists(), "a program containing hole emitted an executable")
+        require(not any(temp_dir.iterdir()),
+                "a program containing hole emitted an executable or interface")
+        run([tokac, source_dir / "explicit_contract.tk", "-c", "-o", output], 1)
+        require(not any(temp_dir.iterdir()),
+                "a program containing hole emitted an object, interface, or cache artifact")
 
     print("Typed Hole v1 phase 1 boundary gate passed")
 

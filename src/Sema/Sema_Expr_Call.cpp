@@ -1902,6 +1902,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
 
     auto paramType = (i < ParamTypes.size()) ? ParamTypes[i] : nullptr;
+    const bool expectedCedeTransfer =
+        (Fn && i < Fn->Args.size() && Fn->Args[i].IsCeded) ||
+        (Ext && i < Ext->Args.size() && Ext->Args[i].IsCeded);
 
     // [NEW] Top-Down Closure Type Injection
     if (paramType) {
@@ -1917,9 +1920,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
        }
     }
 
+    const bool oldExpectedCedeTransfer = m_ExpectedCedeTransfer;
+    m_ExpectedCedeTransfer = expectedCedeTransfer;
     auto argType = i < precheckedArgTypes.size() && precheckedArgTypes[i]
                        ? precheckedArgTypes[i]
                        : checkExpr(Call->Args[i].get(), paramType);
+    m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
     projectOwnedStringView(Call->Args[i], argType, paramType);
 
     if (isExecutionBoundaryCalleeName(OriginalName)) {

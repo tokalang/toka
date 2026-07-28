@@ -404,6 +404,7 @@ private:
       m_LastLifeDependencies; // [NEW] Track shape dependencies
   std::map<std::string, std::set<std::string>> m_LastFieldDependencies; // [NEW] Track field specific dependencies
   std::shared_ptr<toka::Type> m_ExpectedType;
+  bool m_ExpectedCedeTransfer = false;
   bool m_CheckingNegativeIntegerLiteral = false;
   std::set<std::string> m_AccessedVariables; // [CLOSURE] Track accessed variables
   PALChecker PALCheckerState; // [NEW] Path-Anchored Borrow Checker
