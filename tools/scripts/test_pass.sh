@@ -586,6 +586,13 @@ if ! run_without_test_cache python3 tools/scripts/test_cede_obligation_evidence.
 fi
 
 echo ""
+echo "Running TaskHandle Lifecycle Contract v1 gate..."
+if ! run_without_test_cache python3 tools/scripts/test_taskhandle_lifecycle.py; then
+    echo -e "${RED}TaskHandle Lifecycle Contract v1 gate failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Ephemeral Semantic Diff Preview v1 ABI gate..."
 if ! run_without_test_cache python3 tools/scripts/test_semantic_diff_preview.py; then
     echo -e "${RED}Ephemeral Semantic Diff Preview v1 ABI gate failed!${NC}"

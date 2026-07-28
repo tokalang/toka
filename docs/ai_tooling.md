@@ -110,6 +110,12 @@ fulfilled or omitted, together with both the triggering location and contract
 location. It is deliberately narrower than Public Semantic Evidence: use it
 to make the smallest ownership repair, then re-check and test the candidate.
 
+For async ownership or cancellation edits, consult the machine-readable
+[TaskHandle Lifecycle Contract v1](taskhandle_lifecycle_v1.md) before changing
+`.start`, `.await`, cancellation, drop, or detach behavior. Its redline gate
+turns the lifecycle promises into executable checks rather than a prose-only
+runtime claim.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

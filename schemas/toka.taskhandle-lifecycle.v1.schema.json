@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.taskhandle-lifecycle.v1.schema.json",
+  "title": "Toka TaskHandle Lifecycle Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "operations", "result_states", "redline_tests"],
+  "properties": {
+    "schema": { "const": "toka.taskhandle-lifecycle" },
+    "version": { "const": 1 },
+    "operations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "result_states": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/result_state" }
+    },
+    "redline_tests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/redline_test" }
+    }
+  },
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "source_states", "target_states", "handle_obligation", "result_obligation", "guarantees"],
+      "properties": {
+        "name": { "enum": ["create", "activate", "await", "cancel", "drop", "detach"] },
+        "source_states": { "type": "array", "items": { "type": "string" } },
+        "target_states": { "type": "array", "items": { "type": "string" } },
+        "handle_obligation": { "type": "string" },
+        "result_obligation": { "type": "string" },
+        "guarantees": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "result_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "meaning", "successor_states"],
+      "properties": {
+        "name": { "enum": ["pending", "ready-live", "taken", "canceled"] },
+        "value": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "meaning": { "type": "string" },
+        "successor_states": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "redline_test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "proves"],
+      "properties": {
+        "path": { "type": "string" },
+        "proves": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

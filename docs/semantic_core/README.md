@@ -38,6 +38,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - [`../cede_obligation_evidence_v1.md`](../cede_obligation_evidence_v1.md)
   freezes the narrower, repair-oriented protocol for caller transfer, callee
   consumption, and `cede` return obligations.
+- [`../taskhandle_lifecycle_v1.md`](../taskhandle_lifecycle_v1.md) freezes the
+  versioned TaskHandle operation, resource, result-consumption, and redline
+  test contract used by async repair tooling.
 - `phase3b_decision_evidence.md` records the implementation history, causal
   diagnostics, and source/interface equivalence checks that underpin it.
 - `phase4a_trusted_memory_evidence.md` freezes the cross-module evidence trust

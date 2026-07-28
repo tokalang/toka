@@ -1,0 +1,86 @@
+{
+  "schema": "toka.taskhandle-lifecycle",
+  "version": 1,
+  "operations": [
+    {
+      "name": "create",
+      "source_states": ["none"],
+      "target_states": ["created"],
+      "handle_obligation": "The caller owns the move-only TaskHandle until it is awaited, detached, or dropped.",
+      "result_obligation": "The promise result is pending and has no readable payload.",
+      "guarantees": ["Async function creation does not execute its body."]
+    },
+    {
+      "name": "activate",
+      "source_states": ["created"],
+      "target_states": ["queued", "running"],
+      "handle_obligation": "start, await, and wait may activate a created handle; repeated start does not create a second execution.",
+      "result_obligation": "The result remains pending until terminal completion.",
+      "guarantees": ["start queues work and never inlines the task body on the caller stack."]
+    },
+    {
+      "name": "await",
+      "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
+      "target_states": ["completed", "completed-canceled"],
+      "handle_obligation": "The awaiter is resumed exactly once after the child becomes terminal.",
+      "result_obligation": "A normal ready-live result is consumed once; a canceled result propagates cancellation and does not fabricate a payload.",
+      "guarantees": ["Completion before continuation registration remains linearized."]
+    },
+    {
+      "name": "cancel",
+      "source_states": ["created", "queued", "running", "preparing", "suspended"],
+      "target_states": ["queued", "completed-canceled"],
+      "handle_obligation": "Cancellation marks the task and wakes or queues a suspended task so that cleanup can run.",
+      "result_obligation": "A canceled completion publishes canceled, never a readable result payload.",
+      "guarantees": ["Cancellation is inherited by an awaited child and cancels active wait registrations."]
+    },
+    {
+      "name": "drop",
+      "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
+      "target_states": ["released", "detached"],
+      "handle_obligation": "Dropping a created handle reclaims its frame; dropping an activated handle transfers runtime ownership through detach.",
+      "result_obligation": "An unstarted frame drops frame-owned cede parameters without running the body.",
+      "guarantees": ["Owner release is linearized exactly once."]
+    },
+    {
+      "name": "detach",
+      "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
+      "target_states": ["detached", "released"],
+      "handle_obligation": "The runtime owns an activated detached task until it reaches a terminal state.",
+      "result_obligation": "A detached task result is not exposed to the caller; an untaken live result is reclaimed with its frame.",
+      "guarantees": ["block_on drains runtime-owned detached work before executor shutdown."]
+    }
+  ],
+  "result_states": [
+    {"name": "pending", "value": 0, "meaning": "No terminal result is published.", "successor_states": ["ready-live", "canceled"]},
+    {"name": "ready-live", "value": 1, "meaning": "A normal result payload is available for exactly one take.", "successor_states": ["taken"]},
+    {"name": "taken", "value": 2, "meaning": "The normal payload was consumed and cannot be taken again.", "successor_states": []},
+    {"name": "canceled", "value": 3, "meaning": "Cancellation completed without publishing a result payload.", "successor_states": []}
+  ],
+  "redline_tests": [
+    {
+      "path": "tests/pass/g09_async_cold_task_semantics.tk",
+      "proves": ["create is cold", "start is queued and idempotent", "activation executes once"]
+    },
+    {
+      "path": "tests/pass/g09_async_created_drop_reclaim_test.tk",
+      "proves": ["created drop does not execute the body", "frame-owned cede parameter is reclaimed exactly once"]
+    },
+    {
+      "path": "tests/pass/g09_async_detached_drain_test.tk",
+      "proves": ["runtime-owned detached work drains before block_on returns"]
+    },
+    {
+      "path": "tests/pass/g09_async_detached_lifecycle.tk",
+      "proves": ["detached frame local is dropped exactly once"]
+    },
+    {
+      "path": "tests/pass/g11_async_cancel_join_test.tk",
+      "proves": ["cancellation is observable", "completion subscription is safe"]
+    },
+    {
+      "path": "tests/pass/g11_async_p5_redline_test.tk",
+      "proves": ["race loser cleanup", "TaskScope retained lifetime", "canceled await has no fabricated payload"]
+    }
+  ]
+}
