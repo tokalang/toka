@@ -1,4 +1,4 @@
-import official/encoding::{base64_decode, base64_encode, hex_decode, hex_encode, package_name}
+import official/encoding::{base64_decode, base64_encode, hex_decode, hex_encode, package_name, percent_decode, percent_encode}
 import std/bytes::{Bytes}
 import std/vec::{Vec}
 
@@ -59,11 +59,38 @@ fn test_base64_decode_errors() {
     assert(base64_decode("Zg==Zg==").is_err(), "Base64 padding must appear only in the final quartet")
 }
 
+fn test_percent_codec() {
+    auto encoded = percent_encode("A z+/~".as_bytes())
+    assert(encoded.equals("A%20z%2B%2F~"),
+           "percent encoding must preserve only RFC 3986 unreserved bytes")
+
+    auto decoded = percent_decode("A%20z%2B%2F~")
+    assert(decoded.is_ok(), "percent decoding must accept uppercase escapes")
+    auto raw = decoded.unwrap()
+    assert(raw.len() == 6:usize && raw.get(2:usize) == 'z' as u8 &&
+           raw.get(3:usize) == '+' as u8 && raw.get(4:usize) == '/' as u8,
+           "percent decoding must retain decoded binary bytes")
+
+    auto plus = percent_decode("a+b").unwrap()
+    assert(plus.get(1:usize) == '+' as u8,
+           "generic percent decoding must not apply form plus-as-space rules")
+}
+
+fn test_percent_decode_errors() {
+    assert(percent_decode("%").is_err(), "truncated percent escape must be rejected")
+    auto invalid = percent_decode("%x0")
+    assert(invalid.is_err(), "invalid percent hex must be rejected")
+    assert(invalid.unwrap_err().position() == 1:usize,
+           "invalid percent escape must report the invalid byte")
+}
+
 fn main() -> i32 {
     assert(package_name().equals("encoding"), "public package name")
     test_hex_round_trip_and_binary_input()
     test_hex_decode_errors()
     test_base64_round_trip_and_binary_input()
     test_base64_decode_errors()
+    test_percent_codec()
+    test_percent_decode_errors()
     return 0
 }

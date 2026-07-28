@@ -32,6 +32,12 @@ alphabet with required canonical `=` padding. URL-safe Base64, unpadded Base64,
 and whitespace-tolerant MIME decoding are deliberately separate APIs rather
 than silent parser modes.
 
+`percent_encode` implements RFC 3986 component encoding: only unreserved ASCII
+bytes (`A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`) remain literal and all other
+bytes use uppercase `%HH` escapes. `percent_decode` returns `Vec<u8>` and
+does not reinterpret `+` as space. That latter rule belongs exclusively to a
+separate form-url-encoding API; URL parsing remains in `stdx/net`.
+
 ## Qualification
 
 ```text
