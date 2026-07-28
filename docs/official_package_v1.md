@@ -49,7 +49,11 @@ pub const PACKAGE = (
     entry_modules = ("lib/official/example.tk"),
     targets = ("macos", "linux"),
     dependencies = (),
-    native = (required = false, libraries = ())
+    native = (
+        required = false,
+        sources = (),
+        libraries = ()
+    )
 )
 
 pub const AI_CONTRACT = (
@@ -76,6 +80,36 @@ compatibility range or promise.
 The current resolver reads `dependencies` and safely ignores these additional
 static fields. A future manifest reader may consume them only after preserving
 that behavior for existing packages.
+
+### Native source packages
+
+`native.required = true` opts one package into the native build path. Its
+`sources` must be regular relative `native/*.c` files and `libraries` must be
+logical `pkg-config` library names, for example:
+
+```toka
+native = (
+    required = true,
+    sources = ("native/bridge.c"),
+    libraries = ("zlib")
+)
+```
+
+`toka build` reads this metadata only from roots verified against the current
+`package.lock`. It compiles the declared C sources into the consumer's private
+`.toka/build/native/` directory and obtains compiler/linker inputs through
+`pkg-config`. v1 accepts only `-L` and `-l` linker output from that tool; a
+package manifest is never interpreted as raw compiler or shell arguments.
+`toka publish` includes a package's `native/` directory when present, so the
+same locked source that was qualified is available to a registry consumer.
+The resulting native objects and libraries are linked only into a consumer
+that locks the native package. A pure-Toka project, or one that locks only
+`native.required = false` metadata, has no native package compiler or linker
+requirement.
+
+This is intentionally a narrow source-build contract. Prebuilt artifacts,
+C++, custom linker scripts, arbitrary flag injection, and Windows support are
+not part of v1.
 
 ## 3. Public contract and AI-readable evidence
 

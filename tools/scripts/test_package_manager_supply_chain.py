@@ -25,6 +25,7 @@ from toka_package import (  # noqa: E402
     encode_lock,
     file_sha256,
     LockEntry,
+    native_build_plan,
     parse_manifest,
     read_lock,
     remove_dependency,
@@ -222,6 +223,49 @@ def test_official_mapping(root: Path) -> None:
     assert mappings == [expected], mappings
 
 
+def test_native_build_metadata(root: Path) -> None:
+    workspace = root / "native-build-metadata"
+    project = workspace / "consumer"
+    dependency = workspace / "bridge"
+    dependency.mkdir(parents=True)
+    (dependency / "native").mkdir()
+    (dependency / "native" / "bridge.c").write_text("int toka_bridge(void) { return 1; }\n", encoding="utf-8")
+    (dependency / "package.tk").write_text(
+        "pub const PACKAGE = (\n"
+        '    name = "bridge",\n'
+        '    identity = "official/bridge",\n'
+        '    version = "1.0.0",\n'
+        "    dependencies = (),\n"
+        "    native = (required = true, sources = (\"native/bridge.c\"), libraries = (\"zlib\"))\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    module = dependency / "lib" / "official" / "bridge.tk"
+    module.parent.mkdir(parents=True)
+    module.write_text("pub fn value() -> i32 { return 1 }\n", encoding="utf-8")
+    write_package(project, "consumer", [("bridge", '"../bridge"')])
+    resolve(project)
+    plan = native_build_plan(project / "package.lock", project / ".toka")
+    assert plan["schema"] == "toka.native-package-plan-v1"
+    assert plan["packages"] == [{
+        "alias": "bridge",
+        "root": str(dependency.resolve()),
+        "sources": [str((dependency / "native" / "bridge.c").resolve())],
+        "libraries": ["zlib"],
+    }]
+
+    manifest = (dependency / "package.tk")
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace("native/bridge.c", "../bridge.c"),
+        encoding="utf-8",
+    )
+    resolve(project)
+    expect_error(
+        lambda: native_build_plan(project / "package.lock", project / ".toka"),
+        "native.sources must use relative native/*.c paths",
+    )
+
+
 def test_cycles_and_conflicts(root: Path) -> None:
     workspace = root / "graph-errors"
     cycle_root = workspace / "cycle-root"
@@ -400,6 +444,7 @@ def main() -> int:
         test_safe_extract(root)
         test_path_graph(root)
         test_official_mapping(root)
+        test_native_build_metadata(root)
         test_cycles_and_conflicts(root)
         test_registry_and_rollback(root)
         test_git_and_remove(root)

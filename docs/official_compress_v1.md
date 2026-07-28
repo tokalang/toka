@@ -46,16 +46,17 @@ input, unsupported trailing bytes, and output-limit violations.
 ## Native and package contract
 
 `package.tk` declares `native.required`, `native.sources`, and
-`native.libraries = ("zlib")`. The current resolver preserves this static
-metadata but does not yet compile arbitrary native package sources as part of
-`toka build`; v1 therefore has a reproducible explicit native qualification
-path. This is an existing package-toolchain boundary, not a hidden requirement
-or a reason to make base Toka programs link zlib.
+`native.libraries = ("zlib")`. `toka build` verifies those fields against the
+locked package source, compiles the private bridge, and links zlib only for a
+consumer that imports the locked package. This is not a hidden base-runtime
+dependency: programs without a native package remain free of zlib and its
+toolchain requirements.
 
 Qualification proves:
 
 1. `pkg-config zlib` can compile the declared C bridge;
-2. public `import official/compress` links and runs with that bridge;
+2. public `import official/compress` builds and runs through `toka build` with
+   that bridge;
 3. split-input Gzip and Zlib round trips work;
 4. invalid, truncated, and expansion-limited input fails closed;
 5. a local locked package is replayable in `TOKA_OFFLINE=1` before the native

@@ -30,10 +30,10 @@ after process termination.
 ## Native boundary
 
 The manifest declares `sqlite3` as required **only when this package is
-selected**. The preflight compiles a small C shim, generates Toka LLVM IR, and
-links that selected program with `sqlite3`. It proves both ABI availability and
-an in-memory open/create/insert/close round trip without changing the global
-Toka build.
+selected**. `toka build` compiles the package-private C shim and links SQLite
+for a locked consumer only. The preflight independently proves ABI availability
+and an in-memory open/create/insert/close round trip without changing the
+global Toka build.
 
 Run from this directory:
 

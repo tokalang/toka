@@ -27,6 +27,7 @@ ALIAS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 GIT_RE = re.compile(
     r'^Git\(\s*"([^"]+)"\s*(?:,\s*(commit|tag|branch)\s*=\s*"([^"]+)")?\s*\)$'
 )
+NATIVE_LIBRARY_RE = re.compile(r"^[A-Za-z0-9_+.-]+$")
 
 
 class PackageError(RuntimeError):
@@ -151,6 +152,39 @@ def _dependency_block(text: str) -> tuple[int, int, str]:
     raise PackageError("unterminated dependencies block in package.tk")
 
 
+def _static_tuple_block(text: str, field: str) -> str | None:
+    """Return a parenthesized static manifest field without evaluating Toka."""
+    match = re.search(r"\b" + re.escape(field) + r"\s*=\s*\(", text)
+    if not match:
+        return None
+    open_index = text.find("(", match.start())
+    depth = 0
+    in_string = False
+    escaped = False
+    index = open_index
+    while index < len(text):
+        character = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_index + 1 : index]
+        index += 1
+    raise PackageError("unterminated " + field + " block in package.tk")
+
+
 def _split_entries(block: str) -> list[str]:
     entries: list[str] = []
     start = 0
@@ -193,6 +227,26 @@ def _decode_string(value: str) -> str:
     if not isinstance(decoded, str):
         raise PackageError("dependency value must be a string")
     return decoded
+
+
+def _static_string_tuple(block: str, field: str) -> tuple[str, ...]:
+    values = _static_tuple_block(block, field)
+    if values is None:
+        return ()
+    decoded: list[str] = []
+    for entry in _split_entries(values):
+        entry = entry.strip()
+        if not (entry.startswith('"') and entry.endswith('"')):
+            raise PackageError("native." + field + " must contain only strings")
+        decoded.append(_decode_string(entry))
+    return tuple(decoded)
+
+
+def _static_bool(block: str, field: str, *, default: bool) -> bool:
+    match = re.search(r"\b" + re.escape(field) + r"\s*=\s*(true|false)\b", block)
+    if not match:
+        return default
+    return match.group(1) == "true"
 
 
 def _git_locator(url: str, ref_kind: str, selector: str) -> str:
@@ -720,6 +774,56 @@ def package_root(entry: LockEntry, state: Path) -> Path:
     return state / "packages" / (entry.alias + "-" + suffix)
 
 
+def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
+    """Return the locked native build inputs for required source packages.
+
+    This deliberately accepts only relative `native/*.c` sources and logical
+    library names.  The build driver obtains compiler and linker flags through
+    pkg-config; package metadata is never treated as a shell fragment.
+    """
+    packages: list[dict[str, object]] = []
+    for alias, entry in sorted(read_lock(lock_path).items()):
+        root = package_root(entry, state).resolve()
+        if tree_sha256(root) != entry.content_sha256:
+            raise PackageError("package content verification failed: " + alias)
+        try:
+            manifest = _strip_comments((root / "package.tk").read_text(encoding="utf-8"))
+        except OSError as error:
+            raise PackageError("cannot read package manifest: " + alias) from error
+        native = _static_tuple_block(manifest, "native")
+        if native is None or not _static_bool(native, "required", default=False):
+            continue
+        sources = _static_string_tuple(native, "sources")
+        libraries = _static_string_tuple(native, "libraries")
+        if not sources and not libraries:
+            raise PackageError("required native package has no sources or libraries: " + alias)
+        absolute_sources: list[str] = []
+        for source in sources:
+            relative = Path(source)
+            if (not source or relative.is_absolute() or ".." in relative.parts or
+                    not relative.parts or relative.parts[0] != "native" or
+                    relative.suffix != ".c"):
+                raise PackageError("native.sources must use relative native/*.c paths: " + alias)
+            resolved = (root / relative).resolve()
+            try:
+                resolved.relative_to(root)
+            except ValueError as error:
+                raise PackageError("native source escapes package root: " + alias) from error
+            if not resolved.is_file() or resolved.is_symlink():
+                raise PackageError("native source is not a regular file: " + str(relative))
+            absolute_sources.append(str(resolved))
+        for library in libraries:
+            if not NATIVE_LIBRARY_RE.fullmatch(library):
+                raise PackageError("native library name is invalid: " + alias)
+        packages.append({
+            "alias": alias,
+            "root": str(root),
+            "sources": sorted(absolute_sources),
+            "libraries": sorted(set(libraries)),
+        })
+    return {"schema": "toka.native-package-plan-v1", "packages": packages, "version": 1}
+
+
 def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
     mappings: list[str] = []
     for alias, entry in sorted(read_lock(lock_path).items()):
@@ -787,6 +891,10 @@ def main() -> int:
     mappings.add_argument("--lock", default="package.lock")
     mappings.add_argument("--state", default=".toka")
 
+    native_plan = subparsers.add_parser("native-build-plan")
+    native_plan.add_argument("--lock", default="package.lock")
+    native_plan.add_argument("--state", default=".toka")
+
     digest = subparsers.add_parser("hash-tree")
     digest.add_argument("path")
 
@@ -812,6 +920,9 @@ def main() -> int:
         elif args.command == "compiler-mappings":
             for mapping in compiler_mappings(Path(args.lock), Path(args.state)):
                 print(mapping)
+        elif args.command == "native-build-plan":
+            print(json.dumps(native_build_plan(Path(args.lock), Path(args.state)),
+                             sort_keys=True, separators=(",", ":")))
         elif args.command == "hash-tree":
             print(tree_sha256(Path(args.path)))
         elif args.command == "safe-extract":

@@ -51,6 +51,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <charconv>
+#include <cctype>
 #include <set>
 #include <list>
 #include <sstream>
@@ -109,6 +110,8 @@ void printHelp() {
       << "  --emit-obj                      Emit native object code\n"
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
+      << "  --link-search <path>            Add a native library search path\n"
+      << "  --link-lib <name>               Link a native library by name\n"
       << "  --check-json                    Emit JSON Lines diagnostics\n"
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
@@ -227,7 +230,17 @@ LLD_HAS_DRIVER(macho)
 LLD_HAS_DRIVER(mingw)
 LLD_HAS_DRIVER(wasm)
 
-bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::string outputFile) {
+bool isSafeLinkLibraryName(const std::string &name) {
+    if (name.empty()) return false;
+    return std::all_of(name.begin(), name.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '_' || c == '+' || c == '.' || c == '-';
+    });
+}
+
+bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs,
+                 std::vector<std::string> linkSearchPaths,
+                 std::vector<std::string> linkLibraries,
+                 std::string outputFile) {
     llvm::Triple triple(toka::Parser::TargetTriple);
     if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
         std::vector<std::string> searchPaths = {
@@ -260,6 +273,16 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
         for (const auto &extra : extraObjs) {
             args.push_back(extra.c_str());
         }
+        std::vector<std::string> nativeSearchFlags;
+        std::vector<std::string> nativeLibraryFlags;
+        nativeSearchFlags.reserve(linkSearchPaths.size());
+        nativeLibraryFlags.reserve(linkLibraries.size());
+        for (const auto &path : linkSearchPaths)
+            nativeSearchFlags.push_back("-L" + path);
+        for (const auto &library : linkLibraries)
+            nativeLibraryFlags.push_back("-l" + library);
+        for (const auto &flag : nativeSearchFlags) args.push_back(flag.c_str());
+        for (const auto &flag : nativeLibraryFlags) args.push_back(flag.c_str());
         args.push_back("-o");
         args.push_back(outputFile.c_str());
         args.push_back(libDirArg.c_str());
@@ -279,6 +302,9 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     for (const auto &extra : extraObjs) {
         cmd += " \"" + extra + "\"";
     }
+    for (const auto &path : linkSearchPaths) {
+        cmd += " -L\"" + path + "\"";
+    }
 #ifdef TOKA_OPENSSL_LIB_DIR
     if (llvm::sys::fs::exists(TOKA_OPENSSL_LIB_DIR)) {
         cmd += " -L\"" TOKA_OPENSSL_LIB_DIR "\"";
@@ -288,6 +314,9 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
 #ifdef TOKA_HAS_OPENSSL
     cmd += " -lssl -lcrypto";
 #endif
+    for (const auto &library : linkLibraries) {
+        cmd += " -l" + library;
+    }
     return system(cmd.c_str()) == 0;
 #elif defined(__APPLE__)
     args.push_back("-w");
@@ -328,18 +357,31 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
     for (const auto &extra : extraObjs) {
         args.push_back(extra.c_str());
     }
+    std::vector<std::string> nativeSearchFlags;
+    std::vector<std::string> nativeLibraryFlags;
+    nativeSearchFlags.reserve(linkSearchPaths.size());
+    nativeLibraryFlags.reserve(linkLibraries.size());
+    for (const auto &path : linkSearchPaths)
+        nativeSearchFlags.push_back("-L" + path);
+    for (const auto &flag : nativeSearchFlags) args.push_back(flag.c_str());
     args.push_back("-o");
     args.push_back(outputFile.c_str());
 #ifdef TOKA_HAS_OPENSSL
     args.push_back("-lssl");
     args.push_back("-lcrypto");
 #endif
+    for (const auto &library : linkLibraries)
+        nativeLibraryFlags.push_back("-l" + library);
+    for (const auto &flag : nativeLibraryFlags) args.push_back(flag.c_str());
     args.push_back("-lSystem");
     return lld::macho::link(args, llvm::outs(), llvm::errs(), false, false);
 #else
     std::string cmd = "cc \"" + objFile + "\"";
     for (const auto &extra : extraObjs) {
         cmd += " \"" + extra + "\"";
+    }
+    for (const auto &path : linkSearchPaths) {
+        cmd += " -L\"" + path + "\"";
     }
 #ifdef TOKA_OPENSSL_LIB_DIR
     if (llvm::sys::fs::exists(TOKA_OPENSSL_LIB_DIR)) {
@@ -350,6 +392,9 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs, std::s
 #ifdef TOKA_HAS_OPENSSL
     cmd += " -lssl -lcrypto";
 #endif
+    for (const auto &library : linkLibraries) {
+        cmd += " -l" + library;
+    }
     cmd += " -lm -lc";
     return system(cmd.c_str()) == 0;
 #endif
@@ -435,6 +480,8 @@ int main(int argc, char **argv) {
 
   std::vector<std::string> sourceFiles;
   std::vector<std::string> objectFiles;
+  std::vector<std::string> linkSearchPaths;
+  std::vector<std::string> linkLibraries;
   std::map<std::string, std::string> pkgMap;
   bool disableBorrowCheck = false;
   bool emitObj = false;
@@ -634,6 +681,18 @@ int main(int argc, char **argv) {
       emitObj = false;
     } else if (arg == "--emit-interface") {
       emitInterface = true;
+    } else if (arg == "--link-search") {
+      if (i + 1 >= argc || std::string(argv[i + 1]).empty()) {
+        llvm::errs() << "--link-search requires a non-empty path\n";
+        return 1;
+      }
+      linkSearchPaths.emplace_back(argv[++i]);
+    } else if (arg == "--link-lib") {
+      if (i + 1 >= argc || !isSafeLinkLibraryName(argv[i + 1])) {
+        llvm::errs() << "--link-lib requires a library name containing only letters, digits, '_', '+', '.', or '-'\n";
+        return 1;
+      }
+      linkLibraries.emplace_back(argv[++i]);
     } else if (arg.rfind("-", 0) == 0) {
       llvm::errs() << "error: unknown option '" << arg
                    << "' (use --help for available options)\n";
@@ -1415,7 +1474,7 @@ int main(int argc, char **argv) {
         objectFiles.push_back(tokaRtPath);
       }
 
-      if (!linkWithLLD(objFile, objectFiles, finalOutput)) {
+      if (!linkWithLLD(objFile, objectFiles, linkSearchPaths, linkLibraries, finalOutput)) {
         llvm::errs() << "Linker error: LLD failed\n";
         return 1;
       }

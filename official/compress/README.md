@@ -23,10 +23,9 @@ The decoder requires an explicit total output limit, so compressed input never
 silently expands into an unbounded allocation.
 
 The package uses zlib only in its private C boundary. Its public API exposes no
-native handle or raw pointer. The current package toolchain does not yet build
-native package sources automatically, so qualification compiles the declared
-bridge explicitly with `pkg-config zlib`; this is the same opt-in native model
-used by `official/sqlite`.
+native handle or raw pointer. `toka build` compiles the declared bridge and
+links zlib automatically for a locked `official/compress` consumer; base Toka
+programs do not acquire a zlib dependency.
 
 v1 deliberately excludes HTTP content-encoding policy, stream adapters,
 concatenated gzip members, raw DEFLATE, archive containers, Brotli, Zstd, and

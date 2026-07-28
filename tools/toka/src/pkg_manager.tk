@@ -170,6 +170,9 @@ pub fn cmd_publish() -> i32 {
     if exists(string::from("lib")) {
         tar#.arg(string::from("lib"))
     }
+    if exists(string::from("native")) {
+        tar#.arg(string::from("native"))
+    }
     if exists(string::from("test")) {
         tar#.arg(string::from("test"))
     }

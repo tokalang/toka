@@ -9,7 +9,11 @@ pub const PACKAGE = (
     entry_modules = ("lib/official/sqlite.tk"),
     targets = ("macos", "linux"),
     dependencies = (),
-    native = (required = true, libraries = ("sqlite3"))
+    native = (
+        required = true,
+        sources = ("native/sqlite_preflight.c"),
+        libraries = ("sqlite3")
+    )
 )
 
 pub const AI_CONTRACT = (

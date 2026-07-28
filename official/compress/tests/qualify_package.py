@@ -87,6 +87,14 @@ def write_consumer(project: Path, dependency: Path) -> None:
         "}\n",
         encoding="utf-8",
     )
+    (project / "build.tk").write_text(
+        "import build::{Executable, run_build}\n\n"
+        "fn main() -> i32 {\n"
+        '    auto app# = Executable::make(c"compress_consumer", c"src/main.tk")\n'
+        "    return run_build(app)\n"
+        "}\n",
+        encoding="utf-8",
+    )
 
 
 def link_program(compiler: str, ir: Path, bridge: Path, output: Path) -> None:
@@ -149,8 +157,11 @@ def main() -> int:
         run([str(toka), "fetch"], cwd=project, env=offline_env)
         if lock.read_bytes() != locked:
             raise QualificationError("offline compress fetch changed package.lock")
-        compile_and_run(tokac, sdk, dependency, project / "src" / "main.tk",
-                        bridge, work / "compress_consumer")
+        run([str(toka), "build"], cwd=project, env=offline_env)
+        program = project / "target" / "debug" / "compress_consumer"
+        if not program.is_file():
+            raise QualificationError("toka build did not produce the native package consumer")
+        run([str(program)], cwd=project, env=offline_env)
 
     print(json.dumps({
         "result": "pass",
@@ -160,7 +171,7 @@ def main() -> int:
             "streaming_boundary_suite": "pass",
             "locked_local_dependency": "pass",
             "offline_lock_replay": "pass",
-            "native_public_import_build_run": "pass",
+            "native_toka_build_run": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))

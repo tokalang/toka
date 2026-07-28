@@ -5,6 +5,8 @@ import json
 import subprocess
 import argparse
 import shlex
+import hashlib
+from pathlib import Path
 
 def fnv1a_64(data: bytes) -> str:
     # FNV-1a 64-bit algorithm matching ModuleResolver.cpp
@@ -80,8 +82,152 @@ def filter_args_for_submodule(args_list: list) -> list:
             continue
         if arg == "-c" or arg == "--emit-interface" or arg == "--emit-obj":
             continue
+        if arg == "--link-lib" or arg == "--link-search":
+            skip = True
+            continue
         res.append(arg)
     return res
+
+
+def package_helper_path() -> Path | None:
+    candidates: list[Path] = []
+    toka_lib = os.environ.get("TOKA_LIB")
+    if toka_lib:
+        candidates.append(Path(toka_lib) / "toolchain" / "toka_package.py")
+    candidates.append(Path(__file__).resolve().parents[2] / "lib" / "toolchain" / "toka_package.py")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def pkg_config(mode: str, library: str) -> list[str]:
+    tool = os.environ.get("PKG_CONFIG") or "pkg-config"
+    try:
+        result = subprocess.run(
+            [tool, mode, library], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, check=False,
+        )
+    except OSError as error:
+        raise RuntimeError("native package support requires pkg-config: " + str(error)) from error
+    if result.returncode != 0:
+        raise RuntimeError(
+            "pkg-config %s %s failed: %s" % (mode, library, result.stderr.strip())
+        )
+    return shlex.split(result.stdout)
+
+
+def parse_link_flags(tokens: list[str], library: str) -> tuple[list[str], list[str]]:
+    search_paths: list[str] = []
+    libraries: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "-L" or token == "-l":
+            if index + 1 >= len(tokens):
+                raise RuntimeError("pkg-config emitted an incomplete %s flag for %s" % (token, library))
+            value = tokens[index + 1]
+            index += 2
+            if token == "-L":
+                search_paths.append(value)
+            else:
+                libraries.append(value)
+            continue
+        if token.startswith("-L") and len(token) > 2:
+            search_paths.append(token[2:])
+        elif token.startswith("-l") and len(token) > 2:
+            libraries.append(token[2:])
+        else:
+            raise RuntimeError(
+                "native package library %s emitted unsupported linker flag %r; "
+                "v1 accepts only pkg-config -L/-l output" % (library, token)
+            )
+        index += 1
+    return search_paths, libraries
+
+
+def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], str]:
+    if not Path("package.lock").is_file():
+        return [], [], [], [], ""
+    helper = package_helper_path()
+    if helper is None:
+        raise RuntimeError("native package support could not find toka_package.py")
+    result = subprocess.run(
+        [sys.executable, str(helper), "native-build-plan", "--lock", "package.lock", "--state", ".toka"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("could not read locked native package metadata: " + result.stderr.strip())
+    try:
+        plan = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("native package plan was not JSON") from error
+    if plan.get("schema") != "toka.native-package-plan-v1" or plan.get("version") != 1:
+        raise RuntimeError("unsupported native package plan")
+    packages = plan.get("packages")
+    if not isinstance(packages, list):
+        raise RuntimeError("native package plan has invalid packages")
+
+    cflags: list[str] = []
+    search_paths: list[str] = []
+    link_libraries: list[str] = []
+    fingerprint = hashlib.sha256()
+    for package in packages:
+        if not isinstance(package, dict):
+            raise RuntimeError("native package plan contains an invalid package")
+        alias = package.get("alias")
+        sources = package.get("sources")
+        libraries = package.get("libraries")
+        if not isinstance(alias, str) or not isinstance(sources, list) or not isinstance(libraries, list):
+            raise RuntimeError("native package plan contains invalid fields")
+        fingerprint.update(alias.encode("utf-8"))
+        for source in sources:
+            if not isinstance(source, str) or not Path(source).is_file():
+                raise RuntimeError("native package source is unavailable: " + str(source))
+            fingerprint.update(source.encode("utf-8"))
+            fingerprint.update(Path(source).read_bytes())
+        for library in libraries:
+            if not isinstance(library, str):
+                raise RuntimeError("native package library is invalid")
+            library_cflags = pkg_config("--cflags", library)
+            library_search, library_links = parse_link_flags(pkg_config("--libs", library), library)
+            cflags.extend(library_cflags)
+            search_paths.extend(library_search)
+            link_libraries.extend(library_links)
+            fingerprint.update(library.encode("utf-8"))
+            fingerprint.update("\0".join(library_cflags + library_search + library_links).encode("utf-8"))
+    return (
+        packages,
+        list(dict.fromkeys(cflags)),
+        list(dict.fromkeys(search_paths)),
+        list(dict.fromkeys(link_libraries)),
+        fingerprint.hexdigest(),
+    )
+
+
+def compile_native_sources(packages: list[dict], build_dir: str, cflags: list[str]) -> list[str]:
+    if not packages:
+        return []
+    compiler = shlex.split(os.environ.get("CC", "cc"))
+    if not compiler:
+        raise RuntimeError("CC must name a C compiler")
+    native_dir = Path(build_dir) / "native"
+    native_dir.mkdir(parents=True, exist_ok=True)
+    objects: list[str] = []
+    for package in packages:
+        alias = package["alias"]
+        for source in package["sources"]:
+            source_path = Path(source)
+            digest = hashlib.sha256((alias + "\0" + str(source_path)).encode("utf-8")).hexdigest()[:16]
+            object_path = native_dir / (source_path.stem + "-" + digest + ".o")
+            command = compiler + ["-c", str(source_path), "-o", str(object_path)] + cflags
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    "native source compilation failed for %s:\n%s" % (source_path, result.stderr)
+                )
+            objects.append(str(object_path))
+    return objects
 
 def is_std_or_core(path: str) -> bool:
     path_norm = os.path.realpath(path).replace('\\', '/')
@@ -325,6 +471,17 @@ def main():
     env = os.environ.copy()
     env["TOKA_BUILD_DIR"] = build_dir
 
+    try:
+        native_packages, native_cflags, native_search_paths, native_libraries, native_fingerprint = native_package_plan()
+    except RuntimeError as error:
+        sys.stderr.write("Native package build error: %s\n" % error)
+        sys.exit(1)
+    native_link_args: list[str] = []
+    for search_path in native_search_paths:
+        native_link_args.extend(["--link-search", search_path])
+    for library in native_libraries:
+        native_link_args.extend(["--link-lib", library])
+
     # 1. Run compiler dependency dump to get current graph
     current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
 
@@ -336,6 +493,12 @@ def main():
 
     # 4. Generate rebuild plan
     plan = generate_rebuild_plan(current_graph, old_manifest)
+    if old_manifest.get("native_package_fingerprint", "") != native_fingerprint:
+        plan["status"] = "dirty"
+        for root in current_graph.get("roots", []):
+            if root not in plan["dirty_roots"]:
+                plan["dirty_roots"].append(root)
+        plan["native_package_changed"] = True
 
     if args.plan:
         # Output plan JSON for machine consumption
@@ -348,6 +511,12 @@ def main():
             return
 
         print(f"Compiling {len(plan['dirty_modules'])} dirty modules...")
+
+        try:
+            native_objects = compile_native_sources(native_packages, build_dir, native_cflags)
+        except RuntimeError as error:
+            sys.stderr.write("Native package build error: %s\n" % error)
+            sys.exit(1)
 
         # 1. Build all dirty non-root modules separately
         sub_c_args = filter_args_for_submodule(c_args)
@@ -386,13 +555,17 @@ def main():
 
             print(f"Linking root module with dependencies: {root}")
             # Compile root and link everything in a single driver call
-            ret = run_tokac_compile(args.tokac, c_args + dep_objs, [root], env=env)
+            ret = run_tokac_compile(
+                args.tokac, c_args + native_link_args + native_objects + dep_objs,
+                [root], env=env,
+            )
             if ret != 0:
                 sys.exit(ret)
 
         # 3. Re-generate dependencies graph to record final success state
         success_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
         populate_submodule_outputs(success_graph, build_dir)
+        success_graph["native_package_fingerprint"] = native_fingerprint
         save_manifest(args.manifest, success_graph)
         print("Build successful!")
 
