@@ -15,7 +15,7 @@ on them.
 |---|---|---|---|
 | `official/sqlite` | qualified Phase 1 native lifecycle bridge | `python3 official/sqlite/tests/qualify_preflight.py` passes | expand only through separately scoped statement/transaction slices |
 | `official/regex` | prototype, not release-qualified | its suite compiles but currently fails the grouped quantified case `a(b|c)+d?` on `ac` | repair the matcher and obtain a full green qualification run |
-| `official/redis` | qualified RESP2 codec slice, not yet a network client | `official/redis/tests/codec_v1.tk` compiles and runs; covers command encoding, incomplete frames, binary bulk values, nested arrays, and malformed input | add one serial async stream client with close-on-poison semantics |
+| `official/redis` | qualified RESP2 codec plus serial plaintext TCP client; not yet released | codec and `client_v1.tk` deterministic mock-server suites cover binary values, fragmented replies, serial reuse, timeout, malformed/extra replies, and EOF close-on-poison | add task-cancellation evidence, then package-lock/offline release evidence or move to `official/router` |
 
 The regex finding is deliberately recorded as a package defect, not a language
 or PAL limitation. No new official package should claim a stronger release

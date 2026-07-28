@@ -1,7 +1,7 @@
 # `official/redis` v1 — Bounded RESP2 Client RFC
 
-Status: **RESP2 codec slice implemented and deterministically qualified; async
-stream client remains unimplemented and unreleased**.
+Status: **RESP2 codec and one serial plaintext TCP client implemented and
+deterministically qualified; convenience APIs and package release remain open**.
 
 ## 1. Role and placement
 
@@ -19,10 +19,10 @@ cache framework or distributed-systems abstraction.
 ```toka
 import official/redis::{RedisClient, RedisCommand, RedisValue}
 
-auto client = RedisClient::connect_async(addr, 5000).await!
-auto reply = client#.execute_async(
-    RedisCommand::new("GET").arg_text("session:42")
-).await!
+auto client# = RedisClient::connect_async(cede addr, 5000).await!
+auto command# = RedisCommand::new("GET")
+command#.arg_text("session:42")
+auto reply = client#.execute_async(cede command).await!
 ```
 
 The complete v1 package is intended to provide:
@@ -36,10 +36,13 @@ The complete v1 package is intended to provide:
 - `RedisError` carrying an error class, byte position where relevant, and an
   owned message.
 
-The implemented codec slice exports `RedisCommand`, `RedisArgument`,
-`RedisValue`, `RedisDecode`, `RedisError`, and `decode_one`. It has no socket
-or task dependency: callers retain an owned receive buffer and retry
-`decode_one` after appending more bytes when it returns `NeedMore`.
+The implemented slices export `RedisClient`, `RedisCommand`, `RedisArgument`,
+`RedisValue`, `RedisDecode`, `RedisError`, and `decode_one`. `RedisClient`
+opens one plaintext TCP connection and accepts one command at a time. It keeps
+an owned receive buffer, retries `decode_one` after appending more bytes when
+it returns `NeedMore`, and closes itself after a write-side or reply-side
+failure. The small `get`, `set`, and `del` wrappers remain deferred; no
+unimplemented convenience API is part of the current contract.
 
 `RedisValue::Error` represents a valid Redis `-ERR` reply. Transport failures,
 limits, malformed frames, timeout, and cancellation are `RedisError` results.
@@ -76,11 +79,12 @@ from a requested TLS connection.
 
 1. **Codec** — encode `RedisCommand`, decode complete RESP2 values from an
    owned byte buffer, and return `NeedMore` without copying or losing bytes.
-2. **Stream integration** — connect, write one command, incrementally decode
-   one reply, and enforce close-on-poison semantics.
-3. **Qualification** — deterministic mock-server tests for fragmented frames,
-   binary bulk payloads, nested arrays, malformed lengths, EOF, timeout, and
-   cancellation; add real Redis integration only as an optional gate.
+2. **Stream integration** — complete: connect, write one command,
+   incrementally decode one reply, and enforce close-on-poison semantics.
+3. **Qualification** — codec and deterministic TCP mock-server tests cover
+   fragmented frames, binary bulk payloads, nested arrays, malformed lengths,
+   EOF, and timeout. A task cancellation probe and optional real Redis
+   integration remain future evidence, not release claims.
 4. **Package release** — extend the existing `package.tk`, `AI_CONTRACT`,
    import smoke, lock/offline evidence, and scope-aligned README once the
    stream slice is green.

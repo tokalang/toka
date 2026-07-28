@@ -14,9 +14,9 @@ pub const PACKAGE = (
 
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
-    summary = "Bounded, binary-safe RESP2 command codec for Redis clients.",
-    capabilities = ("encode RESP2 commands", "incrementally decode RESP2 values", "preserve binary bulk strings"),
-    non_goals = ("network client", "RESP3", "pipelining", "cluster", "connection pool"),
-    safety = ("decoder has explicit byte, nesting, and aggregate limits; incomplete frames never consume input"),
-    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/codec_v1.tk -o /tmp/redis_codec_v1 && /tmp/redis_codec_v1")
+    summary = "Bounded, binary-safe RESP2 codec and serial plaintext Redis TCP client.",
+    capabilities = ("encode RESP2 commands", "incrementally decode RESP2 values", "preserve binary bulk strings", "execute one serial TCP command"),
+    non_goals = ("RESP3", "TLS", "pipelining", "cluster", "connection pool"),
+    safety = ("decoder has explicit byte, nesting, and aggregate limits; incomplete frames never consume input; reply-side failure or unsolicited extra reply bytes close the client"),
+    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/codec_v1.tk -o /tmp/redis_codec_v1 && /tmp/redis_codec_v1; ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/redis_client_v1 && /tmp/redis_client_v1")
 )

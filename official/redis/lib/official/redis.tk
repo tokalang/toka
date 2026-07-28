@@ -1,12 +1,13 @@
 // Public entry module for official/redis.
 //
-// This first slice is deliberately transport-free. It freezes the RESP2 wire
-// contract before a client owns sockets, timeouts, cancellation, or reconnect
-// policy.
+// The codec is deliberately separated from the serial TCP client below. Both
+// layers use owned byte buffers; reconnect, pooling, and TLS policy remain out
+// of this package slice.
 
 import core/option::{Option}
 import core/result::{Result}
 import std/bytes::{Bytes}
+import std/net::{SocketAddrV4, TcpStream}
 import std/vec::{Vec}
 
 const MAX_LINE_BYTES: usize = 65536:usize
@@ -49,6 +50,17 @@ pub shape RedisCommand (
     args#: Vec<RedisArgument>
 )
 
+// A Redis connection is deliberately serial: its mutable handle prevents a
+// second command from being issued while the first command owns the reply.
+// Any I/O failure after a write poisons this object so a later command cannot
+// consume a reply that belongs to an abandoned command.
+pub shape RedisClient (
+    stream#: TcpStream,
+    receive#: Vec<u8>,
+    timeout_ms: i32,
+    closed#: bool
+)
+
 fn protocol_error(position: usize, message: str) -> RedisError {
     return RedisError(
         kind = string::from("protocol"),
@@ -61,6 +73,22 @@ fn limit_error(position: usize, message: str) -> RedisError {
     return RedisError(
         kind = string::from("limit"),
         position = position,
+        message = string::from(message)
+    )
+}
+
+fn transport_error(message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("transport"),
+        position = 0:usize,
+        message = string::from(message)
+    )
+}
+
+fn connection_error(message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("connection"),
+        position = 0:usize,
         message = string::from(message)
     )
 }
@@ -172,6 +200,14 @@ fn bytes_from_range(buffer: Vec<u8>, start: usize, end: usize) -> Bytes {
         cursor = cursor + 1:usize
     }
     return Bytes::from_vec(cede value)
+}
+
+fn append_bytes(target#: Vec<u8>, source: Vec<u8>) {
+    auto cursor#: usize = 0:usize
+    loop cursor < source.len() {
+        target#.push(source.get(cursor))
+        cursor = cursor + 1:usize
+    }
 }
 
 fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode, RedisError> {
@@ -352,6 +388,14 @@ impl RedisValue {
     }
 }
 
+impl RedisClient@encap {
+    fn drop(self#) {
+        self#.close()
+    }
+
+    pub fn clone(self) = delete
+}
+
 impl RedisCommand {
     pub fn new(name: str) -> RedisCommand {
         return RedisCommand(name = string::from(name), args = Vec<RedisArgument>::new())
@@ -386,6 +430,111 @@ impl RedisCommand {
             index = index + 1:usize
         }
         return Result<Vec<u8>, RedisError>::Ok(wire)
+    }
+}
+
+impl RedisClient {
+    pub fn connect_async(cede address: SocketAddrV4, timeout_ms: i32) -> async Result<RedisClient, RedisError> {
+        if timeout_ms <= 0:i32 {
+            return Result<RedisClient, RedisError>::Err(connection_error("Redis timeout must be positive"))
+        }
+        auto connected = TcpStream::connect_async_timeout(cede address, timeout_ms).await
+        if connected.is_err() {
+            return Result<RedisClient, RedisError>::Err(transport_error(connected.unwrap_err().as_str()))
+        }
+        auto stream# = connected.unwrap()
+        return Result<RedisClient, RedisError>::Ok(RedisClient(
+            stream = stream#.take(),
+            receive = Vec<u8>::with_capacity(4096:usize),
+            timeout_ms = timeout_ms,
+            closed = false
+        ))
+    }
+
+    pub fn is_closed(self) -> bool {
+        return self.closed
+    }
+
+    pub fn close(self#) {
+        if !self.closed {
+            self.stream#.close()
+            self.closed = true
+        }
+    }
+
+    fn poison(self#) {
+        self#.close()
+    }
+
+    pub fn execute_async(self#, cede command: RedisCommand) -> async Result<RedisValue, RedisError> {
+        if self.closed {
+            return Result<RedisValue, RedisError>::Err(connection_error("Redis client is closed"))
+        }
+
+        auto owned_command = cede command
+        auto encoded = owned_command.into_wire()
+        if encoded.is_err() {
+            return Result<RedisValue, RedisError>::Err(cede encoded.unwrap_err())
+        }
+        auto wire = encoded.unwrap()
+        auto write_result = self.stream#.write_from_async(cede wire, self.timeout_ms).await
+        if write_result.is_err() {
+            auto failure# = write_result.unwrap_err()
+            auto message = string::from(failure.message.as_str())
+            auto _returned = failure#.take_buffer()
+            self#.poison()
+            return Result<RedisValue, RedisError>::Err(transport_error(message.as_str()))
+        }
+        auto completed# = write_result.unwrap()
+        auto was_complete = completed.complete
+        auto _returned = completed#.take_buffer()
+        if !was_complete {
+            self#.poison()
+            return Result<RedisValue, RedisError>::Err(transport_error("Redis command write was incomplete"))
+        }
+
+        auto read_buffer# = Vec<u8>::with_capacity(4096:usize)
+        loop true {
+            auto decoded = decode_one(self.receive)
+            if decoded.is_err() {
+                auto error = decoded.unwrap_err()
+                self#.poison()
+                return Result<RedisValue, RedisError>::Err(cede error)
+            }
+            match cede decoded.unwrap() {
+                auto RedisDecode::Complete('reply) => {
+                    if 'reply.consumed != self.receive.len() {
+                        self#.poison()
+                        return Result<RedisValue, RedisError>::Err(protocol_error(
+                            'reply.consumed,
+                            "unexpected bytes after Redis reply on serial connection"
+                        ))
+                    }
+                    self.receive#.clear()
+                    return Result<RedisValue, RedisError>::Ok(cede 'reply.value)
+                }
+                auto RedisDecode::NeedMore() => {}
+            }
+
+            auto read_result = self.stream#.read_into_async(cede read_buffer, 4096:usize, self.timeout_ms).await
+            if read_result.is_err() {
+                auto failure# = read_result.unwrap_err()
+                auto message = string::from(failure.message.as_str())
+                auto _returned = failure#.take_buffer()
+                self#.poison()
+                return Result<RedisValue, RedisError>::Err(transport_error(message.as_str()))
+            }
+            auto chunk# = read_result.unwrap()
+            auto bytes_read = chunk.bytes_read
+            auto reached_eof = chunk.eof
+            read_buffer = chunk#.take_buffer()
+            if reached_eof || bytes_read == 0:usize {
+                self#.poison()
+                return Result<RedisValue, RedisError>::Err(transport_error("Redis connection closed before a complete reply"))
+            }
+            append_bytes(self.receive, read_buffer)
+        }
+        return Result<RedisValue, RedisError>::Err(transport_error("Redis receive loop exited unexpectedly"))
     }
 }
 

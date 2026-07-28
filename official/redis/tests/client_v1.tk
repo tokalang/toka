@@ -1,0 +1,250 @@
+import official/redis::{RedisClient, RedisCommand, RedisValue}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
+import std/task::{block_on, sleep_async}
+import std/vec::{Vec}
+
+fn wire_bytes(input: str) -> Vec<u8> {
+    auto output# = Vec<u8>::with_capacity(input.len())
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        output#.push(input.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn receive_request_async(stream#: TcpStream) -> async bool {
+    auto buffer# = Vec<u8>::with_capacity(1024:usize)
+    auto read_result = stream#.read_into_async(cede buffer, 1024:usize, 5000:i32).await
+    if read_result.is_err() { return false }
+    auto received# = read_result.unwrap()
+    auto bytes_read = received.bytes_read
+    auto _buffer = received#.take_buffer()
+    return bytes_read > 0:usize
+}
+
+fn send_async(stream#: TcpStream, response: str) -> async bool {
+    auto wire# = wire_bytes(response)
+    auto write_result = stream#.write_from_async(cede wire, 5000:i32).await
+    if write_result.is_err() { return false }
+    auto completed# = write_result.unwrap()
+    auto is_complete = completed.complete
+    auto _wire = completed#.take_buffer()
+    return is_complete
+}
+
+fn roundtrip_server_async(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
+    auto stream# = owned_listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 2
+    }
+
+    // The response is split across two writes to exercise retained input and
+    // the decoder's NeedMore path in the real client.
+    if !send_async(stream, "$5\r\nhel").await {
+        stream#.close()
+        return 3
+    }
+    sleep_async(10:i64).await
+    if !send_async(stream, "lo\r\n").await {
+        stream#.close()
+        return 4
+    }
+
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 5
+    }
+    if !send_async(stream, ":2\r\n").await {
+        stream#.close()
+        return 6
+    }
+    stream#.close()
+    return 0
+}
+
+fn roundtrip_client_async(port: u16) -> async i32 {
+    sleep_async(10:i64).await
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto connected = RedisClient::connect_async(cede address, 1000:i32).await
+    if connected.is_err() { return 1 }
+    auto client# = connected.unwrap()
+
+    auto first_command# = RedisCommand::new("GET")
+    first_command#.arg_text("session:42")
+    auto first_reply = client#.execute_async(cede first_command).await
+    if first_reply.is_err() {
+        client#.close()
+        return 2
+    }
+    auto first_value = first_reply.unwrap()
+    match first_value {
+        auto RedisValue::Bulk(&value) => {
+            auto view = value.as_slice()
+            if view.len() != 5:usize || (view.at(0:usize).unwrap() as u8) != 'h' as u8 ||
+               (view.at(4:usize).unwrap() as u8) != 'o' as u8 {
+                client#.close()
+                return 3
+            }
+        }
+        _ => {
+            client#.close()
+            return 4
+        }
+    }
+
+    auto second_command = RedisCommand::new("DBSIZE")
+    auto second_reply = client#.execute_async(cede second_command).await
+    if second_reply.is_err() {
+        client#.close()
+        return 5
+    }
+    auto second_value = second_reply.unwrap()
+    match second_value {
+        auto RedisValue::Integer(value) => {
+            if value != 2:i64 {
+                client#.close()
+                return 6
+            }
+        }
+        _ => {
+            client#.close()
+            return 7
+        }
+    }
+
+    client#.close()
+    return 0
+}
+
+fn timeout_server_async(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
+    auto stream# = owned_listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 2
+    }
+    sleep_async(100:i64).await
+    stream#.close()
+    return 0
+}
+
+fn malformed_server_async(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
+    auto stream# = owned_listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 2
+    }
+    if !send_async(stream, "?bad\r\n").await {
+        stream#.close()
+        return 3
+    }
+    stream#.close()
+    return 0
+}
+
+fn eof_server_async(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
+    auto stream# = owned_listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 2
+    }
+    stream#.close()
+    return 0
+}
+
+fn extra_reply_server_async(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
+    auto stream# = owned_listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 2
+    }
+    // A serial RESP2 client has no legal next response yet. It must not save
+    // this second frame and incorrectly give it to a later command.
+    if !send_async(stream, "+OK\r\n:2\r\n").await {
+        stream#.close()
+        return 3
+    }
+    stream#.close()
+    return 0
+}
+
+fn poisoned_client_async(port: u16, timeout_ms: i32) -> async i32 {
+    sleep_async(10:i64).await
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto connected = RedisClient::connect_async(cede address, timeout_ms).await
+    if connected.is_err() { return 1 }
+    auto client# = connected.unwrap()
+    auto command = RedisCommand::new("PING")
+    auto reply = client#.execute_async(cede command).await
+    if reply.is_ok() {
+        client#.close()
+        return 2
+    }
+    if !client.is_closed() { return 3 }
+    return 0
+}
+
+pub fn main_async() -> async i32 {
+    auto first_listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !first_listener.is_valid() { return 1 }
+    auto first_port = first_listener.local_port()
+    if first_port == 0:u16 { return 2 }
+    auto server_task = roundtrip_server_async(cede first_listener).start
+    auto client_task = roundtrip_client_async(first_port).start
+    if server_task.await != 0 { return 3 }
+    if client_task.await != 0 { return 4 }
+
+    auto second_listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !second_listener.is_valid() { return 5 }
+    auto second_port = second_listener.local_port()
+    if second_port == 0:u16 { return 6 }
+    auto timeout_server_task = timeout_server_async(cede second_listener).start
+    auto timeout_client_task = poisoned_client_async(second_port, 20:i32).start
+    if timeout_server_task.await != 0 { return 7 }
+    if timeout_client_task.await != 0 { return 8 }
+
+    auto third_listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !third_listener.is_valid() { return 9 }
+    auto third_port = third_listener.local_port()
+    if third_port == 0:u16 { return 10 }
+    auto malformed_server_task = malformed_server_async(cede third_listener).start
+    auto malformed_client_task = poisoned_client_async(third_port, 1000:i32).start
+    if malformed_server_task.await != 0 { return 11 }
+    if malformed_client_task.await != 0 { return 12 }
+
+    auto fourth_listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !fourth_listener.is_valid() { return 13 }
+    auto fourth_port = fourth_listener.local_port()
+    if fourth_port == 0:u16 { return 14 }
+    auto eof_server_task = eof_server_async(cede fourth_listener).start
+    auto eof_client_task = poisoned_client_async(fourth_port, 1000:i32).start
+    if eof_server_task.await != 0 { return 15 }
+    if eof_client_task.await != 0 { return 16 }
+
+    auto fifth_listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !fifth_listener.is_valid() { return 17 }
+    auto fifth_port = fifth_listener.local_port()
+    if fifth_port == 0:u16 { return 18 }
+    auto extra_reply_server_task = extra_reply_server_async(cede fifth_listener).start
+    auto extra_reply_client_task = poisoned_client_async(fifth_port, 1000:i32).start
+    if extra_reply_server_task.await != 0 { return 19 }
+    if extra_reply_client_task.await != 0 { return 20 }
+    return 0
+}
+
+fn main() -> i32 {
+    auto result = block_on<i32>(main_async())
+    assert(result == 0, "official/redis client qualification failed")
+    return 0
+}
