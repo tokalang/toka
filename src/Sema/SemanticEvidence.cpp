@@ -12,6 +12,7 @@ bool SemanticEvidence::Enabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
+std::vector<HoleGoalRecord> SemanticEvidence::HoleGoals;
 
 namespace {
 
@@ -125,6 +126,26 @@ bool CapabilityCallRecord::operator==(const CapabilityCallRecord &rhs) const {
          ContractLocation == rhs.ContractLocation;
 }
 
+bool HoleGoalRecord::operator<(const HoleGoalRecord &rhs) const {
+  return std::tie(Id, Status, HasContract, Type, Morphology, Transfer,
+                  HandleRebind, PayloadWrite, Nullable, RequiredDependencies,
+                  Location) <
+         std::tie(rhs.Id, rhs.Status, rhs.HasContract, rhs.Type,
+                  rhs.Morphology, rhs.Transfer, rhs.HandleRebind,
+                  rhs.PayloadWrite, rhs.Nullable, rhs.RequiredDependencies,
+                  rhs.Location);
+}
+
+bool HoleGoalRecord::operator==(const HoleGoalRecord &rhs) const {
+  return Id == rhs.Id && Status == rhs.Status &&
+         HasContract == rhs.HasContract && Type == rhs.Type &&
+         Morphology == rhs.Morphology && Transfer == rhs.Transfer &&
+         HandleRebind == rhs.HandleRebind &&
+         PayloadWrite == rhs.PayloadWrite && Nullable == rhs.Nullable &&
+         RequiredDependencies == rhs.RequiredDependencies &&
+         Location == rhs.Location;
+}
+
 void SemanticEvidence::enable(bool value) {
   Enabled = value;
   reset();
@@ -136,6 +157,7 @@ void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();
   CapabilityCalls.clear();
+  HoleGoals.clear();
 }
 
 void SemanticEvidence::record(SemanticRuleID rule,
@@ -283,6 +305,69 @@ void SemanticEvidence::dumpCapabilityCallsJSON(std::ostream &out) {
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";
     dumpLocation(out, record.ContractLocation);
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+namespace {
+const char *holeStatusName(HoleGoalStatus status) {
+  switch (status) {
+  case HoleGoalStatus::Incomplete: return "incomplete";
+  case HoleGoalStatus::Underconstrained: return "underconstrained";
+  case HoleGoalStatus::Unsupported: return "unsupported";
+  }
+  return "unsupported";
+}
+} // namespace
+
+void SemanticEvidence::recordHoleGoal(
+    uint64_t id, HoleGoalStatus status, bool hasContract, std::string type,
+    std::string morphology, std::string transfer, bool handleRebind,
+    bool payloadWrite, bool nullable,
+    std::vector<std::string> requiredDependencies, SourceLocation location) {
+  if (!Enabled)
+    return;
+  HoleGoals.push_back(
+      {id, status, hasContract, std::move(type), std::move(morphology),
+       std::move(transfer), handleRebind, payloadWrite, nullable,
+       std::move(requiredDependencies), resolveLocation(location)});
+}
+
+void SemanticEvidence::dumpHoleGoalsJSON(std::ostream &out) {
+  std::sort(HoleGoals.begin(), HoleGoals.end());
+  HoleGoals.erase(std::unique(HoleGoals.begin(), HoleGoals.end()),
+                  HoleGoals.end());
+  out << "{\"schema\":\"toka.hole-goals\",\"version\":1,\"goals\":[";
+  for (size_t i = 0; i < HoleGoals.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &goal = HoleGoals[i];
+    out << "{\"id\":" << goal.Id << ",\"location\":";
+    dumpLocation(out, goal.Location);
+    out << ",\"status\":\"" << holeStatusName(goal.Status)
+        << "\",\"contract\":";
+    if (!goal.HasContract) {
+      out << "null";
+    } else {
+      out << "{\"type\":\"" << escapeJSON(goal.Type)
+          << "\",\"morphology\":\"" << escapeJSON(goal.Morphology)
+          << "\",\"transfer\":\"" << escapeJSON(goal.Transfer)
+          << "\",\"permissions\":{\"handle_rebind\":"
+          << (goal.HandleRebind ? "true" : "false")
+          << ",\"payload_write\":"
+          << (goal.PayloadWrite ? "true" : "false")
+          << "},\"nullable\":" << (goal.Nullable ? "true" : "false")
+          << ",\"required_dependencies\":[";
+      for (size_t dependency = 0;
+           dependency < goal.RequiredDependencies.size(); ++dependency) {
+        if (dependency != 0)
+          out << ',';
+        out << "\"" << escapeJSON(goal.RequiredDependencies[dependency])
+            << "\"";
+      }
+      out << "]}";
+    }
     out << '}';
   }
   out << "]}\n";

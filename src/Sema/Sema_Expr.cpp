@@ -15,6 +15,7 @@
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
 #include "toka/MemberAccess.h"
+#include "toka/SemanticEvidence.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -1067,9 +1068,50 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return toka::Type::fromString("void");
 
   if (dynamic_cast<HoleExpr *>(E)) {
-    if (m_ExpectedType && !m_ExpectedType->isUnknown()) {
+    auto *hole = static_cast<HoleExpr *>(E);
+    if (m_ExpectedType && !m_ExpectedType->isUnknown() &&
+        !m_ExpectedType->IsCede) {
+      auto expected = resolveType(m_ExpectedType, true);
+      auto soul = expected ? expected->getSoulType() : nullptr;
+      std::string morphology = "value";
+      bool handleRebind = false;
+      bool payloadWrite = expected && expected->IsWritable;
+      if (expected && expected->isRawPointer()) {
+        morphology = "raw";
+        handleRebind = expected->IsWritable;
+        payloadWrite = soul && soul->IsWritable;
+      } else if (expected && expected->isUniquePtr()) {
+        morphology = "unique";
+        handleRebind = expected->IsWritable;
+        payloadWrite = soul && soul->IsWritable;
+      } else if (expected && expected->isSharedPtr()) {
+        morphology = "shared";
+        handleRebind = expected->IsWritable;
+        payloadWrite = soul && soul->IsWritable;
+      } else if (expected && expected->isReference()) {
+        morphology = "reference";
+        handleRebind = expected->IsWritable;
+        payloadWrite = soul && soul->IsWritable;
+      }
+      const bool nullable = expected &&
+          (expected->IsNullable || (soul && soul->IsNullable));
+      SemanticEvidence::recordHoleGoal(
+          hole->HoleId, HoleGoalStatus::Incomplete, true,
+          expected ? expected->toString() : m_ExpectedType->toString(),
+          morphology, "none", handleRebind, payloadWrite, nullable, {}, E->Loc);
       DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_INCOMPLETE,
                                m_ExpectedType->toString());
+      HasError = true;
+      return m_ExpectedType;
+    }
+    const HoleGoalStatus status =
+        m_ExpectedType && m_ExpectedType->IsCede
+            ? HoleGoalStatus::Unsupported
+            : HoleGoalStatus::Underconstrained;
+    SemanticEvidence::recordHoleGoal(hole->HoleId, status, false, "", "",
+                                     "", false, false, false, {}, E->Loc);
+    if (status == HoleGoalStatus::Unsupported) {
+      DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
       HasError = true;
       return m_ExpectedType;
     }
@@ -2874,7 +2916,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.releaseBorrow(iteratorSourcePath);
     return toka::Type::fromString((bodyType != "void") ? bodyType : elseType);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
-    if (dynamic_cast<HoleExpr *>(ce->Value.get())) {
+    if (auto *hole = dynamic_cast<HoleExpr *>(ce->Value.get())) {
+      SemanticEvidence::recordHoleGoal(
+          hole->HoleId, HoleGoalStatus::Unsupported, false, "", "", "",
+          false, false, false, {}, hole->Loc);
       error(ce, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
       return toka::Type::fromString("unknown");
     }

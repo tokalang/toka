@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.hole-goals.v1.schema.json",
+  "title": "Toka Typed Hole Goals v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "goals"],
+  "properties": {
+    "schema": { "const": "toka.hole-goals" },
+    "version": { "const": 1 },
+    "goals": { "type": "array", "items": { "$ref": "#/$defs/goal" } }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "column"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handle_rebind", "payload_write"],
+      "properties": {
+        "handle_rebind": { "type": "boolean" },
+        "payload_write": { "type": "boolean" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "morphology", "transfer", "permissions", "nullable", "required_dependencies"],
+      "properties": {
+        "type": { "type": "string" },
+        "morphology": { "enum": ["value", "raw", "unique", "shared", "reference"] },
+        "transfer": { "enum": ["none"] },
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "nullable": { "type": "boolean" },
+        "required_dependencies": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "location", "status", "contract"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "location": { "$ref": "#/$defs/location" },
+        "status": { "enum": ["incomplete", "underconstrained", "unsupported"] },
+        "contract": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/contract" }] }
+      }
+    }
+  }
+}

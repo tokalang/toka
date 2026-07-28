@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/SemanticEvidence.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -1300,7 +1301,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (!isGeneric)
           continue;
 
-        if (dynamic_cast<HoleExpr *>(Call->Args[i].get())) {
+        if (auto *hole = dynamic_cast<HoleExpr *>(Call->Args[i].get())) {
+          SemanticEvidence::recordHoleGoal(
+              hole->HoleId, HoleGoalStatus::Underconstrained, false, "", "",
+              "", false, false, false, {}, hole->Loc);
           error(Call->Args[i].get(), DiagID::ERR_TYPED_HOLE_UNDERCONSTRAINED);
           deductionFailed = true;
           continue;

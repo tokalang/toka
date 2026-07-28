@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
+#include "toka/SemanticEvidence.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -31,7 +32,10 @@ static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
-  if (dynamic_cast<HoleExpr *>(Unary->RHS.get())) {
+  if (auto *hole = dynamic_cast<HoleExpr *>(Unary->RHS.get())) {
+    SemanticEvidence::recordHoleGoal(hole->HoleId, HoleGoalStatus::Unsupported,
+                                     false, "", "", "", false, false, false,
+                                     {}, Unary->Loc);
     error(Unary, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
     return m_ExpectedType ? m_ExpectedType : toka::Type::fromString("unknown");
   }

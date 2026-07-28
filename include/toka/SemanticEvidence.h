@@ -8,6 +8,7 @@
 #pragma once
 
 #include "toka/SourceLocation.h"
+#include <cstdint>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -153,6 +154,25 @@ struct CapabilityCallRecord {
   bool operator==(const CapabilityCallRecord &rhs) const;
 };
 
+enum class HoleGoalStatus { Incomplete, Underconstrained, Unsupported };
+
+struct HoleGoalRecord {
+  uint64_t Id = 0;
+  HoleGoalStatus Status = HoleGoalStatus::Incomplete;
+  bool HasContract = false;
+  std::string Type;
+  std::string Morphology;
+  std::string Transfer;
+  bool HandleRebind = false;
+  bool PayloadWrite = false;
+  bool Nullable = false;
+  std::vector<std::string> RequiredDependencies;
+  SemanticEvidenceLocation Location;
+
+  bool operator<(const HoleGoalRecord &rhs) const;
+  bool operator==(const HoleGoalRecord &rhs) const;
+};
+
 class SemanticEvidence {
 public:
   static constexpr unsigned SchemaVersion = 1;
@@ -183,12 +203,19 @@ public:
       bool independentCede, SourceLocation location,
       SourceLocation contractLocation = {});
   static void dumpCapabilityCallsJSON(std::ostream &out);
+  static void recordHoleGoal(
+      uint64_t id, HoleGoalStatus status, bool hasContract, std::string type,
+      std::string morphology, std::string transfer, bool handleRebind,
+      bool payloadWrite, bool nullable,
+      std::vector<std::string> requiredDependencies, SourceLocation location);
+  static void dumpHoleGoalsJSON(std::ostream &out);
 
 private:
   static bool Enabled;
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;
   static std::vector<CapabilityCallRecord> CapabilityCalls;
+  static std::vector<HoleGoalRecord> HoleGoals;
 };
 
 const char *toString(SemanticRuleID value);

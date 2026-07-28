@@ -127,6 +127,17 @@ declaration ceiling, inferred state, use-site request, signature requirement,
 and actual grant for ordinary call arguments. It is an explanation protocol,
 not a new inference rule.
 
+For an incomplete edit containing `hole`, request its requirement facts:
+
+```sh
+toka hole-goals --json path/to/main.tk
+```
+
+[Typed Hole Goals v1](typed_hole_goals_v1.md) reports only already-resolved
+contracts. The command remains fail-closed: it exits nonzero and does not
+produce an object, interface, cache entry, or publication receipt. An AI must
+replace the hole and run a normal check before treating the edit as valid.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

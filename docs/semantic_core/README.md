@@ -71,9 +71,11 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `owned_lazy_iterator_rfc.md` records the implemented first post-1.0 owned
   lazy-adapter slice (`Map<I,F>` over a consuming source); borrowed/lending
   adapters remain explicitly deferred.
-- `typed_hole_rfc.md` freezes the proposed expression-only typed-hole boundary:
+- `typed_hole_rfc.md` freezes the adopted expression-only typed-hole boundary:
   complete expected contracts, zero authority, conditional facts, and the
   no-CodeGen/TKI/cache publication rule.
+- [`../typed_hole_goals_v1.md`](../typed_hole_goals_v1.md) freezes the
+  independent requirement-only JSON protocol for incomplete typed-hole edits.
 - `dynamic_borrowing_exploration.md` records the evidence required before a
   single-thread, runtime-checked borrowing container can become an RFC; it is
   not a current Toka gap or implementation commitment.
