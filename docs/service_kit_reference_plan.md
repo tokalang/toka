@@ -1,6 +1,6 @@
 # Service Kit Reference Application Plan
 
-Status: `InProgress`
+Status: `Complete`
 
 `examples/service-kit` is a bounded production-composition reference
 application. It consumes existing Toka libraries before requesting new surface
@@ -23,18 +23,18 @@ daemon supervisor.
 
 ## Evidence order
 
-1. Build a deterministic in-process request dispatcher using the current HTTP
-   request/response types and SQLite bridge.
-2. Add a loopback TCP qualification for health, create, read, malformed JSON,
-   not-found, and restart persistence.
-3. Record each concrete blocker. A missing capability is added to `std` or
-   `stdx` only if it is general and cannot be expressed safely in the app.
-4. Extract `official/router` only if at least two independent routes require
-   the same routing abstraction; otherwise routing remains application code.
+1. Deterministic in-process dispatch uses the current HTTP request/response
+   types and the official SQLite bridge.
+2. Loopback TCP qualification covers health, create, read, malformed JSON,
+   not-found, restart persistence, and native SQLite handle/statement cleanup.
+3. The only general blocker discovered was response wire-status preservation
+   for `201 Created` and `400 Bad Request`; that is now closed in `stdx/http`.
+4. Routing remains application code.  No second consumer justifies extracting
+   `official/router`.
 
 ## Stop condition
 
-Stop when the loopback qualification passes from a clean build, persistence
+The loopback qualification passes from a clean native link, persistence
 survives reopen, errors leave no live SQLite handles/statements, and no open
 finding is a compiler correctness, safety, or required-workload blocker.
 Further framework features require a separate product decision.

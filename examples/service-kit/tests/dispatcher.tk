@@ -1,0 +1,68 @@
+import servicekit/app::{NotesService, ServiceConfig}
+import std/io::{remove_file}
+import std/net::{Ipv4Addr, SocketAddrV4}
+import stdx/log/log::{LOG_ERROR}
+import stdx/net/http::{HeaderMap, HttpMethod, HttpRequest}
+
+extern fn toka_sqlite_live_handle_count() -> i32
+extern fn toka_sqlite_live_statement_count() -> i32
+
+fn request(method: HttpMethod, path: str, body: str) -> HttpRequest {
+    return HttpRequest(
+        method = method,
+        path = string::from(path),
+        version = string::from("HTTP/1.1"),
+        headers = HeaderMap::new(),
+        body = string::from(body)
+    )
+}
+
+fn config(path: str) -> ServiceConfig {
+    return ServiceConfig(
+        bind_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16),
+        database_path = string::from(path),
+        log_level = LOG_ERROR
+    )
+}
+
+fn main() -> i32 {
+    auto path = "/tmp/toka-service-kit-dispatcher.db"
+    remove_file(string::from(path))
+    auto opened = NotesService::open(config(path))
+    assert(opened.is_ok(), "service open")
+    auto service# = opened.unwrap()
+    assert(service.log_level() == LOG_ERROR, "config supplies log level")
+
+    auto health = service#.handle(request(HttpMethod::GET, "/health", ""))
+    assert(health.status_code == 200:i32, "health status")
+    assert(health.body.as_str().equals("{\"status\":\"ok\"}"), "deterministic health body")
+
+    auto malformed = service#.handle(request(HttpMethod::POST, "/notes", "{not-json}"))
+    assert(malformed.status_code == 400:i32, "malformed JSON must be bounded")
+
+    auto created = service#.handle(request(HttpMethod::POST, "/notes", "{\"body\":\"first note\"}"))
+    assert(created.status_code == 201:i32, "note creation status")
+    assert(created.body.contains("\"id\":1"), "created note id")
+    assert(created.body.contains("\"body\":\"first note\""), "created note body")
+
+    auto found = service#.handle(request(HttpMethod::GET, "/notes/1", ""))
+    assert(found.status_code == 200:i32, "persisted note status")
+    assert(found.body.contains("\"body\":\"first note\""), "persisted note body")
+    auto missing = service#.handle(request(HttpMethod::GET, "/notes/99", ""))
+    assert(missing.status_code == 404:i32, "typed note not found")
+    assert(service#.close().is_ok(), "first service closes")
+    assert(toka_sqlite_live_handle_count() == 0:i32, "first close releases database handle")
+    assert(toka_sqlite_live_statement_count() == 0:i32, "first close releases statements")
+
+    auto reopened = NotesService::open(config(path))
+    assert(reopened.is_ok(), "service restart open")
+    auto restarted# = reopened.unwrap()
+    auto after_restart = restarted#.handle(request(HttpMethod::GET, "/notes/1", ""))
+    assert(after_restart.status_code == 200:i32, "restart retains note")
+    assert(after_restart.body.contains("\"body\":\"first note\""), "restart body")
+    assert(restarted#.close().is_ok(), "restarted service closes")
+    assert(toka_sqlite_live_handle_count() == 0:i32, "restart close releases database handle")
+    assert(toka_sqlite_live_statement_count() == 0:i32, "restart close releases statements")
+    remove_file(string::from(path))
+    return 0
+}
