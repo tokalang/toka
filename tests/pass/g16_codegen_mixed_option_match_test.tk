@@ -1,0 +1,73 @@
+// Regression: separate Option<T> matches must not add duplicate cases to one
+// LLVM switch when their payload types differ.
+
+import core/option::{Option}
+
+shape Flavor (
+    Plain = 0 |
+    Spicy = 1
+)
+
+shape Options (
+    text: Option<string>,
+    number: Option<i64>,
+    flavor: Option<Flavor>
+)
+
+fn score(text: Option<string>, number: Option<i64>, flavor: Option<Flavor>) -> i32 {
+    auto total# = 0:i32
+    match text {
+        auto Option<string>::Some(_) => total = total + 1:i32
+        _ => {}
+    }
+    match number {
+        auto Option<i64>::Some(_) => total = total + 2:i32
+        _ => {}
+    }
+    match flavor {
+        auto Option<Flavor>::Some(Flavor::Spicy) => total = total + 4:i32
+        _ => {}
+    }
+    return total
+}
+
+impl Options {
+    fn score_fields(self) -> i32 {
+        auto total# = 0:i32
+        match self.text {
+            auto Option<string>::Some(_) => total = total + 1:i32
+            _ => {}
+        }
+        match self.number {
+            auto Option<i64>::Some(_) => total = total + 2:i32
+            _ => {}
+        }
+        match self.flavor {
+            auto Option<Flavor>::Some(Flavor::Spicy) => total = total + 4:i32
+            _ => {}
+        }
+        return total
+    }
+}
+
+fn score_nested(flavor: Option<Flavor>) -> i32 {
+    match flavor {
+        auto Option<Flavor>::Some(Flavor::Plain) => return 1:i32
+        auto Option<Flavor>::Some(Flavor::Spicy) => return 2:i32
+        _ => return 0:i32
+    }
+}
+
+fn main() -> i32 {
+    auto value = score(Option<string>::Some(string::from("x")),
+                       Option<i64>::Some(7:i64),
+                       Option<Flavor>::Some(Flavor::Spicy))
+    assert(value == 7:i32, "each Option match must remain independent")
+    auto fields = Options(text = Option<string>::Some(string::from("x")),
+                          number = Option<i64>::Some(7:i64),
+                          flavor = Option<Flavor>::Some(Flavor::Spicy))
+    assert(fields.score_fields() == 7:i32, "field Option matches must remain independent")
+    assert(score_nested(Option<Flavor>::Some(Flavor::Spicy)) == 2:i32,
+           "nested enum payload alternatives must be lowered after one outer match")
+    return 0
+}

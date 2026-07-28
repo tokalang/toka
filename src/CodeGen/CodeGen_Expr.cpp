@@ -2281,8 +2281,48 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
     }
   }
 
+  // The enum switch fast path can only dispatch each outer variant tag once.
+  // Patterns such as `Option<Flavor>::Some(Plain)` and
+  // `Option<Flavor>::Some(Spicy)` share the outer `Some` tag and must fall
+  // back to the general matcher, which checks the payload pattern after the
+  // outer variant has matched.  Adding both directly to an LLVM switch would
+  // create duplicate case values and invalid IR.
+  bool hasRepeatedEnumTag = false;
   if (baseShapeName != "" && m_Shapes.count(baseShapeName) &&
-      m_Shapes[baseShapeName]->Kind == ShapeKind::Enum && !anyArmHasGuard) {
+      m_Shapes[baseShapeName]->Kind == ShapeKind::Enum) {
+    const ShapeDecl *shape = m_Shapes[baseShapeName];
+    std::set<int> seenTags;
+    auto recordPatternTag = [&](const MatchArm::Pattern *pattern) {
+      if (!pattern)
+        return;
+      std::string patternName = pattern->Name;
+      size_t scopePos = patternName.rfind("::");
+      if (scopePos != std::string::npos)
+        patternName = patternName.substr(scopePos + 2);
+      for (size_t i = 0; i < shape->Members.size(); ++i) {
+        if (shape->Members[i].Name != patternName)
+          continue;
+        int tag = shape->Members[i].TagValue == -1
+                      ? static_cast<int>(i)
+                      : static_cast<int>(shape->Members[i].TagValue);
+        if (!seenTags.insert(tag).second)
+          hasRepeatedEnumTag = true;
+        return;
+      }
+    };
+    for (const auto &arm : expr->Arms) {
+      if (arm->Pat->PatternKind == MatchArm::Pattern::Or) {
+        for (const auto &subPattern : arm->Pat->SubPatterns)
+          recordPatternTag(subPattern.get());
+      } else {
+        recordPatternTag(arm->Pat.get());
+      }
+    }
+  }
+
+  if (baseShapeName != "" && m_Shapes.count(baseShapeName) &&
+      m_Shapes[baseShapeName]->Kind == ShapeKind::Enum && !anyArmHasGuard &&
+      !hasRepeatedEnumTag) {
     const ShapeDecl *sh = m_Shapes[baseShapeName];
     llvm::Value *tagVal = m_Builder.CreateExtractValue(targetVal, 0, "tag");
 
