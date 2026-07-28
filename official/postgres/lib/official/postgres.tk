@@ -6,12 +6,19 @@
 
 import core/option::{Option}
 import core/result::{Result}
-import std/bytes::{Bytes}
+import core/str::{bytes}
+import std/bytes::{Bytes, bytes_from_array}
 import std/vec::{Vec}
+import stdx/crypto/constant_time
+import stdx/crypto/hmac::{hmac_sha256}
+import stdx/crypto/pbkdf2
+import stdx/crypto/sha256::{Sha256}
+import stdx/encoding/base64
 
 const PROTOCOL_V3: u32 = 196608:u32
 const MAX_FRAME_BYTES: usize = 16777216:usize
 const MAX_COLUMNS: usize = 4096:usize
+const MAX_SCRAM_SALT_BYTES: usize = 65536:usize
 
 pub shape PostgresError (
     kind: string,
@@ -58,9 +65,26 @@ pub shape PostgresDecode (
     Complete(PostgresBackendFrame) = 1
 )
 
+pub shape ScramClientFirst (
+    bare: string,
+    message: string,
+    nonce: string
+)
+
+pub shape ScramClientFinal (
+    message: string,
+    expected_server_signature: Bytes
+)
+
 shape ParsedText (
     value: string,
     next: usize
+)
+
+shape ScramServerFirst (
+    nonce: string,
+    salt: Bytes,
+    iterations: u32
 )
 
 fn error(kind: str, position: usize, message: str) -> PostgresError {
@@ -111,6 +135,144 @@ fn contains_nul(value: str) -> bool {
         index = index + 1:usize
     }
     return false
+}
+
+fn contains_byte(value: str, target: u8) -> bool {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        if value.byte_at(index) as u8 == target { return true }
+        index = index + 1:usize
+    }
+    return false
+}
+
+fn is_ascii_credential(value: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if byte < 32:u8 || byte > 126:u8 { return false }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn escape_scram_username(value: str) -> string {
+    auto escaped# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if byte == ',' as u8 { escaped#.push_str("=2C") }
+        else if byte == '=' as u8 { escaped#.push_str("=3D") }
+        else { escaped#.push_byte_raw(byte) }
+        index = index + 1:usize
+    }
+    return escaped
+}
+
+fn parse_u32_decimal(value: str) -> Result<u32, PostgresError> {
+    if value.len() == 0:usize { return Result<u32, PostgresError>::Err(error("authentication", 0:usize, "SCRAM iteration count is empty")) }
+    auto parsed#: u32 = 0:u32
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if byte < '0' as u8 || byte > '9' as u8 {
+            return Result<u32, PostgresError>::Err(error("authentication", index, "SCRAM iteration count is not decimal"))
+        }
+        auto digit = (byte - '0' as u8) as u32
+        if parsed > 429496729:u32 || (parsed == 429496729:u32 && digit > 5:u32) {
+            return Result<u32, PostgresError>::Err(error("authentication", index, "SCRAM iteration count overflows u32"))
+        }
+        parsed = parsed * 10:u32 + digit
+        index = index + 1:usize
+    }
+    if parsed < 4096:u32 { return Result<u32, PostgresError>::Err(error("authentication", 0:usize, "SCRAM iteration count is below the 4096-round minimum")) }
+    if parsed > 1000000:u32 { return Result<u32, PostgresError>::Err(error("authentication", 0:usize, "SCRAM iteration count exceeds client limit")) }
+    return Result<u32, PostgresError>::Ok(parsed)
+}
+
+fn parse_scram_server_first(value: str) -> Result<ScramServerFirst, PostgresError> {
+    auto nonce# = string::from("")
+    auto salt_text# = string::from("")
+    auto iterations_text# = string::from("")
+    auto saw_nonce# = false
+    auto saw_salt# = false
+    auto saw_iterations# = false
+    auto cursor#: usize = 0:usize
+    loop cursor < value.len() {
+        auto field_end#: usize = cursor
+        loop field_end < value.len() && value.byte_at(field_end) as u8 != ',' as u8 {
+            field_end = field_end + 1:usize
+        }
+        if field_end == cursor + 1:usize || field_end <= cursor {
+            return Result<ScramServerFirst, PostgresError>::Err(error("authentication", cursor, "invalid SCRAM server-first attribute"))
+        }
+        if value.byte_at(cursor + 1:usize) as u8 != '=' as u8 {
+            return Result<ScramServerFirst, PostgresError>::Err(error("authentication", cursor, "SCRAM attribute is missing '='"))
+        }
+        auto key = value.byte_at(cursor) as u8
+        auto field_value = value.substr(cursor + 2:usize, field_end - cursor - 2:usize)
+        if key == 'r' as u8 {
+            if saw_nonce { return Result<ScramServerFirst, PostgresError>::Err(error("authentication", cursor, "duplicate SCRAM nonce")) }
+            nonce = string::from(field_value)
+            saw_nonce = true
+        } else if key == 's' as u8 {
+            if saw_salt { return Result<ScramServerFirst, PostgresError>::Err(error("authentication", cursor, "duplicate SCRAM salt")) }
+            salt_text = string::from(field_value)
+            saw_salt = true
+        } else if key == 'i' as u8 {
+            if saw_iterations { return Result<ScramServerFirst, PostgresError>::Err(error("authentication", cursor, "duplicate SCRAM iteration count")) }
+            iterations_text = string::from(field_value)
+            saw_iterations = true
+        } else if key == 'm' as u8 {
+            return Result<ScramServerFirst, PostgresError>::Err(error("authentication", cursor, "server requires unsupported SCRAM extension"))
+        }
+        if field_end == value.len() { cursor = field_end }
+        else {
+            if field_end + 1:usize == value.len() {
+                return Result<ScramServerFirst, PostgresError>::Err(error("authentication", field_end, "SCRAM server-first has trailing comma"))
+            }
+            cursor = field_end + 1:usize
+        }
+    }
+    if !saw_nonce || !saw_salt || !saw_iterations {
+        return Result<ScramServerFirst, PostgresError>::Err(error("authentication", 0:usize, "SCRAM server-first message lacks required attributes"))
+    }
+    auto decoded_salt = base64::decode(salt_text.as_str())
+    if decoded_salt.is_err() { return Result<ScramServerFirst, PostgresError>::Err(error("authentication", 0:usize, "SCRAM salt is not valid Base64")) }
+    auto salt_bytes = decoded_salt.unwrap()
+    if salt_bytes.len() == 0:usize || salt_bytes.len() > MAX_SCRAM_SALT_BYTES {
+        return Result<ScramServerFirst, PostgresError>::Err(error("authentication", 0:usize, "SCRAM salt length is outside client limits"))
+    }
+    auto parsed_iterations = parse_u32_decimal(iterations_text.as_str())
+    if parsed_iterations.is_err() { return Result<ScramServerFirst, PostgresError>::Err(parsed_iterations.unwrap_err()) }
+    return Result<ScramServerFirst, PostgresError>::Ok(ScramServerFirst(
+        nonce = string::from(nonce.as_str()),
+        salt = Bytes::from_vec(cede salt_bytes),
+        iterations = parsed_iterations.unwrap()
+    ))
+}
+
+fn sha256_bytes(value: bytes) -> [u8; 32] {
+    auto hash# = Sha256::new()
+    hash#.update_view(value)
+    return hash#.finalize()
+}
+
+fn scram_nonce_from_bare(value: str) -> Result<string, PostgresError> {
+    auto index#: usize = 0:usize
+    loop index + 2:usize < value.len() {
+        if value.byte_at(index) as u8 == ',' as u8 &&
+           value.byte_at(index + 1:usize) as u8 == 'r' as u8 &&
+           value.byte_at(index + 2:usize) as u8 == '=' as u8 {
+            auto nonce = value.substr(index + 3:usize, value.len() - index - 3:usize)
+            if nonce.len() == 0:usize {
+                return Result<string, PostgresError>::Err(error("authentication", index, "SCRAM client nonce is empty"))
+            }
+            return Result<string, PostgresError>::Ok(string::from(nonce))
+        }
+        index = index + 1:usize
+    }
+    return Result<string, PostgresError>::Err(error("authentication", 0:usize, "SCRAM client-first message lacks nonce"))
 }
 
 fn read_u16_be(input: Vec<u8>, offset: usize) -> u16 {
@@ -329,6 +491,97 @@ pub fn simple_query_message(sql: str) -> Result<Vec<u8>, PostgresError> {
     append_u32_be(frame, (sql.len() + 5:usize) as u32)
     append_cstring(frame, sql)
     return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+// PostgreSQL SCRAM is specified in terms of SASLprep.  This first pure-Toka
+// slice accepts the portable ASCII credential subset only; it refuses to guess
+// at Unicode normalization before a qualified Unicode profile exists.
+pub fn scram_client_first(user: str, nonce: str) -> Result<ScramClientFirst, PostgresError> {
+    if user.len() == 0:usize || nonce.len() == 0:usize {
+        return Result<ScramClientFirst, PostgresError>::Err(error("authentication", 0:usize, "SCRAM user and nonce must not be empty"))
+    }
+    if !is_ascii_credential(user) || !is_ascii_credential(nonce) || contains_nul(user) || contains_nul(nonce) {
+        return Result<ScramClientFirst, PostgresError>::Err(error("authentication", 0:usize, "SCRAM v1 accepts printable ASCII credentials and nonce only"))
+    }
+    if contains_byte(nonce, ',' as u8) {
+        return Result<ScramClientFirst, PostgresError>::Err(error("authentication", 0:usize, "SCRAM nonce must not contain comma"))
+    }
+    auto bare# = string::from("n=")
+    bare#.push_str(escape_scram_username(user).as_str())
+    bare#.push_str(",r=")
+    bare#.push_str(nonce)
+    auto message# = string::from("n,,")
+    message#.push_str(bare.as_str())
+    return Result<ScramClientFirst, PostgresError>::Ok(ScramClientFirst(
+        bare = string::from(bare.as_str()),
+        message = cede message,
+        nonce = string::from(nonce)
+    ))
+}
+
+pub fn scram_client_final(password: str, client_first_bare: str,
+                          server_first: str) -> Result<ScramClientFinal, PostgresError> {
+    if !is_ascii_credential(password) || contains_nul(password) {
+        return Result<ScramClientFinal, PostgresError>::Err(error("authentication", 0:usize, "SCRAM v1 accepts printable ASCII password only"))
+    }
+    auto parsed = parse_scram_server_first(server_first)
+    if parsed.is_err() { return Result<ScramClientFinal, PostgresError>::Err(parsed.unwrap_err()) }
+    auto server = parsed.unwrap()
+    auto client_nonce_result = scram_nonce_from_bare(client_first_bare)
+    if client_nonce_result.is_err() { return Result<ScramClientFinal, PostgresError>::Err(client_nonce_result.unwrap_err()) }
+    auto client_nonce = client_nonce_result.unwrap()
+    if server.nonce.len() <= client_nonce.len() || !server.nonce.as_str().starts_with(client_nonce.as_str()) {
+        return Result<ScramClientFinal, PostgresError>::Err(error("authentication", 0:usize, "SCRAM server nonce does not extend client nonce"))
+    }
+    auto salted = pbkdf2::derive_sha256(password.as_bytes(), server.salt.as_slice(), server.iterations, 32:usize)
+    if salted.is_err() { return Result<ScramClientFinal, PostgresError>::Err(error("authentication", 0:usize, salted.unwrap_err().as_str())) }
+    auto salted_owner = Bytes::from_vec(cede salted.unwrap())
+    auto client_key = hmac_sha256(salted_owner.as_slice(), "Client Key".as_bytes())
+    auto stored_key = sha256_bytes(bytes_from_array<32>(client_key))
+    auto without_proof# = string::from("c=biws,r=")
+    without_proof#.push_str(server.nonce.as_str())
+    auto auth_message# = string::from(client_first_bare)
+    auth_message#.push_str(",")
+    auth_message#.push_str(server_first)
+    auth_message#.push_str(",")
+    auth_message#.push_str(without_proof.as_str())
+    auto client_signature = hmac_sha256(bytes_from_array<32>(stored_key), auth_message.as_str().as_bytes())
+    auto proof# = Vec<u8>::with_capacity(32:usize)
+    auto index#: usize = 0:usize
+    loop index < 32:usize {
+        proof#.push(client_key[index] ^ client_signature[index])
+        index = index + 1:usize
+    }
+    auto proof_owner = Bytes::from_vec(cede proof)
+    auto server_key = hmac_sha256(salted_owner.as_slice(), "Server Key".as_bytes())
+    auto server_signature = hmac_sha256(bytes_from_array<32>(server_key), auth_message.as_str().as_bytes())
+    auto signature# = Vec<u8>::with_capacity(32:usize)
+    index = 0:usize
+    loop index < 32:usize {
+        signature#.push(server_signature[index])
+        index = index + 1:usize
+    }
+    auto message# = string::from(without_proof.as_str())
+    message#.push_str(",p=")
+    message#.push_str(base64::encode(proof_owner.as_slice()).as_str())
+    return Result<ScramClientFinal, PostgresError>::Ok(ScramClientFinal(
+        message = cede message,
+        expected_server_signature = Bytes::from_vec(cede signature)
+    ))
+}
+
+impl ScramClientFinal {
+    pub fn verify_server_final(self, server_final: str) -> Result<bool, PostgresError> {
+        if !server_final.starts_with("v=") {
+            return Result<bool, PostgresError>::Err(error("authentication", 0:usize, "SCRAM server-final lacks verifier"))
+        }
+        auto encoded = server_final.substr(2:usize, server_final.len() - 2:usize)
+        auto decoded = base64::decode(encoded)
+        if decoded.is_err() { return Result<bool, PostgresError>::Err(error("authentication", 2:usize, "SCRAM server verifier is not valid Base64")) }
+        auto supplied = Bytes::from_vec(cede decoded.unwrap())
+        return Result<bool, PostgresError>::Ok(constant_time::equal(
+            self.expected_server_signature.as_slice(), supplied.as_slice()))
+    }
 }
 
 pub fn decode_backend_one(input: Vec<u8>) -> Result<PostgresDecode, PostgresError> {

@@ -1,7 +1,7 @@
 # `official/postgres` v1 — PostgreSQL v3 Client RFC
 
-Status: **Phase 1 wire codec implemented; transport, TLS, and SCRAM are not
-yet a published-client claim.**
+Status: **Phase 1 wire codec and ASCII-profile SCRAM-SHA-256 helper
+implemented; transport and TLS are not yet a published-client claim.**
 
 ## 1. Role and placement
 
@@ -30,9 +30,12 @@ Delivery is intentionally ordered as follows:
    state.
 2. **Secure startup.** Send SSLRequest, use `stdx/net/tls` when required, and
    fail closed if the server refuses TLS.
-3. **SCRAM-SHA-256.** Use OS randomness, SHA-256, HMAC, Base64, and the
-   qualified `stdx/crypto/pbkdf2` primitive. Cleartext and MD5 authentication
-   are rejected in the secure client path.
+3. **SCRAM-SHA-256 — algorithmic helper complete.** It uses SHA-256, HMAC,
+   Base64, and the qualified `stdx/crypto/pbkdf2` primitive. The present helper
+   accepts printable ASCII credentials only, rather than claiming unqualified
+   SASLprep behavior. It requires 4,096 to 1,000,000 iterations and bounds
+   decoded salts at 64 KiB. The client integration will reject cleartext and
+   MD5 authentication in its secure path.
 4. **Simple query client.** One query owns the serial connection until it has
    consumed `ReadyForQuery`; errors and cancellation poison the connection so
    a later query cannot receive an abandoned response.

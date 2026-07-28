@@ -1,4 +1,4 @@
-import official/postgres::{PostgresDecode, PostgresMessage, decode_backend_one, package_name, simple_query_message, startup_message}
+import official/postgres::{PostgresDecode, PostgresMessage, decode_backend_one, package_name, scram_client_final, scram_client_first, simple_query_message, startup_message}
 import std/bytes::{Bytes}
 import std/vec::{Vec}
 import stdx/encoding/hex
@@ -165,10 +165,37 @@ fn test_rows_errors_and_limits() {
     assert(decode_backend_one(malformed).is_err(), "frame lengths below four are rejected")
 }
 
+fn test_scram_sha256() {
+    auto first = scram_client_first("user", "fyko+d2lbbFgONRv9qkxdawL").unwrap()
+    assert(first.bare.equals("n=user,r=fyko+d2lbbFgONRv9qkxdawL"), "SCRAM first-bare message")
+    assert(first.message.equals("n,,n=user,r=fyko+d2lbbFgONRv9qkxdawL"), "SCRAM GS2 header")
+    auto escaped = scram_client_first("a,b=c", "nonce").unwrap()
+    assert(escaped.bare.equals("n=a=2Cb=3Dc,r=nonce"), "SCRAM username escaping")
+
+    auto server_first = "r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,s=QSXCR+Q6sek8bf92,i=4096"
+    auto client_final = scram_client_final("pencil", first.bare.as_str(), server_first).unwrap()
+    assert(client_final.message.equals(
+               "c=biws,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=qQRLRHGPDGjB+7iVAE7NNi5xEoHKHuLCHPNQ8BTmvds="),
+           "SCRAM SHA-256 client proof")
+    assert(client_final.verify_server_final("v=XKW6VuW1FANROQabnJBz1KaeCnQL/HZByQtX/iU+o30=").unwrap(),
+           "SCRAM SHA-256 server verifier")
+    auto bad_final = scram_client_final("pencil", first.bare.as_str(), server_first).unwrap()
+    assert(!bad_final.verify_server_final("v=XKW6VuW1FANROQabnJBz1KaeCnQL/HZByQtX/iU+o31=").unwrap(),
+           "SCRAM rejects altered server verifier")
+    assert(scram_client_first("user", "bad,nonce").is_err(), "SCRAM nonce rejects comma")
+    assert(scram_client_final("pencil", first.bare.as_str(), "r=wrong,s=QSXCR+Q6sek8bf92,i=4096").is_err(),
+           "SCRAM server nonce must extend client nonce")
+    assert(scram_client_final("pencil", first.bare.as_str(), "r=fyko+d2lbbFgONRv9qkxdawLx,s=QSXCR+Q6sek8bf92,i=4095").is_err(),
+           "SCRAM rejects weak iteration count")
+    assert(scram_client_final("pencil", first.bare.as_str(), "r=fyko+d2lbbFgONRv9qkxdawLx,s=QSXCR+Q6sek8bf92,i=4096,").is_err(),
+           "SCRAM rejects trailing server-first attribute delimiter")
+}
+
 fn main() -> i32 {
     assert(package_name().equals("postgres"), "public package name")
     test_frontend_encoding()
     test_authentication_and_fragmentation()
     test_rows_errors_and_limits()
+    test_scram_sha256()
     return 0
 }

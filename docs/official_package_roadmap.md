@@ -18,7 +18,7 @@ on them.
 | `official/redis` | qualified RESP2 codec, serial plaintext TCP client, and GET/SET/DEL wrappers; not yet released | deterministic codec/TCP cancellation and typed-operation suites plus locked/offline local-consumer import replay pass | optional real-Redis compatibility gate before publication |
 | `official/router` | qualified deterministic method/path recognizer with service-kit adoption; not yet released | route definition/matching qualification, service-kit dispatcher/loopback/shutdown suite, and locked/offline local-consumer import replay pass | optional independent service compatibility evidence before publication |
 | `official/compress` | qualified bounded streaming gzip/zlib bridge; not yet released | native zlib bridge, streaming boundary suite, and locked/offline `toka build` public-import replay pass | optional HTTP/content-encoding policy slice before publication |
-| `official/postgres` | qualified bounded PostgreSQL v3 wire codec; not yet a connection client | direct protocol fixtures and locked/offline local-consumer import replay pass | secure TLS + SCRAM startup, then serial simple-query client and real-service compatibility evidence |
+| `official/postgres` | qualified bounded PostgreSQL v3 wire codec plus ASCII-profile SCRAM helper; not yet a connection client | direct protocol/SCRAM fixtures and locked/offline local-consumer import replay pass | secure TLS startup, then serial simple-query client and real-service compatibility evidence |
 
 Regex is a bounded byte-oriented RE2 profile, not a claim of full RE2
 compatibility. No official package should claim a stronger release status than
@@ -37,8 +37,9 @@ its executable evidence supports.
    dependencies declared in the manifest. It should follow an agreed streaming
    ownership contract instead of adding one-off HTTP compression hooks.
 4. **`official/postgres`** — asynchronous PostgreSQL wire client. Its bounded
-   protocol codec is now qualified. Secure startup remains the next slice:
-   verified TLS, SCRAM-SHA-256, recovery, and cancellation must close before a
+   protocol codec and algorithmic SCRAM helper are now qualified. Secure
+   startup remains the next slice: verified TLS, SCRAM integration, recovery,
+   and cancellation must close before a
    client API is advertised.
 5. **`official/pool`** — only after Redis and PostgreSQL establish common
    checkout, health, cancellation, and poisoned-connection rules. A generic
