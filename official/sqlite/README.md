@@ -13,7 +13,8 @@ only.
 
 - `Database::open`, `execute`, explicit idempotent `close`, and RAII close;
 - `prepare` and `Statement` bind/step/reset/finalization;
-- `Statement` bind, step, reset, and exactly-once finalization;
+- `Statement` integer/text/null bind, step, reset, owned scalar/text reads,
+  and exactly-once finalization;
 - owned scalar/text row values, never SQLite-owned pointer views;
 - explicit `Transaction` commit or rollback, with rollback on ordinary scope
   cleanup;

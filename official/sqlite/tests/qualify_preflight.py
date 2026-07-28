@@ -83,7 +83,7 @@ def main() -> int:
             run(link_args, cwd=ROOT)
             run([str(program)], cwd=ROOT)
 
-    print("official/sqlite native preflight: PASSED")
+    print("official/sqlite qualification: PASSED")
     return 0
 
 
