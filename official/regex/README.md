@@ -33,7 +33,7 @@ temporary input.
 ## v1 syntax profile
 
 - literal bytes and escapes for metacharacters;
-- `.` for one byte;
+- `.` for one non-LF byte (no dotall flag in v1);
 - concatenation, grouping `(...)`, and alternation `|`;
 - postfix `*`, `+`, and `?`;
 - ASCII byte classes such as `[abc]`, `[a-z]`, and `[^0-9]`;

@@ -6,6 +6,7 @@ fn test_literals_dot_and_anchors() {
     auto regex = literal.unwrap()
     assert(regex.is_match("xxabzcxx"), "unanchored search must find a byte match")
     assert(!regex.is_match("abcc"), "literal bytes must retain their order")
+    assert(!regex.is_match("ab\nc"), "RE2 dot must exclude LF without a dotall flag")
 
     auto located = regex.find("xxabzcxx")
     assert(located.is_some(), "find must return the first match")

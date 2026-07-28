@@ -571,8 +571,10 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
                            next.seen, next.active)
             }
         } else if state.kind == STATE_ANY {
-            add_thread(program, state.out, input, cursor + 1:usize, thread.begin_byte,
-                       next.seen, next.active)
+            if input.byte_at(cursor) as u8 != '\n' as u8 {
+                add_thread(program, state.out, input, cursor + 1:usize, thread.begin_byte,
+                           next.seen, next.active)
+            }
         } else if state.kind == STATE_CLASS {
             if class_contains(classes.get(state.class_id as usize), input.byte_at(cursor) as u8) {
                 add_thread(program, state.out, input, cursor + 1:usize, thread.begin_byte,
