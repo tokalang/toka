@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "tests/tooling/typed_hole/conditional_binding_facts.tk"
 EXPRESSION_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_expression_facts.tk"
 IF_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_if_facts.tk"
+MATCH_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_match_facts.tk"
 UNDERCONSTRAINED = ROOT / "tests/tooling/typed_hole/underconstrained.tk"
 
 
@@ -96,6 +97,14 @@ def main():
             "conditional if join did not preserve live or suppress dead branch facts")
     require(all(fact["conditional_on"] == [1] for fact in if_facts),
             "conditional if join lost the source hole")
+
+    match_result = run([tokac, "--conditional-facts=json", "--check-only",
+                        MATCH_SOURCE], 1)
+    match_facts = json.loads(match_result.stdout)["facts"]
+    require([fact["symbol"] for fact in match_facts] == ["answer", "chosen"],
+            "conditional match join did not preserve the live arm dependency")
+    require(all(fact["conditional_on"] == [1] for fact in match_facts),
+            "conditional match join lost the source hole")
 
     unavailable = run([tokac, "--conditional-facts=json", "--check-only",
                        UNDERCONSTRAINED], 1)

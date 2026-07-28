@@ -168,6 +168,15 @@ static void collectConditionalHoleDependencies(
       collectConditionalHoleDependenciesFromStmt(ifExpr->Else.get(), scope,
                                                  dependencies);
     }
+  } else if (auto *match = dynamic_cast<const MatchExpr *>(expr)) {
+    collectConditionalHoleDependencies(match->Target.get(), scope,
+                                       dependencies);
+    for (const auto &arm : match->Arms) {
+      collectConditionalHoleDependencies(arm->Guard.get(), scope,
+                                         dependencies);
+      collectConditionalHoleDependenciesFromStmt(arm->Body.get(), scope,
+                                                 dependencies);
+    }
   }
 }
 

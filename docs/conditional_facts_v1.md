@@ -24,11 +24,13 @@ auto observed: i32 = identity(doubled)
 
 Both facts are `status: "conditional"` and list the parser-local ID of the
 same hole. `cede`, borrowed/provenance-sensitive forms, and control-flow joins
-remain excluded except for an `if` expression's value arms. A non-comptime
-`if` unions the dependencies of both value arms; a comptime `if` visits only
-its selected arm. The compiler otherwise omits a fact rather than guessing
-ownership, provenance, or branch reachability. Such omission must not be
-interpreted as authoritative success.
+remain excluded except for value-producing `if` and `match` arms. A
+non-comptime `if` unions the dependencies of both value arms; a comptime `if`
+visits only its selected arm. A `match` unions its target, arm guards, and arm
+body values, but does not infer dependencies for pattern-local bindings. The
+compiler otherwise omits a fact rather than guessing ownership, provenance, or
+branch reachability. Such omission must not be interpreted as authoritative
+success.
 
 Each record contains the binding name, resolved declared type, conditional hole
 IDs, and declaration location. Consumers must replace the hole and run a

@@ -1,0 +1,12 @@
+fn select(tag: i32) -> i32 {
+    auto answer: i32 = hole
+    auto chosen: i32 = match tag {
+        0 => { pass answer }
+        default => { pass 0 }
+    }
+    return chosen
+}
+
+fn main() -> i32 {
+    return select(0)
+}

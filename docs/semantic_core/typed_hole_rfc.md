@@ -8,7 +8,7 @@ generic calls. Phase 3 exposes those requirements through the independent
 `hole-goals` JSON protocol. Phase 4 verifies that semantic rejection prevents
 object/interface output and rejects transfer requirements. Phase 5 implements
 the separately versioned, conservative conditional fact slice for bindings,
-non-transfer expressions, resolved calls, and `if` value joins; broader
+non-transfer expressions, resolved calls, and `if`/`match` value joins; broader
 control-flow propagation remains subsequent work.
 
 ## Decision
@@ -203,7 +203,7 @@ complete = false
 The target model carries the same transitive `conditional_on` set to every
 dependent result. The implemented v1 protocol deliberately starts narrower:
 it records a typed direct binding and carries that set through direct aliases,
-non-transfer expression operands, resolved calls, and `if` value joins.
+non-transfer expression operands, resolved calls, and `if`/`match` value joins.
 `cede`, borrowed or provenance-sensitive forms, and other control-flow forms
 currently produce no conditional fact rather than a guessed one. The fact
 lattice is:
@@ -236,7 +236,7 @@ Each goal records an id, source location, status, complete expected contract,
 and any required provenance/dependencies. Conditional semantic context refers
 to `HoleId`s through the separately versioned `toka.conditional-facts`
 protocol. Its first slice carries a known hole dependency through direct
-bindings, non-transfer expressions, resolved calls, and `if` value joins; a
+bindings, non-transfer expressions, resolved calls, and `if`/`match` value joins; a
 later Preview v2 may consume both documents. This separation keeps a
 requirement from being mistaken for a compiler decision.
 
@@ -276,9 +276,8 @@ errors independent of the hole are not.
 4. Add diagnostic cascade suppression and `toka.hole-goals` v1.
 5. Add the conservative binding/expression/call conditional-fact protocol
    (implemented).
-6. Extend conditional propagation through match, loops, assignments, and
-   escaping call returns only with a dedicated dataflow design and evidence
-   suite.
+6. Extend conditional propagation through loops, assignments, and escaping
+   call returns only with a dedicated dataflow design and evidence suite.
 7. Only then evaluate labels, type/pattern/declaration holes, generic
    constraints, operators, or any future resource-hole design.
 
