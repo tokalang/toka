@@ -90,19 +90,69 @@ counter#.inc()
 counter = 3
 ```
 
-Nullable payload types use `?` on the type side and `none` as the empty payload value.
+### Absence domains
 
-```toka
-auto maybe: i32? = none
-```
+Toka 1.0 intentionally distinguishes three meanings of absence. They may have
+isomorphic physical representations, but they are not aliases in the type
+system:
 
-Nullable handles use the `nul` marker and `null`.
+| Domain | Surface form | Empty state | Meaning |
+| :--- | :--- | :--- | :--- |
+| Nullable handle | `nul *p: T`, `nul ^p: T`, `nul ~p: T` | `null` | A handle is present as storage but does not designate an object |
+| Nullable payload | `value: T?` | `none` | A payload slot is present but currently contains no payload value |
+| Optional result | `result: Option<T>` | `Option<T>::None` | An operation produced no result |
+
+For example:
 
 ```toka
 auto nul *ptr: i32 = null
+auto maybe: i32? = none
+auto result: Option<i32> = Option<i32>::None
 ```
 
-Borrow handles (`&`) are not nullable; use `nul` only with raw, unique, or shared handle forms.
+`T?` is not syntax sugar for `Option<T>`, `none` is not
+`Option<T>::None`, and a nullable handle is not an `Option` handle. Toka does
+not implicitly convert or flatten these domains. Borrow handles (`&`) are not
+nullable; use `nul` only with raw, unique, or shared handle forms.
+
+The distinction is observable when an operation can successfully produce a
+nullable payload:
+
+```toka
+fn lookup(key: str) -> Option<string?>
+```
+
+That return type has three semantically distinct states:
+
+| State | Meaning |
+| :--- | :--- |
+| `Option<string?>::None` | The key was not found |
+| `Option<string?>::Some(none)` | The key was found and its stored payload is empty |
+| `Option<string?>::Some(value)` | The key was found with a payload value |
+
+Move invalidation is not another `Option` result. A moved-from binding is
+tracked by PAL and cannot be observed by matching a public `Moved` variant;
+the standard `Option<T>` result domain consists of `Some(T)` and `None`.
+
+Control flow preserves the distinction between storage absence and result
+absence. A `??` assertion discharges only the nullable layer selected at that
+source position. A hatted guard such as `guard ^node` checks the selected
+handle layer, while a bare payload guard such as `guard node` is a path-usability
+test: it may prove every nullable handle and payload layer that must be present
+to reach that payload safely. Its failure branch deliberately coalesces those
+storage-absence causes into “the payload path is unavailable.” Code that needs
+to distinguish which layer was empty must guard the handle and payload layers
+separately.
+
+Neither guard form crosses a nominal `Option` or `Result` boundary. Postfix `!`
+applies only to `Result` and `Option`, as specified in the result-propagation
+section, and does not unwrap nullable handles or nullable payloads. A deep
+payload guard is therefore a control-flow convenience, not an implicit type
+conversion or an `Option` flattening operation.
+
+An implementation may reuse a niche or another compact layout for more than
+one absence domain. Layout equality does not create type identity, an implicit
+conversion, or a stable cross-language ABI guarantee.
 
 ## 4. Hats And Handles
 
@@ -823,6 +873,45 @@ without erasing the source. Async `.await!` applies these same conversion,
 move, and cleanup rules after resumption. Toka 1.0 has no throw/catch,
 automatic conversion chain, universal `dyn error`, or implicit cleanup-error
 replacement policy.
+
+### Typed holes for incomplete edits
+
+`hole` is a reserved, expression-only keyword for an incomplete edit. It is
+not a value, variable, wildcard, ownership source, or permissive build mode.
+Every occurrence has its own diagnostic and keeps the check/build result
+nonzero.
+
+```toka
+auto answer: i32 = hole      // a complete `i32` requirement is known
+if hole {                    // a complete `bool` requirement is known
+    return 0
+}
+```
+
+The compiler records a requirement only when the surrounding context already
+determines it: an explicitly typed local binding, assignment to an existing
+binding, a boolean condition, an ordinary resolved call parameter, or an
+explicitly instantiated generic call. The program remains incomplete and
+reports `E04603` in those cases. A context that would need inference, such as
+`auto answer = hole` or `identity(hole)`, reports `E04604` instead.
+
+Holes cannot stand for a place, capability, provenance, or transfer. Prefix
+and postfix access, member/index access, guards, `cede hole`, and holes passed
+to a `cede` parameter are rejected with `E04605`. In particular, a hole never
+creates H/P authority or silently transfers a resource.
+
+For editor and AI tooling, request deterministic requirement facts with:
+
+```bash
+toka hole-goals --json --check-only path/to/source.tk
+# or: tokac --hole-goals=json --check-only path/to/source.tk
+```
+
+The output is a requirement-only protocol; it is not ordinary semantic
+evidence and must not be treated as compiler approval. A reachable hole emits
+no executable, object, TKI, or reusable compilation artifact. See
+[Typed Hole v1](typed_hole_goals_v1.md) for the machine-readable schema and
+[the RFC](semantic_core/typed_hole_rfc.md) for the complete boundary.
 
 ## 13. Strings, Text, And Formatting
 

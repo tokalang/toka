@@ -82,19 +82,61 @@ counter#.inc()
 counter = 3
 ```
 
-payload 可空类型在类型侧写 `?`，空 payload 值是 `none`。
+### 三种缺失语义
 
-```toka
-auto maybe: i32? = none
-```
+Toka 1.0 刻意区分三种“无”。它们的物理表示可能同构，但在类型系统中不是别名：
 
-handle 可空使用 `nul` 标记和 `null`。
+| 语义域 | 表层写法 | 空状态 | 含义 |
+| :--- | :--- | :--- | :--- |
+| 可空 handle | `nul *p: T`、`nul ^p: T`、`nul ~p: T` | `null` | handle 存储存在，但不指向对象 |
+| 可空 payload | `value: T?` | `none` | payload 槽位存在，但当前没有 payload 值 |
+| 可选结果 | `result: Option<T>` | `Option<T>::None` | 一次操作没有产生结果 |
+
+例如：
 
 ```toka
 auto nul *ptr: i32 = null
+auto maybe: i32? = none
+auto result: Option<i32> = Option<i32>::None
 ```
 
-借用 handle（`&`）不可为空；`nul` 只用于 raw、unique、shared 这几类 handle 形态。
+`T?` 不是 `Option<T>` 的语法糖，`none` 不是 `Option<T>::None`，可空
+handle 也不是 `Option` handle。Toka 不在这三个语义域之间进行隐式转换或
+自动 flatten。借用 handle（`&`）不可为空；`nul` 只用于 raw、unique、
+shared 这几类 handle 形态。
+
+当一次操作可以成功取得一个可空 payload 时，这个区别是可观察的：
+
+```toka
+fn lookup(key: str) -> Option<string?>
+```
+
+这个返回类型具有三种语义不同的状态：
+
+| 状态 | 含义 |
+| :--- | :--- |
+| `Option<string?>::None` | 没有找到 key |
+| `Option<string?>::Some(none)` | 找到了 key，但它存储的 payload 为空 |
+| `Option<string?>::Some(value)` | 找到了 key，并取得 payload 值 |
+
+move 失效不是 `Option` 的另一种结果。PAL 跟踪 moved-from 绑定，用户不能通过
+匹配公开的 `Moved` 变体观察它；标准 `Option<T>` 的结果域只包含 `Some(T)`
+与 `None`。
+
+控制流必须保留“存储为空”和“操作无结果”的区别。`??` 断言每次只解除源码
+位置明确选中的 nullable 层。`guard ^node` 这类带帽 guard 只检查选中的
+handle 层；`guard node` 这类裸 payload guard 则是路径可用性检查，可以一次
+证明安全到达该 payload 所必需的全部 nullable handle 与 nullable payload
+层。它的失败分支会有意把这些存储层的失败原因合并为“payload 路径不可用”。
+如果代码需要区分究竟哪一层为空，就必须分别 guard handle 层与 payload 层。
+
+两种 guard 都不会跨越名义上的 `Option` 或 `Result` 边界。后缀 `!` 只适用于
+Result 传播一节规定的 `Result` 和 `Option`，不解开可空 handle 或可空
+payload。因此，深层 payload guard 是控制流便利语法，不是隐式类型转换，也
+不是 `Option` flatten。
+
+实现可以让多个缺失语义域复用 niche 或其他紧凑布局。布局相同不会产生类型
+同一性、隐式转换，也不构成稳定的跨语言 ABI 保证。
 
 ## 4. 帽子与 Handle
 
@@ -760,6 +802,40 @@ return 契约会保存在同版本 TKI 中。
 `with_context(cede result, message)` 不擦除 source。async `.await!` 在恢复后
 遵循相同的转换、move 与 cleanup 规则。Toka 1.0 不包含 throw/catch、自动
 转换链、通用 `dyn error`，也不隐式决定 cleanup error 是否替换主错误。
+
+### 用于未完成编辑的类型洞
+
+`hole` 是保留的、只能作为表达式使用的关键字，用于表示未完成编辑。它不是值、
+变量、通配符、所有权来源，也不会打开宽松的构建模式。每个出现位置都有独立的
+诊断，且都会令检查/构建保持非零失败。
+
+```toka
+auto answer: i32 = hole      // 已知完整的 `i32` 需求
+if hole {                    // 已知完整的 `bool` 需求
+    return 0
+}
+```
+
+只有周边上下文已经决定需求时，编译器才记录该需求：显式类型的局部绑定、向既有
+绑定赋值、布尔条件、已解析的普通调用参数，或显式实例化的泛型调用。这些情况仍
+会以 `E04603` 报告程序不完整。需要由洞参与推断的上下文，例如
+`auto answer = hole` 或 `identity(hole)`，则以 `E04604` 报告需求不足。
+
+洞不能代表 place、能力、来源关系或转移。前缀/后缀访问、成员/索引访问、guard、
+`cede hole`，以及将洞传给 `cede` 参数，都会以 `E04605` 拒绝。因此洞不会创建
+H/P 权限，也不会隐式转移资源。
+
+编辑器和 AI 工具可用以下命令取得确定性的需求事实：
+
+```bash
+toka hole-goals --json --check-only path/to/source.tk
+# 或：tokac --hole-goals=json --check-only path/to/source.tk
+```
+
+该输出是仅表示需求的协议，不是普通语义证据，不能当作编译器批准。存在可达洞的
+程序不会产生可执行文件、对象文件、TKI 或可复用编译产物。机器可读 schema 见
+[Typed Hole v1](typed_hole_goals_v1.md)，完整边界见
+[RFC](semantic_core/typed_hole_rfc.md)。
 
 ## 13. 字符串、文本与格式化
 
