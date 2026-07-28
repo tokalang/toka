@@ -1,0 +1,6 @@
+import official/regex::{package_name}
+
+fn main() -> i32 {
+    assert(package_name().equals("regex"), "public package name")
+    return 0
+}

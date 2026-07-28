@@ -1,0 +1,9 @@
+// Public entry module for official/regex.
+//
+// The implementation arrives in small verified slices. The package contract
+// is intentionally available from the first commit so imports and metadata
+// have one stable home.
+
+pub fn package_name() -> string {
+    return string::from("regex")
+}
