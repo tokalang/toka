@@ -1,0 +1,19 @@
+import stdx/net/cookie::{Cookie}
+
+fn main() -> i32 {
+    auto parsed = Cookie::parse("session=abc123; Path=/app; Domain=Example.COM; Max-Age=3600; Secure; HttpOnly; SameSite=Lax")
+    assert(parsed.is_ok(), "well-formed Set-Cookie must parse")
+    auto cookie = parsed.unwrap()
+    assert(cookie.name().equals("session"), "Cookie name")
+    assert(cookie.value().equals("abc123"), "Cookie value")
+    assert(cookie.to_set_cookie().equals("session=abc123; Path=/app; Domain=example.com; Max-Age=3600; Secure; HttpOnly; SameSite=Lax"),
+           "Cookie formatting must be canonical")
+
+    assert(Cookie::parse("bad name=value").is_err(), "Cookie name must be a token")
+    assert(Cookie::parse("x=a b").is_err(), "Cookie value must reject whitespace")
+    assert(Cookie::parse("x=y; Max-Age=-1").is_err(), "Cookie Max-Age must reject negative values")
+    assert(Cookie::parse("x=y; SameSite=Loose").is_err(), "Cookie SameSite must be recognized")
+    assert(Cookie::parse("x=y; Secure=yes").is_err(), "Cookie Secure must be valueless")
+    assert(Cookie::parse("x=y; Path=/; Path=/again").is_err(), "Cookie duplicate known attributes must reject deterministically")
+    return 0
+}

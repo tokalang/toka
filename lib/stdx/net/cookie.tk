@@ -1,0 +1,251 @@
+// A strict single Set-Cookie value parser and formatter.
+
+import core/option::{Option}
+import core/result::{Result}
+
+pub shape SameSite (
+    Lax = 0 |
+    Strict = 1 |
+    None = 2
+)
+
+pub shape Cookie (
+    name: string,
+    value: string,
+    path: Option<string>,
+    domain: Option<string>,
+    max_age: Option<i64>,
+    secure: bool,
+    http_only: bool,
+    same_site: Option<SameSite>
+)
+
+fn is_token_byte(byte: u8) -> bool {
+    if byte >= 'a' as u8 && byte <= 'z' as u8 { return true }
+    if byte >= 'A' as u8 && byte <= 'Z' as u8 { return true }
+    if byte >= '0' as u8 && byte <= '9' as u8 { return true }
+    if byte == '!' as u8 || byte == '#' as u8 || byte == '$' as u8 || byte == '%' as u8 { return true }
+    if byte == '&' as u8 || byte == '\'' as u8 || byte == '*' as u8 || byte == '+' as u8 { return true }
+    if byte == '-' as u8 || byte == '.' as u8 || byte == '^' as u8 || byte == '_' as u8 { return true }
+    if byte == '`' as u8 || byte == '|' as u8 || byte == '~' as u8 { return true }
+    return false
+}
+
+fn lower_ascii(input: str) -> string {
+    auto output# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte# = input.byte_at(index) as u8
+        if byte >= 'A' as u8 && byte <= 'Z' as u8 {
+            byte = byte + 32:u8
+        }
+        output#.push_byte_raw(byte)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn trim_ows(input: str) -> string {
+    auto start#: usize = 0:usize
+    auto end# = input.len()
+    loop start < end && (input.byte_at(start) as u8 == ' ' as u8 || input.byte_at(start) as u8 == 9:u8) {
+        start = start + 1:usize
+    }
+    loop end > start && (input.byte_at(end - 1:usize) as u8 == ' ' as u8 || input.byte_at(end - 1:usize) as u8 == 9:u8) {
+        end = end - 1:usize
+    }
+    auto output# = string::from("")
+    auto index# = start
+    loop index < end {
+        output#.push_byte_raw(input.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn is_cookie_value(input: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte = input.byte_at(index) as u8
+        if byte <= 32:u8 || byte == 127:u8 || byte == ';' as u8 || byte == ',' as u8 || byte == '\\' as u8 || byte == '"' as u8 {
+            return false
+        }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn parse_max_age(input: str) -> Result<i64, string> {
+    if input.len() == 0:usize { return Result<i64, string>::Err(string::from("Cookie Max-Age is empty")) }
+    auto value#: i64 = 0:i64
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte = input.byte_at(index) as u8
+        if byte < '0' as u8 || byte > '9' as u8 {
+            return Result<i64, string>::Err(string::from("Cookie Max-Age must be non-negative decimal"))
+        }
+        auto digit = (byte - '0' as u8) as i64
+        if value > 922337203685477580:i64 ||
+           (value == 922337203685477580:i64 && digit > 7:i64) {
+            return Result<i64, string>::Err(string::from("Cookie Max-Age exceeds i64"))
+        }
+        value = value * 10:i64 + digit
+        index = index + 1:usize
+    }
+    return Result<i64, string>::Ok(value)
+}
+
+fn append_string_attribute(output#: string, label: str, value: Option<string>) {
+    if value.is_none() { return }
+    auto item = value.unwrap()
+    output#.push_str("; ")
+    output#.push_str(label)
+    output#.push_byte_raw('=' as u8)
+    output#.push_str(item.as_str())
+}
+
+fn append_max_age(output#: string, value: Option<i64>) {
+    if value.is_none() { return }
+    auto age = value.unwrap()
+    output#.push_str("; Max-Age=")
+    output#.push_str(string::from_i64(age).as_str())
+}
+
+fn append_same_site(output#: string, value: Option<SameSite>) {
+    if value.is_none() { return }
+    match value.unwrap() {
+        auto SameSite::Lax => output#.push_str("; SameSite=Lax")
+        auto SameSite::Strict => output#.push_str("; SameSite=Strict")
+        auto SameSite::None => output#.push_str("; SameSite=None")
+    }
+}
+
+impl Cookie {
+    pub fn new(name: str, value: str) -> Result<Cookie, string> {
+        if name.len() == 0:usize { return Result<Cookie, string>::Err(string::from("Cookie name is empty")) }
+        auto index#: usize = 0:usize
+        loop index < name.len() {
+            if !is_token_byte(name.byte_at(index) as u8) {
+                return Result<Cookie, string>::Err(string::from("Cookie name must be a token"))
+            }
+            index = index + 1:usize
+        }
+        if !is_cookie_value(value) {
+            return Result<Cookie, string>::Err(string::from("Cookie value contains an invalid byte"))
+        }
+        return Result<Cookie, string>::Ok(Cookie(
+            name = string::from(name),
+            value = string::from(value),
+            path = Option<string>::None,
+            domain = Option<string>::None,
+            max_age = Option<i64>::None,
+            secure = false,
+            http_only = false,
+            same_site = Option<SameSite>::None
+        ))
+    }
+
+    pub fn name(self) -> string { return string::from(self.name.as_str()) }
+    pub fn value(self) -> string { return string::from(self.value.as_str()) }
+
+    pub fn to_set_cookie(self) -> string {
+        auto output# = string::from(self.name.as_str())
+        output#.push_byte_raw('=' as u8)
+        output#.push_str(self.value.as_str())
+        append_string_attribute(output, "Path", self.path)
+        append_string_attribute(output, "Domain", self.domain)
+        append_max_age(output, self.max_age)
+        if self.secure { output#.push_str("; Secure") }
+        if self.http_only { output#.push_str("; HttpOnly") }
+        append_same_site(output, self.same_site)
+        return output
+    }
+
+    pub fn parse(input: str) -> Result<Cookie, string> {
+        auto segment_start#: usize = 0:usize
+        auto segment_end#: usize = 0:usize
+        loop segment_end < input.len() && input.byte_at(segment_end) as u8 != ';' as u8 {
+            segment_end = segment_end + 1:usize
+        }
+        auto equals# = segment_start
+        loop equals < segment_end && input.byte_at(equals) as u8 != '=' as u8 {
+            equals = equals + 1:usize
+        }
+        if equals == segment_end { return Result<Cookie, string>::Err(string::from("Set-Cookie is missing name=value")) }
+        auto name# = string::from("")
+        auto value# = string::from("")
+        auto index#: usize = segment_start
+        loop index < equals { name#.push_byte_raw(input.byte_at(index) as u8); index = index + 1:usize }
+        index = equals + 1:usize
+        loop index < segment_end { value#.push_byte_raw(input.byte_at(index) as u8); index = index + 1:usize }
+        auto initial = Cookie::new(trim_ows(name.as_str()).as_str(), trim_ows(value.as_str()).as_str())
+        if initial.is_err() { return Result<Cookie, string>::Err(initial.unwrap_err()) }
+        auto cookie# = initial.unwrap()
+
+        auto saw_path# = false
+        auto saw_domain# = false
+        auto saw_max_age# = false
+        auto saw_secure# = false
+        auto saw_http_only# = false
+        auto saw_same_site# = false
+        segment_start = segment_end
+        loop segment_start < input.len() {
+            if input.byte_at(segment_start) as u8 == ';' as u8 { segment_start = segment_start + 1:usize }
+            segment_end = segment_start
+            loop segment_end < input.len() && input.byte_at(segment_end) as u8 != ';' as u8 { segment_end = segment_end + 1:usize }
+            auto raw# = string::from("")
+            index = segment_start
+            loop index < segment_end { raw#.push_byte_raw(input.byte_at(index) as u8); index = index + 1:usize }
+            auto attribute = trim_ows(raw.as_str())
+            if attribute.len() != 0:usize {
+                auto attribute_equals#: usize = 0:usize
+                loop attribute_equals < attribute.len() && attribute.as_str().byte_at(attribute_equals) as u8 != '=' as u8 {
+                    attribute_equals = attribute_equals + 1:usize
+                }
+                auto attribute_name# = string::from("")
+                auto attribute_value# = string::from("")
+                index = 0:usize
+                loop index < attribute_equals { attribute_name#.push_byte_raw(attribute.as_str().byte_at(index) as u8); index = index + 1:usize }
+                if attribute_equals < attribute.len() {
+                    index = attribute_equals + 1:usize
+                    loop index < attribute.len() { attribute_value#.push_byte_raw(attribute.as_str().byte_at(index) as u8); index = index + 1:usize }
+                }
+                auto normalized = lower_ascii(trim_ows(attribute_name.as_str()).as_str())
+                auto value_trimmed = trim_ows(attribute_value.as_str())
+                if normalized.as_str().equals("path") {
+                    if saw_path || value_trimmed.len() == 0:usize { return Result<Cookie, string>::Err(string::from("invalid duplicate or empty Cookie Path")) }
+                    cookie.path = Option<string>::Some(value_trimmed)
+                    saw_path = true
+                } else if normalized.as_str().equals("domain") {
+                    if saw_domain || value_trimmed.len() == 0:usize { return Result<Cookie, string>::Err(string::from("invalid duplicate or empty Cookie Domain")) }
+                    cookie.domain = Option<string>::Some(lower_ascii(value_trimmed.as_str()))
+                    saw_domain = true
+                } else if normalized.as_str().equals("max-age") {
+                    if saw_max_age { return Result<Cookie, string>::Err(string::from("duplicate Cookie Max-Age")) }
+                    auto age = parse_max_age(value_trimmed.as_str())
+                    if age.is_err() { return Result<Cookie, string>::Err(age.unwrap_err()) }
+                    cookie.max_age = Option<i64>::Some(age.unwrap())
+                    saw_max_age = true
+                } else if normalized.as_str().equals("secure") {
+                    if saw_secure || attribute_equals != attribute.len() { return Result<Cookie, string>::Err(string::from("invalid duplicate or valued Cookie Secure")) }
+                    cookie.secure = true
+                    saw_secure = true
+                } else if normalized.as_str().equals("httponly") {
+                    if saw_http_only || attribute_equals != attribute.len() { return Result<Cookie, string>::Err(string::from("invalid duplicate or valued Cookie HttpOnly")) }
+                    cookie.http_only = true
+                    saw_http_only = true
+                } else if normalized.as_str().equals("samesite") {
+                    if saw_same_site { return Result<Cookie, string>::Err(string::from("duplicate Cookie SameSite")) }
+                    auto same_site_value = lower_ascii(value_trimmed.as_str())
+                    if same_site_value.as_str().equals("lax") { cookie.same_site = Option<SameSite>::Some(SameSite::Lax) }
+                    else if same_site_value.as_str().equals("strict") { cookie.same_site = Option<SameSite>::Some(SameSite::Strict) }
+                    else if same_site_value.as_str().equals("none") { cookie.same_site = Option<SameSite>::Some(SameSite::None) }
+                    else { return Result<Cookie, string>::Err(string::from("Cookie SameSite must be Lax, Strict, or None")) }
+                    saw_same_site = true
+                }
+            }
+            segment_start = segment_end
+        }
+        return Result<Cookie, string>::Ok(cookie)
+    }
+}
