@@ -32,6 +32,8 @@ fn async_scope_runner() -> async i32 {
     graceful_scope#.track_ref(cede task_ref_from_handle<i32>(cede graceful_worker));
     assert(graceful_scope#.shutdown_async(1000:i32).await,
            "drain window must preserve a normally completing task");
+    assert(graceful_scope#.reap_finished() == 1:usize,
+           "long-lived scopes release completed task references");
 
     auto deadline_scope# = TaskScope::new();
     auto deadline_worker = worker_task(5).start;

@@ -20,8 +20,21 @@ std/net TcpListener
 - `ServiceConfig` supplies the bind address, SQLite path, and log level.
 
 The application intentionally handles one request per connection and closes
-that connection.  It does not claim routing middleware, authentication, TLS
-termination, an ORM, migrations, concurrent writes, or a daemon supervisor.
+that connection.  In addition to `serve_one_async` for small examples,
+`serve_until_canceled_async` composes `Canceler`, cancellation-aware accept,
+and `TaskScope` into a bounded long-lived lifecycle: cancellation stops the
+next accept, completed workers drain until the caller-provided deadline, and
+remaining workers receive cooperative cancellation.  Each worker opens its
+own SQLite connection; concurrent-write policy remains deliberately out of
+scope.
+
+The service does not install process-global signal handlers itself.  A host
+that wants POSIX `SIGINT`/`SIGTERM` handling installs `std/signal` explicitly
+and calls the supplied `Canceler`; tests can supply any other cancellation
+source.
+
+It does not claim routing middleware, authentication, TLS termination, an
+ORM, migrations, HTTP/2, or a daemon supervisor.
 
 ## Qualification
 
@@ -39,6 +52,9 @@ programs:
 2. loopback TCP requests for health, malformed JSON, create, read, not-found,
    and restart persistence.  Each request waits for its server task and proves
    no SQLite handle or statement remains live.
+3. a cancellation-driven long-lived loopback service that accepts a health
+   request, stops accepting after cancellation, drains the completed worker,
+   and proves no SQLite handle, statement, or accept cancellation token remains.
 
 This requires the opt-in native SQLite development package (`sqlite3` through
 `pkg-config`), just as `official/sqlite` does.

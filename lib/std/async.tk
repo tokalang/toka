@@ -230,6 +230,25 @@ impl TaskScope {
         return true
     }
 
+    // Release completed task references during long-lived service operation.
+    // Pending tasks stay tracked for later cancellation and join.  The vector
+    // order is not semantically observable by TaskScope.
+    pub fn reap_finished(self#) -> usize {
+        auto live# = Vec<TaskRef>::new()
+        auto reaped# = 0:usize
+        loop self.refs.len() > 0:usize {
+            auto tr# = self.refs#.pop().unwrap()
+            if tr.is_done() {
+                tr#.release()
+                reaped += 1
+            } else {
+                live#.push(cede tr)
+            }
+        }
+        self.refs = cede live
+        return reaped
+    }
+
     pub fn join_async(self#) -> async void {
         loop !self.is_done() {
             sleep_async(1:i32).await

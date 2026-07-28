@@ -1,0 +1,59 @@
+import servicekit/app::{ServiceConfig, serve_until_canceled_async}
+import std/context::{background, with_cancel}
+import std/io::{remove_file}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener}
+import std/task::{block_on, sleep_async}
+import stdx/log/log::{LOG_ERROR}
+import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest}
+
+extern fn toka_sqlite_live_handle_count() -> i32
+extern fn toka_sqlite_live_statement_count() -> i32
+
+fn request() -> HttpRequest {
+    auto headers# = HeaderMap::new()
+    assert(headers#.insert(string::from("Host"), string::from("127.0.0.1")).is_ok(), "request host")
+    return HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from("/health"),
+        version = string::from("HTTP/1.1"),
+        headers = headers,
+        body = string::from("")
+    )
+}
+
+fn run(path: str) -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    assert(listener.is_valid(), "service listener binds")
+    auto port = listener.local_port()
+    assert(port != 0:u16, "listener gets an ephemeral port")
+
+    auto cancellation = with_cancel(cede background())
+    auto config = ServiceConfig(
+        bind_addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port),
+        database_path = string::from(path),
+        log_level = LOG_ERROR
+    )
+    auto server = serve_until_canceled_async(cede config, cede listener, cede cancellation.canceler.clone(), 16384:usize, 2000:i32, 1000:i32).start
+    sleep_async(10:i32).await
+
+    auto response = HttpClient::new(2000:i32).execute_async(request(), SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)).await
+    assert(response.is_ok(), "loopback request completes before shutdown")
+    assert(response.unwrap().status_code == 200:i32, "loopback request has health status")
+
+    cancellation.canceler.call()
+    auto completed = server.await
+    assert(completed.is_ok(), "service loop exits after cancellation")
+    assert(completed.unwrap(), "completed request drains before deadline")
+    assert(cancellation.canceler.active_token_count() == 0:usize, "shutdown leaves no accept cancellation token")
+    assert(toka_sqlite_live_handle_count() == 0:i32, "shutdown drains database handles")
+    assert(toka_sqlite_live_statement_count() == 0:i32, "shutdown drains database statements")
+    return 0
+}
+
+fn main() -> i32 {
+    auto path = "/tmp/toka-service-kit-shutdown.db"
+    remove_file(string::from(path))
+    auto result = block_on<i32>(run(path))
+    remove_file(string::from(path))
+    return result
+}

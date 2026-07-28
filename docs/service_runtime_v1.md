@@ -1,6 +1,6 @@
 # Service Runtime v1
 
-Status: `In progress`
+Status: `Complete`
 
 Service Runtime v1 turns the existing one-request HTTP evidence into a bounded,
 long-lived service lifecycle.  It is a composition contract, not a web
@@ -79,6 +79,8 @@ accept, which is race-prone and invalidates ownership of the listener.
   before cancellation was necessary.
 
 Existing `close()` remains source-compatible as immediate cancel-and-join.
+The deadline is a cooperative-cancellation boundary, not forced preemption:
+individual request operations must retain their own finite I/O timeouts.
 
 ## Structured telemetry
 
@@ -88,6 +90,15 @@ registry supports validated counter/gauge names and deterministic Prometheus
 text rendering.  Request IDs and trace headers remain application/context
 fields; W3C TraceContext and OpenTelemetry exporters are deliberately out of
 scope.
+
+### Implemented composition
+
+The bounded `examples/service-kit` now supplies
+`serve_until_canceled_async`.  It owns the listener, accepts through the
+cancellation-aware HTTP adapter, starts a worker that opens its own SQLite
+connection, reaps completed worker references between accepts, and invokes
+`TaskScope.shutdown_async` after cancellation.  The application supplies the
+`Canceler`; it may obtain it from `std/signal` or any other explicit source.
 
 ## Non-goals
 
@@ -103,8 +114,13 @@ scope.
 2. a Toka qualification proves canceled accept wakes promptly without a
    connection;
 3. a loopback service proves shutdown stops new acceptance, drains a completed
-   request, cancels a deliberately blocked request after deadline, and leaves
-   no live task/resource handle;
+   request, and leaves no live cancellation/SQLite handle; the `TaskScope`
+   qualification independently proves deadline-triggered cancel-and-join;
 4. JSON log escaping/filtering and Prometheus rendering have deterministic unit
    tests;
 5. existing async, HTTP, and service-kit qualifications remain green.
+
+All five gates are implemented by `shutdown_signal_runtime`,
+`g16_shutdown_signal_test`, `g16_async_accept_context_test`,
+`g11_async_task_scope_test`, `g16_service_telemetry_test`, the HTTP
+qualification, and the three-program service-kit qualification.

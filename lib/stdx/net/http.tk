@@ -4,6 +4,7 @@ import std/io::{println}
 import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
+import std/context::{Canceler}
 import std/net::{TcpStream, TcpListener, SocketAddrV4, AsyncReadResult, AsyncIoError}
 import std/bytes::{Bytes}
 import stdx/net/stream::{AsyncStream}
@@ -552,6 +553,23 @@ impl HttpServer {
     pub fn accept_async(listener#: TcpListener, max_request_bytes: usize, timeout_ms: i32) -> async Result<HttpServerConnection, string> {
         auto stream# = listener#.accept_async().await
         if !stream.is_valid() { return Result<HttpServerConnection, string>::Err(string::from("HTTP server accept failed")) }
+        return Result<HttpServerConnection, string>::Ok(HttpServerConnection(
+            stream = stream#.take(),
+            max_request_bytes = max_request_bytes,
+            timeout_ms = timeout_ms,
+            closed = false
+        ))
+    }
+
+    // The HTTP layer preserves std/net's cancellation contract: listener
+    // ownership remains with the caller and cancellation returns its context
+    // error without manufacturing an HttpServerConnection.
+    pub fn accept_async_context(listener#: TcpListener, canceler: Canceler, max_request_bytes: usize, timeout_ms: i32) -> async Result<HttpServerConnection, string> {
+        auto accepted = listener#.accept_async_context(canceler).await
+        if accepted.is_err() {
+            return Result<HttpServerConnection, string>::Err(accepted.unwrap_err())
+        }
+        auto stream# = accepted.unwrap()
         return Result<HttpServerConnection, string>::Ok(HttpServerConnection(
             stream = stream#.take(),
             max_request_bytes = max_request_bytes,

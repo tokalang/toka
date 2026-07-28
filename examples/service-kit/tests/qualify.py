@@ -54,7 +54,7 @@ def main() -> int:
         bridge_object = work / "sqlite_bridge.o"
         run([compiler, "-c", str(SQLITE / "native" / "sqlite_preflight.c"),
              "-o", str(bridge_object), *pkg_config("sqlite3", "--cflags")], cwd=ROOT)
-        for source_name in ("dispatcher", "loopback"):
+        for source_name in ("dispatcher", "loopback", "shutdown"):
             program_ir = work / (source_name + ".ll")
             program = work / source_name
             run([str(tokac), "-I", str(ROOT / "lib"), "-I", str(SQLITE / "lib"),
