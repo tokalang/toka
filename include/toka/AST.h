@@ -174,6 +174,24 @@ public:
   }
 };
 
+// `hole` is deliberately not a VariableExpr.  Its identity is stable within
+// one parse so later tooling can refer to an incomplete occurrence without
+// inventing a user-visible binding.
+class HoleExpr : public Expr {
+public:
+  uint64_t HoleId;
+  explicit HoleExpr(uint64_t holeId) : HoleId(holeId) {}
+  std::string toString() const override {
+    return "Hole(" + std::to_string(HoleId) + ")";
+  }
+  std::unique_ptr<ASTNode> clone() const override {
+    auto n = std::make_unique<HoleExpr>(HoleId);
+    n->Loc = Loc;
+    n->ResolvedType = ResolvedType;
+    return n;
+  }
+};
+
 class SizeOfExpr : public Expr {
 public:
   std::string TypeStr;

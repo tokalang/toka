@@ -163,6 +163,7 @@ enum class PermissionFlowKind {
   Independent,
   Shared,
   UnsafeRaw,
+  RequirementOnly,
 };
 
 // This is deliberately a one-hop fact.  DirectCapability describes the RHS

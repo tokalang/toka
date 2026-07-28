@@ -207,6 +207,11 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
     return genUnaryExpr(e);
   if (auto e = dynamic_cast<const VariableExpr *>(expr))
     return genVariableExpr(e);
+  if (auto e = dynamic_cast<const HoleExpr *>(expr)) {
+    error(e, DiagID::ERR_TYPED_HOLE_INCOMPLETE,
+          e->ResolvedType ? e->ResolvedType->toString() : "unknown");
+    return {};
+  }
 
   // 2. Literal Expressions (Crucial fix: manually list actual class names in AST)
   if (dynamic_cast<const NumberExpr *>(expr) ||

@@ -60,6 +60,7 @@ DIAG(ERR_SEMA_MORPHIC_MEMBER_ACCESS_REQUIRES_MORPHIC_FIELD, Error,   "E04580", "
 DIAG(ERR_SIGNATURE_MISMATCH,      Error,   "E0428", "Method signature mismatch: trait defines '{}' as {}, but implementation is {}")
 DIAG(ERR_MISSING_IMPL,            Error,   "E0429", "Trait '{}' requires implementation of method '{}'")
 DIAG(ERR_TRAIT_NOT_FOUND,         Error,   "E0430", "Trait '{}' is not implemented for type '{}'")
+DIAG(ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0, Error,   "E0618", "Async method '{}' in trait '@{}' is outside the frozen Toka 1.0 surface")
 
 // --- Sema: Control Flow & Functions ---
 DIAG(ERR_CONTROL_REACHES_END,     Error,   "E0431", "Control flow reaches end of non-void function '{}'")
@@ -106,9 +107,12 @@ DIAG(ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE, Error,   "E04581", "Closure copy ca
 DIAG(ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE, Error,   "E04582", "Closure passed across execution boundary '{}' cannot implicitly capture '{}'; use '[cede {}]' or '[copy {}]' to make capture explicit")
 DIAG(ERR_SEMA_START_BOUNDARY_ARGUMENT, Error,   "E04583", "Task started across execution boundary cannot borrow argument '{}' of type '{}'; use a non-borrowing scalar or transfer an owned value through a cede parameter and cede argument")
 DIAG(ERR_SEMA_START_BOUNDARY_DEPENDENCY, Error,   "E04584", "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'")
-DIAG(ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE, Error, "E0476", "Closure value '{}' has no capture summary and cannot cross execution boundary '{}'")
-DIAG(ERR_SEMA_EXEC_BOUNDARY_NON_SEND_CAPTURE, Error, "E0477", "Closure passed across execution boundary '{}' captures '{}' with a value that is not @Send")
-DIAG(ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE, Error, "E0478", "Closure passed across execution boundary '{}' copy-captures '{}' with a value that is not @Sync")
+DIAG(ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE, Error,   "E0476", "Closure value '{}' has no capture summary and cannot cross execution boundary '{}'")
+DIAG(ERR_SEMA_EXEC_BOUNDARY_NON_SEND_CAPTURE, Error,   "E0477", "Closure passed across execution boundary '{}' captures '{}' with a value that is not @Send")
+DIAG(ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE, Error,   "E0478", "Closure passed across execution boundary '{}' copy-captures '{}' with a value that is not @Sync")
+DIAG(ERR_TYPED_HOLE_INCOMPLETE,   Error,   "E04603", "Incomplete typed hole requires a value satisfying '{}'")
+DIAG(ERR_TYPED_HOLE_UNDERCONSTRAINED, Error,   "E04604", "Typed hole has no complete expected contract; add an explicit declaration, return type, or resolved parameter type")
+DIAG(ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT, Error,   "E04605", "Typed hole is not supported in this context; it is a requirement-only expression, not a place, capability, or resource")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")
@@ -147,7 +151,6 @@ DIAG(ERR_ASSOC_TYPE_IN_INHERENT_IMPL, Error,   "E0614", "Associated type '{}' ca
 DIAG(ERR_ASSOC_TYPE_PROJECTION_NOT_FOUND, Error,   "E0615", "Associated type projection '{}' is not bound")
 DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated type '{}' conflicts with a generic parameter of trait '@{}'")
 DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error,   "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
-DIAG(ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0, Error, "E0618", "Async method '{}' in trait '@{}' is outside the frozen Toka 1.0 surface")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")

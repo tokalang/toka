@@ -686,6 +686,12 @@
       "message": "Trait '@{}' cannot be used as 'dyn @{}': {}",
       "description": "Trait '@{}' cannot be used as 'dyn @{}': {}"
     },
+    "E0618": {
+      "id": "ERR_TRAIT_ASYNC_METHOD_OUTSIDE_1_0",
+      "level": "Error",
+      "message": "Async method '{}' in trait '@{}' is outside the frozen Toka 1.0 surface",
+      "description": "Async trait methods are outside the frozen Toka 1.0 surface"
+    },
     "E0101": {
       "id": "ERR_EXPECTED_SEMI",
       "level": "Error",
@@ -2339,6 +2345,24 @@
       "message": "Task started across execution boundary carries borrowed dependency '{}'; consume it with '.await' or '.wait', or transfer ownership before '.start'",
       "description": "Started tasks cannot carry PAL borrow dependencies across the execution boundary"
     },
+    "E0476": {
+      "id": "ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE",
+      "level": "Error",
+      "message": "Closure value '{}' has no capture summary and cannot cross execution boundary '{}'",
+      "description": "Execution boundaries require a closure capture summary"
+    },
+    "E0477": {
+      "id": "ERR_SEMA_EXEC_BOUNDARY_NON_SEND_CAPTURE",
+      "level": "Error",
+      "message": "Closure passed across execution boundary '{}' captures '{}' with a value that is not @Send",
+      "description": "Execution-boundary captures must satisfy @Send"
+    },
+    "E0478": {
+      "id": "ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE",
+      "level": "Error",
+      "message": "Closure passed across execution boundary '{}' copy-captures '{}' with a value that is not @Sync",
+      "description": "Copied execution-boundary captures must satisfy @Sync"
+    },
     "E04585": {
       "id": "ERR_SEMA_WAIT_INSIDE_ASYNC",
       "level": "Error",
@@ -2446,6 +2470,24 @@
       "level": "Error",
       "message": "Cannot pass non-owned receiver '{}' to 'cede self'; consuming receivers require an owned value or unique receiver",
       "description": "A consuming method receiver requires a uniquely owned source"
+    },
+    "E04603": {
+      "id": "ERR_TYPED_HOLE_INCOMPLETE",
+      "level": "Error",
+      "message": "Incomplete typed hole requires a value satisfying '{}'",
+      "description": "A typed hole is an incomplete program fragment and cannot be compiled or emitted"
+    },
+    "E04604": {
+      "id": "ERR_TYPED_HOLE_UNDERCONSTRAINED",
+      "level": "Error",
+      "message": "Typed hole has no complete expected contract; add an explicit declaration, return type, or resolved parameter type",
+      "description": "A typed hole must consume an already complete requirement and cannot drive inference"
+    },
+    "E04605": {
+      "id": "ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT",
+      "level": "Error",
+      "message": "Typed hole is not supported in this context; it is a requirement-only expression, not a place, capability, or resource",
+      "description": "Typed holes cannot be used as a place, through a view, or in a prefix/postfix operation"
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

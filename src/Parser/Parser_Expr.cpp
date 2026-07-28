@@ -534,6 +534,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     auto node = std::make_unique<UnsetExpr>();
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
+  } else if (match(TokenType::KwHole)) {
+    Token tok = previous();
+    auto node = std::make_unique<HoleExpr>(m_NextHoleId++);
+    node->setLocation(tok, m_CurrentFile);
+    expr = std::move(node);
   } else if (match(TokenType::String)) {
     Token tok = previous();
     auto node = std::make_unique<StringExpr>(tok.Text);
@@ -1121,6 +1126,15 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
   // Suffixes: .member, [index], etc.
   while (expr) {
+    if (dynamic_cast<HoleExpr *>(expr.get()) &&
+        (check(TokenType::Dot) || check(TokenType::LBracket) ||
+         check(TokenType::PlusPlus) || check(TokenType::MinusMinus) ||
+         check(TokenType::DoubleQuestion) || check(TokenType::TokenWrite) ||
+         check(TokenType::TokenNull) || check(TokenType::TokenNone) ||
+         check(TokenType::Bang))) {
+      error(peek(), DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
+      return nullptr;
+    }
     if (match(TokenType::Dot)) {
       Token dotTok = previous();
 

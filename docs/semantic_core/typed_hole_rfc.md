@@ -1,7 +1,9 @@
 # Typed Hole v1 RFC
 
-**Status:** proposed post-1.0 language/tooling extension. This document freezes
-the intended v1 boundary; it does not claim an implementation exists.
+**Status:** adopted post-1.0 language/tooling extension. Phase 1 implements
+the reserved `hole` token, distinct AST identity, fail-closed diagnostics, and
+the no-emission boundary. Expected-contract collection and `hole-goals` JSON
+remain subsequent phases.
 
 ## Decision
 

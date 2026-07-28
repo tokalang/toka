@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto value: i32 = hole#
+    return value
+}

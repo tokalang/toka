@@ -105,6 +105,7 @@ enum class TokenType {
   KwAlloc,
   KwFree,
   KwUnset,
+  KwHole,
   KwVariant,
   KwUnion,
   KwUnreachable,

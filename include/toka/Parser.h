@@ -40,6 +40,7 @@ private:
   size_t m_Pos;
   std::string m_CurrentFile;
   int m_CurrentClosureMaxImplicitArg = -1;
+  uint64_t m_NextHoleId = 1;
 
   // Helpers
   const Token &peek() const;

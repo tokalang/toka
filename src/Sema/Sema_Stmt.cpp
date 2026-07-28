@@ -44,6 +44,26 @@ static bool isNullableCedeDestination(const std::shared_ptr<Type> &type) {
   return type->IsNullable || (soul && soul->IsNullable);
 }
 
+// Keep the primary typed-hole diagnostic primary while the surrounding
+// declaration is being recovered.  The expression is still rejected; this
+// only suppresses derivative morphology noise from a wrapper such as `^hole`.
+static bool isHoleWrapper(const Expr *expr) {
+  while (expr) {
+    if (dynamic_cast<const HoleExpr *>(expr))
+      return true;
+    if (auto *unary = dynamic_cast<const UnaryExpr *>(expr)) {
+      expr = unary->RHS.get();
+    } else if (auto *cede = dynamic_cast<const CedeExpr *>(expr)) {
+      expr = cede->Value.get();
+    } else if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
 static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
                                                Scope *CurrentScope) {
   if (!Node || !CurrentScope)
@@ -1387,7 +1407,7 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     // 5. Strict Morphology Check
-    if (Var->Init &&
+    if (Var->Init && !isHoleWrapper(Var->Init.get()) &&
         Var->Permission.Morphology != BindingMorphology::Reference) {
       MorphKind lhsMorph = morphKindFromPermission(Var->Permission);
       MorphKind rhsMorph = getSyntacticMorphology(Var->Init.get());

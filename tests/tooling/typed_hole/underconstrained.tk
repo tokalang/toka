@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto answer = hole
+    return 0
+}

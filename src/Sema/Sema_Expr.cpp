@@ -102,6 +102,9 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
   if (!E)
     return {};
 
+  if (dynamic_cast<HoleExpr *>(E))
+    return {};
+
   auto applyPathFlowCeiling = [&](AccessCapability capability) {
     AccessPath path = canonicalizeAccessPath(makeAccessPath(E));
     if (!declarationOnly && path && m_PayloadFlowRestrictedPaths.count(path)) {
@@ -270,6 +273,12 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
   if (!E)
     return {};
 
+  if (dynamic_cast<HoleExpr *>(E)) {
+    PermissionFlow flow;
+    flow.Kind = PermissionFlowKind::RequirementOnly;
+    return flow;
+  }
+
   if (auto *Cede = dynamic_cast<CedeExpr *>(E)) {
     PermissionFlow flow = getPermissionFlow(Cede->Value.get());
     // A cast changes the static presentation, not the direct ownership
@@ -388,6 +397,9 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
 
 AccessIntent Sema::getAccessIntent(Expr *E) {
   if (!E)
+    return {};
+
+  if (dynamic_cast<HoleExpr *>(E))
     return {};
 
   if (auto *Cast = dynamic_cast<CastExpr *>(E))
@@ -1053,6 +1065,18 @@ bool Sema::checkStrictMorphology(ASTNode *Node, MorphKind Target,
 std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   if (!E)
     return toka::Type::fromString("void");
+
+  if (dynamic_cast<HoleExpr *>(E)) {
+    if (m_ExpectedType && !m_ExpectedType->isUnknown()) {
+      DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_INCOMPLETE,
+                               m_ExpectedType->toString());
+      HasError = true;
+      return m_ExpectedType;
+    }
+    DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_UNDERCONSTRAINED);
+    HasError = true;
+    return toka::Type::fromString("unknown");
+  }
 
   if (auto *U = dynamic_cast<UnsetExpr *>(E)) {
     m_LastInitMask = 0;
@@ -2850,6 +2874,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.releaseBorrow(iteratorSourcePath);
     return toka::Type::fromString((bodyType != "void") ? bodyType : elseType);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
+    if (dynamic_cast<HoleExpr *>(ce->Value.get())) {
+      error(ce, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
+      return toka::Type::fromString("unknown");
+    }
     if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get()))
       call->CallableReceiver = CallableReceiverMode::Consuming;
     auto innerTy = checkExpr(ce->Value.get());
