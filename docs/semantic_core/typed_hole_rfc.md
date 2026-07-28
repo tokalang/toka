@@ -8,8 +8,8 @@ generic calls. Phase 3 exposes those requirements through the independent
 `hole-goals` JSON protocol. Phase 4 verifies that semantic rejection prevents
 object/interface output and rejects transfer requirements. Phase 5 implements
 the separately versioned, conservative conditional fact slice for bindings,
-non-transfer expressions, resolved calls, and `if`/`match` value joins; broader
-control-flow propagation remains subsequent work.
+non-transfer expressions, resolved calls, direct whole-binding assignment, and
+`if`/`match` joins; broader control-flow propagation remains subsequent work.
 
 ## Decision
 

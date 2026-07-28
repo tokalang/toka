@@ -145,9 +145,14 @@ conditional editor facts:
 toka conditional-facts --json path/to/main.tk
 ```
 
-`toka.conditional-facts` v1 is deliberately not Public Semantic Evidence and
-only covers direct binding aliases. It records an incomplete dependency, never
-an `Allow` decision or a completed initialization.
+`toka.conditional-facts` v1 is deliberately not Public Semantic Evidence. It
+covers conservative local value flow through direct bindings, non-transfer
+expressions, resolved calls, direct whole-binding assignment, and reachable
+`if`/`match` joins; projections, compound assignment, loops, and escaping
+calls remain omitted rather than guessed. It records an incomplete dependency,
+never an `Allow` decision or a completed initialization. See
+[Typed Hole Conditional Facts v1](conditional_facts_v1.md) for the frozen
+protocol boundary.
 
 ## Regression evaluation
 
