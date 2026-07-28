@@ -1,7 +1,7 @@
 import stdx/encoding/base64
 import stdx/encoding/hex
 import stdx/encoding/percent
-import std/bytes::{Bytes}
+import std/bytes::{Bytes, bytes_from_array}
 import std/vec::{Vec}
 
 fn test_hex() {
@@ -21,6 +21,14 @@ fn test_hex() {
 fn test_base64() {
     assert(base64::encode("foo".as_bytes()).equals("Zm9v"), "Base64 complete triple")
     assert(base64::encode("f".as_bytes()).equals("Zg=="), "Base64 padded tail")
+    assert(base64::encode_url_safe_no_pad("f".as_bytes()).equals("Zg"), "Base64URL omits one-byte padding")
+    assert(base64::encode_url_safe_no_pad("fo".as_bytes()).equals("Zm8"), "Base64URL omits two-byte padding")
+    auto url_raw#: [u8; 3] = [0:u8; 3]
+    url_raw[0] = 251:u8
+    url_raw[1] = 255:u8
+    url_raw[2] = 255:u8
+    assert(base64::encode_url_safe_no_pad(bytes_from_array<3>(url_raw)).equals("-___"),
+           "Base64URL uses RFC 4648 URL-safe alphabet")
     auto decoded = base64::decode("AA/=").unwrap()
     assert(decoded.len() == 2:usize && decoded.get(1:usize) == 255:u8, "Base64 binary decode")
     assert(base64::decode("Zh==").is_err(), "Base64 canonical padding bits")

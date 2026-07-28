@@ -33,5 +33,6 @@
 | **`stdx/net/websocket.tk`** | `WebSocketFrame`, `WsStream` | **Tier 3: Stdx 1.0** | WebSocket async frame processing. |
 | **`stdx/encoding/*`** | safe hex, Base64, percent codecs | **Tier 3: Stdx 1.0** | Binary-safe `bytes` input, owned decode output, structured errors. |
 | **`stdx/crypto/{hmac,constant_time}.tk`** | HMAC-SHA-256 and equal-length timing-safe comparison | **Tier 3: Stdx 1.0** | Safe `bytes` views for MAC generation and verification; length is not treated as secret. |
+| **`stdx/crypto/token.tk`** | OS-random hexadecimal and Base64URL tokens | **Tier 3: Stdx 1.0** | Delegates entropy to `std/random`; does not impose session or expiry policy. |
 | **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 4: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
 | **Async Extensions** | Async blocks, TaskScope, connection pools | **Tier 5: Experimental** | Deferred for post-1.0 design. |
