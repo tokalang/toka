@@ -1454,7 +1454,22 @@ void Sema::checkStmt(Stmt *S) {
       m_LastLifeDependencies.clear();
     }
 
-    if (auto *clo = dynamic_cast<ClosureExpr *>(Var->Init.get())) {
+    Expr *closureSource = Var->Init.get();
+    while (closureSource) {
+      if (auto *cede = dynamic_cast<CedeExpr *>(closureSource)) {
+        closureSource = cede->Value.get();
+      } else if (auto *pass = dynamic_cast<PassExpr *>(closureSource)) {
+        closureSource = pass->Value.get();
+      } else if (auto *cast = dynamic_cast<CastExpr *>(closureSource)) {
+        closureSource = cast->Expression.get();
+      } else if (auto *unary = dynamic_cast<UnaryExpr *>(closureSource)) {
+        closureSource = unary->RHS.get();
+      } else {
+        break;
+      }
+    }
+
+    if (auto *clo = dynamic_cast<ClosureExpr *>(closureSource)) {
       for (const auto &dep : clo->ImplicitCaptures) {
         Info.LifeDependencySet.insert(dep);
         depsToCommitAsBorrow.insert(dep);
@@ -1465,6 +1480,27 @@ void Sema::checkStmt(Stmt *S) {
           depsToCommitAsBorrow.insert(depInfo->LifeDependencySet.begin(),
                                       depInfo->LifeDependencySet.end());
         }
+      }
+      Info.HasClosureBoundarySummary = clo->HasBoundaryCaptureSummary;
+      Info.ClosureImplicitCaptures.insert(
+          clo->BoundaryImplicitCaptures.begin(),
+          clo->BoundaryImplicitCaptures.end());
+      Info.ClosureNonSendCaptures.insert(clo->BoundaryNonSendCaptures.begin(),
+                                         clo->BoundaryNonSendCaptures.end());
+      Info.ClosureNonSyncCopyCaptures.insert(
+          clo->BoundaryNonSyncCopyCaptures.begin(),
+          clo->BoundaryNonSyncCopyCaptures.end());
+    } else if (auto *source = dynamic_cast<VariableExpr *>(closureSource)) {
+      SymbolInfo *sourceInfo = nullptr;
+      std::string sourceName;
+      if (CurrentScope->findVariableWithDeref(source->Name, sourceInfo,
+                                              sourceName) && sourceInfo &&
+          sourceInfo->HasClosureBoundarySummary) {
+        Info.HasClosureBoundarySummary = true;
+        Info.ClosureImplicitCaptures = sourceInfo->ClosureImplicitCaptures;
+        Info.ClosureNonSendCaptures = sourceInfo->ClosureNonSendCaptures;
+        Info.ClosureNonSyncCopyCaptures =
+            sourceInfo->ClosureNonSyncCopyCaptures;
       }
     }
 

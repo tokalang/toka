@@ -865,6 +865,64 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
             }
           }
         }
+
+        // An assignment to a closure binding must preserve the same boundary
+        // facts as its source.  Otherwise `f = borrowed_closure` would hide
+        // an implicit capture before `thread_spawn(f)` observes it.
+        if (Bin->Op == "=" && !containsMemberExpr(Bin->LHS.get())) {
+          auto clearClosureSummary = [&]() {
+            targetInfo->HasClosureBoundarySummary = false;
+            targetInfo->ClosureImplicitCaptures.clear();
+            targetInfo->ClosureNonSendCaptures.clear();
+            targetInfo->ClosureNonSyncCopyCaptures.clear();
+          };
+          Expr *closureSource = Bin->RHS.get();
+          while (closureSource) {
+            if (auto *cede = dynamic_cast<CedeExpr *>(closureSource)) {
+              closureSource = cede->Value.get();
+            } else if (auto *pass = dynamic_cast<PassExpr *>(closureSource)) {
+              closureSource = pass->Value.get();
+            } else if (auto *cast = dynamic_cast<CastExpr *>(closureSource)) {
+              closureSource = cast->Expression.get();
+            } else if (auto *unary = dynamic_cast<UnaryExpr *>(closureSource)) {
+              closureSource = unary->RHS.get();
+            } else {
+              break;
+            }
+          }
+          if (auto *closure = dynamic_cast<ClosureExpr *>(closureSource)) {
+            targetInfo->HasClosureBoundarySummary =
+                closure->HasBoundaryCaptureSummary;
+            targetInfo->ClosureImplicitCaptures = std::set<std::string>(
+                closure->BoundaryImplicitCaptures.begin(),
+                closure->BoundaryImplicitCaptures.end());
+            targetInfo->ClosureNonSendCaptures = std::set<std::string>(
+                closure->BoundaryNonSendCaptures.begin(),
+                closure->BoundaryNonSendCaptures.end());
+            targetInfo->ClosureNonSyncCopyCaptures = std::set<std::string>(
+                closure->BoundaryNonSyncCopyCaptures.begin(),
+                closure->BoundaryNonSyncCopyCaptures.end());
+          } else if (auto *source =
+                         dynamic_cast<VariableExpr *>(closureSource)) {
+            SymbolInfo *sourceInfo = nullptr;
+            std::string sourceName;
+            if (CurrentScope->findVariableWithDeref(source->Name, sourceInfo,
+                                                    sourceName) && sourceInfo &&
+                sourceInfo->HasClosureBoundarySummary) {
+              targetInfo->HasClosureBoundarySummary = true;
+              targetInfo->ClosureImplicitCaptures =
+                  sourceInfo->ClosureImplicitCaptures;
+              targetInfo->ClosureNonSendCaptures =
+                  sourceInfo->ClosureNonSendCaptures;
+              targetInfo->ClosureNonSyncCopyCaptures =
+                  sourceInfo->ClosureNonSyncCopyCaptures;
+            } else {
+              clearClosureSummary();
+            }
+          } else {
+            clearClosureSummary();
+          }
+        }
       }
     }
     m_LastBorrowSource = "";

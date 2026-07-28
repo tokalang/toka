@@ -8,30 +8,61 @@ shape SharedData(
 
 pub fn main() -> i32 {
     auto init_val = SharedData(counter = 0)
-    auto state# = Mutex<SharedData>::new(init_val)
-    auto once# = Once::new()
-    
-    auto init_fn#: fn#() = { =>
-        auto lock = state#.lock().unwrap()
+    auto ~state = Mutex<SharedData>::make(init_val)
+    auto ~once# = Once::make()
+
+    auto ~state1 = ~state
+    auto ~state2 = ~state
+    auto ~state3 = ~state
+    auto ~once1# = ~once
+    auto ~once2# = ~once
+    auto ~once3# = ~once
+    auto init1#: fn#() = { [cede state1] =>
+        auto ~local_state = ~state1
+        auto lock = local_state.lock().unwrap()
         auto *val# = lock.get_ref()
         val.counter = val.counter + 1
         println("init_fn executed!")
     }
-    
-    auto task#: fn#() -> cede i32 = { =>
-        once#.call(init_fn)
+    auto init2#: fn#() = { [cede state2] =>
+        auto ~local_state = ~state2
+        auto lock = local_state.lock().unwrap()
+        auto *val# = lock.get_ref()
+        val.counter = val.counter + 1
+        println("init_fn executed!")
+    }
+    auto init3#: fn#() = { [cede state3] =>
+        auto ~local_state = ~state3
+        auto lock = local_state.lock().unwrap()
+        auto *val# = lock.get_ref()
+        val.counter = val.counter + 1
+        println("init_fn executed!")
+    }
+    auto task1#: fn#() -> cede i32 = { [cede once1, cede init1] =>
+        auto ~local_once# = ~once1
+        local_once#.call(init1)
+        return cede 0
+    }
+    auto task2#: fn#() -> cede i32 = { [cede once2, cede init2] =>
+        auto ~local_once# = ~once2
+        local_once#.call(init2)
+        return cede 0
+    }
+    auto task3#: fn#() -> cede i32 = { [cede once3, cede init3] =>
+        auto ~local_once# = ~once3
+        local_once#.call(init3)
         return cede 0
     }
     
-    auto t1# = thread_spawn<i32>(task)
-    auto t2# = thread_spawn<i32>(task)
-    auto t3# = thread_spawn<i32>(task)
+    auto t1# = thread_spawn<i32>(cede task1)
+    auto t2# = thread_spawn<i32>(cede task2)
+    auto t3# = thread_spawn<i32>(cede task3)
     
     t1#.join().unwrap()
     t2#.join().unwrap()
     t3#.join().unwrap()
     
-    auto lock = state#.lock().unwrap()
+    auto lock = state.lock().unwrap()
     auto *val = lock.get_ref()
     println("Once counter value: {}", val.counter)
     assert(val.counter == 1, "Expected counter to be 1")

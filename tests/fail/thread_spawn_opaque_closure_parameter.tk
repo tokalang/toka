@@ -1,0 +1,11 @@
+import std/thread::thread_spawn
+
+fn launch(cede f: cede fn#() -> cede i32) {
+    auto handle# = thread_spawn<i32>(cede f)
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E0476]

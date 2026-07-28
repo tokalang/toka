@@ -1,0 +1,15 @@
+import std/thread::thread_spawn
+
+fn main() -> i32 {
+    auto value = 7
+    auto borrowed: fn() -> cede i32 = { =>
+        return cede value
+    }
+    auto outer: fn() -> cede i32 = { [cede borrowed] =>
+        return cede borrowed()
+    }
+    auto handle# = thread_spawn<i32>(cede outer)
+    return 0
+}
+
+// EXPECT: error[E04582]

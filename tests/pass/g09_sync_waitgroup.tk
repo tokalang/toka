@@ -8,32 +8,61 @@ shape SharedWork(
 
 pub fn main() -> i32 {
     auto init_work = SharedWork(finished_count = 0)
-    auto data# = Mutex<SharedWork>::new(init_work)
-    auto wg# = WaitGroup::new()
+    auto ~data = Mutex<SharedWork>::make(init_work)
+    auto ~wg# = WaitGroup::make()
     
     wg#.add(3)
     
-    auto task = { =>
+    auto ~data1 = ~data
+    auto ~data2 = ~data
+    auto ~data3 = ~data
+    auto ~wg1# = ~wg
+    auto ~wg2# = ~wg
+    auto ~wg3# = ~wg
+    auto task1 = { [cede data1, cede wg1] =>
         yield_now()
-        
-        auto lock = data#.lock().unwrap()
+        auto ~local_data = ~data1
+        auto ~local_wg# = ~wg1
+        auto lock = local_data.lock().unwrap()
         auto *val# = lock.get_ref()
         val.finished_count = val.finished_count + 1
         println("Thread finished work piece")
         
-        wg#.done()
+        local_wg#.done()
+        return cede 0
+    }
+    auto task2 = { [cede data2, cede wg2] =>
+        yield_now()
+        auto ~local_data = ~data2
+        auto ~local_wg# = ~wg2
+        auto lock = local_data.lock().unwrap()
+        auto *val# = lock.get_ref()
+        val.finished_count = val.finished_count + 1
+        println("Thread finished work piece")
+        local_wg#.done()
+        return cede 0
+    }
+    auto task3 = { [cede data3, cede wg3] =>
+        yield_now()
+        auto ~local_data = ~data3
+        auto ~local_wg# = ~wg3
+        auto lock = local_data.lock().unwrap()
+        auto *val# = lock.get_ref()
+        val.finished_count = val.finished_count + 1
+        println("Thread finished work piece")
+        local_wg#.done()
         return cede 0
     }
     
-    auto t1# = thread_spawn<i32>(task)
-    auto t2# = thread_spawn<i32>(task)
-    auto t3# = thread_spawn<i32>(task)
+    auto t1# = thread_spawn<i32>(cede task1)
+    auto t2# = thread_spawn<i32>(cede task2)
+    auto t3# = thread_spawn<i32>(cede task3)
     
     println("Main thread waiting on WaitGroup...")
     wg.wait_all()
     println("Main thread woke up from WaitGroup!")
     
-    auto lock = data#.lock().unwrap()
+    auto lock = data.lock().unwrap()
     auto *val = lock.get_ref()
     println("Completed tasks count: {}", val.finished_count)
     assert(val.finished_count == 3, "Expected completed tasks count to be 3")

@@ -1,0 +1,14 @@
+import std/thread::thread_spawn
+
+fn main() -> i32 {
+    auto value = 7
+    auto f: fn() -> cede i32 = { =>
+        return cede value
+    }
+    auto g: fn() -> cede i32 = { =>
+        return cede 0
+    }
+    g = cede f
+    auto handle# = thread_spawn<i32>(cede g)
+    return 0
+}

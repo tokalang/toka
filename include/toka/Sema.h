@@ -63,6 +63,13 @@ struct SymbolInfo {
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
 
+  // A closure value must retain its capture facts after the literal is bound.
+  // Unknown function values are intentionally not treated as boundary-safe.
+  bool HasClosureBoundarySummary = false;
+  std::set<std::string> ClosureImplicitCaptures;
+  std::set<std::string> ClosureNonSendCaptures;
+  std::set<std::string> ClosureNonSyncCopyCaptures;
+
   void *ReferencedModule = nullptr; // Pointer to ModuleScope (opaque here)
 
   // Permission queries deliberately name the layer they authorize.  A hatted

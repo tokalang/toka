@@ -1682,6 +1682,13 @@ class ClosureExpr : public Expr {
 public:
   std::vector<CaptureItem> ExplicitCaptures;
   std::vector<std::string> ImplicitCaptures; // Filled by Sema
+  // Boundary facts are semantic metadata, not a runtime closure layout.  They
+  // travel with a closure expression until its binding copies them into the
+  // symbol table for detached-execution checks.
+  bool HasBoundaryCaptureSummary = false;
+  std::vector<std::string> BoundaryImplicitCaptures;
+  std::vector<std::string> BoundaryNonSendCaptures;
+  std::vector<std::string> BoundaryNonSyncCopyCaptures;
   
   bool HasExplicitArgs = false;
   std::vector<std::string> ArgNames; // Either explicit names or filled lazily by Sema
@@ -1702,6 +1709,10 @@ public:
       n->ExplicitCaptures.push_back(cap.clone());
     }
     n->ImplicitCaptures = ImplicitCaptures;
+    n->HasBoundaryCaptureSummary = HasBoundaryCaptureSummary;
+    n->BoundaryImplicitCaptures = BoundaryImplicitCaptures;
+    n->BoundaryNonSendCaptures = BoundaryNonSendCaptures;
+    n->BoundaryNonSyncCopyCaptures = BoundaryNonSyncCopyCaptures;
     n->HasExplicitArgs = HasExplicitArgs;
     n->ArgNames = ArgNames;
     n->MaxImplicitArgIndex = MaxImplicitArgIndex;

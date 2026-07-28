@@ -3,14 +3,20 @@ import std/thread::{thread_spawn, yield_now}
 import std/io::{println}
 
 pub fn main() -> i32 {
-    auto m# = Mutex<i32>::new(0)
+    auto ~m = Mutex<i32>::make(0)
     
     // We spawn 5 threads, each looping 1000 times, incrementing the protected value by 1 each time
     // The expected total sum should be 5000
-    auto f#: fn#() -> cede i32 = { =>
+    auto ~m1 = ~m
+    auto ~m2 = ~m
+    auto ~m3 = ~m
+    auto ~m4 = ~m
+    auto ~m5 = ~m
+    auto f1#: fn#() -> cede i32 = { [cede m1] =>
         auto i# = 0
         loop i < 1000 {
-            auto g = m#.lock().unwrap()
+            auto ~local = ~m1
+            auto g = local.lock().unwrap()
             auto *p# = g.get_ref()
             
             // Perform computation after acquiring the lock
@@ -26,14 +32,66 @@ pub fn main() -> i32 {
         }
         return cede 0
     }
+    auto f2#: fn#() -> cede i32 = { [cede m2] =>
+        auto i# = 0
+        loop i < 1000 {
+            auto ~local = ~m2
+            auto g = local.lock().unwrap()
+            auto *p# = g.get_ref()
+            auto current = p
+            if i % 10 == 0 { yield_now() }
+            p = current + 1
+            i = i + 1
+        }
+        return cede 0
+    }
+    auto f3#: fn#() -> cede i32 = { [cede m3] =>
+        auto i# = 0
+        loop i < 1000 {
+            auto ~local = ~m3
+            auto g = local.lock().unwrap()
+            auto *p# = g.get_ref()
+            auto current = p
+            if i % 10 == 0 { yield_now() }
+            p = current + 1
+            i = i + 1
+        }
+        return cede 0
+    }
+    auto f4#: fn#() -> cede i32 = { [cede m4] =>
+        auto i# = 0
+        loop i < 1000 {
+            auto ~local = ~m4
+            auto g = local.lock().unwrap()
+            auto *p# = g.get_ref()
+            auto current = p
+            if i % 10 == 0 { yield_now() }
+            p = current + 1
+            i = i + 1
+        }
+        return cede 0
+    }
+    auto f5#: fn#() -> cede i32 = { [cede m5] =>
+        auto i# = 0
+        loop i < 1000 {
+            auto ~local = ~m5
+            auto g = local.lock().unwrap()
+            auto *p# = g.get_ref()
+            auto current = p
+            if i % 10 == 0 { yield_now() }
+            p = current + 1
+            i = i + 1
+        }
+        return cede 0
+    }
     
     println("Spawning 5 threads to increment Mutex data 1000 times each...")
 
-    auto t1# = thread_spawn<i32>(f)
-    auto t2# = thread_spawn<i32>(f)
-    auto t3# = thread_spawn<i32>(f)
-    auto t4# = thread_spawn<i32>(f)
-    auto t5# = thread_spawn<i32>(f)
+    auto t1# = thread_spawn<i32>(cede f1)
+    auto t2# = thread_spawn<i32>(cede f2)
+    auto t3# = thread_spawn<i32>(cede f3)
+    auto t4# = thread_spawn<i32>(cede f4)
+    auto t5# = thread_spawn<i32>(cede f5)
     
     t1#.join().unwrap()
     t2#.join().unwrap()
@@ -41,7 +99,7 @@ pub fn main() -> i32 {
     t4#.join().unwrap()
     t5#.join().unwrap()
     
-    auto final_lock = m#.lock().unwrap()
+    auto final_lock = m.lock().unwrap()
     auto *fp = final_lock.get_ref()
     
     println("All threads finished. Final Mutex data: {}", fp)

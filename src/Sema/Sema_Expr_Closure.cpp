@@ -474,6 +474,12 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   // Determine Captures
   std::vector<ShapeMember> members;
   std::map<std::string, SymbolInfo> captureBindings;
+  Clo->ImplicitCaptures.clear();
+  Clo->BoundaryImplicitCaptures.clear();
+  Clo->BoundaryNonSendCaptures.clear();
+  Clo->BoundaryNonSyncCopyCaptures.clear();
+  Clo->HasBoundaryCaptureSummary = false;
+  bool completeBoundarySummary = true;
   for (const auto &capture : Clo->ExplicitCaptures) {
     std::string name = Type::stripMorphology(capture.Name);
     if (!name.empty() && name != "*")
@@ -517,6 +523,31 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
         if (!isExplicit) {
            Clo->ImplicitCaptures.push_back(varName);
+           Clo->BoundaryImplicitCaptures.push_back(varName);
+        } else if (infoPtr->TypeObj &&
+                   (infoPtr->TypeObj->typeKind == Type::Function ||
+                    infoPtr->TypeObj->typeKind == Type::DynFn)) {
+           if (!infoPtr->HasClosureBoundarySummary) {
+             completeBoundarySummary = false;
+           } else {
+             Clo->BoundaryImplicitCaptures.insert(
+                 Clo->BoundaryImplicitCaptures.end(),
+                 infoPtr->ClosureImplicitCaptures.begin(),
+                 infoPtr->ClosureImplicitCaptures.end());
+             Clo->BoundaryNonSendCaptures.insert(
+                 Clo->BoundaryNonSendCaptures.end(),
+                 infoPtr->ClosureNonSendCaptures.begin(),
+                 infoPtr->ClosureNonSendCaptures.end());
+             Clo->BoundaryNonSyncCopyCaptures.insert(
+                 Clo->BoundaryNonSyncCopyCaptures.end(),
+                 infoPtr->ClosureNonSyncCopyCaptures.begin(),
+                 infoPtr->ClosureNonSyncCopyCaptures.end());
+           }
+        } else if (!infoPtr->TypeObj || !infoPtr->TypeObj->isSend(this)) {
+           Clo->BoundaryNonSendCaptures.push_back(varName);
+        } else if (explicitMode == CaptureMode::ExplicitCopy &&
+                   !infoPtr->TypeObj->isSync(this)) {
+           Clo->BoundaryNonSyncCopyCaptures.push_back(varName);
         }
 
         ShapeMember sm;
@@ -604,6 +635,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   for (const auto &name : Clo->ImplicitCaptures) {
     m_LastLifeDependencies.insert(name);
   }
+  Clo->HasBoundaryCaptureSummary = completeBoundarySummary;
 
   std::set<std::string> captureNames;
   for (const auto &member : members)

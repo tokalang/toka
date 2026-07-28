@@ -8,19 +8,23 @@ shape State(
 )
 
 pub fn main() -> i32 {
-    auto m# = Mutex<State>::new(State(ready = false, val = 0))
-    auto cv = CondVar<State>::new()
+    auto ~m = Mutex<State>::make(State(ready = false, val = 0))
+    auto ~cv = CondVar<State>::make()
     
     // Consumer
-    auto consumer#: fn#() -> cede i32 = { =>
+    auto ~thread_m = ~m
+    auto ~thread_cv = ~cv
+    auto consumer#: fn#() -> cede i32 = { [cede thread_m, cede thread_cv] =>
         println("Consumer locking mutex...")
-        auto lock = m#.lock().unwrap()
+        auto ~local_m = ~thread_m
+        auto ~local_cv = ~thread_cv
+        auto lock = local_m.lock().unwrap()
         
         auto *s_ptr# = lock.get_ref()
         loop {
             if s_ptr.ready { break }
             println("Consumer sleeping...")
-            cv.wait_cond(lock)
+            local_cv.wait_cond(lock)
             println("Consumer woke up")
         }
         
@@ -36,7 +40,7 @@ pub fn main() -> i32 {
     
     println("Producer locking mutex...")
     {
-        auto lock_prod = m#.lock().unwrap()
+        auto lock_prod = m.lock().unwrap()
         
         auto *s_prod# = lock_prod.get_ref()
         s_prod.val = 42

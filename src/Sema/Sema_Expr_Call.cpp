@@ -60,6 +60,26 @@ static ClosureExpr *findClosureExpr(Expr *E) {
   return nullptr;
 }
 
+// The execution-boundary check needs to follow a closure through the same
+// transparent wrappers accepted by ordinary argument checking.  It must not,
+// however, treat a variable as a literal: the binding's summary is the source
+// of truth once a closure has escaped its AST node.
+static VariableExpr *findVariableExpr(Expr *E) {
+  if (!E)
+    return nullptr;
+  if (auto *Var = dynamic_cast<VariableExpr *>(E))
+    return Var;
+  if (auto *Cede = dynamic_cast<CedeExpr *>(E))
+    return findVariableExpr(Cede->Value.get());
+  if (auto *Pass = dynamic_cast<PassExpr *>(E))
+    return findVariableExpr(Pass->Value.get());
+  if (auto *Cast = dynamic_cast<CastExpr *>(E))
+    return findVariableExpr(Cast->Expression.get());
+  if (auto *Unary = dynamic_cast<UnaryExpr *>(E))
+    return findVariableExpr(Unary->RHS.get());
+  return nullptr;
+}
+
 static bool isNullableCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
   if (!cede || !cede->Value || !cede->Value->ResolvedType)
@@ -1886,18 +1906,73 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     projectOwnedStringView(Call->Args[i], argType, paramType);
 
     if (isExecutionBoundaryCalleeName(OriginalName)) {
-      if (auto *Clo = findClosureExpr(Call->Args[i].get())) {
-        for (const auto &name : Clo->ImplicitCaptures) {
+      auto reportSummary = [&](ASTNode *Node, const std::string &valueName,
+                               bool hasSummary,
+                               const std::set<std::string> &implicit,
+                               const std::set<std::string> &nonSend,
+                               const std::set<std::string> &copyNonSync) {
+        // A closure can cross a detached execution boundary only when the
+        // compiler has retained its capture facts.  Accepting an opaque
+        // function value here would recreate the original binding bypass.
+        if (!hasSummary) {
           DiagnosticEngine::report(
-              Clo->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE,
+              Node->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE,
+              valueName, OriginalName);
+          HasError = true;
+          return;
+        }
+        for (const auto &name : implicit) {
+          DiagnosticEngine::report(
+              Node->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_IMPLICIT_CAPTURE,
               OriginalName, name, name, name);
           HasError = true;
-          recordDecision(Clo, SemanticRuleID::AsyncCapture001,
+          recordDecision(Node, SemanticRuleID::AsyncCapture001,
                          SemanticOperation::ExecutionBoundaryCapture,
                          SemanticDecision::Reject,
                          SemanticReason::ImplicitBoundaryCapture, name,
                          OriginalName, findPathDeclaration(name));
         }
+        for (const auto &name : nonSend) {
+          DiagnosticEngine::report(
+              Node->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_NON_SEND_CAPTURE,
+              OriginalName, name);
+          HasError = true;
+        }
+        for (const auto &name : copyNonSync) {
+          DiagnosticEngine::report(
+              Node->Loc, DiagID::ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE,
+              OriginalName, name);
+          HasError = true;
+        }
+      };
+
+      if (auto *Clo = findClosureExpr(Call->Args[i].get())) {
+        std::set<std::string> implicit(Clo->BoundaryImplicitCaptures.begin(),
+                                       Clo->BoundaryImplicitCaptures.end());
+        std::set<std::string> nonSend(Clo->BoundaryNonSendCaptures.begin(),
+                                      Clo->BoundaryNonSendCaptures.end());
+        std::set<std::string> copyNonSync(
+            Clo->BoundaryNonSyncCopyCaptures.begin(),
+            Clo->BoundaryNonSyncCopyCaptures.end());
+        reportSummary(Clo, "closure", Clo->HasBoundaryCaptureSummary,
+                      implicit, nonSend, copyNonSync);
+      } else if (auto *Var = findVariableExpr(Call->Args[i].get())) {
+        SymbolInfo *Info = nullptr;
+        std::string actualName;
+        if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
+            Info) {
+          reportSummary(Var, Var->Name, Info->HasClosureBoundarySummary,
+                        Info->ClosureImplicitCaptures,
+                        Info->ClosureNonSendCaptures,
+                        Info->ClosureNonSyncCopyCaptures);
+        } else {
+          const std::set<std::string> none;
+          reportSummary(Var, Var->Name, false, none, none, none);
+        }
+      } else {
+        const std::set<std::string> none;
+        reportSummary(Call->Args[i].get(), "closure expression", false, none,
+                      none, none);
       }
     }
     

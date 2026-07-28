@@ -1,0 +1,22 @@
+import std/thread::thread_spawn
+
+shape SendOnly(*ptr: i32)
+impl SendOnly@Send {}
+
+impl SendOnly {
+    fn id(self) -> i32 {
+        return 0
+    }
+}
+
+fn main() -> i32 {
+    auto *ptr = unsafe alloc i32(7)
+    auto value = SendOnly(ptr = ptr)
+    auto f: fn() -> cede i32 = { [copy value] =>
+        return cede value.id()
+    }
+    auto handle# = thread_spawn<i32>(cede f)
+    return 0
+}
+
+// EXPECT: error[E0478]

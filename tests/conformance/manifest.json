@@ -1620,6 +1620,42 @@
       "description": "An implicit borrowed closure capture cannot manufacture payload capability"
     },
     {
+      "id": "diag_thread_spawn_implicit_capture_via_binding_01",
+      "path": "diagnostics/thread_spawn_implicit_capture_via_binding.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04582",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "A bound closure retains implicit-borrow capture facts at thread_spawn"
+    },
+    {
+      "id": "diag_thread_spawn_implicit_capture_via_assignment_01",
+      "path": "diagnostics/thread_spawn_implicit_capture_via_assignment.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04582",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "Closure capture facts survive assignment before thread_spawn"
+    },
+    {
+      "id": "diag_thread_spawn_implicit_capture_nested_closure_01",
+      "path": "diagnostics/thread_spawn_implicit_capture_nested_closure.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04582",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "Explicitly moving a closure cannot hide that closure's borrowed captures"
+    },
+    {
+      "id": "diag_thread_spawn_opaque_closure_parameter_01",
+      "path": "diagnostics/thread_spawn_opaque_closure_parameter.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0476",
+      "expected_span_line": 4,
+      "timeout_seconds": 10,
+      "description": "Opaque callback parameters are rejected at detached execution boundaries"
+    },
+    {
       "id": "ownership_pattern_shared_view_preserves_payload_capability_01",
       "path": "ownership/pattern_shared_view_preserves_payload_capability.tk",
       "type": "run",
