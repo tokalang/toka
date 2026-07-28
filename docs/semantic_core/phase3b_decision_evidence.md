@@ -1,14 +1,20 @@
 # Phase 3B Decision Evidence
 
+> Historical implementation record. The authoritative public protocol is now
+> [Public Semantic Evidence v1](../semantic_evidence_v1.md). This document
+> remains the evidence for its internal origins and source/TKI replay design.
+
 Date: 2026-07-11
 
 Phase 3B gives structured semantic facts an explanation and replay consumer.
 It does not change source syntax, acceptance rules, or the ordinary TKI
 format.
 
-## Internal Schema
+## Implementation Schema
 
-`--dump-semantic-evidence=json` emits one internal JSON document:
+`--dump-semantic-evidence=json` was the implementation spelling at this phase.
+It remains a compatibility alias for the public
+`--semantic-evidence=json` command.
 
 - schema: `toka.semantic-evidence`,
 - version: `1`, and
@@ -27,8 +33,8 @@ Rule, operation, decision, and reason values are compiler enums. Diagnostic
 prose is not parsed to recover them. Process-local AST addresses and symbol
 IDs are never emitted.
 
-The internal schema is versioned so tests and compiler tools can reject an
-unknown representation. It is not a public language or tooling ABI.
+The schema was subsequently frozen as the public v1 tooling ABI. Consumers
+must reject an unknown version rather than infer compatibility.
 
 ## Determinism
 

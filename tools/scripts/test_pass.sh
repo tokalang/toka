@@ -572,6 +572,13 @@ if ! run_without_test_cache bash tools/scripts/test_semantic_evidence.sh; then
 fi
 
 echo ""
+echo "Running Public Semantic Evidence v1 ABI gate..."
+if ! run_without_test_cache python3 tools/scripts/test_public_semantic_evidence.py; then
+    echo -e "${RED}Public Semantic Evidence v1 ABI gate failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic TKI Replay tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_replay.sh; then
     echo -e "${RED}Semantic TKI Replay tests failed!${NC}"

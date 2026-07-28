@@ -5,6 +5,9 @@ Date: 2026-07-11
 This document records the implementation state at audit time. Phase 3A's
 subsequent implementation is recorded in `phase3a_structured_facts.md`.
 Phase 3B's implementation is recorded in `phase3b_decision_evidence.md`.
+The later public contract is
+[`../semantic_evidence_v1.md`](../semantic_evidence_v1.md); the decision below
+is historical and no longer describes the current public-interface status.
 
 This audit asks whether Toka needs a semantic evidence layer for the compiler
 itself. It considers only needs demonstrated by the current implementation and
@@ -12,9 +15,10 @@ does not propose any language-design change.
 
 ## Decision
 
-Toka needs a small, structured, internal semantic-fact layer. It does not
-currently need a general event-sourcing architecture or a stable public trace
-format.
+At audit time Toka needed a small, structured, internal semantic-fact layer.
+It did not yet need a general event-sourcing architecture or a stable public
+trace format. Public Semantic Evidence v1 later promoted the bounded decision
+record—not a general trace—to a stable tooling protocol.
 
 The immediate engineering need is to preserve facts that the compiler already
 computes, but currently represents repeatedly as strings, transient side

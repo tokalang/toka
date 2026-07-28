@@ -6,7 +6,8 @@
     "diagnostic_success": 1.0,
     "repair_success": 1.0,
     "edit_precision": 1.0,
-    "semantic_context_success": 1.0
+    "semantic_context_success": 1.0,
+    "semantic_evidence_success": 1.0
   },
   "maximum_cost": {
     "tool_calls": 8,

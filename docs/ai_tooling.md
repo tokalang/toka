@@ -69,6 +69,18 @@ index contract -> query references -> edit -> check --json -> project tests
 The final project-test command remains project-defined; the compiler never
 pretends that a source-only check proves runtime behavior.
 
+For a failed ownership, borrowing, transfer, dependency, or execution-boundary
+check, ask the compiler for the corresponding decision facts:
+
+```sh
+toka evidence --json path/to/main.tk
+```
+
+This emits the frozen [Public Semantic Evidence v1](semantic_evidence_v1.md)
+protocol. The deterministic AI tooling evaluation includes this evidence path;
+it proves compiler protocol availability and cost, not a claim about any
+particular remote model.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:
@@ -83,3 +95,8 @@ semantic-context success rates. It also reports source/output bytes, tool calls,
 and repair rounds as reproducible cost proxies. CI compares these results with
 `tests/tooling/ai_eval/baseline.json`; this evaluates the compiler protocol, not
 the quality of any particular language model.
+
+Model-versus-language studies are deliberately non-blocking and external to the
+release gate: they must pin a task corpus, model revision, prompt/context,
+tool budget, and captured Public Semantic Evidence artifacts. This prevents
+provider or model drift from changing the compiler's release result.

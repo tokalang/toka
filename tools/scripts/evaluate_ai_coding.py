@@ -38,8 +38,10 @@ def main():
     root = Path(__file__).resolve().parents[2]
     suffix = ".exe" if sys.platform == "win32" else ""
     tokac = (root / args.build_dir / "bin" / ("tokac" + suffix)).resolve()
+    toka = (root / args.build_dir / "bin" / ("toka" + suffix)).resolve()
     baseline_path = (root / args.baseline).resolve()
-    require(tokac.is_file(), "tokac is missing; build the SDK first")
+    require(tokac.is_file() and toka.is_file(),
+            "Toka SDK binaries are missing; build the SDK first")
     require(baseline_path.is_file(), "AI coding baseline is missing")
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -109,6 +111,20 @@ def main():
                  if item["code"] == "E0440"), None)
     diagnostic_successes += int(bool(move and move["related"]))
 
+    evidence_doc = json.loads(run(
+        [toka, "evidence", "--json", ownership],
+        expected=1, source_bytes=len(ownership_source.encode("utf-8")),
+    ).stdout)
+    evidence_successes = int(
+        evidence_doc.get("schema") == "toka.semantic-evidence" and
+        evidence_doc.get("version") == 1 and
+        any(record.get("rule") == "PAL-BORROW-002" and
+            record.get("decision") == "Reject" and
+            record.get("reason") == "ActiveSharedBorrow" and
+            record.get("origin_location", {}).get("file")
+            for record in evidence_doc.get("records", []))
+    )
+
     context_result = json.loads(run([
         tokac, "--semantic-context=json", clean,
         "--query-file", clean, "--line", "13", "--character", "12",
@@ -123,6 +139,7 @@ def main():
         "repair_success": repair_successes / len(repair_cases),
         "edit_precision": precise_edits / len(repair_cases),
         "semantic_context_success": context_successes / 1,
+        "semantic_evidence_success": evidence_successes / 1,
     }
     for name, minimum in baseline["minimum_rates"].items():
         require(rates[name] >= minimum,
@@ -134,7 +151,7 @@ def main():
     print(json.dumps({
         "schema": "toka.ai-coding-evaluation",
         "version": 1,
-        "tasks": 5,
+        "tasks": 6,
         "rates": rates,
         "cost": cost,
         "baseline": str(baseline_path.relative_to(root)),

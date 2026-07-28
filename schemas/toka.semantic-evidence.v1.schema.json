@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.semantic-evidence.v1.schema.json",
+  "title": "Toka Public Semantic Evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "records"],
+  "properties": {
+    "schema": {"const": "toka.semantic-evidence"},
+    "version": {"const": 1},
+    "records": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/record"}
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "column"],
+      "properties": {
+        "file": {"type": "string"},
+        "line": {"type": "integer", "minimum": 0},
+        "column": {"type": "integer", "minimum": 0}
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule", "operation", "decision", "reason", "subject", "origin",
+        "primary_location", "origin_location"
+      ],
+      "properties": {
+        "rule": {"type": "string", "pattern": "^[A-Z]+(?:-[A-Z]+)*-[0-9]{3}$"},
+        "operation": {"type": "string"},
+        "decision": {"enum": ["Allow", "Reject", "ConservativeReject"]},
+        "reason": {"type": "string"},
+        "subject": {"type": "string"},
+        "origin": {"type": "string"},
+        "primary_location": {"$ref": "#/$defs/location"},
+        "origin_location": {"$ref": "#/$defs/location"}
+      }
+    }
+  }
+}

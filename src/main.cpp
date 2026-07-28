@@ -113,6 +113,7 @@ void printHelp() {
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
+      << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
       << "  --semantic-index=json           Emit the compiler semantic index\n"
       << "  --semantic-context=json         Emit bounded semantic context\n"
       << "  --semantic-query <kind>         Query the semantic index\n"
@@ -522,7 +523,8 @@ int main(int argc, char **argv) {
       dumpAssignmentStats = true;
     } else if (arg == "--dump-handle-surface-stats=json") {
       dumpHandleSurfaceStats = true;
-    } else if (arg == "--dump-semantic-evidence=json") {
+    } else if (arg == "--semantic-evidence=json" ||
+               arg == "--dump-semantic-evidence=json") {
       dumpSemanticEvidence = true;
     } else if (arg == "--dump-memory-summaries=json") {
       dumpMemorySummaries = true;
@@ -628,7 +630,7 @@ int main(int argc, char **argv) {
   if (dumpSemanticEvidence &&
       (dumpAssignmentStats || dumpHandleSurfaceStats || dumpDependencies ||
        runTopologyEval || g_JsonDiagnostics)) {
-    llvm::errs() << "--dump-semantic-evidence=json cannot be combined with "
+    llvm::errs() << "--semantic-evidence=json cannot be combined with "
                     "another JSON or evaluation output mode\n";
     return 1;
   }
