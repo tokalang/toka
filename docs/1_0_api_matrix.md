@@ -39,5 +39,6 @@
 | **`stdx/crypto/{hmac,constant_time}.tk`** | HMAC-SHA-256 and equal-length timing-safe comparison | **Tier 3: Stdx 1.0** | Safe `bytes` views for MAC generation and verification; length is not treated as secret. |
 | **`stdx/crypto/token.tk`** | OS-random hexadecimal and Base64URL tokens | **Tier 3: Stdx 1.0** | Delegates entropy to `std/random`; does not impose session or expiry policy. |
 | **`stdx/crypto/hkdf.tk`** | HKDF-SHA-256 extract, expand, derive | **Tier 3: Stdx 1.0** | RFC 5869 key derivation; no protocol-specific key schedule policy. |
+| **`stdx/crypto/pbkdf2.tk`** | PBKDF2-HMAC-SHA-256 derivation | **Tier 3: Stdx 1.0** | RFC 8018 derivation with explicit work factor and bounded output; protocol adapters choose their own password policy. |
 | **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 4: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
 | **Async Extensions** | Async blocks, TaskScope, connection pools | **Tier 5: Experimental** | Deferred for post-1.0 design. |

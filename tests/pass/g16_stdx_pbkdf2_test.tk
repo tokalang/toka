@@ -1,0 +1,30 @@
+import std/bytes::{Bytes}
+import stdx/crypto/pbkdf2::{derive_sha256}
+import stdx/encoding/hex
+
+fn derive_hex(password: str, salt: str, iterations: u32, output_len: usize) -> string {
+    auto output = derive_sha256(password.as_bytes(), salt.as_bytes(), iterations, output_len).unwrap()
+    auto owned = Bytes::from_vec(cede output)
+    return hex::encode(owned.as_slice())
+}
+
+fn main() -> i32 {
+    // Published PBKDF2-HMAC-SHA-256 vectors.
+    assert(derive_hex("password", "salt", 1:u32, 32:usize).equals(
+               "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"),
+           "PBKDF2-SHA-256 one-round vector")
+    assert(derive_hex("password", "salt", 2:u32, 32:usize).equals(
+               "ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43"),
+           "PBKDF2-SHA-256 two-round vector")
+    assert(derive_hex("password", "salt", 4096:u32, 32:usize).equals(
+               "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"),
+           "PBKDF2-SHA-256 SCRAM work-factor vector")
+    assert(derive_hex("password", "salt", 2:u32, 40:usize).equals(
+               "ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43830651afcb5c862f"),
+           "PBKDF2 output may span multiple SHA-256 blocks")
+    assert(derive_sha256("password".as_bytes(), "salt".as_bytes(), 0:u32, 32:usize).is_err(),
+           "PBKDF2 rejects zero iterations")
+    assert(derive_sha256("password".as_bytes(), "salt".as_bytes(), 1:u32, 67108865:usize).is_err(),
+           "PBKDF2 bounds attacker-controlled output length")
+    return 0
+}
