@@ -67,7 +67,8 @@ shape ParsedFragment (
 
 shape ActiveState (
     state_id: i32,
-    begin_byte: usize
+    begin_byte: usize,
+    end_byte: usize
 )
 
 shape ThreadSet (
@@ -480,7 +481,11 @@ fn add_thread(program: Vec<NfaState>, state_id: i32, input: str, cursor: usize,
         }
         return
     }
-    active#.push(ActiveState(state_id = state_id, begin_byte = begin_byte))
+    active#.push(ActiveState(
+        state_id = state_id,
+        begin_byte = begin_byte,
+        end_byte = cursor
+    ))
 }
 
 fn add_start_thread(program: Vec<NfaState>, entry: i32, input: str, cursor: usize,
@@ -496,7 +501,12 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
     loop index < current.len() {
         auto thread = current.get(index)
         auto state = program.get(thread.state_id as usize)
-        if state.kind == STATE_LITERAL {
+        if state.kind == STATE_MATCH {
+            if !next.seen.get(thread.state_id as usize) {
+                next.seen#.set(thread.state_id as usize, true)
+                next.active#.push(thread)
+            }
+        } else if state.kind == STATE_LITERAL {
             if input.byte_at(cursor) as u8 == state.byte {
                 add_thread(program, state.out, input, cursor + 1:usize, thread.begin_byte,
                            next.seen, next.active)
@@ -514,17 +524,14 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
     }
 }
 
-fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>, end_byte: usize) -> Option<Match> {
-    auto index#: usize = 0:usize
-    loop index < active.len() {
-        auto thread = active.get(index)
-        if program.get(thread.state_id as usize).kind == STATE_MATCH {
-            return Option<Match>::Some(Match(
-                begin_byte = thread.begin_byte,
-                end_byte = end_byte
-            ))
-        }
-        index = index + 1:usize
+fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>) -> Option<Match> {
+    if active.len() == 0:usize { return Option<Match>::None }
+    auto first = active.get(0:usize)
+    if program.get(first.state_id as usize).kind == STATE_MATCH {
+        return Option<Match>::Some(Match(
+            begin_byte = first.begin_byte,
+            end_byte = first.end_byte
+        ))
     }
     return Option<Match>::None
 }
@@ -569,7 +576,7 @@ impl Regex {
         add_start_thread(self.program, self.entry, input, 0:usize, threads)
         auto cursor#: usize = 0:usize
         loop true {
-            auto found = first_match(self.program, threads.active, cursor)
+            auto found = first_match(self.program, threads.active)
             if found.is_some() { return found }
             if cursor == input.len() { break }
             auto next# = new_thread_set(self.program)

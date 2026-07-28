@@ -46,6 +46,12 @@ fn test_grouping_alternation_and_quantifiers() {
     assert(star.is_match("abbbc"), "star must permit repeated bytes")
     assert(!star.is_match("zabbbc"), "anchored NFA must reject a prefix")
 
+    auto ordered = Regex::compile("ab|a").unwrap()
+    auto ordered_match = ordered.find("ab")
+    assert(ordered_match.is_some(), "ordered alternation must find a match")
+    assert(ordered_match.unwrap().end_offset() == 2:usize,
+           "RE2 leftmost-first semantics must retain the earlier alternative")
+
     assert(Regex::compile("(ab").is_err(), "unclosed group must be rejected")
     assert(Regex::compile("a**").is_err(), "stacked quantifiers must be rejected")
 }
