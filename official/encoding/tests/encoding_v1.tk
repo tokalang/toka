@@ -1,0 +1,43 @@
+import official/encoding::{DecodeError, hex_decode, hex_encode, package_name}
+import core/result::{Result}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+
+fn test_hex_round_trip_and_binary_input() {
+    auto text = string::from("Toka")
+    auto encoded = hex_encode(text.as_str().as_bytes())
+    assert(encoded.equals("546f6b61"), "hex encoding must use lowercase RFC 4648 digits")
+
+    auto decoded = hex_decode("546F6b61")
+    assert(decoded.is_ok(), "hex decoding must accept upper and lowercase digits")
+    auto bytes = decoded.unwrap()
+    assert(bytes.len() == 4:usize, "hex decode must retain byte length")
+    assert(bytes.get(0:usize) == 'T' as u8 && bytes.get(3:usize) == 'a' as u8,
+           "hex decode must preserve byte contents")
+
+    auto raw# = Vec<u8>::new()
+    raw#.push(0:u8)
+    raw#.push(255:u8)
+    auto owned = Bytes::from_vec(cede raw)
+    assert(hex_encode(owned.as_slice()).equals("00ff"),
+           "hex encoding must accept arbitrary binary bytes")
+}
+
+fn test_hex_decode_errors() {
+    auto odd = hex_decode("0")
+    assert(odd.is_err(), "odd-length hex input must be rejected")
+    assert(odd.unwrap_err().position() == 1:usize,
+           "odd-length error must report the input end")
+
+    auto invalid = hex_decode("0g")
+    assert(invalid.is_err(), "invalid hex digit must be rejected")
+    assert(invalid.unwrap_err().position() == 1:usize,
+           "invalid digit error must report its byte position")
+}
+
+fn main() -> i32 {
+    assert(package_name().equals("encoding"), "public package name")
+    test_hex_round_trip_and_binary_input()
+    test_hex_decode_errors()
+    return 0
+}

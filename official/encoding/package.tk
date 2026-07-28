@@ -1,0 +1,22 @@
+// Static manifest for the official/encoding package.
+pub const PACKAGE = (
+    name = "encoding",
+    identity = "official/encoding",
+    version = "0.1.0",
+    kind = "library",
+    license = "Apache-2.0",
+    compiler = "0.9.9-01",
+    entry_modules = ("lib/official/encoding.tk"),
+    targets = ("macos", "linux"),
+    dependencies = (),
+    native = (required = false, libraries = ())
+)
+
+pub const AI_CONTRACT = (
+    schema = "toka-official-package-v1",
+    summary = "Safe binary text encodings with byte-positioned decode errors.",
+    capabilities = ("RFC 4648 hexadecimal encoding", "strict hexadecimal decoding"),
+    non_goals = ("URL parsing", "form encoding", "Unicode normalization", "raw pointer APIs"),
+    safety = ("encoders consume borrowed bytes without copies; decoders return owned byte vectors"),
+    qualification = ("tokac -I ../../../lib -I lib tests/encoding_v1.tk -o /tmp/encoding_v1 && /tmp/encoding_v1")
+)
