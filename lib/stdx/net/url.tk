@@ -1,6 +1,6 @@
 // lib/stdx/net/url.tk
 
-import core/result::{Result, Result}
+import core/result::{Result}
 
 // Helper to check if a character is unreserved per RFC 3986
 fn is_unreserved(b: u8) -> bool {
@@ -26,6 +26,74 @@ fn from_hex_char(c: char) -> i32 {
     if b >= 'A' as u8 && b <= 'F' as u8 { return (b - 'A' as u8 + 10:u8) as i32 }
     if b >= 'a' as u8 && b <= 'f' as u8 { return (b - 'a' as u8 + 10:u8) as i32 }
     return -1
+}
+
+fn lower_ascii(input: str) -> string {
+    auto output# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte# = input.byte_at(index) as u8
+        if byte >= 'A' as u8 && byte <= 'Z' as u8 {
+            byte = byte + 32:u8
+        }
+        output#.push_byte_raw(byte)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn is_scheme(input: str) -> bool {
+    if input.len() == 0:usize { return false }
+    auto first = input.byte_at(0:usize) as u8
+    if !((first >= 'a' as u8 && first <= 'z' as u8) || (first >= 'A' as u8 && first <= 'Z' as u8)) {
+        return false
+    }
+    auto index#: usize = 1:usize
+    loop index < input.len() {
+        auto byte = input.byte_at(index) as u8
+        if !((byte >= 'a' as u8 && byte <= 'z' as u8) ||
+             (byte >= 'A' as u8 && byte <= 'Z' as u8) ||
+             (byte >= '0' as u8 && byte <= '9' as u8) ||
+             byte == '+' as u8 || byte == '-' as u8 || byte == '.' as u8) {
+            return false
+        }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn parse_port(input: str) -> Result<u16, string> {
+    if input.len() == 0:usize { return Result<u16, string>::Err(string::from("URL port is empty")) }
+    auto value#: i32 = 0:i32
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte = input.byte_at(index) as u8
+        if byte < '0' as u8 || byte > '9' as u8 {
+            return Result<u16, string>::Err(string::from("invalid URL port"))
+        }
+        value = value * 10:i32 + (byte - '0' as u8) as i32
+        if value > 65535:i32 {
+            return Result<u16, string>::Err(string::from("URL port out of range"))
+        }
+        index = index + 1:usize
+    }
+    if value == 0:i32 { return Result<u16, string>::Err(string::from("URL port must be non-zero")) }
+    return Result<u16, string>::Ok(value as u16)
+}
+
+fn is_valid_host(input: str, allow_colon: bool) -> bool {
+    if input.len() == 0:usize { return false }
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte = input.byte_at(index) as u8
+        if byte <= 32:u8 || byte == 127:u8 || byte == '/' as u8 || byte == '?' as u8 ||
+           byte == '#' as u8 || byte == '@' as u8 || byte == '[' as u8 || byte == ']' as u8 ||
+           (!allow_colon && byte == ':' as u8) {
+            return false
+        }
+        index = index + 1:usize
+    }
+    return true
 }
 
 pub fn url_encode(input: string) -> string {
@@ -154,54 +222,99 @@ pub fn parse_url(input: string) -> Result<Url, string> {
         rest = rest.substring(0:i32, query_idx)
     }
     
-    // 3. Scheme
+    // 3. Scheme and authority.  This deliberately supports hierarchical URLs
+    // and relative references, not every RFC 3986 URI scheme.
     auto scheme_idx_opt = rest.as_str().index_of_str(string::from("://").as_str())
+    auto has_authority# = false
     if scheme_idx_opt.is_some() {
         auto scheme_idx = scheme_idx_opt.unwrap() as i32
-        url.scheme = rest.substring(0:i32, scheme_idx)
+        auto scheme = rest.substring(0:i32, scheme_idx)
+        if !is_scheme(scheme.as_str()) {
+            return Result<Url, string>::Err(string::from("invalid URL scheme"))
+        }
+        url.scheme = lower_ascii(scheme.as_str())
         rest = rest.substring(scheme_idx + 3, rest.len() as i32)
+        has_authority = true
+    } else if rest.len() >= 2:usize && rest.as_str().byte_at(0:usize) as u8 == '/' as u8 && rest.as_str().byte_at(1:usize) as u8 == '/' as u8 {
+        rest = rest.substring(2:i32, rest.len() as i32)
+        has_authority = true
     }
-    
-    // 4. Host and Port
-    // Path starts at the first '/'
+
+    // A relative reference never has an authority in this deliberately small API.
+    if !has_authority {
+        url.path = rest
+        return Result<Url, string>::Ok(url)
+    }
+
+    // 4. Authority and path.  Query and fragment were removed before this point,
+    // so they cannot be mistaken for authority bytes.
     auto path_idx_opt = rest.as_str().index_of('/')
     auto host_port# = string::from("")
-    
     if path_idx_opt.is_some() {
         auto path_idx = path_idx_opt.unwrap() as i32
         host_port = rest.substring(0:i32, path_idx)
         url.path = rest.substring(path_idx, rest.len() as i32)
     } else {
         host_port = rest
-        // If there is no path, maybe the default path is empty.
     }
-    
-    // Parse port
-    auto port_idx_opt = host_port.as_str().index_of(':')
-    if port_idx_opt.is_some() {
-        auto port_idx = port_idx_opt.unwrap() as i32
-        url.host = host_port.substring(0:i32, port_idx)
-        auto port_str = host_port.substring(port_idx + 1, host_port.len() as i32)
-        // Convert to u16
-        auto p# = 0:i32
-        auto i#: usize = 0
-        auto plen = port_str.len()
-        loop i < plen {
-            auto ch = port_str.as_str().byte_at(i)
-            if ch >= '0' && ch <= '9' {
-                p = p * 10 + (ch as u8 - '0' as u8) as i32
-            } else {
-                return Result<Url, string>::Err(string::from("invalid port number"))
+
+    if host_port.len() == 0:usize {
+        return Result<Url, string>::Err(string::from("URL authority is empty"))
+    }
+
+    // Brackets disambiguate IPv6 literals from the host:port separator.
+    if host_port.as_str().byte_at(0:usize) as u8 == '[' as u8 {
+        auto close#: usize = 1:usize
+        loop close < host_port.len() && host_port.as_str().byte_at(close) as u8 != ']' as u8 {
+            close = close + 1:usize
+        }
+        if close == host_port.len() || close == 1:usize {
+            return Result<Url, string>::Err(string::from("invalid bracketed IPv6 host"))
+        }
+        auto ipv6 = host_port.substring(1:i32, close as i32)
+        if !is_valid_host(ipv6.as_str(), true) {
+            return Result<Url, string>::Err(string::from("invalid IPv6 host"))
+        }
+        url.host = lower_ascii(ipv6.as_str())
+        if close + 1:usize < host_port.len() {
+            if host_port.as_str().byte_at(close + 1:usize) as u8 != ':' as u8 {
+                return Result<Url, string>::Err(string::from("invalid URL authority suffix"))
             }
-            i = i + 1
+            auto port_text = host_port.substring((close + 2:usize) as i32, host_port.len() as i32)
+            auto parsed_port = parse_port(port_text.as_str())
+            if parsed_port.is_err() { return Result<Url, string>::Err(parsed_port.unwrap_err()) }
+            url.port = parsed_port.unwrap()
         }
-        if p > 65535 {
-            return Result<Url, string>::Err(string::from("port out of range"))
-        }
-        url.port = p as u16
     } else {
-        url.host = host_port
+        auto colon#: usize = 0:usize
+        auto colon_count#: usize = 0:usize
+        auto index#: usize = 0:usize
+        loop index < host_port.len() {
+            if host_port.as_str().byte_at(index) as u8 == ':' as u8 {
+                colon = index
+                colon_count = colon_count + 1:usize
+            }
+            index = index + 1:usize
+        }
+        if colon_count > 1:usize {
+            return Result<Url, string>::Err(string::from("IPv6 URL hosts must use brackets"))
+        }
+        if colon_count == 1:usize {
+            auto host = host_port.substring(0:i32, colon as i32)
+            auto port_text = host_port.substring((colon + 1:usize) as i32, host_port.len() as i32)
+            if !is_valid_host(host.as_str(), false) {
+                return Result<Url, string>::Err(string::from("invalid URL host"))
+            }
+            auto parsed_port = parse_port(port_text.as_str())
+            if parsed_port.is_err() { return Result<Url, string>::Err(parsed_port.unwrap_err()) }
+            url.host = lower_ascii(host.as_str())
+            url.port = parsed_port.unwrap()
+        } else {
+            if !is_valid_host(host_port.as_str(), false) {
+                return Result<Url, string>::Err(string::from("invalid URL host"))
+            }
+            url.host = lower_ascii(host_port.as_str())
+        }
     }
-    
     return Result<Url, string>::Ok(url)
 }

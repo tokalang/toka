@@ -74,5 +74,47 @@ pub fn main() -> i32 {
         }
     }
 
+    // 6. Authority boundary and bracketed IPv6.
+    auto ipv6_res = parse_url(string::from("HTTPS://[2001:DB8::1]:8443/a/b?x=1#frag"))
+    match ipv6_res {
+        auto Result::Err(&e) => {
+            println("IPv6 parse failed: {}", e)
+            return 1
+        }
+        auto Result::Ok(&u) => {
+            if u.scheme != string::from("https") { return 1 }
+            if u.host != string::from("2001:db8::1") { return 1 }
+            if u.port != 8443:u16 { return 1 }
+            if u.path != string::from("/a/b") { return 1 }
+            if u.query != string::from("x=1") { return 1 }
+            if u.fragment != string::from("frag") { return 1 }
+        }
+    }
+
+    // 7. Scheme-relative authority and a non-authority relative reference.
+    auto authority_res = parse_url(string::from("//Example.COM:8080/a?x=1"))
+    match authority_res {
+        auto Result::Err(_) => { return 1 }
+        auto Result::Ok(&u) => {
+            if u.scheme != string::from("") || u.host != string::from("example.com") || u.port != 8080:u16 { return 1 }
+            if u.path != string::from("/a") || u.query != string::from("x=1") { return 1 }
+        }
+    }
+    auto relative_res = parse_url(string::from("docs/index.html?lang=en#top"))
+    match relative_res {
+        auto Result::Err(_) => { return 1 }
+        auto Result::Ok(&u) => {
+            if u.host != string::from("") || u.path != string::from("docs/index.html") { return 1 }
+            if u.query != string::from("lang=en") || u.fragment != string::from("top") { return 1 }
+        }
+    }
+
+    // 8. Authorities must be unambiguous and ports must be representable.
+    if !parse_url(string::from("http://:80/")).is_err() { return 1 }
+    if !parse_url(string::from("http://example.com:")).is_err() { return 1 }
+    if !parse_url(string::from("http://example.com:70000/")).is_err() { return 1 }
+    if !parse_url(string::from("http://::1/")).is_err() { return 1 }
+    if !parse_url(string::from("http://[::1/")).is_err() { return 1 }
+
     return 0
 }
