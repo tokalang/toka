@@ -1,0 +1,5 @@
+// Minimal public entry module for the Official Package v1 fixture.
+
+pub fn package_name() -> string {
+    return string::from("example")
+}

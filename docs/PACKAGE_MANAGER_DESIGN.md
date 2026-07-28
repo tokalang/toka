@@ -14,7 +14,9 @@ Toka 的现代工程结构由三个具有高度辨识度的核心文件支撑：
 * **规范**：
   * 文件内容必须是合法的 Toka 源码。
   * **只能包含数据结构**（例如 `pub const PACKAGE = (...)`），绝对禁止出现 `fn` 定义或任何执行控制流逻辑。
-  * 被 `toka add` 等 CLI 工具静态读写，对解析器和安全爬虫绝对友好。
+* 被 `toka add` 等 CLI 工具静态读写，对解析器和安全爬虫绝对友好。
+* 官方维护包在不改变此格式的前提下，遵循
+  [`official_package_v1.md`](official_package_v1.md) 的静态契约字段与资格证据要求。
 * **示例**：
   ```toka
   pub const PACKAGE = (

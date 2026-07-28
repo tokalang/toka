@@ -1,0 +1,22 @@
+// Static, resolver-compatible official-package v1 fixture.
+pub const PACKAGE = (
+    name = "example",
+    identity = "official/example",
+    version = "0.1.0",
+    kind = "library",
+    license = "Apache-2.0",
+    compiler = "0.9.9-01",
+    entry_modules = ("lib/official/example.tk"),
+    targets = ("macos", "linux"),
+    dependencies = (),
+    native = (required = false, libraries = ())
+)
+
+pub const AI_CONTRACT = (
+    schema = "toka-official-package-v1",
+    summary = "Minimal resolver-compatible official package fixture.",
+    capabilities = ("stable exported value"),
+    non_goals = ("native dependencies", "runtime configuration"),
+    safety = ("pure owned value API"),
+    qualification = ("tokac -I lib tests/import_example.tk -o /tmp/official_example && /tmp/official_example")
+)

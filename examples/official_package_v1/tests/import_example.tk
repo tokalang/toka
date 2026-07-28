@@ -1,0 +1,6 @@
+import official/example::{package_name}
+
+fn main() -> i32 {
+    assert(package_name().equals("example"), "official import path")
+    return 0
+}
