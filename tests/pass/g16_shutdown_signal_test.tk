@@ -18,6 +18,7 @@ fn run() -> async i32 {
         auto ShutdownSignal::Terminate => {}
         _ => assert(false, "first shutdown signal wins")
     }
+    assert(toka_shutdown_signal_raise_for_test(2:i32) == 0:i32, "raise later shutdown signal")
     assert(take_shutdown_signal().is_none(), "observed signal is consumed exactly once")
     return 0
 }

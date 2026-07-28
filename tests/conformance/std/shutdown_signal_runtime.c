@@ -12,6 +12,7 @@ int main(void) {
     assert(toka_shutdown_signal_raise_for_test(15) == 0);
     assert(toka_shutdown_signal_raise_for_test(2) == 0);
     assert(toka_shutdown_signal_take() == 15);
+    assert(toka_shutdown_signal_raise_for_test(2) == 0);
     assert(toka_shutdown_signal_take() == 0);
     return 0;
 }

@@ -68,9 +68,12 @@ int toka_random_bytes(void *buf, size_t len) {
 // Service shutdown capture deliberately has no scheduler or allocator path.
 // POSIX only permits async-signal-safe work in a signal handler; retaining the
 // first signal in sig_atomic_t lets ordinary Toka task code decide when and how
-// to cancel service work.
+// to cancel service work.  Delivery is a separate one-shot flag: take never
+// clears the recorded signal, so an interrupt arriving during a poll cannot be
+// erased by ordinary task code.
 #if !defined(_WIN32) && !defined(__wasi__)
 static volatile sig_atomic_t toka_shutdown_signal = 0;
+static volatile sig_atomic_t toka_shutdown_signal_delivered = 0;
 
 static void toka_shutdown_signal_handler(int signal_number) {
     if (toka_shutdown_signal == 0) {
@@ -94,8 +97,9 @@ int toka_shutdown_signal_install(void) {
 }
 
 int toka_shutdown_signal_take(void) {
+    if (toka_shutdown_signal_delivered != 0) return 0;
     sig_atomic_t observed = toka_shutdown_signal;
-    toka_shutdown_signal = 0;
+    if (observed != 0) toka_shutdown_signal_delivered = 1;
     return (int)observed;
 }
 
