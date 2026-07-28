@@ -6,6 +6,8 @@ import std/vec::{Vec}
 
 const MAX_PATTERN_BYTES: usize = 4096:usize
 const MAX_GROUP_NESTING: usize = 128:usize
+const MAX_REPEAT_COUNT: usize = 1000:usize
+const MAX_NFA_STATES: usize = 32768:usize
 
 const STATE_LITERAL: i32 = 0:i32
 const STATE_ANY: i32 = 1:i32
@@ -62,6 +64,12 @@ shape Fragment (
 
 shape ParsedFragment (
     fragment: Fragment,
+    next_byte: usize
+)
+
+shape ParsedRepetition (
+    minimum: usize,
+    maximum: i32,
     next_byte: usize
 )
 
@@ -440,6 +448,86 @@ fn parse_atom(pattern: str, position: usize, depth: usize, program#: Vec<NfaStat
     ))
 }
 
+fn decimal_digit(byte: u8) -> i32 {
+    if byte >= '0' as u8 && byte <= '9' as u8 {
+        return (byte - '0' as u8) as i32
+    }
+    return -1:i32
+}
+
+fn parse_repeat_count(pattern: str, position: usize) -> Result<ParsedRepetition, RegexError> {
+    auto cursor# = position + 1:usize
+    if cursor >= pattern.len() || decimal_digit(pattern.byte_at(cursor) as u8) < 0:i32 {
+        return Result<ParsedRepetition, RegexError>::Err(error(position, "expected decimal repetition count"))
+    }
+
+    auto minimum#: usize = 0:usize
+    loop cursor < pattern.len() {
+        auto digit = decimal_digit(pattern.byte_at(cursor) as u8)
+        if digit < 0:i32 { break }
+        if minimum > (MAX_REPEAT_COUNT - digit as usize) / 10:usize {
+            return Result<ParsedRepetition, RegexError>::Err(error(position, "regex repetition count exceeds v1 limit"))
+        }
+        minimum = minimum * 10:usize + digit as usize
+        cursor = cursor + 1:usize
+    }
+
+    if cursor >= pattern.len() {
+        return Result<ParsedRepetition, RegexError>::Err(error(position, "missing closing '}' in repetition"))
+    }
+    if pattern.byte_at(cursor) as u8 == '}' as u8 {
+        return Result<ParsedRepetition, RegexError>::Ok(ParsedRepetition(
+            minimum = minimum, maximum = minimum as i32, next_byte = cursor + 1:usize
+        ))
+    }
+    if pattern.byte_at(cursor) as u8 != ',' as u8 {
+        return Result<ParsedRepetition, RegexError>::Err(error(cursor, "expected ',' or '}' in repetition"))
+    }
+    cursor = cursor + 1:usize
+    if cursor < pattern.len() && pattern.byte_at(cursor) as u8 == '}' as u8 {
+        return Result<ParsedRepetition, RegexError>::Ok(ParsedRepetition(
+            minimum = minimum, maximum = -1:i32, next_byte = cursor + 1:usize
+        ))
+    }
+    if cursor >= pattern.len() || decimal_digit(pattern.byte_at(cursor) as u8) < 0:i32 {
+        return Result<ParsedRepetition, RegexError>::Err(error(cursor, "expected decimal repetition upper bound"))
+    }
+
+    auto maximum#: usize = 0:usize
+    loop cursor < pattern.len() {
+        auto digit = decimal_digit(pattern.byte_at(cursor) as u8)
+        if digit < 0:i32 { break }
+        if maximum > (MAX_REPEAT_COUNT - digit as usize) / 10:usize {
+            return Result<ParsedRepetition, RegexError>::Err(error(position, "regex repetition count exceeds v1 limit"))
+        }
+        maximum = maximum * 10:usize + digit as usize
+        cursor = cursor + 1:usize
+    }
+    if cursor >= pattern.len() || pattern.byte_at(cursor) as u8 != '}' as u8 {
+        return Result<ParsedRepetition, RegexError>::Err(error(cursor, "missing closing '}' in repetition"))
+    }
+    if maximum < minimum {
+        return Result<ParsedRepetition, RegexError>::Err(error(position, "regex repetition upper bound is smaller than lower bound"))
+    }
+    return Result<ParsedRepetition, RegexError>::Ok(ParsedRepetition(
+        minimum = minimum, maximum = maximum as i32, next_byte = cursor + 1:usize
+    ))
+}
+
+fn parse_repeat_copy(pattern: str, atom_position: usize, depth: usize,
+                     program#: Vec<NfaState>, classes#: Vec<ByteClass>)
+                     -> Result<Fragment, RegexError> {
+    if program.len() >= MAX_NFA_STATES {
+        return Result<Fragment, RegexError>::Err(error(atom_position, "regex NFA state limit exceeded"))
+    }
+    auto parsed = parse_atom(pattern, atom_position, depth, program, classes)
+    if parsed.is_err() { return Result<Fragment, RegexError>::Err(parsed.unwrap_err()) }
+    if program.len() > MAX_NFA_STATES {
+        return Result<Fragment, RegexError>::Err(error(atom_position, "regex NFA state limit exceeded"))
+    }
+    return Result<Fragment, RegexError>::Ok(cede parsed.unwrap().fragment)
+}
+
 fn parse_concatenation(pattern: str, position: usize, depth: usize, program#: Vec<NfaState>,
                        classes#: Vec<ByteClass>)
                        -> Result<ParsedFragment, RegexError> {
@@ -465,6 +553,48 @@ fn parse_concatenation(pattern: str, position: usize, depth: usize, program#: Ve
             } else if quantifier == '?' as u8 {
                 fragment = optional_fragment(program, cede fragment)
                 next = next + 1:usize
+            } else if quantifier == '{' as u8 {
+                auto repetition = parse_repeat_count(pattern, next)
+                if repetition.is_err() { return Result<ParsedFragment, RegexError>::Err(repetition.unwrap_err()) }
+                auto bounds = repetition.unwrap()
+                auto repeated# = empty_fragment(program)
+                auto produced#: usize = 0:usize
+
+                // Reparse each copy so every repetition owns independent NFA
+                // states and unresolved exits. The first atom has already
+                // validated this syntax; its unused provisional fragment is
+                // discarded with this failed-to-concatenate path.
+                loop produced < bounds.minimum {
+                    auto copied = parse_repeat_copy(pattern, cursor, depth, program, classes)
+                    if copied.is_err() { return Result<ParsedFragment, RegexError>::Err(copied.unwrap_err()) }
+                    auto copy_fragment = cede copied.unwrap()
+                    repeated = concat_fragments(program, cede repeated, cede copy_fragment)
+                    produced = produced + 1:usize
+                }
+
+                if bounds.maximum < 0:i32 {
+                    auto copied = parse_repeat_copy(pattern, cursor, depth, program, classes)
+                    if copied.is_err() { return Result<ParsedFragment, RegexError>::Err(copied.unwrap_err()) }
+                    auto tail = cede copied.unwrap()
+                    auto starred = star_fragment(program, cede tail)
+                    repeated = concat_fragments(program, cede repeated, cede starred)
+                } else {
+                    auto optional_count = bounds.maximum as usize - bounds.minimum
+                    auto optional_index#: usize = 0:usize
+                    loop optional_index < optional_count {
+                        auto copied = parse_repeat_copy(pattern, cursor, depth, program, classes)
+                        if copied.is_err() { return Result<ParsedFragment, RegexError>::Err(copied.unwrap_err()) }
+                        auto copy_fragment = cede copied.unwrap()
+                        auto optional = optional_fragment(program, cede copy_fragment)
+                        repeated = concat_fragments(program, cede repeated, cede optional)
+                        optional_index = optional_index + 1:usize
+                    }
+                }
+                if program.len() > MAX_NFA_STATES {
+                    return Result<ParsedFragment, RegexError>::Err(error(next, "regex NFA state limit exceeded"))
+                }
+                fragment = cede repeated
+                next = bounds.next_byte
             }
         }
         if has_atom {

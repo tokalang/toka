@@ -35,18 +35,23 @@ temporary input.
 - literal bytes and escapes for metacharacters;
 - `.` for one non-LF byte (no dotall flag in v1);
 - concatenation, grouping `(...)`, and alternation `|`;
-- postfix `*`, `+`, and `?`;
+- postfix `*`, `+`, `?`, and counted repetitions `{m}`, `{m,}`, `{m,n}`;
 - ASCII byte classes such as `[abc]`, `[a-z]`, and `[^0-9]`;
 - `^` and `$` anchors.
 
 The public target is this RE2-compatible regular subset, not a claim of full
 RE2 compatibility. The current slice enables literals, escaped metacharacters,
-`.`, `^`, `$`, grouping, alternation, postfix `*`, `+`, and `?`, plus ASCII
+`.`, `^`, `$`, grouping, alternation, postfix `*`, `+`, `?`, and counted
+repetitions, plus ASCII
 character classes, ranges, and negated classes. Escapes are intentionally
 limited to literal metacharacters, `\n`/`\r`/`\t`, `\xNN`, and ASCII
 `\d`/`\D`/`\w`/`\W`/`\s`/`\S` outside bracket classes. Matching operates on
 UTF-8 string bytes; it does not promise Unicode character classes, grapheme
 boundaries, or Unicode case folding.
+
+Counted repetitions accept bounds through 1000. Compilation also rejects a
+pattern that would expand beyond 32,768 NFA states; this preserves the v1
+bounded-resource contract even when a short pattern contains a large group.
 
 ## Explicit non-goals
 

@@ -63,6 +63,31 @@ fn test_grouping_alternation_and_quantifiers() {
     assert(Regex::compile("a**").is_err(), "stacked quantifiers must be rejected")
 }
 
+fn test_counted_repetitions() {
+    auto exact = Regex::compile("^a{3}$").unwrap()
+    assert(exact.is_match("aaa"), "exact repetition must match its count")
+    assert(!exact.is_match("aa"), "exact repetition must reject a short input")
+
+    auto zero = Regex::compile("^a{0}$").unwrap()
+    assert(zero.is_match(""), "zero repetition must match an empty input")
+    assert(!zero.is_match("a"), "zero repetition must reject one occurrence")
+
+    auto bounded = Regex::compile("^(ab){2,3}c$").unwrap()
+    assert(bounded.is_match("ababc"), "bounded grouped repetition must match its lower bound")
+    assert(bounded.is_match("abababc"), "bounded grouped repetition must match its upper bound")
+    assert(!bounded.is_match("abc"), "bounded grouped repetition must reject below its lower bound")
+    assert(!bounded.is_match("ababababc"), "bounded grouped repetition must reject above its upper bound")
+
+    auto open = Regex::compile("^a{0,}b$").unwrap()
+    assert(open.is_match("b"), "open repetition must allow zero occurrences")
+    assert(open.is_match("aaaab"), "open repetition must allow additional occurrences")
+
+    assert(Regex::compile("a{,2}").is_err(), "repetition must have a lower bound")
+    assert(Regex::compile("a{3,2}").is_err(), "repetition upper bound must not be smaller")
+    assert(Regex::compile("a{2").is_err(), "repetition must close with a brace")
+    assert(Regex::compile("a{1001}").is_err(), "repetition count must respect the v1 resource limit")
+}
+
 fn test_non_backtracking_adversarial_shape() {
     auto input# = string::from("")
     auto index#: usize = 0:usize
@@ -110,6 +135,7 @@ fn main() -> i32 {
     test_literals_dot_and_anchors()
     test_escapes_and_errors()
     test_grouping_alternation_and_quantifiers()
+    test_counted_repetitions()
     test_non_backtracking_adversarial_shape()
     test_ascii_character_classes()
     return 0
