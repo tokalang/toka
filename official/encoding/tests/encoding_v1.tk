@@ -1,5 +1,4 @@
-import official/encoding::{DecodeError, hex_decode, hex_encode, package_name}
-import core/result::{Result}
+import official/encoding::{base64_decode, base64_encode, hex_decode, hex_encode, package_name}
 import std/bytes::{Bytes}
 import std/vec::{Vec}
 
@@ -35,9 +34,36 @@ fn test_hex_decode_errors() {
            "invalid digit error must report its byte position")
 }
 
+fn test_base64_round_trip_and_binary_input() {
+    auto one = base64_encode("f".as_bytes())
+    auto two = base64_encode("fo".as_bytes())
+    auto three = base64_encode("foo".as_bytes())
+    assert(one.equals("Zg=="), "Base64 must encode one trailing byte canonically")
+    assert(two.equals("Zm8="), "Base64 must encode two trailing bytes canonically")
+    assert(three.equals("Zm9v"), "Base64 must encode complete triples")
+
+    auto decoded = base64_decode("AA/=")
+    assert(decoded.is_ok(), "Base64 decode must accept canonical binary input")
+    auto raw = decoded.unwrap()
+    assert(raw.len() == 2:usize && raw.get(0:usize) == 0:u8 && raw.get(1:usize) == 255:u8,
+           "Base64 decode must preserve arbitrary binary bytes")
+}
+
+fn test_base64_decode_errors() {
+    assert(base64_decode("Zg=").is_err(), "Base64 length must be divisible by four")
+    auto invalid = base64_decode("Zg?=")
+    assert(invalid.is_err(), "Base64 alphabet violations must be rejected")
+    assert(invalid.unwrap_err().position() == 2:usize,
+           "Base64 character error must report its byte position")
+    assert(base64_decode("Zh==").is_err(), "Base64 padding bits must be canonical")
+    assert(base64_decode("Zg==Zg==").is_err(), "Base64 padding must appear only in the final quartet")
+}
+
 fn main() -> i32 {
     assert(package_name().equals("encoding"), "public package name")
     test_hex_round_trip_and_binary_input()
     test_hex_decode_errors()
+    test_base64_round_trip_and_binary_input()
+    test_base64_decode_errors()
     return 0
 }
