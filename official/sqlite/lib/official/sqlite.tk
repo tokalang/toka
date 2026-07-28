@@ -4,6 +4,12 @@ import core/types::{Addr, ADDR0}
 extern fn toka_sqlite_open_path(path: Addr) -> Addr
 extern fn toka_sqlite_execute(handle: Addr, sql: Addr) -> i32
 extern fn toka_sqlite_close(handle: Addr) -> i32
+extern fn toka_sqlite_prepare(handle: Addr, sql: Addr) -> Addr
+extern fn toka_sqlite_bind_i64(statement: Addr, index: i32, value: i64) -> i32
+extern fn toka_sqlite_step(statement: Addr) -> i32
+extern fn toka_sqlite_column_i64(statement: Addr, index: i32) -> i64
+extern fn toka_sqlite_reset(statement: Addr) -> i32
+extern fn toka_sqlite_finalize(statement: Addr) -> i32
 
 pub shape SqliteError (
     code: i32,
@@ -13,6 +19,16 @@ pub shape SqliteError (
 pub shape Database (
     handle#: Addr,
     closed#: bool
+)
+
+pub shape Step (
+    Row = 0 |
+    Done = 1
+)
+
+pub shape Statement (
+    handle#: Addr,
+    finalized#: bool
 )
 
 fn sqlite_error(code: i32, operation: str) -> SqliteError {
@@ -61,11 +77,65 @@ impl Database {
 
     pub fn is_closed(self) -> bool { return self.closed }
 
+    pub fn prepare(self#, sql: str) -> Result<Statement, SqliteError> {
+        if self.closed { return Result<Statement, SqliteError>::Err(sqlite_error(21:i32, "prepare on closed database")) }
+        auto owned_sql = string::from(sql)
+        auto handle = toka_sqlite_prepare(self.handle, owned_sql.c_str() as Addr)
+        if handle == ADDR0 { return Result<Statement, SqliteError>::Err(sqlite_error(1:i32, "prepare")) }
+        return Result<Statement, SqliteError>::Ok(Statement(handle = handle, finalized = false))
+    }
+
     fn drop(self#) {
         if !self.closed {
             toka_sqlite_close(self.handle)
             self.handle = ADDR0
             self.closed = true
+        }
+    }
+}
+
+impl Statement {
+    pub fn bind_i64(self#, index: i32, value: i64) -> Result<i32, SqliteError> {
+        if self.finalized { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "bind on finalized statement")) }
+        auto code = toka_sqlite_bind_i64(self.handle, index, value)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "bind")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn step(self#) -> Result<Step, SqliteError> {
+        if self.finalized { return Result<Step, SqliteError>::Err(sqlite_error(21:i32, "step on finalized statement")) }
+        auto code = toka_sqlite_step(self.handle)
+        if code == 100:i32 { return Result<Step, SqliteError>::Ok(Step::Row) }
+        if code == 101:i32 { return Result<Step, SqliteError>::Ok(Step::Done) }
+        return Result<Step, SqliteError>::Err(sqlite_error(code, "step"))
+    }
+
+    pub fn column_i64(self, index: i32) -> Result<i64, SqliteError> {
+        if self.finalized { return Result<i64, SqliteError>::Err(sqlite_error(21:i32, "read finalized statement")) }
+        return Result<i64, SqliteError>::Ok(toka_sqlite_column_i64(self.handle, index))
+    }
+
+    pub fn reset(self#) -> Result<i32, SqliteError> {
+        if self.finalized { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "reset finalized statement")) }
+        auto code = toka_sqlite_reset(self.handle)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "reset")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn finalize(self#) -> Result<i32, SqliteError> {
+        if self.finalized { return Result<i32, SqliteError>::Ok(0:i32) }
+        auto code = toka_sqlite_finalize(self.handle)
+        self.handle = ADDR0
+        self.finalized = true
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "finalize")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    fn drop(self#) {
+        if !self.finalized {
+            toka_sqlite_finalize(self.handle)
+            self.handle = ADDR0
+            self.finalized = true
         }
     }
 }

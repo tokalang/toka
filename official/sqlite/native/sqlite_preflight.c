@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 static int toka_sqlite_live_handles = 0;
+static int toka_sqlite_live_statements = 0;
 
 uintptr_t toka_sqlite_open_path(uintptr_t path) {
   sqlite3 *db = NULL;
@@ -36,6 +37,49 @@ int toka_sqlite_close(uintptr_t handle) {
 }
 
 int toka_sqlite_live_handle_count(void) { return toka_sqlite_live_handles; }
+
+uintptr_t toka_sqlite_prepare(uintptr_t handle, uintptr_t sql) {
+  sqlite3_stmt *statement = NULL;
+  if (handle == 0 || sql == 0)
+    return 0;
+  if (sqlite3_prepare_v2((sqlite3 *)handle, (const char *)sql, -1,
+                         &statement, NULL) != SQLITE_OK)
+    return 0;
+  toka_sqlite_live_statements++;
+  return (uintptr_t)statement;
+}
+
+int toka_sqlite_bind_i64(uintptr_t statement, int index, int64_t value) {
+  if (statement == 0)
+    return SQLITE_MISUSE;
+  return sqlite3_bind_int64((sqlite3_stmt *)statement, index, value);
+}
+
+int toka_sqlite_step(uintptr_t statement) {
+  if (statement == 0)
+    return SQLITE_MISUSE;
+  return sqlite3_step((sqlite3_stmt *)statement);
+}
+
+int64_t toka_sqlite_column_i64(uintptr_t statement, int index) {
+  return sqlite3_column_int64((sqlite3_stmt *)statement, index);
+}
+
+int toka_sqlite_reset(uintptr_t statement) {
+  if (statement == 0)
+    return SQLITE_MISUSE;
+  return sqlite3_reset((sqlite3_stmt *)statement);
+}
+
+int toka_sqlite_finalize(uintptr_t statement) {
+  if (statement == 0)
+    return SQLITE_OK;
+  int status = sqlite3_finalize((sqlite3_stmt *)statement);
+  toka_sqlite_live_statements--;
+  return status;
+}
+
+int toka_sqlite_live_statement_count(void) { return toka_sqlite_live_statements; }
 
 // Keep raw SQLite handles inside the native boundary.  The Toka preflight only
 // observes a status code, proving the selected package can link and execute.

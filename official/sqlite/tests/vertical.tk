@@ -1,6 +1,7 @@
-import official/sqlite::{Database}
+import official/sqlite::{Database, Step}
 
 extern fn toka_sqlite_live_handle_count() -> i32
+extern fn toka_sqlite_live_statement_count() -> i32
 
 fn close_by_scope() {
     auto opened = Database::open(":memory:")
@@ -14,7 +15,18 @@ fn main() -> i32 {
     assert(opened.is_ok(), "SQLite open must return a safe Database")
     auto database# = opened.unwrap()
     assert(database#.execute("CREATE TABLE items (value INTEGER);").is_ok(), "create table")
-    assert(database#.execute("INSERT INTO items VALUES (7);").is_ok(), "insert row")
+    auto insert = database#.prepare("INSERT INTO items VALUES (?);").unwrap()
+    assert(insert#.bind_i64(1:i32, 7:i64).is_ok(), "bind integer")
+    assert(insert#.step().unwrap() == Step::Done, "insert must finish")
+    assert(insert#.reset().is_ok(), "reset statement")
+    assert(insert#.finalize().is_ok(), "explicit finalize")
+    assert(toka_sqlite_live_statement_count() == 0:i32, "explicit finalize must release statement")
+
+    auto select = database#.prepare("SELECT value FROM items;").unwrap()
+    assert(select#.step().unwrap() == Step::Row, "select must produce a row")
+    assert(select.column_i64(0:i32).unwrap() == 7:i64, "selected integer value")
+    assert(select#.step().unwrap() == Step::Done, "select must finish")
+    assert(select#.finalize().is_ok(), "select finalize")
     assert(database#.close().is_ok(), "explicit close")
     assert(database.is_closed(), "close must disarm RAII cleanup")
     assert(database#.close().is_ok(), "close must be idempotent")
