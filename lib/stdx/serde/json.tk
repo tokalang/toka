@@ -65,7 +65,9 @@ impl bool@ToJson {
     }
 }
 
-fn json_write_escaped_string(s: str, buf#: string) {
+// Append one complete RFC 8259 JSON string literal.  Bytes below U+0020 must
+// always be escaped, including control bytes without a short escape spelling.
+pub fn write_escaped_json_string(s: str, buf#: string) {
     buf#.push_str("\"")
     auto i#: usize = 0
     loop i < s.len() {
@@ -77,6 +79,16 @@ fn json_write_escaped_string(s: str, buf#: string) {
         else if c == 10 { buf#.push_str("\\n") }
         else if c == 13 { buf#.push_str("\\r") }
         else if c == 9 { buf#.push_str("\\t") }
+        else if c < 32 {
+            auto byte = c as u8
+            auto high = byte bshr 4:u8
+            auto low = byte band 15:u8
+            buf#.push_str("\\u00")
+            if high < 10:u8 { buf#.push_byte_raw(48:u8 + high) }
+            else { buf#.push_byte_raw(87:u8 + high) }
+            if low < 10:u8 { buf#.push_byte_raw(48:u8 + low) }
+            else { buf#.push_byte_raw(87:u8 + low) }
+        }
         else { buf#.push_char(c as char) }
         i = i + 1
     }
@@ -85,14 +97,14 @@ fn json_write_escaped_string(s: str, buf#: string) {
 
 impl str@ToJson {
     pub fn write_json(self, buf#: string) -> string {
-        json_write_escaped_string(self, buf)
+        write_escaped_json_string(self, buf)
         return buf
     }
 }
 
 impl string@ToJson {
     pub fn write_json(self, buf#: string) -> string {
-        json_write_escaped_string(self.as_view(), buf)
+        write_escaped_json_string(self.as_view(), buf)
         return buf
     }
 }

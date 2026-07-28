@@ -5,6 +5,7 @@ import core/option::{Option}
 import std/io::{print_line}
 import std/vec::{Vec}
 import stdx/log/log::{LogLevel, LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR}
+import stdx/serde/json::{write_escaped_json_string}
 
 pub shape JsonField (
     key: string,
@@ -29,46 +30,11 @@ impl JsonField {
     }
 }
 
-fn append_json_string(out#: string, value: str) {
-    out#.push_byte_raw(34:u8)
-    auto index# = 0:usize
-    loop index < value.len() {
-        auto byte = value.byte_at(index) as u8
-        if byte == 34:u8 {
-            out#.push_str("\\\"")
-        } else if byte == 92:u8 {
-            out#.push_str("\\\\")
-        } else if byte == 8:u8 {
-            out#.push_str("\\b")
-        } else if byte == 12:u8 {
-            out#.push_str("\\f")
-        } else if byte == 10:u8 {
-            out#.push_str("\\n")
-        } else if byte == 13:u8 {
-            out#.push_str("\\r")
-        } else if byte == 9:u8 {
-            out#.push_str("\\t")
-        } else if byte < 32:u8 {
-            auto high = byte bshr 4:u8
-            auto low = byte band 15:u8
-            out#.push_str("\\u00")
-            if high < 10:u8 { out#.push_byte_raw(48:u8 + high) }
-            else { out#.push_byte_raw(87:u8 + high) }
-            if low < 10:u8 { out#.push_byte_raw(48:u8 + low) }
-            else { out#.push_byte_raw(87:u8 + low) }
-        } else {
-            out#.push_byte_raw(byte)
-        }
-        index += 1
-    }
-    out#.push_byte_raw(34:u8)
-}
-
 fn append_level(out#: string, level: LogLevel) {
-    if level == LOG_DEBUG { append_json_string(out, "debug") }
-    else if level == LOG_INFO { append_json_string(out, "info") }
-    else if level == LOG_WARN { append_json_string(out, "warn") }
-    else { append_json_string(out, "error") }
+    if level == LOG_DEBUG { write_escaped_json_string("debug", out) }
+    else if level == LOG_INFO { write_escaped_json_string("info", out) }
+    else if level == LOG_WARN { write_escaped_json_string("warn", out) }
+    else { write_escaped_json_string("error", out) }
 }
 
 pub shape JsonLogger (
@@ -102,15 +68,15 @@ impl JsonLogger {
         auto line# = string::from("{\"level\":")
         append_level(line, level)
         line#.push_str(",\"message\":")
-        append_json_string(line, message.as_view())
+        write_escaped_json_string(message.as_view(), line)
 
         auto index# = 0:usize
         loop index < fields.len() {
             auto field = fields#.get(index).clone()
             line#.push_str(",")
-            append_json_string(line, field.key.as_view())
+            write_escaped_json_string(field.key.as_view(), line)
             line#.push_str(":")
-            append_json_string(line, field.value.as_view())
+            write_escaped_json_string(field.value.as_view(), line)
             index += 1
         }
         line#.push_str("}")
