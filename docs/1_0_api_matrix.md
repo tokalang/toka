@@ -32,6 +32,7 @@
 | **`stdx/net/http.tk`** | `HttpHeaderView`, `name()`, `value()` | **Tier 3: Stdx 1.0** | Non-owning borrowed offset views. |
 | **`stdx/net/websocket.tk`** | `WebSocketFrame`, `WsStream` | **Tier 3: Stdx 1.0** | WebSocket async frame processing. |
 | **`stdx/encoding/*`** | safe hex, Base64, percent codecs | **Tier 3: Stdx 1.0** | Binary-safe `bytes` input, owned decode output, structured errors. |
+| **`stdx/data/form.tk`** | ordered `application/x-www-form-urlencoded` fields | **Tier 3: Stdx 1.0** | Preserves duplicates and ordering; form `+` semantics are confined to this module. |
 | **`stdx/crypto/{hmac,constant_time}.tk`** | HMAC-SHA-256 and equal-length timing-safe comparison | **Tier 3: Stdx 1.0** | Safe `bytes` views for MAC generation and verification; length is not treated as secret. |
 | **`stdx/crypto/token.tk`** | OS-random hexadecimal and Base64URL tokens | **Tier 3: Stdx 1.0** | Delegates entropy to `std/random`; does not impose session or expiry policy. |
 | **`stdx/crypto/hkdf.tk`** | HKDF-SHA-256 extract, expand, derive | **Tier 3: Stdx 1.0** | RFC 5869 key derivation; no protocol-specific key schedule policy. |

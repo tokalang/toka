@@ -1,0 +1,31 @@
+import std/vec::{Vec}
+import stdx/data/form::{FormField, decode_component, encode_component, format, parse}
+
+fn main() -> i32 {
+    assert(encode_component("hello world+").equals("hello+world%2B"),
+           "form encoding must use + only for spaces")
+    assert(decode_component("hello+world%2B").unwrap().equals("hello world+"),
+           "form decoding must distinguish + from percent-encoded plus")
+    assert(decode_component("%zz").is_err(), "invalid form percent encoding must fail")
+
+    auto fields# = Vec<FormField>::new()
+    fields#.push(cede FormField(name = string::from("q"), value = string::from("hello world+")))
+    fields#.push(cede FormField(name = string::from("tag"), value = string::from("toka")))
+    fields#.push(cede FormField(name = string::from("tag"), value = string::from("lang")))
+    fields#.push(cede FormField(name = string::from("empty"), value = string::from("")))
+    auto encoded = format(fields)
+    assert(encoded.equals("q=hello+world%2B&tag=toka&tag=lang&empty="),
+           "form formatting must preserve ordering and duplicates")
+
+    auto parsed = parse(encoded.as_str()).unwrap()
+    assert(parsed.len() == 4:usize, "form parsing must preserve all fields")
+    assert(parsed.get(0:usize).clone().value().equals("hello world+"), "decoded first field")
+    assert(parsed.get(1:usize).clone().name().equals("tag"), "first duplicate key")
+    assert(parsed.get(2:usize).clone().value().equals("lang"), "second duplicate value")
+    assert(parsed.get(3:usize).clone().value().equals(""), "empty value retained")
+
+    auto bare = parse("flag&x=1").unwrap()
+    assert(bare.len() == 2:usize && bare.get(0:usize).clone().value().equals(""),
+           "bare key must parse as an empty value")
+    return 0
+}

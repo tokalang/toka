@@ -1,0 +1,135 @@
+// application/x-www-form-urlencoded values.
+
+import core/result::{Result}
+import std/vec::{Vec}
+import stdx/encoding/percent
+
+pub shape FormField (
+    name: string,
+    value: string
+)
+
+impl FormField@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> FormField {
+        return FormField(
+            name = string::from(self.name.as_str()),
+            value = string::from(self.value.as_str())
+        )
+    }
+}
+
+impl FormField {
+    pub fn name(self) -> string { return string::from(self.name.as_str()) }
+    pub fn value(self) -> string { return string::from(self.value.as_str()) }
+}
+
+fn decoded_string(cede values: Vec<u8>) -> string {
+    auto owned# = cede values
+    auto output# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < owned.len() {
+        output#.push_byte_raw(owned.get(index))
+        index = index + 1:usize
+    }
+    return output
+}
+
+pub fn encode_component(input: str) -> string {
+    auto percent_encoded = percent::encode(input.as_bytes())
+    auto output# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < percent_encoded.len() {
+        if index + 2:usize < percent_encoded.len() &&
+           percent_encoded.as_str().byte_at(index) as u8 == '%' as u8 &&
+           percent_encoded.as_str().byte_at(index + 1:usize) as u8 == '2' as u8 &&
+           percent_encoded.as_str().byte_at(index + 2:usize) as u8 == '0' as u8 {
+            output#.push_byte_raw('+' as u8)
+            index = index + 3:usize
+        } else {
+            output#.push_byte_raw(percent_encoded.as_str().byte_at(index) as u8)
+            index = index + 1:usize
+        }
+    }
+    return output
+}
+
+pub fn decode_component(input: str) -> Result<string, string> {
+    auto percent_input# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < input.len() {
+        auto byte = input.byte_at(index) as u8
+        if byte == '+' as u8 {
+            percent_input#.push_byte_raw(' ' as u8)
+        } else {
+            percent_input#.push_byte_raw(byte)
+        }
+        index = index + 1:usize
+    }
+    auto decoded = percent::decode(percent_input.as_str())
+    if decoded.is_err() {
+        return Result<string, string>::Err(decoded.unwrap_err().message())
+    }
+    return Result<string, string>::Ok(decoded_string(cede decoded.unwrap()))
+}
+
+pub fn parse(input: str) -> Result<Vec<FormField>, string> {
+    auto fields# = Vec<FormField>::new()
+    auto start#: usize = 0:usize
+    loop start < input.len() {
+        auto end# = start
+        loop end < input.len() && input.byte_at(end) as u8 != '&' as u8 {
+            end = end + 1:usize
+        }
+        if end > start {
+            auto equals# = start
+            loop equals < end && input.byte_at(equals) as u8 != '=' as u8 {
+                equals = equals + 1:usize
+            }
+            auto name_source# = string::from("")
+            auto value_source# = string::from("")
+            auto index# = start
+            loop index < equals {
+                name_source#.push_byte_raw(input.byte_at(index) as u8)
+                index = index + 1:usize
+            }
+            if equals < end {
+                index = equals + 1:usize
+                loop index < end {
+                    value_source#.push_byte_raw(input.byte_at(index) as u8)
+                    index = index + 1:usize
+                }
+            }
+            auto name_result = decode_component(name_source.as_str())
+            if name_result.is_err() {
+                return Result<Vec<FormField>, string>::Err(name_result.unwrap_err())
+            }
+            auto value_result = decode_component(value_source.as_str())
+            if value_result.is_err() {
+                return Result<Vec<FormField>, string>::Err(value_result.unwrap_err())
+            }
+            fields#.push(cede FormField(
+                name = cede name_result.unwrap(),
+                value = cede value_result.unwrap()
+            ))
+        }
+        if end == input.len() { break }
+        start = end + 1:usize
+    }
+    return Result<Vec<FormField>, string>::Ok(cede fields)
+}
+
+pub fn format(fields: Vec<FormField>) -> string {
+    auto output# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < fields.len() {
+        if index > 0:usize { output#.push_byte_raw('&' as u8) }
+        auto field = fields.get(index).clone()
+        output#.push_str(encode_component(field.name.as_str()).as_str())
+        output#.push_byte_raw('=' as u8)
+        output#.push_str(encode_component(field.value.as_str()).as_str())
+        index = index + 1:usize
+    }
+    return output
+}
