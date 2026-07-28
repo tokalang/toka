@@ -11,9 +11,10 @@ Thompson-style NFA, never recursive backtracking. Matching state is bounded by
 the compiled pattern and worst-case work is `O(pattern_bytes * input_bytes)`,
 rather than exponential work from adversarial input. Pattern compilation has a
 fixed size limit; malformed or oversized patterns return structured errors
-containing the first relevant byte position.
+containing the first relevant byte position. v1 limits patterns to 4096 bytes
+and parenthesis nesting to 128 levels.
 
-The initial public API will be:
+The public API is:
 
 ```toka
 import official/regex::{Regex, RegexError}
@@ -39,13 +40,13 @@ temporary input.
 - `^` and `$` anchors.
 
 The public target is this RE2-compatible regular subset, not a claim of full
-RE2 compatibility. The first implementation slice currently enables literals,
-escaped metacharacters, `.`, `^`, and `$`; it rejects later operators with a
-structured error until their NFA state transitions are implemented. Escapes
-are intentionally limited to literal metacharacters and byte escapes documented
-by the implementation. Matching operates on UTF-8 string bytes; it does not
-promise Unicode character classes, grapheme boundaries, or Unicode case
-folding.
+RE2 compatibility. The current slice enables literals, escaped metacharacters,
+`.`, `^`, `$`, grouping, alternation, and postfix `*`, `+`, and `?`. Character
+classes are rejected with a structured error until their NFA transition is
+implemented. Escapes are intentionally limited to literal metacharacters and
+byte escapes documented by the implementation. Matching operates on UTF-8
+string bytes; it does not promise Unicode character classes, grapheme
+boundaries, or Unicode case folding.
 
 ## Explicit non-goals
 

@@ -5,6 +5,18 @@ import core/result::{Result}
 import std/vec::{Vec}
 
 const MAX_PATTERN_BYTES: usize = 4096:usize
+const MAX_GROUP_NESTING: usize = 128:usize
+
+const STATE_LITERAL: i32 = 0:i32
+const STATE_ANY: i32 = 1:i32
+const STATE_SPLIT: i32 = 2:i32
+const STATE_START: i32 = 3:i32
+const STATE_END: i32 = 4:i32
+const STATE_MATCH: i32 = 5:i32
+
+const EDGE_OUT: i32 = 0:i32
+const EDGE_ALT: i32 = 1:i32
+const NO_STATE: i32 = -1:i32
 
 pub shape RegexError (
     position: usize,
@@ -16,19 +28,139 @@ pub shape Match (
     end_byte: usize
 )
 
-shape Token (
-    Literal(u8) = 0 |
-    Any = 1 |
-    Start = 2 |
-    End = 3
+shape NfaState (
+    kind: i32,
+    byte: u8,
+    out: i32,
+    alt: i32
+)
+
+shape Patch (
+    state_id: i32,
+    edge: i32
+)
+
+shape Fragment (
+    entry: i32,
+    exits: Vec<Patch>
+)
+
+shape ParsedFragment (
+    fragment: Fragment,
+    next_byte: usize
+)
+
+shape ActiveState (
+    state_id: i32,
+    begin_byte: usize
+)
+
+shape ThreadSet (
+    active: Vec<ActiveState>,
+    seen: Vec<bool>
 )
 
 pub shape Regex (
-    tokens: Vec<Token>
+    program: Vec<NfaState>,
+    entry: i32
 )
 
 fn error(position: usize, message: str) -> RegexError {
     return RegexError(position = position, message = string::from(message))
+}
+
+fn new_state(program#: Vec<NfaState>, kind: i32, byte: u8, out: i32, alt: i32) -> i32 {
+    auto state_id = program.len() as i32
+    program#.push(NfaState(kind = kind, byte = byte, out = out, alt = alt))
+    return state_id
+}
+
+fn one_patch(state_id: i32, edge: i32) -> Vec<Patch> {
+    auto patches# = Vec<Patch>::new()
+    patches#.push(Patch(state_id = state_id, edge = edge))
+    return patches
+}
+
+fn merge_patches(cede first: Vec<Patch>, cede second: Vec<Patch>) -> Vec<Patch> {
+    auto first_values = cede first
+    auto second_values = cede second
+    auto merged# = Vec<Patch>::new()
+    auto index#: usize = 0:usize
+    loop index < first_values.len() {
+        merged#.push(first_values.get(index))
+        index = index + 1:usize
+    }
+    index = 0:usize
+    loop index < second_values.len() {
+        merged#.push(second_values.get(index))
+        index = index + 1:usize
+    }
+    return merged
+}
+
+fn patch_all(program#: Vec<NfaState>, cede patches: Vec<Patch>, target: i32) {
+    auto patch_values = cede patches
+    auto index#: usize = 0:usize
+    loop index < patch_values.len() {
+        auto patch = patch_values.get(index)
+        auto state# = program.get(patch.state_id as usize)
+        if patch.edge == EDGE_OUT { state.out = target }
+        else { state.alt = target }
+        program#.set(patch.state_id as usize, state)
+        index = index + 1:usize
+    }
+}
+
+fn empty_fragment(program#: Vec<NfaState>) -> Fragment {
+    auto entry = new_state(program, STATE_SPLIT, 0:u8, NO_STATE, NO_STATE)
+    return Fragment(entry = entry, exits = one_patch(entry, EDGE_OUT))
+}
+
+fn state_fragment(program#: Vec<NfaState>, kind: i32, byte: u8) -> Fragment {
+    auto entry = new_state(program, kind, byte, NO_STATE, NO_STATE)
+    return Fragment(entry = entry, exits = one_patch(entry, EDGE_OUT))
+}
+
+fn concat_fragments(program#: Vec<NfaState>, cede left: Fragment, cede right: Fragment) -> Fragment {
+    auto entry = left.entry
+    auto exits = cede left.exits
+    auto next_entry = right.entry
+    auto next_exits = cede right.exits
+    patch_all(program, cede exits, next_entry)
+    return Fragment(entry = entry, exits = cede next_exits)
+}
+
+fn alternate_fragments(program#: Vec<NfaState>, cede left: Fragment, cede right: Fragment) -> Fragment {
+    auto left_entry = left.entry
+    auto left_exits = cede left.exits
+    auto right_entry = right.entry
+    auto right_exits = cede right.exits
+    auto entry = new_state(program, STATE_SPLIT, 0:u8, left_entry, right_entry)
+    return Fragment(entry = entry, exits = merge_patches(cede left_exits, cede right_exits))
+}
+
+fn star_fragment(program#: Vec<NfaState>, cede inner: Fragment) -> Fragment {
+    auto inner_entry = inner.entry
+    auto inner_exits = cede inner.exits
+    auto entry = new_state(program, STATE_SPLIT, 0:u8, inner_entry, NO_STATE)
+    patch_all(program, cede inner_exits, entry)
+    return Fragment(entry = entry, exits = one_patch(entry, EDGE_ALT))
+}
+
+fn plus_fragment(program#: Vec<NfaState>, cede inner: Fragment) -> Fragment {
+    auto entry = inner.entry
+    auto exits = cede inner.exits
+    auto split = new_state(program, STATE_SPLIT, 0:u8, entry, NO_STATE)
+    patch_all(program, cede exits, split)
+    return Fragment(entry = entry, exits = one_patch(split, EDGE_ALT))
+}
+
+fn optional_fragment(program#: Vec<NfaState>, cede inner: Fragment) -> Fragment {
+    auto inner_entry = inner.entry
+    auto inner_exits = cede inner.exits
+    auto entry = new_state(program, STATE_SPLIT, 0:u8, inner_entry, NO_STATE)
+    auto skipped = one_patch(entry, EDGE_ALT)
+    return Fragment(entry = entry, exits = merge_patches(cede inner_exits, cede skipped))
 }
 
 fn escaped_byte(pattern: str, position: usize) -> Result<u8, RegexError> {
@@ -45,6 +177,212 @@ fn escaped_byte(pattern: str, position: usize) -> Result<u8, RegexError> {
     return Result<u8, RegexError>::Err(error(position, "unsupported RE2 escape in regex v1 slice"))
 }
 
+fn parse_atom(pattern: str, position: usize, depth: usize, program#: Vec<NfaState>)
+              -> Result<ParsedFragment, RegexError> {
+    if position >= pattern.len() {
+        return Result<ParsedFragment, RegexError>::Err(error(position, "missing regex atom"))
+    }
+    auto byte = pattern.byte_at(position) as u8
+    if byte == '(' as u8 {
+        if depth >= MAX_GROUP_NESTING {
+            return Result<ParsedFragment, RegexError>::Err(error(position, "regex group nesting limit exceeded"))
+        }
+        auto nested = parse_expression(pattern, position + 1:usize, depth + 1:usize, program)
+        if nested.is_err() { return Result<ParsedFragment, RegexError>::Err(nested.unwrap_err()) }
+        auto parsed = nested.unwrap()
+        if parsed.next_byte >= pattern.len() || pattern.byte_at(parsed.next_byte) as u8 != ')' as u8 {
+            return Result<ParsedFragment, RegexError>::Err(error(parsed.next_byte, "missing closing ')'"))
+        }
+        return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+            fragment = cede parsed.fragment,
+            next_byte = parsed.next_byte + 1:usize
+        ))
+    }
+    if byte == '\\' as u8 {
+        auto escaped_position = position + 1:usize
+        if escaped_position >= pattern.len() {
+            return Result<ParsedFragment, RegexError>::Err(error(position, "dangling regex escape"))
+        }
+        auto escaped = escaped_byte(pattern, escaped_position)
+        if escaped.is_err() { return Result<ParsedFragment, RegexError>::Err(escaped.unwrap_err()) }
+        return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+            fragment = state_fragment(program, STATE_LITERAL, escaped.unwrap()),
+            next_byte = position + 2:usize
+        ))
+    }
+    if byte == '.' as u8 {
+        return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+            fragment = state_fragment(program, STATE_ANY, 0:u8),
+            next_byte = position + 1:usize
+        ))
+    }
+    if byte == '^' as u8 {
+        return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+            fragment = state_fragment(program, STATE_START, 0:u8),
+            next_byte = position + 1:usize
+        ))
+    }
+    if byte == '$' as u8 {
+        return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+            fragment = state_fragment(program, STATE_END, 0:u8),
+            next_byte = position + 1:usize
+        ))
+    }
+    if byte == '[' as u8 {
+        return Result<ParsedFragment, RegexError>::Err(error(
+            position, "RE2 character classes are not enabled in regex v1 slice"))
+    }
+    if byte == '*' as u8 || byte == '+' as u8 || byte == '?' as u8 ||
+       byte == '|' as u8 || byte == ')' as u8 || byte == ']' as u8 {
+        return Result<ParsedFragment, RegexError>::Err(error(position, "regex operator has no preceding atom"))
+    }
+    return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+        fragment = state_fragment(program, STATE_LITERAL, byte),
+        next_byte = position + 1:usize
+    ))
+}
+
+fn parse_concatenation(pattern: str, position: usize, depth: usize, program#: Vec<NfaState>)
+                       -> Result<ParsedFragment, RegexError> {
+    auto current# = empty_fragment(program)
+    auto has_atom# = false
+    auto cursor# = position
+    loop cursor < pattern.len() {
+        auto byte = pattern.byte_at(cursor) as u8
+        if byte == ')' as u8 || byte == '|' as u8 { break }
+        auto atom = parse_atom(pattern, cursor, depth, program)
+        if atom.is_err() { return Result<ParsedFragment, RegexError>::Err(atom.unwrap_err()) }
+        auto parsed = atom.unwrap()
+        auto next# = parsed.next_byte
+        auto fragment# = cede parsed.fragment
+        if next < pattern.len() {
+            auto quantifier = pattern.byte_at(next) as u8
+            if quantifier == '*' as u8 {
+                fragment = star_fragment(program, cede fragment)
+                next = next + 1:usize
+            } else if quantifier == '+' as u8 {
+                fragment = plus_fragment(program, cede fragment)
+                next = next + 1:usize
+            } else if quantifier == '?' as u8 {
+                fragment = optional_fragment(program, cede fragment)
+                next = next + 1:usize
+            }
+        }
+        if has_atom {
+            current = concat_fragments(program, cede current, cede fragment)
+        } else {
+            current = cede fragment
+            has_atom = true
+        }
+        cursor = next
+    }
+    return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+        fragment = cede current,
+        next_byte = cursor
+    ))
+}
+
+fn parse_expression(pattern: str, position: usize, depth: usize, program#: Vec<NfaState>)
+                    -> Result<ParsedFragment, RegexError> {
+    auto first = parse_concatenation(pattern, position, depth, program)
+    if first.is_err() { return Result<ParsedFragment, RegexError>::Err(first.unwrap_err()) }
+    auto parsed = first.unwrap()
+    auto current# = cede parsed.fragment
+    auto cursor# = parsed.next_byte
+    loop cursor < pattern.len() && pattern.byte_at(cursor) as u8 == '|' as u8 {
+        auto right = parse_concatenation(pattern, cursor + 1:usize, depth, program)
+        if right.is_err() { return Result<ParsedFragment, RegexError>::Err(right.unwrap_err()) }
+        auto next = right.unwrap()
+        current = alternate_fragments(program, cede current, cede next.fragment)
+        cursor = next.next_byte
+    }
+    return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+        fragment = cede current,
+        next_byte = cursor
+    ))
+}
+
+fn empty_seen(program: Vec<NfaState>) -> Vec<bool> {
+    auto seen# = Vec<bool>::new()
+    auto index#: usize = 0:usize
+    loop index < program.len() {
+        seen#.push(false)
+        index = index + 1:usize
+    }
+    return seen
+}
+
+fn new_thread_set(program: Vec<NfaState>) -> ThreadSet {
+    return ThreadSet(active = Vec<ActiveState>::new(), seen = empty_seen(program))
+}
+
+fn add_thread(program: Vec<NfaState>, state_id: i32, input: str, cursor: usize,
+              begin_byte: usize, seen#: Vec<bool>, active#: Vec<ActiveState>) {
+    if state_id < 0:i32 { return }
+    auto index = state_id as usize
+    if seen.get(index) { return }
+    seen#.set(index, true)
+    auto state = program.get(index)
+    if state.kind == STATE_SPLIT {
+        add_thread(program, state.out, input, cursor, begin_byte, seen, active)
+        add_thread(program, state.alt, input, cursor, begin_byte, seen, active)
+        return
+    }
+    if state.kind == STATE_START {
+        if cursor == 0:usize {
+            add_thread(program, state.out, input, cursor, begin_byte, seen, active)
+        }
+        return
+    }
+    if state.kind == STATE_END {
+        if cursor == input.len() {
+            add_thread(program, state.out, input, cursor, begin_byte, seen, active)
+        }
+        return
+    }
+    active#.push(ActiveState(state_id = state_id, begin_byte = begin_byte))
+}
+
+fn add_start_thread(program: Vec<NfaState>, entry: i32, input: str, cursor: usize,
+                    threads#: ThreadSet) {
+    add_thread(program, entry, input, cursor, cursor, threads.seen, threads.active)
+}
+
+fn advance_threads(program: Vec<NfaState>, cede active: Vec<ActiveState>, input: str,
+                   cursor: usize, next#: ThreadSet) {
+    auto current = cede active
+    auto index#: usize = 0:usize
+    loop index < current.len() {
+        auto thread = current.get(index)
+        auto state = program.get(thread.state_id as usize)
+        if state.kind == STATE_LITERAL {
+            if input.byte_at(cursor) as u8 == state.byte {
+                add_thread(program, state.out, input, cursor + 1:usize, thread.begin_byte,
+                           next.seen, next.active)
+            }
+        } else if state.kind == STATE_ANY {
+            add_thread(program, state.out, input, cursor + 1:usize, thread.begin_byte,
+                       next.seen, next.active)
+        }
+        index = index + 1:usize
+    }
+}
+
+fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>, end_byte: usize) -> Option<Match> {
+    auto index#: usize = 0:usize
+    loop index < active.len() {
+        auto thread = active.get(index)
+        if program.get(thread.state_id as usize).kind == STATE_MATCH {
+            return Option<Match>::Some(Match(
+                begin_byte = thread.begin_byte,
+                end_byte = end_byte
+            ))
+        }
+        index = index + 1:usize
+    }
+    return Option<Match>::None
+}
+
 impl RegexError {
     pub fn position(self) -> usize { return self.position }
 
@@ -58,87 +396,39 @@ impl Match {
 }
 
 impl Regex {
-    // Compile the non-backtracking core available in the first v1 slice:
-    // literals, escaped metacharacters, '.', '^', and '$'. Quantifiers,
-    // grouping, alternation, and classes are rejected until their NFA states
-    // are added in the following slices.
     pub fn compile(pattern: str) -> Result<Regex, RegexError> {
         if pattern.len() > MAX_PATTERN_BYTES {
             return Result<Regex, RegexError>::Err(error(
                 MAX_PATTERN_BYTES, "regex pattern exceeds v1 size limit"))
         }
-
-        auto tokens# = Vec<Token>::new()
-        auto position#: usize = 0:usize
-        loop position < pattern.len() {
-            auto byte = pattern.byte_at(position) as u8
-            if byte == '\\' as u8 {
-                auto next_position = position + 1:usize
-                if next_position >= pattern.len() {
-                    return Result<Regex, RegexError>::Err(error(position, "dangling regex escape"))
-                }
-                auto escaped = escaped_byte(pattern, next_position)
-                if escaped.is_err() {
-                    return Result<Regex, RegexError>::Err(escaped.unwrap_err())
-                }
-                tokens#.push(Token::Literal(escaped.unwrap()))
-                position = position + 2:usize
-                continue
-            }
-            if byte == '.' as u8 {
-                tokens#.push(Token::Any)
-            } else if byte == '^' as u8 {
-                tokens#.push(Token::Start)
-            } else if byte == '$' as u8 {
-                tokens#.push(Token::End)
-            } else if byte == '*' as u8 || byte == '+' as u8 || byte == '?' as u8 ||
-                      byte == '|' as u8 || byte == '(' as u8 || byte == ')' as u8 ||
-                      byte == '[' as u8 || byte == ']' as u8 {
-                return Result<Regex, RegexError>::Err(error(
-                    position, "RE2 operator is not enabled in regex v1 slice"))
-            } else {
-                tokens#.push(Token::Literal(byte))
-            }
-            position = position + 1:usize
+        auto program# = Vec<NfaState>::new()
+        auto parsed = parse_expression(pattern, 0:usize, 0:usize, program)
+        if parsed.is_err() { return Result<Regex, RegexError>::Err(parsed.unwrap_err()) }
+        auto fragment = cede parsed.unwrap()
+        if fragment.next_byte != pattern.len() {
+            return Result<Regex, RegexError>::Err(error(fragment.next_byte, "unexpected closing ')'"))
         }
-        return Result<Regex, RegexError>::Ok(Regex(tokens = cede tokens))
-    }
-
-    fn matches_at(self, input: str, start: usize) -> Option<usize> {
-        auto cursor# = start
-        auto token_index#: usize = 0:usize
-        loop token_index < self.tokens.len() {
-            match self.tokens.get(token_index) {
-                auto Token::Literal(expected) => {
-                    if cursor >= input.len() || input.byte_at(cursor) as u8 != expected {
-                        return Option<usize>::None
-                    }
-                    cursor = cursor + 1:usize
-                }
-                auto Token::Any => {
-                    if cursor >= input.len() { return Option<usize>::None }
-                    cursor = cursor + 1:usize
-                }
-                auto Token::Start => {
-                    if cursor != 0:usize { return Option<usize>::None }
-                }
-                auto Token::End => {
-                    if cursor != input.len() { return Option<usize>::None }
-                }
-            }
-            token_index = token_index + 1:usize
-        }
-        return Option<usize>::Some(cursor)
+        auto match_state = new_state(program, STATE_MATCH, 0:u8, NO_STATE, NO_STATE)
+        patch_all(program, cede fragment.fragment.exits, match_state)
+        return Result<Regex, RegexError>::Ok(Regex(
+            program = cede program,
+            entry = fragment.fragment.entry
+        ))
     }
 
     pub fn find(self, input: str) -> Option<Match> {
-        auto start#: usize = 0:usize
-        loop start <= input.len() {
-            auto end = self.matches_at(input, start)
-            if end.is_some() {
-                return Option<Match>::Some(Match(begin_byte = start, end_byte = end.unwrap()))
-            }
-            start = start + 1:usize
+        auto threads# = new_thread_set(self.program)
+        add_start_thread(self.program, self.entry, input, 0:usize, threads)
+        auto cursor#: usize = 0:usize
+        loop true {
+            auto found = first_match(self.program, threads.active, cursor)
+            if found.is_some() { return found }
+            if cursor == input.len() { break }
+            auto next# = new_thread_set(self.program)
+            advance_threads(self.program, cede threads.active, input, cursor, next)
+            cursor = cursor + 1:usize
+            add_start_thread(self.program, self.entry, input, cursor, next)
+            threads = cede next
         }
         return Option<Match>::None
     }

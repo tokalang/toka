@@ -28,13 +28,46 @@ fn test_escapes_and_errors() {
     assert(dangling.is_err(), "dangling escape must be rejected")
     assert(dangling.unwrap_err().position() == 3:usize,
            "error must identify the dangling escape byte")
-    assert(Regex::compile("a+").is_err(),
-           "future RE2 operators must fail explicitly before their NFA slice exists")
+    assert(Regex::compile("[").is_err(),
+           "future RE2 character classes must fail explicitly before their NFA slice exists")
+}
+
+fn test_grouping_alternation_and_quantifiers() {
+    auto repeated = Regex::compile("a(b|c)+d?")
+    assert(repeated.is_ok(), "grouping, alternation, and quantifiers must compile")
+    auto regex = repeated.unwrap()
+    assert(regex.is_match("xxabcbdy"), "plus and optional paths must match")
+    assert(regex.is_match("ac"), "optional suffix must permit omission")
+    assert(!regex.is_match("ad"), "plus must require one grouped branch")
+
+    auto star = Regex::compile("^ab*c$").unwrap()
+    assert(star.is_match("ac"), "star must permit zero repetitions")
+    assert(star.is_match("abbbc"), "star must permit repeated bytes")
+    assert(!star.is_match("zabbbc"), "anchored NFA must reject a prefix")
+
+    assert(Regex::compile("(ab").is_err(), "unclosed group must be rejected")
+    assert(Regex::compile("a**").is_err(), "stacked quantifiers must be rejected")
+}
+
+fn test_non_backtracking_adversarial_shape() {
+    auto input# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < 1024:usize {
+        input#.push_byte_raw('a' as u8)
+        index = index + 1:usize
+    }
+    input#.push_byte_raw('c' as u8)
+
+    auto regex = Regex::compile("(a|aa)*b").unwrap()
+    assert(!regex.is_match(input.as_str()),
+           "Pike NFA must reject the classic backtracking stress shape")
 }
 
 fn main() -> i32 {
     assert(package_name().equals("regex"), "public package name")
     test_literals_dot_and_anchors()
     test_escapes_and_errors()
+    test_grouping_alternation_and_quantifiers()
+    test_non_backtracking_adversarial_shape()
     return 0
 }
