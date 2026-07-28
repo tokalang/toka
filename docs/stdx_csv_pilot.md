@@ -87,3 +87,20 @@ toka check --json <changed source>
 The index supplies declaration capability facts, the query supplies the
 compiler-resolved impact set, and `check --json` is the post-edit semantic
 gate. Runtime behavior is proven separately by the focused CSV tests.
+
+## Pilot closure evidence
+
+The final slice adds `tests/pass/g14_stdx_csv_corpus_test.tk`, which checks a
+deterministic valid/invalid RFC 4180 corpus and the parse/write canonicalization
+property. `tools/scripts/test_ai_tooling.py` also checks the public semantic
+contracts of `parse_records`, `read_record`, and `write_record`, including the
+mutable buffered endpoint and `cede` record transfer.
+
+`examples/csv_transform` is a minimal buildable project that copies records
+from an input file to an output file through the public streaming API:
+
+```text
+cd examples/csv_transform
+TOKA_LIB=../../lib ../../build/bin/toka build
+./target/debug/csv_transform input.csv output.csv
+```

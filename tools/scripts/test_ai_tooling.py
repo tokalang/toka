@@ -162,11 +162,44 @@ def main():
             len(manager_references["result"]) >= 2,
             "toka query does not preserve semantic impact references")
 
+    csv_source = root / "lib/stdx/data/csv.tk"
+    first_csv_index = run([toka, "index", "--json", csv_source]).stdout
+    second_csv_index = run([toka, "index", "--json", csv_source]).stdout
+    require(first_csv_index == second_csv_index,
+            "CSV public API index is not deterministic")
+    csv_symbols = json.loads(first_csv_index)["symbols"]
+    csv_functions = {
+        symbol["name"]: symbol for symbol in csv_symbols
+        if symbol["kind"] == "function" and symbol["name"] in {
+            "parse_records", "read_record", "write_record"
+        }
+    }
+    require(set(csv_functions) == {"parse_records", "read_record", "write_record"},
+            "CSV public API declarations are incomplete")
+    parse_contract = csv_functions["parse_records"]["contract"]
+    read_contract = csv_functions["read_record"]["contract"]
+    write_contract = csv_functions["write_record"]["contract"]
+    require(parse_contract["effect"] == "sync" and
+            parse_contract["parameters"][0]["type"] == "str" and
+            not parse_contract["parameters"][0]["payloadWritable"],
+            "CSV parser ownership contract is incomplete")
+    require(read_contract["return"]["type"] == "Result<Option<Vec<string>>,CsvError>" and
+            read_contract["parameters"][0]["type"] == "BufferedReader<'R>" and
+            read_contract["parameters"][0]["payloadWritable"] and
+            read_contract["parameters"][1]["type"] == "usize",
+            "CSV reader capability contract is incomplete")
+    require(write_contract["parameters"][0]["type"] == "BufferedWriter<'W>" and
+            write_contract["parameters"][0]["payloadWritable"] and
+            write_contract["parameters"][1]["type"] == "Vec<string>" and
+            write_contract["parameters"][1]["flow"] == "cede",
+            "CSV writer transfer contract is incomplete")
+
     checks = [
         "diagnostic-schema", "multi-span", "machine-fix", "fix-application",
         "compiler-explain", "unknown-code", "toka-explain", "toka-check",
         "semantic-context", "context-determinism", "context-bound",
         "api-contracts", "contract-determinism", "toka-index", "toka-query",
+        "csv-api-contracts",
     ]
     print(json.dumps({
         "checks": checks,
