@@ -83,8 +83,11 @@ the independently versioned diagnostic, semantic-index, and Public Semantic
 Evidence protocols into one deterministic preview. It reports public API and
 H/P contract deltas, root diagnostics, raw/unsafe contract surface, and the
 compiler decisions introduced or removed by the candidate. It is explicitly
-read-only and short-lived; persistent overlays and incomplete-edit support are
-later phases rather than hidden behavior in this command.
+read-only and short-lived. Long-lived in-memory overlays already exist in
+`tokalsp` through `AnalysisSession`: open documents, reverse-dependency
+invalidation, and unchanged-module reuse are available there without writing
+the workspace. Preview deliberately does not reuse that session or expose a
+write-capable cache; its role remains a reproducible base/candidate comparison.
 
 For a failed ownership, borrowing, transfer, dependency, or execution-boundary
 check, ask the compiler for the corresponding decision facts:

@@ -51,8 +51,9 @@ avoids hiding a write-capable workspace copier behind a command called
 
 `inputs` records source digests. `summary.read_only` means the Preview command
 does not write input sources, the workspace, compiler objects, interfaces, or
-an overlay cache. It is a per-request process orchestration layer, not the
-long-lived Overlay Session planned for a later phase.
+an overlay cache. It is a per-request process orchestration layer, distinct
+from the in-process `AnalysisSession` already used by `tokalsp`; Preview does
+not reuse or mutate that long-lived editor session.
 
 ## Consumer contract
 
