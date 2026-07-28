@@ -1,0 +1,31 @@
+import std/io::{println}
+import std/net::{net_random_bytes}
+import std/random::{fill_secure_random_bytes, secure_random_bytes}
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto generated = secure_random_bytes(32:usize)
+    assert(generated.is_ok(), "OS secure random allocation must succeed")
+    assert(generated.unwrap().len() == 32:usize, "secure random output length must be exact")
+
+    auto supplied# = Vec<u8>::new()
+    supplied#.push(0:u8)
+    supplied#.push(0:u8)
+    supplied#.push(0:u8)
+    auto filled = fill_secure_random_bytes(cede supplied)
+    assert(filled.is_ok(), "owned caller buffer must be fillable with OS entropy")
+    assert(filled.unwrap().len() == 3:usize, "fill API must return its complete owner")
+
+    auto legacy# = Vec<u8>::new()
+    legacy#.push(0:u8)
+    auto legacy_result = net_random_bytes(cede legacy)
+    assert(legacy_result.is_ok(), "network compatibility forwarder must succeed")
+    assert(legacy_result.unwrap().len() == 1:usize,
+           "network compatibility forwarder must preserve its owner contract")
+
+    auto empty = secure_random_bytes(0:usize)
+    assert(empty.is_ok(), "zero-length entropy request must succeed")
+    assert(empty.unwrap().len() == 0:usize, "zero-length entropy output must be empty")
+    println("g15_std_random_test PASSED!")
+    return 0
+}

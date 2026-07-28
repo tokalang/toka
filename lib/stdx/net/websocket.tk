@@ -1,5 +1,6 @@
 // stdx/net/websocket.tk — RFC 6455 Production-Grade WebSocket Implementation
-import std/net::{TcpStream, SocketAddrV4, net_random_bytes}
+import std/net::{TcpStream, SocketAddrV4}
+import std/random::{secure_random_bytes}
 import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
 import stdx/net/url::{Url, parse_url}
@@ -368,10 +369,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     crlf_single#.push_char(10 as char)
 
     // Generate Sec-WebSocket-Key (16 bytes secure OS random, base64-encoded)
-    auto raw_key_vec# = Vec<u8>::with_capacity(16)
-    auto i_rk#: usize = 0
-    loop i_rk < 16 { raw_key_vec#.push(0:u8); i_rk += 1 }
-    auto rng_res = net_random_bytes(cede raw_key_vec)
+    auto rng_res = secure_random_bytes(16:usize)
     if rng_res.is_err() {
         return Result<WsConnection, string>::Err(rng_res.unwrap_err())
     }
@@ -954,10 +952,7 @@ impl WsConnection {
         }
 
         if self.is_client {
-            auto mask_key_vec# = Vec<u8>::with_capacity(4)
-            auto i_mk#: usize = 0
-            loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
-            auto mask_res = net_random_bytes(cede mask_key_vec)
+            auto mask_res = secure_random_bytes(4:usize)
             if mask_res.is_err() {
                 return Result<usize, string>::Err(mask_res.unwrap_err())
             }
@@ -1024,10 +1019,7 @@ impl WsConnection {
         }
 
         if self.is_client {
-            auto mask_key_vec# = Vec<u8>::with_capacity(4)
-            auto i_mk#: usize = 0
-            loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
-            auto mask_res = net_random_bytes(cede mask_key_vec)
+            auto mask_res = secure_random_bytes(4:usize)
             if mask_res.is_err() {
                 return Result<usize, string>::Err(mask_res.unwrap_err())
             }
@@ -1084,10 +1076,7 @@ impl WsConnection {
         frame_vec#.push((p_len as u8) + mask_bit)
 
         if self.is_client {
-            auto mask_key_vec# = Vec<u8>::with_capacity(4)
-            auto i_mk#: usize = 0
-            loop i_mk < 4 { mask_key_vec#.push(0:u8); i_mk += 1 }
-            auto mask_res = net_random_bytes(cede mask_key_vec)
+            auto mask_res = secure_random_bytes(4:usize)
             if mask_res.is_err() {
                 return Result<usize, string>::Err(mask_res.unwrap_err())
             }

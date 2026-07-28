@@ -4,7 +4,7 @@
 is `Uuid::parse`, `Uuid::to_string`, `Uuid::nil`, `Uuid::is_nil`,
 `Uuid::version`, and `Uuid::new_v4`.
 
-`new_v4` obtains 16 bytes only through `std/net::net_random_bytes`, the
+`new_v4` obtains 16 bytes only through `std/random::secure_random_bytes`, the
 OS-randomness adapter. `stdx/rand::Random` is intentionally not used because
 it is PCG32 and is not a cryptographic entropy source. Parsing and formatting
 operate on safe value arrays and strings; this extension introduces no raw

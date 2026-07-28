@@ -25,7 +25,9 @@
 | **`core/string.tk`** | `string`, `str`, `bytes`, `from`, `as_str` | **Tier 2: Core/Std 1.0** | Safe owned and slice UTF-8 strings. |
 | **`std/bytes.tk`** | `Bytes::from_vec`, `b#.into_vec()`, `as_slice` | **Tier 2: Core/Std 1.0** | Owner-carrying buffer stealing container. |
 | **`std/net.tk`** | `TcpStream`, `TcpListener`, `connect_async_timeout` | **Tier 2: Core/Std 1.0** | Async TCP socket I/O engine. |
+| **`std/random.tk`** | `secure_random_bytes`, `fill_secure_random_bytes` | **Tier 2: Core/Std 1.0** | OS-backed cryptographic entropy; separate from deterministic PRNGs. |
 | **`std/io.tk`** | `File::open`, `read_to_string()`, `write()`, `close()` | **Tier 2: Core/Std 1.0** | Synchronous file I/O operations. |
+| **`std/fs.tk`** | `write_string_atomic` | **Tier 2: Core/Std 1.0** | Atomic reader visibility on supported platforms; not a durability transaction. |
 | **`stdx/net/http.tk`** | `HttpRequest`, `HttpResponse`, `HttpResponseStream` | **Tier 3: Stdx 1.0** | Owner-carrying HTTP/1.1 framing. |
 | **`stdx/net/http.tk`** | `HttpHeaderView`, `name()`, `value()` | **Tier 3: Stdx 1.0** | Non-owning borrowed offset views. |
 | **`stdx/net/websocket.tk`** | `WebSocketFrame`, `WsStream` | **Tier 3: Stdx 1.0** | WebSocket async frame processing. |

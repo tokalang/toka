@@ -1,0 +1,34 @@
+// OS-backed cryptographically secure randomness.
+//
+// This module is deliberately separate from stdx/rand's deterministic PRNGs.
+
+import core/result::{Result}
+import std/vec::{Vec}
+import sys/libc::{toka_random_bytes}
+
+// Fill an owned buffer with OS entropy and return that same owner on success.
+// The buffer's address is used only for the immediate FFI call and never
+// escapes this std boundary.
+pub fn fill_secure_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string> {
+    auto owned# = cede buffer
+    if owned.len() == 0:usize {
+        return Result<Vec<u8>, string>::Ok(cede owned)
+    }
+    auto *ptr# = owned.unsafe_get(0:usize)
+    auto status = unsafe toka_random_bytes(*ptr, owned.len())
+    if status != 0:i32 {
+        return Result<Vec<u8>, string>::Err(string::from("OS secure random bytes generation failed"))
+    }
+    return Result<Vec<u8>, string>::Ok(cede owned)
+}
+
+// Allocate and fill an owned byte buffer with OS entropy.
+pub fn secure_random_bytes(length: usize) -> Result<Vec<u8>, string> {
+    auto buffer# = Vec<u8>::new()
+    auto index#: usize = 0
+    loop index < length {
+        buffer#.push(0:u8)
+        index = index + 1:usize
+    }
+    return fill_secure_random_bytes(cede buffer)
+}

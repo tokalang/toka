@@ -1,12 +1,11 @@
 // RFC 9562 UUID value type and v4 generator.
 //
-// Generation deliberately uses std/net's OS-randomness adapter.  This module
+// Generation deliberately uses std/random's OS-randomness adapter. This module
 // never exposes its C/FFI boundary or a pseudo-random generator as UUID entropy.
 
 import core/result::{Result}
 import core/str::{str}
-import std/net::{net_random_bytes}
-import std/vec::{Vec}
+import std/random::{secure_random_bytes}
 
 pub shape Uuid (
     bytes: [u8; 16]
@@ -95,20 +94,14 @@ impl Uuid {
     }
 
     pub fn new_v4() -> Result<Uuid, string> {
-        auto entropy# = Vec<u8>::new()
-        auto index#: usize = 0
-        loop index < 16:usize {
-            entropy#.push(0:u8)
-            index = index + 1:usize
-        }
-        auto random_result = net_random_bytes(cede entropy)
+        auto random_result = secure_random_bytes(16:usize)
         if random_result.is_err() {
             return Result<Uuid, string>::Err(random_result.unwrap_err())
         }
 
         auto random = random_result.unwrap()
         auto raw#: [u8; 16] = [0:u8; 16]
-        index = 0
+        auto index#: usize = 0
         loop index < 16:usize {
             raw[index] = random.get(index)
             index = index + 1:usize

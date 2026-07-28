@@ -4,6 +4,7 @@ import sys/os/base as sys
 import sys/os/net as sysnet
 import sys/libc::{toka_resolve_ipv4, libc_free}
 import std/io::{@Reader, @Writer, println}
+import std/random::{fill_secure_random_bytes}
 import std/vec::{Vec}
 import std/task::{get_reactor_fd, sleep_async, register_timer_token, current_time_ms}
 import std/context::{Canceler}
@@ -25,7 +26,6 @@ extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
 extern fn toka_tls_connect(*handle: void, fd: i32) -> i32
 extern fn toka_tls_accept(*handle: void, fd: i32) -> i32
 extern fn toka_tls_backend_available() -> i32
-extern fn toka_random_bytes(*buf: void, len: usize) -> i32
 
 // Error type for network operations
 alias NetResult<T> = Result<T, string>
@@ -40,19 +40,10 @@ pub fn net_tls_backend_available() -> bool {
     unsafe { return toka_tls_backend_available() != 0 }
 }
 
-// Randomness adapter keeps the C pointer ABI below std. Higher-level protocol
-// libraries receive an owned buffer back and never need to hold a pointer.
+// Compatibility adapter. New code should use std/random directly; callers
+// still receive their owned buffer back and never need to hold a pointer.
 pub fn net_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string> {
-    auto owned# = cede buffer
-    if owned.len() == 0:usize {
-        return Result<Vec<u8>, string>::Ok(cede owned)
-    }
-    auto *ptr# = owned.unsafe_get(0)
-    auto status = unsafe toka_random_bytes(*ptr, owned.len())
-    if status != 0 {
-        return Result<Vec<u8>, string>::Err(string::from("OS secure random bytes generation failed"))
-    }
-    return Result<Vec<u8>, string>::Ok(cede owned)
+    return fill_secure_random_bytes(cede buffer)
 }
 
 pub fn net_tls_server_context_new() -> *void {

@@ -30,6 +30,9 @@ fn test_v4_entropy_adapter() {
     auto uuid = generated.unwrap()
     assert(uuid.version() == 4:u8, "v4 UUID must set version bits")
     auto wire = uuid.to_string()
+    auto variant_byte = wire.as_str().byte_at(19:usize) as u8
+    assert(variant_byte == '8' as u8 || variant_byte == '9' as u8 || variant_byte == 'a' as u8 || variant_byte == 'b' as u8,
+           "v4 UUID must set RFC variant bits")
     assert(Uuid::parse(wire.as_str()).is_ok(), "generated UUID must round-trip")
 }
 
