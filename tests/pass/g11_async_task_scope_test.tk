@@ -27,6 +27,18 @@ fn async_scope_runner() -> async i32 {
     // Close scope: cancels all workers and waits for them to join
     scope.close().await;
 
+    auto graceful_scope# = TaskScope::new();
+    auto graceful_worker = worker_task(4).start;
+    graceful_scope#.track_ref(cede task_ref_from_handle<i32>(cede graceful_worker));
+    assert(graceful_scope#.shutdown_async(1000:i32).await,
+           "drain window must preserve a normally completing task");
+
+    auto deadline_scope# = TaskScope::new();
+    auto deadline_worker = worker_task(5).start;
+    deadline_scope#.track_ref(cede task_ref_from_handle<i32>(cede deadline_worker));
+    assert(!deadline_scope#.shutdown_async(0:i32).await,
+           "expired drain window must cancel and join remaining work");
+
     println("[Runner] TaskScope closed cleanly, all workers joined!");
     return 1;
 }

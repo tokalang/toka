@@ -4,7 +4,7 @@
 // High-level async combinators and structured concurrency.
 
 import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start};
-import std/task::{sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
+import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
 import std/vec::{Vec};
 import std/io::{println};
 
@@ -218,18 +218,43 @@ impl TaskScope {
         }
     }
 
-    pub fn close(cede self) -> async void {
-        auto scope# = cede self
-        scope#.cancel_all()
-
-        // Mandatory Join: Wait until every tracked task reaches terminal state
+    pub fn is_done(self) -> bool {
         auto i# = 0:usize
-        loop i < scope.refs.len() {
-            auto tr = scope.refs.get(i)
-            loop !tr.is_done() {
-                sleep_async(1).await
+        loop i < self.refs.len() {
+            auto tr = self.refs.get(i)
+            if !tr.is_done() {
+                return false
             }
             i += 1
         }
+        return true
+    }
+
+    pub fn join_async(self#) -> async void {
+        loop !self.is_done() {
+            sleep_async(1:i32).await
+        }
+    }
+
+    // Returns true when every task completed during the drain window.  A
+    // timeout requests cancellation only after the normal drain has elapsed,
+    // then joins every retained task before returning false.
+    pub fn shutdown_async(self#, drain_timeout_ms: i32) -> async bool {
+        auto deadline = current_time_ms() + (drain_timeout_ms as i64)
+        loop !self.is_done() {
+            if drain_timeout_ms <= 0:i32 || current_time_ms() >= deadline {
+                self#.cancel_all()
+                self#.join_async().await
+                return false
+            }
+            sleep_async(1:i32).await
+        }
+        return true
+    }
+
+    pub fn close(cede self) -> async void {
+        auto scope# = cede self
+        scope#.cancel_all()
+        scope#.join_async().await
     }
 }
