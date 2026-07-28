@@ -9,6 +9,10 @@ import std/vec::{Vec}
 
 // Borrow a fixed byte array as a `bytes` view without allocating or copying.
 // The returned view is tied to `data` and must not outlive it.
+//
+// `Vec<u8>` is the mutable owner used by incremental I/O. `Bytes` is the
+// immutable, transferable owner used to publish or retain completed byte
+// sequences without a second copy. `bytes` is the borrowed read-only view.
 pub fn bytes_from_array<N_: usize>(data: [u8; N_]) -> res: bytes
 effects:
     res.&buf <- data
@@ -71,6 +75,8 @@ impl Bytes {
         }
     }
 
+    // Freeze a mutable byte buffer without copying it. The caller transfers
+    // the Vec allocation and must use `into_vec` to make it mutable again.
     pub fn from_vec(cede v: Vec<u8>) -> Bytes {
         unsafe {
             auto owned# = cede v
@@ -81,6 +87,8 @@ impl Bytes {
         }
     }
 
+    // Thaw this owner without copying it. `self` is disarmed before return so
+    // its drop implementation cannot free the transferred allocation.
     pub fn into_vec(self#) -> Vec<u8> {
         unsafe {
             auto l = self.len
@@ -93,7 +101,10 @@ impl Bytes {
         }
     }
 
-    pub fn set_len(self#, new_len: usize) {
+    // This is only for a std-level adapter that has initialized the backing
+    // storage through an FFI call. Normal code should construct Bytes from a
+    // Vec and expose it through `as_slice` instead.
+    pub fn unsafe_set_len(self#, new_len: usize) {
         if new_len <= self.cap {
             self.len = new_len
         }
@@ -111,7 +122,9 @@ impl Bytes {
         return self.len == 0
     }
 
-    pub fn raw_ptr(self) -> *u8 {
+    // Raw access is intentionally explicit: ordinary users should pass a
+    // Bytes value or its borrowed `bytes` view, not retain this pointer.
+    pub fn unsafe_raw_ptr(self) -> *u8 {
         unsafe {
             if self.len == 0 || self.*buf == null {
                 return null as *u8

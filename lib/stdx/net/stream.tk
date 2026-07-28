@@ -1,5 +1,9 @@
-// stdx/net/stream.tk — Unified Async Byte Stream Abstraction (Plain TCP & OpenSSL TLS)
-import std/net::{TcpStream, AsyncReadResult, AsyncWriteResult, AsyncIoError}
+// stdx/net/stream.tk — unified protocol-facing stream abstraction.
+//
+// All TLS state and data-pointer derivation live in std/net. New protocol code
+// uses the owner-carrying Vec APIs; the pointer methods below are retained only
+// as source-compatible adapters for existing low-level callers.
+import std/net::{TcpStream, TlsSession, AsyncReadResult, AsyncWriteResult, AsyncIoError}
 import std/vec::{Vec}
 import core/result::{Result}
 import core/types::{Addr}
@@ -7,27 +11,22 @@ import core/types::{Addr}
 pub shape AsyncStream (
     raw_tcp: TcpStream,
     is_tls: bool,
-    *#tls_handle: void
+    tls#: TlsSession
 )
 
 impl AsyncStream@encap {
     pub raw_tcp#
     pub is_tls#
-    pub *tls_handle#
+
     fn drop(self#) {
-        if self.is_tls {
-            auto h = (*self.tls_handle as Addr)
-            if h != 0 {
-                self.raw_tcp#.tls_close(*self.tls_handle)
-            }
-            auto *null_ptr# = (0 as Addr) as *void
-            self.*tls_handle = *null_ptr
-            self.is_tls = false
-        }
+        self.tls#.close()
     }
+
     pub fn clone(self) = delete
 }
 
+// Source-compatible helper for legacy tests and low-level callers. New
+// stdx protocol code must use read_into_async/write_from_async instead.
 pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
     unsafe {
         return (&raw[0] as Addr) as *u8
@@ -36,84 +35,52 @@ pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
 
 impl AsyncStream {
     pub fn from_tcp(stream#: TcpStream) -> AsyncStream {
-        auto *null_ptr# = (0 as Addr) as *void
         return AsyncStream(
             raw_tcp = stream#.take(),
             is_tls = false,
-            *tls_handle = *null_ptr
+            tls = TlsSession::empty()
         )
     }
 
-    pub fn from_tls(stream#: TcpStream, *handle: void) -> AsyncStream {
+    pub fn from_tls(stream#: TcpStream, cede session: TlsSession) -> AsyncStream {
+        auto owned_session# = cede session
         return AsyncStream(
             raw_tcp = stream#.take(),
             is_tls = true,
-            *tls_handle = *handle
+            tls = owned_session#.take()
         )
     }
 
     pub fn take(self#) -> AsyncStream {
-        auto *null_ptr# = (0 as Addr) as *void
-        auto s = AsyncStream(
+        auto stream = AsyncStream(
             raw_tcp = self.raw_tcp#.take(),
             is_tls = self.is_tls,
-            *tls_handle = self.*tls_handle
+            tls = self.tls#.take()
         )
         self.is_tls = false
-        self.*tls_handle = *null_ptr
-        return s
+        return stream
     }
 
+    // Legacy pointer adapter. New protocol code must use read_into_async.
     pub fn read_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
         if !self.is_tls {
             return self.raw_tcp#.read_async(*buf, len).await
         }
-        return self.raw_tcp#.tls_read_async(*self.tls_handle, *buf, len, timeout_ms).await
+        return self.tls#.read_async(self.raw_tcp, *buf, len, timeout_ms).await
     }
 
     pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
         return self#.read_async_timeout(*buf, len, 10000).await
     }
 
-    // Owner-based adapter shared by TCP and TLS. Raw pointers remain confined
-    // to this stream adapter and are not exposed to stdx protocol parsers.
+    // The preferred protocol API. Its buffer owner survives suspension and is
+    // returned on success, cancellation, timeout, and I/O error.
     pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
         auto owned# = cede owner
         if !self.is_tls {
             return self.raw_tcp#.read_into_async(cede owned, max_len, timeout_ms).await
         }
-        auto failed# = false
-        auto message# = string::from("")
-        auto bytes_read# = 0:usize
-        if max_len > 0:usize {
-            if owned.cap() < max_len {
-                owned#.resize(max_len, 0:u8)
-            } else {
-                owned#.unsafe_set_len(max_len)
-            }
-            auto *buf_ptr# = owned.unsafe_get(0)
-            auto read_res = self#.read_async_timeout(*buf_ptr, max_len, timeout_ms).await
-            match read_res {
-                auto Result<usize, string>::Ok(n) => { bytes_read = n }
-                auto Result<usize, string>::Err(&e) => {
-                    failed = true
-                    message = e.clone()
-                }
-            }
-        }
-        if failed {
-            owned#.unsafe_set_len(0:usize)
-            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
-                buffer = cede owned,
-                message = message
-            ))
-        }
-        owned#.unsafe_set_len(bytes_read)
-        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
-            buffer = cede owned,
-            bytes_read = bytes_read,
-            eof = bytes_read == 0:usize
-        ))
+        return self.tls#.read_into_async(self.raw_tcp, cede owned, max_len, timeout_ms).await
     }
 
     pub fn write_from_async(self#, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
@@ -121,43 +88,16 @@ impl AsyncStream {
         if !self.is_tls {
             return self.raw_tcp#.write_from_async(cede owned, timeout_ms).await
         }
-        auto len = owned.len()
-        auto failed# = false
-        auto message# = string::from("")
-        auto written# = 0:usize
-        if len > 0:usize {
-            auto *buf_ptr# = owned.unsafe_get(0)
-            auto write_res = self#.write_all_async_timeout(*buf_ptr, len, timeout_ms).await
-            if write_res.is_err() {
-                failed = true
-                message = write_res.unwrap_err()
-            } else {
-                written = len
-            }
-        }
-        if failed {
-            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
-                buffer = cede owned,
-                message = message
-            ))
-        }
-        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
-            buffer = cede owned,
-            bytes_written = written,
-            complete = written == len
-        ))
+        return self.tls#.write_from_async(self.raw_tcp, cede owned, timeout_ms).await
     }
 
+    // Legacy pointer adapter. New protocol code must use write_from_async.
     pub fn read_exact_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
         if !self.is_tls {
             auto r = self.raw_tcp#.read_exact_async(*buf, len).await
             match r {
-                auto Result::Ok(_) => {
-                    return Result<(), string>::Ok(())
-                }
-                auto Result::Err(&e) => {
-                    return Result<(), string>::Err(e.clone())
-                }
+                auto Result::Ok(_) => return Result<(), string>::Ok(())
+                auto Result::Err(&e) => return Result<(), string>::Err(e.clone())
             }
         }
         auto total# = 0:usize
@@ -172,9 +112,7 @@ impl AsyncStream {
                     }
                     total = total + n
                 }
-                auto Result::Err(&e) => {
-                    return Result<(), string>::Err(e.clone())
-                }
+                auto Result::Err(&e) => return Result<(), string>::Err(e.clone())
             }
         }
         return Result<(), string>::Ok(())
@@ -184,15 +122,11 @@ impl AsyncStream {
         if !self.is_tls {
             auto r = self.raw_tcp#.write_all_async(*buf, len).await
             match r {
-                auto Result::Ok(_) => {
-                    return Result<(), string>::Ok(())
-                }
-                auto Result::Err(&e) => {
-                    return Result<(), string>::Err(e.clone())
-                }
+                auto Result::Ok(_) => return Result<(), string>::Ok(())
+                auto Result::Err(&e) => return Result<(), string>::Err(e.clone())
             }
         }
-        return self.raw_tcp#.tls_write_all_async(*self.tls_handle, *buf, len, timeout_ms).await
+        return self.tls#.write_all_async(self.raw_tcp, *buf, len, timeout_ms).await
     }
 
     pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
@@ -200,15 +134,8 @@ impl AsyncStream {
     }
 
     pub fn close(self#) {
-        if self.is_tls {
-            auto h = (*self.tls_handle as Addr)
-            if h != 0 {
-                self.raw_tcp#.tls_close(*self.tls_handle)
-            }
-            auto *null_ptr# = (0 as Addr) as *void
-            self.*tls_handle = *null_ptr
-            self.is_tls = false
-        }
+        self.tls#.close()
+        self.is_tls = false
         self.raw_tcp#.close()
     }
 }

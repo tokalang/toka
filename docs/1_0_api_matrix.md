@@ -23,8 +23,8 @@
 | **Error Handling** | Postfix `!`, `Option<T>`, `Result<T, E>` | **Tier 1: Language 1.0** | Early return cleanup and fallible computation. |
 | **Async Mechanics** | `fn -> async T`, `.await`, `.wait`, `.start` | **Tier 1: Language 1.0** | Async function invocation & task start. |
 | **`core/string.tk`** | `string`, `str`, `bytes`, `from`, `as_str` | **Tier 2: Core/Std 1.0** | Safe owned and slice UTF-8 strings. |
-| **`std/bytes.tk`** | `Bytes::from_vec`, `b#.into_vec()`, `as_slice` | **Tier 2: Core/Std 1.0** | Owner-carrying buffer stealing container. |
-| **`std/net.tk`** | `TcpStream`, `TcpListener`, `connect_async_timeout` | **Tier 2: Core/Std 1.0** | Async TCP socket I/O engine. |
+| **`std/bytes.tk`** | `Vec<u8> → Bytes → bytes` via `from_vec`, `into_vec`, `as_slice` | **Tier 2: Core/Std 1.0** | Mutable I/O owner, zero-copy frozen owner, and borrowed binary view. |
+| **`std/net.tk`** | `TcpStream`, `TcpListener`, `TlsSession`, owner-based read/write | **Tier 2: Core/Std 1.0** | Async TCP/TLS engine; TLS FFI handles and suspended buffer pointers stay below `stdx`. |
 | **`std/random.tk`** | `secure_random_bytes`, `fill_secure_random_bytes` | **Tier 2: Core/Std 1.0** | OS-backed cryptographic entropy; separate from deterministic PRNGs. |
 | **`std/io.tk`** | `File::open`, `read_to_string()`, `write()`, `close()` | **Tier 2: Core/Std 1.0** | Synchronous file I/O operations. |
 | **`std/fs.tk`** | `write_string_atomic` | **Tier 2: Core/Std 1.0** | Atomic reader visibility on supported platforms; not a durability transaction. |

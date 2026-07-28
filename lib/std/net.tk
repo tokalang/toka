@@ -866,6 +866,184 @@ impl TcpStream {
     }
 }
 
+// Opaque ownership wrapper for a TLS engine instance. The C handle never
+// leaves std/net: higher layers own a TlsSession, not a raw OpenSSL pointer.
+pub shape TlsSession (
+    *#handle: void
+)
+
+impl TlsSession@encap {
+    fn drop(self#) {
+        self#.close()
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl TlsSession {
+    pub fn empty() -> TlsSession {
+        auto *null_handle# = (0 as Addr) as *void
+        return TlsSession(*handle = *null_handle)
+    }
+
+    pub fn client() -> TlsSession {
+        auto *created# = net_tls_context_new()
+        return TlsSession(*handle = *created)
+    }
+
+    pub fn server() -> TlsSession {
+        auto *created# = net_tls_server_context_new()
+        return TlsSession(*handle = *created)
+    }
+
+    pub fn server_with_cert_file(cert_path: string, key_path: string) -> TlsSession {
+        auto *created# = net_tls_server_context_new_with_cert_file(cert_path, key_path)
+        return TlsSession(*handle = *created)
+    }
+
+    pub fn is_valid(self) -> bool {
+        return (self.*handle as Addr) != 0
+    }
+
+    pub fn take(self#) -> TlsSession {
+        auto session = TlsSession(*handle = self.*handle)
+        auto *null_handle# = (0 as Addr) as *void
+        self.*handle = *null_handle
+        return session
+    }
+
+    pub fn close(self#) {
+        if self#.is_valid() {
+            net_tls_close(self.*handle)
+            auto *null_handle# = (0 as Addr) as *void
+            self.*handle = *null_handle
+        }
+    }
+
+    pub fn set_verify_mode(self#, verify_peer: bool) {
+        if self#.is_valid() {
+            net_tls_set_verify_mode(self.*handle, verify_peer)
+        }
+    }
+
+    pub fn set_ca_file(self#, ca_path: string) -> i32 {
+        if !self#.is_valid() { return -1 }
+        return net_tls_set_ca_file(self.*handle, ca_path)
+    }
+
+    pub fn set_sni(self#, host: string) -> i32 {
+        if !self#.is_valid() { return -1 }
+        return net_tls_set_sni(self.*handle, host)
+    }
+
+    pub fn connect_async(self#, tcp#: TcpStream, timeout_ms: i32) -> async Result<(), string> {
+        if !self#.is_valid() {
+            return Result<(), string>::Err(string::from("TLS session is closed"))
+        }
+        return tcp#.tls_connect_async(self.*handle, timeout_ms).await
+    }
+
+    pub fn accept_async(self#, tcp#: TcpStream, timeout_ms: i32) -> async Result<(), string> {
+        if !self#.is_valid() {
+            return Result<(), string>::Err(string::from("TLS session is closed"))
+        }
+        return tcp#.tls_accept_async(self.*handle, timeout_ms).await
+    }
+
+    // Compatibility-only pointer entry points remain on TcpStream. New stdx
+    // protocols use the owner-carrying methods below instead.
+    pub fn read_async(self#, tcp#: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
+        if !self#.is_valid() {
+            return Result<usize, string>::Err(string::from("TLS session is closed"))
+        }
+        return tcp#.tls_read_async(self.*handle, *buf, len, timeout_ms).await
+    }
+
+    pub fn write_all_async(self#, tcp#: TcpStream, *buf: u8, len: usize, timeout_ms: i32) -> async Result<(), string> {
+        if !self#.is_valid() {
+            return Result<(), string>::Err(string::from("TLS session is closed"))
+        }
+        return tcp#.tls_write_all_async(self.*handle, *buf, len, timeout_ms).await
+    }
+
+    // The Vec is retained by the coroutine frame while the TLS reactor waits
+    // and is returned on all outcomes, exactly like TcpStream::read_into_async.
+    pub fn read_into_async(self#, tcp#: TcpStream, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto owned# = cede owner
+        auto failed# = false
+        auto message# = string::from("")
+        auto bytes_read# = 0:usize
+
+        if !self#.is_valid() {
+            failed = true
+            message = string::from("TLS session is closed")
+        } else if max_len > 0:usize {
+            if owned.cap() < max_len {
+                owned#.resize(max_len, 0:u8)
+            } else {
+                owned#.unsafe_set_len(max_len)
+            }
+            auto *buf_ptr# = owned.unsafe_get(0)
+            auto read_res = tcp#.tls_read_async(self.*handle, *buf_ptr, max_len, timeout_ms).await
+            match read_res {
+                auto Result<usize, string>::Ok(n) => { bytes_read = n }
+                auto Result<usize, string>::Err(&e) => {
+                    failed = true
+                    message = e.clone()
+                }
+            }
+        }
+
+        if failed {
+            owned#.unsafe_set_len(0:usize)
+            return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = message
+            ))
+        }
+        owned#.unsafe_set_len(bytes_read)
+        return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+            buffer = cede owned,
+            bytes_read = bytes_read,
+            eof = bytes_read == 0:usize
+        ))
+    }
+
+    pub fn write_from_async(self#, tcp#: TcpStream, cede owner: Vec<u8>, timeout_ms: i32) -> async Result<AsyncWriteResult, AsyncIoError> {
+        auto owned# = cede owner
+        auto len = owned.len()
+        auto failed# = false
+        auto message# = string::from("")
+        auto written# = 0:usize
+
+        if !self#.is_valid() {
+            failed = true
+            message = string::from("TLS session is closed")
+        } else if len > 0:usize {
+            auto *buf_ptr# = owned.unsafe_get(0)
+            auto write_res = tcp#.tls_write_all_async(self.*handle, *buf_ptr, len, timeout_ms).await
+            if write_res.is_err() {
+                failed = true
+                message = write_res.unwrap_err()
+            } else {
+                written = len
+            }
+        }
+
+        if failed {
+            return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
+                buffer = cede owned,
+                message = message
+            ))
+        }
+        return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
+            buffer = cede owned,
+            bytes_written = written,
+            complete = written == len
+        ))
+    }
+}
+
 // ==========================================
 // TcpListener
 // ==========================================

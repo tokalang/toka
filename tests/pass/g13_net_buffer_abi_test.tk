@@ -1,8 +1,11 @@
 import std/io::{println}
 import std/vec::{Vec}
+import std/bytes::{Bytes}
 import std/task::{block_on}
-import std/net::{TcpStream, AsyncReadResult, AsyncWriteResult, AsyncIoError}
+import std/net::{TcpStream, TlsSession, AsyncReadResult, AsyncWriteResult, AsyncIoError}
+import stdx/net/stream::{AsyncStream}
 import core/result::{Result}
+import core/types::{byte}
 
 fn read_probe(cede stream: TcpStream, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
     auto owned_stream# = cede stream
@@ -14,8 +17,33 @@ fn write_probe(cede stream: TcpStream, cede buf: Vec<u8>) -> async Result<AsyncW
     return owned_stream#.write_from_async(cede buf, 1).await
 }
 
+// An invalid opaque TLS session must still return the submitted owner. This
+// exercises the std/net TLS adapter without exposing a TLS handle to stdx.
+fn tls_read_probe(cede stream: AsyncStream, cede buf: Vec<u8>) -> async Result<AsyncReadResult, AsyncIoError> {
+    auto owned_stream# = cede stream
+    return owned_stream#.read_into_async(cede buf, 16:usize, 1).await
+}
+
 fn main() -> i32 {
     println("--- Phase 6 owner-carrying buffer ABI probe ---")
+
+    // Vec is the mutable I/O owner; freezing and thawing it does not copy the
+    // allocation, and the borrowed view observes the same initialized bytes.
+    auto source# = Vec<u8>::new()
+    source#.push(65:u8)
+    source#.push(66:u8)
+    auto frozen# = Bytes::from_vec(cede source)
+    {
+        auto view = frozen.as_slice()
+        if view.len() != 2:usize || view.at(0:usize).unwrap() != 65:byte || view.at(1:usize).unwrap() != 66:byte {
+            return 7
+        }
+    }
+    auto thawed# = frozen#.into_vec()
+    if thawed.len() != 2:usize || thawed.get(0:usize) != 65:u8 || thawed.get(1:usize) != 66:u8 {
+        return 8
+    }
+
     auto closed = TcpStream(fd = -1, closed = true)
 
     auto read_buf# = Vec<u8>::with_capacity(16)
@@ -39,6 +67,20 @@ fn main() -> i32 {
             }
         }
         _ => { return 4 }
+    }
+
+    auto closed3# = TcpStream(fd = -1, closed = true)
+    auto session# = TlsSession::empty()
+    auto tls_stream = AsyncStream::from_tls(closed3, cede session)
+    auto tls_buf# = Vec<u8>::with_capacity(16)
+    auto tls_res = block_on<Result<AsyncReadResult, AsyncIoError>>(tls_read_probe(cede tls_stream, cede tls_buf))
+    match tls_res {
+        auto Result::Err(&e) => {
+            if e.buffer.len() != 0:usize {
+                return 9
+            }
+        }
+        _ => { return 10 }
     }
 
     println("g13_net_buffer_abi_test PASSED")

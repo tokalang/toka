@@ -1,20 +1,10 @@
-// stdx/net/tls.tk — Async OpenSSL TLS Stream Orchestration
+// stdx/net/tls.tk — TLS policy and stream orchestration.
 //
-// TLS FFI and Reactor retry logic live in std/net. This module owns only the
-// high-level context policy and converts a completed handshake into AsyncStream.
-import std/net::{
-    TcpStream,
-    net_tls_context_new,
-    net_tls_backend_available,
-    net_tls_server_context_new,
-    net_tls_server_context_new_with_cert_file,
-    net_tls_set_verify_mode,
-    net_tls_set_ca_file,
-    net_tls_set_sni
-}
+// TLS handles, FFI calls, and buffer-pointer lifetime are encapsulated by
+// std/net::TlsSession. This layer selects verification policy only.
+import std/net::{TcpStream, TlsSession, net_tls_backend_available}
 import stdx/net/stream::{AsyncStream}
 import core/result::{Result}
-import core/types::{Addr}
 
 pub shape TlsStream ()
 
@@ -23,24 +13,21 @@ impl TlsStream {
         if !net_tls_backend_available() {
             return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
         }
-        auto *ctx# = net_tls_context_new()
-        auto ctx_addr = (*ctx as Addr)
-        if ctx_addr == 0 {
+        auto session# = TlsSession::client()
+        if !session#.is_valid() {
             return Result<AsyncStream, string>::Err(string::from("Failed creating TLS context"))
         }
 
-        net_tls_set_verify_mode(*ctx, verify_peer)
-        if net_tls_set_sni(*ctx, host) != 0 {
-            tcp_stream#.tls_close(*ctx)
+        session#.set_verify_mode(verify_peer)
+        if session#.set_sni(host) != 0 {
             return Result<AsyncStream, string>::Err(string::from("Failed setting SNI hostname"))
         }
 
-        auto handshake = tcp_stream#.tls_connect_async(*ctx, timeout_ms).await
+        auto handshake = session#.connect_async(tcp_stream, timeout_ms).await
         if handshake.is_err() {
-            tcp_stream#.tls_close(*ctx)
             return Result<AsyncStream, string>::Err(handshake.unwrap_err())
         }
-        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), cede session))
     }
 
     pub fn connect_with_verify_async(tcp_stream#: TcpStream, host: string, verify_peer: bool) -> async Result<AsyncStream, string> {
@@ -51,28 +38,24 @@ impl TlsStream {
         if !net_tls_backend_available() {
             return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
         }
-        auto *ctx# = net_tls_context_new()
-        auto ctx_addr = (*ctx as Addr)
-        if ctx_addr == 0 {
+        auto session# = TlsSession::client()
+        if !session#.is_valid() {
             return Result<AsyncStream, string>::Err(string::from("Failed creating TLS context"))
         }
 
-        net_tls_set_verify_mode(*ctx, true)
-        if net_tls_set_ca_file(*ctx, ca_path) != 0 {
-            tcp_stream#.tls_close(*ctx)
+        session#.set_verify_mode(true)
+        if session#.set_ca_file(ca_path) != 0 {
             return Result<AsyncStream, string>::Err(string::from("Failed loading CA certificate file"))
         }
-        if net_tls_set_sni(*ctx, host) != 0 {
-            tcp_stream#.tls_close(*ctx)
+        if session#.set_sni(host) != 0 {
             return Result<AsyncStream, string>::Err(string::from("Failed setting SNI hostname"))
         }
 
-        auto handshake = tcp_stream#.tls_connect_async(*ctx, 10000).await
+        auto handshake = session#.connect_async(tcp_stream, 10000).await
         if handshake.is_err() {
-            tcp_stream#.tls_close(*ctx)
             return Result<AsyncStream, string>::Err(handshake.unwrap_err())
         }
-        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), cede session))
     }
 
     pub fn connect_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {
@@ -87,35 +70,31 @@ impl TlsStream {
         if !net_tls_backend_available() {
             return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
         }
-        auto *ctx# = net_tls_server_context_new()
-        auto ctx_addr = (*ctx as Addr)
-        if ctx_addr == 0 {
+        auto session# = TlsSession::server()
+        if !session#.is_valid() {
             return Result<AsyncStream, string>::Err(string::from("Failed creating TLS server context"))
         }
 
-        auto handshake = tcp_stream#.tls_accept_async(*ctx, 10000).await
+        auto handshake = session#.accept_async(tcp_stream, 10000).await
         if handshake.is_err() {
-            tcp_stream#.tls_close(*ctx)
             return Result<AsyncStream, string>::Err(handshake.unwrap_err())
         }
-        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), cede session))
     }
 
     pub fn accept_with_cert_file_async(tcp_stream#: TcpStream, cert_path: string, key_path: string) -> async Result<AsyncStream, string> {
         if !net_tls_backend_available() {
             return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
         }
-        auto *ctx# = net_tls_server_context_new_with_cert_file(cert_path, key_path)
-        auto ctx_addr = (*ctx as Addr)
-        if ctx_addr == 0 {
+        auto session# = TlsSession::server_with_cert_file(cert_path, key_path)
+        if !session#.is_valid() {
             return Result<AsyncStream, string>::Err(string::from("Failed creating TLS server context from PEM certificate and key files"))
         }
 
-        auto handshake = tcp_stream#.tls_accept_async(*ctx, 10000).await
+        auto handshake = session#.accept_async(tcp_stream, 10000).await
         if handshake.is_err() {
-            tcp_stream#.tls_close(*ctx)
             return Result<AsyncStream, string>::Err(handshake.unwrap_err())
         }
-        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), *ctx))
+        return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), cede session))
     }
 }

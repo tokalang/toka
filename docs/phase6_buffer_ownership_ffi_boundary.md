@@ -1,6 +1,6 @@
 # Phase 6 Buffer Ownership and FFI Boundary Contract
 
-Status: **Normative design baseline — protocol migration not yet started**
+Status: **Implemented contract — owner-based protocol migration complete**
 
 This document freezes the ownership and ABI contract for the zero-secondary-copy
 network refactoring. It deliberately does not change the meaning of Toka raw
@@ -11,18 +11,24 @@ pointers or the existing compatibility APIs.
 The network stack has three boundaries:
 
 ```text
-stdx/net (HTTP, WebSocket, TLS orchestration)
-        ↓ owned buffer API only
-std/net (AsyncStream/TcpStream adapter)
+stdx/net (HTTP, WebSocket, TLS policy/orchestration)
+        ↓ owned buffer API and opaque TLS session
+std/net (TcpStream, TlsSession, async buffer adapter)
         ↓ private FFI call; pointer valid only for one I/O attempt
 lib/sys + C runtime (recv/send/SSL_read/SSL_write/reactor)
 ```
 
-Raw pointers are permitted in `lib/sys` and in the private implementation of a
-`std/net` adapter. The TLS read/write/close FFI declarations and their Reactor
-retry loops now live in `std/net`; `stdx/net/stream` only delegates to those
-adapters. Raw pointers are not part of the `stdx/net` protocol API and must not
-be kept in a value that survives an `.await`.
+Raw pointers are permitted in `lib/sys` and in the implementation of a
+`std/net` adapter. The TLS read/write/close FFI declarations, reactor retry
+loops, buffer-pointer derivation, and opaque `TlsSession` ownership now live in
+`std/net`. `stdx/net` owns a `TlsSession`, never an OpenSSL handle, and delegates
+all owner-based I/O to `std/net`.
+
+`AsyncStream` retains pointer methods and `to_u8_ptr` as explicit
+source-compatible legacy adapters for existing low-level callers. They are not
+used by HTTP, WebSocket, or TLS policy code, and no new protocol API may depend
+on them. In particular, no `stdx/net` value stores a raw data pointer or an
+OpenSSL handle across an `.await`.
 
 The existing pointer APIs (`read_async(*buf, len)`, `write_async(*buf, len)`)
 remain source-compatible. They are legacy unsafe/FFI adapters and are not used
@@ -32,7 +38,8 @@ by new `stdx/net` code.
 
 An asynchronous I/O operation has exactly one buffer owner at every point:
 
-1. Before submission, the caller owns the `Vec<u8>`/`Bytes` buffer.
+1. Before submission, the caller owns a mutable `Vec<u8>` buffer or a frozen
+   `Bytes` buffer.
 2. On submission, ownership is moved into the asynchronous operation's frame.
 3. While suspended, the frame is the sole owner; no operation may resize,
    reallocate, or free the backing storage.
@@ -40,14 +47,14 @@ An asynchronous I/O operation has exactly one buffer owner at every point:
    caller in the operation result, or explicitly dropped by a documented
    consuming API.
 
-No API may return only a byte count after consuming an input buffer. A read
+No owner-based API may return only a byte count after consuming an input buffer. A read
 operation must return both the buffer owner and the number/status of bytes
 read. A write operation must either return the owner or explicitly document
 that the buffer is consumed on every outcome.
 
 ## 3. Required result shape
 
-The implementation will use these owner-carrying Toka shapes:
+The implementation uses these owner-carrying Toka shapes:
 
 ```text
 pub shape AsyncReadResult (
@@ -79,14 +86,15 @@ point.
 
 ## 4. Pointer validity rule
 
-The only valid lifetime for a data pointer is:
+Within `std/net`, the only valid lifetime for a data pointer is:
 
 ```text
 derive pointer → invoke one sys/FFI operation → use returned count → discard pointer
 ```
 
-The pointer may not be stored in `AsyncStream`, `HttpResponseStream`, a header
-view, a WebSocket frame state, or any coroutine field. A pointer must be
+The pointer may not be stored in `AsyncStream`, `TlsSession`,
+`HttpResponseStream`, a header view, a WebSocket frame state, or any coroutine
+field. A pointer must be
 re-derived after every `.await` and after every operation that may resize a
 buffer.
 
@@ -114,6 +122,12 @@ returns an owner-carrying write result so a partial write can be retried or the
 remaining owner can be dropped deliberately. The old pointer APIs remain
 compatibility-only and are not called from `stdx/net`.
 
+`Bytes::from_vec` freezes a completed mutable buffer without copying it,
+`Bytes::into_vec` thaws it without copying it, and `Bytes::as_slice` exposes a
+borrowed `bytes` view. This deliberately keeps incremental parsers on
+`Vec<u8>` while allowing completed binary payloads to be transferred or retained
+without a secondary allocation.
+
 Because `TcpStream`/`AsyncStream` methods use a mutable identity receiver
 (`self#`), these owner-based methods are intended to be awaited on the owning
 stream. They must not be started as an independent task while borrowing a
@@ -129,11 +143,13 @@ owner and must not outlive the response/stream that owns the buffer.
 
 ## 7. Verification gates
 
-Before protocol migration is accepted:
+The implementation is accepted only while these gates remain green:
 
-- [`g13_net_buffer_abi_test.tk`](../tests/pass/g13_net_buffer_abi_test.tk) must
-  construct the owner-carrying results and exercise closed-stream error paths;
-- a cancellation/timeout probe must prove the buffer is returned exactly once;
-- a partial-read/partial-write probe must prove no bytes are lost;
-- a static search must show no direct pointer-based I/O calls in `stdx/net`;
+- `g13_net_buffer_abi_test.tk` proves owner return on closed-stream errors;
+- `g12_stdx_http_client_server_test.tk` proves incremental owner-based reads
+  and writes through HTTP chunked streaming;
+- TLS and HTTPS/WSS qualification exercise the same owner-based API through
+  `TlsSession`;
+- a static search must show no `unsafe_get`, TLS FFI declaration, or stored
+  raw TLS handle in `stdx/net` protocol code;
 - `g12` and `g13` must compile only after these gates pass.
