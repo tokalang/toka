@@ -1,6 +1,6 @@
 import core/result::{Result}
 import core/str::{bytes}
-import std/bytes::{Bytes}
+import std/bytes::{Bytes, bytes_from_array}
 import std/vec::{Vec}
 
 pub shape DecodeError (
@@ -48,33 +48,15 @@ pub fn encode_vec(cede input: Vec<u8>) -> string {
 }
 
 pub fn encode_fixed16(data: [u8; 16]) -> string {
-    auto values# = Vec<u8>::with_capacity(16:usize)
-    auto index#: usize = 0:usize
-    loop index < 16:usize {
-        values#.push(data[index])
-        index = index + 1:usize
-    }
-    return encode_vec(cede values)
+    return encode(bytes_from_array<16>(data))
 }
 
 pub fn encode_fixed20(data: [u8; 20]) -> string {
-    auto values# = Vec<u8>::with_capacity(20:usize)
-    auto index#: usize = 0:usize
-    loop index < 20:usize {
-        values#.push(data[index])
-        index = index + 1:usize
-    }
-    return encode_vec(cede values)
+    return encode(bytes_from_array<20>(data))
 }
 
 pub fn encode_fixed32(data: [u8; 32]) -> string {
-    auto values# = Vec<u8>::with_capacity(32:usize)
-    auto index#: usize = 0:usize
-    loop index < 32:usize {
-        values#.push(data[index])
-        index = index + 1:usize
-    }
-    return encode_vec(cede values)
+    return encode(bytes_from_array<32>(data))
 }
 
 pub fn decode(input: str) -> Result<Vec<u8>, DecodeError> {

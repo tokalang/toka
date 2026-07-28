@@ -1,0 +1,22 @@
+import std/bytes::{bytes_from_array}
+import core/types::{byte}
+
+fn main() -> i32 {
+    auto input#: [u8; 4] = [0:u8; 4]
+    input[1] = 127:u8
+    input[2] = 128:u8
+    input[3] = 255:u8
+    auto view = bytes_from_array<4>(input)
+    if view.len() != 4:usize { return 1 }
+    if view.at(0:usize).unwrap() != 0:byte { return 2 }
+    if view.at(1:usize).unwrap() != 127:byte { return 3 }
+    if view.at(2:usize).unwrap() != 128:byte { return 4 }
+    if view.at(3:usize).unwrap() != 255:byte { return 5 }
+    input[1] = 42:u8
+    if view.at(1:usize).unwrap() != 42:byte { return 6 }
+
+    auto empty: [u8; 0] = [0:u8; 0]
+    auto empty_view = bytes_from_array<0>(empty)
+    if empty_view.len() != 0:usize { return 7 }
+    return 0
+}

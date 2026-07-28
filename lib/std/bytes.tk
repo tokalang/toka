@@ -7,6 +7,23 @@ import core/str::{bytes}
 import core/memory::{copy_memory}
 import std/vec::{Vec}
 
+// Borrow a fixed byte array as a `bytes` view without allocating or copying.
+// The returned view is tied to `data` and must not outlive it.
+pub fn bytes_from_array<N_: usize>(data: [u8; N_]) -> res: bytes
+effects:
+    res.&buf <- data
+{
+    unsafe {
+        if sizeof([u8; N_]) == 0:usize {
+            return bytes(&buf = null as *[byte] as &[byte], len = 0)
+        }
+        auto base_addr = &data[0] as Addr
+        auto ret = bytes(&buf = null as *[byte] as &[byte], len = sizeof([u8; N_]))
+        copy_memory(&ret as Addr, &base_addr as Addr, 8)
+        return ret
+    }
+}
+
 pub shape Bytes (
     nul *#buf#: [u8] = null as *[u8],
     len#: usize = 0,
