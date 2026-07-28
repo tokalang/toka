@@ -29,6 +29,7 @@
 | **`std/io.tk`** | `File::open`, `read_to_string()`, `write()`, `close()` | **Tier 2: Core/Std 1.0** | Synchronous file I/O operations. |
 | **`std/fs.tk`** | `write_string_atomic` | **Tier 2: Core/Std 1.0** | Atomic reader visibility on supported platforms; not a durability transaction. |
 | **`stdx/net/http.tk`** | `HttpRequest`, `HttpResponse`, `HttpResponseStream` | **Tier 3: Stdx 1.0** | Owner-carrying HTTP/1.1 framing. |
+| **`stdx/net/http.tk`** | `HttpServer::accept_async`, `HttpServerConnection` | **Tier 3: Stdx 1.0** | Safe server-side request framing and complete response writes; routing remains above this layer. |
 | **`stdx/net/http.tk`** | `HttpHeaderView`, `name()`, `value()` | **Tier 3: Stdx 1.0** | Non-owning borrowed offset views. |
 | **`stdx/net/websocket.tk`** | `WebSocketFrame`, `WsStream` | **Tier 3: Stdx 1.0** | WebSocket async frame processing. |
 | **`stdx/net/url.tk`** | hierarchical URL and relative-reference parser | **Tier 3: Stdx 1.0** | Parses authority, bracketed IPv6, path, query, and fragment; no IDNA, userinfo, or RFC 3986 reference resolution. |

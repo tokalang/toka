@@ -4,7 +4,7 @@ import std/io::{println}
 import std/vec::{Vec}
 import core/result::{Result}
 import core/option::{Option}
-import std/net::{TcpStream, SocketAddrV4, AsyncReadResult, AsyncIoError}
+import std/net::{TcpStream, TcpListener, SocketAddrV4, AsyncReadResult, AsyncIoError}
 import std/bytes::{Bytes}
 import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
@@ -436,6 +436,102 @@ impl HttpResponse {
         res#.push_str("\r\n")
         res#.push_str(self.body.as_str())
         return res
+    }
+}
+
+// Server-side lifecycle boundary.  Applications receive a parsed request and
+// write a complete response; TCP buffering and partial writes stay here.
+pub shape HttpServerConnection (
+    stream#: TcpStream,
+    max_request_bytes: usize,
+    timeout_ms: i32,
+    closed#: bool
+)
+
+fn bytes_to_string(buf#: Vec<u8>) -> string {
+    auto output# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < buf.len() {
+        output#.push_byte_raw(buf#.get(index))
+        index = index + 1:usize
+    }
+    return output
+}
+
+impl HttpServerConnection {
+    pub fn read_request_async(self#) -> async Result<HttpRequest, string> {
+        if self.closed { return Result<HttpRequest, string>::Err(string::from("HTTP connection is closed")) }
+        auto received# = Vec<u8>::with_capacity(4096)
+        auto read_buffer# = Vec<u8>::with_capacity(4096)
+        auto last_error# = string::from("Malformed or incomplete HTTP request")
+
+        loop received.len() < self.max_request_bytes {
+            auto read_result = self.stream#.read_into_async(cede read_buffer, 4096:usize, self.timeout_ms).await
+            if read_result.is_err() {
+                auto failure# = read_result.unwrap_err()
+                read_buffer = failure#.take_buffer()
+                return Result<HttpRequest, string>::Err(failure.message.clone())
+            }
+            auto chunk# = read_result.unwrap()
+            auto n_read = chunk.bytes_read
+            read_buffer = chunk#.take_buffer()
+            if n_read == 0:usize {
+                return Result<HttpRequest, string>::Err(last_error)
+            }
+            auto index#: usize = 0:usize
+            loop index < n_read {
+                received#.push(read_buffer#.get(index))
+                index = index + 1:usize
+            }
+            auto candidate = bytes_to_string(received)
+            auto parsed = parse_http_request_with_limit(candidate, self.max_request_bytes)
+            if parsed.is_ok() { return Result<HttpRequest, string>::Ok(parsed.unwrap()) }
+            last_error = parsed.unwrap_err()
+        }
+        return Result<HttpRequest, string>::Err(string::from("HTTP request exceeds configured size limit"))
+    }
+
+    pub fn write_response_async(self#, response: HttpResponse) -> async Result<(), string> {
+        if self.closed { return Result<(), string>::Err(string::from("HTTP connection is closed")) }
+        auto wire = response.to_string()
+        auto bytes# = Vec<u8>::with_capacity(wire.len())
+        auto index#: usize = 0:usize
+        loop index < wire.len() {
+            bytes#.push(wire.as_str().byte_at(index) as u8)
+            index = index + 1:usize
+        }
+        auto written = self.stream#.write_from_async(cede bytes, self.timeout_ms).await
+        if written.is_err() {
+            auto failure# = written.unwrap_err()
+            auto _buffer = failure#.take_buffer()
+            return Result<(), string>::Err(failure.message.clone())
+        }
+        auto completed# = written.unwrap()
+        auto _buffer = completed#.take_buffer()
+        if !completed.complete { return Result<(), string>::Err(string::from("Incomplete HTTP response write")) }
+        return Result<(), string>::Ok(())
+    }
+
+    pub fn close(self#) {
+        if !self.closed {
+            self.stream#.close()
+            self.closed = true
+        }
+    }
+}
+
+pub shape HttpServer ()
+
+impl HttpServer {
+    pub fn accept_async(listener#: TcpListener, max_request_bytes: usize, timeout_ms: i32) -> async Result<HttpServerConnection, string> {
+        auto stream# = listener#.accept_async().await
+        if !stream.is_valid() { return Result<HttpServerConnection, string>::Err(string::from("HTTP server accept failed")) }
+        return Result<HttpServerConnection, string>::Ok(HttpServerConnection(
+            stream = stream#.take(),
+            max_request_bytes = max_request_bytes,
+            timeout_ms = timeout_ms,
+            closed = false
+        ))
     }
 }
 

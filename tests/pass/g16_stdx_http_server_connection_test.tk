@@ -1,0 +1,43 @@
+import std/net::{TcpListener, TcpStream, Ipv4Addr, SocketAddrV4}
+import std/task::{sleep_async, block_on}
+import stdx/net/http::{HttpServer, HttpRequest, HttpResponse, HttpClient, HttpMethod, HeaderMap}
+
+fn server(cede listener: TcpListener) -> async i32 {
+    auto listener# = cede listener
+    auto accepted = HttpServer::accept_async(listener, 16384:usize, 2000:i32).await
+    assert(accepted.is_ok(), "server must accept a connection")
+    auto connection# = accepted.unwrap()
+    auto request = connection#.read_request_async().await
+    assert(request.is_ok(), "server must parse a complete request")
+    auto req = request.unwrap()
+    assert(req.method == HttpMethod::POST && req.path.as_str().equals("/notes"), "request route")
+    assert(req.body.as_str().equals("hello"), "request body")
+    assert(connection#.write_response_async(HttpResponse::ok(string::from("stored"))).await.is_ok(), "complete response write")
+    connection#.close()
+    return 0
+}
+
+fn client(port: u16) -> async i32 {
+    sleep_async(20:i32).await
+    auto headers# = HeaderMap::new()
+    assert(headers#.insert(string::from("Host"), string::from("127.0.0.1")).is_ok(), "host header")
+    auto request = HttpRequest(method = HttpMethod::POST, path = string::from("/notes"), version = string::from("HTTP/1.1"), headers = headers, body = string::from("hello"))
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto response = HttpClient::new(2000:i32).execute_async(request, address).await
+    assert(response.is_ok(), "client response")
+    assert(response.unwrap().body.as_str().equals("stored"), "response body")
+    return 0
+}
+
+fn run() -> async i32 {
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 38555:u16)
+    auto listener# = TcpListener::bind(address)
+    assert(listener.is_valid(), "listener bind")
+    server(cede listener).start
+    return client(38555:u16).await
+}
+
+fn main() -> i32 {
+    auto task = run()
+    return block_on<i32>(task)
+}
