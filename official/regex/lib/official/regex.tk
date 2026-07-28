@@ -134,6 +134,34 @@ fn class_contains(class: ByteClass, byte: u8) -> bool {
     return included
 }
 
+fn predefined_class(escape: u8) -> Option<ByteClass> {
+    auto negated# = false
+    auto kind# = escape
+    if escape == 'D' as u8 || escape == 'W' as u8 || escape == 'S' as u8 {
+        negated = true
+        kind = escape + 32:u8
+    }
+    if kind != 'd' as u8 && kind != 'w' as u8 && kind != 's' as u8 {
+        return Option<ByteClass>::None
+    }
+    auto members# = empty_class(negated)
+    if kind == 'd' as u8 {
+        add_class_range(members, '0' as u8, '9' as u8)
+    } else if kind == 'w' as u8 {
+        add_class_range(members, 'a' as u8, 'z' as u8)
+        add_class_range(members, 'A' as u8, 'Z' as u8)
+        add_class_range(members, '0' as u8, '9' as u8)
+        add_class_byte(members, '_' as u8)
+    } else {
+        add_class_byte(members, ' ' as u8)
+        add_class_byte(members, '\t' as u8)
+        add_class_byte(members, '\n' as u8)
+        add_class_byte(members, '\r' as u8)
+        add_class_byte(members, 12:u8)
+    }
+    return Option<ByteClass>::Some(cede members)
+}
+
 fn one_patch(state_id: i32, edge: i32) -> Vec<Patch> {
     auto patches# = Vec<Patch>::new()
     patches#.push(Patch(state_id = state_id, edge = edge))
@@ -334,6 +362,13 @@ fn parse_atom(pattern: str, position: usize, depth: usize, program#: Vec<NfaStat
         auto escaped_position = position + 1:usize
         if escaped_position >= pattern.len() {
             return Result<ParsedFragment, RegexError>::Err(error(position, "dangling regex escape"))
+        }
+        auto shorthand = predefined_class(pattern.byte_at(escaped_position) as u8)
+        if shorthand.is_some() {
+            return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
+                fragment = class_fragment(program, classes, cede shorthand.unwrap()),
+                next_byte = position + 2:usize
+            ))
         }
         auto escaped = escaped_byte(pattern, escaped_position)
         if escaped.is_err() { return Result<ParsedFragment, RegexError>::Err(escaped.unwrap_err()) }

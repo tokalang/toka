@@ -81,6 +81,21 @@ fn test_ascii_character_classes() {
 
     auto punctuation = Regex::compile("^[-a\\]]+$").unwrap()
     assert(punctuation.is_match("-a]-"), "class must support leading dash and escaped close bracket")
+
+    auto digits = Regex::compile("^\\d+$").unwrap()
+    assert(digits.is_match("2026"), "RE2 digit shorthand must match ASCII digits")
+    assert(!digits.is_match("20a6"), "digit shorthand must reject a letter")
+
+    auto word = Regex::compile("^\\w+$").unwrap()
+    assert(word.is_match("toka_1"), "word shorthand must include ASCII letters digits and underscore")
+    assert(!word.is_match("toka-1"), "word shorthand must reject punctuation")
+
+    auto non_space = Regex::compile("^\\S+$").unwrap()
+    assert(non_space.is_match("Toka"), "uppercase shorthand must negate ASCII whitespace")
+    assert(!non_space.is_match("Toka 1"), "uppercase shorthand must reject member bytes")
+
+    auto space = Regex::compile("^\\s+$").unwrap()
+    assert(space.is_match(" \t\n"), "space shorthand must include ASCII whitespace bytes")
 }
 
 fn main() -> i32 {
