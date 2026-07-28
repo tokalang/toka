@@ -638,7 +638,7 @@ private:
   bool checkVisibility(ASTNode *Node, ShapeDecl *SD);
   bool isTypeCompatible(std::shared_ptr<toka::Type> Target,
                         std::shared_ptr<toka::Type> Source);
-  AccessCapability getAccessCapability(Expr *E);
+  AccessCapability getAccessCapability(Expr *E, bool declarationOnly = false);
   AccessIntent getAccessIntent(Expr *E);
   PermissionFlow getPermissionFlow(Expr *E);
 

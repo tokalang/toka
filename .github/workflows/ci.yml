@@ -66,6 +66,7 @@ jobs:
           python3 tools/scripts/test_semantic_index.py
           python3 tools/scripts/test_cede_obligation_evidence.py
           python3 tools/scripts/test_taskhandle_lifecycle.py
+          python3 tools/scripts/test_capability_pilot.py
           python3 tools/scripts/test_semantic_diff_preview.py
           python3 tools/scripts/test_lsp_protocol.py
 

@@ -131,6 +131,28 @@ struct CedeObligationRecord {
   bool operator==(const CedeObligationRecord &rhs) const;
 };
 
+struct CapabilityCallRecord {
+  std::string Callee;
+  std::string Parameter;
+  std::string Subject;
+  bool DeclaredHandleRebindable = false;
+  bool DeclaredPayloadWritable = false;
+  bool InferredHandleRebindable = false;
+  bool InferredPayloadWritable = false;
+  bool RequestHandleRebind = false;
+  bool RequestPayloadWrite = false;
+  bool RequiredHandleRebind = false;
+  bool RequiredPayloadWrite = false;
+  bool GrantedHandleRebind = false;
+  bool GrantedPayloadWrite = false;
+  bool IndependentCede = false;
+  SemanticEvidenceLocation Location;
+  SemanticEvidenceLocation ContractLocation;
+
+  bool operator<(const CapabilityCallRecord &rhs) const;
+  bool operator==(const CapabilityCallRecord &rhs) const;
+};
+
 class SemanticEvidence {
 public:
   static constexpr unsigned SchemaVersion = 1;
@@ -151,11 +173,22 @@ public:
                                    SourceLocation contractLocation = {});
   static void dumpJSON(std::ostream &out);
   static void dumpCedeObligationsJSON(std::ostream &out);
+  static void recordCapabilityCall(
+      std::string callee, std::string parameter, std::string subject,
+      bool declaredHandleRebindable, bool declaredPayloadWritable,
+      bool inferredHandleRebindable, bool inferredPayloadWritable,
+      bool requestHandleRebind, bool requestPayloadWrite,
+      bool requiredHandleRebind, bool requiredPayloadWrite,
+      bool grantedHandleRebind, bool grantedPayloadWrite,
+      bool independentCede, SourceLocation location,
+      SourceLocation contractLocation = {});
+  static void dumpCapabilityCallsJSON(std::ostream &out);
 
 private:
   static bool Enabled;
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;
+  static std::vector<CapabilityCallRecord> CapabilityCalls;
 };
 
 const char *toString(SemanticRuleID value);

@@ -41,6 +41,8 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - [`../taskhandle_lifecycle_v1.md`](../taskhandle_lifecycle_v1.md) freezes the
   versioned TaskHandle operation, resource, result-consumption, and redline
   test contract used by async repair tooling.
+- [`../capability_pilot_v1.md`](../capability_pilot_v1.md) freezes the narrow
+  H/P call-argument explanation pilot and its explicit non-goals.
 - `phase3b_decision_evidence.md` records the implementation history, causal
   diagnostics, and source/interface equivalence checks that underpin it.
 - `phase4a_trusted_memory_evidence.md` freezes the cross-module evidence trust

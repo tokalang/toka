@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.capability-pilot.v1.schema.json",
+  "title": "Toka H/P Call Capability Pilot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "records"],
+  "properties": {
+    "schema": { "const": "toka.capability-pilot" },
+    "version": { "const": 1 },
+    "records": { "type": "array", "items": { "$ref": "#/$defs/record" } }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handle_rebind", "payload_write"],
+      "properties": {
+        "handle_rebind": { "type": "boolean" },
+        "payload_write": { "type": "boolean" }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "column"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["callee", "parameter", "subject", "declared", "inferred", "request", "required", "granted", "independent_cede", "location", "contract_location"],
+      "properties": {
+        "callee": { "type": "string" },
+        "parameter": { "type": "string" },
+        "subject": { "type": "string" },
+        "declared": { "$ref": "#/$defs/capability" },
+        "inferred": { "$ref": "#/$defs/capability" },
+        "request": { "$ref": "#/$defs/capability" },
+        "required": { "$ref": "#/$defs/capability" },
+        "granted": { "$ref": "#/$defs/capability" },
+        "independent_cede": { "type": "boolean" },
+        "location": { "$ref": "#/$defs/location" },
+        "contract_location": { "$ref": "#/$defs/location" }
+      }
+    }
+  }
+}

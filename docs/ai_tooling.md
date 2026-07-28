@@ -116,6 +116,17 @@ For async ownership or cancellation edits, consult the machine-readable
 turns the lifecycle promises into executable checks rather than a prose-only
 runtime claim.
 
+For a rejected or sensitive mutable call, request the bounded H/P explanation:
+
+```sh
+toka capabilities --json path/to/main.tk
+```
+
+[H/P Call Capability Pilot v1](capability_pilot_v1.md) shows the direct
+declaration ceiling, inferred state, use-site request, signature requirement,
+and actual grant for ordinary call arguments. It is an explanation protocol,
+not a new inference rule.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

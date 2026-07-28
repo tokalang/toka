@@ -2056,6 +2056,29 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     bool lacksPayloadCapability =
         paramIsValueMutable && !isIndependentCedeTransfer &&
         (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+    if (paramIsRebindable || paramIsValueMutable) {
+      AccessCapability declaredCapability =
+          getAccessCapability(Call->Args[i].get(), true);
+      const bool requiredHandle = paramIsHatted && paramIsRebindable;
+      const bool requiredPayload = paramIsValueMutable;
+      std::string parameter = "arg" + std::to_string(i + 1);
+      if (Fn && i < Fn->Args.size())
+        parameter = Fn->Args[i].Name;
+      else if (Ext && i < Ext->Args.size())
+        parameter = Ext->Args[i].Name;
+      std::string subject = getPathString(Call->Args[i].get());
+      if (subject.empty())
+        subject = Call->Args[i]->toString();
+      SemanticEvidence::recordCapabilityCall(
+          Fn ? Fn->Name : (Ext ? Ext->Name : CallName), parameter, subject,
+          declaredCapability.HandleRebindable,
+          declaredCapability.PayloadWritable,
+          argCapability.HandleRebindable, argCapability.PayloadWritable,
+          argIntent.HandleRebind, argIntent.PayloadWrite, requiredHandle,
+          requiredPayload, requiredHandle && !lacksHandleCapability,
+          requiredPayload && !lacksPayloadCapability,
+          isIndependentCedeTransfer, getLoc(Call->Args[i].get()), cedeParamLoc);
+    }
     if (lacksHandleCapability || lacksPayloadCapability) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,

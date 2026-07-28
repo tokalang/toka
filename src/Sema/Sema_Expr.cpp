@@ -98,13 +98,13 @@ static bool isNullableCedeSource(const Expr *expr) {
   return cede && cede->Value && isNullableType(cede->Value->ResolvedType);
 }
 
-AccessCapability Sema::getAccessCapability(Expr *E) {
+AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
   if (!E)
     return {};
 
   auto applyPathFlowCeiling = [&](AccessCapability capability) {
     AccessPath path = canonicalizeAccessPath(makeAccessPath(E));
-    if (path && m_PayloadFlowRestrictedPaths.count(path)) {
+    if (!declarationOnly && path && m_PayloadFlowRestrictedPaths.count(path)) {
       capability.PayloadWritable = false;
       capability.PayloadFlowRestricted = true;
     }
@@ -112,13 +112,13 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
   };
 
   if (auto *Cast = dynamic_cast<CastExpr *>(E))
-    return getAccessCapability(Cast->Expression.get());
+    return getAccessCapability(Cast->Expression.get(), declarationOnly);
   if (auto *Cede = dynamic_cast<CedeExpr *>(E))
-    return getAccessCapability(Cede->Value.get());
+    return getAccessCapability(Cede->Value.get(), declarationOnly);
   if (auto *Addr = dynamic_cast<AddressOfExpr *>(E))
-    return getAccessCapability(Addr->Expression.get());
+    return getAccessCapability(Addr->Expression.get(), declarationOnly);
   if (auto *Post = dynamic_cast<PostfixExpr *>(E))
-    return getAccessCapability(Post->LHS.get());
+    return getAccessCapability(Post->LHS.get(), declarationOnly);
 
   if (auto *Var = dynamic_cast<VariableExpr *>(E)) {
     SymbolInfo *Info = nullptr;
@@ -143,10 +143,11 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
       return applyPathFlowCeiling(
           {(declaredPayloadWritable || isPlainOwnedValue ||
             rawPayloadCapability) &&
-               Info->PayloadFlowWritable,
+               (declarationOnly || Info->PayloadFlowWritable),
            Info->Permission.IdentityRebindable ||
                valueBindingCanRebindMemberHandle,
-           Info->HasPayloadFlowCeiling && !Info->PayloadFlowWritable});
+           !declarationOnly && Info->HasPayloadFlowCeiling &&
+               !Info->PayloadFlowWritable});
     }
     return {};
   }
@@ -154,11 +155,11 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
   if (auto *Unary = dynamic_cast<UnaryExpr *>(E)) {
     // A hat chooses which existing handle is viewed; its # is an intent, not
     // a new grant.  The underlying declaration remains the authority.
-    return getAccessCapability(Unary->RHS.get());
+    return getAccessCapability(Unary->RHS.get(), declarationOnly);
   }
 
   if (auto *Member = dynamic_cast<MemberExpr *>(E)) {
-    auto base = getAccessCapability(Member->Object.get());
+    auto base = getAccessCapability(Member->Object.get(), declarationOnly);
     // A member is a declaration boundary.  Its own P declaration caps the
     // parent path: a writable record must not turn a `~field: T` into a
     // payload-writable handle merely by projecting it.  Do not infer this
@@ -219,7 +220,7 @@ AccessCapability Sema::getAccessCapability(Expr *E) {
   }
 
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E)) {
-    auto base = getAccessCapability(Index->Array.get());
+    auto base = getAccessCapability(Index->Array.get(), declarationOnly);
     // Index syntax may carry the array binding's handle attributes, while the
     // element declaration carries its own payload capability.  Recover the
     // physical element type so an array of `~T` cannot become `~T#` merely

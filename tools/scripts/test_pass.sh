@@ -593,6 +593,13 @@ if ! run_without_test_cache python3 tools/scripts/test_taskhandle_lifecycle.py; 
 fi
 
 echo ""
+echo "Running H/P Call Capability Pilot v1 ABI gate..."
+if ! run_without_test_cache python3 tools/scripts/test_capability_pilot.py; then
+    echo -e "${RED}H/P Call Capability Pilot v1 ABI gate failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Ephemeral Semantic Diff Preview v1 ABI gate..."
 if ! run_without_test_cache python3 tools/scripts/test_semantic_diff_preview.py; then
     echo -e "${RED}Ephemeral Semantic Diff Preview v1 ABI gate failed!${NC}"

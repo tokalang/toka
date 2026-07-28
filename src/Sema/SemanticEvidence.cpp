@@ -11,6 +11,7 @@ namespace toka {
 bool SemanticEvidence::Enabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
+std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
 
 namespace {
 
@@ -90,6 +91,40 @@ bool CedeObligationRecord::operator==(const CedeObligationRecord &rhs) const {
          Location == rhs.Location && ContractLocation == rhs.ContractLocation;
 }
 
+bool CapabilityCallRecord::operator<(const CapabilityCallRecord &rhs) const {
+  return std::tie(Callee, Parameter, Subject, DeclaredHandleRebindable,
+                  DeclaredPayloadWritable, InferredHandleRebindable,
+                  InferredPayloadWritable, RequestHandleRebind,
+                  RequestPayloadWrite, RequiredHandleRebind,
+                  RequiredPayloadWrite, GrantedHandleRebind,
+                  GrantedPayloadWrite, IndependentCede, Location,
+                  ContractLocation) <
+         std::tie(rhs.Callee, rhs.Parameter, rhs.Subject,
+                  rhs.DeclaredHandleRebindable, rhs.DeclaredPayloadWritable,
+                  rhs.InferredHandleRebindable, rhs.InferredPayloadWritable,
+                  rhs.RequestHandleRebind, rhs.RequestPayloadWrite,
+                  rhs.RequiredHandleRebind, rhs.RequiredPayloadWrite,
+                  rhs.GrantedHandleRebind, rhs.GrantedPayloadWrite,
+                  rhs.IndependentCede, rhs.Location, rhs.ContractLocation);
+}
+
+bool CapabilityCallRecord::operator==(const CapabilityCallRecord &rhs) const {
+  return Callee == rhs.Callee && Parameter == rhs.Parameter &&
+         Subject == rhs.Subject &&
+         DeclaredHandleRebindable == rhs.DeclaredHandleRebindable &&
+         DeclaredPayloadWritable == rhs.DeclaredPayloadWritable &&
+         InferredHandleRebindable == rhs.InferredHandleRebindable &&
+         InferredPayloadWritable == rhs.InferredPayloadWritable &&
+         RequestHandleRebind == rhs.RequestHandleRebind &&
+         RequestPayloadWrite == rhs.RequestPayloadWrite &&
+         RequiredHandleRebind == rhs.RequiredHandleRebind &&
+         RequiredPayloadWrite == rhs.RequiredPayloadWrite &&
+         GrantedHandleRebind == rhs.GrantedHandleRebind &&
+         GrantedPayloadWrite == rhs.GrantedPayloadWrite &&
+         IndependentCede == rhs.IndependentCede && Location == rhs.Location &&
+         ContractLocation == rhs.ContractLocation;
+}
+
 void SemanticEvidence::enable(bool value) {
   Enabled = value;
   reset();
@@ -100,6 +135,7 @@ bool SemanticEvidence::isEnabled() { return Enabled; }
 void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();
+  CapabilityCalls.clear();
 }
 
 void SemanticEvidence::record(SemanticRuleID rule,
@@ -185,6 +221,65 @@ void SemanticEvidence::dumpCedeObligationsJSON(std::ostream &out) {
         << "\",\"subject\":\"" << escapeJSON(record.Subject)
         << "\",\"origin\":\"" << escapeJSON(record.Origin)
         << "\",\"location\":";
+    dumpLocation(out, record.Location);
+    out << ",\"contract_location\":";
+    dumpLocation(out, record.ContractLocation);
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+void SemanticEvidence::recordCapabilityCall(
+    std::string callee, std::string parameter, std::string subject,
+    bool declaredHandleRebindable, bool declaredPayloadWritable,
+    bool inferredHandleRebindable, bool inferredPayloadWritable,
+    bool requestHandleRebind, bool requestPayloadWrite,
+    bool requiredHandleRebind, bool requiredPayloadWrite,
+    bool grantedHandleRebind, bool grantedPayloadWrite, bool independentCede,
+    SourceLocation location, SourceLocation contractLocation) {
+  if (!Enabled)
+    return;
+  CapabilityCalls.push_back(
+      {std::move(callee), std::move(parameter), std::move(subject),
+       declaredHandleRebindable, declaredPayloadWritable,
+       inferredHandleRebindable, inferredPayloadWritable, requestHandleRebind,
+       requestPayloadWrite, requiredHandleRebind, requiredPayloadWrite,
+       grantedHandleRebind, grantedPayloadWrite, independentCede,
+       resolveLocation(location), resolveLocation(contractLocation)});
+}
+
+void SemanticEvidence::dumpCapabilityCallsJSON(std::ostream &out) {
+  std::sort(CapabilityCalls.begin(), CapabilityCalls.end());
+  CapabilityCalls.erase(
+      std::unique(CapabilityCalls.begin(), CapabilityCalls.end()),
+      CapabilityCalls.end());
+  out << "{\"schema\":\"toka.capability-pilot\",\"version\":1,\"records\":[";
+  for (size_t i = 0; i < CapabilityCalls.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &record = CapabilityCalls[i];
+    auto dumpCapability = [&](bool handle, bool payload) {
+      out << "{\"handle_rebind\":" << (handle ? "true" : "false")
+          << ",\"payload_write\":" << (payload ? "true" : "false") << '}';
+    };
+    out << "{\"callee\":\"" << escapeJSON(record.Callee)
+        << "\",\"parameter\":\"" << escapeJSON(record.Parameter)
+        << "\",\"subject\":\"" << escapeJSON(record.Subject)
+        << "\",\"declared\":";
+    dumpCapability(record.DeclaredHandleRebindable,
+                   record.DeclaredPayloadWritable);
+    out << ",\"inferred\":";
+    dumpCapability(record.InferredHandleRebindable,
+                   record.InferredPayloadWritable);
+    out << ",\"request\":";
+    dumpCapability(record.RequestHandleRebind, record.RequestPayloadWrite);
+    out << ",\"required\":";
+    dumpCapability(record.RequiredHandleRebind, record.RequiredPayloadWrite);
+    out << ",\"granted\":";
+    dumpCapability(record.GrantedHandleRebind, record.GrantedPayloadWrite);
+    out << ",\"independent_cede\":"
+        << (record.IndependentCede ? "true" : "false")
+        << ",\"location\":";
     dumpLocation(out, record.Location);
     out << ",\"contract_location\":";
     dumpLocation(out, record.ContractLocation);
