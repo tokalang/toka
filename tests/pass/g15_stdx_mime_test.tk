@@ -1,0 +1,40 @@
+import std/io::{println}
+import stdx/net/mime::{Mime}
+
+fn test_content_type_parse() {
+    auto parsed = Mime::parse(" Text/HTML ; Charset = \"utf-8\" ; boundary=abc123 ")
+    assert(parsed.is_ok(), "common Content-Type must parse")
+    auto mime = parsed.unwrap()
+    assert(mime.essence().as_str().equals("text/html"), "MIME essence must normalize ASCII case")
+    auto charset = mime.parameter("CHARSET")
+    assert(charset.is_some(), "charset parameter must be present")
+    assert(charset.unwrap().as_str().equals("utf-8"),
+           "parameter lookup must normalize parameter names")
+    assert(mime.to_string().as_str().equals("text/html; charset=\"utf-8\"; boundary=abc123"),
+           "MIME formatting must be canonical")
+
+    auto escaped_wire# = string::from("text/plain; note=\"a")
+    escaped_wire#.push_byte_raw('\\' as u8)
+    escaped_wire#.push_byte_raw('"' as u8)
+    escaped_wire#.push_str("b\"")
+    auto escaped = Mime::parse(escaped_wire.as_str())
+    assert(escaped.is_ok(), "quoted parameter escapes must parse")
+    assert(escaped.unwrap().to_string().as_str().equals(escaped_wire.as_str()),
+           "MIME formatting must preserve quoted parameter escapes")
+}
+
+fn test_rejections() {
+    assert(Mime::parse("text").is_err(), "missing subtype must fail")
+    assert(Mime::parse("text/ html").is_err(), "whitespace in subtype must fail")
+    assert(Mime::parse("text/plain; charset").is_err(), "missing parameter value must fail")
+    assert(Mime::parse("text/plain; charset=\"utf-8").is_err(), "unterminated quote must fail")
+    assert(Mime::parse("text/plain; charset=utf-8; CHARSET=latin1").is_err(),
+           "duplicate parameter names must fail deterministically")
+}
+
+fn main() -> i32 {
+    test_content_type_parse()
+    test_rejections()
+    println("g15_stdx_mime_test PASSED!")
+    return 0
+}

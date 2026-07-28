@@ -1,0 +1,269 @@
+// RFC 2045-style media type parser for HTTP Content-Type values.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/vec::{Vec}
+
+pub shape MimeParam (
+    name: string,
+    value: string,
+    quoted: bool
+)
+
+impl MimeParam@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> MimeParam {
+        return MimeParam(
+            name = string::from(self.name.as_str()),
+            value = string::from(self.value.as_str()),
+            quoted = self.quoted
+        )
+    }
+}
+
+pub shape Mime (
+    type_name: string,
+    subtype: string,
+    params: Vec<MimeParam>
+)
+
+fn is_ows(b: u8) -> bool {
+    return b == 32:u8 || b == 9:u8
+}
+
+// RFC token: visible ASCII excluding separators and whitespace.
+fn is_token_byte(b: u8) -> bool {
+    if b >= 'a' as u8 && b <= 'z' as u8 { return true }
+    if b >= 'A' as u8 && b <= 'Z' as u8 { return true }
+    if b >= '0' as u8 && b <= '9' as u8 { return true }
+    if b == '!' as u8 || b == '#' as u8 || b == '$' as u8 || b == '%' as u8 {
+        return true
+    }
+    if b == '&' as u8 || b == '\'' as u8 || b == '*' as u8 || b == '+' as u8 {
+        return true
+    }
+    if b == '-' as u8 || b == '.' as u8 || b == '^' as u8 || b == '_' as u8 {
+        return true
+    }
+    if b == '`' as u8 || b == '|' as u8 || b == '~' as u8 {
+        return true
+    }
+    return false
+}
+
+fn skip_ows(input: str, cursor: usize) -> usize {
+    auto next# = cursor
+    loop next < input.len() && is_ows(input.byte_at(next) as u8) {
+        next = next + 1:usize
+    }
+    return next
+}
+
+fn copy_range(input: str, start: usize, end: usize) -> string {
+    auto output# = string::from("")
+    auto index# = start
+    loop index < end {
+        output#.push_byte_raw(input.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn lower_ascii(input: string) -> string {
+    auto output# = string::from("")
+    auto index#: usize = 0
+    loop index < input.len() {
+        auto byte# = input.as_str().byte_at(index) as u8
+        if byte >= 'A' as u8 && byte <= 'Z' as u8 {
+            byte = byte + 32:u8
+        }
+        output#.push_byte_raw(byte)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn has_param(params: Vec<MimeParam>, name: str) -> bool {
+    auto index#: usize = 0
+    loop index < params.len() {
+        auto param = params.get(index).clone()
+        if param.name.as_str().equals(name) {
+            return true
+        }
+        index = index + 1:usize
+    }
+    return false
+}
+
+impl Mime@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> Mime {
+        auto copied# = Vec<MimeParam>::new()
+        auto index#: usize = 0
+        loop index < self.params.len() {
+            copied#.push(cede self.params.get(index).clone())
+            index = index + 1:usize
+        }
+        return Mime(
+            type_name = string::from(self.type_name.as_str()),
+            subtype = string::from(self.subtype.as_str()),
+            params = cede copied
+        )
+    }
+}
+
+impl Mime {
+    pub fn parse(input: str) -> Result<Mime, string> {
+        auto cursor# = skip_ows(input, 0:usize)
+        auto type_start = cursor
+        loop cursor < input.len() && is_token_byte(input.byte_at(cursor) as u8) {
+            cursor = cursor + 1:usize
+        }
+        if cursor == type_start || cursor >= input.len() || input.byte_at(cursor) as u8 != '/' as u8 {
+            return Result<Mime, string>::Err(string::from("MIME type must contain type/subtype tokens"))
+        }
+        auto type_name = lower_ascii(copy_range(input, type_start, cursor))
+        cursor = cursor + 1:usize
+        auto subtype_start = cursor
+        loop cursor < input.len() && is_token_byte(input.byte_at(cursor) as u8) {
+            cursor = cursor + 1:usize
+        }
+        if cursor == subtype_start {
+            return Result<Mime, string>::Err(string::from("MIME subtype must be a token"))
+        }
+        auto subtype = lower_ascii(copy_range(input, subtype_start, cursor))
+        auto params# = Vec<MimeParam>::new()
+
+        loop true {
+            cursor = skip_ows(input, cursor)
+            if cursor == input.len() { break }
+            if input.byte_at(cursor) as u8 != ';' as u8 {
+                return Result<Mime, string>::Err(string::from("MIME parameters must start with ';'"))
+            }
+            cursor = skip_ows(input, cursor + 1:usize)
+            auto name_start = cursor
+            loop cursor < input.len() && is_token_byte(input.byte_at(cursor) as u8) {
+                cursor = cursor + 1:usize
+            }
+            if cursor == name_start {
+                return Result<Mime, string>::Err(string::from("MIME parameter name must be a token"))
+            }
+            auto name = lower_ascii(copy_range(input, name_start, cursor))
+            cursor = skip_ows(input, cursor)
+            if cursor >= input.len() || input.byte_at(cursor) as u8 != '=' as u8 {
+                return Result<Mime, string>::Err(string::from("MIME parameter is missing '='"))
+            }
+            cursor = skip_ows(input, cursor + 1:usize)
+            if cursor >= input.len() {
+                return Result<Mime, string>::Err(string::from("MIME parameter value is missing"))
+            }
+
+            auto value# = string::from("")
+            auto quoted# = false
+            if input.byte_at(cursor) as u8 == '"' as u8 {
+                quoted = true
+                cursor = cursor + 1:usize
+                auto closed# = false
+                loop cursor < input.len() {
+                    auto byte# = input.byte_at(cursor) as u8
+                    if byte == '"' as u8 {
+                        cursor = cursor + 1:usize
+                        closed = true
+                        break
+                    }
+                    if byte == '\\' as u8 {
+                        cursor = cursor + 1:usize
+                        if cursor >= input.len() {
+                            return Result<Mime, string>::Err(string::from("MIME quoted parameter has a trailing escape"))
+                        }
+                        byte = input.byte_at(cursor) as u8
+                    }
+                    if byte < 32:u8 || byte == 127:u8 {
+                        return Result<Mime, string>::Err(string::from("MIME quoted parameter contains a control byte"))
+                    }
+                    value#.push_byte_raw(byte)
+                    cursor = cursor + 1:usize
+                }
+                if !closed {
+                    return Result<Mime, string>::Err(string::from("MIME quoted parameter is unterminated"))
+                }
+            } else {
+                auto value_start = cursor
+                loop cursor < input.len() && is_token_byte(input.byte_at(cursor) as u8) {
+                    cursor = cursor + 1:usize
+                }
+                if cursor == value_start {
+                    return Result<Mime, string>::Err(string::from("MIME parameter value must be a token or quoted string"))
+                }
+                value = copy_range(input, value_start, cursor)
+            }
+
+            if has_param(params, name.as_str()) {
+                return Result<Mime, string>::Err(string::from("MIME parameter name is duplicated"))
+            }
+            params#.push(cede MimeParam(
+                name = cede name,
+                value = cede value,
+                quoted = quoted
+            ))
+        }
+
+        return Result<Mime, string>::Ok(Mime(
+            type_name = cede type_name,
+            subtype = cede subtype,
+            params = cede params
+        ))
+    }
+
+    pub fn essence(self) -> string {
+        auto output# = string::from(self.type_name.as_str())
+        output#.push_byte_raw('/' as u8)
+        output#.push_str(self.subtype.as_str())
+        return output
+    }
+
+    pub fn parameter(self, name: str) -> Option<string> {
+        auto normalized = lower_ascii(name.to_string())
+        auto index#: usize = 0
+        loop index < self.params.len() {
+            auto param = self.params.get(index).clone()
+            if param.name.as_str().equals(normalized.as_str()) {
+                return Option<string>::Some(string::from(param.value.as_str()))
+            }
+            index = index + 1:usize
+        }
+        return Option<string>::None
+    }
+
+    pub fn to_string(self) -> string {
+        auto output# = self.essence()
+        auto index#: usize = 0
+        loop index < self.params.len() {
+            auto param = self.params.get(index).clone()
+            output#.push_str("; ")
+            output#.push_str(param.name.as_str())
+            output#.push_byte_raw('=' as u8)
+            if param.quoted {
+                output#.push_byte_raw('"' as u8)
+                auto value_index#: usize = 0
+                loop value_index < param.value.len() {
+                    auto byte = param.value.as_str().byte_at(value_index) as u8
+                    if byte == '"' as u8 || byte == '\\' as u8 {
+                        output#.push_byte_raw('\\' as u8)
+                    }
+                    output#.push_byte_raw(byte)
+                    value_index = value_index + 1:usize
+                }
+            } else {
+                output#.push_str(param.value.as_str())
+            }
+            if param.quoted {
+                output#.push_byte_raw('"' as u8)
+            }
+            index = index + 1:usize
+        }
+        return output
+    }
+}
