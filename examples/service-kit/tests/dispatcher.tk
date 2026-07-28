@@ -48,6 +48,8 @@ fn main() -> i32 {
     auto found = service#.handle(request(HttpMethod::GET, "/notes/1", ""))
     assert(found.status_code == 200:i32, "persisted note status")
     assert(found.body.contains("\"body\":\"first note\""), "persisted note body")
+    auto found_with_query = service#.handle(request(HttpMethod::GET, "/notes/1?source=router", ""))
+    assert(found_with_query.status_code == 200:i32, "router must select a note route without treating query text as an id")
     auto missing = service#.handle(request(HttpMethod::GET, "/notes/99", ""))
     assert(missing.status_code == 404:i32, "typed note not found")
     assert(service#.close().is_ok(), "first service closes")

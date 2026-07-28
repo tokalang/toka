@@ -3,6 +3,7 @@
 
 import core/option::{Option}
 import core/result::{Result}
+import official/router::{Router}
 import official/sqlite::{Database, SqliteError, Step}
 import std/async::{TaskScope, spawn_into}
 import std/context::{Canceler}
@@ -47,6 +48,7 @@ impl Note@ToJson {
 
 pub shape NotesService (
     database#: Database,
+    router#: Router,
     log_level: LogLevel
 )
 
@@ -76,15 +78,15 @@ fn sqlite_message(error: SqliteError) -> string {
     return error.message()
 }
 
-fn parse_note_id(path: str) -> Option<i64> {
-    if !path.starts_with("/notes/") || path.len() == 7:usize {
+fn parse_note_id(value: str) -> Option<i64> {
+    if value.len() == 0:usize {
         return Option<i64>::None
     }
 
     auto id# = 0:i64
-    auto index# = 7:usize
-    loop index < path.len() {
-        auto byte = path.byte_at(index)
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index)
         if byte < 48 || byte > 57 {
             return Option<i64>::None
         }
@@ -109,8 +111,22 @@ impl NotesService {
         if schema.is_err() {
             return Result<NotesService, string>::Err(sqlite_message(schema.unwrap_err()))
         }
+        auto router# = Router::new()
+        auto health = router#.add(HttpMethod::GET, "/health", "health")
+        if health.is_err() {
+            return Result<NotesService, string>::Err(health.unwrap_err().message())
+        }
+        auto create = router#.add(HttpMethod::POST, "/notes", "notes.create")
+        if create.is_err() {
+            return Result<NotesService, string>::Err(create.unwrap_err().message())
+        }
+        auto show = router#.add(HttpMethod::GET, "/notes/:id", "notes.show")
+        if show.is_err() {
+            return Result<NotesService, string>::Err(show.unwrap_err().message())
+        }
         return Result<NotesService, string>::Ok(NotesService(
             database = cede database,
+            router = cede router,
             log_level = config.log_level
         ))
     }
@@ -213,11 +229,18 @@ impl NotesService {
     }
 
     pub fn handle(self#, request: HttpRequest) -> HttpResponse {
-        if request.method == HttpMethod::GET && request.path.as_str().equals("/health") {
+        auto recognized = self.router.recognize(request.method, request.path.as_str())
+        if recognized.is_none() {
+            return error_response(404:i32, "route not found")
+        }
+        auto route = recognized.unwrap()
+        auto route_name = route.route_name()
+
+        if route_name.as_str().equals("health") {
             return json_response(200:i32, cede string::from("{\"status\":\"ok\"}"))
         }
 
-        if request.method == HttpMethod::POST && request.path.as_str().equals("/notes") {
+        if route_name.as_str().equals("notes.create") {
             auto parsed = deserialize_shape<NoteInput>(request.body.as_str())
             if parsed.is_err() {
                 return error_response(400:i32, "invalid note JSON")
@@ -233,19 +256,24 @@ impl NotesService {
             return json_response(201:i32, cede to_json(created.unwrap()))
         }
 
-        if request.method == HttpMethod::GET {
-            auto id = parse_note_id(request.path.as_str())
-            if id.is_some() {
-                auto found = self#.find_note(id.unwrap())
-                if found.is_err() {
-                    return error_response(500:i32, found.unwrap_err().as_str())
-                }
-                auto note = found.unwrap()
-                if note.is_some() {
-                    return json_response(200:i32, cede to_json(note.unwrap()))
-                }
-                return error_response(404:i32, "note not found")
+        if route_name.as_str().equals("notes.show") {
+            auto id_value = route.param("id")
+            if id_value.is_none() {
+                return error_response(400:i32, "invalid note id")
             }
+            auto id = parse_note_id(id_value.unwrap().as_str())
+            if id.is_none() {
+                return error_response(400:i32, "invalid note id")
+            }
+            auto found = self#.find_note(id.unwrap())
+            if found.is_err() {
+                return error_response(500:i32, found.unwrap_err().as_str())
+            }
+            auto note = found.unwrap()
+            if note.is_some() {
+                return json_response(200:i32, cede to_json(note.unwrap()))
+            }
+            return error_response(404:i32, "note not found")
         }
 
         return error_response(404:i32, "route not found")

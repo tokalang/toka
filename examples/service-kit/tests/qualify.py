@@ -13,6 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 SQLITE = ROOT / "official" / "sqlite"
+ROUTER = ROOT / "official" / "router"
 SERVICE_KIT = ROOT / "examples" / "service-kit"
 
 
@@ -58,6 +59,7 @@ def main() -> int:
             program_ir = work / (source_name + ".ll")
             program = work / source_name
             run([str(tokac), "-I", str(ROOT / "lib"), "-I", str(SQLITE / "lib"),
+                 "-I", str(ROUTER / "lib"),
                  "-I", str(SERVICE_KIT / "lib"), "--emit-llvm",
                  str(SERVICE_KIT / "tests" / (source_name + ".tk")), "-o", str(program_ir)], cwd=ROOT)
             link_args = [compiler, str(program_ir), str(bridge_object), str(runtime),

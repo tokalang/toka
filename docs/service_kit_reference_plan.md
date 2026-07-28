@@ -29,8 +29,9 @@ daemon supervisor.
    not-found, restart persistence, and native SQLite handle/statement cleanup.
 3. The only general blocker discovered was response wire-status preservation
    for `201 Created` and `400 Bad Request`; that is now closed in `stdx/http`.
-4. Routing remains application code.  No second consumer justifies extracting
-   `official/router`.
+4. The service uses `official/router` for deterministic method/path/parameter
+   recognition, while retaining application-specific validation and response
+   policy. This is the router's second real consumer beyond its package suite.
 
 ## Stop condition
 

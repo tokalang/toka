@@ -7,7 +7,7 @@ a web framework:
 ```text
 std/net TcpListener
         -> stdx/net/http server connection lifecycle
-        -> servicekit request dispatch
+        -> official/router method/path dispatch
         -> official/sqlite parameterized persistence
 ```
 
@@ -34,7 +34,9 @@ and calls the supplied `Canceler`; tests can supply any other cancellation
 source.
 
 It does not claim routing middleware, authentication, TLS termination, an
-ORM, migrations, HTTP/2, or a daemon supervisor.
+ORM, migrations, HTTP/2, or a daemon supervisor. `official/router` supplies
+only deterministic method/path recognition; the application retains response,
+validation, persistence, and lifecycle policy.
 
 ## Qualification
 
