@@ -1,8 +1,8 @@
 import servicekit/app::{ServiceConfig, serve_until_canceled_async}
 import std/context::{background, with_cancel}
 import std/io::{remove_file}
-import std/net::{Ipv4Addr, SocketAddrV4, TcpListener}
-import std/task::{block_on, sleep_async}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
+import std/task::{block_on, current_time_ms, sleep_async}
 import stdx/log/log::{LOG_ERROR}
 import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest}
 
@@ -40,10 +40,22 @@ fn run(path: str) -> async i32 {
     assert(response.is_ok(), "loopback request completes before shutdown")
     assert(response.unwrap().status_code == 200:i32, "loopback request has health status")
 
+    // Hold a worker at an HTTP read await point.  Shutdown must cancel this
+    // task promptly rather than waiting for the ordinary request I/O timeout.
+    auto partial# = TcpStream::connect(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port))
+    assert(partial.is_valid(), "partial-request client connects")
+    auto partial_write = partial#.write_string_async(string::from("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n")).await
+    assert(partial_write.is_ok(), "partial request bytes sent")
+    sleep_async(20:i32).await
+
+    auto shutdown_started = current_time_ms()
     cancellation.canceler.call()
     auto completed = server.await
+    auto shutdown_elapsed = current_time_ms() - shutdown_started
+    partial#.close()
     assert(completed.is_ok(), "service loop exits after cancellation")
-    assert(completed.unwrap(), "completed request drains before deadline")
+    assert(!completed.unwrap(), "blocked request receives deadline cancellation")
+    assert(shutdown_elapsed < 1500:i64, "blocked request cancellation must honor the drain deadline rather than normal I/O timeout")
     assert(cancellation.canceler.active_token_count() == 0:usize, "shutdown leaves no accept cancellation token")
     assert(toka_sqlite_live_handle_count() == 0:i32, "shutdown drains database handles")
     assert(toka_sqlite_live_statement_count() == 0:i32, "shutdown drains database statements")

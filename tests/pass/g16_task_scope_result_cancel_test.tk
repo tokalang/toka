@@ -1,0 +1,71 @@
+import core/result::{Result}
+import std/async::{TaskScope, task_ref_from_handle}
+import std/context::{background, with_cancel, Canceler}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener}
+import std/task::{block_on, sleep_async}
+
+fn slow_result_worker() -> async Result<i32, string> {
+    sleep_async(1000:i32).await
+    return Result<i32, string>::Ok(1:i32)
+}
+
+fn run() -> async i32 {
+    auto scope# = TaskScope::new()
+    auto worker = slow_result_worker().start
+    scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+    auto drained = scope#.shutdown_async(0:i32).await
+    assert(!drained, "canceling a Result-returning task must not cancel the TaskScope awaiter")
+    return 0
+}
+
+fn nested_shutdown_result() -> async Result<bool, string> {
+    auto scope# = TaskScope::new()
+    auto worker = slow_result_worker().start
+    scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+    auto drained = scope#.shutdown_async(0:i32).await
+    return Result<bool, string>::Ok(drained)
+}
+
+fn nested_result_run() -> async i32 {
+    auto completed = nested_shutdown_result().await
+    assert(completed.is_ok(), "TaskScope shutdown must not cancel its enclosing Result task")
+    assert(!completed.unwrap(), "nested TaskScope shutdown returns its false drain result")
+    return 0
+}
+
+fn canceled_accept_shutdown(cede listener: TcpListener, cede canceler: Canceler) -> async Result<bool, string> {
+    auto listener# = cede listener
+    auto canceler# = cede canceler
+    auto scope# = TaskScope::new()
+    auto worker = slow_result_worker().start
+    scope#.track_ref(cede task_ref_from_handle<Result<i32, string>>(cede worker))
+    auto accepted = listener#.accept_async_context(canceler).await
+    if accepted.is_ok() {
+        return Result<bool, string>::Err(string::from("unexpected test connection"))
+    }
+    auto drained = scope#.shutdown_async(0:i32).await
+    return Result<bool, string>::Ok(drained)
+}
+
+fn canceled_accept_result_run() -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    assert(listener.is_valid(), "cancellation probe listener binds")
+    auto cancellation = with_cancel(cede background())
+    auto pending = canceled_accept_shutdown(cede listener, cede cancellation.canceler.clone()).start
+    sleep_async(10:i32).await
+    cancellation.canceler.call()
+    auto completed = pending.await
+    assert(completed.is_ok(), "context cancellation does not cancel the enclosing result task")
+    assert(!completed.unwrap(), "context cancellation preserves TaskScope's false drain result")
+    return 0
+}
+
+fn main() -> i32 {
+    auto first = block_on<i32>(run())
+    assert(first == 0:i32, "direct TaskScope result cancellation probe passed")
+    auto nested = block_on<i32>(nested_result_run())
+    assert(nested == 0:i32, "nested TaskScope result cancellation probe passed")
+    auto accepted = block_on<i32>(canceled_accept_result_run())
+    assert(accepted == 0:i32, "context-canceled TaskScope result cancellation probe passed")
+    return 0
+}
