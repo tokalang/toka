@@ -96,27 +96,33 @@ fn parse_max_age(input: str) -> Result<i64, string> {
 }
 
 fn append_string_attribute(output#: string, label: str, value: Option<string>) {
-    if value.is_none() { return }
-    auto item = value.unwrap()
-    output#.push_str("; ")
-    output#.push_str(label)
-    output#.push_byte_raw('=' as u8)
-    output#.push_str(item.as_str())
+    match value {
+        auto Option<string>::Some(&item) => {
+            output#.push_str("; ")
+            output#.push_str(label)
+            output#.push_byte_raw('=' as u8)
+            output#.push_str(item.as_str())
+        }
+        _ => {}
+    }
 }
 
 fn append_max_age(output#: string, value: Option<i64>) {
-    if value.is_none() { return }
-    auto age = value.unwrap()
-    output#.push_str("; Max-Age=")
-    output#.push_str(string::from_i64(age).as_str())
+    match value {
+        auto Option<i64>::Some(age) => {
+            output#.push_str("; Max-Age=")
+            output#.push_str(string::from_i64(age).as_str())
+        }
+        _ => {}
+    }
 }
 
 fn append_same_site(output#: string, value: Option<SameSite>) {
-    if value.is_none() { return }
-    match value.unwrap() {
-        auto SameSite::Lax => output#.push_str("; SameSite=Lax")
-        auto SameSite::Strict => output#.push_str("; SameSite=Strict")
-        auto SameSite::None => output#.push_str("; SameSite=None")
+    match value {
+        auto Option<SameSite>::Some(SameSite::Lax) => output#.push_str("; SameSite=Lax")
+        auto Option<SameSite>::Some(SameSite::Strict) => output#.push_str("; SameSite=Strict")
+        auto Option<SameSite>::Some(SameSite::None) => output#.push_str("; SameSite=None")
+        _ => {}
     }
 }
 
