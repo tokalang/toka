@@ -1,5 +1,7 @@
 # `official/regex` v1
 
+Status: **prototype implementation; package qualification is not yet closed**.
+
 `official/regex` is Toka's official regular-expression package. Its package
 identity and public import path are `official/regex`; its manifest short name
 is `regex`.
@@ -42,7 +44,7 @@ returns a view into a temporary input.
 - `^` and `$` anchors.
 
 The public target is this RE2-compatible regular subset, not a claim of full
-RE2 compatibility. The current slice enables literals, escaped metacharacters,
+RE2 compatibility. The implementation slice enables literals, escaped metacharacters,
 `.`, `^`, `$`, grouping, alternation, postfix `*`, `+`, `?`, and counted
 repetitions, plus ASCII
 character classes, ranges, and negated classes. Escapes are intentionally
@@ -64,12 +66,17 @@ resource contract.
 
 ## Qualification
 
-Once implementation begins, run from this package root:
+Run the qualification from this package root:
 
 ```text
 tokac -I ../../../lib -I lib tests/regex_v1.tk -o /tmp/regex_v1 && /tmp/regex_v1
 ```
 
-The qualification suite will cover accepted syntax, malformed-pattern byte
+The qualification suite covers accepted syntax, malformed-pattern byte
 positions, anchors/classes/quantifiers, and adversarial non-match cases that
 would make a backtracking engine exponential.
+
+The v1 package must not be released until this suite passes in full. At present,
+the corrected literal-order assertion is valid, but the grouped quantified case
+`a(b|c)+d?` does not yet match `ac`; this is an open matcher qualification
+defect, not an unsupported syntax carve-out.
