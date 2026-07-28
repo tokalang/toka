@@ -1,0 +1,42 @@
+import std/io::{println}
+import stdx/uuid/uuid::{Uuid}
+
+fn test_parse_and_format() {
+    auto parsed = Uuid::parse("550e8400-e29b-41d4-a716-446655440000")
+    assert(parsed.is_ok(), "canonical UUID must parse")
+    auto uuid = parsed.unwrap()
+    assert(uuid.to_string().as_str().equals("550e8400-e29b-41d4-a716-446655440000"),
+           "UUID formatting must be canonical lowercase")
+    assert(uuid.version() == 4:u8, "version nibble must be exposed")
+    assert(!uuid.is_nil(), "nonzero UUID must not be nil")
+}
+
+fn test_rejections_and_nil() {
+    assert(Uuid::parse("550e8400-e29b-41d4-a716-44665544000").is_err(),
+           "short UUID must be rejected")
+    assert(Uuid::parse("550e8400-e29b-41d4-a716-44665544000z").is_err(),
+           "non-hex UUID must be rejected")
+    assert(Uuid::parse("550e8400_e29b-41d4-a716-446655440000").is_err(),
+           "misplaced UUID hyphen must be rejected")
+    auto nil = Uuid::nil()
+    assert(nil.is_nil(), "nil UUID must be detected")
+    assert(nil.to_string().as_str().equals("00000000-0000-0000-0000-000000000000"),
+           "nil UUID formatting must be canonical")
+}
+
+fn test_v4_entropy_adapter() {
+    auto generated = Uuid::new_v4()
+    assert(generated.is_ok(), "OS entropy backed UUID generation must succeed")
+    auto uuid = generated.unwrap()
+    assert(uuid.version() == 4:u8, "v4 UUID must set version bits")
+    auto wire = uuid.to_string()
+    assert(Uuid::parse(wire.as_str()).is_ok(), "generated UUID must round-trip")
+}
+
+fn main() -> i32 {
+    test_parse_and_format()
+    test_rejections_and_nil()
+    test_v4_entropy_adapter()
+    println("g15_stdx_uuid_test PASSED!")
+    return 0
+}

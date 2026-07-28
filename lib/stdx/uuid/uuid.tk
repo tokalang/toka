@@ -1,0 +1,120 @@
+// RFC 9562 UUID value type and v4 generator.
+//
+// Generation deliberately uses std/net's OS-randomness adapter.  This module
+// never exposes its C/FFI boundary or a pseudo-random generator as UUID entropy.
+
+import core/result::{Result}
+import core/str::{str}
+import std/net::{net_random_bytes}
+import std/vec::{Vec}
+
+pub shape Uuid (
+    bytes: [u8; 16]
+)
+
+fn hex_nibble(b: char) -> i32 {
+    if b >= '0' && b <= '9' {
+        return b as i32 - '0' as i32
+    }
+    if b >= 'a' && b <= 'f' {
+        return b as i32 - 'a' as i32 + 10
+    }
+    if b >= 'A' && b <= 'F' {
+        return b as i32 - 'A' as i32 + 10
+    }
+    return -1
+}
+
+fn hex_digit(nibble: u8) -> u8 {
+    if nibble < 10:u8 {
+        return nibble + '0' as u8
+    }
+    return nibble - 10:u8 + 'a' as u8
+}
+
+impl Uuid {
+    pub fn nil() -> Uuid {
+        return Uuid(bytes = [0:u8; 16])
+    }
+
+    pub fn parse(input: str) -> Result<Uuid, string> {
+        if input.len() != 36:usize {
+            return Result<Uuid, string>::Err(string::from("UUID must contain 36 ASCII bytes"))
+        }
+
+        auto raw#: [u8; 16] = [0:u8; 16]
+        auto source#: usize = 0
+        auto target#: usize = 0
+        loop target < 16:usize {
+            if source == 8:usize || source == 13:usize || source == 18:usize || source == 23:usize {
+                if input.byte_at(source) != '-' {
+                    return Result<Uuid, string>::Err(string::from("UUID hyphen placement is invalid"))
+                }
+                source = source + 1:usize
+            }
+            auto high = hex_nibble(input.byte_at(source))
+            auto low = hex_nibble(input.byte_at(source + 1:usize))
+            if high < 0 || low < 0 {
+                return Result<Uuid, string>::Err(string::from("UUID contains a non-hexadecimal byte"))
+            }
+            raw[target] = ((high << 4:i32) | low) as u8
+            source = source + 2:usize
+            target = target + 1:usize
+        }
+        return Result<Uuid, string>::Ok(Uuid(bytes = raw))
+    }
+
+    pub fn to_string(self) -> string {
+        auto output# = string::from("")
+        auto index#: usize = 0
+        loop index < 16:usize {
+            if index == 4:usize || index == 6:usize || index == 8:usize || index == 10:usize {
+                output#.push_byte_raw('-' as u8)
+            }
+            auto byte = self.bytes[index]
+            output#.push_byte_raw(hex_digit(byte >> 4:u8))
+            output#.push_byte_raw(hex_digit(byte & 0x0f:u8))
+            index = index + 1:usize
+        }
+        return output
+    }
+
+    pub fn version(self) -> u8 {
+        return self.bytes[6] >> 4:u8
+    }
+
+    pub fn is_nil(self) -> bool {
+        auto index#: usize = 0
+        loop index < 16:usize {
+            if self.bytes[index] != 0:u8 {
+                return false
+            }
+            index = index + 1:usize
+        }
+        return true
+    }
+
+    pub fn new_v4() -> Result<Uuid, string> {
+        auto entropy# = Vec<u8>::new()
+        auto index#: usize = 0
+        loop index < 16:usize {
+            entropy#.push(0:u8)
+            index = index + 1:usize
+        }
+        auto random_result = net_random_bytes(cede entropy)
+        if random_result.is_err() {
+            return Result<Uuid, string>::Err(random_result.unwrap_err())
+        }
+
+        auto random = random_result.unwrap()
+        auto raw#: [u8; 16] = [0:u8; 16]
+        index = 0
+        loop index < 16:usize {
+            raw[index] = random.get(index)
+            index = index + 1:usize
+        }
+        raw[6] = (raw[6] & 0x0f:u8) | 0x40:u8
+        raw[8] = (raw[8] & 0x3f:u8) | 0x80:u8
+        return Result<Uuid, string>::Ok(Uuid(bytes = raw))
+    }
+}
