@@ -26,5 +26,14 @@ single full-document edit without modifying the open source file. The custom
 read-only request `toka/analysisStats` exposes revision, invalidation, reuse,
 recheck, and elapsed-time data for qualification and troubleshooting.
 
+For AI clients that need one coherent read-only result instead of composing
+several LSP requests, `toka/semanticBundle` accepts an open `textDocument` URI
+and returns the current overlay revision, diagnostics, a versioned
+`documentSymbols` semantic-index query, and the same analysis statistics. Its
+envelope is `toka.overlay-semantic-bundle` v1. It neither writes the workspace
+nor starts another compiler session. Hole goals, conditional facts, capability
+calls, and cede obligations remain independent one-shot protocols in v1; the
+bundle does not relabel them as cached session facts.
+
 Run `python3 tools/scripts/test_lsp_protocol.py` for the protocol, semantic,
 overlay, incremental invalidation, UTF-16, and formatting gate.

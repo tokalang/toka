@@ -89,6 +89,13 @@ invalidation, and unchanged-module reuse are available there without writing
 the workspace. Preview deliberately does not reuse that session or expose a
 write-capable cache; its role remains a reproducible base/candidate comparison.
 
+An AI client already connected to `tokalsp` may instead request
+`toka/semanticBundle` for an open document. It receives the current overlay
+revision's diagnostics, document-symbol semantic index, and invalidation/reuse
+statistics in one read-only response. This is a session snapshot, not a second
+compiler service and not a replacement for the separately versioned hole,
+capability, or obligation protocols.
+
 For a failed ownership, borrowing, transfer, dependency, or execution-boundary
 check, ask the compiler for the corresponding decision facts:
 

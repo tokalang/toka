@@ -457,6 +457,8 @@ private:
       workspaceSymbols(id, *params);
     else if (*method == "textDocument/formatting")
       formatting(id, *params);
+    else if (*method == "toka/semanticBundle")
+      semanticBundle(id, *params);
     else if (*method == "toka/analysisStats")
       analysisStats(id);
     else if (id)
@@ -887,18 +889,83 @@ private:
               {"newText", formatted}}});
   }
 
-  void analysisStats(const llvm::json::Value *id) const {
+  llvm::json::Object analysisStatsJSON() const {
     llvm::json::Array invalidated;
     for (const std::string &module : LastAnalysis.Stats.InvalidatedModules)
       invalidated.emplace_back(module);
+    return llvm::json::Object{
+        {"revision", LastAnalysis.Stats.Revision},
+        {"totalModules", LastAnalysis.Stats.TotalModules},
+        {"reusedModules", LastAnalysis.Stats.ReusedModules},
+        {"recheckedModules", LastAnalysis.Stats.RecheckedModules},
+        {"elapsedMs", LastAnalysis.Stats.ElapsedMilliseconds},
+        {"invalidatedModules", std::move(invalidated)},
+        {"fresh", LastAnalysis.HasFreshIndex}};
+  }
+
+  llvm::json::Object diagnosticJSON(const Document &document,
+                                    const toka::DiagnosticRecord &record)
+      const {
+    unsigned line = record.Line > 0 ? record.Line - 1 : 0;
+    unsigned byteColumn = record.Column > 0 ? record.Column - 1 : 0;
+    unsigned character =
+        byteToUtf16(lineView(document.Text, line), byteColumn);
+    int severity = record.Level == toka::DiagLevel::Warning      ? 2
+                   : record.Level == toka::DiagLevel::Note       ? 3
+                   : record.Level == toka::DiagLevel::Structural ? 4
+                                                                 : 1;
+    return llvm::json::Object{
+        {"range",
+         llvm::json::Object{
+             {"start", llvm::json::Object{{"line", line},
+                                           {"character", character}}},
+             {"end", llvm::json::Object{{"line", line},
+                                         {"character", character + std::max(
+                                                                   1, record.Length)}}}}},
+        {"severity", severity},
+        {"code", record.Code},
+        {"source", "toka"},
+        {"message", record.Message}};
+  }
+
+  void analysisStats(const llvm::json::Value *id) const {
+    reply(id, analysisStatsJSON());
+  }
+
+  void semanticBundle(const llvm::json::Value *id,
+                      const llvm::json::Object &params) const {
+    auto uri = getUri(params);
+    auto document = uri ? Documents.find(*uri) : Documents.end();
+    if (document == Documents.end()) {
+      replyError(id, -32602,
+                 "toka/semanticBundle requires an open textDocument URI");
+      return;
+    }
+
+    llvm::json::Array diagnostics;
+    for (const toka::DiagnosticRecord &record : LastAnalysis.Diagnostics) {
+      if (toka::PathUtils::canonicalize(record.File) == document->second.Path)
+        diagnostics.emplace_back(diagnosticJSON(document->second, record));
+    }
+
+    llvm::json::Value index = llvm::json::Value(nullptr);
+    if (LastAnalysis.HasFreshIndex) {
+      index = LastAnalysis.Index.queryJSON("documentSymbols",
+                                           document->second.Path, 0, 0);
+    }
+
     reply(id, llvm::json::Object{
-                  {"revision", LastAnalysis.Stats.Revision},
-                  {"totalModules", LastAnalysis.Stats.TotalModules},
-                  {"reusedModules", LastAnalysis.Stats.ReusedModules},
-                  {"recheckedModules", LastAnalysis.Stats.RecheckedModules},
-                  {"elapsedMs", LastAnalysis.Stats.ElapsedMilliseconds},
-                  {"invalidatedModules", std::move(invalidated)},
-                  {"fresh", LastAnalysis.HasFreshIndex}});
+                  {"schema", "toka.overlay-semantic-bundle"},
+                  {"version", 1},
+                  {"document", llvm::json::Object{
+                                   {"uri", document->second.Uri},
+                                   {"version", document->second.Version},
+                                   {"overlay",
+                                    Session->hasDocument(document->second.Path)}}},
+                  {"analysis", analysisStatsJSON()},
+                  {"diagnostics", std::move(diagnostics)},
+                  {"semantic_index", std::move(index)},
+                  {"read_only", true}});
   }
 
   void publishDiagnostics() const {
@@ -907,27 +974,7 @@ private:
       for (const toka::DiagnosticRecord &record : LastAnalysis.Diagnostics) {
         if (toka::PathUtils::canonicalize(record.File) != document.Path)
           continue;
-        unsigned line = record.Line > 0 ? record.Line - 1 : 0;
-        unsigned byteColumn = record.Column > 0 ? record.Column - 1 : 0;
-        unsigned character =
-            byteToUtf16(lineView(document.Text, line), byteColumn);
-        int severity = record.Level == toka::DiagLevel::Warning      ? 2
-                       : record.Level == toka::DiagLevel::Note       ? 3
-                       : record.Level == toka::DiagLevel::Structural ? 4
-                                                                     : 1;
-        diagnostics.emplace_back(llvm::json::Object{
-            {"range",
-             llvm::json::Object{
-                 {"start",
-                  llvm::json::Object{{"line", line}, {"character", character}}},
-                 {"end",
-                  llvm::json::Object{
-                      {"line", line},
-                      {"character", character + std::max(1, record.Length)}}}}},
-            {"severity", severity},
-            {"code", record.Code},
-            {"source", "toka"},
-            {"message", record.Message}});
+        diagnostics.emplace_back(diagnosticJSON(document, record));
       }
       notify("textDocument/publishDiagnostics",
              llvm::json::Object{{"uri", uri},

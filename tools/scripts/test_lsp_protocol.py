@@ -172,6 +172,28 @@ def main():
             )
             require(client.diagnostics(uri) == [], "valid document retained diagnostics")
 
+            bundle = client.request(
+                "bundle-1", "toka/semanticBundle", {"textDocument": {"uri": uri}}
+            )["result"]
+            require(set(bundle) == {
+                "schema", "version", "document", "analysis", "diagnostics",
+                "semantic_index", "read_only"
+            }, "semantic bundle envelope changed")
+            require(bundle["schema"] == "toka.overlay-semantic-bundle" and
+                    bundle["version"] == 1 and bundle["read_only"],
+                    "semantic bundle identity or read-only boundary changed")
+            require(bundle["document"] == {"uri": uri, "version": 2,
+                                            "overlay": True},
+                    "semantic bundle is not bound to the open overlay revision")
+            require(bundle["diagnostics"] == [] and
+                    bundle["analysis"]["fresh"],
+                    "semantic bundle did not return the current analysis")
+            index = bundle["semantic_index"]
+            require(index["schema"] == "toka.semantic-query" and
+                    index["query"] == "documentSymbols" and
+                    any(symbol["name"] == "bump" for symbol in index["result"]),
+                    "semantic bundle omitted the current document index")
+
             bump_use = valid_lines[4].index("bump")
             definition = client.request(
                 2,
@@ -360,6 +382,7 @@ def main():
     print(json.dumps({
         "checks": [
             "initialize", "diagnostics", "full-sync", "definition", "hover",
+            "semantic-bundle",
             "references", "completion", "rename", "cross-module-definition",
             "semantic-hover", "cross-module-references", "utf16-positions",
             "signature-help",
