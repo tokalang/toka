@@ -1,0 +1,140 @@
+import official/compress::{Decoder, Encoder, package_name}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+
+extern fn toka_compress_live_handle_count() -> i32
+
+fn bytes_from_text(value: str) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(value.len())
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        raw#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return Bytes::from_vec(cede raw)
+}
+
+fn bytes_from_range(source: Vec<u8>, start: usize, len: usize) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(len)
+    auto index#: usize = 0:usize
+    loop index < len {
+        raw#.push(source.get(start + index))
+        index = index + 1:usize
+    }
+    return Bytes::from_vec(cede raw)
+}
+
+fn append(target#: Vec<u8>, cede chunk: Bytes) {
+    auto owned# = cede chunk
+    auto source# = owned#.into_vec()
+    auto index#: usize = 0:usize
+    loop index < source.len() {
+        target#.push(source.get(index))
+        index = index + 1:usize
+    }
+}
+
+fn equals_text(source: Vec<u8>, expected: str) -> bool {
+    if source.len() != expected.len() { return false }
+    auto index#: usize = 0:usize
+    loop index < source.len() {
+        if source.get(index) != expected.byte_at(index) as u8 { return false }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn gzip_stream() -> Vec<u8> {
+    auto opened = Encoder::gzip(-1:i32)
+    assert(opened.is_ok(), "gzip encoder opens")
+    auto encoder# = opened.unwrap()
+    auto encoded# = Vec<u8>::new()
+    auto first = encoder#.write(cede bytes_from_text("hello "))
+    assert(first.is_ok(), "gzip first write")
+    append(encoded, cede first.unwrap())
+    append(encoded, cede encoder#.write(cede bytes_from_text("streaming world")).unwrap())
+    append(encoded, cede encoder#.finish().unwrap())
+    assert(encoder.is_closed(), "finish closes encoder state")
+    return cede encoded
+}
+
+fn test_gzip_streaming_roundtrip() {
+    auto encoded = gzip_stream()
+    assert(encoded.len() > 2:usize, "gzip stream has a header")
+    assert(encoded.get(0:usize) == 31:u8 && encoded.get(1:usize) == 139:u8,
+           "gzip magic bytes")
+
+    auto split = encoded.len() / 2:usize
+    auto decoder# = Decoder::gzip(1024:usize).unwrap()
+    auto decoded# = Vec<u8>::new()
+    append(decoded, cede decoder#.write(cede bytes_from_range(encoded, 0:usize, split)).unwrap())
+    append(decoded, cede decoder#.write(cede bytes_from_range(encoded, split, encoded.len() - split)).unwrap())
+    append(decoded, cede decoder#.finish().unwrap())
+    assert(decoder.is_closed(), "finish closes decoder state")
+    assert(equals_text(decoded, "hello streaming world"), "gzip chunked roundtrip")
+}
+
+fn test_zlib_roundtrip() {
+    auto encoder# = Encoder::zlib(6:i32).unwrap()
+    auto encoded# = Vec<u8>::new()
+    append(encoded, cede encoder#.write(cede bytes_from_text("zlib payload")).unwrap())
+    append(encoded, cede encoder#.finish().unwrap())
+
+    auto decoder# = Decoder::zlib(1024:usize).unwrap()
+    auto decoded# = Vec<u8>::new()
+    append(decoded, cede decoder#.write(cede bytes_from_range(encoded, 0:usize, encoded.len())).unwrap())
+    append(decoded, cede decoder#.finish().unwrap())
+    assert(equals_text(decoded, "zlib payload"), "zlib roundtrip")
+}
+
+fn test_error_and_limit_boundaries() {
+    assert(Encoder::gzip(10:i32).is_err(), "invalid encoder level is rejected")
+    assert(Decoder::gzip(0:usize).is_err(), "zero decoder limit is rejected")
+
+    auto invalid# = Decoder::gzip(1024:usize).unwrap()
+    auto invalid_result = invalid#.write(cede bytes_from_text("not a gzip stream"))
+    assert(invalid_result.is_err(), "invalid gzip is rejected")
+    assert(invalid.is_closed(), "failed decoder is closed")
+
+    auto encoded = gzip_stream()
+    auto limited# = Decoder::gzip(3:usize).unwrap()
+    auto limited_result = limited#.write(cede bytes_from_range(encoded, 0:usize, encoded.len()))
+    assert(limited_result.is_err(), "decoder output limit is enforced")
+    auto limit_error = limited_result.unwrap_err()
+    assert(limit_error.kind().as_str().equals("limit"), "limit error is typed")
+    assert(limited.is_closed(), "limit failure closes decoder")
+
+    auto with_trailing# = Vec<u8>::with_capacity(encoded.len() + 1:usize)
+    auto trail_index#: usize = 0:usize
+    loop trail_index < encoded.len() {
+        with_trailing#.push(encoded.get(trail_index))
+        trail_index = trail_index + 1:usize
+    }
+    with_trailing#.push(0:u8)
+    auto trailing# = Decoder::gzip(1024:usize).unwrap()
+    auto trailing_result = trailing#.write(cede bytes_from_range(with_trailing, 0:usize, with_trailing.len()))
+    assert(trailing_result.is_err(), "trailing compressed bytes are rejected")
+    auto trailing_error = trailing_result.unwrap_err()
+    assert(trailing_error.kind().as_str().equals("trailing"), "trailing error is typed")
+    assert(trailing.is_closed(), "trailing failure closes decoder")
+
+    auto truncated# = Decoder::gzip(1024:usize).unwrap()
+    auto cut = encoded.len() - 1:usize
+    assert(truncated#.write(cede bytes_from_range(encoded, 0:usize, cut)).is_ok(),
+           "truncated frame can remain incomplete before finish")
+    auto final_result = truncated#.finish()
+    assert(final_result.is_err(), "finish rejects a truncated gzip trailer")
+    auto truncation = final_result.unwrap_err()
+    assert(truncation.kind().as_str().equals("truncated"), "truncated error is typed")
+    assert(truncated.is_closed(), "truncated failure closes decoder")
+}
+
+fn main() -> i32 {
+    assert(package_name().as_str().equals("compress"), "public package name")
+    assert(toka_compress_live_handle_count() == 0:i32, "no leaked native state before tests")
+    test_gzip_streaming_roundtrip()
+    test_zlib_roundtrip()
+    test_error_and_limit_boundaries()
+    assert(toka_compress_live_handle_count() == 0:i32, "all encoder and decoder handles are released")
+    return 0
+}

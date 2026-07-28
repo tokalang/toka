@@ -17,6 +17,7 @@ on them.
 | `official/regex` | prototype, not release-qualified | its suite compiles but currently fails the grouped quantified case `a(b|c)+d?` on `ac` | repair the matcher and obtain a full green qualification run |
 | `official/redis` | qualified RESP2 codec plus serial plaintext TCP client; not yet released | deterministic codec/TCP cancellation suites and locked/offline local-consumer import replay pass | optional real-Redis compatibility gate before publication, or move to `official/router` |
 | `official/router` | qualified deterministic method/path recognizer; not yet released | route definition/matching qualification and locked/offline local-consumer import replay pass | optional service-kit adoption or real service integration before publication |
+| `official/compress` | qualified bounded streaming gzip/zlib bridge; not yet released | native zlib bridge, streaming boundary suite, and locked/offline native public-import replay pass | package-native `toka build` integration or an HTTP/content-encoding policy slice before publication |
 
 The regex finding is deliberately recorded as a package defect, not a language
 or PAL limitation. No new official package should claim a stronger release
@@ -63,4 +64,4 @@ Every new official package must have, before release:
 5. package-lock, offline, and native-dependency evidence where applicable;
 6. no compiler-private API or reverse dependency from `std`/`stdx`.
 
-The next design artifact is [`official_redis_v1.md`](official_redis_v1.md).
+The next design artifact is [`official_compress_v1.md`](official_compress_v1.md).

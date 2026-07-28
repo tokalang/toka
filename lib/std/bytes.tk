@@ -1,6 +1,6 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
-import core/types::{usize, Addr, byte}
+import core/types::{usize, Addr, ADDR0, byte}
 import core/result::{Result}
 import core/option::{Option}
 import core/str::{bytes}
@@ -107,6 +107,23 @@ impl Bytes {
     pub fn unsafe_set_len(self#, new_len: usize) {
         if new_len <= self.cap {
             self.len = new_len
+        }
+    }
+
+    // Adopt a malloc-compatible allocation returned by a native boundary.
+    // This is intentionally unsafe: `raw` must be the sole live owner of an
+    // allocation that `free` may release, and `cap` must describe it exactly.
+    // Ordinary code should use `from_vec`; native package adapters use this
+    // one transfer point after an FFI call has completed.
+    pub fn unsafe_from_ffi_allocation(raw: Addr, len: usize, cap: usize) -> Bytes {
+        assert((raw == ADDR0 && len == 0:usize && cap == 0:usize) ||
+               (raw != ADDR0 && len <= cap),
+               "invalid native Bytes allocation")
+        if raw == ADDR0 {
+            return Bytes::new()
+        }
+        unsafe {
+            return Bytes(*buf = raw as *[u8], len = len, cap = cap)
         }
     }
 
