@@ -259,6 +259,18 @@ fn optional_fragment(program#: Vec<NfaState>, cede inner: Fragment) -> Fragment 
 
 fn escaped_byte(pattern: str, position: usize) -> Result<u8, RegexError> {
     auto byte = pattern.byte_at(position) as u8
+    if byte == 'x' as u8 {
+        auto final_digit_position = position + 2:usize
+        if final_digit_position >= pattern.len() {
+            return Result<u8, RegexError>::Err(error(position, "incomplete hexadecimal regex escape"))
+        }
+        auto high = hex_digit(pattern.byte_at(position + 1:usize) as u8)
+        auto low = hex_digit(pattern.byte_at(position + 2:usize) as u8)
+        if high < 0:i32 || low < 0:i32 {
+            return Result<u8, RegexError>::Err(error(position, "invalid hexadecimal regex escape"))
+        }
+        return Result<u8, RegexError>::Ok(((high << 4:i32) | low) as u8)
+    }
     if byte == 'n' as u8 { return Result<u8, RegexError>::Ok('\n' as u8) }
     if byte == 'r' as u8 { return Result<u8, RegexError>::Ok('\r' as u8) }
     if byte == 't' as u8 { return Result<u8, RegexError>::Ok('\t' as u8) }
@@ -269,6 +281,18 @@ fn escaped_byte(pattern: str, position: usize) -> Result<u8, RegexError> {
         return Result<u8, RegexError>::Ok(byte)
     }
     return Result<u8, RegexError>::Err(error(position, "unsupported RE2 escape in regex v1 slice"))
+}
+
+fn hex_digit(byte: u8) -> i32 {
+    if byte >= '0' as u8 && byte <= '9' as u8 { return (byte - '0' as u8) as i32 }
+    if byte >= 'a' as u8 && byte <= 'f' as u8 { return (byte - 'a' as u8) as i32 + 10:i32 }
+    if byte >= 'A' as u8 && byte <= 'F' as u8 { return (byte - 'A' as u8) as i32 + 10:i32 }
+    return -1:i32
+}
+
+fn escaped_next(position: usize, escaped: u8) -> usize {
+    if escaped == 'x' as u8 { return position + 3:usize }
+    return position + 1:usize
 }
 
 fn parse_class(pattern: str, position: usize) -> Result<ParsedClass, RegexError> {
@@ -300,7 +324,7 @@ fn parse_class(pattern: str, position: usize) -> Result<ParsedClass, RegexError>
             auto escaped = escaped_byte(pattern, escaped_position)
             if escaped.is_err() { return Result<ParsedClass, RegexError>::Err(escaped.unwrap_err()) }
             first = escaped.unwrap()
-            cursor = cursor + 2:usize
+            cursor = escaped_next(escaped_position, pattern.byte_at(escaped_position) as u8)
         } else {
             first = pattern.byte_at(cursor) as u8
             cursor = cursor + 1:usize
@@ -319,7 +343,7 @@ fn parse_class(pattern: str, position: usize) -> Result<ParsedClass, RegexError>
                 auto escaped = escaped_byte(pattern, escaped_position)
                 if escaped.is_err() { return Result<ParsedClass, RegexError>::Err(escaped.unwrap_err()) }
                 last = escaped.unwrap()
-                cursor = cursor + 2:usize
+                cursor = escaped_next(escaped_position, pattern.byte_at(escaped_position) as u8)
             } else {
                 last = pattern.byte_at(cursor) as u8
                 cursor = cursor + 1:usize
@@ -374,7 +398,7 @@ fn parse_atom(pattern: str, position: usize, depth: usize, program#: Vec<NfaStat
         if escaped.is_err() { return Result<ParsedFragment, RegexError>::Err(escaped.unwrap_err()) }
         return Result<ParsedFragment, RegexError>::Ok(ParsedFragment(
             fragment = state_fragment(program, STATE_LITERAL, escaped.unwrap()),
-            next_byte = position + 2:usize
+            next_byte = escaped_next(escaped_position, pattern.byte_at(escaped_position) as u8)
         ))
     }
     if byte == '.' as u8 {

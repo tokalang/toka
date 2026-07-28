@@ -24,6 +24,10 @@ fn test_escapes_and_errors() {
     assert(escaped.is_ok(), "escaped metacharacters and newline must compile")
     assert(escaped.unwrap().is_match("a.b\n"), "escaped bytes must be literal")
 
+    auto hex = Regex::compile("^\\x41[\\x42-\\x43]$").unwrap()
+    assert(hex.is_match("AC"), "hexadecimal byte escapes must work inside and outside classes")
+    assert(!hex.is_match("AD"), "hexadecimal class range must retain its bound")
+
     auto dangling = Regex::compile("abc\\")
     assert(dangling.is_err(), "dangling escape must be rejected")
     assert(dangling.unwrap_err().position() == 3:usize,
@@ -31,6 +35,8 @@ fn test_escapes_and_errors() {
     assert(Regex::compile("[z-a]").is_err(), "descending character range must be rejected")
     assert(Regex::compile("[abc").is_err(), "unterminated character class must be rejected")
     assert(Regex::compile("[]").is_err(), "empty character class must be rejected")
+    assert(Regex::compile("\\x4").is_err(), "incomplete hexadecimal escape must be rejected")
+    assert(Regex::compile("\\x4g").is_err(), "invalid hexadecimal escape must be rejected")
 }
 
 fn test_grouping_alternation_and_quantifiers() {
