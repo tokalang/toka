@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    loop hole {
+        break
+    }
+    return 0
+}

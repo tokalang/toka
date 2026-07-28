@@ -17,6 +17,12 @@ CASES = {
     "unsupported_prefix.tk": "E04605",
     "unsupported_postfix.tk": "E04605",
     "unsupported_cede.tk": "E04605",
+    "assignment_contract.tk": "E04603",
+    "if_bool_contract.tk": "E04603",
+    "loop_bool_contract.tk": "E04603",
+    "call_contract.tk": "E04603",
+    "explicit_generic_contract.tk": "E04603",
+    "generic_inference_underconstrained.tk": "E04604",
 }
 RESERVED_IDENTIFIER = "reserved_identifier.tk"
 

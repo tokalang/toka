@@ -2,8 +2,9 @@
 
 **Status:** adopted post-1.0 language/tooling extension. Phase 1 implements
 the reserved `hole` token, distinct AST identity, fail-closed diagnostics, and
-the no-emission boundary. Expected-contract collection and `hole-goals` JSON
-remain subsequent phases.
+the no-emission boundary. Phase 2 passes already-resolved contracts from local
+declarations, assignments, boolean conditions, normal calls, and explicit
+generic calls. Structured `hole-goals` JSON remains a subsequent phase.
 
 ## Decision
 

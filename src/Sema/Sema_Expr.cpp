@@ -1957,7 +1957,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         return retTypeObj;
     }
 
-    auto condTypeObj = checkExpr(ie->Condition.get());
+    auto condTypeObj = checkExpr(ie->Condition.get(), toka::Type::fromString("bool"));
     std::string condType = condTypeObj->toString();
 
     // Type narrowing for null checks is branch-sensitive.  `x is null`
@@ -2370,7 +2370,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return std::make_shared<VoidType>();
   } else if (auto *le = dynamic_cast<LoopExpr *>(E)) {
     if (le->Condition) {
-      auto condTy = checkExpr(le->Condition.get());
+      auto condTy = checkExpr(le->Condition.get(), toka::Type::fromString("bool"));
       if (condTy && !condTy->isBoolean()) {
         error(le->Condition.get(), DiagID::ERR_OPERAND_TYPE_MISMATCH, "loop condition", "bool", condTy->toString());
       }

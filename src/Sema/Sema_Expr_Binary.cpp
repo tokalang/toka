@@ -99,19 +99,28 @@ static bool selectsHandleIdentity(const Expr *E) {
 
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
+  bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
+                   Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
+  // Normal assignment preserves RHS-first analysis because the RHS can carry
+  // a borrow or transfer.  A hole carries neither, so it is the one case
+  // where we may first inspect the LHS solely to supply its complete target
+  // contract.
+  const bool rhsIsHole = isAssign &&
+                         dynamic_cast<HoleExpr *>(Bin->RHS.get()) != nullptr;
+
   // 1. Resolve Operands using New API
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
   // borrows/moves blocking RHS usage (e.g. &#cursor = cursor.&next)
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
   m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
-  auto rhsType = checkExpr(Bin->RHS.get());
+  std::shared_ptr<toka::Type> rhsType;
+  if (!rhsIsHole)
+    rhsType = checkExpr(Bin->RHS.get());
   std::string rhsBorrowSource = ""; 
-  if (!getPathString(Bin->RHS.get()).empty()) {
+  if (!rhsIsHole && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
   }
 
-  bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
-                   Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
   bool oldLHS = m_InLHS;
   m_InLHS = isAssign;
 
@@ -145,6 +154,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     m_ControlFlowStack.pop_back();
   m_InLHS = oldLHS;
   m_IsAssignmentTarget = oldTarget;
+
+  if (rhsIsHole)
+    rhsType = checkExpr(Bin->RHS.get(), lhsType);
 
   if (isAssign && lhsType && lhsType->IsWritable && !rhsBorrowSource.empty()) {
       if (!PALCheckerState.upgradeBorrow(

@@ -1300,6 +1300,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         if (!isGeneric)
           continue;
 
+        if (dynamic_cast<HoleExpr *>(Call->Args[i].get())) {
+          error(Call->Args[i].get(), DiagID::ERR_TYPED_HOLE_UNDERCONSTRAINED);
+          deductionFailed = true;
+          continue;
+        }
+
         Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
         auto argType = checkExpr(Call->Args[i].get());
         precheckedArgTypes[i] = argType;
