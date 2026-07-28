@@ -1,0 +1,26 @@
+import std/fs::{read_to_string, write_string_atomic}
+import std/io::{println, remove_file}
+
+fn main() -> i32 {
+    auto path = string::from("tmp/g15_std_fs_atomic_write.txt")
+    remove_file(path.clone())
+
+    auto first = write_string_atomic(path.clone(), "old payload")
+    assert(first.is_ok(), "first atomic write must succeed")
+    auto second = write_string_atomic(path.clone(), "replacement payload")
+    assert(second.is_ok(), "atomic replacement must succeed")
+
+    auto read_back = read_to_string(path.clone())
+    assert(read_back.is_ok(), "atomic target must remain readable")
+    assert(read_back.unwrap().as_str().equals("replacement payload"),
+           "readers must observe the complete replacement value")
+
+    auto empty = write_string_atomic(path.clone(), "")
+    assert(empty.is_ok(), "empty atomic replacement must succeed")
+    assert(read_to_string(path.clone()).unwrap().len() == 0:usize,
+           "empty replacement must not retain previous bytes")
+    assert(remove_file(path), "atomic write fixture must clean up")
+
+    println("g15_std_fs_atomic_write_test PASSED!")
+    return 0
+}

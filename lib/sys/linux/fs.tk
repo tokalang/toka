@@ -48,6 +48,14 @@ pub fn path_exists(path: Addr) -> bool {
     }
 }
 
+// Keeps the C pointer ABI below std. The runtime creates the sibling temporary
+// file with exclusive creation and atomically replaces the target on success.
+pub fn atomic_write_string_impl(path: string, content: string) -> bool {
+    auto *path_ptr# = path.c_str()
+    auto *data_ptr# = content.c_str() as *u8
+    return unsafe toka_atomic_write_file(*path_ptr, *data_ptr, content.len()) == 0
+}
+
 pub fn stat_impl(path: Addr) -> Addr {
     unsafe { return toka_stat_impl(path) }
 }

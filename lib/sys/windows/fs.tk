@@ -118,6 +118,14 @@ pub fn path_exists(path: Addr) -> bool {
     }
 }
 
+// The runtime currently returns failure on Windows until its UTF-16 atomic
+// replacement adapter is introduced; std/fs exposes that as Result::Err.
+pub fn atomic_write_string_impl(path: string, content: string) -> bool {
+    auto *path_ptr# = path.c_str()
+    auto *data_ptr# = content.c_str() as *u8
+    return unsafe toka_atomic_write_file(*path_ptr, *data_ptr, content.len()) == 0
+}
+
 pub shape WinStat (
     size: u64,
     mode: u32,

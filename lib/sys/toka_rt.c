@@ -3,6 +3,13 @@
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
+#include <string.h>
+#ifndef _WIN32
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #ifdef TOKA_HAS_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -55,6 +62,62 @@ int toka_random_bytes(void *buf, size_t len) {
     return (r == (ssize_t)len) ? 0 : -1;
 #else
     return -1;
+#endif
+}
+
+// Replace a path through a uniquely-created sibling file. POSIX rename makes
+// the target replacement atomically visible to readers on the same filesystem.
+// This is intentionally an atomic-visibility primitive, not a crash-durable
+// transaction: callers that need durability must use a future fsync contract.
+int toka_atomic_write_file(const char *path, const unsigned char *data, size_t len) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)path;
+    (void)data;
+    (void)len;
+    return -1;
+#else
+    if (!path || (!data && len != 0)) return -1;
+
+    struct stat existing;
+    int preserve_mode = stat(path, &existing) == 0 && S_ISREG(existing.st_mode);
+
+    static const char suffix[] = ".toka-tmp-XXXXXX";
+    size_t path_len = strlen(path);
+    char *temporary = malloc(path_len + sizeof(suffix));
+    if (!temporary) return -1;
+    memcpy(temporary, path, path_len);
+    memcpy(temporary + path_len, suffix, sizeof(suffix));
+
+    int fd = mkstemp(temporary);
+    if (fd < 0) {
+        free(temporary);
+        return -1;
+    }
+
+    if (preserve_mode && fchmod(fd, existing.st_mode & 0777) != 0) {
+        close(fd);
+        unlink(temporary);
+        free(temporary);
+        return -1;
+    }
+
+    size_t written = 0;
+    int status = 0;
+    while (written < len) {
+        ssize_t count = write(fd, data + written, len - written);
+        if (count > 0) {
+            written += (size_t)count;
+            continue;
+        }
+        if (count < 0 && errno == EINTR) continue;
+        status = -1;
+        break;
+    }
+    if (close(fd) != 0) status = -1;
+    if (status == 0 && rename(temporary, path) != 0) status = -1;
+    if (status != 0) unlink(temporary);
+    free(temporary);
+    return status;
 #endif
 }
 
@@ -178,7 +241,6 @@ void toka_panic(const char* msg, int len) {
 #endif
 }
 
-#include <sys/stat.h>
 #ifndef _WIN32
 #include <dirent.h>
 #include <errno.h>

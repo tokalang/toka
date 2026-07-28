@@ -100,6 +100,7 @@ extern fn libc_fdopen(fd: i32, *mode: char) -> *void
 extern fn libc_fflush(*stream: void) -> i32
 extern fn libc_remove(*filename: char) -> i32
 extern fn libc_rename(*old_path: char, *new_path: char) -> i32
+extern fn toka_atomic_write_file(*path: char, *data: u8, len: usize) -> i32
 extern fn libc_fread(*ptr: void, size: usize, nmemb: usize, *stream: void) -> usize
 extern fn libc_fwrite(*ptr: void, size: usize, nmemb: usize, *stream: void) -> usize
 extern fn libc_fseek(*stream: void, offset: isize, whence: i32) -> i32

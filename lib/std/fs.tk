@@ -185,3 +185,18 @@ pub fn write_string(path: string, content: str) -> Result<bool, string> {
     
     return Result<bool, string>::Ok(true)
 }
+
+/**
+ * Replace a file's contents without exposing a partially-written target to
+ * concurrent readers. The implementation writes a uniquely-created sibling
+ * temporary file, then atomically replaces the target on supported platforms.
+ *
+ * This is an atomic-visibility operation, not a crash-durability guarantee.
+ */
+pub fn write_string_atomic(path: string, content: str) -> Result<bool, string> {
+    auto owned_content = string::from(content)
+    if !sys::atomic_write_string_impl(path, owned_content) {
+        return Result<bool, string>::Err(string::from("Atomic file replacement is unavailable or failed"))
+    }
+    return Result<bool, string>::Ok(true)
+}

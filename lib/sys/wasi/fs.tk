@@ -48,6 +48,13 @@ pub fn path_exists(path: Addr) -> bool {
     }
 }
 
+// WASI currently has no stable same-directory atomic replacement adapter.
+pub fn atomic_write_string_impl(path: string, content: string) -> bool {
+    auto *path_ptr# = path.c_str()
+    auto *data_ptr# = content.c_str() as *u8
+    return unsafe toka_atomic_write_file(*path_ptr, *data_ptr, content.len()) == 0
+}
+
 pub fn stat_impl(path: Addr) -> Addr {
     unsafe { return toka_stat_impl(path) }
 }
