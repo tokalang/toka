@@ -55,6 +55,20 @@ int toka_sqlite_bind_i64(uintptr_t statement, int index, int64_t value) {
   return sqlite3_bind_int64((sqlite3_stmt *)statement, index, value);
 }
 
+int toka_sqlite_bind_text(uintptr_t statement, int index, uintptr_t value) {
+  if (statement == 0 || value == 0)
+    return SQLITE_MISUSE;
+  return sqlite3_bind_text((sqlite3_stmt *)statement, index,
+                           (const char *)value, -1,
+                           SQLITE_TRANSIENT);
+}
+
+int toka_sqlite_bind_null(uintptr_t statement, int index) {
+  if (statement == 0)
+    return SQLITE_MISUSE;
+  return sqlite3_bind_null((sqlite3_stmt *)statement, index);
+}
+
 int toka_sqlite_step(uintptr_t statement) {
   if (statement == 0)
     return SQLITE_MISUSE;
@@ -63,6 +77,14 @@ int toka_sqlite_step(uintptr_t statement) {
 
 int64_t toka_sqlite_column_i64(uintptr_t statement, int index) {
   return sqlite3_column_int64((sqlite3_stmt *)statement, index);
+}
+
+uintptr_t toka_sqlite_column_text(uintptr_t statement, int index) {
+  return (uintptr_t)sqlite3_column_text((sqlite3_stmt *)statement, index);
+}
+
+int toka_sqlite_column_bytes(uintptr_t statement, int index) {
+  return sqlite3_column_bytes((sqlite3_stmt *)statement, index);
 }
 
 int toka_sqlite_reset(uintptr_t statement) {

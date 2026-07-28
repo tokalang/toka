@@ -1,4 +1,5 @@
 import core/result::{Result}
+import core/option::{Option}
 import core/types::{Addr, ADDR0}
 
 extern fn toka_sqlite_open_path(path: Addr) -> Addr
@@ -6,8 +7,12 @@ extern fn toka_sqlite_execute(handle: Addr, sql: Addr) -> i32
 extern fn toka_sqlite_close(handle: Addr) -> i32
 extern fn toka_sqlite_prepare(handle: Addr, sql: Addr) -> Addr
 extern fn toka_sqlite_bind_i64(statement: Addr, index: i32, value: i64) -> i32
+extern fn toka_sqlite_bind_text(statement: Addr, index: i32, value: Addr) -> i32
+extern fn toka_sqlite_bind_null(statement: Addr, index: i32) -> i32
 extern fn toka_sqlite_step(statement: Addr) -> i32
 extern fn toka_sqlite_column_i64(statement: Addr, index: i32) -> i64
+extern fn toka_sqlite_column_text(statement: Addr, index: i32) -> Addr
+extern fn toka_sqlite_column_bytes(statement: Addr, index: i32) -> i32
 extern fn toka_sqlite_reset(statement: Addr) -> i32
 extern fn toka_sqlite_finalize(statement: Addr) -> i32
 
@@ -102,6 +107,21 @@ impl Statement {
         return Result<i32, SqliteError>::Ok(code)
     }
 
+    pub fn bind_text(self#, index: i32, value: str) -> Result<i32, SqliteError> {
+        if self.finalized { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "bind on finalized statement")) }
+        auto owned = string::from(value)
+        auto code = toka_sqlite_bind_text(self.handle, index, owned.c_str() as Addr)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "bind text")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn bind_null(self#, index: i32) -> Result<i32, SqliteError> {
+        if self.finalized { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "bind on finalized statement")) }
+        auto code = toka_sqlite_bind_null(self.handle, index)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "bind null")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
     pub fn step(self#) -> Result<Step, SqliteError> {
         if self.finalized { return Result<Step, SqliteError>::Err(sqlite_error(21:i32, "step on finalized statement")) }
         auto code = toka_sqlite_step(self.handle)
@@ -113,6 +133,18 @@ impl Statement {
     pub fn column_i64(self, index: i32) -> Result<i64, SqliteError> {
         if self.finalized { return Result<i64, SqliteError>::Err(sqlite_error(21:i32, "read finalized statement")) }
         return Result<i64, SqliteError>::Ok(toka_sqlite_column_i64(self.handle, index))
+    }
+
+    pub fn column_text(self, index: i32) -> Result<Option<string>, SqliteError> {
+        if self.finalized { return Result<Option<string>, SqliteError>::Err(sqlite_error(21:i32, "read finalized statement")) }
+        auto address = toka_sqlite_column_text(self.handle, index)
+        if address == ADDR0 { return Result<Option<string>, SqliteError>::Ok(Option<string>::None) }
+        auto length = toka_sqlite_column_bytes(self.handle, index)
+        if length < 0:i32 { return Result<Option<string>, SqliteError>::Err(sqlite_error(1:i32, "read text")) }
+        unsafe {
+            auto *text = address as *char
+            return Result<Option<string>, SqliteError>::Ok(Option<string>::Some(string::from_with_len(*text, length as usize)))
+        }
     }
 
     pub fn reset(self#) -> Result<i32, SqliteError> {
