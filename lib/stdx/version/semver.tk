@@ -1,0 +1,323 @@
+// Strict, owned Semantic Versioning 2.0.0 value type.
+
+import core/result::{Result}
+import core/traits::{@PartialOrd}
+import core/primitives
+import std/vec::{Vec}
+
+pub shape SemVerError (
+    position: usize,
+    message: string
+)
+
+pub shape PreReleaseId (
+    Numeric(i64) = 0 |
+    Text(string) = 1
+)
+
+pub shape SemVer (
+    major: i64,
+    minor: i64,
+    patch: i64,
+    pre_release: Vec<PreReleaseId>,
+    build: Vec<string>
+)
+
+fn error(position: usize, message: str) -> SemVerError {
+    return SemVerError(position = position, message = string::from(message))
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    if byte >= 'a' as u8 && byte <= 'z' as u8 { return true }
+    if byte >= 'A' as u8 && byte <= 'Z' as u8 { return true }
+    if byte >= '0' as u8 && byte <= '9' as u8 { return true }
+    return byte == '-' as u8
+}
+
+fn all_digits(input: str, start: usize, end: usize) -> bool {
+    if start == end { return false }
+    auto index# = start
+    loop index < end {
+        auto byte = input.byte_at(index) as u8
+        if byte < '0' as u8 || byte > '9' as u8 { return false }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn copy_range(input: str, start: usize, end: usize) -> string {
+    auto output# = string::from("")
+    auto index# = start
+    loop index < end {
+        output#.push_byte_raw(input.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return output
+}
+
+fn find_byte(input: str, start: usize, end: usize, target: u8) -> usize {
+    auto index# = start
+    loop index < end {
+        if input.byte_at(index) as u8 == target { return index }
+        index = index + 1:usize
+    }
+    return end
+}
+
+fn parse_core_number(input: str, start: usize, end: usize) -> Result<i64, SemVerError> {
+    if start == end {
+        return Result<i64, SemVerError>::Err(error(start, "missing version number"))
+    }
+    if end - start > 1:usize && input.byte_at(start) as u8 == '0' as u8 {
+        return Result<i64, SemVerError>::Err(error(start, "version number has a leading zero"))
+    }
+    auto value#: i64 = 0:i64
+    auto index# = start
+    loop index < end {
+        auto byte = input.byte_at(index) as u8
+        if byte < '0' as u8 || byte > '9' as u8 {
+            return Result<i64, SemVerError>::Err(error(index, "version number must be decimal"))
+        }
+        auto digit = (byte - '0' as u8) as i64
+        if value > 922337203685477580:i64 ||
+           (value == 922337203685477580:i64 && digit > 7:i64) {
+            return Result<i64, SemVerError>::Err(error(index, "version number exceeds i64"))
+        }
+        value = value * 10:i64 + digit
+        index = index + 1:usize
+    }
+    return Result<i64, SemVerError>::Ok(value)
+}
+
+fn validate_build(input: str, start: usize, end: usize) -> Result<Vec<string>, SemVerError> {
+    if start == end {
+        return Result<Vec<string>, SemVerError>::Err(error(start, "build metadata is empty"))
+    }
+    auto values# = Vec<string>::new()
+    auto part_start# = start
+    loop part_start < end {
+        auto part_end = find_byte(input, part_start, end, '.' as u8)
+        if part_start == part_end {
+            return Result<Vec<string>, SemVerError>::Err(error(part_start, "build identifier is empty"))
+        }
+        auto index# = part_start
+        loop index < part_end {
+            if !is_identifier_byte(input.byte_at(index) as u8) {
+                return Result<Vec<string>, SemVerError>::Err(error(index, "invalid build identifier"))
+            }
+            index = index + 1:usize
+        }
+        values#.push(cede copy_range(input, part_start, part_end))
+        if part_end == end { break }
+        part_start = part_end + 1:usize
+    }
+    return Result<Vec<string>, SemVerError>::Ok(cede values)
+}
+
+fn parse_pre_release(input: str, start: usize, end: usize) -> Result<Vec<PreReleaseId>, SemVerError> {
+    if start == end {
+        return Result<Vec<PreReleaseId>, SemVerError>::Err(error(start, "pre-release is empty"))
+    }
+    auto values# = Vec<PreReleaseId>::new()
+    auto part_start# = start
+    loop part_start < end {
+        auto part_end = find_byte(input, part_start, end, '.' as u8)
+        if part_start == part_end {
+            return Result<Vec<PreReleaseId>, SemVerError>::Err(error(part_start, "pre-release identifier is empty"))
+        }
+        auto index# = part_start
+        loop index < part_end {
+            if !is_identifier_byte(input.byte_at(index) as u8) {
+                return Result<Vec<PreReleaseId>, SemVerError>::Err(error(index, "invalid pre-release identifier"))
+            }
+            index = index + 1:usize
+        }
+        if all_digits(input, part_start, part_end) {
+            if part_end - part_start > 1:usize && input.byte_at(part_start) as u8 == '0' as u8 {
+                return Result<Vec<PreReleaseId>, SemVerError>::Err(error(part_start, "numeric pre-release identifier has a leading zero"))
+            }
+            auto number = parse_core_number(input, part_start, part_end)
+            if number.is_err() { return Result<Vec<PreReleaseId>, SemVerError>::Err(number.unwrap_err()) }
+            values#.push(cede PreReleaseId::Numeric(number.unwrap()))
+        } else {
+            values#.push(cede PreReleaseId::Text(copy_range(input, part_start, part_end)))
+        }
+        if part_end == end { break }
+        part_start = part_end + 1:usize
+    }
+    return Result<Vec<PreReleaseId>, SemVerError>::Ok(cede values)
+}
+
+fn compare_pre_release(left: Vec<PreReleaseId>, right: Vec<PreReleaseId>) -> i32 {
+    auto index#: usize = 0
+    loop index < left.len() && index < right.len() {
+        auto left_id = left.get(index).clone()
+        auto right_id = right.get(index).clone()
+        match left_id {
+            auto PreReleaseId::Numeric(left_number) => {
+                match right_id {
+                    auto PreReleaseId::Numeric(right_number) => {
+                        auto result = left_number.cmp(right_number)
+                        if result != 0:i32 { return result }
+                    }
+                    _ => return -1:i32
+                }
+            }
+            auto PreReleaseId::Text(&left_text) => {
+                match right_id {
+                    auto PreReleaseId::Numeric(_) => return 1:i32
+                    auto PreReleaseId::Text(&right_text) => {
+                        auto result = left_text.as_str().cmp(right_text.as_str())
+                        if result != 0:i32 { return result }
+                    }
+                }
+            }
+        }
+        index = index + 1:usize
+    }
+    return left.len().cmp(right.len())
+}
+
+impl SemVerError@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> SemVerError {
+        return SemVerError(position = self.position, message = string::from(self.message.as_str()))
+    }
+}
+
+impl SemVerError {
+    pub fn position(self) -> usize { return self.position }
+
+    pub fn message(self) -> string { return string::from(self.message.as_str()) }
+}
+
+impl PreReleaseId@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> PreReleaseId {
+        match self {
+            auto PreReleaseId::Numeric(value) => return PreReleaseId::Numeric(value)
+            auto PreReleaseId::Text(&value) => return PreReleaseId::Text(string::from(value.as_str()))
+        }
+    }
+}
+
+impl SemVer@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> SemVer {
+        auto copied_pre# = Vec<PreReleaseId>::new()
+        auto pre_index#: usize = 0
+        loop pre_index < self.pre_release.len() {
+            copied_pre#.push(cede self.pre_release.get(pre_index).clone())
+            pre_index = pre_index + 1:usize
+        }
+        auto copied_build# = Vec<string>::new()
+        auto build_index#: usize = 0
+        loop build_index < self.build.len() {
+            copied_build#.push(cede string::from(self.build.get(build_index).as_str()))
+            build_index = build_index + 1:usize
+        }
+        return SemVer(
+            major = self.major,
+            minor = self.minor,
+            patch = self.patch,
+            pre_release = cede copied_pre,
+            build = cede copied_build
+        )
+    }
+}
+
+impl SemVer {
+    pub fn parse(input: str) -> Result<SemVer, SemVerError> {
+        if input.len() == 0:usize {
+            return Result<SemVer, SemVerError>::Err(error(0:usize, "version is empty"))
+        }
+        auto plus = find_byte(input, 0:usize, input.len(), '+' as u8)
+        auto build# = Vec<string>::new()
+        if plus < input.len() {
+            auto parsed_build = validate_build(input, plus + 1:usize, input.len())
+            if parsed_build.is_err() { return Result<SemVer, SemVerError>::Err(parsed_build.unwrap_err()) }
+            build = cede parsed_build.unwrap()
+        }
+        auto core_and_pre_end = plus
+        auto dash = find_byte(input, 0:usize, core_and_pre_end, '-' as u8)
+        auto core_end# = core_and_pre_end
+        auto pre_release# = Vec<PreReleaseId>::new()
+        if dash < core_and_pre_end {
+            auto parsed_pre = parse_pre_release(input, dash + 1:usize, core_and_pre_end)
+            if parsed_pre.is_err() { return Result<SemVer, SemVerError>::Err(parsed_pre.unwrap_err()) }
+            pre_release = cede parsed_pre.unwrap()
+            core_end = dash
+        }
+        auto first_dot = find_byte(input, 0:usize, core_end, '.' as u8)
+        if first_dot == core_end {
+            return Result<SemVer, SemVerError>::Err(error(core_end, "version must have major.minor.patch"))
+        }
+        auto second_dot = find_byte(input, first_dot + 1:usize, core_end, '.' as u8)
+        if second_dot == core_end || find_byte(input, second_dot + 1:usize, core_end, '.' as u8) != core_end {
+            return Result<SemVer, SemVerError>::Err(error(core_end, "version must have exactly three core numbers"))
+        }
+        auto major = parse_core_number(input, 0:usize, first_dot)
+        if major.is_err() { return Result<SemVer, SemVerError>::Err(major.unwrap_err()) }
+        auto minor = parse_core_number(input, first_dot + 1:usize, second_dot)
+        if minor.is_err() { return Result<SemVer, SemVerError>::Err(minor.unwrap_err()) }
+        auto patch = parse_core_number(input, second_dot + 1:usize, core_end)
+        if patch.is_err() { return Result<SemVer, SemVerError>::Err(patch.unwrap_err()) }
+        return Result<SemVer, SemVerError>::Ok(SemVer(
+            major = major.unwrap(),
+            minor = minor.unwrap(),
+            patch = patch.unwrap(),
+            pre_release = cede pre_release,
+            build = cede build
+        ))
+    }
+
+    pub fn major(self) -> i64 { return self.major }
+
+    pub fn minor(self) -> i64 { return self.minor }
+
+    pub fn patch(self) -> i64 { return self.patch }
+
+    pub fn is_pre_release(self) -> bool { return self.pre_release.len() > 0:usize }
+
+    pub fn compare(self, other: SemVer) -> i32 {
+        auto result# = self.major.cmp(other.major)
+        if result != 0:i32 { return result }
+        result = self.minor.cmp(other.minor)
+        if result != 0:i32 { return result }
+        result = self.patch.cmp(other.patch)
+        if result != 0:i32 { return result }
+        if self.pre_release.len() == 0:usize && other.pre_release.len() == 0:usize { return 0:i32 }
+        if self.pre_release.len() == 0:usize { return 1:i32 }
+        if other.pre_release.len() == 0:usize { return -1:i32 }
+        return compare_pre_release(self.pre_release, other.pre_release)
+    }
+
+    pub fn to_string(self) -> string {
+        auto output# = string::from_i64(self.major)
+        output#.push_byte_raw('.' as u8)
+        output#.push_str(string::from_i64(self.minor).as_str())
+        output#.push_byte_raw('.' as u8)
+        output#.push_str(string::from_i64(self.patch).as_str())
+        auto pre_index#: usize = 0
+        loop pre_index < self.pre_release.len() {
+            if pre_index == 0:usize { output#.push_byte_raw('-' as u8) }
+            else { output#.push_byte_raw('.' as u8) }
+            match self.pre_release.get(pre_index).clone() {
+                auto PreReleaseId::Numeric(value) => output#.push_str(string::from_i64(value).as_str())
+                auto PreReleaseId::Text(&value) => output#.push_str(value.as_str())
+            }
+            pre_index = pre_index + 1:usize
+        }
+        auto build_index#: usize = 0
+        loop build_index < self.build.len() {
+            if build_index == 0:usize { output#.push_byte_raw('+' as u8) }
+            else { output#.push_byte_raw('.' as u8) }
+            output#.push_str(self.build.get(build_index).as_str())
+            build_index = build_index + 1:usize
+        }
+        return output
+    }
+}

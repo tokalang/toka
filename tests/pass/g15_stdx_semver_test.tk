@@ -1,0 +1,50 @@
+import std/io::{println}
+import stdx/version/semver::{SemVer}
+
+fn assert_precedence(lower: str, higher: str) {
+    auto left = SemVer::parse(lower)
+    auto right = SemVer::parse(higher)
+    assert(left.is_ok() && right.is_ok(), "SemVer precedence fixture must parse")
+    assert(left.unwrap().compare(right.unwrap()) < 0:i32, "SemVer precedence order must be correct")
+}
+
+fn test_parse_and_format() {
+    auto parsed = SemVer::parse("1.2.3-alpha.1+build.7")
+    assert(parsed.is_ok(), "complete SemVer value must parse")
+    auto version = parsed.unwrap()
+    assert(version.major() == 1:i64 && version.minor() == 2:i64 && version.patch() == 3:i64,
+           "core numbers must retain their values")
+    assert(version.is_pre_release(), "pre-release state must be observable")
+    assert(version.to_string().as_str().equals("1.2.3-alpha.1+build.7"),
+           "canonical SemVer formatting must round-trip")
+}
+
+fn test_precedence() {
+    assert_precedence("1.0.0-alpha", "1.0.0-alpha.1")
+    assert_precedence("1.0.0-alpha.1", "1.0.0-alpha.beta")
+    assert_precedence("1.0.0-beta", "1.0.0-beta.2")
+    assert_precedence("1.0.0-rc.1", "1.0.0")
+
+    auto left = SemVer::parse("1.2.3+build.1").unwrap()
+    auto right = SemVer::parse("1.2.3+build.2").unwrap()
+    assert(left.compare(right) == 0:i32, "build metadata must not affect precedence")
+}
+
+fn test_rejections() {
+    assert(SemVer::parse("1.2").is_err(), "missing patch number must fail")
+    auto leading_zero = SemVer::parse("01.2.3")
+    assert(leading_zero.is_err(), "core leading zero must fail")
+    assert(leading_zero.unwrap_err().position() == 0:usize,
+           "structured parse errors must identify the first invalid byte")
+    assert(SemVer::parse("1.2.3-alpha.01").is_err(), "numeric pre-release leading zero must fail")
+    assert(SemVer::parse("1.2.3-").is_err(), "empty pre-release must fail")
+    assert(SemVer::parse("1.2.3+meta..").is_err(), "empty build identifier must fail")
+}
+
+fn main() -> i32 {
+    test_parse_and_format()
+    test_precedence()
+    test_rejections()
+    println("g15_stdx_semver_test PASSED!")
+    return 0
+}
