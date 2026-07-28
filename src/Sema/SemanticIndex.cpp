@@ -853,6 +853,8 @@ private:
     }
     if (auto *member = dynamic_cast<const MemberExpr *>(expression)) {
       visitExpr(member->Object.get(), role);
+      if (member->IsTaskStart)
+        return;
       addOccurrence(fieldFor(*member), role,
                     rangeFor(member->Loc, member->Member));
       return;

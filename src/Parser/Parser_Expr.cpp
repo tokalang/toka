@@ -1169,12 +1169,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       if (match(TokenType::Identifier) || match(TokenType::KwUnset) ||
           match(TokenType::KwNull) || match(TokenType::KwSelf)) {
         std::string memberName = prefix + previous().Text;
-        if (memberName == "start" && !check(TokenType::LParen)) {
-          auto node = std::make_unique<StartExpr>(std::move(expr));
-          node->setLocation(dotTok, m_CurrentFile);
-          expr = std::move(node);
-          continue;
-        }
         // Method Call check
         if (match(TokenType::LParen)) {
           std::vector<std::unique_ptr<Expr>> args;

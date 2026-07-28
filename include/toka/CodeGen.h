@@ -303,6 +303,7 @@ private:
   PhysEntity genAwaitExpr(const AwaitExpr *E);
   PhysEntity genWaitExpr(const WaitExpr *waitExpr);
   PhysEntity genStartExpr(const StartExpr *E);
+  PhysEntity genTaskStart(const Expr *E);
   PhysEntity genBinaryExpr(const BinaryExpr *expr);
   PhysEntity genAllocExpr(const AllocExpr *expr);
   PhysEntity genStaticMemberExpr(const MemberExpr *expr);

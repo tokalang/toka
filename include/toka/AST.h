@@ -493,6 +493,10 @@ public:
   std::unique_ptr<Expr> Object;
   std::string Member;
   bool IsStatic;
+  // Set by Sema only when `receiver.start` is the TaskHandle activation
+  // operation.  The parser must keep `start` available as an ordinary field
+  // name for every other shape.
+  bool IsTaskStart = false;
   int Index = -1;
   MemberExpr(std::unique_ptr<Expr> obj, const std::string &member,
              bool isStatic = false)
@@ -504,6 +508,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<MemberExpr>(cloneNode(Object), Member,
                                           IsStatic);
+    n->IsTaskStart = IsTaskStart;
     n->Index = Index;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;

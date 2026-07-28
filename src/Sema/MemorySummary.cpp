@@ -526,6 +526,15 @@ private:
                    bit(MemoryRootEffect::Escape));
       return;
     }
+    if (auto *value = dynamic_cast<const MemberExpr *>(expr);
+        value && value->IsTaskStart) {
+      addLocal(Summary, FunctionMemoryEffect::Suspend);
+      visitExpr(value->Object.get());
+      addLocal(Summary, roots(value->Object.get()),
+               bit(MemoryRootEffect::Capture) |
+                   bit(MemoryRootEffect::Escape));
+      return;
+    }
     if (auto *value = dynamic_cast<const AwaitExpr *>(expr)) {
       addLocal(Summary, FunctionMemoryEffect::Suspend);
       visitExpr(value->Expression.get());

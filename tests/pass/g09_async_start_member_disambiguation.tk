@@ -1,0 +1,18 @@
+import std/task::{block_on}
+
+shape Marker(
+    start: i32
+)
+
+fn worker() -> async i32 {
+    return 9
+}
+
+pub fn main() -> i32 {
+    auto marker = Marker(start = 17)
+    assert(marker.start == 17, "ordinary start field remains accessible")
+
+    auto handle = worker().start
+    assert(block_on<i32>(handle) == 9, "TaskHandle.start still activates")
+    return 0
+}

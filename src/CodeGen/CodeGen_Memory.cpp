@@ -1106,6 +1106,8 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
 }
 
 PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
+  if (mem->IsTaskStart)
+    return genTaskStart(mem->Object.get());
   if (mem->IsStatic)
     return genStaticMemberExpr(mem);
   return genDynamicMemberExpr(mem);

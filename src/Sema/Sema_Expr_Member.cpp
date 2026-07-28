@@ -33,6 +33,18 @@ static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   recordHandleSurfaceMemberExpr(*Memb);
+  Memb->IsTaskStart = false;
+
+  // `.start` is syntactically an ordinary member name.  Enable consuming
+  // task checking while evaluating its receiver, then confirm the special
+  // operation only after the receiver's type is known below.
+  const bool startSyntax = Memb->Member == "start";
+  const bool savedConsumingEffect = m_IsConsumingEffect;
+  const bool savedStartingTask = m_IsStartingTask;
+  if (startSyntax) {
+    m_IsConsumingEffect = true;
+    m_IsStartingTask = true;
+  }
 
   MemberAccessIntent intent = parseMemberAccess(Memb->Member);
   bool hasInvalidMix = false;
@@ -89,7 +101,9 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
   // [Ch 5] Single Hat Principle & Terminal Marking Trace
   bool oldIntermediate = m_InIntermediatePath;
-  m_InIntermediatePath = true; // Sub-indices are intermediate
+  // A task activation is terminal syntax, despite being represented as a
+  // member until its receiver type is known.
+  m_InIntermediatePath = !startSyntax;
 
   // [FIX] Peeling for Semantic Access (Internal)
   std::shared_ptr<toka::Type> objTypeObj;
@@ -107,6 +121,8 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   m_IsMemberBase = savedMemberBase;
   m_DisableSoulCollapse = savedDisable;
   m_InIntermediatePath = oldIntermediate;
+  m_IsConsumingEffect = savedConsumingEffect;
+  m_IsStartingTask = savedStartingTask;
 
   if (!m_InLHS && !m_InIntermediatePath && !path.empty()) {
     AccessPath memberPath = makeAccessPath(Memb);
@@ -213,6 +229,25 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   auto resolvedObjType = resolveType(objTypeObj, true);
   std::string ObjType =
       toka::Type::stripMorphology(resolvedObjType->toString());
+
+  if (startSyntax && ObjType.rfind("TaskHandle", 0) == 0) {
+    Memb->IsTaskStart = true;
+    for (const auto &dep : m_LastLifeDependencies) {
+      DiagnosticEngine::report(
+          getLoc(Memb), DiagID::ERR_SEMA_START_BOUNDARY_DEPENDENCY, dep);
+      HasError = true;
+      SourceLocation originLoc = findPathDeclaration(dep);
+      recordDecision(Memb, SemanticRuleID::AsyncCapture001,
+                     SemanticOperation::ExecutionBoundaryCapture,
+                     SemanticDecision::Reject,
+                     SemanticReason::BorrowedBoundaryDependency, dep, dep,
+                     originLoc);
+      if (originLoc.isValid())
+        DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
+                                 "borrowed dependency originates here");
+    }
+    return objTypeObj;
+  }
 
   ShapeDecl *resolvedShape = nullptr;
   if (auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedObjType))

@@ -7182,7 +7182,11 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
 }
 
 PhysEntity CodeGen::genStartExpr(const StartExpr *E) {
-    PhysEntity handleEnt = genExpr(E->Expression.get());
+    return genTaskStart(E->Expression.get());
+}
+
+PhysEntity CodeGen::genTaskStart(const Expr *E) {
+    PhysEntity handleEnt = genExpr(E);
     llvm::Value *handleVal = handleEnt.load(m_Builder);
     llvm::Value *tcbPtr = handleVal;
     if (handleVal->getType()->isStructTy()) {
