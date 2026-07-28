@@ -41,12 +41,11 @@ temporary input.
 
 The public target is this RE2-compatible regular subset, not a claim of full
 RE2 compatibility. The current slice enables literals, escaped metacharacters,
-`.`, `^`, `$`, grouping, alternation, and postfix `*`, `+`, and `?`. Character
-classes are rejected with a structured error until their NFA transition is
-implemented. Escapes are intentionally limited to literal metacharacters and
-byte escapes documented by the implementation. Matching operates on UTF-8
-string bytes; it does not promise Unicode character classes, grapheme
-boundaries, or Unicode case folding.
+`.`, `^`, `$`, grouping, alternation, postfix `*`, `+`, and `?`, plus ASCII
+character classes, ranges, and negated classes. Escapes are intentionally
+limited to literal metacharacters and byte escapes documented by the
+implementation. Matching operates on UTF-8 string bytes; it does not promise
+Unicode character classes, grapheme boundaries, or Unicode case folding.
 
 ## Explicit non-goals
 

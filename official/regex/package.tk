@@ -15,8 +15,8 @@ pub const PACKAGE = (
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
     summary = "Bounded, non-backtracking byte regular-expression matching.",
-    capabilities = ("compile patterns", "search bytes without exponential backtracking"),
-    non_goals = ("backreferences", "look-around", "Unicode grapheme semantics"),
+    capabilities = ("compile RE2 regular subset", "grouping alternation quantifiers classes", "search bytes without exponential backtracking"),
+    non_goals = ("backreferences", "look-around", "captures", "Unicode grapheme semantics"),
     safety = ("pattern errors are structured; matcher state is bounded by pattern size"),
     qualification = ("tokac -I ../../../lib -I lib tests/regex_v1.tk -o /tmp/regex_v1 && /tmp/regex_v1")
 )

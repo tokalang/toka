@@ -28,8 +28,9 @@ fn test_escapes_and_errors() {
     assert(dangling.is_err(), "dangling escape must be rejected")
     assert(dangling.unwrap_err().position() == 3:usize,
            "error must identify the dangling escape byte")
-    assert(Regex::compile("[").is_err(),
-           "future RE2 character classes must fail explicitly before their NFA slice exists")
+    assert(Regex::compile("[z-a]").is_err(), "descending character range must be rejected")
+    assert(Regex::compile("[abc").is_err(), "unterminated character class must be rejected")
+    assert(Regex::compile("[]").is_err(), "empty character class must be rejected")
 }
 
 fn test_grouping_alternation_and_quantifiers() {
@@ -63,11 +64,25 @@ fn test_non_backtracking_adversarial_shape() {
            "Pike NFA must reject the classic backtracking stress shape")
 }
 
+fn test_ascii_character_classes() {
+    auto range = Regex::compile("^[a-c]+$").unwrap()
+    assert(range.is_match("abccba"), "ASCII range class must match each range byte")
+    assert(!range.is_match("abcd"), "range class must reject bytes outside the range")
+
+    auto negated = Regex::compile("^[^0-9]+$").unwrap()
+    assert(negated.is_match("toka-RE2"), "negated class must match non-digit bytes")
+    assert(!negated.is_match("toka1"), "negated class must reject member bytes")
+
+    auto punctuation = Regex::compile("^[-a\\]]+$").unwrap()
+    assert(punctuation.is_match("-a]-"), "class must support leading dash and escaped close bracket")
+}
+
 fn main() -> i32 {
     assert(package_name().equals("regex"), "public package name")
     test_literals_dot_and_anchors()
     test_escapes_and_errors()
     test_grouping_alternation_and_quantifiers()
     test_non_backtracking_adversarial_shape()
+    test_ascii_character_classes()
     return 0
 }
