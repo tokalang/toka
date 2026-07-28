@@ -36,6 +36,11 @@ pub shape Statement (
     finalized#: bool
 )
 
+pub shape Transaction (
+    handle#: Addr,
+    active#: bool
+)
+
 fn sqlite_error(code: i32, operation: str) -> SqliteError {
     auto message# = string::from("SQLite ")
     message#.push_str(operation)
@@ -90,11 +95,55 @@ impl Database {
         return Result<Statement, SqliteError>::Ok(Statement(handle = handle, finalized = false))
     }
 
+    pub fn begin(self#) -> Result<Transaction, SqliteError> {
+        if self.closed { return Result<Transaction, SqliteError>::Err(sqlite_error(21:i32, "begin on closed database")) }
+        auto command = string::from("BEGIN IMMEDIATE;")
+        auto code = toka_sqlite_execute(self.handle, command.c_str() as Addr)
+        if code != 0:i32 { return Result<Transaction, SqliteError>::Err(sqlite_error(code, "begin")) }
+        return Result<Transaction, SqliteError>::Ok(Transaction(handle = self.handle, active = true))
+    }
+
     fn drop(self#) {
         if !self.closed {
             toka_sqlite_close(self.handle)
             self.handle = ADDR0
             self.closed = true
+        }
+    }
+}
+
+impl Transaction {
+    pub fn execute(self#, sql: str) -> Result<i32, SqliteError> {
+        if !self.active { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "execute inactive transaction")) }
+        auto owned = string::from(sql)
+        auto code = toka_sqlite_execute(self.handle, owned.c_str() as Addr)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "transaction execute")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn commit(self#) -> Result<i32, SqliteError> {
+        if !self.active { return Result<i32, SqliteError>::Err(sqlite_error(21:i32, "commit inactive transaction")) }
+        auto command = string::from("COMMIT;")
+        auto code = toka_sqlite_execute(self.handle, command.c_str() as Addr)
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "commit")) }
+        self.active = false
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    pub fn rollback(self#) -> Result<i32, SqliteError> {
+        if !self.active { return Result<i32, SqliteError>::Ok(0:i32) }
+        auto command = string::from("ROLLBACK;")
+        auto code = toka_sqlite_execute(self.handle, command.c_str() as Addr)
+        self.active = false
+        if code != 0:i32 { return Result<i32, SqliteError>::Err(sqlite_error(code, "rollback")) }
+        return Result<i32, SqliteError>::Ok(code)
+    }
+
+    fn drop(self#) {
+        if self.active {
+            auto command = string::from("ROLLBACK;")
+            toka_sqlite_execute(self.handle, command.c_str() as Addr)
+            self.active = false
         }
     }
 }

@@ -22,6 +22,10 @@ only.
 The v1 bridge excludes an ORM, SQL parser, connection pool, async API,
 migrations, extensions, and cross-database abstraction.
 
+Transactions are synchronous, non-nested, and bound to the ordinary lexical
+cleanup path. They do not promise rollback after Toka's fail-fast `panic` or
+after process termination.
+
 ## Native boundary
 
 The manifest declares `sqlite3` as required **only when this package is

@@ -31,6 +31,19 @@ fn main() -> i32 {
     assert(select.column_text(2:i32).unwrap().is_none(), "SQL NULL must not fabricate text")
     assert(select#.step().unwrap() == Step::Done, "select must finish")
     assert(select#.finalize().is_ok(), "select finalize")
+
+    auto committed# = database#.begin().unwrap()
+    assert(committed#.execute("INSERT INTO items VALUES (8, 'committed', NULL);").is_ok(), "transaction insert")
+    assert(committed#.commit().is_ok(), "transaction commit")
+
+    if true {
+        auto rolled_back# = database#.begin().unwrap()
+        assert(rolled_back#.execute("INSERT INTO items VALUES (9, 'rolled back', NULL);").is_ok(), "rollback probe insert")
+    }
+    auto count = database#.prepare("SELECT COUNT(*) FROM items;").unwrap()
+    assert(count#.step().unwrap() == Step::Row, "count row")
+    assert(count.column_i64(0:i32).unwrap() == 2:i64, "scope cleanup must rollback active transaction")
+    assert(count#.finalize().is_ok(), "count finalize")
     assert(database#.close().is_ok(), "explicit close")
     assert(database.is_closed(), "close must disarm RAII cleanup")
     assert(database#.close().is_ok(), "close must be idempotent")
