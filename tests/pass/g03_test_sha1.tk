@@ -1,5 +1,5 @@
 import stdx/crypto/sha1::{Sha1}
-import stdx/encoding/base64::{encode_bytes}
+import stdx/encoding/base64::{encode_fixed20}
 import std/io::{println}
 
 pub fn main() -> i32 {
@@ -10,7 +10,7 @@ pub fn main() -> i32 {
     sha1#.update(origin.as_view())
     auto hash_res = sha1#.finalize()
     
-    auto b64_res = encode_bytes(&hash_res as *[u8], 20)
+    auto b64_res = encode_fixed20(hash_res)
     
     println("WS Hash: {}", b64_res.c_str())
     assert(b64_res.eq(string::from("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")), "Failed SHA-1 + B64 WS sequence!")

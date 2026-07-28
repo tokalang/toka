@@ -196,6 +196,6 @@ impl Md5 {
 
     pub fn finalize_hex(self#) -> string {
         auto hash = self#.finalize()
-        return hex::encode_hex(&hash as *[u8], 16)
+        return hex::encode_fixed16(hash)
     }
 }

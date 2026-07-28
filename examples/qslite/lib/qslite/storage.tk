@@ -4,7 +4,7 @@ import std/fmt::{StringBuilder}
 import std/io::{File, exists, remove_file, rename_file}
 import std/vec::{Vec}
 import stdx/crypto/sha256::{Sha256}
-import stdx/encoding/hex::{encode_hex_view}
+import stdx/encoding/hex::{encode}
 
 pub const QSLITE_ERROR_IO: i32 = 1
 pub const QSLITE_ERROR_HEADER: i32 = 2
@@ -222,7 +222,7 @@ fn record_checksum(payload: str) -> string {
 }
 
 fn append_record(output#: string, key: u64, value: str) {
-    auto value_hex = encode_hex_view(value)
+    auto value_hex = encode(value.as_bytes())
     auto payload = record_payload(key, value_hex)
     auto digest = record_checksum(payload)
     output#.push_str(payload)

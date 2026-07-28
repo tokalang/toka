@@ -1,8 +1,8 @@
-import stdx/encoding/hex::{encode_hex_view}
+import stdx/encoding/hex::{encode}
 
 fn main() -> i32 {
     auto text = "Hello Toka"
-    auto hex = encode_hex_view(text)
+    auto hex = encode(text.as_bytes())
     if hex.as_str() != "48656c6c6f20546f6b61" {
         return 1
     }

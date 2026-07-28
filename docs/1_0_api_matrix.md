@@ -31,5 +31,6 @@
 | **`stdx/net/http.tk`** | `HttpRequest`, `HttpResponse`, `HttpResponseStream` | **Tier 3: Stdx 1.0** | Owner-carrying HTTP/1.1 framing. |
 | **`stdx/net/http.tk`** | `HttpHeaderView`, `name()`, `value()` | **Tier 3: Stdx 1.0** | Non-owning borrowed offset views. |
 | **`stdx/net/websocket.tk`** | `WebSocketFrame`, `WsStream` | **Tier 3: Stdx 1.0** | WebSocket async frame processing. |
+| **`stdx/encoding/*`** | safe hex, Base64, percent codecs | **Tier 3: Stdx 1.0** | Binary-safe `bytes` input, owned decode output, structured errors. |
 | **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 4: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
 | **Async Extensions** | Async blocks, TaskScope, connection pools | **Tier 5: Experimental** | Deferred for post-1.0 design. |

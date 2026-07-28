@@ -1,0 +1,42 @@
+import stdx/encoding/base64
+import stdx/encoding/hex
+import stdx/encoding/percent
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+
+fn test_hex() {
+    auto text = string::from("Toka")
+    assert(hex::encode(text.as_str().as_bytes()).equals("546f6b61"), "safe hex encoding")
+    auto decoded = hex::decode("546F6b61").unwrap()
+    assert(decoded.len() == 4:usize && decoded.get(0:usize) == 'T' as u8, "hex decode bytes")
+    assert(hex::decode("0g").unwrap_err().position() == 1:usize, "hex error position")
+
+    auto raw# = Vec<u8>::new()
+    raw#.push(0:u8)
+    raw#.push(255:u8)
+    auto owned = Bytes::from_vec(cede raw)
+    assert(hex::encode(owned.as_slice()).equals("00ff"), "hex binary input")
+}
+
+fn test_base64() {
+    assert(base64::encode("foo".as_bytes()).equals("Zm9v"), "Base64 complete triple")
+    assert(base64::encode("f".as_bytes()).equals("Zg=="), "Base64 padded tail")
+    auto decoded = base64::decode("AA/=").unwrap()
+    assert(decoded.len() == 2:usize && decoded.get(1:usize) == 255:u8, "Base64 binary decode")
+    assert(base64::decode("Zh==").is_err(), "Base64 canonical padding bits")
+}
+
+fn test_percent() {
+    assert(percent::encode("A z+/~".as_bytes()).equals("A%20z%2B%2F~"), "RFC 3986 encode")
+    auto decoded = percent::decode("A%20z%2B%2F~").unwrap()
+    assert(decoded.len() == 6:usize && decoded.get(3:usize) == '+' as u8, "percent decode bytes")
+    assert(percent::decode("%x0").unwrap_err().position() == 1:usize, "percent error position")
+    assert(percent::decode("a+b").unwrap().get(1:usize) == '+' as u8, "plus is not form decoding")
+}
+
+fn main() -> i32 {
+    test_hex()
+    test_base64()
+    test_percent()
+    return 0
+}

@@ -23,6 +23,13 @@ and must not make a standard-library module depend on it. Native dependencies
 must be declared as package-level platform requirements, never silently loaded
 by a pure-Toka API.
 
+`official` is a publisher identity, not a fourth standard-library layer.
+`stdx` contains bundled extensions that may be dependencies of other bundled
+extensions; an official or community package may depend on `stdx`, but `stdx`
+must not depend on an optional package. A capability already required by
+bundled `stdx` infrastructure belongs in `stdx`, not in a duplicate
+`official/*` namespace.
+
 ## 2. Static `package.tk` contract
 
 `package.tk` remains a static Toka data file: no functions, imports, control

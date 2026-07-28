@@ -375,7 +375,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     }
     auto raw_key# = rng_res.unwrap()
 
-    auto sec_key = base64::encode_vec(raw_key.clone())
+    auto sec_key = base64::encode_vec(cede raw_key)
 
     // Compute expected Sec-WebSocket-Accept
     auto expected_swk# = sec_key.clone()

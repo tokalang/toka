@@ -1,19 +1,19 @@
-import stdx/encoding/base64::{encode_str}
+import stdx/encoding/base64::{encode}
 import std/io::{println}
 
 pub fn main() -> i32 {
     auto t1 = string::from("light work.")
-    auto res1 = encode_str(t1.as_view())
+    auto res1 = encode(t1.as_view().as_bytes())
     println("light work. -> {}", res1.as_view())
     assert(res1.eq(string::from("bGlnaHQgd29yay4=")), "Failed Base64 light work.")
 
     auto t2 = string::from("light work")
-    auto res2 = encode_str(t2.as_view())
+    auto res2 = encode(t2.as_view().as_bytes())
     println("light work -> {}", res2.as_view())
     assert(res2.eq(string::from("bGlnaHQgd29yaw==")), "Failed Base64 light work")
 
     auto t3 = string::from("light wor")
-    auto res3 = encode_str(t3.as_view())
+    auto res3 = encode(t3.as_view().as_bytes())
     println("light wor -> {}", res3.as_view())
     assert(res3.eq(string::from("bGlnaHQgd29y")), "Failed Base64 light wor")
 
