@@ -1,8 +1,152 @@
 // Public entry module for official/regex.
-//
-// The implementation arrives in small verified slices. The package contract
-// is intentionally available from the first commit so imports and metadata
-// have one stable home.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/vec::{Vec}
+
+const MAX_PATTERN_BYTES: usize = 4096:usize
+
+pub shape RegexError (
+    position: usize,
+    message: string
+)
+
+pub shape Match (
+    begin_byte: usize,
+    end_byte: usize
+)
+
+shape Token (
+    Literal(u8) = 0 |
+    Any = 1 |
+    Start = 2 |
+    End = 3
+)
+
+pub shape Regex (
+    tokens: Vec<Token>
+)
+
+fn error(position: usize, message: str) -> RegexError {
+    return RegexError(position = position, message = string::from(message))
+}
+
+fn escaped_byte(pattern: str, position: usize) -> Result<u8, RegexError> {
+    auto byte = pattern.byte_at(position) as u8
+    if byte == 'n' as u8 { return Result<u8, RegexError>::Ok('\n' as u8) }
+    if byte == 'r' as u8 { return Result<u8, RegexError>::Ok('\r' as u8) }
+    if byte == 't' as u8 { return Result<u8, RegexError>::Ok('\t' as u8) }
+    if byte == '\\' as u8 || byte == '.' as u8 || byte == '^' as u8 ||
+       byte == '$' as u8 || byte == '*' as u8 || byte == '+' as u8 ||
+       byte == '?' as u8 || byte == '|' as u8 || byte == '(' as u8 ||
+       byte == ')' as u8 || byte == '[' as u8 || byte == ']' as u8 {
+        return Result<u8, RegexError>::Ok(byte)
+    }
+    return Result<u8, RegexError>::Err(error(position, "unsupported RE2 escape in regex v1 slice"))
+}
+
+impl RegexError {
+    pub fn position(self) -> usize { return self.position }
+
+    pub fn message(self) -> string { return string::from(self.message.as_str()) }
+}
+
+impl Match {
+    pub fn start_offset(self) -> usize { return self.begin_byte }
+
+    pub fn end_offset(self) -> usize { return self.end_byte }
+}
+
+impl Regex {
+    // Compile the non-backtracking core available in the first v1 slice:
+    // literals, escaped metacharacters, '.', '^', and '$'. Quantifiers,
+    // grouping, alternation, and classes are rejected until their NFA states
+    // are added in the following slices.
+    pub fn compile(pattern: str) -> Result<Regex, RegexError> {
+        if pattern.len() > MAX_PATTERN_BYTES {
+            return Result<Regex, RegexError>::Err(error(
+                MAX_PATTERN_BYTES, "regex pattern exceeds v1 size limit"))
+        }
+
+        auto tokens# = Vec<Token>::new()
+        auto position#: usize = 0:usize
+        loop position < pattern.len() {
+            auto byte = pattern.byte_at(position) as u8
+            if byte == '\\' as u8 {
+                auto next_position = position + 1:usize
+                if next_position >= pattern.len() {
+                    return Result<Regex, RegexError>::Err(error(position, "dangling regex escape"))
+                }
+                auto escaped = escaped_byte(pattern, next_position)
+                if escaped.is_err() {
+                    return Result<Regex, RegexError>::Err(escaped.unwrap_err())
+                }
+                tokens#.push(Token::Literal(escaped.unwrap()))
+                position = position + 2:usize
+                continue
+            }
+            if byte == '.' as u8 {
+                tokens#.push(Token::Any)
+            } else if byte == '^' as u8 {
+                tokens#.push(Token::Start)
+            } else if byte == '$' as u8 {
+                tokens#.push(Token::End)
+            } else if byte == '*' as u8 || byte == '+' as u8 || byte == '?' as u8 ||
+                      byte == '|' as u8 || byte == '(' as u8 || byte == ')' as u8 ||
+                      byte == '[' as u8 || byte == ']' as u8 {
+                return Result<Regex, RegexError>::Err(error(
+                    position, "RE2 operator is not enabled in regex v1 slice"))
+            } else {
+                tokens#.push(Token::Literal(byte))
+            }
+            position = position + 1:usize
+        }
+        return Result<Regex, RegexError>::Ok(Regex(tokens = cede tokens))
+    }
+
+    fn matches_at(self, input: str, start: usize) -> Option<usize> {
+        auto cursor# = start
+        auto token_index#: usize = 0:usize
+        loop token_index < self.tokens.len() {
+            match self.tokens.get(token_index) {
+                auto Token::Literal(expected) => {
+                    if cursor >= input.len() || input.byte_at(cursor) as u8 != expected {
+                        return Option<usize>::None
+                    }
+                    cursor = cursor + 1:usize
+                }
+                auto Token::Any => {
+                    if cursor >= input.len() { return Option<usize>::None }
+                    cursor = cursor + 1:usize
+                }
+                auto Token::Start => {
+                    if cursor != 0:usize { return Option<usize>::None }
+                }
+                auto Token::End => {
+                    if cursor != input.len() { return Option<usize>::None }
+                }
+            }
+            token_index = token_index + 1:usize
+        }
+        return Option<usize>::Some(cursor)
+    }
+
+    pub fn find(self, input: str) -> Option<Match> {
+        auto start#: usize = 0:usize
+        loop start <= input.len() {
+            auto end = self.matches_at(input, start)
+            if end.is_some() {
+                return Option<Match>::Some(Match(begin_byte = start, end_byte = end.unwrap()))
+            }
+            start = start + 1:usize
+        }
+        return Option<Match>::None
+    }
+
+    pub fn is_match(self, input: str) -> bool {
+        return self.find(input).is_some()
+    }
+}
 
 pub fn package_name() -> string {
     return string::from("regex")

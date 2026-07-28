@@ -1,6 +1,40 @@
-import official/regex::{package_name}
+import official/regex::{Regex, package_name}
+
+fn test_literals_dot_and_anchors() {
+    auto literal = Regex::compile("ab.c")
+    assert(literal.is_ok(), "literal and dot pattern must compile")
+    auto regex = literal.unwrap()
+    assert(regex.is_match("xxabzcxx"), "unanchored search must find a byte match")
+    assert(!regex.is_match("abcc"), "literal bytes must retain their order")
+
+    auto located = regex.find("xxabzcxx")
+    assert(located.is_some(), "find must return the first match")
+    auto found = located.unwrap()
+    assert(found.start_offset() == 2:usize && found.end_offset() == 6:usize,
+           "find must report byte offsets")
+
+    auto anchored = Regex::compile("^ab$").unwrap()
+    assert(anchored.is_match("ab"), "both anchors must accept the complete input")
+    assert(!anchored.is_match("zab"), "start anchor must reject a prefix")
+    assert(!anchored.is_match("abz"), "end anchor must reject a suffix")
+}
+
+fn test_escapes_and_errors() {
+    auto escaped = Regex::compile("a\\.b\\n")
+    assert(escaped.is_ok(), "escaped metacharacters and newline must compile")
+    assert(escaped.unwrap().is_match("a.b\n"), "escaped bytes must be literal")
+
+    auto dangling = Regex::compile("abc\\")
+    assert(dangling.is_err(), "dangling escape must be rejected")
+    assert(dangling.unwrap_err().position() == 3:usize,
+           "error must identify the dangling escape byte")
+    assert(Regex::compile("a+").is_err(),
+           "future RE2 operators must fail explicitly before their NFA slice exists")
+}
 
 fn main() -> i32 {
     assert(package_name().equals("regex"), "public package name")
+    test_literals_dot_and_anchors()
+    test_escapes_and_errors()
     return 0
 }
