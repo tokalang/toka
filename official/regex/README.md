@@ -1,6 +1,6 @@
 # `official/regex` v1
 
-Status: **prototype implementation; package qualification is not yet closed**.
+Status: **qualified v1 profile; not yet released**.
 
 `official/regex` is Toka's official regular-expression package. Its package
 identity and public import path are `official/regex`; its manifest short name
@@ -69,14 +69,14 @@ resource contract.
 Run the qualification from this package root:
 
 ```text
-tokac -I ../../../lib -I lib tests/regex_v1.tk -o /tmp/regex_v1 && /tmp/regex_v1
+python3 tests/qualify_package.py
 ```
 
 The qualification suite covers accepted syntax, malformed-pattern byte
 positions, anchors/classes/quantifiers, and adversarial non-match cases that
 would make a backtracking engine exponential.
 
-The v1 package must not be released until this suite passes in full. At present,
-the corrected literal-order assertion is valid, but the grouped quantified case
-`a(b|c)+d?` does not yet match `ac`; this is an open matcher qualification
-defect, not an unsupported syntax carve-out.
+Qualification covers the complete profile suite plus a locked local consumer,
+offline lock replay, and a public-import `toka build`/run path. The grouped
+quantified regression `a(b|c)+d?` matching `ac` is included in both the direct
+suite and consumer path.

@@ -716,13 +716,16 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
 }
 
 fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>) -> Option<Match> {
-    if active.len() == 0:usize { return Option<Match>::None }
-    auto first = active.get(0:usize)
-    if program.get(first.state_id as usize).kind == STATE_MATCH {
-        return Option<Match>::Some(Match(
-            begin_byte = first.begin_byte,
-            end_byte = first.end_byte
-        ))
+    auto index#: usize = 0:usize
+    loop index < active.len() {
+        auto candidate = active.get(index)
+        if program.get(candidate.state_id as usize).kind == STATE_MATCH {
+            return Option<Match>::Some(Match(
+                begin_byte = candidate.begin_byte,
+                end_byte = candidate.end_byte
+            ))
+        }
+        index = index + 1:usize
     }
     return Option<Match>::None
 }

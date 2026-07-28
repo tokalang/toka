@@ -14,14 +14,14 @@ on them.
 | Package | Status | Evidence | Required next action |
 |---|---|---|---|
 | `official/sqlite` | qualified Phase 1 native lifecycle bridge | `python3 official/sqlite/tests/qualify_preflight.py` passes | expand only through separately scoped statement/transaction slices |
-| `official/regex` | prototype, not release-qualified | its suite compiles but currently fails the grouped quantified case `a(b|c)+d?` on `ac` | repair the matcher and obtain a full green qualification run |
+| `official/regex` | qualified bounded RE2-profile matcher; not yet released | direct profile suite plus locked/offline local-consumer import replay pass | optional independent compatibility corpus before publication |
 | `official/redis` | qualified RESP2 codec plus serial plaintext TCP client; not yet released | deterministic codec/TCP cancellation suites and locked/offline local-consumer import replay pass | optional real-Redis compatibility gate before publication, or move to `official/router` |
 | `official/router` | qualified deterministic method/path recognizer; not yet released | route definition/matching qualification and locked/offline local-consumer import replay pass | optional service-kit adoption or real service integration before publication |
 | `official/compress` | qualified bounded streaming gzip/zlib bridge; not yet released | native zlib bridge, streaming boundary suite, and locked/offline `toka build` public-import replay pass | optional HTTP/content-encoding policy slice before publication |
 
-The regex finding is deliberately recorded as a package defect, not a language
-or PAL limitation. No new official package should claim a stronger release
-status than its executable evidence supports.
+Regex is a bounded byte-oriented RE2 profile, not a claim of full RE2
+compatibility. No official package should claim a stronger release status than
+its executable evidence supports.
 
 ## Priority sequence
 
