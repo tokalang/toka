@@ -1,8 +1,9 @@
 # `official/redis` v1 — Bounded RESP2 Client RFC
 
-Status: **RESP2 codec and one serial plaintext TCP client implemented and
-qualified through deterministic, locked, and offline local-consumer evidence;
-convenience APIs and a published package release remain open**.
+Status: **bounded RESP2 codec, serial plaintext TCP client, and minimal typed
+command operations implemented and qualified through deterministic, locked,
+and offline local-consumer evidence; a published package release remains
+open**.
 
 ## 1. Role and placement
 
@@ -42,8 +43,11 @@ The implemented slices export `RedisClient`, `RedisCommand`, `RedisArgument`,
 opens one plaintext TCP connection and accepts one command at a time. It keeps
 an owned receive buffer, retries `decode_one` after appending more bytes when
 it returns `NeedMore`, and closes itself after a write-side or reply-side
-failure. The small `get`, `set`, and `del` wrappers remain deferred; no
-unimplemented convenience API is part of the current contract.
+failure. `get_async`, `set_async`, and `del_async` are small typed wrappers
+over `execute_async`: GET maps a null bulk reply to `Ok(None)`, SET accepts an
+owned binary `Bytes` value and requires `+OK`, and DEL returns its integer
+count. A Redis `-ERR` response is mapped to `RedisError(kind = "server")` for
+these operations; callers needing raw reply semantics use `execute_async`.
 
 `RedisValue::Error` represents a valid Redis `-ERR` reply. Transport failures,
 limits, malformed frames, timeout, and cancellation are `RedisError` results.
@@ -83,7 +87,7 @@ from a requested TLS connection.
 2. **Stream integration** — complete: connect, write one command,
    incrementally decode one reply, and enforce close-on-poison semantics.
 3. **Qualification** — codec and deterministic TCP mock-server tests cover
-   fragmented frames, binary bulk payloads, nested arrays, malformed lengths,
+   fragmented frames, binary bulk payloads, typed GET/SET/DEL wrappers, nested arrays, malformed lengths,
    EOF, timeout, and cancellation after a write. Optional real Redis
    integration remains future evidence, not a release claim.
 4. **Package release** — the existing `package.tk`, `AI_CONTRACT`, public
@@ -93,8 +97,8 @@ from a requested TLS connection.
 
 ## 6. Canonical fixture corpus
 
-The implementation qualification must use these wire examples before adding
-convenience commands:
+The implementation qualification uses these wire examples for both the raw
+codec and typed command wrappers:
 
 | Case | Wire bytes | Expected result |
 |---|---|---|

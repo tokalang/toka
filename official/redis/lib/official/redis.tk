@@ -93,6 +93,24 @@ fn connection_error(message: str) -> RedisError {
     )
 }
 
+// A RESP `-ERR` frame is well-formed protocol data, but a convenience
+// operation cannot satisfy its advertised result contract with one.
+fn server_error(message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("server"),
+        position = 0:usize,
+        message = string::from(message)
+    )
+}
+
+fn reply_error(message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("reply"),
+        position = 0:usize,
+        message = string::from(message)
+    )
+}
+
 fn append_text(out#: Vec<u8>, input: str) {
     auto index#: usize = 0
     loop index < input.len() {
@@ -535,6 +553,56 @@ impl RedisClient {
             append_bytes(self.receive, read_buffer)
         }
         return Result<RedisValue, RedisError>::Err(transport_error("Redis receive loop exited unexpectedly"))
+    }
+
+    // These are deliberately thin RESP2 wrappers, not a cache abstraction.
+    // A missing GET key remains an ordinary `Ok(None)`; server errors retain
+    // their text but become a typed operation failure.
+    pub fn get_async(self#, key: str) -> async Result<Option<Bytes>, RedisError> {
+        auto command# = RedisCommand::new("GET")
+        command#.arg_text(key)
+        auto reply = self#.execute_async(cede command).await
+        if reply.is_err() {
+            return Result<Option<Bytes>, RedisError>::Err(reply.unwrap_err())
+        }
+        match cede reply.unwrap() {
+            auto RedisValue::Bulk('value) => return Result<Option<Bytes>, RedisError>::Ok(Option<Bytes>::Some(cede 'value))
+            auto RedisValue::Null() => return Result<Option<Bytes>, RedisError>::Ok(Option<Bytes>::None)
+            auto RedisValue::Error('message) => return Result<Option<Bytes>, RedisError>::Err(server_error('message.as_str()))
+            _ => return Result<Option<Bytes>, RedisError>::Err(reply_error("GET expected a bulk string or null reply"))
+        }
+    }
+
+    pub fn set_async(self#, key: str, cede value: Bytes) -> async Result<(), RedisError> {
+        auto command# = RedisCommand::new("SET")
+        command#.arg_text(key)
+        command#.arg_bytes(cede value)
+        auto reply = self#.execute_async(cede command).await
+        if reply.is_err() {
+            return Result<(), RedisError>::Err(reply.unwrap_err())
+        }
+        match cede reply.unwrap() {
+            auto RedisValue::SimpleString('message) => {
+                if 'message.equals("OK") { return Result<(), RedisError>::Ok(()) }
+                return Result<(), RedisError>::Err(reply_error("SET expected an OK reply"))
+            }
+            auto RedisValue::Error('message) => return Result<(), RedisError>::Err(server_error('message.as_str()))
+            _ => return Result<(), RedisError>::Err(reply_error("SET expected a simple-string reply"))
+        }
+    }
+
+    pub fn del_async(self#, key: str) -> async Result<i64, RedisError> {
+        auto command# = RedisCommand::new("DEL")
+        command#.arg_text(key)
+        auto reply = self#.execute_async(cede command).await
+        if reply.is_err() {
+            return Result<i64, RedisError>::Err(reply.unwrap_err())
+        }
+        match cede reply.unwrap() {
+            auto RedisValue::Integer(count) => return Result<i64, RedisError>::Ok(count)
+            auto RedisValue::Error('message) => return Result<i64, RedisError>::Err(server_error('message.as_str()))
+            _ => return Result<i64, RedisError>::Err(reply_error("DEL expected an integer reply"))
+        }
     }
 }
 

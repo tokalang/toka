@@ -1,4 +1,5 @@
-import official/redis::{RedisClient, RedisCommand, RedisValue}
+import official/redis::{RedisClient, RedisCommand}
+import std/bytes::{Bytes}
 import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
 import std/task::{block_on, sleep_async, task_cancel, task_is_canceled}
 import std/vec::{Vec}
@@ -62,9 +63,33 @@ fn roundtrip_server_async(cede listener: TcpListener) -> async i32 {
         stream#.close()
         return 5
     }
-    if !send_async(stream, ":2\r\n").await {
+    if !send_async(stream, "+OK\r\n").await {
         stream#.close()
         return 6
+    }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 7
+    }
+    if !send_async(stream, ":1\r\n").await {
+        stream#.close()
+        return 8
+    }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 9
+    }
+    if !send_async(stream, "$-1\r\n").await {
+        stream#.close()
+        return 10
+    }
+    if !receive_request_async(stream).await {
+        stream#.close()
+        return 11
+    }
+    if !send_async(stream, "-ERR denied\r\n").await {
+        stream#.close()
+        return 12
     }
     stream#.close()
     return 0
@@ -77,17 +102,15 @@ fn roundtrip_client_async(port: u16) -> async i32 {
     if connected.is_err() { return 1 }
     auto client# = connected.unwrap()
 
-    auto first_command# = RedisCommand::new("GET")
-    first_command#.arg_text("session:42")
-    auto first_reply = client#.execute_async(cede first_command).await
+    auto first_reply = client#.get_async("session:42").await
     if first_reply.is_err() {
         client#.close()
         return 2
     }
     auto first_value = first_reply.unwrap()
     match first_value {
-        auto RedisValue::Bulk(&value) => {
-            auto view = value.as_slice()
+        auto Option::Some('value) => {
+            auto view = 'value.as_slice()
             if view.len() != 5:usize || (view.at(0:usize).unwrap() as u8) != 'h' as u8 ||
                (view.at(4:usize).unwrap() as u8) != 'o' as u8 {
                 client#.close()
@@ -100,24 +123,41 @@ fn roundtrip_client_async(port: u16) -> async i32 {
         }
     }
 
-    auto second_command = RedisCommand::new("DBSIZE")
-    auto second_reply = client#.execute_async(cede second_command).await
+    auto written# = Vec<u8>::new()
+    written#.push('o' as u8)
+    written#.push('k' as u8)
+    auto second_reply = client#.set_async("session:42", cede Bytes::from_vec(cede written)).await
     if second_reply.is_err() {
         client#.close()
         return 5
     }
-    auto second_value = second_reply.unwrap()
-    match second_value {
-        auto RedisValue::Integer(value) => {
-            if value != 2:i64 {
-                client#.close()
-                return 6
-            }
-        }
-        _ => {
-            client#.close()
-            return 7
-        }
+    auto third_reply = client#.del_async("session:42").await
+    if third_reply.is_err() {
+        client#.close()
+        return 6
+    }
+    if third_reply.unwrap() != 1:i64 {
+        client#.close()
+        return 6
+    }
+    auto missing = client#.get_async("missing").await
+    if missing.is_err() {
+        client#.close()
+        return 7
+    }
+    if missing.unwrap().is_some() {
+        client#.close()
+        return 7
+    }
+    auto denied = client#.get_async("denied").await
+    if denied.is_ok() {
+        client#.close()
+        return 8
+    }
+    auto denied_error = denied.unwrap_err()
+    if !denied_error.kind.equals("server") {
+        client#.close()
+        return 9
     }
 
     client#.close()

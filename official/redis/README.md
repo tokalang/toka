@@ -1,6 +1,6 @@
 # `official/redis` v1
 
-Status: **RESP2 codec and serial plaintext TCP client slices**.
+Status: **bounded RESP2 codec and serial plaintext TCP client v1**.
 
 `official/redis` is an optional pure-Toka Redis client package. It encodes
 binary-safe RESP2 commands, incrementally decodes one response from an owned
@@ -10,9 +10,7 @@ binary-safe RESP2 commands, incrementally decodes one response from an owned
 import official/redis::{RedisClient, RedisCommand}
 
 auto client# = RedisClient::connect_async(cede address, 5000).await!
-auto command# = RedisCommand::new("GET")
-command#.arg_text("session:42")
-auto reply = client#.execute_async(cede command).await!
+auto value = client#.get_async("session:42").await!
 ```
 
 The codec returns `RedisDecode::NeedMore()` without consuming an incomplete
@@ -22,8 +20,15 @@ malformed reply after a command write closes the client; it cannot be reused.
 Extra reply bytes observed with the matched reply are rejected: a serial
 client must not assign an unsolicited buffered reply to a later command.
 
-RESP3, TLS, Pub/Sub, pipelines, cluster, Sentinel, retries, pooling, and
-convenience command wrappers remain outside this package slice.
+`get_async`, `set_async`, and `del_async` are thin wrappers over the serial
+`execute_async` primitive. `GET` returns `Ok(None)` for a missing key;
+`SET` accepts an owned binary `Bytes` value; `DEL` returns Redis's deletion
+count. A well-formed Redis `-ERR` reply becomes a `RedisError(kind = "server")`
+for these typed operations. Use `execute_async` when the application needs the
+raw `RedisValue` reply.
+
+RESP3, TLS, Pub/Sub, pipelines, cluster, Sentinel, retries, and pooling remain
+outside this package slice.
 
 ## Qualification
 
