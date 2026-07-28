@@ -27,8 +27,10 @@ if compiled.is_ok() {
 
 `Regex::compile` returns `Result<Regex, RegexError>`. `Regex::is_match` tests
 whether any substring matches; `Regex::find` returns byte offsets for the first
-match. The API owns compiled pattern data and never returns a view into a
-temporary input.
+match; and `Regex::find_all` returns all leftmost, non-overlapping matches.
+Empty matches are reported once at each search boundary and then advance one
+byte, avoiding an infinite scan. The API owns compiled pattern data and never
+returns a view into a temporary input.
 
 ## v1 syntax profile
 

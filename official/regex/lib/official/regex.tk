@@ -762,10 +762,11 @@ impl Regex {
         ))
     }
 
-    pub fn find(self, input: str) -> Option<Match> {
+    fn find_from(self, input: str, start_byte: usize) -> Option<Match> {
+        if start_byte > input.len() { return Option<Match>::None }
         auto threads# = new_thread_set(self.program)
-        add_start_thread(self.program, self.entry, input, 0:usize, threads)
-        auto cursor#: usize = 0:usize
+        add_start_thread(self.program, self.entry, input, start_byte, threads)
+        auto cursor# = start_byte
         loop true {
             auto found = first_match(self.program, threads.active)
             if found.is_some() { return found }
@@ -777,6 +778,33 @@ impl Regex {
             threads = cede next
         }
         return Option<Match>::None
+    }
+
+    pub fn find(self, input: str) -> Option<Match> {
+        return self.find_from(input, 0:usize)
+    }
+
+    pub fn find_all(self, input: str) -> Vec<Match> {
+        auto matches# = Vec<Match>::new()
+        auto cursor#: usize = 0:usize
+        loop cursor <= input.len() {
+            auto found = self.find_from(input, cursor)
+            if found.is_none() { break }
+            auto next = found.unwrap()
+            auto end = next.end_byte
+            auto begin = next.begin_byte
+            matches#.push(next)
+
+            // A zero-width match must still make progress. At the final byte
+            // boundary it has already been reported, so the scan is complete.
+            if end == begin {
+                if cursor == input.len() { break }
+                cursor = cursor + 1:usize
+            } else {
+                cursor = end
+            }
+        }
+        return matches
     }
 
     pub fn is_match(self, input: str) -> bool {

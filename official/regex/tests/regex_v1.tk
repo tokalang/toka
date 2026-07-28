@@ -88,6 +88,30 @@ fn test_counted_repetitions() {
     assert(Regex::compile("a{1001}").is_err(), "repetition count must respect the v1 resource limit")
 }
 
+fn test_find_all() {
+    auto regex = Regex::compile("ab").unwrap()
+    auto matches = regex.find_all("zabxab")
+    assert(matches.len() == 2:usize, "find_all must return every non-overlapping match")
+    assert(matches.get(0:usize).start_offset() == 1:usize &&
+           matches.get(0:usize).end_offset() == 3:usize,
+           "first match offsets must be preserved")
+    assert(matches.get(1:usize).start_offset() == 4:usize &&
+           matches.get(1:usize).end_offset() == 6:usize,
+           "second match offsets must be preserved")
+
+    auto empty = Regex::compile("a*").unwrap().find_all("ba")
+    assert(empty.len() == 3:usize, "empty matches must make progress without looping")
+    assert(empty.get(0:usize).start_offset() == 0:usize &&
+           empty.get(0:usize).end_offset() == 0:usize,
+           "find_all must retain the first empty match")
+    assert(empty.get(1:usize).start_offset() == 1:usize &&
+           empty.get(1:usize).end_offset() == 2:usize,
+           "find_all must retain a later non-empty match")
+    assert(empty.get(2:usize).start_offset() == 2:usize &&
+           empty.get(2:usize).end_offset() == 2:usize,
+           "find_all must retain the terminal empty match once")
+}
+
 fn test_non_backtracking_adversarial_shape() {
     auto input# = string::from("")
     auto index#: usize = 0:usize
@@ -136,6 +160,7 @@ fn main() -> i32 {
     test_escapes_and_errors()
     test_grouping_alternation_and_quantifiers()
     test_counted_repetitions()
+    test_find_all()
     test_non_backtracking_adversarial_shape()
     test_ascii_character_classes()
     return 0
