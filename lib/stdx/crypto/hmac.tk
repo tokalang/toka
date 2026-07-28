@@ -2,6 +2,7 @@
 
 import core/str::{bytes}
 import std/bytes::{bytes_from_array}
+import stdx/crypto/constant_time
 import stdx/crypto/sha256::{Sha256}
 import stdx/encoding/hex
 
@@ -54,4 +55,9 @@ pub fn hmac_sha256(key: bytes, message: bytes) -> [u8; 32] {
 pub fn hmac_sha256_hex(key: bytes, message: bytes) -> string {
     auto digest = hmac_sha256(key, message)
     return hex::encode(bytes_from_array<32>(digest))
+}
+
+pub fn hmac_sha256_verify(key: bytes, message: bytes, expected: bytes) -> bool {
+    auto digest = hmac_sha256(key, message)
+    return constant_time::equal(bytes_from_array<32>(digest), expected)
 }

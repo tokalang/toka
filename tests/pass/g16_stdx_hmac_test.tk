@@ -1,6 +1,8 @@
 import core/str::{bytes}
-import std/bytes::{bytes_from_array}
-import stdx/crypto/hmac::{hmac_sha256_hex}
+import std/bytes::{Bytes, bytes_from_array}
+import stdx/crypto/constant_time
+import stdx/crypto/hmac::{hmac_sha256_hex, hmac_sha256_verify}
+import stdx/encoding/hex
 
 fn repeated_byte_20(value: u8) -> [u8; 20] {
     return [value; 20]
@@ -47,6 +49,24 @@ fn main() -> i32 {
     assert_hmac(
         bytes_from_array<131>(key4), message4.as_str().as_bytes(),
         "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54")
+
+    auto expected = Bytes::from_vec(cede hex::decode(
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843").unwrap())
+    assert(hmac_sha256_verify(key2.as_str().as_bytes(), message2.as_str().as_bytes(), expected.as_slice()),
+           "matching HMAC must verify")
+
+    auto altered = Bytes::from_vec(cede hex::decode(
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3842").unwrap())
+    assert(!hmac_sha256_verify(key2.as_str().as_bytes(), message2.as_str().as_bytes(), altered.as_slice()),
+           "same-length altered HMAC must fail verification")
+    assert(!hmac_sha256_verify(key2.as_str().as_bytes(), message2.as_str().as_bytes(),
+                               "short".as_bytes()),
+           "wrong-length HMAC must fail verification")
+
+    assert(constant_time::equal("same".as_bytes(), "same".as_bytes()),
+           "equal byte views must compare equal")
+    assert(!constant_time::equal("same".as_bytes(), "sane".as_bytes()),
+           "equal-length mismatches must compare unequal")
 
     return 0
 }

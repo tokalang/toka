@@ -1,0 +1,18 @@
+// Timing-safe equality for equal-length byte strings.
+// A length mismatch is rejected immediately because callers must not treat
+// length as secret when using this primitive.
+
+import core/str::{bytes}
+
+pub fn equal(left: bytes, right: bytes) -> bool {
+    if left.len() != right.len() { return false }
+
+    auto difference#: u8 = 0:u8
+    auto index#: usize = 0:usize
+    loop index < left.len() {
+        difference = difference | ((left.at(index).unwrap() as u8) ^
+                                   (right.at(index).unwrap() as u8))
+        index = index + 1:usize
+    }
+    return difference == 0:u8
+}
