@@ -35,6 +35,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   the first structured semantic-fact layer.
 - [`../semantic_evidence_v1.md`](../semantic_evidence_v1.md) freezes the public
   decision-evidence protocol, schema, SDK entry point, and ABI gate.
+- [`../cede_obligation_evidence_v1.md`](../cede_obligation_evidence_v1.md)
+  freezes the narrower, repair-oriented protocol for caller transfer, callee
+  consumption, and `cede` return obligations.
 - `phase3b_decision_evidence.md` records the implementation history, causal
   diagnostics, and source/interface equivalence checks that underpin it.
 - `phase4a_trusted_memory_evidence.md` freezes the cross-module evidence trust

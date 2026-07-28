@@ -3670,6 +3670,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                 : SemanticReason::CedeConsumed,
                             getPathString(Met->Args[i].get()),
                             FD->Args[i + 1].Name, FD->Args[i + 1].Loc);
+                        SemanticEvidence::recordCedeObligation(
+                            CedeObligationStage::CallerTransfer,
+                            (!isCallerCeded && !isPrimitive)
+                                ? CedeObligationStatus::Violated
+                                : CedeObligationStatus::Fulfilled,
+                            (!isCallerCeded && !isPrimitive)
+                                ? SemanticReason::MissingExplicitCede
+                                : SemanticReason::CedeConsumed,
+                            getPathString(Met->Args[i].get()),
+                            FD->Args[i + 1].Name, getLoc(Met->Args[i].get()),
+                            FD->Args[i + 1].Loc);
                     }
 
                     if (!isTypeCompatible(expectedParamTy, argTy)) {

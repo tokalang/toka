@@ -999,6 +999,12 @@ void Sema::checkStmt(Stmt *S) {
                        CurrentFunctionReturnType,
                        CurrentFunction ? CurrentFunction->Name : "",
                        originLoc);
+        SemanticEvidence::recordCedeObligation(
+            CedeObligationStage::ReturnTransfer,
+            CedeObligationStatus::Violated, SemanticReason::MissingCedeReturn,
+            CurrentFunctionReturnType,
+            CurrentFunction ? CurrentFunction->Name : "", getLoc(Ret),
+            originLoc);
         if (originLoc.isValid())
           DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
                                    "cede return declared here");
@@ -1016,6 +1022,12 @@ void Sema::checkStmt(Stmt *S) {
                        CurrentFunction ? CurrentFunction->Name : "",
                        CurrentFunction ? CurrentFunction->Loc
                                        : SourceLocation{});
+        SemanticEvidence::recordCedeObligation(
+            CedeObligationStage::ReturnTransfer,
+            CedeObligationStatus::Fulfilled, SemanticReason::CedeConsumed,
+            CurrentFunctionReturnType,
+            CurrentFunction ? CurrentFunction->Name : "", getLoc(Ret),
+            CurrentFunction ? CurrentFunction->Loc : SourceLocation{});
       }
     }
 

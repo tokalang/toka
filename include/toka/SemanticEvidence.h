@@ -115,6 +115,22 @@ struct SemanticDecisionRecord {
   bool operator==(const SemanticDecisionRecord &rhs) const;
 };
 
+enum class CedeObligationStage { CallerTransfer, CalleeConsumption, ReturnTransfer };
+enum class CedeObligationStatus { Fulfilled, Violated };
+
+struct CedeObligationRecord {
+  CedeObligationStage Stage = CedeObligationStage::CallerTransfer;
+  CedeObligationStatus Status = CedeObligationStatus::Fulfilled;
+  SemanticReason Reason = SemanticReason::CedeConsumed;
+  std::string Subject;
+  std::string Origin;
+  SemanticEvidenceLocation Location;
+  SemanticEvidenceLocation ContractLocation;
+
+  bool operator<(const CedeObligationRecord &rhs) const;
+  bool operator==(const CedeObligationRecord &rhs) const;
+};
+
 class SemanticEvidence {
 public:
   static constexpr unsigned SchemaVersion = 1;
@@ -127,11 +143,19 @@ public:
                      std::string subject, std::string origin,
                      SourceLocation primaryLoc,
                      SourceLocation originLoc = {});
+  static void recordCedeObligation(CedeObligationStage stage,
+                                   CedeObligationStatus status,
+                                   SemanticReason reason,
+                                   std::string subject, std::string origin,
+                                   SourceLocation location,
+                                   SourceLocation contractLocation = {});
   static void dumpJSON(std::ostream &out);
+  static void dumpCedeObligationsJSON(std::ostream &out);
 
 private:
   static bool Enabled;
   static std::vector<SemanticDecisionRecord> Records;
+  static std::vector<CedeObligationRecord> CedeObligations;
 };
 
 const char *toString(SemanticRuleID value);

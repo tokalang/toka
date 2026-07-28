@@ -10,6 +10,7 @@ namespace toka {
 
 bool SemanticEvidence::Enabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
+std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 
 namespace {
 
@@ -76,6 +77,19 @@ bool SemanticDecisionRecord::operator==(
          OriginLocation == rhs.OriginLocation;
 }
 
+bool CedeObligationRecord::operator<(const CedeObligationRecord &rhs) const {
+  return std::tie(Stage, Status, Reason, Subject, Origin, Location,
+                  ContractLocation) <
+         std::tie(rhs.Stage, rhs.Status, rhs.Reason, rhs.Subject, rhs.Origin,
+                  rhs.Location, rhs.ContractLocation);
+}
+
+bool CedeObligationRecord::operator==(const CedeObligationRecord &rhs) const {
+  return Stage == rhs.Stage && Status == rhs.Status && Reason == rhs.Reason &&
+         Subject == rhs.Subject && Origin == rhs.Origin &&
+         Location == rhs.Location && ContractLocation == rhs.ContractLocation;
+}
+
 void SemanticEvidence::enable(bool value) {
   Enabled = value;
   reset();
@@ -83,7 +97,10 @@ void SemanticEvidence::enable(bool value) {
 
 bool SemanticEvidence::isEnabled() { return Enabled; }
 
-void SemanticEvidence::reset() { Records.clear(); }
+void SemanticEvidence::reset() {
+  Records.clear();
+  CedeObligations.clear();
+}
 
 void SemanticEvidence::record(SemanticRuleID rule,
                               SemanticOperation operation,
@@ -96,6 +113,17 @@ void SemanticEvidence::record(SemanticRuleID rule,
   Records.push_back({rule, operation, decision, reason, std::move(subject),
                      std::move(origin), resolveLocation(primaryLoc),
                      resolveLocation(originLoc)});
+}
+
+void SemanticEvidence::recordCedeObligation(
+    CedeObligationStage stage, CedeObligationStatus status,
+    SemanticReason reason, std::string subject, std::string origin,
+    SourceLocation location, SourceLocation contractLocation) {
+  if (!Enabled)
+    return;
+  CedeObligations.push_back(
+      {stage, status, reason, std::move(subject), std::move(origin),
+       resolveLocation(location), resolveLocation(contractLocation)});
 }
 
 void SemanticEvidence::dumpJSON(std::ostream &out) {
@@ -117,6 +145,49 @@ void SemanticEvidence::dumpJSON(std::ostream &out) {
     dumpLocation(out, record.PrimaryLocation);
     out << ",\"origin_location\":";
     dumpLocation(out, record.OriginLocation);
+    out << '}';
+  }
+  out << "]}\n";
+}
+
+namespace {
+const char *cedeStageName(CedeObligationStage stage) {
+  switch (stage) {
+  case CedeObligationStage::CallerTransfer: return "caller-transfer";
+  case CedeObligationStage::CalleeConsumption: return "callee-consumption";
+  case CedeObligationStage::ReturnTransfer: return "return-transfer";
+  }
+  return "caller-transfer";
+}
+
+const char *cedeStatusName(CedeObligationStatus status) {
+  switch (status) {
+  case CedeObligationStatus::Fulfilled: return "fulfilled";
+  case CedeObligationStatus::Violated: return "violated";
+  }
+  return "violated";
+}
+} // namespace
+
+void SemanticEvidence::dumpCedeObligationsJSON(std::ostream &out) {
+  std::sort(CedeObligations.begin(), CedeObligations.end());
+  CedeObligations.erase(
+      std::unique(CedeObligations.begin(), CedeObligations.end()),
+      CedeObligations.end());
+  out << "{\"schema\":\"toka.cede-obligation-evidence\",\"version\":1,\"records\":[";
+  for (size_t i = 0; i < CedeObligations.size(); ++i) {
+    if (i != 0)
+      out << ',';
+    const auto &record = CedeObligations[i];
+    out << "{\"stage\":\"" << cedeStageName(record.Stage)
+        << "\",\"status\":\"" << cedeStatusName(record.Status)
+        << "\",\"reason\":\"" << toString(record.Reason)
+        << "\",\"subject\":\"" << escapeJSON(record.Subject)
+        << "\",\"origin\":\"" << escapeJSON(record.Origin)
+        << "\",\"location\":";
+    dumpLocation(out, record.Location);
+    out << ",\"contract_location\":";
+    dumpLocation(out, record.ContractLocation);
     out << '}';
   }
   out << "]}\n";

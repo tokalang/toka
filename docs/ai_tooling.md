@@ -98,6 +98,18 @@ protocol. The deterministic AI tooling evaluation includes this evidence path;
 it proves compiler protocol availability and cost, not a claim about any
 particular remote model.
 
+For a focused ownership repair, request the companion cede-obligation view:
+
+```sh
+toka cede-obligations --json path/to/main.tk
+```
+
+[Cede Obligation Evidence v1](cede_obligation_evidence_v1.md) reports whether
+the caller transfer, callee consumption, or `cede` return obligation was
+fulfilled or omitted, together with both the triggering location and contract
+location. It is deliberately narrower than Public Semantic Evidence: use it
+to make the smallest ownership repair, then re-check and test the candidate.
+
 ## Regression evaluation
 
 Run the interface contracts and the fixed AI-coding task set after building:

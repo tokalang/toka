@@ -271,6 +271,8 @@ def main():
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_semantic_index.py",
              "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_cede_obligation_evidence.py",
+             "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_semantic_diff_preview.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_lsp_protocol.py",

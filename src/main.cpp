@@ -114,6 +114,7 @@ void printHelp() {
       << "  --check-only                    Stop after semantic checking\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
+      << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
       << "  --semantic-index=json           Emit the compiler semantic index\n"
       << "  --semantic-context=json         Emit bounded semantic context\n"
       << "  --semantic-query <kind>         Query the semantic index\n"
@@ -135,10 +136,19 @@ bool parseUnsignedArgument(const char *option, const char *value,
 
 class SemanticEvidenceDumpGuard {
 public:
+  explicit SemanticEvidenceDumpGuard(bool &cedeObligations)
+      : CedeObligations(cedeObligations) {}
   ~SemanticEvidenceDumpGuard() {
-    if (toka::SemanticEvidence::isEnabled())
-      toka::SemanticEvidence::dumpJSON(std::cout);
+    if (toka::SemanticEvidence::isEnabled()) {
+      if (CedeObligations)
+        toka::SemanticEvidence::dumpCedeObligationsJSON(std::cout);
+      else
+        toka::SemanticEvidence::dumpJSON(std::cout);
+    }
   }
+
+private:
+  bool &CedeObligations;
 };
 
 class StructuredDiagnosticsDumpGuard {
@@ -422,6 +432,7 @@ int main(int argc, char **argv) {
   bool dumpAssignmentStats = false;
   bool dumpHandleSurfaceStats = false;
   bool dumpSemanticEvidence = false;
+  bool dumpCedeObligations = false;
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
   bool dumpSemanticIndex = false;
@@ -437,7 +448,7 @@ int main(int argc, char **argv) {
   unsigned queryCharacter = 0;
   bool experimentalNoCapture = false;
   bool experimentalReadOnly = false;
-  SemanticEvidenceDumpGuard semanticEvidenceGuard;
+  SemanticEvidenceDumpGuard semanticEvidenceGuard(dumpCedeObligations);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
   bool runTopologyEval = false;
@@ -526,6 +537,8 @@ int main(int argc, char **argv) {
     } else if (arg == "--semantic-evidence=json" ||
                arg == "--dump-semantic-evidence=json") {
       dumpSemanticEvidence = true;
+    } else if (arg == "--cede-obligations=json") {
+      dumpCedeObligations = true;
     } else if (arg == "--dump-memory-summaries=json") {
       dumpMemorySummaries = true;
     } else if (arg == "--dump-memory-contracts=json") {
@@ -618,7 +631,7 @@ int main(int argc, char **argv) {
 
   if (structuredDiagnostics &&
       (g_JsonDiagnostics || dumpDependencies || dumpAssignmentStats ||
-       dumpHandleSurfaceStats || dumpSemanticEvidence || dumpMemorySummaries ||
+       dumpHandleSurfaceStats || dumpSemanticEvidence || dumpCedeObligations || dumpMemorySummaries ||
        dumpMemoryContracts || dumpSemanticIndex || dumpSemanticContext ||
        !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
     llvm::errs() << "--diagnostics-json cannot be combined with another "
@@ -634,15 +647,22 @@ int main(int argc, char **argv) {
                     "another JSON or evaluation output mode\n";
     return 1;
   }
-  if (dumpMemorySummaries &&
+  if (dumpCedeObligations &&
       (dumpSemanticEvidence || dumpAssignmentStats || dumpHandleSurfaceStats ||
+       dumpDependencies || runTopologyEval || g_JsonDiagnostics)) {
+    llvm::errs() << "--cede-obligations=json cannot be combined with another "
+                    "JSON or evaluation output mode\n";
+    return 1;
+  }
+  if (dumpMemorySummaries &&
+      (dumpSemanticEvidence || dumpCedeObligations || dumpAssignmentStats || dumpHandleSurfaceStats ||
        dumpDependencies || runTopologyEval || g_JsonDiagnostics)) {
     llvm::errs() << "--dump-memory-summaries=json cannot be combined with "
                     "another JSON or evaluation output mode\n";
     return 1;
   }
   if (dumpMemoryContracts &&
-      (dumpMemorySummaries || dumpSemanticEvidence || dumpAssignmentStats ||
+      (dumpMemorySummaries || dumpSemanticEvidence || dumpCedeObligations || dumpAssignmentStats ||
        dumpHandleSurfaceStats || dumpDependencies || runTopologyEval ||
        g_JsonDiagnostics)) {
     llvm::errs() << "--dump-memory-contracts=json cannot be combined with "
@@ -667,7 +687,7 @@ int main(int argc, char **argv) {
                     "semantic output mode\n";
     return 1;
   }
-  toka::SemanticEvidence::enable(dumpSemanticEvidence);
+  toka::SemanticEvidence::enable(dumpSemanticEvidence || dumpCedeObligations);
 
   if (!explainCode.empty()) {
     auto explanation = toka::DiagnosticEngine::explain(explainCode);

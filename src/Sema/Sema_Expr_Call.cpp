@@ -422,6 +422,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             (!callerCeded && !isExempt) ? SemanticReason::MissingExplicitCede
                                         : SemanticReason::CedeConsumed,
             subject, param.Name, param.Loc);
+        SemanticEvidence::recordCedeObligation(
+            CedeObligationStage::CallerTransfer,
+            (!callerCeded && !isExempt) ? CedeObligationStatus::Violated
+                                         : CedeObligationStatus::Fulfilled,
+            (!callerCeded && !isExempt) ? SemanticReason::MissingExplicitCede
+                                         : SemanticReason::CedeConsumed,
+            subject, param.Name, getLoc(argument), param.Loc);
       };
 
   auto isIndependentCedeTransfer = [&](Expr *argument,
@@ -2124,6 +2131,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                  : SemanticReason::CedeConsumed,
              subject, Fn && i < Fn->Args.size() ? Fn->Args[i].Name : subject,
              cedeParamLoc);
+         SemanticEvidence::recordCedeObligation(
+             CedeObligationStage::CallerTransfer,
+             (!isCallerCeded && !isCedeExempt)
+                 ? CedeObligationStatus::Violated
+                 : CedeObligationStatus::Fulfilled,
+             (!isCallerCeded && !isCedeExempt)
+                 ? SemanticReason::MissingExplicitCede
+                 : SemanticReason::CedeConsumed,
+             subject, Fn && i < Fn->Args.size() ? Fn->Args[i].Name : subject,
+             getLoc(Call->Args[i].get()), cedeParamLoc);
     }
 
     if (paramIsValueMutable && !paramIsHatted && !isCededParam &&

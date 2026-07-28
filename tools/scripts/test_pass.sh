@@ -579,6 +579,13 @@ if ! run_without_test_cache python3 tools/scripts/test_public_semantic_evidence.
 fi
 
 echo ""
+echo "Running Cede Obligation Evidence v1 ABI gate..."
+if ! run_without_test_cache python3 tools/scripts/test_cede_obligation_evidence.py; then
+    echo -e "${RED}Cede Obligation Evidence v1 ABI gate failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Ephemeral Semantic Diff Preview v1 ABI gate..."
 if ! run_without_test_cache python3 tools/scripts/test_semantic_diff_preview.py; then
     echo -e "${RED}Ephemeral Semantic Diff Preview v1 ABI gate failed!${NC}"

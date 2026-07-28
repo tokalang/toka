@@ -2764,8 +2764,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         continue;
 
       SymbolInfo *Info = nullptr;
+      SourceLocation argLoc = Arg.Loc.isValid() ? Arg.Loc : getLoc(Fn);
       if (CurrentScope->findSymbol(Arg.Name, Info) && Info && !Info->Moved) {
-        SourceLocation argLoc = Arg.Loc.isValid() ? Arg.Loc : getLoc(Fn);
         DiagnosticEngine::report(argLoc, DiagID::ERR_CEDE_PARAMETER_NOT_CONSUMED,
                                  Arg.Name);
         HasError = true;
@@ -2774,6 +2774,16 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                        SemanticDecision::Reject,
                        SemanticReason::UnconsumedCede, Arg.Name,
                        Fn->Name, argLoc);
+        SemanticEvidence::recordCedeObligation(
+            CedeObligationStage::CalleeConsumption,
+            CedeObligationStatus::Violated, SemanticReason::UnconsumedCede,
+            Arg.Name, Fn->Name, argLoc, argLoc);
+      } else if (Info && Info->Moved) {
+        SemanticEvidence::recordCedeObligation(
+            CedeObligationStage::CalleeConsumption,
+            CedeObligationStatus::Fulfilled, SemanticReason::CedeConsumed,
+            Arg.Name, Fn->Name,
+            Info->MoveLoc.isValid() ? Info->MoveLoc : argLoc, argLoc);
       }
     }
 
