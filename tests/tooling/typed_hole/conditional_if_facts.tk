@@ -1,0 +1,18 @@
+fn select(cond: bool) -> i32 {
+    auto answer: i32 = hole
+    auto live: i32 = if cond {
+        pass answer
+    } else {
+        pass 0
+    }
+    auto dead: i32 = if true {
+        pass 0
+    } else {
+        pass answer
+    }
+    return live + dead
+}
+
+fn main() -> i32 {
+    return select(true)
+}

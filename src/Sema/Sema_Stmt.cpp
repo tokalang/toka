@@ -94,6 +94,103 @@ directConditionalHoleDependencies(const Expr *expr, Scope *scope) {
   return {};
 }
 
+// The conditional-facts protocol has no authority to infer ownership,
+// borrowing, or control-flow facts.  It may, however, conservatively carry an
+// already-known hole dependency through a pure expression and a resolved call:
+// a union means the result can be incomplete on at least one evaluated input.
+// Cede is intentionally a hard boundary because a conditional fact cannot
+// stand in for a real source invalidation or cleanup obligation.
+static void collectConditionalHoleDependenciesFromStmt(
+    const Stmt *stmt, Scope *scope, std::set<uint64_t> &dependencies);
+
+static void collectConditionalHoleDependencies(
+    const Expr *expr, Scope *scope, std::set<uint64_t> &dependencies) {
+  if (!expr)
+    return;
+  if (auto *hole = dynamic_cast<const HoleExpr *>(expr)) {
+    dependencies.insert(hole->HoleId);
+    return;
+  }
+  if (auto *variable = dynamic_cast<const VariableExpr *>(expr)) {
+    if (!scope)
+      return;
+    SymbolInfo *info = nullptr;
+    std::string actualName;
+    if (scope->findVariableWithDeref(variable->Name, info, actualName) &&
+        info) {
+      dependencies.insert(info->ConditionalHoleIds.begin(),
+                          info->ConditionalHoleIds.end());
+    }
+    return;
+  }
+  if (dynamic_cast<const CedeExpr *>(expr))
+    return;
+  if (auto *binary = dynamic_cast<const BinaryExpr *>(expr)) {
+    collectConditionalHoleDependencies(binary->LHS.get(), scope, dependencies);
+    collectConditionalHoleDependencies(binary->RHS.get(), scope, dependencies);
+  } else if (auto *unary = dynamic_cast<const UnaryExpr *>(expr)) {
+    collectConditionalHoleDependencies(unary->RHS.get(), scope, dependencies);
+  } else if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+    collectConditionalHoleDependencies(postfix->LHS.get(), scope, dependencies);
+  } else if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+    collectConditionalHoleDependencies(cast->Expression.get(), scope,
+                                       dependencies);
+  } else if (auto *pass = dynamic_cast<const PassExpr *>(expr)) {
+    collectConditionalHoleDependencies(pass->Value.get(), scope, dependencies);
+  } else if (auto *call = dynamic_cast<const CallExpr *>(expr)) {
+    for (const auto &argument : call->Args)
+      collectConditionalHoleDependencies(argument.get(), scope, dependencies);
+  } else if (auto *method = dynamic_cast<const MethodCallExpr *>(expr)) {
+    collectConditionalHoleDependencies(method->Object.get(), scope,
+                                       dependencies);
+    for (const auto &argument : method->Args)
+      collectConditionalHoleDependencies(argument.get(), scope, dependencies);
+  } else if (auto *member = dynamic_cast<const MemberExpr *>(expr)) {
+    collectConditionalHoleDependencies(member->Object.get(), scope,
+                                       dependencies);
+  } else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(expr)) {
+    collectConditionalHoleDependencies(index->Array.get(), scope, dependencies);
+    for (const auto &part : index->Indices)
+      collectConditionalHoleDependencies(part.get(), scope, dependencies);
+  } else if (auto *ifExpr = dynamic_cast<const IfExpr *>(expr)) {
+    collectConditionalHoleDependencies(ifExpr->Condition.get(), scope,
+                                       dependencies);
+    if (ifExpr->IsComptime) {
+      if (ifExpr->ComptimeTaken)
+        collectConditionalHoleDependenciesFromStmt(ifExpr->Then.get(), scope,
+                                                   dependencies);
+      else
+        collectConditionalHoleDependenciesFromStmt(ifExpr->Else.get(), scope,
+                                                   dependencies);
+    } else {
+      collectConditionalHoleDependenciesFromStmt(ifExpr->Then.get(), scope,
+                                                 dependencies);
+      collectConditionalHoleDependenciesFromStmt(ifExpr->Else.get(), scope,
+                                                 dependencies);
+    }
+  }
+}
+
+static void collectConditionalHoleDependenciesFromStmt(
+    const Stmt *stmt, Scope *scope, std::set<uint64_t> &dependencies) {
+  if (!stmt)
+    return;
+  if (auto *block = dynamic_cast<const BlockStmt *>(stmt)) {
+    for (const auto &item : block->Statements)
+      collectConditionalHoleDependenciesFromStmt(item.get(), scope,
+                                                 dependencies);
+  } else if (auto *exprStmt = dynamic_cast<const ExprStmt *>(stmt)) {
+    collectConditionalHoleDependencies(exprStmt->Expression.get(), scope,
+                                       dependencies);
+  } else if (auto *returnStmt = dynamic_cast<const ReturnStmt *>(stmt)) {
+    collectConditionalHoleDependencies(returnStmt->ReturnValue.get(), scope,
+                                       dependencies);
+  } else if (auto *unsafeStmt = dynamic_cast<const UnsafeStmt *>(stmt)) {
+    collectConditionalHoleDependenciesFromStmt(unsafeStmt->Statement.get(),
+                                               scope, dependencies);
+  }
+}
+
 static bool isReadOnlyReferenceViewInitializer(ASTNode *Node,
                                                Scope *CurrentScope) {
   if (!Node || !CurrentScope)
@@ -1720,10 +1817,15 @@ void Sema::checkStmt(Stmt *S) {
 
     // Only a complete contextual hole may seed a conditional binding.  An
     // inferred `auto value = hole` is underconstrained and must remain
-    // unavailable rather than being mislabeled as conditional.
-    if (Var->Init && InitTypeObj && !InitTypeObj->isUnknown())
+    // unavailable rather than being mislabeled as conditional.  The direct
+    // helper preserves the narrow v1 alias contract; the expression collector
+    // then extends it through non-transfer expressions and resolved calls.
+    if (Var->Init && InitTypeObj && !InitTypeObj->isUnknown()) {
       Info.ConditionalHoleIds =
           directConditionalHoleDependencies(Var->Init.get(), CurrentScope);
+      collectConditionalHoleDependencies(Var->Init.get(), CurrentScope,
+                                         Info.ConditionalHoleIds);
+    }
 
     std::string dependencySoul =
         Info.TypeObj ? Info.TypeObj->getSoulName() : "";

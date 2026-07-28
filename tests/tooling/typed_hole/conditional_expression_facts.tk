@@ -1,0 +1,10 @@
+fn identity(value: i32) -> i32 {
+    return value
+}
+
+fn main() -> i32 {
+    auto answer: i32 = hole
+    auto arithmetic: i32 = answer + 1
+    auto through_call: i32 = identity(arithmetic)
+    return through_call
+}

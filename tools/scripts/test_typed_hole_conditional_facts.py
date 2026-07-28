@@ -11,6 +11,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "tests/tooling/typed_hole/conditional_binding_facts.tk"
+EXPRESSION_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_expression_facts.tk"
+IF_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_if_facts.tk"
 UNDERCONSTRAINED = ROOT / "tests/tooling/typed_hole/underconstrained.tk"
 
 
@@ -76,6 +78,24 @@ def main():
     require(first.stdout == second.stdout, "conditional facts are not deterministic")
     payload = json.loads(first.stdout)
     validate(payload)
+
+    expression = run([tokac, "--conditional-facts=json", "--check-only",
+                      EXPRESSION_SOURCE], 1)
+    expression_payload = json.loads(expression.stdout)
+    expression_facts = expression_payload["facts"]
+    require([fact["symbol"] for fact in expression_facts] == [
+        "answer", "arithmetic", "through_call"
+    ], "expression/call conditional facts were not emitted deterministically")
+    require(all(fact["conditional_on"] == [1] for fact in expression_facts),
+            "expression/call propagation lost the source hole")
+
+    if_result = run([tokac, "--conditional-facts=json", "--check-only",
+                     IF_SOURCE], 1)
+    if_facts = json.loads(if_result.stdout)["facts"]
+    require([fact["symbol"] for fact in if_facts] == ["answer", "live"],
+            "conditional if join did not preserve live or suppress dead branch facts")
+    require(all(fact["conditional_on"] == [1] for fact in if_facts),
+            "conditional if join lost the source hole")
 
     unavailable = run([tokac, "--conditional-facts=json", "--check-only",
                        UNDERCONSTRAINED], 1)
