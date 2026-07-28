@@ -65,6 +65,54 @@ int toka_random_bytes(void *buf, size_t len) {
 #endif
 }
 
+// Service shutdown capture deliberately has no scheduler or allocator path.
+// POSIX only permits async-signal-safe work in a signal handler; retaining the
+// first signal in sig_atomic_t lets ordinary Toka task code decide when and how
+// to cancel service work.
+#if !defined(_WIN32) && !defined(__wasi__)
+static volatile sig_atomic_t toka_shutdown_signal = 0;
+
+static void toka_shutdown_signal_handler(int signal_number) {
+    if (toka_shutdown_signal == 0) {
+        toka_shutdown_signal = signal_number;
+    }
+}
+
+int toka_shutdown_signal_supported(void) {
+    return 1;
+}
+
+int toka_shutdown_signal_install(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = toka_shutdown_signal_handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    if (sigaction(SIGINT, &action, NULL) != 0) return -1;
+    if (sigaction(SIGTERM, &action, NULL) != 0) return -1;
+    return 0;
+}
+
+int toka_shutdown_signal_take(void) {
+    sig_atomic_t observed = toka_shutdown_signal;
+    toka_shutdown_signal = 0;
+    return (int)observed;
+}
+
+int toka_shutdown_signal_raise_for_test(int signal_number) {
+    if (signal_number != SIGINT && signal_number != SIGTERM) return -1;
+    return raise(signal_number);
+}
+#else
+int toka_shutdown_signal_supported(void) { return 0; }
+int toka_shutdown_signal_install(void) { return -1; }
+int toka_shutdown_signal_take(void) { return 0; }
+int toka_shutdown_signal_raise_for_test(int signal_number) {
+    (void)signal_number;
+    return -1;
+}
+#endif
+
 // Replace a path through a uniquely-created sibling file. POSIX rename makes
 // the target replacement atomically visible to readers on the same filesystem.
 // This is intentionally an atomic-visibility primitive, not a crash-durable

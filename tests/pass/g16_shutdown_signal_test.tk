@@ -1,0 +1,27 @@
+import core/option::{Option}
+import std/signal::{ShutdownSignal, install_shutdown_handlers, shutdown_supported, take_shutdown_signal, wait_shutdown_signal_async}
+import std/task::{block_on}
+
+extern fn toka_shutdown_signal_raise_for_test(signal_number: i32) -> i32
+
+fn run() -> async i32 {
+    if !shutdown_supported() {
+        return 0
+    }
+    assert(install_shutdown_handlers().is_ok(), "install explicit shutdown handlers")
+    assert(take_shutdown_signal().is_none(), "signal state starts empty")
+    assert(toka_shutdown_signal_raise_for_test(15:i32) == 0:i32, "raise SIGTERM test event")
+    assert(toka_shutdown_signal_raise_for_test(2:i32) == 0:i32, "raise duplicate signal test event")
+    auto observed = wait_shutdown_signal_async(1:i32).await
+    assert(observed.is_some(), "waiter observes first signal")
+    match observed.unwrap() {
+        auto ShutdownSignal::Terminate => {}
+        _ => assert(false, "first shutdown signal wins")
+    }
+    assert(take_shutdown_signal().is_none(), "observed signal is consumed exactly once")
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(run())
+}

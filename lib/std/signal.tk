@@ -1,0 +1,58 @@
+// Explicit, cooperative shutdown-event capture for long-lived services.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/task::{sleep_async}
+
+extern fn toka_shutdown_signal_supported() -> i32
+extern fn toka_shutdown_signal_install() -> i32
+extern fn toka_shutdown_signal_take() -> i32
+
+pub shape ShutdownSignal (
+    Interrupt = 2 |
+    Terminate = 15
+)
+
+pub fn shutdown_supported() -> bool {
+    return toka_shutdown_signal_supported() != 0:i32
+}
+
+pub fn install_shutdown_handlers() -> Result<i32, string> {
+    if !shutdown_supported() {
+        return Result<i32, string>::Err(string::from("shutdown signals are unsupported on this platform"))
+    }
+    if toka_shutdown_signal_install() != 0:i32 {
+        return Result<i32, string>::Err(string::from("failed to install shutdown signal handlers"))
+    }
+    return Result<i32, string>::Ok(0:i32)
+}
+
+pub fn take_shutdown_signal() -> Option<ShutdownSignal> {
+    auto signal_number = toka_shutdown_signal_take()
+    if signal_number == 2:i32 {
+        return Option<ShutdownSignal>::Some(ShutdownSignal::Interrupt)
+    }
+    if signal_number == 15:i32 {
+        return Option<ShutdownSignal>::Some(ShutdownSignal::Terminate)
+    }
+    return Option<ShutdownSignal>::None
+}
+
+// A canceled waiter returns None.  The polling interval is clamped so callers
+// cannot accidentally create a busy loop.
+pub fn wait_shutdown_signal_async(poll_interval_ms: i32) -> async Option<ShutdownSignal> {
+    auto interval# = poll_interval_ms
+    if interval < 1:i32 {
+        interval = 1:i32
+    }
+    loop true {
+        auto observed = take_shutdown_signal()
+        if observed.is_some() {
+            return observed
+        }
+        if sleep_async(interval).await < 0:i32 {
+            return Option<ShutdownSignal>::None
+        }
+    }
+    return Option<ShutdownSignal>::None
+}
