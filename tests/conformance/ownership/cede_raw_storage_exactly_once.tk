@@ -44,14 +44,11 @@ shape RawStore<'T> (
 impl<'T> RawStore<'T>@encap {
     fn drop(self#) {
         unsafe {
-            loop self.len > 0:usize {
-                self.len -= 1:usize
-                auto dropped# = cede self.buf[self.len]
-            }
             if self.*buf != null {
-                unsafe free [self.cap] self.*#buf
+                unsafe free [self.len] self.*#buf
                 self.*buf = null as *[T]
             }
+            self.len = 0:usize
             self.cap = 0:usize
         }
     }
@@ -74,7 +71,7 @@ impl<'T> RawStore<'T> {
                 next[index] = cede self.buf[index]
                 index += 1:usize
             }
-            if self.*buf != null { unsafe free [self.cap] self.*#buf }
+            if self.*buf != null { unsafe free [0] self.*#buf }
             self.*buf = *next
             self.cap = next_cap
         }

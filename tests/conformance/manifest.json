@@ -91,6 +91,14 @@
       "description": "TcpStream close disarms its descriptor and is_valid honors the closed state"
     },
     {
+      "id": "std_ring_resource_exactly_once_01",
+      "path": "std/ring_resource_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Ring raw storage preserves exactly-once resource cleanup across wraparound, growth, clear, and drop"
+    },
+    {
       "id": "ownership_interior_mutable_field_shared_view_01",
       "path": "ownership/interior_mutable_field_shared_view.tk",
       "type": "run",

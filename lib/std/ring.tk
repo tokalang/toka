@@ -73,7 +73,7 @@ impl<'T> RingCore<'T> {
             }
             
             if self.*buf != null {
-                unsafe free [self.cap] self.*#buf
+                unsafe free [0] self.*#buf
             }
             
             self.*buf = *new_buf
@@ -148,8 +148,11 @@ impl<'T> RingCore<'T>@encap {
         unsafe {
             if self.*buf != null {
                 self#.clear()
-                unsafe free [self.cap] self.*#buf
+                unsafe free [0] self.*#buf
+                self.*buf = null as *['T]
             }
+            self.cap = 0
+            self.mask = 0
         }
     }
     

@@ -988,6 +988,24 @@ auto *node = unsafe alloc Node(val = 1)
 unsafe free *node
 ```
 
+For a raw array, the count on `free[count]` is the number of live elements
+starting at index zero that must be dropped before the allocation is released.
+It is not the allocation capacity. A raw container with a contiguous live
+prefix uses `free[len]`; after every live element has been moved elsewhere it
+uses `free[0]` to release only the storage. Containers whose live elements are
+not a contiguous prefix must drop those elements themselves and then use
+`free[0]`.
+
+```toka
+auto *buf = unsafe alloc [capacity] Resource
+// initialize buf[0..len]
+unsafe free [len] *buf
+
+auto *old = unsafe alloc [capacity] Resource
+// move every live element from old into replacement storage
+unsafe free [0] *old
+```
+
 Pointer casts use `as`.
 
 ```toka
