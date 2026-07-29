@@ -1349,11 +1349,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           continue;
         }
 
-        if (auto *hole = dynamic_cast<HoleExpr *>(Call->Args[i].get())) {
-          SemanticEvidence::recordHoleGoal(
-              hole->HoleId, HoleGoalStatus::Underconstrained, false, "", "",
-              "", false, false, false, {}, hole->Loc);
-          error(Call->Args[i].get(), DiagID::ERR_TYPED_HOLE_UNDERCONSTRAINED);
+        if (auto *todo = dynamic_cast<TodoExpr *>(Call->Args[i].get())) {
+          SemanticEvidence::recordTodoGoal(
+              todo->TodoId, TodoGoalStatus::Underconstrained, false, "", "",
+              "", false, false, false, {}, todo->Loc);
+          error(Call->Args[i].get(), DiagID::ERR_TYPED_TODO_UNDERCONSTRAINED);
           deductionFailed = true;
           continue;
         }

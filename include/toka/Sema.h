@@ -63,14 +63,14 @@ struct SymbolInfo {
   std::set<std::string> LifeDependencySet; // [NEW] Shadow Dependency Set
   std::map<std::string, std::set<std::string>> FieldDependencySet; // [NEW] Member-specific deps
 
-  // An incomplete typed-hole binding is useful to editor tooling only as a
+  // An incomplete typed-todo binding is useful to editor tooling only as a
   // conditional fact.  It is never a completed initialization or ordinary
-  // semantic-evidence Allow.  This set records the direct hole requirements
+  // semantic-evidence Allow.  This set records the direct todo requirements
   // on which this binding depends; each direct binding transfer reuses the
   // source set rather than tracing arbitrary provenance.  A narrow,
   // non-transfer expression and whole-binding assignment flow may carry the
   // same set forward; this remains editor-only state.
-  std::set<uint64_t> ConditionalHoleIds;
+  std::set<uint64_t> ConditionalTodoIds;
 
   // A closure value must retain its capture facts after the literal is bound.
   // Unknown function values are intentionally not treated as boundary-safe.
@@ -467,7 +467,7 @@ private:
     std::map<std::string, bool> Moved;
     // Editor-only incompleteness state.  It follows local value flow but
     // never grants an operation or substitutes for PAL.
-    std::map<std::string, std::set<uint64_t>> ConditionalHoleIds;
+    std::map<std::string, std::set<uint64_t>> ConditionalTodoIds;
     // Path-local shared-flow ceilings survive control-flow joins.  Presence
     // means that at least one reachable path has installed a direct source
     // whose payload is not writable; the conservative join keeps that
@@ -606,7 +606,7 @@ private:
   checkUnaryExpr(UnaryExpr *Unary); // New Object API
   std::shared_ptr<toka::Type>
   checkBinaryExpr(BinaryExpr *Bin); // New Object API
-  std::set<uint64_t> collectConditionalHoleDependencies(const Expr *expr);
+  std::set<uint64_t> collectConditionalTodoDependencies(const Expr *expr);
   bool validateIntegerLiteralRange(
       ASTNode *site, NumberExpr *literal,
       const std::shared_ptr<toka::Type> &targetType, bool isNegative);

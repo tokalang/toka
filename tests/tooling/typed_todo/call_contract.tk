@@ -3,5 +3,5 @@ fn identity(value: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    return identity(hole)
+    return identity(todo)
 }

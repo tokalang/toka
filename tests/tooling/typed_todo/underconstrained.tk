@@ -1,4 +1,4 @@
 fn main() -> i32 {
-    auto answer = hole
+    auto answer = todo
     return 0
 }

@@ -45,10 +45,10 @@
 | `if x == none` 或者 `if *ptr == null` | 检查指针或实体是否为空 |
 | `guard x` 或者 `guard *ptr` | 检查所选视图是否可用 | 带帽 guard（如 `guard ^node`）只检查选中的 handle 层；裸 payload guard（如 `guard node`）可以一次证明安全到达 payload 所需的全部 `null` / `none` 存储层，因此 `guard node { ... }` 可以直接处理 `nul ^#node#: Node?` 的可用 payload。深层 guard 的失败分支只说明路径某处为空；若需区分 handle `null` 与 payload `none`，应分层 guard。guard 不跨越 `Option` / `Result`，因此不是结果类型的隐式 flatten。|
 | **未完成编辑** | | |
-| `hole` | 类型洞 | 只能作为表达式使用的保留关键字；它消耗已经确定的需求，但不是变量、值、place、能力或资源。任何可达洞都使检查/构建失败，且不产生编译产物。|
-| `auto value: i32 = hole` | 有完整需求的洞 | 报 `E04603`，并可由 `toka hole-goals --json --check-only file.tk` 输出 `i32` 需求；该 JSON 不是普通 `Allow` 证据。|
-| `auto value = hole` | 推断不足 | 报 `E04604`；洞不参与类型推断、候选选择或泛型实参推断。|
-| `^hole` / `hole#` / `cede hole` | 不支持的洞上下文 | 报 `E04605`；洞不能制造 H/P 权限、路径来源或资源转移，也不能传给 `cede` 参数。|
+| `todo` | 类型待办 | 只能作为表达式使用的保留关键字；它消耗已经确定的需求，但不是变量、值、place、能力或资源。任何可达待办都使检查/构建失败，且不产生编译产物。|
+| `auto value: i32 = todo` | 有完整需求的待办 | 报 `E04603`，并可由 `toka todo-goals --json --check-only file.tk` 输出 `i32` 需求；该 JSON 不是普通 `Allow` 证据。|
+| `auto value = todo` | 推断不足 | 报 `E04604`；待办不参与类型推断、候选选择或泛型实参推断。|
+| `^todo` / `todo#` / `cede todo` | 不支持的待办上下文 | 报 `E04605`；待办不能制造 H/P 权限、路径来源或资源转移，也不能传给 `cede` 参数。|
 | **函数与方法** | | |
 | `fn add(a: i32, b: i32) -> i32` | 函数定义 | 参数需显式类型，`->` 后跟返回类型,函数传参行为为原地捕获(隐式借用传递,不需要额外添加&符号)，返回为值传递，返回引用需要显式添加&符号，如 `-> &i32` 表示返回一个 `i32` 的引用，返回其他指针形态同理 |
 | `fn read(x: T)` / `fn mutate(x#: T)` | 默认 payload 参数 | **参数层级准则**：普通参数默认绑定 payload/Soul 视图。Toka 的传参逻辑语义已经是原地捕获，因此若函数只读取或修改实体内容，应写裸参数或 `#` payload 参数，如 `x: T`、`x#: T`，不要为了表达“借用传参”额外戴帽。|

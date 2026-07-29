@@ -97,7 +97,7 @@ static bool selectsHandleIdentity(const Expr *E) {
                U->Op == TokenType::Ampersand);
 }
 
-// Conditional hole state is associated only with a whole local binding.
+// Conditional todo state is associated only with a whole local binding.
 // A member, index, or raw dereference needs a path-sensitive fact model and
 // remains outside this first assignment-flow slice.
 static const VariableExpr *directBindingAssignmentTarget(const Expr *expr) {
@@ -123,11 +123,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
                    Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
   // Normal assignment preserves RHS-first analysis because the RHS can carry
-  // a borrow or transfer.  A hole carries neither, so it is the one case
+  // a borrow or transfer.  A todo carries neither, so it is the one case
   // where we may first inspect the LHS solely to supply its complete target
   // contract.
-  const bool rhsIsHole = isAssign &&
-                         dynamic_cast<HoleExpr *>(Bin->RHS.get()) != nullptr;
+  const bool rhsIsTodo = isAssign &&
+                         dynamic_cast<TodoExpr *>(Bin->RHS.get()) != nullptr;
 
   // 1. Resolve Operands using New API
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
@@ -135,10 +135,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
   m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
   std::shared_ptr<toka::Type> rhsType;
-  if (!rhsIsHole)
+  if (!rhsIsTodo)
     rhsType = checkExpr(Bin->RHS.get());
   std::string rhsBorrowSource = ""; 
-  if (!rhsIsHole && !getPathString(Bin->RHS.get()).empty()) {
+  if (!rhsIsTodo && !getPathString(Bin->RHS.get()).empty()) {
       rhsBorrowSource = m_LastBorrowSource;
   }
 
@@ -176,7 +176,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   m_InLHS = oldLHS;
   m_IsAssignmentTarget = oldTarget;
 
-  if (rhsIsHole)
+  if (rhsIsTodo)
     rhsType = checkExpr(Bin->RHS.get(), lhsType);
 
   if (isAssign && lhsType && lhsType->IsWritable && !rhsBorrowSource.empty()) {
@@ -1196,8 +1196,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (CurrentScope->findVariableWithDeref(target->Name, info,
                                                 actualName) &&
             info) {
-          info->ConditionalHoleIds =
-              collectConditionalHoleDependencies(Bin->RHS.get());
+          info->ConditionalTodoIds =
+              collectConditionalTodoDependencies(Bin->RHS.get());
         }
       }
     }

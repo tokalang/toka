@@ -103,7 +103,7 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
   if (!E)
     return {};
 
-  if (dynamic_cast<HoleExpr *>(E))
+  if (dynamic_cast<TodoExpr *>(E))
     return {};
 
   auto applyPathFlowCeiling = [&](AccessCapability capability) {
@@ -294,7 +294,7 @@ PermissionFlow Sema::getPermissionFlow(Expr *E) {
   if (!E)
     return {};
 
-  if (dynamic_cast<HoleExpr *>(E)) {
+  if (dynamic_cast<TodoExpr *>(E)) {
     PermissionFlow flow;
     flow.Kind = PermissionFlowKind::RequirementOnly;
     return flow;
@@ -420,7 +420,7 @@ AccessIntent Sema::getAccessIntent(Expr *E) {
   if (!E)
     return {};
 
-  if (dynamic_cast<HoleExpr *>(E))
+  if (dynamic_cast<TodoExpr *>(E))
     return {};
 
   if (auto *Cast = dynamic_cast<CastExpr *>(E))
@@ -499,24 +499,24 @@ static std::map<std::string, bool> captureVisibleMoved(Scope *ScopePtr) {
 }
 
 static std::map<std::string, std::set<uint64_t>>
-captureVisibleConditionalHoleIds(Scope *ScopePtr) {
+captureVisibleConditionalTodoIds(Scope *ScopePtr) {
   std::map<std::string, std::set<uint64_t>> dependencies;
   for (Scope *S = ScopePtr; S; S = S->Parent) {
     for (const auto &pair : S->Symbols) {
       if (!dependencies.count(pair.first))
-        dependencies[pair.first] = pair.second.ConditionalHoleIds;
+        dependencies[pair.first] = pair.second.ConditionalTodoIds;
     }
   }
   return dependencies;
 }
 
-static void restoreVisibleConditionalHoleIds(
+static void restoreVisibleConditionalTodoIds(
     Scope *ScopePtr,
     const std::map<std::string, std::set<uint64_t>> &dependencies) {
   for (const auto &pair : dependencies) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info)
-      info->ConditionalHoleIds = pair.second;
+      info->ConditionalTodoIds = pair.second;
   }
 }
 
@@ -539,7 +539,7 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
-  state.ConditionalHoleIds = captureVisibleConditionalHoleIds(CurrentScope);
+  state.ConditionalTodoIds = captureVisibleConditionalTodoIds(CurrentScope);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
   state.PAL = PALCheckerState.snapshot();
   return state;
@@ -552,8 +552,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
   std::map<std::string, bool> mergedMoved = states.front().Moved;
-  std::map<std::string, std::set<uint64_t>> mergedConditionalHoleIds =
-      states.front().ConditionalHoleIds;
+  std::map<std::string, std::set<uint64_t>> mergedConditionalTodoIds =
+      states.front().ConditionalTodoIds;
   std::set<AccessPath> mergedPayloadFlowRestrictions =
       states.front().PayloadFlowRestrictedPaths;
   PALChecker mergedPAL = states.front().PAL;
@@ -581,8 +581,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       pair.second = pair.second || moved;
     }
 
-    for (const auto &pair : state.ConditionalHoleIds) {
-      auto &dependencies = mergedConditionalHoleIds[pair.first];
+    for (const auto &pair : state.ConditionalTodoIds) {
+      auto &dependencies = mergedConditionalTodoIds[pair.first];
       dependencies.insert(pair.second.begin(), pair.second.end());
     }
 
@@ -599,7 +599,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   }
 
   restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved);
-  restoreVisibleConditionalHoleIds(CurrentScope, mergedConditionalHoleIds);
+  restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
 }
@@ -1118,8 +1118,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   if (!E)
     return toka::Type::fromString("void");
 
-  if (dynamic_cast<HoleExpr *>(E)) {
-    auto *hole = static_cast<HoleExpr *>(E);
+  if (dynamic_cast<TodoExpr *>(E)) {
+    auto *todo = static_cast<TodoExpr *>(E);
     if (m_ExpectedType && !m_ExpectedType->isUnknown() &&
         !m_ExpectedType->IsCede && !m_ExpectedCedeTransfer) {
       auto expected = resolveType(m_ExpectedType, true);
@@ -1146,27 +1146,27 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
       const bool nullable = expected &&
           (expected->IsNullable || (soul && soul->IsNullable));
-      SemanticEvidence::recordHoleGoal(
-          hole->HoleId, HoleGoalStatus::Incomplete, true,
+      SemanticEvidence::recordTodoGoal(
+          todo->TodoId, TodoGoalStatus::Incomplete, true,
           expected ? expected->toString() : m_ExpectedType->toString(),
           morphology, "none", handleRebind, payloadWrite, nullable, {}, E->Loc);
-      DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_INCOMPLETE,
+      DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_TODO_INCOMPLETE,
                                m_ExpectedType->toString());
       HasError = true;
       return m_ExpectedType;
     }
-    const HoleGoalStatus status =
+    const TodoGoalStatus status =
         m_ExpectedCedeTransfer || (m_ExpectedType && m_ExpectedType->IsCede)
-            ? HoleGoalStatus::Unsupported
-            : HoleGoalStatus::Underconstrained;
-    SemanticEvidence::recordHoleGoal(hole->HoleId, status, false, "", "",
+            ? TodoGoalStatus::Unsupported
+            : TodoGoalStatus::Underconstrained;
+    SemanticEvidence::recordTodoGoal(todo->TodoId, status, false, "", "",
                                      "", false, false, false, {}, E->Loc);
-    if (status == HoleGoalStatus::Unsupported) {
-      DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
+    if (status == TodoGoalStatus::Unsupported) {
+      DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_TODO_UNSUPPORTED_CONTEXT);
       HasError = true;
       return m_ExpectedType;
     }
-    DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_HOLE_UNDERCONSTRAINED);
+    DiagnosticEngine::report(E->Loc, DiagID::ERR_TYPED_TODO_UNDERCONSTRAINED);
     HasError = true;
     return toka::Type::fromString("unknown");
   }
@@ -2144,7 +2144,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // unset state on the reachable sibling path.
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
-    auto conditionalBefore = captureVisibleConditionalHoleIds(CurrentScope);
+    auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
     if (narrowThen)
@@ -2153,7 +2153,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto masksThen = captureVisibleInitMasks(CurrentScope);
     auto movedThen = captureVisibleMoved(CurrentScope);
-    auto conditionalThen = captureVisibleConditionalHoleIds(CurrentScope);
+    auto conditionalThen = captureVisibleConditionalTodoIds(CurrentScope);
     auto palThen = PALCheckerState.snapshot();
 
     if (narrowThen)
@@ -2170,7 +2170,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (ie->Else) {
       // Restore Before Else
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
-      restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
+      restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
@@ -2180,7 +2180,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
       elseReturns = allPathsJump(ie->Else.get());
-      auto conditionalElse = captureVisibleConditionalHoleIds(CurrentScope);
+      auto conditionalElse = captureVisibleConditionalTodoIds(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
       if (narrowElse)
@@ -2190,18 +2190,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (thenReturns && elseReturns) {
         // No reachable continuation; keep the incoming PAL state for any
         // subsequent dead-code diagnostics.
-        restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
+        restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
         PALCheckerState.restore(palBefore);
       } else if (thenReturns) {
         // State is purely from Else branch.  Restore the editor-only state
         // explicitly because narrowing restoration may have replaced a full
         // SymbolInfo after the snapshot was taken.
-        restoreVisibleConditionalHoleIds(CurrentScope, conditionalElse);
+        restoreVisibleConditionalTodoIds(CurrentScope, conditionalElse);
         PALCheckerState.restore(palElse);
       } else if (elseReturns) {
         // State is purely from Then branch
         restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen);
-        restoreVisibleConditionalHoleIds(CurrentScope, conditionalThen);
+        restoreVisibleConditionalTodoIds(CurrentScope, conditionalThen);
         PALCheckerState.restore(palThen);
       } else {
         // Actual Intersection
@@ -2226,7 +2226,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             dependencies.insert(conditionalElse[pair.first].begin(),
                                 conditionalElse[pair.first].end());
           }
-          info->ConditionalHoleIds = std::move(dependencies);
+          info->ConditionalTodoIds = std::move(dependencies);
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
       }
@@ -2248,14 +2248,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (!CurrentScope->findSymbol(pair.first, info) || !info)
           continue;
         if (thenReturns) {
-          info->ConditionalHoleIds = pair.second;
+          info->ConditionalTodoIds = pair.second;
         } else {
           std::set<uint64_t> dependencies = pair.second;
           if (conditionalThen.count(pair.first)) {
             dependencies.insert(conditionalThen[pair.first].begin(),
                                 conditionalThen[pair.first].end());
           }
-          info->ConditionalHoleIds = std::move(dependencies);
+          info->ConditionalTodoIds = std::move(dependencies);
         }
       }
       if (thenReturns) {
@@ -2568,7 +2568,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
     }
-    auto conditionalBefore = captureVisibleConditionalHoleIds(CurrentScope);
+    auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2637,7 +2637,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // Loop iteration count and back-edge reachability are not modeled by the
     // conditional-facts v1 protocol.  Do not leak a body-local assignment
     // fact past the loop until that dedicated fixed-point slice exists.
-    restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
+    restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
 
     return std::make_shared<VoidType>();
   } else if (auto *fe = dynamic_cast<ForExpr *>(E)) {
@@ -2825,7 +2825,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
-    auto conditionalBefore = captureVisibleConditionalHoleIds(CurrentScope);
+    auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2992,7 +2992,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     // As with `loop`, conditional-facts v1 does not model iteration or the
     // `for ... or` reachability split.  Preserve the incoming fact state.
-    restoreVisibleConditionalHoleIds(CurrentScope, conditionalBefore);
+    restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
 
     if (isReceiver) {
       if (bodyType == "void" && !bodyJumps)
@@ -3016,11 +3016,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.releaseBorrow(iteratorSourcePath);
     return toka::Type::fromString((bodyType != "void") ? bodyType : elseType);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
-    if (auto *hole = dynamic_cast<HoleExpr *>(ce->Value.get())) {
-      SemanticEvidence::recordHoleGoal(
-          hole->HoleId, HoleGoalStatus::Unsupported, false, "", "", "",
-          false, false, false, {}, hole->Loc);
-      error(ce, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
+    if (auto *todo = dynamic_cast<TodoExpr *>(ce->Value.get())) {
+      SemanticEvidence::recordTodoGoal(
+          todo->TodoId, TodoGoalStatus::Unsupported, false, "", "", "",
+          false, false, false, {}, todo->Loc);
+      error(ce, DiagID::ERR_TYPED_TODO_UNSUPPORTED_CONTEXT);
       return toka::Type::fromString("unknown");
     }
     if (auto *call = dynamic_cast<CallExpr *>(ce->Value.get()))

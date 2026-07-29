@@ -32,11 +32,11 @@ static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
 
-  if (auto *hole = dynamic_cast<HoleExpr *>(Unary->RHS.get())) {
-    SemanticEvidence::recordHoleGoal(hole->HoleId, HoleGoalStatus::Unsupported,
+  if (auto *todo = dynamic_cast<TodoExpr *>(Unary->RHS.get())) {
+    SemanticEvidence::recordTodoGoal(todo->TodoId, TodoGoalStatus::Unsupported,
                                      false, "", "", "", false, false, false,
                                      {}, Unary->Loc);
-    error(Unary, DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
+    error(Unary, DiagID::ERR_TYPED_TODO_UNSUPPORTED_CONTEXT);
     return m_ExpectedType ? m_ExpectedType : toka::Type::fromString("unknown");
   }
 

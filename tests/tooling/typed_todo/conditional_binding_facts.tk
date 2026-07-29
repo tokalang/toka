@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    auto answer: i32 = hole
+    auto answer: i32 = todo
     auto forwarded: i32 = answer
     auto forwarded_again: i32 = forwarded
     return forwarded_again

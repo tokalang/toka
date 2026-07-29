@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""ABI gate for the narrow Typed Hole Conditional Facts v1 binding slice."""
+"""ABI gate for the narrow Typed Todo Conditional Facts v1 binding slice."""
 
 import argparse
 import json
@@ -10,14 +10,14 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "tests/tooling/typed_hole/conditional_binding_facts.tk"
-EXPRESSION_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_expression_facts.tk"
-IF_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_if_facts.tk"
-MATCH_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_match_facts.tk"
-ASSIGNMENT_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_assignment_facts.tk"
-ASSIGNMENT_RESET_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_assignment_reset.tk"
-LOOP_BOUNDARY_SOURCE = ROOT / "tests/tooling/typed_hole/conditional_loop_boundary.tk"
-UNDERCONSTRAINED = ROOT / "tests/tooling/typed_hole/underconstrained.tk"
+SOURCE = ROOT / "tests/tooling/typed_todo/conditional_binding_facts.tk"
+EXPRESSION_SOURCE = ROOT / "tests/tooling/typed_todo/conditional_expression_facts.tk"
+IF_SOURCE = ROOT / "tests/tooling/typed_todo/conditional_if_facts.tk"
+MATCH_SOURCE = ROOT / "tests/tooling/typed_todo/conditional_match_facts.tk"
+ASSIGNMENT_SOURCE = ROOT / "tests/tooling/typed_todo/conditional_assignment_facts.tk"
+ASSIGNMENT_RESET_SOURCE = ROOT / "tests/tooling/typed_todo/conditional_assignment_reset.tk"
+LOOP_BOUNDARY_SOURCE = ROOT / "tests/tooling/typed_todo/conditional_loop_boundary.tk"
+UNDERCONSTRAINED = ROOT / "tests/tooling/typed_todo/underconstrained.tk"
 
 
 def require(condition, message):
@@ -51,7 +51,7 @@ def validate(payload):
         require(fact["symbol"] == symbol and fact["type"] == "i32",
                 "binding fact identity changed")
         require(fact["status"] == "conditional" and fact["conditional_on"] == [1],
-                "hole dependency did not propagate through a direct alias")
+                "todo dependency did not propagate through a direct alias")
         location = fact["location"]
         require(set(location) == {"file", "line", "column"},
                 "location fields changed")
@@ -91,7 +91,7 @@ def main():
         "answer", "arithmetic", "through_call"
     ], "expression/call conditional facts were not emitted deterministically")
     require(all(fact["conditional_on"] == [1] for fact in expression_facts),
-            "expression/call propagation lost the source hole")
+            "expression/call propagation lost the source todo")
 
     if_result = run([tokac, "--conditional-facts=json", "--check-only",
                      IF_SOURCE], 1)
@@ -99,7 +99,7 @@ def main():
     require([fact["symbol"] for fact in if_facts] == ["answer", "live"],
             "conditional if join did not preserve live or suppress dead branch facts")
     require(all(fact["conditional_on"] == [1] for fact in if_facts),
-            "conditional if join lost the source hole")
+            "conditional if join lost the source todo")
 
     match_result = run([tokac, "--conditional-facts=json", "--check-only",
                         MATCH_SOURCE], 1)
@@ -107,7 +107,7 @@ def main():
     require([fact["symbol"] for fact in match_facts] == ["answer", "chosen"],
             "conditional match join did not preserve the live arm dependency")
     require(all(fact["conditional_on"] == [1] for fact in match_facts),
-            "conditional match join lost the source hole")
+            "conditional match join lost the source todo")
 
     assignment_result = run([tokac, "--conditional-facts=json", "--check-only",
                              ASSIGNMENT_SOURCE], 1)
@@ -117,7 +117,7 @@ def main():
             "conditional assignment did not update the later declaration")
     require(all(fact["conditional_on"] == [1]
                 for fact in assignment_facts),
-            "conditional assignment lost the source hole")
+            "conditional assignment lost the source todo")
 
     reset_result = run([tokac, "--conditional-facts=json", "--check-only",
                         ASSIGNMENT_RESET_SOURCE], 1)
@@ -136,12 +136,12 @@ def main():
     unavailable_payload = json.loads(unavailable.stdout)
     require(unavailable_payload == {
         "schema": "toka.conditional-facts", "version": 1, "facts": []
-    }, "an underconstrained hole fabricated a conditional binding fact")
+    }, "an underconstrained todo fabricated a conditional binding fact")
 
     wrapped = run([toka, "conditional-facts", "--json", "--check-only", SOURCE], 1)
     require(json.loads(wrapped.stdout) == payload,
             "SDK wrapper changed conditional-facts output")
-    print("Typed Hole Conditional Facts v1 binding gate passed")
+    print("Typed Todo Conditional Facts v1 binding gate passed")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://toka-lang.org/schemas/toka.conditional-facts.v1.schema.json",
-  "title": "Toka Typed Hole Conditional Facts v1",
+  "title": "Toka Typed Todo Conditional Facts v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "version", "facts"],

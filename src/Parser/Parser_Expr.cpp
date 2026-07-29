@@ -534,9 +534,9 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     auto node = std::make_unique<UnsetExpr>();
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
-  } else if (match(TokenType::KwHole)) {
+  } else if (match(TokenType::KwTodo)) {
     Token tok = previous();
-    auto node = std::make_unique<HoleExpr>(m_NextHoleId++);
+    auto node = std::make_unique<TodoExpr>(m_NextTodoId++);
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
   } else if (match(TokenType::String)) {
@@ -1126,13 +1126,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
   // Suffixes: .member, [index], etc.
   while (expr) {
-    if (dynamic_cast<HoleExpr *>(expr.get()) &&
+    if (dynamic_cast<TodoExpr *>(expr.get()) &&
         (check(TokenType::Dot) || check(TokenType::LBracket) ||
          check(TokenType::PlusPlus) || check(TokenType::MinusMinus) ||
          check(TokenType::DoubleQuestion) || check(TokenType::TokenWrite) ||
          check(TokenType::TokenNull) || check(TokenType::TokenNone) ||
          check(TokenType::Bang))) {
-      error(peek(), DiagID::ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT);
+      error(peek(), DiagID::ERR_TYPED_TODO_UNSUPPORTED_CONTEXT);
       return nullptr;
     }
     if (match(TokenType::Dot)) {

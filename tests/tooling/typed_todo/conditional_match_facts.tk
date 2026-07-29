@@ -1,5 +1,5 @@
 fn select(tag: i32) -> i32 {
-    auto answer: i32 = hole
+    auto answer: i32 = todo
     auto chosen: i32 = match tag {
         0 => { pass answer }
         default => { pass 0 }

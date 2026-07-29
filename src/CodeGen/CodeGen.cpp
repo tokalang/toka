@@ -207,8 +207,8 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
     return genUnaryExpr(e);
   if (auto e = dynamic_cast<const VariableExpr *>(expr))
     return genVariableExpr(e);
-  if (auto e = dynamic_cast<const HoleExpr *>(expr)) {
-    error(e, DiagID::ERR_TYPED_HOLE_INCOMPLETE,
+  if (auto e = dynamic_cast<const TodoExpr *>(expr)) {
+    error(e, DiagID::ERR_TYPED_TODO_INCOMPLETE,
           e->ResolvedType ? e->ResolvedType->toString() : "unknown");
     return {};
   }

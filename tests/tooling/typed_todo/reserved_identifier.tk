@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto todo = 1
+    return todo
+}

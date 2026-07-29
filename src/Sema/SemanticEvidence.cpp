@@ -12,7 +12,7 @@ bool SemanticEvidence::Enabled = false;
 std::vector<SemanticDecisionRecord> SemanticEvidence::Records;
 std::vector<CedeObligationRecord> SemanticEvidence::CedeObligations;
 std::vector<CapabilityCallRecord> SemanticEvidence::CapabilityCalls;
-std::vector<HoleGoalRecord> SemanticEvidence::HoleGoals;
+std::vector<TodoGoalRecord> SemanticEvidence::TodoGoals;
 std::vector<ConditionalFactRecord> SemanticEvidence::ConditionalFacts;
 
 namespace {
@@ -127,7 +127,7 @@ bool CapabilityCallRecord::operator==(const CapabilityCallRecord &rhs) const {
          ContractLocation == rhs.ContractLocation;
 }
 
-bool HoleGoalRecord::operator<(const HoleGoalRecord &rhs) const {
+bool TodoGoalRecord::operator<(const TodoGoalRecord &rhs) const {
   return std::tie(Id, Status, HasContract, Type, Morphology, Transfer,
                   HandleRebind, PayloadWrite, Nullable, RequiredDependencies,
                   Location) <
@@ -137,7 +137,7 @@ bool HoleGoalRecord::operator<(const HoleGoalRecord &rhs) const {
                   rhs.Location);
 }
 
-bool HoleGoalRecord::operator==(const HoleGoalRecord &rhs) const {
+bool TodoGoalRecord::operator==(const TodoGoalRecord &rhs) const {
   return Id == rhs.Id && Status == rhs.Status &&
          HasContract == rhs.HasContract && Type == rhs.Type &&
          Morphology == rhs.Morphology && Transfer == rhs.Transfer &&
@@ -170,7 +170,7 @@ void SemanticEvidence::reset() {
   Records.clear();
   CedeObligations.clear();
   CapabilityCalls.clear();
-  HoleGoals.clear();
+  TodoGoals.clear();
   ConditionalFacts.clear();
 }
 
@@ -325,41 +325,41 @@ void SemanticEvidence::dumpCapabilityCallsJSON(std::ostream &out) {
 }
 
 namespace {
-const char *holeStatusName(HoleGoalStatus status) {
+const char *todoStatusName(TodoGoalStatus status) {
   switch (status) {
-  case HoleGoalStatus::Incomplete: return "incomplete";
-  case HoleGoalStatus::Underconstrained: return "underconstrained";
-  case HoleGoalStatus::Unsupported: return "unsupported";
+  case TodoGoalStatus::Incomplete: return "incomplete";
+  case TodoGoalStatus::Underconstrained: return "underconstrained";
+  case TodoGoalStatus::Unsupported: return "unsupported";
   }
   return "unsupported";
 }
 } // namespace
 
-void SemanticEvidence::recordHoleGoal(
-    uint64_t id, HoleGoalStatus status, bool hasContract, std::string type,
+void SemanticEvidence::recordTodoGoal(
+    uint64_t id, TodoGoalStatus status, bool hasContract, std::string type,
     std::string morphology, std::string transfer, bool handleRebind,
     bool payloadWrite, bool nullable,
     std::vector<std::string> requiredDependencies, SourceLocation location) {
   if (!Enabled)
     return;
-  HoleGoals.push_back(
+  TodoGoals.push_back(
       {id, status, hasContract, std::move(type), std::move(morphology),
        std::move(transfer), handleRebind, payloadWrite, nullable,
        std::move(requiredDependencies), resolveLocation(location)});
 }
 
-void SemanticEvidence::dumpHoleGoalsJSON(std::ostream &out) {
-  std::sort(HoleGoals.begin(), HoleGoals.end());
-  HoleGoals.erase(std::unique(HoleGoals.begin(), HoleGoals.end()),
-                  HoleGoals.end());
-  out << "{\"schema\":\"toka.hole-goals\",\"version\":1,\"goals\":[";
-  for (size_t i = 0; i < HoleGoals.size(); ++i) {
+void SemanticEvidence::dumpTodoGoalsJSON(std::ostream &out) {
+  std::sort(TodoGoals.begin(), TodoGoals.end());
+  TodoGoals.erase(std::unique(TodoGoals.begin(), TodoGoals.end()),
+                  TodoGoals.end());
+  out << "{\"schema\":\"toka.todo-goals\",\"version\":1,\"goals\":[";
+  for (size_t i = 0; i < TodoGoals.size(); ++i) {
     if (i != 0)
       out << ',';
-    const auto &goal = HoleGoals[i];
+    const auto &goal = TodoGoals[i];
     out << "{\"id\":" << goal.Id << ",\"location\":";
     dumpLocation(out, goal.Location);
-    out << ",\"status\":\"" << holeStatusName(goal.Status)
+    out << ",\"status\":\"" << todoStatusName(goal.Status)
         << "\",\"contract\":";
     if (!goal.HasContract) {
       out << "null";

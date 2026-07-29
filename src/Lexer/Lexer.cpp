@@ -117,7 +117,7 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"alloc", TokenType::KwAlloc},
     {"free", TokenType::KwFree},
     {"unset", TokenType::KwUnset},
-    {"hole", TokenType::KwHole},
+    {"todo", TokenType::KwTodo},
     {"variant", TokenType::KwVariant},
     {"union", TokenType::KwUnion},
     {"unreachable", TokenType::KwUnreachable},

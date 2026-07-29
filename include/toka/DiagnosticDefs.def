@@ -110,9 +110,9 @@ DIAG(ERR_SEMA_START_BOUNDARY_DEPENDENCY, Error,   "E04584", "Task started across
 DIAG(ERR_SEMA_EXEC_BOUNDARY_UNKNOWN_CLOSURE, Error,   "E0476", "Closure value '{}' has no capture summary and cannot cross execution boundary '{}'")
 DIAG(ERR_SEMA_EXEC_BOUNDARY_NON_SEND_CAPTURE, Error,   "E0477", "Closure passed across execution boundary '{}' captures '{}' with a value that is not @Send")
 DIAG(ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE, Error,   "E0478", "Closure passed across execution boundary '{}' copy-captures '{}' with a value that is not @Sync")
-DIAG(ERR_TYPED_HOLE_INCOMPLETE,   Error,   "E04603", "Incomplete typed hole requires a value satisfying '{}'")
-DIAG(ERR_TYPED_HOLE_UNDERCONSTRAINED, Error,   "E04604", "Typed hole has no complete expected contract; add an explicit declaration, return type, or resolved parameter type")
-DIAG(ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT, Error,   "E04605", "Typed hole is not supported in this context; it is a requirement-only expression, not a place, capability, or resource")
+DIAG(ERR_TYPED_TODO_INCOMPLETE,   Error,   "E04603", "Incomplete todo requires a value satisfying '{}'")
+DIAG(ERR_TYPED_TODO_UNDERCONSTRAINED, Error,   "E04604", "Todo has no complete expected contract; add an explicit declaration, return type, or resolved parameter type")
+DIAG(ERR_TYPED_TODO_UNSUPPORTED_CONTEXT, Error,   "E04605", "Todo is not supported in this context; it is a requirement-only expression, not a place, capability, or resource")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")

@@ -874,16 +874,16 @@ move, and cleanup rules after resumption. Toka 1.0 has no throw/catch,
 automatic conversion chain, universal `dyn error`, or implicit cleanup-error
 replacement policy.
 
-### Typed holes for incomplete edits
+### Typed todos for incomplete edits
 
-`hole` is a reserved, expression-only keyword for an incomplete edit. It is
+`todo` is a reserved, expression-only keyword for an incomplete edit. It is
 not a value, variable, wildcard, ownership source, or permissive build mode.
 Every occurrence has its own diagnostic and keeps the check/build result
 nonzero.
 
 ```toka
-auto answer: i32 = hole      // a complete `i32` requirement is known
-if hole {                    // a complete `bool` requirement is known
+auto answer: i32 = todo      // a complete `i32` requirement is known
+if todo {                    // a complete `bool` requirement is known
     return 0
 }
 ```
@@ -893,25 +893,25 @@ determines it: an explicitly typed local binding, assignment to an existing
 binding, a boolean condition, an ordinary resolved call parameter, or an
 explicitly instantiated generic call. The program remains incomplete and
 reports `E04603` in those cases. A context that would need inference, such as
-`auto answer = hole` or `identity(hole)`, reports `E04604` instead.
+`auto answer = todo` or `identity(todo)`, reports `E04604` instead.
 
 Holes cannot stand for a place, capability, provenance, or transfer. Prefix
-and postfix access, member/index access, guards, `cede hole`, and holes passed
-to a `cede` parameter are rejected with `E04605`. In particular, a hole never
+and postfix access, member/index access, guards, `cede todo`, and todos passed
+to a `cede` parameter are rejected with `E04605`. In particular, a todo never
 creates H/P authority or silently transfers a resource.
 
 For editor and AI tooling, request deterministic requirement facts with:
 
 ```bash
-toka hole-goals --json --check-only path/to/source.tk
-# or: tokac --hole-goals=json --check-only path/to/source.tk
+toka todo-goals --json --check-only path/to/source.tk
+# or: tokac --todo-goals=json --check-only path/to/source.tk
 ```
 
 The output is a requirement-only protocol; it is not ordinary semantic
-evidence and must not be treated as compiler approval. A reachable hole emits
+evidence and must not be treated as compiler approval. A reachable todo emits
 no executable, object, TKI, or reusable compilation artifact. See
-[Typed Hole v1](typed_hole_goals_v1.md) for the machine-readable schema and
-[the RFC](semantic_core/typed_hole_rfc.md) for the complete boundary.
+[Typed Todo v1](typed_todo_goals_v1.md) for the machine-readable schema and
+[the RFC](semantic_core/typed_todo_rfc.md) for the complete boundary.
 
 ## 13. Strings, Text, And Formatting
 

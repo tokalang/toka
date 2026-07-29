@@ -154,11 +154,11 @@ struct CapabilityCallRecord {
   bool operator==(const CapabilityCallRecord &rhs) const;
 };
 
-enum class HoleGoalStatus { Incomplete, Underconstrained, Unsupported };
+enum class TodoGoalStatus { Incomplete, Underconstrained, Unsupported };
 
-struct HoleGoalRecord {
+struct TodoGoalRecord {
   uint64_t Id = 0;
-  HoleGoalStatus Status = HoleGoalStatus::Incomplete;
+  TodoGoalStatus Status = TodoGoalStatus::Incomplete;
   bool HasContract = false;
   std::string Type;
   std::string Morphology;
@@ -169,8 +169,8 @@ struct HoleGoalRecord {
   std::vector<std::string> RequiredDependencies;
   SemanticEvidenceLocation Location;
 
-  bool operator<(const HoleGoalRecord &rhs) const;
-  bool operator==(const HoleGoalRecord &rhs) const;
+  bool operator<(const TodoGoalRecord &rhs) const;
+  bool operator==(const TodoGoalRecord &rhs) const;
 };
 
 struct ConditionalFactRecord {
@@ -213,12 +213,12 @@ public:
       bool independentCede, SourceLocation location,
       SourceLocation contractLocation = {});
   static void dumpCapabilityCallsJSON(std::ostream &out);
-  static void recordHoleGoal(
-      uint64_t id, HoleGoalStatus status, bool hasContract, std::string type,
+  static void recordTodoGoal(
+      uint64_t id, TodoGoalStatus status, bool hasContract, std::string type,
       std::string morphology, std::string transfer, bool handleRebind,
       bool payloadWrite, bool nullable,
       std::vector<std::string> requiredDependencies, SourceLocation location);
-  static void dumpHoleGoalsJSON(std::ostream &out);
+  static void dumpTodoGoalsJSON(std::ostream &out);
   static void recordConditionalFact(std::string symbol, std::string type,
                                     std::vector<uint64_t> conditionalOn,
                                     SourceLocation location);
@@ -229,7 +229,7 @@ private:
   static std::vector<SemanticDecisionRecord> Records;
   static std::vector<CedeObligationRecord> CedeObligations;
   static std::vector<CapabilityCallRecord> CapabilityCalls;
-  static std::vector<HoleGoalRecord> HoleGoals;
+  static std::vector<TodoGoalRecord> TodoGoals;
   static std::vector<ConditionalFactRecord> ConditionalFacts;
 };
 

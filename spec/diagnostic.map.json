@@ -2472,22 +2472,22 @@
       "description": "A consuming method receiver requires a uniquely owned source"
     },
     "E04603": {
-      "id": "ERR_TYPED_HOLE_INCOMPLETE",
+      "id": "ERR_TYPED_TODO_INCOMPLETE",
       "level": "Error",
-      "message": "Incomplete typed hole requires a value satisfying '{}'",
-      "description": "A typed hole is an incomplete program fragment and cannot be compiled or emitted"
+      "message": "Incomplete todo requires a value satisfying '{}'",
+      "description": "A todo is an incomplete program fragment and cannot be compiled or emitted"
     },
     "E04604": {
-      "id": "ERR_TYPED_HOLE_UNDERCONSTRAINED",
+      "id": "ERR_TYPED_TODO_UNDERCONSTRAINED",
       "level": "Error",
-      "message": "Typed hole has no complete expected contract; add an explicit declaration, return type, or resolved parameter type",
-      "description": "A typed hole must consume an already complete requirement and cannot drive inference"
+      "message": "Todo has no complete expected contract; add an explicit declaration, return type, or resolved parameter type",
+      "description": "A todo must consume an already complete requirement and cannot drive inference"
     },
     "E04605": {
-      "id": "ERR_TYPED_HOLE_UNSUPPORTED_CONTEXT",
+      "id": "ERR_TYPED_TODO_UNSUPPORTED_CONTEXT",
       "level": "Error",
-      "message": "Typed hole is not supported in this context; it is a requirement-only expression, not a place, capability, or resource",
-      "description": "Typed holes cannot be used as a place, through a view, or in a prefix/postfix operation"
+      "message": "Todo is not supported in this context; it is a requirement-only expression, not a place, capability, or resource",
+      "description": "Todos cannot be used as a place, through a view, or in a prefix/postfix operation"
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

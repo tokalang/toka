@@ -21,8 +21,8 @@ fn print_help() {
     println("  evidence     Emit public semantic evidence JSON for a compiler check")
     println("  cede-obligations  Emit cede transfer-obligation evidence JSON")
     println("  capabilities Emit H/P call capability evidence JSON")
-    println("  hole-goals   Emit typed-hole requirement evidence JSON")
-    println("  conditional-facts Emit typed-hole conditional binding facts JSON")
+    println("  todo-goals   Emit typed-todo requirement evidence JSON")
+    println("  conditional-facts Emit typed-todo conditional binding facts JSON")
     println("  index        Emit compiler-owned semantic index JSON for API tooling")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
@@ -777,11 +777,11 @@ fn cmd_capabilities(argc: i32, shift: i32) -> i32 {
 
 fn cmd_hole_goals(argc: i32, shift: i32) -> i32 {
     if argc < 3 + shift {
-        println("Error: 'toka hole-goals' requires a source file.")
+        println("Error: 'toka todo-goals' requires a source file.")
         return 1
     }
     auto command# = Command::new(detect_tokac_path())
-    command#.arg(string::from("--hole-goals=json"))
+    command#.arg(string::from("--todo-goals=json"))
     command#.arg(string::from("-I"))
     command#.arg(detect_default_lib_path())
     auto idx# = 2 + shift
@@ -1234,7 +1234,7 @@ fn main() -> i32 {
         return cmd_capabilities(argc, shift)
     }
 
-    if cmd.eq(string::from("hole-goals")) {
+    if cmd.eq(string::from("todo-goals")) {
         return cmd_hole_goals(argc, shift)
     }
 

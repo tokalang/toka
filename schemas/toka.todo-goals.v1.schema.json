@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://toka-lang.org/schemas/toka.hole-goals.v1.schema.json",
-  "title": "Toka Typed Hole Goals v1",
+  "$id": "https://toka-lang.org/schemas/toka.todo-goals.v1.schema.json",
+  "title": "Toka Typed Todo Goals v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "version", "goals"],
   "properties": {
-    "schema": { "const": "toka.hole-goals" },
+    "schema": { "const": "toka.todo-goals" },
     "version": { "const": 1 },
     "goals": { "type": "array", "items": { "$ref": "#/$defs/goal" } }
   },

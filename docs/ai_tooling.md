@@ -93,7 +93,7 @@ An AI client already connected to `tokalsp` may instead request
 `toka/semanticBundle` for an open document. It receives the current overlay
 revision's diagnostics, document-symbol semantic index, and invalidation/reuse
 statistics in one read-only response. This is a session snapshot, not a second
-compiler service and not a replacement for the separately versioned hole,
+compiler service and not a replacement for the separately versioned todo,
 capability, or obligation protocols.
 
 For a failed ownership, borrowing, transfer, dependency, or execution-boundary
@@ -137,18 +137,18 @@ declaration ceiling, inferred state, use-site request, signature requirement,
 and actual grant for ordinary call arguments. It is an explanation protocol,
 not a new inference rule.
 
-For an incomplete edit containing `hole`, request its requirement facts:
+For an incomplete edit containing `todo`, request its requirement facts:
 
 ```sh
-toka hole-goals --json path/to/main.tk
+toka todo-goals --json path/to/main.tk
 ```
 
-[Typed Hole Goals v1](typed_hole_goals_v1.md) reports only already-resolved
+[Typed Todo Goals v1](typed_todo_goals_v1.md) reports only already-resolved
 contracts. The command remains fail-closed: it exits nonzero and does not
 produce an object, interface, cache entry, or publication receipt. An AI must
-replace the hole and run a normal check before treating the edit as valid.
+replace the todo and run a normal check before treating the edit as valid.
 
-For direct typed bindings that remain dependent on a hole, request the separate
+For direct typed bindings that remain dependent on a todo, request the separate
 conditional editor facts:
 
 ```sh
@@ -161,7 +161,7 @@ expressions, resolved calls, direct whole-binding assignment, and reachable
 `if`/`match` joins; projections, compound assignment, loops, and escaping
 calls remain omitted rather than guessed. It records an incomplete dependency,
 never an `Allow` decision or a completed initialization. See
-[Typed Hole Conditional Facts v1](conditional_facts_v1.md) for the frozen
+[Typed Todo Conditional Facts v1](conditional_facts_v1.md) for the frozen
 protocol boundary.
 
 ## Regression evaluation

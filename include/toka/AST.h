@@ -174,18 +174,18 @@ public:
   }
 };
 
-// `hole` is deliberately not a VariableExpr.  Its identity is stable within
+// `todo` is deliberately not a VariableExpr.  Its identity is stable within
 // one parse so later tooling can refer to an incomplete occurrence without
 // inventing a user-visible binding.
-class HoleExpr : public Expr {
+class TodoExpr : public Expr {
 public:
-  uint64_t HoleId;
-  explicit HoleExpr(uint64_t holeId) : HoleId(holeId) {}
+  uint64_t TodoId;
+  explicit TodoExpr(uint64_t todoId) : TodoId(todoId) {}
   std::string toString() const override {
-    return "Hole(" + std::to_string(HoleId) + ")";
+    return "Todo(" + std::to_string(TodoId) + ")";
   }
   std::unique_ptr<ASTNode> clone() const override {
-    auto n = std::make_unique<HoleExpr>(HoleId);
+    auto n = std::make_unique<TodoExpr>(TodoId);
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

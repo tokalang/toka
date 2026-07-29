@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Fail-closed parser and semantic-boundary gate for Typed Hole v1."""
+"""Fail-closed parser and semantic-boundary gate for Typed Todo v1."""
 
 import argparse
 import json
@@ -26,6 +26,7 @@ CASES = {
     "cede_parameter_unsupported.tk": "E04605",
 }
 RESERVED_IDENTIFIER = "reserved_identifier.tk"
+FORMER_KEYWORD_IDENTIFIER = "former_keyword_identifier.tk"
 
 
 def require(condition, message):
@@ -51,7 +52,7 @@ def main():
     tokac = ROOT / args.build_dir / "bin" / ("tokac" + suffix)
     require(tokac.is_file(), "tokac is missing")
 
-    source_dir = ROOT / "tests/tooling/typed_hole"
+    source_dir = ROOT / "tests/tooling/typed_todo"
     for name, code in CASES.items():
         source = source_dir / name
         result = run([tokac, "--diagnostics-json", "--check-only", source], 1)
@@ -61,25 +62,28 @@ def main():
                 name + " did not produce a failed diagnostic envelope")
         diagnostics = payload["diagnostics"]
         require(len(diagnostics) == 1 and diagnostics[0]["code"] == code,
-                name + " did not produce the required primary hole diagnostic")
+                name + " did not produce the required primary todo diagnostic")
 
     reserved = source_dir / RESERVED_IDENTIFIER
     result = run([tokac, "--diagnostics-json", "--check-only", reserved], 1)
     payload = json.loads(result.stdout)
     require(not payload["success"] and payload["diagnostics"],
-            "the reserved hole keyword was accepted as an identifier")
+            "the reserved todo keyword was accepted as an identifier")
 
-    with tempfile.TemporaryDirectory(prefix="toka-hole-boundary-") as temp:
+    former_keyword = source_dir / FORMER_KEYWORD_IDENTIFIER
+    run([tokac, "--check-only", former_keyword], 0)
+
+    with tempfile.TemporaryDirectory(prefix="toka-todo-boundary-") as temp:
         temp_dir = Path(temp)
         output = temp_dir / "must-not-exist"
         run([tokac, source_dir / "explicit_contract.tk", "-o", output], 1)
         require(not any(temp_dir.iterdir()),
-                "a program containing hole emitted an executable or interface")
+                "a program containing todo emitted an executable or interface")
         run([tokac, source_dir / "explicit_contract.tk", "-c", "-o", output], 1)
         require(not any(temp_dir.iterdir()),
-                "a program containing hole emitted an object, interface, or cache artifact")
+                "a program containing todo emitted an object, interface, or cache artifact")
 
-    print("Typed Hole v1 phase 1 boundary gate passed")
+    print("Typed Todo v1 phase 1 boundary gate passed")
 
 
 if __name__ == "__main__":

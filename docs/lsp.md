@@ -31,7 +31,7 @@ several LSP requests, `toka/semanticBundle` accepts an open `textDocument` URI
 and returns the current overlay revision, diagnostics, a versioned
 `documentSymbols` semantic-index query, and the same analysis statistics. Its
 envelope is `toka.overlay-semantic-bundle` v1. It neither writes the workspace
-nor starts another compiler session. Hole goals, conditional facts, capability
+nor starts another compiler session. Todo goals, conditional facts, capability
 calls, and cede obligations remain independent one-shot protocols in v1; the
 bundle does not relabel them as cached session facts.
 

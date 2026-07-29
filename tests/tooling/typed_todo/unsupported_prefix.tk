@@ -1,4 +1,4 @@
 fn main() -> i32 {
-    auto value: i32 = cede hole
+    auto value: i32 = ^todo
     return value
 }

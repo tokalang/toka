@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Fail-closed ABI gate for Typed Hole Goals v1."""
+"""Fail-closed ABI gate for Typed Todo Goals v1."""
 
 import argparse
 import json
@@ -10,7 +10,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE_DIR = ROOT / "tests/tooling/typed_hole"
+SOURCE_DIR = ROOT / "tests/tooling/typed_todo"
 
 
 def require(condition, message):
@@ -40,9 +40,9 @@ def validate_location(location):
 
 def validate_document(payload):
     require(set(payload) == {"schema", "version", "goals"},
-            "hole-goals envelope fields changed")
-    require(payload["schema"] == "toka.hole-goals", "hole-goals schema changed")
-    require(payload["version"] == 1, "hole-goals version changed")
+            "todo-goals envelope fields changed")
+    require(payload["schema"] == "toka.todo-goals", "todo-goals schema changed")
+    require(payload["version"] == 1, "todo-goals version changed")
     require(isinstance(payload["goals"], list), "goals is not an array")
     for goal in payload["goals"]:
         require(set(goal) == {"id", "location", "status", "contract"},
@@ -74,10 +74,10 @@ def validate_document(payload):
 
 
 def compile_goals(tokac, source):
-    result = run([tokac, "--hole-goals=json", "--check-only", source], 1)
+    result = run([tokac, "--todo-goals=json", "--check-only", source], 1)
     payload = json.loads(result.stdout)
     validate_document(payload)
-    require(len(payload["goals"]) == 1, "fixture should emit one hole goal")
+    require(len(payload["goals"]) == 1, "fixture should emit one todo goal")
     return result.stdout, payload["goals"][0]
 
 
@@ -88,11 +88,11 @@ def main():
     suffix = ".exe" if sys.platform == "win32" else ""
     tokac = ROOT / args.build_dir / "bin" / ("tokac" + suffix)
     toka = ROOT / args.build_dir / "bin" / ("toka" + suffix)
-    schema = ROOT / "schemas/toka.hole-goals.v1.schema.json"
+    schema = ROOT / "schemas/toka.todo-goals.v1.schema.json"
     require(tokac.is_file() and toka.is_file() and schema.is_file(),
-            "Typed Hole Goals prerequisites are missing")
+            "Typed Todo Goals prerequisites are missing")
     schema_doc = json.loads(schema.read_text(encoding="utf-8"))
-    require(schema_doc["properties"]["schema"] == {"const": "toka.hole-goals"},
+    require(schema_doc["properties"]["schema"] == {"const": "toka.todo-goals"},
             "schema identity is not frozen")
     require(schema_doc["properties"]["version"] == {"const": 1},
             "schema version is not frozen")
@@ -100,7 +100,7 @@ def main():
     first, complete = compile_goals(tokac, SOURCE_DIR / "explicit_contract.tk")
     second, repeated = compile_goals(tokac, SOURCE_DIR / "explicit_contract.tk")
     require(first == second and complete == repeated,
-            "hole-goals output is not deterministic")
+            "todo-goals output is not deterministic")
     require(complete["status"] == "incomplete", "explicit contract status")
     contract = complete["contract"]
     require(contract["type"] == "i32" and contract["morphology"] == "value",
@@ -117,25 +117,25 @@ def main():
         tokac, SOURCE_DIR / "generic_inference_underconstrained.tk")
     require(underconstrained["status"] == "underconstrained" and
             underconstrained["contract"] is None,
-            "generic inference hole is not underconstrained")
+            "generic inference todo is not underconstrained")
 
     _, unsupported = compile_goals(tokac, SOURCE_DIR / "unsupported_cede.tk")
     require(unsupported["status"] == "unsupported" and
             unsupported["contract"] is None,
-            "cede hole is not unsupported")
+            "cede todo is not unsupported")
 
     _, cede_parameter = compile_goals(
         tokac, SOURCE_DIR / "cede_parameter_unsupported.tk")
     require(cede_parameter["status"] == "unsupported" and
             cede_parameter["contract"] is None,
-            "cede parameter hole was not rejected as an unsupported transfer")
+            "cede parameter todo was not rejected as an unsupported transfer")
 
-    wrapper = run([toka, "hole-goals", "--json", "--check-only",
+    wrapper = run([toka, "todo-goals", "--json", "--check-only",
                    SOURCE_DIR / "explicit_contract.tk"], 1)
     require(json.loads(wrapper.stdout) == json.loads(first),
-            "SDK wrapper changed Typed Hole Goals output")
+            "SDK wrapper changed Typed Todo Goals output")
 
-    print("Typed Hole Goals v1 ABI gate passed")
+    print("Typed Todo Goals v1 ABI gate passed")
 
 
 if __name__ == "__main__":
