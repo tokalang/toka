@@ -14,9 +14,9 @@ pub const PACKAGE = (
 
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
-    summary = "Bounded, binary-safe RESP2 codec and serial plaintext Redis TCP client.",
-    capabilities = ("encode RESP2 commands", "incrementally decode RESP2 values", "preserve binary bulk strings", "execute one serial TCP command", "typed GET/SET/DEL wrappers"),
-    non_goals = ("RESP3", "TLS", "pipelining", "cluster", "connection pool"),
-    safety = ("decoder has explicit byte, nesting, and aggregate limits; incomplete frames never consume input; reply-side failure or extra reply bytes observed with a matched reply close the client"),
-    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/codec_v1.tk -o /tmp/redis_codec_v1 && /tmp/redis_codec_v1; ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/redis_client_v1 && /tmp/redis_client_v1; python3 tests/qualify_package.py")
+    summary = "Bounded, binary-safe RESP2 codec, serial TCP/TLS client, and ordered pipelines.",
+    capabilities = ("encode RESP2 commands", "incrementally decode RESP2 values", "preserve binary bulk strings", "execute serial TCP or verified TLS commands", "use a private CA file for TLS", "execute ordered one-write pipelines", "typed GET/SET/DEL wrappers"),
+    non_goals = ("RESP3", "Pub/Sub", "cluster", "Sentinel", "retry policy", "connection pooling", "Cluster routing"),
+    safety = ("decoder has explicit byte, nesting, and aggregate limits; incomplete frames never consume input; TLS verifies peer and SNI by default; insecure TLS is test-only and explicit; pipeline reply count and serial extra bytes are checked before reuse; reply-side transport, timeout, cancellation, or decode failure closes the client"),
+    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/codec_v1.tk -o /tmp/redis_codec_v1 && /tmp/redis_codec_v1; ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/redis_client_v1 && /tmp/redis_client_v1; ../../build/bin/tokac -I ../../lib -I lib tests/transport_v2.tk -o /tmp/redis_transport_v2 && /tmp/redis_transport_v2; python3 tests/qualify_package.py")
 )

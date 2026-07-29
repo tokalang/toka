@@ -97,6 +97,18 @@ def main() -> int:
         work = Path(temporary)
         base_env = dict(os.environ)
         base_env.update({"TOKAC": str(tokac), "TOKA_LIB": str(make_sdk(work))})
+        test_env = dict(os.environ)
+        test_env.pop("TOKA_LIB", None)
+        test_env.pop("TOKAC", None)
+        include = ["-I", str(ROOT / "lib"), "-I", str(PACKAGE / "lib")]
+        # The native TLS runtime is linked only for executables emitted
+        # directly under /tmp by the current toolchain, so keep these short-
+        # lived qualification binaries there rather than in a child folder.
+        for name in ("codec_v1", "client_v1", "transport_v2"):
+            executable = Path("/tmp") / f"toka-redis-qualify-{os.getpid()}-{name}"
+            run([str(tokac), *include, str(PACKAGE / "tests" / f"{name}.tk"),
+                 "-o", str(executable)], cwd=ROOT, env=test_env)
+            run([str(executable)], cwd=ROOT, env=test_env)
         dependency = work / "redis"
         shutil.copytree(PACKAGE, dependency)
         project = work / "consumer"
@@ -123,6 +135,9 @@ def main() -> int:
             "locked_local_dependency": "pass",
             "offline_lock_replay": "pass",
             "public_import_build_run": "pass",
+            "resp2_codec": "pass",
+            "serial_client": "pass",
+            "verified_tls_and_pipeline": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))
