@@ -2478,7 +2478,28 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     }
   }
 
-  llvm::Value *objVal = genExpr(expr->Object.get()).load(m_Builder);
+  const Expr *receiverExpr = expr->Object.get();
+  while (auto *postfix = dynamic_cast<const PostfixExpr *>(receiverExpr))
+    receiverExpr = postfix->LHS.get();
+  const auto *receiverVar =
+      dynamic_cast<const VariableExpr *>(receiverExpr);
+  const auto receiverSymbol =
+      receiverVar ? m_Symbols.find(Type::stripMorphology(receiverVar->codegenName()))
+                  : m_Symbols.end();
+  const bool receiverIsDirectUnique =
+      receiverVar &&
+      ((receiverVar->ResolvedType && receiverVar->ResolvedType->isUniquePtr()) ||
+       receiverVar->IsUnique ||
+       (receiverSymbol != m_Symbols.end() &&
+        receiverSymbol->second.morphology == Morphology::Unique));
+
+  // `genVariableExpr` carries a unique receiver as its payload address but
+  // also records a pointer-shaped IR type. Loading that entity once more
+  // would read the payload bytes as a pointer.  A direct unique receiver's
+  // payload address is already its method receiver value.
+  llvm::Value *objVal = receiverIsDirectUnique
+                            ? getEntityAddr(receiverVar->codegenName())
+                            : genExpr(expr->Object.get()).load(m_Builder);
   if (!objVal)
     return nullptr;
 
@@ -2678,6 +2699,22 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   bool isSRet = expr->ResolvedType && shouldReturnSRet(expr->ResolvedType) && !isMethodAsync;
   size_t selfLlvmIdx = isSRet ? 1 : 0;
 
+  // A `cede self` method receives the payload value, even if the LLVM ABI
+  // represents that value by a pointer. Recover a direct unique receiver's
+  // heap payload address from its symbol; its expression type may have been
+  // lowered as a pointer-shaped value and must not be loaded through again.
+  const bool selfIsCeded =
+      fd && !fd->Args.empty() && fd->Args[0].IsCeded;
+  const bool selfReceivesPayloadByValue =
+      selfIsCeded &&
+      !fd->Args[0].IsUnique &&
+      !(fd->Args[0].ResolvedType && fd->Args[0].ResolvedType->isUniquePtr());
+  const bool receiverProvidesUniquePayload =
+      selfReceivesPayloadByValue &&
+      ((expr->Object->ResolvedType &&
+        expr->Object->ResolvedType->isUniquePtr()) ||
+       receiverIsDirectUnique);
+
   std::vector<llvm::Value *> args;
 
   // 1. Handle Self (Argument 0)
@@ -2695,10 +2732,14 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   }
 
   llvm::Value *finalObjVal = objVal;
+  if (receiverProvidesUniquePayload && receiverVar) {
+    if (llvm::Value *payloadAddr = getEntityAddr(receiverVar->codegenName()))
+      finalObjVal = payloadAddr;
+  }
   bool targetExpectsPtr =
       (callee->arg_size() > selfLlvmIdx && callee->getArg(selfLlvmIdx)->getType()->isPointerTy());
 
-  if (selfIsMutable || targetExpectsPtr) {
+  if ((selfIsMutable || targetExpectsPtr) && !receiverProvidesUniquePayload) {
     // Must pass address
     llvm::Value *addr = genAddr(expr->Object.get());
     if (addr) {
@@ -2854,10 +2895,6 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   llvm::CallInst *ci = m_Builder.CreateCall(callee, args);
 
   if (!isStatic && fd && !fd->Args.empty() && fd->Args[0].IsCeded) {
-    const bool selfReceivesPayloadByValue =
-        !fd->Args[0].IsUnique &&
-        !(fd->Args[0].ResolvedType &&
-          fd->Args[0].ResolvedType->isUniquePtr());
     auto releaseTransferredUniqueHeapSlot = [&]() {
       llvm::Function *freeFn = m_Module->getFunction("free");
       if (!freeFn) {

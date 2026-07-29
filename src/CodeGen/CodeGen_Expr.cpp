@@ -5349,7 +5349,21 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
           }
         }
 
-        if (!val) {
+        // `genAddr` may lower a call-shaped expression in order to find an
+        // address.  Captured rvalues have no caller-owned identity, so doing
+        // that before materializing the temporary evaluates their side
+        // effects twice.  Evaluate such an expression exactly once below and
+        // pass the address of that materialized value instead.
+        const auto *taskStart = dynamic_cast<const MemberExpr *>(rawArg);
+        const bool isCallShapedRValue =
+            dynamic_cast<const CallExpr *>(rawArg) ||
+            dynamic_cast<const MethodCallExpr *>(rawArg) ||
+            dynamic_cast<const StartExpr *>(rawArg) ||
+            dynamic_cast<const NewExpr *>(rawArg) ||
+            dynamic_cast<const InitStructExpr *>(rawArg) ||
+            dynamic_cast<const ArrayInitExpr *>(rawArg) ||
+            (taskStart && taskStart->IsTaskStart);
+        if (!val && !isCallShapedRValue) {
           val = genAddr(call->Args[i].get());
         }
 
@@ -5538,8 +5552,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
               lvalueAddr = getIdentityAddr(ve->codegenName());
             }
           }
-        } else if (dynamic_cast<const MemberExpr *>(rawArg)) {
-          lvalueAddr = genAddr(rawArg);
+        } else if (auto *member = dynamic_cast<const MemberExpr *>(rawArg)) {
+          // `.start` is a call-shaped rvalue.  It was materialized above;
+          // asking for its address here would lower it a second time.
+          if (!member->IsTaskStart)
+            lvalueAddr = genAddr(rawArg);
         }
 
         if (lvalueAddr) {

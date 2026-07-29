@@ -117,6 +117,15 @@
       "description": "A by-value consuming fresh receiver releases its temporary heap slot after the callee captures the payload"
     },
     {
+      "id": "codegen_task_start_rvalue_single_evaluation_01",
+      "path": "codegen/task_start_rvalue_single_evaluation.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "call ptr @coordinator()",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "Passing task().start to a by-reference ABI materializes and starts the task exactly once"
+    },
+    {
       "id": "ownership_mut_binding_reassign_01",
       "path": "ownership/mut_binding_reassign.tk",
       "type": "run",

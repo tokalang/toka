@@ -1,0 +1,11 @@
+// A task-start rvalue passed to a by-reference ABI must be materialized once.
+
+import std/task::{block_on}
+
+fn coordinator() -> async i32 {
+    return 7
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

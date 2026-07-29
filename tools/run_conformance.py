@@ -26,6 +26,19 @@ def main():
         print(f"[ERROR] Core runtime object not found at {runtime_object}. Build the toka_rt target first.")
         sys.exit(1)
 
+    # tokac intentionally links the host runtime from lib/sys/ when invoked
+    # from a source checkout.  Rebuild that ignored object here so this entry
+    # point is independently reproducible on every host instead of relying on
+    # an earlier PASS or release-gate stage.
+    prepare_runtime = os.path.join(root_dir, "tools", "scripts", "test_pass.py")
+    prepare_res = subprocess.run(
+        [sys.executable, prepare_runtime, "--prepare-runtime-only"],
+        cwd=root_dir,
+    )
+    if prepare_res.returncode != 0:
+        print("[ERROR] Failed to prepare native runtime objects for conformance.")
+        sys.exit(prepare_res.returncode)
+
     # A source checkout keeps Toka modules in lib/, while CMake writes the
     # host runtime object to build/lib/.  Use both locations so conformance
     # runs against a clean build rather than an ignored local lib/sys/*.o.
@@ -83,6 +96,18 @@ def main():
                     print(f"[FAILED] [{test_id}] Expected IR pattern '{exp_pattern}' not found in emitted LLVM IR.")
                     failed_count += 1
                     continue
+
+                exp_pattern_count = item.get("expected_ir_pattern_count")
+                if exp_pattern_count is not None:
+                    actual_pattern_count = ir_content.count(exp_pattern)
+                    if actual_pattern_count != exp_pattern_count:
+                        print(
+                            f"[FAILED] [{test_id}] Expected IR pattern "
+                            f"'{exp_pattern}' exactly {exp_pattern_count} time(s), "
+                            f"found {actual_pattern_count}."
+                        )
+                        failed_count += 1
+                        continue
 
                 print(f"[PASSED] [{test_id}] LLVM IR pattern '{exp_pattern}' verified cleanly.")
                 passed_count += 1
