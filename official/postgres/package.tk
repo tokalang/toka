@@ -14,9 +14,9 @@ pub const PACKAGE = (
 
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
-    summary = "Bounded PostgreSQL v3 wire codec, TLS/SCRAM startup client, and ASCII-profile SCRAM-SHA-256 helper.",
-    capabilities = ("encode startup and simple-query messages", "incrementally decode bounded PostgreSQL backend frames", "preserve binary row values", "establish one authenticated serial session with verified TLS by default", "derive and verify ASCII-profile SCRAM-SHA-256 messages"),
-    non_goals = ("simple-query execution API", "full SASLprep/Unicode credential normalization", "prepared statements", "transactions", "pooling"),
-    safety = ("all frame lengths and row fields are validated before allocation; decoded binary data owns its bytes; verified TLS and SCRAM are defaults; plaintext or unverified TLS require an explicit local/test constructor; no package-native dependency"),
-    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/protocol_v1.tk -o /tmp/postgres_protocol_v1 && /tmp/postgres_protocol_v1; ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/postgres_client_v1 && /tmp/postgres_client_v1; python3 tests/qualify_package.py")
+    summary = "Bounded PostgreSQL v3 wire codec, TLS/SCRAM startup client, and serial simple-query client.",
+    capabilities = ("encode startup and simple-query messages", "incrementally decode bounded PostgreSQL backend frames", "preserve binary row values and server SQLSTATE", "establish one authenticated serial session with verified TLS by default", "execute bounded serial simple queries through ReadyForQuery", "derive and verify ASCII-profile SCRAM-SHA-256 messages"),
+    non_goals = ("full SASLprep/Unicode credential normalization", "prepared statements", "transactions", "pooling"),
+    safety = ("all frame lengths and row fields are validated before allocation; simple-query callers set result-set, row, and byte limits; decoded binary data owns its bytes; verified TLS and SCRAM are defaults; plaintext or unverified TLS require an explicit local/test constructor; no package-native dependency"),
+    qualification = ("../../build/bin/tokac -I ../../lib -I lib tests/protocol_v1.tk -o /tmp/postgres_protocol_v1 && /tmp/postgres_protocol_v1; ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/postgres_client_v1 && /tmp/postgres_client_v1; ../../build/bin/tokac -I ../../lib -I lib tests/query_v1.tk -o /tmp/postgres_query_v1 && /tmp/postgres_query_v1; python3 tests/qualify_package.py")
 )

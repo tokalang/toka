@@ -60,10 +60,11 @@ def write_consumer(project: Path, dependency: Path) -> None:
         encoding="utf-8",
     )
     (project / "src" / "main.tk").write_text(
-        "import official/postgres::{PostgresDecode, decode_backend_one, startup_message}\n"
+        "import official/postgres::{PostgresDecode, PostgresQueryLimits, decode_backend_one, startup_message}\n"
         "import std/vec::{Vec}\n\n"
         "fn main() -> i32 {\n"
         '    if startup_message("app", "notes").is_err() { return 1 }\n'
+        "    if PostgresQueryLimits::new(1, 1, 1).is_err() { return 3 }\n"
         "    auto frame# = Vec<u8>::new()\n"
         "    frame#.push('Z' as u8)\n"
         "    frame#.push(0:u8)\n"
@@ -103,6 +104,10 @@ def main() -> int:
             run([str(tokac), *include, str(PACKAGE / "tests" / "client_v1.tk"),
                  "-o", str(client)], cwd=ROOT, env=base_env)
             run([str(client)], cwd=ROOT, env=base_env)
+            query = test_work / "query_v1"
+            run([str(tokac), *include, str(PACKAGE / "tests" / "query_v1.tk"),
+                 "-o", str(query)], cwd=ROOT, env=base_env)
+            run([str(query)], cwd=ROOT, env=base_env)
 
         dependency = work / "postgres"
         shutil.copytree(PACKAGE, dependency)
@@ -125,13 +130,14 @@ def main() -> int:
 
     print(json.dumps({
         "result": "pass",
-        "schema": "toka.official-postgres-wire-v1",
+        "schema": "toka.official-postgres-query-v1",
         "stages": {
             "locked_local_dependency": "pass",
             "offline_lock_replay": "pass",
             "public_import_build_run": "pass",
             "wire_codec": "pass",
             "tls_scram_startup": "pass",
+            "serial_simple_query": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))

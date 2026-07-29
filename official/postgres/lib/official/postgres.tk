@@ -1,8 +1,8 @@
 // Public entry module for official/postgres.
 //
-// Phase 1 is deliberately a wire codec, not a prematurely advertised client.
-// It owns every decoded binary field and never exposes a pointer into a receive
-// buffer.  The later transport slice consumes these frames over AsyncStream.
+// The codec and serial client own every decoded binary field and never expose
+// a pointer into a receive buffer. Transport runs over AsyncStream with
+// explicit query-result bounds before retained rows can grow unbounded.
 
 import core/option::{Option}
 import core/result::{Result}
@@ -27,6 +27,7 @@ const MAX_SCRAM_SALT_BYTES: usize = 65536:usize
 pub shape PostgresError (
     kind: string,
     position: usize,
+    sqlstate: string,
     message: string
 )
 
@@ -102,6 +103,23 @@ pub shape PostgresConfig (
     auth_policy: PostgresAuthPolicy
 )
 
+// Every simple-query response is retained in memory. Callers must therefore
+// choose bounds for the number of completed statements, rows, and data bytes
+// they are willing to keep.
+pub shape PostgresQueryLimits (
+    max_result_sets: usize,
+    max_rows: usize,
+    max_bytes: usize
+)
+
+// One completed statement result from PostgreSQL's simple-query protocol.
+// Values are owned Bytes so the result remains valid after another query.
+pub shape PostgresQueryResult (
+    columns: Vec<PostgresColumn>,
+    rows: Vec<Vec<Option<Bytes>>>,
+    command_tag: string
+)
+
 pub shape PostgresClient (
     stream#: AsyncStream,
     receive#: Vec<u8>,
@@ -124,7 +142,17 @@ fn error(kind: str, position: usize, message: str) -> PostgresError {
     return PostgresError(
         kind = string::from(kind),
         position = position,
+        sqlstate = string::from(""),
         message = string::from(message)
+    )
+}
+
+fn server_error(server: PostgresServerError) -> PostgresError {
+    return PostgresError(
+        kind = string::from("server"),
+        position = 0:usize,
+        sqlstate = string::from(server.sqlstate.as_str()),
+        message = string::from(server.message.as_str())
     )
 }
 
@@ -591,6 +619,27 @@ fn suffix_from(input: Vec<u8>, start: usize) -> Vec<u8> {
     return remaining
 }
 
+fn add_query_bytes(current: usize, additional: usize, maximum: usize) -> Result<usize, PostgresError> {
+    if additional > maximum || current > maximum - additional {
+        return Result<usize, PostgresError>::Err(limit_error(0:usize, "PostgreSQL query result exceeds byte limit"))
+    }
+    return Result<usize, PostgresError>::Ok(current + additional)
+}
+
+fn data_row_bytes(values: Vec<Option<Bytes>>) -> usize {
+    auto total#: usize = 0:usize
+    auto index#: usize = 0:usize
+    loop index < values.len() {
+        auto *value = values.get_ref(index)
+        match value {
+            auto Option<Bytes>::Some(&bytes) => total = total + bytes.len()
+            _ => {}
+        }
+        index = index + 1:usize
+    }
+    return total
+}
+
 fn contains_mechanism(values: Vec<string>, expected: str) -> bool {
     auto index#: usize = 0:usize
     loop index < values.len() {
@@ -715,6 +764,72 @@ impl PostgresConfig {
     }
 }
 
+impl PostgresQueryLimits {
+    pub fn new(max_result_sets: usize, max_rows: usize, max_bytes: usize) -> Result<PostgresQueryLimits, PostgresError> {
+        if max_result_sets == 0:usize {
+            return Result<PostgresQueryLimits, PostgresError>::Err(error("input", 0:usize, "PostgreSQL query max_result_sets must be positive"))
+        }
+        if max_bytes == 0:usize {
+            return Result<PostgresQueryLimits, PostgresError>::Err(error("input", 0:usize, "PostgreSQL query max_bytes must be positive"))
+        }
+        return Result<PostgresQueryLimits, PostgresError>::Ok(PostgresQueryLimits(
+            max_result_sets = max_result_sets,
+            max_rows = max_rows,
+            max_bytes = max_bytes
+        ))
+    }
+}
+
+impl PostgresColumn@encap {
+    pub name
+    pub type_oid
+    fn drop(self#) {}
+
+    pub fn clone(self) -> PostgresColumn {
+        return PostgresColumn(name = string::from(self.name.as_str()), type_oid = self.type_oid)
+    }
+}
+
+impl PostgresQueryResult@encap {
+    pub columns#
+    pub rows#
+    pub command_tag
+    fn drop(self#) {}
+
+    pub fn clone(self) -> PostgresQueryResult {
+        auto columns# = Vec<PostgresColumn>::with_capacity(self.columns.len())
+        auto column_index#: usize = 0:usize
+        loop column_index < self.columns.len() {
+            columns#.push(cede self.columns.get(column_index).clone())
+            column_index = column_index + 1:usize
+        }
+
+        auto rows# = Vec<Vec<Option<Bytes>>>::with_capacity(self.rows.len())
+        auto row_index#: usize = 0:usize
+        loop row_index < self.rows.len() {
+            auto *source_row = self.rows.get_ref(row_index)
+            auto copied_row# = Vec<Option<Bytes>>::with_capacity(source_row.len())
+            auto value_index#: usize = 0:usize
+            loop value_index < source_row.len() {
+                auto *source_value = source_row.get_ref(value_index)
+                match source_value {
+                    auto Option<Bytes>::Some(&bytes) => copied_row#.push(cede Option<Bytes>::Some(bytes.clone()))
+                    _ => copied_row#.push(cede Option<Bytes>::None)
+                }
+                value_index = value_index + 1:usize
+            }
+            rows#.push(cede copied_row)
+            row_index = row_index + 1:usize
+        }
+
+        return PostgresQueryResult(
+            columns = cede columns,
+            rows = cede rows,
+            command_tag = string::from(self.command_tag.as_str())
+        )
+    }
+}
+
 impl PostgresClient@encap {
     fn drop(self#) {
         self#.close()
@@ -783,6 +898,23 @@ impl PostgresClient {
             append_bytes(self.receive, chunk)
         }
         return Result<PostgresMessage, PostgresError>::Err(io_error("PostgreSQL receive loop exited unexpectedly"))
+    }
+
+    // An ErrorResponse is usable only after the protocol reaches its next
+    // ReadyForQuery boundary. Do not expose the client to another command
+    // until that boundary has been consumed.
+    fn drain_error_to_ready_async(self#) -> async Result<(), PostgresError> {
+        loop true {
+            auto received = self#.read_frame_async().await
+            if received.is_err() { return Result<(), PostgresError>::Err(received.unwrap_err()) }
+            match cede received.unwrap() {
+                auto PostgresMessage::ReadyForQuery(_) => return Result<(), PostgresError>::Ok(())
+                auto PostgresMessage::Notice(_) => {}
+                auto PostgresMessage::ParameterStatus(_, _) => {}
+                _ => return Result<(), PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL message while draining server error"))
+            }
+        }
+        return Result<(), PostgresError>::Err(io_error("PostgreSQL error drain loop exited unexpectedly"))
     }
 
     fn authenticate_async(self#, config: PostgresConfig) -> async Result<(), PostgresError> {
@@ -867,7 +999,7 @@ impl PostgresClient {
                     return Result<(), PostgresError>::Err(error("authentication", 0:usize, "unsupported PostgreSQL authentication method"))
                 }
                 auto PostgresMessage::Error('server_error) => {
-                    return Result<(), PostgresError>::Err(error("server", 0:usize, 'server_error.message.as_str()))
+                    return Result<(), PostgresError>::Err(server_error('server_error))
                 }
                 auto PostgresMessage::ReadyForQuery(_) => {
                     if !authenticated { return Result<(), PostgresError>::Err(error("authentication", 0:usize, "ReadyForQuery arrived before authentication completed")) }
@@ -906,6 +1038,119 @@ impl PostgresClient {
             return Result<PostgresClient, PostgresError>::Err(failure)
         }
         return Result<PostgresClient, PostgresError>::Ok(cede client)
+    }
+
+    // Executes PostgreSQL's simple-query protocol serially. One SQL string
+    // may contain multiple statements, so every CommandComplete produces a
+    // separate owned result. Transport or sequence failures poison the
+    // connection; an ordinary server ErrorResponse is drained through
+    // ReadyForQuery and leaves it reusable.
+    pub fn simple_query_async(self#, sql: str, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        if self.closed {
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("connection", 0:usize, "PostgreSQL client is closed"))
+        }
+
+        auto query = simple_query_message(sql)
+        if query.is_err() { return Result<Vec<PostgresQueryResult>, PostgresError>::Err(query.unwrap_err()) }
+        auto sent = self#.write_frame_async(cede query.unwrap()).await
+        if sent.is_err() {
+            self#.poison()
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(sent.unwrap_err())
+        }
+
+        auto results# = Vec<PostgresQueryResult>::new()
+        auto current_columns# = Vec<PostgresColumn>::new()
+        auto current_rows# = Vec<Vec<Option<Bytes>>>::new()
+        auto has_row_description# = false
+        auto total_rows#: usize = 0:usize
+        auto total_bytes#: usize = 0:usize
+
+        loop true {
+            auto received = self#.read_frame_async().await
+            if received.is_err() {
+                self#.poison()
+                return Result<Vec<PostgresQueryResult>, PostgresError>::Err(received.unwrap_err())
+            }
+            match cede received.unwrap() {
+                auto PostgresMessage::RowDescription('columns) => {
+                    if has_row_description {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "RowDescription arrived before the prior CommandComplete"))
+                    }
+                    current_columns = cede 'columns
+                    current_rows = Vec<Vec<Option<Bytes>>>::new()
+                    has_row_description = true
+                }
+                auto PostgresMessage::DataRow('values) => {
+                    if !has_row_description || 'values.len() != current_columns.len() {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "DataRow does not match an active RowDescription"))
+                    }
+                    if total_rows >= limits.max_rows {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(limit_error(0:usize, "PostgreSQL query result exceeds row limit"))
+                    }
+                    auto row_bytes = data_row_bytes('values)
+                    auto updated_bytes = add_query_bytes(total_bytes, row_bytes, limits.max_bytes)
+                    if updated_bytes.is_err() {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(updated_bytes.unwrap_err())
+                    }
+                    total_bytes = updated_bytes.unwrap()
+                    total_rows = total_rows + 1:usize
+                    current_rows#.push(cede 'values)
+                }
+                auto PostgresMessage::CommandComplete('tag) => {
+                    if results.len() >= limits.max_result_sets {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(limit_error(0:usize, "PostgreSQL query result exceeds result-set limit"))
+                    }
+                    auto updated_bytes = add_query_bytes(total_bytes, 'tag.len(), limits.max_bytes)
+                    if updated_bytes.is_err() {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(updated_bytes.unwrap_err())
+                    }
+                    total_bytes = updated_bytes.unwrap()
+                    results#.push(cede PostgresQueryResult(
+                        columns = cede current_columns,
+                        rows = cede current_rows,
+                        command_tag = cede 'tag
+                    ))
+                    current_columns = Vec<PostgresColumn>::new()
+                    current_rows = Vec<Vec<Option<Bytes>>>::new()
+                    has_row_description = false
+                }
+                auto PostgresMessage::Error('server_error) => {
+                    auto failure = server_error('server_error)
+                    auto drained = self#.drain_error_to_ready_async().await
+                    if drained.is_err() {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(drained.unwrap_err())
+                    }
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(failure)
+                }
+                auto PostgresMessage::ReadyForQuery(_) => {
+                    if has_row_description {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "ReadyForQuery arrived before CommandComplete"))
+                    }
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Ok(cede results)
+                }
+                auto PostgresMessage::Notice(_) => {}
+                auto PostgresMessage::ParameterStatus(_, _) => {}
+                auto PostgresMessage::Unknown(tag, 'body) => {
+                    if tag != 'I' as u8 || 'body.len() != 0:usize {
+                        self#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL message during simple query"))
+                    }
+                }
+                _ => {
+                    self#.poison()
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL message during simple query"))
+                }
+            }
+        }
+        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(io_error("PostgreSQL simple-query loop exited unexpectedly"))
     }
 }
 
