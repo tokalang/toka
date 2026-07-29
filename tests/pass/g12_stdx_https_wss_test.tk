@@ -4,13 +4,40 @@ import std/vec::{Vec}
 import stdx/net/url::{Url, parse_url}
 import stdx/net/http::{HttpClient, HttpRequest, HttpMethod, HeaderMap}
 import stdx/net/websocket::{ws_connect_url_async, ws_connect_insecure_url_async, ws_accept_stream_async, WsConnection}
-import stdx/net/stream::{AsyncStream, to_u8_ptr}
+import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
 import std/task::{sleep_async, block_on}
 import core/result::{Result}
 import std/io::{println}
 
 extern fn toka_ensure_test_cert_files(*cert_path: char, *key_path: char) -> i32
+
+fn bytes_from_string(value: str) -> Vec<u8> {
+    auto bytes# = Vec<u8>::with_capacity(value.len())
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        bytes#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return cede bytes
+}
+
+fn write_stream_async(stream#: AsyncStream, cede bytes: Vec<u8>) -> async Result<(), string> {
+    auto written = stream#.write_from_async(cede bytes, 10000:i32).await
+    if written.is_err() {
+        auto failure# = written.unwrap_err()
+        auto message = failure.message.clone()
+        auto _returned = failure#.take_buffer()
+        return Result<(), string>::Err(message)
+    }
+    auto completed# = written.unwrap()
+    auto complete = completed.complete
+    auto _returned = completed#.take_buffer()
+    if !complete {
+        return Result<(), string>::Err(string::from("incomplete async write"))
+    }
+    return Result<(), string>::Ok(())
+}
 
 fn test_url_parsing() {
     println("[Test 1/8] Testing URL Scheme & Effective Port Parsing...")
@@ -69,7 +96,8 @@ fn async_https_server_task(cede listener: TcpListener) -> async Result<(), strin
     auto _r = async_s#.read_into_async(cede req_buf, 512:usize, 5000).await
 
     auto resp_s = string::from("HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\nHTTPS Client OK!")
-    auto w = async_s#.write_all_async(resp_s.raw_ptr() as *u8, resp_s.len()).await
+    auto response# = bytes_from_string(resp_s.as_str())
+    auto w = write_stream_async(async_s, cede response).await
     if w.is_err() {
         return Result<(), string>::Err(w.unwrap_err())
     }
@@ -342,8 +370,8 @@ fn async_pem_server_task(cede listener: TcpListener) -> async Result<(), string>
     }
     auto async_s# = tls_res.unwrap()
     auto resp = string::from("HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nPEM Server OK")
-    auto *u8_resp# = resp.raw_ptr() as *u8
-    auto w = async_s#.write_all_async(*u8_resp, resp.len()).await
+    auto response# = bytes_from_string(resp.as_str())
+    auto w = write_stream_async(async_s, cede response).await
     if w.is_err() {
         return Result<(), string>::Err(w.unwrap_err())
     }
@@ -403,8 +431,8 @@ fn async_trusted_ca_client_task(port: u16) -> async Result<(), string> {
 
     auto async_s# = tls_res.unwrap()
     auto req_str = string::from("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-    auto *u8_req# = req_str.raw_ptr() as *u8
-    auto w = async_s#.write_all_async(*u8_req, req_str.len()).await
+    auto request# = bytes_from_string(req_str.as_str())
+    auto w = write_stream_async(async_s, cede request).await
     if w.is_err() {
         return Result<(), string>::Err(w.unwrap_err())
     }

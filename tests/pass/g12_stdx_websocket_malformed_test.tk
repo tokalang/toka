@@ -2,10 +2,54 @@
 import std/net::{TcpListener, TcpStream, SocketAddrV4, Ipv4Addr}
 import std/task::{sleep_async, block_on}
 import std/io::{println}
-import stdx/net/websocket::{ws_accept_async, ws_connect_async, WsConnection, WsMessage, to_u8_ptr}
+import stdx/net/websocket::{ws_accept_async, ws_connect_async, WsConnection, WsMessage}
+import stdx/net/stream::{AsyncStream}
 import core/result::{Result}
 import std/vec::{Vec}
-import core/types::{Addr}
+
+fn bytes_from_string(value: str) -> Vec<u8> {
+    auto bytes# = Vec<u8>::with_capacity(value.len())
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        bytes#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return cede bytes
+}
+
+fn write_tcp_async(stream#: TcpStream, cede bytes: Vec<u8>) -> async Result<(), string> {
+    auto written = stream#.write_from_async(cede bytes, 10000:i32).await
+    if written.is_err() {
+        auto failure# = written.unwrap_err()
+        auto message = failure.message.clone()
+        auto _returned = failure#.take_buffer()
+        return Result<(), string>::Err(message)
+    }
+    auto completed# = written.unwrap()
+    auto complete = completed.complete
+    auto _returned = completed#.take_buffer()
+    if !complete {
+        return Result<(), string>::Err(string::from("incomplete async write"))
+    }
+    return Result<(), string>::Ok(())
+}
+
+fn write_stream_async(stream#: AsyncStream, cede bytes: Vec<u8>) -> async Result<(), string> {
+    auto written = stream#.write_from_async(cede bytes, 10000:i32).await
+    if written.is_err() {
+        auto failure# = written.unwrap_err()
+        auto message = failure.message.clone()
+        auto _returned = failure#.take_buffer()
+        return Result<(), string>::Err(message)
+    }
+    auto completed# = written.unwrap()
+    auto complete = completed.complete
+    auto _returned = completed#.take_buffer()
+    if !complete {
+        return Result<(), string>::Err(string::from("incomplete async write"))
+    }
+    return Result<(), string>::Ok(())
+}
 
 // Test 1: Invalid Upgrade Header Rejection
 fn run_t1_server(port: u16) -> async Result<(), string> {
@@ -29,10 +73,8 @@ fn run_t1_client(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto stream# = TcpStream::connect_async(addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: wrong_proto\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
-    auto *p# = req.raw_ptr() as *[u8]
-    auto *u8_p# = to_u8_ptr(*p)
-    auto _w = stream#.write_all_async(*u8_p, req.len()).await
-    return Result<(), string>::Ok(())
+    auto request# = bytes_from_string(req.as_str())
+    return write_tcp_async(stream, cede request).await
 }
 
 // Test 2: Fragmented Control Frame (FIN=0 Ping) Rejection
@@ -75,10 +117,7 @@ fn run_t2_client(port: u16) -> async Result<(), string> {
     f#.push(0x22:u8)
     f#.push(0x33:u8)
     f#.push(0x44:u8)
-    auto *f_raw# = f.unsafe_as_raw()
-    auto *u8_f# = to_u8_ptr(*f_raw)
-    auto _w = ws.stream#.write_all_async(*u8_f, f.len()).await
-    return Result<(), string>::Ok(())
+    return write_stream_async(ws.stream, cede f).await
 }
 
 // Test 3: RSV1 Bit Rejection
@@ -121,10 +160,7 @@ fn run_t3_client(port: u16) -> async Result<(), string> {
     f#.push(0x22:u8)
     f#.push(0x33:u8)
     f#.push(0x44:u8)
-    auto *f_raw# = f.unsafe_as_raw()
-    auto *u8_f# = to_u8_ptr(*f_raw)
-    auto _w = ws.stream#.write_all_async(*u8_f, f.len()).await
-    return Result<(), string>::Ok(())
+    return write_stream_async(ws.stream, cede f).await
 }
 
 // Test 4: Close Frame Payload Length = 1 Rejection
@@ -168,10 +204,7 @@ fn run_t4_client(port: u16) -> async Result<(), string> {
     f#.push(0x33:u8)
     f#.push(0x44:u8)
     f#.push(0x00:u8)
-    auto *f_raw# = f.unsafe_as_raw()
-    auto *u8_f# = to_u8_ptr(*f_raw)
-    auto _w = ws.stream#.write_all_async(*u8_f, f.len()).await
-    return Result<(), string>::Ok(())
+    return write_stream_async(ws.stream, cede f).await
 }
 
 // Test 5: Substring Header False-Positive Rejection ("not-websocket")
@@ -196,10 +229,8 @@ fn run_t5_client(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto stream# = TcpStream::connect_async(addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: not-websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
-    auto *p# = req.raw_ptr() as *[u8]
-    auto *u8_p# = to_u8_ptr(*p)
-    auto _w = stream#.write_all_async(*u8_p, req.len()).await
-    return Result<(), string>::Ok(())
+    auto request# = bytes_from_string(req.as_str())
+    return write_tcp_async(stream, cede request).await
 }
 
 // Test 6: Non-Minimal Extended Payload Length Rejection (126 encoding for 2-byte payload)
@@ -246,10 +277,7 @@ fn run_t6_client(port: u16) -> async Result<(), string> {
     f#.push(0x44:u8)
     f#.push(0xAA:u8)
     f#.push(0xBB:u8)
-    auto *f_raw# = f.unsafe_as_raw()
-    auto *u8_f# = to_u8_ptr(*f_raw)
-    auto _w = ws.stream#.write_all_async(*u8_f, f.len()).await
-    return Result<(), string>::Ok(())
+    return write_stream_async(ws.stream, cede f).await
 }
 
 // Test 7: Invalid UTF-8 Text Frame Rejection
@@ -294,10 +322,7 @@ fn run_t7_client(port: u16) -> async Result<(), string> {
     f#.push(0x00:u8)
     f#.push(0xFF:u8) // Invalid UTF-8
     f#.push(0xFF:u8)
-    auto *f_raw# = f.unsafe_as_raw()
-    auto *u8_f# = to_u8_ptr(*f_raw)
-    auto _w = ws.stream#.write_all_async(*u8_f, f.len()).await
-    return Result<(), string>::Ok(())
+    return write_stream_async(ws.stream, cede f).await
 }
 
 // Test 8: Invalid Sec-WebSocket-Key Base64 Character Rejection
@@ -322,10 +347,8 @@ fn run_t8_client(port: u16) -> async Result<(), string> {
     auto addr = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
     auto stream# = TcpStream::connect_async(addr).await
     auto req# = string::from("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ!!\r\nSec-WebSocket-Version: 13\r\n\r\n")
-    auto *p# = req.raw_ptr() as *[u8]
-    auto *u8_p# = to_u8_ptr(*p)
-    auto _w = stream#.write_all_async(*u8_p, req.len()).await
-    return Result<(), string>::Ok(())
+    auto request# = bytes_from_string(req.as_str())
+    return write_tcp_async(stream, cede request).await
 }
 
 // Test 9: Multi-Frame Fragmented UTF-8 Validation (Split multi-byte character '¢' C2 A2 across 2 fragments)
@@ -368,9 +391,8 @@ fn run_t9_client(port: u16) -> async Result<(), string> {
     f1#.push(0x00:u8)
     f1#.push(0x00:u8)
     f1#.push(0xC2:u8)
-    auto *f1_raw# = f1.unsafe_as_raw()
-    auto *u8_f1# = to_u8_ptr(*f1_raw)
-    auto _w1 = ws.stream#.write_all_async(*u8_f1, f1.len()).await
+    auto w1 = write_stream_async(ws.stream, cede f1).await
+    if w1.is_err() { return Result<(), string>::Err(w1.unwrap_err()) }
 
     sleep_async(20).await
 
@@ -383,11 +405,7 @@ fn run_t9_client(port: u16) -> async Result<(), string> {
     f2#.push(0x00:u8)
     f2#.push(0x00:u8)
     f2#.push(0xA2:u8)
-    auto *f2_raw# = f2.unsafe_as_raw()
-    auto *u8_f2# = to_u8_ptr(*f2_raw)
-    auto _w2 = ws.stream#.write_all_async(*u8_f2, f2.len()).await
-
-    return Result<(), string>::Ok(())
+    return write_stream_async(ws.stream, cede f2).await
 }
 
 // Test 10: Invalid Reason Phrase ("HTTP/1.1 101 Bad") Rejection
@@ -412,10 +430,8 @@ fn run_t10_client(port: u16) -> async Result<(), string> {
     auto listener# = TcpListener::bind(addr)
     auto stream# = listener#.accept_async().await
     auto resp# = string::from("HTTP/1.1 101 Bad\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n")
-    auto *p# = resp.raw_ptr() as *[u8]
-    auto *u8_p# = to_u8_ptr(*p)
-    auto _w = stream#.write_all_async(*u8_p, resp.len()).await
-    return Result<(), string>::Ok(())
+    auto response# = bytes_from_string(resp.as_str())
+    return write_tcp_async(stream, cede response).await
 }
 
 fn main_async() -> async i32 {

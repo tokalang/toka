@@ -1,12 +1,10 @@
 // stdx/net/stream.tk — unified protocol-facing stream abstraction.
 //
-// All TLS state and data-pointer derivation live in std/net. New protocol code
-// uses the owner-carrying Vec APIs; the pointer methods below are retained only
-// as source-compatible adapters for existing low-level callers.
+// All TLS state and data-pointer derivation live in std/net. Protocol code uses
+// owner-carrying Vec APIs so buffers remain valid across async suspension.
 import std/net::{TcpStream, TlsSession, AsyncReadResult, AsyncWriteResult, AsyncIoError}
 import std/vec::{Vec}
 import core/result::{Result}
-import core/types::{Addr}
 
 pub shape AsyncStream (
     raw_tcp: TcpStream,
@@ -25,14 +23,6 @@ impl AsyncStream@encap {
     }
 
     pub fn clone(self) = delete
-}
-
-// Source-compatible helper for legacy tests and low-level callers. New
-// stdx protocol code must use read_into_async/write_from_async instead.
-pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
-    unsafe {
-        return (&raw[0] as Addr) as *u8
-    }
 }
 
 impl AsyncStream {
@@ -63,18 +53,6 @@ impl AsyncStream {
         return stream
     }
 
-    // Legacy pointer adapter. New protocol code must use read_into_async.
-    pub fn read_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<usize, string> {
-        if !self.is_tls {
-            return self.raw_tcp#.read_async(*buf, len).await
-        }
-        return self.tls#.read_async(self.raw_tcp, *buf, len, timeout_ms).await
-    }
-
-    pub fn read_async(self#, *buf: u8, len: usize) -> async Result<usize, string> {
-        return self#.read_async_timeout(*buf, len, 10000).await
-    }
-
     // The preferred protocol API. Its buffer owner survives suspension and is
     // returned on success, cancellation, timeout, and I/O error.
     pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
@@ -91,48 +69,6 @@ impl AsyncStream {
             return self.raw_tcp#.write_from_async(cede owned, timeout_ms).await
         }
         return self.tls#.write_from_async(self.raw_tcp, cede owned, timeout_ms).await
-    }
-
-    // Legacy pointer adapter. New protocol code must use write_from_async.
-    pub fn read_exact_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
-        if !self.is_tls {
-            auto r = self.raw_tcp#.read_exact_async(*buf, len).await
-            match r {
-                auto Result::Ok(_) => return Result<(), string>::Ok(())
-                auto Result::Err(&e) => return Result<(), string>::Err(e.clone())
-            }
-        }
-        auto total# = 0:usize
-        loop total < len {
-            auto cur_addr = (*buf as Addr) + (total as u64)
-            auto *cur_ptr# = (cur_addr as *[0]u8) as *u8
-            auto res = self#.read_async(*cur_ptr, len - total).await
-            match res {
-                auto Result::Ok(n) => {
-                    if n == 0:usize {
-                        return Result<(), string>::Err(string::from("Unexpected EOF during TLS read_exact_async"))
-                    }
-                    total = total + n
-                }
-                auto Result::Err(&e) => return Result<(), string>::Err(e.clone())
-            }
-        }
-        return Result<(), string>::Ok(())
-    }
-
-    pub fn write_all_async_timeout(self#, *buf: u8, len: usize, timeout_ms: i32) -> async Result<(), string> {
-        if !self.is_tls {
-            auto r = self.raw_tcp#.write_all_async(*buf, len).await
-            match r {
-                auto Result::Ok(_) => return Result<(), string>::Ok(())
-                auto Result::Err(&e) => return Result<(), string>::Err(e.clone())
-            }
-        }
-        return self.tls#.write_all_async(self.raw_tcp, *buf, len, timeout_ms).await
-    }
-
-    pub fn write_all_async(self#, *buf: u8, len: usize) -> async Result<(), string> {
-        return self#.write_all_async_timeout(*buf, len, 10000).await
     }
 
     pub fn close(self#) {

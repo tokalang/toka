@@ -84,24 +84,25 @@ fn async_http_server(port: u16) -> async i32 {
     }
     println("[Server] Accepted client connection!")
 
-    auto buf: [u8; 4096] = [0:u8; 4096]
-    auto read_res = stream#.read_async(&buf[0], 4096:usize).await
-    auto bytes_read# = 0:usize
-    auto read_ok# = false
-    match read_res {
-        auto Result<usize, string>::Ok(n) => {
-            bytes_read = n
-            read_ok = true
-        }
-        _ => {}
-    }
-    if !read_ok {
+    auto buffer# = Vec<u8>::with_capacity(4096:usize)
+    auto read_res = stream#.read_into_async(cede buffer, 4096:usize, 10000:i32).await
+    if read_res.is_err() {
+        auto failure# = read_res.unwrap_err()
+        auto _returned = failure#.take_buffer()
         println("[Server] Read error")
         stream#.close()
         return -3
     }
+    auto received# = read_res.unwrap()
+    auto bytes_read = received.bytes_read
+    auto request_bytes = received#.take_buffer()
     println("[Server] Read {} request bytes", bytes_read)
-    auto req_str = string::from_with_len(&buf[0] as *char, bytes_read as u64)
+    auto req_str# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < bytes_read {
+        req_str#.push_byte_raw(request_bytes.get(index))
+        index = index + 1:usize
+    }
     auto req_res# = parse_http_request(req_str)
     auto parse_ok# = false
     match req_res {

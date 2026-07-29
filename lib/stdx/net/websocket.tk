@@ -8,7 +8,6 @@ import std/task::{sleep_async}
 import stdx/crypto/sha1::{Sha1}
 import stdx/encoding/base64
 import core/result::{Result}
-import core/types::{Addr}
 import std/io::{println}
 import std/vec::{Vec}
 
@@ -54,12 +53,6 @@ impl WsConnection@encap {
 
 fn string_byte(s: str, idx: usize) -> u8 {
     return s.as_bytes().at(idx).unwrap() as u8
-}
-
-// Legacy source-compatibility shim. WebSocket implementation code no longer
-// uses this entry point; new code should use Vec/Bytes stream adapters.
-pub fn to_u8_ptr(*raw: [u8]) -> *u8 {
-    unsafe { return (&raw[0] as Addr) as *u8 }
 }
 
 pub fn to_lower_char(c: char) -> char {
@@ -314,7 +307,7 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     auto hash_res = sha1#.finalize()
     auto b64_res = base64::encode_fixed20(hash_res)
 
-    // Single complete buffer transmission via write_all_async to eliminate partial write
+    // Single complete owner-carrying buffer transmission to eliminate partial write.
     auto resp_str# = string::from("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ")
     resp_str#.push_str(b64_res.as_str())
     resp_str#.push_str("\r\n\r\n")
@@ -385,7 +378,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     auto hash_res = sha1#.finalize()
     auto expected_accept = base64::encode_fixed20(hash_res)
 
-    // Send HTTP Upgrade Request via write_all_async
+    // Send the HTTP Upgrade Request through the owner-carrying API.
     auto req_buf# = string::from("GET ")
     req_buf#.push_str(path.as_str())
     req_buf#.push_str(" HTTP/1.1\r\nHost: ")

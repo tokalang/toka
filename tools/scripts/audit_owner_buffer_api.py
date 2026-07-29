@@ -13,7 +13,6 @@ RAW_CALL = re.compile(
     r"write_all_async|write_all_async_timeout|write_async)\("
 )
 OWNER_CALL = re.compile(r"\.(?:read_into_async|write_from_async)\(")
-COMPATIBILITY_FILES = {ROOT / "lib" / "stdx" / "net" / "stream.tk"}
 
 
 def main() -> int:
@@ -27,15 +26,14 @@ def main() -> int:
                 if RAW_CALL.search(content):
                     raw_sites.append((source, line))
 
-    unexpected = [site for site in raw_sites if site[0] not in COMPATIBILITY_FILES]
     print(f"owner-carrying async I/O call sites: {owner_sites}")
-    print(f"raw compatibility call sites: {len(raw_sites)}")
+    print(f"raw async I/O call sites: {len(raw_sites)}")
     for source, line in raw_sites:
         print(f"  {source.relative_to(ROOT)}:{line}")
 
-    if unexpected:
-        print("unexpected raw async I/O calls found:", file=sys.stderr)
-        for source, line in unexpected:
+    if raw_sites:
+        print("raw async I/O calls found:", file=sys.stderr)
+        for source, line in raw_sites:
             print(f"  {source.relative_to(ROOT)}:{line}", file=sys.stderr)
         return 1
     return 0
