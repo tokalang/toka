@@ -233,7 +233,8 @@ impl<'W: @Writer> BufferedWriter<'W>@Writer {
     }
 }
 
-import std/net::{TcpStream}
+import std/net::{TcpStream, AsyncReadResult, AsyncIoError}
+import std/vec::{Vec}
 
 /// AsyncBufferedReader wraps a TcpStream and buffers its async reads.
 pub shape AsyncBufferedReader (
@@ -260,6 +261,31 @@ impl AsyncBufferedReader {
         )
     }
 
+    // Refill through the owner-carrying stream API. The temporary Vec remains
+    // owned by the async frame until the I/O operation has completed, then its
+    // initialized bytes are copied into this reader's fixed internal buffer.
+    fn refill_async(self#) -> async Result<usize, string> {
+        auto owner# = Vec<u8>::with_capacity(4096:usize)
+        auto refill = self.stream#.read_into_async(cede owner, 4096:usize, 0:i32).await
+        if refill.is_err() {
+            auto failure# = refill.unwrap_err()
+            auto message = failure.message.clone()
+            auto _returned = failure#.take_buffer()
+            return Result<usize, string>::Err(message)
+        }
+        auto received# = refill.unwrap()
+        auto count = received.bytes_read
+        auto bytes = received#.take_buffer()
+        auto index#: usize = 0:usize
+        loop index < count {
+            self.buf[index] = bytes.get(index)
+            index = index + 1:usize
+        }
+        self.pos = 0:usize
+        self.cap = count
+        return Result<usize, string>::Ok(count)
+    }
+
     pub fn read_until_async(self#, delimiter: u8, max_bytes: usize) -> async Result<string, string> {
         auto res_str# = string::from("")
         auto done# = false
@@ -267,8 +293,7 @@ impl AsyncBufferedReader {
 
         loop !done {
             if self.pos >= self.cap {
-                auto *ptr = &self.buf[0] as *u8
-                auto fill_res = self.stream#.read_async(*ptr, 4096:usize).await
+                auto fill_res = self#.refill_async().await
                 match fill_res {
                     auto Result::Ok(n) => {
                         if n == 0:usize {
@@ -325,6 +350,46 @@ impl AsyncBufferedReader {
         return self#.read_until_async(10:u8, max_bytes).await
     }
 
+    // Preferred async read API. The caller keeps ownership of the buffer even
+    // when the operation suspends or fails; bytes already buffered locally are
+    // copied into that owner before touching the underlying stream.
+    pub fn read_into_async(self#, cede owner: Vec<u8>, max_len: usize, timeout_ms: i32) -> async Result<AsyncReadResult, AsyncIoError> {
+        auto owned# = cede owner
+        if max_len == 0:usize {
+            owned#.unsafe_set_len(0:usize)
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = 0:usize,
+                eof = false
+            ))
+        }
+
+        if self.pos < self.cap {
+            auto available = self.cap - self.pos
+            auto to_copy# = max_len
+            if to_copy > available {
+                to_copy = available
+            }
+            owned#.unsafe_set_len(0:usize)
+            auto index#: usize = 0:usize
+            loop index < to_copy {
+                owned#.push(self.buf[self.pos + index])
+                index = index + 1:usize
+            }
+            self.pos = self.pos + to_copy
+            return Result<AsyncReadResult, AsyncIoError>::Ok(AsyncReadResult(
+                buffer = cede owned,
+                bytes_read = to_copy,
+                eof = false
+            ))
+        }
+
+        return self.stream#.read_into_async(cede owned, max_len, timeout_ms).await
+    }
+
+    // Legacy raw-pointer adapter. New code should call read_into_async. The
+    // socket operation still uses the owner-carrying path; this adapter only
+    // copies its completed bytes into the caller-provided low-level buffer.
     pub fn read_bytes_async(self#, *out_buf: u8, len: usize) -> async Result<usize, string> {
         if len == 0:usize {
             return Result<usize, string>::Ok(0:usize)
@@ -345,7 +410,24 @@ impl AsyncBufferedReader {
             return Result<usize, string>::Ok(to_copy)
         }
 
-        return self.stream#.read_async(*out_buf, len).await
+        auto owner# = Vec<u8>::with_capacity(len)
+        auto read_res = self#.read_into_async(cede owner, len, 0:i32).await
+        if read_res.is_err() {
+            auto failure# = read_res.unwrap_err()
+            auto message = failure.message.clone()
+            auto _returned = failure#.take_buffer()
+            return Result<usize, string>::Err(message)
+        }
+        auto received# = read_res.unwrap()
+        auto count = received.bytes_read
+        auto bytes = received#.take_buffer()
+        if count > 0:usize {
+            unsafe {
+                auto *src = bytes.unsafe_get(0:usize)
+                libc_memcpy(*out_buf as *void, *src as *void, count)
+            }
+        }
+        return Result<usize, string>::Ok(count)
     }
 
     pub fn read_exact_async(self#, *out_buf: u8, len: usize) -> async Result<usize, string> {

@@ -6,9 +6,30 @@ import std/net::{TcpListener, TcpStream, Ipv4Addr, SocketAddrV4}
 import stdx/io/bufio::{AsyncBufferedReader}
 import std/thread::{thread_spawn}
 import std/task::{sleep_async, block_on}
+import std/vec::{Vec}
 import sys/libc
 
 extern fn sleep(seconds: i32) -> i32
+
+fn bytes_from_string(value: str) -> Vec<u8> {
+    auto bytes# = Vec<u8>::with_capacity(value.len())
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        bytes#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return cede bytes
+}
+
+fn string_from_bytes(buffer: Vec<u8>) -> string {
+    auto text# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < buffer.len() {
+        text#.push_byte_raw(buffer.get(index))
+        index = index + 1:usize
+    }
+    return text
+}
 
 fn test_async_client(local_port: u16) -> async i32 {
     unsafe {
@@ -25,22 +46,22 @@ fn test_async_client(local_port: u16) -> async i32 {
         auto reader# = AsyncBufferedReader::new(cede stream#.take())
 
         auto req_line = string::from("GET /strict HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
-        auto *req_ptr# = req_line.c_str() as *u8
-        auto w_res = reader.stream#.write_all_async(*req_ptr, req_line.len() as usize).await
+        auto request# = bytes_from_string(req_line.as_str())
+        auto w_res = reader.stream#.write_from_async(cede request, 0:i32).await
         assert(w_res.is_ok(), "client write_all_async failed")
+        auto written# = w_res.unwrap()
+        auto _request = written#.take_buffer()
 
         // Test AsyncBufferedReader line & byte reads
         auto line_res = reader#.read_line_async(1024).await
         assert(line_res.is_ok(), "reader.read_line_async status line failed")
         assert(line_res.unwrap().starts_with("HTTP/1.1 200 OK"), "Buffered status line mismatch")
 
-        auto body_buf: [u8; 512] = [0:u8; 512]
-        auto *body_ptr# = &body_buf[0] as *u8
-        auto bytes_res = reader#.read_bytes_async(*body_ptr, 512).await
-        assert(bytes_res.is_ok(), "reader.read_bytes_async failed")
-
-        auto resp_len = bytes_res.unwrap() as i32
-        auto resp_received = string::from_raw(*body_ptr, resp_len as usize)
+        auto body_buf# = Vec<u8>::with_capacity(512:usize)
+        auto bytes_res = reader#.read_into_async(cede body_buf, 512:usize, 0:i32).await
+        assert(bytes_res.is_ok(), "reader.read_into_async failed")
+        auto received# = bytes_res.unwrap()
+        auto resp_received = string_from_bytes(received#.take_buffer())
         assert(resp_received.contains("Verified Strict Async Response"), "Response body content verification failed")
         return 0
     }
