@@ -90,6 +90,20 @@ def main() -> int:
         work = Path(temporary)
         base_env = dict(os.environ)
         base_env.update({"TOKAC": str(tokac), "TOKA_LIB": str(make_sdk(work))})
+        # tokac currently emits support files beside its output, so keep these
+        # ephemeral executables beneath the repository's existing tmp root.
+        with tempfile.TemporaryDirectory(prefix="postgres-qualify-", dir=ROOT / "tmp") as test_temporary:
+            test_work = Path(test_temporary)
+            protocol = test_work / "protocol_v1"
+            client = test_work / "client_v1"
+            include = ["-I", str(ROOT / "lib"), "-I", str(PACKAGE / "lib")]
+            run([str(tokac), *include, str(PACKAGE / "tests" / "protocol_v1.tk"),
+                 "-o", str(protocol)], cwd=ROOT, env=base_env)
+            run([str(protocol)], cwd=ROOT, env=base_env)
+            run([str(tokac), *include, str(PACKAGE / "tests" / "client_v1.tk"),
+                 "-o", str(client)], cwd=ROOT, env=base_env)
+            run([str(client)], cwd=ROOT, env=base_env)
+
         dependency = work / "postgres"
         shutil.copytree(PACKAGE, dependency)
         project = work / "consumer"
@@ -117,6 +131,7 @@ def main() -> int:
             "offline_lock_replay": "pass",
             "public_import_build_run": "pass",
             "wire_codec": "pass",
+            "tls_scram_startup": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))

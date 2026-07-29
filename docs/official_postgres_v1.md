@@ -1,14 +1,16 @@
 # `official/postgres` v1 — PostgreSQL v3 Client RFC
 
-Status: **Phase 1 wire codec and ASCII-profile SCRAM-SHA-256 helper
-implemented; transport and TLS are not yet a published-client claim.**
+Status: **Phase 1 wire codec, secure TLS startup, and ASCII-profile
+SCRAM-SHA-256 authentication are implemented; query execution is not yet a
+published-client claim.**
 
 ## 1. Role and placement
 
 `official/postgres` is an optional, pure-Toka asynchronous PostgreSQL v3
 client. It depends only on public `std` and `stdx` facilities. It is not part
-of `std`, does not require a compiler hook, and has no native dependency or
-reverse dependency from lower library layers.
+of `std`, does not require a compiler hook, has no package-owned native
+dependency, and has no reverse dependency from lower library layers. Its TLS
+mode uses the configured `stdx/net/tls` backend.
 
 The package is intentionally built in vertical slices. Its first committed
 surface is a bounded wire codec so that framing, binary ownership, server
@@ -28,14 +30,17 @@ Delivery is intentionally ordered as follows:
    decode bounded backend frames, including authentication, parameter status,
    errors, row descriptions, binary data rows, command completion, and ready
    state.
-2. **Secure startup.** Send SSLRequest, use `stdx/net/tls` when required, and
-   fail closed if the server refuses TLS.
-3. **SCRAM-SHA-256 — algorithmic helper complete.** It uses SHA-256, HMAC,
+2. **Secure startup — complete.** `PostgresClient::connect_async` sends
+   SSLRequest, upgrades through `stdx/net/tls`, and fails closed if the server
+   refuses TLS. `PostgresConfig::secure` requires verified TLS; plaintext and
+   unverified TLS are explicit local/test configurations, never fallbacks.
+3. **SCRAM-SHA-256 — complete.** It uses SHA-256, HMAC,
    Base64, and the qualified `stdx/crypto/pbkdf2` primitive. The present helper
    accepts printable ASCII credentials only, rather than claiming unqualified
    SASLprep behavior. It requires 4,096 to 1,000,000 iterations and bounds
-   decoded salts at 64 KiB. The client integration will reject cleartext and
-   MD5 authentication in its secure path.
+   decoded salts at 64 KiB. Startup rejects cleartext and MD5 authentication
+   in its secure path and verifies the server-final signature before accepting
+   AuthOK.
 4. **Simple query client.** One query owns the serial connection until it has
    consumed `ReadyForQuery`; errors and cancellation poison the connection so
    a later query cannot receive an abandoned response.
@@ -56,10 +61,10 @@ validated before allocation or slicing. Backend `ErrorResponse` is parsed into
 an owned SQLSTATE/message record. Unknown message tags retain an owned payload
 so a later client state machine can decide whether the message is ignorable.
 
-## 4. Explicit non-goals for the codec slice
+## 4. Explicit non-goals for the startup slice
 
-This slice does not provide a network connection, TLS, authentication,
-prepared statements, parameter binding, COPY, notifications, transactions,
-pooling, replication, or ORM behavior. It does not claim compatibility with a
-running PostgreSQL server until the later secure-startup and client slices are
+This slice does not provide query execution, prepared statements, parameter
+binding, COPY, notifications, transactions, pooling, replication, or ORM
+behavior. It does not claim compatibility with a running PostgreSQL server
+until the later serial-query and real-service compatibility slices are
 qualified.

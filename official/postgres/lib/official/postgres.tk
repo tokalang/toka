@@ -8,12 +8,16 @@ import core/option::{Option}
 import core/result::{Result}
 import core/str::{bytes}
 import std/bytes::{Bytes, bytes_from_array}
+import std/net::{SocketAddrV4, TcpStream}
 import std/vec::{Vec}
 import stdx/crypto/constant_time
 import stdx/crypto/hmac::{hmac_sha256}
 import stdx/crypto/pbkdf2
 import stdx/crypto/sha256::{Sha256}
 import stdx/encoding/base64
+import stdx/crypto/token
+import stdx/net/stream::{AsyncStream}
+import stdx/net/tls::{TlsStream}
 
 const PROTOCOL_V3: u32 = 196608:u32
 const MAX_FRAME_BYTES: usize = 16777216:usize
@@ -76,6 +80,35 @@ pub shape ScramClientFinal (
     expected_server_signature: Bytes
 )
 
+pub shape PostgresTlsMode (
+    RequireVerified() = 0 |
+    InsecureForTest() = 1 |
+    DisableForTrustedLocal() = 2
+)
+
+pub shape PostgresAuthPolicy (
+    ScramOnly() = 0 |
+    AllowTrustForLocal() = 1
+)
+
+pub shape PostgresConfig (
+    address: SocketAddrV4,
+    server_name: string,
+    user: string,
+    database: string,
+    password: string,
+    timeout_ms: i32,
+    tls_mode: PostgresTlsMode,
+    auth_policy: PostgresAuthPolicy
+)
+
+pub shape PostgresClient (
+    stream#: AsyncStream,
+    receive#: Vec<u8>,
+    timeout_ms: i32,
+    closed#: bool
+)
+
 shape ParsedText (
     value: string,
     next: usize
@@ -93,6 +126,10 @@ fn error(kind: str, position: usize, message: str) -> PostgresError {
         position = position,
         message = string::from(message)
     )
+}
+
+fn io_error(message: str) -> PostgresError {
+    return error("transport", 0:usize, message)
 }
 
 fn protocol_error(position: usize, message: str) -> PostgresError {
@@ -491,6 +528,385 @@ pub fn simple_query_message(sql: str) -> Result<Vec<u8>, PostgresError> {
     append_u32_be(frame, (sql.len() + 5:usize) as u32)
     append_cstring(frame, sql)
     return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+fn ssl_request_message() -> Vec<u8> {
+    auto frame# = Vec<u8>::with_capacity(8:usize)
+    append_u32_be(frame, 8:u32)
+    append_u32_be(frame, 80877103:u32)
+    return frame
+}
+
+fn sasl_initial_message(mechanism: str, initial: str) -> Result<Vec<u8>, PostgresError> {
+    if contains_nul(mechanism) || contains_nul(initial) {
+        return Result<Vec<u8>, PostgresError>::Err(error("authentication", 0:usize, "SASL message must not contain NUL"))
+    }
+    auto body# = Vec<u8>::new()
+    append_cstring(body, mechanism)
+    append_u32_be(body, initial.len() as u32)
+    append_text(body, initial)
+    if body.len() + 5:usize > MAX_FRAME_BYTES {
+        return Result<Vec<u8>, PostgresError>::Err(limit_error(0:usize, "SASL initial response exceeds frame limit"))
+    }
+    auto frame# = Vec<u8>::with_capacity(body.len() + 5:usize)
+    frame#.push('p' as u8)
+    append_u32_be(frame, (body.len() + 4:usize) as u32)
+    auto index#: usize = 0:usize
+    loop index < body.len() {
+        frame#.push(body.get(index))
+        index = index + 1:usize
+    }
+    return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+fn sasl_response_message(response: str) -> Result<Vec<u8>, PostgresError> {
+    if contains_nul(response) {
+        return Result<Vec<u8>, PostgresError>::Err(error("authentication", 0:usize, "SASL response must not contain NUL"))
+    }
+    if response.len() + 5:usize > MAX_FRAME_BYTES {
+        return Result<Vec<u8>, PostgresError>::Err(limit_error(0:usize, "SASL response exceeds frame limit"))
+    }
+    auto frame# = Vec<u8>::with_capacity(response.len() + 5:usize)
+    frame#.push('p' as u8)
+    append_u32_be(frame, (response.len() + 4:usize) as u32)
+    append_text(frame, response)
+    return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+fn append_bytes(target#: Vec<u8>, source: Vec<u8>) {
+    auto index#: usize = 0:usize
+    loop index < source.len() {
+        target#.push(source.get(index))
+        index = index + 1:usize
+    }
+}
+
+fn suffix_from(input: Vec<u8>, start: usize) -> Vec<u8> {
+    auto remaining# = Vec<u8>::with_capacity(input.len() - start)
+    auto index#: usize = start
+    loop index < input.len() {
+        remaining#.push(input.get(index))
+        index = index + 1:usize
+    }
+    return remaining
+}
+
+fn contains_mechanism(values: Vec<string>, expected: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < values.len() {
+        if values.get(index).equals(expected) { return true }
+        index = index + 1:usize
+    }
+    return false
+}
+
+fn upgrade_stream_async(tcp#: TcpStream, config: PostgresConfig) -> async Result<AsyncStream, PostgresError> {
+    match config.tls_mode {
+        auto PostgresTlsMode::DisableForTrustedLocal() => {
+            return Result<AsyncStream, PostgresError>::Ok(AsyncStream::from_tcp(tcp#.take()))
+        }
+        _ => {}
+    }
+
+    auto request = ssl_request_message()
+    auto written = tcp#.write_from_async(cede request, config.timeout_ms).await
+    if written.is_err() {
+        auto failure# = written.unwrap_err()
+        auto message = string::from(failure.message.as_str())
+        auto _returned = failure#.take_buffer()
+        tcp#.close()
+        return Result<AsyncStream, PostgresError>::Err(io_error(message.as_str()))
+    }
+    auto completed# = written.unwrap()
+    auto complete = completed.complete
+    auto _returned = completed#.take_buffer()
+    if !complete {
+        tcp#.close()
+        return Result<AsyncStream, PostgresError>::Err(io_error("PostgreSQL SSLRequest write was incomplete"))
+    }
+
+    auto response# = Vec<u8>::with_capacity(1:usize)
+    auto read = tcp#.read_into_async(cede response, 1:usize, config.timeout_ms).await
+    if read.is_err() {
+        auto failure# = read.unwrap_err()
+        auto message = string::from(failure.message.as_str())
+        auto _returned = failure#.take_buffer()
+        tcp#.close()
+        return Result<AsyncStream, PostgresError>::Err(io_error(message.as_str()))
+    }
+    auto received# = read.unwrap()
+    auto bytes_read = received.bytes_read
+    auto eof = received.eof
+    auto response_bytes = received#.take_buffer()
+    if eof || bytes_read != 1:usize {
+        tcp#.close()
+        return Result<AsyncStream, PostgresError>::Err(io_error("PostgreSQL server closed during SSL negotiation"))
+    }
+    if response_bytes.get(0:usize) != 'S' as u8 {
+        tcp#.close()
+        return Result<AsyncStream, PostgresError>::Err(error("tls", 0:usize, "PostgreSQL server refused required TLS"))
+    }
+
+    auto host = string::from(config.server_name.as_str())
+    auto upgraded = match config.tls_mode {
+        auto PostgresTlsMode::RequireVerified() => pass TlsStream::connect_with_verify_async_timeout(tcp, host, true, config.timeout_ms).await
+        auto PostgresTlsMode::InsecureForTest() => pass TlsStream::connect_with_verify_async_timeout(tcp, host, false, config.timeout_ms).await
+        auto PostgresTlsMode::DisableForTrustedLocal() => return Result<AsyncStream, PostgresError>::Err(error("tls", 0:usize, "unreachable plaintext TLS branch"))
+    }
+    if upgraded.is_err() {
+        auto failure = upgraded.unwrap_err()
+        return Result<AsyncStream, PostgresError>::Err(io_error(failure.as_str()))
+    }
+    return Result<AsyncStream, PostgresError>::Ok(cede upgraded.unwrap())
+}
+
+impl PostgresConfig {
+    pub fn secure(address: SocketAddrV4, server_name: str, user: str,
+                  database: str, password: str) -> Result<PostgresConfig, PostgresError> {
+        if server_name.len() == 0:usize || user.len() == 0:usize || database.len() == 0:usize {
+            return Result<PostgresConfig, PostgresError>::Err(error("input", 0:usize, "PostgreSQL server name, user, and database must not be empty"))
+        }
+        return Result<PostgresConfig, PostgresError>::Ok(PostgresConfig(
+            address = address,
+            server_name = string::from(server_name),
+            user = string::from(user),
+            database = string::from(database),
+            password = string::from(password),
+            timeout_ms = 10000:i32,
+            tls_mode = PostgresTlsMode::RequireVerified(),
+            auth_policy = PostgresAuthPolicy::ScramOnly()
+        ))
+    }
+
+    // This constructor is intentionally explicit: it exists for a local test
+    // server or a separately secured loopback deployment, never as fallback.
+    pub fn trusted_local(address: SocketAddrV4, user: str,
+                         database: str) -> Result<PostgresConfig, PostgresError> {
+        if user.len() == 0:usize || database.len() == 0:usize {
+            return Result<PostgresConfig, PostgresError>::Err(error("input", 0:usize, "PostgreSQL user and database must not be empty"))
+        }
+        return Result<PostgresConfig, PostgresError>::Ok(PostgresConfig(
+            address = address,
+            server_name = string::from("localhost"),
+            user = string::from(user),
+            database = string::from(database),
+            password = string::from(""),
+            timeout_ms = 10000:i32,
+            tls_mode = PostgresTlsMode::DisableForTrustedLocal(),
+            auth_policy = PostgresAuthPolicy::AllowTrustForLocal()
+        ))
+    }
+
+    pub fn insecure_tls_for_test(address: SocketAddrV4, server_name: str,
+                                 user: str, database: str) -> Result<PostgresConfig, PostgresError> {
+        auto configured = PostgresConfig::trusted_local(address, user, database)
+        if configured.is_err() { return Result<PostgresConfig, PostgresError>::Err(configured.unwrap_err()) }
+        auto config# = configured.unwrap()
+        if server_name.len() == 0:usize { return Result<PostgresConfig, PostgresError>::Err(error("input", 0:usize, "PostgreSQL server name must not be empty")) }
+        config.server_name = string::from(server_name)
+        config.tls_mode = PostgresTlsMode::InsecureForTest()
+        return Result<PostgresConfig, PostgresError>::Ok(cede config)
+    }
+
+    pub fn set_timeout(self#, timeout_ms: i32) -> Result<(), PostgresError> {
+        if timeout_ms <= 0:i32 { return Result<(), PostgresError>::Err(error("input", 0:usize, "PostgreSQL timeout must be positive")) }
+        self.timeout_ms = timeout_ms
+        return Result<(), PostgresError>::Ok(())
+    }
+}
+
+impl PostgresClient@encap {
+    fn drop(self#) {
+        self#.close()
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl PostgresClient {
+    pub fn is_closed(self) -> bool {
+        return self.closed
+    }
+
+    pub fn close(self#) {
+        if !self.closed {
+            self.stream#.close()
+            self.closed = true
+        }
+    }
+
+    fn poison(self#) {
+        self#.close()
+    }
+
+    fn write_frame_async(self#, cede frame: Vec<u8>) -> async Result<(), PostgresError> {
+        auto written = self.stream#.write_from_async(cede frame, self.timeout_ms).await
+        if written.is_err() {
+            auto failure# = written.unwrap_err()
+            auto message = string::from(failure.message.as_str())
+            auto _returned = failure#.take_buffer()
+            return Result<(), PostgresError>::Err(io_error(message.as_str()))
+        }
+        auto completed# = written.unwrap()
+        auto complete = completed.complete
+        auto _returned = completed#.take_buffer()
+        if !complete { return Result<(), PostgresError>::Err(io_error("PostgreSQL frame write was incomplete")) }
+        return Result<(), PostgresError>::Ok(())
+    }
+
+    fn read_frame_async(self#) -> async Result<PostgresMessage, PostgresError> {
+        auto chunk# = Vec<u8>::with_capacity(4096:usize)
+        loop true {
+            auto decoded = decode_backend_one(self.receive)
+            if decoded.is_err() { return Result<PostgresMessage, PostgresError>::Err(decoded.unwrap_err()) }
+            match cede decoded.unwrap() {
+                auto PostgresDecode::Complete('frame) => {
+                    self.receive = suffix_from(self.receive, 'frame.consumed)
+                    return Result<PostgresMessage, PostgresError>::Ok(cede 'frame.message)
+                }
+                auto PostgresDecode::NeedMore() => {}
+            }
+            auto read = self.stream#.read_into_async(cede chunk, 4096:usize, self.timeout_ms).await
+            if read.is_err() {
+                auto failure# = read.unwrap_err()
+                auto message = string::from(failure.message.as_str())
+                auto _returned = failure#.take_buffer()
+                return Result<PostgresMessage, PostgresError>::Err(io_error(message.as_str()))
+            }
+            auto received# = read.unwrap()
+            auto bytes_read = received.bytes_read
+            auto eof = received.eof
+            chunk = received#.take_buffer()
+            if eof || bytes_read == 0:usize {
+                return Result<PostgresMessage, PostgresError>::Err(io_error("PostgreSQL connection closed before a complete frame"))
+            }
+            append_bytes(self.receive, chunk)
+        }
+        return Result<PostgresMessage, PostgresError>::Err(io_error("PostgreSQL receive loop exited unexpectedly"))
+    }
+
+    fn authenticate_async(self#, config: PostgresConfig) -> async Result<(), PostgresError> {
+        auto startup = startup_message(config.user.as_str(), config.database.as_str())
+        if startup.is_err() { return Result<(), PostgresError>::Err(startup.unwrap_err()) }
+        auto sent = self#.write_frame_async(cede startup.unwrap()).await
+        if sent.is_err() { return Result<(), PostgresError>::Err(sent.unwrap_err()) }
+
+        auto scram_started# = false
+        auto scram_verified# = false
+        auto authenticated# = false
+        auto first# = Option<ScramClientFirst>::None
+        auto final_message# = Option<ScramClientFinal>::None
+        loop true {
+            auto received = self#.read_frame_async().await
+            if received.is_err() { return Result<(), PostgresError>::Err(received.unwrap_err()) }
+            match cede received.unwrap() {
+                auto PostgresMessage::AuthenticationSasl('mechanisms) => {
+                    if scram_started || !contains_mechanism('mechanisms, "SCRAM-SHA-256") {
+                        return Result<(), PostgresError>::Err(error("authentication", 0:usize, "server did not offer usable SCRAM-SHA-256"))
+                    }
+                    auto nonce = token::url_safe_token(18:usize)
+                    if nonce.is_err() { return Result<(), PostgresError>::Err(error("authentication", 0:usize, nonce.unwrap_err().as_str())) }
+                    auto client_first = scram_client_first(config.user.as_str(), nonce.unwrap().as_str())
+                    if client_first.is_err() { return Result<(), PostgresError>::Err(client_first.unwrap_err()) }
+                    auto first_value = client_first.unwrap()
+                    auto initial = sasl_initial_message("SCRAM-SHA-256", first_value.message.as_str())
+                    if initial.is_err() { return Result<(), PostgresError>::Err(initial.unwrap_err()) }
+                    auto write = self#.write_frame_async(cede initial.unwrap()).await
+                    if write.is_err() { return Result<(), PostgresError>::Err(write.unwrap_err()) }
+                    first = Option<ScramClientFirst>::Some(cede first_value)
+                    scram_started = true
+                }
+                auto PostgresMessage::AuthenticationSaslContinue('server_first) => {
+                    if !scram_started || final_message.is_some() {
+                        return Result<(), PostgresError>::Err(error("authentication", 0:usize, "unexpected SCRAM server-first message"))
+                    }
+                    match cede first {
+                        auto Option::Some('first_value) => {
+                            auto client_final = scram_client_final(config.password.as_str(), 'first_value.bare.as_str(), 'server_first.as_str())
+                            if client_final.is_err() { return Result<(), PostgresError>::Err(client_final.unwrap_err()) }
+                            auto final_value = client_final.unwrap()
+                            auto response = sasl_response_message(final_value.message.as_str())
+                            if response.is_err() { return Result<(), PostgresError>::Err(response.unwrap_err()) }
+                            auto write = self#.write_frame_async(cede response.unwrap()).await
+                            if write.is_err() { return Result<(), PostgresError>::Err(write.unwrap_err()) }
+                            first = Option<ScramClientFirst>::None
+                            final_message = Option<ScramClientFinal>::Some(cede final_value)
+                        }
+                        auto Option::None => return Result<(), PostgresError>::Err(error("authentication", 0:usize, "unexpected SCRAM server-first message"))
+                    }
+                }
+                auto PostgresMessage::AuthenticationSaslFinal('server_final) => {
+                    match cede final_message {
+                        auto Option::Some('final_value) => {
+                            auto verified = 'final_value.verify_server_final('server_final.as_str())
+                            if verified.is_err() {
+                                return Result<(), PostgresError>::Err(verified.unwrap_err())
+                            }
+                            if !verified.unwrap() {
+                                return Result<(), PostgresError>::Err(error("authentication", 0:usize, "SCRAM server verifier did not match"))
+                            }
+                            final_message = Option<ScramClientFinal>::None
+                        }
+                        auto Option::None => return Result<(), PostgresError>::Err(error("authentication", 0:usize, "unexpected SCRAM server-final message"))
+                    }
+                    scram_verified = true
+                }
+                auto PostgresMessage::AuthenticationOk() => {
+                    if config.auth_policy == PostgresAuthPolicy::ScramOnly() && !scram_verified {
+                        return Result<(), PostgresError>::Err(error("authentication", 0:usize, "server authenticated without verified SCRAM-SHA-256"))
+                    }
+                    authenticated = true
+                }
+                auto PostgresMessage::AuthenticationCleartextPassword() => {
+                    return Result<(), PostgresError>::Err(error("authentication", 0:usize, "cleartext PostgreSQL authentication is refused"))
+                }
+                auto PostgresMessage::AuthenticationMd5() => {
+                    return Result<(), PostgresError>::Err(error("authentication", 0:usize, "MD5 PostgreSQL authentication is refused"))
+                }
+                auto PostgresMessage::AuthenticationUnsupported(_) => {
+                    return Result<(), PostgresError>::Err(error("authentication", 0:usize, "unsupported PostgreSQL authentication method"))
+                }
+                auto PostgresMessage::Error('server_error) => {
+                    return Result<(), PostgresError>::Err(error("server", 0:usize, 'server_error.message.as_str()))
+                }
+                auto PostgresMessage::ReadyForQuery(_) => {
+                    if !authenticated { return Result<(), PostgresError>::Err(error("authentication", 0:usize, "ReadyForQuery arrived before authentication completed")) }
+                    return Result<(), PostgresError>::Ok(())
+                }
+                _ => {}
+            }
+        }
+        return Result<(), PostgresError>::Err(io_error("PostgreSQL authentication loop exited unexpectedly"))
+    }
+
+    pub fn connect_async(cede config: PostgresConfig) -> async Result<PostgresClient, PostgresError> {
+        auto config# = cede config
+        if config.timeout_ms <= 0:i32 {
+            return Result<PostgresClient, PostgresError>::Err(error("input", 0:usize, "PostgreSQL timeout must be positive"))
+        }
+        auto connected = TcpStream::connect_async_timeout(config.address, config.timeout_ms).await
+        if connected.is_err() {
+            return Result<PostgresClient, PostgresError>::Err(io_error(connected.unwrap_err().as_str()))
+        }
+        auto tcp# = connected.unwrap()
+        auto upgraded = upgrade_stream_async(tcp, config).await
+        if upgraded.is_err() {
+            return Result<PostgresClient, PostgresError>::Err(upgraded.unwrap_err())
+        }
+        auto client# = PostgresClient(
+            stream = cede upgraded.unwrap(),
+            receive = Vec<u8>::with_capacity(4096:usize),
+            timeout_ms = config.timeout_ms,
+            closed = false
+        )
+        auto authenticated = client#.authenticate_async(config).await
+        if authenticated.is_err() {
+            auto failure = authenticated.unwrap_err()
+            client#.poison()
+            return Result<PostgresClient, PostgresError>::Err(failure)
+        }
+        return Result<PostgresClient, PostgresError>::Ok(cede client)
+    }
 }
 
 // PostgreSQL SCRAM is specified in terms of SASLprep.  This first pure-Toka
