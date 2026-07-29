@@ -1,0 +1,60 @@
+import std/vec::{Vec}
+
+shape Payload (
+    text: string
+)
+
+shape Packet (
+    One(Payload) = 1
+)
+
+shape PacketVec (
+    One(Vec<Payload>) = 1
+)
+
+shape Message (
+    Rows(Vec<Payload>) = 1
+)
+
+shape Frame (
+    message: Message,
+    consumed: usize
+)
+
+shape Decode (
+    Complete(Frame) = 1
+)
+
+fn main() -> i32 {
+    auto packet = Packet::One(Payload(text = string::from("moved")))
+    match cede packet {
+        auto Packet::One('payload) => match cede 'payload.text {
+            auto 'text => assert('text.equals("moved"), "nested cede preserves the resource")
+        }
+    }
+    auto payloads# = Vec<Payload>::new()
+    payloads#.push(cede Payload(text = string::from("vector")))
+    auto packet_vec = PacketVec::One(cede payloads)
+    match cede packet_vec {
+        auto PacketVec::One('items) => {
+            assert('items.len() == 1:usize, "nested cede preserves vector ownership")
+            assert('items.get(0:usize).text.equals("vector"),
+                   "resource element remains readable before scope cleanup")
+        }
+    }
+    auto rows# = Vec<Payload>::new()
+    rows#.push(cede Payload(text = string::from("framed")))
+    auto decoded = Decode::Complete(Frame(
+        message = Message::Rows(cede rows),
+        consumed = 1:usize
+    ))
+    match cede decoded {
+        auto Decode::Complete('frame) => match cede 'frame.message {
+            auto Message::Rows('items) => {
+                assert('items.get(0:usize).text.equals("framed"),
+                       "multi-level cede preserves nested resource ownership")
+            }
+        }
+    }
+    return 0
+}

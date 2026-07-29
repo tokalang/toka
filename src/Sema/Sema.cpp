@@ -3741,6 +3741,12 @@ FunctionDecl *Sema::instantiateGenericFunction(
         applySubst(ce->TargetType);
         if (ce->Expression)
           visitExpr(ce->Expression.get());
+      } else if (auto *se = dynamic_cast<SizeOfExpr *>(e)) {
+        // Const generic extents also occur in type-level expressions such as
+        // `sizeof([u8; N_])`.  Leaving this spelling symbolic makes CodeGen
+        // materialize a zero-length array even though the function instance
+        // itself was specialized (for example bytes_from_array<32>).
+        applySubst(se->TypeStr);
       } else if (auto *ise = dynamic_cast<InitStructExpr *>(e)) {
         applySubst(ise->ShapeName);
         for (auto &m : ise->Members)

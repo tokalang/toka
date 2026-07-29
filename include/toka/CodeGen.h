@@ -316,7 +316,8 @@ private:
   PhysEntity genRepeatedArrayExpr(const RepeatedArrayExpr *expr);
   PhysEntity genCastExpr(const CastExpr *expr);
   PhysEntity genUnaryExpr(const UnaryExpr *expr);
-  PhysEntity genIfExpr(const IfExpr *expr);
+  PhysEntity genIfExpr(const IfExpr *expr,
+                       llvm::AllocaInst *inheritedResultAddr = nullptr);
   PhysEntity genGuardExpr(const GuardExpr *expr);
   PhysEntity genLoopExpr(const LoopExpr *expr);
   PhysEntity genForExpr(const ForExpr *expr);

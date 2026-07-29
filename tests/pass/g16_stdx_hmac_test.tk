@@ -41,7 +41,7 @@ fn main() -> i32 {
     auto message3 = repeated_byte_50(0xdd:u8)
     assert_hmac(
         bytes_from_array<20>(key3), bytes_from_array<50>(message3),
-        "773ea91e36800e46854db8ebd09181a729590e9fe10fef8f0aee42c72a86eeb")
+        "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe")
 
     // RFC 4231, case 6: a key longer than the SHA-256 block is hashed first.
     auto key4 = repeated_byte_131(0xaa:u8)

@@ -713,8 +713,13 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       // Update m.Type to ensure downstream logic (e.g. CodeGen) perceives the substituted template type
       m.Type = fullTypeStr;
 
-      std::string resolvedName = resolveType(fullTypeStr);
-      m.ResolvedType = toka::Type::fromString(resolvedName);
+      // Reparse the substituted spelling before resolving it.  `subObj` can
+      // still carry a symbolic array extent from the template (for example
+      // `[u8; N_]` in `bytes_from_array<N_>`), whereas `fullTypeStr` has the
+      // concrete extent.  Resolve the resulting Type object rather than
+      // retaining only a string so imported shapes keep their declaration
+      // identity even when modules export the same short name.
+      m.ResolvedType = resolveType(toka::Type::fromString(fullTypeStr));
     };
 
     // [NEW] Handle Nested Substitution for SubMembers (Variants)

@@ -2229,7 +2229,14 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           hasDrop = true;
       }
       const Expr *targetInner = expr->Target.get();
-      while (targetInner) {
+      if (isCeded) {
+          // `match cede value` transfers the scrutinee into its pattern
+          // binders.  The staging alloca is only transport storage; letting
+          // its scope cleanup run would destroy the transferred payload a
+          // second time.
+          hasDrop = false;
+      }
+      while (targetInner && hasDrop) {
           if (dynamic_cast<const CedeExpr*>(targetInner)) {
               hasDrop = false;
               break;
@@ -2466,9 +2473,9 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
             if (!variant->SubMembers.empty()) {
               for (const auto &f : variant->SubMembers) {
                 if (f.ResolvedType) {
-                    fieldTypes.push_back(getLLVMType(f.ResolvedType));
+                  fieldTypes.push_back(getLLVMType(f.ResolvedType));
                 } else {
-                    fieldTypes.push_back(resolveType(f.Type, false));
+                  fieldTypes.push_back(resolveType(f.Type, false));
                 }
               }
               payloadLayoutType =
@@ -3026,10 +3033,13 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
       resultType, false);
 }
 
-PhysEntity CodeGen::genIfExpr(const IfExpr *ie) {
-  llvm::AllocaInst *resultAddr = nullptr;
+PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
+                              llvm::AllocaInst *inheritedResultAddr) {
+  llvm::AllocaInst *resultAddr = inheritedResultAddr;
   llvm::Type *resTy = nullptr;
-  if (ie->ResolvedType && !ie->ResolvedType->isVoid()) {
+  if (resultAddr) {
+    resTy = resultAddr->getAllocatedType();
+  } else if (ie->ResolvedType && !ie->ResolvedType->isVoid()) {
     resTy = getLLVMType(ie->ResolvedType);
     resultAddr = createEntryBlockAlloca(resTy, nullptr, "if_result_addr");
     m_Builder.CreateStore(llvm::Constant::getNullValue(resTy), resultAddr);
@@ -3102,7 +3112,19 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie) {
   if (ie->Else) {
     m_CFStack.push_back(
         {"", mergeBB, nullptr, resultAddr, m_ScopeStack.size()});
-    genStmt(ie->Else.get());
+    // An `else if` is parsed as an expression statement containing a nested
+    // IfExpr.  Give it this if-expression's result slot so each nested
+    // `pass` initializes the original value-producing expression.
+    if (auto *elseExpr = dynamic_cast<const ExprStmt *>(ie->Else.get())) {
+      if (auto *nestedIf =
+              dynamic_cast<const IfExpr *>(elseExpr->Expression.get())) {
+        genIfExpr(nestedIf, resultAddr);
+      } else {
+        genStmt(ie->Else.get());
+      }
+    } else {
+      genStmt(ie->Else.get());
+    }
     m_CFStack.pop_back();
   }
   llvm::BasicBlock *elseEndBB = m_Builder.GetInsertBlock();
@@ -3969,6 +3991,25 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
               llvm::Type::getInt1Ty(m_Context), nullptr, pName + ".drop.live");
           m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
                                 info.DropFlag);
+        }
+        // A by-value pattern binder can itself be the root of a later
+        // `match cede binder.field`.  Give compiler-managed records the same
+        // field liveness mask as ordinary local declarations so that moving
+        // one field cannot make the binder's eventual cascade double-drop
+        // it.  Explicit destructors remain opaque whole-object invariants.
+        auto shapeIt = m_Shapes.find(typeName);
+        if (alloca && hasDrop && shapeIt != m_Shapes.end() &&
+            !shapeIt->second->HasExplicitDrop &&
+            (shapeIt->second->Kind == ShapeKind::Struct ||
+             shapeIt->second->Kind == ShapeKind::Tuple) &&
+            shapeIt->second->Members.size() <= 64) {
+          const size_t fieldCount = shapeIt->second->Members.size();
+          const uint64_t fullMask =
+              fieldCount == 64 ? ~0ULL : ((1ULL << fieldCount) - 1ULL);
+          info.DropMask = createEntryBlockAlloca(
+              llvm::Type::getInt64Ty(m_Context), nullptr,
+              pName + ".drop.mask");
+          m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
         }
         m_ScopeStack.back().push_back(info);
       }
@@ -5124,9 +5165,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             if (!targetVar->SubMembers.empty()) {
               for (auto &f : targetVar->SubMembers) {
                 if (f.ResolvedType) {
-                    fieldTypes.push_back(getLLVMType(f.ResolvedType));
+                  fieldTypes.push_back(getLLVMType(f.ResolvedType));
                 } else {
-                    fieldTypes.push_back(resolveType(f.Type, false));
+                  fieldTypes.push_back(resolveType(f.Type, false));
                 }
               }
               payloadType = llvm::StructType::get(m_Context, fieldTypes, false);
@@ -6101,7 +6142,15 @@ PhysEntity CodeGen::genPassExpr(const PassExpr *pe) {
   }
 
   if (!m_CFStack.empty()) {
-    auto target = m_CFStack.back();
+    // `pass` yields from the nearest value-producing control-flow
+    // expression.  A plain nested `if` may have no result slot of its own,
+    // for example inside an `else if` branch that validates a Result before
+    // passing it onward.  In that case, routing to the innermost CF frame
+    // loses the value; walk outward to the first frame that owns a slot.
+    auto targetIt = m_CFStack.rbegin();
+    while (targetIt != m_CFStack.rend() && !targetIt->ResultAddr)
+      ++targetIt;
+    auto target = targetIt != m_CFStack.rend() ? *targetIt : m_CFStack.back();
     executeScopeUnwinding(target.ScopeDepth);
     if (val && target.ResultAddr) {
       m_Builder.CreateStore(val, target.ResultAddr);

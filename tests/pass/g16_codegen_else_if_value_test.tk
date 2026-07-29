@@ -1,0 +1,24 @@
+fn classify(value: i32) -> i32 {
+    auto result = if value == 0 {
+        pass 10
+    } else if value == 1 {
+        if value == 1 {
+            pass 20
+        } else {
+            pass -1
+        }
+    } else if value == 2 {
+        pass 30
+    } else {
+        pass 40
+    }
+    return result
+}
+
+fn main() -> i32 {
+    assert(classify(0) == 10, "first value-producing branch")
+    assert(classify(1) == 20, "first else-if value-producing branch")
+    assert(classify(2) == 30, "second else-if value-producing branch")
+    assert(classify(3) == 40, "terminal else value-producing branch")
+    return 0
+}
