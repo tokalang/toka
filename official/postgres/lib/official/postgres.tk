@@ -9,7 +9,10 @@ import core/result::{Result}
 import core/str::{bytes}
 import std/bytes::{Bytes, bytes_from_array}
 import std/net::{SocketAddrV4, TcpStream}
+import std/sync::{Mutex}
+import std/task::{sleep_async}
 import std/vec::{Vec}
+import sys/libc::*
 import stdx/crypto/constant_time
 import stdx/crypto/hmac::{hmac_sha256}
 import stdx/crypto/pbkdf2
@@ -57,7 +60,13 @@ pub shape PostgresMessage (
     RowDescription(Vec<PostgresColumn>) = 12 |
     DataRow(Vec<Option<Bytes>>) = 13 |
     CommandComplete(string) = 14 |
-    Unknown(u8, Bytes) = 15
+    ParseComplete() = 15 |
+    BindComplete() = 16 |
+    CloseComplete() = 17 |
+    NoData() = 18 |
+    ParameterDescription(Vec<u32>) = 19 |
+    PortalSuspended() = 20 |
+    Unknown(u8, Bytes) = 21
 )
 
 pub shape PostgresBackendFrame (
@@ -120,12 +129,149 @@ pub shape PostgresQueryResult (
     command_tag: string
 )
 
+// Parameters retain their transport representation until Bind is written.
+// Text is sent in PostgreSQL text format; Bytes is intentionally binary so a
+// caller that prepares a bytea (or another binary-capable type) never loses
+// embedded NUL bytes to a string conversion.
+pub shape PostgresParam (
+    Null() = 0 |
+    Text(string) = 1 |
+    Bytes(Bytes) = 2 |
+    Int64(i64) = 3 |
+    Bool(bool) = 4
+)
+
+// A statement is session-local. It is deliberately not Clone: copying the
+// name would make it too easy to issue concurrent Bind messages on one serial
+// connection.
+pub shape PostgresStatement (
+    name: string,
+    parameter_count: usize,
+    closed: bool
+)
+
+// A transaction owns its connection through commit or rollback. Dropping an
+// active transaction closes the connection rather than pretending that an
+// asynchronous rollback happened.
+pub shape PostgresTransaction (
+    client#: PostgresClient,
+    active: bool
+)
+
+// std::Vec currently instantiates its clone implementation for every element
+// type, which is deliberately unavailable for a live socket. This small,
+// package-private store only moves PostgresClient values and is therefore the
+// correct container for idle pool connections.
+shape PostgresClientStore (
+    nul *#buf#: [PostgresClient] = null as *[PostgresClient],
+    len#: usize = 0:usize,
+    cap#: usize = 0:usize
+)
+
+shape PostgresPoolState (
+    config: PostgresConfig,
+    idle#: PostgresClientStore,
+    total_connections: usize,
+    max_connections: usize,
+    closed: bool
+)
+
+// A pool is a cheap shared handle. Acquiring returns an exclusive lease, so a
+// serial PostgreSQL socket can never be used by two requests at once.
+pub shape PostgresPool (
+    ~state: Mutex<PostgresPoolState>
+)
+
+pub shape PostgresPoolLease (
+    client#: PostgresClientStore,
+    ~state: Mutex<PostgresPoolState>
+)
+
 pub shape PostgresClient (
     stream#: AsyncStream,
     receive#: Vec<u8>,
     timeout_ms: i32,
-    closed#: bool
+    closed#: bool,
+    next_statement_id: u32
 )
+
+// A client owns its socket and TLS session. Moving that ownership to another
+// worker is safe; using it concurrently remains impossible because every
+// command requires its unique mutable owner.
+impl PostgresClient @Send {}
+impl PostgresConfig @Send {}
+impl PostgresPoolState @Send {}
+impl PostgresClientStore @Send {}
+
+impl PostgresClientStore@encap {
+    fn drop(self#) {
+        unsafe {
+            loop self.len > 0:usize {
+                self.len = self.len - 1:usize
+                auto dropped# = cede self.buf[self.len]
+            }
+            if self.*buf != null {
+                unsafe free [self.cap] self.*#buf
+                self.*buf = null as *[PostgresClient]
+            }
+            self.cap = 0:usize
+        }
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl PostgresClientStore {
+    fn new() -> PostgresClientStore {
+        return PostgresClientStore(
+            *buf = null as *[PostgresClient],
+            len = 0:usize,
+            cap = 0:usize
+        )
+    }
+
+    fn grow(self#) {
+        unsafe {
+            auto next_cap# = self.cap * 2:usize
+            if next_cap == 0:usize { next_cap = 4:usize }
+            auto *next# = unsafe alloc [next_cap] PostgresClient
+            auto index#: usize = 0:usize
+            loop index < self.len {
+                next[index] = cede self.buf[index]
+                index = index + 1:usize
+            }
+            if self.*buf != null {
+                unsafe free [self.cap] self.*#buf
+            }
+            self.*buf = *next
+            self.cap = next_cap
+        }
+    }
+
+    fn push(self#, cede client: PostgresClient) {
+        if self.len == self.cap { self#.grow() }
+        unsafe {
+            self.buf[self.len] = cede client
+            self.len = self.len + 1:usize
+        }
+    }
+
+    fn pop(self#) -> Option<PostgresClient> {
+        if self.len == 0:usize { return Option<PostgresClient>::None }
+        unsafe {
+            self.len = self.len - 1:usize
+            auto client# = cede self.buf[self.len]
+            return Option<PostgresClient>::Some(cede client)
+        }
+    }
+}
+
+impl PostgresPoolState {
+    fn take_idle(self#) -> Option<PostgresClient> {
+        auto item# = self.idle#.pop()
+        return cede item
+    }
+}
 
 shape ParsedText (
     value: string,
@@ -520,6 +666,23 @@ fn parse_data_row(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMe
     return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::DataRow(cede values))
 }
 
+fn parse_parameter_description(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMessage, PostgresError> {
+    if end - start < 2:usize {
+        return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "ParameterDescription is too short"))
+    }
+    auto count = read_u16_be(input, start) as usize
+    if count > MAX_COLUMNS || end - start != 2:usize + count * 4:usize {
+        return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "ParameterDescription has invalid length"))
+    }
+    auto oids# = Vec<u32>::with_capacity(count)
+    auto index#: usize = 0:usize
+    loop index < count {
+        oids#.push(read_u32_be(input, start + 2:usize + index * 4:usize))
+        index = index + 1:usize
+    }
+    return Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::ParameterDescription(cede oids))
+}
+
 pub fn startup_message(user: str, database: str) -> Result<Vec<u8>, PostgresError> {
     if user.len() == 0:usize || database.len() == 0:usize {
         return Result<Vec<u8>, PostgresError>::Err(error("input", 0:usize, "PostgreSQL user and database must not be empty"))
@@ -556,6 +719,133 @@ pub fn simple_query_message(sql: str) -> Result<Vec<u8>, PostgresError> {
     append_u32_be(frame, (sql.len() + 5:usize) as u32)
     append_cstring(frame, sql)
     return Result<Vec<u8>, PostgresError>::Ok(cede frame)
+}
+
+fn append_i32_be(out#: Vec<u8>, value: i32) {
+    append_u32_be(out, value as u32)
+}
+
+fn append_typed_frame(out#: Vec<u8>, tag: u8, cede body: Vec<u8>) -> Result<(), PostgresError> {
+    auto owned# = cede body
+    if owned.len() + 5:usize > MAX_FRAME_BYTES {
+        return Result<(), PostgresError>::Err(limit_error(0:usize, "PostgreSQL extended-protocol frame exceeds limit"))
+    }
+    out#.push(tag)
+    append_u32_be(out, (owned.len() + 4:usize) as u32)
+    append_bytes(out, owned)
+    return Result<(), PostgresError>::Ok(())
+}
+
+fn append_parse_message(out#: Vec<u8>, statement: str, sql: str,
+                        param_type_oids: Vec<u32>) -> Result<(), PostgresError> {
+    if statement.len() == 0:usize || sql.len() == 0:usize || contains_nul(statement) || contains_nul(sql) {
+        return Result<(), PostgresError>::Err(error("input", 0:usize, "PostgreSQL statement name and SQL must be non-empty and NUL-free"))
+    }
+    if param_type_oids.len() > 65535:usize {
+        return Result<(), PostgresError>::Err(limit_error(0:usize, "PostgreSQL statement has too many parameters"))
+    }
+    auto body# = Vec<u8>::new()
+    append_cstring(body, statement)
+    append_cstring(body, sql)
+    append_u16_be(body, param_type_oids.len() as u16)
+    auto index#: usize = 0:usize
+    loop index < param_type_oids.len() {
+        append_u32_be(body, param_type_oids.get(index))
+        index = index + 1:usize
+    }
+    return append_typed_frame(out, 'P' as u8, cede body)
+}
+
+fn append_describe_statement_message(out#: Vec<u8>, statement: str) -> Result<(), PostgresError> {
+    if statement.len() == 0:usize || contains_nul(statement) {
+        return Result<(), PostgresError>::Err(error("input", 0:usize, "PostgreSQL statement name must be non-empty and NUL-free"))
+    }
+    auto body# = Vec<u8>::new()
+    body#.push('S' as u8)
+    append_cstring(body, statement)
+    return append_typed_frame(out, 'D' as u8, cede body)
+}
+
+fn append_close_statement_message(out#: Vec<u8>, statement: str) -> Result<(), PostgresError> {
+    if statement.len() == 0:usize || contains_nul(statement) {
+        return Result<(), PostgresError>::Err(error("input", 0:usize, "PostgreSQL statement name must be non-empty and NUL-free"))
+    }
+    auto body# = Vec<u8>::new()
+    body#.push('S' as u8)
+    append_cstring(body, statement)
+    return append_typed_frame(out, 'C' as u8, cede body)
+}
+
+fn append_sync_message(out#: Vec<u8>) -> Result<(), PostgresError> {
+    return append_typed_frame(out, 'S' as u8, cede Vec<u8>::new())
+}
+
+fn append_bind_message(out#: Vec<u8>, statement: str, cede params: Vec<PostgresParam>) -> Result<(), PostgresError> {
+    auto values# = cede params
+    if statement.len() == 0:usize || contains_nul(statement) || values.len() > 65535:usize {
+        return Result<(), PostgresError>::Err(error("input", 0:usize, "invalid PostgreSQL Bind statement or parameter count"))
+    }
+    auto body# = Vec<u8>::new()
+    append_cstring(body, "")
+    append_cstring(body, statement)
+    append_u16_be(body, values.len() as u16)
+
+    // Supply one format code per parameter. This keeps binary values binary
+    // without changing the conventional text representation for scalar data.
+    auto index#: usize = 0:usize
+    loop index < values.len() {
+        match values.get(index) {
+            auto PostgresParam::Bytes(_) => append_u16_be(body, 1:u16)
+            _ => append_u16_be(body, 0:u16)
+        }
+        index = index + 1:usize
+    }
+
+    append_u16_be(body, values.len() as u16)
+    index = 0:usize
+    loop index < values.len() {
+        match values.get(index) {
+            auto PostgresParam::Null() => append_i32_be(body, -1:i32)
+            auto PostgresParam::Text(&value) => {
+                if contains_nul(value.as_str()) { return Result<(), PostgresError>::Err(error("input", index, "PostgreSQL text parameter must not contain NUL")) }
+                append_i32_be(body, value.len() as i32)
+                append_text(body, value.as_str())
+            }
+            auto PostgresParam::Bytes(&value) => {
+                append_i32_be(body, value.len() as i32)
+                auto view = value.as_slice()
+                auto byte_index#: usize = 0:usize
+                loop byte_index < view.len() {
+                    body#.push(view.at(byte_index).unwrap() as u8)
+                    byte_index = byte_index + 1:usize
+                }
+            }
+            auto PostgresParam::Int64(value) => {
+                auto rendered = string::from_i64(value)
+                append_i32_be(body, rendered.len() as i32)
+                append_text(body, rendered.as_str())
+            }
+            auto PostgresParam::Bool(value) => {
+                if value {
+                    append_i32_be(body, 4:i32)
+                    append_text(body, "true")
+                } else {
+                    append_i32_be(body, 5:i32)
+                    append_text(body, "false")
+                }
+            }
+        }
+        index = index + 1:usize
+    }
+    append_u16_be(body, 0:u16)
+    return append_typed_frame(out, 'B' as u8, cede body)
+}
+
+fn append_execute_message(out#: Vec<u8>) -> Result<(), PostgresError> {
+    auto body# = Vec<u8>::new()
+    append_cstring(body, "")
+    append_u32_be(body, 0:u32)
+    return append_typed_frame(out, 'E' as u8, cede body)
 }
 
 fn ssl_request_message() -> Vec<u8> {
@@ -710,6 +1000,19 @@ fn upgrade_stream_async(tcp#: TcpStream, config: PostgresConfig) -> async Result
 }
 
 impl PostgresConfig {
+    fn copy_for_connection(self) -> PostgresConfig {
+        return PostgresConfig(
+            address = self.address,
+            server_name = string::from(self.server_name.as_str()),
+            user = string::from(self.user.as_str()),
+            database = string::from(self.database.as_str()),
+            password = string::from(self.password.as_str()),
+            timeout_ms = self.timeout_ms,
+            tls_mode = self.tls_mode,
+            auth_policy = self.auth_policy
+        )
+    }
+
     pub fn secure(address: SocketAddrV4, server_name: str, user: str,
                   database: str, password: str) -> Result<PostgresConfig, PostgresError> {
         if server_name.len() == 0:usize || user.len() == 0:usize || database.len() == 0:usize {
@@ -1029,7 +1332,8 @@ impl PostgresClient {
             stream = cede upgraded.unwrap(),
             receive = Vec<u8>::with_capacity(4096:usize),
             timeout_ms = config.timeout_ms,
-            closed = false
+            closed = false,
+            next_statement_id = 1:u32
         )
         auto authenticated = client#.authenticate_async(config).await
         if authenticated.is_err() {
@@ -1038,6 +1342,105 @@ impl PostgresClient {
             return Result<PostgresClient, PostgresError>::Err(failure)
         }
         return Result<PostgresClient, PostgresError>::Ok(cede client)
+    }
+
+    // Prepare uses Parse + Describe(statement) + Sync, so the returned
+    // statement has passed a server-side syntax/type check before a Bind can
+    // use it. Statement names are generated per connection and never derive
+    // from SQL supplied by the caller.
+    pub fn prepare_async(self#, sql: str, cede param_type_oids: Vec<u32>) -> async Result<PostgresStatement, PostgresError> {
+        if self.closed {
+            return Result<PostgresStatement, PostgresError>::Err(error("connection", 0:usize, "PostgreSQL client is closed"))
+        }
+        auto parameter_count = param_type_oids.len()
+        auto name# = string::from("toka_stmt_")
+        name#.push_str(string::from_i64(self.next_statement_id as i64).as_str())
+        if self.next_statement_id == 4294967295:u32 {
+            self.next_statement_id = 1:u32
+        } else {
+            self.next_statement_id = self.next_statement_id + 1:u32
+        }
+
+        auto request# = Vec<u8>::new()
+        auto parsed = append_parse_message(request, name.as_str(), sql, cede param_type_oids)
+        if parsed.is_err() { return Result<PostgresStatement, PostgresError>::Err(parsed.unwrap_err()) }
+        auto described = append_describe_statement_message(request, name.as_str())
+        if described.is_err() { return Result<PostgresStatement, PostgresError>::Err(described.unwrap_err()) }
+        auto synced = append_sync_message(request)
+        if synced.is_err() { return Result<PostgresStatement, PostgresError>::Err(synced.unwrap_err()) }
+        auto sent = self#.write_frame_async(cede request).await
+        if sent.is_err() {
+            self#.poison()
+            return Result<PostgresStatement, PostgresError>::Err(sent.unwrap_err())
+        }
+
+        auto parse_complete# = false
+        auto parameter_description# = false
+        auto result_description# = false
+        loop true {
+            auto received = self#.read_frame_async().await
+            if received.is_err() {
+                self#.poison()
+                return Result<PostgresStatement, PostgresError>::Err(received.unwrap_err())
+            }
+            match cede received.unwrap() {
+                auto PostgresMessage::ParseComplete() => {
+                    if parse_complete {
+                        self#.poison()
+                        return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "duplicate ParseComplete"))
+                    }
+                    parse_complete = true
+                }
+                auto PostgresMessage::ParameterDescription('oids) => {
+                    if !parse_complete || parameter_description || 'oids.len() != parameter_count {
+                        self#.poison()
+                        return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL ParameterDescription"))
+                    }
+                    parameter_description = true
+                }
+                auto PostgresMessage::RowDescription(_) => {
+                    if !parse_complete || !parameter_description || result_description {
+                        self#.poison()
+                        return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL RowDescription while preparing"))
+                    }
+                    result_description = true
+                }
+                auto PostgresMessage::NoData() => {
+                    if !parse_complete || !parameter_description || result_description {
+                        self#.poison()
+                        return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL NoData while preparing"))
+                    }
+                    result_description = true
+                }
+                auto PostgresMessage::Error('server) => {
+                    auto failure = server_error('server)
+                    auto drained = self#.drain_error_to_ready_async().await
+                    if drained.is_err() {
+                        self#.poison()
+                        return Result<PostgresStatement, PostgresError>::Err(drained.unwrap_err())
+                    }
+                    return Result<PostgresStatement, PostgresError>::Err(failure)
+                }
+                auto PostgresMessage::ReadyForQuery(_) => {
+                    if !parse_complete || !parameter_description || !result_description {
+                        self#.poison()
+                        return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "ReadyForQuery arrived before prepared statement metadata"))
+                    }
+                    return Result<PostgresStatement, PostgresError>::Ok(PostgresStatement(
+                        name = cede name,
+                        parameter_count = parameter_count,
+                        closed = false
+                    ))
+                }
+                auto PostgresMessage::Notice(_) => {}
+                auto PostgresMessage::ParameterStatus(_, _) => {}
+                _ => {
+                    self#.poison()
+                    return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL message while preparing"))
+                }
+            }
+        }
+        return Result<PostgresStatement, PostgresError>::Err(io_error("PostgreSQL prepare loop exited unexpectedly"))
     }
 
     // Executes PostgreSQL's simple-query protocol serially. One SQL string
@@ -1151,6 +1554,484 @@ impl PostgresClient {
             }
         }
         return Result<Vec<PostgresQueryResult>, PostgresError>::Err(io_error("PostgreSQL simple-query loop exited unexpectedly"))
+    }
+}
+
+impl PostgresParam@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self) -> PostgresParam {
+        match self {
+            auto PostgresParam::Null() => return PostgresParam::Null()
+            auto PostgresParam::Text(&value) => return PostgresParam::Text(string::from(value.as_str()))
+            auto PostgresParam::Bytes(&value) => return PostgresParam::Bytes(value.clone())
+            auto PostgresParam::Int64(value) => return PostgresParam::Int64(value)
+            auto PostgresParam::Bool(value) => return PostgresParam::Bool(value)
+        }
+    }
+}
+
+impl PostgresStatement@encap {
+    pub name
+    pub parameter_count
+    pub closed
+    fn drop(self#) {}
+
+    pub fn clone(self) = delete
+}
+
+impl PostgresStatement {
+    pub fn is_closed(self) -> bool {
+        return self.closed
+    }
+
+    // Bind + Execute + Sync is one serial exchange. All values are owned by
+    // the outgoing frame before the first await, so parameter memory remains
+    // valid even if the transport suspends midway through a write.
+    pub fn execute_async(self#, client#: PostgresClient, cede params: Vec<PostgresParam>, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        if self.closed {
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("statement", 0:usize, "PostgreSQL statement is closed"))
+        }
+        if client.closed {
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("connection", 0:usize, "PostgreSQL client is closed"))
+        }
+        if params.len() != self.parameter_count {
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("input", 0:usize, "PostgreSQL parameter count does not match prepared statement"))
+        }
+
+        auto request# = Vec<u8>::new()
+        auto bound = append_bind_message(request, self.name.as_str(), cede params)
+        if bound.is_err() { return Result<Vec<PostgresQueryResult>, PostgresError>::Err(bound.unwrap_err()) }
+        auto executed = append_execute_message(request)
+        if executed.is_err() { return Result<Vec<PostgresQueryResult>, PostgresError>::Err(executed.unwrap_err()) }
+        auto synced = append_sync_message(request)
+        if synced.is_err() { return Result<Vec<PostgresQueryResult>, PostgresError>::Err(synced.unwrap_err()) }
+        auto sent = client#.write_frame_async(cede request).await
+        if sent.is_err() {
+            client#.poison()
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(sent.unwrap_err())
+        }
+
+        auto bind_complete# = false
+        auto results# = Vec<PostgresQueryResult>::new()
+        auto current_columns# = Vec<PostgresColumn>::new()
+        auto current_rows# = Vec<Vec<Option<Bytes>>>::new()
+        auto has_row_description# = false
+        auto total_rows#: usize = 0:usize
+        auto total_bytes#: usize = 0:usize
+
+        loop true {
+            auto received = client#.read_frame_async().await
+            if received.is_err() {
+                client#.poison()
+                return Result<Vec<PostgresQueryResult>, PostgresError>::Err(received.unwrap_err())
+            }
+            match cede received.unwrap() {
+                auto PostgresMessage::BindComplete() => {
+                    if bind_complete {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "duplicate BindComplete"))
+                    }
+                    bind_complete = true
+                }
+                auto PostgresMessage::RowDescription('columns) => {
+                    if !bind_complete || has_row_description {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "unexpected RowDescription during prepared execution"))
+                    }
+                    current_columns = cede 'columns
+                    current_rows = Vec<Vec<Option<Bytes>>>::new()
+                    has_row_description = true
+                }
+                auto PostgresMessage::DataRow('values) => {
+                    if !bind_complete || !has_row_description || 'values.len() != current_columns.len() {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "DataRow does not match an active prepared result"))
+                    }
+                    if total_rows >= limits.max_rows {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(limit_error(0:usize, "PostgreSQL query result exceeds row limit"))
+                    }
+                    auto row_bytes = data_row_bytes('values)
+                    auto updated_bytes = add_query_bytes(total_bytes, row_bytes, limits.max_bytes)
+                    if updated_bytes.is_err() {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(updated_bytes.unwrap_err())
+                    }
+                    total_bytes = updated_bytes.unwrap()
+                    total_rows = total_rows + 1:usize
+                    current_rows#.push(cede 'values)
+                }
+                auto PostgresMessage::CommandComplete('tag) => {
+                    if !bind_complete || results.len() >= limits.max_result_sets {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(limit_error(0:usize, "PostgreSQL query result exceeds result-set limit"))
+                    }
+                    auto updated_bytes = add_query_bytes(total_bytes, 'tag.len(), limits.max_bytes)
+                    if updated_bytes.is_err() {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(updated_bytes.unwrap_err())
+                    }
+                    total_bytes = updated_bytes.unwrap()
+                    results#.push(cede PostgresQueryResult(
+                        columns = cede current_columns,
+                        rows = cede current_rows,
+                        command_tag = cede 'tag
+                    ))
+                    current_columns = Vec<PostgresColumn>::new()
+                    current_rows = Vec<Vec<Option<Bytes>>>::new()
+                    has_row_description = false
+                }
+                auto PostgresMessage::PortalSuspended() => {
+                    client#.poison()
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "prepared execution unexpectedly suspended a portal"))
+                }
+                auto PostgresMessage::Error('server) => {
+                    auto failure = server_error('server)
+                    auto drained = client#.drain_error_to_ready_async().await
+                    if drained.is_err() {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(drained.unwrap_err())
+                    }
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(failure)
+                }
+                auto PostgresMessage::ReadyForQuery(_) => {
+                    if !bind_complete || has_row_description {
+                        client#.poison()
+                        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "ReadyForQuery arrived before prepared CommandComplete"))
+                    }
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Ok(cede results)
+                }
+                auto PostgresMessage::Notice(_) => {}
+                auto PostgresMessage::ParameterStatus(_, _) => {}
+                _ => {
+                    client#.poison()
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL message during prepared execution"))
+                }
+            }
+        }
+        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(io_error("PostgreSQL prepared execution loop exited unexpectedly"))
+    }
+
+    pub fn close_async(self#, client#: PostgresClient) -> async Result<(), PostgresError> {
+        if self.closed { return Result<(), PostgresError>::Ok(()) }
+        if client.closed { return Result<(), PostgresError>::Err(error("connection", 0:usize, "PostgreSQL client is closed")) }
+        auto request# = Vec<u8>::new()
+        auto closed = append_close_statement_message(request, self.name.as_str())
+        if closed.is_err() { return Result<(), PostgresError>::Err(closed.unwrap_err()) }
+        auto synced = append_sync_message(request)
+        if synced.is_err() { return Result<(), PostgresError>::Err(synced.unwrap_err()) }
+        auto sent = client#.write_frame_async(cede request).await
+        if sent.is_err() { client#.poison(); return Result<(), PostgresError>::Err(sent.unwrap_err()) }
+
+        auto close_complete# = false
+        loop true {
+            auto received = client#.read_frame_async().await
+            if received.is_err() { client#.poison(); return Result<(), PostgresError>::Err(received.unwrap_err()) }
+            match cede received.unwrap() {
+                auto PostgresMessage::CloseComplete() => {
+                    if close_complete { client#.poison(); return Result<(), PostgresError>::Err(protocol_error(0:usize, "duplicate CloseComplete")) }
+                    close_complete = true
+                }
+                auto PostgresMessage::Error('server) => {
+                    auto failure = server_error('server)
+                    auto drained = client#.drain_error_to_ready_async().await
+                    if drained.is_err() { client#.poison(); return Result<(), PostgresError>::Err(drained.unwrap_err()) }
+                    return Result<(), PostgresError>::Err(failure)
+                }
+                auto PostgresMessage::ReadyForQuery(_) => {
+                    if !close_complete { client#.poison(); return Result<(), PostgresError>::Err(protocol_error(0:usize, "ReadyForQuery arrived before CloseComplete")) }
+                    self.closed = true
+                    return Result<(), PostgresError>::Ok(())
+                }
+                auto PostgresMessage::Notice(_) => {}
+                auto PostgresMessage::ParameterStatus(_, _) => {}
+                _ => { client#.poison(); return Result<(), PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL message while closing prepared statement")) }
+            }
+        }
+        return Result<(), PostgresError>::Err(io_error("PostgreSQL statement close loop exited unexpectedly"))
+    }
+}
+
+fn transaction_command_async(client#: PostgresClient, sql: str, expected_tag: str) -> async Result<(), PostgresError> {
+    auto limits = PostgresQueryLimits::new(1:usize, 0:usize, 64:usize).unwrap()
+    auto executed = client#.simple_query_async(sql, limits).await
+    if executed.is_err() { return Result<(), PostgresError>::Err(executed.unwrap_err()) }
+    auto results = executed.unwrap()
+    if results.len() != 1:usize || !results.get(0:usize).command_tag.as_str().equals(expected_tag) {
+        return Result<(), PostgresError>::Err(protocol_error(0:usize, "PostgreSQL transaction command returned an unexpected result"))
+    }
+    return Result<(), PostgresError>::Ok(())
+}
+
+impl PostgresTransaction {
+    pub fn begin_async(cede client: PostgresClient) -> async Result<PostgresTransaction, PostgresError> {
+        auto owned# = cede client
+        if owned.closed { return Result<PostgresTransaction, PostgresError>::Err(error("connection", 0:usize, "PostgreSQL client is closed")) }
+        auto started = transaction_command_async(owned, "BEGIN", "BEGIN").await
+        if started.is_err() {
+            owned#.close()
+            return Result<PostgresTransaction, PostgresError>::Err(started.unwrap_err())
+        }
+        return Result<PostgresTransaction, PostgresError>::Ok(PostgresTransaction(client = cede owned, active = true))
+    }
+
+    pub fn is_active(self) -> bool {
+        return self.active
+    }
+
+    pub fn simple_query_async(self#, sql: str, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        if !self.active { return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL transaction is no longer active")) }
+        return self.client#.simple_query_async(sql, limits).await
+    }
+
+    pub fn prepare_async(self#, sql: str, cede param_type_oids: Vec<u32>) -> async Result<PostgresStatement, PostgresError> {
+        if !self.active { return Result<PostgresStatement, PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL transaction is no longer active")) }
+        return self.client#.prepare_async(sql, cede param_type_oids).await
+    }
+
+    pub fn commit_async(cede self) -> async Result<PostgresClient, PostgresError> {
+        auto transaction# = cede self
+        if !transaction.active {
+            transaction.client#.close()
+            return Result<PostgresClient, PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL transaction is no longer active"))
+        }
+        auto committed = transaction_command_async(transaction.client, "COMMIT", "COMMIT").await
+        if committed.is_err() {
+            transaction.client#.close()
+            return Result<PostgresClient, PostgresError>::Err(committed.unwrap_err())
+        }
+        transaction.active = false
+        return Result<PostgresClient, PostgresError>::Ok(cede transaction.client)
+    }
+
+    pub fn rollback_async(cede self) -> async Result<PostgresClient, PostgresError> {
+        auto transaction# = cede self
+        if !transaction.active {
+            transaction.client#.close()
+            return Result<PostgresClient, PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL transaction is no longer active"))
+        }
+        auto rolled_back = transaction_command_async(transaction.client, "ROLLBACK", "ROLLBACK").await
+        if rolled_back.is_err() {
+            transaction.client#.close()
+            return Result<PostgresClient, PostgresError>::Err(rolled_back.unwrap_err())
+        }
+        transaction.active = false
+        return Result<PostgresClient, PostgresError>::Ok(cede transaction.client)
+    }
+}
+
+fn pool_error(message: str) -> PostgresError {
+    return error("pool", 0:usize, message)
+}
+
+fn pool_discard_slot(state: Mutex<PostgresPoolState>) {
+    auto locked = state.lock()
+    if locked.is_err() { return }
+    auto lock_value = locked.unwrap()
+    auto *state_value# = lock_value.get_ref()
+    if state_value.total_connections > 0:usize {
+        state_value.total_connections = state_value.total_connections - 1:usize
+    }
+}
+
+fn pool_return_client(state: Mutex<PostgresPoolState>, cede client: PostgresClient) {
+    auto returned# = cede client
+    auto locked = state.lock()
+    if locked.is_err() {
+        returned#.close()
+        return
+    }
+    auto lock_value = locked.unwrap()
+    auto *state_value# = lock_value.get_ref()
+    if state_value.closed || returned.is_closed() {
+        returned#.close()
+        if state_value.total_connections > 0:usize {
+            state_value.total_connections = state_value.total_connections - 1:usize
+        }
+        return
+    }
+    state_value.idle#.push(cede returned)
+}
+
+impl PostgresPool@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self#) -> PostgresPool
+    effects: return <- self.state {
+        return PostgresPool(~state = self.~state)
+    }
+}
+
+impl PostgresPool @Send {}
+
+impl PostgresPool {
+    pub fn new(cede config: PostgresConfig, max_connections: usize) -> Result<PostgresPool, PostgresError> {
+        if max_connections == 0:usize {
+            return Result<PostgresPool, PostgresError>::Err(pool_error("PostgreSQL pool max_connections must be positive"))
+        }
+        return Result<PostgresPool, PostgresError>::Ok(PostgresPool(
+            ~state = Mutex<PostgresPoolState>::make(cede PostgresPoolState(
+                config = cede config,
+                idle = PostgresClientStore::new(),
+                total_connections = 0:usize,
+                max_connections = max_connections,
+                closed = false
+            ))
+        ))
+    }
+
+    pub fn close(self#) {
+        auto locked = self.state.lock()
+        if locked.is_err() { return }
+        auto lock_value = locked.unwrap()
+        auto *state_value# = lock_value.get_ref()
+        state_value.closed = true
+        loop true {
+            auto idle# = state_value#.take_idle()
+            match cede idle {
+                auto Option<PostgresClient>::Some('client) => {
+                    auto client# = cede 'client
+                    client#.close()
+                    if state_value.total_connections > 0:usize {
+                        state_value.total_connections = state_value.total_connections - 1:usize
+                    }
+                }
+                auto Option<PostgresClient>::None => break
+            }
+        }
+    }
+
+    pub fn try_acquire_async(self#) -> async Result<PostgresPoolLease, PostgresError>
+    effects: return <- self.state {
+        auto config# = Option<PostgresConfig>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() {
+                return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool mutex lock failed"))
+            }
+            auto lock_value = locked.unwrap()
+            auto *state_value# = lock_value.get_ref()
+            if state_value.closed {
+                return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool is closed"))
+            }
+            auto idle# = state_value#.take_idle()
+            match cede idle {
+                auto Option<PostgresClient>::Some('client) => {
+                    auto client# = cede 'client
+                    auto lease_clients# = PostgresClientStore::new()
+                    lease_clients#.push(cede client)
+                    return Result<PostgresPoolLease, PostgresError>::Ok(PostgresPoolLease(
+                        client = cede lease_clients,
+                        ~state = self.~state
+                    ))
+                }
+                auto Option<PostgresClient>::None => {}
+            }
+            if state_value.total_connections >= state_value.max_connections {
+                return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool is exhausted"))
+            }
+            state_value.total_connections = state_value.total_connections + 1:usize
+            config = Option<PostgresConfig>::Some(state_value.config.copy_for_connection())
+        }
+
+        auto connected# = PostgresClient::connect_async(cede config.unwrap()).await
+        if connected.is_err() {
+            pool_discard_slot(self.state)
+            return Result<PostgresPoolLease, PostgresError>::Err(connected.unwrap_err())
+        }
+        auto lease_clients# = PostgresClientStore::new()
+        lease_clients#.push(cede connected.unwrap())
+        return Result<PostgresPoolLease, PostgresError>::Ok(PostgresPoolLease(
+            client = cede lease_clients,
+            ~state = self.~state
+        ))
+    }
+
+    // A pool wait is deliberately bounded and cancellation-aware through
+    // sleep_async. Call try_acquire_async when an application already has its
+    // own admission queue and wants an immediate answer.
+    pub fn acquire_async(self#, timeout_ms: i32) -> async Result<PostgresPoolLease, PostgresError>
+    effects: return <- self.state {
+        if timeout_ms <= 0:i32 {
+            return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool acquire timeout must be positive"))
+        }
+        auto waited#: i32 = 0:i32
+        loop waited < timeout_ms {
+            auto acquired# = self#.try_acquire_async().await
+            if acquired.is_ok() { return cede acquired }
+            auto failure = acquired.unwrap_err()
+            if !failure.kind.as_str().equals("pool") || !failure.message.as_str().equals("PostgreSQL pool is exhausted") {
+                return Result<PostgresPoolLease, PostgresError>::Err(failure)
+            }
+            if sleep_async(1:i32).await < 0:i32 {
+                return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool acquire was canceled"))
+            }
+            waited = waited + 1:i32
+        }
+        return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool acquire timed out"))
+    }
+}
+
+impl PostgresPoolLease@encap {
+    fn drop(self#) {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => pool_return_client(self.state, cede 'client)
+            auto Option<PostgresClient>::None => {}
+        }
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl PostgresPoolLease {
+    fn take_connection(self#) -> Option<PostgresClient> {
+        auto held# = self.client#.pop()
+        return cede held
+    }
+
+    pub fn is_closed(self#) -> bool {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto closed = client.is_closed()
+                self.client#.push(cede client)
+                return closed
+            }
+            auto Option<PostgresClient>::None => return true
+        }
+    }
+
+    // Proxy the normal serial command without exposing a shared socket. The
+    // lease remains checked out across the await and is automatically returned
+    // to its pool when the lease drops.
+    pub fn simple_query_async(self#, sql: str, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.simple_query_async(sql, limits).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<PostgresClient>::None => {
+                return Result<Vec<PostgresQueryResult>, PostgresError>::Err(pool_error("PostgreSQL pool lease has no connection"))
+            }
+        }
+    }
+
+    pub fn close(self#) {
+        auto held# = self.client#.pop()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                client#.close()
+                pool_return_client(self.state, cede client)
+            }
+            auto Option<PostgresClient>::None => {}
+        }
     }
 }
 
@@ -1277,6 +2158,23 @@ pub fn decode_backend_one(input: Vec<u8>) -> Result<PostgresDecode, PostgresErro
         pass parse_row_description(input, start, end)
     } else if tag == 'D' as u8 {
         pass parse_data_row(input, start, end)
+    } else if tag == '1' as u8 {
+        if end != start { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "ParseComplete must be empty")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::ParseComplete()) }
+    } else if tag == '2' as u8 {
+        if end != start { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "BindComplete must be empty")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::BindComplete()) }
+    } else if tag == '3' as u8 {
+        if end != start { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "CloseComplete must be empty")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::CloseComplete()) }
+    } else if tag == 'n' as u8 {
+        if end != start { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "NoData must be empty")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::NoData()) }
+    } else if tag == 't' as u8 {
+        pass parse_parameter_description(input, start, end)
+    } else if tag == 's' as u8 {
+        if end != start { pass Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "PortalSuspended must be empty")) }
+        else { pass Result<PostgresMessage, PostgresError>::Ok(PostgresMessage::PortalSuspended()) }
     } else if tag == 'C' as u8 {
         auto command = parse_cstring(input, start, end)
         if command.is_err() { pass Result<PostgresMessage, PostgresError>::Err(command.unwrap_err()) }

@@ -1,0 +1,158 @@
+import official/postgres::{PostgresConfig, PostgresPool, PostgresQueryLimits}
+import core/result::{Result}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
+import std/task::{block_on, sleep_async}
+import std/vec::{Vec}
+
+fn append_u32(out#: Vec<u8>, value: u32) {
+    out#.push((value >> 24:u32) as u8)
+    out#.push((value >> 16:u32) as u8)
+    out#.push((value >> 8:u32) as u8)
+    out#.push(value as u8)
+}
+
+fn append_text(out#: Vec<u8>, value: str) {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        out#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+}
+
+fn append_cstring(out#: Vec<u8>, value: str) {
+    append_text(out, value)
+    out#.push(0:u8)
+}
+
+fn append_frame(out#: Vec<u8>, tag: u8, cede body: Vec<u8>) {
+    auto owned# = cede body
+    out#.push(tag)
+    append_u32(out, (owned.len() + 4:usize) as u32)
+    auto index#: usize = 0:usize
+    loop index < owned.len() {
+        out#.push(owned.get(index))
+        index = index + 1:usize
+    }
+}
+
+fn append_auth_ok(out#: Vec<u8>) {
+    auto body# = Vec<u8>::new()
+    append_u32(body, 0:u32)
+    append_frame(out, 'R' as u8, cede body)
+}
+
+fn append_ready(out#: Vec<u8>) {
+    auto body# = Vec<u8>::new()
+    body#.push('I' as u8)
+    append_frame(out, 'Z' as u8, cede body)
+}
+
+fn append_command(out#: Vec<u8>, tag: str) {
+    auto body# = Vec<u8>::new()
+    append_cstring(body, tag)
+    append_frame(out, 'C' as u8, cede body)
+}
+
+fn read_async(stream#: TcpStream) -> async Result<Vec<u8>, string> {
+    auto buffer# = Vec<u8>::with_capacity(512:usize)
+    auto read = stream#.read_into_async(cede buffer, 512:usize, 1000:i32).await
+    if read.is_err() {
+        auto failure# = read.unwrap_err()
+        auto message = string::from(failure.message.as_str())
+        auto _buffer = failure#.take_buffer()
+        return Result<Vec<u8>, string>::Err(message)
+    }
+    auto received# = read.unwrap()
+    auto count = received.bytes_read
+    auto bytes = received#.take_buffer()
+    if count == 0:usize { return Result<Vec<u8>, string>::Err(string::from("unexpected EOF")) }
+    return Result<Vec<u8>, string>::Ok(cede bytes)
+}
+
+fn write_async(stream#: TcpStream, cede bytes: Vec<u8>) -> async bool {
+    auto write = stream#.write_from_async(cede bytes, 1000:i32).await
+    if write.is_err() { return false }
+    auto completed# = write.unwrap()
+    auto complete = completed.complete
+    auto _bytes = completed#.take_buffer()
+    return complete
+}
+
+fn is_query(packet: Vec<u8>) -> bool {
+    return packet.len() >= 5:usize && packet.get(0:usize) == 'Q' as u8
+}
+
+fn pool_server_async(cede listener: TcpListener) -> async i32 {
+    auto listener# = cede listener
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if read_async(stream).await.is_err() { stream#.close(); return 2 }
+    auto hello# = Vec<u8>::new()
+    append_auth_ok(hello)
+    append_ready(hello)
+    if !write_async(stream, cede hello).await { stream#.close(); return 3 }
+
+    auto first = read_async(stream).await
+    if first.is_err() { stream#.close(); return 4 }
+    if !is_query(first.unwrap()) { stream#.close(); return 5 }
+    auto first_reply# = Vec<u8>::new()
+    append_command(first_reply, "SELECT 1")
+    append_ready(first_reply)
+    if !write_async(stream, cede first_reply).await { stream#.close(); return 6 }
+
+    auto second = read_async(stream).await
+    if second.is_err() { stream#.close(); return 7 }
+    if !is_query(second.unwrap()) { stream#.close(); return 8 }
+    auto second_reply# = Vec<u8>::new()
+    append_command(second_reply, "SELECT 1")
+    append_ready(second_reply)
+    if !write_async(stream, cede second_reply).await { stream#.close(); return 9 }
+    stream#.close()
+    return 0
+}
+
+fn pool_client_async(port: u16) -> async i32 {
+    sleep_async(10:i64).await
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto config = PostgresConfig::trusted_local(address, "app", "notes")
+    if config.is_err() { return 1 }
+    auto pool = PostgresPool::new(cede config.unwrap(), 1:usize)
+    if pool.is_err() { return 2 }
+    auto pool# = pool.unwrap()
+    {
+        auto lease = pool#.try_acquire_async().await
+        if lease.is_err() { return 3 }
+        auto lease# = lease.unwrap()
+        auto exhausted = pool#.try_acquire_async().await
+        if exhausted.is_ok() { return 4 }
+        if !exhausted.unwrap_err().kind.as_str().equals("pool") { return 4 }
+        auto result = lease#.simple_query_async("SELECT 1", PostgresQueryLimits::new(1:usize, 0:usize, 64:usize).unwrap()).await
+        if result.is_err() { return 5 }
+        if result.unwrap().len() != 1:usize { return 5 }
+    }
+    auto reused = pool#.acquire_async(100:i32).await
+    if reused.is_err() { pool#.close(); return 6 }
+    auto reused# = reused.unwrap()
+    auto result = reused#.simple_query_async("SELECT 1", PostgresQueryLimits::new(1:usize, 0:usize, 64:usize).unwrap()).await
+    if result.is_err() { pool#.close(); return 7 }
+    if result.unwrap().len() != 1:usize { pool#.close(); return 7 }
+    pool#.close()
+    return 0
+}
+
+fn main_async() -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !listener.is_valid() { return 1 }
+    auto port = listener.local_port()
+    if port == 0:u16 { return 2 }
+    auto server = pool_server_async(cede listener).start
+    auto client = pool_client_async(port).start
+    auto client_status = client.await
+    auto server_status = server.await
+    if client_status != 0:i32 { return 20:i32 + client_status }
+    return server_status
+}
+
+fn main() -> i32 {
+    return block_on(main_async())
+}

@@ -1,7 +1,8 @@
 # `official/postgres` v1
 
 Status: **bounded PostgreSQL v3 wire codec, ASCII-profile SCRAM-SHA-256,
-secure startup client, and serial simple-query client**.
+secure startup client, serial queries, prepared statements, transactions, and
+bounded connection pooling**.
 
 `official/postgres` currently encodes StartupMessage and simple Query frames,
 then incrementally decodes PostgreSQL backend messages without exposing a view
@@ -46,8 +47,37 @@ drained through its following `ReadyForQuery`, so the session remains usable.
 I/O, timeout, cancellation, limit, or protocol sequence failure closes the
 serial client before it can be reused.
 
-Parameters, transactions, COPY, and pooling remain separate, explicitly
-qualified slices.
+COPY, cursor pagination, and pool-side prepared-statement caching remain
+separate, explicitly qualified slices.
+
+Prepared statements use PostgreSQL's extended protocol (`Parse`, statement
+`Describe`, `Bind`, `Execute`, `Sync`) and retain parameter bytes until their
+single outgoing frame is complete. `PostgresParam::Bytes` is sent in binary
+format; text, integer, and boolean values use PostgreSQL text format. A
+statement is session-local and must be closed against the same client.
+
+```toka
+auto types# = Vec<u32>::new()
+types#.push(25) // text
+auto statement# = client#.prepare_async("SELECT $1", cede types).await!
+auto params# = Vec<PostgresParam>::new()
+params#.push(cede PostgresParam::Text(string::from("note")))
+auto rows = statement#.execute_async(client, cede params, limits).await!
+statement#.close_async(client).await!
+```
+
+`PostgresTransaction::begin_async` consumes a client. `commit_async` or
+`rollback_async` returns it only after the matching command reaches
+`ReadyForQuery`; dropping an active transaction closes the client. This makes
+it impossible to issue an unrelated serial command through the same client
+while the transaction is live.
+
+`PostgresPool` uses a shared pool handle and exclusive `PostgresPoolLease`.
+It never shares a socket across requests; a lease is automatically returned on
+drop if healthy. `try_acquire_async` fails immediately on exhaustion, while
+`acquire_async(timeout_ms)` waits with a bounded, cancellation-aware timeout.
+The lease currently proxies bounded simple queries; keep a prepared statement
+or transaction on a directly owned `PostgresClient`.
 
 ## Qualification
 
@@ -57,5 +87,7 @@ Run from this package root:
 ../../build/bin/tokac -I ../../lib -I lib tests/protocol_v1.tk -o /tmp/postgres_protocol_v1 && /tmp/postgres_protocol_v1
 ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/postgres_client_v1 && /tmp/postgres_client_v1
 ../../build/bin/tokac -I ../../lib -I lib tests/query_v1.tk -o /tmp/postgres_query_v1 && /tmp/postgres_query_v1
+../../build/bin/tokac -I ../../lib -I lib tests/extended_v1.tk -o /tmp/postgres_extended_v1 && /tmp/postgres_extended_v1
+../../build/bin/tokac -I ../../lib -I lib tests/pool_v1.tk -o /tmp/postgres_pool_v1 && /tmp/postgres_pool_v1
 python3 tests/qualify_package.py
 ```
