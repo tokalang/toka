@@ -6,6 +6,15 @@ pub shape Error(
     message: string
 )
 
+// Minimal cross-platform I/O failure contract. `operation` is stable API
+// context, `os_code` preserves the native error when one exists, and `message`
+// remains suitable for direct CLI diagnostics.
+pub shape IoError(
+    operation: string,
+    os_code: i32,
+    message: string
+)
+
 // Typed context preserves the original error instead of erasing it.
 pub shape ErrorContext<'E>(
     message: string,
@@ -15,6 +24,28 @@ pub shape ErrorContext<'E>(
 impl Error {
     pub fn new(code: i32, msg: string) -> Error {
         return Error(code = code, message = msg)
+    }
+}
+
+impl IoError {
+    pub fn new(operation: str, os_code: i32, message: str) -> IoError {
+        return IoError(
+            operation = string::from(operation),
+            os_code = os_code,
+            message = string::from(message)
+        )
+    }
+
+    pub fn operation(self) -> string {
+        return string::from(self.operation.as_str())
+    }
+
+    pub fn code(self) -> i32 {
+        return self.os_code
+    }
+
+    pub fn message(self) -> string {
+        return string::from(self.message.as_str())
     }
 }
 

@@ -1,0 +1,48 @@
+import core/result::{Result}
+import std/error::{IoError}
+import std/io::{File, remove_file}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpStream}
+
+fn has_operation(error: IoError, expected: str) -> bool {
+    return error.operation().as_str().equals(expected)
+}
+
+fn main() -> i32 {
+    auto missing = string::from("toka_ioerror_try_open_missing_3d9f2f.tmp")
+    remove_file(missing.clone())
+    auto unopened = File::try_open(missing, "r")
+    match unopened {
+        auto Result<File, IoError>::Ok('file) => {
+            return 1
+        }
+        auto Result<File, IoError>::Err(error) => {
+            if !has_operation(error, "open") { return 2 }
+        }
+    }
+
+    auto output = string::from("toka_ioerror_try_open_success_3d9f2f.tmp")
+    remove_file(output.clone())
+    auto opened = File::try_open(output.clone(), "w")
+    match opened {
+        auto Result<File, IoError>::Ok('file) => {
+            'file.write("ok")
+        }
+        _ => return 3
+    }
+    if !remove_file(output) { return 4 }
+
+    auto loopback = Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8)
+    // TCP port zero is not a connectable remote endpoint, so this exercises a
+    // real kernel failure without requiring the test environment to permit a
+    // local listener.
+    auto refused = TcpStream::try_connect(SocketAddrV4::new(loopback, 0:u16))
+    match refused {
+        auto Result<TcpStream, IoError>::Ok('stream) => {
+            return 5
+        }
+        auto Result<TcpStream, IoError>::Err(error) => {
+            if !has_operation(error, "connect") { return 6 }
+        }
+    }
+    return 0
+}

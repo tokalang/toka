@@ -15,7 +15,9 @@ import core/types::{usize, char, ADDR0}
 
 import sys/libc::*
 import sys/libc::*
+import sys/os/base as sys
 import core/result::{Result}
+import std/error::{IoError}
 
 // Intrinsic (Legacy backup)
 extern fn print_legacy(fmt: str, ...) -> void
@@ -43,15 +45,13 @@ alias IoStringResult = Result<string, string>
 alias IoSizeResult = Result<usize, string>
 
 impl File {
-    pub fn open(path: string, mode: str) -> File {
+    pub fn try_open(path: string, mode: str) -> Result<File, IoError> {
         unsafe {
             auto temp_buf# = [0:char; 8]
             auto mode_len = mode.byte_count()
             if mode_len > 7 {
-                return File(
-                    *handle = ADDR0 as *#void,
-                    opened = false,
-                    owned = true
+                return Result<File, IoError>::Err(
+                    IoError::new("open", 22:i32, "file mode is longer than seven bytes")
                 )
             }
             auto i#: usize = 0
@@ -64,17 +64,31 @@ impl File {
 
             auto *p = libc_fopen(path.c_str(), &temp_buf[0] as *char)
             if *p == (ADDR0 as *void) {
+                return Result<File, IoError>::Err(
+                    IoError::new("open", sys::get_last_error(), "failed to open file")
+                )
+            }
+            return Result<File, IoError>::Ok(File(
+                *handle = *#p,
+                opened = true,
+                owned = true
+            ))
+        }
+    }
+
+    // Compatibility constructor. New production code should use try_open so
+    // the failure operation and native error code remain available.
+    pub fn open(path: string, mode: str) -> File {
+        auto opened = File::try_open(path, mode)
+        match cede opened {
+            auto Result<File, IoError>::Ok('file) => return 'file
+            _ => {
                 return File(
                     *handle = ADDR0 as *#void,
                     opened = false,
                     owned = true
                 )
             }
-            return File(
-                *handle = *#p,
-                opened = true,
-                owned = true
-            )
         }
     }
 }

@@ -11,6 +11,7 @@ import std/context::{Canceler}
 import std/async::{race2, RaceWinner}
 import core/result::{Result}
 import core/task as core_task
+import std/error::{IoError}
 
 extern fn __builtin_coro_current_handle() -> *void
 extern fn __builtin_coro_suspend()
@@ -302,21 +303,36 @@ impl TcpStream {
         return s
     }
 
-    pub fn connect(addr: SocketAddrV4) -> TcpStream {
+    pub fn try_connect(addr: SocketAddrV4) -> Result<TcpStream, IoError> {
         unsafe {
             auto fd = sysnet::net_socket_impl()
             if fd < 0 {
-                return TcpStream(fd=-1, closed=true)
+                return Result<TcpStream, IoError>::Err(
+                    IoError::new("socket", sysnet::get_errno_impl(), "failed to create TCP socket")
+                )
             }
 
             auto ip_num = addr.ip.to_u32()
             auto res = sysnet::net_connect_impl(fd, ip_num, addr.port)
             if res != 0 {
+                auto os_code = sysnet::get_errno_impl()
                 sysnet::net_close_impl(fd)
-                return TcpStream(fd=-1, closed=true)
+                return Result<TcpStream, IoError>::Err(
+                    IoError::new("connect", os_code, "failed to connect TCP stream")
+                )
             }
 
-            return TcpStream(fd=fd, closed=false)
+            return Result<TcpStream, IoError>::Ok(TcpStream(fd=fd, closed=false))
+        }
+    }
+
+    // Compatibility constructor. New production code should use try_connect
+    // when it needs the operation and native error code on failure.
+    pub fn connect(addr: SocketAddrV4) -> TcpStream {
+        auto connected = TcpStream::try_connect(addr)
+        match cede connected {
+            auto Result<TcpStream, IoError>::Ok('stream) => return 'stream
+            _ => return TcpStream(fd=-1, closed=true)
         }
     }
 
