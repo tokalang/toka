@@ -1928,6 +1928,17 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   if (!soulType) {
   }
 
+  // A generic local can be instantiated as a reference even when its copied
+  // AST annotation is still the template placeholder.  At a direct stack
+  // slot, the allocated LLVM type is authoritative; using the stale scalar
+  // metadata would load an i32 from a pointer slot and later emit an invalid
+  // i32-to-ptr bitcast on return or Option construction.
+  if (auto *slot = llvm::dyn_cast<llvm::AllocaInst>(soulAddr)) {
+    llvm::Type *storageType = slot->getAllocatedType();
+    if (storageType && soulType && storageType != soulType)
+      soulType = storageType;
+  }
+
   // [Fix] Shared Pointer Handle Type Correction
   if (isShared && soulType) {
     llvm::Type *ptrTy = llvm::PointerType::getUnqual(m_Context);
@@ -2738,8 +2749,45 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
             accum = m_Builder.CreateOr(accum, genValuePatCond(sub.get(), currVal, currSemaType));
           }
           return accum;
+        } else if (pat->PatternKind == MatchArm::Pattern::Variable) {
+          // A no-payload enum variant such as `Flavor::Plain` is parsed as a
+          // variable-shaped pattern.  At a nested enum payload it must still
+          // test the variant tag; treating it as an unconditional binder makes
+          // the first arm match every variant.
+          std::string enumName;
+          if (currTy->isStructTy()) {
+            auto *st = llvm::cast<llvm::StructType>(currTy);
+            enumName = m_TypeToName.count(st) ? m_TypeToName[st]
+                                                 : st->getName().str();
+          }
+          if (enumName.empty())
+            enumName = Type::stripMorphology(currSemaType);
+          size_t lt = enumName.find('<');
+          if (lt != std::string::npos)
+            enumName = enumName.substr(0, lt);
+          auto enumIt = m_Shapes.find(enumName);
+          if (enumIt != m_Shapes.end() &&
+              enumIt->second->Kind == ShapeKind::Enum) {
+            std::string variantName = pat->Name;
+            size_t scopePos = variantName.rfind("::");
+            if (scopePos != std::string::npos)
+              variantName = variantName.substr(scopePos + 2);
+            const auto &members = enumIt->second->Members;
+            for (size_t i = 0; i < members.size(); ++i) {
+              const auto &member = members[i];
+              if (member.Name != variantName || !member.Type.empty() ||
+                  !member.SubMembers.empty())
+                continue;
+              llvm::Value *tagVal =
+                  m_Builder.CreateExtractValue(currVal, 0, "tag");
+              int tag = member.TagValue == -1 ? static_cast<int>(i)
+                                               : member.TagValue;
+              return m_Builder.CreateICmpEQ(
+                  tagVal, llvm::ConstantInt::get(tagVal->getType(), tag));
+            }
+          }
+          return m_Builder.getInt1(true);
         } else if (pat->PatternKind == MatchArm::Pattern::Wildcard ||
-                   pat->PatternKind == MatchArm::Pattern::Variable ||
                    pat->PatternKind == MatchArm::Pattern::Elision) {
           return m_Builder.getInt1(true);
         } else if (pat->PatternKind == MatchArm::Pattern::Decons) {
@@ -2755,7 +2803,22 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
               if (lt != std::string::npos) {
                 baseShapeName = baseShapeName.substr(0, lt);
               }
+            } else {
+              // Named LLVM structs preserve the source shape name even when
+              // generic materialization gives them a distinct type instance.
+              baseShapeName = st->getName().str();
             }
+          }
+
+          // A payload type materialized through a generic enum can use a
+          // structurally equivalent LLVM type that is not present in the
+          // LLVM-type-to-shape cache. The semantic type passed down by the
+          // enclosing variant remains authoritative for pattern matching.
+          if (baseShapeName.empty() && !currSemaType.empty()) {
+            baseShapeName = Type::stripMorphology(currSemaType);
+            size_t lt = baseShapeName.find('<');
+            if (lt != std::string::npos)
+              baseShapeName = baseShapeName.substr(0, lt);
           }
 
           bool isEnum = false;
@@ -5235,6 +5298,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
   std::vector<llvm::Value *> argsV;
   for (size_t i = 0; i < call->Args.size(); ++i) {
+    const auto *cededArg =
+        dynamic_cast<const CedeExpr *>(call->Args[i].get());
     bool isRef = false;
     if (funcDecl && i < funcDecl->Args.size()) {
       isRef = funcDecl->Args[i].IsReference;
@@ -5320,7 +5385,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         const Expr *rawArg = call->Args[i].get();
         // Unwrap decorators to find the variable
         while (true) {
-          if (auto *ue = dynamic_cast<const UnaryExpr *>(rawArg))
+          if (auto *ce = dynamic_cast<const CedeExpr *>(rawArg))
+            rawArg = ce->Value.get();
+          else if (auto *cast = dynamic_cast<const CastExpr *>(rawArg))
+            rawArg = cast->Expression.get();
+          else if (auto *ue = dynamic_cast<const UnaryExpr *>(rawArg))
             rawArg = ue->RHS.get();
           else if (auto *pe = dynamic_cast<const PostfixExpr *>(rawArg))
             rawArg = pe->LHS.get();
@@ -5384,6 +5453,25 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       }
     } else {
       val = genExpr(call->Args[i].get()).load(m_Builder);
+    }
+
+    // A captured argument is passed as the address of the caller's slot, so
+    // that path deliberately bypasses genCedeExpr.  Preserve cede's cleanup
+    // effect here: the callee now owns the resource and the caller must not
+    // destroy the same handle when its scope/frame unwinds.
+    if (cededArg && shouldPassAddr) {
+      const Expr *source = cededArg->Value.get();
+      while (auto *cast = dynamic_cast<const CastExpr *>(source))
+        source = cast->Expression.get();
+      if (auto *unary = dynamic_cast<const UnaryExpr *>(source))
+        source = unary->RHS.get();
+
+      if (auto *var = dynamic_cast<const VariableExpr *>(source))
+        suppressDropForMove(var->Name);
+      else if (auto *member = dynamic_cast<const MemberExpr *>(source))
+        suppressDropForPartialMove(member);
+      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(source))
+        suppressDropForPartialMove(index);
     }
 
     if (!val) {
@@ -5528,7 +5616,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         llvm::Value *lvalueAddr = nullptr;
         const Expr *rawArg = call->Args[i].get();
         while (true) {
-          if (auto *ue = dynamic_cast<const UnaryExpr *>(rawArg))
+          if (auto *ce = dynamic_cast<const CedeExpr *>(rawArg))
+            rawArg = ce->Value.get();
+          else if (auto *cast = dynamic_cast<const CastExpr *>(rawArg))
+            rawArg = cast->Expression.get();
+          else if (auto *ue = dynamic_cast<const UnaryExpr *>(rawArg))
             rawArg = ue->RHS.get();
           else if (auto *pe = dynamic_cast<const PostfixExpr *>(rawArg))
             rawArg = pe->LHS.get();

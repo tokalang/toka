@@ -29,7 +29,7 @@ fn test_base64() {
     url_raw[2] = 255:u8
     assert(base64::encode_url_safe_no_pad(bytes_from_array<3>(url_raw)).equals("-___"),
            "Base64URL uses RFC 4648 URL-safe alphabet")
-    auto decoded = base64::decode("AA/=").unwrap()
+    auto decoded = base64::decode("AP8=").unwrap()
     assert(decoded.len() == 2:usize && decoded.get(1:usize) == 255:u8, "Base64 binary decode")
     assert(base64::decode("Zh==").is_err(), "Base64 canonical padding bits")
 }

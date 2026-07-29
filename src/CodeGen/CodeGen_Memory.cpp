@@ -1106,8 +1106,20 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
 }
 
 PhysEntity CodeGen::genMemberExpr(const MemberExpr *mem) {
-  if (mem->IsTaskStart)
-    return genTaskStart(mem->Object.get());
+  if (mem->IsTaskStart) {
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    auto key = std::make_pair(function, mem);
+    auto cached = m_TaskStartCache.find(key);
+    if (cached != m_TaskStartCache.end())
+      return cached->second;
+
+    // The compiler may revisit this AST node while adapting a captured
+    // argument.  The factory is not idempotent: evaluating it again creates a
+    // second task, so cache the first materialized TaskHandle.
+    PhysEntity result = genTaskStart(mem->Object.get());
+    m_TaskStartCache.emplace(key, result);
+    return result;
+  }
   if (mem->IsStatic)
     return genStaticMemberExpr(mem);
   return genDynamicMemberExpr(mem);

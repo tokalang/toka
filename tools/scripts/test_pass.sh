@@ -479,7 +479,7 @@ sed 's/\x1b\[[0-9;]*m//g' "$RESULTS_FILE" | grep -c "\[PASS" > "/tmp/tokac_pass_
 read pass_count < "/tmp/tokac_pass_$$.txt"
 rm -f "/tmp/tokac_pass_$$.txt"
 
-sed 's/\x1b\[[0-9;]*m//g' "$RESULTS_FILE" | grep -c "\[FAIL" > "/tmp/tokac_fail_$$.txt"
+sed 's/\x1b\[[0-9;]*m//g' "$RESULTS_FILE" | grep -c '^\[FAIL\]' > "/tmp/tokac_fail_$$.txt"
 read fail_count < "/tmp/tokac_fail_$$.txt"
 rm -f "/tmp/tokac_fail_$$.txt"
 

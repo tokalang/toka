@@ -1558,10 +1558,14 @@ impl HttpClient {
     }
 
     pub fn execute_on_stream_async(self, req: HttpRequest, cede stream#: AsyncStream) -> async Result<HttpResponseStream, string> {
+        // Normalize the cede parameter into one local owner before the first
+        // suspension.  Error returns then clean up the same initialized slot
+        // that success moves into HttpResponseStream.
+        auto owned_stream# = cede stream
         auto req_bytes = req.to_wire_bytes()
-        auto write_res = stream#.write_from_async(cede req_bytes, self.timeout_ms).await
+        auto write_res = owned_stream#.write_from_async(cede req_bytes, self.timeout_ms).await
         if write_res.is_err() {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Failed to send HTTP request"))
         }
 
@@ -1572,7 +1576,7 @@ impl HttpClient {
         auto delim_len#: usize = 0
 
         loop {
-            auto read_res = stream#.read_into_async(cede read_chunk, 4096:usize, self.timeout_ms).await
+            auto read_res = owned_stream#.read_into_async(cede read_chunk, 4096:usize, self.timeout_ms).await
             if read_res.is_err() {
                 auto err# = read_res.unwrap_err()
                 read_chunk = err#.take_buffer()
@@ -1601,7 +1605,7 @@ impl HttpClient {
         }
 
         if boundary_idx < 0 {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Malformed HTTP response: missing header boundary"))
         }
 
@@ -1616,31 +1620,31 @@ impl HttpClient {
         auto resp_headers# = HeaderMap::new()
         auto iter# = header_str.split(10)
         if iter#.is_done() {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Empty response headers"))
         }
 
         auto status_line_str = iter#.next().trim_end()
         auto status_parts# = status_line_str.split(32)
         if status_parts#.is_done() {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Empty HTTP status line"))
         }
         auto ver_str = status_parts#.next()
         if status_parts#.is_done() {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Missing HTTP status code"))
         }
         auto code_str = status_parts#.next()
 
         if !ver_str.as_str().equals("HTTP/1.1") && !ver_str.as_str().equals("HTTP/1.0") {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Invalid or missing HTTP version in status line"))
         }
 
         auto code_res = parse_content_length(code_str.trim().as_str())
         if code_res.is_err() {
-            stream#.close()
+            owned_stream#.close()
             return Result<HttpResponseStream, string>::Err(string::from("Invalid HTTP status code"))
         }
         auto status_code = code_res.unwrap() as i32
@@ -1660,7 +1664,7 @@ impl HttpClient {
 
             auto colon_idx = line.find_char(58:char)
             if colon_idx <= 0 {
-                stream#.close()
+                owned_stream#.close()
                 return Result<HttpResponseStream, string>::Err(string::from("Malformed response header line"))
             }
 
@@ -1705,7 +1709,7 @@ impl HttpClient {
         if cl_opt.is_some() {
             auto cl_res = parse_content_length(cl_opt.unwrap().as_str())
             if cl_res.is_err() {
-                stream#.close()
+                owned_stream#.close()
                 return Result<HttpResponseStream, string>::Err(string::from("Invalid Content-Length header value"))
             }
             cl_rem = cl_res.unwrap() as i64
@@ -1723,7 +1727,7 @@ impl HttpClient {
             status_code = status_code,
             raw_header_buf = cede raw_header_buf,
             headers = cede headers_view,
-            stream = cede stream,
+            stream = cede owned_stream,
             content_length_remaining = cl_rem,
             chunk_remaining = 0:usize,
             is_chunked = is_chunked,

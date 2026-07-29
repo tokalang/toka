@@ -161,6 +161,10 @@ private:
   std::map<std::string, const FunctionDecl *> m_Functions;
   std::map<std::string, const ExternDecl *> m_Externs;
   std::map<std::string, TokaSymbol> m_Symbols;
+  // Argument ABI adaptation can revisit a call-shaped receiver. Preserve the
+  // single evaluation of every task activation expression in its LLVM function.
+  std::map<std::pair<llvm::Function *, const MemberExpr *>, PhysEntity>
+      m_TaskStartCache;
   std::string m_CurrentSelfType;
   std::map<std::string, llvm::Value *> m_NamedValues;
   bool m_InLHS = false;

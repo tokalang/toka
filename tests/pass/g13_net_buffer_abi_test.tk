@@ -83,6 +83,15 @@ fn main() -> i32 {
         _ => { return 10 }
     }
 
+    // A captured `cede` argument transfers the opaque session exactly once.
+    // No socket is needed: dropping the returned stream exercises the C TLS
+    // handle ownership path and would abort on a second close.
+    auto closed4# = TcpStream(fd = -1, closed = true)
+    auto session2# = TlsSession::client()
+    {
+        auto tls_owner = AsyncStream::from_tls(closed4, cede session2)
+    }
+
     println("g13_net_buffer_abi_test PASSED")
     return 0
 }

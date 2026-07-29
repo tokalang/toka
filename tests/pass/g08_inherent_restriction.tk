@@ -3,7 +3,7 @@ import std/io::println
 shape Data(
     x: i32,
     y$: i32,
-    ^p#: i32,  // Mutable soul, Inherit handle
+    ^#p#: i32, // Explicitly rebindable handle and mutable soul
     ^q: i32    // Insulated soul (default Blocked), Inherit handle
 )
 
@@ -16,13 +16,13 @@ impl Data@encap {
 }
 
 fn main() -> i32 {
-    auto d# = Data(x=1, y=2, ^p=new i32(100), ^q=new i32(200))
+    auto d# = Data(x=1, y=2, ^#p=new i32(100), ^q=new i32(200))
     
     // 1. Modify inheritable field
     d.x = 10 // OK: Bloodline inheritance
     
-    // 2. Handle Rebinding (Inherited)
-    d.^p = new i32(300) // OK: d# is mutable, p handle inherits mutability
+    // 2. Handle Rebinding (Declared)
+    d.^p = new i32(300) // OK: p declares its own handle-rebind capability
     
     // 3. Soul Modification (Explicitly Mutable)
     d.p = 500 // OK: p is ^i32#, soul is explicitly mutable

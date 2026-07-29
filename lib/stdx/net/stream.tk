@@ -19,7 +19,9 @@ impl AsyncStream@encap {
     pub is_tls#
 
     fn drop(self#) {
-        self.tls#.close()
+        if self.is_tls {
+            self.tls#.close()
+        }
     }
 
     pub fn clone(self) = delete
@@ -134,7 +136,9 @@ impl AsyncStream {
     }
 
     pub fn close(self#) {
-        self.tls#.close()
+        if self.is_tls {
+            self.tls#.close()
+        }
         self.is_tls = false
         self.raw_tcp#.close()
     }

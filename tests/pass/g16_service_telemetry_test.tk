@@ -10,11 +10,11 @@ fn test_json_logging() {
     fields#.push(cede JsonField::new(string::from("request_id"), string::from("a\"b")))
     fields#.push(cede JsonField::new(string::from("newline"), string::from("first\nsecond")))
 
-    auto rendered = logger.format(LOG_INFO, string::from("ready\u{0001}"), fields)
+    auto rendered = logger.format(LOG_INFO, string::from("ready\x01"), fields)
     assert(rendered.is_some(), "info event passes configured level")
     auto line = rendered.unwrap()
     assert(line.equals("{\"level\":\"info\",\"message\":\"ready\\u0001\",\"request_id\":\"a\\\"b\",\"newline\":\"first\\nsecond\"}"), "JSON line escapes control bytes and preserves field order")
-    assert(to_json(string::from("ready\u{0001}")).equals("\"ready\\u0001\""), "general JSON serialization escapes every control byte")
+    assert(to_json(string::from("ready\x01")).equals("\"ready\\u0001\""), "general JSON serialization escapes every control byte")
 
     auto filtered_fields# = Vec<JsonField>::new()
     assert(logger.format(LOG_DEBUG, string::from("hidden"), filtered_fields).is_none(), "filtered event allocates no rendered line")

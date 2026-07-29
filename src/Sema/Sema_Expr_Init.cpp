@@ -38,21 +38,22 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   return Type->IsWritable;
 }
 
-// A raw-handle field is a fresh storage slot.  Its H permission belongs to
-// the field declaration, not to the opaque pointer value supplied by the
-// initializer.  This is deliberately limited to raw-pointer field
-// initialization: it neither grants payload write permission nor relaxes
-// argument/assignment compatibility for an existing binding.
+// A field initializer creates a new storage slot. Its H permission belongs
+// to the field declaration, not to the source handle value. This does not
+// grant payload write authority: pointee compatibility and the direct-source
+// flow check below still enforce P. Argument and assignment compatibility for
+// an existing binding remain unchanged.
 static bool isFieldInitializerCompatible(
     const std::shared_ptr<toka::Type> &destination,
     const std::shared_ptr<toka::Type> &source) {
-  if (!destination || !source || !destination->isRawPointer() ||
-      !source->isRawPointer())
+  if (!destination || !source || !destination->isPointer() ||
+      !source->isPointer() || destination->typeKind != source->typeKind)
     return false;
   auto destinationPointee = destination->getPointeeType();
   auto sourcePointee = source->getPointeeType();
   return destinationPointee && sourcePointee &&
-         destinationPointee->equals(*sourcePointee);
+         (!source->IsNullable || destination->IsNullable) &&
+         sourcePointee->isCompatibleWith(*destinationPointee);
 }
 
 static AccessCapability

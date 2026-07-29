@@ -243,16 +243,36 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       return applyPathFlowCeiling(
           {base.PayloadWritable, false, base.PayloadFlowRestricted});
     auto resolvedArray = resolveType(arrayType, true);
-    auto elementType = resolvedArray && resolvedArray->isArray()
-                           ? resolvedArray->getArrayElementType()
+    // Index expressions in std's unsafe storage helpers are often rooted at
+    // `*['T]`, not directly at `['T]`.  Peel that raw-storage carrier before
+    // recovering the element declaration; otherwise an array of references
+    // loses its slot-rebind capability during generic instantiation.
+    auto storageType = resolvedArray;
+    if (storageType && storageType->isRawPointer())
+      storageType = storageType->getPointeeType();
+    auto elementType = storageType && storageType->isArray()
+                           ? storageType->getArrayElementType()
                            : nullptr;
-    if (elementType && (elementType->isPointer() ||
-                        elementType->isSmartPointer() ||
-                        elementType->isReference())) {
-      auto elementSoul = elementType->getPointeeType();
+    auto indexedType = Index->ResolvedType;
+    const bool isIndirectElement =
+        (elementType && (elementType->isPointer() ||
+                         elementType->isSmartPointer() ||
+                         elementType->isReference())) ||
+        (indexedType && (indexedType->isPointer() ||
+                         indexedType->isSmartPointer() ||
+                         indexedType->isReference()));
+    if (isIndirectElement) {
+      auto elementSoul = elementType ? elementType->getPointeeType()
+                                     : indexedType->getPointeeType();
+      // Array slots reached through a raw pointer are untyped storage.  An
+      // explicit unsafe block may write such a slot's handle identity (for
+      // example Vec<&T> copying a reference into allocated backing storage),
+      // but this is not a payload capability grant for the referent.
+      const bool unsafeRawStorage =
+          m_InUnsafeContext && arrayType->isRawPointer();
       return applyPathFlowCeiling(
           {base.PayloadWritable && elementSoul && elementSoul->IsWritable,
-           false, base.PayloadFlowRestricted});
+           unsafeRawStorage, base.PayloadFlowRestricted});
     }
     return applyPathFlowCeiling(
         {base.PayloadWritable, false, base.PayloadFlowRestricted});
