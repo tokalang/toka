@@ -1,0 +1,18 @@
+import std/net::{TcpStream}
+
+fn main() -> i32 {
+    auto closed# = TcpStream(fd = -1, closed = false)
+    closed#.close()
+    assert(closed.get_fd() == -1,
+           "closing an invalid stream leaves its descriptor disarmed")
+    assert(!closed.is_valid(),
+           "closing an invalid stream marks it invalid")
+
+    // This represents a stale state produced by an old binary. is_valid must
+    // honor the closed bit even before the value is normalized by disarm().
+    auto stale# = TcpStream(fd = 42, closed = true)
+    assert(!stale.is_valid(),
+           "a closed stream is never valid even if it retains an fd number")
+    stale#.disarm()
+    return 0
+}

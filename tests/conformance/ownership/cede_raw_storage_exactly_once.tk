@@ -1,0 +1,148 @@
+import core/option::{Option}
+import core/traits::{@encap}
+import sys/libc::*
+
+auto g_drop_count# = 0
+
+shape Inner(id: i32, closed: bool)
+
+impl Inner@encap {
+    fn drop(self#) {
+        self#.close()
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl Inner {
+    fn close(self#) {
+        if !self.closed {
+            self.closed = true
+            g_drop_count += 1
+        }
+    }
+}
+
+// This mirrors a client resource: the outer value has a custom destructor
+// which closes a nested @encap field rather than relying on structural drop.
+shape Outer(inner: Inner)
+
+impl Outer@encap {
+    fn drop(self#) {
+        self.inner#.close()
+    }
+
+    pub fn clone(self) = delete
+}
+
+shape RawStore<'T> (
+    nul *#buf#: [T] = null as *[T],
+    len#: usize = 0:usize,
+    cap#: usize = 0:usize
+)
+
+impl<'T> RawStore<'T>@encap {
+    fn drop(self#) {
+        unsafe {
+            loop self.len > 0:usize {
+                self.len -= 1:usize
+                auto dropped# = cede self.buf[self.len]
+            }
+            if self.*buf != null {
+                unsafe free [self.cap] self.*#buf
+                self.*buf = null as *[T]
+            }
+            self.cap = 0:usize
+        }
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl<'T> RawStore<'T> {
+    fn new() -> RawStore<'T> {
+        return RawStore<T>(*buf = null as *[T], len = 0:usize, cap = 0:usize)
+    }
+
+    fn grow(self#) {
+        unsafe {
+            auto next_cap# = self.cap * 2:usize
+            if next_cap == 0:usize { next_cap = 2:usize }
+            auto *next# = unsafe alloc [next_cap] T
+            auto index#: usize = 0:usize
+            loop index < self.len {
+                next[index] = cede self.buf[index]
+                index += 1:usize
+            }
+            if self.*buf != null { unsafe free [self.cap] self.*#buf }
+            self.*buf = *next
+            self.cap = next_cap
+        }
+    }
+
+    fn push(self#, cede 'value: T) {
+        if self.len == self.cap { self#.grow() }
+        unsafe {
+            self.buf[self.len] = cede 'value
+            self.len += 1:usize
+        }
+    }
+
+    fn pop(self#) -> Option<T> {
+        if self.len == 0:usize { return Option<T>::None }
+        unsafe {
+            self.len -= 1:usize
+            auto 'value = cede self.buf[self.len]
+            return Option<T>::Some(cede 'value)
+        }
+    }
+}
+
+fn raw_store_transfer() {
+    auto store# = RawStore<Outer>::new()
+    {
+        auto source = Outer(inner = Inner(id = 7, closed = false))
+        store#.push(cede source)
+    }
+    assert(g_drop_count == 0,
+           "raw indexed storage owns a ceded nested resource after the source scope exits")
+
+    auto received = store#.pop().unwrap()
+    assert(received.inner.id == 7,
+           "raw indexed storage retains the transferred nested resource")
+    assert(!received.inner.closed,
+           "the transferred nested resource remains open after the source scope exits")
+    assert(g_drop_count == 0,
+           "moving from raw indexed storage does not drop the destination slot")
+}
+
+fn raw_store_growth_transfer() {
+    {
+        auto store# = RawStore<Outer>::new()
+        {
+            auto first = Outer(inner = Inner(id = 1, closed = false))
+            store#.push(cede first)
+        }
+        {
+            auto second = Outer(inner = Inner(id = 2, closed = false))
+            store#.push(cede second)
+        }
+        {
+            auto third = Outer(inner = Inner(id = 3, closed = false))
+            store#.push(cede third)
+        }
+        assert(g_drop_count == 1,
+               "growing generic raw storage does not drop transferred source values")
+    }
+}
+
+fn main() -> i32 {
+    raw_store_transfer()
+    assert(g_drop_count == 1,
+           "the generic raw-store destination drops its nested resource exactly once")
+
+    raw_store_growth_transfer()
+    assert(g_drop_count == 4,
+           "growing generic raw storage drops each nested resource exactly once")
+    return 0
+}

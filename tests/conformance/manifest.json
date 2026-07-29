@@ -75,6 +75,22 @@
       "description": "Vec::get element clone and borrow stability (GAP-LANG-01)"
     },
     {
+      "id": "ownership_cede_raw_storage_exactly_once_01",
+      "path": "ownership/cede_raw_storage_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Cede into generic raw storage preserves exactly-one nested resource cleanup across source scope exit and growth"
+    },
+    {
+      "id": "std_tcp_stream_close_invariant_01",
+      "path": "std/tcp_stream_close_invariant.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "TcpStream close disarms its descriptor and is_valid honors the closed state"
+    },
+    {
       "id": "ownership_interior_mutable_field_shared_view_01",
       "path": "ownership/interior_mutable_field_shared_view.tk",
       "type": "run",

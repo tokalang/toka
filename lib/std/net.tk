@@ -867,14 +867,18 @@ impl TcpStream {
     pub fn close(self#) {
         unsafe {
             if !self.closed {
-                sysnet::reactor_del_fd_impl(get_reactor_fd(), self.fd)
-                sysnet::net_close_impl(self.fd)
+                auto fd = self.fd
+                self.fd = -1
                 self.closed = true
+                if fd >= 0 {
+                    sysnet::reactor_del_fd_impl(get_reactor_fd(), fd)
+                    sysnet::net_close_impl(fd)
+                }
             }
         }
     }
     pub fn is_valid(self) -> bool {
-        return self.fd >= 0
+        return !self.closed && self.fd >= 0
     }
 
     pub fn get_fd(self) -> i32 {
