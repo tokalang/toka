@@ -67,6 +67,31 @@ static bool isFreshAllocationExpr(const Expr *expr) {
          dynamic_cast<const AllocExpr *>(expr);
 }
 
+// A call which returns ^T transfers a fresh owning pointer to its caller, just
+// as `new T` does.  When Sema inserts an implicit ^T -> ~T cast for such a
+// value, CodeGen must build the first shared handle rather than store the raw
+// pointer in the aggregate's { data, ref_count } field.
+static bool isOwnedUniquePromotionSource(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+    } else if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+    } else {
+      break;
+    }
+  }
+  if (!expr)
+    return false;
+  if (isFreshAllocationExpr(expr))
+    return true;
+  if (dynamic_cast<const CedeExpr *>(expr))
+    return expr->ResolvedType && expr->ResolvedType->isUniquePtr();
+  return (dynamic_cast<const CallExpr *>(expr) ||
+          dynamic_cast<const MethodCallExpr *>(expr)) &&
+         expr->ResolvedType && expr->ResolvedType->isUniquePtr();
+}
+
 void CodeGen::emitAcquire(llvm::Value *sharedHandle, std::shared_ptr<Type> pointeeType) {
   if (!sharedHandle || !sharedHandle->getType()->isStructTy())
     return;
@@ -1743,11 +1768,12 @@ PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
 
   llvm::Type *srcType = val->getType();
 
-  // Sema represents `new T(...)` flowing into `~T` as an implicit cast.
-  // A pointer-sized temporary cannot be reinterpreted as a shared handle;
-  // create the first owning { data_ptr, ref_count_ptr } handle instead.
+  // Sema represents an owned ^T flowing into ~T as an implicit cast. A
+  // pointer-sized owner cannot be reinterpreted as a shared handle; create
+  // the first owning { data_ptr, ref_count_ptr } handle instead. This includes
+  // factories returning ^T, which are fresh at their call boundary.
   if (cast->ResolvedType && cast->ResolvedType->isSharedPtr() &&
-      isFreshAllocationExpr(cast->Expression.get()) &&
+      isOwnedUniquePromotionSource(cast->Expression.get()) &&
       srcType->isPointerTy() && targetType->isStructTy()) {
     TokaSymbol sharedValue;
     sharedValue.morphology = Morphology::Shared;

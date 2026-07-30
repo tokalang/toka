@@ -1,0 +1,28 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Token(value: i32)
+
+impl Token@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+    pub fn clone(self) = delete
+}
+
+shape Holder(~item#: Token)
+
+fn make_token() -> ^Token# {
+    return new Token(value = 7)
+}
+
+fn main() -> i32 {
+    {
+        auto holder = Holder(~item = make_token())
+        if holder.item.value != 7 {
+            return 1
+        }
+    }
+    return g_drop_count - 1
+}
