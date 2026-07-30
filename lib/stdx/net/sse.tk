@@ -1,0 +1,286 @@
+// Incremental Server-Sent Events framing. This module owns only the wire
+// grammar: JSON, [DONE], model tokens, and provider errors belong above it.
+
+import core/option::{Option}
+import core/result::{Result}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+import stdx/net/http::{HttpResponseStream}
+
+pub shape SseError (
+    kind: string,
+    message: string
+)
+
+pub shape SseEvent (
+    event: string,
+    data: string,
+    id: Option<string>
+)
+
+pub shape SseLimits (
+    max_line_bytes: usize,
+    max_event_bytes: usize,
+    max_buffer_bytes: usize
+)
+
+// `pending` retains only the unfinished physical line. Event fields are held
+// separately and reset at every blank-line frame boundary. `max_buffer_bytes`
+// caps both together, so it remains meaningful when one event has many lines.
+pub shape SseDecoder (
+    pending#: Vec<u8>,
+    event_name#: string,
+    data#: string,
+    last_event_id#: Option<string>,
+    retry_ms#: Option<i32>,
+    event_bytes#: usize,
+    event_open#: bool,
+    limits: SseLimits,
+    finished#: bool,
+    failed#: bool
+)
+
+impl SseError@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> SseError {
+        return SseError(kind = self.kind.clone(), message = self.message.clone())
+    }
+}
+
+impl SseEvent@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> SseEvent {
+        auto id# = Option<string>::None
+        match self.id {
+            auto Option<string>::Some(&value) => id = Option<string>::Some(value.clone())
+            _ => {}
+        }
+        return SseEvent(event = self.event.clone(), data = self.data.clone(), id = cede id)
+    }
+}
+
+impl SseLimits@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> SseLimits {
+        return SseLimits(max_line_bytes = self.max_line_bytes, max_event_bytes = self.max_event_bytes,
+                         max_buffer_bytes = self.max_buffer_bytes)
+    }
+}
+
+impl SseDecoder@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn error(kind: str, message: str) -> SseError {
+    return SseError(kind = string::from(kind), message = string::from(message))
+}
+
+fn line_as_string(line#: Vec<u8>, line_len: usize) -> string {
+    auto value# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < line_len {
+        value#.push_byte_raw(line#.get(index))
+        index += 1:usize
+    }
+    return value
+}
+
+fn decimal_retry(value: str) -> Option<i32> {
+    if value.len() == 0:usize { return Option<i32>::None }
+    auto total#: i64 = 0:i64
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if byte < '0' as u8 || byte > '9' as u8 { return Option<i32>::None }
+        total = total * 10:i64 + (byte - '0' as u8) as i64
+        if total > 2147483647:i64 { return Option<i32>::None }
+        index += 1:usize
+    }
+    return Option<i32>::Some(total as i32)
+}
+
+fn contains_nul(value: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        if value.byte_at(index) as u8 == 0:u8 { return true }
+        index += 1:usize
+    }
+    return false
+}
+
+impl SseLimits {
+    pub fn new(max_line_bytes: usize, max_event_bytes: usize,
+               max_buffer_bytes: usize) -> Result<SseLimits, SseError> {
+        if max_line_bytes == 0:usize || max_event_bytes == 0:usize || max_buffer_bytes == 0:usize {
+            return Result<SseLimits, SseError>::Err(error("input", "SSE limits must be positive"))
+        }
+        if max_buffer_bytes < max_line_bytes {
+            return Result<SseLimits, SseError>::Err(error("input", "SSE buffer limit must cover one line"))
+        }
+        return Result<SseLimits, SseError>::Ok(SseLimits(max_line_bytes = max_line_bytes,
+            max_event_bytes = max_event_bytes, max_buffer_bytes = max_buffer_bytes))
+    }
+}
+
+impl SseError {
+    pub fn kind(self) -> string { return self.kind.clone() }
+    pub fn message(self) -> string { return self.message.clone() }
+}
+
+impl SseEvent {
+    pub fn event_type(self) -> string { return self.event.clone() }
+    pub fn data(self) -> string { return self.data.clone() }
+    pub fn id(self) -> Option<string> {
+        match self.id {
+            auto Option<string>::Some(&value) => return Option<string>::Some(value.clone())
+            _ => return Option<string>::None
+        }
+    }
+}
+
+impl SseDecoder {
+    pub fn new(limits: SseLimits) -> SseDecoder {
+        return SseDecoder(pending = Vec<u8>::new(), event_name = string::from(""), data = string::from(""),
+            last_event_id = Option<string>::None, retry_ms = Option<i32>::None, event_bytes = 0:usize,
+            event_open = false, limits = limits, finished = false, failed = false)
+    }
+
+    pub fn retry_ms(self) -> Option<i32> {
+        return self.retry_ms
+    }
+
+    pub fn last_event_id(self) -> Option<string> {
+        match self.last_event_id {
+            auto Option<string>::Some(&value) => return Option<string>::Some(value.clone())
+            _ => return Option<string>::None
+        }
+    }
+
+    fn reset_event(self#) {
+        self.event_name#.clear()
+        self.data#.clear()
+        self.event_bytes = 0:usize
+        self.event_open = false
+    }
+
+    fn fail(self#, kind: str, message: str) -> SseError {
+        self.failed = true
+        return error(kind, message)
+    }
+
+    fn dispatch(self#, events#: Vec<SseEvent>) {
+        if self.data.len() > 0:usize {
+            auto event# = string::from("message")
+            if self.event_name.len() > 0:usize { event = self.event_name.clone() }
+            auto id# = Option<string>::None
+            match self.last_event_id {
+                auto Option<string>::Some(&value) => id = Option<string>::Some(value.clone())
+                _ => {}
+            }
+            events#.push(cede SseEvent(event = cede event, data = self.data.clone(), id = cede id))
+        }
+        self#.reset_event()
+    }
+
+    // `line` has its trailing LF removed, and optionally one preceding CR.
+    fn consume_line(self#, line#: Vec<u8>, raw_len: usize, events#: Vec<SseEvent>) -> Result<(), SseError> {
+        auto line_len# = raw_len
+        if line_len > 0:usize && line#.get(line_len - 1:usize) == 13:u8 { line_len -= 1:usize }
+        if line_len == 0:usize {
+            self#.dispatch(events)
+            return Result<(), SseError>::Ok(())
+        }
+        if line#.get(0:usize) == ':' as u8 { return Result<(), SseError>::Ok(()) }
+        if self.event_bytes + line_len > self.limits.max_event_bytes {
+            return Result<(), SseError>::Err(self#.fail("limit", "SSE event exceeds configured byte limit"))
+        }
+        self.event_bytes += line_len
+        self.event_open = true
+        auto colon#: usize = 0:usize
+        loop colon < line_len && line#.get(colon) != ':' as u8 { colon += 1:usize }
+        auto field = line_as_string(line, colon)
+        auto value_start# = colon
+        if value_start < line_len {
+            value_start += 1:usize
+            if value_start < line_len && line#.get(value_start) == ' ' as u8 { value_start += 1:usize }
+        }
+        auto value = line_as_string(line, line_len).substr(value_start, line_len - value_start)
+        if field.as_str().equals("event") {
+            self.event_name = string::from(value)
+        } else if field.as_str().equals("data") {
+            if self.data.len() > 0:usize { self.data#.push_char('\n') }
+            self.data#.push_str(value)
+        } else if field.as_str().equals("id") {
+            if !contains_nul(value) { self.last_event_id = Option<string>::Some(string::from(value)) }
+        } else if field.as_str().equals("retry") {
+            auto retry = decimal_retry(value)
+            if retry.is_some() { self.retry_ms = retry }
+        }
+        return Result<(), SseError>::Ok(())
+    }
+
+    // This consumes the input owner; no raw pointer or borrowed byte buffer
+    // survives a call. Callers may hand it Bytes created from HTTP stream chunks.
+    pub fn push(self#, cede input: Bytes) -> Result<Vec<SseEvent>, SseError> {
+        if self.finished || self.failed { return Result<Vec<SseEvent>, SseError>::Err(error("closed", "SSE decoder is closed")) }
+        auto input# = cede input
+        auto bytes# = input#.into_vec()
+        auto events# = Vec<SseEvent>::new()
+        auto index#: usize = 0:usize
+        loop index < bytes.len() {
+            self.pending#.push(bytes#.get(index))
+            if self.event_bytes + self.pending.len() > self.limits.max_buffer_bytes {
+                return Result<Vec<SseEvent>, SseError>::Err(self#.fail("limit", "SSE buffered event state exceeds configured byte limit"))
+            }
+            if self.pending.len() > self.limits.max_line_bytes {
+                return Result<Vec<SseEvent>, SseError>::Err(self#.fail("limit", "SSE line exceeds configured byte limit"))
+            }
+            if bytes#.get(index) == 10:u8 {
+                auto raw_len = self.pending.len() - 1:usize
+                auto consumed = self#.consume_line(self.pending, raw_len, events)
+                if consumed.is_err() { return Result<Vec<SseEvent>, SseError>::Err(consumed.unwrap_err()) }
+                self.pending = Vec<u8>::new()
+            }
+            index += 1:usize
+        }
+        return Result<Vec<SseEvent>, SseError>::Ok(cede events)
+    }
+
+    // EOF is a framing boundary only when the peer sent a blank line. A partial
+    // physical line or unfinished event is observable as a typed error.
+    pub fn finish(self#) -> Result<(), SseError> {
+        if self.finished || self.failed { return Result<(), SseError>::Err(error("closed", "SSE decoder is closed")) }
+        self.finished = true
+        if self.pending.len() > 0:usize || self.event_open {
+            self.failed = true
+            return Result<(), SseError>::Err(error("truncated", "SSE stream ended before an event frame boundary"))
+        }
+        return Result<(), SseError>::Ok(())
+    }
+}
+
+// Read exactly one owner-carrying HTTP body chunk and frame any complete SSE
+// events it contains. Timeout, cancellation, and transport lifecycle remain
+// properties of HttpResponseStream; this helper only translates its failure
+// into the SSE caller's Result domain. `None` is a clean, fully framed EOF.
+pub fn read_http_chunk_async(stream#: HttpResponseStream, decoder#: SseDecoder,
+                             timeout_ms: i32) -> async Result<Option<Vec<SseEvent>>, SseError> {
+    auto buffer# = Vec<u8>::with_capacity(4096)
+    auto read = stream#.read_chunk_into_async(cede buffer, 4096:usize, timeout_ms).await
+    if read.is_err() {
+        auto failure = read.unwrap_err()
+        return Result<Option<Vec<SseEvent>>, SseError>::Err(error("transport", failure.message.as_str()))
+    }
+    auto chunk# = read.unwrap()
+    auto count = chunk.bytes_read
+    auto bytes# = Bytes::from_vec(cede chunk#.take_buffer())
+    if count == 0:usize {
+        auto finished = decoder#.finish()
+        if finished.is_err() { return Result<Option<Vec<SseEvent>>, SseError>::Err(finished.unwrap_err()) }
+        return Result<Option<Vec<SseEvent>>, SseError>::Ok(Option<Vec<SseEvent>>::None)
+    }
+    auto events = decoder#.push(cede bytes)
+    if events.is_err() { return Result<Option<Vec<SseEvent>>, SseError>::Err(events.unwrap_err()) }
+    return Result<Option<Vec<SseEvent>>, SseError>::Ok(Option<Vec<SseEvent>>::Some(cede events.unwrap()))
+}

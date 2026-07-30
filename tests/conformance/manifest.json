@@ -99,6 +99,14 @@
       "description": "TcpStream close disarms its descriptor and is_valid honors the closed state"
     },
     {
+      "id": "std_sse_decoder_v1_01",
+      "path": "std/sse_decoder_v1.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "SSE decoder incrementally frames CRLF/LF events, limits buffers, and reports truncated EOF"
+    },
+    {
       "id": "std_async_io_result_take_buffer_exactly_once_01",
       "path": "std/async_io_result_take_buffer_exactly_once.tk",
       "type": "run",
