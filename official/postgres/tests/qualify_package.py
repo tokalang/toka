@@ -116,6 +116,10 @@ def main() -> int:
             run([str(tokac), *include, str(PACKAGE / "tests" / "pool_v1.tk"),
                  "-o", str(pool)], cwd=ROOT, env=base_env)
             run([str(pool)], cwd=ROOT, env=base_env)
+            pool_extended = test_work / "pool_extended_v1"
+            run([str(tokac), *include, str(PACKAGE / "tests" / "pool_extended_v1.tk"),
+                 "-o", str(pool_extended)], cwd=ROOT, env=base_env)
+            run([str(pool_extended)], cwd=ROOT, env=base_env)
 
         dependency = work / "postgres"
         shutil.copytree(PACKAGE, dependency)
@@ -149,6 +153,7 @@ def main() -> int:
             "extended_prepared_query": "pass",
             "transaction_ownership": "pass",
             "bounded_connection_pool": "pass",
+            "pooled_parameters_and_transactions": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))

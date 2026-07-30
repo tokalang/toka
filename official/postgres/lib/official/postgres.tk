@@ -177,6 +177,14 @@ pub shape PostgresPoolLease (
     ~state: Mutex<PostgresPoolState>
 )
 
+// A pooled transaction owns the checked-out client until commit, rollback, or
+// drop. An active transaction is never returned to an idle pool.
+pub shape PostgresPoolTransaction (
+    client#: Vec<PostgresClient>,
+    ~state: Mutex<PostgresPoolState>,
+    active: bool
+)
+
 pub shape PostgresClient (
     stream#: AsyncStream,
     receive#: Vec<u8>,
@@ -1679,6 +1687,35 @@ impl PostgresStatement {
     }
 }
 
+// A pool cannot safely hand a session-local PostgresStatement to its caller:
+// the caller could retain it after the lease is returned. This one-shot form
+// keeps Parse, Bind/Execute, and Close inside the exclusive owner instead.
+fn query_params_once_async(client#: PostgresClient, sql: str,
+                           cede param_type_oids: Vec<u32>,
+                           cede params: Vec<PostgresParam>,
+                           limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+    auto prepared = client#.prepare_async(sql, cede param_type_oids).await
+    if prepared.is_err() {
+        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(prepared.unwrap_err())
+    }
+    auto statement# = prepared.unwrap()
+    auto executed = statement#.execute_async(client, cede params, limits).await
+    if executed.is_err() {
+        auto failure = executed.unwrap_err()
+        if !client.is_closed() {
+            auto closed = statement#.close_async(client).await
+            if closed.is_err() { client#.close() }
+        }
+        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(failure)
+    }
+    auto closed = statement#.close_async(client).await
+    if closed.is_err() {
+        client#.close()
+        return Result<Vec<PostgresQueryResult>, PostgresError>::Err(closed.unwrap_err())
+    }
+    return cede executed
+}
+
 fn transaction_command_async(client#: PostgresClient, sql: str, expected_tag: str) -> async Result<(), PostgresError> {
     auto limits = PostgresQueryLimits::new(1:usize, 0:usize, 64:usize).unwrap()
     auto executed = client#.simple_query_async(sql, limits).await
@@ -1948,6 +1985,52 @@ impl PostgresPoolLease {
         }
     }
 
+    // Uses an ephemeral server-side statement so the connection remains safe
+    // to return to the pool as soon as this call completes.
+    pub fn query_params_async(self#, sql: str, cede param_type_oids: Vec<u32>, cede params: Vec<PostgresParam>, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = query_params_once_async(client, sql, cede param_type_oids, cede params, limits).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<PostgresClient>::None => {
+                return Result<Vec<PostgresQueryResult>, PostgresError>::Err(pool_error("PostgreSQL pool lease has no connection"))
+            }
+        }
+    }
+
+    // Consuming the lease makes a transaction an exclusive, non-returnable
+    // state until it commits, rolls back, or is dropped.
+    pub fn begin_transaction_async(cede self) -> async Result<PostgresPoolTransaction, PostgresError> {
+        auto lease# = cede self
+        auto held# = lease#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto started = transaction_command_async(client, "BEGIN", "BEGIN").await
+                if started.is_err() {
+                    auto failure = started.unwrap_err()
+                    client#.close()
+                    pool_return_client(lease.state, cede client)
+                    return Result<PostgresPoolTransaction, PostgresError>::Err(failure)
+                }
+                auto transaction_client# = Vec<PostgresClient>::new()
+                transaction_client#.push(cede client)
+                return Result<PostgresPoolTransaction, PostgresError>::Ok(PostgresPoolTransaction(
+                    client = cede transaction_client,
+                    ~state = lease.~state,
+                    active = true
+                ))
+            }
+            auto Option<PostgresClient>::None => {
+                return Result<PostgresPoolTransaction, PostgresError>::Err(pool_error("PostgreSQL pool lease has no connection"))
+            }
+        }
+    }
+
     pub fn close(self#) {
         auto held# = self.client#.pop()
         match cede held {
@@ -1958,6 +2041,103 @@ impl PostgresPoolLease {
             }
             auto Option<PostgresClient>::None => {}
         }
+    }
+}
+
+impl PostgresPoolTransaction@encap {
+    fn drop(self#) {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                if self.active { client#.close() }
+                pool_return_client(self.state, cede client)
+            }
+            auto Option<PostgresClient>::None => {}
+        }
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl PostgresPoolTransaction {
+    fn take_connection(self#) -> Option<PostgresClient> {
+        auto held# = self.client#.pop()
+        return cede held
+    }
+
+    pub fn is_active(self) -> bool {
+        return self.active
+    }
+
+    pub fn simple_query_async(self#, sql: str, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        if !self.active {
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL pooled transaction is no longer active"))
+        }
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.simple_query_async(sql, limits).await
+                // A statement failure inside a PostgreSQL transaction leaves
+                // session state ambiguous to callers, so do not reuse it.
+                if result.is_err() { client#.close() }
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<PostgresClient>::None => {
+                return Result<Vec<PostgresQueryResult>, PostgresError>::Err(pool_error("PostgreSQL pooled transaction has no connection"))
+            }
+        }
+    }
+
+    pub fn query_params_async(self#, sql: str, cede param_type_oids: Vec<u32>, cede params: Vec<PostgresParam>, limits: PostgresQueryLimits) -> async Result<Vec<PostgresQueryResult>, PostgresError> {
+        if !self.active {
+            return Result<Vec<PostgresQueryResult>, PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL pooled transaction is no longer active"))
+        }
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = query_params_once_async(client, sql, cede param_type_oids, cede params, limits).await
+                if result.is_err() { client#.close() }
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<PostgresClient>::None => {
+                return Result<Vec<PostgresQueryResult>, PostgresError>::Err(pool_error("PostgreSQL pooled transaction has no connection"))
+            }
+        }
+    }
+
+    fn finish_async(cede self, sql: str, expected_tag: str) -> async Result<(), PostgresError> {
+        auto transaction# = cede self
+        if !transaction.active {
+            return Result<(), PostgresError>::Err(error("transaction", 0:usize, "PostgreSQL pooled transaction is no longer active"))
+        }
+        auto held# = transaction#.take_connection()
+        match cede held {
+            auto Option<PostgresClient>::Some('client) => {
+                auto client# = cede 'client
+                auto finished = transaction_command_async(client, sql, expected_tag).await
+                transaction.active = false
+                if finished.is_err() { client#.close() }
+                pool_return_client(transaction.state, cede client)
+                return finished
+            }
+            auto Option<PostgresClient>::None => {
+                transaction.active = false
+                return Result<(), PostgresError>::Err(pool_error("PostgreSQL pooled transaction has no connection"))
+            }
+        }
+    }
+
+    pub fn commit_async(cede self) -> async Result<(), PostgresError> {
+        return self.finish_async("COMMIT", "COMMIT").await
+    }
+
+    pub fn rollback_async(cede self) -> async Result<(), PostgresError> {
+        return self.finish_async("ROLLBACK", "ROLLBACK").await
     }
 }
 

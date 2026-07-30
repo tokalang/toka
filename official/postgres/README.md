@@ -76,8 +76,11 @@ while the transaction is live.
 It never shares a socket across requests; a lease is automatically returned on
 drop if healthy. `try_acquire_async` fails immediately on exhaustion, while
 `acquire_async(timeout_ms)` waits with a bounded, cancellation-aware timeout.
-The lease currently proxies bounded simple queries; keep a prepared statement
-or transaction on a directly owned `PostgresClient`.
+`query_params_async` performs one parameterized Parse/Bind/Execute/Close
+exchange while the lease owns the socket, so no session-local statement can
+outlive its lease. `begin_transaction_async` consumes the lease and returns a
+`PostgresPoolTransaction`; commit or rollback returns its healthy client to
+the pool, while dropping an active transaction closes and discards it.
 
 ## Qualification
 
@@ -89,5 +92,6 @@ Run from this package root:
 ../../build/bin/tokac -I ../../lib -I lib tests/query_v1.tk -o /tmp/postgres_query_v1 && /tmp/postgres_query_v1
 ../../build/bin/tokac -I ../../lib -I lib tests/extended_v1.tk -o /tmp/postgres_extended_v1 && /tmp/postgres_extended_v1
 ../../build/bin/tokac -I ../../lib -I lib tests/pool_v1.tk -o /tmp/postgres_pool_v1 && /tmp/postgres_pool_v1
+../../build/bin/tokac -I ../../lib -I lib tests/pool_extended_v1.tk -o /tmp/postgres_pool_extended_v1 && /tmp/postgres_pool_extended_v1
 python3 tests/qualify_package.py
 ```

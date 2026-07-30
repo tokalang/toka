@@ -1,7 +1,8 @@
-# Toka 1.0 Five-Tier API Stability Matrix
+# Toka 1.0 Six-Tier API Stability Matrix
 
 **Status**: Qualification Layer Classification  
-**Purpose**: Categorize interfaces across `core`, `std`, and `stdx` into five distinct stability tiers for Toka 1.0.
+**Purpose**: Categorize interfaces across `core`, `std`, `stdx`, and qualified
+`official` packages into distinct stability tiers for Toka 1.0.
 
 ---
 
@@ -10,8 +11,14 @@
 1. **Tier 1: Language 1.0**: Core syntax, ownership mechanics (`borrow`, `cede`, `move`), value/handle sigils (`#`, `$`), postfix `!`, and async function morphology (`async`, `.await`, `.start`).
 2. **Tier 2: Core / Std 1.0**: Fundamental runtime data structures (`Vec`, `Bytes`, `string`, `str`), `Option`/`Result`, `@Iterable`/`@Iterator` traits, `File`/`Reader`/`Writer`, `Task`/`Context`.
 3. **Tier 3: Stdx 1.0**: Standard extensions module (`HttpRequest`/`HttpResponseStream`, `HttpHeaderView`, TLS stream adapter, WebSocket framing).
-4. **Tier 4: Legacy / Deprecated Shims**: Pre-1.0 C-style raw pointer APIs (`read_async(*buf, len)`, `to_u8_ptr`). Retained temporarily for low-level compatibility; NO new implementation in `stdx` may rely on Legacy APIs.
-5. **Tier 5: Experimental / Post-1.0**: Parameterized task spawning, connection pools, HTTP/2, structured task scopes, advanced async combinators.
+4. **Tier 4: Qualified Official Packages**: Independently versioned packages
+   with executable package qualification. `official/redis` and
+   `official/postgres` expose bounded, dedicated connection pools here; this
+   does not stabilize a generic pooling abstraction.
+5. **Tier 5: Legacy / Deprecated Shims**: Pre-1.0 C-style raw pointer APIs (`read_async(*buf, len)`, `to_u8_ptr`). Retained temporarily for low-level compatibility; NO new implementation in `stdx` may rely on Legacy APIs.
+6. **Tier 6: Experimental / Post-1.0**: Parameterized task spawning, generic
+   connection pools, HTTP/2, structured task scopes, advanced async
+   combinators.
 
 ---
 
@@ -40,5 +47,7 @@
 | **`stdx/crypto/token.tk`** | OS-random hexadecimal and Base64URL tokens | **Tier 3: Stdx 1.0** | Delegates entropy to `std/random`; does not impose session or expiry policy. |
 | **`stdx/crypto/hkdf.tk`** | HKDF-SHA-256 extract, expand, derive | **Tier 3: Stdx 1.0** | RFC 5869 key derivation; no protocol-specific key schedule policy. |
 | **`stdx/crypto/pbkdf2.tk`** | PBKDF2-HMAC-SHA-256 derivation | **Tier 3: Stdx 1.0** | RFC 8018 derivation with explicit work factor and bounded output; protocol adapters choose their own password policy. |
-| **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 4: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
-| **Async Extensions** | Async blocks, TaskScope, connection pools | **Tier 5: Experimental** | Deferred for post-1.0 design. |
+| **`official/redis`** | RESP2 client, ordered pipelines, `RedisPool` / exclusive `RedisLease` | **Tier 4: Qualified Official** | Bounded dedicated pooling; cancellation, protocol, and reply-alignment failures poison a client before lease return. |
+| **`official/postgres`** | PostgreSQL queries, transactions, `PostgresPool` / exclusive `PostgresPoolLease` | **Tier 4: Qualified Official** | Query results are bounded and owned; a failed, canceled, or active-transaction client is not reused. |
+| **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 5: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
+| **Async Extensions** | Async blocks, TaskScope, generic connection pools | **Tier 6: Experimental** | Dedicated official package pools are excluded; generic pooling remains deferred. |
