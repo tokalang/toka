@@ -6,7 +6,7 @@ import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
 import std/task::{block_on, sleep_async}
 import std/vec::{Vec}
 import stdx/log/log::{LOG_INFO}
-import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest}
+import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest, HttpResponse}
 
 fn address(port: u16) -> SocketAddrV4 {
     return SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
@@ -217,9 +217,12 @@ fn redis_server_async(cede listener: TcpListener) -> async i32 {
     return 0
 }
 
-fn request(path: str) -> HttpRequest {
+fn request(path: str, request_id: str) -> HttpRequest {
     auto headers# = HeaderMap::new()
     assert(headers#.insert(string::from("Host"), string::from("127.0.0.1")).is_ok(), "request host")
+    if request_id.len() > 0:usize {
+        assert(headers#.insert(string::from("X-Request-Id"), string::from(request_id)).is_ok(), "request ID")
+    }
     return HttpRequest(
         method = HttpMethod::GET,
         path = string::from(path),
@@ -227,6 +230,12 @@ fn request(path: str) -> HttpRequest {
         headers = cede headers,
         body = string::from("")
     )
+}
+
+fn has_request_id(response: HttpResponse, expected: str) -> bool {
+    auto request_id = response.headers.get("x-request-id")
+    if request_id.is_none() { return false }
+    return request_id.unwrap().as_str().equals(expected)
 }
 
 fn run_async() -> async i32 {
@@ -257,30 +266,44 @@ fn run_async() -> async i32 {
     sleep_async(10:i32).await
 
     auto client# = HttpClient::new(2000:i32)
-    auto first = client#.execute_async(request("/notes/1"), address(http_port)).await
-    if first.is_err() { return 7 }
+    auto health = client#.execute_async(request("/health", ""), address(http_port)).await
+    if health.is_err() { return 7 }
+    auto health_response = health.unwrap()
+    if health_response.status_code != 200:i32 || !has_request_id(health_response, "data-access-1") { return 7 }
+
+    auto missing = client#.execute_async(request("/missing", "missing-404"), address(http_port)).await
+    if missing.is_err() { return 8 }
+    auto missing_response = missing.unwrap()
+    if missing_response.status_code != 404:i32 || !has_request_id(missing_response, "missing-404") { return 8 }
+
+    auto first = client#.execute_async(request("/notes/1", "note-database"), address(http_port)).await
+    if first.is_err() { return 9 }
     auto first_response = first.unwrap()
-    if first_response.status_code != 200:i32 || !first_response.body.contains("database") { return 7 }
-    auto second = client#.execute_async(request("/notes/1"), address(http_port)).await
-    if second.is_err() { return 8 }
+    if first_response.status_code != 200:i32 || !first_response.body.contains("database") ||
+       !has_request_id(first_response, "note-database") { return 9 }
+    auto second = client#.execute_async(request("/notes/1", "note-cache"), address(http_port)).await
+    if second.is_err() { return 10 }
     auto second_response = second.unwrap()
-    if second_response.status_code != 200:i32 || !second_response.body.contains("cache") { return 8 }
-    auto metrics = client#.execute_async(request("/metrics"), address(http_port)).await
-    if metrics.is_err() { return 9 }
+    if second_response.status_code != 200:i32 || !second_response.body.contains("cache") ||
+       !has_request_id(second_response, "note-cache") { return 10 }
+    auto metrics = client#.execute_async(request("/metrics", "metrics-scrape"), address(http_port)).await
+    if metrics.is_err() { return 11 }
     auto metrics_response = metrics.unwrap()
-    if metrics_response.status_code != 200:i32 { return 9 }
-    if !metrics_response.body.contains("data_service_requests_total 3") ||
+    if metrics_response.status_code != 200:i32 || !has_request_id(metrics_response, "metrics-scrape") { return 11 }
+    if !metrics_response.body.contains("data_service_requests_total 4") ||
        !metrics_response.body.contains("data_service_cache_hits_total 1") ||
-       !metrics_response.body.contains("data_service_database_transactions_total 1") { return 10 }
+       !metrics_response.body.contains("data_service_database_transactions_total 1") ||
+       !metrics_response.body.contains("data_service_client_errors_total 1") ||
+       !metrics_response.body.contains("data_service_server_errors_total 0") { return 12 }
 
     cancellation.canceler.call()
     auto stopped = http_server.await
-    if stopped.is_err() { return 11 }
-    if !stopped.unwrap() { return 11 }
-    if cancellation.canceler.active_token_count() != 0:usize { return 12 }
+    if stopped.is_err() { return 13 }
+    if !stopped.unwrap() { return 13 }
+    if cancellation.canceler.active_token_count() != 0:usize { return 14 }
     service#.close()
-    if postgres_server.await != 0:i32 { return 13 }
-    if redis_server.await != 0:i32 { return 14 }
+    if postgres_server.await != 0:i32 { return 15 }
+    if redis_server.await != 0:i32 { return 16 }
     return 0
 }
 

@@ -90,9 +90,10 @@ individual request operations must retain their own finite I/O timeouts.
 JSON logging takes an explicit level, message, and owned string fields.  It
 always escapes JSON strings and filters before formatting.  The initial metrics
 registry supports validated counter/gauge names and deterministic Prometheus
-text rendering.  Request IDs and trace headers remain application/context
-fields; W3C TraceContext and OpenTelemetry exporters are deliberately out of
-scope.
+text rendering.  The data-access reference service exercises a narrow
+application-level request-ID convention and excludes `/metrics` scrapes from
+its business counters; reusable runtime libraries do not prescribe that
+policy. W3C TraceContext and OpenTelemetry exporters remain out of scope.
 
 ### Implemented composition
 

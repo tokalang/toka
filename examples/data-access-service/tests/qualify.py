@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = ROOT / "examples" / "data-access-service"
 
 
-def run(argv: list[str]) -> None:
+def run(argv: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(argv, cwd=ROOT, text=True, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, timeout=120)
     if result.returncode != 0:
@@ -20,6 +20,7 @@ def run(argv: list[str]) -> None:
             "command failed: %s\nstdout:\n%s\nstderr:\n%s"
             % (" ".join(argv), result.stdout, result.stderr)
         )
+    return result
 
 
 def main() -> int:
@@ -36,7 +37,16 @@ def main() -> int:
             executable = Path(work) / name
             run([str(tokac), *include, str(EXAMPLE / "tests" / (name + ".tk")),
                  "-o", str(executable)])
-            run([str(executable)])
+            result = run([str(executable)])
+            if name == "loopback_v1":
+                for event in (
+                    '"request_id":"data-access-1","route":"health","source":"local","status":"200"',
+                    '"request_id":"missing-404","route":"unmatched","source":"router","status":"404"',
+                    '"request_id":"note-database","route":"note.show","source":"database","status":"200"',
+                    '"request_id":"note-cache","route":"note.show","source":"cache","status":"200"',
+                ):
+                    if event not in result.stdout:
+                        raise RuntimeError("missing request-correlated JSON log event: " + event)
     print("data-access-service qualification: PASSED")
     return 0
 

@@ -25,6 +25,7 @@ shape DataAccessServiceState (
     postgres#: PostgresPool,
     metrics#: PrometheusRegistry,
     logger: JsonLogger,
+    next_request_id: usize,
     closed: bool
 )
 
@@ -81,6 +82,37 @@ fn note_response(id: str, source: str) -> HttpResponse {
     return response(200:i32, "application/json", cede body)
 }
 
+// The service accepts gateway-provided opaque request IDs only in this narrow,
+// header-safe profile. Other input receives a deterministic process-local ID
+// so every application response and event remains correlatable.
+fn is_valid_request_id(value: str) -> bool {
+    if value.len() == 0:usize || value.len() > 128:usize { return false }
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index) as u8
+        if !((byte >= 'A' as u8 && byte <= 'Z' as u8) ||
+             (byte >= 'a' as u8 && byte <= 'z' as u8) ||
+             (byte >= '0' as u8 && byte <= '9' as u8) ||
+             byte == '-' as u8 || byte == '_' as u8 || byte == '.' as u8) {
+            return false
+        }
+        index += 1:usize
+    }
+    return true
+}
+
+fn generated_request_id(sequence: usize) -> string {
+    auto request_id# = string::from("data-access-")
+    request_id#.push_str(string::from_int(sequence).as_str())
+    return request_id
+}
+
+fn response_with_request_id(cede value: HttpResponse, request_id: str) -> HttpResponse {
+    auto value# = cede value
+    auto _request_id = value.headers#.insert(string::from("X-Request-Id"), string::from(request_id))
+    return value
+}
+
 fn cache_marker() -> Bytes {
     auto marker# = Vec<u8>::new()
     marker#.push(1:u8)
@@ -113,7 +145,9 @@ impl DataAccessService {
         auto metrics# = PrometheusRegistry::new()
         if metrics#.register_counter(string::from("data_service_requests_total")).is_err() ||
            metrics#.register_counter(string::from("data_service_cache_hits_total")).is_err() ||
-           metrics#.register_counter(string::from("data_service_database_transactions_total")).is_err() {
+           metrics#.register_counter(string::from("data_service_database_transactions_total")).is_err() ||
+           metrics#.register_counter(string::from("data_service_client_errors_total")).is_err() ||
+           metrics#.register_counter(string::from("data_service_server_errors_total")).is_err() {
             return Result<DataAccessService, string>::Err(string::from("failed to initialize service metrics"))
         }
         return Result<DataAccessService, string>::Ok(DataAccessService(
@@ -123,12 +157,13 @@ impl DataAccessService {
                 postgres = cede postgres,
                 metrics = cede metrics,
                 logger = JsonLogger::new(log_level),
+                next_request_id = 0:usize,
                 closed = false
             ))
         ))
     }
 
-    fn record(self#, route: str, source: str) {
+    fn record(self#, request_id: str, route: str, source: str, status_code: i32) {
         auto logger# = Option<JsonLogger>::None
         {
             auto locked = self.state.lock()
@@ -137,23 +172,38 @@ impl DataAccessService {
             auto *state_value# = lock_value.get_ref()
             if state_value.closed { return }
             auto _incremented = state_value.metrics#.inc_counter("data_service_requests_total", 1:i64)
-            if source.equals("cache") {
+            if source.equals("cache") && status_code >= 200:i32 && status_code < 300:i32 {
                 auto _cache_incremented = state_value.metrics#.inc_counter("data_service_cache_hits_total", 1:i64)
             }
-            if source.equals("database") {
+            if source.equals("database") && status_code >= 200:i32 && status_code < 300:i32 {
                 auto _database_incremented = state_value.metrics#.inc_counter("data_service_database_transactions_total", 1:i64)
+            }
+            if status_code >= 400:i32 && status_code < 500:i32 {
+                auto _client_error = state_value.metrics#.inc_counter("data_service_client_errors_total", 1:i64)
+            }
+            if status_code >= 500:i32 {
+                auto _server_error = state_value.metrics#.inc_counter("data_service_server_errors_total", 1:i64)
             }
             logger = Option<JsonLogger>::Some(state_value.logger.clone())
         }
         match cede logger {
             auto Option<JsonLogger>::Some('logger_value) => {
                 auto fields# = Vec<JsonField>::new()
+                fields#.push(cede JsonField::new(string::from("request_id"), string::from(request_id)))
                 fields#.push(cede JsonField::new(string::from("route"), string::from(route)))
                 fields#.push(cede JsonField::new(string::from("source"), string::from(source)))
+                fields#.push(cede JsonField::new(string::from("status"), string::from_int(status_code)))
                 'logger_value.emit(LOG_INFO, string::from("request complete"), cede fields)
             }
             auto Option<JsonLogger>::None => {}
         }
+    }
+
+    fn complete(self#, request_id: str, route: str, source: str,
+                cede value: HttpResponse) -> HttpResponse {
+        auto value# = response_with_request_id(cede value, request_id)
+        self#.record(request_id, route, source, value.status_code)
+        return value
     }
 
     fn metrics_response(self#) -> HttpResponse {
@@ -162,7 +212,7 @@ impl DataAccessService {
         auto lock_value = locked.unwrap()
         auto *state_value# = lock_value.get_ref()
         if state_value.closed { return json_error(503:i32, "service is closed") }
-        return response(200:i32, "text/plain; version=0.0.4", cede state_value.metrics.render())
+        return response(200:i32, "text/plain; version=0.0.4; charset=utf-8", cede state_value.metrics.render())
     }
 
     pub fn handle_async(self#, request: HttpRequest) -> async HttpResponse {
@@ -170,33 +220,62 @@ impl DataAccessService {
         auto id# = Option<string>::None
         auto redis# = Option<RedisPool>::None
         auto postgres# = Option<PostgresPool>::None
+        auto incoming_request_id = request.headers.get("x-request-id")
+        auto request_id# = string::from("data-access-unavailable")
         {
             auto locked = self.state.lock()
-            if locked.is_err() { return json_error(500:i32, "service mutex failure") }
+            if locked.is_err() {
+                match cede incoming_request_id {
+                    auto Option<string>::Some('value) => {
+                        if is_valid_request_id('value.as_str()) { request_id = string::from('value.as_str()) }
+                    }
+                    auto Option<string>::None => {}
+                }
+                return response_with_request_id(cede json_error(500:i32, "service mutex failure"), request_id.as_str())
+            }
             auto lock_value = locked.unwrap()
             auto *state_value# = lock_value.get_ref()
-            if state_value.closed { return json_error(503:i32, "service is closed") }
+            state_value.next_request_id += 1:usize
+            match cede incoming_request_id {
+                auto Option<string>::Some('value) => {
+                    if is_valid_request_id('value.as_str()) { request_id = string::from('value.as_str()) }
+                    else { request_id = generated_request_id(state_value.next_request_id) }
+                }
+                auto Option<string>::None => { request_id = generated_request_id(state_value.next_request_id) }
+            }
+            if state_value.closed {
+                return response_with_request_id(cede json_error(503:i32, "service is closed"), request_id.as_str())
+            }
             auto matched = state_value.router.recognize(request.method, request.path.as_str())
-            if matched.is_none() { return json_error(404:i32, "route not found") }
-            auto found = matched.unwrap()
-            route = Option<string>::Some(found.route_name())
-            auto parameter = found.param("id")
-            if parameter.is_some() { id = Option<string>::Some(parameter.unwrap()) }
-            redis = Option<RedisPool>::Some(state_value.redis#.clone())
-            postgres = Option<PostgresPool>::Some(state_value.postgres#.clone())
+            if matched.is_none() {
+                route = Option<string>::Some(string::from("unmatched"))
+            } else {
+                auto found = matched.unwrap()
+                route = Option<string>::Some(found.route_name())
+                auto parameter = found.param("id")
+                if parameter.is_some() { id = Option<string>::Some(parameter.unwrap()) }
+                redis = Option<RedisPool>::Some(state_value.redis#.clone())
+                postgres = Option<PostgresPool>::Some(state_value.postgres#.clone())
+            }
         }
 
         auto route_name = route.unwrap()
+        if route_name.as_str().equals("unmatched") {
+            return self#.complete(request_id.as_str(), "unmatched", "router",
+                                  cede json_error(404:i32, "route not found"))
+        }
         if route_name.as_str().equals("health") {
-            self#.record("health", "local")
-            return response(200:i32, "application/json", cede string::from("{\"status\":\"ok\"}"))
+            return self#.complete(request_id.as_str(), "health", "local",
+                                  cede response(200:i32, "application/json", cede string::from("{\"status\":\"ok\"}")))
         }
         if route_name.as_str().equals("metrics") {
-            self#.record("metrics", "local")
-            return self#.metrics_response()
+            // Scrapes are a control-plane operation: do not let them alter the
+            // business request counters they expose.
+            return response_with_request_id(cede self#.metrics_response(), request_id.as_str())
         }
         if !route_name.as_str().equals("note.show") || id.is_none() {
-            return json_error(404:i32, "route not found")
+            return self#.complete(request_id.as_str(), "unmatched", "router",
+                                  cede json_error(404:i32, "route not found"))
         }
 
         auto note_id = id.unwrap()
@@ -205,35 +284,59 @@ impl DataAccessService {
         auto redis_pool# = redis.unwrap()
         {
             auto cache_lease = redis_pool#.acquire_async(100:i32).await
-            if cache_lease.is_err() { return json_error(503:i32, "cache unavailable") }
+            if cache_lease.is_err() {
+                return self#.complete(request_id.as_str(), "note.show", "cache",
+                                      cede json_error(503:i32, "cache unavailable"))
+            }
             auto cache_lease# = cache_lease.unwrap()
             auto cached = cache_lease#.get_async(cache_key.as_str()).await
-            if cached.is_err() { return json_error(503:i32, "cache request failed") }
+            if cached.is_err() {
+                return self#.complete(request_id.as_str(), "note.show", "cache",
+                                      cede json_error(503:i32, "cache request failed"))
+            }
             if cached.unwrap().is_some() {
-                self#.record("note.show", "cache")
-                return note_response(note_id.as_str(), "cache")
+                return self#.complete(request_id.as_str(), "note.show", "cache",
+                                      cede note_response(note_id.as_str(), "cache"))
             }
         }
 
         auto postgres_pool# = postgres.unwrap()
         auto database_lease = postgres_pool#.acquire_async(100:i32).await
-        if database_lease.is_err() { return json_error(503:i32, "database unavailable") }
+        if database_lease.is_err() {
+            return self#.complete(request_id.as_str(), "note.show", "database",
+                                  cede json_error(503:i32, "database unavailable"))
+        }
         auto transaction = database_lease.unwrap()#.begin_transaction_async().await
-        if transaction.is_err() { return json_error(503:i32, "database transaction failed") }
+        if transaction.is_err() {
+            return self#.complete(request_id.as_str(), "note.show", "database",
+                                  cede json_error(503:i32, "database transaction failed"))
+        }
         auto transaction# = transaction.unwrap()
         auto selected = transaction#.query_params_async(
             "SELECT id FROM notes WHERE id = $1", cede parameter_types(), cede parameters(note_id.as_str()),
             PostgresQueryLimits::new(1:usize, 1:usize, 256:usize).unwrap()
         ).await
-        if selected.is_err() { return json_error(503:i32, "database query failed") }
-        if transaction#.commit_async().await.is_err() { return json_error(503:i32, "database commit failed") }
+        if selected.is_err() {
+            return self#.complete(request_id.as_str(), "note.show", "database",
+                                  cede json_error(503:i32, "database query failed"))
+        }
+        if transaction#.commit_async().await.is_err() {
+            return self#.complete(request_id.as_str(), "note.show", "database",
+                                  cede json_error(503:i32, "database commit failed"))
+        }
         auto cache_lease = redis_pool#.acquire_async(100:i32).await
-        if cache_lease.is_err() { return json_error(503:i32, "cache unavailable") }
+        if cache_lease.is_err() {
+            return self#.complete(request_id.as_str(), "note.show", "cache",
+                                  cede json_error(503:i32, "cache unavailable"))
+        }
         auto cache_lease# = cache_lease.unwrap()
         auto stored = cache_lease#.set_async(cache_key.as_str(), cede cache_marker()).await
-        if stored.is_err() { return json_error(503:i32, "cache write failed") }
-        self#.record("note.show", "database")
-        return note_response(note_id.as_str(), "database")
+        if stored.is_err() {
+            return self#.complete(request_id.as_str(), "note.show", "cache",
+                                  cede json_error(503:i32, "cache write failed"))
+        }
+        return self#.complete(request_id.as_str(), "note.show", "database",
+                              cede note_response(note_id.as_str(), "database"))
     }
 
     // Closing drains idle pool members. Outstanding request leases see the

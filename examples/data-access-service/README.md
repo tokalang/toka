@@ -19,6 +19,20 @@ prepared statement to application code. `GET /metrics` returns the current
 in-process Prometheus registry; its intentionally unlabelled counters are a
 small proof of integration, not a metrics framework.
 
+## Request correlation and metrics
+
+The reference service applies a deliberately small application convention. It
+accepts a gateway-supplied `X-Request-Id` only when it is 1--128 ASCII
+letters, digits, `.`, `_`, or `-`; otherwise it generates a process-local
+`data-access-N` ID. Every normal application response echoes that ID and every
+completed application request emits one JSON event with `request_id`, `route`,
+`source`, and `status` fields. This is not a tracing protocol.
+
+The registry exposes total application requests, cache hits, database
+transactions, client errors, and server errors. `/metrics` is a control-plane
+endpoint: it echoes the request ID but does not log or increment the business
+counters it renders, so scraping cannot feed back into the series.
+
 `serve_until_canceled_async` is the lifecycle boundary: cancellation stops
 accepting, `TaskScope` drains workers to its deadline, and the caller then
 calls `DataAccessService::close()` to drain idle Redis/PostgreSQL connections.
@@ -34,7 +48,10 @@ From the repository root:
 python3 examples/data-access-service/tests/qualify.py
 ```
 
-The deterministic loopback suite drives two HTTP requests through the cache
-miss/fill/hit path, verifies a PostgreSQL parameterized transaction, renders
-the metrics endpoint, cancels the accept loop, and proves both mock data
-servers observe their pooled connection close.
+On a runner that permits loopback binds, the deterministic loopback suite
+drives health, a 404, and the cache miss/fill/hit path; verifies a PostgreSQL
+parameterized transaction; checks request-correlated JSON events and metrics;
+cancels the accept loop; and proves both mock data servers observe their
+pooled connection close. A sandbox that forbids loopback is not runtime
+qualification evidence: the fixture must remain red until it runs on an
+eligible runner.
