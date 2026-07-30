@@ -1,0 +1,85 @@
+import official/openai_compat::{OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
+import stdx/net/sse::{SseEvent}
+import core/option::{Option}
+
+fn event(data: str) -> SseEvent {
+    return SseEvent(event = string::from("message"), data = string::from(data), id = Option<string>::None)
+}
+
+fn main() -> i32 {
+    auto limits = OpenAiCompatLimits::new(4096:usize, 4:usize)
+    if limits.is_err() { return 1 }
+    auto text = decode_sse_event(cede event("{\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":null}]}"), limits.unwrap())
+    if text.is_err() { return 2 }
+    auto text_events = text.unwrap()
+    if text_events.len() != 1:usize { return 3 }
+    match cede text_events.get(0:usize) {
+        auto OpenAiStreamEvent::TextDelta('value) => { if !'value.as_str().equals("hello") { return 4 } }
+        _ => return 5
+    }
+
+    auto tool_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
+    auto tool = decode_sse_event(cede event("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{\"name\":\"weather\",\"arguments\":\"part\"}}]}}]}"), tool_limits)
+    if tool.is_err() { return 6 }
+    auto tool_events = tool.unwrap()
+    if tool_events.len() != 1:usize { return 7 }
+    match cede tool_events.get(0:usize) {
+        auto OpenAiStreamEvent::ToolCallDelta('delta) => {
+            if 'delta.index() != 0:i32 || 'delta.name().is_none() || !'delta.name().unwrap().as_str().equals("weather") { return 8 }
+        }
+        _ => return 9
+    }
+
+    auto ordered_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
+    auto ordered = decode_sse_event(cede event("{\"choices\":[{\"delta\":{\"content\":\"first\",\"tool_calls\":[{\"index\":0},{\"index\":1}]}},{\"delta\":{\"content\":\"last\"}}]}"), ordered_limits)
+    if ordered.is_err() { return 21 }
+    auto ordered_events = ordered.unwrap()
+    if ordered_events.len() != 4:usize { return 22 }
+    match cede ordered_events.get(0:usize) {
+        auto OpenAiStreamEvent::TextDelta('value) => { if !'value.as_str().equals("first") { return 23 } }
+        _ => return 24
+    }
+    match cede ordered_events.get(1:usize) {
+        auto OpenAiStreamEvent::ToolCallDelta('delta) => { if 'delta.index() != 0:i32 { return 25 } }
+        _ => return 26
+    }
+    match cede ordered_events.get(2:usize) {
+        auto OpenAiStreamEvent::ToolCallDelta('delta) => { if 'delta.index() != 1:i32 { return 27 } }
+        _ => return 28
+    }
+    match cede ordered_events.get(3:usize) {
+        auto OpenAiStreamEvent::TextDelta('value) => { if !'value.as_str().equals("last") { return 29 } }
+        _ => return 30
+    }
+
+    auto done_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
+    auto done = decode_sse_event(cede event("[DONE]"), done_limits)
+    if done.is_err() { return 10 }
+    auto done_events = done.unwrap()
+    if done_events.len() != 1:usize { return 11 }
+    match cede done_events.get(0:usize) {
+        auto OpenAiStreamEvent::Completed('reason) => { if 'reason.is_some() { return 12 } }
+        _ => return 13
+    }
+
+    auto api_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
+    auto api_error = decode_sse_event(cede event("{\"error\":{\"message\":\"rate limited\",\"type\":\"rate_limit\",\"code\":\"429\"}}"), api_limits)
+    if api_error.is_err() { return 14 }
+    auto api_events = api_error.unwrap()
+    if api_events.len() != 1:usize { return 15 }
+    match cede api_events.get(0:usize) {
+        auto OpenAiStreamEvent::ApiError('failure) => { if !'failure.message().as_str().equals("rate limited") { return 16 } }
+        _ => return 17
+    }
+
+    auto narrow = OpenAiCompatLimits::new(8:usize, 1:usize).unwrap()
+    auto oversized = decode_sse_event(cede event("{\"choices\":[]}"), narrow)
+    if oversized.is_ok() { return 18 }
+    auto malformed_limits = OpenAiCompatLimits::new(4096:usize, 1:usize).unwrap()
+    auto malformed = decode_sse_event(cede event("{\"choices\":["), malformed_limits)
+    if malformed.is_ok() { return 19 }
+    auto one_tool_limits = OpenAiCompatLimits::new(4096:usize, 1:usize).unwrap()
+    auto too_many_tools = decode_sse_event(cede event("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0},{\"index\":1}]}}]}"), one_tool_limits)
+    if too_many_tools.is_ok() { return 20 }
+    return 0
+}

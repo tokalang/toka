@@ -18,6 +18,7 @@ on them.
 | `official/redis` | bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and dedicated bounded pool; maintainer-qualified, pending release | deterministic codec/TCP cancellation, pipeline, and pool reuse/poison suites plus locked/offline local-consumer import replay pass; current-revision Docker matrix is maintainer-run green | retain a green current-revision Linux CI `data-access-real-service` artifact before publication |
 | `official/router` | qualified deterministic method/path recognizer with service-kit adoption; not yet released | route definition/matching qualification, service-kit dispatcher/loopback/shutdown suite, and locked/offline local-consumer import replay pass | optional independent service compatibility evidence before publication |
 | `official/compress` | qualified bounded streaming gzip/zlib bridge with optional HTTP `Content-Encoding` policy; not yet released | native zlib bridge; streaming and HTTP negotiation/encoding/decode-limit suites; locked/offline `toka build` public-import replay; and a no-zlib `stdx/net/http` consumer pass | retain qualification evidence through publication; do not add an HTTP-core dependency |
+| `official/openai_compat` | qualified OpenAI-compatible chat-completions SSE semantic adapter; not yet released | bounded text/tool-call/completion/API-error fixture plus locked/offline public-import replay | exercise it through an application-owned streaming provider mock; do not make HTTP, SSE, or credential management package responsibilities |
 | `official/postgres` | bounded PostgreSQL v3 client with secure TLS/SCRAM startup, simple and extended queries, transactions, and a dedicated bounded pool; maintainer-qualified, pending release | deterministic protocol/SCRAM/TLS/query/extended-query/pool suites plus locked/offline local-consumer import replay pass; current-revision Docker matrix is maintainer-run green | retain a green current-revision Linux CI `data-access-real-service` artifact before publication |
 | data-access service reference | router → Redis cache → PostgreSQL transaction, correlated JSON events, scrape-neutral metrics, and shutdown | `examples/data-access-service` compile and loopback fixture; runtime requires a loopback-capable runner | retain the same real-service artifact; this is composition evidence, not a framework surface |
 
@@ -27,9 +28,10 @@ its executable evidence supports.
 
 ## Priority sequence
 
-1. **`official/compress` HTTP policy** — add the optional `Content-Encoding`
-   adapter above `stdx/net/http`, with explicit request decoding and bounded
-   compression/decompression. It must not add a zlib dependency to HTTP core.
+1. **Agent streaming composition** — use `stdx/net/sse` plus
+   `official/openai_compat` in `examples/agent-service` against a deterministic
+   streaming provider fixture. Keep credential ownership, HTTP endpoint policy,
+   cancellation, and audit persistence at the application boundary.
 2. **Real-service release evidence** — retain a current-revision Linux CI copy
    of the already green Redis/PostgreSQL matrix before publication. The
    maintainer qualification remains valid while this non-code release artifact
