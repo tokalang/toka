@@ -83,3 +83,10 @@ An initial `examples/settings.tk` reference application now type-checks through
 the package-consumer qualification path using only public APIs. Its interactive
 manual-run acceptance, alongside CJK text-entry acceptance, remains required
 before this counts as production evidence.
+
+The application event loop may now participate in `std/task` through the
+bounded `@HostEventSource` adapter implemented by `App`.  This is a
+thread-local, opt-in executor turn: it lets ready tasks, timers, non-blocking
+socket readiness, and one AppKit wait cooperate without making `std` depend on
+GUI or moving AppKit objects across threads.  It is not yet a cross-platform
+co-wait backend or a complete worker-to-UI dispatch model.

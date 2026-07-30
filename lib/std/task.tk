@@ -10,6 +10,7 @@ import std/time::{Instant}
 import core/task as core_task
 import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion}
 import sys/os/net as sysnet
+import core/result::{Result}
 
 pub fn current_time_ms() -> i64 {
     auto inst = Instant::now()
@@ -19,6 +20,26 @@ pub fn current_time_ms() -> i64 {
 pub shape TaskPtr(addr: Addr)
 
 import core/option::{Option}
+
+// A host source is synchronously pumped by the thread that calls
+// `pump_with_host`.  It is intentionally not retained, registered globally,
+// or required to be Send: GUI adapters can therefore preserve UI affinity.
+pub shape HostEventPoll (
+    Event = 1 |
+    Idle = 2 |
+    Stopped = 3
+)
+
+pub trait @HostEventSource {
+    pub fn poll_events(self#, timeout_millis: i32) -> Result<HostEventPoll, string>
+}
+
+pub shape ExecutorPump (
+    ready_tasks: i32,
+    timer_wakes: i32,
+    reactor_events: i32,
+    host_poll: HostEventPoll
+)
 
 shape TimerEntry(
     wait_id: u32,
@@ -221,6 +242,127 @@ fn collect_detached_tasks() {
     }
 }
 
+fn drain_ready_tasks() -> i32 {
+    auto task_id# = 0:u64
+    auto task_gen# = 0:u64
+    auto tcb_addr# = 0:Addr
+    auto resumed# = 0:i32
+
+    loop true {
+        auto popped = core_task::toka_task_pop_ready(&task_id as *u64, &task_gen as *u64, &tcb_addr as *Addr)
+        if popped == 0 { break }
+        if tcb_addr != 0:Addr {
+            auto frame_addr = core_task::toka_tcb_get_coro_frame(tcb_addr as *void) as Addr
+            if frame_addr != 0:Addr {
+                __toka_coro_resume(frame_addr as *void)
+                resumed += 1:i32
+            }
+            core_task::toka_task_release(tcb_addr as *void)
+        }
+    }
+    return resumed
+}
+
+fn release_expired_timers() -> i32 {
+    auto scheduled# = 0:i32
+    lock_queue()
+    auto now = current_time_ms()
+    loop true {
+        auto top_opt = g_timer_queue.peek()
+        if top_opt.is_none() { break }
+        auto timer = top_opt.unwrap()
+        if now < timer.expire_at { break }
+        g_timer_queue#.pop()
+        auto outcome = core_task::toka_wait_registry_try_wake(timer.wait_id, timer.slot_gen)
+        if outcome == 1:i32 || outcome == 2:i32 {
+            scheduled += 1:i32
+        } else if outcome == 4:i32 {
+            core_task::toka_wait_registry_release(timer.wait_id, timer.slot_gen)
+        }
+    }
+    unlock_queue()
+    return scheduled
+}
+
+fn next_wait_timeout(max_wait_millis: i32) -> i32 {
+    auto timeout# = max_wait_millis
+    lock_queue()
+    if !g_timer_queue.data.is_empty() {
+        auto min_expire = g_timer_queue.peek().unwrap().expire_at
+        auto remaining# = min_expire - current_time_ms()
+        if remaining < 0:i64 { remaining = 0:i64 }
+        if remaining < timeout as i64 { timeout = remaining as i32 }
+    }
+    unlock_queue()
+    return timeout
+}
+
+fn poll_reactor(timeout_millis: i32) -> i32 {
+    if g_reactor_fd == -1 {
+        g_reactor_fd = sysnet::reactor_create_impl()
+    }
+
+    unsafe {
+        auto events_buf = [0:Addr; 64]
+        auto *events_ptr = &events_buf[0] as *Addr
+        auto count = sysnet::reactor_wait_impl(g_reactor_fd, timeout_millis, *events_ptr, 64)
+        if count <= 0 { return 0:i32 }
+
+        auto i# = 0
+        loop i < count {
+            auto event_key = events_buf[i] as u64
+            auto wait_id = (event_key >> 32:u64) as u32
+            auto slot_gen = (event_key & 0xFFFFFFFF:u64) as u32
+            auto outcome = core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
+            if outcome == 4:i32 {
+                core_task::toka_wait_registry_release(wait_id, slot_gen)
+            }
+            i += 1
+        }
+        return count
+    }
+}
+
+// Execute one bounded host/executor turn on the caller's current thread.
+// The host source is not retained and never crosses a thread boundary.
+pub fn pump_with_host<'H: @HostEventSource>(host#: H, max_wait_millis: i32) -> Result<ExecutorPump, string> {
+    if max_wait_millis < 0:i32 {
+        return Result<ExecutorPump, string>::Err(string::from("host wait timeout must not be negative"))
+    }
+
+    collect_detached_tasks()
+    auto ready_count# = drain_ready_tasks()
+    auto timer_count# = release_expired_timers()
+    ready_count += drain_ready_tasks()
+
+    auto host_timeout# = 0:i32
+    if ready_count == 0:i32 && timer_count == 0:i32 {
+        host_timeout = next_wait_timeout(max_wait_millis)
+    }
+
+    auto host_result = host#.poll_events(host_timeout)
+    match cede host_result {
+        auto Result<HostEventPoll, string>::Err('error) => {
+            return Result<ExecutorPump, string>::Err(cede 'error)
+        }
+        auto Result<HostEventPoll, string>::Ok('host_poll) => {
+            // A host wait may have crossed a timer deadline.  Socket readiness
+            // is collected non-blockingly so ready continuations run this turn.
+            timer_count += release_expired_timers()
+            auto reactor_count = poll_reactor(0:i32)
+            ready_count += drain_ready_tasks()
+            collect_detached_tasks()
+            return Result<ExecutorPump, string>::Ok(
+                ExecutorPump(ready_tasks = ready_count,
+                             timer_wakes = timer_count,
+                             reactor_events = reactor_count,
+                             host_poll = 'host_poll)
+            )
+        }
+        _ => return Result<ExecutorPump, string>::Err(string::from("invalid host event result"))
+    }
+}
+
 pub fn __toka_register_timer(*task: void, ms: i32) {
     if *task != null {
         auto task_id# = 0:u64
@@ -246,97 +388,19 @@ pub fn __toka_spawn_blocking(*task: void) {
     if *task == null { return }
     core_task::toka_task_start(*task)
 
-    auto task_id# = 0:u64
-    auto task_gen# = 0:u64
-    auto tcb_addr# = 0:Addr
-
     loop true {
         collect_detached_tasks()
+        drain_ready_tasks()
 
-        // 1. Consume all ready tasks from C Scheduler Ready Queue
-        loop true {
-            auto popped = core_task::toka_task_pop_ready(&task_id as *u64, &task_gen as *u64, &tcb_addr as *Addr)
-            if popped == 0 { break }
-            if tcb_addr != 0:Addr {
-                auto frame_addr = core_task::toka_tcb_get_coro_frame(tcb_addr as *void) as Addr
-                if frame_addr != 0:Addr {
-                    __toka_coro_resume(frame_addr as *void)
-                }
-                core_task::toka_task_release(tcb_addr as *void)
-            }
-        }
-
-        // 2. Check if main task has completed AND all active detached tasks have completed
         if core_task::toka_tcb_is_done(*task) && core_task::toka_task_active_detached_count() == 0:u32 {
             break
         }
 
-        lock_queue()
-        auto now = current_time_ms()
-
-        // 3. Timer Queue check and release expired suspended coroutines to C Ready Queue
-        auto scheduled_count# = 0
-        loop true {
-            auto top_opt = g_timer_queue.peek()
-            if top_opt.is_none() { break }
-            auto t = top_opt.unwrap()
-            if now >= t.expire_at {
-                g_timer_queue#.pop()
-                auto outcome = core_task::toka_wait_registry_try_wake(t.wait_id, t.slot_gen)
-                if outcome == 1:i32 || outcome == 2:i32 {
-                    scheduled_count += 1
-                } else if outcome == 4:i32 {
-                    core_task::toka_wait_registry_release(t.wait_id, t.slot_gen)
-                }
-            } else {
-                break
-            }
-        }
-        unlock_queue()
-
-        if scheduled_count > 0 {
+        if release_expired_timers() > 0:i32 {
             continue
         }
 
-        if g_reactor_fd == -1 {
-            g_reactor_fd = sysnet::reactor_create_impl()
-        }
-
-        // Calculate next timeout based on `g_timer_queue`
-        auto timeout_ms# = 100 // default max delay
-        lock_queue()
-        if !g_timer_queue.data.is_empty() {
-            auto min_expire = g_timer_queue.peek().unwrap().expire_at
-            auto wait_time# = min_expire - current_time_ms()
-            if wait_time < 0:i64 { wait_time = 0:i64 }
-            if wait_time < timeout_ms as i64 {
-                timeout_ms = wait_time as i32
-            }
-        }
-        unlock_queue()
-
-        if timeout_ms < 0 { timeout_ms = 0 }
-
-        // Block on the reactor
-        unsafe {
-            auto events_buf = [0:Addr; 64]
-            auto *events_ptr = &events_buf[0] as *Addr
-
-            auto n = sysnet::reactor_wait_impl(g_reactor_fd, timeout_ms, *events_ptr, 64)
-            if n > 0 {
-                auto i# = 0
-                loop i < n {
-                    auto event_key = events_buf[i] as u64
-                    auto wait_id = (event_key >> 32:u64) as u32
-                    auto slot_gen = (event_key & 0xFFFFFFFF:u64) as u32
-                    auto outcome = core_task::toka_wait_registry_try_wake(wait_id, slot_gen)
-                    if outcome == 4:i32 {
-                        core_task::toka_wait_registry_release(wait_id, slot_gen)
-                    }
-                    i += 1
-                }
-            }
-        }
+        poll_reactor(next_wait_timeout(100:i32))
     }
 }
 

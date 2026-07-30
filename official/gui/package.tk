@@ -32,8 +32,8 @@ pub const PACKAGE = (
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
     summary = "A macOS native window and Metal-surface lifecycle bridge for Toka.",
-    capabilities = ("open and close a native window", "create a CAMetalLayer backed by the system Metal device", "poll the macOS event queue"),
-    non_goals = ("cross-platform support", "widget toolkit", "text input or IME", "render command encoding", "async event-loop integration"),
-    safety = ("The Objective-C window handle remains private; App and Window stay on the UI thread, and Window closes its handle deterministically through drop."),
+    capabilities = ("open and close a native window", "create a CAMetalLayer backed by the system Metal device", "poll the macOS event queue", "participate in a bounded std/task host-event executor turn"),
+    non_goals = ("cross-platform support", "widget toolkit", "text input or IME", "render command encoding", "cross-platform event co-wait or worker-to-UI dispatch"),
+    safety = ("The Objective-C window handle remains private; App and Window stay on the UI thread, Window closes its handle deterministically through drop, and std/task never retains or moves an App event source."),
     qualification = ("python3 official/gui/tests/qualify_macos_spike.py")
 )

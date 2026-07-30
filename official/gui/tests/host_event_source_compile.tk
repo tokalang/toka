@@ -1,0 +1,9 @@
+import official/gui::{App}
+import std/task::{pump_with_host}
+
+fn main() -> i32 {
+    auto app# = App::new()
+    auto report = pump_with_host(app, 0:i32)
+    if report.is_err() { return 1:i32 }
+    return 0:i32
+}

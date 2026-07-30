@@ -101,6 +101,9 @@ def main() -> int:
                         "--check-only", str(dependency / "tests" / "app_thread_spawn_rejected.tk")],
                        cwd=consumer, env=environment)
         run([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
+             "--check-only", str(dependency / "tests" / "host_event_source_compile.tk")],
+            cwd=consumer, env=environment)
+        run([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
              "--check-only", str(dependency / "examples" / "settings.tk")],
             cwd=consumer, env=environment)
         run([str(toka), "build"], cwd=consumer, env=environment)

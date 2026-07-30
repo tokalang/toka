@@ -230,6 +230,14 @@
       "description": "Local variables across .await points and deterministic drop execution"
     },
     {
+      "id": "async_host_event_executor_pump_01",
+      "path": "async/host_event_executor_pump.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A bounded host-event source and timer-suspended coroutine share one executor turn without retaining the host"
+    },
+    {
       "id": "async_await_cancellation_outcome_01",
       "path": "async/await_cancellation_outcome.tk",
       "type": "run",

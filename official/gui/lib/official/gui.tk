@@ -3,6 +3,7 @@ import core/result::{Result}
 import core/traits::{@encap}
 import core/types::{Addr, ADDR0}
 import std/vec::{Vec}
+import std/task::{@HostEventSource, HostEventPoll}
 
 extern fn toka_gui_macos_create_window(title: Addr, width: i32, height: i32) -> Addr
 extern fn toka_gui_macos_show_window(handle: Addr) -> i32
@@ -280,6 +281,26 @@ impl App {
     pub fn stop(self#) { self.running = false }
 
     pub fn is_running(self) -> bool { return self.running }
+}
+
+// This adapter keeps AppKit on the caller's UI thread while letting the
+// standard executor account for its bounded wait.  `std/task` retains no App
+// state and has no dependency on this package.
+impl App@HostEventSource {
+    pub fn poll_events(self#, timeout_millis: i32) -> Result<HostEventPoll, string> {
+        auto waited = self.wait_for_event(timeout_millis)
+        match cede waited {
+            auto Result<bool, GuiError>::Ok('handled) => {
+                if !self.running { return Result<HostEventPoll, string>::Ok(HostEventPoll::Stopped) }
+                if 'handled { return Result<HostEventPoll, string>::Ok(HostEventPoll::Event) }
+                return Result<HostEventPoll, string>::Ok(HostEventPoll::Idle)
+            }
+            auto Result<bool, GuiError>::Err('error) => {
+                return Result<HostEventPoll, string>::Err('error.message())
+            }
+            _ => return Result<HostEventPoll, string>::Err(string::from("invalid GUI event result"))
+        }
+    }
 }
 
 impl Layout {

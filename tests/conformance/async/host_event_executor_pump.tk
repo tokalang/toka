@@ -1,0 +1,58 @@
+import core/result::{Result}
+import std/task::{HostEventPoll, @HostEventSource, block_on, pump_with_host, sleep, sleep_async}
+
+auto completed#: i32 = 0:i32
+
+shape FakeHost (
+    calls#: i32,
+    last_timeout#: i32,
+    fail#: bool
+)
+
+impl FakeHost@HostEventSource {
+    pub fn poll_events(self#, timeout_millis: i32) -> Result<HostEventPoll, string> {
+        if timeout_millis < 0:i32 {
+            return Result<HostEventPoll, string>::Err(string::from("negative timeout"))
+        }
+        self.calls += 1:i32
+        self.last_timeout = timeout_millis
+        if self.fail {
+            return Result<HostEventPoll, string>::Err(string::from("synthetic host failure"))
+        }
+        if timeout_millis > 0:i32 { sleep(timeout_millis) }
+        return Result<HostEventPoll, string>::Ok(HostEventPoll::Idle)
+    }
+}
+
+fn delayed_work() -> async i32 {
+    if sleep_async(2:i32).await != 0:i32 { return 1:i32 }
+    completed = 1:i32
+    return 7:i32
+}
+
+fn main() -> i32 {
+    completed = 0:i32
+    auto host# = FakeHost(calls = 0:i32, last_timeout = 0:i32, fail = false)
+    auto work = delayed_work().start
+    auto turns# = 0:i32
+
+    loop completed == 0:i32 && turns < 8:i32 {
+        auto pumped = pump_with_host(host, 5:i32)
+        if pumped.is_err() { return 1:i32 }
+        auto report = pumped.unwrap()
+        if report.host_poll != HostEventPoll::Idle { return 2:i32 }
+        turns += 1:i32
+    }
+
+    if completed != 1:i32 { return 3:i32 }
+    if host.calls < 2:i32 { return 4:i32 }
+    if host.last_timeout < 0:i32 || host.last_timeout > 5:i32 { return 5:i32 }
+    if block_on<i32>(work) != 7:i32 { return 6:i32 }
+
+    auto calls_before = host.calls
+    if pump_with_host(host, -1:i32).is_ok() { return 7:i32 }
+    if host.calls != calls_before { return 8:i32 }
+    host.fail = true
+    if pump_with_host(host, 0:i32).is_ok() { return 9:i32 }
+    return 0:i32
+}
