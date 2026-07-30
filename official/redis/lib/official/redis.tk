@@ -8,6 +8,8 @@ import core/option::{Option}
 import core/result::{Result}
 import std/bytes::{Bytes}
 import std/net::{SocketAddrV4, TcpStream}
+import std/sync::{Mutex}
+import std/task::{sleep_async}
 import std/vec::{Vec}
 import stdx/net/stream::{AsyncStream}
 import stdx/net/tls::{TlsStream}
@@ -69,6 +71,29 @@ pub shape RedisClient (
     closed#: bool
 )
 
+shape RedisPoolState (
+    address: SocketAddrV4,
+    connect_timeout_ms: i32,
+    tls_mode: i32,
+    server_name: string,
+    ca_file: string,
+    idle#: Vec<RedisClient>,
+    total_connections: usize,
+    max_connections: usize,
+    closed: bool
+)
+
+// A pool is a cheap shared handle. Each lease holds the only mutable owner of
+// a RedisClient, so the package's serial request/reply contract is preserved.
+pub shape RedisPool (
+    ~state: Mutex<RedisPoolState>
+)
+
+pub shape RedisLease (
+    client#: Vec<RedisClient>,
+    ~state: Mutex<RedisPoolState>
+)
+
 fn protocol_error(position: usize, message: str) -> RedisError {
     return RedisError(
         kind = string::from("protocol"),
@@ -114,6 +139,14 @@ fn server_error(message: str) -> RedisError {
 fn reply_error(message: str) -> RedisError {
     return RedisError(
         kind = string::from("reply"),
+        position = 0:usize,
+        message = string::from(message)
+    )
+}
+
+fn pool_error(message: str) -> RedisError {
+    return RedisError(
+        kind = string::from("pool"),
         position = 0:usize,
         message = string::from(message)
     )
@@ -455,6 +488,10 @@ impl RedisClient@encap {
     pub fn clone(self) = delete
 }
 
+impl RedisClient @Send {}
+impl RedisPoolState @Send {}
+impl RedisPool @Send {}
+
 impl RedisCommand {
     pub fn new(name: str) -> RedisCommand {
         return RedisCommand(name = string::from(name), args = Vec<RedisArgument>::new())
@@ -756,6 +793,327 @@ impl RedisClient {
             auto RedisValue::Integer(count) => return Result<i64, RedisError>::Ok(count)
             auto RedisValue::Error('message) => return Result<i64, RedisError>::Err(server_error('message.as_str()))
             _ => return Result<i64, RedisError>::Err(reply_error("DEL expected an integer reply"))
+        }
+    }
+}
+
+fn pool_discard_slot(state: Mutex<RedisPoolState>) {
+    auto locked = state.lock()
+    if locked.is_err() { return }
+    auto lock_value = locked.unwrap()
+    auto *state_value# = lock_value.get_ref()
+    if state_value.total_connections > 0:usize {
+        state_value.total_connections = state_value.total_connections - 1:usize
+    }
+}
+
+fn pool_return_client(state: Mutex<RedisPoolState>, cede client: RedisClient) {
+    auto returned# = cede client
+    auto locked = state.lock()
+    if locked.is_err() {
+        returned#.close()
+        return
+    }
+    auto lock_value = locked.unwrap()
+    auto *state_value# = lock_value.get_ref()
+    if state_value.closed || returned.is_closed() {
+        returned#.close()
+        if state_value.total_connections > 0:usize {
+            state_value.total_connections = state_value.total_connections - 1:usize
+        }
+        return
+    }
+    state_value.idle#.push(cede returned)
+}
+
+impl RedisPool@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self#) -> RedisPool
+    effects: return <- self.state {
+        return RedisPool(~state = self.~state)
+    }
+}
+
+fn make_pool(cede address: SocketAddrV4, connect_timeout_ms: i32,
+             max_connections: usize, tls_mode: i32,
+             cede server_name: string, cede ca_file: string) -> Result<RedisPool, RedisError> {
+    if connect_timeout_ms <= 0:i32 {
+        return Result<RedisPool, RedisError>::Err(pool_error("Redis pool connect timeout must be positive"))
+    }
+    if max_connections == 0:usize {
+        return Result<RedisPool, RedisError>::Err(pool_error("Redis pool max_connections must be positive"))
+    }
+    return Result<RedisPool, RedisError>::Ok(RedisPool(
+        ~state = Mutex<RedisPoolState>::make(cede RedisPoolState(
+            address = cede address,
+            connect_timeout_ms = connect_timeout_ms,
+            tls_mode = tls_mode,
+            server_name = cede server_name,
+            ca_file = cede ca_file,
+            idle = Vec<RedisClient>::new(),
+            total_connections = 0:usize,
+            max_connections = max_connections,
+            closed = false
+        ))
+    ))
+}
+
+impl RedisPool {
+    pub fn new(cede address: SocketAddrV4, connect_timeout_ms: i32,
+               max_connections: usize) -> Result<RedisPool, RedisError> {
+        return make_pool(cede address, connect_timeout_ms, max_connections,
+                         0:i32, cede string::from(""), cede string::from(""))
+    }
+
+    pub fn new_tls(cede address: SocketAddrV4, server_name: str,
+                   connect_timeout_ms: i32, max_connections: usize) -> Result<RedisPool, RedisError> {
+        if server_name.len() == 0:usize {
+            return Result<RedisPool, RedisError>::Err(pool_error("Redis TLS pool server name must not be empty"))
+        }
+        return make_pool(cede address, connect_timeout_ms, max_connections,
+                         1:i32, cede string::from(server_name), cede string::from(""))
+    }
+
+    pub fn new_tls_with_ca_file(cede address: SocketAddrV4, server_name: str,
+                                ca_file: str, connect_timeout_ms: i32,
+                                max_connections: usize) -> Result<RedisPool, RedisError> {
+        if server_name.len() == 0:usize || ca_file.len() == 0:usize {
+            return Result<RedisPool, RedisError>::Err(pool_error("Redis TLS pool server name and CA file must be non-empty"))
+        }
+        return make_pool(cede address, connect_timeout_ms, max_connections,
+                         2:i32, cede string::from(server_name), cede string::from(ca_file))
+    }
+
+    // Stop new leases and synchronously drain every idle socket. Checked-out
+    // leases observe the closed state on return and close instead of requeue.
+    pub fn close(self#) {
+        auto locked = self.state.lock()
+        if locked.is_err() { return }
+        auto lock_value = locked.unwrap()
+        auto *state_value# = lock_value.get_ref()
+        state_value.closed = true
+        loop true {
+            auto idle# = state_value.idle#.pop()
+            match cede idle {
+                auto Option<RedisClient>::Some('client) => {
+                    auto client# = cede 'client
+                    client#.close()
+                    if state_value.total_connections > 0:usize {
+                        state_value.total_connections = state_value.total_connections - 1:usize
+                    }
+                }
+                auto Option<RedisClient>::None => break
+            }
+        }
+    }
+
+    pub fn try_acquire_async(self#) -> async Result<RedisLease, RedisError>
+    effects: return <- self.state {
+        auto address# = Option<SocketAddrV4>::None
+        auto connect_timeout_ms#: i32 = 0:i32
+        auto tls_mode#: i32 = 0:i32
+        auto server_name# = string::from("")
+        auto ca_file# = string::from("")
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() {
+                return Result<RedisLease, RedisError>::Err(pool_error("Redis pool mutex lock failed"))
+            }
+            auto lock_value = locked.unwrap()
+            auto *state_value# = lock_value.get_ref()
+            if state_value.closed {
+                return Result<RedisLease, RedisError>::Err(pool_error("Redis pool is closed"))
+            }
+            auto idle# = state_value.idle#.pop()
+            match cede idle {
+                auto Option<RedisClient>::Some('client) => {
+                    auto client# = cede 'client
+                    auto lease_clients# = Vec<RedisClient>::new()
+                    lease_clients#.push(cede client)
+                    return Result<RedisLease, RedisError>::Ok(RedisLease(
+                        client = cede lease_clients,
+                        ~state = self.~state
+                    ))
+                }
+                auto Option<RedisClient>::None => {}
+            }
+            if state_value.total_connections >= state_value.max_connections {
+                return Result<RedisLease, RedisError>::Err(pool_error("Redis pool is exhausted"))
+            }
+            state_value.total_connections = state_value.total_connections + 1:usize
+            address = Option<SocketAddrV4>::Some(state_value.address)
+            connect_timeout_ms = state_value.connect_timeout_ms
+            tls_mode = state_value.tls_mode
+            server_name = string::from(state_value.server_name.as_str())
+            ca_file = string::from(state_value.ca_file.as_str())
+        }
+
+        auto connected# = if tls_mode == 0:i32 {
+            pass RedisClient::connect_async(cede address.unwrap(), connect_timeout_ms).await
+        } else if tls_mode == 1:i32 {
+            pass RedisClient::connect_tls_async(cede address.unwrap(), server_name.as_str(), connect_timeout_ms).await
+        } else {
+            pass RedisClient::connect_tls_with_ca_file_async(cede address.unwrap(), server_name.as_str(), ca_file.as_str(), connect_timeout_ms).await
+        }
+        if connected.is_err() {
+            pool_discard_slot(self.state)
+            return Result<RedisLease, RedisError>::Err(connected.unwrap_err())
+        }
+        auto lease_clients# = Vec<RedisClient>::new()
+        lease_clients#.push(cede connected.unwrap())
+        return Result<RedisLease, RedisError>::Ok(RedisLease(
+            client = cede lease_clients,
+            ~state = self.~state
+        ))
+    }
+
+    // A bounded polling wait remains cancellation-aware through sleep_async.
+    // Call try_acquire_async when the caller already has its own admission
+    // queue and wants an immediate answer.
+    pub fn acquire_async(self#, timeout_ms: i32) -> async Result<RedisLease, RedisError>
+    effects: return <- self.state {
+        if timeout_ms <= 0:i32 {
+            return Result<RedisLease, RedisError>::Err(pool_error("Redis pool acquire timeout must be positive"))
+        }
+        auto waited#: i32 = 0:i32
+        loop waited < timeout_ms {
+            auto acquired# = self#.try_acquire_async().await
+            if acquired.is_ok() { return cede acquired }
+            auto failure = acquired.unwrap_err()
+            if !failure.kind.as_str().equals("pool") || !failure.message.as_str().equals("Redis pool is exhausted") {
+                return Result<RedisLease, RedisError>::Err(failure)
+            }
+            if sleep_async(1:i32).await < 0:i32 {
+                return Result<RedisLease, RedisError>::Err(pool_error("Redis pool acquire was canceled"))
+            }
+            waited = waited + 1:i32
+        }
+        return Result<RedisLease, RedisError>::Err(pool_error("Redis pool acquire timed out"))
+    }
+}
+
+impl RedisLease@encap {
+    fn drop(self#) {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => pool_return_client(self.state, cede 'client)
+            auto Option<RedisClient>::None => {}
+        }
+    }
+
+    pub fn clone(self) = delete
+}
+
+impl RedisLease {
+    fn take_connection(self#) -> Option<RedisClient> {
+        auto held# = self.client#.pop()
+        return cede held
+    }
+
+    pub fn is_closed(self#) -> bool {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                auto closed = client.is_closed()
+                self.client#.push(cede client)
+                return closed
+            }
+            auto Option<RedisClient>::None => return true
+        }
+    }
+
+    // Lease methods keep the unique RedisClient checked out over await. A
+    // poisoned client is restored only to be discarded by lease drop; callers
+    // can never acquire it again from the pool.
+    pub fn execute_async(self#, cede command: RedisCommand) -> async Result<RedisValue, RedisError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.execute_async(cede command).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<RedisClient>::None => {
+                return Result<RedisValue, RedisError>::Err(pool_error("Redis lease has no connection"))
+            }
+        }
+    }
+
+    pub fn execute_pipeline_async(self#, cede pipeline: RedisPipeline) -> async Result<Vec<RedisValue>, RedisError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.execute_pipeline_async(cede pipeline).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<RedisClient>::None => {
+                return Result<Vec<RedisValue>, RedisError>::Err(pool_error("Redis lease has no connection"))
+            }
+        }
+    }
+
+    pub fn get_async(self#, key: str) -> async Result<Option<Bytes>, RedisError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.get_async(key).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<RedisClient>::None => {
+                return Result<Option<Bytes>, RedisError>::Err(pool_error("Redis lease has no connection"))
+            }
+        }
+    }
+
+    pub fn set_async(self#, key: str, cede value: Bytes) -> async Result<(), RedisError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.set_async(key, cede value).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<RedisClient>::None => {
+                return Result<(), RedisError>::Err(pool_error("Redis lease has no connection"))
+            }
+        }
+    }
+
+    pub fn del_async(self#, key: str) -> async Result<i64, RedisError> {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                auto result = client#.del_async(key).await
+                self.client#.push(cede client)
+                return result
+            }
+            auto Option<RedisClient>::None => {
+                return Result<i64, RedisError>::Err(pool_error("Redis lease has no connection"))
+            }
+        }
+    }
+
+    // Explicitly discard this leased connection. It is not returned to idle
+    // storage; future acquire calls may establish a fresh client within the
+    // pool's capacity limit.
+    pub fn close(self#) {
+        auto held# = self#.take_connection()
+        match cede held {
+            auto Option<RedisClient>::Some('client) => {
+                auto client# = cede 'client
+                client#.close()
+                pool_return_client(self.state, cede client)
+            }
+            auto Option<RedisClient>::None => {}
         }
     }
 }

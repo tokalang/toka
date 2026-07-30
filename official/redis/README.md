@@ -1,10 +1,11 @@
 # `official/redis` v1
 
-Status: **bounded RESP2 codec, serial TCP/TLS client, and ordered pipelines**.
+Status: **bounded RESP2 codec, serial TCP/TLS client, ordered pipelines, and bounded connection pooling**.
 
 `official/redis` is an optional pure-Toka Redis client package. It encodes
 binary-safe RESP2 commands, incrementally decodes one response from an owned
-`Vec<u8>` buffer, and supports one serial plaintext or TLS connection.
+`Vec<u8>` buffer, and supports serial plaintext or TLS connections directly
+or through an exclusive pool lease.
 
 ```toka
 import official/redis::{RedisClient, RedisCommand}
@@ -44,8 +45,30 @@ count. A well-formed Redis `-ERR` reply becomes a `RedisError(kind = "server")`
 for these typed operations. Use `execute_async` when the application needs the
 raw `RedisValue` reply.
 
-RESP3, Pub/Sub, cluster, Sentinel, retry policy, connection pooling, and Redis
-Cluster routing remain outside this package slice.
+RESP3, Pub/Sub, cluster, Sentinel, retry policy, and Redis Cluster routing
+remain outside this package slice.
+
+## Pooling
+
+`RedisPool` owns a bounded set of plaintext or verified-TLS clients. An
+acquired `RedisLease` is the only mutable owner of one client, so it preserves
+the serial request/reply contract across `.await`; dropping the lease returns a
+healthy client automatically.
+
+```toka
+auto pool# = RedisPool::new(cede address, 5000, 16).unwrap()
+{
+    auto lease# = pool#.acquire_async(1000).await!
+    lease#.get_async("session:42").await!
+}
+pool#.close()
+```
+
+`new_tls` and `new_tls_with_ca_file` retain the same verified-TLS choices as
+the direct client. `close()` stops new leases, drains idle sockets, and causes
+checked-out leases to close on return. A capacity timeout or cancellation
+leaves the pool unchanged. A client is discarded rather than returned after
+I/O, cancellation, decode/protocol failure, or an unread/extra pipeline reply.
 
 ## Qualification
 
@@ -55,5 +78,6 @@ Run from this package root:
 ../../build/bin/tokac -I ../../lib -I lib tests/codec_v1.tk -o /tmp/redis_codec_v1 && /tmp/redis_codec_v1
 ../../build/bin/tokac -I ../../lib -I lib tests/client_v1.tk -o /tmp/redis_client_v1 && /tmp/redis_client_v1
 ../../build/bin/tokac -I ../../lib -I lib tests/transport_v2.tk -o /tmp/redis_transport_v2 && /tmp/redis_transport_v2
+../../build/bin/tokac -I ../../lib -I lib tests/pool_v1.tk -o /tmp/redis_pool_v1 && /tmp/redis_pool_v1
 python3 tests/qualify_package.py
 ```

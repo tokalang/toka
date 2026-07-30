@@ -104,7 +104,7 @@ def main() -> int:
         # The native TLS runtime is linked only for executables emitted
         # directly under /tmp by the current toolchain, so keep these short-
         # lived qualification binaries there rather than in a child folder.
-        for name in ("codec_v1", "client_v1", "transport_v2"):
+        for name in ("codec_v1", "client_v1", "transport_v2", "pool_v1"):
             executable = Path("/tmp") / f"toka-redis-qualify-{os.getpid()}-{name}"
             run([str(tokac), *include, str(PACKAGE / "tests" / f"{name}.tk"),
                  "-o", str(executable)], cwd=ROOT, env=test_env)
@@ -138,6 +138,7 @@ def main() -> int:
             "resp2_codec": "pass",
             "serial_client": "pass",
             "verified_tls_and_pipeline": "pass",
+            "bounded_connection_pool": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))
