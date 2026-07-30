@@ -1,0 +1,42 @@
+import core/traits::{@encap}
+import core/primitives
+import std/btreemap::{BTreeMap}
+
+auto g_drop_count# = 0
+auto g_clone_count# = 0
+
+shape Resource(id: i32)
+
+impl Resource@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+
+    pub fn clone(self) -> Resource {
+        g_clone_count += 1
+        return Resource(id = self.id)
+    }
+}
+
+fn main() -> i32 {
+    {
+        auto map# = BTreeMap<i32, Resource>::new()
+        auto id#: i32 = 0:i32
+        loop id < 12:i32 {
+            auto resource = Resource(id = id)
+            map#.insert(id, cede resource)
+            id += 1:i32
+        }
+        assert(g_drop_count == 0,
+               "BTreeMap owns every resource after insertion and node splitting")
+        assert(g_clone_count == 0,
+               "BTreeMap insertion transfers resources instead of cloning them")
+
+        map#.clear()
+        assert(g_drop_count == 12,
+               "BTreeMap clear drops every resource exactly once")
+    }
+    assert(g_drop_count == 12,
+           "BTreeMap destruction does not redrop cleared node storage")
+    return 0
+}

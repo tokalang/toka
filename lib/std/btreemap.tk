@@ -41,7 +41,9 @@ impl<'K, 'V> BTreeNode<'K, 'V> {
                     j += 1
                 }
             }
-            unsafe free [1] (node_addr as *[BTreeNode<'K, 'V>])
+            // The initialized entries were consumed above.  Deallocate the
+            // node storage without recursively dropping its fixed arrays.
+            unsafe free [0] (node_addr as *[BTreeNode<'K, 'V>])
         }
     }
 
@@ -225,7 +227,15 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
 }
 
 impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
-    fn drop(self#) { self#.clear() }
+    fn drop(self#) {
+        unsafe {
+            if addr_is_not_null(self.root_addr) {
+                BTreeNode<'K, 'V>::destroy(self.root_addr)
+                self.root_addr = ADDR0
+                self.len = 0
+            }
+        }
+    }
     
     pub fn clone(self) = delete
 

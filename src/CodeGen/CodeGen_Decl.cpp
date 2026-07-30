@@ -420,6 +420,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     }
 
     llvm::Value *finalStorage = nullptr;
+    // Async ceded aggregates use a pointer slot for expression lowering, but
+    // the owned value lives in a separate frame alloca.  Scope cleanup must
+    // target that value, not the pointer slot.
+    llvm::Value *ownedValueStorage = nullptr;
     bool isOwnedParam = false;
     // A ceded unique argument arrives through the caller's temporary handle
     // slot.  After loading that slot into callee-owned storage it has one
@@ -477,6 +481,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         llvm::AllocaInst *ptrAlloca = createEntryBlockAlloca(llvm::PointerType::getUnqual(m_Context), nullptr, argName + ".addr");
         m_Builder.CreateStore(valAlloca, ptrAlloca);
         finalStorage = ptrAlloca;
+        ownedValueStorage = valAlloca;
         isOwnedParam = true;
       } else {
         // Borrowed Pointer Slot (self#, &ref, value#: i32, non-ceded aggregate borrow)
@@ -601,8 +606,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
       VariableScopeInfo info;
       info.Name = argName;
-      info.Alloca = finalStorage;
-      info.AllocType = argAllocTy;
+      info.Alloca = ownedValueStorage ? ownedValueStorage : finalStorage;
+      info.AllocType = ownedValueStorage ? pTy : argAllocTy;
       info.IsUniquePointer = isOwnedParam && (argDecl.IsUnique || (typeObj && typeObj->isUniquePtr()));
       info.IsShared = isOwnedParam && (argDecl.IsShared || (typeObj && typeObj->isSharedPtr()));
       info.HasDrop = isOwnedParam && argHasDrop;

@@ -1,0 +1,44 @@
+import core/result::{Result}
+import core/traits::{@encap}
+import core/types::{usize}
+import std/task::{block_on}
+import std/vec::{Vec}
+
+auto g_drop_count# = 0
+
+shape Resource(id: i32)
+
+impl Resource@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+
+    pub fn clone(self) -> Resource {
+        return Resource(id = self.id)
+    }
+}
+
+fn reject_async(marker#: Resource, cede values: Vec<Resource>, expected: usize) -> async Result<(), i32> {
+    if values.len() != expected {
+        return Result<(), i32>::Err(1:i32)
+    }
+    auto owned# = cede values
+    return Result<(), i32>::Ok(())
+}
+
+fn main_async() -> async i32 {
+    auto marker# = Resource(id = 99:i32)
+    auto values# = Vec<Resource>::new()
+    auto item = Resource(id = 1:i32)
+    values#.push(cede item)
+
+    auto rejected = reject_async(marker, cede values, 2:usize).await
+    if rejected.is_ok() { return 1 }
+    if marker.id != 99:i32 { return 2 }
+    if g_drop_count != 1 { return 3 }
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on(main_async())
+}

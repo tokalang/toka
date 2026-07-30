@@ -99,6 +99,14 @@
       "description": "Ring raw storage preserves exactly-once resource cleanup across wraparound, growth, clear, and drop"
     },
     {
+      "id": "std_btreemap_resource_exactly_once_01",
+      "path": "std/btreemap_resource_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "BTreeMap node teardown preserves exactly-once resource cleanup after split, clear, and drop"
+    },
+    {
       "id": "ownership_interior_mutable_field_shared_view_01",
       "path": "ownership/interior_mutable_field_shared_view.tk",
       "type": "run",
@@ -180,6 +188,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Async frame local variable preservation across await points (GAP-LANG-03a)"
+    },
+    {
+      "id": "async_cede_aggregate_early_return_cleanup_01",
+      "path": "async/cede_aggregate_early_return_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An async early return drops a ceded aggregate from its frame value storage exactly once"
     },
     {
       "id": "async_cede_direct_field_cancel_cleanup_01",
