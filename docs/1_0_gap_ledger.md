@@ -33,6 +33,13 @@
   example is composition evidence, not a new generic `Pool<T>` or web
   framework contract. The complete matrix and release procedure are in
   [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
+- **Current maintainer evidence (2026-07-30, `c6cb0b73`)**: the full
+  conformance runner completed `214 Passed, 0 Failed`; the TaskHandle
+  lifecycle, cede-obligation, and H/P capability ABI gates passed; and
+  `build/data-access-real-service.json` reported `status: passed`. The Docker
+  matrix recorded Redis 7.4.10/8.2.8 (password TCP and private-CA TLS) and
+  PostgreSQL 16.14/17.10 (private-CA TLS and SCRAM-SHA-256). This is
+  `maintainer-run green`, not a substitute for the required Linux CI artifact.
 
 ---
 
