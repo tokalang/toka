@@ -1,0 +1,14 @@
+import official/gui::{App}
+import std/thread::{thread_spawn}
+
+fn launch(cede app: App) {
+    auto worker: fn() -> cede i32 = { [cede app] =>
+        return cede 0
+    }
+    auto handle# = thread_spawn<i32>(cede worker)
+    handle#.detach()
+}
+
+fn main() -> i32 { return 0 }
+
+// EXPECT: error[E0477]

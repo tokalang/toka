@@ -16,6 +16,8 @@ text input are designed.
 - `Window` is `@encap` and declares `clone = delete`; its native handle cannot
   be copied or accessed outside the package. Explicit `close` and deterministic
   `drop` close and release the native window exactly once.
+- `Window` is intentionally not `@Send`: AppKit and Metal state stays on its
+  creator thread and cannot be transferred to `thread_spawn`.
 - A successful `Window::open` has a system Metal device and `CAMetalLayer`.
 - `Window::redraw` submits a Metal clear pass; it does not execute arbitrary
   shader code or retain a drawing command list.
@@ -94,3 +96,7 @@ APIs to compose bounded event waiting, redraw scheduling, toggle input,
 shortcuts, and a clipped virtual list. The qualification suite type-checks it
 through a copied consumer package; run it manually from a desktop session to
 exercise its interactive loop.
+
+`App` and `Window` are UI-thread-affine values. Neither can be transferred to
+`thread_spawn`; background work must return data through an explicit message
+channel.

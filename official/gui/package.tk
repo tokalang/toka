@@ -22,6 +22,6 @@ pub const AI_CONTRACT = (
     summary = "A macOS native window and Metal-surface lifecycle bridge for Toka.",
     capabilities = ("open and close a native window", "create a CAMetalLayer backed by the system Metal device", "poll the macOS event queue"),
     non_goals = ("cross-platform support", "widget toolkit", "text input or IME", "render command encoding", "async event-loop integration"),
-    safety = ("The Objective-C window handle remains private; Window closes it deterministically through drop."),
+    safety = ("The Objective-C window handle remains private; App and Window stay on the UI thread, and Window closes its handle deterministically through drop."),
     qualification = ("python3 official/gui/tests/qualify_macos_spike.py")
 )

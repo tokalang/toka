@@ -21,8 +21,8 @@ def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> None:
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode != 0:
         raise RuntimeError(
-            "command failed: %s\nstdout:\n%s\nstderr:\n%s"
-            % (" ".join(argv), result.stdout, result.stderr)
+            "command failed (%s): %s\nstdout:\n%s\nstderr:\n%s"
+            % (result.returncode, " ".join(argv), result.stdout, result.stderr)
         )
 
 
@@ -93,6 +93,12 @@ def main() -> int:
         run([str(toka), "fetch"], cwd=consumer, env=environment)
         expect_failure([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
                         "--check-only", str(dependency / "tests" / "window_clone_rejected.tk")],
+                       cwd=consumer, env=environment)
+        expect_failure([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
+                        "--check-only", str(dependency / "tests" / "window_thread_spawn_rejected.tk")],
+                       cwd=consumer, env=environment)
+        expect_failure([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
+                        "--check-only", str(dependency / "tests" / "app_thread_spawn_rejected.tk")],
                        cwd=consumer, env=environment)
         run([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
              "--check-only", str(dependency / "examples" / "settings.tk")],
