@@ -1,0 +1,64 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Resource(id: i32)
+
+impl Resource@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+
+    pub fn clone(self) = delete
+}
+
+shape ArrayOwner(entries: [Resource; 2])
+
+shape NestedOwner(inner: ArrayOwner)
+
+shape ResourceSet(
+    Items([Resource; 2]) |
+    Empty
+)
+
+fn direct_owner() {
+    auto owner = ArrayOwner(entries = [Resource(id = 1), Resource(id = 2)])
+}
+
+fn nested_owner() {
+    auto owner = NestedOwner(
+        inner = ArrayOwner(entries = [Resource(id = 3), Resource(id = 4)])
+    )
+}
+
+fn raw_owner() {
+    unsafe {
+        auto *owner# = (unsafe alloc [1] ArrayOwner) as *ArrayOwner
+        owner.entries[0] = Resource(id = 5)
+        owner.entries[1] = Resource(id = 6)
+        unsafe free [1] *owner
+    }
+}
+
+fn enum_owner() {
+    auto values = ResourceSet::Items([Resource(id = 7), Resource(id = 8)])
+}
+
+fn main() -> i32 {
+    direct_owner()
+    assert(g_drop_count == 2,
+           "structural drop recurses through direct fixed-array fields")
+
+    nested_owner()
+    assert(g_drop_count == 4,
+           "structural drop recurses through nested fixed-array fields")
+
+    raw_owner()
+    assert(g_drop_count == 6,
+           "free[count] structurally drops live fixed-array fields")
+
+    enum_owner()
+    assert(g_drop_count == 8,
+           "structural drop recurses through fixed-array enum payloads")
+    return 0
+}

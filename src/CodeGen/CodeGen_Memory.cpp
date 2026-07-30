@@ -336,11 +336,17 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
       return;
   }
   
+  const ShapeDecl *knownShape = nullptr;
   std::string dropFunc = "";
   if (m_Shapes.count(typeName)) {
-    dropFunc = m_Shapes[typeName]->MangledDestructorName;
+    knownShape = m_Shapes[typeName];
+    // Synthesized enum drops do not encode a tagged payload walk.  Keep enum
+    // cleanup here, where the active variant is available. Synthesized struct
+    // drops remain responsible for handle fields and fixed-array fields.
+    if (knownShape->HasExplicitDrop || knownShape->Kind != ShapeKind::Enum)
+      dropFunc = knownShape->MangledDestructorName;
   }
-  if (dropFunc.empty()) {
+  if (dropFunc.empty() && !knownShape) {
     std::string try1 = "encap_" + typeName + "_drop";
     std::string try2 = typeName + "_drop"; // Legacy
     if (m_Module->getFunction(try1)) {
@@ -365,8 +371,9 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
     }
   }
 
-  // 2. Cascade Drop: Recursively drop fields that are shapes natively
-  // [Fix] Bypass manual cascade if we already called a destructor (which handles its own fields)
+  // 2. Cascade Drop: recursively drop fields only when no destructor owns the
+  // whole object. Explicit struct destructors and synthesized struct drops
+  // both retain that responsibility; synthesized enums are handled above.
   if (!calledDestructor && m_Shapes.count(typeName)) {
     const ShapeDecl *sh = m_Shapes[typeName];
     llvm::StructType *st = m_StructTypes[typeName];
@@ -452,12 +459,15 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
                         isPointer = true;
                       }
                       if (!isPointer) {
-                        std::string cleanType = Type::stripMorphology(rawType);
-                        if (m_Shapes.count(cleanType)) {
-                            llvm::Value *fieldAddr = variantAddr;
-                            if (payloadTypes.size() > 1 || !variant.SubMembers.empty()) {
-                                fieldAddr = m_Builder.CreateStructGEP(payloadLayoutType, variantAddr, k, "drop_field_gep");
-                            }
+                        llvm::Value *fieldAddr = variantAddr;
+                        if (payloadTypes.size() > 1 || !variant.SubMembers.empty()) {
+                            fieldAddr = m_Builder.CreateStructGEP(payloadLayoutType, variantAddr, k, "drop_field_gep");
+                        }
+                        if (payloadTypeObjs[k]) {
+                          emitDropForType(fieldAddr, payloadTypeObjs[k]);
+                        } else {
+                          std::string cleanType = Type::stripMorphology(rawType);
+                          if (m_Shapes.count(cleanType))
                             emitDropCascade(fieldAddr, cleanType);
                         }
                       }
@@ -485,11 +495,26 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
         
         std::string memberType = Type::stripMorphology(rawType);
         
-        // If the bare member type is a shape and not behind a pointer, cascade into it!
-        if (!isPointer && m_Shapes.count(memberType)) {
-           llvm::Value *typedBase = m_Builder.CreateBitCast(ptrAddr, llvm::PointerType::getUnqual(m_Context));
-           llvm::Value *fieldPtr = m_Builder.CreateStructGEP(st, typedBase, i, "drop_cascade.gep");
-           emitDropCascade(fieldPtr, memberType);
+        const auto memberDropType = sh->Members[i].ResolvedType;
+        const auto memberSoul =
+            memberDropType ? memberDropType->getSoulType() : nullptr;
+        const bool memberNeedsDrop =
+            memberDropType &&
+            (memberDropType->isArray() || memberDropType->IsNullable ||
+             (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
+
+        // Value fields recurse through their semantic type.  This includes
+        // fixed arrays, whose elements may themselves require destruction.
+        if (!isPointer) {
+           if (memberNeedsDrop) {
+             llvm::Value *typedBase = m_Builder.CreateBitCast(ptrAddr, llvm::PointerType::getUnqual(m_Context));
+             llvm::Value *fieldPtr = m_Builder.CreateStructGEP(st, typedBase, i, "drop_cascade.gep");
+             emitDropForType(fieldPtr, sh->Members[i].ResolvedType);
+           } else if (m_Shapes.count(memberType)) {
+             llvm::Value *typedBase = m_Builder.CreateBitCast(ptrAddr, llvm::PointerType::getUnqual(m_Context));
+             llvm::Value *fieldPtr = m_Builder.CreateStructGEP(st, typedBase, i, "drop_cascade.gep");
+             emitDropCascade(fieldPtr, memberType);
+           }
         }
       }
     }
@@ -522,10 +547,16 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
         rawType.front() == '~' || rawType.front() == '&' ||
         rawType.front() == '#')
       continue;
+    const auto memberDropType = shape->Members[i].ResolvedType;
+    const auto memberSoul =
+        memberDropType ? memberDropType->getSoulType() : nullptr;
     const std::string memberType = Type::stripMorphology(rawType);
-    if (!m_Shapes.count(memberType))
+    const bool memberNeedsDrop =
+        memberDropType &&
+        (memberDropType->isArray() || memberDropType->IsNullable ||
+         (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
+    if (!memberNeedsDrop && !m_Shapes.count(memberType))
       continue;
-
     llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
     llvm::BasicBlock *dropField =
         llvm::BasicBlock::Create(m_Context, "drop.field.live", function);
@@ -541,7 +572,11 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
     m_Builder.SetInsertPoint(dropField);
     llvm::Value *fieldAddr = m_Builder.CreateStructGEP(
         structTy, ptrAddr, static_cast<unsigned>(i), "drop.field.gep");
-    emitDropCascade(fieldAddr, memberType);
+    if (memberNeedsDrop) {
+      emitDropForType(fieldAddr, memberDropType);
+    } else {
+      emitDropCascade(fieldAddr, memberType);
+    }
     if (!m_Builder.GetInsertBlock()->getTerminator())
       m_Builder.CreateBr(nextField);
     m_Builder.SetInsertPoint(nextField);

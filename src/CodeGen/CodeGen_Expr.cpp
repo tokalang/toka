@@ -4061,8 +4061,18 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         // one field cannot make the binder's eventual cascade double-drop
         // it.  Explicit destructors remain opaque whole-object invariants.
         auto shapeIt = m_Shapes.find(typeName);
+        bool hasSharedMember = false;
+        if (shapeIt != m_Shapes.end()) {
+          for (const auto &member : shapeIt->second->Members) {
+            if (member.IsShared) {
+              hasSharedMember = true;
+              break;
+            }
+          }
+        }
         if (alloca && hasDrop && shapeIt != m_Shapes.end() &&
             !shapeIt->second->HasExplicitDrop &&
+            !hasSharedMember &&
             (shapeIt->second->Kind == ShapeKind::Struct ||
              shapeIt->second->Kind == ShapeKind::Tuple) &&
             shapeIt->second->Members.size() <= 64) {

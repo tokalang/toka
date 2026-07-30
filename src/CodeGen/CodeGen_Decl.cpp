@@ -728,6 +728,20 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
           bool hasDrop = false;
           std::string dropFunc = "";
+          auto memberDropType = it->ResolvedType;
+
+          std::function<bool(const std::shared_ptr<Type> &)> typeNeedsDrop =
+              [&](const std::shared_ptr<Type> &candidate) {
+                if (!candidate)
+                  return false;
+                if (candidate->isArray())
+                  return typeNeedsDrop(candidate->getArrayElementType());
+                if (candidate->isPointer() || candidate->isReference() ||
+                    candidate->isSmartPointer())
+                  return false;
+                const auto soul = candidate->getSoulType();
+                return soul && m_Shapes.count(soul->getSoulName());
+              };
 
           // Resolve drop function for member
           std::string try1 = "encap_" + baseType + "_drop";
@@ -748,6 +762,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
             hasDrop = false; // Raw pointers don't drop
           } else if (!dropFunc.empty()) {
             hasDrop = true;
+          }
+          if (memberDropType && memberDropType->isArray()) {
+            hasDrop = typeNeedsDrop(memberDropType);
+            dropFunc.clear();
           }
 
           if (hasDrop) {
@@ -786,10 +804,18 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                 if (!m_ScopeStack.empty()) {
                   llvm::Type *fTy =
                       m_StructTypes[typeName]->getElementType(fieldIdx);
-                  m_ScopeStack[0].push_back({it->Name, fieldEP, fTy,
-                                             it->IsUnique, it->IsShared,
-                                             !dropFunc.empty(), // HasDrop
-                                             dropFunc, baseType});
+                  VariableScopeInfo memberInfo;
+                  memberInfo.Name = it->Name;
+                  memberInfo.Alloca = fieldEP;
+                  memberInfo.AllocType = fTy;
+                  memberInfo.IsUniquePointer = it->IsUnique;
+                  memberInfo.IsShared = it->IsShared;
+                  memberInfo.HasDrop = hasDrop;
+                  memberInfo.DropFunc = dropFunc;
+                  memberInfo.SoulName = baseType;
+                  if (memberDropType && memberDropType->isArray())
+                    memberInfo.DropType = memberDropType;
+                  m_ScopeStack[0].push_back(std::move(memberInfo));
                 }
               } else {
               }
@@ -1783,8 +1809,18 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     // not install this mechanism for custom destructors, whose whole-object
     // invariant is opaque to the compiler.
     auto shapeIt = m_Shapes.find(info.SoulName);
+    bool hasSharedMember = false;
+    if (shapeIt != m_Shapes.end()) {
+      for (const auto &member : shapeIt->second->Members) {
+        if (member.IsShared) {
+          hasSharedMember = true;
+          break;
+        }
+      }
+    }
     if (alloca && hasDrop && shapeIt != m_Shapes.end() &&
         !shapeIt->second->HasExplicitDrop &&
+        !hasSharedMember &&
         (shapeIt->second->Kind == ShapeKind::Struct ||
          shapeIt->second->Kind == ShapeKind::Tuple) &&
         shapeIt->second->Members.size() <= 64) {

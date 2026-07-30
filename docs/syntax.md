@@ -996,6 +996,13 @@ uses `free[0]` to release only the storage. Containers whose live elements are
 not a contiguous prefix must drop those elements themselves and then use
 `free[0]`.
 
+Compiler-managed structural drop recurses through value fields, including
+fixed arrays: dropping a live `[T; N]` drops each live `T`. Each element counted
+by `free[count]` is likewise dropped as its complete declared type, so a live
+record element recursively drops its fixed-array fields. This does not make
+uninitialized raw slots live; raw containers must continue to use `free[0]`
+after manually moving or dropping those slots.
+
 ```toka
 auto *buf = unsafe alloc [capacity] Resource
 // initialize buf[0..len]

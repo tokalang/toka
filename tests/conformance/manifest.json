@@ -107,6 +107,14 @@
       "description": "BTreeMap node teardown preserves exactly-once resource cleanup after split, clear, and drop"
     },
     {
+      "id": "ownership_structural_drop_fixed_array_fields_01",
+      "path": "ownership/structural_drop_fixed_array_fields.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Structural drop recursively cleans direct, nested, enum, and raw fixed-array resource fields"
+    },
+    {
       "id": "ownership_interior_mutable_field_shared_view_01",
       "path": "ownership/interior_mutable_field_shared_view.tk",
       "type": "run",
