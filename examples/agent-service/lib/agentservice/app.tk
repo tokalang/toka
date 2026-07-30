@@ -278,7 +278,10 @@ impl AgentService {
                 if 'config.api_key.len() == 0:usize { return Result<string, string>::Err(string::from("OpenAI-compatible API key is empty")) }
                 auto target = openai_compatible_request_path('config.url.as_str())
                 if target.is_err() { return Result<string, string>::Err(target.unwrap_err()) }
+                auto parsed_endpoint = parse_url('config.url.clone())
+                if parsed_endpoint.is_err() { return Result<string, string>::Err(parsed_endpoint.unwrap_err()) }
                 auto headers# = HeaderMap::new()
+                auto _host = headers#.insert(string::from("Host"), parsed_endpoint.unwrap().host)
                 auto _content = headers#.insert(string::from("Content-Type"), string::from("application/json"))
                 auto authorization# = string::from("Bearer ")
                 authorization#.push_str('config.api_key.as_str())

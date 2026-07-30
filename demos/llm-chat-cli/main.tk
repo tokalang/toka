@@ -1,0 +1,235 @@
+// A deliberately small, real streaming chat CLI. It demonstrates the
+// provider-neutral stack without introducing an agent framework.
+
+import core/option::{Option}
+import core/result::{Result}
+import official/openai_compat::{OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
+import std/env::{args_count, get_arg, var}
+import std/io::{stderr_file, stdin_file, stdout_file}
+import std/net::{SocketAddrV4, resolve_ipv4}
+import std/task::{block_on}
+import std/vec::{Vec}
+import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest}
+import stdx/net/sse::{SseDecoder, SseEvent, SseLimits, read_http_chunk_async}
+import stdx/net/url::{parse_url}
+import stdx/serde/json::{to_json}
+
+shape ChatMessage (role: string, content: string)
+shape EndpointTarget (host: string, path: string, address: SocketAddrV4)
+
+impl ChatMessage@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> ChatMessage {
+        return ChatMessage(role = self.role.clone(), content = self.content.clone())
+    }
+}
+
+fn stdout(value: str) {
+    auto output = stdout_file()
+    auto _ = output.write(value)
+    output.flush()
+}
+
+fn stderr(value: str) {
+    auto output = stderr_file()
+    auto _ = output.write(value)
+    output.flush()
+}
+
+fn usage() {
+    stdout("Usage: llm-chat-cli\n\n")
+    stdout("Required environment: DEEPSEEK_API_KEY\n")
+    stdout("Optional environment: DEEPSEEK_BASE_URL, DEEPSEEK_MODEL\n")
+    stdout("Commands: /reset, /quit\n")
+}
+
+fn env_or_default(name: str, fallback: str) -> string {
+    auto value = var(string::from(name))
+    match cede value {
+        auto Option<string>::Some('text) => {
+            if 'text.len() > 0:usize { return cede 'text }
+            return string::from(fallback)
+        }
+        _ => return string::from(fallback)
+    }
+}
+
+fn request_path(endpoint: str) -> Result<EndpointTarget, string> {
+    auto parsed = parse_url(string::from(endpoint))
+    if parsed.is_err() { return Result<EndpointTarget, string>::Err(parsed.unwrap_err()) }
+    auto url = parsed.unwrap()
+    if !url.is_tls() { return Result<EndpointTarget, string>::Err(string::from("endpoint must use https")) }
+    auto resolved = resolve_ipv4(url.host.clone())
+    if resolved.is_err() { return Result<EndpointTarget, string>::Err(resolved.unwrap_err()) }
+    auto path# = url.path.clone()
+    // DEEPSEEK_BASE_URL normally names the API authority. A caller may also
+    // provide a complete compatible endpoint path explicitly.
+    if path.len() == 0:usize || path.as_str().equals("/") {
+        path = string::from("/chat/completions")
+    }
+    if url.query.len() > 0:usize {
+        path#.push_char('?')
+        path#.push_str(url.query.as_str())
+    }
+    return Result<EndpointTarget, string>::Ok(EndpointTarget(host = url.host.clone(), path = cede path,
+        address = SocketAddrV4::new(resolved.unwrap(), url.effective_port())))
+}
+
+fn streaming_body(model: str, history: Vec<ChatMessage>, prompt: str) -> string {
+    auto body# = string::from("{\"model\":")
+    body#.push_str(to_json(string::from(model)).as_str())
+    body#.push_str(",\"stream\":true,\"messages\":[")
+    auto index#: usize = 0:usize
+    loop index < history.len() {
+        auto message = history.get(index)
+        if index > 0:usize { body#.push_char(',') }
+        body#.push_str("{\"role\":")
+        body#.push_str(to_json(message.role).as_str())
+        body#.push_str(",\"content\":")
+        body#.push_str(to_json(message.content).as_str())
+        body#.push_char('}')
+        index += 1:usize
+    }
+    if history.len() > 0:usize { body#.push_char(',') }
+    body#.push_str("{\"role\":\"user\",\"content\":")
+    body#.push_str(to_json(string::from(prompt)).as_str())
+    body#.push_str("}]}")
+    return body
+}
+
+fn bytes_as_string(cede bytes: Vec<u8>, max_len: usize) -> string {
+    auto source = cede bytes
+    auto text# = string::from("")
+    auto index#: usize = 0:usize
+    loop index < source.len() && index < max_len {
+        text#.push_byte_raw(source#.get(index))
+        index += 1:usize
+    }
+    return text
+}
+
+fn stream_turn_async(cede api_key: string, cede endpoint: string, cede body: string) -> async Result<string, string> {
+    auto owned_api_key = cede api_key
+    auto owned_endpoint = cede endpoint
+    auto target = request_path(owned_endpoint.as_str())
+    if target.is_err() { return Result<string, string>::Err(target.unwrap_err()) }
+    auto endpoint_info = target.unwrap()
+    auto headers# = HeaderMap::new()
+    auto _host = headers#.insert(string::from("Host"), endpoint_info.host)
+    auto _content = headers#.insert(string::from("Content-Type"), string::from("application/json"))
+    auto authorization# = string::from("Bearer ")
+    authorization#.push_str(owned_api_key.as_str())
+    auto _authorization = headers#.insert(string::from("Authorization"), cede authorization)
+    auto request = HttpRequest(method = HttpMethod::POST, path = endpoint_info.path,
+        version = string::from("HTTP/1.1"), headers = cede headers, body = cede body)
+    auto stream = HttpClient::new(60000:i32).execute_url_stream_async(request, owned_endpoint,
+        endpoint_info.address).await
+    if stream.is_err() { return Result<string, string>::Err(stream.unwrap_err()) }
+    auto stream# = stream.unwrap()
+    if stream.status_code < 200:i32 || stream.status_code >= 300:i32 {
+        auto status = stream.status_code
+        auto body = stream#.read_all_bytes_async(60000:i32).await
+        stream#.close()
+        auto message# = string::from("provider returned HTTP ")
+        message#.push_str(string::from_int(status).as_str())
+        if body.is_ok() {
+            auto detail = bytes_as_string(cede body.unwrap()#.into_vec(), 4096:usize)
+            if detail.len() > 0:usize { message#.push_str(": "); message#.push_str(detail.as_str()) }
+        }
+        return Result<string, string>::Err(cede message)
+    }
+    auto sse_limits = SseLimits::new(16384:usize, 65536:usize, 131072:usize)
+    if sse_limits.is_err() { stream#.close(); return Result<string, string>::Err(string::from("invalid SSE limits")) }
+    auto decoder# = SseDecoder::new(sse_limits.unwrap())
+    auto semantic_limits = OpenAiCompatLimits::new(65536:usize, 32:usize)
+    if semantic_limits.is_err() { stream#.close(); return Result<string, string>::Err(string::from("invalid provider limits")) }
+    auto semantic_limits = semantic_limits.unwrap()
+    auto answer# = string::from("")
+    auto completed# = false
+    loop true {
+        auto framed = read_http_chunk_async(stream, decoder, 60000:i32).await
+        if framed.is_err() { stream#.close(); return Result<string, string>::Err(string::from("SSE stream failed")) }
+        match cede framed.unwrap() {
+            auto Option<Vec<SseEvent>>::None => break
+            auto Option<Vec<SseEvent>>::Some('raw_events) => {
+                auto ordered# = Vec<SseEvent>::new()
+                auto raw_events# = cede 'raw_events
+                loop raw_events.len() > 0:usize { ordered#.push(cede raw_events#.pop().unwrap()) }
+                loop ordered.len() > 0:usize {
+                    auto decoded = decode_sse_event(cede ordered#.pop().unwrap(), semantic_limits.clone())
+                    if decoded.is_err() { stream#.close(); return Result<string, string>::Err(string::from("provider sent invalid OpenAI-compatible SSE data")) }
+                    auto semantic_events# = decoded.unwrap()
+                    auto ordered_semantic# = Vec<OpenAiStreamEvent>::new()
+                    loop semantic_events.len() > 0:usize { ordered_semantic#.push(cede semantic_events#.pop().unwrap()) }
+                    loop ordered_semantic.len() > 0:usize {
+                        match cede ordered_semantic#.pop().unwrap() {
+                            auto OpenAiStreamEvent::TextDelta('text) => { stdout('text.as_str()); answer#.push_str('text.as_str()) }
+                            auto OpenAiStreamEvent::ToolCallDelta(_) => {}
+                            auto OpenAiStreamEvent::Completed(_) => completed = true
+                            auto OpenAiStreamEvent::ApiError('failure) => { stream#.close(); return Result<string, string>::Err('failure.message()) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    stream#.close()
+    if !completed { return Result<string, string>::Err(string::from("provider stream ended without completion")) }
+    return Result<string, string>::Ok(cede answer)
+}
+
+fn main() -> i32 {
+    if args_count() == 2:i32 && get_arg(1:i32).as_str().equals("--help") {
+        usage()
+        return 0
+    }
+    if args_count() != 1:i32 {
+        usage()
+        return 2
+    }
+    auto api_key = var(string::from("DEEPSEEK_API_KEY"))
+    if api_key.is_none() {
+        stderr("DEEPSEEK_API_KEY is not set. See --help.\n")
+        return 2
+    }
+    auto api_key = api_key.unwrap()
+    if api_key.len() == 0:usize {
+        stderr("DEEPSEEK_API_KEY is empty.\n")
+        return 2
+    }
+    auto endpoint = env_or_default("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    auto model = env_or_default("DEEPSEEK_MODEL", "deepseek-v4-flash")
+    auto history# = Vec<ChatMessage>::new()
+    auto input = stdin_file()
+    stdout("Toka LLM chat. Type /reset to clear history, /quit to exit.\n\n")
+    loop true {
+        stdout("you> ")
+        auto line = input.read_line()
+        if line.is_err() { stderr("failed to read stdin\n"); return 1 }
+        auto prompt = line.unwrap().trim()
+        if prompt.len() == 0:usize {
+            if input.is_eof() { stdout("\n"); return 0 }
+            continue
+        }
+        if prompt.as_str().equals("/quit") || prompt.as_str().equals("/exit") { return 0 }
+        if prompt.as_str().equals("/reset") {
+            history#.clear()
+            stdout("history cleared\n")
+            continue
+        }
+        auto body = streaming_body(model.as_str(), history, prompt.as_str())
+        stdout("assistant> ")
+        auto reply = block_on<Result<string, string>>(stream_turn_async(cede api_key.clone(), cede endpoint.clone(), cede body).start)
+        if reply.is_err() {
+            stderr("\nprovider error: ")
+            stderr(reply.unwrap_err().as_str())
+            stderr("\n")
+            continue
+        }
+        auto reply = reply.unwrap()
+        stdout("\n")
+        history#.push(cede ChatMessage(role = string::from("user"), content = cede prompt))
+        history#.push(cede ChatMessage(role = string::from("assistant"), content = cede reply))
+    }
+    return 0
+}
