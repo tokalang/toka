@@ -324,6 +324,8 @@ impl AgentService {
         claim#.arg_text(idempotency.as_str())
         claim#.arg_bytes(cede bytes_from_string(run_id.as_str()))
         claim#.arg_text("NX")
+        claim#.arg_text("EX")
+        claim#.arg_text("86400")
         auto claimed = cache_lease#.execute_async(cede claim).await
         if claimed.is_err() { return Result<string, string>::Err(string::from("agent idempotency reservation failed")) }
         match cede claimed.unwrap() {

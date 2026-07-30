@@ -30,6 +30,8 @@ database or provider work. A duplicate key is rejected in this first slice
 rather than guessing whether a prior in-flight run can be resumed. The
 reservation intentionally remains after a later failure: an indeterminate
 operation must not be retried under the same key and execute a tool twice.
+The reservation expires after 24 hours, making it deliberately short-term
+state rather than a durable replay ledger.
 
 `process_tool` accepts only an exact configured program and passes one argument
 directly to `std/process::Command`—there is no shell. `http_tool_async` accepts
