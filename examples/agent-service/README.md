@@ -13,11 +13,14 @@ POST /runs (Idempotency-Key)
 ```
 
 The mock provider is the default qualification path and makes no network call
-or use of credentials. `OpenAiCompatibleConfig` requires an explicit HTTPS URL,
-resolved address, model, API key, and timeout; the key is placed only in the
-outbound Authorization header and is never added to an event or log. The first
-adapter sends a non-streaming `/v1/chat/completions` request. It intentionally
-does not claim SSE/tool-call decoding or durable event replay.
+or use of credentials. `OpenAiCompatibleConfig` requires an explicit HTTPS
+endpoint URL, resolved address, model, API key, and timeout; its URL path and
+query become the outbound request target, so it supports both
+`/v1/chat/completions` and compatible endpoints such as DeepSeek's
+`/chat/completions`. The key is placed only in the outbound Authorization
+header and is never added to an event or log. The first adapter sends a
+non-streaming request. It intentionally does not claim SSE/tool-call decoding
+or durable event replay.
 
 PostgreSQL is expected to provide `agent_runs`, `agent_messages`, and
 `agent_tool_audit` tables. The example writes all three through explicit,

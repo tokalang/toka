@@ -17,6 +17,7 @@ import stdx/log/json::{JsonField, JsonLogger}
 import stdx/log/log::{LogLevel, LOG_INFO}
 import stdx/metrics/prometheus::{PrometheusRegistry}
 import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest, HttpResponse, HttpServer, HttpServerConnection}
+import stdx/net/url::{parse_url}
 import stdx/serde/json::{to_json}
 
 pub shape OpenAiCompatibleConfig (
@@ -152,6 +153,24 @@ pub fn openai_compatible_body(model: str, prompt: str) -> string {
     return body
 }
 
+// The HTTP client uses the endpoint URL for TLS and Host selection, while the
+// request target remains explicit. Keep that policy at the application
+// boundary so compatible endpoints need not all expose `/v1/chat/completions`.
+pub fn openai_compatible_request_path(endpoint: str) -> Result<string, string> {
+    auto parsed = parse_url(string::from(endpoint))
+    if parsed.is_err() { return Result<string, string>::Err(parsed.unwrap_err()) }
+    auto url = parsed.unwrap()
+    if !url.scheme.as_str().equals("https") { return Result<string, string>::Err(string::from("OpenAI-compatible endpoint must use https")) }
+    if url.host.len() == 0:usize { return Result<string, string>::Err(string::from("OpenAI-compatible endpoint must have a host")) }
+    auto path# = url.path
+    if path.len() == 0:usize { path = string::from("/") }
+    if url.query.len() > 0:usize {
+        path#.push_char('?')
+        path#.push_str(url.query.as_str())
+    }
+    return Result<string, string>::Ok(cede path)
+}
+
 fn query_types(count: usize) -> Vec<u32> {
     auto types# = Vec<u32>::new()
     auto index#: usize = 0:usize
@@ -246,12 +265,14 @@ impl AgentService {
             }
             auto AgentProvider::OpenAiCompatible('config) => {
                 if 'config.api_key.len() == 0:usize { return Result<string, string>::Err(string::from("OpenAI-compatible API key is empty")) }
+                auto target = openai_compatible_request_path('config.url.as_str())
+                if target.is_err() { return Result<string, string>::Err(target.unwrap_err()) }
                 auto headers# = HeaderMap::new()
                 auto _content = headers#.insert(string::from("Content-Type"), string::from("application/json"))
                 auto authorization# = string::from("Bearer ")
                 authorization#.push_str('config.api_key.as_str())
                 auto _authorization = headers#.insert(string::from("Authorization"), cede authorization)
-                auto request = HttpRequest(method = HttpMethod::POST, path = string::from("/v1/chat/completions"),
+                auto request = HttpRequest(method = HttpMethod::POST, path = target.unwrap(),
                     version = string::from("HTTP/1.1"), headers = cede headers,
                     body = openai_compatible_body('config.model.as_str(), prompt))
                 auto result = HttpClient::new('config.timeout_ms).execute_url_async(request, 'config.url, 'config.address).await
