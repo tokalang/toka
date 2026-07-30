@@ -143,7 +143,7 @@ impl SseDecoder {
     pub fn new(limits: SseLimits) -> SseDecoder {
         return SseDecoder(pending = Vec<u8>::new(), event_name = string::from(""), data = string::from(""),
             last_event_id = Option<string>::None, retry_ms = Option<i32>::None, event_bytes = 0:usize,
-            event_open = false, limits = limits, finished = false, failed = false)
+            event_open = false, limits = limits.clone(), finished = false, failed = false)
     }
 
     pub fn retry_ms(self) -> Option<i32> {

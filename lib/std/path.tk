@@ -23,7 +23,7 @@ pub shape Path (
 
 impl Path {
     pub fn new(s: string) -> Path {
-        return Path(inner = s)
+        return Path(inner = s.clone())
     }
 
     pub fn to_string(self) -> string {
@@ -66,7 +66,7 @@ impl Path {
             res#.push_cstr(*sub_p)
         }
         
-        return Path(inner = res)
+        return Path(inner = cede res)
     }
 
     pub fn extension(self) -> string {
@@ -171,7 +171,7 @@ impl Path {
         
         auto res# = stem_path_str
         if ext.len() == 0 {
-            return Path(inner = res)
+            return Path(inner = cede res)
         }
         
         res#.push_char(46:char)
@@ -187,7 +187,7 @@ impl Path {
             res#.push_cstr(*sub_p)
         }
         
-        return Path(inner = res)
+        return Path(inner = cede res)
     }
 }
 

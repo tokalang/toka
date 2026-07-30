@@ -1,0 +1,36 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0:i32
+
+shape Resource (
+    id: i32
+)
+
+impl Resource@encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+
+    pub fn clone(self) = delete
+}
+
+shape Holder (
+    value: Resource
+)
+
+impl Holder@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    {
+        auto value = Resource(id = 7:i32)
+        auto holder = Holder(value = cede value)
+        assert(holder.value.id == 7:i32,
+               "aggregate receives the ceded resource")
+    }
+    assert(g_drop_count == 1:i32,
+           "ceded aggregate field is dropped exactly once")
+    return 0
+}

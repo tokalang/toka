@@ -1,0 +1,25 @@
+import core/traits::{@encap}
+
+shape Owner (
+    value: string
+)
+
+impl Owner@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+shape Holder (
+    value: string
+)
+
+impl Holder@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    auto owner = Owner(value = string::from("must transfer"))
+    auto holder = Holder(value = owner.value)
+    return 0
+}

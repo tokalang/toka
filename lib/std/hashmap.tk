@@ -66,16 +66,12 @@ impl<'K, 'V> HashMap<'K, 'V>@encap {
             }
             
             auto map = HashMap<'K, 'V>(
-                keys = k,
-                vals = v,
-                meta = m,
+                keys = cede k,
+                vals = cede v,
+                meta = cede m,
                 len = self.len,
                 cap = self.cap
             )
-            
-            k#.unsafe_forget()
-            v#.unsafe_forget()
-            m#.unsafe_forget()
             
             return map
         }
@@ -114,17 +110,12 @@ impl<'K, 'V> HashMap<'K, 'V> {
             // This is correct behavior for us.
             
             auto map = HashMap<'K, 'V>(
-                keys = k,
-                vals = v,
-                meta = m,
+                keys = cede k,
+                vals = cede v,
+                meta = cede m,
                 len = 0,
                 cap = init_cap
             )
-            
-            // Transfer ownership: forget local vecs so they don't drop the buffer.
-            k#.unsafe_forget()
-            v#.unsafe_forget()
-            m#.unsafe_forget()
             
             return map
         }

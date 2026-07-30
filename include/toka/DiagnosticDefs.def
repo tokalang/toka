@@ -442,6 +442,7 @@ DIAG(ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD, Error, "E04599", "Cannot cede a null
 DIAG(ERR_SEMA_CEDE_DYNAMIC_ARRAY_INDEX_UNSUPPORTED, Error, "E04600", "Cannot cede a resource through dynamic array index '{}'; bind a fixed index or use a container operation with its own ownership invariant")
 DIAG(ERR_SEMA_CEDE_RECEIVER_PROJECTION_UNSUPPORTED, Error, "E04601", "Cannot consume receiver projection '{}' outside the supported local direct-field cede model")
 DIAG(ERR_SEMA_CEDE_RECEIVER_NOT_OWNED, Error, "E04602", "Cannot pass non-owned receiver '{}' to 'cede self'; consuming receivers require an owned value or unique receiver")
+DIAG(ERR_SEMA_FIELD_INITIALIZER_MUST_BE_EXPLICITLY_CEDED, Error, "E04603", "Field '{}' receives an owning value from '{}'; use 'cede {}' to transfer ownership explicitly")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

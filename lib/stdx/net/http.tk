@@ -218,7 +218,7 @@ impl HeaderMap {
         if found {
             auto _old = self.entries#.remove(found_idx)
         }
-        self.entries#.push(cede HeaderEntry(key = norm_key, value = value))
+        self.entries#.push(cede HeaderEntry(key = cede norm_key, value = value.clone()))
         return Result<bool, string>::Ok(true)
     }
 
@@ -364,8 +364,8 @@ impl HttpResponse {
         return HttpResponse(
             status_code = 200,
             content_type = string::from("text/plain"),
-            headers = headers,
-            body = body
+            headers = cede headers,
+            body = body.clone()
         )
     }
 
@@ -375,8 +375,8 @@ impl HttpResponse {
         return HttpResponse(
             status_code = 200,
             content_type = string::from("text/html"),
-            headers = headers,
-            body = body
+            headers = cede headers,
+            body = body.clone()
         )
     }
 
@@ -386,8 +386,8 @@ impl HttpResponse {
         return HttpResponse(
             status_code = 201,
             content_type = string::from("text/plain"),
-            headers = headers,
-            body = body
+            headers = cede headers,
+            body = body.clone()
         )
     }
 
@@ -397,8 +397,8 @@ impl HttpResponse {
         return HttpResponse(
             status_code = 400,
             content_type = string::from("text/plain"),
-            headers = headers,
-            body = body
+            headers = cede headers,
+            body = body.clone()
         )
     }
 
@@ -408,7 +408,7 @@ impl HttpResponse {
         return HttpResponse(
             status_code = 404,
             content_type = string::from("text/plain"),
-            headers = headers,
+            headers = cede headers,
             body = string::from("404 Not Found")
         )
     }
@@ -819,8 +819,8 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
     return Result<HttpRequest, string>::Ok(HttpRequest(
         method = method,
         path = path_str.clone(),
-        version = ver_str,
-        headers = headers,
+        version = cede ver_str,
+        headers = cede headers,
         body = string::from("")
     ))
 }
@@ -1011,9 +1011,9 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
 
     return Result<HttpResponse, string>::Ok(HttpResponse(
         status_code = status_code,
-        content_type = content_type,
-        headers = headers,
-        body = body_str
+        content_type = cede content_type,
+        headers = cede headers,
+        body = cede body_str
     ))
 }
 
@@ -1800,7 +1800,7 @@ impl HttpClient {
             status_code = status_code,
             content_type = string::from("text/plain"),
             headers = HeaderMap::new(),
-            body = body_str
+            body = cede body_str
         ))
     }
 
@@ -1855,7 +1855,7 @@ impl HttpClient {
             status_code = status_code,
             content_type = string::from("text/plain"),
             headers = HeaderMap::new(),
-            body = body_str
+            body = cede body_str
         ))
     }
 
@@ -1910,7 +1910,7 @@ impl HttpClient {
             status_code = status_code,
             content_type = string::from("text/plain"),
             headers = HeaderMap::new(),
-            body = body_str
+            body = cede body_str
         ))
     }
 }

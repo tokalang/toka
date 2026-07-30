@@ -23,7 +23,7 @@ pub shape ErrorContext<'E>(
 
 impl Error {
     pub fn new(code: i32, msg: string) -> Error {
-        return Error(code = code, message = msg)
+        return Error(code = code, message = msg.clone())
     }
 }
 
@@ -56,7 +56,7 @@ pub fn with_context<'T, 'E>(cede result: Result<'T, 'E>, message: string) -> Res
         }
         auto Result<'T, 'E>::Err('error) => {
             return Result<'T, ErrorContext<'E>>::Err(
-                ErrorContext<'E>(message = message, source = cede 'error)
+                ErrorContext<'E>(message = message.clone(), source = cede 'error)
             )
         }
         _ => {

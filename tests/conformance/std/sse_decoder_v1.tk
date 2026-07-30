@@ -3,7 +3,7 @@ import std/bytes::{Bytes}
 import std/vec::{Vec}
 import stdx/net/sse::{SseDecoder, SseLimits}
 
-fn bytes(value: str) -> Bytes {
+fn make_bytes(value: str) -> Bytes {
     auto raw# = Vec<u8>::with_capacity(value.len())
     auto index#: usize = 0:usize
     loop index < value.len() { raw#.push(value.byte_at(index) as u8); index += 1:usize }
@@ -14,10 +14,10 @@ fn main() -> i32 {
     auto limits = SseLimits::new(32:usize, 64:usize, 64:usize)
     if limits.is_err() { return 1 }
     auto decoder# = SseDecoder::new(limits.unwrap())
-    auto first = decoder#.push(cede bytes("event: delta\r\ndata: hello\ndata: world\r\n"))
+    auto first = decoder#.push(cede make_bytes("event: delta\r\ndata: hello\ndata: world\r\n"))
     if first.is_err() { return 2 }
     if first.unwrap().len() != 0:usize { return 3 }
-    auto second = decoder#.push(cede bytes("id: 7\nretry: 125\n\n"))
+    auto second = decoder#.push(cede make_bytes("id: 7\nretry: 125\n\n"))
     if second.is_err() { return 4 }
     auto second_events = second.unwrap()
     if second_events.len() != 1:usize { return 5 }
@@ -30,23 +30,23 @@ fn main() -> i32 {
     if decoder#.finish().is_err() { return 10 }
 
     auto truncated# = SseDecoder::new(SseLimits::new(32:usize, 64:usize, 64:usize).unwrap())
-    if truncated#.push(cede bytes("data: partial\n")).is_err() { return 11 }
+    if truncated#.push(cede make_bytes("data: partial\n")).is_err() { return 11 }
     auto ended = truncated#.finish()
     if ended.is_ok() { return 12 }
     if !ended.unwrap_err().kind().as_str().equals("truncated") { return 13 }
 
     auto limited# = SseDecoder::new(SseLimits::new(4:usize, 64:usize, 64:usize).unwrap())
-    auto too_long = limited#.push(cede bytes("data: x"))
+    auto too_long = limited#.push(cede make_bytes("data: x"))
     if too_long.is_ok() { return 14 }
     if !too_long.unwrap_err().kind().as_str().equals("limit") { return 15 }
 
     auto event_limited# = SseDecoder::new(SseLimits::new(32:usize, 8:usize, 64:usize).unwrap())
-    auto too_large_event = event_limited#.push(cede bytes("data: aa\ndata: bb\n"))
+    auto too_large_event = event_limited#.push(cede make_bytes("data: aa\ndata: bb\n"))
     if too_large_event.is_ok() { return 16 }
     if !too_large_event.unwrap_err().kind().as_str().equals("limit") { return 17 }
 
-    auto buffered# = SseDecoder::new(SseLimits::new(32:usize, 64:usize, 10:usize).unwrap())
-    auto too_buffered = buffered#.push(cede bytes("data: a\ndata: b\n"))
+    auto buffered# = SseDecoder::new(SseLimits::new(10:usize, 64:usize, 10:usize).unwrap())
+    auto too_buffered = buffered#.push(cede make_bytes("data: a\ndata: b\n"))
     if too_buffered.is_ok() { return 18 }
     if !too_buffered.unwrap_err().kind().as_str().equals("limit") { return 19 }
     return 0

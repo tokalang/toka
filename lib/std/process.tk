@@ -111,7 +111,7 @@ pub shape Command(
 impl Command {
     pub fn new(program: string) -> Command {
         auto args# = Vec<string>::new()
-        return Command(program = program, args = args)
+        return Command(program = program.clone(), args = cede args)
     }
 
     pub fn arg(self#, arg: string) {

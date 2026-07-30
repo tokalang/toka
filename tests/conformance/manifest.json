@@ -1839,6 +1839,40 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Borrowed iterator next_ref() lifetime and ref matching"
+    },
+    {
+      "id": "diag_aggregate_owned_field_requires_cede_01",
+      "path": "diagnostics/aggregate_owned_field_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04603",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "An aggregate field cannot implicitly duplicate an owning local value"
+    },
+    {
+      "id": "ownership_aggregate_owned_field_cede_exactly_once_01",
+      "path": "ownership/aggregate_owned_field_cede_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An explicitly ceded aggregate field has one cleanup owner"
+    },
+    {
+      "id": "diag_aggregate_owned_field_projection_requires_cede_01",
+      "path": "diagnostics/aggregate_owned_field_projection_requires_cede.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04603",
+      "expected_span_line": 23,
+      "timeout_seconds": 10,
+      "description": "An aggregate field cannot implicitly duplicate an owning field projection"
+    },
+    {
+      "id": "ownership_aggregate_owned_field_projection_cede_exactly_once_01",
+      "path": "ownership/aggregate_owned_field_projection_cede_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An explicitly ceded aggregate field projection has one cleanup owner"
     }
   ]
 }

@@ -438,12 +438,12 @@ fn collect_submodule_output_updates('graph: DependencyManifest, build_dir: strin
             auto tki_path_canon = __path_canonicalize(tki_path)
 
             auto new_outputs = ModuleOutputs(
-                interface = tki_path_canon,
-                object = obj_path_canon,
+                interface = cede tki_path_canon,
+                object = cede obj_path_canon,
                 executable = string::from("")
             )
 
-            info.outputs = new_outputs
+            info.outputs = cede new_outputs
             updates#.insert(cede m_path, cede info)
         }
     }

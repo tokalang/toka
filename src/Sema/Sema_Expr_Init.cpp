@@ -38,6 +38,18 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   return Type->IsWritable;
 }
 
+static std::string ownershipSourceLabel(const Expr *expression) {
+  if (!expression)
+    return "value";
+  if (auto *variable = dynamic_cast<const VariableExpr *>(expression))
+    return Type::stripMorphology(variable->Name);
+  if (auto *member = dynamic_cast<const MemberExpr *>(expression))
+    return ownershipSourceLabel(member->Object.get()) + "." + member->Member;
+  if (auto *index = dynamic_cast<const ArrayIndexExpr *>(expression))
+    return ownershipSourceLabel(index->Array.get()) + "[...]";
+  return expression->toString();
+}
+
 // A field initializer creates a new storage slot. Its H permission belongs
 // to the field declaration, not to the source handle value. This does not
 // grant payload write authority: pointee compatibility and the direct-source
@@ -1109,6 +1121,52 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
     memberMasks[pair.first] = m_LastInitMask;
+
+    // Named field initialization is an ownership boundary just like a `cede`
+    // parameter. An owned lvalue cannot be bitwise-copied into the new
+    // aggregate: that would leave two cleanup owners for the same value.
+    // Aliases (`~`, `&`, raw) retain their existing, non-consuming paths.
+    bool fieldReceivesOwnedValue = false;
+    if (memberTypeObj && !memberTypeObj->isSharedPtr() &&
+        !memberTypeObj->isReference() && !memberTypeObj->isRawPointer()) {
+      if (memberTypeObj->isUniquePtr()) {
+        fieldReceivesOwnedValue = true;
+      } else if (auto soul = memberTypeObj->getSoulType()) {
+        std::string soulName = resolveType(soul->getSoulName());
+        const size_t genericStart = soulName.find('<');
+        if (genericStart != std::string::npos)
+          soulName = soulName.substr(0, genericStart);
+
+        // These view types have no cleanup ownership. `string` is a special
+        // runtime-owned value whose destructor is intentionally not reflected
+        // by hasDrop(), so list it alongside the general shape analysis.
+        const bool isBorrowedView =
+            soulName == "str" || soulName == "bytes" ||
+            soulName == "cstr" || soulName == "ViewStrSplitIterator" ||
+            soulName == "ViewStrLinesIterator";
+        fieldReceivesOwnedValue =
+            !isBorrowedView && (soulName == "string" || soulName == "Bytes" ||
+                                hasDrop(soulName));
+      }
+    }
+    if (fieldReceivesOwnedValue &&
+        !dynamic_cast<CedeExpr *>(pair.second.get())) {
+      Expr *directSource = pair.second.get();
+      while (auto *cast = dynamic_cast<CastExpr *>(directSource))
+        directSource = cast->Expression.get();
+      // An access path denotes existing storage (a local, projection, or
+      // index), unlike a fresh call/constructor result.  Any owned value read
+      // from that storage needs an explicit transfer at this new field
+      // boundary.
+      const bool isOwnedLValueSource =
+          static_cast<bool>(makeAccessPath(directSource));
+      if (isOwnedLValueSource) {
+        const std::string sourceName = ownershipSourceLabel(directSource);
+        error(pair.second.get(),
+              DiagID::ERR_SEMA_FIELD_INITIALIZER_MUST_BE_EXPLICITLY_CEDED,
+              pair.first, sourceName, sourceName);
+      }
+    }
 
     // A field declaration is a declaration boundary.  It cannot turn a
     // Shared direct source into a payload-writable view for later readers.

@@ -391,6 +391,18 @@ Shape fields are named. Shape construction uses named arguments.
 auto p = Point(x = 10, y = 20)
 ```
 
+An initializer creates a new field owner. An existing owned local, field, or
+fixed-array element must therefore use `cede` when it initializes an owning
+field; otherwise the compiler rejects the implicit duplicate cleanup owner.
+Fresh constructor and call results remain valid directly.
+
+```toka
+shape Message(body: string)
+
+auto text = string::from("ready")
+auto message = Message(body = cede text)
+```
+
 Shape definitions remain compiler-visible type contracts even when some fields
 are private through `@encap`. Interface files must preserve the structural facts
 needed for semantic checking, including field morphology, mutability,

@@ -515,7 +515,7 @@ impl TcpStream {
         if failed {
             return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
                 buffer = cede owned,
-                message = message
+                message = cede message
             ))
         }
         return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(
@@ -580,7 +580,7 @@ impl TcpStream {
             owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
                 buffer = cede owned,
-                message = message
+                message = cede message
             ))
         }
         owned#.unsafe_set_len(bytes_read)
@@ -1018,7 +1018,7 @@ impl TlsSession {
             owned#.unsafe_set_len(0:usize)
             return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
                 buffer = cede owned,
-                message = message
+                message = cede message
             ))
         }
         owned#.unsafe_set_len(bytes_read)
@@ -1053,7 +1053,7 @@ impl TlsSession {
         if failed {
             return Result<AsyncWriteResult, AsyncIoError>::Err(AsyncIoError(
                 buffer = cede owned,
-                message = message
+                message = cede message
             ))
         }
         return Result<AsyncWriteResult, AsyncIoError>::Ok(AsyncWriteResult(

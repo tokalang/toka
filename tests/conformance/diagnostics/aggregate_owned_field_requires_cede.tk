@@ -1,0 +1,16 @@
+import core/traits::{@encap}
+
+shape Holder (
+    value: string
+)
+
+impl Holder@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    auto value = string::from("must transfer")
+    auto holder = Holder(value = value)
+    return 0
+}
