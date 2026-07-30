@@ -18,6 +18,22 @@ fn main() -> i32 {
         _ => return 5
     }
 
+    // DeepSeek's compatible stream sends a role/reasoning prelude with
+    // content:null, followed by a normal content delta and finish reason.
+    auto deepseek_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
+    auto deepseek = decode_sse_event(cede event("{\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"reasoning_content\":\"thinking\"},\"finish_reason\":null}]}"), deepseek_limits)
+    if deepseek.is_err() { return 31 }
+    if deepseek.unwrap().len() != 0:usize { return 32 }
+    auto deepseek_finish_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
+    auto deepseek_finish = decode_sse_event(cede event("{\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}"), deepseek_finish_limits)
+    if deepseek_finish.is_err() { return 33 }
+    auto deepseek_finish_events = deepseek_finish.unwrap()
+    if deepseek_finish_events.len() != 2:usize { return 34 }
+    match cede deepseek_finish_events.get(1:usize) {
+        auto OpenAiStreamEvent::Completed('reason) => { if 'reason.is_none() { return 35 } if !'reason.unwrap().as_str().equals("stop") { return 36 } }
+        _ => return 37
+    }
+
     auto tool_limits = OpenAiCompatLimits::new(4096:usize, 4:usize).unwrap()
     auto tool = decode_sse_event(cede event("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{\"name\":\"weather\",\"arguments\":\"part\"}}]}}]}"), tool_limits)
     if tool.is_err() { return 6 }

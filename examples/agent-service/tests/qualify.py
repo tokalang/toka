@@ -13,6 +13,7 @@ def main() -> int:
         raise RuntimeError("build tokac before qualifying agent-service")
     include = ["-I", str(ROOT / "lib"), "-I", str(ROOT / "official" / "postgres" / "lib"),
                "-I", str(ROOT / "official" / "redis" / "lib"), "-I", str(ROOT / "official" / "router" / "lib"),
+               "-I", str(ROOT / "official" / "openai_compat" / "lib"),
                "-I", str(EXAMPLE / "lib")]
     with tempfile.TemporaryDirectory(prefix="toka-agent-service-") as work:
         executable = Path(work) / "compile_v1"

@@ -3,6 +3,7 @@
 
 import core/option::{Option}
 import core/result::{Result}
+import official/openai_compat::{OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
 import official/postgres::{PostgresParam, PostgresPool, PostgresQueryLimits}
 import official/redis::{RedisCommand, RedisPool, RedisValue}
 import official/router::{Router}
@@ -17,6 +18,7 @@ import stdx/log/json::{JsonField, JsonLogger}
 import stdx/log/log::{LogLevel, LOG_INFO}
 import stdx/metrics/prometheus::{PrometheusRegistry}
 import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest, HttpResponse, HttpServer, HttpServerConnection}
+import stdx/net/sse::{SseDecoder, SseEvent, SseLimits, read_http_chunk_async}
 import stdx/net/url::{parse_url}
 import stdx/serde/json::{to_json}
 
@@ -153,6 +155,15 @@ pub fn openai_compatible_body(model: str, prompt: str) -> string {
     return body
 }
 
+pub fn openai_compatible_stream_body(model: str, prompt: str) -> string {
+    auto body# = string::from("{\"model\":")
+    body#.push_str(to_json(string::from(model)).as_str())
+    body#.push_str(",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":")
+    body#.push_str(to_json(string::from(prompt)).as_str())
+    body#.push_str("}]}")
+    return body
+}
+
 // The HTTP client uses the endpoint URL for TLS and Host selection, while the
 // request target remains explicit. Keep that policy at the application
 // boundary so compatible endpoints need not all expose `/v1/chat/completions`.
@@ -249,7 +260,7 @@ impl AgentService {
         return Result<string, string>::Ok(cede run_id)
     }
 
-    fn provider_async(self#, prompt: str) -> async Result<string, string> {
+    fn provider_async(self#, run_id: str, prompt: str) -> async Result<string, string> {
         auto provider# = Option<AgentProvider>::None
         {
             auto locked = self.state.lock()
@@ -274,14 +285,54 @@ impl AgentService {
                 auto _authorization = headers#.insert(string::from("Authorization"), cede authorization)
                 auto request = HttpRequest(method = HttpMethod::POST, path = target.unwrap(),
                     version = string::from("HTTP/1.1"), headers = cede headers,
-                    body = openai_compatible_body('config.model.as_str(), prompt))
-                auto result = HttpClient::new('config.timeout_ms).execute_url_async(request, 'config.url, 'config.address).await
+                    body = openai_compatible_stream_body('config.model.as_str(), prompt))
+                auto result = HttpClient::new('config.timeout_ms).execute_url_stream_async(request, 'config.url, 'config.address).await
                 if result.is_err() { return Result<string, string>::Err(result.unwrap_err()) }
-                auto response = result.unwrap()
+                auto response# = result.unwrap()
                 if response.status_code < 200:i32 || response.status_code >= 300:i32 {
+                    response#.close()
                     return Result<string, string>::Err(string::from("OpenAI-compatible provider returned non-success"))
                 }
-                return Result<string, string>::Ok(response.body)
+                auto sse_limits = SseLimits::new(16384:usize, 65536:usize, 131072:usize)
+                if sse_limits.is_err() { response#.close(); return Result<string, string>::Err(string::from("agent SSE policy is invalid")) }
+                auto decoder# = SseDecoder::new(sse_limits.unwrap())
+                auto compat_limits = OpenAiCompatLimits::new(65536:usize, 32:usize)
+                if compat_limits.is_err() { response#.close(); return Result<string, string>::Err(string::from("agent OpenAI-compatible policy is invalid")) }
+                auto compat_limits = compat_limits.unwrap()
+                auto answer# = string::from("")
+                auto completed# = false
+                loop true {
+                    auto framed = read_http_chunk_async(response, decoder, 'config.timeout_ms).await
+                    if framed.is_err() { response#.close(); return Result<string, string>::Err(string::from("OpenAI-compatible SSE stream failed")) }
+                    match cede framed.unwrap() {
+                        auto Option<Vec<SseEvent>>::None => { break }
+                        auto Option<Vec<SseEvent>>::Some('raw_events) => {
+                            // Events arrive in wire order; consume the owned Vec without
+                            // copying decoded payloads by reversing before pop().
+                            auto ordered# = Vec<SseEvent>::new()
+                            auto raw_events# = cede 'raw_events
+                            loop raw_events.len() > 0:usize { ordered#.push(cede raw_events#.pop().unwrap()) }
+                            loop ordered.len() > 0:usize {
+                                auto semantic = decode_sse_event(cede ordered#.pop().unwrap(), compat_limits.clone())
+                                if semantic.is_err() { response#.close(); return Result<string, string>::Err(string::from("OpenAI-compatible SSE data was invalid")) }
+                                auto semantic_events# = semantic.unwrap()
+                                auto ordered_semantic# = Vec<OpenAiStreamEvent>::new()
+                                loop semantic_events.len() > 0:usize { ordered_semantic#.push(cede semantic_events#.pop().unwrap()) }
+                                loop ordered_semantic.len() > 0:usize {
+                                    match cede ordered_semantic#.pop().unwrap() {
+                                        auto OpenAiStreamEvent::TextDelta('text) => { answer#.push_str('text.as_str()); self#.emit(run_id, "model.delta", 'text.as_str()) }
+                                        auto OpenAiStreamEvent::ToolCallDelta('delta) => { self#.emit(run_id, "model.tool_call_delta", "received") }
+                                        auto OpenAiStreamEvent::Completed(_) => completed = true
+                                        auto OpenAiStreamEvent::ApiError('failure) => { response#.close(); return Result<string, string>::Err('failure.message()) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                response#.close()
+                if !completed { return Result<string, string>::Err(string::from("OpenAI-compatible SSE stream ended without completion")) }
+                return Result<string, string>::Ok(cede answer)
             }
         }
     }
@@ -370,7 +421,7 @@ impl AgentService {
         // The external provider is intentionally outside every PostgreSQL
         // transaction.  A slow model must not pin a database connection.
         self#.emit(run_id.as_str(), "model.started", "provider request")
-        auto answer = self#.provider_async(prompt).await
+        auto answer = self#.provider_async(run_id.as_str(), prompt).await
         if answer.is_err() { return Result<string, string>::Err(answer.unwrap_err()) }
         if canceler.err().is_some() { return Result<string, string>::Err(string::from("agent run canceled")) }
         auto answer# = answer.unwrap()

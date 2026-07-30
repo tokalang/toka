@@ -1,4 +1,4 @@
-import agentservice/app::{AgentProvider, AgentRunEvent, AgentService, ndjson_event, openai_compatible_body, openai_compatible_request_path}
+import agentservice/app::{AgentProvider, AgentRunEvent, AgentService, ndjson_event, openai_compatible_body, openai_compatible_request_path, openai_compatible_stream_body}
 import official/postgres::{PostgresConfig, PostgresPool}
 import official/redis::{RedisPool}
 import std/net::{Ipv4Addr, SocketAddrV4}
@@ -10,6 +10,8 @@ fn address(port: u16) -> SocketAddrV4 { return SocketAddrV4::new(Ipv4Addr::new(1
 fn main() -> i32 {
     auto body = openai_compatible_body("gpt-test", "hello")
     if !body.as_str().equals("{\"model\":\"gpt-test\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}") { return 1 }
+    auto stream_body = openai_compatible_stream_body("gpt-test", "hello")
+    if !stream_body.as_str().equals("{\"model\":\"gpt-test\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}") { return 13 }
     auto deepseek_path = openai_compatible_request_path("https://api.deepseek.com/chat/completions?beta=1")
     if deepseek_path.is_err() { return 10 }
     if !deepseek_path.unwrap().as_str().equals("/chat/completions?beta=1") { return 11 }

@@ -1541,6 +1541,22 @@ impl HttpClient {
         return self.execute_on_stream_async(req, cede stream).await
     }
 
+    // URL parsing selects connection address, TLS, and Host; callers retain
+    // ownership of the explicit HTTP request target and streamed response.
+    pub fn execute_url_stream_async(self, req: HttpRequest, url_str: string,
+                                    default_addr: SocketAddrV4) -> async Result<HttpResponseStream, string> {
+        auto parsed_url = parse_url(url_str)
+        if parsed_url.is_err() {
+            return Result<HttpResponseStream, string>::Err(parsed_url.unwrap_err())
+        }
+        auto url = parsed_url.unwrap()
+        auto conn_addr# = default_addr
+        if url.port > 0:u16 {
+            conn_addr = SocketAddrV4::new(default_addr.ip, url.port)
+        }
+        return self.execute_stream_async(req, conn_addr, url.is_tls(), url.host).await
+    }
+
     pub fn execute_insecure_stream_async(self, req: HttpRequest, addr: SocketAddrV4, is_tls: bool, host: string) -> async Result<HttpResponseStream, string> {
         auto conn_res# = TcpStream::connect_async_timeout(addr, self.timeout_ms).await
         if conn_res.is_err() {
