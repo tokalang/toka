@@ -980,59 +980,6 @@ fn run_build_impl(
             idx_arg += 1
         }
 
-        if has_plan {
-            // Run compiler dependency dump to get current graph
-            auto dump_cmd# = Command::new(cede tokac_path.clone())
-            dump_cmd#.arg(string::from("--dump-dependencies=json"))
-            auto compiler_arg_index# = 0:usize
-            loop compiler_arg_index < compiler_args.len() {
-                dump_cmd#.arg(cede compiler_args.get_ref(compiler_arg_index).clone())
-                compiler_arg_index += 1
-            }
-            auto src_str = string::from_cstr(*s)
-            dump_cmd#.arg(cede src_str)
-
-            auto build_dir = __path_canonicalize(dirname(manifest_path.clone()))
-            env::set_var(string::from("TOKA_BUILD_DIR"), build_dir.clone())
-
-
-            auto dump_result# = dump_cmd#.output()
-            if dump_result.is_err() {
-                println("error: failed to execute compiler dependency dump")
-                return 1
-            }
-            auto dump_output = dump_result.unwrap()
-            if !dump_output.status.success() {
-                println("error: compiler dependency dump failed: {}", dump_output.stderr)
-                return 1
-            }
-            auto dump_json = cede dump_output.stdout
-            auto current_graph_res = __deserialize_shape<DependencyManifest>(dump_json)
-            if current_graph_res.is_err() {
-                println("error: failed to deserialize current graph: {}", current_graph_res.unwrap_err())
-                return 1
-            }
-            auto current_graph# = current_graph_res.unwrap()
-            populate_submodule_outputs(current_graph, build_dir)
-
-            auto old_manifest# = DependencyManifest(..)
-            if exists(manifest_path.clone()) {
-                auto old_json_res = read_to_string(manifest_path.clone())
-                if old_json_res.is_ok() {
-                    auto old_manifest_res = __deserialize_shape<DependencyManifest>(old_json_res.unwrap())
-                    if old_manifest_res.is_ok() {
-                        old_manifest = old_manifest_res.unwrap()
-                    }
-                }
-            }
-
-            auto plan# = RebuildPlan(..)
-            generate_rebuild_plan(current_graph, old_manifest, plan)
-            auto plan_json = plan_to_json(plan)
-            println("{}", plan_json)
-            return 0
-        }
-
         // Detect driver path
         auto driver_path# = string::from("tools/scripts/toka_build.py")
         auto driver_found# = libc_access(c"tools/scripts/toka_build.py", 0) == 0
@@ -1061,6 +1008,29 @@ fn run_build_impl(
         if !driver_found {
             println("error: Toka build driver not found; expected tools/scripts/toka_build.py or $TOKA_LIB/toolchain/toka_build.py")
             return 1
+        }
+
+        // Planning must use the same authoritative driver as building. In
+        // particular, that driver includes locked native-package inputs in
+        // the fingerprint, whereas a graph-only plan cannot see them.
+        if has_plan {
+            auto plan_cmd# = Command::new(string::from("python3"))
+            plan_cmd#.arg(cede driver_path.clone())
+            plan_cmd#.arg(string::from("--plan"))
+            plan_cmd#.arg(string::from("-m"))
+            plan_cmd#.arg(cede manifest_path.clone())
+            plan_cmd#.arg(string::from("--tokac"))
+            plan_cmd#.arg(cede tokac_path.clone())
+            auto plan_arg_index# = 0:usize
+            loop plan_arg_index < compiler_args.len() {
+                auto plan_arg# = string::from("--compiler-arg=")
+                plan_arg#.push_str(compiler_args.get_ref(plan_arg_index).as_str())
+                plan_cmd#.arg(cede plan_arg)
+                plan_arg_index += 1
+            }
+            auto plan_src = string::from_cstr(*s)
+            plan_cmd#.arg(cede plan_src)
+            return plan_cmd#.status()
         }
 
         auto cmd1# = Command::new(string::from("python3"))

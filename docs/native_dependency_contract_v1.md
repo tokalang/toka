@@ -49,5 +49,14 @@ includes the target triples, compiler identity/version, source bytes,
 `pkg-config` resolution, linker requirements, and resource metadata. A target
 or toolchain change therefore invalidates a prior native package build.
 
+`toka build --plan` and `toka build` both delegate to the same incremental
+driver. A plan is consequently a statement about every build input, rather
+than a graph-only approximation that could miss a locked native package.
+The native-build qualification links a minimal locked C package, changes the
+effective C compiler identity, and verifies both the dirty plan and the
+relinked program's native result before restoring the original identity.
+Target-triple identity remains covered by the deterministic identity check;
+actual cross-target rebuilding belongs to the corresponding target runner.
+
 This v1 contract deliberately does not standardize C++, prebuilt artifacts,
 cross-compilation sysroots, arbitrary flags, or a general build-script model.

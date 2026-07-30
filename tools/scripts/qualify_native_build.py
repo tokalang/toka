@@ -70,8 +70,10 @@ def write_workspace(work: Path, module_count: int) -> dict[int, int]:
     (work / "src" / "main.tk").write_text(
         "import std/io::{println}\n"
         "import ./modules/m00::{value_00}\n\n"
+        "extern fn toka_native_cache_probe() -> i32\n\n"
         "fn main() -> i32 {\n"
         '    println("reference-value: {}", value_00())\n'
+        '    println("native-value: {}", toka_native_cache_probe())\n'
         "    return 0\n"
         "}\n",
         encoding="utf-8",
@@ -85,9 +87,38 @@ def write_workspace(work: Path, module_count: int) -> dict[int, int]:
         encoding="utf-8",
     )
     (work / "package.tk").write_text(
-        'package(name = "native_build_reference", version = "0.1.0")\n',
+        "pub const PACKAGE = (\n"
+        '    name = "native_build_reference",\n'
+        '    version = "0.1.0",\n'
+        "    dependencies = (\n"
+        '        native_cache_probe = "./native_cache_probe",\n'
+        "    )\n"
+        ")\n",
         encoding="utf-8",
     )
+    package = work / "native_cache_probe"
+    (package / "native").mkdir(parents=True)
+    (package / "native" / "probe.c").write_text(
+        "#ifndef TOKA_NATIVE_CACHE_PROBE\n"
+        "#define TOKA_NATIVE_CACHE_PROBE 0\n"
+        "#endif\n\n"
+        "int toka_native_cache_probe(void) {\n"
+        "    return 73 + TOKA_NATIVE_CACHE_PROBE;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (package / "package.tk").write_text(
+        "pub const PACKAGE = (\n"
+        '    name = "native_cache_probe",\n'
+        '    version = "0.1.0",\n'
+        "    dependencies = (),\n"
+        '    native = (required = true, sources = ("native/probe.c",))\n'
+        ")\n",
+        encoding="utf-8",
+    )
+    module = package / "lib" / "native_cache_probe" / "mod.tk"
+    module.parent.mkdir(parents=True)
+    module.write_text("pub fn marker() -> i32 { return 1 }\n", encoding="utf-8")
     return values
 
 
@@ -133,6 +164,13 @@ class NativeBuildQualification:
         self.executable = work / "target" / "debug" / "native_build_reference"
         self.env = dict(os.environ)
         self.env.update({"TOKA_LIB": str(root / "lib"), "TOKAC": str(self.tokac)})
+
+    def fetch_dependencies(self) -> None:
+        run(
+            [sys.executable, str(self.root / "lib" / "toolchain" / "toka_package.py"), "fetch"],
+            cwd=self.work,
+            env=self.env,
+        )
 
     def python_plan(self) -> dict[str, object]:
         result = run(
@@ -202,6 +240,16 @@ def assert_dirty(plan: dict[str, object], suffix: str, reason: str | None = None
         raise QualificationError(f"expected {suffix} reason {reason}, got {match}")
 
 
+def assert_native_package_rebuild(plan: dict[str, object], root: Path) -> None:
+    if plan.get("status") != "dirty" or plan.get("native_package_changed") is not True:
+        raise QualificationError(f"native package identity did not invalidate the build: {plan}")
+    dirty_roots = plan.get("dirty_roots")
+    if (not isinstance(dirty_roots, list) or
+            not any(isinstance(item, str) and item.endswith("/" + root.name)
+                    for item in dirty_roots)):
+        raise QualificationError("native package identity did not relink the root module")
+
+
 def qualify(args: argparse.Namespace) -> dict[str, object]:
     root = Path(__file__).resolve().parents[2]
     work = (root / args.work_root).resolve()
@@ -211,6 +259,7 @@ def qualify(args: argparse.Namespace) -> dict[str, object]:
 
     values = write_workspace(work, args.modules)
     qualification = NativeBuildQualification(root, work, args.modules, args.seed)
+    qualification.fetch_dependencies()
     rng = random.Random(args.seed)
 
     initial = qualification.compare_plans()
@@ -218,8 +267,24 @@ def qualify(args: argparse.Namespace) -> dict[str, object]:
         raise QualificationError("first native build plan was not dirty")
     qualification.build()
     baseline_output = qualification.output()
+    if "native-value: 73" not in baseline_output:
+        raise QualificationError("baseline native source was not linked into the reference executable")
     if qualification.compare_plans().get("status") != "clean":
         raise QualificationError("no-op plan was not clean")
+
+    baseline_compiler = qualification.env.get("CC", "cc")
+    qualification.env["CC"] = baseline_compiler + " -DTOKA_NATIVE_CACHE_PROBE=1"
+    compiler_change_plan = qualification.compare_plans()
+    assert_native_package_rebuild(compiler_change_plan, work / "src" / "main.tk")
+    qualification.build()
+    if "native-value: 74" not in qualification.output():
+        raise QualificationError("compiler identity change did not rebuild the native object")
+    qualification.env["CC"] = baseline_compiler
+    restore_compiler_plan = qualification.compare_plans()
+    assert_native_package_rebuild(restore_compiler_plan, work / "src" / "main.tk")
+    qualification.build()
+    if "native-value: 73" not in qualification.output():
+        raise QualificationError("restored compiler identity did not rebuild the native object")
 
     committed_builds = 0
     restore_checks = 0
@@ -355,6 +420,7 @@ def qualify(args: argparse.Namespace) -> dict[str, object]:
             "dependency_cycle_handling": "pass",
             "first_build": "pass",
             "module_add_remove": "pass",
+            "native_compiler_identity_rebuild": "pass",
             "missing_output_recovery": "pass",
             "missing_source_recovery": "pass",
             "mutation_commits": committed_builds,
