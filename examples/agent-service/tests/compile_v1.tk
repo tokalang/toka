@@ -1,0 +1,32 @@
+import agentservice/app::{AgentProvider, AgentRunEvent, AgentService, ndjson_event, openai_compatible_body}
+import official/postgres::{PostgresConfig, PostgresPool}
+import official/redis::{RedisPool}
+import std/net::{Ipv4Addr, SocketAddrV4}
+import std/vec::{Vec}
+import stdx/log/log::{LOG_ERROR}
+
+fn address(port: u16) -> SocketAddrV4 { return SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port) }
+
+fn main() -> i32 {
+    auto body = openai_compatible_body("gpt-test", "hello")
+    if !body.as_str().equals("{\"model\":\"gpt-test\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}") { return 1 }
+    auto event = ndjson_event(AgentRunEvent(run_id = string::from("run-1"), kind = string::from("run.created"), data = string::from("accepted")))
+    if !event.as_str().equals("{\"run_id\":\"run-1\",\"type\":\"run.created\",\"data\":\"accepted\"}\n") { return 2 }
+    auto postgres_config = PostgresConfig::trusted_local(address(1:u16), "app", "agent")
+    if postgres_config.is_err() { return 3 }
+    auto postgres = PostgresPool::new(cede postgres_config.unwrap(), 1:usize)
+    if postgres.is_err() { return 4 }
+    auto redis = RedisPool::new(cede address(1:u16), 100:i32, 1:usize)
+    if redis.is_err() { return 5 }
+    auto process_tools# = Vec<string>::new()
+    process_tools#.push(cede string::from("echo"))
+    auto service = AgentService::new(cede postgres.unwrap(), cede redis.unwrap(), cede AgentProvider::Mock(), cede process_tools, cede Vec<string>::new(), LOG_ERROR)
+    if service.is_err() { return 6 }
+    auto service# = service.unwrap()
+    auto process = service#.process_tool("echo", "agent-tool")
+    if process.is_err() { return 7 }
+    if !process.unwrap().as_str().equals("agent-tool\n") { return 8 }
+    if service#.process_tool("sh", "-c true").is_ok() { return 9 }
+    service#.close()
+    return 0
+}

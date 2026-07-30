@@ -1,0 +1,455 @@
+// A product-shaped agent service example.  This is intentionally an
+// application boundary, not an agent framework or an official package.
+
+import core/option::{Option}
+import core/result::{Result}
+import official/postgres::{PostgresParam, PostgresPool, PostgresQueryLimits}
+import official/redis::{RedisCommand, RedisPool, RedisValue}
+import official/router::{Router}
+import std/async::{TaskScope, spawn_into}
+import std/bytes::{Bytes}
+import std/context::{Context, Canceler}
+import std/net::{SocketAddrV4, TcpListener}
+import std/process::{Command}
+import std/sync::{Mutex}
+import std/vec::{Vec}
+import stdx/log/json::{JsonField, JsonLogger}
+import stdx/log/log::{LogLevel, LOG_INFO}
+import stdx/metrics/prometheus::{PrometheusRegistry}
+import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest, HttpResponse, HttpServer, HttpServerConnection}
+import stdx/serde/json::{to_json}
+
+pub shape OpenAiCompatibleConfig (
+    url: string,
+    address: SocketAddrV4,
+    model: string,
+    api_key: string,
+    timeout_ms: i32
+)
+
+pub shape AgentProvider (
+    Mock() = 0 |
+    OpenAiCompatible(OpenAiCompatibleConfig) = 1
+)
+
+pub shape AgentRunEvent (
+    run_id: string,
+    kind: string,
+    data: string
+)
+
+shape AgentServiceState (
+    router#: Router,
+    redis#: RedisPool,
+    postgres#: PostgresPool,
+    provider: AgentProvider,
+    process_tools#: Vec<string>,
+    http_tools#: Vec<string>,
+    events#: Vec<AgentRunEvent>,
+    metrics#: PrometheusRegistry,
+    logger: JsonLogger,
+    next_run_id: usize,
+    closed: bool
+)
+
+pub shape AgentService (
+    ~state: Mutex<AgentServiceState>
+)
+
+impl OpenAiCompatibleConfig@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> OpenAiCompatibleConfig {
+        return OpenAiCompatibleConfig(url = self.url.clone(), address = self.address,
+            model = self.model.clone(), api_key = self.api_key.clone(), timeout_ms = self.timeout_ms)
+    }
+}
+
+impl AgentProvider@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> AgentProvider {
+        match self {
+            auto AgentProvider::Mock() => return AgentProvider::Mock()
+            auto AgentProvider::OpenAiCompatible(&config) => return AgentProvider::OpenAiCompatible(config.clone())
+        }
+    }
+}
+
+impl AgentRunEvent@encap {
+    fn drop(self#) {}
+    pub fn clone(self) -> AgentRunEvent {
+        return AgentRunEvent(run_id = self.run_id.clone(), kind = self.kind.clone(), data = self.data.clone())
+    }
+}
+
+impl AgentService@encap {
+    fn drop(self#) {}
+    pub fn clone(self#) -> AgentService
+    effects: return <- self.state { return AgentService(~state = self.~state) }
+}
+
+impl AgentService @Send {}
+
+fn response(status_code: i32, content_type: str, cede body: string) -> HttpResponse {
+    auto headers# = HeaderMap::new()
+    auto _ = headers#.insert(string::from("Content-Type"), string::from(content_type))
+    return HttpResponse(status_code = status_code, content_type = string::from(content_type),
+                        headers = cede headers, body = cede body)
+}
+
+fn json_error(status_code: i32, message: str) -> HttpResponse {
+    auto body# = string::from("{\"error\":")
+    body#.push_str(to_json(string::from(message)).as_str())
+    body#.push_str("}")
+    return response(status_code, "application/json", cede body)
+}
+
+fn bytes_from_string(value: str) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(value.len())
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        raw#.push(value.byte_at(index) as u8)
+        index += 1:usize
+    }
+    return Bytes::from_vec(cede raw)
+}
+
+fn string_starts_with(value: str, prefix: str) -> bool {
+    if value.len() < prefix.len() { return false }
+    auto index#: usize = 0:usize
+    loop index < prefix.len() {
+        if value.byte_at(index) != prefix.byte_at(index) { return false }
+        index += 1:usize
+    }
+    return true
+}
+
+fn vec_contains(values#: Vec<string>, candidate: str) -> bool {
+    auto index#: usize = 0:usize
+    loop index < values.len() {
+        if values.get(index).as_str().equals(candidate) { return true }
+        index += 1:usize
+    }
+    return false
+}
+
+pub fn ndjson_event(event: AgentRunEvent) -> string {
+    auto line# = string::from("{\"run_id\":")
+    line#.push_str(to_json(event.run_id).as_str())
+    line#.push_str(",\"type\":")
+    line#.push_str(to_json(event.kind).as_str())
+    line#.push_str(",\"data\":")
+    line#.push_str(to_json(event.data).as_str())
+    line#.push_str("}\n")
+    return line
+}
+
+pub fn openai_compatible_body(model: str, prompt: str) -> string {
+    auto body# = string::from("{\"model\":")
+    body#.push_str(to_json(string::from(model)).as_str())
+    body#.push_str(",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":")
+    body#.push_str(to_json(string::from(prompt)).as_str())
+    body#.push_str("}]}")
+    return body
+}
+
+fn query_types(count: usize) -> Vec<u32> {
+    auto types# = Vec<u32>::new()
+    auto index#: usize = 0:usize
+    loop index < count { types#.push(25:u32); index += 1:usize }
+    return types
+}
+
+fn two_params(first: str, second: str) -> Vec<PostgresParam> {
+    auto params# = Vec<PostgresParam>::new()
+    params#.push(cede PostgresParam::Text(string::from(first)))
+    params#.push(cede PostgresParam::Text(string::from(second)))
+    return params
+}
+
+fn three_params(first: str, second: str, third: str) -> Vec<PostgresParam> {
+    auto params# = two_params(first, second)
+    params#.push(cede PostgresParam::Text(string::from(third)))
+    return params
+}
+
+impl AgentService {
+    // `process_tools` holds exact program names; `http_tools` holds exact URL
+    // prefixes.  Neither accepts a shell expression or an unrestricted URL.
+    pub fn new(cede postgres: PostgresPool, cede redis: RedisPool, cede provider: AgentProvider,
+               cede process_tools: Vec<string>, cede http_tools: Vec<string>,
+               log_level: LogLevel) -> Result<AgentService, string> {
+        auto router# = Router::new()
+        if router#.add(HttpMethod::GET, "/health", "health").is_err() ||
+           router#.add(HttpMethod::POST, "/runs", "runs.create").is_err() ||
+           router#.add(HttpMethod::GET, "/runs/:id/events", "runs.events").is_err() ||
+           router#.add(HttpMethod::GET, "/metrics", "metrics").is_err() {
+            return Result<AgentService, string>::Err(string::from("failed to initialize routes"))
+        }
+        auto metrics# = PrometheusRegistry::new()
+        if metrics#.register_counter(string::from("agent_runs_total")).is_err() ||
+           metrics#.register_counter(string::from("agent_run_failures_total")).is_err() ||
+           metrics#.register_counter(string::from("agent_tool_calls_total")).is_err() {
+            return Result<AgentService, string>::Err(string::from("failed to initialize agent metrics"))
+        }
+        return Result<AgentService, string>::Ok(AgentService(~state = Mutex<AgentServiceState>::make(
+            cede AgentServiceState(router = cede router, redis = cede redis, postgres = cede postgres,
+                provider = cede provider, process_tools = cede process_tools, http_tools = cede http_tools,
+                events = Vec<AgentRunEvent>::new(), metrics = cede metrics,
+                logger = JsonLogger::new(log_level), next_run_id = 0:usize, closed = false)
+        )))
+    }
+
+    fn emit(self#, run_id: str, kind: str, data: str) {
+        auto logger# = Option<JsonLogger>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return }
+            auto *state# = locked.unwrap().get_ref()
+            state.events#.push(cede AgentRunEvent(run_id = string::from(run_id), kind = string::from(kind), data = string::from(data)))
+            logger = Option<JsonLogger>::Some(state.logger.clone())
+        }
+        match cede logger {
+            auto Option<JsonLogger>::Some('value) => {
+                auto fields# = Vec<JsonField>::new()
+                fields#.push(cede JsonField::new(string::from("run_id"), string::from(run_id)))
+                fields#.push(cede JsonField::new(string::from("event"), string::from(kind)))
+                'value.emit(LOG_INFO, string::from("agent event"), cede fields)
+            }
+            _ => {}
+        }
+    }
+
+    fn next_run(self#) -> Result<string, string> {
+        auto locked = self.state.lock()
+        if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
+        auto *state# = locked.unwrap().get_ref()
+        if state.closed { return Result<string, string>::Err(string::from("agent service is closed")) }
+        state.next_run_id += 1:usize
+        auto run_id# = string::from("run-")
+        run_id#.push_str(string::from_int(state.next_run_id).as_str())
+        return Result<string, string>::Ok(cede run_id)
+    }
+
+    fn provider_async(self#, prompt: str) -> async Result<string, string> {
+        auto provider# = Option<AgentProvider>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
+            auto *state = locked.unwrap().get_ref()
+            provider = Option<AgentProvider>::Some(state.provider.clone())
+        }
+        match cede provider.unwrap() {
+            auto AgentProvider::Mock() => {
+                auto answer# = string::from("mock: ")
+                answer#.push_str(prompt)
+                return Result<string, string>::Ok(cede answer)
+            }
+            auto AgentProvider::OpenAiCompatible('config) => {
+                if 'config.api_key.len() == 0:usize { return Result<string, string>::Err(string::from("OpenAI-compatible API key is empty")) }
+                auto headers# = HeaderMap::new()
+                auto _content = headers#.insert(string::from("Content-Type"), string::from("application/json"))
+                auto authorization# = string::from("Bearer ")
+                authorization#.push_str('config.api_key.as_str())
+                auto _authorization = headers#.insert(string::from("Authorization"), cede authorization)
+                auto request = HttpRequest(method = HttpMethod::POST, path = string::from("/v1/chat/completions"),
+                    version = string::from("HTTP/1.1"), headers = cede headers,
+                    body = openai_compatible_body('config.model.as_str(), prompt))
+                auto result = HttpClient::new('config.timeout_ms).execute_url_async(request, 'config.url, 'config.address).await
+                if result.is_err() { return Result<string, string>::Err(result.unwrap_err()) }
+                auto response = result.unwrap()
+                if response.status_code < 200:i32 || response.status_code >= 300:i32 {
+                    return Result<string, string>::Err(string::from("OpenAI-compatible provider returned non-success"))
+                }
+                return Result<string, string>::Ok(response.body)
+            }
+        }
+    }
+
+    // A process tool receives one argument without a shell.  It is deliberately
+    // synchronous because std/process has no cancellable child API yet.
+    pub fn process_tool(self#, program: str, argument: str) -> Result<string, string> {
+        auto allowed# = false
+        { auto locked = self.state.lock(); if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
+          auto *state# = locked.unwrap().get_ref(); allowed = vec_contains(state.process_tools, program) }
+        if !allowed { return Result<string, string>::Err(string::from("process tool is not allowlisted")) }
+        auto command# = Command::new(string::from(program))
+        command#.arg(string::from(argument))
+        auto output = command#.output()
+        if output.is_err() { return Result<string, string>::Err(output.unwrap_err().message) }
+        auto completed = output.unwrap()
+        if !completed.status.success() { return Result<string, string>::Err(string::from("process tool failed")) }
+        return Result<string, string>::Ok(completed.stdout)
+    }
+
+    pub fn http_tool_async(self#, url: str, address: SocketAddrV4) -> async Result<string, string> {
+        auto allowed# = false
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
+            auto *state# = locked.unwrap().get_ref()
+            auto index#: usize = 0:usize
+            loop index < state.http_tools.len() {
+                if string_starts_with(url, state.http_tools.get(index).as_str()) { allowed = true }
+                index += 1:usize
+            }
+        }
+        if !allowed { return Result<string, string>::Err(string::from("HTTP tool URL is not allowlisted")) }
+        auto request = HttpRequest(method = HttpMethod::GET, path = string::from("/"), version = string::from("HTTP/1.1"), headers = HeaderMap::new(), body = string::from(""))
+        auto result = HttpClient::new(5000:i32).execute_url_async(request, string::from(url), address).await
+        if result.is_err() { return Result<string, string>::Err(result.unwrap_err()) }
+        auto response = result.unwrap()
+        if response.status_code < 200:i32 || response.status_code >= 300:i32 { return Result<string, string>::Err(string::from("HTTP tool returned non-success")) }
+        return Result<string, string>::Ok(response.body)
+    }
+
+    pub fn run_async(self#, cede canceler: Canceler, prompt: str, idempotency_key: str) -> async Result<string, string> {
+        auto canceler# = cede canceler
+        if canceler.err().is_some() { return Result<string, string>::Err(string::from("agent run canceled before start")) }
+        if prompt.len() == 0:usize || prompt.len() > 32768:usize { return Result<string, string>::Err(string::from("prompt must be 1..32768 bytes")) }
+        auto run_id = self#.next_run()!
+        self#.emit(run_id.as_str(), "run.created", "accepted")
+        auto redis# = Option<RedisPool>::None
+        auto postgres# = Option<PostgresPool>::None
+        { auto locked = self.state.lock(); if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
+          auto *state# = locked.unwrap().get_ref(); redis = Option<RedisPool>::Some(state.redis#.clone()); postgres = Option<PostgresPool>::Some(state.postgres#.clone()) }
+        auto idempotency# = string::from("agent:idempotency:")
+        idempotency#.push_str(idempotency_key)
+        auto cache_lease = redis.unwrap()#.acquire_async(100:i32).await
+        if cache_lease.is_err() { return Result<string, string>::Err(string::from("agent cache unavailable")) }
+        auto cache_lease# = cache_lease.unwrap()
+        // The reservation is intentionally retained on later failure.  An
+        // indeterminate provider/database outcome must never be retried under
+        // the same key and accidentally execute tools twice.
+        auto claim# = RedisCommand::new("SET")
+        claim#.arg_text(idempotency.as_str())
+        claim#.arg_bytes(cede bytes_from_string(run_id.as_str()))
+        claim#.arg_text("NX")
+        auto claimed = cache_lease#.execute_async(cede claim).await
+        if claimed.is_err() { return Result<string, string>::Err(string::from("agent idempotency reservation failed")) }
+        match cede claimed.unwrap() {
+            auto RedisValue::SimpleString('value) => {
+                if !'value.as_str().equals("OK") { return Result<string, string>::Err(string::from("agent idempotency reservation was rejected")) }
+            }
+            auto RedisValue::Null() => return Result<string, string>::Err(string::from("idempotency key is already in use"))
+            _ => return Result<string, string>::Err(string::from("agent idempotency reservation returned invalid reply"))
+        }
+        auto lease = postgres.unwrap()#.acquire_async(100:i32).await
+        if lease.is_err() { return Result<string, string>::Err(string::from("agent database unavailable")) }
+        auto transaction = lease.unwrap()#.begin_transaction_async().await
+        if transaction.is_err() { return Result<string, string>::Err(string::from("agent transaction failed")) }
+        auto transaction# = transaction.unwrap()
+        auto inserted_run = transaction#.query_params_async("INSERT INTO agent_runs (id, status) VALUES ($1, $2)", cede query_types(2:usize), cede two_params(run_id.as_str(), "running"), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
+        if inserted_run.is_err() { return Result<string, string>::Err(string::from("agent run audit write failed")) }
+        auto inserted_message = transaction#.query_params_async("INSERT INTO agent_messages (run_id, role, content) VALUES ($1, $2, $3)", cede query_types(3:usize), cede three_params(run_id.as_str(), "user", prompt), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
+        if inserted_message.is_err() { return Result<string, string>::Err(string::from("agent message audit write failed")) }
+        self#.emit(run_id.as_str(), "model.started", "provider request")
+        auto answer = self#.provider_async(prompt).await
+        if answer.is_err() { return Result<string, string>::Err(answer.unwrap_err()) }
+        if canceler.err().is_some() { return Result<string, string>::Err(string::from("agent run canceled")) }
+        auto inserted_tool = transaction#.query_params_async("INSERT INTO agent_tool_audit (run_id, tool_name, outcome) VALUES ($1, $2, $3)", cede query_types(3:usize), cede three_params(run_id.as_str(), "model", "completed"), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
+        if inserted_tool.is_err() { return Result<string, string>::Err(string::from("agent tool audit write failed")) }
+        if transaction#.commit_async().await.is_err() { return Result<string, string>::Err(string::from("agent transaction commit failed")) }
+        self#.emit(run_id.as_str(), "model.completed", answer.unwrap().as_str())
+        self#.emit(run_id.as_str(), "run.completed", "ok")
+        { auto locked = self.state.lock(); if locked.is_ok() { auto *state# = locked.unwrap().get_ref(); auto _runs = state.metrics#.inc_counter("agent_runs_total", 1:i64) } }
+        return Result<string, string>::Ok(run_id)
+    }
+
+    fn events_response(self#, run_id: str) -> HttpResponse {
+        auto body# = string::from("")
+        auto locked = self.state.lock()
+        if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
+        auto *state# = locked.unwrap().get_ref()
+        auto index#: usize = 0:usize
+        loop index < state.events.len() {
+            auto event = state.events.get(index).clone()
+            if event.run_id.as_str().equals(run_id) {
+                body#.push_str(ndjson_event(cede event).as_str())
+            }
+            index += 1:usize
+        }
+        return response(200:i32, "application/x-ndjson", cede body)
+    }
+
+    pub fn handle_async(self#, request: HttpRequest, cede canceler: Canceler) -> async HttpResponse {
+        auto matched# = Option<string>::None
+        auto run_id# = Option<string>::None
+        { auto locked = self.state.lock(); if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
+          auto *state# = locked.unwrap().get_ref(); if state.closed { return json_error(503:i32, "agent service is closed") }
+          auto found = state.router.recognize(request.method, request.path.as_str()); if found.is_some() { auto match_value = found.unwrap(); matched = Option<string>::Some(match_value.route_name()); auto param = match_value.param("id"); if param.is_some() { run_id = Option<string>::Some(param.unwrap()) } } }
+        if matched.is_none() { return json_error(404:i32, "route not found") }
+        auto route = matched.unwrap()
+        if route.as_str().equals("health") { return response(200:i32, "application/json", cede string::from("{\"status\":\"ok\"}")) }
+        if route.as_str().equals("runs.events") { return self#.events_response(run_id.unwrap().as_str()) }
+        if route.as_str().equals("metrics") {
+            auto locked = self.state.lock()
+            if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
+            auto *state# = locked.unwrap().get_ref()
+            return response(200:i32, "text/plain; version=0.0.4", cede state.metrics.render())
+        }
+        auto key = request.headers.get("idempotency-key")
+        if key.is_none() { return json_error(400:i32, "Idempotency-Key is required") }
+        auto result = self#.run_async(cede canceler, request.body.as_str(), key.unwrap().as_str()).await
+        if result.is_err() { return json_error(503:i32, result.unwrap_err().as_str()) }
+        auto body# = string::from("{\"run_id\":")
+        body#.push_str(to_json(result.unwrap()).as_str())
+        body#.push_str("}")
+        return response(202:i32, "application/json", cede body)
+    }
+
+    pub fn close(self#) {
+        auto redis# = Option<RedisPool>::None
+        auto postgres# = Option<PostgresPool>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return }
+            auto *state# = locked.unwrap().get_ref()
+            if state.closed { return }
+            state.closed = true
+            redis = Option<RedisPool>::Some(state.redis#.clone())
+            postgres = Option<PostgresPool>::Some(state.postgres#.clone())
+        }
+        redis.unwrap()#.close()
+        postgres.unwrap()#.close()
+    }
+}
+
+pub fn serve_connection_async(cede service: AgentService, cede connection: HttpServerConnection,
+                             cede canceler: Canceler) -> async Result<i32, string> {
+    auto service# = cede service
+    auto connection# = cede connection
+    auto request = connection#.read_request_async().await
+    auto reply = if request.is_err() {
+        pass json_error(400:i32, "invalid HTTP request")
+    } else {
+        pass service#.handle_async(request.unwrap(), cede canceler).await
+    }
+    auto written = connection#.write_response_async(reply).await
+    connection#.close()
+    if written.is_err() { return Result<i32, string>::Err(written.unwrap_err()) }
+    return Result<i32, string>::Ok(0:i32)
+}
+
+// Cancellation stops accepting before worker drain. Call `service.close()`
+// after this future resolves so idle data-access connections close once and
+// checked-out leases close rather than returning to a closed pool.
+pub fn serve_until_canceled_async(cede service: AgentService, cede listener: TcpListener,
+                                  cede canceler: Canceler, max_request_bytes: usize,
+                                  timeout_ms: i32, drain_timeout_ms: i32) -> async Result<bool, string> {
+    auto service# = cede service
+    auto listener# = cede listener
+    auto canceler# = cede canceler
+    auto scope# = TaskScope::new()
+    loop true {
+        scope#.reap_finished()
+        auto accepted = HttpServer::accept_async_context(listener, canceler, max_request_bytes, timeout_ms).await
+        if accepted.is_err() {
+            if canceler.err().is_some() { return Result<bool, string>::Ok(scope#.shutdown_async(drain_timeout_ms).await) }
+            scope#.shutdown_async(0:i32).await
+            return Result<bool, string>::Err(accepted.unwrap_err())
+        }
+        auto worker = serve_connection_async(cede service#.clone(), cede accepted.unwrap(), cede canceler#.clone()).start
+        spawn_into(scope, cede worker)
+    }
+    return Result<bool, string>::Err(string::from("unreachable service loop exit"))
+}
