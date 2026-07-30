@@ -238,6 +238,14 @@
       "description": "A bounded host-event source and timer-suspended coroutine share one executor turn without retaining the host"
     },
     {
+      "id": "async_host_mailbox_dispatch_01",
+      "path": "async/host_mailbox_dispatch.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A Send-only worker message is delivered through a current-thread-bound host inbox"
+    },
+    {
       "id": "async_await_cancellation_outcome_01",
       "path": "async/await_cancellation_outcome.tk",
       "type": "run",
@@ -1783,6 +1791,15 @@
       "expected_span_line": 4,
       "timeout_seconds": 10,
       "description": "Opaque callback parameters are rejected at detached execution boundaries"
+    },
+    {
+      "id": "diag_host_mailbox_inbox_not_send_01",
+      "path": "diagnostics/host_mailbox_inbox_not_send.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0477",
+      "expected_span_line": 10,
+      "timeout_seconds": 10,
+      "description": "A current-thread-bound host inbox cannot be captured by a worker"
     },
     {
       "id": "ownership_pattern_shared_view_preserves_payload_capability_01",

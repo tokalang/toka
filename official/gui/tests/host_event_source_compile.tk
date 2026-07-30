@@ -1,9 +1,15 @@
 import official/gui::{App}
-import std/task::{pump_with_host}
+import core/result::{Result}
+import std/task::{host_mailbox, pump_with_host, HostMailboxPoll}
 
 fn main() -> i32 {
     auto app# = App::new()
     auto report = pump_with_host(app, 0:i32)
     if report.is_err() { return 1:i32 }
+    auto mailbox# = host_mailbox<i32>()
+    match mailbox.inbox#.try_next() {
+        auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Empty) => {}
+        _ => return 2:i32
+    }
     return 0:i32
 }

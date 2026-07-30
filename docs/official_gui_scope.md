@@ -88,5 +88,8 @@ The application event loop may now participate in `std/task` through the
 bounded `@HostEventSource` adapter implemented by `App`.  This is a
 thread-local, opt-in executor turn: it lets ready tasks, timers, non-blocking
 socket readiness, and one AppKit wait cooperate without making `std` depend on
-GUI or moving AppKit objects across threads.  It is not yet a cross-platform
-co-wait backend or a complete worker-to-UI dispatch model.
+GUI or moving AppKit objects across threads. `std/task::host_mailbox` now
+supplies the companion data-only worker-to-UI path: `@Send` updates can cross
+threads, while the inbox remains on the App thread. It is not a cross-platform
+co-wait backend, a wakeable native dispatcher, or a closure/callback path into
+AppKit.

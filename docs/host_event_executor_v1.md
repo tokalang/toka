@@ -29,6 +29,13 @@ pub trait @HostEventSource {
     pub fn poll_events(self#, timeout_millis: i32) -> Result<HostEventPoll, string>
 }
 
+pub shape HostMailbox<'T: @Send> {
+    sender: HostMailboxSender<'T>,
+    inbox: HostMailboxInbox<'T>
+}
+
+pub fn host_mailbox<'T: @Send>() -> HostMailbox<'T>
+
 pub shape ExecutorPump (
     ready_tasks: i32,
     timer_wakes: i32,
@@ -51,6 +58,42 @@ without making `App` `@Send`.
 its cancellation policy and decides whether to request cancellation of its
 root task or continue draining work.  An adapter failure is returned as a
 typed `Err(string)`; it is never converted into `Idle`.
+
+## Worker-to-host messages
+
+`host_mailbox<T>()` is the narrow cross-thread path for a GUI or another
+thread-affine host. `HostMailboxSender<T>` is `@Send`; it accepts only an
+owned `T: @Send` through `post`. `HostMailboxInbox<T>` carries a private,
+non-`Send` current-thread marker, so it cannot be captured by `thread_spawn`
+or transferred to a worker. The marker is a static ownership boundary, not a
+runtime thread id or a GUI dependency.
+
+The inbox provides non-blocking `try_next`, returning `Message(T)`, `Empty`,
+or `Closed`. A host application calls it after its bounded
+`pump_with_host` turn and applies the resulting data to its UI state on that
+same thread:
+
+```toka
+auto mailbox# = host_mailbox<UiUpdate>()
+auto worker_sender = mailbox.sender#.clone()
+// move worker_sender into a worker; retain mailbox.inbox beside App
+
+auto turn = pump_with_host(app, 16:i32)
+if turn.is_err() { return 1:i32 }
+auto received = mailbox.inbox#.try_next()
+match cede received {
+    auto Result<HostMailboxPoll<UiUpdate>, string>::Ok(
+        HostMailboxPoll<UiUpdate>::Message('update)
+    ) => apply_update(app, cede 'update),
+    _ => {}
+}
+```
+
+This moves data, not UI operations. The API intentionally has no
+`post(fn)`/callback form: such a closure could hide a capture of `App`,
+`Window`, or a borrowed UI value. Sending a message does not interrupt the
+native wait; v1 delivery latency remains bounded by `pump_with_host`'s caller
+chosen wait bound.
 
 ## One pump turn
 
@@ -96,7 +139,8 @@ no `official/gui` type, Objective-C ABI, framework, or platform conditional.
 - The executor never accepts a raw event handle, callback registration, or
   borrowed callback that could outlive the call.
 - There is no implicit UI cancellation, global event-source installation,
-  nested executor, worker-to-UI dispatch, or cross-platform GUI promise.
+  nested executor, worker-to-UI closure dispatch, wakeable cross-platform
+  co-wait, or cross-platform GUI promise.
 - Native backends may later provide a lower-latency co-wait primitive, but
   that is a separate platform-specific extension.  It must preserve this
   source ownership and bounded-wait contract.
@@ -112,3 +156,6 @@ no `official/gui` type, Objective-C ABI, framework, or platform conditional.
 5. the GUI package consumer build proves that `App` implements the standard
    trait without `std` acquiring a GUI dependency.  Interactive AppKit
    behavior remains a macOS desktop-session gate.
+6. a worker can post an owned `@Send` value and its current-thread inbox
+   observes `Message` followed by `Closed`; a compile-fail fixture proves the
+   inbox itself cannot enter `thread_spawn`.

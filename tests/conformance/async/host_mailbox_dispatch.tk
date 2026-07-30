@@ -1,0 +1,37 @@
+import core/option::{Option}
+import core/result::{Result}
+import std/task::{host_mailbox, HostMailboxPoll}
+import std/thread::{thread_spawn}
+
+fn main() -> i32 {
+    auto mailbox# = host_mailbox<i32>()
+    match mailbox.inbox#.try_next() {
+        auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Empty) => {}
+        _ => return 1:i32
+    }
+
+    auto sender = cede mailbox.sender
+    auto worker: fn#() -> cede i32 = { [cede sender] =>
+        if sender#.post(cede 41:i32).is_err() { return cede 2:i32 }
+        return cede 0:i32
+    }
+    auto worker# = thread_spawn<i32>(cede worker)
+    auto worker_result = worker#.join()
+    match cede worker_result {
+        auto Result<i32, _>::Ok('status) => {
+            if 'status != 0:i32 { return 3:i32 }
+        }
+        _ => return 4:i32
+    }
+
+    match mailbox.inbox#.try_next() {
+        auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Message('value)) => {
+            if 'value != 41:i32 { return 5:i32 }
+        }
+        _ => return 6:i32
+    }
+    match mailbox.inbox#.try_next() {
+        auto Result<HostMailboxPoll<i32>, string>::Ok(HostMailboxPoll<i32>::Closed) => return 0:i32
+        _ => return 7:i32
+    }
+}

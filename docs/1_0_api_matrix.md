@@ -33,7 +33,7 @@
 | **Syntax & Ownership** | `borrow`, `cede`, `move`, `~T`, `#`, `$` | **Tier 1: Language 1.0** | Core permission and transfer model. |
 | **Error Handling** | Postfix `!`, `Option<T>`, `Result<T, E>` | **Tier 1: Language 1.0** | Early return cleanup and fallible computation. |
 | **Async Mechanics** | `fn -> async T`, `.await`, `.wait`, `.start` | **Tier 1: Language 1.0** | Async function invocation & task start. |
-| **`std/task.tk`** | `@HostEventSource`, `pump_with_host` | **Tier 2: Core/Std 1.0** | Bounded, current-thread coordination of a host event source with ready tasks, timers, and non-blocking socket readiness; no global callback registration or GUI dependency. |
+| **`std/task.tk`** | `@HostEventSource`, `pump_with_host`, `host_mailbox` | **Tier 2: Core/Std 1.0** | Bounded, current-thread coordination of a host event source with ready tasks, timers, and non-blocking socket readiness; `@Send` worker data may enter a non-`Send` host inbox, with no global callback registration or GUI dependency. |
 | **`core/string.tk`** | `string`, `str`, `bytes`, `from`, `as_str` | **Tier 2: Core/Std 1.0** | Safe owned and slice UTF-8 strings. |
 | **`std/bytes.tk`** | `Vec<u8> → Bytes → bytes` via `from_vec`, `into_vec`, `as_slice` | **Tier 2: Core/Std 1.0** | Mutable I/O owner, zero-copy frozen owner, and borrowed binary view. |
 | **`std/net.tk`** | `TcpStream`, `TcpListener`, `TlsSession`, owner-based read/write | **Tier 2: Core/Std 1.0** | Async TCP/TLS engine; TLS FFI handles and suspended buffer pointers stay below `stdx`. |

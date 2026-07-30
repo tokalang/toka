@@ -11,6 +11,8 @@ import core/task as core_task
 import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion}
 import sys/os/net as sysnet
 import core/result::{Result}
+import std/channel::{channel, Sender, Receiver}
+import std/error::{Error}
 
 pub fn current_time_ms() -> i64 {
     auto inst = Instant::now()
@@ -32,6 +34,105 @@ pub shape HostEventPoll (
 
 pub trait @HostEventSource {
     pub fn poll_events(self#, timeout_millis: i32) -> Result<HostEventPoll, string>
+}
+
+// The inbox is bound to the thread that creates it.  It deliberately has no
+// Send implementation, so worker code can transfer only its sender half.
+shape HostThreadAffinity (
+    *marker: void = null as *void
+)
+
+impl HostThreadAffinity@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+// Values move from workers to the host thread.  They must be Send, but the
+// sender cannot carry a UI object or a borrowed closure across the boundary.
+pub shape HostMailboxSender<'T: @Send> (
+    sender#: Sender<'T>
+)
+
+impl<'T: @Send> HostMailboxSender<'T>@Send {}
+
+impl<'T: @Send> HostMailboxSender<'T> {
+    pub fn clone(self#) -> HostMailboxSender<'T> {
+        return HostMailboxSender<'T>(sender = cede self.sender#.clone())
+    }
+
+    pub fn post(self#, message: cede 'T) -> Result<(), string> {
+        auto sent = self.sender#.send(cede message)
+        match cede sent {
+            auto Result<(), Error>::Ok(_) => return Result<(), string>::Ok(())
+            auto Result<(), Error>::Err('error) => {
+                return Result<(), string>::Err(cede 'error.message)
+            }
+            _ => return Result<(), string>::Err(string::from("invalid host mailbox send result"))
+        }
+    }
+}
+
+pub shape HostMailboxPoll<'T: @Send> (
+    Message('T) = 1 |
+    Empty = 2 |
+    Closed = 3
+)
+
+pub shape HostMailboxInbox<'T: @Send> (
+    receiver#: Receiver<'T>,
+    thread_affinity: HostThreadAffinity
+)
+
+impl<'T: @Send> HostMailboxInbox<'T> {
+    // This is non-blocking so applications can drain it after every bounded
+    // host/executor turn without introducing a second wait loop.
+    pub fn try_next(self#) -> Result<HostMailboxPoll<'T>, string> {
+        auto received = self.receiver#.try_recv()
+        match cede received {
+            auto Result<Option<Option<'T> >, Error>::Err('error) => {
+                return Result<HostMailboxPoll<'T>, string>::Err(cede 'error.message)
+            }
+            auto Result<Option<Option<'T> >, Error>::Ok('state) => {
+                match cede 'state {
+                    auto Option<Option<'T> >::None() => {
+                        return Result<HostMailboxPoll<'T>, string>::Ok(HostMailboxPoll<'T>::Empty)
+                    }
+                    auto Option<Option<'T> >::Some('item) => {
+                        match cede 'item {
+                            auto Option<'T>::Some('message) => {
+                                return Result<HostMailboxPoll<'T>, string>::Ok(
+                                    HostMailboxPoll<'T>::Message(cede 'message)
+                                )
+                            }
+                            auto Option<'T>::None() => {
+                                return Result<HostMailboxPoll<'T>, string>::Ok(HostMailboxPoll<'T>::Closed)
+                            }
+                        }
+                    }
+                }
+            }
+            _ => return Result<HostMailboxPoll<'T>, string>::Err(string::from("invalid host mailbox receive result"))
+        }
+    }
+}
+
+pub shape HostMailbox<'T: @Send> (
+    sender#: HostMailboxSender<'T>,
+    inbox#: HostMailboxInbox<'T>
+)
+
+// Construct this beside the host event source.  Moving HostMailboxInbox into
+// a worker is rejected by its HostThreadAffinity member; move or clone only
+// HostMailboxSender when a worker must publish an owned update.
+pub fn host_mailbox<'T: @Send>() -> HostMailbox<'T> {
+    auto pair = channel<'T>()
+    return HostMailbox<'T>(
+        sender = HostMailboxSender<'T>(sender = cede pair.tx),
+        inbox = HostMailboxInbox<'T>(
+            receiver = cede pair.rx,
+            thread_affinity = HostThreadAffinity(*marker = null as *void)
+        )
+    )
 }
 
 pub shape ExecutorPump (
