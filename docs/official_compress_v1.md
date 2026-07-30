@@ -46,12 +46,12 @@ input, unsupported trailing bytes, and output-limit violations.
 
 ## Native and package contract
 
-`package.tk` declares `native.required`, `native.sources`, and
-`native.libraries = ("zlib")`. `toka build` verifies those fields against the
-locked package source, compiles the private bridge, and links zlib only for a
-consumer that imports the locked package. This is not a hidden base-runtime
-dependency: programs without a native package remain free of zlib and its
-toolchain requirements.
+`package.tk` declares `native.required`, shared `native.sources`, and a
+macOS/Linux `pkg_config = ("zlib")` target block. `toka build` verifies those
+fields against the locked package source, compiles the private bridge, and
+links zlib only for a consumer that imports the locked package. This is not a
+hidden base-runtime dependency: programs without a native package remain free
+of zlib and its toolchain requirements.
 
 Qualification proves:
 

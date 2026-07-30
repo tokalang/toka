@@ -30,6 +30,54 @@ bool Type::equals(const toka::Type &other) const {
 bool Type::isSend(class Sema *S) const { return false; }
 bool Type::isSync(class Sema *S) const { return false; }
 
+ValueOwnership Type::valueOwnership(class Sema *S) const {
+  switch (typeKind) {
+  case RawPtr:
+  case Reference:
+  case Slice:
+    return ValueOwnership::BorrowedView;
+  case SharedPtr:
+    return ValueOwnership::SharedHandle;
+  case UniquePtr:
+    return ValueOwnership::Owned;
+  case UninitWrapper: {
+    const auto *uninit = dynamic_cast<const UninitType *>(this);
+    return uninit && uninit->InnerType
+               ? uninit->InnerType->valueOwnership(S)
+               : ValueOwnership::Trivial;
+  }
+  case Array: {
+    const auto *array = dynamic_cast<const ArrayType *>(this);
+    return array && array->ElementType &&
+                   array->ElementType->requiresExplicitOwnershipTransfer(S)
+               ? ValueOwnership::Owned
+               : ValueOwnership::Trivial;
+  }
+  case Shape: {
+    std::string soul = getSoulName();
+    if (S)
+      soul = S->resolveType(soul);
+
+    // Borrowed core views never own their backing storage.  `string` and
+    // `Bytes` have compiler-recognised buffer cleanup that intentionally does
+    // not participate in Sema::hasDrop(), so their ownership is represented
+    // here with the rest of the type metadata rather than at individual use
+    // sites.
+    if (soul == "str" || soul == "bytes" || soul == "cstr" ||
+        soul == "ViewStrSplitIterator" || soul == "ViewStrLinesIterator")
+      return ValueOwnership::BorrowedView;
+    if (soul == "SlabID" || soul == "TimerHeap")
+      return ValueOwnership::Trivial;
+    if (soul == "string" || soul == "Bytes")
+      return ValueOwnership::Owned;
+    return S && S->hasDrop(soul) ? ValueOwnership::Owned
+                                 : ValueOwnership::Trivial;
+  }
+  default:
+    return ValueOwnership::Trivial;
+  }
+}
+
 // Check compatibility (Permission Flow)
 bool Type::isCompatibleWith(const Type &target) const {
   if (typeKind != target.typeKind)

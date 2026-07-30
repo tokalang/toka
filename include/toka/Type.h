@@ -27,6 +27,11 @@ class Sema;      // Forward declaration
 
 enum class CallableReceiverMode { Shared, Mutable, Consuming };
 
+// Classifies the cleanup/transfer responsibility of a resolved value.  This
+// is compiler-internal semantic metadata: it is not a source annotation and
+// does not alter a type's public spelling.
+enum class ValueOwnership { Trivial, BorrowedView, SharedHandle, Owned };
+
 class Type : public std::enable_shared_from_this<Type> {
 public:
   enum Kind {
@@ -68,6 +73,14 @@ public:
 
   virtual bool isSend(class Sema* S = nullptr) const;
   virtual bool isSync(class Sema* S = nullptr) const;
+
+  // Whether assigning this value from existing storage creates a second
+  // cleanup owner.  `S` supplies resolved shape lifecycle metadata; pointer
+  // and aggregate cases are derived structurally from this Type.
+  virtual ValueOwnership valueOwnership(class Sema *S = nullptr) const;
+  bool requiresExplicitOwnershipTransfer(class Sema *S = nullptr) const {
+    return valueOwnership(S) == ValueOwnership::Owned;
+  }
 
   // Helpers
   // Checks if 'this' can be assigned to 'target' (handles permission flow)

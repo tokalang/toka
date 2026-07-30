@@ -172,14 +172,32 @@ def native_toolchain_identity(target_triples: list[str]) -> str:
     return fingerprint.hexdigest()
 
 
+def native_platform(target_triples: list[str]) -> str:
+    platforms: set[str] = set()
+    for target in target_triples:
+        lowered = target.lower()
+        if "darwin" in lowered or "apple" in lowered or "macos" in lowered:
+            platforms.add("macos")
+        elif "linux" in lowered:
+            platforms.add("linux")
+        elif "windows" in lowered or "mingw" in lowered or "msvc" in lowered:
+            platforms.add("windows")
+        else:
+            raise RuntimeError("unsupported native target triple: " + target)
+    if len(platforms) != 1:
+        raise RuntimeError("native package build requires exactly one target platform")
+    return next(iter(platforms))
+
+
 def native_package_plan(target_triples: list[str]) -> tuple[list[dict], list[str], list[str], list[str], list[str], str]:
     if not Path("package.lock").is_file():
         return [], [], [], [], [], ""
     helper = package_helper_path()
     if helper is None:
         raise RuntimeError("native package support could not find toka_package.py")
+    target = native_platform(target_triples)
     result = subprocess.run(
-        [sys.executable, str(helper), "native-build-plan", "--lock", "package.lock", "--state", ".toka"],
+        [sys.executable, str(helper), "native-build-plan", "--lock", "package.lock", "--state", ".toka", "--target", target],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
     )
     if result.returncode != 0:
@@ -188,7 +206,8 @@ def native_package_plan(target_triples: list[str]) -> tuple[list[dict], list[str
         plan = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise RuntimeError("native package plan was not JSON") from error
-    if plan.get("schema") != "toka.native-package-plan-v1" or plan.get("version") != 1:
+    if (plan.get("schema") != "toka.native-package-plan-v2" or
+            plan.get("version") != 2 or plan.get("target") != target):
         raise RuntimeError("unsupported native package plan")
     packages = plan.get("packages")
     if not isinstance(packages, list):
@@ -206,10 +225,15 @@ def native_package_plan(target_triples: list[str]) -> tuple[list[dict], list[str
             raise RuntimeError("native package plan contains an invalid package")
         alias = package.get("alias")
         sources = package.get("sources")
-        libraries = package.get("libraries")
+        pkg_config_libraries = package.get("pkg_config")
         frameworks = package.get("frameworks")
+        system_libraries = package.get("system_libraries")
+        ffi_resources = package.get("ffi_resources")
         if (not isinstance(alias, str) or not isinstance(sources, list) or
-                not isinstance(libraries, list) or not isinstance(frameworks, list)):
+                not isinstance(pkg_config_libraries, list) or
+                not isinstance(frameworks, list) or
+                not isinstance(system_libraries, list) or
+                not isinstance(ffi_resources, list)):
             raise RuntimeError("native package plan contains invalid fields")
         fingerprint.update(alias.encode("utf-8"))
         for source in sources:
@@ -217,7 +241,7 @@ def native_package_plan(target_triples: list[str]) -> tuple[list[dict], list[str
                 raise RuntimeError("native package source is unavailable: " + str(source))
             fingerprint.update(source.encode("utf-8"))
             fingerprint.update(Path(source).read_bytes())
-        for library in libraries:
+        for library in pkg_config_libraries:
             if not isinstance(library, str):
                 raise RuntimeError("native package library is invalid")
             library_cflags = pkg_config("--cflags", library)
@@ -227,10 +251,16 @@ def native_package_plan(target_triples: list[str]) -> tuple[list[dict], list[str
             link_libraries.extend(library_links)
             fingerprint.update(library.encode("utf-8"))
             fingerprint.update("\0".join(library_cflags + library_search + library_links).encode("utf-8"))
+        for library in system_libraries:
+            if not isinstance(library, str):
+                raise RuntimeError("native package system library is invalid")
+            link_libraries.append(library)
+            fingerprint.update(library.encode("utf-8"))
         for framework in frameworks:
             if not isinstance(framework, str):
                 raise RuntimeError("native package framework is invalid")
             fingerprint.update(framework.encode("utf-8"))
+        fingerprint.update(json.dumps(ffi_resources, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     return (
         packages,
         list(dict.fromkeys(cflags)),

@@ -246,14 +246,17 @@ def test_native_build_metadata(root: Path) -> None:
     module.write_text("pub fn value() -> i32 { return 1 }\n", encoding="utf-8")
     write_package(project, "consumer", [("bridge", '"../bridge"')])
     resolve(project)
-    plan = native_build_plan(project / "package.lock", project / ".toka")
-    assert plan["schema"] == "toka.native-package-plan-v1"
+    plan = native_build_plan(project / "package.lock", project / ".toka", target="macos")
+    assert plan["schema"] == "toka.native-package-plan-v2"
+    assert plan["target"] == "macos"
     assert plan["packages"] == [{
         "alias": "bridge",
         "root": str(dependency.resolve()),
         "sources": [str((dependency / "native" / "bridge.c").resolve()), str((dependency / "native" / "bridge.m").resolve())],
-        "libraries": ["zlib"],
+        "pkg_config": ["zlib"],
         "frameworks": ["AppKit"],
+        "system_libraries": [],
+        "ffi_resources": [],
     }]
 
     manifest = (dependency / "package.tk")
@@ -263,8 +266,104 @@ def test_native_build_metadata(root: Path) -> None:
     )
     resolve(project)
     expect_error(
-        lambda: native_build_plan(project / "package.lock", project / ".toka"),
+        lambda: native_build_plan(project / "package.lock", project / ".toka", target="macos"),
         "native.sources must use relative native/*.c or native/*.m paths",
+    )
+
+
+def test_conditional_native_build_metadata(root: Path) -> None:
+    workspace = root / "conditional-native-build-metadata"
+    project = workspace / "consumer"
+    dependency = workspace / "bridge"
+    dependency.mkdir(parents=True)
+    (dependency / "native").mkdir()
+    for source in ("common.c", "macos.m", "linux.c", "windows.c"):
+        (dependency / "native" / source).write_text(
+            "int toka_bridge_%s(void) { return 1; }\n" % source.replace(".", "_"),
+            encoding="utf-8",
+        )
+    (dependency / "package.tk").write_text(
+        "pub const PACKAGE = (\n"
+        '    name = "bridge",\n'
+        '    identity = "official/bridge",\n'
+        '    version = "1.0.0",\n'
+        '    targets = ("macos", "linux", "windows"),\n'
+        "    dependencies = (),\n"
+        "    native = (\n"
+        "        required = true,\n"
+        '        sources = ("native/common.c"),\n'
+        '        macos = (sources = ("native/macos.m"), frameworks = ("AppKit")),\n'
+        '        linux = (sources = ("native/linux.c"), pkg_config = ("zlib")),\n'
+        '        windows = (sources = ("native/windows.c"), system_libraries = ("ws2_32",)),\n'
+        "        ffi_resources = ((\n"
+        '            name = "Window", acquire = "toka_bridge_open",\n'
+        '            release = "toka_bridge_close", ownership = "owned",\n'
+        "            nullable = false, thread_affinity = \"ui\", send = false\n"
+        "        ))\n"
+        "    )\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    module = dependency / "lib" / "official" / "bridge.tk"
+    module.parent.mkdir(parents=True)
+    module.write_text("pub fn value() -> i32 { return 1 }\n", encoding="utf-8")
+    write_package(project, "consumer", [("bridge", '"../bridge"')])
+    resolve(project)
+
+    macos = native_build_plan(project / "package.lock", project / ".toka", target="macos")
+    assert macos["packages"][0]["sources"] == [
+        str((dependency / "native" / "common.c").resolve()),
+        str((dependency / "native" / "macos.m").resolve()),
+    ]
+    assert macos["packages"][0]["frameworks"] == ["AppKit"]
+    assert macos["packages"][0]["pkg_config"] == []
+    assert macos["packages"][0]["ffi_resources"] == [{
+        "name": "Window", "acquire": "toka_bridge_open",
+        "release": "toka_bridge_close", "ownership": "owned",
+        "nullable": False, "thread_affinity": "ui", "send": False,
+    }]
+
+    linux = native_build_plan(project / "package.lock", project / ".toka", target="linux")
+    assert linux["packages"][0]["sources"] == [
+        str((dependency / "native" / "common.c").resolve()),
+        str((dependency / "native" / "linux.c").resolve()),
+    ]
+    assert linux["packages"][0]["pkg_config"] == ["zlib"]
+    assert linux["packages"][0]["frameworks"] == []
+
+    windows = native_build_plan(project / "package.lock", project / ".toka", target="windows")
+    assert windows["packages"][0]["sources"] == [
+        str((dependency / "native" / "common.c").resolve()),
+        str((dependency / "native" / "windows.c").resolve()),
+    ]
+    assert windows["packages"][0]["system_libraries"] == ["ws2_32"]
+
+    expect_error(
+        lambda: native_build_plan(project / "package.lock", project / ".toka", target="android"),
+        "unsupported native target: android",
+    )
+
+    manifest = dependency / "package.tk"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace("thread_affinity = \"ui\", send = false", "thread_affinity = \"ui\", send = true"),
+        encoding="utf-8",
+    )
+    resolve(project)
+    expect_error(
+        lambda: native_build_plan(project / "package.lock", project / ".toka", target="macos"),
+        "UI-affine native resource cannot be Send: bridge",
+    )
+
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "required = true,", "required = true, cflags = (\"-Dunsafe\",),"
+        ),
+        encoding="utf-8",
+    )
+    resolve(project)
+    expect_error(
+        lambda: native_build_plan(project / "package.lock", project / ".toka", target="macos"),
+        "unsupported native manifest field: cflags",
     )
 
 
@@ -498,6 +597,7 @@ def main() -> int:
         test_path_graph(root)
         test_official_mapping(root)
         test_native_build_metadata(root)
+        test_conditional_native_build_metadata(root)
         test_cycles_and_conflicts(root)
         test_registry_and_rollback(root)
         test_git_and_remove(root)

@@ -29,12 +29,29 @@ def main() -> int:
         changed_compiler = BUILD.native_toolchain_identity(["host-target"])
         if baseline == changed_compiler:
             raise AssertionError("native cache identity ignored CC")
+
+        expected_platforms = {
+            "aarch64-apple-darwin": "macos",
+            "x86_64-unknown-linux-gnu": "linux",
+            "x86_64-pc-windows-msvc": "windows",
+        }
+        for triple, expected in expected_platforms.items():
+            actual = BUILD.native_platform([triple])
+            if actual != expected:
+                raise AssertionError("native target mapping %s != %s for %s" %
+                                     (actual, expected, triple))
+        try:
+            BUILD.native_platform(["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"])
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("mixed native target platforms were accepted")
     finally:
         if original is None:
             os.environ.pop("CC", None)
         else:
             os.environ["CC"] = original
-    print("PASS: native compiler and target cache identity")
+    print("PASS: native compiler, target identity, and platform selection")
     return 0
 
 

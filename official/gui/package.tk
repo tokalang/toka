@@ -11,9 +11,21 @@ pub const PACKAGE = (
     dependencies = (),
     native = (
         required = true,
-        sources = ("native/toka_gui.m"),
-        libraries = (),
-        frameworks = ("AppKit", "Metal", "QuartzCore")
+        macos = (
+            sources = ("native/toka_gui.m"),
+            frameworks = ("AppKit", "Metal", "QuartzCore")
+        ),
+        ffi_resources = (
+            (
+                name = "Window",
+                acquire = "toka_gui_macos_create_window",
+                release = "toka_gui_macos_destroy_window",
+                ownership = "owned",
+                nullable = false,
+                thread_affinity = "ui",
+                send = false
+            )
+        )
     )
 )
 

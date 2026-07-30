@@ -47,7 +47,7 @@ fn sqlite_error(code: i32, operation: str) -> SqliteError {
     message#.push_str(" failed (code ")
     message#.push_str(string::from_i64(code as i64).as_str())
     message#.push_byte_raw(')' as u8)
-    return SqliteError(code = code, message = message)
+    return SqliteError(code = code, message = cede message)
 }
 
 impl SqliteError {

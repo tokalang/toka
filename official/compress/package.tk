@@ -12,7 +12,8 @@ pub const PACKAGE = (
     native = (
         required = true,
         sources = ("native/compress_zlib.c"),
-        libraries = ("zlib")
+        macos = (pkg_config = ("zlib")),
+        linux = (pkg_config = ("zlib"))
     )
 )
 

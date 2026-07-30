@@ -29,6 +29,8 @@ GIT_RE = re.compile(
 )
 NATIVE_LIBRARY_RE = re.compile(r"^[A-Za-z0-9_+.-]+$")
 NATIVE_FRAMEWORK_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+NATIVE_RESOURCE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+NATIVE_TARGETS = ("macos", "linux", "windows")
 
 
 class PackageError(RuntimeError):
@@ -243,11 +245,142 @@ def _static_string_tuple(block: str, field: str) -> tuple[str, ...]:
     return tuple(decoded)
 
 
+def _direct_static_tuple_block(block: str, field: str) -> str | None:
+    """Return a tuple field declared directly in a static tuple block."""
+    for entry in _split_entries(block):
+        match = re.fullmatch(
+            re.escape(field) + r"\s*=\s*\((.*)\)\s*", entry,
+            flags=re.DOTALL,
+        )
+        if match:
+            return match.group(1)
+    return None
+
+
+def _direct_static_field_names(block: str, context: str) -> set[str]:
+    fields: set[str] = set()
+    for entry in _split_entries(block):
+        match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", entry)
+        if not match:
+            raise PackageError("invalid static field in " + context)
+        field = match.group(1)
+        if field in fields:
+            raise PackageError("duplicate " + context + " field: " + field)
+        fields.add(field)
+    return fields
+
+
+def _direct_static_string_tuple(block: str, field: str) -> tuple[str, ...]:
+    values = _direct_static_tuple_block(block, field)
+    if values is None:
+        return ()
+    decoded: list[str] = []
+    for entry in _split_entries(values):
+        entry = entry.strip()
+        if not (entry.startswith('"') and entry.endswith('"')):
+            raise PackageError("native." + field + " must contain only strings")
+        decoded.append(_decode_string(entry))
+    return tuple(decoded)
+
+
 def _static_bool(block: str, field: str, *, default: bool) -> bool:
     match = re.search(r"\b" + re.escape(field) + r"\s*=\s*(true|false)\b", block)
     if not match:
         return default
     return match.group(1) == "true"
+
+
+def _static_string(block: str, field: str) -> str | None:
+    match = re.search(r"\b" + re.escape(field) + r'\s*=\s*("(?:[^"\\]|\\.)*")', block)
+    if not match:
+        return None
+    return _decode_string(match.group(1))
+
+
+def _static_tuple_entries(block: str, field: str) -> tuple[str, ...]:
+    values = _direct_static_tuple_block(block, field)
+    if values is None:
+        return ()
+    entries: list[str] = []
+    for entry in _split_entries(values):
+        entry = entry.strip()
+        if not (entry.startswith("(") and entry.endswith(")")):
+            raise PackageError("native." + field + " must contain only static tuples")
+        entries.append(entry[1:-1])
+    return tuple(entries)
+
+
+def _native_target_block(native: str, target: str) -> str:
+    if target not in NATIVE_TARGETS:
+        raise PackageError("unsupported native target: " + target)
+    selected = _direct_static_tuple_block(native, target)
+    has_target_blocks = any(_direct_static_tuple_block(native, name) is not None
+                            for name in NATIVE_TARGETS)
+    if selected is None:
+        if has_target_blocks:
+            raise PackageError("native package does not declare required native support for target: " + target)
+        return ""
+    return selected
+
+
+def _validate_native_manifest(native: str, target: str) -> str:
+    allowed = {
+        "required", "sources", "libraries", "pkg_config", "frameworks",
+        "system_libraries", "ffi_resources", *NATIVE_TARGETS,
+    }
+    unsupported = _direct_static_field_names(native, "native") - allowed
+    if unsupported:
+        raise PackageError("unsupported native manifest field: " + sorted(unsupported)[0])
+    selected = _native_target_block(native, target)
+    target_allowed = {
+        "sources", "libraries", "pkg_config", "frameworks",
+        "system_libraries",
+    }
+    unsupported = _direct_static_field_names(selected, "native." + target) - target_allowed
+    if unsupported:
+        raise PackageError("unsupported native." + target + " field: " + sorted(unsupported)[0])
+    return selected
+
+
+def _native_resource_contracts(native: str, alias: str) -> list[dict[str, object]]:
+    resources: list[dict[str, object]] = []
+    for entry in _static_tuple_entries(native, "ffi_resources"):
+        required_fields = {
+            "name", "acquire", "release", "ownership", "nullable",
+            "thread_affinity", "send",
+        }
+        fields = _direct_static_field_names(entry, "native.ffi_resources")
+        if fields != required_fields:
+            raise PackageError("native.ffi_resources requires exactly the v1 resource fields: " + alias)
+        name = _static_string(entry, "name")
+        acquire = _static_string(entry, "acquire")
+        release = _static_string(entry, "release")
+        ownership = _static_string(entry, "ownership")
+        affinity = _static_string(entry, "thread_affinity")
+        nullable = _static_bool(entry, "nullable", default=False)
+        send = _static_bool(entry, "send", default=False)
+        if (not name or not NATIVE_RESOURCE_NAME_RE.fullmatch(name) or
+                not acquire or not NATIVE_RESOURCE_NAME_RE.fullmatch(acquire) or
+                release is None or ownership not in ("owned", "borrowed") or
+                affinity not in ("any", "ui")):
+            raise PackageError("native.ffi_resources contains an invalid resource contract: " + alias)
+        if ownership == "owned" and (release == "none" or
+                                      not NATIVE_RESOURCE_NAME_RE.fullmatch(release)):
+            raise PackageError("owned native resource requires a release symbol: " + alias)
+        if ownership == "borrowed" and release != "none":
+            raise PackageError("borrowed native resource must declare release = \"none\": " + alias)
+        if affinity == "ui" and send:
+            raise PackageError("UI-affine native resource cannot be Send: " + alias)
+        resources.append({
+            "name": name,
+            "acquire": acquire,
+            "release": release,
+            "ownership": ownership,
+            "nullable": nullable,
+            "thread_affinity": affinity,
+            "send": send,
+        })
+    return sorted(resources, key=lambda resource: str(resource["name"]))
 
 
 def _git_locator(url: str, ref_kind: str, selector: str) -> str:
@@ -775,14 +908,25 @@ def package_root(entry: LockEntry, state: Path) -> Path:
     return state / "packages" / (entry.alias + "-" + suffix)
 
 
-def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
+def native_build_plan(lock_path: Path, state: Path, *, target: str | None = None) -> dict[str, object]:
     """Return the locked native build inputs for required source packages.
 
     This deliberately accepts only relative `native/*.c` or `native/*.m`
-    sources, logical library names, and validated macOS framework names. The
-    build driver obtains library flags through pkg-config; package metadata is
-    never treated as a shell fragment.
+    sources, logical library names, validated macOS framework names, and
+    validated system-library names. The build driver obtains library flags
+    through pkg-config; package metadata is never treated as a shell fragment.
     """
+    if target is None:
+        if sys.platform == "darwin":
+            target = "macos"
+        elif sys.platform.startswith("linux"):
+            target = "linux"
+        elif sys.platform.startswith("win"):
+            target = "windows"
+        else:
+            raise PackageError("cannot infer native target for this host")
+    if target not in NATIVE_TARGETS:
+        raise PackageError("unsupported native target: " + target)
     packages: list[dict[str, object]] = []
     for alias, entry in sorted(read_lock(lock_path).items()):
         root = package_root(entry, state).resolve()
@@ -795,11 +939,24 @@ def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
         native = _static_tuple_block(manifest, "native")
         if native is None or not _static_bool(native, "required", default=False):
             continue
-        sources = _static_string_tuple(native, "sources")
-        libraries = _static_string_tuple(native, "libraries")
-        frameworks = _static_string_tuple(native, "frameworks")
-        if not sources and not libraries and not frameworks:
-            raise PackageError("required native package has no sources, libraries, or frameworks: " + alias)
+        package_targets = _static_string_tuple(manifest, "targets")
+        if package_targets and target not in package_targets:
+            raise PackageError("package does not support native target %s: %s" % (target, alias))
+        selected = _validate_native_manifest(native, target)
+        sources = (_direct_static_string_tuple(native, "sources") +
+                   _direct_static_string_tuple(selected, "sources"))
+        # `libraries` is the v1 spelling.  Keep it source-compatible while
+        # recording the unambiguous pkg-config meaning in the canonical plan.
+        pkg_config = (_direct_static_string_tuple(native, "libraries") +
+                      _direct_static_string_tuple(native, "pkg_config") +
+                      _direct_static_string_tuple(selected, "libraries") +
+                      _direct_static_string_tuple(selected, "pkg_config"))
+        frameworks = (_direct_static_string_tuple(native, "frameworks") +
+                      _direct_static_string_tuple(selected, "frameworks"))
+        system_libraries = (_direct_static_string_tuple(native, "system_libraries") +
+                            _direct_static_string_tuple(selected, "system_libraries"))
+        if not sources and not pkg_config and not frameworks and not system_libraries:
+            raise PackageError("required native package has no sources or native dependencies: " + alias)
         absolute_sources: list[str] = []
         for source in sources:
             relative = Path(source)
@@ -807,6 +964,8 @@ def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
                     not relative.parts or relative.parts[0] != "native" or
                     relative.suffix not in (".c", ".m")):
                 raise PackageError("native.sources must use relative native/*.c or native/*.m paths: " + alias)
+            if target != "macos" and relative.suffix == ".m":
+                raise PackageError("Objective-C native source requires macos target: " + alias)
             resolved = (root / relative).resolve()
             try:
                 resolved.relative_to(root)
@@ -815,20 +974,28 @@ def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
             if not resolved.is_file() or resolved.is_symlink():
                 raise PackageError("native source is not a regular file: " + str(relative))
             absolute_sources.append(str(resolved))
-        for library in libraries:
+        for library in pkg_config:
             if not NATIVE_LIBRARY_RE.fullmatch(library):
-                raise PackageError("native library name is invalid: " + alias)
+                raise PackageError("native pkg-config library name is invalid: " + alias)
         for framework in frameworks:
+            if target != "macos":
+                raise PackageError("native frameworks are supported only on macos: " + alias)
             if not NATIVE_FRAMEWORK_RE.fullmatch(framework):
                 raise PackageError("native framework name is invalid: " + alias)
+        for library in system_libraries:
+            if not NATIVE_LIBRARY_RE.fullmatch(library):
+                raise PackageError("native system library name is invalid: " + alias)
         packages.append({
             "alias": alias,
             "root": str(root),
             "sources": sorted(absolute_sources),
-            "libraries": sorted(set(libraries)),
+            "pkg_config": sorted(set(pkg_config)),
             "frameworks": sorted(set(frameworks)),
+            "system_libraries": sorted(set(system_libraries)),
+            "ffi_resources": _native_resource_contracts(native, alias),
         })
-    return {"schema": "toka.native-package-plan-v1", "packages": packages, "version": 1}
+    return {"schema": "toka.native-package-plan-v2", "packages": packages,
+            "target": target, "version": 2}
 
 
 def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
@@ -901,6 +1068,7 @@ def main() -> int:
     native_plan = subparsers.add_parser("native-build-plan")
     native_plan.add_argument("--lock", default="package.lock")
     native_plan.add_argument("--state", default=".toka")
+    native_plan.add_argument("--target", choices=NATIVE_TARGETS)
 
     digest = subparsers.add_parser("hash-tree")
     digest.add_argument("path")
@@ -928,7 +1096,7 @@ def main() -> int:
             for mapping in compiler_mappings(Path(args.lock), Path(args.state)):
                 print(mapping)
         elif args.command == "native-build-plan":
-            print(json.dumps(native_build_plan(Path(args.lock), Path(args.state)),
+            print(json.dumps(native_build_plan(Path(args.lock), Path(args.state), target=args.target),
                              sort_keys=True, separators=(",", ":")))
         elif args.command == "hash-tree":
             print(tree_sha256(Path(args.path)))

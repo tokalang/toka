@@ -12,7 +12,8 @@ pub const PACKAGE = (
     native = (
         required = true,
         sources = ("native/sqlite_preflight.c"),
-        libraries = ("sqlite3")
+        macos = (pkg_config = ("sqlite3")),
+        linux = (pkg_config = ("sqlite3"))
     )
 )
 

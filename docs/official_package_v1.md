@@ -49,11 +49,7 @@ pub const PACKAGE = (
     entry_modules = ("lib/official/example.tk"),
     targets = ("macos", "linux"),
     dependencies = (),
-    native = (
-        required = false,
-        sources = (),
-        libraries = ()
-    )
+    native = (required = false)
 )
 
 pub const AI_CONTRACT = (
@@ -77,23 +73,27 @@ the lockfile, not a version range, resolves an installation. `compiler` is the
 exact Toka release against which the package was qualified, not a hidden
 compatibility range or promise.
 
-The current resolver reads `dependencies` and safely ignores these additional
-static fields. A future manifest reader may consume them only after preserving
-that behavior for existing packages.
+The resolver reads `dependencies`; the native build planner additionally
+consumes `native` according to the contract below. Other descriptive fields
+remain static package metadata and are safely ignored by resolution.
 
 ### Native source packages
 
-`native.required = true` opts one package into the native build path. Its
-`sources` must be regular relative `native/*.c` or `native/*.m` files;
-`libraries` must be logical `pkg-config` library names; and `frameworks` may
-name validated macOS system frameworks, for example:
+`native.required = true` opts one package into the native build path. One
+static manifest selects a target block; its `sources` must be regular relative
+`native/*.c` files (or macOS-only `.m` files), `pkg_config` names logical
+libraries, and `frameworks` name validated macOS system frameworks, for
+example:
 
 ```toka
 native = (
     required = true,
-    sources = ("native/bridge.m"),
-    libraries = (),
-    frameworks = ("AppKit")
+    macos = (
+        sources = ("native/bridge.m"),
+        frameworks = ("AppKit")
+    ),
+    linux = (pkg_config = ("libpq",)),
+    windows = (system_libraries = ("ws2_32",))
 )
 ```
 
@@ -102,8 +102,13 @@ native = (
 consumer's private `.toka/build/native/` directory and obtains library
 compiler/linker inputs through `pkg-config`. Framework names are emitted only
 as the macOS linker pair `-framework <validated-name>`; v1 accepts only `-L`
-and `-l` linker output from `pkg-config`. A package manifest is never
-interpreted as raw compiler or shell arguments.
+and `-l` linker output from `pkg-config`. `system_libraries` supplies
+validated logical linker libraries for the selected Windows target. A package
+manifest is never interpreted as raw compiler or shell arguments. See
+[`native_dependency_contract_v1.md`](native_dependency_contract_v1.md) for the
+complete target-selection and cache-identity contract, and
+[`ffi_resource_metadata_v1.md`](ffi_resource_metadata_v1.md) for optional
+opaque-handle facts.
 `toka publish` includes a package's `native/` directory when present, so the
 same locked source that was qualified is available to a registry consumer.
 The resulting native objects and libraries are linked only into a consumer

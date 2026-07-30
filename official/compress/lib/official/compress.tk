@@ -104,7 +104,7 @@ fn make_error(code: i32, operation: str) -> CompressError {
         kind = string::from("limit")
         message = string::from("decompressed output exceeds the configured limit")
     }
-    return CompressError(kind = kind, code = code, message = message)
+    return CompressError(kind = cede kind, code = code, message = cede message)
 }
 
 fn take_output(handle: Addr) -> Bytes {

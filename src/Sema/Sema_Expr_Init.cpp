@@ -1025,11 +1025,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
           auto memberAccess = std::make_unique<MemberExpr>(cloneNode(spreadNode->Base), prefix + defField.Name);
           memberAccess->Loc = spreadExprObj->Loc;
 
-          bool isResource = memberTypeObj->isUniquePtr();
-          std::string fieldSoul = toka::Type::stripMorphology(memberTypeObj->getSoulName());
-          if (!isResource && hasDrop(fieldSoul)) {
-            isResource = true;
-          }
+          const bool isResource =
+              memberTypeObj->requiresExplicitOwnershipTransfer(this);
 
           if (isResource) {
             bool isBaseTemporary = dynamic_cast<MethodCallExpr*>(spreadNode->Base.get()) != nullptr || 
@@ -1126,29 +1123,9 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     // parameter. An owned lvalue cannot be bitwise-copied into the new
     // aggregate: that would leave two cleanup owners for the same value.
     // Aliases (`~`, `&`, raw) retain their existing, non-consuming paths.
-    bool fieldReceivesOwnedValue = false;
-    if (memberTypeObj && !memberTypeObj->isSharedPtr() &&
-        !memberTypeObj->isReference() && !memberTypeObj->isRawPointer()) {
-      if (memberTypeObj->isUniquePtr()) {
-        fieldReceivesOwnedValue = true;
-      } else if (auto soul = memberTypeObj->getSoulType()) {
-        std::string soulName = resolveType(soul->getSoulName());
-        const size_t genericStart = soulName.find('<');
-        if (genericStart != std::string::npos)
-          soulName = soulName.substr(0, genericStart);
-
-        // These view types have no cleanup ownership. `string` is a special
-        // runtime-owned value whose destructor is intentionally not reflected
-        // by hasDrop(), so list it alongside the general shape analysis.
-        const bool isBorrowedView =
-            soulName == "str" || soulName == "bytes" ||
-            soulName == "cstr" || soulName == "ViewStrSplitIterator" ||
-            soulName == "ViewStrLinesIterator";
-        fieldReceivesOwnedValue =
-            !isBorrowedView && (soulName == "string" || soulName == "Bytes" ||
-                                hasDrop(soulName));
-      }
-    }
+    const bool fieldReceivesOwnedValue =
+        memberTypeObj &&
+        memberTypeObj->requiresExplicitOwnershipTransfer(this);
     if (fieldReceivesOwnedValue &&
         !dynamic_cast<CedeExpr *>(pair.second.get())) {
       Expr *directSource = pair.second.get();
