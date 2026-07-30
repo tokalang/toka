@@ -996,12 +996,14 @@ uses `free[0]` to release only the storage. Containers whose live elements are
 not a contiguous prefix must drop those elements themselves and then use
 `free[0]`.
 
-Compiler-managed structural drop recurses through value fields, including
-fixed arrays: dropping a live `[T; N]` drops each live `T`. Each element counted
-by `free[count]` is likewise dropped as its complete declared type, so a live
-record element recursively drops its fixed-array fields. This does not make
-uninitialized raw slots live; raw containers must continue to use `free[0]`
-after manually moving or dropping those slots.
+Compiler-managed structural drop recurses through fields with ownership,
+including fixed arrays: dropping a live `[T; N]` drops each live `T`. An array
+element that is a shared or unique handle releases that handle; raw pointers
+and references remain non-owning. Each element counted by `free[count]` is
+likewise dropped as its complete declared type, so a live record element
+recursively drops its fixed-array fields. This does not make uninitialized raw
+slots live; raw containers must continue to use `free[0]` after manually moving
+or dropping those slots.
 
 ```toka
 auto *buf = unsafe alloc [capacity] Resource

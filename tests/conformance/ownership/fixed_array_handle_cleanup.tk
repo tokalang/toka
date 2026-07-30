@@ -1,0 +1,126 @@
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Resource(id: i32)
+
+impl Resource@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+
+    pub fn clone(self) = delete
+}
+
+shape SharedArrayOwner(entries: [~Resource; 2])
+
+shape NestedSharedArrayOwner(inner: SharedArrayOwner)
+
+shape UniqueArrayOwner(entries: [^Resource; 2])
+
+shape NestedUniqueArrayOwner(inner: UniqueArrayOwner)
+
+shape HandleSet(
+    Shared([~Resource; 2]) |
+    Unique([^Resource; 2]) |
+    Empty
+)
+
+fn shared_direct_owner() {
+    auto ~first = new Resource(id = 1)
+    auto ~second = new Resource(id = 2)
+    auto owner = SharedArrayOwner(entries = [~first, ~second])
+}
+
+fn shared_nested_owner() {
+    auto ~first = new Resource(id = 3)
+    auto ~second = new Resource(id = 4)
+    auto owner = NestedSharedArrayOwner(
+        inner = SharedArrayOwner(entries = [~first, ~second])
+    )
+}
+
+fn shared_raw_owner() {
+    unsafe {
+        auto ~first = new Resource(id = 5)
+        auto ~second = new Resource(id = 6)
+        auto *owner# = unsafe alloc [1] SharedArrayOwner(
+            entries = [~first, ~second]
+        )
+        unsafe free [1] *owner
+    }
+}
+
+fn shared_enum_owner() {
+    auto ~first = new Resource(id = 7)
+    auto ~second = new Resource(id = 8)
+    auto values = HandleSet::Shared([~first, ~second])
+}
+
+fn unique_direct_owner() {
+    auto owner = UniqueArrayOwner(entries = [
+        new Resource(id = 9),
+        new Resource(id = 10)
+    ])
+}
+
+fn unique_nested_owner() {
+    auto owner = NestedUniqueArrayOwner(
+        inner = UniqueArrayOwner(entries = [
+            new Resource(id = 11),
+            new Resource(id = 12)
+        ])
+    )
+}
+
+fn unique_raw_owner() {
+    unsafe {
+        auto *owner# = unsafe alloc [1] UniqueArrayOwner(entries = [
+            new Resource(id = 13),
+            new Resource(id = 14)
+        ])
+        unsafe free [1] *owner
+    }
+}
+
+fn unique_enum_owner() {
+    auto values = HandleSet::Unique([
+        new Resource(id = 15),
+        new Resource(id = 16)
+    ])
+}
+
+fn main() -> i32 {
+    shared_direct_owner()
+    assert(g_drop_count == 2,
+           "direct fixed shared-handle array releases each resource")
+
+    shared_nested_owner()
+    assert(g_drop_count == 4,
+           "nested fixed shared-handle array releases each resource")
+
+    shared_raw_owner()
+    assert(g_drop_count == 6,
+           "free[count] releases fixed shared-handle array elements")
+
+    shared_enum_owner()
+    assert(g_drop_count == 8,
+           "enum payload releases fixed shared-handle array elements")
+
+    unique_direct_owner()
+    assert(g_drop_count == 10,
+           "direct fixed unique-handle array drops and frees each resource")
+
+    unique_nested_owner()
+    assert(g_drop_count == 12,
+           "nested fixed unique-handle array drops and frees each resource")
+
+    unique_raw_owner()
+    assert(g_drop_count == 14,
+           "free[count] drops and frees fixed unique-handle array elements")
+
+    unique_enum_owner()
+    assert(g_drop_count == 16,
+           "enum payload drops and frees fixed unique-handle array elements")
+    return 0
+}

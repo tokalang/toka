@@ -736,8 +736,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                   return false;
                 if (candidate->isArray())
                   return typeNeedsDrop(candidate->getArrayElementType());
-                if (candidate->isPointer() || candidate->isReference() ||
-                    candidate->isSmartPointer())
+                if (candidate->isSharedPtr() || candidate->isUniquePtr())
+                  return true;
+                if (candidate->isRawPointer() || candidate->isReference())
                   return false;
                 const auto soul = candidate->getSoulType();
                 return soul && m_Shapes.count(soul->getSoulName());
@@ -1715,12 +1716,9 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
             return false;
           if (candidate->isArray())
             return typeNeedsDrop(candidate->getArrayElementType());
-          // Handle cleanup has a distinct ownership protocol in
-          // executeScopeUnwinding. Do not route an array element handle
-          // through the value-destructor cascade until that protocol has an
-          // element-level implementation.
-          if (candidate->isPointer() || candidate->isReference() ||
-              candidate->isSmartPointer())
+          if (candidate->isSharedPtr() || candidate->isUniquePtr())
+            return true;
+          if (candidate->isRawPointer() || candidate->isReference())
             return false;
           const auto soul = candidate->getSoulType();
           return soul && m_Shapes.count(soul->getSoulName());

@@ -235,6 +235,105 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
     return;
   }
 
+  if (type->isSharedPtr()) {
+    auto *sharedType =
+        llvm::dyn_cast<llvm::StructType>(getLLVMType(type));
+    auto pointeeType = type->getPointeeType();
+    if (!sharedType || sharedType->getNumElements() != 2 || !pointeeType)
+      return;
+
+    llvm::Value *shared =
+        m_Builder.CreateLoad(sharedType, ptrAddr, "drop.shared.handle");
+    llvm::Value *data =
+        m_Builder.CreateExtractValue(shared, 0, "drop.shared.data");
+    llvm::Value *refCount =
+        m_Builder.CreateExtractValue(shared, 1, "drop.shared.refcount");
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    if (!function)
+      return;
+
+    llvm::BasicBlock *release = llvm::BasicBlock::Create(
+        m_Context, "drop.shared.release", function);
+    llvm::BasicBlock *done =
+        llvm::BasicBlock::Create(m_Context, "drop.shared.done", function);
+    m_Builder.CreateCondBr(m_Builder.CreateIsNotNull(refCount), release, done);
+    m_Builder.SetInsertPoint(release);
+
+    llvm::Value *oldCount = m_Builder.CreateAtomicRMW(
+        llvm::AtomicRMWInst::Sub, refCount, m_Builder.getInt32(1),
+        llvm::MaybeAlign(4), llvm::AtomicOrdering::AcquireRelease);
+    llvm::Value *isLast = m_Builder.CreateICmpEQ(
+        oldCount, m_Builder.getInt32(1), "drop.shared.last");
+    llvm::BasicBlock *destroy = llvm::BasicBlock::Create(
+        m_Context, "drop.shared.destroy", function);
+    m_Builder.CreateCondBr(isLast, destroy, done);
+    m_Builder.SetInsertPoint(destroy);
+
+    llvm::BasicBlock *dropPayload = llvm::BasicBlock::Create(
+        m_Context, "drop.shared.payload", function);
+    llvm::BasicBlock *deallocate = llvm::BasicBlock::Create(
+        m_Context, "drop.shared.deallocate", function);
+    m_Builder.CreateCondBr(m_Builder.CreateIsNotNull(data), dropPayload,
+                           deallocate);
+    m_Builder.SetInsertPoint(dropPayload);
+    if (!pointeeType->isUninit())
+      emitDropForType(data, pointeeType);
+    if (!m_Builder.GetInsertBlock()->getTerminator())
+      m_Builder.CreateBr(deallocate);
+
+    m_Builder.SetInsertPoint(deallocate);
+    llvm::Function *freeFn = m_Module->getFunction("free");
+    if (!freeFn) {
+      freeFn = llvm::Function::Create(
+          llvm::FunctionType::get(
+              m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false),
+          llvm::Function::ExternalLinkage, "free", m_Module.get());
+    }
+    m_Builder.CreateCall(freeFn, {data});
+    m_Builder.CreateCall(freeFn, {refCount});
+    m_Builder.CreateBr(done);
+    m_Builder.SetInsertPoint(done);
+    return;
+  }
+
+  if (type->isUniquePtr()) {
+    llvm::Type *handleType = getLLVMType(type);
+    auto pointeeType = type->getPointeeType();
+    if (!handleType || !handleType->isPointerTy() || !pointeeType)
+      return;
+
+    llvm::Value *data =
+        m_Builder.CreateLoad(handleType, ptrAddr, "drop.unique.handle");
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    if (!function)
+      return;
+
+    llvm::BasicBlock *destroy = llvm::BasicBlock::Create(
+        m_Context, "drop.unique.destroy", function);
+    llvm::BasicBlock *done =
+        llvm::BasicBlock::Create(m_Context, "drop.unique.done", function);
+    m_Builder.CreateCondBr(m_Builder.CreateIsNotNull(data), destroy, done);
+    m_Builder.SetInsertPoint(destroy);
+    if (!pointeeType->isUninit())
+      emitDropForType(data, pointeeType);
+    if (!m_Builder.GetInsertBlock()->getTerminator()) {
+      llvm::Function *freeFn = m_Module->getFunction("free");
+      if (!freeFn) {
+        freeFn = llvm::Function::Create(
+            llvm::FunctionType::get(
+                m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false),
+            llvm::Function::ExternalLinkage, "free", m_Module.get());
+      }
+      m_Builder.CreateCall(freeFn, {data});
+      m_Builder.CreateBr(done);
+    }
+    m_Builder.SetInsertPoint(done);
+    return;
+  }
+
+  if (type->isRawPointer() || type->isReference())
+    return;
+
   if (type->IsNullable) {
     auto *nullableType = llvm::dyn_cast<llvm::StructType>(getLLVMType(type));
     if (nullableType && nullableType->getNumElements() == 2 &&

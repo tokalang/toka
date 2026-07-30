@@ -115,6 +115,14 @@
       "description": "Structural drop recursively cleans direct, nested, enum, and raw fixed-array resource fields"
     },
     {
+      "id": "ownership_fixed_array_handle_cleanup_01",
+      "path": "ownership/fixed_array_handle_cleanup.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Fixed arrays release shared and unique handles across direct, nested, enum, and raw-storage cleanup"
+    },
+    {
       "id": "ownership_interior_mutable_field_shared_view_01",
       "path": "ownership/interior_mutable_field_shared_view.tk",
       "type": "run",
