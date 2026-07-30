@@ -1,0 +1,302 @@
+// A bounded reference service for production data access. It is intentionally
+// an application, not a framework: routing, cache policy, query bounds, and
+// shutdown ownership are all visible at the call site.
+
+import core/option::{Option}
+import core/result::{Result}
+import official/postgres::{PostgresParam, PostgresPool, PostgresQueryLimits}
+import official/redis::{RedisPool}
+import official/router::{Router}
+import std/async::{TaskScope, spawn_into}
+import std/bytes::{Bytes}
+import std/context::{Canceler}
+import std/net::{TcpListener}
+import std/sync::{Mutex}
+import std/vec::{Vec}
+import stdx/log/json::{JsonField, JsonLogger}
+import stdx/log/log::{LogLevel, LOG_INFO}
+import stdx/metrics/prometheus::{PrometheusRegistry}
+import stdx/net/http::{HeaderMap, HttpMethod, HttpRequest, HttpResponse, HttpServer, HttpServerConnection}
+import stdx/serde/json::{to_json}
+
+shape DataAccessServiceState (
+    router#: Router,
+    redis#: RedisPool,
+    postgres#: PostgresPool,
+    metrics#: PrometheusRegistry,
+    logger: JsonLogger,
+    closed: bool
+)
+
+impl DataAccessServiceState @Send {}
+
+// Clones share the service state and are safe to hand to request workers. A
+// request extracts pool handles while holding the mutex and never awaits while
+// the mutex is held.
+pub shape DataAccessService (
+    ~state: Mutex<DataAccessServiceState>
+)
+
+impl DataAccessService@encap {
+    fn drop(self#) {}
+
+    pub fn clone(self#) -> DataAccessService
+    effects: return <- self.state {
+        return DataAccessService(~state = self.~state)
+    }
+}
+
+impl DataAccessService @Send {}
+
+fn response(status_code: i32, content_type: str, cede body: string) -> HttpResponse {
+    auto headers# = HeaderMap::new()
+    auto inserted = headers#.insert(string::from("Content-Type"), string::from(content_type))
+    if inserted.is_err() {
+        return HttpResponse::bad_request(string::from("invalid response headers"))
+    }
+    return HttpResponse(
+        status_code = status_code,
+        content_type = string::from(content_type),
+        headers = cede headers,
+        body = cede body
+    )
+}
+
+fn json_error(status_code: i32, message: str) -> HttpResponse {
+    auto body# = string::from("{\"error\":")
+    auto encoded = to_json(string::from(message))
+    body#.push_str(encoded.as_str())
+    body#.push_str("}")
+    return response(status_code, "application/json", cede body)
+}
+
+fn note_response(id: str, source: str) -> HttpResponse {
+    auto body# = string::from("{\"id\":")
+    auto encoded_id = to_json(string::from(id))
+    auto encoded_source = to_json(string::from(source))
+    body#.push_str(encoded_id.as_str())
+    body#.push_str(",\"source\":")
+    body#.push_str(encoded_source.as_str())
+    body#.push_str("}")
+    return response(200:i32, "application/json", cede body)
+}
+
+fn cache_marker() -> Bytes {
+    auto marker# = Vec<u8>::new()
+    marker#.push(1:u8)
+    return Bytes::from_vec(cede marker)
+}
+
+fn parameter_types() -> Vec<u32> {
+    auto types# = Vec<u32>::new()
+    types#.push(25:u32)
+    return types
+}
+
+fn parameters(id: str) -> Vec<PostgresParam> {
+    auto values# = Vec<PostgresParam>::new()
+    values#.push(cede PostgresParam::Text(string::from(id)))
+    return values
+}
+
+impl DataAccessService {
+    pub fn new(cede postgres: PostgresPool, cede redis: RedisPool,
+               log_level: LogLevel) -> Result<DataAccessService, string> {
+        auto router# = Router::new()
+        auto health = router#.add(HttpMethod::GET, "/health", "health")
+        if health.is_err() { return Result<DataAccessService, string>::Err(health.unwrap_err().message()) }
+        auto note = router#.add(HttpMethod::GET, "/notes/:id", "note.show")
+        if note.is_err() { return Result<DataAccessService, string>::Err(note.unwrap_err().message()) }
+        auto metrics = router#.add(HttpMethod::GET, "/metrics", "metrics")
+        if metrics.is_err() { return Result<DataAccessService, string>::Err(metrics.unwrap_err().message()) }
+
+        auto metrics# = PrometheusRegistry::new()
+        if metrics#.register_counter(string::from("data_service_requests_total")).is_err() ||
+           metrics#.register_counter(string::from("data_service_cache_hits_total")).is_err() ||
+           metrics#.register_counter(string::from("data_service_database_transactions_total")).is_err() {
+            return Result<DataAccessService, string>::Err(string::from("failed to initialize service metrics"))
+        }
+        return Result<DataAccessService, string>::Ok(DataAccessService(
+            ~state = Mutex<DataAccessServiceState>::make(cede DataAccessServiceState(
+                router = cede router,
+                redis = cede redis,
+                postgres = cede postgres,
+                metrics = cede metrics,
+                logger = JsonLogger::new(log_level),
+                closed = false
+            ))
+        ))
+    }
+
+    fn record(self#, route: str, source: str) {
+        auto logger# = Option<JsonLogger>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return }
+            auto lock_value = locked.unwrap()
+            auto *state_value# = lock_value.get_ref()
+            if state_value.closed { return }
+            auto _incremented = state_value.metrics#.inc_counter("data_service_requests_total", 1:i64)
+            if source.equals("cache") {
+                auto _cache_incremented = state_value.metrics#.inc_counter("data_service_cache_hits_total", 1:i64)
+            }
+            if source.equals("database") {
+                auto _database_incremented = state_value.metrics#.inc_counter("data_service_database_transactions_total", 1:i64)
+            }
+            logger = Option<JsonLogger>::Some(state_value.logger.clone())
+        }
+        match cede logger {
+            auto Option<JsonLogger>::Some('logger_value) => {
+                auto fields# = Vec<JsonField>::new()
+                fields#.push(cede JsonField::new(string::from("route"), string::from(route)))
+                fields#.push(cede JsonField::new(string::from("source"), string::from(source)))
+                'logger_value.emit(LOG_INFO, string::from("request complete"), cede fields)
+            }
+            auto Option<JsonLogger>::None => {}
+        }
+    }
+
+    fn metrics_response(self#) -> HttpResponse {
+        auto locked = self.state.lock()
+        if locked.is_err() { return json_error(500:i32, "metrics mutex failure") }
+        auto lock_value = locked.unwrap()
+        auto *state_value# = lock_value.get_ref()
+        if state_value.closed { return json_error(503:i32, "service is closed") }
+        return response(200:i32, "text/plain; version=0.0.4", cede state_value.metrics.render())
+    }
+
+    pub fn handle_async(self#, request: HttpRequest) -> async HttpResponse {
+        auto route# = Option<string>::None
+        auto id# = Option<string>::None
+        auto redis# = Option<RedisPool>::None
+        auto postgres# = Option<PostgresPool>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return json_error(500:i32, "service mutex failure") }
+            auto lock_value = locked.unwrap()
+            auto *state_value# = lock_value.get_ref()
+            if state_value.closed { return json_error(503:i32, "service is closed") }
+            auto matched = state_value.router.recognize(request.method, request.path.as_str())
+            if matched.is_none() { return json_error(404:i32, "route not found") }
+            auto found = matched.unwrap()
+            route = Option<string>::Some(found.route_name())
+            auto parameter = found.param("id")
+            if parameter.is_some() { id = Option<string>::Some(parameter.unwrap()) }
+            redis = Option<RedisPool>::Some(state_value.redis#.clone())
+            postgres = Option<PostgresPool>::Some(state_value.postgres#.clone())
+        }
+
+        auto route_name = route.unwrap()
+        if route_name.as_str().equals("health") {
+            self#.record("health", "local")
+            return response(200:i32, "application/json", cede string::from("{\"status\":\"ok\"}"))
+        }
+        if route_name.as_str().equals("metrics") {
+            self#.record("metrics", "local")
+            return self#.metrics_response()
+        }
+        if !route_name.as_str().equals("note.show") || id.is_none() {
+            return json_error(404:i32, "route not found")
+        }
+
+        auto note_id = id.unwrap()
+        auto cache_key# = string::from("note:")
+        cache_key#.push_str(note_id.as_str())
+        auto redis_pool# = redis.unwrap()
+        {
+            auto cache_lease = redis_pool#.acquire_async(100:i32).await
+            if cache_lease.is_err() { return json_error(503:i32, "cache unavailable") }
+            auto cache_lease# = cache_lease.unwrap()
+            auto cached = cache_lease#.get_async(cache_key.as_str()).await
+            if cached.is_err() { return json_error(503:i32, "cache request failed") }
+            if cached.unwrap().is_some() {
+                self#.record("note.show", "cache")
+                return note_response(note_id.as_str(), "cache")
+            }
+        }
+
+        auto postgres_pool# = postgres.unwrap()
+        auto database_lease = postgres_pool#.acquire_async(100:i32).await
+        if database_lease.is_err() { return json_error(503:i32, "database unavailable") }
+        auto transaction = database_lease.unwrap()#.begin_transaction_async().await
+        if transaction.is_err() { return json_error(503:i32, "database transaction failed") }
+        auto transaction# = transaction.unwrap()
+        auto selected = transaction#.query_params_async(
+            "SELECT id FROM notes WHERE id = $1", cede parameter_types(), cede parameters(note_id.as_str()),
+            PostgresQueryLimits::new(1:usize, 1:usize, 256:usize).unwrap()
+        ).await
+        if selected.is_err() { return json_error(503:i32, "database query failed") }
+        if transaction#.commit_async().await.is_err() { return json_error(503:i32, "database commit failed") }
+        auto cache_lease = redis_pool#.acquire_async(100:i32).await
+        if cache_lease.is_err() { return json_error(503:i32, "cache unavailable") }
+        auto cache_lease# = cache_lease.unwrap()
+        auto stored = cache_lease#.set_async(cache_key.as_str(), cede cache_marker()).await
+        if stored.is_err() { return json_error(503:i32, "cache write failed") }
+        self#.record("note.show", "database")
+        return note_response(note_id.as_str(), "database")
+    }
+
+    // Closing drains idle pool members. Outstanding request leases see the
+    // closed pool state when they return and close rather than requeue.
+    pub fn close(self#) {
+        auto redis# = Option<RedisPool>::None
+        auto postgres# = Option<PostgresPool>::None
+        {
+            auto locked = self.state.lock()
+            if locked.is_err() { return }
+            auto lock_value = locked.unwrap()
+            auto *state_value# = lock_value.get_ref()
+            if state_value.closed { return }
+            state_value.closed = true
+            redis = Option<RedisPool>::Some(state_value.redis#.clone())
+            postgres = Option<PostgresPool>::Some(state_value.postgres#.clone())
+        }
+        redis.unwrap()#.close()
+        postgres.unwrap()#.close()
+    }
+}
+
+pub fn serve_connection_async(cede service: DataAccessService,
+                             cede connection: HttpServerConnection) -> async Result<i32, string> {
+    auto service# = cede service
+    auto connection# = cede connection
+    auto request = connection#.read_request_async().await
+    auto reply = if request.is_err() {
+        pass json_error(400:i32, "invalid HTTP request")
+    } else {
+        pass service#.handle_async(request.unwrap()).await
+    }
+    auto written = connection#.write_response_async(reply).await
+    connection#.close()
+    if written.is_err() { return Result<i32, string>::Err(written.unwrap_err()) }
+    return Result<i32, string>::Ok(0:i32)
+}
+
+// Cancellation stops accepting first, then bounds worker drain through the
+// existing TaskScope contract. The caller retains another service handle and
+// invokes close after this future resolves.
+pub fn serve_until_canceled_async(cede service: DataAccessService,
+                                  cede listener: TcpListener,
+                                  cede canceler: Canceler,
+                                  max_request_bytes: usize,
+                                  timeout_ms: i32,
+                                  drain_timeout_ms: i32) -> async Result<bool, string> {
+    auto service# = cede service
+    auto listener# = cede listener
+    auto canceler# = cede canceler
+    auto scope# = TaskScope::new()
+    loop true {
+        scope#.reap_finished()
+        auto accepted = HttpServer::accept_async_context(listener, canceler, max_request_bytes, timeout_ms).await
+        if accepted.is_err() {
+            if canceler.err().is_some() {
+                return Result<bool, string>::Ok(scope#.shutdown_async(drain_timeout_ms).await)
+            }
+            scope#.shutdown_async(0:i32).await
+            return Result<bool, string>::Err(accepted.unwrap_err())
+        }
+        auto worker = serve_connection_async(cede service#.clone(), cede accepted.unwrap()).start
+        spawn_into(scope, cede worker)
+    }
+    return Result<bool, string>::Err(string::from("unreachable service loop exit"))
+}

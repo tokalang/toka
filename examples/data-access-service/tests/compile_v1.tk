@@ -1,0 +1,22 @@
+import dataaccess/app::{DataAccessService}
+import official/postgres::{PostgresConfig, PostgresPool}
+import official/redis::{RedisPool}
+import std/net::{Ipv4Addr, SocketAddrV4}
+import stdx/log/log::{LOG_ERROR}
+
+fn address(port: u16) -> SocketAddrV4 {
+    return SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+}
+
+fn main() -> i32 {
+    auto postgres_config = PostgresConfig::trusted_local(address(1:u16), "app", "notes")
+    if postgres_config.is_err() { return 1 }
+    auto postgres = PostgresPool::new(cede postgres_config.unwrap(), 1:usize)
+    if postgres.is_err() { return 2 }
+    auto redis = RedisPool::new(cede address(1:u16), 100:i32, 1:usize)
+    if redis.is_err() { return 3 }
+    auto service = DataAccessService::new(cede postgres.unwrap(), cede redis.unwrap(), LOG_ERROR)
+    if service.is_err() { return 4 }
+    service.unwrap()#.close()
+    return 0
+}

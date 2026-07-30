@@ -1,0 +1,289 @@
+import dataaccess/app::{DataAccessService, serve_until_canceled_async}
+import official/postgres::{PostgresConfig, PostgresPool}
+import official/redis::{RedisPool}
+import std/context::{background, with_cancel}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
+import std/task::{block_on, sleep_async}
+import std/vec::{Vec}
+import stdx/log/log::{LOG_INFO}
+import stdx/net/http::{HeaderMap, HttpClient, HttpMethod, HttpRequest}
+
+fn address(port: u16) -> SocketAddrV4 {
+    return SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+}
+
+fn append_u16(out#: Vec<u8>, value: u16) {
+    out#.push((value >> 8:u16) as u8)
+    out#.push(value as u8)
+}
+
+fn append_u32(out#: Vec<u8>, value: u32) {
+    out#.push((value >> 24:u32) as u8)
+    out#.push((value >> 16:u32) as u8)
+    out#.push((value >> 8:u32) as u8)
+    out#.push(value as u8)
+}
+
+fn append_text(out#: Vec<u8>, value: str) {
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        out#.push(value.byte_at(index) as u8)
+        index += 1
+    }
+}
+
+fn append_cstring(out#: Vec<u8>, value: str) {
+    append_text(out, value)
+    out#.push(0:u8)
+}
+
+fn append_frame(out#: Vec<u8>, tag: u8, cede body: Vec<u8>) {
+    auto body# = cede body
+    out#.push(tag)
+    append_u32(out, (body.len() + 4:usize) as u32)
+    auto index#: usize = 0:usize
+    loop index < body.len() {
+        out#.push(body.get(index))
+        index += 1
+    }
+}
+
+fn append_empty(out#: Vec<u8>, tag: u8) {
+    append_frame(out, tag, cede Vec<u8>::new())
+}
+
+fn append_ready(out#: Vec<u8>) {
+    auto body# = Vec<u8>::new()
+    body#.push('I' as u8)
+    append_frame(out, 'Z' as u8, cede body)
+}
+
+fn append_command(out#: Vec<u8>, tag: str) {
+    auto body# = Vec<u8>::new()
+    append_cstring(body, tag)
+    append_frame(out, 'C' as u8, cede body)
+}
+
+fn append_prepared(out#: Vec<u8>) {
+    append_empty(out, '1' as u8)
+    auto parameters# = Vec<u8>::new()
+    append_u16(parameters, 1:u16)
+    append_u32(parameters, 25:u32)
+    append_frame(out, 't' as u8, cede parameters)
+    append_empty(out, 'n' as u8)
+    append_ready(out)
+}
+
+fn append_executed(out#: Vec<u8>) {
+    append_empty(out, '2' as u8)
+    append_command(out, "SELECT 1")
+    append_ready(out)
+}
+
+fn append_closed(out#: Vec<u8>) {
+    append_empty(out, '3' as u8)
+    append_ready(out)
+}
+
+fn bytes_from_text(value: str) -> Vec<u8> {
+    auto bytes# = Vec<u8>::with_capacity(value.len())
+    auto index#: usize = 0:usize
+    loop index < value.len() {
+        bytes#.push(value.byte_at(index) as u8)
+        index += 1
+    }
+    return bytes
+}
+
+fn read_async(stream#: TcpStream) -> async bool {
+    auto buffer# = Vec<u8>::with_capacity(2048:usize)
+    auto read = stream#.read_into_async(cede buffer, 2048:usize, 1000:i32).await
+    if read.is_err() { return false }
+    auto received# = read.unwrap()
+    auto count = received.bytes_read
+    auto _bytes = received#.take_buffer()
+    return count > 0:usize
+}
+
+fn read_bytes_async(stream#: TcpStream) -> async Vec<u8> {
+    auto buffer# = Vec<u8>::with_capacity(2048:usize)
+    auto read = stream#.read_into_async(cede buffer, 2048:usize, 1000:i32).await
+    if read.is_err() { return Vec<u8>::new() }
+    auto received# = read.unwrap()
+    auto count = received.bytes_read
+    auto bytes = received#.take_buffer()
+    if count == 0:usize { return Vec<u8>::new() }
+    return bytes
+}
+
+fn eof_async(stream#: TcpStream) -> async bool {
+    auto buffer# = Vec<u8>::with_capacity(64:usize)
+    auto read = stream#.read_into_async(cede buffer, 64:usize, 1000:i32).await
+    if read.is_err() { return false }
+    auto received# = read.unwrap()
+    auto eof = received.eof || received.bytes_read == 0:usize
+    auto _bytes = received#.take_buffer()
+    return eof
+}
+
+fn write_text_async(stream#: TcpStream, response: str) -> async bool {
+    auto bytes# = bytes_from_text(response)
+    return write_bytes_async(stream, cede bytes).await
+}
+
+fn write_bytes_async(stream#: TcpStream, cede bytes: Vec<u8>) -> async bool {
+    auto written = stream#.write_from_async(cede bytes, 1000:i32).await
+    if written.is_err() { return false }
+    auto complete# = written.unwrap()
+    auto done = complete.complete
+    auto _bytes = complete#.take_buffer()
+    return done
+}
+
+fn has_tag(packet: Vec<u8>, tag: u8) -> bool {
+    auto index#: usize = 0:usize
+    loop index < packet.len() {
+        if packet.get(index) == tag { return true }
+        index += 1
+    }
+    return false
+}
+
+fn postgres_server_async(cede listener: TcpListener) -> async i32 {
+    auto listener# = cede listener
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !read_async(stream).await { stream#.close(); return 2 }
+    auto hello# = Vec<u8>::new()
+    auto auth# = Vec<u8>::new()
+    append_u32(auth, 0:u32)
+    append_frame(hello, 'R' as u8, cede auth)
+    append_ready(hello)
+    auto sent = stream#.write_from_async(cede hello, 1000:i32).await
+    if sent.is_err() { stream#.close(); return 3 }
+    auto written# = sent.unwrap()
+    auto _hello = written#.take_buffer()
+
+    if !has_tag(read_bytes_async(stream).await, 'Q' as u8) { stream#.close(); return 4 }
+    auto began# = Vec<u8>::new()
+    append_command(began, "BEGIN")
+    append_ready(began)
+    if !write_bytes_async(stream, cede began).await { stream#.close(); return 5 }
+    if !has_tag(read_bytes_async(stream).await, 'P' as u8) { stream#.close(); return 6 }
+    auto prepared# = Vec<u8>::new()
+    append_prepared(prepared)
+    auto prepared_write = stream#.write_from_async(cede prepared, 1000:i32).await
+    if prepared_write.is_err() { stream#.close(); return 7 }
+    auto prepared_done# = prepared_write.unwrap()
+    auto _prepared = prepared_done#.take_buffer()
+    if !has_tag(read_bytes_async(stream).await, 'B' as u8) { stream#.close(); return 8 }
+    auto executed# = Vec<u8>::new()
+    append_executed(executed)
+    auto executed_write = stream#.write_from_async(cede executed, 1000:i32).await
+    if executed_write.is_err() { stream#.close(); return 9 }
+    auto executed_done# = executed_write.unwrap()
+    auto _executed = executed_done#.take_buffer()
+    if !has_tag(read_bytes_async(stream).await, 'C' as u8) { stream#.close(); return 10 }
+    auto closed# = Vec<u8>::new()
+    append_closed(closed)
+    auto closed_write = stream#.write_from_async(cede closed, 1000:i32).await
+    if closed_write.is_err() { stream#.close(); return 11 }
+    auto closed_done# = closed_write.unwrap()
+    auto _closed = closed_done#.take_buffer()
+    if !has_tag(read_bytes_async(stream).await, 'Q' as u8) { stream#.close(); return 12 }
+    auto committed# = Vec<u8>::new()
+    append_command(committed, "COMMIT")
+    append_ready(committed)
+    if !write_bytes_async(stream, cede committed).await { stream#.close(); return 13 }
+    // Pool close must close the returned connection instead of leaking it.
+    if !eof_async(stream).await { stream#.close(); return 14 }
+    stream#.close()
+    return 0
+}
+
+fn redis_server_async(cede listener: TcpListener) -> async i32 {
+    auto listener# = cede listener
+    auto stream# = listener#.accept_async().await
+    if !stream.is_valid() { return 1 }
+    if !read_async(stream).await { stream#.close(); return 2 }
+    if !write_text_async(stream, "$-1\r\n").await { stream#.close(); return 3 }
+    if !read_async(stream).await { stream#.close(); return 4 }
+    if !write_text_async(stream, "+OK\r\n").await { stream#.close(); return 5 }
+    if !read_async(stream).await { stream#.close(); return 6 }
+    if !write_text_async(stream, "$1\r\n1\r\n").await { stream#.close(); return 7 }
+    // Pool close must close the returned connection instead of leaking it.
+    if !eof_async(stream).await { stream#.close(); return 8 }
+    stream#.close()
+    return 0
+}
+
+fn request(path: str) -> HttpRequest {
+    auto headers# = HeaderMap::new()
+    assert(headers#.insert(string::from("Host"), string::from("127.0.0.1")).is_ok(), "request host")
+    return HttpRequest(
+        method = HttpMethod::GET,
+        path = string::from(path),
+        version = string::from("HTTP/1.1"),
+        headers = cede headers,
+        body = string::from("")
+    )
+}
+
+fn run_async() -> async i32 {
+    auto postgres_listener# = TcpListener::bind(address(0:u16))
+    auto redis_listener# = TcpListener::bind(address(0:u16))
+    auto http_listener# = TcpListener::bind(address(0:u16))
+    if !postgres_listener.is_valid() || !redis_listener.is_valid() || !http_listener.is_valid() { return 1 }
+    auto postgres_port = postgres_listener.local_port()
+    auto redis_port = redis_listener.local_port()
+    auto http_port = http_listener.local_port()
+    if postgres_port == 0:u16 || redis_port == 0:u16 || http_port == 0:u16 { return 2 }
+
+    auto config = PostgresConfig::trusted_local(address(postgres_port), "app", "notes")
+    if config.is_err() { return 3 }
+    auto postgres = PostgresPool::new(cede config.unwrap(), 1:usize)
+    if postgres.is_err() { return 4 }
+    auto redis = RedisPool::new(cede address(redis_port), 1000:i32, 1:usize)
+    if redis.is_err() { return 5 }
+    auto service = DataAccessService::new(cede postgres.unwrap(), cede redis.unwrap(), LOG_INFO)
+    if service.is_err() { return 6 }
+    auto service# = service.unwrap()
+
+    auto cancellation = with_cancel(cede background())
+    auto postgres_server = postgres_server_async(cede postgres_listener).start
+    auto redis_server = redis_server_async(cede redis_listener).start
+    auto http_server = serve_until_canceled_async(cede service#.clone(), cede http_listener,
+        cede cancellation.canceler.clone(), 16384:usize, 2000:i32, 1000:i32).start
+    sleep_async(10:i32).await
+
+    auto client# = HttpClient::new(2000:i32)
+    auto first = client#.execute_async(request("/notes/1"), address(http_port)).await
+    if first.is_err() { return 7 }
+    auto first_response = first.unwrap()
+    if first_response.status_code != 200:i32 || !first_response.body.contains("database") { return 7 }
+    auto second = client#.execute_async(request("/notes/1"), address(http_port)).await
+    if second.is_err() { return 8 }
+    auto second_response = second.unwrap()
+    if second_response.status_code != 200:i32 || !second_response.body.contains("cache") { return 8 }
+    auto metrics = client#.execute_async(request("/metrics"), address(http_port)).await
+    if metrics.is_err() { return 9 }
+    auto metrics_response = metrics.unwrap()
+    if metrics_response.status_code != 200:i32 { return 9 }
+    if !metrics_response.body.contains("data_service_requests_total 3") ||
+       !metrics_response.body.contains("data_service_cache_hits_total 1") ||
+       !metrics_response.body.contains("data_service_database_transactions_total 1") { return 10 }
+
+    cancellation.canceler.call()
+    auto stopped = http_server.await
+    if stopped.is_err() { return 11 }
+    if !stopped.unwrap() { return 11 }
+    if cancellation.canceler.active_token_count() != 0:usize { return 12 }
+    service#.close()
+    if postgres_server.await != 0:i32 { return 13 }
+    if redis_server.await != 0:i32 { return 14 }
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on(run_async())
+}
