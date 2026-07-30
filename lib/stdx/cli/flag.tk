@@ -78,23 +78,23 @@ pub shape Parser (
 
 impl Parser {
     pub fn new(prog: string, desc: string) -> Parser {
-        return Parser(prog=prog, desc=desc, defs=Vec<FlagDef>::new())
+        return Parser(prog=prog.clone(), desc=desc.clone(), defs=Vec<FlagDef>::new())
     }
 
     pub fn add_int(self#, name: string, short: char, default_val: i64, desc: string) {
-        self.defs#.push(FlagDef(name=name, short_name=short, desc=desc, default_val=FlagValue::Int(default_val)))
+        self.defs#.push(FlagDef(name=name.clone(), short_name=short, desc=desc.clone(), default_val=FlagValue::Int(default_val)))
     }
     
     pub fn add_bool(self#, name: string, short: char, default_val: bool, desc: string) {
-        self.defs#.push(FlagDef(name=name, short_name=short, desc=desc, default_val=FlagValue::Bool(default_val)))
+        self.defs#.push(FlagDef(name=name.clone(), short_name=short, desc=desc.clone(), default_val=FlagValue::Bool(default_val)))
     }
 
     pub fn add_float(self#, name: string, short: char, default_val: f64, desc: string) {
-        self.defs#.push(FlagDef(name=name, short_name=short, desc=desc, default_val=FlagValue::Float(default_val)))
+        self.defs#.push(FlagDef(name=name.clone(), short_name=short, desc=desc.clone(), default_val=FlagValue::Float(default_val)))
     }
 
     pub fn add_string(self#, name: string, short: char, default_val: string, desc: string) {
-        self.defs#.push(FlagDef(name=name, short_name=short, desc=desc, default_val=FlagValue::Str(default_val)))
+        self.defs#.push(FlagDef(name=name.clone(), short_name=short, desc=desc.clone(), default_val=FlagValue::Str(default_val.clone())))
     }
 
     pub fn print_help(self) {

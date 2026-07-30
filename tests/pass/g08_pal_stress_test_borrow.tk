@@ -82,7 +82,7 @@ fn main() -> i32 {
     auto ~rightEngine# = new Engine(val = 20)
     
     auto ^rootNode# = new Node(val = 1, ~left = ~leftEngine, ~right = ~rightEngine, reads = 0)
-    auto scene# = Scene(^root = ^rootNode)
+    auto scene# = Scene(^root = cede ^rootNode)
     
     // 1. Transient Borrow check
     // Evaluates Transient for parameters seamlessly.

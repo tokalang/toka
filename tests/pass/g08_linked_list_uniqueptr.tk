@@ -37,7 +37,7 @@ pub fn main() -> i32 {
         {
             for auto i in [1,2,3,4,5] {
                 auto ^next = ^head
-                ^head = new Node(val=i, ^next=^next)
+                ^head = new Node(val=i, ^next=cede ^next)
                 println("[{}]pushed: {}, address: {}", i, head.val, ^head as OAddr)
                 assert(head.val == i, "check head.val")
             }

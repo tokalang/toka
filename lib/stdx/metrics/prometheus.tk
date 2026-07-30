@@ -93,7 +93,7 @@ impl PrometheusRegistry {
         if self.index_of(name.as_view()) >= 0:i64 {
             return Result<i32, string>::Err(string::from("metric already registered"))
         }
-        self.entries#.push(cede MetricEntry(name = name, kind = kind, value = 0:i64))
+        self.entries#.push(cede MetricEntry(name = name.clone(), kind = kind, value = 0:i64))
         return Result<i32, string>::Ok(0:i32)
     }
 

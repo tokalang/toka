@@ -47,7 +47,7 @@ pub fn main() -> i32 {
     assert(pt.x == 42, "struct member val mismatch")
 
     // 3. Struct member Unique pointer test
-    auto uc = UniqueCont(^p = ^pt)
+    auto uc = UniqueCont(^p = cede ^pt)
     println("struct unique addr: {}", uc.^p as OAddr)
     println("struct unique val: {}", uc.p.x)
     assert(uc.p.x == 42, "struct unique val mismatch")

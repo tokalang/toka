@@ -139,8 +139,8 @@ fn test_propagation() -> async i32 {
 
 fn test_value() -> async i32 {
     auto bg# = background()
-    auto ctx1# = with_value<BackgroundContext>(cede bg, string::from("key1"), string::from("val1"))
-    auto ctx2# = with_value<ValueContext<BackgroundContext>>(cede ctx1, string::from("key2"), string::from("val2"))
+    auto ctx1# = with_value<BackgroundContext>(cede bg, cede string::from("key1"), cede string::from("val1"))
+    auto ctx2# = with_value<ValueContext<BackgroundContext>>(cede ctx1, cede string::from("key2"), cede string::from("val2"))
     
     auto v1 = ctx2.value(string::from("key1"))
     assert(v1.is_some(), "key1 should be found")

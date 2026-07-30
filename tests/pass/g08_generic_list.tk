@@ -17,7 +17,7 @@ fn main() -> i32 {
     auto ^head = new Node<i32>(val=1, ^next=null)
     
     // Explicit recursion test
-    auto ^second = new Node<i32>(val=2, ^next=^head)
+    auto ^second = new Node<i32>(val=2, ^next=cede ^head)
     
     return 0
 }

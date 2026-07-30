@@ -1046,7 +1046,17 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
             }
           }
 
-          Init->Members.push_back({prefix + defField.Name, std::move(memberAccess)});
+          std::unique_ptr<Expr> memberInitializer = std::move(memberAccess);
+          // `cede source.*` transfers every resource-bearing member that the
+          // spread synthesizes.  Preserve that transfer on each synthetic
+          // member expression so the ordinary named-field ownership check and
+          // CodeGen see the same explicit boundary as the source spread.
+          if (isSpreadCede && isResource) {
+            auto cededMember = std::make_unique<CedeExpr>(std::move(memberInitializer));
+            cededMember->Loc = spreadExprObj->Loc;
+            memberInitializer = std::move(cededMember);
+          }
+          Init->Members.push_back({prefix + defField.Name, std::move(memberInitializer)});
         }
       }
 

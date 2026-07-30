@@ -47,6 +47,18 @@ Fresh constructors and call results remain valid without `cede`; they have no
 prior storage owner to invalidate. Shared, raw, and borrowed values retain
 their pre-existing rules.
 
+An explicit whole-record spread transfer carries the same fact to every
+resource-bearing field synthesized by that spread:
+
+```toka
+auto replacement = Record(new_id = 2, cede original.*)
+```
+
+This is one explicit ownership boundary, not an implicit exception.  The
+semantic expansion preserves it as a `cede` for each synthesized owned member,
+so later named-field validation and lowering cannot mistake the transfer for a
+copy.
+
 ## Non-goals
 
 - This does not change structural-drop lowering or `@encap drop` semantics.
@@ -61,3 +73,5 @@ their pre-existing rules.
 - the matching `*_cede_exactly_once.tk` cases execute exactly one cleanup;
 - the projection case proves that the decision applies to an access path, not
   only a bare variable name.
+- `g08_spread_nominal.tk` proves that `cede record.*` transfers synthesized
+  owning fields without weakening the ordinary named-field rule.

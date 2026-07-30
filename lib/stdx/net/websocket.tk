@@ -338,7 +338,7 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
         stream = stream#.take(),
         is_client = false,
         max_payload_size = 16777216:usize,
-        surplus_vec = surplus,
+        surplus_vec = cede surplus,
         surplus_offset = 0:usize,
         in_fragment = false,
         fragment_is_text = false,
@@ -535,7 +535,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
         stream = stream#.take(),
         is_client = true,
         max_payload_size = 16777216:usize,
-        surplus_vec = surplus,
+        surplus_vec = cede surplus,
         surplus_offset = 0:usize,
         in_fragment = false,
         fragment_is_text = false,
@@ -893,8 +893,8 @@ impl WsConnection {
 
                 return Result<WsMessage, string>::Ok(WsMessage(
                     is_text = is_text,
-                    text_data = msg_text,
-                    binary_data = msg_bin
+                    text_data = cede msg_text,
+                    binary_data = cede msg_bin
                 ))
             }
         }

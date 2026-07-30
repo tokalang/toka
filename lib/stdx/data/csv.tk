@@ -16,7 +16,7 @@ shape CsvWidth(
 )
 
 fn parse_error(line: usize, column: usize, message: string) -> CsvError {
-    return CsvError(line = line, column = column, message = message)
+    return CsvError(line = line, column = column, message = message.clone())
 }
 
 fn append_record(records#: Vec<Vec<string>>, cede row: Vec<string>,

@@ -18,7 +18,7 @@ impl<'T> BinaryHeap<'T> {
     pub fn new(cmp: fn('T, 'T) -> bool) -> BinaryHeap<'T> {
         auto data# = Vec<'T>::new()
         return BinaryHeap<'T>(
-            data = data,
+            data = cede data,
             cmp = cmp
         )
     }

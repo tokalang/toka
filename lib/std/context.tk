@@ -477,10 +477,10 @@ impl<'C: @Context> ValueContext<'C>@Context {
     }
 }
 
-pub fn with_value<'C: @Context>(cede 'parent#: C, key: string, val: string) -> ValueContext<'C> {
+pub fn with_value<'C: @Context>(cede 'parent#: C, cede key: string, cede val: string) -> ValueContext<'C> {
     return ValueContext<'C>(
         parent = cede 'parent,
-        key = key,
-        value = val
+        key = cede key,
+        value = cede val
     )
 }

@@ -118,7 +118,7 @@ fn async_https_client_task(port: u16) -> async Result<(), string> {
         method = HttpMethod::GET,
         path = string::from("/api"),
         version = string::from("HTTP/1.1"),
-        headers = headers,
+        headers = cede headers,
         body = string::from("")
     )
 
@@ -250,7 +250,7 @@ fn async_plain_client_task(port: u16) -> async Result<(), string> {
         method = HttpMethod::GET,
         path = string::from("/"),
         version = string::from("HTTP/1.1"),
-        headers = headers,
+        headers = cede headers,
         body = string::from("")
     )
 
@@ -337,7 +337,7 @@ fn async_strict_default_client_task(port: u16) -> async Result<(), string> {
         method = HttpMethod::GET,
         path = string::from("/"),
         version = string::from("HTTP/1.1"),
-        headers = headers,
+        headers = cede headers,
         body = string::from("")
     )
 
@@ -392,7 +392,7 @@ fn async_pem_client_task(port: u16) -> async Result<(), string> {
         method = HttpMethod::GET,
         path = string::from("/"),
         version = string::from("HTTP/1.1"),
-        headers = headers,
+        headers = cede headers,
         body = string::from("")
     )
 
