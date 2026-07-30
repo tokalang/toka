@@ -496,8 +496,9 @@ impl HttpServerConnection {
             auto read_result = self.stream#.read_into_async(cede read_buffer, 4096:usize, self.timeout_ms).await
             if read_result.is_err() {
                 auto failure# = read_result.unwrap_err()
-                read_buffer = failure#.take_buffer()
-                return Result<HttpRequest, string>::Err(failure.message.clone())
+                auto message = failure.message.clone()
+                auto _buffer = failure#.take_buffer()
+                return Result<HttpRequest, string>::Err(message)
             }
             auto chunk# = read_result.unwrap()
             auto n_read = chunk.bytes_read
@@ -530,12 +531,14 @@ impl HttpServerConnection {
         auto written = self.stream#.write_from_async(cede bytes, self.timeout_ms).await
         if written.is_err() {
             auto failure# = written.unwrap_err()
+            auto message = failure.message.clone()
             auto _buffer = failure#.take_buffer()
-            return Result<(), string>::Err(failure.message.clone())
+            return Result<(), string>::Err(message)
         }
         auto completed# = written.unwrap()
+        auto complete = completed.complete
         auto _buffer = completed#.take_buffer()
-        if !completed.complete { return Result<(), string>::Err(string::from("Incomplete HTTP response write")) }
+        if !complete { return Result<(), string>::Err(string::from("Incomplete HTTP response write")) }
         return Result<(), string>::Ok(())
     }
 
