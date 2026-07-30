@@ -1636,6 +1636,14 @@
       "description": "A payload guard permits cede into a non-null cede parameter"
     },
     {
+      "id": "ownership_cede_nullable_payload_call_exactly_once_01",
+      "path": "ownership/cede_nullable_payload_call_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A guarded nullable payload ceded to a captured parameter drops once and frees its nullable shell"
+    },
+    {
       "id": "ownership_cede_nullable_payload_return_after_guard_01",
       "path": "ownership/cede_nullable_payload_return_after_guard.tk",
       "type": "run",

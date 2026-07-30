@@ -5333,6 +5333,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   bool isSRet = call->ResolvedType && shouldReturnSRet(call->ResolvedType) && !isAsync;
 
   std::vector<llvm::Value *> argsV;
+  std::vector<llvm::Value *> cededNullablePayloadShells;
   for (size_t i = 0; i < call->Args.size(); ++i) {
     const auto *cededArg =
         dynamic_cast<const CedeExpr *>(call->Args[i].get());
@@ -5491,22 +5492,50 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       val = genExpr(call->Args[i].get()).load(m_Builder);
     }
 
+    const Expr *cededSource = nullptr;
+    if (cededArg) {
+      cededSource = cededArg->Value.get();
+      while (auto *cast = dynamic_cast<const CastExpr *>(cededSource))
+        cededSource = cast->Expression.get();
+      if (auto *unary = dynamic_cast<const UnaryExpr *>(cededSource))
+        cededSource = unary->RHS.get();
+
+      // A guarded `^T?` is an owner slot pointing to a `{ T, present }`
+      // allocation. A captured `cede` parameter for T expects T's address,
+      // which is the nullable shell's offset-zero payload. Pass that shell
+      // directly, then release it after the callee moves out the payload.
+      if (shouldPassAddr) {
+        if (auto *var = dynamic_cast<const VariableExpr *>(cededSource)) {
+          const std::string baseName = Type::stripMorphology(var->Name);
+          auto source = m_Symbols.find(baseName);
+          std::shared_ptr<Type> sourceSoul =
+              source != m_Symbols.end() && source->second.soulTypeObj
+                  ? source->second.soulTypeObj->getSoulType()
+                  : nullptr;
+          if (source != m_Symbols.end() &&
+              source->second.morphology == Morphology::Unique && sourceSoul &&
+              sourceSoul->IsNullable) {
+            if (llvm::Value *sourceSlot = getIdentityAddr(var->codegenName())) {
+              llvm::Value *shell = m_Builder.CreateLoad(
+                  m_Builder.getPtrTy(), sourceSlot, "cede.nullable.shell");
+              val = shell;
+              cededNullablePayloadShells.push_back(shell);
+            }
+          }
+        }
+      }
+    }
+
     // A captured argument is passed as the address of the caller's slot, so
-    // that path deliberately bypasses genCedeExpr.  Preserve cede's cleanup
+    // that path deliberately bypasses genCedeExpr. Preserve cede's cleanup
     // effect here: the callee now owns the resource and the caller must not
     // destroy the same handle when its scope/frame unwinds.
     if (cededArg && shouldPassAddr) {
-      const Expr *source = cededArg->Value.get();
-      while (auto *cast = dynamic_cast<const CastExpr *>(source))
-        source = cast->Expression.get();
-      if (auto *unary = dynamic_cast<const UnaryExpr *>(source))
-        source = unary->RHS.get();
-
-      if (auto *var = dynamic_cast<const VariableExpr *>(source))
+      if (auto *var = dynamic_cast<const VariableExpr *>(cededSource))
         suppressDropForMove(var->Name);
-      else if (auto *member = dynamic_cast<const MemberExpr *>(source))
+      else if (auto *member = dynamic_cast<const MemberExpr *>(cededSource))
         suppressDropForPartialMove(member);
-      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(source))
+      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(cededSource))
         suppressDropForPartialMove(index);
     }
 
@@ -5975,6 +6004,18 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   }
 
   llvm::CallInst *ci = m_Builder.CreateCall(callee->getFunctionType(), callee, argsV);
+
+  if (!cededNullablePayloadShells.empty()) {
+    llvm::Function *freeFn = m_Module->getFunction("free");
+    if (!freeFn) {
+      freeFn = llvm::Function::Create(
+          llvm::FunctionType::get(m_Builder.getVoidTy(),
+                                  {m_Builder.getPtrTy()}, false),
+          llvm::Function::ExternalLinkage, "free", m_Module.get());
+    }
+    for (llvm::Value *shell : cededNullablePayloadShells)
+      m_Builder.CreateCall(freeFn, {shell});
+  }
 
   if (call->CallableReceiver == CallableReceiverMode::Consuming)
     suppressDropForMove(call->Callee);
@@ -6644,7 +6685,7 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
 
     const bool ownsFreshSharedHandle = f.second && f.second->ResolvedType &&
                                        f.second->ResolvedType->isSharedPtr() &&
-                                       isFreshAllocationExpr(f.second.get());
+                                       isOwnedUniquePromotionSource(f.second.get());
     if (!ownsFreshSharedHandle && f.second && f.second->ResolvedType &&
         f.second->ResolvedType->isSharedPtr()) {
       emitAcquire(fieldVal, f.second->ResolvedType->getPointeeType());
