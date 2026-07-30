@@ -83,6 +83,14 @@
       "description": "Vec non-clone operations support move-only resources while copyable Vec cloning remains available"
     },
     {
+      "id": "std_string_result_vec_lifecycle_01",
+      "path": "std/string_result_vec_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "String growth and Result<Vec<string>> transfer clean up rejected and returned owned buffers"
+    },
+    {
       "id": "ownership_cede_raw_storage_exactly_once_01",
       "path": "ownership/cede_raw_storage_exactly_once.tk",
       "type": "run",

@@ -1,0 +1,33 @@
+import core/result::{Result}
+import core/string::{string}
+import std/vec::{Vec}
+
+fn fail_after_growth() -> Result<Vec<string>, i32> {
+    auto values# = Vec<string>::new()
+    auto first# = string::new()
+    first#.push_str("first value grows beyond the initial string allocation")
+    values#.push(cede first)
+
+    auto second# = string::new()
+    second#.push_str("second value also owns a grown backing allocation")
+    values#.push(cede second)
+
+    return Result<Vec<string>, i32>::Err(7)
+}
+
+fn return_after_growth() -> Result<Vec<string>, i32> {
+    auto values# = Vec<string>::new()
+    auto first# = string::new()
+    first#.push_str("returned string value grows beyond the initial allocation")
+    values#.push(cede first)
+    return Result<Vec<string>, i32>::Ok(cede values)
+}
+
+fn main() -> i32 {
+    auto rejected = fail_after_growth()
+    if !rejected.is_err() { return 1 }
+
+    auto returned# = return_after_growth().unwrap()
+    if returned.len() != 1:usize { return 2 }
+    return 0
+}

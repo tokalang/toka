@@ -53,8 +53,11 @@ impl string@encap {
     fn drop(self#) {
         unsafe {
             if self.*buf != null {
-                // libc_free(self.*buf as *void)
-                self.*buf = null 
+                // string owns the allocation produced by unsafe alloc.  Release
+                // storage without structurally dropping its byte payload, then
+                // disarm the handle so an explicit close/drop path is idempotent.
+                unsafe free [0]self.*#buf
+                self.*buf = null
                 self.len = 0
                 self.cap = 0
             }
@@ -318,6 +321,9 @@ impl string {
                 auto *tmp = unsafe alloc [new_cap] char
                 if self.*buf != null {
                     libc_memcpy(*tmp as *void, self.*buf as *void, self.len)
+                    // The bytes were copied into tmp, so the old backing
+                    // allocation has no live owning elements to destroy.
+                    unsafe free [0]self.*#buf
                 }
                 self.*buf = *tmp
                 self.cap = new_cap
