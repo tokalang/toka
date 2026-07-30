@@ -333,7 +333,8 @@ impl AgentService {
             auto RedisValue::Null() => return Result<string, string>::Err(string::from("idempotency key is already in use"))
             _ => return Result<string, string>::Err(string::from("agent idempotency reservation returned invalid reply"))
         }
-        auto lease = postgres.unwrap()#.acquire_async(100:i32).await
+        auto postgres_pool# = postgres.unwrap()
+        auto lease = postgres_pool#.acquire_async(100:i32).await
         if lease.is_err() { return Result<string, string>::Err(string::from("agent database unavailable")) }
         auto transaction = lease.unwrap()#.begin_transaction_async().await
         if transaction.is_err() { return Result<string, string>::Err(string::from("agent transaction failed")) }
@@ -342,14 +343,27 @@ impl AgentService {
         if inserted_run.is_err() { return Result<string, string>::Err(string::from("agent run audit write failed")) }
         auto inserted_message = transaction#.query_params_async("INSERT INTO agent_messages (run_id, role, content) VALUES ($1, $2, $3)", cede query_types(3:usize), cede three_params(run_id.as_str(), "user", prompt), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
         if inserted_message.is_err() { return Result<string, string>::Err(string::from("agent message audit write failed")) }
+        if transaction#.commit_async().await.is_err() { return Result<string, string>::Err(string::from("agent transaction commit failed")) }
+        // The external provider is intentionally outside every PostgreSQL
+        // transaction.  A slow model must not pin a database connection.
         self#.emit(run_id.as_str(), "model.started", "provider request")
         auto answer = self#.provider_async(prompt).await
         if answer.is_err() { return Result<string, string>::Err(answer.unwrap_err()) }
         if canceler.err().is_some() { return Result<string, string>::Err(string::from("agent run canceled")) }
-        auto inserted_tool = transaction#.query_params_async("INSERT INTO agent_tool_audit (run_id, tool_name, outcome) VALUES ($1, $2, $3)", cede query_types(3:usize), cede three_params(run_id.as_str(), "model", "completed"), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
+        auto answer# = answer.unwrap()
+        auto completion_lease = postgres_pool#.acquire_async(100:i32).await
+        if completion_lease.is_err() { return Result<string, string>::Err(string::from("agent completion audit database unavailable")) }
+        auto completion = completion_lease.unwrap()#.begin_transaction_async().await
+        if completion.is_err() { return Result<string, string>::Err(string::from("agent completion audit transaction failed")) }
+        auto completion# = completion.unwrap()
+        auto assistant_message = completion#.query_params_async("INSERT INTO agent_messages (run_id, role, content) VALUES ($1, $2, $3)", cede query_types(3:usize), cede three_params(run_id.as_str(), "assistant", answer.as_str()), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
+        if assistant_message.is_err() { return Result<string, string>::Err(string::from("agent assistant message audit write failed")) }
+        auto inserted_tool = completion#.query_params_async("INSERT INTO agent_tool_audit (run_id, tool_name, outcome) VALUES ($1, $2, $3)", cede query_types(3:usize), cede three_params(run_id.as_str(), "model", "completed"), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
         if inserted_tool.is_err() { return Result<string, string>::Err(string::from("agent tool audit write failed")) }
-        if transaction#.commit_async().await.is_err() { return Result<string, string>::Err(string::from("agent transaction commit failed")) }
-        self#.emit(run_id.as_str(), "model.completed", answer.unwrap().as_str())
+        auto completed_run = completion#.query_params_async("UPDATE agent_runs SET status = $2 WHERE id = $1", cede query_types(2:usize), cede two_params(run_id.as_str(), "completed"), PostgresQueryLimits::new(0:usize, 1:usize, 128:usize).unwrap()).await
+        if completed_run.is_err() { return Result<string, string>::Err(string::from("agent run completion audit write failed")) }
+        if completion#.commit_async().await.is_err() { return Result<string, string>::Err(string::from("agent completion audit commit failed")) }
+        self#.emit(run_id.as_str(), "model.completed", answer.as_str())
         self#.emit(run_id.as_str(), "run.completed", "ok")
         { auto locked = self.state.lock(); if locked.is_ok() { auto *state# = locked.unwrap().get_ref(); auto _runs = state.metrics#.inc_counter("agent_runs_total", 1:i64) } }
         return Result<string, string>::Ok(run_id)

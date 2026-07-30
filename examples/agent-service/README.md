@@ -20,7 +20,11 @@ adapter sends a non-streaming `/v1/chat/completions` request. It intentionally
 does not claim SSE/tool-call decoding or durable event replay.
 
 PostgreSQL is expected to provide `agent_runs`, `agent_messages`, and
-`agent_tool_audit` tables. The example writes all three within one transaction.
+`agent_tool_audit` tables. The example writes all three through explicit,
+short transactions.
+It first persists the run and user message in a short transaction, waits for
+the model outside a database transaction, then writes the assistant message,
+model audit, and terminal run status in a second short transaction.
 Redis atomically reserves an idempotency key with `SET ... NX` before any
 database or provider work. A duplicate key is rejected in this first slice
 rather than guessing whether a prior in-flight run can be resumed. The
@@ -45,6 +49,12 @@ to the supplied deadline, then the host calls `AgentService::close()` to drain
 idle Redis/PostgreSQL pool members. A per-run `Canceler` is passed through the
 provider and persistence path; hosts that need a deadline create it with
 `std/context::with_timeout` before dispatch.
+
+Cancellation is observed before start and between the data and provider
+stages. The current generic `HttpClient` offers a timeout but not a
+context-aware in-flight cancel operation, so an HTTPS request cannot yet be
+interrupted mid-read. This is intentionally visible evidence for a future
+provider-neutral client improvement, not an application-specific `stdx` API.
 
 ## Qualification
 
