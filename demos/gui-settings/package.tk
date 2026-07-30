@@ -1,0 +1,7 @@
+pub const PACKAGE = (
+    name = "gui_settings_demo",
+    version = "0.1.0",
+    dependencies = (
+        gui = "../../official/gui",
+    )
+)
