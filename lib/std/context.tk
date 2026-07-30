@@ -360,7 +360,7 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
 
     return CancelResult<'C>(
         ctx = cede cancel_ctx,
-        canceler = canceler_fn
+        canceler = cede canceler_fn
     )
 }
 
@@ -423,7 +423,7 @@ pub fn with_timeout<'C: @Context>(cede 'parent#: C, timeout_ms: i32) -> TimeoutR
 
     auto timeout_ctx = TimeoutContext<'C>(
         cancel_ctx = cede res.ctx,
-        deadline_val = deadline_val
+        deadline_val = cede deadline_val
     )
 
     return TimeoutResult<'C>(

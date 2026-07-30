@@ -155,7 +155,7 @@ impl AnsiStyle {
         auto res# = string::from("\x1b[1;")
         res#.push_str(inner.as_str())
         res#.push_str("m")
-        return AnsiStyle(code = res)
+        return AnsiStyle(code = res.clone())
     }
 }
 
@@ -193,8 +193,8 @@ impl SourceFile {
         }
         
         return SourceFile(
-            name = name,
-            source = source,
+            name = name.clone(),
+            source = source.clone(),
             line_starts = cede line_starts
         )
     }
@@ -460,4 +460,3 @@ impl Diagnostic {
         return sb.to_string()
     }
 }
-

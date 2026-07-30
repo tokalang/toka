@@ -140,7 +140,7 @@ fn async_http_client_test(port: u16) -> async i32 {
         method = HttpMethod::GET,
         path = string::from("/test"),
         version = string::from("HTTP/1.1"),
-        headers = headers,
+        headers = cede headers,
         body = string::from("")
     )
 
