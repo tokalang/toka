@@ -43,18 +43,20 @@ fn session_name_is_set(cede result_sets: Vec<PostgresQueryResult>) -> bool {
 
 fn wait_for_pool_async(cede pool: PostgresPool) -> async i32 {
     auto pool# = cede pool
-    auto acquired = pool#.acquire_async(1000:i32).await
+    auto acquired_outcome = pool#.acquire_async(1000:i32).await?
+    if acquired_outcome.is_none() { return 0 }
+    auto acquired = acquired_outcome.unwrap()
     if acquired.is_ok() {
         auto lease# = acquired.unwrap()
         lease#.close()
         return 1
     }
     auto failure = acquired.unwrap_err()
-    if !failure.kind.as_str().equals("pool") ||
-       !failure.message.as_str().equals("PostgreSQL pool acquire was canceled") {
-        return 2
+    if failure.kind.as_str().equals("pool") &&
+       failure.message.as_str().equals("PostgreSQL pool acquire was canceled") {
+        return 0
     }
-    return 0
+    return 2
 }
 
 fn run_async(port: u16, ca_file: str) -> async i32 {

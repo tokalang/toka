@@ -1,0 +1,40 @@
+import core/option::{Option}
+import std/task::{block_on, sleep_async, task_cancel}
+
+fn delayed() -> async i32 {
+    auto waited = sleep_async(100:i32).await
+    if waited < 0:i32 { return -1 }
+    return 7
+}
+
+fn captures_child_cancellation() -> async i32 {
+    auto child = delayed().start
+    sleep_async(5:i32).await
+    task_cancel<i32>(child)
+    auto outcome = child.await?
+    match cede outcome {
+        auto Option<i32>::None => return 0
+        _ => return 1
+    }
+}
+
+fn captures_current_cancellation() -> async i32 {
+    auto waited = sleep_async(100:i32).await?
+    match cede waited {
+        auto Option<i32>::None => return 0
+        _ => return 1
+    }
+}
+
+fn coordinator() -> async i32 {
+    if captures_child_cancellation().await != 0:i32 { return 1 }
+
+    auto worker = captures_current_cancellation().start
+    sleep_async(5:i32).await
+    task_cancel<i32>(worker)
+    return worker.await
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

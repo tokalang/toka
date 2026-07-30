@@ -1,0 +1,15 @@
+import std/net::{AsyncWriteResult}
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto buffer# = Vec<u8>::new()
+    buffer#.push(7:u8)
+    auto result# = AsyncWriteResult(
+        buffer = cede buffer,
+        bytes_written = 1:usize,
+        complete = true
+    )
+    auto returned# = result#.take_buffer()
+    if returned.len() != 1:usize { return 1 }
+    return 0
+}

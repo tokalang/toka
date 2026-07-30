@@ -148,6 +148,7 @@ pub shape PostgresParam (
 pub shape PostgresStatement (
     name: string,
     parameter_count: usize,
+    result_columns: Vec<PostgresColumn>,
     closed: bool
 )
 
@@ -1336,6 +1337,7 @@ impl PostgresClient {
         auto parse_complete# = false
         auto parameter_description# = false
         auto result_description# = false
+        auto result_columns# = Vec<PostgresColumn>::new()
         loop true {
             auto received = self#.read_frame_async().await
             if received.is_err() {
@@ -1357,11 +1359,12 @@ impl PostgresClient {
                     }
                     parameter_description = true
                 }
-                auto PostgresMessage::RowDescription(_) => {
+                auto PostgresMessage::RowDescription('columns) => {
                     if !parse_complete || !parameter_description || result_description {
                         self#.poison()
                         return Result<PostgresStatement, PostgresError>::Err(protocol_error(0:usize, "unexpected PostgreSQL RowDescription while preparing"))
                     }
+                    result_columns = cede 'columns
                     result_description = true
                 }
                 auto PostgresMessage::NoData() => {
@@ -1388,6 +1391,7 @@ impl PostgresClient {
                     return Result<PostgresStatement, PostgresError>::Ok(PostgresStatement(
                         name = cede name,
                         parameter_count = parameter_count,
+                        result_columns = cede result_columns,
                         closed = false
                     ))
                 }
@@ -1592,6 +1596,10 @@ impl PostgresStatement {
                         return Result<Vec<PostgresQueryResult>, PostgresError>::Err(protocol_error(0:usize, "duplicate BindComplete"))
                     }
                     bind_complete = true
+                    if self.result_columns.len() > 0:usize {
+                        current_columns = self.result_columns.clone()
+                        has_row_description = true
+                    }
                 }
                 auto PostgresMessage::RowDescription('columns) => {
                     if !bind_complete || has_row_description {
@@ -1936,9 +1944,10 @@ impl PostgresPool {
         ))
     }
 
-    // A pool wait is deliberately bounded and cancellation-aware through
-    // sleep_async. Call try_acquire_async when an application already has its
-    // own admission queue and wants an immediate answer.
+    // A pool wait maps a direct task cancellation to a pool error. A caller
+    // whose own task may be canceled uses `.await?` to make that cancellation
+    // boundary explicit. Call try_acquire_async when an application already
+    // has its own admission queue and wants an immediate answer.
     pub fn acquire_async(self#, timeout_ms: i32) -> async Result<PostgresPoolLease, PostgresError>
     effects: return <- self.state {
         if timeout_ms <= 0:i32 {
@@ -1952,7 +1961,7 @@ impl PostgresPool {
             if !failure.kind.as_str().equals("pool") || !failure.message.as_str().equals("PostgreSQL pool is exhausted") {
                 return Result<PostgresPoolLease, PostgresError>::Err(failure)
             }
-            if sleep_async(1:i32).await < 0:i32 {
+            if sleep_async(1:i32).await?.is_none() {
                 return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool acquire was canceled"))
             }
             waited = waited + 1:i32

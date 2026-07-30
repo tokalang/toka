@@ -793,7 +793,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << "!";
     } else if (auto aw = dynamic_cast<const AwaitExpr *>(expr)) {
         exportExpr(aw->Expression.get());
-        m_OS << ".await";
+        m_OS << ".await" << (aw->CatchesCancellation ? "?" : "");
     } else if (auto wa = dynamic_cast<const WaitExpr *>(expr)) {
         exportExpr(wa->Expression.get());
         m_OS << ".wait";

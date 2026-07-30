@@ -332,6 +332,15 @@ or ceding its source is checked exactly as it is in synchronous code. These
 guarantees do not extend PAL to raw pointers, which remain inside the explicit
 unsafe/FFI boundary.
 
+Ordinary `.await` propagates a canceled task as a terminal cancellation and
+never fabricates a `T` value. `.await?` is the explicit recoverable boundary:
+for a non-`void` `TaskHandle<T>` it produces `Option<T>`, with
+`Option<T>::Some(value)` for a normal result and `Option<T>::None` when either
+the current task or the awaited task was canceled. Code using `.await?` must
+make its cancellation policy visible, for example by mapping `None` to a
+domain `Result` error. It is not an implicit conversion performed by ordinary
+`.await`.
+
 ### PAL (Path-Anchored Ledger) Static Safety Boundary
 
 For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based safety checker for the safe language subset. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, tracking borrowed paths, payload mutation, handle rebinding, resource moves, unset state, and the analysis state produced by `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`.

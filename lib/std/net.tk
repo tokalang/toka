@@ -91,7 +91,7 @@ pub shape AsyncReadResult (
 )
 
 impl AsyncReadResult {
-    pub fn take_buffer(self#) -> Vec<u8> {
+    pub fn take_buffer(cede self) -> Vec<u8> {
         return cede self.buffer
     }
 }
@@ -103,7 +103,7 @@ pub shape AsyncWriteResult (
 )
 
 impl AsyncWriteResult {
-    pub fn take_buffer(self#) -> Vec<u8> {
+    pub fn take_buffer(cede self) -> Vec<u8> {
         return cede self.buffer
     }
 }
@@ -114,7 +114,7 @@ pub shape AsyncIoError (
 )
 
 impl AsyncIoError {
-    pub fn take_buffer(self#) -> Vec<u8> {
+    pub fn take_buffer(cede self) -> Vec<u8> {
         return cede self.buffer
     }
 }

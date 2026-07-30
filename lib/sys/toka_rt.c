@@ -856,6 +856,7 @@ typedef struct TokaTCB {
     _Atomic uint64_t task_schedule_generation;
     _Atomic uint32_t state;
     _Atomic uint8_t cancel_requested;
+    _Atomic uint8_t cancel_handled;
     _Atomic uint32_t ref_count;
     _Atomic uint8_t detached;
     _Atomic uint8_t detached_counted;
@@ -1061,6 +1062,7 @@ void* toka_task_create(void *coro_frame, void *promise) {
     atomic_store(&tcb->task_schedule_generation, 0);
     atomic_store(&tcb->state, TOKA_TCB_CREATED);
     atomic_store(&tcb->cancel_requested, 0);
+    atomic_store(&tcb->cancel_handled, 0);
     atomic_store(&tcb->ref_count, 1);
     atomic_store(&tcb->detached, 0);
     atomic_store(&tcb->detached_counted, 0);
@@ -1297,7 +1299,10 @@ void toka_task_complete(void *promise_ptr) {
     atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_READYLIVE, memory_order_release, memory_order_relaxed);
 
     if (tcb) {
-        uint32_t final_st = atomic_load(&tcb->cancel_requested) ? TOKA_TCB_COMPLETED_CANCELED : TOKA_TCB_COMPLETED;
+        uint32_t final_st = atomic_load(&tcb->cancel_requested) &&
+                                    !atomic_load(&tcb->cancel_handled)
+                                ? TOKA_TCB_COMPLETED_CANCELED
+                                : TOKA_TCB_COMPLETED;
         atomic_store(&tcb->state, final_st);
         atomic_store(&tcb->active_child_tcb, 0);
         atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
@@ -2346,6 +2351,17 @@ int toka_task_is_current_canceled(void *coro_frame) {
         toka_task_release(tcb);
     }
     return canceled;
+}
+
+int toka_task_mark_current_cancellation_handled(void *coro_frame) {
+    TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
+    if (!tcb) return 0;
+    int was_requested = atomic_load(&tcb->cancel_requested) != 0;
+    if (was_requested) {
+        atomic_store(&tcb->cancel_handled, 1);
+    }
+    toka_task_release(tcb);
+    return was_requested;
 }
 
 uint32_t toka_rt_live_tcb_count(void) {

@@ -151,7 +151,6 @@ fn extended_server_async(cede listener: TcpListener) -> async i32 {
     if !has_tag(execute_bytes, 'B' as u8) || !has_tag(execute_bytes, 'E' as u8) || !has_tag(execute_bytes, 'S' as u8) { stream#.close(); return 8 }
     auto executed# = Vec<u8>::new()
     append_empty(executed, '2' as u8)
-    append_row_description(executed)
     append_data_row(executed, "bound")
     append_command_complete(executed, "SELECT 1")
     append_ready(executed)

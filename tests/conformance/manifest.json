@@ -99,6 +99,14 @@
       "description": "TcpStream close disarms its descriptor and is_valid honors the closed state"
     },
     {
+      "id": "std_async_io_result_take_buffer_exactly_once_01",
+      "path": "std/async_io_result_take_buffer_exactly_once.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async I/O result buffer extraction consumes the result so its Vec drops exactly once"
+    },
+    {
       "id": "std_ring_resource_exactly_once_01",
       "path": "std/ring_resource_exactly_once.tk",
       "type": "run",
@@ -204,6 +212,14 @@
       "expected_exit_code": 0,
       "timeout_seconds": 10,
       "description": "Local variables across .await points and deterministic drop execution"
+    },
+    {
+      "id": "async_await_cancellation_outcome_01",
+      "path": "async/await_cancellation_outcome.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Explicit .await? captures child and current-task cancellation as Option::None"
     },
     {
       "id": "async_frame_drop_across_await_01",

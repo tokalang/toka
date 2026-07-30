@@ -11,7 +11,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-OPERATIONS = {"create", "activate", "await", "cancel", "drop", "detach"}
+OPERATIONS = {"create", "activate", "await", "await-outcome", "cancel", "drop", "detach"}
 RESULT_STATES = {"pending", "ready-live", "taken", "canceled"}
 
 

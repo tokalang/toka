@@ -27,6 +27,14 @@
       "guarantees": ["Completion before continuation registration remains linearized."]
     },
     {
+      "name": "await-outcome",
+      "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
+      "target_states": ["completed", "completed-canceled"],
+      "handle_obligation": "The awaiter is resumed exactly once after the child becomes terminal.",
+      "result_obligation": "A normal ready-live result is consumed once as Some(T); a canceled result is represented as None without fabricating T.",
+      "guarantees": ["Cancellation capture is explicit at the .await? boundary."]
+    },
+    {
       "name": "cancel",
       "source_states": ["created", "queued", "running", "preparing", "suspended"],
       "target_states": ["queued", "completed-canceled"],
@@ -81,6 +89,10 @@
     {
       "path": "tests/pass/g11_async_p5_redline_test.tk",
       "proves": ["race loser cleanup", "TaskScope retained lifetime", "canceled await has no fabricated payload"]
+    },
+    {
+      "path": "tests/conformance/async/await_cancellation_outcome.tk",
+      "proves": ["explicit cancellation capture", "child cancellation maps to None", "current task cancellation can return a domain outcome"]
     }
   ]
 }

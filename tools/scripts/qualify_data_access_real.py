@@ -111,6 +111,32 @@ def wait_ready(args: list[str], *, attempts: int = 40) -> None:
     raise QualificationFailure(f"service did not become ready: {' '.join(args)}\n{last_error}")
 
 
+def wait_postgres_tls_ready(port: int, ca_cert: Path, *, attempts: int = 40) -> None:
+    last_error = ""
+    for _ in range(attempts):
+        completed = subprocess.run(
+            [
+                "openssl", "s_client", "-starttls", "postgres",
+                "-connect", f"127.0.0.1:{port}",
+                "-CAfile", str(ca_cert), "-verify_return_error", "-brief",
+            ],
+            cwd=ROOT,
+            input="",
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=15,
+        )
+        if completed.returncode == 0:
+            return
+        last_error = completed.stdout.strip()
+        time.sleep(0.25)
+    raise QualificationFailure(
+        f"PostgreSQL TCP/TLS endpoint did not become ready on 127.0.0.1:{port}\n{last_error}"
+    )
+
+
 def make_certificates(work: Path) -> tuple[Path, Path, Path]:
     ca_key = work / "ca.key"
     ca_cert = work / "ca.crt"
@@ -233,6 +259,7 @@ def qualify_postgres(
         ], timeout=180)
         wait_ready(["docker", "exec", name, "pg_isready", "-U", "toka", "-d", "toka"])
         port = published_port(name, 5432)
+        wait_postgres_tls_ready(port, ca_cert)
         command([str(fixture), str(port), str(ca_cert)], timeout=90)
         version_text = command([
             "docker", "exec", name, "psql", "-U", "toka", "-d", "toka", "-Atc", "SHOW server_version",

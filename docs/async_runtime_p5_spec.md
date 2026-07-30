@@ -22,6 +22,9 @@ This specification defines the formal mechanics for:
 Every `TokaTCB` tracks:
 - `_Atomic uint32_t state`: `TOKA_TCB_CREATED` (0), `TOKA_TCB_RUNNING` (1), `TOKA_TCB_SUSPENDED` (2), `TOKA_TCB_QUEUED` (3), `TOKA_TCB_COMPLETED` (4), `TOKA_TCB_PREPARING` (5), `TOKA_TCB_COMPLETED_CANCELED` (7).
 - `_Atomic uint8_t cancel_requested`: atomic boolean flag.
+- `_Atomic uint8_t cancel_handled`: set only when the current coroutine
+  explicitly observes cancellation through `.await?`; it permits normal
+  domain completion instead of `TOKA_TCB_COMPLETED_CANCELED`.
 - `_Atomic uint32_t active_wait_id` and `_Atomic uint32_t active_slot_gen`: links suspended task to its active `WaitRegistration` / `WaitSet`.
 
 ### 2.2 Linearization Invariant
@@ -74,4 +77,9 @@ No caller receives the result of `race2` until the loser task is completely term
 - Async `.await` propagates `CANCELED` through the current coroutine and does
   not fabricate a `T` payload. A synchronous `.wait`/`block_on` encountering
   an unhandled canceled task is a non-returning runtime error; callers needing
-  recoverable cancellation must use an explicit outcome API.
+  recoverable cancellation must use `.await?`. This explicit outcome boundary
+  produces `Option<T>`: `Some(T)` consumes a normal result and `None` captures
+  a cancellation from the current or awaited task. A task that handles its own
+  cancellation through this boundary may return a normal domain outcome; the
+  runtime records that completion as `COMPLETED`, not as an unhandled canceled
+  task.

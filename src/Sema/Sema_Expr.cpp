@@ -3302,7 +3302,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (tName.find("TaskHandle_M_") != std::string::npos) {
         size_t pos = tName.find("TaskHandle_M_");
         std::string inner = tName.substr(pos + 13);
-        awaitEx->ResolvedType = toka::Type::fromString(inner);
+        awaitEx->AwaitedType = resolveType(toka::Type::fromString(inner));
+        if (awaitEx->CatchesCancellation) {
+            awaitEx->ResolvedType =
+                resolveType(toka::Type::fromString("Option<" + inner + ">"));
+        } else {
+            awaitEx->ResolvedType = awaitEx->AwaitedType;
+        }
         return awaitEx->ResolvedType;
     }
     error(E, DiagID::ERR_SEMA_CANNOT_AWAIT_A_NON_TASKHANDLE_TYPE, tName);

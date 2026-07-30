@@ -1208,6 +1208,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       } else if (match(TokenType::KwAwait)) {
         Token opTok = previous();
         auto node = std::make_unique<AwaitExpr>(std::move(expr));
+        node->CatchesCancellation = match(TokenType::TokenNull);
         node->setLocation(opTok, m_CurrentFile);
         expr = std::move(node);
       } else if (match(TokenType::KwWait)) {

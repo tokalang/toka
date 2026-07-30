@@ -415,12 +415,19 @@ public:
 class AwaitExpr : public Expr {
 public:
   std::unique_ptr<Expr> Expression;
+  // `.await?` is the explicit cancellation-capture boundary.  Ordinary
+  // `.await` continues to propagate cancellation as a terminal scope exit.
+  bool CatchesCancellation = false;
+  std::shared_ptr<Type> AwaitedType;
   AwaitExpr(std::unique_ptr<Expr> expr) : Expression(std::move(expr)) {}
   std::string toString() const override {
-    return "Await(" + Expression->toString() + ")";
+    return "Await" + std::string(CatchesCancellation ? "?" : "") +
+           "(" + Expression->toString() + ")";
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<AwaitExpr>(cloneNode(Expression));
+    n->CatchesCancellation = CatchesCancellation;
+    n->AwaitedType = AwaitedType;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

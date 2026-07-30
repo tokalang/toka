@@ -968,9 +968,10 @@ impl RedisPool {
         ))
     }
 
-    // A bounded polling wait remains cancellation-aware through sleep_async.
-    // Call try_acquire_async when the caller already has its own admission
-    // queue and wants an immediate answer.
+    // A bounded polling wait maps a direct task cancellation to a pool error.
+    // A caller whose own task may be canceled uses `.await?` to make that
+    // cancellation boundary explicit. Call try_acquire_async when the caller
+    // already has its own admission queue and wants an immediate answer.
     pub fn acquire_async(self#, timeout_ms: i32) -> async Result<RedisLease, RedisError>
     effects: return <- self.state {
         if timeout_ms <= 0:i32 {
@@ -984,7 +985,7 @@ impl RedisPool {
             if !failure.kind.as_str().equals("pool") || !failure.message.as_str().equals("Redis pool is exhausted") {
                 return Result<RedisLease, RedisError>::Err(failure)
             }
-            if sleep_async(1:i32).await < 0:i32 {
+            if sleep_async(1:i32).await?.is_none() {
                 return Result<RedisLease, RedisError>::Err(pool_error("Redis pool acquire was canceled"))
             }
             waited = waited + 1:i32

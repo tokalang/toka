@@ -40,6 +40,7 @@ extern fn toka_task_register_cancel_child(*parent_frame: void, *child_tcb: void)
 extern fn toka_task_unregister_cancel_child(*parent_frame: void, *child_tcb: void) -> i32
 extern fn toka_task_is_cancel_requested(*tcb: void) -> i32
 extern fn toka_task_is_current_canceled(*coro_frame: void) -> i32
+extern fn toka_task_mark_current_cancellation_handled(*coro_frame: void) -> i32
 extern fn toka_task_subscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_task_unsubscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_task_retain(*tcb: void) -> void

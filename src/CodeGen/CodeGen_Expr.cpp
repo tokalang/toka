@@ -7141,7 +7141,8 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     llvm::Value *fromPromise = m_Builder.getInt1(false);
     llvm::Value *targetPromisePtrRaw = m_Builder.CreateCall(promiseFn, {targetCoroHandle, alignment, fromPromise}, "target.promise.raw");
     
-    std::shared_ptr<Type> targetInnerTyObj = awaitExpr->ResolvedType;
+    std::shared_ptr<Type> targetInnerTyObj =
+        awaitExpr->AwaitedType ? awaitExpr->AwaitedType : awaitExpr->ResolvedType;
     llvm::Type *targetInnerTy = getLLVMType(targetInnerTyObj);
     
     llvm::Function *getStateFn = m_Module->getFunction("toka_task_get_result_state");
@@ -7153,6 +7154,9 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     
     llvm::BasicBlock *readyBB = llvm::BasicBlock::Create(m_Context, "await.ready", m_Builder.GetInsertBlock()->getParent());
     llvm::BasicBlock *canceledBB = llvm::BasicBlock::Create(m_Context, "await.canceled", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *outcomeMergeBB = awaitExpr->CatchesCancellation
+        ? llvm::BasicBlock::Create(m_Context, "await.outcome", m_Builder.GetInsertBlock()->getParent())
+        : nullptr;
     llvm::BasicBlock *stateDispatchBB = llvm::BasicBlock::Create(m_Context, "await.state_dispatch", m_Builder.GetInsertBlock()->getParent());
     llvm::BasicBlock *suspendCheckBB = llvm::BasicBlock::Create(m_Context, "await.suspend_check", m_Builder.GetInsertBlock()->getParent());
     llvm::BasicBlock *suspendBB = llvm::BasicBlock::Create(m_Context, "await.suspend", m_Builder.GetInsertBlock()->getParent());
@@ -7223,7 +7227,33 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.CreateCondBr(unwindCond, canceledBB, readyBB);
 
     m_Builder.SetInsertPoint(canceledBB);
-    genCoroutineCancelReturn();
+    llvm::Value *canceledOutcome = nullptr;
+    if (awaitExpr->CatchesCancellation) {
+        llvm::Type *outcomeTy = getLLVMType(awaitExpr->ResolvedType);
+        auto *outcomeStructTy = llvm::dyn_cast<llvm::StructType>(outcomeTy);
+        if (!outcomeStructTy || outcomeStructTy->getNumElements() < 2) {
+            error(awaitExpr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
+                  awaitExpr->ResolvedType->toString());
+            return {};
+        }
+        llvm::Value *outcomeSlot = createEntryBlockAlloca(outcomeTy, nullptr, "await.canceled.outcome");
+        llvm::Value *tagAddr = m_Builder.CreateStructGEP(outcomeStructTy, outcomeSlot, 0);
+        m_Builder.CreateStore(m_Builder.getInt8(0), tagAddr);
+        canceledOutcome = m_Builder.CreateLoad(outcomeTy, outcomeSlot);
+
+        llvm::Function *markHandledFn = m_Module->getFunction("toka_task_mark_current_cancellation_handled");
+        if (!markHandledFn) {
+            llvm::FunctionType *ft = llvm::FunctionType::get(
+                m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+            markHandledFn = llvm::Function::Create(
+                ft, llvm::Function::ExternalLinkage,
+                "toka_task_mark_current_cancellation_handled", m_Module.get());
+        }
+        m_Builder.CreateCall(markHandledFn, {m_CurrentCoroHandle});
+        m_Builder.CreateBr(outcomeMergeBB);
+    } else {
+        genCoroutineCancelReturn();
+    }
 
     m_Builder.SetInsertPoint(readyBB);
     llvm::Value *readyVal = nullptr;
@@ -7242,7 +7272,37 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
             clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_clear_result_payload", m_Module.get());
         }
         m_Builder.CreateCall(clearFn, {targetPromisePtrRaw});
-        return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
+        if (!awaitExpr->CatchesCancellation) {
+            return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
+        }
+
+        llvm::Type *outcomeTy = getLLVMType(awaitExpr->ResolvedType);
+        auto *outcomeStructTy = llvm::dyn_cast<llvm::StructType>(outcomeTy);
+        if (!outcomeStructTy || outcomeStructTy->getNumElements() < 2) {
+            error(awaitExpr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
+                  awaitExpr->ResolvedType->toString());
+            return {};
+        }
+        llvm::Value *outcomeSlot = createEntryBlockAlloca(outcomeTy, nullptr, "await.ready.outcome");
+        llvm::Value *tagAddr = m_Builder.CreateStructGEP(outcomeStructTy, outcomeSlot, 0);
+        m_Builder.CreateStore(m_Builder.getInt8(1), tagAddr);
+        llvm::Value *payloadAddr = m_Builder.CreateStructGEP(outcomeStructTy, outcomeSlot, 1);
+        llvm::Value *typedPayloadAddr = m_Builder.CreateBitCast(
+            payloadAddr, llvm::PointerType::getUnqual(m_Context));
+        m_Builder.CreateStore(readyVal, typedPayloadAddr);
+        llvm::Value *readyOutcome = m_Builder.CreateLoad(outcomeTy, outcomeSlot);
+        m_Builder.CreateBr(outcomeMergeBB);
+
+        m_Builder.SetInsertPoint(outcomeMergeBB);
+        llvm::PHINode *outcome = m_Builder.CreatePHI(outcomeTy, 2, "await.outcome.value");
+        outcome->addIncoming(canceledOutcome, canceledBB);
+        outcome->addIncoming(readyOutcome, readyBB);
+        return PhysEntity(outcome, awaitExpr->ResolvedType->toString(), outcomeTy, false);
+    }
+    if (awaitExpr->CatchesCancellation) {
+        error(awaitExpr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
+              "Option<void>");
+        return {};
     }
     return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", targetInnerTy, false);
 }

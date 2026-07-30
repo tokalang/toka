@@ -27,7 +27,7 @@
       "additionalProperties": false,
       "required": ["name", "source_states", "target_states", "handle_obligation", "result_obligation", "guarantees"],
       "properties": {
-        "name": { "enum": ["create", "activate", "await", "cancel", "drop", "detach"] },
+        "name": { "enum": ["create", "activate", "await", "await-outcome", "cancel", "drop", "detach"] },
         "source_states": { "type": "array", "items": { "type": "string" } },
         "target_states": { "type": "array", "items": { "type": "string" } },
         "handle_obligation": { "type": "string" },

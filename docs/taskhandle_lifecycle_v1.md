@@ -11,6 +11,7 @@ It freezes the facts an AI tool needs before proposing an async repair:
 - an async call creates a cold `created` task;
 - activation by `.start`, `.await`, or `.wait` must not inline the body;
 - cancellation has no fabricated `T` payload and propagates through `.await`;
+  `.await?` is the explicit `Option<T>` cancellation-capture boundary;
 - dropping a cold handle reclaims its frame, while dropping/detaching active
   work transfers lifetime responsibility to the runtime;
 - executor shutdown drains active detached work; and
