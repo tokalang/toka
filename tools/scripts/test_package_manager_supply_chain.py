@@ -402,6 +402,11 @@ def test_toka_cli(root: Path, toka: Path) -> None:
     dependency = workspace / "dep"
     write_package(project, "root", [])
     write_package(dependency, "dep", [])
+    (dependency / "lib" / "dep" / "mod.tk").write_text(
+        "pub const ANSWER = 41\n"
+        "pub fn value() -> i32 { return 1 }\n",
+        encoding="utf-8",
+    )
     environment = os.environ.copy()
     environment["TOKA_LIB"] = str(ROOT / "lib")
 
@@ -409,15 +414,23 @@ def test_toka_cli(root: Path, toka: Path) -> None:
         command_environment = environment.copy()
         if offline:
             command_environment["TOKA_OFFLINE"] = "1"
-        subprocess.run(
+        result = subprocess.run(
             [str(toka), *arguments],
             cwd=project,
             env=command_environment,
-            check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
+        if result.returncode != 0:
+            raise AssertionError(
+                "toka command failed (%s): %s\nstdout:\n%s\nstderr:\n%s" % (
+                    result.returncode,
+                    " ".join(arguments),
+                    result.stdout,
+                    result.stderr,
+                )
+            )
 
     run("add", str(dependency))
     entries = read_lock(project / "package.lock")
@@ -425,6 +438,44 @@ def test_toka_cli(root: Path, toka: Path) -> None:
     locked = (project / "package.lock").read_bytes()
     run("fetch", offline=True)
     assert (project / "package.lock").read_bytes() == locked
+
+    # A locked consumer must import both executable symbols and public
+    # constants from its dependency; mapping alone is not sufficient evidence.
+    (project / "src").mkdir()
+    (project / "src" / "main.tk").write_text(
+        "import dep::{ANSWER, value}\n\n"
+        "fn main() -> i32 {\n"
+        "    return ANSWER + value() - 42\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    mappings = compiler_mappings(project / "package.lock", project / ".toka")
+    assert len(mappings) == 1 and mappings[0].startswith("dep="), mappings
+    suffix = ".exe" if sys.platform == "win32" else ""
+    executable = project / ("locked-const-consumer" + suffix)
+    compile_result = subprocess.run(
+        [
+            str(toka.parent / ("tokac" + suffix)),
+            "-I", environment["TOKA_LIB"],
+            "--pkg", mappings[0],
+            "src/main.tk",
+            "-o", str(executable),
+        ],
+        cwd=project,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if compile_result.returncode != 0:
+        raise AssertionError(
+            "locked public const consumer did not compile:\nstdout:\n%s\nstderr:\n%s" % (
+                compile_result.stdout,
+                compile_result.stderr,
+            )
+        )
+    subprocess.run([str(executable)], cwd=project, env=environment, check=True)
+
     run("up")
     run("rm", "dep")
     assert read_lock(project / "package.lock") == {}
