@@ -81,3 +81,15 @@ Run from this package root:
 ../../build/bin/tokac -I ../../lib -I lib tests/pool_v1.tk -o /tmp/redis_pool_v1 && /tmp/redis_pool_v1
 python3 tests/qualify_package.py
 ```
+
+Real-service compatibility is a separate fail-closed Linux/Docker
+qualification. It verifies Redis 7.4.x and 8.2.x with password TCP and
+private-CA TLS; a runner that cannot publish loopback ports is reported as
+`not-run`, never as a passing package test.
+
+```text
+python3 tools/scripts/qualify_data_access_real.py --tokac build/bin/tokac --report build/data-access-real-service.json
+```
+
+Run that command from the repository root. The exact scope and artifact policy
+are documented in [`docs/data_access_real_service_compatibility_v1.md`](../../docs/data_access_real_service_compatibility_v1.md).

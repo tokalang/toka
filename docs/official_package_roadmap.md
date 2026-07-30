@@ -15,10 +15,11 @@ on them.
 |---|---|---|---|
 | `official/sqlite` | qualified Phase 1 native lifecycle bridge | `python3 official/sqlite/tests/qualify_preflight.py` passes | expand only through separately scoped statement/transaction slices |
 | `official/regex` | qualified bounded RE2-profile matcher; not yet released | direct profile suite plus locked/offline local-consumer import replay pass | optional independent compatibility corpus before publication |
-| `official/redis` | bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and dedicated bounded pool; not yet released | deterministic codec/TCP cancellation, pipeline, and pool reuse/poison suites plus locked/offline local-consumer import replay pass | real-Redis compatibility and service-composition evidence before publication |
+| `official/redis` | bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and dedicated bounded pool; not yet released | deterministic codec/TCP cancellation, pipeline, and pool reuse/poison suites plus locked/offline local-consumer import replay pass; real-service matrix runner is a Linux CI gate | retain a green current-revision `data-access-real-service` artifact before publication |
 | `official/router` | qualified deterministic method/path recognizer with service-kit adoption; not yet released | route definition/matching qualification, service-kit dispatcher/loopback/shutdown suite, and locked/offline local-consumer import replay pass | optional independent service compatibility evidence before publication |
-| `official/compress` | qualified bounded streaming gzip/zlib bridge; not yet released | native zlib bridge, streaming boundary suite, and locked/offline `toka build` public-import replay pass | optional HTTP/content-encoding policy slice before publication |
-| `official/postgres` | bounded PostgreSQL v3 client with secure TLS/SCRAM startup, simple and extended queries, transactions, and a dedicated bounded pool; not yet released | deterministic protocol/SCRAM/TLS/query/extended-query/pool suites plus locked/offline local-consumer import replay pass | real-PostgreSQL compatibility and service-composition evidence before publication |
+| `official/compress` | qualified bounded streaming gzip/zlib bridge; not yet released | native zlib bridge, streaming boundary suite, and locked/offline `toka build` public-import replay pass | opt-in HTTP `Content-Encoding` adapter with explicit flush/close and decompression/ratio limits |
+| `official/postgres` | bounded PostgreSQL v3 client with secure TLS/SCRAM startup, simple and extended queries, transactions, and a dedicated bounded pool; not yet released | deterministic protocol/SCRAM/TLS/query/extended-query/pool suites plus locked/offline local-consumer import replay pass; real-service matrix runner is a Linux CI gate | retain a green current-revision `data-access-real-service` artifact before publication |
+| data-access service reference | router → Redis cache → PostgreSQL transaction, with JSON logs, metrics, and shutdown | `examples/data-access-service` compile and loopback fixture | retain the same real-service artifact; this is composition evidence, not a framework surface |
 
 Regex is a bounded byte-oriented RE2 profile, not a claim of full RE2
 compatibility. No official package should claim a stronger release status than
@@ -26,18 +27,19 @@ its executable evidence supports.
 
 ## Priority sequence
 
-1. **Production data-access composition** — validate the now-available
-   PostgreSQL and Redis clients as one long-running HTTP service: router
-   dispatch, bounded query/transaction and cache paths, JSON logging,
-   Prometheus exposure, and graceful shutdown without live tasks, sockets, or
-   retained leases. This is an integration target, not a new web framework.
-2. **Real-service compatibility** — run the same contracts against supported
-   Redis and PostgreSQL versions. Deterministic loopback suites remain the
-   release gate; external services add interoperability evidence rather than
-   replacing it.
-3. **`official/compress`** — opt-in streaming gzip/zlib bridge, with native
-   dependencies declared in the manifest. It should follow an agreed streaming
-   ownership contract instead of adding one-off HTTP compression hooks.
+1. **Real-service compatibility** — execute the frozen Redis/PostgreSQL
+   matrix on a loopback-capable runner and retain its report. Deterministic
+   loopback suites remain the correctness gate; real services add
+   interoperability evidence rather than replacing them. The contract and
+   runner are in [data_access_real_service_compatibility_v1.md](data_access_real_service_compatibility_v1.md).
+2. **`official/compress` HTTP adapter** — build the next bounded slice on the
+   existing streaming gzip/zlib bridge: opt-in `Content-Encoding`, explicit
+   flush/close, a decompressed-byte limit, and a compression-ratio limit. Do
+   not bake compression into the HTTP core.
+3. **Observability composition** — connect existing JSON logging and
+   Prometheus registry to the reference service entry point and `/metrics`.
+   Use the resulting repeated handler code, rather than anticipation, to
+   decide whether router middleware is justified.
 4. **`official/pool`** — remain deliberately deferred. `RedisPool` and
    `PostgresPool` are concrete package APIs; a common abstraction needs
    evidence that their checkout, cancellation, health, and shutdown semantics

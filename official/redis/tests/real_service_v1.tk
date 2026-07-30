@@ -1,0 +1,131 @@
+// Contract exercised by tools/scripts/qualify_data_access_real.py against a
+// loopback Redis server.  Argument 3 is "-" for plaintext, otherwise it is
+// the PEM CA file used for verified TLS.
+
+import official/redis::{RedisCommand, RedisLease, RedisPipeline, RedisPool, RedisValue}
+import std/bytes::{Bytes}
+import std/env::{args_count, get_arg}
+import std/net::{Ipv4Addr, SocketAddrV4}
+import std/task::{block_on, sleep_async, task_cancel}
+import std/vec::{Vec}
+
+fn value_bytes(text: str) -> Bytes {
+    auto values# = Vec<u8>::with_capacity(text.len())
+    auto index#: usize = 0:usize
+    loop index < text.len() {
+        values#.push(text.byte_at(index) as u8)
+        index += 1:usize
+    }
+    return Bytes::from_vec(cede values)
+}
+
+fn is_ok(value: RedisValue) -> bool {
+    match value {
+        auto RedisValue::SimpleString('text) => return 'text.as_str().equals("OK")
+        _ => return false
+    }
+}
+
+fn authenticate_async(lease#: RedisLease, password: str) -> async bool {
+    auto command# = RedisCommand::new("AUTH")
+    command#.arg_text(password)
+    auto reply = lease#.execute_async(cede command).await
+    if reply.is_err() { return false }
+    return is_ok(reply.unwrap())
+}
+
+fn wait_for_pool_async(cede pool: RedisPool) -> async i32 {
+    auto pool# = cede pool
+    auto acquired = pool#.acquire_async(1000:i32).await
+    if acquired.is_ok() {
+        auto lease# = acquired.unwrap()
+        lease#.close()
+        return 1
+    }
+    auto failure = acquired.unwrap_err()
+    if !failure.kind.as_str().equals("pool") ||
+       !failure.message.as_str().equals("Redis pool acquire was canceled") {
+        return 2
+    }
+    return 0
+}
+
+fn run_async(port: u16, password: str, ca_file: str) -> async i32 {
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+    auto created = if ca_file.equals("-") {
+        pass RedisPool::new(cede address, 1000:i32, 1:usize)
+    } else {
+        pass RedisPool::new_tls_with_ca_file(cede address, "localhost", ca_file, 1000:i32, 1:usize)
+    }
+    if created.is_err() { return 1 }
+    auto pool# = created.unwrap()
+
+    {
+        auto acquired = pool#.acquire_async(100:i32).await
+        if acquired.is_err() { return 2 }
+        auto lease# = acquired.unwrap()
+        if !authenticate_async(lease, password).await { return 3 }
+
+        auto set = lease#.set_async("toka:compat:key", cede value_bytes("value")).await
+        if set.is_err() { return 4 }
+        auto got = lease#.get_async("toka:compat:key").await
+        match cede got {
+            auto Result<Option<Bytes>, _>::Ok('value) => if 'value.is_none() { return 5 }
+            _ => return 5
+        }
+
+        auto pipeline# = RedisPipeline::new()
+        pipeline#.push(cede RedisCommand::new("PING"))
+        pipeline#.push(cede RedisCommand::new("GET"))
+        auto replies = lease#.execute_pipeline_async(cede pipeline).await
+        match cede replies {
+            auto Result<Vec<RedisValue>, _>::Ok('values) => if 'values.len() != 2:usize { return 6 }
+            _ => return 6
+        }
+
+        auto list# = RedisCommand::new("LPUSH")
+        list#.arg_text("toka:compat:wrongtype")
+        list#.arg_text("item")
+        if lease#.execute_async(cede list).await.is_err() { return 7 }
+        auto wrong_type = lease#.get_async("toka:compat:wrongtype").await
+        match cede wrong_type {
+            auto Result<Option<Bytes>, _>::Err('failure) => if !'failure.kind.as_str().equals("server") { return 8 }
+            _ => return 8
+        }
+
+        auto waiter = wait_for_pool_async(cede pool#.clone()).start
+        sleep_async(5:i32).await
+        task_cancel<i32>(waiter)
+        if waiter.await != 0:i32 { return 9 }
+    }
+
+    {
+        auto reused = pool#.acquire_async(100:i32).await
+        if reused.is_err() { pool#.close(); return 10 }
+        auto lease# = reused.unwrap()
+        auto ping = lease#.execute_async(cede RedisCommand::new("PING")).await
+        match cede ping {
+            auto Result<RedisValue, _>::Ok('value) => if !is_ok('value) { pool#.close(); return 11 }
+            _ => { pool#.close(); return 11 }
+        }
+        if lease#.del_async("toka:compat:key").await.is_err() { pool#.close(); return 12 }
+        if lease#.del_async("toka:compat:wrongtype").await.is_err() { pool#.close(); return 13 }
+    }
+
+    pool#.close()
+    auto closed = pool#.try_acquire_async().await
+    match cede closed {
+        auto Result<_, _>::Err('failure) => if !'failure.kind.as_str().equals("pool") { return 14 }
+        _ => return 14
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    if args_count() != 4:i32 { return 64 }
+    auto parsed = get_arg(1:i32).to_i32()
+    if parsed.is_none() { return 65 }
+    auto port = parsed.unwrap()
+    if port <= 0:i32 || port > 65535:i32 { return 66 }
+    return block_on(run_async(port as u16, get_arg(2:i32).as_str(), get_arg(3:i32).as_str()))
+}

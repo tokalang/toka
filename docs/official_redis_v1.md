@@ -1,9 +1,9 @@
 # `official/redis` v1 — Bounded RESP2 Client RFC
 
-Status: **bounded RESP2 codec, serial plaintext TCP client, and minimal typed
-command operations implemented and qualified through deterministic, locked,
-and offline local-consumer evidence; a published package release remains
-open**.
+Status: **bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and
+dedicated bounded pool implemented and qualified through deterministic,
+locked, and offline local-consumer evidence. Publication additionally requires
+a current green real-service matrix artifact.**
 
 ## 1. Role and placement
 
@@ -27,7 +27,7 @@ command#.arg_text("session:42")
 auto reply = client#.execute_async(cede command).await!
 ```
 
-The complete v1 package is intended to provide:
+The complete v1 package provides:
 
 - `RedisClient::connect_async`, `close`, and one serial `execute_async` path;
 - `RedisCommand::new`, `arg_text`, and `arg_bytes`; binary arguments are owned
@@ -35,19 +35,23 @@ The complete v1 package is intended to provide:
 - `RedisValue::{SimpleString, Error, Integer, Bulk, Array, Null}`;
 - small convenience operations `get`, `set`, and `del`, implemented only as
   wrappers over `execute_async`;
+- verified TLS using either system roots or an explicit private CA file;
+- `RedisPipeline` for ordered batches and `RedisPool` / `RedisLease` for
+  dedicated bounded connection reuse;
 - `RedisError` carrying an error class, byte position where relevant, and an
   owned message.
 
-The implemented slices export `RedisClient`, `RedisCommand`, `RedisArgument`,
-`RedisValue`, `RedisDecode`, `RedisError`, and `decode_one`. `RedisClient`
-opens one plaintext TCP connection and accepts one command at a time. It keeps
-an owned receive buffer, retries `decode_one` after appending more bytes when
-it returns `NeedMore`, and closes itself after a write-side or reply-side
-failure. `get_async`, `set_async`, and `del_async` are small typed wrappers
-over `execute_async`: GET maps a null bulk reply to `Ok(None)`, SET accepts an
-owned binary `Bytes` value and requires `+OK`, and DEL returns its integer
-count. A Redis `-ERR` response is mapped to `RedisError(kind = "server")` for
-these operations; callers needing raw reply semantics use `execute_async`.
+The package exports `RedisClient`, `RedisCommand`, `RedisArgument`,
+`RedisValue`, `RedisDecode`, `RedisError`, `RedisPipeline`, `RedisPool`,
+`RedisLease`, and `decode_one`. `RedisClient` opens one plaintext or verified
+TLS TCP connection and accepts one command at a time. It keeps an owned receive
+buffer, retries `decode_one` after appending more bytes when it returns
+`NeedMore`, and closes itself after a write-side or reply-side failure.
+`get_async`, `set_async`, and `del_async` are small typed wrappers over
+`execute_async`: GET maps a null bulk reply to `Ok(None)`, SET accepts an owned
+binary `Bytes` value and requires `+OK`, and DEL returns its integer count. A
+Redis `-ERR` response is mapped to `RedisError(kind = "server")` for these
+operations; callers needing raw reply semantics use `execute_async`.
 
 `RedisValue::Error` represents a valid Redis `-ERR` reply. Transport failures,
 limits, malformed frames, timeout, and cancellation are `RedisError` results.
@@ -75,10 +79,11 @@ There are no automatic retries.
 ## 4. Explicit non-goals
 
 RESP3, Pub/Sub, MONITOR, blocking commands, transactions, Lua scripts,
-pipelining, cluster, Sentinel, automatic reconnect, connection pooling, and
-TLS connection setup are outside this first release. TLS may be added later as
-an explicit `stdx/net/tls` integration; plaintext must never silently downgrade
-from a requested TLS connection.
+cluster, Sentinel, automatic reconnect/retry policy, and generic connection
+pools are outside this release. `RedisPool` is a concrete package API, not a
+claim that a `Pool<T>` abstraction is stable. The real-service scope is Redis
+7.4.x/8.2.x password authentication over TCP and verified private-CA TLS; ACL
+users and mutual TLS are outside it.
 
 ## 5. Implementation slices
 
@@ -88,8 +93,9 @@ from a requested TLS connection.
    incrementally decode one reply, and enforce close-on-poison semantics.
 3. **Qualification** — codec and deterministic TCP mock-server tests cover
    fragmented frames, binary bulk payloads, typed GET/SET/DEL wrappers, nested arrays, malformed lengths,
-   EOF, timeout, and cancellation after a write. Optional real Redis
-   integration remains future evidence, not a release claim.
+   EOF, timeout, and cancellation after a write. The real Redis 7.4.x/8.2.x
+   matrix is required release evidence and does not replace deterministic
+   tests; see [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
 4. **Package release** — the existing `package.tk`, `AI_CONTRACT`, public
    import smoke, and lock/offline replay are locally qualified. A published
    version, registry archive, and real-service compatibility gate remain

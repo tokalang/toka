@@ -107,6 +107,7 @@ pub shape PostgresConfig (
     user: string,
     database: string,
     password: string,
+    ca_file: string,
     timeout_ms: i32,
     tls_mode: PostgresTlsMode,
     auth_policy: PostgresAuthPolicy
@@ -922,7 +923,13 @@ fn upgrade_stream_async(tcp#: TcpStream, config: PostgresConfig) -> async Result
 
     auto host = string::from(config.server_name.as_str())
     auto upgraded = match config.tls_mode {
-        auto PostgresTlsMode::RequireVerified() => pass TlsStream::connect_with_verify_async_timeout(tcp, host, true, config.timeout_ms).await
+        auto PostgresTlsMode::RequireVerified() => {
+            if config.ca_file.len() > 0:usize {
+                pass TlsStream::connect_with_ca_file_async_timeout(tcp, host, string::from(config.ca_file.as_str()), config.timeout_ms).await
+            } else {
+                pass TlsStream::connect_with_verify_async_timeout(tcp, host, true, config.timeout_ms).await
+            }
+        }
         auto PostgresTlsMode::InsecureForTest() => pass TlsStream::connect_with_verify_async_timeout(tcp, host, false, config.timeout_ms).await
         auto PostgresTlsMode::DisableForTrustedLocal() => return Result<AsyncStream, PostgresError>::Err(error("tls", 0:usize, "unreachable plaintext TLS branch"))
     }
@@ -941,6 +948,7 @@ impl PostgresConfig {
             user = string::from(self.user.as_str()),
             database = string::from(self.database.as_str()),
             password = string::from(self.password.as_str()),
+            ca_file = string::from(self.ca_file.as_str()),
             timeout_ms = self.timeout_ms,
             tls_mode = self.tls_mode,
             auth_policy = self.auth_policy
@@ -958,10 +966,26 @@ impl PostgresConfig {
             user = string::from(user),
             database = string::from(database),
             password = string::from(password),
+            ca_file = string::from(""),
             timeout_ms = 10000:i32,
             tls_mode = PostgresTlsMode::RequireVerified(),
             auth_policy = PostgresAuthPolicy::ScramOnly()
         ))
+    }
+
+    // Verified PostgreSQL deployments commonly use a private CA. Supplying
+    // that CA remains a verified TLS path; it is not the insecure test mode.
+    pub fn secure_with_ca_file(address: SocketAddrV4, server_name: str,
+                               user: str, database: str, password: str,
+                               ca_file: str) -> Result<PostgresConfig, PostgresError> {
+        if ca_file.len() == 0:usize {
+            return Result<PostgresConfig, PostgresError>::Err(error("input", 0:usize, "PostgreSQL CA file must not be empty"))
+        }
+        auto configured = PostgresConfig::secure(address, server_name, user, database, password)
+        if configured.is_err() { return Result<PostgresConfig, PostgresError>::Err(configured.unwrap_err()) }
+        auto config# = configured.unwrap()
+        config.ca_file = string::from(ca_file)
+        return Result<PostgresConfig, PostgresError>::Ok(cede config)
     }
 
     // This constructor is intentionally explicit: it exists for a local test
@@ -977,6 +1001,7 @@ impl PostgresConfig {
             user = string::from(user),
             database = string::from(database),
             password = string::from(""),
+            ca_file = string::from(""),
             timeout_ms = 10000:i32,
             tls_mode = PostgresTlsMode::DisableForTrustedLocal(),
             auth_policy = PostgresAuthPolicy::AllowTrustForLocal()

@@ -583,7 +583,7 @@ impl RedisClient {
         auto connected = TcpStream::connect_async_timeout(cede address, timeout_ms).await
         if connected.is_err() { return Result<RedisClient, RedisError>::Err(transport_error(connected.unwrap_err().as_str())) }
         auto tcp# = connected.unwrap()
-        auto secured = TlsStream::connect_with_ca_file_async(tcp, string::from(server_name), string::from(ca_file)).await
+        auto secured = TlsStream::connect_with_ca_file_async_timeout(tcp, string::from(server_name), string::from(ca_file), timeout_ms).await
         if secured.is_err() { return Result<RedisClient, RedisError>::Err(transport_error(secured.unwrap_err().as_str())) }
         return Result<RedisClient, RedisError>::Ok(RedisClient(
             stream = cede secured.unwrap(),

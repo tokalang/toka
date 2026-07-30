@@ -13,6 +13,25 @@
 - **Release Candidate Gate (`.github/workflows/release.yml`)**: Validated for the `v0.9.9-rc4` dry-run candidate via `tools/scripts/release_gate.py` (13-stage release qualification across Linux x64/arm64 and macOS x64/arm64); evidence: [Run 30246461701](https://github.com/tokalang/toka/actions/runs/30246461701), source `01e6e88be4aef4593fd630355c9763755ed05bd4`.
 - **Manual / Scheduled Sanitizer Gate (`tools/build_sanitized.sh`)**: `runtime-tsan` and `compiler-asan` are available for manual developer validation or dedicated scheduled builds.
 
+### Data-access interoperability evidence
+
+- **Real-service runner (`tools/scripts/qualify_data_access_real.py`)**:
+  required Linux CI evidence for the Tier-4 `official/redis` and
+  `official/postgres` compatibility rows. It exercises Redis 7.4.x/8.2.x
+  (password TCP and private-CA TLS) and PostgreSQL 16.x/17.x (private-CA TLS
+  and SCRAM-SHA-256), recording exact container patches in the
+  `data-access-real-service` artifact.
+- **Runner eligibility is evidence, not product behavior**: a missing Docker
+  daemon or a restricted sandbox that returns `EPERM` while publishing a
+  loopback service exits `2` as `not-run`; it is neither a passing row nor a
+  product regression. A fixture/client failure exits `1` and retains its JSON
+  report.
+- **Scope**: `RedisPool` / `RedisLease` and `PostgresPool` /
+  `PostgresPoolLease` remain dedicated package pools. The data-access service
+  example is composition evidence, not a new generic `Pool<T>` or web
+  framework contract. The complete matrix and release procedure are in
+  [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
+
 ---
 
 ## 2. Active Gap Inventory & Release Audit

@@ -14,7 +14,11 @@
 4. **Tier 4: Qualified Official Packages**: Independently versioned packages
    with executable package qualification. `official/redis` and
    `official/postgres` expose bounded, dedicated connection pools here; this
-   does not stabilize a generic pooling abstraction.
+   does not stabilize a generic pooling abstraction. Their real-service
+   interoperability evidence additionally requires the loopback-capable
+   runner defined in
+   [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md);
+   a restricted-sandbox `EPERM` is `not-run`, never green.
 5. **Tier 5: Legacy / Deprecated Shims**: Pre-1.0 C-style raw pointer APIs (`read_async(*buf, len)`, `to_u8_ptr`). Retained temporarily for low-level compatibility; NO new implementation in `stdx` may rely on Legacy APIs.
 6. **Tier 6: Experimental / Post-1.0**: Parameterized task spawning, generic
    connection pools, HTTP/2, structured task scopes, advanced async
@@ -47,7 +51,8 @@
 | **`stdx/crypto/token.tk`** | OS-random hexadecimal and Base64URL tokens | **Tier 3: Stdx 1.0** | Delegates entropy to `std/random`; does not impose session or expiry policy. |
 | **`stdx/crypto/hkdf.tk`** | HKDF-SHA-256 extract, expand, derive | **Tier 3: Stdx 1.0** | RFC 5869 key derivation; no protocol-specific key schedule policy. |
 | **`stdx/crypto/pbkdf2.tk`** | PBKDF2-HMAC-SHA-256 derivation | **Tier 3: Stdx 1.0** | RFC 8018 derivation with explicit work factor and bounded output; protocol adapters choose their own password policy. |
-| **`official/redis`** | RESP2 client, ordered pipelines, `RedisPool` / exclusive `RedisLease` | **Tier 4: Qualified Official** | Bounded dedicated pooling; cancellation, protocol, and reply-alignment failures poison a client before lease return. |
-| **`official/postgres`** | PostgreSQL queries, transactions, `PostgresPool` / exclusive `PostgresPoolLease` | **Tier 4: Qualified Official** | Query results are bounded and owned; a failed, canceled, or active-transaction client is not reused. |
+| **`official/redis`** | RESP2 client, ordered pipelines, `RedisPool` / exclusive `RedisLease` | **Tier 4: Qualified Official** | Dedicated package pool, not `Pool<T>`; cancellation, protocol, and reply-alignment failures poison a client before lease return. Real service rows: Redis 7.4.x/8.2.x TCP `AUTH` and private-CA TLS. |
+| **`official/postgres`** | PostgreSQL queries, transactions, `PostgresPool` / exclusive `PostgresPoolLease` | **Tier 4: Qualified Official** | Dedicated package pool, not `Pool<T>`; query results are bounded and owned, and a failed, canceled, or active-transaction client is not reused. Real service rows: PostgreSQL 16.x/17.x private-CA TLS + SCRAM. |
+| **Data-access service reference** | Router → Redis cache → PostgreSQL transaction → logs/metrics/shutdown | **Tier 4 composition evidence** | [`examples/data-access-service`](../examples/data-access-service) demonstrates composition only; it adds no web framework or generic pool API. |
 | **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 5: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
 | **Async Extensions** | Async blocks, TaskScope, generic connection pools | **Tier 6: Experimental** | Dedicated official package pools are excluded; generic pooling remains deferred. |

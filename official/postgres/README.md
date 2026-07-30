@@ -18,10 +18,11 @@ auto decoded = decode_backend_one(backend_bytes)
 
 `PostgresClient::connect_async` establishes one serial session. Its normal
 constructor, `PostgresConfig::secure`, requires verified TLS and SCRAM-SHA-256;
-an SSLRequest refusal fails the connection rather than silently falling back to
-plaintext. `trusted_local` and `insecure_tls_for_test` are deliberately named
-escape hatches for a separately secured local deployment and deterministic test
-fixtures. They are never fallback paths.
+`secure_with_ca_file` provides the same verified path for a deployment private
+CA. An SSLRequest refusal fails the connection rather than silently falling
+back to plaintext. `trusted_local` and `insecure_tls_for_test` are deliberately
+named escape hatches for a separately secured local deployment and deterministic
+test fixtures. They are never fallback paths.
 
 `scram_client_first`, `scram_client_final`, and
 `ScramClientFinal::verify_server_final` supply the algorithmic SCRAM-SHA-256
@@ -95,3 +96,15 @@ Run from this package root:
 ../../build/bin/tokac -I ../../lib -I lib tests/pool_extended_v1.tk -o /tmp/postgres_pool_extended_v1 && /tmp/postgres_pool_extended_v1
 python3 tests/qualify_package.py
 ```
+
+Real-service compatibility is a separate fail-closed Linux/Docker
+qualification. It verifies PostgreSQL 16.x and 17.x with private-CA TLS and
+SCRAM-SHA-256; a runner that cannot publish loopback ports is reported as
+`not-run`, never as a passing package test.
+
+```text
+python3 tools/scripts/qualify_data_access_real.py --tokac build/bin/tokac --report build/data-access-real-service.json
+```
+
+Run that command from the repository root. The exact scope and artifact policy
+are documented in [`docs/data_access_real_service_compatibility_v1.md`](../../docs/data_access_real_service_compatibility_v1.md).

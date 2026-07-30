@@ -1,5 +1,6 @@
-import official/postgres::{PostgresBackendFrame, PostgresColumn, PostgresDecode, PostgresMessage, decode_backend_one, package_name, scram_client_final, scram_client_first, simple_query_message, startup_message}
+import official/postgres::{PostgresBackendFrame, PostgresColumn, PostgresConfig, PostgresDecode, PostgresMessage, decode_backend_one, package_name, scram_client_final, scram_client_first, simple_query_message, startup_message}
 import std/bytes::{Bytes}
+import std/net::{Ipv4Addr, SocketAddrV4}
 import std/vec::{Vec}
 import stdx/encoding/hex
 
@@ -213,6 +214,14 @@ fn test_scram_sha256() {
            "SCRAM rejects trailing server-first attribute delimiter")
 }
 
+fn test_verified_tls_config() {
+    auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 5432:u16)
+    assert(PostgresConfig::secure_with_ca_file(address, "localhost", "app", "notes", "pencil", "test-ca.pem").is_ok(),
+           "verified TLS accepts an explicit private CA file")
+    assert(PostgresConfig::secure_with_ca_file(address, "localhost", "app", "notes", "pencil", "").is_err(),
+           "verified TLS rejects an empty private CA file")
+}
+
 fn main() -> i32 {
     assert(package_name().equals("postgres"), "public package name")
     test_manual_nested_message_ownership()
@@ -220,5 +229,6 @@ fn main() -> i32 {
     test_authentication_and_fragmentation()
     test_rows_errors_and_limits()
     test_scram_sha256()
+    test_verified_tls_config()
     return 0
 }

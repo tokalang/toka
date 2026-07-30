@@ -34,7 +34,8 @@ impl TlsStream {
         return TlsStream::connect_with_verify_async_timeout(tcp_stream#.take(), host, verify_peer, 10000).await
     }
 
-    pub fn connect_with_ca_file_async(tcp_stream#: TcpStream, host: string, ca_path: string) -> async Result<AsyncStream, string> {
+    pub fn connect_with_ca_file_async_timeout(tcp_stream#: TcpStream, host: string, ca_path: string,
+                                              timeout_ms: i32) -> async Result<AsyncStream, string> {
         if !net_tls_backend_available() {
             return Result<AsyncStream, string>::Err(string::from("TLS backend unavailable"))
         }
@@ -51,11 +52,15 @@ impl TlsStream {
             return Result<AsyncStream, string>::Err(string::from("Failed setting SNI hostname"))
         }
 
-        auto handshake = session#.connect_async(tcp_stream, 10000).await
+        auto handshake = session#.connect_async(tcp_stream, timeout_ms).await
         if handshake.is_err() {
             return Result<AsyncStream, string>::Err(handshake.unwrap_err())
         }
         return Result<AsyncStream, string>::Ok(AsyncStream::from_tls(tcp_stream#.take(), cede session))
+    }
+
+    pub fn connect_with_ca_file_async(tcp_stream#: TcpStream, host: string, ca_path: string) -> async Result<AsyncStream, string> {
+        return TlsStream::connect_with_ca_file_async_timeout(tcp_stream#.take(), host, ca_path, 10000).await
     }
 
     pub fn connect_async(tcp_stream#: TcpStream, host: string) -> async Result<AsyncStream, string> {

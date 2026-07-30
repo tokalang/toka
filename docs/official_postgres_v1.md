@@ -1,8 +1,9 @@
 # `official/postgres` v1 — PostgreSQL v3 Client RFC
 
-Status: **Phase 1 wire codec, secure TLS startup, and ASCII-profile
-SCRAM-SHA-256 authentication are implemented; query execution is not yet a
-published-client claim.**
+Status: **bounded PostgreSQL v3 client, verified TLS/SCRAM startup, simple and
+extended queries, transactions, and a dedicated bounded pool are implemented.
+Publication additionally requires a current green real-service matrix
+artifact.**
 
 ## 1. Role and placement
 
@@ -12,17 +13,17 @@ of `std`, does not require a compiler hook, has no package-owned native
 dependency, and has no reverse dependency from lower library layers. Its TLS
 mode uses the configured `stdx/net/tls` backend.
 
-The package is intentionally built in vertical slices. Its first committed
-surface is a bounded wire codec so that framing, binary ownership, server
-errors, and row decoding have executable evidence before a connection API is
-promised.
+The package was built in vertical slices, beginning with a bounded wire codec
+so framing, binary ownership, server errors, and row decoding had executable
+evidence before a connection API was promised.
 
 ## 2. v1 target and delivery order
 
-The target public client will use owner-carrying `AsyncStream` I/O and expose
-one serial connection. It will default to verified TLS and support
-SCRAM-SHA-256. A plaintext mode, if retained for tests and trusted local
-deployments, must be explicit; a TLS request may never silently downgrade.
+The public client uses owner-carrying `AsyncStream` I/O and exposes one serial
+connection. It defaults to verified TLS and supports SCRAM-SHA-256. A
+plaintext mode for explicitly trusted local deployments and an insecure TLS
+mode for deterministic tests are named opt-ins; a TLS request never silently
+downgrades.
 
 Delivery is intentionally ordered as follows:
 
@@ -41,12 +42,17 @@ Delivery is intentionally ordered as follows:
    decoded salts at 64 KiB. Startup rejects cleartext and MD5 authentication
    in its secure path and verifies the server-final signature before accepting
    AuthOK.
-4. **Simple query client.** One query owns the serial connection until it has
-   consumed `ReadyForQuery`; errors and cancellation poison the connection so
-   a later query cannot receive an abandoned response.
-5. **Compatibility evidence.** A deterministic mock remains the correctness
-   gate; an opt-in real-PostgreSQL compatibility test is release evidence, not
-   a substitute for it.
+4. **Queries and transactions — complete.** Simple queries retain every
+   result set; extended parameter queries use Parse/Bind/Execute; transactions
+   retain the serial client until commit or rollback reaches `ReadyForQuery`.
+   I/O, limit, cancellation, or protocol failure poisons the connection.
+5. **Dedicated pool — complete.** `PostgresPool` and exclusive leases bound
+   concurrency without introducing a generic `Pool<T>` surface. A failed,
+   canceled, or active transaction client is discarded before return.
+6. **Compatibility evidence — required for publication.** Deterministic mocks
+   remain correctness gates. The real PostgreSQL 16.x/17.x private-CA
+   TLS/SCRAM matrix is CI release evidence, not a replacement for them; see
+   [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
 
 ## 3. Phase 1 contract
 
@@ -61,10 +67,11 @@ validated before allocation or slicing. Backend `ErrorResponse` is parsed into
 an owned SQLSTATE/message record. Unknown message tags retain an owned payload
 so a later client state machine can decide whether the message is ignorable.
 
-## 4. Explicit non-goals for the startup slice
+## 4. Explicit non-goals
 
-This slice does not provide query execution, prepared statements, parameter
-binding, COPY, notifications, transactions, pooling, replication, or ORM
-behavior. It does not claim compatibility with a running PostgreSQL server
-until the later serial-query and real-service compatibility slices are
-qualified.
+COPY, notifications/listen, cursors, replication, pool-side prepared-statement
+caching, client-certificate/GSS/SSPI authentication, full SASLprep Unicode
+normalization, and ORM behavior are outside this v1 surface. The running
+service evidence is intentionally bounded to private-CA verified TLS and
+ASCII-profile SCRAM against PostgreSQL 16.x and 17.x; a current runner artifact
+is required before claiming that evidence for a release.
