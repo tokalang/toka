@@ -1,9 +1,9 @@
 # Data-access real-service compatibility v1
 
-Status: **qualification contract and CI runner are committed; a compatibility
-row is passed only when its runner JSON artifact says `"passed"`.** This
-document does not convert a machine that cannot bind loopback ports into a
-passing test.
+Status: **the qualification contract and Docker runner are committed. A row is
+green only when its runner JSON report says `"passed"`; its evidence level is
+either a maintainer run or a CI artifact.** This document does not convert a
+machine that cannot bind loopback ports into a passing test.
 
 ## Qualification policy
 
@@ -20,12 +20,15 @@ evidence JSON report when `--report` is supplied.
 
 | Runner condition | Exit | Qualification meaning |
 |---|---:|---|
-| Docker daemon, `openssl`, compiler, and loopback publication available | `0` | Every selected row passed and the report is evidence. |
+| Docker daemon, `openssl`, compiler, and loopback publication available | `0` | Every selected row passed. The report is `maintainer-run green` on a maintainer host, or `CI green` when produced by CI. |
 | Docker unavailable, daemon unavailable, or loopback publication forbidden (including sandbox `EPERM`) | `2` | **Not run.** This is a runner-eligibility failure, neither a product regression nor a pass. |
 | Fixture, image startup, protocol, or client contract fails | `1` | Product/service qualification failed; retain the JSON report and container logs. |
 
-The Linux job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
-is the required loopback-capable runner. It uploads
+Docker is the real-service execution mechanism. A local maintainer machine
+with Docker Desktop and loopback publication is an eligible runner and a
+successful report is valid `maintainer-run green` evidence. The Linux job in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) is only the
+reproducible automated host used for the release gate; it uploads
 `data-access-real-service.json` whether the job passes or fails. Developers
 using a restricted desktop sandbox must run the command on an eligible host or
 read that status as `not-run`; they must not relabel it as a green integration
@@ -83,5 +86,7 @@ For release review, retain all three kinds of evidence together:
    packages.
 
 No checked-in report is a substitute for an execution on the revision being
-reviewed. In particular, an unavailable local Docker daemon leaves the matrix
-at `not-run`, not `passed`.
+reviewed. A maintainer-run green report validates the matrix but is not called
+CI green; the current Linux CI artifact is the additional release-gate record.
+In particular, an unavailable local Docker daemon leaves the matrix at
+`not-run`, not `passed`.

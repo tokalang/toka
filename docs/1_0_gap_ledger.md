@@ -16,11 +16,13 @@
 ### Data-access interoperability evidence
 
 - **Real-service runner (`tools/scripts/qualify_data_access_real.py`)**:
-  required Linux CI evidence for the Tier-4 `official/redis` and
+  Docker-based maintainer and CI evidence for the Tier-4 `official/redis` and
   `official/postgres` compatibility rows. It exercises Redis 7.4.x/8.2.x
   (password TCP and private-CA TLS) and PostgreSQL 16.x/17.x (private-CA TLS
   and SCRAM-SHA-256), recording exact container patches in the
-  `data-access-real-service` artifact.
+  `data-access-real-service` artifact. A successful local Docker execution is
+  `maintainer-run green`; the Linux CI copy is the reproducible release-gate
+  artifact, not a different execution mechanism.
 - **Runner eligibility is evidence, not product behavior**: a missing Docker
   daemon or a restricted sandbox that returns `EPERM` while publishing a
   loopback service exits `2` as `not-run`; it is neither a passing row nor a

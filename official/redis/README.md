@@ -82,10 +82,11 @@ Run from this package root:
 python3 tests/qualify_package.py
 ```
 
-Real-service compatibility is a separate fail-closed Linux/Docker
-qualification. It verifies Redis 7.4.x and 8.2.x with password TCP and
-private-CA TLS; a runner that cannot publish loopback ports is reported as
-`not-run`, never as a passing package test.
+Real-service compatibility is a separate fail-closed Docker qualification. It
+verifies Redis 7.4.x and 8.2.x with password TCP and private-CA TLS; a
+successful local Docker run is maintainer evidence, while Linux CI records the
+release-gate artifact. A runner that cannot publish loopback ports is reported
+as `not-run`, never as a passing package test.
 
 ```text
 python3 tools/scripts/qualify_data_access_real.py --tokac build/bin/tokac --report build/data-access-real-service.json
