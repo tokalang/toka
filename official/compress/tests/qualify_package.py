@@ -78,11 +78,15 @@ def write_consumer(project: Path, dependency: Path) -> None:
         encoding="utf-8",
     )
     (project / "src" / "main.tk").write_text(
-        "import official/compress::{Encoder, package_name}\n\n"
+        "import official/compress::{Encoder, package_name}\n"
+        "import official/compress/http::{gzip_response}\n"
+        "import stdx/net/http::{HttpResponse}\n\n"
         "fn main() -> i32 {\n"
         '    if !package_name().as_str().equals("compress") { return 1 }\n'
         "    auto encoder# = Encoder::gzip(-1:i32).unwrap()\n"
         "    if encoder#.finish().is_err() { return 2 }\n"
+        "    auto response# = HttpResponse::ok(string::from(\"body\"))\n"
+        "    if gzip_response(cede response, -1:i32).is_err() { return 3 }\n"
         "    return 0\n"
         "}\n",
         encoding="utf-8",
@@ -91,6 +95,35 @@ def write_consumer(project: Path, dependency: Path) -> None:
         "import build::{Executable, run_build}\n\n"
         "fn main() -> i32 {\n"
         '    auto app# = Executable::make(c"compress_consumer", c"src/main.tk")\n'
+        "    return run_build(app)\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
+def write_plain_http_consumer(project: Path) -> None:
+    (project / "src").mkdir(parents=True)
+    (project / "package.tk").write_text(
+        "pub const PACKAGE = (\n"
+        '    name = "plain_http_consumer",\n'
+        '    version = "0.1.0",\n'
+        "    dependencies = (),\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    (project / "src" / "main.tk").write_text(
+        "import stdx/net/http::{HttpResponse}\n\n"
+        "fn main() -> i32 {\n"
+        "    auto response = HttpResponse::ok(string::from(\"body\"))\n"
+        "    if response.to_string().len() == 0:usize { return 1 }\n"
+        "    return 0\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (project / "build.tk").write_text(
+        "import build::{Executable, run_build}\n\n"
+        "fn main() -> i32 {\n"
+        '    auto app# = Executable::make(c"plain_http_consumer", c"src/main.tk")\n'
         "    return run_build(app)\n"
         "}\n",
         encoding="utf-8",
@@ -141,6 +174,8 @@ def main() -> int:
 
         compile_and_run(tokac, sdk, dependency, dependency / "tests" / "compress_v1.tk",
                         bridge, work / "compress_v1")
+        compile_and_run(tokac, sdk, dependency, dependency / "tests" / "http_v1.tk",
+                        bridge, work / "compress_http_v1")
 
         project = work / "consumer"
         write_consumer(project, dependency)
@@ -163,15 +198,29 @@ def main() -> int:
             raise QualificationError("toka build did not produce the native package consumer")
         run([str(program)], cwd=project, env=offline_env)
 
+        plain = work / "plain_http_consumer"
+        write_plain_http_consumer(plain)
+        no_zlib_pkg_config = work / "no-zlib-pkg-config"
+        no_zlib_pkg_config.mkdir()
+        plain_env = dict(base_env)
+        plain_env["PKG_CONFIG_LIBDIR"] = str(no_zlib_pkg_config)
+        run([str(toka), "build"], cwd=plain, env=plain_env)
+        plain_program = plain / "target" / "debug" / "plain_http_consumer"
+        if not plain_program.is_file():
+            raise QualificationError("plain HTTP consumer did not build without zlib package discovery")
+        run([str(plain_program)], cwd=plain, env=plain_env)
+
     print(json.dumps({
         "result": "pass",
         "schema": "toka.official-compress-package-v1",
         "stages": {
             "native_zlib_bridge": "pass",
             "streaming_boundary_suite": "pass",
+            "http_content_encoding_policy": "pass",
             "locked_local_dependency": "pass",
             "offline_lock_replay": "pass",
             "native_toka_build_run": "pass",
+            "plain_http_consumer_without_zlib": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))

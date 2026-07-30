@@ -1,0 +1,176 @@
+import official/compress::{package_name}
+import official/compress/http::{GzipRequestLimits, HttpCompressionError, HttpContentEncoding, decode_gzip_request_body, encode_response_for_request, gzip_response, negotiate_response_encoding}
+import core/option::{Option}
+import core/result::{Result}
+import stdx/net/http::{HeaderMap, HttpMethod, HttpRequest, HttpResponse}
+
+extern fn toka_compress_live_handle_count() -> i32
+
+fn selection_is(cede value: Result<HttpContentEncoding, HttpCompressionError>, expected: i32) -> bool {
+    match cede value {
+        auto Result<HttpContentEncoding, HttpCompressionError>::Ok('selection) => match 'selection {
+            auto HttpContentEncoding::Gzip() => return expected == 0:i32
+            auto HttpContentEncoding::Identity() => return expected == 1:i32
+            auto HttpContentEncoding::NotAcceptable() => return expected == 2:i32
+        }
+        _ => return false
+    }
+}
+
+fn header_is(headers: HeaderMap, name: str, expected: str) -> bool {
+    auto found = headers.get(name)
+    match cede found {
+        auto Option<string>::Some('value) => return 'value.as_str().equals(expected)
+        _ => return false
+    }
+}
+
+fn header_count(headers: HeaderMap, name: str) -> usize {
+    auto count#: usize = 0:usize
+    auto index#: usize = 0:usize
+    loop index < headers.entries.len() {
+        auto entry = headers.entries.get(index).clone()
+        if entry.key.as_str().eq_ignore_ascii_case(name) { count = count + 1:usize }
+        index = index + 1:usize
+    }
+    return count
+}
+
+fn contains_text(source: str, needle: str) -> bool {
+    if needle.len() == 0:usize { return true }
+    if needle.len() > source.len() { return false }
+    auto start#: usize = 0:usize
+    loop start + needle.len() <= source.len() {
+        auto index#: usize = 0:usize
+        loop index < needle.len() {
+            if source.byte_at(start + index) as u8 != needle.byte_at(index) as u8 { break }
+            index = index + 1:usize
+        }
+        if index == needle.len() { return true }
+        start = start + 1:usize
+    }
+    return false
+}
+
+fn make_request(cede headers: HeaderMap, cede body: string) -> HttpRequest {
+    return HttpRequest(
+        method = HttpMethod::POST,
+        path = string::from("/upload"),
+        version = string::from("HTTP/1.1"),
+        headers = cede headers,
+        body = cede body
+    )
+}
+
+fn test_negotiation() {
+    assert(selection_is(negotiate_response_encoding(cede Option<string>::None), 0:i32),
+           "absent Accept-Encoding deterministically prefers gzip")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from(""))), 1:i32),
+           "empty Accept-Encoding selects identity")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("gzip;q=0.4, identity;q=0.8"))), 1:i32),
+           "higher identity q wins")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("identity;q=0.5, gzip;q=0.5"))), 0:i32),
+           "equal q deterministically prefers gzip")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("gzip;q=0.2, gzip;q=0.8, identity;q=0.7"))), 0:i32),
+           "repeated gzip directives retain the highest q")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("br;q=1"))), 1:i32),
+           "unknown coding leaves identity acceptable")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("*;q=0.5"))), 0:i32),
+           "wildcard enables gzip")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("gzip;q=0, *;q=0.5"))), 1:i32),
+           "an explicit gzip directive overrides wildcard")
+    assert(selection_is(negotiate_response_encoding(Option<string>::Some(string::from("gzip;q=0, *;q=0"))), 2:i32),
+           "explicit zero wildcard rejects gzip and identity")
+    assert(negotiate_response_encoding(Option<string>::Some(string::from("gzip;q=1.1"))).is_err(),
+           "invalid q is rejected rather than guessed")
+}
+
+fn test_response_encoding_headers() {
+    auto response# = HttpResponse::ok(string::from("hello HTTP compression"))
+    auto _old_length = response.headers#.insert(string::from("Content-Length"), string::from("1"))
+    auto _replaced_length = response.headers#.insert(string::from("content-length"), string::from("2"))
+    auto _old_encoding = response.headers#.insert(string::from("Content-Encoding"), string::from("identity"))
+    auto _replaced_encoding = response.headers#.insert(string::from("content-encoding"), string::from("identity"))
+    auto _vary = response.headers#.insert(string::from("Vary"), string::from("Origin, accept-encoding, Accept-Encoding"))
+    auto encoded = encode_response_for_request(cede response, Option<string>::Some(string::from("gzip")), -1:i32)
+    assert(encoded.is_ok(), "gzip response is encoded")
+    auto response# = encoded.unwrap()
+    assert(header_is(response.headers, "Content-Encoding", "gzip"), "gzip header is written")
+    assert(header_is(response.headers, "Vary", "Origin, Accept-Encoding"), "Vary includes Accept-Encoding exactly once")
+    assert(header_is(response.headers, "Content-Length", string::from_int(response.body.len()).as_str()), "compressed Content-Length matches body")
+    assert(header_count(response.headers, "content-encoding") == 1:usize, "one Content-Encoding header")
+    assert(header_count(response.headers, "content-length") == 1:usize, "one Content-Length header")
+    assert(header_count(response.headers, "vary") == 1:usize, "one Vary header")
+    auto wire = response.to_string()
+    assert(contains_text(wire.as_str(), "content-encoding: gzip\r\n"), "wire carries gzip header")
+    assert(contains_text(wire.as_str(), "Content-Length: "), "wire carries one computed Content-Length")
+}
+
+fn test_gzip_request_decode_and_limits() {
+    auto original_response# = HttpResponse::ok(string::from("repeat repeat repeat repeat repeat repeat"))
+    auto response = gzip_response(cede original_response, -1:i32).unwrap()
+    auto headers# = HeaderMap::new()
+    auto _encoding = headers#.insert(string::from("Content-Encoding"), string::from("gzip"))
+    auto _length = headers#.insert(string::from("Content-Length"), string::from_int(response.body.len()))
+    auto compressed_request# = make_request(cede headers, cede response.body.clone())
+    auto decoded = decode_gzip_request_body(cede compressed_request, GzipRequestLimits::new(1024:usize, 64:usize).unwrap())
+    assert(decoded.is_ok(), "explicit gzip request decoder succeeds")
+    auto request = decoded.unwrap()
+    assert(request.body.as_str().equals("repeat repeat repeat repeat repeat repeat"), "decoded body is owned plaintext")
+    assert(!request.headers.contains_key("content-encoding"), "decoded request clears Content-Encoding")
+    assert(header_is(request.headers, "Content-Length", string::from_int(request.body.len()).as_str()), "decoded request length is rewritten")
+
+    auto invalid_headers# = HeaderMap::new()
+    auto _invalid_encoding = invalid_headers#.insert(string::from("Content-Encoding"), string::from("gzip"))
+    auto invalid_request# = make_request(cede invalid_headers, cede string::from("not gzip"))
+    auto invalid = decode_gzip_request_body(cede invalid_request, GzipRequestLimits::new(1024:usize, 64:usize).unwrap())
+    assert(invalid.is_err(), "invalid gzip is rejected")
+    assert(invalid.unwrap_err().kind().as_str().equals("data"), "invalid gzip error is typed")
+
+    auto truncated_headers# = HeaderMap::new()
+    auto _truncated_encoding = truncated_headers#.insert(string::from("Content-Encoding"), string::from("gzip"))
+    auto truncated_body# = string::from(response.body.as_str().substr(0:usize, response.body.len() - 1:usize))
+    auto truncated_request# = make_request(cede truncated_headers, cede truncated_body)
+    auto truncated = decode_gzip_request_body(cede truncated_request, GzipRequestLimits::new(1024:usize, 64:usize).unwrap())
+    assert(truncated.is_err(), "truncated gzip is rejected")
+    assert(truncated.unwrap_err().kind().as_str().equals("truncated"), "truncated gzip error is typed")
+
+    auto output_headers# = HeaderMap::new()
+    auto _output_encoding = output_headers#.insert(string::from("Content-Encoding"), string::from("gzip"))
+    auto output_request# = make_request(cede output_headers, cede response.body.clone())
+    auto output_limit = decode_gzip_request_body(cede output_request, GzipRequestLimits::new(3:usize, 64:usize).unwrap())
+    assert(output_limit.is_err(), "decompressed output limit is enforced")
+    assert(output_limit.unwrap_err().kind().as_str().equals("limit"), "output limit error is typed")
+
+    auto ratio_headers# = HeaderMap::new()
+    auto _ratio_encoding = ratio_headers#.insert(string::from("Content-Encoding"), string::from("gzip"))
+    auto ratio_request# = make_request(cede ratio_headers, cede response.body.clone())
+    auto ratio_limit = decode_gzip_request_body(cede ratio_request, GzipRequestLimits::new(1024:usize, 1:usize).unwrap())
+    assert(ratio_limit.is_err(), "decompression ratio limit is enforced")
+    assert(ratio_limit.unwrap_err().kind().as_str().equals("ratio_limit"), "ratio error is typed")
+}
+
+fn test_not_acceptable_and_existing_encoding() {
+    auto rejected_response# = HttpResponse::ok(string::from("body"))
+    auto rejected = encode_response_for_request(cede rejected_response,
+                                                Option<string>::Some(string::from("gzip;q=0, identity;q=0")), -1:i32)
+    assert(rejected.is_err(), "explicitly rejected encodings do not silently use identity")
+    assert(rejected.unwrap_err().kind().as_str().equals("not_acceptable"), "rejection error is typed")
+
+    auto response# = HttpResponse::ok(string::from("already compressed"))
+    auto _encoding = response.headers#.insert(string::from("Content-Encoding"), string::from("br"))
+    auto already_encoded = gzip_response(cede response, -1:i32)
+    assert(already_encoded.is_err(), "policy refuses double compression")
+    assert(already_encoded.unwrap_err().kind().as_str().equals("already_encoded"), "double compression error is typed")
+}
+
+fn main() -> i32 {
+    assert(package_name().as_str().equals("compress"), "base package remains separately importable")
+    assert(toka_compress_live_handle_count() == 0:i32, "no native handles before HTTP policy tests")
+    test_negotiation()
+    test_response_encoding_headers()
+    test_gzip_request_decode_and_limits()
+    test_not_acceptable_and_existing_encoding()
+    assert(toka_compress_live_handle_count() == 0:i32, "HTTP policy always finishes or closes native streams")
+    return 0
+}

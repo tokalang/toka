@@ -122,10 +122,10 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
   std::string resolvedPath = filename;
   bool found = false;
 
-  // 0. Check package aliases
-  auto pkgIt = m_PkgMap.find(filename);
-  if (pkgIt != m_PkgMap.end()) {
-    std::string mapped = pkgIt->second;
+  // 0. Check package aliases.  A package entry may name a root module
+  // (for example, `official/compress` -> `.../compress.tk`); imports below
+  // that root are resolved next to that module.
+  auto resolvePackageTarget = [&](const std::string &mapped) {
     bool mappedHasExt = PathUtils::hasTokaSourceExtension(mapped);
     if (!mappedHasExt) {
       std::string mappedTk = mapped + ".tk";
@@ -162,9 +162,36 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
         found = true;
       }
     }
+  };
+
+  auto pkgIt = m_PkgMap.find(filename);
+  if (pkgIt != m_PkgMap.end()) {
+    resolvePackageTarget(pkgIt->second);
+  } else {
+    const std::pair<const std::string, std::string> *bestPrefix = nullptr;
+    for (const auto &entry : m_PkgMap) {
+      const std::string &alias = entry.first;
+      if (filename.size() <= alias.size() ||
+          filename.compare(0, alias.size(), alias) != 0 ||
+          (filename[alias.size()] != '/' && filename[alias.size()] != '\\')) {
+        continue;
+      }
+      if (!bestPrefix || alias.size() > bestPrefix->first.size()) {
+        bestPrefix = &entry;
+      }
+    }
+    if (bestPrefix) {
+      std::string mapped = bestPrefix->second;
+      if (PathUtils::hasTokaSourceExtension(mapped)) {
+        std::filesystem::path path(mapped);
+        mapped = (path.parent_path() / path.stem()).string();
+      }
+      mapped += filename.substr(bestPrefix->first.size());
+      resolvePackageTarget(mapped);
+    }
   }
   // 1. Try exact filename
-  else if (fileExists(filename)) {
+  if (!found && fileExists(filename)) {
     bool shouldPoison = false;
     if (isCompilingBuildSystem && m_RecursionStack.size() >= 1) {
       std::string resBasename = getBasename(filename);
@@ -184,7 +211,7 @@ std::string ModuleResolver::resolveSourcePath(const std::string &rawFilename,
     }
   }
   // 2. Try adding .tk or .tki if no extension
-  else if (!hasExt && !isStdOrCore) {
+  else if (!found && !hasExt && !isStdOrCore) {
     std::string resolvedTki = filename + ".tki";
     std::string resolvedTk = filename + ".tk";
 

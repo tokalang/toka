@@ -1,4 +1,4 @@
-# `official/compress` v1 — Bounded Streaming Gzip/Zlib RFC
+# `official/compress` v1.1 — Bounded Streaming Gzip/Zlib and HTTP Policy
 
 Status: **implemented and locally qualified through explicit native-link and
 locked/offline package evidence; not yet published**.
@@ -7,9 +7,10 @@ locked/offline package evidence; not yet published**.
 
 `official/compress` is an optional package above `std`. It provides the narrow
 transformation boundary missing from the bundled libraries: given owned chunks,
-incrementally produce compressed or decompressed owned chunks. It owns neither
-TCP streams, HTTP headers, files, archive containers, nor content-encoding
-policy. `stdx/net/http` must not acquire a reverse dependency on it.
+incrementally produce compressed or decompressed owned chunks. Its optional
+`official/compress/http` module may compose the bundled HTTP value types, but
+`stdx/net/http` must not acquire a reverse dependency on it. The base module
+still owns neither TCP streams, HTTP headers, files, nor archive containers.
 
 The package is intentionally native because zlib is a mature, audited format
 implementation with platform packages on the supported targets. The public
@@ -59,12 +60,55 @@ Qualification proves:
    that bridge;
 3. split-input Gzip and Zlib round trips work;
 4. invalid, truncated, and expansion-limited input fails closed;
-5. a local locked package is replayable in `TOKA_OFFLINE=1` before the native
-   public-import test runs.
+5. `official/compress/http` negotiates, encodes, and explicitly decodes
+   complete bodies with malformed, truncated, output-limit, ratio-limit, and
+   duplicate-header normalization redlines;
+6. a local locked package is replayable in `TOKA_OFFLINE=1` before the native
+   public-import test runs;
+7. a `stdx/net/http`-only consumer builds with zlib discovery intentionally
+   unavailable.
+
+## v1.1 optional HTTP Content-Encoding policy
+
+```toka
+import official/compress/http::{GzipRequestLimits, decode_gzip_request_body,
+                                encode_response_for_request}
+
+auto encoded = encode_response_for_request(
+    cede response,
+    request.headers.get("accept-encoding"),
+    -1
+).unwrap()
+
+auto limits = GzipRequestLimits::new(8 * 1024 * 1024, 32).unwrap()
+auto request = decode_gzip_request_body(cede gzip_request, limits).unwrap()
+```
+
+The HTTP module is a response/request policy layer, not an HTTP server hook:
+
+- Response negotiation supports only `gzip` and `identity`. A missing
+  `Accept-Encoding` chooses gzip; an empty field chooses identity. Explicit
+  values override `*`, repeated codings retain their highest valid `q`, and a
+  tie selects gzip deterministically. If both supported representations have
+  `q=0`, the result is `NotAcceptable` rather than a silent fallback.
+- `gzip_response` and `encode_response_for_request` finish the encoder before
+  constructing the response. They write one `Content-Encoding: gzip`, one
+  `Vary: Accept-Encoding`, and the matching `Content-Length`; a pre-encoded
+  non-identity response is rejected rather than compressed twice.
+- `decode_gzip_request_body` is explicit and accepts only
+  `Content-Encoding: gzip`. It completes decoder validation, removes the
+  coding/transfer framing headers, and writes the decoded `Content-Length`.
+  `GzipRequestLimits` requires both a positive total decoded-byte limit and a
+  positive decoded-to-compressed ratio limit.
+
+HTTP header names remain case-insensitive; `HeaderMap` normalizes stored names
+to lowercase. The policy does not automatically decode server requests or
+alter `stdx/net/http` behavior, leaving status codes, admission policy, and
+streaming strategy with the application.
 
 ## Stop boundary
 
-There is no implicit HTTP `Content-Encoding`, no `AsyncStream` wrapper, no
-archive format, no raw DEFLATE, no concatenated-member policy, and no Brotli or
-Zstd implementation. Those each need a separate format/policy decision and
-their own resource contracts.
+There is no implicit HTTP `Content-Encoding`, no HTTP-core dependency, no
+`AsyncStream` wrapper, no archive format, no raw DEFLATE, no concatenated-
+member policy, and no Brotli or Zstd implementation. Those each need a
+separate format/policy decision and their own resource contracts.

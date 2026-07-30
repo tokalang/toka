@@ -6,7 +6,7 @@ pub const PACKAGE = (
     kind = "library",
     license = "Apache-2.0",
     compiler = "0.9.9-01",
-    entry_modules = ("lib/official/compress.tk"),
+    entry_modules = ("lib/official/compress.tk", "lib/official/compress/http.tk"),
     targets = ("macos", "linux"),
     dependencies = (),
     native = (
@@ -18,9 +18,9 @@ pub const PACKAGE = (
 
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
-    summary = "Bounded streaming gzip and zlib compression over owned Bytes chunks.",
-    capabilities = ("stream gzip encoder", "stream zlib encoder", "decode gzip with explicit output bound", "decode zlib with explicit output bound"),
-    non_goals = ("HTTP content-encoding policy", "filesystem/archive formats", "concatenated gzip members", "async stream adapters", "brotli", "zstd"),
+    summary = "Bounded streaming gzip and zlib compression over owned Bytes chunks, with an optional HTTP Content-Encoding policy module.",
+    capabilities = ("stream gzip encoder", "stream zlib encoder", "decode gzip with explicit output bound", "decode zlib with explicit output bound", "negotiate gzip or identity HTTP responses", "decode explicit gzip HTTP request bodies with output and ratio limits"),
+    non_goals = ("HTTP core integration", "filesystem/archive formats", "concatenated gzip members", "async stream adapters", "brotli", "zstd"),
     safety = ("all native state and raw pointers remain private; decoder output limits are mandatory; data, truncation, trailing-byte, and limit errors close the stream"),
     qualification = ("python3 tests/qualify_package.py")
 )
