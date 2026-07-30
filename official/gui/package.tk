@@ -1,0 +1,27 @@
+// Static manifest for the initial macOS native GUI vertical slice.
+pub const PACKAGE = (
+    name = "gui",
+    identity = "official/gui",
+    version = "0.1.0",
+    kind = "library",
+    license = "Apache-2.0",
+    compiler = "0.9.9-01",
+    entry_modules = ("lib/official/gui.tk"),
+    targets = ("macos"),
+    dependencies = (),
+    native = (
+        required = true,
+        sources = ("native/toka_gui.m"),
+        libraries = (),
+        frameworks = ("AppKit", "Metal", "QuartzCore")
+    )
+)
+
+pub const AI_CONTRACT = (
+    schema = "toka-official-package-v1",
+    summary = "A macOS native window and Metal-surface lifecycle bridge for Toka.",
+    capabilities = ("open and close a native window", "create a CAMetalLayer backed by the system Metal device", "poll the macOS event queue"),
+    non_goals = ("cross-platform support", "widget toolkit", "text input or IME", "render command encoding", "async event-loop integration"),
+    safety = ("The Objective-C window handle remains private; Window closes it deterministically through drop."),
+    qualification = ("python3 official/gui/tests/qualify_macos_spike.py")
+)

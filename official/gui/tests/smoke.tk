@@ -1,0 +1,127 @@
+import official/gui::{App, Bounds, ButtonState, Container, Event, EventKind, FocusState, Layout, Modifiers, Rect, Scene, Scrollbar, ScrollState, ShortcutMap, TextSelection, ToggleState, VirtualList, Window}
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto app# = App::new()
+    if app.wait_for_event(0:i32).is_err() { return 53 }
+    auto opened = Window::open("Toka GUI smoke", 320:i32, 200:i32)
+    if opened.is_err() { return 4 }
+    auto window# = opened.unwrap()
+    if !window.has_metal_surface() { return 1 }
+    if window#.show().is_err() { return 2 }
+    if window#.poll_text().unwrap().is_some() { return 48 }
+    if !window#.take_redraw_request().unwrap() { return 12 }
+    if window#.take_redraw_request().unwrap() { return 13 }
+    if window#.request_redraw().is_err() || window#.request_redraw().is_err() { return 16 }
+    if !window#.take_redraw_request().unwrap() { return 17 }
+    if window#.take_redraw_request().unwrap() { return 18 }
+    auto first_event = window#.poll_event().unwrap()
+    if first_event.is_none() { return 10 }
+    if first_event.unwrap().kind != EventKind::Shown { return 11 }
+    auto scene# = Scene::new()
+    auto panel# = Container::new(Bounds(x = 0.10:f64, y = 0.10:f64, width = 0.35:f64, height = 0.35:f64), true).unwrap()
+    panel#.add_rect(Rect(x = 0.0:f64, y = 0.0:f64, width = 1.0:f64, height = 1.0:f64,
+                         red = 0.18:f64, green = 0.25:f64, blue = 0.36:f64, alpha = 1.0:f64))
+    auto badge# = Container::new(Bounds(x = 0.15:f64, y = 0.15:f64, width = 0.70:f64, height = 0.35:f64), true).unwrap()
+    if badge#.add_text("nested", 0.05:f64, 0.10:f64, 0.20:f64,
+                       0.92:f64, 0.95:f64, 1.0:f64, 1.0:f64).is_err() { return 33 }
+    panel#.add_container(cede badge)
+    scene#.add_container(cede panel)
+    auto content = Layout::inset(Bounds(x = 0.0:f64, y = 0.0:f64, width = 1.0:f64, height = 1.0:f64), 0.08:f64).unwrap()
+    auto columns = Layout::row(content, 2:i32, 0.05:f64).unwrap()
+    auto left = columns.get(0:usize)
+    auto right = columns.get(1:usize)
+    auto cards = Layout::column(right, 2:i32, 0.05:f64).unwrap()
+    auto weights# = Vec<f64>::new()
+    weights#.push(1.0:f64)
+    weights#.push(2.0:f64)
+    auto weighted = Layout::row_weighted(content, weights, 0.03:f64).unwrap()
+    if weighted.get(1:usize).width <= weighted.get(0:usize).width { return 27 }
+    scene#.add_rect(Rect(x = left.x, y = left.y, width = left.width, height = left.height,
+                          red = 0.20:f64, green = 0.70:f64, blue = 0.95:f64, alpha = 1.0:f64))
+    scene#.add_rect(Rect(x = cards.get(0:usize).x, y = cards.get(0:usize).y,
+                          width = cards.get(0:usize).width, height = cards.get(0:usize).height,
+                          red = 0.96:f64, green = 0.55:f64, blue = 0.18:f64, alpha = 1.0:f64))
+    scene#.add_rect(Rect(x = cards.get(1:usize).x, y = cards.get(1:usize).y,
+                          width = cards.get(1:usize).width, height = cards.get(1:usize).height,
+                          red = 0.55:f64, green = 0.36:f64, blue = 0.92:f64, alpha = 1.0:f64))
+    if scene#.add_text("Toka GUI", 0.12:f64, 0.12:f64, 0.10:f64,
+                       0.98:f64, 0.98:f64, 1.0:f64, 1.0:f64).is_err() { return 19 }
+    if scene.len() != 5:usize { return 14 }
+    if scene.render(window#, 0.12:f64, 0.18:f64, 0.28:f64, 1.0:f64).is_err() { return 15 }
+    if window#.begin_frame(0.08:f64, 0.10:f64, 0.14:f64, 1.0:f64).is_err() { return 20 }
+    if window#.push_clip(0.25:f64, 0.25:f64, 0.50:f64, 0.50:f64).is_err() { return 21 }
+    if window#.push_clip(0.10:f64, 0.10:f64, 0.80:f64, 0.80:f64).is_err() { return 22 }
+    if window#.frame_rect(0.0:f64, 0.0:f64, 1.0:f64, 1.0:f64,
+                          0.25:f64, 0.85:f64, 0.45:f64, 0.70:f64).is_err() { return 23 }
+    if window#.pop_clip().is_err() || window#.pop_clip().is_err() { return 24 }
+    if window#.pop_clip().is_ok() { return 25 }
+    if window#.end_frame().is_err() { return 26 }
+    auto visible = VirtualList::visible(100:i32, 0.04:f64, 0.20:f64, 0.18:f64, 1:i32).unwrap()
+    if visible.first != 4:i32 || visible.last_exclusive != 11:i32 || visible.content_extent != 4.0:f64 { return 34 }
+    auto virtual_row = VirtualList::item_bounds(visible.first, 0.04:f64, 0.20:f64, 0.80:f64).unwrap()
+    if virtual_row.width != 0.80:f64 || virtual_row.height != 0.04:f64 { return 35 }
+    auto scroll# = ScrollState::new(2.0:f64, 0.50:f64).unwrap()
+    if !scroll#.scroll_by(0.30:f64) { return 36 }
+    auto wheel = Event(kind = EventKind::Scrolled, x = 0.0:f64, y = -1.0:f64, code = 0:i32, modifiers = 0:i32, width = 0:i32, height = 0:i32)
+    if !scroll#.apply_wheel(wheel, 0.10:f64).unwrap() || scroll.offset() != 0.40:f64 { return 37 }
+    auto track = Bounds(x = 0.90:f64, y = 0.10:f64, width = 0.04:f64, height = 0.80:f64)
+    auto thumb = Scrollbar::thumb(track, scroll, 0.10:f64).unwrap()
+    if thumb.height != 0.20:f64 { return 49 }
+    if !Scrollbar::drag_to(scroll#, track, 0.10:f64, 0.90:f64).unwrap() || scroll.offset() != 1.50:f64 { return 50 }
+    auto focus# = FocusState::new()
+    focus#.request(42:i32)
+    if !focus.is_focused(42:i32) { return 38 }
+    focus#.clear()
+    if focus.focused_id() != -1:i32 { return 39 }
+    auto button# = ButtonState::new(42:i32, Bounds(x = 0.20:f64, y = 0.20:f64, width = 0.30:f64, height = 0.20:f64)).unwrap()
+    auto hover = Event(kind = EventKind::PointerMoved, x = 0.30:f64, y = 0.30:f64, code = 0:i32, modifiers = 0:i32, width = 0:i32, height = 0:i32)
+    auto down = Event(kind = EventKind::PointerDown, x = 0.30:f64, y = 0.30:f64, code = 0:i32, modifiers = 0:i32, width = 0:i32, height = 0:i32)
+    auto up = Event(kind = EventKind::PointerUp, x = 0.30:f64, y = 0.30:f64, code = 0:i32, modifiers = 0:i32, width = 0:i32, height = 0:i32)
+    if button#.handle_event(hover).unwrap() || !button.is_hovered() { return 40 }
+    if button#.handle_event(down).unwrap() || !button.is_pressed() { return 41 }
+    if !button#.handle_event(up).unwrap() || button.is_pressed() { return 42 }
+    auto toggle# = ToggleState::new(7:i32, Bounds(x = 0.55:f64, y = 0.20:f64, width = 0.20:f64, height = 0.20:f64), false).unwrap()
+    auto toggle_down = Event(kind = EventKind::PointerDown, x = 0.60:f64, y = 0.25:f64, code = 0:i32, modifiers = 0:i32, width = 0:i32, height = 0:i32)
+    auto toggle_up = Event(kind = EventKind::PointerUp, x = 0.60:f64, y = 0.25:f64, code = 0:i32, modifiers = 0:i32, width = 0:i32, height = 0:i32)
+    if toggle#.handle_event(toggle_down).unwrap() || toggle.value() { return 43 }
+    if !toggle#.handle_event(toggle_up).unwrap() || !toggle.value() { return 44 }
+    auto shortcuts# = ShortcutMap::new()
+    auto command_modifier = Modifiers::command()
+    if shortcuts#.bind(12:i32, command_modifier, 1001:i32).is_err() { return 45 }
+    if shortcuts#.bind(12:i32, command_modifier, 1002:i32).is_ok() { return 46 }
+    if shortcuts#.bind_in_scope(42:i32, 12:i32, command_modifier, 2001:i32).is_err() { return 51 }
+    auto command_key = Event(kind = EventKind::KeyDown, x = 0.0:f64, y = 0.0:f64, code = 12:i32,
+                             modifiers = command_modifier, width = 0:i32, height = 0:i32)
+    auto action = shortcuts.dispatch(command_key)
+    match action {
+        auto Option<i32>::Some(found) => if found != 1001:i32 { return 47 }
+        _ => return 47
+    }
+    auto scoped_action = shortcuts.dispatch_for_scope(command_key, 42:i32)
+    match scoped_action {
+        auto Option<i32>::Some(found) => if found != 2001:i32 { return 52 }
+        _ => return 52
+    }
+    auto selection# = TextSelection::cursor(3:usize)
+    if !selection.is_collapsed() || selection.start() != 3:usize { return 54 }
+    selection#.extend_to(8:usize)
+    if selection.is_collapsed() || selection.start() != 3:usize || selection.end() != 8:usize { return 55 }
+    selection#.set_cursor(5:usize)
+    if !selection.is_collapsed() || selection.end() != 5:usize { return 56 }
+    auto initial_size = window.size().unwrap()
+    if initial_size.width <= 0:i32 || initial_size.height <= 0:i32 { return 28 }
+    if window#.resize(360:i32, 220:i32).is_err() { return 29 }
+    auto resized = window.size().unwrap()
+    if resized.width != 360:i32 || resized.height != 220:i32 { return 30 }
+    if !window#.take_redraw_request().unwrap() { return 31 }
+    if scene.render(window#, 0.12:f64, 0.18:f64, 0.28:f64, 1.0:f64).is_err() { return 32 }
+    app#.pump()
+    window#.close()
+    if window#.show().is_ok() { return 6 }
+    if window#.fill_rect(0.0:f64, 0.0:f64, 1.0:f64, 1.0:f64, 0.0:f64, 0.0:f64, 0.0:f64, 1.0:f64).is_ok() { return 9 }
+    if !window.is_closed() { return 3 }
+    app#.stop()
+    if app.is_running() { return 7 }
+    return 0
+}

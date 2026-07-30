@@ -1,0 +1,5 @@
+import official/gui::{Window}
+
+fn duplicate(window: Window) -> Window {
+    return window.clone()
+}

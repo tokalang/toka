@@ -1,0 +1,21 @@
+import official/gui::{App, Scene, Window}
+
+fn main() -> i32 {
+    auto app# = App::new()
+    auto opened = Window::open("Toka GUI image smoke", 240:i32, 160:i32)
+    if opened.is_err() { return 1 }
+    auto window# = opened.unwrap()
+    if window#.show().is_err() { return 2 }
+    auto scene# = Scene::new()
+    if scene#.add_image("src/fixture.png", 0.20:f64, 0.20:f64, 0.40:f64, 0.40:f64, 0.80:f64).is_err() { return 3 }
+    if scene#.add_svg_icon("src/fixture.svg", 0.62:f64, 0.20:f64, 0.18:f64, 0.18:f64, 1.0:f64).is_err() { return 7 }
+    if scene#.add_text("image", 0.20:f64, 0.68:f64, 0.10:f64,
+                       1.0:f64, 1.0:f64, 1.0:f64, 1.0:f64).is_err() { return 4 }
+    if scene.len() != 3:usize { return 5 }
+    if scene.render(window#, 0.08:f64, 0.10:f64, 0.14:f64, 1.0:f64).is_err() { return 6 }
+    if window#.clear_image_cache().is_err() { return 8 }
+    if scene.render(window#, 0.08:f64, 0.10:f64, 0.14:f64, 1.0:f64).is_err() { return 9 }
+    app#.pump()
+    window#.close()
+    return 0
+}
