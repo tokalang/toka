@@ -112,6 +112,7 @@ void printHelp() {
       << "  --emit-interface                Emit a TKI interface\n"
       << "  --link-search <path>            Add a native library search path\n"
       << "  --link-lib <name>               Link a native library by name\n"
+      << "  --link-framework <name>         Link a macOS system framework by name\n"
       << "  --check-json                    Emit JSON Lines diagnostics\n"
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
@@ -237,10 +238,24 @@ bool isSafeLinkLibraryName(const std::string &name) {
     });
 }
 
+bool isSafeFrameworkName(const std::string &name) {
+    if (name.empty() || !std::isalpha(static_cast<unsigned char>(name.front()))) return false;
+    return std::all_of(name.begin(), name.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '_';
+    });
+}
+
 bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs,
                  std::vector<std::string> linkSearchPaths,
                  std::vector<std::string> linkLibraries,
+                 std::vector<std::string> linkFrameworks,
                  std::string outputFile) {
+#if !defined(__APPLE__)
+    if (!linkFrameworks.empty()) {
+        llvm::errs() << "--link-framework is only supported on macOS\n";
+        return false;
+    }
+#endif
     llvm::Triple triple(toka::Parser::TargetTriple);
     if (triple.isOSWASI() || triple.getArch() == llvm::Triple::wasm32 || triple.getArch() == llvm::Triple::wasm64) {
         std::vector<std::string> searchPaths = {
@@ -359,6 +374,7 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs,
     }
     std::vector<std::string> nativeSearchFlags;
     std::vector<std::string> nativeLibraryFlags;
+    std::vector<std::string> nativeFrameworkFlags;
     nativeSearchFlags.reserve(linkSearchPaths.size());
     nativeLibraryFlags.reserve(linkLibraries.size());
     for (const auto &path : linkSearchPaths)
@@ -373,6 +389,12 @@ bool linkWithLLD(std::string objFile, std::vector<std::string> extraObjs,
     for (const auto &library : linkLibraries)
         nativeLibraryFlags.push_back("-l" + library);
     for (const auto &flag : nativeLibraryFlags) args.push_back(flag.c_str());
+    nativeFrameworkFlags.reserve(linkFrameworks.size());
+    for (const auto &framework : linkFrameworks) {
+        nativeFrameworkFlags.push_back("-framework");
+        nativeFrameworkFlags.push_back(framework);
+    }
+    for (const auto &flag : nativeFrameworkFlags) args.push_back(flag.c_str());
     args.push_back("-lSystem");
     return lld::macho::link(args, llvm::outs(), llvm::errs(), false, false);
 #else
@@ -482,6 +504,7 @@ int main(int argc, char **argv) {
   std::vector<std::string> objectFiles;
   std::vector<std::string> linkSearchPaths;
   std::vector<std::string> linkLibraries;
+  std::vector<std::string> linkFrameworks;
   std::map<std::string, std::string> pkgMap;
   bool disableBorrowCheck = false;
   bool emitObj = false;
@@ -693,6 +716,12 @@ int main(int argc, char **argv) {
         return 1;
       }
       linkLibraries.emplace_back(argv[++i]);
+    } else if (arg == "--link-framework") {
+      if (i + 1 >= argc || !isSafeFrameworkName(argv[i + 1])) {
+        llvm::errs() << "--link-framework requires a framework name containing only letters, digits, or '_'\n";
+        return 1;
+      }
+      linkFrameworks.emplace_back(argv[++i]);
     } else if (arg.rfind("-", 0) == 0) {
       llvm::errs() << "error: unknown option '" << arg
                    << "' (use --help for available options)\n";
@@ -1474,7 +1503,7 @@ int main(int argc, char **argv) {
         objectFiles.push_back(tokaRtPath);
       }
 
-      if (!linkWithLLD(objFile, objectFiles, linkSearchPaths, linkLibraries, finalOutput)) {
+      if (!linkWithLLD(objFile, objectFiles, linkSearchPaths, linkLibraries, linkFrameworks, finalOutput)) {
         llvm::errs() << "Linker error: LLD failed\n";
         return 1;
       }

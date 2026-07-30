@@ -230,13 +230,14 @@ def test_native_build_metadata(root: Path) -> None:
     dependency.mkdir(parents=True)
     (dependency / "native").mkdir()
     (dependency / "native" / "bridge.c").write_text("int toka_bridge(void) { return 1; }\n", encoding="utf-8")
+    (dependency / "native" / "bridge.m").write_text("int toka_bridge_objc(void) { return 2; }\n", encoding="utf-8")
     (dependency / "package.tk").write_text(
         "pub const PACKAGE = (\n"
         '    name = "bridge",\n'
         '    identity = "official/bridge",\n'
         '    version = "1.0.0",\n'
         "    dependencies = (),\n"
-        "    native = (required = true, sources = (\"native/bridge.c\"), libraries = (\"zlib\"))\n"
+        "    native = (required = true, sources = (\"native/bridge.c\", \"native/bridge.m\"), libraries = (\"zlib\"), frameworks = (\"AppKit\"))\n"
         ")\n",
         encoding="utf-8",
     )
@@ -250,8 +251,9 @@ def test_native_build_metadata(root: Path) -> None:
     assert plan["packages"] == [{
         "alias": "bridge",
         "root": str(dependency.resolve()),
-        "sources": [str((dependency / "native" / "bridge.c").resolve())],
+        "sources": [str((dependency / "native" / "bridge.c").resolve()), str((dependency / "native" / "bridge.m").resolve())],
         "libraries": ["zlib"],
+        "frameworks": ["AppKit"],
     }]
 
     manifest = (dependency / "package.tk")
@@ -262,7 +264,7 @@ def test_native_build_metadata(root: Path) -> None:
     resolve(project)
     expect_error(
         lambda: native_build_plan(project / "package.lock", project / ".toka"),
-        "native.sources must use relative native/*.c paths",
+        "native.sources must use relative native/*.c or native/*.m paths",
     )
 
 

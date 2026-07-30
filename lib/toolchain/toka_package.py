@@ -28,6 +28,7 @@ GIT_RE = re.compile(
     r'^Git\(\s*"([^"]+)"\s*(?:,\s*(commit|tag|branch)\s*=\s*"([^"]+)")?\s*\)$'
 )
 NATIVE_LIBRARY_RE = re.compile(r"^[A-Za-z0-9_+.-]+$")
+NATIVE_FRAMEWORK_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
 class PackageError(RuntimeError):
@@ -777,9 +778,10 @@ def package_root(entry: LockEntry, state: Path) -> Path:
 def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
     """Return the locked native build inputs for required source packages.
 
-    This deliberately accepts only relative `native/*.c` sources and logical
-    library names.  The build driver obtains compiler and linker flags through
-    pkg-config; package metadata is never treated as a shell fragment.
+    This deliberately accepts only relative `native/*.c` or `native/*.m`
+    sources, logical library names, and validated macOS framework names. The
+    build driver obtains library flags through pkg-config; package metadata is
+    never treated as a shell fragment.
     """
     packages: list[dict[str, object]] = []
     for alias, entry in sorted(read_lock(lock_path).items()):
@@ -795,15 +797,16 @@ def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
             continue
         sources = _static_string_tuple(native, "sources")
         libraries = _static_string_tuple(native, "libraries")
-        if not sources and not libraries:
-            raise PackageError("required native package has no sources or libraries: " + alias)
+        frameworks = _static_string_tuple(native, "frameworks")
+        if not sources and not libraries and not frameworks:
+            raise PackageError("required native package has no sources, libraries, or frameworks: " + alias)
         absolute_sources: list[str] = []
         for source in sources:
             relative = Path(source)
             if (not source or relative.is_absolute() or ".." in relative.parts or
                     not relative.parts or relative.parts[0] != "native" or
-                    relative.suffix != ".c"):
-                raise PackageError("native.sources must use relative native/*.c paths: " + alias)
+                    relative.suffix not in (".c", ".m")):
+                raise PackageError("native.sources must use relative native/*.c or native/*.m paths: " + alias)
             resolved = (root / relative).resolve()
             try:
                 resolved.relative_to(root)
@@ -815,11 +818,15 @@ def native_build_plan(lock_path: Path, state: Path) -> dict[str, object]:
         for library in libraries:
             if not NATIVE_LIBRARY_RE.fullmatch(library):
                 raise PackageError("native library name is invalid: " + alias)
+        for framework in frameworks:
+            if not NATIVE_FRAMEWORK_RE.fullmatch(framework):
+                raise PackageError("native framework name is invalid: " + alias)
         packages.append({
             "alias": alias,
             "root": str(root),
             "sources": sorted(absolute_sources),
             "libraries": sorted(set(libraries)),
+            "frameworks": sorted(set(frameworks)),
         })
     return {"schema": "toka.native-package-plan-v1", "packages": packages, "version": 1}
 

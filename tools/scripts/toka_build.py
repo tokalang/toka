@@ -82,7 +82,7 @@ def filter_args_for_submodule(args_list: list) -> list:
             continue
         if arg == "-c" or arg == "--emit-interface" or arg == "--emit-obj":
             continue
-        if arg == "--link-lib" or arg == "--link-search":
+        if arg == "--link-lib" or arg == "--link-search" or arg == "--link-framework":
             skip = True
             continue
         res.append(arg)
@@ -146,9 +146,9 @@ def parse_link_flags(tokens: list[str], library: str) -> tuple[list[str], list[s
     return search_paths, libraries
 
 
-def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], str]:
+def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], list[str], str]:
     if not Path("package.lock").is_file():
-        return [], [], [], [], ""
+        return [], [], [], [], [], ""
     helper = package_helper_path()
     if helper is None:
         raise RuntimeError("native package support could not find toka_package.py")
@@ -178,7 +178,9 @@ def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], 
         alias = package.get("alias")
         sources = package.get("sources")
         libraries = package.get("libraries")
-        if not isinstance(alias, str) or not isinstance(sources, list) or not isinstance(libraries, list):
+        frameworks = package.get("frameworks")
+        if (not isinstance(alias, str) or not isinstance(sources, list) or
+                not isinstance(libraries, list) or not isinstance(frameworks, list)):
             raise RuntimeError("native package plan contains invalid fields")
         fingerprint.update(alias.encode("utf-8"))
         for source in sources:
@@ -196,11 +198,16 @@ def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], 
             link_libraries.extend(library_links)
             fingerprint.update(library.encode("utf-8"))
             fingerprint.update("\0".join(library_cflags + library_search + library_links).encode("utf-8"))
+        for framework in frameworks:
+            if not isinstance(framework, str):
+                raise RuntimeError("native package framework is invalid")
+            fingerprint.update(framework.encode("utf-8"))
     return (
         packages,
         list(dict.fromkeys(cflags)),
         list(dict.fromkeys(search_paths)),
         list(dict.fromkeys(link_libraries)),
+        list(dict.fromkeys(framework for package in packages for framework in package["frameworks"])),
         fingerprint.hexdigest(),
     )
 
@@ -472,7 +479,7 @@ def main():
     env["TOKA_BUILD_DIR"] = build_dir
 
     try:
-        native_packages, native_cflags, native_search_paths, native_libraries, native_fingerprint = native_package_plan()
+        native_packages, native_cflags, native_search_paths, native_libraries, native_frameworks, native_fingerprint = native_package_plan()
     except RuntimeError as error:
         sys.stderr.write("Native package build error: %s\n" % error)
         sys.exit(1)
@@ -481,6 +488,8 @@ def main():
         native_link_args.extend(["--link-search", search_path])
     for library in native_libraries:
         native_link_args.extend(["--link-lib", library])
+    for framework in native_frameworks:
+        native_link_args.extend(["--link-framework", framework])
 
     # 1. Run compiler dependency dump to get current graph
     current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
