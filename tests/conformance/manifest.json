@@ -75,6 +75,14 @@
       "description": "Vec::get element clone and borrow stability (GAP-LANG-01)"
     },
     {
+      "id": "std_vec_move_only_lifecycle_01",
+      "path": "std/vec_move_only_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec non-clone operations support move-only resources while copyable Vec cloning remains available"
+    },
+    {
       "id": "ownership_cede_raw_storage_exactly_once_01",
       "path": "ownership/cede_raw_storage_exactly_once.tk",
       "type": "run",

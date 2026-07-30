@@ -38,7 +38,7 @@ pub shape Vec<'T> (
 impl<'T: @Send> Vec<'T> @Send {}
 impl<'T: @Sync> Vec<'T> @Sync {}
 
-impl<'T> Vec<'T>@encap {
+impl<'T: @Clone> Vec<'T>@encap {
     pub(std) *
     fn drop(self#) {
         unsafe {
@@ -50,27 +50,70 @@ impl<'T> Vec<'T>@encap {
     }
 
     pub fn clone(self) -> Vec<'T> {
-        // Deep clone of the vector structure
-        // Note: Elements are copied via assignment. 
-        // Once compiler supports auto-clone on assign, this becomes deep copy for elements too.
         unsafe {
             if self.cap == 0 {
-                // Avoid calling new() to prevent circular instantiation loop in compiler
                 return Vec<'T>(*buf=null, len=0, cap=0)
             }
-            // alloc array
             auto *new_buf# = unsafe alloc [self.cap] 'T
-            
-            // Copy elements
             auto ctr# = Counter(val=0)
             loop ctr.val < self.len {
                 new_buf[ctr.val] = self.buf[ctr.val]
                 ctr#.inc()
             }
-            
             return Vec<'T>(*buf=*new_buf, len=self.len, cap=self.cap)
         }
     }
+}
+
+// Copying operations are intentionally kept out of the move-only core impl.
+// This lets Vec<T> hold a live resource whose clone method is deleted, while
+// preserving the familiar APIs for copyable element types.
+impl<'T: @Clone> Vec<'T> {
+    // Get element at index (Returns Copy/Move)
+    pub fn get(self, index: usize) -> 'T {
+        unsafe {
+             if index >= self.len {
+                 libc_exit(1)
+             }
+             auto 'val = self.buf[index]
+             return 'val
+        }
+    }
+
+    // Alias to get
+    pub fn at(self, index: usize) -> 'T {
+        return self.get(index)
+    }
+
+    // Safe get
+    pub fn get_opt(self, index: usize) -> Option<'T> {
+        unsafe {
+             if index >= self.len {
+                 return Option<'T>::None
+             }
+             auto 'val = self.buf[index]
+             return Option<'T>::Some('val)
+        }
+    }
+
+}
+
+// @encap currently requires clone. Keep the move-only specialization explicit:
+// it owns and drops its live prefix, but rejects every copy of the Vec itself.
+// The clone-capable implementation above is registered first and therefore
+// wins whenever T satisfies @Clone.
+impl<'T> Vec<'T>@encap {
+    pub(std) *
+    fn drop(self#) {
+        unsafe {
+            if self.*buf != null {
+                unsafe free [self.len]self.*#buf
+                self.*buf = null
+            }
+        }
+    }
+
+    pub fn clone(self) = delete
 }
 
 impl<'T> Vec<'T> {
@@ -179,22 +222,6 @@ impl<'T> Vec<'T> {
         }
     }
     
-    // Get element at index (Returns Copy/Move)
-    pub fn get(self, index: usize) -> 'T {
-        unsafe {
-             if index >= self.len {
-                 libc_exit(1)
-             }
-             auto 'val = self.buf[index]
-             return 'val
-        }
-    }
-    
-    // Alias to get
-    pub fn at(self, index: usize) -> 'T {
-        return self.get(index)
-    }
-
     // Unsafe Reference Get (Returns Pointer/Handle)
     // Used to peek without copying/moving.
     pub fn get_ref(self, index: usize) -> *'T {
@@ -203,17 +230,6 @@ impl<'T> Vec<'T> {
                  return null
              }
              return *self.buf[index]
-        }
-    }
-
-    // Safe get
-    pub fn get_opt(self, index: usize) -> Option<'T> {
-        unsafe {
-             if index >= self.len {
-                 return Option<'T>::None
-             }
-             auto 'val = self.buf[index]
-             return Option<'T>::Some('val)
         }
     }
 
@@ -281,10 +297,11 @@ impl<'T> Vec<'T> {
                 // Growth case
                 auto *new_buf# = unsafe alloc [new_cap] 'T
                 
-                // Copy elements manually
+                // Move initialized elements; the old backing allocation is
+                // then released with free[0], so it cannot drop stale copies.
                 auto ctr# = Counter(val=0)
                 loop ctr.val < self.len {
-                    new_buf[ctr.val] = self.buf[ctr.val]
+                    new_buf[ctr.val] = cede self.buf[ctr.val]
                     ctr#.inc()
                 }
                 
@@ -297,24 +314,6 @@ impl<'T> Vec<'T> {
                 self.*buf = *new_buf
                 self.cap = new_cap
             }
-        }
-    }
-
-    // Resize vector (fill with value)
-    pub fn resize(self#, new_len: usize, cede 'val: T) {
-        unsafe {
-            if new_len > self.cap {
-                 loop self.cap < new_len {
-                     self#.grow()
-                 }
-            }
-            // Fill from old_len to new_len
-            auto i# = self.len
-            loop i < new_len {
-                self.buf[i] = cede 'val
-                i += 1
-            }
-            self.len = new_len
         }
     }
 
@@ -338,6 +337,25 @@ impl<'T> Vec<'T> {
         }
     }
 
+}
+
+impl<'T: @Clone> Vec<'T> {
+    // Resize vector by cloning the fill value into each new element.
+    pub fn resize(self#, new_len: usize, 'val: T) {
+        unsafe {
+            if new_len > self.cap {
+                 loop self.cap < new_len {
+                     self#.grow()
+                 }
+            }
+            auto i# = self.len
+            loop i < new_len {
+                self.buf[i] = 'val
+                i += 1
+            }
+            self.len = new_len
+        }
+    }
 }
 
 pub shape VecIterator<'T> (

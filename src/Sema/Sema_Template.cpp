@@ -415,6 +415,14 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
     } else if (canonicalBound == "Sync") {
       auto typeObj = toka::Type::fromString(resolvedConcreteType);
       if (typeObj && typeObj->isSync(this)) continue;
+    } else if (canonicalBound == "Clone") {
+      // Toka permits ordinary value copies unless a type explicitly deletes
+      // clone. Treat that language rule as the implicit @Clone contract so a
+      // bounded generic implementation is omitted only for move-only types.
+      auto methods = MethodDecls.find(resolvedConcreteType);
+      if (methods == MethodDecls.end() || !methods->second.count("clone") ||
+          !MethodDecls[resolvedConcreteType]["clone"]->IsDeleted)
+        continue;
     }
 
     if (!isSilent) {

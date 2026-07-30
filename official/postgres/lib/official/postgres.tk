@@ -158,19 +158,9 @@ pub shape PostgresTransaction (
     active: bool
 )
 
-// std::Vec currently instantiates its clone implementation for every element
-// type, which is deliberately unavailable for a live socket. This small,
-// package-private store only moves PostgresClient values and is therefore the
-// correct container for idle pool connections.
-shape PostgresClientStore (
-    nul *#buf#: [PostgresClient] = null as *[PostgresClient],
-    len#: usize = 0:usize,
-    cap#: usize = 0:usize
-)
-
 shape PostgresPoolState (
     config: PostgresConfig,
-    idle#: PostgresClientStore,
+    idle#: Vec<PostgresClient>,
     total_connections: usize,
     max_connections: usize,
     closed: bool
@@ -183,7 +173,7 @@ pub shape PostgresPool (
 )
 
 pub shape PostgresPoolLease (
-    client#: PostgresClientStore,
+    client#: Vec<PostgresClient>,
     ~state: Mutex<PostgresPoolState>
 )
 
@@ -201,67 +191,6 @@ pub shape PostgresClient (
 impl PostgresClient @Send {}
 impl PostgresConfig @Send {}
 impl PostgresPoolState @Send {}
-impl PostgresClientStore @Send {}
-
-impl PostgresClientStore@encap {
-    fn drop(self#) {
-        unsafe {
-            if self.*buf != null {
-                unsafe free [self.len] self.*#buf
-                self.*buf = null as *[PostgresClient]
-            }
-            self.len = 0:usize
-            self.cap = 0:usize
-        }
-    }
-
-    pub fn clone(self) = delete
-}
-
-impl PostgresClientStore {
-    fn new() -> PostgresClientStore {
-        return PostgresClientStore(
-            *buf = null as *[PostgresClient],
-            len = 0:usize,
-            cap = 0:usize
-        )
-    }
-
-    fn grow(self#) {
-        unsafe {
-            auto next_cap# = self.cap * 2:usize
-            if next_cap == 0:usize { next_cap = 4:usize }
-            auto *next# = unsafe alloc [next_cap] PostgresClient
-            auto index#: usize = 0:usize
-            loop index < self.len {
-                next[index] = cede self.buf[index]
-                index = index + 1:usize
-            }
-            if self.*buf != null {
-                unsafe free [0] self.*#buf
-            }
-            self.*buf = *next
-            self.cap = next_cap
-        }
-    }
-
-    fn push(self#, cede client: PostgresClient) {
-        if self.len == self.cap { self#.grow() }
-        unsafe {
-            self.buf[self.len] = cede client
-            self.len = self.len + 1:usize
-        }
-    }
-
-    fn pop(self#) -> Option<PostgresClient> {
-        if self.len == 0:usize { return Option<PostgresClient>::None }
-        unsafe {
-            self.len = self.len - 1:usize
-            auto client# = cede self.buf[self.len]
-            return Option<PostgresClient>::Some(cede client)
-        }
-    }
-}
 
 impl PostgresPoolState {
     fn take_idle(self#) -> Option<PostgresClient> {
@@ -1870,7 +1799,7 @@ impl PostgresPool {
         return Result<PostgresPool, PostgresError>::Ok(PostgresPool(
             ~state = Mutex<PostgresPoolState>::make(cede PostgresPoolState(
                 config = cede config,
-                idle = PostgresClientStore::new(),
+                idle = Vec<PostgresClient>::new(),
                 total_connections = 0:usize,
                 max_connections = max_connections,
                 closed = false
@@ -1916,7 +1845,7 @@ impl PostgresPool {
             match cede idle {
                 auto Option<PostgresClient>::Some('client) => {
                     auto client# = cede 'client
-                    auto lease_clients# = PostgresClientStore::new()
+                    auto lease_clients# = Vec<PostgresClient>::new()
                     lease_clients#.push(cede client)
                     return Result<PostgresPoolLease, PostgresError>::Ok(PostgresPoolLease(
                         client = cede lease_clients,
@@ -1937,7 +1866,7 @@ impl PostgresPool {
             pool_discard_slot(self.state)
             return Result<PostgresPoolLease, PostgresError>::Err(connected.unwrap_err())
         }
-        auto lease_clients# = PostgresClientStore::new()
+        auto lease_clients# = Vec<PostgresClient>::new()
         lease_clients#.push(cede connected.unwrap())
         return Result<PostgresPoolLease, PostgresError>::Ok(PostgresPoolLease(
             client = cede lease_clients,

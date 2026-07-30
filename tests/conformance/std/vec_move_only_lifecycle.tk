@@ -1,0 +1,40 @@
+import core/traits::{@encap}
+import std/vec::{Vec}
+
+auto g_drop_count# = 0
+
+shape Resource(id: i32)
+
+impl Resource@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+
+    pub fn clone(self) = delete
+}
+
+fn cloneable_vector() -> i32 {
+    auto source# = Vec<i32>::new()
+    source#.push(10)
+    auto copied# = source.clone()
+    copied#.push(20)
+    if source.len() != 1:usize || copied.len() != 2:usize { return 1 }
+    if copied.get(0:usize) != 10 || copied.get(1:usize) != 20 { return 2 }
+    return 0
+}
+
+fn main() -> i32 {
+    if cloneable_vector() != 0 { return 10 }
+    {
+        auto values# = Vec<Resource>::new()
+        values#.push(cede Resource(id = 1))
+        values#.push(cede Resource(id = 2))
+        values#.push(cede Resource(id = 3))
+        auto first = values#.remove(0:usize).unwrap()
+        if first.id != 1 { return 1 }
+        auto last = values#.pop().unwrap()
+        if last.id != 3 { return 2 }
+        if values.len() != 1:usize { return 3 }
+    }
+    return g_drop_count - 3
+}

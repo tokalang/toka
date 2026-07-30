@@ -110,11 +110,11 @@ The first executable suite must demonstrate:
   consuming callback in the repeatable adapter form;
 - source-less replay of the consuming source and callable receiver contracts.
 
-The current `Vec<T>` storage implementation still instantiates generic clone
-support in paths that require cloneable resource elements. This pre-existing
-container limitation is not relaxed by this adapter slice: exact-drop evidence
-for a resource-bearing *source* needs a separate Vec ownership audit before it
-can be claimed here.
+`Vec<T>` now separates its move-only core from clone-dependent operations:
+`push`, `pop`, `remove`, growth, and final drop move resource elements without
+instantiating their deleted clone method. Copying APIs remain available only
+when the element is cloneable. Exact-drop evidence for resource-bearing
+sources is covered by the Vec move-only lifecycle conformance fixture.
 
 ## 8. Borrowed/lending adapters remain open
 
