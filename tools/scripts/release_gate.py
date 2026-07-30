@@ -287,6 +287,7 @@ def main():
         ("incremental", (["tools/scripts/test_incremental_build.sh"],)),
         ("native_build_reference", (
             ["tools/scripts/test_native_build_reference.sh"],
+            [sys.executable, "tools/scripts/test_native_build_identity.py"],
             [sys.executable, "tools/scripts/qualify_native_build.py",
              "--cycles", "100",
              "--work-root", str(work_dir / "native-build-work"),

@@ -6,6 +6,7 @@ import subprocess
 import argparse
 import shlex
 import hashlib
+import shutil
 from pathlib import Path
 
 def fnv1a_64(data: bytes) -> str:
@@ -146,7 +147,32 @@ def parse_link_flags(tokens: list[str], library: str) -> tuple[list[str], list[s
     return search_paths, libraries
 
 
-def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], list[str], str]:
+def native_toolchain_identity(target_triples: list[str]) -> str:
+    """Return the cache identity for native compilation inputs not in a package manifest."""
+    compiler = shlex.split(os.environ.get("CC", "cc"))
+    if not compiler:
+        raise RuntimeError("CC must name a C compiler")
+
+    fingerprint = hashlib.sha256()
+    fingerprint.update(b"toka.native-toolchain-identity-v1\0")
+    fingerprint.update("\0".join(compiler).encode("utf-8"))
+    resolved = shutil.which(compiler[0])
+    fingerprint.update(canonicalize(resolved or compiler[0]).encode("utf-8"))
+    fingerprint.update("\0".join(sorted(set(target_triples))).encode("utf-8"))
+    try:
+        version = subprocess.run(
+            compiler + ["--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, check=False,
+        )
+        fingerprint.update(str(version.returncode).encode("utf-8"))
+        fingerprint.update(version.stdout.encode("utf-8"))
+        fingerprint.update(version.stderr.encode("utf-8"))
+    except OSError as error:
+        fingerprint.update(("unavailable:" + str(error)).encode("utf-8"))
+    return fingerprint.hexdigest()
+
+
+def native_package_plan(target_triples: list[str]) -> tuple[list[dict], list[str], list[str], list[str], list[str], str]:
     if not Path("package.lock").is_file():
         return [], [], [], [], [], ""
     helper = package_helper_path()
@@ -167,11 +193,14 @@ def native_package_plan() -> tuple[list[dict], list[str], list[str], list[str], 
     packages = plan.get("packages")
     if not isinstance(packages, list):
         raise RuntimeError("native package plan has invalid packages")
+    if not packages:
+        return [], [], [], [], [], ""
 
     cflags: list[str] = []
     search_paths: list[str] = []
     link_libraries: list[str] = []
     fingerprint = hashlib.sha256()
+    fingerprint.update(native_toolchain_identity(target_triples).encode("utf-8"))
     for package in packages:
         if not isinstance(package, dict):
             raise RuntimeError("native package plan contains an invalid package")
@@ -478,8 +507,16 @@ def main():
     env = os.environ.copy()
     env["TOKA_BUILD_DIR"] = build_dir
 
+    # Resolve the graph before native metadata so the native cache incorporates
+    # the exact Toka target triple rather than only host-local package inputs.
+    current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
+    native_targets = [
+        info["target_triple"]
+        for info in current_graph.get("modules", {}).values()
+        if isinstance(info, dict) and isinstance(info.get("target_triple"), str)
+    ]
     try:
-        native_packages, native_cflags, native_search_paths, native_libraries, native_frameworks, native_fingerprint = native_package_plan()
+        native_packages, native_cflags, native_search_paths, native_libraries, native_frameworks, native_fingerprint = native_package_plan(native_targets)
     except RuntimeError as error:
         sys.stderr.write("Native package build error: %s\n" % error)
         sys.exit(1)
@@ -491,16 +528,13 @@ def main():
     for framework in native_frameworks:
         native_link_args.extend(["--link-framework", framework])
 
-    # 1. Run compiler dependency dump to get current graph
-    current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
-
-    # 2. Inject stable module-level objects/interfaces outputs for all submodules
+    # 1. Inject stable module-level objects/interfaces outputs for all submodules
     populate_submodule_outputs(current_graph, build_dir)
 
-    # 3. Load old manifest
+    # 2. Load old manifest
     old_manifest = load_manifest(args.manifest)
 
-    # 4. Generate rebuild plan
+    # 3. Generate rebuild plan
     plan = generate_rebuild_plan(current_graph, old_manifest)
     if old_manifest.get("native_package_fingerprint", "") != native_fingerprint:
         plan["status"] = "dirty"
