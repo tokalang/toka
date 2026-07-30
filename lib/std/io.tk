@@ -156,7 +156,7 @@ impl File@encap {
             auto s# = string::from_with_len(*buf as *char, count as usize)
             libc_free(*buf as *void)
             
-            auto res = IoStringResult::Ok(s)
+            auto res = IoStringResult::Ok(cede s)
             return res
         }
     }

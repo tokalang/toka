@@ -1,5 +1,6 @@
 import core/result::{Result}
 import core/string::{string}
+import std/fs::{read_to_string}
 import std/vec::{Vec}
 
 fn fail_after_growth() -> Result<Vec<string>, i32> {
@@ -29,5 +30,9 @@ fn main() -> i32 {
 
     auto returned# = return_after_growth().unwrap()
     if returned.len() != 1:usize { return 2 }
+
+    auto source = read_to_string(string::from("tests/conformance/std/string_result_vec_lifecycle.tk"))
+    if source.is_err() { return 3 }
+    if source.unwrap().find_str("fail_after_growth") < 0 { return 4 }
     return 0
 }
