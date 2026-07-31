@@ -19,6 +19,9 @@ enum class TKICacheStatus {
     MissingTargetTriple,
     MissingSourceHash,
     MissingSourcePath,
+    MissingIdentitySchema,
+    MissingModuleIdentity,
+    InterfaceIdentityMismatch,
     CompilerVersionMismatch,
     FormatVersionMismatch,
     TargetTripleMismatch,
@@ -31,6 +34,9 @@ struct TKIMetadata {
     std::string TargetTriple;
     std::string SourceHash;
     std::string SourcePath;
+    std::string IdentitySchemaVersion;
+    std::string LogicalModulePath;
+    std::string ResolverBindingDigest;
 };
 
 // Slice 0 only: this coordinate is observational metadata.  It must not be
@@ -132,7 +138,9 @@ private:
 
     // Helper to read and validate metadata from a .tki file
     bool readTKIMetadata(const std::string &path, TKIMetadata &meta);
-    TKICacheStatus validateTKIMetadata(const std::string &path, std::string &reason);
+    TKICacheStatus validateTKIMetadata(const std::string &path,
+                                       const std::string &identityPath,
+                                       std::string &reason);
     ShadowModuleCoordinate deriveShadowCoordinate(const std::string &canonicalPath) const;
 };
 

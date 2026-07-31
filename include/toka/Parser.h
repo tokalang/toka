@@ -33,6 +33,8 @@ public:
   static bool EncapLifecycleEpochV3;
   // Slice 4 Copy/Dup proof and coherence checks.
   static bool EncapCopyEpochV4;
+  // Slice 5 semantic TKI v2 transport and replay checks.
+  static bool EncapTkiEpochV5;
 
   Parser(const std::vector<Token> &tokens, const std::string &fileName = "")
       : m_Tokens(tokens), m_Pos(0), m_CurrentFile(fileName) {

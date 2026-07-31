@@ -12,4 +12,3 @@ fn main() -> i32 {
     return 0
 }
 // EXPECT_ERROR: E0440
-// EXPECT_TKI: @tki structural_drop: MaybeCell

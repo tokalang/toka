@@ -488,6 +488,7 @@ private:
   std::set<const ShapeDecl *> Slice4CopyProofInProgress;
   void registerSlice4Impl(ImplDecl *Impl);
   void validateSlice4CopyAndDup(Module &M);
+  void recordSlice5InterfaceFacts(Module &M);
   bool proveSlice4Copy(const ShapeDecl *Shape);
   bool proveSlice4CopyType(std::shared_ptr<toka::Type> Type);
 

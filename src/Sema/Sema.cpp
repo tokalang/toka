@@ -1083,6 +1083,75 @@ void Sema::validateSlice4CopyAndDup(Module &M) {
   }
 }
 
+void Sema::recordSlice5InterfaceFacts(Module &M) {
+  if (!Parser::EncapTkiEpochV5)
+    return;
+
+  M.InterfaceV2Facts.clear();
+  for (const auto &shape : M.Shapes) {
+    const std::string typeName = shape->Name;
+    std::function<void(const ShapeMember &, const std::string &)> recordField;
+    recordField = [&](const ShapeMember &member, const std::string &path) {
+      M.InterfaceV2Facts.push_back("field_graph: " + typeName + "." +
+                                   path + " = " +
+                                   synthesizePhysicalType(member));
+      for (size_t index = 0; index < member.SubMembers.size(); ++index) {
+        const auto &submember = member.SubMembers[index];
+        const std::string child = submember.Name.empty()
+            ? std::to_string(index)
+            : submember.Name;
+        recordField(submember, path + "." + child);
+      }
+    };
+    for (size_t index = 0; index < shape->Members.size(); ++index) {
+      const auto &member = shape->Members[index];
+      const std::string name = member.Name.empty() ? std::to_string(index)
+                                                    : member.Name;
+      recordField(member, name);
+    }
+
+    auto policy = Slice2PolicyMap.find(shape.get());
+    if (policy != Slice2PolicyMap.end()) {
+      std::vector<std::string> grants;
+      for (const auto &entry : policy->second.Entries) {
+        std::string scope = "global";
+        if (entry.Level == EncapEntry::Crate)
+          scope = "crate";
+        else if (entry.Level == EncapEntry::Path)
+          scope = "path(" + entry.TargetPath + ")";
+        for (const auto &field : entry.Fields)
+          grants.push_back(scope + ":" + field);
+      }
+      std::sort(grants.begin(), grants.end());
+      std::string record = "policy: " + typeName + " =";
+      for (const auto &grant : grants)
+        record += " " + grant;
+      M.InterfaceV2Facts.push_back(std::move(record));
+    }
+
+    const bool provenCopy = proveSlice4Copy(shape.get());
+    const bool explicitCopy = Slice4CopyRequests.count(shape.get()) != 0;
+    M.InterfaceV2Facts.push_back(
+        "copy_proof: " + typeName + " = " +
+        (provenCopy ? "proven-copy" : "proven-noncopy"));
+    if (provenCopy) {
+      M.InterfaceV2Facts.push_back(
+          "copy_witness: " + typeName + " = " +
+          (explicitCopy ? "explicit-verified" : "auto-structural"));
+      M.InterfaceV2Facts.push_back("dup_provider: " + typeName +
+                                   " = intrinsic-copy");
+    } else if (Slice4DupProviders.count(shape.get())) {
+      M.InterfaceV2Facts.push_back("dup_provider: " + typeName +
+                                   " = user");
+    }
+    if (shape->HasExplicitDrop) {
+      M.InterfaceV2Facts.push_back("custom_drop: " + typeName + " = " +
+                                   shape->MangledDestructorName);
+    }
+  }
+  std::sort(M.InterfaceV2Facts.begin(), M.InterfaceV2Facts.end());
+}
+
 static bool typeMentionsSelf(const std::string &typeName) {
   std::string type = trimTypeString(typeName);
   size_t pos = 0;
@@ -3780,6 +3849,7 @@ void Sema::analyzeShapes(Module &M) {
     }
   }
   validateSlice4CopyAndDup(M);
+  recordSlice5InterfaceFacts(M);
 }
 
 void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {

@@ -1,7 +1,10 @@
 // @meta compiler_version: any
-// @meta format_version: 1
+// @meta format_version: 2
 // @meta target_triple: any
 // @meta source_hash: any
+// @meta identity_schema_version: 2
+// @meta logical_module_path: unbound
+// @meta resolver_binding_digest: unbound
 
 
 pub shape MyBucket<T>(val: T)
@@ -15,4 +18,3 @@ impl<T> @MyTrait for MyBucket<T> {
     return 42
   }
 }
-

@@ -281,6 +281,20 @@ void TKIExporter::exportModule(const Module &module) {
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
     writeln("// @meta source_path: " + PathUtils::canonicalize(module.SourcePath));
+    const std::string logicalPath = module.ShadowCoordinateKnown
+        ? module.ShadowLogicalModulePath
+        : "unbound";
+    const std::string resolverDigest = module.ShadowCoordinateKnown
+        ? calculateFNV1a("toka-tki-v2|" + module.ShadowCrateId + "|" +
+                         module.ShadowLogicalModulePath)
+        : "unbound";
+    writeln("// @meta identity_schema_version: 2");
+    writeln("// @meta logical_module_path: " + logicalPath);
+    writeln("// @meta resolver_binding_digest: " + resolverDigest);
+    if (Parser::EncapTkiEpochV5) {
+        for (const auto &fact : module.InterfaceV2Facts)
+            writeln("// @tki v2 " + fact);
+    }
     writeln();
 
     // 1. Export Imports
@@ -299,7 +313,8 @@ void TKIExporter::exportModule(const Module &module) {
 
     // 3. Export Shapes
     for (const auto &decl : module.Shapes) {
-        if (!decl->HasExplicitDrop && !decl->MangledDestructorName.empty()) {
+        if (!Parser::EncapTkiEpochV5 && !decl->HasExplicitDrop &&
+            !decl->MangledDestructorName.empty()) {
             writeln("// @tki structural_drop: " + decl->Name);
         }
         exportShape(*decl);
@@ -438,6 +453,9 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
 }
 
 void TKIExporter::exportTrait(const TraitDecl &decl) {
+    if (Parser::EncapTkiEpochV5 &&
+        (decl.Name == "Clone" || decl.Name == "Drop"))
+        return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
     m_OS << "trait @" << decl.Name;
@@ -480,6 +498,9 @@ void TKIExporter::exportTrait(const TraitDecl &decl) {
 }
 
 void TKIExporter::exportImpl(const ImplDecl &decl) {
+    if (Parser::EncapTkiEpochV5 &&
+        (decl.TraitName == "Clone" || decl.TraitName == "Drop"))
+        return;
     indent();
     m_OS << "impl";
     printGenericParams(decl.GenericParams);
@@ -530,6 +551,8 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
 }
 
 void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
+    if (Parser::EncapTkiEpochV5 && decl.IsDeleted)
+        return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
     m_OS << "fn " << decl.Name;

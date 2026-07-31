@@ -780,9 +780,12 @@ mkdir -p "$TEST_DIR/sourceless_interface"
 
 cat << 'EOF' > "$TEST_DIR/sourceless_interface/lib.tki"
 // @meta compiler_version: any
-// @meta format_version: 1
+// @meta format_version: 2
 // @meta target_triple: any
 // @meta source_hash: any
+// @meta identity_schema_version: 2
+// @meta logical_module_path: unbound
+// @meta resolver_binding_digest: unbound
 
 pub const SOURCELESS_CONST: i32 = 42
 EOF
