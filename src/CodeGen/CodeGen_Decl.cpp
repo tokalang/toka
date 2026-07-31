@@ -2415,8 +2415,11 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
     implementedMethods.insert(method->Name);
   }
 
-  // Handle Trait Defaults and Missing Methods
-  if (!decl->TraitName.empty()) {
+  // Slice 2 @encap blocks are authority policies.  They do not participate
+  // in the legacy trait/vtable contract while the epoch gate is active.
+  if (!decl->TraitName.empty() &&
+      !(Parser::EncapPolicyEpochV2 &&
+        getTraitFamilyNameForCodeGen(decl->TraitName) == "encap")) {
     const TraitDecl *trait = nullptr;
     std::string traitLookupName = getTraitFamilyNameForCodeGen(decl->TraitName);
     if (m_Traits.count(traitLookupName)) {

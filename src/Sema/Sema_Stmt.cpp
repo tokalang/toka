@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
+#include "toka/Parser.h"
 #include "toka/SourceManager.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
@@ -2147,6 +2148,14 @@ void Sema::checkStmt(Stmt *S) {
             }
           }
           if (memberIndex == (size_t)-1) continue;
+
+          const std::string encapField = toka::Type::stripMorphology(
+              SD->Members[memberIndex].Name);
+          if (Parser::EncapPolicyEpochV2 &&
+              !canNameEncapField(SD, encapField, getLoc(Destruct))) {
+            error(Destruct, DiagID::ERR_MEMBER_PRIVATE, encapField,
+                  SD->Name);
+          }
 
           // Morphic validation
           if (!SD->Members[memberIndex].IsMorphicExempt) {

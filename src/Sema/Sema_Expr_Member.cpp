@@ -16,6 +16,7 @@
 #include "toka/HandleSurfaceStats.h"
 #include "toka/MemberAccess.h"
 #include "toka/PathUtils.h"
+#include "toka/Parser.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -296,7 +297,10 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         std::string sdFile =
             DiagnosticEngine::SrcMgr->getFullSourceLoc(SD->Loc).FileName;
 
-        if (membFile != sdFile) {
+        if (Parser::EncapPolicyEpochV2) {
+          if (!canNameEncapField(SD, requestedMember, getLoc(Memb)))
+            error(Memb, DiagID::ERR_MEMBER_PRIVATE, requestedMember, ObjType);
+        } else if (membFile != sdFile) {
           // Check EncapMap
           std::string baseObjType = ObjType;
           if (baseObjType.find("_M_") != std::string::npos) {

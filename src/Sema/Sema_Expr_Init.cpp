@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/Sema.h"
+#include "toka/Parser.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
 #include <algorithm>
@@ -625,6 +626,13 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
             if (Pat->SubPatterns[i]->PatternKind == MatchArm::Pattern::Elision) continue;
             size_t memberIndex = memberIndices[i];
             if (memberIndex != (size_t)-1) {
+              const std::string encapField = toka::Type::stripMorphology(
+                  SD->Members[memberIndex].Name);
+              if (Parser::EncapPolicyEpochV2 &&
+                  !canNameEncapField(SD, encapField, Pat->Loc)) {
+                error(Pat, DiagID::ERR_MEMBER_PRIVATE, encapField,
+                      SD->Name);
+              }
               if (!SD->Members[memberIndex].IsMorphicExempt) {
                 auto memberTypeObj = getPhysicalType(SD->Members[memberIndex]);
                 MorphKind expectedMorph = morphKindFromType(memberTypeObj);
@@ -947,6 +955,16 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       elisionCount++;
     }
   }
+
+  if (Parser::EncapPolicyEpochV2) {
+    for (const auto &member : Init->Members) {
+      if (member.first == ".." || member.first == "*")
+        continue;
+      const std::string field = toka::Type::stripMorphology(member.first);
+      if (!canNameEncapField(SD, field, Init->Loc))
+        error(Init, DiagID::ERR_MEMBER_PRIVATE, field, SD->Name);
+    }
+  }
   if (elisionCount > 1) {
     error(Init, DiagID::ERR_MULTIPLE_ELISION);
   }
@@ -1013,6 +1031,13 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
             !explicitlyProvided.count("~" + defField.Name) &&
             !explicitlyProvided.count("&" + defField.Name) &&
             !explicitlyProvided.count("^?" + defField.Name)) {
+          if (Parser::EncapPolicyEpochV2 &&
+              !canNameEncapField(SD,
+                                 toka::Type::stripMorphology(defField.Name),
+                                 spreadExprObj->Loc)) {
+            error(spreadExprObj, DiagID::ERR_MEMBER_PRIVATE,
+                  toka::Type::stripMorphology(defField.Name), SD->Name);
+          }
           
           auto memberTypeObj = getPhysicalType(defField);
 

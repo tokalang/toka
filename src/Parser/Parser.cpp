@@ -22,6 +22,7 @@
 namespace toka {
 
 std::string Parser::TargetTriple = "";
+bool Parser::EncapPolicyEpochV2 = false;
 
 const Token &Parser::peek() const {
   if (m_Pos >= m_Tokens.size())

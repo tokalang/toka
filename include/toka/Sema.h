@@ -470,6 +470,18 @@ private:
   std::set<std::string> GenericImplInstanceMap;
   std::map<const ImplDecl *, std::string> Slice1ImplDefinitionIds;
 
+  // Slice 2 turns @encap entries into an authority policy tied to the
+  // resolver's nominal/module identities, rather than a physical file path.
+  struct Slice2Policy {
+    ImplDecl *Impl = nullptr;
+    ModuleScope *Owner = nullptr;
+    std::vector<EncapEntry> Entries;
+  };
+  std::map<const ShapeDecl *, Slice2Policy> Slice2PolicyMap;
+  void registerSlice2Policy(ImplDecl *Impl);
+  bool canNameEncapField(const ShapeDecl *Shape, const std::string &Field,
+                         SourceLocation UseLoc);
+
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
   std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;

@@ -26,6 +26,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -722,6 +723,208 @@ void Sema::dumpEncapSlice1FactsJSON(std::ostream &out) const {
       << ",\"dup_invalid_candidate_count\":" << invalidDupCandidates
       << ",\"generic_impl_instance_count\":" << GenericImplInstanceMap.size()
       << "}";
+}
+
+void Sema::registerSlice2Policy(ImplDecl *impl) {
+  if (!Parser::EncapPolicyEpochV2 || !impl || impl->IsStructuralDrop ||
+      getTraitFamilyName(impl->TraitName) != "encap")
+    return;
+
+  std::string base = impl->TypeName;
+  size_t generic = base.find('<');
+  if (generic != std::string::npos)
+    base.resize(generic);
+  ShapeDecl *shape = findVisibleShapeDecl(base, impl->Loc);
+  auto implOwner = DeclarationLexicalScopes.find(impl);
+  auto shapeOwner = shape ? DeclarationLexicalScopes.find(shape)
+                          : DeclarationLexicalScopes.end();
+  // Slice 6 owns the toolchain migration.  Do not reinterpret its still
+  // legacy entries merely because a workspace opts into the Slice 2 audit.
+  if (implOwner != DeclarationLexicalScopes.end() && implOwner->second &&
+      implOwner->second->IsTrustedSystemModule)
+    return;
+  if (!shape || implOwner == DeclarationLexicalScopes.end() ||
+      shapeOwner == DeclarationLexicalScopes.end() ||
+      implOwner->second != shapeOwner->second) {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@encap v2 policy must be declared in the nominal type's defining module");
+    HasError = true;
+    return;
+  }
+  unsigned dropHooks = 0;
+  for (const auto &method : impl->Methods) {
+    if (method->Name == "drop")
+      ++dropHooks;
+    else {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v2 accepts only exact field grants and one drop hook");
+      HasError = true;
+      return;
+    }
+  }
+  if (dropHooks > 1) {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@encap v2 accepts at most one drop hook");
+    HasError = true;
+    return;
+  }
+  for (const auto &[registeredShape, registered] : Slice2PolicyMap) {
+    (void)registeredShape;
+    std::string registeredBase = registered.Impl ? registered.Impl->TypeName : "";
+    if (size_t registeredGeneric = registeredBase.find('<');
+        registeredGeneric != std::string::npos)
+      registeredBase.resize(registeredGeneric);
+    if (registered.Impl != impl && registered.Owner == implOwner->second &&
+        registeredBase == base) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v2 permits exactly one policy declaration per nominal type");
+      HasError = true;
+      return;
+    }
+  }
+  if (Slice2PolicyMap.count(shape) && Slice2PolicyMap[shape].Impl != impl) {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@encap v2 permits exactly one policy declaration per nominal type");
+    HasError = true;
+    return;
+  }
+  for (const auto &parameter : impl->GenericParams) {
+    if (!parameter.TraitBounds.empty()) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v2 generic policies cannot have trait bounds or where constraints");
+      HasError = true;
+      return;
+    }
+  }
+
+  Slice2Policy policy;
+  policy.Impl = impl;
+  policy.Owner = implOwner->second;
+  policy.Entries = impl->EncapEntries;
+  for (auto &entry : policy.Entries) {
+    if (entry.IsExclusion) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v2 rejects wildcard field grants");
+      HasError = true;
+      return;
+    }
+    if (entry.Level != EncapEntry::Path)
+      continue;
+    if (!policy.Owner->ShadowCoordinateKnown) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v2 pub(path) requires a known resolver module identity");
+      HasError = true;
+      return;
+    }
+
+    std::vector<std::string> segments;
+    std::string target = entry.TargetPath;
+    bool relative = target.rfind("./", 0) == 0 || target.rfind("../", 0) == 0;
+    if (relative) {
+      std::stringstream ownerPath(policy.Owner->ShadowLogicalModulePath);
+      std::string part;
+      while (std::getline(ownerPath, part, '/'))
+        if (!part.empty()) segments.push_back(part);
+      if (!segments.empty()) segments.pop_back();
+    }
+    std::stringstream path(target);
+    std::string part;
+    while (std::getline(path, part, '/')) {
+      if (part.empty() || part == ".") continue;
+      if (part == "..") {
+        if (segments.empty()) {
+          DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                                   "@encap v2 pub(path) cannot escape the defining crate");
+          HasError = true;
+          return;
+        }
+        segments.pop_back();
+      } else {
+        segments.push_back(part);
+      }
+    }
+    if (segments.empty()) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v2 pub(path) must name a logical module prefix");
+      HasError = true;
+      return;
+    }
+    entry.TargetPath.clear();
+    for (size_t i = 0; i < segments.size(); ++i) {
+      if (i) entry.TargetPath += "/";
+      entry.TargetPath += segments[i];
+    }
+  }
+  Slice2PolicyMap[shape] = std::move(policy);
+}
+
+bool Sema::canNameEncapField(const ShapeDecl *shape, const std::string &field,
+                             SourceLocation useLoc) {
+  if (!Parser::EncapPolicyEpochV2)
+    return true;
+  auto policyIt = Slice2PolicyMap.find(shape);
+  const Slice2Policy *policyPtr =
+      policyIt == Slice2PolicyMap.end() ? nullptr : &policyIt->second;
+  // Imports can surface an equivalent declaration pointer through ShapeMap.
+  // Recover the policy by its nominal name and defining module identity; never
+  // fall back to spelling or physical path alone.
+  if (!policyPtr) {
+    auto shapeOwner = DeclarationLexicalScopes.find(shape);
+    ModuleScope *nominalOwner =
+        shapeOwner == DeclarationLexicalScopes.end()
+            ? getLexicalModule(shape->Loc)
+            : shapeOwner->second;
+    for (const auto &[_, candidate] : Slice2PolicyMap) {
+      std::string candidateName = candidate.Impl ? candidate.Impl->TypeName : "";
+      if (size_t generic = candidateName.find('<'); generic != std::string::npos)
+        candidateName.resize(generic);
+      std::string shapeName = shape ? shape->Name : "";
+      if (size_t generic = shapeName.find('<'); generic != std::string::npos)
+        shapeName.resize(generic);
+      if (!candidate.Owner || !candidate.Impl ||
+          candidateName != shapeName ||
+          !nominalOwner || candidate.Owner != nominalOwner)
+        continue;
+      policyPtr = &candidate;
+      break;
+    }
+  }
+  if (!policyPtr)
+    return true;
+  const Slice2Policy &policy = *policyPtr;
+  ModuleScope *requester = getLexicalModule(useLoc);
+  if (requester == policy.Owner)
+    return true;
+  if (!requester || !policy.Owner || !requester->ShadowCoordinateKnown ||
+      !policy.Owner->ShadowCoordinateKnown)
+    return false;
+
+  for (const auto &entry : policy.Entries) {
+    if (std::find(entry.Fields.begin(), entry.Fields.end(), field) ==
+        entry.Fields.end())
+      continue;
+    if (entry.Level == EncapEntry::Global)
+      return true;
+    if (entry.Level == EncapEntry::Crate &&
+        requester->ShadowCrateId == policy.Owner->ShadowCrateId)
+      return true;
+    if (entry.Level == EncapEntry::Path &&
+        requester->ShadowCrateId == policy.Owner->ShadowCrateId) {
+      std::vector<std::string> target;
+      std::stringstream targetPath(entry.TargetPath);
+      std::string part;
+      while (std::getline(targetPath, part, '/'))
+        if (!part.empty()) target.push_back(part);
+      std::vector<std::string> requesterPath;
+      std::stringstream requesterPathStream(requester->ShadowLogicalModulePath);
+      while (std::getline(requesterPathStream, part, '/'))
+        if (!part.empty()) requesterPath.push_back(part);
+      if (requesterPath.size() >= target.size() &&
+          std::equal(target.begin(), target.end(), requesterPath.begin()))
+        return true;
+    }
+  }
+  return false;
 }
 
 static bool typeMentionsSelf(const std::string &typeName) {
@@ -2601,7 +2804,9 @@ void Sema::registerImpl(ImplDecl *Impl) {
   }
 
   // Populate ImplMap
-  if (!Impl->TraitName.empty()) {
+  if (!Impl->TraitName.empty() &&
+      !(Parser::EncapPolicyEpochV2 &&
+        getTraitFamilyName(canonicalTrait) == "encap")) {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey]; // Ensure the key exists even for empty traits
     for (auto &Method : Impl->Methods) {
@@ -2609,8 +2814,11 @@ void Sema::registerImpl(ImplDecl *Impl) {
     }
   }
 
-  // Handle Trait Defaults
-  if (!Impl->TraitName.empty()) {
+  // Slice 2 makes @encap an authority declaration, not the legacy trait
+  // contract that required clone and drop methods.
+  if (!Impl->TraitName.empty() &&
+      !(Parser::EncapPolicyEpochV2 &&
+        getTraitFamilyName(canonicalTrait) == "encap")) {
     if (traitDecl) {
       TraitDecl *TD = traitDecl;
       std::string traitFamily = getTraitFamilyName(canonicalTrait);
@@ -2689,6 +2897,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
 }
 
 void Sema::declareImpl(ImplDecl *Impl) {
+  registerSlice2Policy(Impl);
   std::string baseName = Impl->TypeName;
   size_t lt = baseName.find('<');
   if (lt != std::string::npos) {

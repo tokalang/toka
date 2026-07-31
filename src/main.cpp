@@ -111,6 +111,7 @@ void printHelp() {
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
       << "  --encap-slice1-facts=json       Dump audit-only @encap Slice 1 facts\n"
+      << "  --encap-epoch=v2                Enable Slice 2 @encap policy checks\n"
       << "  --link-search <path>            Add a native library search path\n"
       << "  --link-lib <name>               Link a native library by name\n"
       << "  --link-framework <name>         Link a macOS system framework by name\n"
@@ -528,6 +529,7 @@ int main(int argc, char **argv) {
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
   bool dumpEncapSlice1Facts = false;
+  bool encapPolicyEpochV2 = false;
   bool dumpSemanticIndex = false;
   bool dumpSemanticContext = false;
   bool structuredDiagnostics = false;
@@ -647,6 +649,8 @@ int main(int argc, char **argv) {
       dumpMemoryContracts = true;
     } else if (arg == "--encap-slice1-facts=json") {
       dumpEncapSlice1Facts = true;
+    } else if (arg == "--encap-epoch=v2") {
+      encapPolicyEpochV2 = true;
     } else if (arg == "--experimental-memory-contracts=nocapture") {
       experimentalNoCapture = true;
     } else if (arg == "--experimental-memory-contracts=readonly") {
@@ -933,6 +937,7 @@ int main(int argc, char **argv) {
     resolvedTargetTriple = envTriple;
   }
   toka::Parser::TargetTriple = resolvedTargetTriple;
+  toka::Parser::EncapPolicyEpochV2 = encapPolicyEpochV2;
   if (toolchainNodeId.empty()) {
     toolchainNodeId = std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
   }
