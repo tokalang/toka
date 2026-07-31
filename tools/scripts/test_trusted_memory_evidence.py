@@ -19,7 +19,10 @@ pub shape Payload(value: i32)
 
 impl Payload@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
+}
+
+pub fn make_payload(value: i32) -> Payload {
+    return Payload(value=value)
 }
 
 pub fn read_payload(data: Payload) -> i32 {
@@ -33,10 +36,10 @@ pub fn consume_payload(cede data: Payload) -> i32 {
 """
 
 PASS_CONSUMER = """\
-import ./provider::{Payload, read_payload, consume_payload}
+import ./provider::{make_payload, read_payload, consume_payload}
 
 pub fn main() -> i32 {
-    auto payload = Payload(value=42)
+    auto payload = make_payload(42)
     auto observed = read_payload(payload)
     auto result = consume_payload(cede payload)
     if observed == 42 && result == 42 { return 0 }
@@ -45,10 +48,10 @@ pub fn main() -> i32 {
 """
 
 FAIL_CONSUMER = """\
-import ./provider::{Payload, consume_payload}
+import ./provider::{make_payload, consume_payload}
 
 pub fn main() -> i32 {
-    auto payload = Payload(value=42)
+    auto payload = make_payload(42)
     return consume_payload(payload)
 }
 """

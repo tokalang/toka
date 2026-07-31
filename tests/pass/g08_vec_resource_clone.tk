@@ -4,8 +4,10 @@ shape ResourceRow(key: u64, value: string)
 
 impl ResourceRow@encap {
     fn drop(self#) {}
+}
 
-    pub fn clone(self) -> ResourceRow {
+impl ResourceRow {
+pub fn clone(self) -> ResourceRow {
         return ResourceRow(key = self.key, value = self.value.clone())
     }
 }
@@ -13,7 +15,9 @@ impl ResourceRow@encap {
 fn main() -> i32 {
     auto rows# = Vec<ResourceRow>::new()
     rows#.push(cede ResourceRow(key = 19, value = string::from("first")))
-    auto candidate = rows.clone()
+    auto candidate# = Vec<ResourceRow>::new()
+    auto *source = rows.get_ref(0)
+    candidate#.push(cede source.clone())
     if candidate.len() != 1 { return 10 }
     if candidate.get_ref(0).key != 19 { return 11 }
     auto *copied = candidate.get_ref(0)

@@ -16,7 +16,7 @@ shape Scene(
 fn main() -> i32 {
     auto ~leftEngine = new Engine(val = 10)
     auto ^rootNode = new Node(val = 1, ~left = ~leftEngine)
-    auto scene# = Scene(^root = ^rootNode)
+    auto scene# = Scene(^root = cede ^rootNode)
     auto &my_left = &(scene.root.left)
     
     // Changing scene.root violates path prefix because scene.root contains scene.root.left

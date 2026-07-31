@@ -1,15 +1,22 @@
-// @meta compiler_version: any
+// @meta compiler_version: 0.9.9-02
 // @meta format_version: 2
-// @meta target_triple: any
-// @meta source_hash: any
+// @meta target_triple: arm64-apple-darwin25.5.0
+// @meta source_hash: 9f6460e8c88eaf13
+// @meta source_path: /Users/zhyi/GitDP/toka/tests/pass/separate_compile_test_lib.tk_lib
 // @meta identity_schema_version: 2
-// @meta logical_module_path: unbound
-// @meta resolver_binding_digest: unbound
+// @meta logical_module_path: tests/pass/separate_compile_test_lib.tk_lib
+// @meta resolver_binding_digest: bce4ba2652dcbdde
+// @tki v2 copy_proof: MyPoint = proven-copy
+// @tki v2 copy_witness: MyPoint = auto-structural
+// @tki v2 dup_provider: MyPoint = intrinsic-copy
+// @tki v2 field_graph: MyPoint.x = i32
+// @tki v2 field_graph: MyPoint.y = i32
 
-pub const MY_CONST: i32 = 42
 
 pub shape MyPoint(x: i32, y: i32)
 
 pub fn add<T>(x: T, y: T) -> T {
-    return x + y
+  return x + y
 }
+
+pub const MY_CONST: i32 = 42

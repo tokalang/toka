@@ -3,8 +3,8 @@ import core/traits::{@encap}
 pub shape Payload(val: i32)
 
 impl Payload@encap {
+    pub val
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 pub fn consume(cede p: Payload) -> i32

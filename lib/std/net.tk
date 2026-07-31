@@ -275,7 +275,7 @@ pub shape TcpStream (
 )
 
 impl TcpStream@encap {
-    pub(stdx/net/http) fd, closed
+    pub fd, closed
     fn drop(self#) {
         self#.close()
     }

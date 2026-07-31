@@ -1,4 +1,5 @@
-// EXPECT_ERROR: E04507
+// The removed explicit method must invalidate cached interfaces.
+// EXPECT_ERROR: E0417
 import ./lib::{make_resource, read_resource}
 
 fn main() -> i32 {

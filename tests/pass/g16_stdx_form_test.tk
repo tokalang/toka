@@ -9,10 +9,10 @@ fn main() -> i32 {
     assert(decode_component("%zz").is_err(), "invalid form percent encoding must fail")
 
     auto fields# = Vec<FormField>::new()
-    fields#.push(cede FormField(name = string::from("q"), value = string::from("hello world+")))
-    fields#.push(cede FormField(name = string::from("tag"), value = string::from("toka")))
-    fields#.push(cede FormField(name = string::from("tag"), value = string::from("lang")))
-    fields#.push(cede FormField(name = string::from("empty"), value = string::from("")))
+    fields#.push(cede FormField::new(cede string::from("q"), cede string::from("hello world+")))
+    fields#.push(cede FormField::new(cede string::from("tag"), cede string::from("toka")))
+    fields#.push(cede FormField::new(cede string::from("tag"), cede string::from("lang")))
+    fields#.push(cede FormField::new(cede string::from("empty"), cede string::from("")))
     auto encoded = format(fields)
     assert(encoded.equals("q=hello+world%2B&tag=toka&tag=lang&empty="),
            "form formatting must preserve ordering and duplicates")

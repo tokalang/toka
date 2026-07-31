@@ -291,65 +291,8 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         }
         Memb->Index = i; // [FIX] Set index for CodeGen
         Memb->IsMorphicExempt = Field.IsMorphicExempt; // [NEW]
-        // Visibility Check: God-eye view (same file)
-        std::string membFile =
-            DiagnosticEngine::SrcMgr->getFullSourceLoc(Memb->Loc).FileName;
-        std::string sdFile =
-            DiagnosticEngine::SrcMgr->getFullSourceLoc(SD->Loc).FileName;
-
-        if (Parser::EncapPolicyEpochV2) {
-          if (!canNameEncapField(SD, requestedMember, getLoc(Memb)))
-            error(Memb, DiagID::ERR_MEMBER_PRIVATE, requestedMember, ObjType);
-        } else if (membFile != sdFile) {
-          // Check EncapMap
-          std::string baseObjType = ObjType;
-          if (baseObjType.find("_M_") != std::string::npos) {
-              baseObjType = baseObjType.substr(0, baseObjType.find("_M_"));
-          }
-          std::string accessType = EncapMap.count(ObjType) ? ObjType : (EncapMap.count(baseObjType) ? baseObjType : "");
-
-          if (!accessType.empty()) {
-            bool accessible = false;
-            for (const auto &entry : EncapMap[accessType]) {
-              bool fieldMatches = false;
-              if (entry.IsExclusion) {
-                fieldMatches = true;
-                for (const auto &f : entry.Fields) {
-                  if (f == requestedMember) {
-                    fieldMatches = false;
-                    break;
-                  }
-                }
-              } else {
-                for (const auto &f : entry.Fields) {
-                  if (f == requestedMember) {
-                    fieldMatches = true;
-                    break;
-                  }
-                }
-              }
-
-              if (fieldMatches) {
-                if (entry.Level == EncapEntry::Global) {
-                  accessible = true;
-                } else if (entry.Level == EncapEntry::Crate) {
-                  accessible = true;
-                } else if (entry.Level == EncapEntry::Path) {
-                  if (toka::PathUtils::modulePathMatchesTarget(membFile,
-                                                               entry.TargetPath)) {
-                    accessible = true;
-                  }
-                }
-              }
-              if (accessible)
-                break;
-            }
-
-            if (!accessible) {
-              error(Memb, DiagID::ERR_MEMBER_PRIVATE, requestedMember, ObjType);
-            }
-          }
-        }
+        if (!canNameEncapField(SD, requestedMember, getLoc(Memb)))
+          error(Memb, DiagID::ERR_MEMBER_PRIVATE, requestedMember, ObjType);
 
         // Return type based on Toka 1.3 Pointer-Value Duality
         std::shared_ptr<toka::Type> fieldType;

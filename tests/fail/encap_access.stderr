@@ -1,10 +1,5 @@
-error[E0429]: Trait 'encap' requires implementation of method 'clone'
- --> tests/import_test/encap_lib.tk:20:1
+error[E0418]: Member 'private_val' of shape 'Data' is private
+ --> tests/fail/encap_access.tk:21:15
     |
- 20 | impl Data@encap {
-    | ^
-error[E0429]: Trait 'encap' requires implementation of method 'drop'
- --> tests/import_test/encap_lib.tk:20:1
-    |
- 20 | impl Data@encap {
-    | ^
+ 21 |     auto x = d.private_val
+    |               ^

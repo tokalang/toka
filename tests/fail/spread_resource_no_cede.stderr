@@ -8,3 +8,8 @@ note: resource-bearing type declared here
    |
  1 | shape ResourceBox(
    |       ^
+error[E04603]: Field '^ptr' receives an owning value from 'r1.^ptr'; use 'cede r1.^ptr' to transfer ownership explicitly
+ --> tests/fail/spread_resource_no_cede.tk:10:39
+    |
+ 10 |     auto r2 = ResourceBox(id = 200, r1.*)
+    |                                       ^

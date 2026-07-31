@@ -4,10 +4,10 @@ error[E0554]: Naked destructuring of resource 'MutexLock_M_i32' is strictly forb
  9 |     guard auto Result<MutexLock<i32>, Error>::Ok(g) = m#.lock() else {
    |                                                  ^
 note: resource type declared here
- --> lib/std/sync.tk:94:11
-    |
- 94 | pub shape MutexLock<'T: @Send>(
-    |           ^
+ --> lib/std/sync.tk:101:11
+     |
+ 101 | pub shape MutexLock<'T: @Send>(
+     |           ^
 error[E0465]: The 'else' block of a pattern matching guard must diverge (e.g., return, break)
  --> tests/fail/guard_no_return.tk:9:5
    |

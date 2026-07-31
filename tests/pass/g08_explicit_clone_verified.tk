@@ -9,20 +9,24 @@ shape Tracker (
 )
 
 impl Tracker@encap {
-    pub fn clone(self) -> Tracker {
-        println("Cloning Tracker {}", self.id)
-        return Tracker(id = self.id + 100, cloned = true)
-    }
+
     fn drop(self#) {
         println("Dropping Tracker {}", self.id)
     }
 }
 
+impl Tracker {
+pub fn clone(self) -> Tracker {
+        println("Cloning Tracker {}", self.id)
+        return Tracker(id = self.id + 100, cloned = true)
+    }
+}
+
 fn main() -> i32 {
-    println("--- Test 1: L-Value Auto-Clone ---")
+    println("--- Test 1: L-Value Explicit Clone ---")
     auto t1 = Tracker(id = 1, cloned = false)
-    // t1 is L-Value. Assignment should trigger clone.
-    auto t2 = t1
+    // Copies are explicit under the v6 ownership model.
+    auto t2 = t1.clone()
     
     if t2.cloned == false {
         println("FAIL: t2 should be cloned")
@@ -35,7 +39,7 @@ fn main() -> i32 {
     // t1 should still exist and be valid
     println("t1 id: {}", t1.id) 
 
-    println("--- Test 2: R-Value Move (No Clone) ---")
+    println("--- Test 2: R-Value Initialization (No Clone) ---")
     // Tracker(...) is R-Value. No clone.
     auto t3 = Tracker(id = 2, cloned = false)
     if t3.cloned == true {
@@ -44,7 +48,7 @@ fn main() -> i32 {
     }
     
     // Explicit clone
-    auto t4 = t3
+    auto t4 = t3.clone()
     if t4.cloned == false {
         println("FAIL: t4 should be cloned (Explicit)")
         return 1
@@ -62,20 +66,20 @@ fn main() -> i32 {
     // Need mutable access to prove it's reference?
     // But safely: address check works if we had address of t1.
     // For now, rely on `cloned` flag. t1.cloned is false.
-    // If auto-cloned, ref would point to temporary with cloned=true.
+    // The original remains unchanged until an explicit clone call.
     
     println("--- Test 4: Variable Reassignment ---")
     auto t5 = Tracker(id=5, cloned=false)
     auto t6 = Tracker(id=6, cloned=false)
     
-    // t5 = t6. t6 is L-Value. Should clone t6 -> t5.
+    // Assignment uses an explicit clone of t6.
     // t5's old value drops? Implicitly handled by assignment logic? 
     // Toka assignment `x = y` on shapes usually replaces memory bits. 
     // Does it drop old value? 
     // compiler_bootstrap.md says "Toka usually does not implicitly drop LHS on assignment for POD".
-    // But validation here focuses on Auto-Clone of RHS.
+    // This validates the explicit clone result on the right-hand side.
     
-    t5 = t6 // Should trigger clone of t6
+    t5 = t6.clone()
     if t5.cloned == false {
          println("FAIL: t5 reassignment should clone t6")
          return 1

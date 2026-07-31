@@ -63,7 +63,6 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"move", TokenType::KwMove},
     {"where", TokenType::KwWhere},
     {"default", TokenType::KwDefault},
-    {"delete", TokenType::KwDelete},
     {"del", TokenType::KwDelete},
     {"final", TokenType::KwFinal},
     {"Fn", TokenType::KwFnType},

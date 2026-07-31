@@ -1,10 +1,15 @@
-// @meta compiler_version: any
+// @meta compiler_version: 0.9.9-02
 // @meta format_version: 2
-// @meta target_triple: any
-// @meta source_hash: any
+// @meta target_triple: arm64-apple-darwin25.5.0
+// @meta source_hash: b3ddf854e7ebafb3
+// @meta source_path: /Users/zhyi/GitDP/toka/tests/pass/g04_odr_test_lib.tk_lib
 // @meta identity_schema_version: 2
-// @meta logical_module_path: unbound
-// @meta resolver_binding_digest: unbound
+// @meta logical_module_path: tests/pass/g04_odr_test_lib.tk_lib
+// @meta resolver_binding_digest: 5038282a44607742
+// @tki v2 copy_proof: MyBucket = proven-noncopy
+// @tki v2 copy_recipe: MyBucket = all(T:@Copy)
+// @tki v2 field_graph: MyBucket.val = T
+
 
 pub shape MyBucket<T>(val: T)
 
@@ -12,7 +17,7 @@ pub trait @MyTrait {
   pub fn do_something(self: Self) -> i32
 }
 
-impl<T> @MyTrait for MyBucket<T> {
+impl<T> MyBucket<T>@MyTrait {
   pub fn do_something(self: Self) -> i32 {
     return 42
   }

@@ -7,7 +7,6 @@ shape Data(val: i32)
 
 // Auto-drop hook tracking via encap trait
 impl Data@encap {
-    pub fn clone(self) = delete
     fn drop(self#) {
         println("Dropping Data with val: {}", self.val)
     }

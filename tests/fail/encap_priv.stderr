@@ -3,8 +3,3 @@ error[E0418]: Member 'len' of shape 'string' is private
     |
  20 |     auto len = s.len 
     |                 ^
-error[E0418]: Member 'len' of shape 'string' is private
- --> tests/fail/encap_priv.tk:20:17
-    |
- 20 |     auto len = s.len 
-    |                 ^

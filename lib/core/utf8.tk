@@ -29,8 +29,7 @@ pub shape Cursor(
 )
 
 impl Cursor@encap {
-    pub(core/str) buf, len, pos
-    pub(core/string) buf, len, pos
+    pub buf, len, pos
     fn drop(self#) {}
 }
 

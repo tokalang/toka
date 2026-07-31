@@ -3500,16 +3500,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         FunctionDecl *FD = MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
         
-        if (FD->IsDeleted) {
-          if (Met->IsCompilerInternal && Met->Method == "clone") {
-            error(Met, DiagID::ERR_SEMA_CANNOT_IMPLICITLY_COPY_VALUE_OF_TYPE_BECA, soulType);
-          } else {
-            error(Met, DiagID::ERR_SEMA_CANNOT_CALL_EXPLICITLY_DELETED_METHOD_ON, Met->Method, soulType);
-          }
-          HasError = true;
-          return toka::Type::fromString("unknown");
-        }
-
         // [Effect] Concurrency Check for Method Call
         if (FD->Effect != EffectKind::None && !m_IsConsumingEffect && !m_IsPrecomputingCaptures) {
           error(Met, DiagID::ERR_DANGLING_EFFECT, Met->Method);

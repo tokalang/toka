@@ -149,7 +149,7 @@ def main() -> int:
                        "--workspace-root", str(replay_root))
         source_replay = manifest(*replay_args, source=replay_main)
         source_coordinate = module_coordinate(source_replay, replay_source)
-        run(str(TOKAC), "-c", "--emit-interface", str(replay_source),
+        run(str(TOKAC), *replay_args, "-c", "--emit-interface", str(replay_source),
             "-o", str(replay_root / "lib.o"))
         replay_tki = replay_root / "lib.tki"
         assert replay_tki.is_file()
@@ -170,7 +170,8 @@ def main() -> int:
         (cache_dir / "objects").mkdir(parents=True)
         (cache_dir / "interfaces").mkdir()
         cache_env = {"TOKA_BUILD_DIR": str(cache_dir), "TOKA_USE_LIB_CACHE": "1"}
-        run(str(TOKAC), "-c", "--emit-interface", str(cache_source),
+        run(str(TOKAC), "--workspace-node", "workspace-replay-v1",
+            "--workspace-root", str(cache_root), "-c", "--emit-interface", str(cache_source),
             "-o", str(cache_dir / "objects" / "lib.o"), env=cache_env)
         cached_replay = manifest("--workspace-node", "workspace-replay-v1",
                                  "--workspace-root", str(cache_root), source=cache_main,
@@ -190,7 +191,8 @@ def main() -> int:
         forged_main.write_text(
             "import ./lib::{value}\nfn main() -> i32 { return value() - 7 }\n",
             encoding="utf-8")
-        run(str(TOKAC), "-c", "--emit-interface", str(forged_source),
+        run(str(TOKAC), "--workspace-node", "workspace-replay-v1",
+            "--workspace-root", str(forged_root), "-c", "--emit-interface", str(forged_source),
             "-o", str(forged_root / "lib.o"))
         forged_tki = forged_root / "lib.tki"
         forged_text = forged_tki.read_text(encoding="utf-8")

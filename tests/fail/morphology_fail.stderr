@@ -23,11 +23,6 @@ error[E0402]: Use of undeclared identifier 'p'
     |
  14 |     auto ^p2 = p; 
     |                ^
-error[E0402]: Use of undeclared identifier 'p'
- --> tests/fail/morphology_fail.tk:14:16
-    |
- 14 |     auto ^p2 = p; 
-    |                ^
 error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new Unresolved(unknown)(...)' stringently
  --> tests/fail/morphology_fail.tk:14:11
     |
@@ -38,11 +33,6 @@ error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use
     |
  18 |     auto ^uniq = 10;
     |           ^
-error[E0402]: Use of undeclared identifier 'uniq'
- --> tests/fail/morphology_fail.tk:21:16
-    |
- 21 |     auto ^p = *uniq;
-    |                ^
 error[E0402]: Use of undeclared identifier 'uniq'
  --> tests/fail/morphology_fail.tk:21:16
     |

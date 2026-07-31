@@ -1,9 +1,4 @@
-error[E0437]: Method 'drop' is private to 'string' and cannot be accessed from module 'encap_method_priv'
- --> tests/fail/encap_method_priv.tk:20:6
-    |
- 20 |     s.drop()
-    |      ^
-error[E0443]: Cannot modify immutable entity 'Method 'drop' requires a declared mutable payload capability (use '#' only to request it)'
+error[E0417]: Shape 'string' has no member named 'drop'
  --> tests/fail/encap_method_priv.tk:20:6
     |
  20 |     s.drop()

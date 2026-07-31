@@ -90,7 +90,7 @@ impl<'T> Vec<'T> {
 }
 
 impl<'T> Vec<'T>@encap {
-    pub(std) buf, len, cap
+    pub buf, len, cap
     fn drop(self#) {
         unsafe {
             if self.*buf != null {

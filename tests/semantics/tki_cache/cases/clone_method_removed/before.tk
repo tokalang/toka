@@ -1,11 +1,14 @@
+// Before: the public explicit clone method is available.
 import core/traits::{@encap}
 
 pub shape Resource(value: i32)
 
 impl Resource@encap {
     fn drop(self#) {}
+}
 
-    pub fn clone(self) -> Resource {
+impl Resource {
+pub fn clone(self) -> Resource {
         return Resource(value = self.value)
     }
 }

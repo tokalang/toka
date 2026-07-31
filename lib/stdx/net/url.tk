@@ -115,7 +115,7 @@ pub fn url_encode(input: string) -> string {
         i = i + 1
     }
     
-    return res
+    return cede res
 }
 
 // Helper for decoding
@@ -154,15 +154,17 @@ fn decode_internal(input: string, plus_as_space: bool) -> Result<string, string>
         i = i + 1
     }
     
-    return Result<string, string>::Ok(res)
+    return Result<string, string>::Ok(cede res)
 }
 
-pub fn url_decode(input: string) -> Result<string, string> {
-    return decode_internal(input, false)
+pub fn url_decode(cede input: string) -> Result<string, string> {
+    auto owned_input = cede input
+    return decode_internal(cede owned_input, false)
 }
 
-pub fn query_decode(input: string) -> Result<string, string> {
-    return decode_internal(input, true)
+pub fn query_decode(cede input: string) -> Result<string, string> {
+    auto owned_input = cede input
+    return decode_internal(cede owned_input, true)
 }
 
 pub shape Url (
@@ -204,7 +206,7 @@ impl Url {
 
 pub fn parse_url(input: string) -> Result<Url, string> {
     auto url# = Url::new()
-    auto rest# = input
+    auto rest# = input.clone()
     
     // 1. Fragment
     auto frag_idx_opt = rest.as_str().index_of('#')
@@ -242,8 +244,8 @@ pub fn parse_url(input: string) -> Result<Url, string> {
 
     // A relative reference never has an authority in this deliberately small API.
     if !has_authority {
-        url.path = rest
-        return Result<Url, string>::Ok(url)
+        url.path = cede rest
+        return Result<Url, string>::Ok(cede url)
     }
 
     // 4. Authority and path.  Query and fragment were removed before this point,
@@ -255,7 +257,7 @@ pub fn parse_url(input: string) -> Result<Url, string> {
         host_port = rest.substring(0:i32, path_idx)
         url.path = rest.substring(path_idx, rest.len() as i32)
     } else {
-        host_port = rest
+        host_port = cede rest
     }
 
     if host_port.len() == 0:usize {
@@ -316,5 +318,5 @@ pub fn parse_url(input: string) -> Result<Url, string> {
             url.host = lower_ascii(host_port.as_str())
         }
     }
-    return Result<Url, string>::Ok(url)
+    return Result<Url, string>::Ok(cede url)
 }

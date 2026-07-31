@@ -19,6 +19,28 @@ pub shape FlagDef (
     default_val: FlagValue
 )
 
+impl FlagValue {
+    pub fn clone(self) -> FlagValue {
+        match self {
+            auto FlagValue::Bool(value) => return FlagValue::Bool(value)
+            auto FlagValue::Int(value) => return FlagValue::Int(value)
+            auto FlagValue::Float(value) => return FlagValue::Float(value)
+            auto FlagValue::Str(&value) => return FlagValue::Str(value.clone())
+        }
+    }
+}
+
+impl FlagDef {
+    pub fn clone(self) -> FlagDef {
+        return FlagDef(
+            name = self.name.clone(),
+            short_name = self.short_name,
+            desc = self.desc.clone(),
+            default_val = self.default_val.clone()
+        )
+    }
+}
+
 pub shape ParsedArgs (
     values#: HashMap<string, FlagValue>,
     pos_args#: Vec<string>
@@ -66,7 +88,13 @@ impl ParsedArgs {
     }
 
     pub fn positionals(self) -> Vec<string> {
-        return self.pos_args.clone()
+        auto copied# = Vec<string>::new()
+        auto index# = 0:usize
+        loop index < self.pos_args.len() {
+            copied#.push(cede self.pos_args.get_ref(index).clone())
+            index += 1
+        }
+        return cede copied
     }
 }
 
@@ -108,7 +136,7 @@ impl Parser {
         io::println("\nOptions:")
         auto i# = 0:usize
         loop i < self.defs.len() {
-            auto def = self.defs.get(i)
+            auto &def = self.defs.get_ref(i)
             auto line# = string::from("  ")
             if def.short_name != 0:char {
                 line#.push_char(45:char) // '-'
@@ -154,8 +182,8 @@ impl Parser {
     fn find_def(self, name: string) -> Option<FlagDef> {
         auto i# = 0:usize
         loop i < self.defs.len() {
-            auto d = self.defs.get(i)
-            if d.name == name { return Option<FlagDef>::Some(d) }
+            auto &d = self.defs.get_ref(i)
+            if d.name == name { return Option<FlagDef>::Some(cede d.clone()) }
             i = i + 1
         }
         return Option<FlagDef>::None()
@@ -165,8 +193,8 @@ impl Parser {
         if short_name == 0:char { return Option<FlagDef>::None() }
         auto i# = 0:usize
         loop i < self.defs.len() {
-            auto d = self.defs.get(i)
-            if d.short_name == short_name { return Option<FlagDef>::Some(d) }
+            auto &d = self.defs.get_ref(i)
+            if d.short_name == short_name { return Option<FlagDef>::Some(cede d.clone()) }
             i = i + 1
         }
         return Option<FlagDef>::None()
@@ -209,8 +237,8 @@ impl Parser {
         // 1. Setup defaults
         auto i# = 0:usize
         loop i < self.defs.len() {
-            auto d = self.defs.get(i)
-            parsed.values#.insert(cede d.name.clone(), d.default_val)
+            auto &d = self.defs.get_ref(i)
+            parsed.values#.insert(cede d.name.clone(), cede d.default_val.clone())
             i = i + 1
         }
 
@@ -456,6 +484,6 @@ impl Parser {
             arg_idx = arg_idx + 1
         }
         
-        return Result<ParsedArgs, string>::Ok(parsed)
+        return Result<ParsedArgs, string>::Ok(cede parsed)
     }
 }

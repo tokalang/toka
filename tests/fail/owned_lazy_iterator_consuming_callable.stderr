@@ -1,7 +1,7 @@
 error[E04591]: Callable 'mapper' consumes its environment; invoke it with 'cede mapper(...)'
- --> lib/std/iter.tk:17:12
+ --> lib/std/iter.tk:16:12
     |
- 17 |     return mapper#(cede value)
+ 16 |     return mapper#(cede value)
     |            ^
 error[E04571]: Type mismatch for argument 2: expected cede fn(i32) -> i32#, got cede fn(i32) -> i32
  --> tests/fail/owned_lazy_iterator_consuming_callable.tk:9:36

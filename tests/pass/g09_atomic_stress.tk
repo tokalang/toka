@@ -6,7 +6,6 @@ shape Counter(
     val#: i32
 )
 impl Counter@encap {
-    pub fn clone(self) = delete
     fn drop(self#) {
         println("Counter dropped")
     }

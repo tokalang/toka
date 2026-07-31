@@ -26,17 +26,6 @@ namespace toka {
 class Parser {
 public:
   static std::string TargetTriple;
-  // Clean-break @encap policy grammar and access semantics, enabled only by
-  // the Slice 2 audit gate until the library migration lands.
-  static bool EncapPolicyEpochV2;
-  // Slice 3 lifecycle lowering, enabled only after the Slice 2 policy gate.
-  static bool EncapLifecycleEpochV3;
-  // Slice 4 Copy/Dup proof and coherence checks.
-  static bool EncapCopyEpochV4;
-  // Slice 5 semantic TKI v2 transport and replay checks.
-  static bool EncapTkiEpochV5;
-  // Slice 6 library migration: no trusted legacy ownership escape hatch.
-  static bool EncapLibraryEpochV6;
 
   Parser(const std::vector<Token> &tokens, const std::string &fileName = "")
       : m_Tokens(tokens), m_Pos(0), m_CurrentFile(fileName) {

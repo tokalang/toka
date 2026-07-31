@@ -10,8 +10,10 @@ impl Resource@encap {
     fn drop(self#) {
         g_drop_count += 1
     }
+}
 
-    pub fn clone(self) -> Resource {
+impl Resource {
+pub fn clone(self) -> Resource {
         g_clone_count += 1
         return Resource(id = self.id)
     }

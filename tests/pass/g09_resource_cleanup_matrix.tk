@@ -11,7 +11,6 @@ impl CleanupToken@encap {
     fn drop(self#) {
         g_drop_count += 1
     }
-    pub fn clone(self) = delete
 }
 
 impl CleanupToken {

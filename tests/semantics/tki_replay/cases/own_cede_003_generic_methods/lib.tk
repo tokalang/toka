@@ -8,7 +8,6 @@ pub shape Parcel<T>(^item: T)
 impl<T> Parcel<T>@encap {
     pub item
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl<T> Parcel<T> {

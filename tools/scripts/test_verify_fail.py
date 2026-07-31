@@ -9,6 +9,8 @@ import difflib
 # Configuration
 TOKAC = "./build/bin/tokac"
 FAIL_TEST_DIR = "tests/fail"
+TOKAC_SCOPE_ARGS = ["--workspace-node", "toka-tests-v1",
+                    "--workspace-root", os.path.abspath(os.getcwd())]
 
 GREEN = '\033[0;32m'
 RED = '\033[0;31m'
@@ -83,7 +85,7 @@ def main():
         # 1. Run Compiler
         try:
             result = subprocess.run(
-                [TOKAC, test_file],
+                [TOKAC, *TOKAC_SCOPE_ARGS, test_file],
                 capture_output=True,
                 text=True
             )

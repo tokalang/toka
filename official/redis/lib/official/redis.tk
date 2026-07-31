@@ -413,7 +413,6 @@ impl RedisCommand@encap {
 impl RedisPipeline@encap {
     fn drop(self#) {}
 
-    pub fn clone(self) = delete
 }
 
 impl RedisValue@encap {
@@ -485,7 +484,6 @@ impl RedisClient@encap {
         self#.close()
     }
 
-    pub fn clone(self) = delete
 }
 
 impl RedisClient @Send {}
@@ -1003,7 +1001,6 @@ impl RedisLease@encap {
         }
     }
 
-    pub fn clone(self) = delete
 }
 
 impl RedisLease {

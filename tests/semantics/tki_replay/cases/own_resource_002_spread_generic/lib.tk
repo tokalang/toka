@@ -1,14 +1,12 @@
 // EXPECT_TKI: pub shape Vault<T>(id: i32, ^secret: T)
 // EXPECT_TKI: impl<T> Vault<T>@encap
-// EXPECT_TKI: pub fn clone(self: Self) = delete
 import core/traits::{@encap}
 
 pub shape Vault<T>(id: i32, ^secret: T)
 
 impl<T> Vault<T>@encap {
-    pub * ! secret
+    pub id
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 pub fn make_vault() -> Vault<i32> {

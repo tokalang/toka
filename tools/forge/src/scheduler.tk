@@ -43,7 +43,6 @@ pub shape WorkerPool (
 
 impl WorkerPool@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl WorkerPool {

@@ -2,7 +2,7 @@ import std/io::{println}
 import std/sync::{Mutex}
 
 pub fn main() -> i32 {
-    auto ~m = new Mutex<i32>(handle = 0:Addr, data = 42)
+    auto ~m = Mutex<i32>::make_shared(cede 42)
     auto ~shared_m = ~m
     
     // Acquire

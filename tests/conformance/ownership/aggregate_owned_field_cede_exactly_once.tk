@@ -11,7 +11,6 @@ impl Resource@encap {
         g_drop_count += 1:i32
     }
 
-    pub fn clone(self) = delete
 }
 
 shape Holder (
@@ -20,7 +19,6 @@ shape Holder (
 
 impl Holder@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

@@ -70,7 +70,7 @@ pub fn to_lower_string(s: str) -> string {
         res#.push_char(to_lower_char(s.at(i).unwrap() as char))
         i += 1
     }
-    return res
+    return cede res
 }
 
 pub fn has_exact_token(val_str: str, target: str) -> bool {
@@ -550,7 +550,7 @@ pub fn ws_connect_tls_async(tcp_stream#: TcpStream, host: string, path: string) 
     auto tls_res = TlsStream::connect_async(tcp_stream#.take(), host).await
     if tls_res.is_err() {
         auto err_msg = tls_res.unwrap_err()
-        return Result<WsConnection, string>::Err(err_msg)
+        return Result<WsConnection, string>::Err(cede err_msg)
     }
     auto stream# = tls_res.unwrap()
     return ws_connect_stream_async(stream, host, path).await
@@ -560,7 +560,7 @@ pub fn ws_connect_tls_insecure_async(tcp_stream#: TcpStream, host: string, path:
     auto tls_res = TlsStream::connect_insecure_async(tcp_stream#.take(), host).await
     if tls_res.is_err() {
         auto err_msg = tls_res.unwrap_err()
-        return Result<WsConnection, string>::Err(err_msg)
+        return Result<WsConnection, string>::Err(cede err_msg)
     }
     auto stream# = tls_res.unwrap()
     return ws_connect_stream_async(stream, host, path).await
@@ -822,7 +822,7 @@ impl WsConnection {
                             }
                         }
                         // Echo Close frame back per RFC 6455 Section 5.5.1 with short timeout before closing stream
-                        match self#.write_control_frame_async_timeout(0x08:u8, payload_vec, 200).await {
+                        match self#.write_control_frame_async_timeout(0x08:u8, cede payload_vec, 200).await {
                             _ => {}
                         }
                         self.stream#.close()
@@ -906,7 +906,7 @@ impl WsConnection {
             return Result<string, string>::Err(msg_res.unwrap_err())
         }
         auto msg = msg_res.unwrap()
-        return Result<string, string>::Ok(msg.text_data)
+        return Result<string, string>::Ok(cede msg.text_data)
     }
 
     pub fn write_text_async(self#, s: str) -> async Result<usize, string> {
@@ -972,7 +972,7 @@ impl WsConnection {
         auto w_res = self.stream#.write_from_async(cede frame_vec, 10000).await
         if w_res.is_err() {
             auto err_obj = w_res.unwrap_err()
-            return Result<usize, string>::Err(err_obj.message)
+            return Result<usize, string>::Err(cede err_obj.message)
         }
         return Result<usize, string>::Ok(p_len)
     }
@@ -1038,7 +1038,7 @@ impl WsConnection {
         auto w_res = self.stream#.write_from_async(cede frame_vec, 10000).await
         if w_res.is_err() {
             auto err_obj = w_res.unwrap_err()
-            return Result<usize, string>::Err(err_obj.message)
+            return Result<usize, string>::Err(cede err_obj.message)
         }
 
         return Result<usize, string>::Ok(p_len)
@@ -1094,7 +1094,7 @@ impl WsConnection {
         auto w_res = self.stream#.write_from_async(cede frame_vec, timeout_ms).await
         if w_res.is_err() {
             auto err_obj = w_res.unwrap_err()
-            return Result<usize, string>::Err(err_obj.message)
+            return Result<usize, string>::Err(cede err_obj.message)
         }
         return Result<usize, string>::Ok(p_len)
     }

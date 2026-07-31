@@ -275,7 +275,7 @@ Primary references:
 - Primary diagnostics: `E0468`, `E0554`, `E04581`, `E04535`
 - Implementation areas: `src/Sema/Sema_Expr_Closure.cpp`,
   `src/Sema/Sema_Expr_Init.cpp`, `src/Sema/Sema_Expr_Member.cpp`
-- Positive tests: `tests/pass/g08_auto_clone_verified.tk`,
+- Positive tests: `tests/pass/g08_explicit_clone_verified.tk`,
   `tests/pass/g04_destruct_match_ideal.tk`,
   `tests/pass/g07_implicit_borrow_match.tk`
 - Negative tests: `tests/fail/destruct_resource_copy.tk`,

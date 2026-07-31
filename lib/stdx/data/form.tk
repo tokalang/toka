@@ -15,6 +15,10 @@ impl FormField@encap {
 }
 
 impl FormField {
+    pub fn new(cede name: string, cede value: string) -> FormField {
+        return FormField(name = cede name, value = cede value)
+    }
+
     pub fn clone(self) -> FormField {
         return FormField(
             name = string::from(self.name.as_str()),

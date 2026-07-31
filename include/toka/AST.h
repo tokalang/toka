@@ -741,7 +741,7 @@ public:
   std::unique_ptr<Expr> Object;
   std::string Method;
   std::vector<std::unique_ptr<Expr>> Args;
-  bool IsCompilerInternal = false; // [Auto-Clone] Bypass visibility
+  bool IsCompilerInternal = false; // Compiler-synthesized calls may bypass visibility.
   bool ObjectIsPrechecked = false; // Synthesized wrapper reuses receiver Sema
   FunctionDecl *ResolvedFn = nullptr;
 
@@ -1640,7 +1640,6 @@ public:
   FunctionMemorySummary MemorySummary;
 
   bool IsVariadic = false;
-  bool IsDeleted = false; // [NEW] e.g., `= delete` function
   bool IsClosureInvoke = false;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
@@ -1679,7 +1678,6 @@ public:
     n->CodegenName = CodegenName;
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
-    n->IsDeleted = IsDeleted;
     n->IsClosureInvoke = IsClosureInvoke;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
@@ -1837,11 +1835,7 @@ public:
 };
 
 struct EncapEntry {
-  enum Visibility { Global, Crate, Path, Private };
-  Visibility Level;
-  std::string TargetPath;
   std::vector<std::string> Fields;
-  bool IsExclusion = false; // For pub * ! ...
 };
 
 struct AssociatedTypeDecl {

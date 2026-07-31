@@ -3,24 +3,25 @@ import std/vec::{Vec}
 import stdx/data/csv::{parse_records, write_records, read_record, write_record}
 import stdx/io/bufio::{BufferedReader, BufferedWriter}
 
-fn assert_field(records: Vec<Vec<string>>, row: usize, column: usize, expected: str) {
-    auto record = records.get(row).clone()
-    auto field = record.get(column).clone()
+fn assert_field(records#: Vec<Vec<string>>, row: usize, column: usize, expected: str) {
+    auto *record = records.get_ref(row)
+    auto *field = record.get_ref(column)
     assert(field.as_str().equals(expected), "unexpected CSV field")
 }
 
 fn test_parse_rfc4180_core() {
     auto parsed = parse_records("name,quote\r\nalice,\"hello, \"\"world\"\"\"\r\n")
     assert(parsed.is_ok(), "RFC 4180 core input must parse")
-    auto records = parsed.unwrap()
+    auto records# = parsed.unwrap()
     assert(records.len() == 2, "expected two records")
-    assert_field(records.clone(), 0, 0, "name")
-    assert_field(records.clone(), 1, 0, "alice")
+    assert_field(records, 0, 0, "name")
+    assert_field(records, 1, 0, "alice")
     assert_field(records, 1, 1, "hello, \"world\"")
 
     auto multiline = parse_records("id,notes\r\n1,\"one\r\ntwo\"\r\n")
     assert(multiline.is_ok(), "CRLF inside a quoted field must parse")
-    assert_field(multiline.unwrap(), 1, 1, "one\r\ntwo")
+    auto multiline_records# = multiline.unwrap()
+    assert_field(multiline_records, 1, 1, "one\r\ntwo")
 }
 
 fn test_write_round_trip() {
@@ -30,13 +31,13 @@ fn test_write_round_trip() {
     first#.push(cede string::from("say \"hi\""))
     auto records# = Vec<Vec<string>>::new()
     records#.push(cede first)
-    auto wire = write_records(records)
+    auto wire = write_records(cede records)
     assert(wire.as_str().equals("plain,\"needs,quote\",\"say \"\"hi\"\"\"\r\n"),
            "CSV writer must quote delimiters and escape quotes")
     auto reparsed = parse_records(wire.as_str())
     assert(reparsed.is_ok(), "writer output must parse")
-    auto rows = reparsed.unwrap()
-    assert_field(rows.clone(), 0, 1, "needs,quote")
+    auto rows# = reparsed.unwrap()
+    assert_field(rows, 0, 1, "needs,quote")
     assert_field(rows, 0, 2, "say \"hi\"")
 }
 

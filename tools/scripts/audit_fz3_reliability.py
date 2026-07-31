@@ -127,7 +127,6 @@ def main():
         "shape Pair(left: i32, right: i32)\nfn main() -> i32 { auto p = Pair(left=1); return p.left }\n",
         "fn worker() -> async i32 { return 0 }\nfn main() -> i32 { return worker().await }\n",
         "fn main() -> i32 { auto x = 1; auto y = cede x; return cede x }\n",
-        "shape R(value: i32)\nimpl R { fn clone(self) = delete }\nfn main() -> i32 { auto a = R(value=1); auto b = a; return b.value }\n",
         "fn main() -> i32 { unsafe free 1; return 0 }\n",
     )
     core_pass = (

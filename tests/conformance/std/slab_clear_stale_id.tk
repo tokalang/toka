@@ -12,7 +12,6 @@ impl Entry@encap {
         g_drop_count += 1
     }
 
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

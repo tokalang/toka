@@ -357,7 +357,7 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
     markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
   } else {
     // Raw/Ref: direct store
-    m_Builder.CreateStore(rhsVal, handleAddr);
+    markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
   }
 }
 

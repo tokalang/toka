@@ -1,10 +1,11 @@
-// @meta compiler_version: any
+// @meta compiler_version: 0.9.9-02
 // @meta format_version: 2
-// @meta target_triple: any
-// @meta source_hash: any
+// @meta target_triple: arm64-apple-darwin25.5.0
+// @meta source_hash: 90450d45a46ac0be
+// @meta source_path: /Users/zhyi/GitDP/toka/tests/pass/g04_odr_helper.tk_lib
 // @meta identity_schema_version: 2
-// @meta logical_module_path: unbound
-// @meta resolver_binding_digest: unbound
+// @meta logical_module_path: tests/pass/g04_odr_helper.tk_lib
+// @meta resolver_binding_digest: aa60295b75ad05b2
 
 import ./odr_test_lib :: *
 

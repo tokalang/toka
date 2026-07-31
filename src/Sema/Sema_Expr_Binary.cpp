@@ -304,9 +304,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
   // Assignment Logic
   if (Bin->Op == "=") {
-    // [Auto-Clone] Inject clone() if RHS is L-Value and has clone
-    tryInjectAutoClone(Bin->RHS);
-    // Update cached type/ptr after potential injection
+    // Refresh the cached right-hand-side type before ownership analysis.
     rhsType = Bin->RHS->ResolvedType;
     rhsExpr = Bin->RHS.get();
     RHS = rhsType->toString();

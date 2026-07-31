@@ -100,8 +100,18 @@ collectEvidenceSummaries(const Module &module,
                          std::vector<std::string> &errors) {
   std::map<std::string, FunctionMemorySummary> summaries;
   std::set<std::string> ambiguousNames;
+  std::set<const FunctionDecl *> policyDropHooks;
+  for (const auto &impl : module.Impls) {
+    if (impl->TraitName != "encap" && impl->TraitName != "@encap")
+      continue;
+    for (const auto &method : impl->Methods)
+      if (method->Name == "drop")
+        policyDropHooks.insert(method.get());
+  }
   std::vector<Module *> modules = {const_cast<Module *>(&module)};
   for (FunctionDecl *function : MemorySummaryAnalysis::collectFunctions(modules)) {
+    if (policyDropHooks.count(function))
+      continue;
     const FunctionMemorySummary &summary = function->MemorySummary;
     if (summary.Origin != MemorySummaryOrigin::SourceBody ||
         summary.FunctionName.empty() ||

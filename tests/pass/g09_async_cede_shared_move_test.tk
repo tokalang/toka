@@ -11,7 +11,10 @@ impl SharedResource@encap {
     fn drop(self#) {
         global_drop_count = global_drop_count + 1;
     }
-    pub fn clone(self) -> SharedResource {
+}
+
+impl SharedResource {
+pub fn clone(self) -> SharedResource {
         return SharedResource(id = self.id);
     }
 }

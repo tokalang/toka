@@ -42,7 +42,7 @@ fn lower_ascii(input: str) -> string {
         output#.push_byte_raw(byte)
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 fn trim_ows(input: str) -> string {
@@ -60,7 +60,7 @@ fn trim_ows(input: str) -> string {
         output#.push_byte_raw(input.byte_at(index) as u8)
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 fn is_cookie_value(input: str) -> bool {
@@ -164,7 +164,7 @@ impl Cookie {
         if self.secure { output#.push_str("; Secure") }
         if self.http_only { output#.push_str("; HttpOnly") }
         append_same_site(output, self.same_site)
-        return output
+        return cede output
     }
 
     pub fn parse(input: str) -> Result<Cookie, string> {
@@ -220,11 +220,11 @@ impl Cookie {
                 auto value_trimmed = trim_ows(attribute_value.as_str())
                 if normalized.as_str().equals("path") {
                     if saw_path || value_trimmed.len() == 0:usize { return Result<Cookie, string>::Err(string::from("invalid duplicate or empty Cookie Path")) }
-                    cookie.path = Option<string>::Some(value_trimmed)
+                    cookie.path = Option<string>::Some(cede value_trimmed)
                     saw_path = true
                 } else if normalized.as_str().equals("domain") {
                     if saw_domain || value_trimmed.len() == 0:usize { return Result<Cookie, string>::Err(string::from("invalid duplicate or empty Cookie Domain")) }
-                    cookie.domain = Option<string>::Some(lower_ascii(value_trimmed.as_str()))
+                    cookie.domain = Option<string>::Some(cede lower_ascii(value_trimmed.as_str()))
                     saw_domain = true
                 } else if normalized.as_str().equals("max-age") {
                     if saw_max_age { return Result<Cookie, string>::Err(string::from("duplicate Cookie Max-Age")) }
@@ -252,6 +252,6 @@ impl Cookie {
             }
             segment_start = segment_end
         }
-        return Result<Cookie, string>::Ok(cookie)
+        return Result<Cookie, string>::Ok(cede cookie)
     }
 }

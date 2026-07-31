@@ -8,11 +8,10 @@ shape ManagedResource (
 )
 
 impl ManagedResource@encap {
-    pub *
+    pub id, drop_count
     fn drop(self#) {
         self.drop_count += 1
     }
-    pub fn clone(self) = delete
 }
 
 fn async_worker(flag#: i32) -> async i32 {

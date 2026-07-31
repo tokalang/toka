@@ -5,7 +5,7 @@ import src/lexer::{Lexer}
 
 fn rebuild_str(addr: Addr, len: usize) -> str <- addr {
     unsafe {
-        return str(&buf = (addr as *[char]) as &[char], len = len)
+        return str::from_raw_parts(addr as *char, len)
     }
 }
 

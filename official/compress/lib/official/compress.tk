@@ -63,12 +63,10 @@ impl CompressError@encap {
 
 impl Encoder@encap {
     fn drop(self#) { self#.release_native() }
-    pub fn clone(self) = delete
 }
 
 impl Decoder@encap {
     fn drop(self#) { self#.release_native() }
-    pub fn clone(self) = delete
 }
 
 fn native_format(format: CompressionFormat) -> i32 {

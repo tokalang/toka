@@ -1,10 +1,10 @@
 error[E04570]: Argument must be explicitly passed with 'cede' because the function consumes it
- --> tests/fail/cede_param_missing.tk:19:30
+ --> tests/fail/cede_param_missing.tk:18:30
     |
- 19 |     auto v = consume_payload(p)
+ 18 |     auto v = consume_payload(p)
     |                              ^
 note: cede parameter declared here
- --> tests/fail/cede_param_missing.tk:11:29
+ --> tests/fail/cede_param_missing.tk:10:29
     |
- 11 | pub fn consume_payload(cede p: Payload) -> i32 {
+ 10 | pub fn consume_payload(cede p: Payload) -> i32 {
     |                             ^

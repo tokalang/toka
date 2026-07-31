@@ -117,7 +117,7 @@ impl<'R: @Reader> BufferedReader<'R> {
             }
         }
         
-        return Result<string, string>::Ok(s)
+        return Result<string, string>::Ok(cede s)
     }
 
     fn fill_buf(self#) -> Result<usize, string> {
@@ -270,7 +270,7 @@ impl AsyncBufferedReader {
             auto failure# = refill.unwrap_err()
             auto message = failure.message.clone()
             auto _returned = failure#.take_buffer()
-            return Result<usize, string>::Err(message)
+            return Result<usize, string>::Err(cede message)
         }
         auto received# = refill.unwrap()
         auto count = received.bytes_read
@@ -342,7 +342,7 @@ impl AsyncBufferedReader {
             }
         }
 
-        return Result<string, string>::Ok(res_str)
+        return Result<string, string>::Ok(cede res_str)
     }
 
     pub fn read_line_async(self#, max_bytes: usize) -> async Result<string, string> {

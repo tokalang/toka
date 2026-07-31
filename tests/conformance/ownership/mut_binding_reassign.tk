@@ -8,7 +8,10 @@ shape Config (
 impl Config@encap {
     pub name
     fn drop(self#) {}
-    pub fn clone(self) -> Config {
+}
+
+impl Config {
+pub fn clone(self) -> Config {
         return Config(name = string::from(self.name.as_str()))
     }
 }

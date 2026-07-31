@@ -103,8 +103,7 @@ pub shape str(
 )
 
 impl str@encap {
-    pub(core/str) buf, len
-    pub(core/string) buf, len
+    pub buf, len
     fn drop(self#) {}
 }
 

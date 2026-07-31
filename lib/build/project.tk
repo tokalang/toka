@@ -13,15 +13,7 @@ pub shape Executable (
 )
 
 impl Executable@encap {
-    pub(build) name
-    pub(build) version
-    pub(build) src
-    pub(build) deps
-    pub(build) c_srcs
-    pub(build) lib_dirs
-    pub(build) libs
-    pub(build) include_dirs
-    pub(build) ldflags
+    pub name, version, src, deps, c_srcs, lib_dirs, libs, include_dirs, ldflags
 
     fn drop(self#) { }
 }
@@ -54,14 +46,7 @@ pub shape Library (
 )
 
 impl Library@encap {
-    pub(build) name
-    pub(build) version
-    pub(build) src
-    pub(build) deps
-    pub(build) c_srcs
-    pub(build) lib_dirs
-    pub(build) libs
-    pub(build) include_dirs
+    pub name, version, src, deps, c_srcs, lib_dirs, libs, include_dirs
 
     fn drop(self#) { }
 }

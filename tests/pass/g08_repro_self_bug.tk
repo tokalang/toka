@@ -9,11 +9,15 @@ shape MyFile(
 shape Wrapper(val: i32)
 
 impl MyFile@encap {
-    pub *
-    pub fn clone(self) -> MyFile {
+    pub h
+
+    fn drop(self#) {}
+}
+
+impl MyFile {
+pub fn clone(self) -> MyFile {
         return MyFile(*h=self.*h)
     }
-    fn drop(self#) {}
 }
 
 impl MyFile {

@@ -1098,7 +1098,6 @@ impl PostgresClient@encap {
         self#.close()
     }
 
-    pub fn clone(self) = delete
 }
 
 impl PostgresClient {
@@ -1540,7 +1539,6 @@ impl PostgresStatement@encap {
     pub closed
     fn drop(self#) {}
 
-    pub fn clone(self) = delete
 }
 
 impl PostgresStatement {
@@ -1979,7 +1977,6 @@ impl PostgresPoolLease@encap {
         }
     }
 
-    pub fn clone(self) = delete
 }
 
 impl PostgresPoolLease {
@@ -2091,7 +2088,6 @@ impl PostgresPoolTransaction@encap {
         }
     }
 
-    pub fn clone(self) = delete
 }
 
 impl PostgresPoolTransaction {

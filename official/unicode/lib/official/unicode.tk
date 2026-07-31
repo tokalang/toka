@@ -61,7 +61,6 @@ shape GraphemeScanner (
 
 impl GraphemeScanner@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn unicode_error(text: str, position: usize) -> UnicodeError {

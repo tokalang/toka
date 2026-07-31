@@ -23,7 +23,7 @@ fn test_robin_hood() {
     // 2. Validate gets
     auto j# = 0
     loop j < 1000 {
-        auto opt = map.get(j)
+        auto opt = map.get_ref(j)
         if opt.is_none() {
             unsafe { libc_printf(c"FAIL: could not get %d\n", j) }
             return
@@ -49,7 +49,7 @@ fn test_robin_hood() {
     
     // 4. Overwrite existing
     map#.insert(1, cede string::from("val_1_new"))
-    auto opt3 = map.get(1)
+    auto opt3 = map.get_ref(1)
     if opt3.is_none() {
         unsafe { libc_printf(c"FAIL: replace failed\n") }
         return

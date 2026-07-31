@@ -48,7 +48,6 @@ pub shape RawPoint(
 
 impl RawPoint@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

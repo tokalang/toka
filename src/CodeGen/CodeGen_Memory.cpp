@@ -403,8 +403,41 @@ void CodeGen::emitDropForTypeWithMask(
   }
 }
 
+llvm::Function *
+CodeGen::getOrCreateDropCascadeHelper(const std::string &typeName) {
+  auto cached = m_DropCascadeHelpers.find(typeName);
+  if (cached != m_DropCascadeHelpers.end())
+    return cached->second;
+
+  const std::string helperName = "__toka_drop_cascade_" + typeName;
+  auto *helperType = llvm::FunctionType::get(
+      m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+  auto *helper = llvm::Function::Create(helperType, llvm::Function::PrivateLinkage,
+                                        helperName, m_Module.get());
+  m_DropCascadeHelpers[typeName] = helper;
+
+  auto savedIP = m_Builder.saveIP();
+  auto *entry = llvm::BasicBlock::Create(m_Context, "entry", helper);
+  m_Builder.SetInsertPoint(entry);
+  m_DropCascadeHelperRootTypes.insert(typeName);
+  emitDropCascade(helper->getArg(0), typeName);
+  if (!m_Builder.GetInsertBlock()->getTerminator())
+    m_Builder.CreateRetVoid();
+  m_Builder.restoreIP(savedIP);
+  return helper;
+}
+
 void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName) {
   if (typeName.empty() || !ptrAddr) return;
+
+  if (m_ActiveDropCascadeTypes.count(typeName)) {
+    if (m_DropCascadeHelperRootTypes.erase(typeName) == 0) {
+      auto *helper = getOrCreateDropCascadeHelper(typeName);
+      m_Builder.CreateCall(helper, {ptrAddr});
+      return;
+    }
+  }
+  const bool enteredActive = m_ActiveDropCascadeTypes.insert(typeName).second;
   
   // [NEW] Dynamic Closure (dyn fn) Drop Logic
   if (typeName.find("dyn fn(") == 0) {
@@ -471,10 +504,8 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
     }
   }
 
-  // In Slice 3, a custom hook is followed by compiler-owned field cleanup.
-  // Legacy custom destructors retain their previous whole-object behavior.
-  if ((!calledDestructor || (Parser::EncapLifecycleEpochV3 && knownShape &&
-                             knownShape->HasExplicitDrop)) &&
+  // A custom hook is followed by compiler-owned field cleanup.
+  if ((!calledDestructor || (knownShape && knownShape->HasExplicitDrop)) &&
       m_Shapes.count(typeName)) {
     const ShapeDecl *sh = m_Shapes[typeName];
     llvm::StructType *st = m_StructTypes[typeName];
@@ -602,16 +633,14 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
         const bool memberNeedsDrop =
             memberDropType &&
             (memberDropType->isArray() || memberDropType->IsNullable ||
-             (Parser::EncapLifecycleEpochV3 &&
-              (memberDropType->isUniquePtr() || memberDropType->isSharedPtr())) ||
+             memberDropType->isUniquePtr() || memberDropType->isSharedPtr() ||
              (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
 
         // Value fields recurse through their semantic type.  This includes
         // fixed arrays, whose elements may themselves require destruction.
-        const bool v3OwningPointer = Parser::EncapLifecycleEpochV3 &&
-            memberDropType &&
+        const bool owningPointer = memberDropType &&
             (memberDropType->isUniquePtr() || memberDropType->isSharedPtr());
-        if (!isPointer || v3OwningPointer) {
+        if (!isPointer || owningPointer) {
            if (memberNeedsDrop) {
              llvm::Value *typedBase = m_Builder.CreateBitCast(ptrAddr, llvm::PointerType::getUnqual(m_Context));
              llvm::Value *fieldPtr = m_Builder.CreateStructGEP(st, typedBase, i, "drop_cascade.gep");
@@ -625,6 +654,9 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
       }
     }
   }
+
+  if (enteredActive)
+    m_ActiveDropCascadeTypes.erase(typeName);
 }
 
 void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,

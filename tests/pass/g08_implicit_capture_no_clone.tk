@@ -22,7 +22,6 @@ shape Locked(
 )
 
 impl Locked {
-    pub fn clone(self) = delete
 
     pub fn value_of(self) -> i32 {
         return self.value
@@ -57,7 +56,7 @@ fn main() -> i32 {
         return 3
     }
 
-    auto copied = original
+    auto copied = original.clone()
     if !copied.cloned {
         return 4
     }

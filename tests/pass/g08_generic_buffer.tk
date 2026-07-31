@@ -17,7 +17,6 @@ shape Node<T>(
 )
 impl<T> Node<T>@encap {
     pub buf
-    pub fn clone(self) = delete
     fn drop(self#) {
         println("dropping Node")
     }

@@ -157,11 +157,12 @@ pub fn parse_records(input: str) -> Result<Vec<Vec<string>>, CsvError> {
     return Result<Vec<Vec<string>>, CsvError>::Ok(cede records)
 }
 
-fn write_field(field: string, output#: string) {
+fn write_field(cede field: string, output#: string) {
+    auto owned_field = cede field
     auto quoted# = false
     auto i#: usize = 0
-    loop i < field.len() {
-        auto byte = field.as_str().byte_at(i) as u8
+    loop i < owned_field.len() {
+        auto byte = owned_field.as_str().byte_at(i) as u8
         if byte == 44:u8 || byte == 34:u8 || byte == 13:u8 || byte == 10:u8 {
             quoted = true
         }
@@ -169,8 +170,8 @@ fn write_field(field: string, output#: string) {
     }
     if quoted { output#.push_byte_raw(34:u8) }
     i = 0:usize
-    loop i < field.len() {
-        auto byte = field.as_str().byte_at(i) as u8
+    loop i < owned_field.len() {
+        auto byte = owned_field.as_str().byte_at(i) as u8
         if byte == 34:u8 { output#.push_byte_raw(34:u8) }
         output#.push_byte_raw(byte)
         i = i + 1
@@ -178,23 +179,24 @@ fn write_field(field: string, output#: string) {
     if quoted { output#.push_byte_raw(34:u8) }
 }
 
-pub fn write_records(records: Vec<Vec<string>>) -> string {
+pub fn write_records(cede records: Vec<Vec<string>>) -> string {
+    auto owned_records = cede records
     auto output# = string::from("")
     auto row_index#: usize = 0
-    loop row_index < records.len() {
-        auto row = records.get(row_index).clone()
+    loop row_index < owned_records.len() {
+        auto *row = owned_records.get_ref(row_index)
         auto field_index#: usize = 0
         loop field_index < row.len() {
             if field_index > 0 { output#.push_byte_raw(44:u8) }
-            auto field = row.get(field_index).clone()
-            write_field(field, output)
+            auto field = row.get_ref(field_index).clone()
+            write_field(cede field, output)
             field_index = field_index + 1:usize
         }
         output#.push_byte_raw(13:u8)
         output#.push_byte_raw(10:u8)
         row_index = row_index + 1
     }
-    return output
+    return cede output
 }
 
 fn quotes_closed(input: str) -> bool {
@@ -227,7 +229,7 @@ pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: u
             return Result<Option<Vec<string>>, CsvError>::Err(parse_error(
                 line, 1:usize, line_result.unwrap_err()))
         }
-        auto fragment = line_result.unwrap()
+        auto fragment = cede line_result.unwrap()
         if fragment.len() == 0:usize {
             if record.len() == 0:usize {
                 return Result<Option<Vec<string>>, CsvError>::Ok(Option<Vec<string>>::None)
@@ -252,12 +254,12 @@ pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: u
         if parsed.is_err() {
             return Result<Option<Vec<string>>, CsvError>::Err(parsed.unwrap_err())
         }
-        auto rows = parsed.unwrap()
+        auto rows# = cede parsed.unwrap()
         if rows.len() != 1:usize {
             return Result<Option<Vec<string>>, CsvError>::Err(parse_error(
                 1:usize, 1:usize, string::from("expected exactly one CSV record")))
         }
-        auto row = rows.get(0:usize).clone()
+        auto row = rows#.remove(0:usize).unwrap()
         return Result<Option<Vec<string>>, CsvError>::Ok(
             Option<Vec<string>>::Some(cede row))
     }
@@ -269,7 +271,7 @@ pub fn write_record<'W: @Writer>(writer#: BufferedWriter<'W>, cede record: Vec<s
                               -> Result<(), CsvError> {
     auto records# = Vec<Vec<string>>::new()
     records#.push(cede record)
-    auto wire = write_records(records)
+    auto wire = write_records(cede records)
     auto written = writer#.write_string(wire.clone())
     if written.is_err() {
         return Result<(), CsvError>::Err(parse_error(

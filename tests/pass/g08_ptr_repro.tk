@@ -7,10 +7,14 @@ shape Wrapper(
 )
 
 impl Wrapper@encap {
-    pub fn clone(self) -> Wrapper {
+
+    fn drop(self#) {}
+}
+
+impl Wrapper {
+pub fn clone(self) -> Wrapper {
         return Wrapper(*buf = self.*buf, sz = self.sz)
     }
-    fn drop(self#) {}
 }
 
 impl Wrapper {

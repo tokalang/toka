@@ -5,7 +5,6 @@ import std/deque::{VecDeque}
 shape CustomResource(val: i32)
 impl CustomResource@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 pub fn consume_res(cede r: CustomResource) {

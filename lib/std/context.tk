@@ -331,10 +331,7 @@ pub fn with_cancel<'C: @Context>(cede 'parent#: C) -> CancelResult<'C> {
         wait_ids = cede wait_ids,
         wait_gens = cede wait_gens
     )
-    auto ~shared_state = new Mutex<CancelState>(
-        handle = sys_mutex_create(),
-        data = cede state
-    )
+    auto ~shared_state = Mutex<CancelState>::make_shared(cede state)
     auto ~shared_state_clone = ~shared_state
 
     auto canceler_fn = Canceler(~state = ~shared_state_clone)

@@ -1,5 +1,5 @@
 shape SummaryData(value: i32)
-shape SummaryRef(&value: i32)
+shape SummaryRef(&#value: i32)
 
 auto ms_global# = 0
 
@@ -26,7 +26,7 @@ fn ms_escape(data: SummaryData) -> &i32 <- data {
 }
 
 fn ms_store(source: SummaryData, target#: SummaryRef) {
-    target.&value = source.&value
+    target.&#value = source.&value
 }
 
 fn ms_address(^data: SummaryData) -> usize {

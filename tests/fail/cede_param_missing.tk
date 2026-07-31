@@ -5,7 +5,6 @@ import core/traits::{@encap}
 shape Payload(val: i32)
 impl Payload@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 pub fn consume_payload(cede p: Payload) -> i32 {

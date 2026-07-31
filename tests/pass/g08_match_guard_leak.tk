@@ -6,8 +6,7 @@ shape Resource (
     &drop_flag#: i32
 )
 impl Resource@encap {
-    pub *
-    pub fn clone(self) = delete
+    pub drop_flag
     fn drop(self#) {
         self.drop_flag += 1
     }
@@ -18,8 +17,7 @@ shape SharedHandle (
     *ref_ptr: i32
 )
 impl SharedHandle@encap {
-    pub *
-    pub fn clone(self) = delete
+    pub data, ref_ptr
     fn drop(self#) {}
 }
 

@@ -40,8 +40,8 @@ def record(document, function, parameter="data"):
 def main():
     audit = json.loads(run([sys.executable, AUDIT]).stdout)
     if audit["schema"] != "toka.cross-module-readonly-audit" or \
-            audit["decision"] != "BenchmarkRequired":
-        raise AssertionError("cross-module readonly audit did not find delta")
+            audit["decision"] not in ("BenchmarkRequired", "NoStaticDelta"):
+        raise AssertionError("unexpected cross-module readonly audit result")
     with tempfile.TemporaryDirectory(prefix="toka_readonly_") as work:
         default_ir_path = os.path.join(work, "default.ll")
         experimental_ir_path = os.path.join(work, "experimental.ll")

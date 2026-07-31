@@ -306,6 +306,14 @@ impl DiagnosticLabel@encap {
 }
 
 impl DiagnosticLabel {
+    pub fn new(offset: usize, length: usize, message: string) -> DiagnosticLabel {
+        return DiagnosticLabel(
+            offset = offset,
+            length = length,
+            message = message.clone()
+        )
+    }
+
     pub fn clone(self) -> DiagnosticLabel {
         return DiagnosticLabel(
             offset = self.offset,
@@ -328,6 +336,17 @@ impl Diagnostic@encap {
 }
 
 impl Diagnostic {
+    pub fn new(severity: DiagnosticSeverity, code: string, message: string,
+               *labels: [DiagnosticLabel], labels_count: usize) -> Diagnostic {
+        return Diagnostic(
+            severity = severity,
+            code = code.clone(),
+            message = message.clone(),
+            *labels = *labels,
+            labels_count = labels_count
+        )
+    }
+
     pub fn clone(self) -> Diagnostic {
         return Diagnostic(
             severity = self.severity,
@@ -395,7 +414,7 @@ impl Diagnostic {
         auto i#: usize = 0
         unsafe {
             loop i < self.labels_count {
-                auto label = self.labels[i]
+                auto label = self.labels[i].clone()
                 auto loc = file.lookup_location(label.offset)
                 if loc.line > max_line {
                     max_line = loc.line
@@ -410,7 +429,7 @@ impl Diagnostic {
         i = 0
         unsafe {
             loop i < self.labels_count {
-                auto label = self.labels[i]
+                auto label = self.labels[i].clone()
                 auto loc = file.lookup_location(label.offset)
                 auto line_content = file.get_line_content(loc.line)
                 

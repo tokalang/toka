@@ -9,7 +9,10 @@ pub shape ComplexPayload (
 impl ComplexPayload@encap {
     pub id, code, tag
     fn drop(self#) {}
-    pub fn clone(self) -> ComplexPayload {
+}
+
+impl ComplexPayload {
+pub fn clone(self) -> ComplexPayload {
         return ComplexPayload(id = self.id, code = self.code, tag = self.tag)
     }
 }

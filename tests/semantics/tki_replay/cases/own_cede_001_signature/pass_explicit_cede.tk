@@ -2,7 +2,7 @@
 import ./lib::{Payload, consume_payload}
 
 fn main() -> i32 {
-    auto p = Payload(val = 42)
+    auto p = Payload::new(42)
     auto v = consume_payload(cede p)
     if v != 42 {
         return 1

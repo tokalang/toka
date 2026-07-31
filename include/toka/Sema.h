@@ -530,7 +530,7 @@ private:
   bool m_IsAssignmentTarget =
       false; // [Ch 6] Track if we are at the LHS terminal
   bool m_DisableVisibilityCheck =
-      false; // [Auto-Clone] Bypass visibility for injected calls
+      false; // Temporarily bypass visibility for compiler-synthesized calls.
   bool m_IsPrecomputingCaptures = false; // [NEW] Disable errors in closures
   Scope *m_ClosureCaptureRootScope = nullptr;
   bool m_IsMemberBase =
@@ -884,9 +884,6 @@ private:
   MorphKind getSyntacticMorphology(Expr *E);
   bool checkStrictMorphology(ASTNode *Node, MorphKind Target, MorphKind Source,
                              const std::string &TargetName);
-
-  // [Auto-Clone]
-  void tryInjectAutoClone(std::unique_ptr<Expr> &expr);
 
 private:
   static std::string getTypeName(const FunctionDecl::Arg &A) { return A.Type; }

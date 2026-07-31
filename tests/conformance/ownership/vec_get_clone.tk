@@ -9,7 +9,10 @@ shape Element (
 impl Element@encap {
     pub name
     fn drop(self#) {}
-    pub fn clone(self) -> Element {
+}
+
+impl Element {
+pub fn clone(self) -> Element {
         return Element(name = string::from(self.name.as_str()))
     }
 }

@@ -16,7 +16,7 @@ interface must replay the new decision after the source is removed.
 | Requirement | Direct evidence |
 | --- | --- |
 | Private resource structure and field morphology | `resource_private_field`, `own_resource_001_private_field` |
-| `drop`, `clone`, and `= delete` facts | `clone_deleted`, `own_resource_001_private_field` |
+| `drop` and explicit `clone` method facts | `clone_method_removed`, `own_resource_001_private_field` |
 | Generic function bounds | `generic_function_bound` |
 | Generic impl `where` constraints | `generic_impl_where` |
 | Trait prerequisites | `trait_prerequisite` |

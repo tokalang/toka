@@ -10,7 +10,6 @@ impl DetachedProbe@encap {
         g_detached_drops += 1
     }
 
-    pub fn clone(self) = delete
 }
 
 fn detached_child() -> async i32 {

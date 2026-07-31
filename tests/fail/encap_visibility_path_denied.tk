@@ -1,8 +1,8 @@
 import tests/import_test/encap_visibility_lib::PathBox
 
 fn main() -> i32 {
-    auto p = PathBox(path_val = 5, private_val = 6)
-    auto x = p.path_val
+    auto p = PathBox::new(5, 6)
+    auto x = p.private_val
     // EXPECT: error[E0418]:
     return x
 }

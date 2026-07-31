@@ -6,7 +6,6 @@ shape Owner (
 
 impl Owner@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 shape Holder (
@@ -15,7 +14,6 @@ shape Holder (
 
 impl Holder@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

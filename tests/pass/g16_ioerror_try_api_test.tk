@@ -16,7 +16,7 @@ fn main() -> i32 {
             return 1
         }
         auto Result<File, IoError>::Err(error) => {
-            if !has_operation(error, "open") { return 2 }
+            if !has_operation(cede error, "open") { return 2 }
         }
     }
 
@@ -41,7 +41,7 @@ fn main() -> i32 {
             return 5
         }
         auto Result<TcpStream, IoError>::Err(error) => {
-            if !has_operation(error, "connect") { return 6 }
+            if !has_operation(cede error, "connect") { return 6 }
         }
     }
     return 0

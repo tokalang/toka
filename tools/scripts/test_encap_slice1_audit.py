@@ -64,13 +64,22 @@ def main() -> int:
         dup = root / "dup.tk"
         dup.write_text(
             "pub trait @Dup {}\n"
-            "shape Valid()\n"
-            "shape Invalid()\n"
-            "impl Valid@Dup { pub fn dup(self) -> Self { return Valid() } }\n"
-            "impl Invalid@Dup { pub fn dup(self#) -> i32 { return 0 } }\n"
+            "shape Valid(raw: i32)\n"
+            "impl Valid@encap { pub raw fn drop(self#) {} }\n"
+            "impl Valid@Dup { pub fn dup(self) -> Self { return Valid(raw = self.raw) } }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         dup_facts = facts(dup)
-        assert dup_facts["dup_invalid_candidate_count"] == 1
+        assert dup_facts["dup_invalid_candidate_count"] == 0
+
+        invalid_dup = root / "invalid_dup.tk"
+        invalid_dup.write_text(
+            "pub trait @Dup {}\n"
+            "shape Invalid()\n"
+            "impl Invalid@Dup { pub fn dup(self#) -> i32 { return 0 } }\n"
+            "fn main() -> i32 { return 0 }\n", encoding="utf-8")
+        rejected = run(str(TOKAC), "-I", str(ROOT / "lib"), str(invalid_dup),
+                       expect_success=False)
+        assert "E0406" in rejected.stderr
 
         for name, trait in (("dyn_encap.tk", "encap"), ("dyn_copy.tk", "Copy")):
             source = root / name

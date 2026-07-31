@@ -35,7 +35,6 @@ shape SharedPtr<T>(
 )
 
 impl<T> SharedPtr<T>@encap {
-    pub fn clone(self) = delete
     fn drop(self#) {
         println("comple call .drop, shared_ptr:{} wrapper:{}", *self as OAddr, self.*wrapper as OAddr)
     }

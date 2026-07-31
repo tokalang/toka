@@ -4,14 +4,12 @@ shape Token (id: i32)
 
 impl Token@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 shape Pair (left: Token, right: Token)
 
 impl Pair@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

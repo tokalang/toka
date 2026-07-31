@@ -489,8 +489,7 @@ pub shape Device(
     id: i32,
     secret: i32,
     public_config: i32,
-    crate_state: i32,
-    uart_state: i32
+    shared_state: i32
 )
 pub trait @Readable {
     pub fn read(self) -> i32
@@ -505,30 +504,23 @@ pub trait @Readable {
 
 ```toka
 impl Device@encap {
-    pub public_config
-    pub(crate) crate_state
-    pub(os/driver/uart) uart_state
+    pub public_config, shared_state
 
     fn drop(self#) {}
 }
 ```
 
-`pub field` 全局开放指定字段。`pub(crate) field` 在 crate 内开放指定字段。`pub(path) field` 授权给指定模块路径。
-
-`pub(path)` 中的 `path` 使用与 `import` 左半部分相同的模块定位路径语法，不包含 `::{...}` 内部名字选择。Toka 没有源码层 `mod` 声明；路径限定可见性锚定在 import resolver 归一化后的导入路径上，而不是任意子串匹配或 Rust 式模块树。
+`pub field` 只全局开放该精确字段。带括号和通配符形式不属于
+`@encap`：`pub(crate)`、`pub(path)` 与 `pub *` 均会被拒绝。
 
 每一个 `@encap` 字段授权都必须逐字段写出；语法没有“全部字段”形式，
 因此后续新增字段不会被意外公开：
 
 ```toka
 impl PublicRecord@encap {
-    pub visible_name, visible_id
-    pub(crate) cache_slot
+    pub visible_name, visible_id, cache_slot
 }
 ```
-
-带括号的 `pub(crate)` 和 `pub(path)` 是 `@encap` 成员可见性条目，
-不是顶层声明修饰符。
 
 ## 8. 成员访问与 Morphic 字段
 

@@ -8,13 +8,3 @@ note: value moved here
    |
  7 |     auto v = r!
    |               ^
-error[E0438]: Use of moved value: 'r'
- --> tests/fail/unwrap_move.tk:9:14
-   |
- 9 |     auto z = r
-   |              ^
-note: value moved here
- --> tests/fail/unwrap_move.tk:7:15
-   |
- 7 |     auto v = r!
-   |               ^

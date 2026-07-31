@@ -23,8 +23,7 @@ shape Point(
     &drop_flag#: i32
     )
 impl Point@encap {
-    pub *
-    pub fn clone(self) = delete
+    pub x, y, drop_flag
     fn drop(self#) {
         println("    Dropping Point x:{} y:{}, drop_flag={}", self.x, self.y, self.drop_flag)
         self.drop_flag += 1
@@ -35,16 +34,6 @@ shape Resource (
     id: i32,
     point: Point
     )
-
-/*
-impl Resource@encap {
-    pub *
-    pub fn clone(self) = delete
-    fn drop(self#) {
-        println("Dropping Resource {}", self.id)
-    }
-}
-*/
 
 fn main() -> i32 {
     println("Start")

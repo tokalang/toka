@@ -128,7 +128,7 @@
 | `..` 和 `_` 的大一统缺省 | 缺省与忽略语法大一统 | **铁律**：列表初始化、解构声明和 `match` 模式匹配中的 `..` 和 `_` 达成大一统，均表示缺省/忽略之意。其中 `..` 表示“省略其余未指定的字段”，而 `_` 用于单字段的通配与忽略（例如在 Enum 位置解构中忽略特定位置 `auto Option::Some(_)`，或者在 Struct 具名解构中将特定字段忽略 `auto Point(_ = .x, ..) = p`）。 |
 | **特殊机制** | | |
 | `unsafe { ... }` | 不安全块 | 解引用原始指针、调用外部 C 函数必须在此块内 |
-| `impl Type@encap { ... }` | 封装/析构 | 定义私有字段、**必选**的 `drop` 析构函数以及 `clone` 深拷贝函数。若禁止拷贝，必须显式声明 `pub fn clone(self) = delete`。 |
+| `impl Type@encap { ... }` | 封装/析构 | 定义私有字段和唯一的 `drop` 析构函数。复制必须由普通 `impl Type { pub fn clone(...) -> Type { ... } }` 中的显式方法提供；未定义该方法即不可复制。 |
 | `return x` | 函数返回 | 返回本地变量时自动移动 (Move)，不发生拷贝析构 |
 | **成员访问** | | |
 | `obj.field` | 成员 Soul 访问 | 访问结构体字段的实体视图或调用方法。若字段本身是指针形态，则这里表达的是指针指向的 Soul 视图，不是字段 Handle 身份。 |
@@ -181,7 +181,7 @@
 | `^arr[i]` 或 `arr.^at(i)` | `arr[i]` 或 `arr.at(i)` | **铁律**: `arr[i]` 严格等价于 `arr.at(i)`。函数/方法调用和下标访问自带返回签名（包含帽子形态），**绝对禁止**在调用表达式上戴帽。若返回值为指针，交接时带名字的左值接收方必须显式戴帽（如 `auto ^p = arr[i]` 或 `^p = foo()`），除非左值也是免写帽的签名表达式且形态一致（如 `arr_A[i] = arr_B[i]`）。 |
 | `~m.a` / `*p.field` | `m.a` (读实体)<br>`m.~a` (取指针Handle) | **铁律 (链式访问单帽置尾原则)**：点号 `.` 的左侧必须是灵魂 (Soul，也就是实体结构)，绝不能是戴帽子的 Handle形态。因此，在点号链式访问中，**所有中间环节必须是裸名**。如果你试图操作字段的指针本身，帽子**只能紧挨在最后一环的成员名之前** (如 `a.b.~c`)。向中间环节戴帽（如 `~m.a` / `a.~b.c`）是严重错误。 |
 | `extern fn free(nul *p: void)` | `extern fn libc_free(*p: void)`<br>`unsafe { *p = null }` | **FFI 与 unsafe 可空特权规则**：为了简化 FFI 的调用，外部函数声明可以直接使用不可空指针（如 `*p`），而在 `unsafe` 块中，编译器赋予原始指针（Raw Pointer）隐式绕过严格可空属性类型限制的特权。这意味着，在 `unsafe` 上下文中，你可以合法地将 `null` 赋值给、比较、返回、或通过 FFI 传参给一个不可空的原始指针，而不会触发类型兼容性错误。|
-| `impl Foo@encap { fn drop(self#) {} }` (仅提供 drop) | `impl Foo@encap { fn drop(self#){} pub fn clone(self) = delete }` | **铁律 (@encap 等 Trait 契约完整性)**：所有的 `@encap` 实现块**必须完整提供契约约定的全部生命周期函数**（包括 `drop` 和 `clone`）！绝不允许为了偷懒而隐式省略。如果不允许资源被拷贝复制，**必须**显式标注 `pub fn clone(self) = delete` 进行拦截，借此杜绝模糊不清的静默规则。 |
+| `impl Foo@encap { fn drop(self#) {} }` | `impl Foo { pub fn clone(self) -> Foo { ... } }`（仅在需要显式复制时） | **铁律**：`@encap` 仅定义封装与析构边界，必须有唯一的 `drop` hook。资源默认不能复制；如需复制，在普通 `impl` 中提供显式 `clone` 方法。不存在 `clone = delete` 或隐式复制规则。 |
 | ~~`shape U(as string \| as i32)` (裸联合体包含受控资源)~~ <br> ~~`shape U(as i32 \| as f32)` (声明/使用裸联合体)~~ | ~~为其包裹枚举或手动提供 `@encap` 析构~~ <br> 使用 **Tagged Enum** 或 **等宽占位类型 + `core/mem::bit_cast`** | ~~**铁律 (E0801: Union 的资源禁令)**：严禁在 `Untagged Union` 内直接存放包含 `@encap/drop` 生命周期管理的类型（如 `string`、`Vec`）。因运行时无从知晓当前变体，放任自动生成 `drop` 会导致严重的段错误。~~ <br> **【已废除】Toka 已彻底废除裸 Union (Bare Union)，全面杜绝类型双关未定义行为（UB）。** C-FFI 交互含有 union 的结构体（如 `epoll_event`）时，最佳实践是声明等宽 of 无符号整数或字节数组作为占位符，在系统边界通过 `bit_cast` 重新解释。<br>**🚨 C-FFI ABI 调用约定（Calling Convention）致命陷阱**：与 C 语言交互包含 Union 的结构体时，**请务必通过指针（Pointer/Reference）传递，严禁跨越 FFI 边界按值（Pass-by-Value）传递等宽占位符**！ |
 | `auto x = cede map.inner` | `auto x = cede map` (整体交出) | **铁律 (Partial Move 局部夺舍禁令)**：绝对禁止使用 `cede` 强行剥夺带有生命周期托管的宿主对象（如包含 `@encap` 的复杂容器）内部属性！强行拆散闭环会导致宿主进入不可恢复的报废污染状态，破坏安全析构链。 |
 | `auto Point(val = .x, y) / Point(val = .x, y => ...)` | `auto Point(val = .x, another_val = .y)` 或者 ~~`Point(1, 2)`~~ | **铁律 (E0105: 混合解构禁令)**：严禁在列表初始化、解构声明和模式匹配中混用具名与位置参数/字段！要么全部使用位置方式，要么全部使用具名方式，不能参杂。**（注：自 v0.9.7-04 起，结构体的实例化、解构声明和模式匹配已彻底废除位置形式，必须 100% 具名，不再存在混合的可能性；本条仅对支持位置形式的 Enum 模式匹配/解构与未来的位置类型有效，严禁在 Enum 中混用位置与具名（Enum 不支持具名，混用会抛出 E0105/E0421））。** |

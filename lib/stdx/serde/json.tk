@@ -435,7 +435,7 @@ impl string@FromJson {
             } else { new_str#.push_char(c as char) }
             j += 1
         }
-        self = new_str
+        self = cede new_str
         return JsonRes::Ok(rem.substr(i + 1, rem.len() - i - 1))
     }
 }

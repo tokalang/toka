@@ -4,8 +4,8 @@ import std/error::{Error}
 fn divide(a: i32, b: i32) -> Result<i32, Error> {
     if b == 0 {
         auto msg# = string::from("Division by zero!")
-        auto err = Error::new(1:i32, msg)
-        return Result<i32, Error>::Err(err)
+        auto err = Error::new(1:i32, cede msg)
+        return Result<i32, Error>::Err(cede err)
     }
     return Result<i32, Error>::Ok(a / b)
 }
@@ -21,7 +21,7 @@ fn main() -> i32 {
         auto Result<i32, Error>::Ok(val) => {
             println("Result: {}", val)
         }
-        auto Result<i32, Error>::Err(e) => {
+        auto Result<i32, Error>::Err(&e) => {
             println("Error {}: {}", e.code, e.message.c_str())
             return 1
         }
@@ -35,7 +35,7 @@ fn main() -> i32 {
             println("Result: {}", val)
             return 1
         }
-        auto Result<i32, Error>::Err(e) => {
+        auto Result<i32, Error>::Err(&e) => {
             println("Error {}: {}", e.code, e.message.c_str())
         }
         _ => {}

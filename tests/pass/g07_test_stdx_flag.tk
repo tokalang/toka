@@ -21,14 +21,8 @@ fn main() -> i32 {
     args#.push(cede string::from("start"))
     args#.push(cede string::from("web"))
 
-    auto res = parser.parse(args)
+    auto res = parser.parse(cede args)
     
-    if res.is_err() {
-        auto err_msg# = string::from("Parse failed: ")
-        err_msg#.push_str(res.unwrap_err().as_str())
-        println("{}", err_msg.c_str())
-        return 1
-    }
     auto parsed_args = res.unwrap()
 
     auto port = parsed_args.get_int(string::from("port"))

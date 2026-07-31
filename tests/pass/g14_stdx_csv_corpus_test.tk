@@ -4,10 +4,12 @@ import stdx/data/csv::{parse_records, write_records}
 fn assert_canonical(input: str) {
     auto parsed = parse_records(input)
     assert(parsed.is_ok(), "valid CSV corpus case must parse")
-    auto canonical = write_records(parsed.unwrap())
+    auto records = cede parsed.unwrap()
+    auto canonical = write_records(cede records)
     auto reparsed = parse_records(canonical.as_str())
     assert(reparsed.is_ok(), "CSV writer output must parse")
-    auto recanonical = write_records(reparsed.unwrap())
+    auto reparsed_records = cede reparsed.unwrap()
+    auto recanonical = write_records(cede reparsed_records)
     assert(canonical.as_str().equals(recanonical.as_str()),
            "CSV parse/write canonicalization must be stable")
 }

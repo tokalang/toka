@@ -12,17 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 import std/io::println
-import core/marker::{@Clone,@Default}
+import core/marker::{@Default}
 
 shape Dummy (
     id: i32
 )
-
-impl Dummy@Clone {
-    pub fn clone(self) {
-        // Just for parsing test
-    }
-}
 
 impl Dummy@Default {
     pub fn init(self) {
@@ -32,10 +26,10 @@ impl Dummy@Default {
 
 fn main() -> i32 {
     auto d = Dummy(id = 1)
-    d.clone()
+    auto copied = Dummy(d)
     d.init()
     
     println("Core traits parsed and called successfully.")
-    assert(d.id == 1, "d.id mismatch")
+    assert(copied.id == 1, "d.id mismatch")
     return 0
 }

@@ -1306,10 +1306,6 @@ void Sema::checkStmt(Stmt *S) {
     std::shared_ptr<toka::Type> InitTypeObj = nullptr;
     if (Var->Init) {
       Var->Init = foldGenericConstant(std::move(Var->Init));
-      // [Auto-Clone]
-      if (!Var->IsReference) {
-        tryInjectAutoClone(Var->Init);
-      }
       if (Var->IsReference)
         m_AllowUnsetUsage = true;
       m_ControlFlowStack.push_back({Var->Name, "void", nullptr, false, true});
@@ -2151,8 +2147,7 @@ void Sema::checkStmt(Stmt *S) {
 
           const std::string encapField = toka::Type::stripMorphology(
               SD->Members[memberIndex].Name);
-          if (Parser::EncapPolicyEpochV2 &&
-              !canNameEncapField(SD, encapField, getLoc(Destruct))) {
+          if (!canNameEncapField(SD, encapField, getLoc(Destruct))) {
             error(Destruct, DiagID::ERR_MEMBER_PRIVATE, encapField,
                   SD->Name);
           }

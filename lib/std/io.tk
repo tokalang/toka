@@ -130,7 +130,7 @@ impl File {
         self.opened = false
         self.owned = false
         self.*handle = ADDR0 as *void
-        return f
+        return cede f
     }
     pub fn close(self#) {
         unsafe {
@@ -165,7 +165,7 @@ impl File {
             libc_free(*buf as *void)
             
             auto res = IoStringResult::Ok(cede s)
-            return res
+            return cede res
         }
     }
     pub fn write(self, s: str) -> usize {
@@ -228,7 +228,7 @@ impl File {
             
             // To maintain backward compatibility: 
             // Return Ok("") on EOF if no data was read.
-            return IoStringResult::Ok(s)
+            return IoStringResult::Ok(cede s)
         }
     }
     pub fn flush(self) {

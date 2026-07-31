@@ -217,7 +217,7 @@ impl TaskScope {
     pub fn cancel_all(self#) {
         auto i# = 0:usize
         loop i < self.refs.len() {
-            auto tr = self.refs.get(i)
+            auto *tr = self.refs.get_ref(i)
             tr.request_cancel()
             i += 1
         }
@@ -226,7 +226,7 @@ impl TaskScope {
     pub fn is_done(self) -> bool {
         auto i# = 0:usize
         loop i < self.refs.len() {
-            auto tr = self.refs.get(i)
+            auto *tr = self.refs.get_ref(i)
             if !tr.is_done() {
                 return false
             }

@@ -49,7 +49,6 @@ shape UiThreadAffinity (
 
 impl UiThreadAffinity@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 pub shape Window (
@@ -792,22 +791,18 @@ impl Scene {
 
 impl Scene@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl Container@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl ShortcutMap@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl TextEvent@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl Window {
@@ -1050,5 +1045,4 @@ impl Window {
 
 impl Window@encap {
     fn drop(self#) { self#.close() }
-    pub fn clone(self) = delete
 }

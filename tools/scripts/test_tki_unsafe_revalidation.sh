@@ -87,7 +87,6 @@ pub shape RawPoint(
 
 impl RawPoint@encap {
   fn drop(self#)
-  pub fn clone(self) = delete
 }
 
 pub fn unsafe_accept(ptr: *i32)
@@ -164,10 +163,13 @@ if ! "$TOKAC_ABS" -c "$TEST_DIR/explicit-main.tk" \
 fi
 
 mkdir -p "$TEST_DIR/trusted"
-write_metadata "$TEST_DIR/trusted/system_api.tki" \
-    "$TEST_DIR_ABS/untrusted-metadata/system_api.tk"
-echo "pub fn legacy_system_call(ptr: *i32)" \
-    >> "$TEST_DIR/trusted/system_api.tki"
+cat > "$TEST_DIR/trusted/system_api.tk" <<'EOF'
+pub fn legacy_system_call(ptr: *i32)
+EOF
+TOKA_LIB="$TEST_DIR/trusted" "$TOKAC_ABS" -c --emit-interface \
+    "$TEST_DIR/trusted/system_api.tk" -o "$TEST_DIR/trusted/system_api.o" \
+    > "$TEST_DIR/trusted-emit.out" 2> "$TEST_DIR/trusted-emit.err"
+rm "$TEST_DIR/trusted/system_api.tk" "$TEST_DIR/trusted/system_api.o"
 cat > "$TEST_DIR/trusted-main.tk" <<'EOF'
 import system_api
 

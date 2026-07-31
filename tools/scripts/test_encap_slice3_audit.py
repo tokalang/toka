@@ -15,7 +15,7 @@ TOKAC = ROOT / "build" / "bin" / "tokac"
 
 def compile_source(source: Path, *, expect_success: bool) -> subprocess.CompletedProcess[str]:
     output = source.with_suffix(".ll")
-    command = (str(TOKAC), "--encap-epoch=v3", "--workspace-node",
+    command = (str(TOKAC), "--workspace-node",
                "slice3-workspace-v1", "--workspace-root", str(source.parent),
                "-c", "--emit-llvm", "-o", str(output), str(source))
     completed = subprocess.run(command, cwd=ROOT, text=True,

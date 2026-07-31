@@ -14,14 +14,12 @@ impl SourceError@encap {
     fn drop(self#) {
         source_drops += 1
     }
-    pub fn clone(self) = delete
 }
 
 impl LocalToken@encap {
     fn drop(self#) {
         local_drops += 1
     }
-    pub fn clone(self) = delete
 }
 
 impl SourceError@ErrorInto<TargetError> {

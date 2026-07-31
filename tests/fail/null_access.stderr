@@ -3,8 +3,3 @@ error[E0447]: Accessing member of nullable type 'nul ^Data' requires explicit 'i
     |
  17 |     auto x = p.v // EXPECT: error[E0447]: Accessing member of nullable type '^?Data' requires explicit 'is' check
     |               ^
-error[E0447]: Accessing member of nullable type 'nul ^Data' requires explicit 'is' check
- --> tests/fail/null_access.tk:17:15
-    |
- 17 |     auto x = p.v // EXPECT: error[E0447]: Accessing member of nullable type '^?Data' requires explicit 'is' check
-    |               ^

@@ -1,2 +1,1 @@
 error[E04484]: error[E0490]: Subscript indexing is disabled for UTF-8 'str'. Use 's.chars()' for sequential traversal, or 's.bytes()' for raw O(1) hardware indexing.
-error[E04484]: error[E0490]: Subscript indexing is disabled for UTF-8 'str'. Use 's.chars()' for sequential traversal, or 's.bytes()' for raw O(1) hardware indexing.

@@ -9,7 +9,6 @@ impl Token@encap {
         g_drops += 1
     }
 
-    pub fn clone(self) = delete
 }
 
 shape Adder(delta: i32)

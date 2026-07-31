@@ -4,9 +4,15 @@ pub shape WildcardBox (
 )
 
 impl WildcardBox@encap {
-    pub * ! secret_val
+    pub open_val
 
     fn drop(self#) {}
+}
+
+impl WildcardBox {
+    pub fn new(open_val: i32, secret_val: i32) -> WildcardBox {
+        return WildcardBox(open_val = open_val, secret_val = secret_val)
+    }
 
     pub fn clone(self) -> WildcardBox {
         return WildcardBox(open_val = self.open_val, secret_val = self.secret_val)
@@ -19,9 +25,15 @@ pub shape PathBox (
 )
 
 impl PathBox@encap {
-    pub(tests/pass) path_val
+    pub path_val
 
     fn drop(self#) {}
+}
+
+impl PathBox {
+    pub fn new(path_val: i32, private_val: i32) -> PathBox {
+        return PathBox(path_val = path_val, private_val = private_val)
+    }
 
     pub fn clone(self) -> PathBox {
         return PathBox(path_val = self.path_val, private_val = self.private_val)
@@ -34,9 +46,15 @@ pub shape CrateBox (
 )
 
 impl CrateBox@encap {
-    pub(crate) crate_val
+    pub crate_val
 
     fn drop(self#) {}
+}
+
+impl CrateBox {
+    pub fn new(crate_val: i32, private_val: i32) -> CrateBox {
+        return CrateBox(crate_val = crate_val, private_val = private_val)
+    }
 
     pub fn clone(self) -> CrateBox {
         return CrateBox(crate_val = self.crate_val, private_val = self.private_val)

@@ -32,19 +32,15 @@ fn main() -> i32 {
         return 1
     }
     
-    auto label1 = DiagnosticLabel(
-        offset = 32:usize,
-        length = 12:usize,
-        message = string::from("expected member of struct, found ...")
+    auto label1 = DiagnosticLabel::new(
+        32:usize, 12:usize,
+        string::from("expected member of struct, found ...")
     )
     
-    auto labels = [label1]
-    auto diag1 = Diagnostic(
-        severity = DiagnosticSeverity::Error(),
-        code = string::from("E0421"),
-        message = string::from("mismatched types"),
-        *labels = &labels as *[DiagnosticLabel],
-        labels_count = 1:usize
+    auto labels = [cede label1]
+    auto diag1 = Diagnostic::new(
+        DiagnosticSeverity::Error(), string::from("E0421"),
+        string::from("mismatched types"), &labels as *[DiagnosticLabel], 1:usize
     )
     
     // Render without color
@@ -64,18 +60,13 @@ fn main() -> i32 {
     auto loc2 = file2.lookup_location(37:usize)
     println("Loc2: line={}, col={}", loc2.line as i32, loc2.column as i32)
     
-    auto label2 = DiagnosticLabel(
-        offset = 37:usize,
-        length = 1:usize,
-        message = string::from("expected ',' or '}' here")
+    auto label2 = DiagnosticLabel::new(
+        37:usize, 1:usize, string::from("expected ',' or '}' here")
     )
-    auto labels2 = [label2]
-    auto diag2 = Diagnostic(
-        severity = DiagnosticSeverity::Warning(),
-        code = string::from("JSON-01"),
-        message = string::from("missing trailing comma"),
-        *labels = &labels2 as *[DiagnosticLabel],
-        labels_count = 1:usize
+    auto labels2 = [cede label2]
+    auto diag2 = Diagnostic::new(
+        DiagnosticSeverity::Warning(), string::from("JSON-01"),
+        string::from("missing trailing comma"), &labels2 as *[DiagnosticLabel], 1:usize
     )
     
     auto json_no_color = diag2.render(file2, false)

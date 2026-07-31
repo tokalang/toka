@@ -628,8 +628,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
             if (memberIndex != (size_t)-1) {
               const std::string encapField = toka::Type::stripMorphology(
                   SD->Members[memberIndex].Name);
-              if (Parser::EncapPolicyEpochV2 &&
-                  !canNameEncapField(SD, encapField, Pat->Loc)) {
+              if (!canNameEncapField(SD, encapField, Pat->Loc)) {
                 error(Pat, DiagID::ERR_MEMBER_PRIVATE, encapField,
                       SD->Name);
               }
@@ -956,14 +955,12 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
   }
 
-  if (Parser::EncapPolicyEpochV2) {
-    for (const auto &member : Init->Members) {
-      if (member.first == ".." || member.first == "*")
-        continue;
-      const std::string field = toka::Type::stripMorphology(member.first);
-      if (!canNameEncapField(SD, field, Init->Loc))
-        error(Init, DiagID::ERR_MEMBER_PRIVATE, field, SD->Name);
-    }
+  for (const auto &member : Init->Members) {
+    if (member.first == ".." || member.first == "*")
+      continue;
+    const std::string field = toka::Type::stripMorphology(member.first);
+    if (!canNameEncapField(SD, field, Init->Loc))
+      error(Init, DiagID::ERR_MEMBER_PRIVATE, field, SD->Name);
   }
   if (elisionCount > 1) {
     error(Init, DiagID::ERR_MULTIPLE_ELISION);
@@ -1031,8 +1028,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
             !explicitlyProvided.count("~" + defField.Name) &&
             !explicitlyProvided.count("&" + defField.Name) &&
             !explicitlyProvided.count("^?" + defField.Name)) {
-          if (Parser::EncapPolicyEpochV2 &&
-              !canNameEncapField(SD,
+          if (!canNameEncapField(SD,
                                  toka::Type::stripMorphology(defField.Name),
                                  spreadExprObj->Loc)) {
             error(spreadExprObj, DiagID::ERR_MEMBER_PRIVATE,

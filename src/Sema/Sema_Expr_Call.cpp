@@ -1446,12 +1446,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   if (Fn) {
-    if (Fn->IsDeleted) {
-      error(Call, DiagID::ERR_SEMA_CANNOT_CALL_EXPLICITLY_DELETED_FUNCTION, Fn->Name);
-      HasError = true;
-      return toka::Type::fromString("unknown");
-    }
-
     Call->ResolvedFn = Fn;
     for (auto &arg : Fn->Args) {
       if (arg.ResolvedType &&
@@ -1538,12 +1532,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               std::string expectedBase = Sh->Name;
               std::string actualBase = argType->getSoulName();
               if (actualBase == expectedBase && actualBase != "unknown") {
-                  if (Parser::EncapCopyEpochV4 && !proveSlice4CopyType(argType)) {
+                  if (!proveSlice4CopyType(argType)) {
                     error(Call, DiagID::ERR_GENERIC_SEMA,
                           "implicit shape copy requires a proven @Copy witness");
                     return toka::Type::fromString("unknown");
                   }
-                  tryInjectAutoClone(Call->Args[0]);
                   Call->IsIsomorphicCopy = true;
                   return toka::Type::fromString(resolveType(Sh->Name));
               }

@@ -1,5 +1,0 @@
-import ./lib::{make_resource}
-
-fn main() -> i32 {
-    return 0
-}

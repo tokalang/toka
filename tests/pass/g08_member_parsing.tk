@@ -15,7 +15,10 @@ impl Node@encap {
     fn drop(self#) {
         println("drop Node")
     }
-    pub fn clone(self) -> Node {
+}
+
+impl Node {
+pub fn clone(self) -> Node {
         // Dummy clone
         return Node(val=0, ^point=null, pp=none)
     }

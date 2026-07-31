@@ -5,7 +5,7 @@ shape Node<T> (
     val: T,
     nul ^next: Node<T>
 )
-impl Node@encap {
+impl<T> Node<T>@encap {
     pub val
     fn drop(self#) {
         println("dropping Node")

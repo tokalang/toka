@@ -3,4 +3,3 @@ error[E0473]: Parameter 'p' was not declared 'cede' in the function signature an
    |
  4 |     auto p2 = cede p
    |               ^
-

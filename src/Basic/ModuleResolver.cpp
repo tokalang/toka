@@ -636,24 +636,6 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->ShadowCoordinateOrigin = info.ShadowCoordinate.Origin;
   module->ShadowCoordinateReason = info.ShadowCoordinate.Reason;
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
-  if (finalIsInterface && !Parser::EncapTkiEpochV5) {
-    std::istringstream interfaceLines(code);
-    std::string line;
-    static const std::string prefix = "// @tki structural_drop: ";
-    while (std::getline(interfaceLines, line)) {
-      if (line.rfind(prefix, 0) == 0) {
-        const std::string name = line.substr(prefix.size());
-        if (!name.empty())
-          module->InterfaceStructuralDropShapes.insert(name);
-      }
-    }
-    for (const auto &impl : module->Impls) {
-      if (impl->TraitName == "encap" &&
-          module->InterfaceStructuralDropShapes.count(impl->TypeName)) {
-        impl->IsStructuralDrop = true;
-      }
-    }
-  }
   if (module->HasBackingObject) {
     std::string evidenceReason;
     MemoryEvidenceStatus evidenceStatus = MemoryEvidenceCache::load(
@@ -808,34 +790,32 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
         reason = "Interface format version mismatch (expected " + std::string(TOKA_INTERFACE_FORMAT_VERSION) + ", got " + meta.FormatVersion + ")";
         return TKICacheStatus::FormatVersionMismatch;
     }
-    if (Parser::EncapTkiEpochV5) {
-        if (meta.IdentitySchemaVersion.empty()) {
-            reason = "Missing identity_schema_version metadata";
-            return TKICacheStatus::MissingIdentitySchema;
-        }
-        if (meta.LogicalModulePath.empty() || meta.ResolverBindingDigest.empty()) {
-            reason = "Missing logical_module_path or resolver_binding_digest metadata";
-            return TKICacheStatus::MissingModuleIdentity;
-        }
-        if (meta.IdentitySchemaVersion != "2") {
-            reason = "Interface identity schema mismatch (expected 2, got " +
-                     meta.IdentitySchemaVersion + ")";
-            return TKICacheStatus::InterfaceIdentityMismatch;
-        }
-        ShadowModuleCoordinate coordinate = deriveShadowCoordinate(
-            PathUtils::canonicalize(identityPath));
-        const std::string expectedPath = coordinate.Known
-            ? coordinate.LogicalModulePath
-            : "unbound";
-        const std::string expectedDigest = coordinate.Known
-            ? calculateFNV1a("toka-tki-v2|" + coordinate.CrateId + "|" +
-                             coordinate.LogicalModulePath)
-            : "unbound";
-        if (meta.LogicalModulePath != expectedPath ||
-            meta.ResolverBindingDigest != expectedDigest) {
-            reason = "Interface resolver identity does not match the resolved module";
-            return TKICacheStatus::InterfaceIdentityMismatch;
-        }
+    if (meta.IdentitySchemaVersion.empty()) {
+        reason = "Missing identity_schema_version metadata";
+        return TKICacheStatus::MissingIdentitySchema;
+    }
+    if (meta.LogicalModulePath.empty() || meta.ResolverBindingDigest.empty()) {
+        reason = "Missing logical_module_path or resolver_binding_digest metadata";
+        return TKICacheStatus::MissingModuleIdentity;
+    }
+    if (meta.IdentitySchemaVersion != "2") {
+        reason = "Interface identity schema mismatch (expected 2, got " +
+                 meta.IdentitySchemaVersion + ")";
+        return TKICacheStatus::InterfaceIdentityMismatch;
+    }
+    ShadowModuleCoordinate coordinate = deriveShadowCoordinate(
+        PathUtils::canonicalize(identityPath));
+    const std::string expectedPath = coordinate.Known
+        ? coordinate.LogicalModulePath
+        : "unbound";
+    const std::string expectedDigest = coordinate.Known
+        ? calculateFNV1a("toka-tki-v2|" + coordinate.CrateId + "|" +
+                         coordinate.LogicalModulePath)
+        : "unbound";
+    if (meta.LogicalModulePath != expectedPath ||
+        meta.ResolverBindingDigest != expectedDigest) {
+        reason = "Interface resolver identity does not match the resolved module";
+        return TKICacheStatus::InterfaceIdentityMismatch;
     }
     if (meta.TargetTriple != "any" && meta.TargetTriple != Parser::TargetTriple) {
         reason = "Target triple mismatch (expected " + Parser::TargetTriple + ", got " + meta.TargetTriple + ")";

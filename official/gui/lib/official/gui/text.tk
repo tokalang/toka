@@ -32,7 +32,6 @@ pub shape TextEditor (
 
 impl TextEditor@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl TextSelection {

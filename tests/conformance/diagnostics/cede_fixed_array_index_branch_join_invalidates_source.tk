@@ -4,7 +4,6 @@ shape Token(id: i32)
 
 impl Token@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

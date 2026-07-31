@@ -1,8 +1,3 @@
-error[E0445]: Shape 'Resource' manages raw pointers but does not implement 'drop'
- --> tests/fail/sovereign_shape.tk:14:7
-    |
- 14 | shape Resource(
-    |       ^
 error[E0448]: Pointer morphology mismatch: expected explicit '*' (from LHS/Target), found 'value' (from RHS/Source)
  --> tests/fail/sovereign_shape.tk:19:14
     |

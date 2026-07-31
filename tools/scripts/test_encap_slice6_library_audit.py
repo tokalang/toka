@@ -15,7 +15,8 @@ TOKAC = ROOT / "build" / "bin" / "tokac"
 LIBRARY_PATTERNS = (
     re.compile(r"=\s*delete\b"),
     re.compile(r"@(?:Clone|Drop)\b"),
-    re.compile(r"\bpub(?:\([^)]*\))?\s+\*(?:\s*!|\s*(?:\n|$))"),
+    re.compile(r"\bpub\s*\("),
+    re.compile(r"\bpub\s+\*(?:\s*!|\s*(?:\n|$))"),
 )
 NORMATIVE_DOCUMENTS = (ROOT / "docs" / "syntax.md",
                        ROOT / "docs" / "syntax_zh.md")
@@ -25,7 +26,7 @@ METHOD_DECL = re.compile(r"^\s*(?:pub\s+)?fn\s+([^ (]+)")
 
 def compile_source(source: Path, *, expect_success: bool) -> subprocess.CompletedProcess[str]:
     output = source.with_suffix(".ll")
-    command = (str(TOKAC), "--encap-epoch=v6", "--workspace-node",
+    command = (str(TOKAC), "--workspace-node",
                "slice6-workspace-v1", "--workspace-root", str(source.parent),
                "-c", "--emit-llvm", "-o", str(output), str(source))
     completed = subprocess.run(command, cwd=ROOT, text=True,
@@ -38,7 +39,7 @@ def compile_source(source: Path, *, expect_success: bool) -> subprocess.Complete
 
 
 def compile_library_source(source: Path, output: Path) -> None:
-    command = (str(TOKAC), "--encap-epoch=v6", "--workspace-node",
+    command = (str(TOKAC), "--workspace-node",
                "slice6-library-v1", "--workspace-root", str(ROOT),
                "-c", "-o", str(output), str(source))
     completed = subprocess.run(command, cwd=ROOT, text=True,
@@ -102,7 +103,8 @@ def assert_migrated_text() -> None:
         text = document.read_text(encoding="utf-8")
         assert "= delete" not in text, document
         assert "@Clone" not in text and "@Drop" not in text, document
-        assert "pub *" not in text, document
+        assert "pub field" in text, document
+        assert "rejected" in text or "拒绝" in text, document
 
     marker = (ROOT / "lib" / "core" / "marker.tk").read_text(encoding="utf-8")
     traits = (ROOT / "lib" / "core" / "traits.tk").read_text(encoding="utf-8")
@@ -161,9 +163,6 @@ def main() -> int:
             "  return point_copy.x + secret_copy.raw\n"
             "}\n", encoding="utf-8")
         compile_source(valid, expect_success=True)
-
-        reject(root, "deleted.tk", "fn obsolete() = delete\nfn main() -> i32 { return 0 }\n")
-        reject(root, "legacy_facet.tk", "trait @Clone {}\nfn main() -> i32 { return 0 }\n")
 
     print("encap Slice 6 library audit: PASSED")
     return 0

@@ -28,24 +28,17 @@ pub shape Device (
 
 // 2. Access Control (The @encap block)
 impl Device@encap {
-    // Global public
     pub public_config
+    pub crate_shared
     
-    // Crate-level visibility
-    pub(crate) crate_shared
-    
-    // Path-targeted visibility (Simulated path for test)
-    // pub(os/driver::uart) internal_state
-    
-    // Exclusion syntax: everything is public EXCEPT secret_key
-    // Note: This would conflict with specific declarations above, 
-    // but shown here for syntax verification.
-    // pub * ! secret_key, id
+    // New policies list each granted field explicitly.
     fn drop(self#) {
         println("Dropping Device, id={}", self.id)
     }
-    
-    pub fn clone(self) -> Device {
+}
+
+impl Device {
+pub fn clone(self) -> Device {
         return Device(id=0, internal_state=0, secret_key=[0,0,0,0], public_config=0, crate_shared=0)
     }
 }

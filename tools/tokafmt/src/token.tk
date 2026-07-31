@@ -35,7 +35,7 @@ impl Token {
 
     pub fn lexeme(self) -> str <- self {
         unsafe {
-            return str(&buf = (self.lexeme_addr as *[char]) as &[char], len = self.lexeme_len)
+            return str::from_raw_parts(self.lexeme_addr as *char, self.lexeme_len)
         }
     }
 }

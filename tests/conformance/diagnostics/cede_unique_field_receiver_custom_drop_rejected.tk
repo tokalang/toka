@@ -13,7 +13,6 @@ shape Holder(^item#: Token)
 
 impl Holder@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn main() -> i32 {

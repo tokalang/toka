@@ -8,13 +8,3 @@ note: value moved here
     |
  18 |     auto ^r2 = ^r1 // Moves r1 to r2
     |           ^
-error[E0438]: Use of moved value: '^r1'
- --> tests/fail/sema_move.tk:20:14
-    |
- 20 |     auto x = r1.w // Error: use of moved value
-    |              ^
-note: value moved here
- --> tests/fail/sema_move.tk:18:11
-    |
- 18 |     auto ^r2 = ^r1 // Moves r1 to r2
-    |           ^

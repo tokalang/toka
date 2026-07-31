@@ -148,10 +148,10 @@ impl Path {
         auto base = self.basename()
         auto ext_idx = base.find_char(46:char) // '.'
         if ext_idx == -1 {
-            return base
+            return cede base
         }
         if ext_idx == 0 {
-            return base // ".hidden"
+            return cede base // ".hidden"
         }
         
         unsafe {
@@ -165,11 +165,11 @@ impl Path {
         auto ext_idx = self.inner.find_char(46:char)
         if ext_idx != -1 {
             unsafe {
-                stem_path_str = string::from_with_len(self.inner.c_str(), ext_idx)
+                stem_path_str = cede string::from_with_len(self.inner.c_str(), ext_idx)
             }
         }
         
-        auto res# = stem_path_str
+        auto res# = cede stem_path_str
         if ext.len() == 0 {
             return Path(inner = cede res)
         }

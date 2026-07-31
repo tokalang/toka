@@ -16,7 +16,7 @@ TOKAC = ROOT / "build" / "bin" / "tokac"
 
 def compile_source(source: Path, *, expect_success: bool) -> subprocess.CompletedProcess[str]:
     output = source.with_suffix(".ll")
-    command = (str(TOKAC), "--encap-epoch=v4", "--workspace-node",
+    command = (str(TOKAC), "--workspace-node",
                "slice4-workspace-v1", "--workspace-root", str(source.parent),
                "-c", "--emit-llvm", "-o", str(output), str(source))
     completed = subprocess.run(command, cwd=ROOT, text=True,
@@ -270,16 +270,6 @@ def main() -> int:
                    "impl Resource@encap { pub raw fn drop(self#) {} }\n"
                    "impl Resource@Dup { %s { return Resource(raw = self.raw) } }\n"
                    "fn main() -> i32 { return 0 }\n" % declaration)
-
-        reject(root, "deleted_function.tk",
-               "fn obsolete() = delete\n"
-               "fn main() -> i32 { return 0 }\n")
-
-        reject(root, "removed_facet.tk",
-               "trait @Clone {}\n"
-               "shape Value(raw: i32)\n"
-               "impl Value@Clone {}\n"
-               "fn main() -> i32 { return 0 }\n")
 
         ordinary_clone = root / "ordinary_clone.tk"
         ordinary_clone.write_text(

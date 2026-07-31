@@ -190,6 +190,9 @@ private:
   std::map<std::string, std::vector<std::string>> m_StructFieldNames;
   std::map<std::string, std::string> m_TypeAliases;
   std::map<std::string, const ShapeDecl *> m_Shapes;
+  std::map<std::string, llvm::Function *> m_DropCascadeHelpers;
+  std::set<std::string> m_ActiveDropCascadeTypes;
+  std::set<std::string> m_DropCascadeHelperRootTypes;
   std::map<std::string, const TraitDecl *> m_Traits;
   std::map<llvm::Type *, std::string> m_TypeToName;
   std::map<std::string, std::shared_ptr<toka::Type>> m_ParenthesizedRecordTypes;
@@ -349,6 +352,7 @@ private:
   llvm::Value *genDeleteStmt(const DeleteStmt *stmt);
   llvm::Value *genFreeStmt(const FreeStmt *stmt);
   void emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName);
+  llvm::Function *getOrCreateDropCascadeHelper(const std::string &typeName);
   void emitDropForType(llvm::Value *ptrAddr,
                        const std::shared_ptr<Type> &type);
   void emitDropForTypeWithMask(llvm::Value *ptrAddr,

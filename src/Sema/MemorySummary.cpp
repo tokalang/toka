@@ -834,7 +834,8 @@ void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
         std::set<std::string> cachedRoots;
         for (const auto &root : entry.second.Roots)
           cachedRoots.insert(root.first);
-        if (expectedRoots != cachedRoots) {
+        if (!std::includes(cachedRoots.begin(), cachedRoots.end(),
+                           expectedRoots.begin(), expectedRoots.end())) {
           valid = false;
           break;
         }
@@ -843,8 +844,19 @@ void MemorySummaryAnalysis::run(const std::vector<Module *> &modules,
         continue;
       for (const auto &entry : module->TrustedMemorySummaries) {
         FunctionDecl *function = declarations.at(entry.first);
-        if (!function->Body)
-          function->MemorySummary = entry.second;
+        if (function->Body)
+          continue;
+        FunctionMemorySummary trusted = entry.second;
+        std::set<std::string> expectedRoots;
+        for (const auto &argument : function->Args)
+          expectedRoots.insert(rootName(argument));
+        for (auto root = trusted.Roots.begin(); root != trusted.Roots.end();) {
+          if (!expectedRoots.count(root->first))
+            root = trusted.Roots.erase(root);
+          else
+            ++root;
+        }
+        function->MemorySummary = std::move(trusted);
       }
     }
   }

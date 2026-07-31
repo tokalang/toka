@@ -11,7 +11,6 @@ impl TreeNode@encap {
     fn drop(self#) {
         // Handled manually
     }
-    pub fn clone(self) = delete
 }
 
 fn left_rotate(nul *x_in: TreeNode) -> nul *#TreeNode {

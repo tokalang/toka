@@ -18,7 +18,7 @@ pub fn main() -> i32 {
     auto u1 = User(id = 123, name = string::from("Alice"), active = true)
     
     // Test Serialization
-    auto json_str = to_json(u1)
+    auto json_str = to_json(cede u1)
     println("Serialized: {}", json_str.as_view())
     
     // Verify content (fields might be in any order but reflect preserves definition order usually)

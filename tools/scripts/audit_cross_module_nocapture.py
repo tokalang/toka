@@ -23,6 +23,7 @@ FLAG = "--experimental-memory-contracts=nocapture"
 CONTRACT = "nocapture"
 SCHEMA = "toka.cross-module-nocapture-audit"
 LEVELS = ("O1", "O2", "O3", "Os", "Oz")
+REQUIRE_MACHINE_DELTA = True
 
 
 def run(command, env=None):
@@ -167,9 +168,9 @@ def static_audit(work, object_path, env):
             "machine_code_identical": machine_identical,
             "optimization_level": level,
         })
-    if machine_delta_count == 0:
+    if machine_delta_count == 0 and REQUIRE_MACHINE_DELTA:
         raise RuntimeError("cross-module fixture produced no machine-code delta")
-    return target_triple, results
+    return target_triple, results, machine_delta_count
 
 
 def timed_run(path):
@@ -227,12 +228,15 @@ def main():
             prefix="toka_cross_module_nocapture_") as work:
         _, object_path, env = prepare_provider(work)
         activation = prove_activation(work, object_path, env)
-        target_triple, results = static_audit(work, object_path, env)
+        target_triple, results, machine_delta_count = static_audit(
+            work, object_path, env)
         document = {
             "activation": activation,
-            "decision": "BenchmarkRequired",
+            "decision": ("BenchmarkRequired" if machine_delta_count else
+                         "NoStaticDelta"),
             "optimization_levels": list(LEVELS),
-            "reason": "CrossModuleMachineCodeDelta",
+            "reason": ("CrossModuleMachineCodeDelta" if machine_delta_count
+                       else "NoCrossModuleMachineCodeDelta"),
             "results": results,
             "schema": SCHEMA,
             "target_triple": target_triple,

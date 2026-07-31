@@ -542,12 +542,13 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             println("\x1b[1;31m       Error\x1b[0m executing {} -> compile failed", build_file)
             return 1
         }
-        if !check_is_windows() {
-            auto relative# = string::from("./")
-            relative#.push_str(executable.as_str())
-            executable = relative
+        auto run_path# = string::from(".toka_build_exe")
+        if check_is_windows() {
+            run_path#.push_str(".exe")
+        } else {
+            run_path = string::from("./.toka_build_exe")
         }
-        auto run# = Command::new(cede executable)
+        auto run# = Command::new(cede run_path)
         run#.arg(string::from("--tokac"))
         run#.arg(cede tokac_path.clone())
         run#.arg(string::from("--toka-lib"))
@@ -557,7 +558,13 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             run#.arg(cede extra_args.get_ref(idx_extra).clone())
             idx_extra += 1
         }
-        return run#.status()
+        auto run_result = run#.try_status()
+        if run_result.is_err() {
+            auto error = run_result.unwrap_err()
+            println("\x1b[1;31m       Error\x1b[0m executing build program (process error {})", error.code)
+            return 1
+        }
+        return run_result.unwrap().legacy_code()
     }
 }
 

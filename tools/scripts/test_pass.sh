@@ -4,6 +4,7 @@
 # --- Configuration ---
 TOKAC="${TOKAC:-./build/bin/tokac}"
 TOKA="${TOKA:-./build/bin/toka}"
+TOKAC_SCOPE_ARGS=(--workspace-node toka-tests-v1 --workspace-root "$PWD")
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # Add common Homebrew LLVM paths to PATH to support macOS Intel / Apple Silicon custom builds
@@ -182,7 +183,7 @@ run_worker() {
     # Step 1: Compile Native
     if [[ "$file_name" == *llvm_shim_test.tk ]] || [[ "$file_name" == *llvm_backend_instructions.tk ]]; then
         tmp_obj="${exe_file}.o"
-        if ! run_without_test_cache "$TOKAC" --emit-obj "$test_path" -o "$tmp_obj" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" --emit-obj "$test_path" -o "$tmp_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compilation failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -212,7 +213,7 @@ run_worker() {
         if [ -z "$helper_path" ]; then helper_path="tests/pass/odr_helper.tk_lib"; fi
 
         # Compile lib
-        if ! run_without_test_cache "$TOKAC" -c "$lib_path" -o "$lib_obj" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" -c "$lib_path" -o "$lib_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compiling odr_test_lib failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -221,7 +222,7 @@ run_worker() {
             exit 1
         fi
         # Compile helper
-        if ! run_without_test_cache "$TOKAC" -c "$helper_path" -o "$helper_obj" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" -c "$helper_path" -o "$helper_obj" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compiling odr_helper failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -230,7 +231,7 @@ run_worker() {
             exit 1
         fi
         # Compile and link main with lib and helper
-        if ! run_without_test_cache "$TOKAC" "$test_path" "$lib_obj" "$helper_obj" -o "$exe_file" > /dev/null 2> "$log_file"; then
+        if ! run_without_test_cache "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" "$test_path" "$lib_obj" "$helper_obj" -o "$exe_file" > /dev/null 2> "$log_file"; then
             append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
             append "    ${RED}$test_path:1: error: Compilation failed${NC}"
             LOGS=$(tail -n 5 "$log_file" | sed 's/^/    | /')
@@ -246,7 +247,7 @@ run_worker() {
             exit_code=$?
             run_skipped=1
         else
-            if ! "$TOKAC" "$test_path" "${CACHED_LIB_OBJECTS[@]}" -o "$exe_file" > /dev/null 2> "$log_file"; then
+            if ! "$TOKAC" "${TOKAC_SCOPE_ARGS[@]}" "$test_path" "${CACHED_LIB_OBJECTS[@]}" -o "$exe_file" > /dev/null 2> "$log_file"; then
                 append "$(printf "[${RED}FAIL${NC}] %-35s" "$file_name")"
                 append "    ${RED}$test_path:1: error: Compilation failed${NC}"
                 # Tail logs

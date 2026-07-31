@@ -6,13 +6,13 @@ pub shape Payload(val: i32)
 pub shape Envelope<T>(^value: T)
 
 impl Payload@encap {
+    pub val
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl<T> Envelope<T>@encap {
+    pub value
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 pub fn consume_async(cede payload: Payload) -> async i32 {

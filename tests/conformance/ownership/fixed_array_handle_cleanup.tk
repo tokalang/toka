@@ -9,7 +9,6 @@ impl Resource@encap {
         g_drop_count += 1
     }
 
-    pub fn clone(self) = delete
 }
 
 shape SharedArrayOwner(entries: [~Resource; 2])

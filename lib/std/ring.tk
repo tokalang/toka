@@ -142,7 +142,7 @@ impl<'T> RingCore<'T> {
 }
 
 impl<'T> RingCore<'T>@encap {
-    pub(std) buf, cap, mask, head, len
+    pub buf, cap, mask, head, len
 
     fn drop(self#) {
         unsafe {

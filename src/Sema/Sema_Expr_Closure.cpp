@@ -276,120 +276,6 @@ private:
 
 } // namespace
 
-// Implementation of tryInjectAutoClone
-void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
-  if (Parser::EncapCopyEpochV4)
-    return;
-  if (!expr)
-    return;
-
-  // A direct `self` copy inside clone would recursively call the same clone.
-  // Member and indexed lvalues still need their own element clone semantics.
-  bool insideClone = CurrentFunction &&
-      (CurrentFunction->Name == "clone" ||
-       (CurrentFunction->Name.size() >= 7 &&
-        CurrentFunction->Name.compare(CurrentFunction->Name.size() - 7, 7,
-                                      "::clone") == 0));
-  if (insideClone) {
-    const Expr *candidate = expr.get();
-    if (auto *postfix = dynamic_cast<const PostfixExpr *>(candidate)) {
-      if (postfix->Op == TokenType::TokenWrite)
-        candidate = postfix->LHS.get();
-    }
-    auto *variable = dynamic_cast<const VariableExpr *>(candidate);
-    if (variable && Type::stripMorphology(variable->Name) == "self")
-      return;
-  }
-
-  // 1. Must be L-Value
-  if (!isLValue(expr.get()))
-    return;
-
-  // 2. Resolve Type
-  auto type = expr->ResolvedType;
-  if (!type) {
-    // Should not happen in typical check* flow, but safe fallback
-    bool oldAllow = m_AllowPermissionSuffix;
-    m_AllowPermissionSuffix = true;
-    type = checkExpr(expr.get());
-    m_AllowPermissionSuffix = oldAllow;
-  }
-
-  // 3. Filter Types
-  if (type->isRawPointer())
-    return; // Raw pointers copy identity, no ownership
-  
-  auto soulType = type->getSoulType();
-  if (!soulType || !soulType->isShape())
-    return; // Only Shapes can have clone
-
-  // 4. Check for 'clone' method existence
-  std::string typeName = soulType->getSoulName();
-  bool hasClone =
-      (MethodDecls.count(typeName) &&
-       MethodDecls[typeName].count("clone")) ||
-      (ImplMap.count(typeName + "@encap") &&
-       ImplMap[typeName + "@encap"].count("clone")) ||
-      (ImplMap.count(typeName + "@Clone") &&
-       ImplMap[typeName + "@Clone"].count("clone"));
-  if (!hasClone && (insideClone || ShapeMap.count(typeName)))
-    return;
-
-  std::string resolvedTypeName = hasClone ? typeName : resolveType(typeName);
-
-  // Inherent methods
-  if (!hasClone && MethodDecls.count(resolvedTypeName) &&
-      MethodDecls[resolvedTypeName].count("clone")) {
-    hasClone = true;
-  }
-  // Trait methods (specifically @encap or similar)
-  if (!hasClone) {
-    // Check @encap (most common)
-    if ((ImplMap.count(typeName + "@encap") &&
-         ImplMap[typeName + "@encap"].count("clone")) ||
-        (ImplMap.count(resolvedTypeName + "@encap") &&
-         ImplMap[resolvedTypeName + "@encap"].count("clone"))) {
-      hasClone = true;
-    }
-    // Check potential @Clone trait if added in future
-    else if ((ImplMap.count(typeName + "@Clone") &&
-              ImplMap[typeName + "@Clone"].count("clone")) ||
-             (ImplMap.count(resolvedTypeName + "@Clone") &&
-              ImplMap[resolvedTypeName + "@Clone"].count("clone"))) {
-      hasClone = true;
-    }
-  }
-
-  // 5. Inject
-  if (hasClone) {
-    auto loc = expr->Loc;
-    
-    std::unique_ptr<Expr> targetExpr;
-    if (auto *pe = dynamic_cast<PostfixExpr *>(expr.get())) {
-      if (pe->Op == TokenType::TokenWrite) {
-        targetExpr = std::move(pe->LHS);
-      }
-    }
-    if (!targetExpr) {
-      targetExpr = std::move(expr);
-    }
-
-    std::vector<std::unique_ptr<Expr>> args;
-    auto cloneCall = std::make_unique<MethodCallExpr>(std::move(targetExpr), "clone",
-                                                      std::move(args));
-    cloneCall->Loc = loc;
-    cloneCall->IsCompilerInternal =
-        true; // [Auto-Clone] Mark as internal for priv access
-    // Arguments are empty for clone()
-
-    // Replace expression
-    expr = std::move(cloneCall);
-
-    // Re-check to resolve types of the new MethodCall
-    checkExpr(expr.get());
-  }
-}
-
 std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   if (!Clo->SynthesizedShapeName.empty()) {
       return toka::Type::fromString(Clo->SynthesizedShapeName);
@@ -562,24 +448,9 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
              explicitMode == CaptureMode::ExplicitCopy ||
              explicitMode == CaptureMode::ExplicitDup)) {
             if (explicitMode == CaptureMode::ExplicitCopy) {
-                bool isResourceCapture = false;
-                if (Parser::EncapCopyEpochV4) {
-                    // Slice 4 makes closure copy capture use the same
-                    // authoritative structural proof as every other copy.
-                    // In particular, an @encap capsule is move-only until it
-                    // declares a verified @Copy marker, even without a hook.
-                    isResourceCapture =
-                        !proveSlice4CopyType(infoPtr->TypeObj);
-                } else {
-                    isResourceCapture = infoPtr->TypeObj &&
-                                        infoPtr->TypeObj->isUniquePtr();
-                    if (!isResourceCapture && infoPtr->TypeObj &&
-                        infoPtr->TypeObj->isShape()) {
-                        std::string soul = toka::Type::stripMorphology(
-                            infoPtr->TypeObj->getSoulName());
-                        isResourceCapture = hasDrop(soul);
-                    }
-                }
+                // Copy capture uses the same structural proof as every other
+                // copy operation.
+                bool isResourceCapture = !proveSlice4CopyType(infoPtr->TypeObj);
                 if (isResourceCapture) {
                     error(Clo, DiagID::ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE,
                           varName, infoPtr->TypeObj->toString(), varName);
@@ -599,7 +470,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             }
             if (explicitMode == CaptureMode::ExplicitDup) {
                 bool hasDup = false;
-                if (Parser::EncapCopyEpochV4 && infoPtr->TypeObj) {
+                if (infoPtr->TypeObj) {
                     hasDup = proveSlice4CopyType(infoPtr->TypeObj);
                     if (!hasDup && infoPtr->TypeObj->isShape()) {
                         std::string soul = toka::Type::stripMorphology(

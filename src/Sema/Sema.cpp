@@ -726,7 +726,7 @@ void Sema::dumpEncapSlice1FactsJSON(std::ostream &out) const {
 }
 
 void Sema::registerSlice2Policy(ImplDecl *impl) {
-  if (!Parser::EncapPolicyEpochV2 || !impl || impl->IsStructuralDrop ||
+  if (!impl || impl->IsStructuralDrop ||
       getTraitFamilyName(impl->TraitName) != "encap")
     return;
 
@@ -738,13 +738,6 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
   auto implOwner = DeclarationLexicalScopes.find(impl);
   auto shapeOwner = shape ? DeclarationLexicalScopes.find(shape)
                           : DeclarationLexicalScopes.end();
-  // Older language epochs retain the trusted-library compatibility boundary.
-  // Slice 6 compiles the migrated library under the same policy rules as
-  // workspace source.
-  if (implOwner != DeclarationLexicalScopes.end() && implOwner->second &&
-      implOwner->second->IsTrustedSystemModule &&
-      !Parser::EncapLibraryEpochV6)
-    return;
   if (!shape || implOwner == DeclarationLexicalScopes.end() ||
       shapeOwner == DeclarationLexicalScopes.end() ||
       implOwner->second != shapeOwner->second) {
@@ -770,11 +763,11 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
     HasError = true;
     return;
   }
-  if (Parser::EncapLifecycleEpochV3 && dropHooks == 1) {
+  if (dropHooks == 1) {
     const FunctionDecl *hook = nullptr;
     for (const auto &method : impl->Methods)
       if (method->Name == "drop") hook = method.get();
-    const bool validHook = hook && !hook->IsPub && !hook->IsDeleted &&
+    const bool validHook = hook && !hook->IsPub &&
         hook->GenericParams.empty() && hook->Effect == EffectKind::None &&
         hook->ReturnType == "void" && hook->Args.size() == 1 &&
         Type::stripMorphology(hook->Args[0].Name) == "self" &&
@@ -826,67 +819,11 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
   policy.Impl = impl;
   policy.Owner = implOwner->second;
   policy.Entries = impl->EncapEntries;
-  for (auto &entry : policy.Entries) {
-    if (entry.IsExclusion) {
-      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v2 rejects wildcard field grants");
-      HasError = true;
-      return;
-    }
-    if (entry.Level != EncapEntry::Path)
-      continue;
-    if (!policy.Owner->ShadowCoordinateKnown) {
-      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v2 pub(path) requires a known resolver module identity");
-      HasError = true;
-      return;
-    }
-
-    std::vector<std::string> segments;
-    std::string target = entry.TargetPath;
-    bool relative = target.rfind("./", 0) == 0 || target.rfind("../", 0) == 0;
-    if (relative) {
-      std::stringstream ownerPath(policy.Owner->ShadowLogicalModulePath);
-      std::string part;
-      while (std::getline(ownerPath, part, '/'))
-        if (!part.empty()) segments.push_back(part);
-      if (!segments.empty()) segments.pop_back();
-    }
-    std::stringstream path(target);
-    std::string part;
-    while (std::getline(path, part, '/')) {
-      if (part.empty() || part == ".") continue;
-      if (part == "..") {
-        if (segments.empty()) {
-          DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                                   "@encap v2 pub(path) cannot escape the defining crate");
-          HasError = true;
-          return;
-        }
-        segments.pop_back();
-      } else {
-        segments.push_back(part);
-      }
-    }
-    if (segments.empty()) {
-      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v2 pub(path) must name a logical module prefix");
-      HasError = true;
-      return;
-    }
-    entry.TargetPath.clear();
-    for (size_t i = 0; i < segments.size(); ++i) {
-      if (i) entry.TargetPath += "/";
-      entry.TargetPath += segments[i];
-    }
-  }
   Slice2PolicyMap[shape] = std::move(policy);
 }
 
 bool Sema::canNameEncapField(const ShapeDecl *shape, const std::string &field,
                              SourceLocation useLoc) {
-  if (!Parser::EncapPolicyEpochV2)
-    return true;
   auto policyIt = Slice2PolicyMap.find(shape);
   const Slice2Policy *policyPtr =
       policyIt == Slice2PolicyMap.end() ? nullptr : &policyIt->second;
@@ -920,56 +857,22 @@ bool Sema::canNameEncapField(const ShapeDecl *shape, const std::string &field,
   ModuleScope *requester = getLexicalModule(useLoc);
   if (requester == policy.Owner)
     return true;
-  if (!requester || !policy.Owner || !requester->ShadowCoordinateKnown ||
-      !policy.Owner->ShadowCoordinateKnown)
-    return false;
 
   for (const auto &entry : policy.Entries) {
     if (std::find(entry.Fields.begin(), entry.Fields.end(), field) ==
         entry.Fields.end())
       continue;
-    if (entry.Level == EncapEntry::Global)
-      return true;
-    if (entry.Level == EncapEntry::Crate &&
-        requester->ShadowCrateId == policy.Owner->ShadowCrateId)
-      return true;
-    if (entry.Level == EncapEntry::Path &&
-        requester->ShadowCrateId == policy.Owner->ShadowCrateId) {
-      std::vector<std::string> target;
-      std::stringstream targetPath(entry.TargetPath);
-      std::string part;
-      while (std::getline(targetPath, part, '/'))
-        if (!part.empty()) target.push_back(part);
-      std::vector<std::string> requesterPath;
-      std::stringstream requesterPathStream(requester->ShadowLogicalModulePath);
-      while (std::getline(requesterPathStream, part, '/'))
-        if (!part.empty()) requesterPath.push_back(part);
-      if (requesterPath.size() >= target.size() &&
-          std::equal(target.begin(), target.end(), requesterPath.begin()))
-        return true;
-    }
+    return true;
   }
   return false;
 }
 
 void Sema::registerSlice4Impl(ImplDecl *impl) {
-  if (!Parser::EncapCopyEpochV4 || !impl)
+  if (!impl)
     return;
   auto owner = DeclarationLexicalScopes.find(impl);
-  if (!Parser::EncapLibraryEpochV6 &&
-      owner != DeclarationLexicalScopes.end() && owner->second &&
-      owner->second->IsTrustedSystemModule)
-    return;
 
   const std::string family = getTraitFamilyName(impl->TraitName);
-  for (const auto &method : impl->Methods) {
-    if (method->IsDeleted) {
-      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v4 removes = delete declarations");
-      HasError = true;
-      return;
-    }
-  }
   if (family == "Clone" || family == "Drop") {
     DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
                              "@encap v4 removes the @Clone and @Drop facets");
@@ -1006,7 +909,6 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
 
   const bool validDup = impl->Methods.size() == 1 &&
       impl->Methods.front()->Name == "dup" && impl->Methods.front()->IsPub &&
-      !impl->Methods.front()->IsDeleted &&
       impl->Methods.front()->Effect == EffectKind::None &&
       impl->Methods.front()->GenericParams.empty() &&
       impl->Methods.front()->Args.size() == 1 &&
@@ -1303,9 +1205,6 @@ Sema::describeSlice4CopyRecipe(const Slice4CopyRecipe &recipe) const {
 }
 
 void Sema::validateSlice4CopyAndDup(Module &M) {
-  if (!Parser::EncapCopyEpochV4 ||
-      (M.IsTrustedSystemModule && !Parser::EncapLibraryEpochV6))
-    return;
   for (const auto &shape : M.Shapes) {
     auto copyRequest = Slice4CopyRequests.find(shape.get());
     auto dup = Slice4DupProviders.find(shape.get());
@@ -1410,9 +1309,6 @@ void Sema::validateSlice4CopyAndDup(Module &M) {
 }
 
 void Sema::recordSlice5InterfaceFacts(Module &M) {
-  if (!Parser::EncapTkiEpochV5)
-    return;
-
   M.InterfaceV2Facts.clear();
   for (const auto &shape : M.Shapes) {
     const std::string typeName = shape->Name;
@@ -1440,13 +1336,8 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
     if (policy != Slice2PolicyMap.end()) {
       std::vector<std::string> grants;
       for (const auto &entry : policy->second.Entries) {
-        std::string scope = "global";
-        if (entry.Level == EncapEntry::Crate)
-          scope = "crate";
-        else if (entry.Level == EncapEntry::Path)
-          scope = "path(" + entry.TargetPath + ")";
         for (const auto &field : entry.Fields)
-          grants.push_back(scope + ":" + field);
+          grants.push_back("global:" + field);
       }
       std::sort(grants.begin(), grants.end());
       std::string record = "policy: " + typeName + " =";
@@ -2172,13 +2063,6 @@ bool Sema::checkModule(Module &M) {
 
   for (size_t i = 0; i < M.Functions.size(); ++i) {
     if (!M.Functions[i]->GenericParams.empty()) {
-      if (Parser::EncapCopyEpochV4 && M.Functions[i]->IsDeleted &&
-          (!M.IsTrustedSystemModule || Parser::EncapLibraryEpochV6)) {
-        DiagnosticEngine::report(M.Functions[i]->Loc,
-                                 DiagID::ERR_GENERIC_SEMA,
-                                 "@encap v4 removes = delete declarations");
-        HasError = true;
-      }
       checkUnsafePublicFunctionBoundary(M.Functions[i].get());
       continue; // [NEW] Skip Generic Templates
     }
@@ -2363,11 +2247,9 @@ void Sema::declareGlobals(Module &M) {
   // 5. Register Traits
   for (auto &Trait : M.Traits) {
     DeclarationLexicalScopes[Trait.get()] = &ms;
-    if (Parser::EncapCopyEpochV4 &&
-        (!M.IsTrustedSystemModule || Parser::EncapLibraryEpochV6) &&
-        (Trait->Name == "Clone" || Trait->Name == "Drop")) {
+    if (Trait->Name == "Clone" || Trait->Name == "Drop") {
       DiagnosticEngine::report(getLoc(Trait.get()), DiagID::ERR_GENERIC_SEMA,
-                               "@encap v4 removes the @Clone and @Drop facets");
+                               "the legacy @Clone and @Drop facets are removed");
       HasError = true;
     }
     ms.Traits[Trait->Name] = Trait.get();
@@ -3306,7 +3188,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
       auto targetType = resolveType(toka::Type::fromString(target), false);
       bool validReturn = actualReturn && targetType &&
                          actualReturn->equals(*targetType);
-      if (!method->IsPub || method->IsDeleted ||
+      if (!method->IsPub ||
           method->Effect != EffectKind::None || !validSelf || !validReturn) {
         DiagnosticEngine::report(getLoc(method.get()),
                                  DiagID::ERR_SEMA_ERROR_CONVERSION_SIGNATURE,
@@ -3368,9 +3250,9 @@ void Sema::registerImpl(ImplDecl *Impl) {
               ? resolvedTypeName + "_" + Method->Name
               : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     }
-    const bool isSlice3DropHook = Parser::EncapLifecycleEpochV3 &&
-        getTraitFamilyName(canonicalTrait) == "encap" && Method->Name == "drop";
-    if (!isSlice3DropHook) {
+    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "encap" &&
+                            Method->Name == "drop";
+    if (!isDropHook) {
       MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
       MethodDecls[resolvedTypeName][Method->Name] = Method.get();
     }
@@ -3379,10 +3261,8 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
   // Populate ImplMap
   if (!Impl->TraitName.empty() &&
-      !(Parser::EncapPolicyEpochV2 &&
-        getTraitFamilyName(canonicalTrait) == "encap") &&
-      !(Parser::EncapCopyEpochV4 &&
-        getTraitFamilyName(canonicalTrait) == "Copy")) {
+      getTraitFamilyName(canonicalTrait) != "encap" &&
+      getTraitFamilyName(canonicalTrait) != "Copy") {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey]; // Ensure the key exists even for empty traits
     for (auto &Method : Impl->Methods) {
@@ -3393,10 +3273,8 @@ void Sema::registerImpl(ImplDecl *Impl) {
   // Slice 2 makes @encap an authority declaration, not the legacy trait
   // contract that required clone and drop methods.
   if (!Impl->TraitName.empty() &&
-      !(Parser::EncapPolicyEpochV2 &&
-        getTraitFamilyName(canonicalTrait) == "encap") &&
-      !(Parser::EncapCopyEpochV4 &&
-        getTraitFamilyName(canonicalTrait) == "Copy")) {
+      getTraitFamilyName(canonicalTrait) != "encap" &&
+      getTraitFamilyName(canonicalTrait) != "Copy") {
     if (traitDecl) {
       TraitDecl *TD = traitDecl;
       std::string traitFamily = getTraitFamilyName(canonicalTrait);
@@ -3537,9 +3415,9 @@ void Sema::declareImpl(ImplDecl *Impl) {
               ? resolvedTypeName + "_" + Method->Name
               : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     }
-    const bool isSlice3DropHook = Parser::EncapLifecycleEpochV3 &&
-        getTraitFamilyName(canonicalTrait) == "encap" && Method->Name == "drop";
-    if (!isSlice3DropHook) {
+    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "encap" &&
+                            Method->Name == "drop";
+    if (!isDropHook) {
       MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
       MethodDecls[resolvedTypeName][Method->Name] = Method.get();
     }
@@ -3547,10 +3425,8 @@ void Sema::declareImpl(ImplDecl *Impl) {
   }
 
   if (!Impl->TraitName.empty() &&
-      !(Parser::EncapLifecycleEpochV3 &&
-        getTraitFamilyName(canonicalTrait) == "encap") &&
-      !(Parser::EncapCopyEpochV4 &&
-        getTraitFamilyName(canonicalTrait) == "Copy")) {
+      getTraitFamilyName(canonicalTrait) != "encap" &&
+      getTraitFamilyName(canonicalTrait) != "Copy") {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey];
     for (auto &Method : Impl->Methods) {
@@ -3577,17 +3453,6 @@ void Sema::declareImpl(ImplDecl *Impl) {
 }
 
 void Sema::checkFunction(FunctionDecl *Fn) {
-  auto owner = DeclarationLexicalScopes.find(Fn);
-  const bool trusted = !Parser::EncapLibraryEpochV6 &&
-                       owner != DeclarationLexicalScopes.end() && owner->second &&
-                       owner->second->IsTrustedSystemModule;
-  if (Parser::EncapCopyEpochV4 && Fn->IsDeleted && !trusted) {
-    DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_GENERIC_SEMA,
-                             "@encap v4 removes = delete declarations");
-    HasError = true;
-    return;
-  }
-
   // [NEW] Skip Generic Templates
   // We cannot check them until they are instantiated with concrete types.
   if (!Fn->GenericParams.empty())
@@ -3916,70 +3781,6 @@ void Sema::checkImpl(ImplDecl *Impl) {
 }
 
 void Sema::checkShapeSovereignty() {
-  // Slice 4 replaces the raw-pointer clone/drop heuristic with independent
-  // policy, Copy, Dup, and lifecycle facts. Raw morphology by itself never
-  // establishes managed ownership in the epoch model.
-  if (Parser::EncapCopyEpochV4)
-    return;
-  for (auto const &[name, decl] : ShapeMap) {
-    // The standard library is migrated and audited as source under Slice 6.
-    // Do not reapply the retired raw-pointer/clone heuristic while compiling
-    // trusted system modules in an older default language mode.
-    auto owner = DeclarationLexicalScopes.find(decl);
-    if (owner != DeclarationLexicalScopes.end() && owner->second &&
-        owner->second->IsTrustedSystemModule)
-      continue;
-    if (!decl->GenericParams.empty())
-      continue;
-    if (GenericShapeCache.count(name))
-      continue;
-
-    if (decl->Kind == ShapeKind::Struct) {
-      bool needsDrop = false;
-
-      // Check if Shape manages resources
-      for (auto &memb : decl->Members) {
-        // 1. Raw Pointers (*T) - Force drop for safety
-        if (memb.IsRawPointer) {
-          needsDrop = true;
-          break;
-        }
-        // [New Rule] Unique/Shared pointers and members with drop are handled
-        // automatically by CodeGen, so they don't force parent to implement
-        // 'drop'.
-      }
-
-      if (needsDrop) {
-        // Must have 'drop' method in MethodMap
-        // Check MethodMap[name]["drop"]
-        bool hasDropImpl = false;
-        std::string resolvedName = resolveType(name);
-        if ((MethodMap.count(name) && MethodMap[name].count("drop")) ||
-            (MethodMap.count(resolvedName) && MethodMap[resolvedName].count("drop"))) {
-          hasDropImpl = true;
-        }
-
-        if (!hasDropImpl) {
-          DiagnosticEngine::report(getLoc(decl), DiagID::ERR_SHAPE_NO_DROP,
-                                   name);
-          HasError = true;
-        }
-
-        // [New] Must have 'clone' method as well (Auto-Clone Enforcement)
-        bool hasCloneImpl = false;
-        if ((MethodMap.count(name) && MethodMap[name].count("clone")) ||
-            (MethodMap.count(resolvedName) && MethodMap[resolvedName].count("clone"))) {
-          hasCloneImpl = true;
-        }
-
-        if (!hasCloneImpl) {
-          DiagnosticEngine::report(getLoc(decl), DiagID::ERR_SHAPE_NO_CLONE,
-                                   name);
-          HasError = true;
-        }
-      }
-    }
-  }
 }
 
 void Sema::analyzeShapes(Module &M) {
@@ -4086,80 +3887,22 @@ void Sema::analyzeShapes(Module &M) {
       continue;
     auto &props = m_ShapeProps[S->Name];
 
-    // Check if Shape has explicit drop.  Interfaces carry a dedicated marker
-    // for compiler-generated structural destructors, whose exported `drop`
-    // signature is otherwise indistinguishable from a user implementation.
+    // A drop hook is explicit only when it is declared in an @encap policy.
     bool hasExplicitDrop = false;
-    if (!(M.IsInterface && M.InterfaceStructuralDropShapes.count(S->Name))) {
-      // Look in Impl blocks for "drop".
-      for (auto &I : M.Impls) {
-        if (I->TypeName == S->Name) {
-          for (auto &M : I->Methods) {
-            if (M->Name == "drop") {
-              hasExplicitDrop = true;
-              break;
-            }
+    for (auto &I : M.Impls) {
+      if (I->TypeName == S->Name &&
+          getTraitFamilyName(I->TraitName) == "encap") {
+        for (auto &method : I->Methods) {
+          if (method->Name == "drop") {
+            hasExplicitDrop = true;
+            break;
           }
         }
-        if (hasExplicitDrop)
-          break;
       }
+      if (hasExplicitDrop)
+        break;
     }
     S->HasExplicitDrop = hasExplicitDrop;
-
-    if (!Parser::EncapCopyEpochV4 && props.HasRawPtr && !hasExplicitDrop) {
-      DiagnosticEngine::report(getLoc(S.get()), DiagID::ERR_UNSAFE_RAW_PTR,
-                               S->Name);
-      HasError = true;
-    }
-
-    const bool hasStructuralDrop =
-        M.IsInterface && M.InterfaceStructuralDropShapes.count(S->Name);
-    if (props.HasDrop && !hasExplicitDrop && !hasStructuralDrop &&
-        !Parser::EncapLifecycleEpochV3) {
-      // [Ch 7] Synthesize default drop impl for resource-managing shapes
-      std::vector<FunctionDecl::Arg> args;
-      FunctionDecl::Arg dropArg;
-      dropArg.Name = "self";
-      dropArg.Type = "Self";
-      dropArg.IsValueMutable = true;
-      dropArg.Permission = BindingPermission::fromLegacy(
-          dropArg.IsRawPointer, dropArg.IsUnique, dropArg.IsShared,
-          dropArg.IsReference, dropArg.IsRebindable,
-          dropArg.IsPointerNullable, dropArg.IsRebindBlocked,
-          dropArg.IsValueMutable, dropArg.IsValueNullable,
-          dropArg.IsValueBlocked, dropArg.IsMorphicExempt);
-      args.push_back(std::move(dropArg));
-      auto dropFn =
-          std::make_unique<FunctionDecl>(false, "drop", std::move(args),
-                                         std::make_unique<BlockStmt>(), "void");
-
-      std::vector<FunctionDecl::Arg> cloneArgs;
-      FunctionDecl::Arg cloneArg;
-      cloneArg.Name = "self";
-      cloneArg.Type = "Self";
-      cloneArgs.push_back(std::move(cloneArg));
-      auto cloneFn = 
-          std::make_unique<FunctionDecl>(true, "clone", std::move(cloneArgs),
-                                         nullptr, "Self");
-      cloneFn->IsDeleted = true;
-
-      std::vector<std::unique_ptr<FunctionDecl>> methods;
-      methods.push_back(std::move(dropFn));
-      methods.push_back(std::move(cloneFn));
-
-      auto impl =
-          std::make_unique<ImplDecl>(S->Name, std::move(methods), "encap");
-      impl->IsStructuralDrop = true;
-
-      // Register and Add to Module
-      registerImpl(impl.get());
-      M.Impls.push_back(std::move(impl));
-
-      // Authorize destructor for CodeGen
-      S->MangledDestructorName = "encap_" + S->Name + "_drop";
-      m_ShapeProps[S->Name].HasDrop = true;
-    }
 
     // [Legacy] Bare union safety: no resource types (HasDrop)
     if (S->Kind == ShapeKind::Union) {

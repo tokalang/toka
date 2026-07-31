@@ -20,9 +20,7 @@ pub shape ModuleOutputs (
 )
 
 impl ModuleOutputs@encap {
-    pub(build/internal/codec) interface
-    pub(build/internal/codec) object
-    pub(build/internal/codec) executable
+    pub interface, object, executable
 
     fn drop(self#) { }
 }
@@ -73,17 +71,8 @@ pub shape ModuleSnapshot (
 )
 
 impl ModuleSnapshot@encap {
-    pub(build/internal/codec) kind
-    pub(build/internal/codec) fallback_triggered
-    pub(build/internal/codec) cache_status
-    pub(build/internal/codec) cache_status_reason
-    pub(build/internal/codec) target_triple
-    pub(build/internal/codec) compiler_version
-    pub(build/internal/codec) interface_version
-    pub(build/internal/codec) source_hash
-    pub(build/internal/codec) content_hash
-    pub(build/internal/codec) outputs
-    pub(build/internal/codec) dependencies
+    pub kind, fallback_triggered, cache_status, cache_status_reason, target_triple
+    pub compiler_version, interface_version, source_hash, content_hash, outputs, dependencies
 
     fn drop(self#) { }
 }
@@ -157,9 +146,7 @@ pub shape DependencyManifest (
 )
 
 impl DependencyManifest@encap {
-    pub(build/internal/codec) manifest_version
-    pub(build/internal/codec) roots
-    pub(build/internal/codec) modules
+    pub manifest_version, roots, modules
 
     fn drop(self#) { }
 }
@@ -231,8 +218,7 @@ pub shape RebuildModuleInfo (
 )
 
 impl RebuildModuleInfo@encap {
-    pub(build/internal/codec) reason
-    pub(build/internal/codec) dirty_deps
+    pub reason, dirty_deps
 
     fn drop(self#) { }
 }
@@ -280,9 +266,7 @@ pub shape RebuildPlan (
 )
 
 impl RebuildPlan@encap {
-    pub(build/internal/codec) status
-    pub(build/internal/codec) dirty_roots
-    pub(build/internal/codec) dirty_modules
+    pub status, dirty_roots, dirty_modules
 
     fn drop(self#) { }
 }

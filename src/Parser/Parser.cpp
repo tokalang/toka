@@ -22,11 +22,6 @@
 namespace toka {
 
 std::string Parser::TargetTriple = "";
-bool Parser::EncapPolicyEpochV2 = false;
-bool Parser::EncapLifecycleEpochV3 = false;
-bool Parser::EncapCopyEpochV4 = false;
-bool Parser::EncapTkiEpochV5 = false;
-bool Parser::EncapLibraryEpochV6 = false;
 
 const Token &Parser::peek() const {
   if (m_Pos >= m_Tokens.size())

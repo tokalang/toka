@@ -70,9 +70,6 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   if (!func->GenericParams.empty())
     return nullptr;
 
-  if (func->IsDeleted)
-    return nullptr;
-
   const bool isAsyncEntrypoint =
       overrideName.empty() && func->Name == "main" &&
       func->Effect == EffectKind::Async;
@@ -677,155 +674,6 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   }
 
   genStmt(func->Body.get());
-
-  // Recursive Drop Injection
-  // We assume 'drop' methods have one argument 'self' (implied or explicit)
-  // and we need to drop its members.
-  bool isDrop =
-      func->Name == "drop" || func->Name.find("_drop") != std::string::npos;
-
-  if (!func->Args.empty() && isDrop) {
-    const auto &arg0 = func->Args[0];
-
-    // Check if arg is "self"
-    if (Type::stripMorphology(arg0.Name) == "self") {
-      std::string typeName = arg0.Type;
-      if (typeName.empty() && arg0.ResolvedType) {
-        typeName = arg0.ResolvedType->toString();
-      }
-
-      typeName = toka::Type::stripMorphology(typeName);
-
-      if (typeName == "Self" && !m_CurrentSelfType.empty()) {
-        typeName = m_CurrentSelfType;
-      }
-
-      if (m_Shapes.count(typeName)) {
-        const ShapeDecl *S = m_Shapes[typeName];
-        if (S->Kind == ShapeKind::Union) {
-          // Legacy bare union: no recursive drop for individual members (reinterpreted
-          // memory)
-          return f;
-        }
-        // Iterate reverse
-        for (auto it = S->Members.rbegin(); it != S->Members.rend(); ++it) {
-
-          // Check if member needs drop
-          std::string memberType = it->Type;
-          // Strip morphology to find base type for drop method lookup
-          std::string baseType = memberType;
-          while (!baseType.empty() &&
-                 (baseType[0] == '*' || baseType[0] == '#' ||
-                  baseType[0] == '&' || baseType[0] == '^' ||
-                  baseType[0] == '~' || baseType[0] == '!')) {
-            baseType = baseType.substr(1);
-          }
-          while (!baseType.empty() &&
-                 (baseType.back() == '#' || baseType.back() == '?' ||
-                  baseType.back() == '!')) {
-            baseType.pop_back();
-          }
-
-          bool hasDrop = false;
-          std::string dropFunc = "";
-          auto memberDropType = it->ResolvedType;
-
-          std::function<bool(const std::shared_ptr<Type> &)> typeNeedsDrop =
-              [&](const std::shared_ptr<Type> &candidate) {
-                if (!candidate)
-                  return false;
-                if (candidate->isArray())
-                  return typeNeedsDrop(candidate->getArrayElementType());
-                if (candidate->isSharedPtr() || candidate->isUniquePtr())
-                  return true;
-                if (candidate->isRawPointer() || candidate->isReference())
-                  return false;
-                const auto soul = candidate->getSoulType();
-                return soul && m_Shapes.count(soul->getSoulName());
-              };
-
-          // Resolve drop function for member
-          std::string try1 = "encap_" + baseType + "_drop";
-          std::string try2 = baseType + "_encap_drop";
-          std::string try3 = baseType + "_drop"; // Legacy
-
-          if (m_Module->getFunction(try1)) {
-            dropFunc = try1;
-          } else if (m_Module->getFunction(try2)) {
-            dropFunc = try2;
-          } else if (m_Module->getFunction(try3)) {
-            dropFunc = try3;
-          }
-
-          if (it->IsUnique || it->IsShared) {
-            hasDrop = true;
-          } else if (it->IsRawPointer || it->IsReference) {
-            hasDrop = false; // Raw pointers don't drop
-          } else if (!dropFunc.empty()) {
-            hasDrop = true;
-          }
-          if (memberDropType && memberDropType->isArray()) {
-            hasDrop = typeNeedsDrop(memberDropType);
-            dropFunc.clear();
-          }
-
-          if (hasDrop) {
-            // Access member
-            // Access member: Ensure we have the actual struct address (Soul)
-            llvm::Value *structPtr = nullptr;
-            if (m_Symbols.count("self")) {
-                auto &sym = m_Symbols["self"];
-                structPtr = sym.allocaPtr;
-                if (sym.mode == AddressingMode::Pointer) {
-                    structPtr = m_Builder.CreateLoad(m_Builder.getPtrTy(), structPtr, "self.soul_ptr");
-                }
-            } else {
-                structPtr = getEntityAddr("self");
-            }
-
-            // GEP to member
-            int fieldIdx = -1;
-            int i = 0;
-            for (auto &m : S->Members) {
-              if (m.Name == it->Name) {
-                fieldIdx = i;
-                break;
-              }
-              i++;
-            }
-
-            if (fieldIdx != -1) {
-              // FIX: Use m_StructTypes instead of m_ValueElementTypes
-              if (m_StructTypes.count(typeName)) {
-                llvm::Value *fieldEP = m_Builder.CreateStructGEP(
-                    m_StructTypes[typeName], structPtr, fieldIdx,
-                    it->Name + "_ptr");
-
-                // Register in Scope 0
-                if (!m_ScopeStack.empty()) {
-                  llvm::Type *fTy =
-                      m_StructTypes[typeName]->getElementType(fieldIdx);
-                  VariableScopeInfo memberInfo;
-                  memberInfo.Name = it->Name;
-                  memberInfo.Alloca = fieldEP;
-                  memberInfo.AllocType = fTy;
-                  memberInfo.IsUniquePointer = it->IsUnique;
-                  memberInfo.IsShared = it->IsShared;
-                  memberInfo.HasDrop = hasDrop;
-                  memberInfo.DropFunc = dropFunc;
-                  memberInfo.SoulName = baseType;
-                  if (memberDropType && memberDropType->isArray())
-                    memberInfo.DropType = memberDropType;
-                  m_ScopeStack[0].push_back(std::move(memberInfo));
-                }
-              } else {
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 
   // Ensure Implicit Cleanup
   if (!m_Builder.GetInsertBlock()->getTerminator()) {
@@ -2415,13 +2263,10 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
     implementedMethods.insert(method->Name);
   }
 
-  // Slice 2 @encap blocks are authority policies.  They do not participate
-  // in the legacy trait/vtable contract while the epoch gate is active.
+  // @encap policies and @Copy markers never participate in a trait vtable.
   if (!decl->TraitName.empty() &&
-      !(Parser::EncapPolicyEpochV2 &&
-        getTraitFamilyNameForCodeGen(decl->TraitName) == "encap") &&
-      !(Parser::EncapCopyEpochV4 &&
-        getTraitFamilyNameForCodeGen(decl->TraitName) == "Copy")) {
+      getTraitFamilyNameForCodeGen(decl->TraitName) != "encap" &&
+      getTraitFamilyNameForCodeGen(decl->TraitName) != "Copy") {
     const TraitDecl *trait = nullptr;
     std::string traitLookupName = getTraitFamilyNameForCodeGen(decl->TraitName);
     if (m_Traits.count(traitLookupName)) {

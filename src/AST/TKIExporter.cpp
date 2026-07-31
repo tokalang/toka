@@ -291,10 +291,8 @@ void TKIExporter::exportModule(const Module &module) {
     writeln("// @meta identity_schema_version: 2");
     writeln("// @meta logical_module_path: " + logicalPath);
     writeln("// @meta resolver_binding_digest: " + resolverDigest);
-    if (Parser::EncapTkiEpochV5) {
-        for (const auto &fact : module.InterfaceV2Facts)
-            writeln("// @tki v2 " + fact);
-    }
+    for (const auto &fact : module.InterfaceV2Facts)
+        writeln("// @tki v2 " + fact);
     writeln();
 
     // 1. Export Imports
@@ -313,10 +311,6 @@ void TKIExporter::exportModule(const Module &module) {
 
     // 3. Export Shapes
     for (const auto &decl : module.Shapes) {
-        if (!Parser::EncapTkiEpochV5 && !decl->HasExplicitDrop &&
-            !decl->MangledDestructorName.empty()) {
-            writeln("// @tki structural_drop: " + decl->Name);
-        }
         exportShape(*decl);
     }
     if (!module.Shapes.empty()) writeln();
@@ -453,9 +447,6 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
 }
 
 void TKIExporter::exportTrait(const TraitDecl &decl) {
-    if (Parser::EncapTkiEpochV5 &&
-        (decl.Name == "Clone" || decl.Name == "Drop"))
-        return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
     m_OS << "trait @" << decl.Name;
@@ -498,9 +489,6 @@ void TKIExporter::exportTrait(const TraitDecl &decl) {
 }
 
 void TKIExporter::exportImpl(const ImplDecl &decl) {
-    if (Parser::EncapTkiEpochV5 &&
-        (decl.TraitName == "Clone" || decl.TraitName == "Drop"))
-        return;
     indent();
     m_OS << "impl";
     printGenericParams(decl.GenericParams);
@@ -524,17 +512,7 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
     // Encap entries
     for (const auto &entry : decl.EncapEntries) {
         indent();
-        m_OS << "pub";
-        if (entry.Level == EncapEntry::Crate) {
-            m_OS << "(crate)";
-        } else if (entry.Level == EncapEntry::Path) {
-            m_OS << "(" << entry.TargetPath << ")";
-        }
-        if (entry.IsExclusion) {
-            m_OS << " * ! ";
-        } else {
-            m_OS << " ";
-        }
+        m_OS << "pub ";
         for (size_t i = 0; i < entry.Fields.size(); ++i) {
             if (i > 0) m_OS << ", ";
             m_OS << entry.Fields[i];
@@ -551,8 +529,6 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
 }
 
 void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
-    if (Parser::EncapTkiEpochV5 && decl.IsDeleted)
-        return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
     m_OS << "fn " << decl.Name;
@@ -617,11 +593,6 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         }
         m_Indent -= 2;
         indent();
-    }
-
-    if (decl.IsDeleted) {
-        m_OS << " = delete\n";
-        return;
     }
 
     bool hasGenerics = !decl.GenericParams.empty();

@@ -56,7 +56,7 @@ impl HttpHeaderView {
             res#.push_byte_raw(raw_buf#.get(i))
             i += 1
         }
-        return res
+        return cede res
     }
 
     pub fn value(self, raw_buf#: Vec<u8>) -> string {
@@ -70,7 +70,7 @@ impl HttpHeaderView {
             res#.push_byte_raw(raw_buf#.get(i))
             i += 1
         }
-        return res
+        return cede res
     }
 }
 
@@ -330,7 +330,7 @@ impl HttpRequest {
         if self.body.len() > 0 {
             res#.push_str(self.body.as_str())
         }
-        return res
+        return cede res
     }
 
     pub fn to_wire_bytes(self) -> Vec<u8> {
@@ -341,7 +341,7 @@ impl HttpRequest {
             bytes#.push(wire_str.as_bytes().at(idx).unwrap() as u8)
             idx += 1
         }
-        return bytes
+        return cede bytes
     }
 }
 
@@ -477,7 +477,7 @@ impl HttpResponse {
         }
         res#.push_str("\r\n")
         res#.push_str(self.body.as_str())
-        return res
+        return cede res
     }
 }
 
@@ -497,7 +497,7 @@ fn bytes_to_string(buf#: Vec<u8>) -> string {
         output#.push_byte_raw(buf#.get(index))
         index = index + 1:usize
     }
-    return output
+    return cede output
 }
 
 impl HttpServerConnection {
@@ -513,13 +513,13 @@ impl HttpServerConnection {
                 auto failure# = read_result.unwrap_err()
                 auto message = failure.message.clone()
                 auto _buffer = failure#.take_buffer()
-                return Result<HttpRequest, string>::Err(message)
+                return Result<HttpRequest, string>::Err(cede message)
             }
             auto chunk# = read_result.unwrap()
             auto n_read = chunk.bytes_read
             read_buffer = chunk#.take_buffer()
             if n_read == 0:usize {
-                return Result<HttpRequest, string>::Err(last_error)
+                return Result<HttpRequest, string>::Err(cede last_error)
             }
             auto index#: usize = 0:usize
             loop index < n_read {
@@ -658,7 +658,7 @@ pub fn string_slice(s: string, start: usize, len: usize) -> string {
         res#.push_byte_raw(bytes.at(i).unwrap() as u8)
         i += 1
     }
-    return res
+    return cede res
 }
 
 
@@ -678,9 +678,9 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
     auto req_len = req_str.len()
     auto body_str# = string::from("")
 
-    auto parse_res = parse_http_request_headers(header_str)
+    auto parse_res = parse_http_request_headers(cede header_str)
     if parse_res.is_err() {
-        return parse_res
+        return cede parse_res
     }
 
     auto req# = parse_res.unwrap()
@@ -707,7 +707,7 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
             if target_cl < actual_body_len {
                 return Result<HttpRequest, string>::Err(string::from("Trailing bytes after Content-Length payload unsupported in Phase 1"))
             }
-            body_str = string_slice(req_str, body_start, target_cl)
+            body_str = cede string_slice(req_str, body_start, target_cl)
         } else {
             if target_cl > 0:usize {
                 return Result<HttpRequest, string>::Err(string::from("Content-Length exceeds payload body length"))
@@ -721,8 +721,8 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
         }
     }
 
-    req.body = body_str
-    return Result<HttpRequest, string>::Ok(req)
+    req.body = cede body_str
+    return Result<HttpRequest, string>::Ok(cede req)
 }
 
 pub fn parse_http_request(req_str: string) -> Result<HttpRequest, string> {
@@ -738,7 +738,7 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
 
     auto first_line# = iter#.next()
     if first_line.ends_with("\r") {
-        first_line = string_slice(first_line, 0, first_line.len() - 1:usize)
+        first_line = cede string_slice(first_line, 0, first_line.len() - 1:usize)
     }
 
     // Verify request line contains exactly 2 space delimiters (3 tokens)
@@ -821,7 +821,7 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
             }
         }
 
-        auto ins_res = headers#.insert(key, val)
+        auto ins_res = headers#.insert(cede key, cede val)
         if ins_res.is_err() {
             return Result<HttpRequest, string>::Err(ins_res.unwrap_err())
         }
@@ -905,7 +905,7 @@ pub fn parse_chunked_body(raw_body_str: str) -> Result<string, string> {
         cur_idx = size_end + 1:usize
 
         if chunk_size == 0 {
-            return Result<string, string>::Ok(res)
+            return Result<string, string>::Ok(cede res)
         }
 
         if cur_idx + chunk_size > len {
@@ -921,7 +921,7 @@ pub fn parse_chunked_body(raw_body_str: str) -> Result<string, string> {
         if cur_idx < len && bytes.at(cur_idx).unwrap() == 10:byte { cur_idx = cur_idx + 1 }
     }
 
-    return Result<string, string>::Ok(res)
+    return Result<string, string>::Ok(cede res)
 }
 
 pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) -> Result<HttpResponse, string> {
@@ -979,13 +979,13 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
         auto key = string_slice(line, 0, colon_idx as usize)
         auto val = string_slice(line, colon_idx as usize + 1:usize, line.len() - colon_idx as usize - 1:usize).trim()
 
-        auto _ins = headers#.insert(key, val)
+        auto _ins = headers#.insert(cede key, cede val)
     }
 
     auto body_str# = string::from("")
     auto raw_body_str# = string::from("")
     if body_start < resp_len {
-        raw_body_str = string_slice(resp_str, body_start, resp_len - body_start)
+        raw_body_str = cede string_slice(resp_str, body_start, resp_len - body_start)
     }
 
     if headers#.contains_key("transfer-encoding") {
@@ -995,7 +995,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
             if chunk_res.is_err() {
                 return Result<HttpResponse, string>::Err(chunk_res.unwrap_err())
             }
-            body_str = chunk_res.unwrap()
+            body_str = cede chunk_res.unwrap()
         } else {
             return Result<HttpResponse, string>::Err(string::from("Unsupported Transfer-Encoding in response"))
         }
@@ -1010,18 +1010,18 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
             return Result<HttpResponse, string>::Err(string::from("Response body length less than Content-Length"))
         }
         if target_cl == raw_body_str.len() {
-            body_str = raw_body_str
+            body_str = cede raw_body_str
         } else {
             auto sub_str = raw_body_str.as_str().substr(0, target_cl)
-            body_str = string::from(sub_str)
+            body_str = cede string::from(sub_str)
         }
     } else {
-        body_str = raw_body_str
+        body_str = cede raw_body_str
     }
 
     auto content_type# = string::from("text/plain")
     if headers#.contains_key("content-type") {
-        content_type = headers#.get("content-type").unwrap()
+        content_type = cede headers#.get("content-type").unwrap()
     }
 
     return Result<HttpResponse, string>::Ok(HttpResponse(
@@ -1202,7 +1202,7 @@ impl HttpResponseStream {
                     self.content_length_remaining = self.content_length_remaining - (res.bytes_read as i64)
                 }
                 self.bytes_read_total = self.bytes_read_total + res.bytes_read
-                return Result<AsyncReadResult, AsyncIoError>::Ok(res)
+                return Result<AsyncReadResult, AsyncIoError>::Ok(cede res)
             }
             if self.content_length_remaining > 0:i64 {
                 return Result<AsyncReadResult, AsyncIoError>::Err(AsyncIoError(
@@ -1210,7 +1210,7 @@ impl HttpResponseStream {
                     message = string::from("Unexpected EOF before Content-Length satisfied")
                 ))
             }
-            return Result<AsyncReadResult, AsyncIoError>::Ok(res)
+            return Result<AsyncReadResult, AsyncIoError>::Ok(cede res)
         } else {
             return Result<AsyncReadResult, AsyncIoError>::Err(read_res.unwrap_err())
         }

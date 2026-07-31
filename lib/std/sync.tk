@@ -38,6 +38,14 @@ impl<'T: @Send> Mutex<'T> {
             data = cede data
         )
     }
+
+    pub fn make_shared(data: cede 'T) -> ~Mutex<'T> {
+        auto ~mutex = new Mutex<'T>(
+            handle = sys_mutex_create(),
+            data = cede data
+        )
+        return cede ~mutex
+    }
     
     pub fn lock(self) -> Result<MutexLock<'T>, Error> {
         unsafe {

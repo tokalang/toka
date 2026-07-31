@@ -1104,9 +1104,11 @@ impl VisibilityBox@encap {
     pub open_val
 
     fn drop(self#) {}
+}
 
-    pub fn clone(self) -> VisibilityBox {
-        return VisibilityBox(open_val = self.open_val, secret_val = self.secret_val)
+impl VisibilityBox {
+    pub fn new() -> VisibilityBox {
+        return VisibilityBox(open_val = 5, secret_val = 9)
     }
 }
 EOF
@@ -1115,7 +1117,7 @@ cat << 'EOF' > "$TEST_DIR/encap_interface/main.tk"
 import ./lib::{VisibilityBox}
 
 fn main() -> i32 {
-    auto box = VisibilityBox(open_val = 5, secret_val = 9)
+    auto box = VisibilityBox::new()
     return box.open_val - 5
 }
 EOF
@@ -1124,7 +1126,7 @@ cat << 'EOF' > "$TEST_DIR/encap_interface/private_main.tk"
 import ./lib::{VisibilityBox}
 
 fn main() -> i32 {
-    auto box = VisibilityBox(open_val = 5, secret_val = 9)
+    auto box = VisibilityBox::new()
     return box.secret_val
 }
 EOF

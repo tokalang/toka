@@ -1,9 +1,0 @@
-import std/net::{TcpStream}
-
-fn main() -> i32 {
-    unsafe {
-        auto s1 = TcpStream(fd=1, closed=false)
-        auto s2 = s1 // Should trigger Auto-Clone which triggers IsDeleted error
-    }
-    return 0
-}

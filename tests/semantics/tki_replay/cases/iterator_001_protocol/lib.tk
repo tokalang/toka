@@ -15,11 +15,13 @@ pub shape ValuesCursor(
 )
 
 impl ValuesCursor@encap {
-    pub *
+    pub value, done
 
     fn drop(self#) {}
+}
 
-    pub fn clone(self) -> ValuesCursor <- self {
+impl ValuesCursor {
+pub fn clone(self) -> ValuesCursor <- self {
         return ValuesCursor(&value = self.&value, done = self.done)
     }
 }

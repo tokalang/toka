@@ -775,11 +775,11 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
     }
   }
 
-  bool isDeleted = false; // [NEW] Track = delete
   std::unique_ptr<BlockStmt> body = nullptr;
   if (match(TokenType::Equal)) {
-    consume(TokenType::KwDelete, DiagID::ERR_PARSER_EXPECTED_DELETE_AFTER_FOR_DELETED_FUNCT);
-    isDeleted = true;
+    if (check(TokenType::KwDelete) || check(TokenType::Identifier))
+      advance();
+    error(previous(), DiagID::ERR_PARSER_DELETED_FUNCTIONS_REMOVED);
     expectEndOfStatement();
   } else if (check(TokenType::LBrace)) {
     body = parseBlock();
@@ -789,7 +789,6 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   auto decl = std::make_unique<FunctionDecl>(
       isPub, name.Text, std::move(args), std::move(body), retType,
       genericParams, std::move(lifeDeps), effect);
-  decl->IsDeleted = isDeleted; // [NEW] Attach to Node
   decl->IsVariadic = isVariadic;
   decl->MemberDependencies = std::move(memberDeps);
   decl->setLocation(name, m_CurrentFile);
@@ -1126,53 +1125,19 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
         methods.push_back(parseFunctionDecl(isPub));
       } else if (match(TokenType::KwPub)) {
         EncapEntry entry;
-        entry.Level = EncapEntry::Global;
-
-        if (match(TokenType::LParen)) {
-          if (match(TokenType::KwCrate)) {
-            entry.Level = EncapEntry::Crate;
-          } else {
-            entry.Level = EncapEntry::Path;
-            // Parse targeted module-location path segments. Match the left
-            // side of import paths; item selection with :: is not part of
-            // pub(path).
-            while (check(TokenType::Identifier) ||
-                   (peek().Kind >= TokenType::KwLet &&
-                    peek().Kind <= TokenType::KwCrate) ||
-                   check(TokenType::Slash) || check(TokenType::Minus) ||
-                   check(TokenType::Dot) ||
-                   check(TokenType::DotDot)) {
-              if (match(TokenType::Slash)) {
-                entry.TargetPath += "/";
-              } else if (match(TokenType::Minus)) {
-                entry.TargetPath += "-";
-              } else if (match(TokenType::Dot)) {
-                entry.TargetPath += ".";
-              } else if (match(TokenType::DotDot)) {
-                entry.TargetPath += "..";
-              } else {
-                entry.TargetPath += advance().Text;
-              }
-            }
+        if (check(TokenType::LParen) || check(TokenType::Star)) {
+          error(peek(), DiagID::ERR_PARSER_ENCAP_NONEXACT_GRANT_REMOVED);
+          while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile) &&
+                 !peek().HasNewlineBefore) {
+            advance();
           }
-          consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
+          continue;
         }
 
-        if (match(TokenType::Star)) {
-          entry.IsExclusion = true;
-          match(TokenType::Bang); // Optional !
-          while (check(TokenType::Identifier)) {
-            entry.Fields.push_back(advance().Text);
-            if (!match(TokenType::Comma))
-              break;
-          }
-        } else {
-          // One or more fields
-          while (check(TokenType::Identifier)) {
-            entry.Fields.push_back(advance().Text);
-            if (!match(TokenType::Comma))
-              break;
-          }
+        while (check(TokenType::Identifier)) {
+          entry.Fields.push_back(advance().Text);
+          if (!match(TokenType::Comma))
+            break;
         }
         encapEntries.push_back(std::move(entry));
       } else if (check(TokenType::KwFn)) {

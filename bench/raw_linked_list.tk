@@ -10,7 +10,6 @@ impl Node@encap {
     fn drop(self#) {
         // Handled manually
     }
-    pub fn clone(self) = delete
 }
 
 pub fn main() -> i32 {

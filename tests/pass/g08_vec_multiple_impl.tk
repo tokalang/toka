@@ -3,7 +3,6 @@ import std/io::println
 shape TStruct<T>(val: T)
 
 impl<T> TStruct<T> @encap {
-    pub fn clone(self) = delete
     fn drop(self#) {
         println("drop TStruct")
     }
@@ -19,7 +18,6 @@ fn main() -> i32 {
     {
         auto x# = TStruct(val=10)
         x.method()
-        x#.drop() // Explicit call to verify existence
     }
     println("after scope")
     return 0

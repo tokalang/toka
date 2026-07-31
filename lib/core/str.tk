@@ -31,6 +31,10 @@ extern fn __toka_bytes_raw_ptr(b: bytes) -> *byte
 
 
 impl str {
+    pub fn from_raw_parts(*buf: char, len: usize) -> str <- buf {
+        return str(&buf = (buf as *[char]) as &[char], len = len)
+    }
+
     pub fn clone(self) -> str <- self {
         return str(&buf = self.&buf, len = self.len)
     }
@@ -47,10 +51,10 @@ impl str@PartialOrd {
         unsafe {
             auto i#: usize = 0
             loop i < self.len && i < other.len {
-                auto *p1 = &(self.buf[i]) as *char
-                auto *p2 = &(other.buf[i]) as *char
-                if *p1 < *p2 { return -1 }
-                if *p1 > *p2 { return 1 }
+                auto c1 = self.buf[i]
+                auto c2 = other.buf[i]
+                if c1 < c2 { return -1 }
+                if c1 > c2 { return 1 }
                 i = i + 1
             }
             if self.len < other.len { return -1 }
@@ -659,7 +663,7 @@ pub shape cstr(
 )
 
 impl cstr@encap {
-    pub(core/string) buf
+    pub buf
 
 
     fn drop(self#) {}
@@ -710,7 +714,7 @@ pub shape bytes(
 )
 
 impl bytes@encap {
-    pub(std/bytes) buf, len
+    pub buf, len
 
     fn drop(self#) {}
 }

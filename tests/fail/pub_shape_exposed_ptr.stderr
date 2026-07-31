@@ -3,8 +3,3 @@ error[E0482]: Public Shape 'Point' exposes unsafe field 'ptr' of type '*f32'. Us
    |
  1 | pub shape Point(
    |           ^
-error[E0445]: Shape 'Point' manages raw pointers but does not implement 'drop'
- --> tests/fail/pub_shape_exposed_ptr.tk:1:11
-   |
- 1 | pub shape Point(
-   |           ^

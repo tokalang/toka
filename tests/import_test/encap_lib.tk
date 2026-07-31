@@ -21,3 +21,9 @@ impl Data@encap {
     pub public_val
     // private_val is implicitly private
 }
+
+impl Data {
+    pub fn new(public_val: i32, private_val: i32) -> Data {
+        return Data(public_val = public_val, private_val = private_val)
+    }
+}

@@ -16,7 +16,7 @@ TOKAC = ROOT / "build" / "bin" / "tokac"
 def compile_source(source: Path, root: Path, *, expect_success: bool,
                    workspace_node: str = "slice2-workspace-v1",
                    extra: tuple[str, ...] = ()) -> subprocess.CompletedProcess[str]:
-    command = (str(TOKAC), "--encap-epoch=v2", "--workspace-node", workspace_node,
+    command = (str(TOKAC), "--workspace-node", workspace_node,
                "--workspace-root", str(root), "-c", "-o",
                str(source.with_suffix(".o")), *extra, str(source))
     completed = subprocess.run(command, cwd=ROOT, text=True,
@@ -88,30 +88,12 @@ def main() -> int:
             "import ./lib\n"
             "fn main() -> i32 { auto value = lib::make(); return value.visible }\n",
             encoding="utf-8")
-        compile_source(main, root, expect_success=True)
-
-        missing_identity = subprocess.run(
-            (str(TOKAC), "--encap-epoch=v2", "-c", "-o",
-             str(root / "missing-identity.o"), str(main)), cwd=ROOT, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        assert missing_identity.returncode != 0 and "E0418" in missing_identity.stderr
+        rejected_crate = compile_source(main, root, expect_success=False)
+        assert "E01252" in rejected_crate.stderr
 
         write_policy(lib, "pub(friend) visible")
-        friend = root / "friend.tk"
-        friend.write_text(
-            "import ./lib\n"
-            "fn main() -> i32 { auto value = lib::make(); return value.visible }\n",
-            encoding="utf-8")
-        compile_source(friend, root, expect_success=True)
-        compile_source(main, root, expect_success=False)
-
-        wildcard = root / "wildcard.tk"
-        wildcard.write_text(
-            "shape Wildcard(value: i32)\n"
-            "impl Wildcard@encap { pub * }\n"
-            "fn main() -> i32 { return 0 }\n", encoding="utf-8")
-        rejected_wildcard = compile_source(wildcard, root, expect_success=False)
-        assert "E0406" in rejected_wildcard.stderr
+        rejected_path = compile_source(main, root, expect_success=False)
+        assert "E01252" in rejected_path.stderr
 
         conditional = root / "conditional.tk"
         conditional.write_text(

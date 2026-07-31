@@ -6,7 +6,7 @@ import std/io::{println}
 pub fn main() -> i32 {
     // 1. Encode Test
     auto raw = string::from("hello world!+&你好")
-    auto encoded = url_encode(raw)
+    auto encoded = url_encode(raw.clone())
     // Expected: hello%20world%21%2B%26%E4%BD%A0%E5%A5%BD
     if encoded != string::from("hello%20world%21%2B%26%E4%BD%A0%E5%A5%BD") {
         println("encode failed: {}", encoded)
@@ -14,7 +14,7 @@ pub fn main() -> i32 {
     }
     
     // 2. Decode Test
-    auto decoded_res = url_decode(encoded)
+    auto decoded_res = url_decode(cede encoded)
     match decoded_res {
         auto Result::Err(&e) => {
             println("decode failed: {}", e)
@@ -30,7 +30,7 @@ pub fn main() -> i32 {
     
     // 3. Query Decode (plus as space)
     auto q_raw = string::from("hello+world%2Bfoo")
-    match query_decode(q_raw) {
+    match query_decode(cede q_raw) {
         auto Result::Err(&e) => {
             println("query_decode failed: {}", e)
             return 1

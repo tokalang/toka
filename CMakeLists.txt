@@ -171,7 +171,8 @@ set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt")
 
 add_custom_command(
     OUTPUT "${TOKA_MANAGER}"
-    COMMAND $<TARGET_FILE:tokac> -I "${CMAKE_SOURCE_DIR}/lib"
+    COMMAND $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
+            --workspace-root "${CMAKE_SOURCE_DIR}" -I "${CMAKE_SOURCE_DIR}/lib"
             -I "${CMAKE_SOURCE_DIR}/tools/toka"
             "${CMAKE_SOURCE_DIR}/tools/toka/src/main.tk"
             "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_MANAGER}" -O3
@@ -181,7 +182,8 @@ add_custom_command(
 )
 add_custom_command(
     OUTPUT "${TOKA_FORMATTER}"
-    COMMAND $<TARGET_FILE:tokac> -I "${CMAKE_SOURCE_DIR}/lib"
+    COMMAND $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
+            --workspace-root "${CMAKE_SOURCE_DIR}" -I "${CMAKE_SOURCE_DIR}/lib"
             -I "${CMAKE_SOURCE_DIR}/tools/tokafmt"
             "${CMAKE_SOURCE_DIR}/tools/tokafmt/src/main.tk"
             "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_FORMATTER}" -O3

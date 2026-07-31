@@ -1,23 +1,8 @@
-error[E0429]: Trait 'encap' requires implementation of method 'clone'
- --> tests/fail/member_parsing.tk:13:1
-    |
- 13 | impl Node@encap {
-    | ^
 error[E0447]: Accessing member of nullable type 'nul ^Point' requires explicit 'is' check
  --> tests/fail/member_parsing.tk:22:25
     |
  22 |     auto v1 = n_ok.point.x // EXPECT: error[E0447]:
     |                         ^
-error[E0447]: Accessing member of nullable type 'nul ^Point' requires explicit 'is' check
- --> tests/fail/member_parsing.tk:22:25
-    |
- 22 |     auto v1 = n_ok.point.x // EXPECT: error[E0447]:
-    |                         ^
-error[E0447]: Accessing member of nullable type 'Point?' requires explicit 'is' check
- --> tests/fail/member_parsing.tk:25:22
-    |
- 25 |     auto v2 = n_ok.pp.x // EXPECT: error[E0447]:
-    |                      ^
 error[E0447]: Accessing member of nullable type 'Point?' requires explicit 'is' check
  --> tests/fail/member_parsing.tk:25:22
     |

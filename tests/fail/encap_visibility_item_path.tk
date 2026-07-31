@@ -1,17 +1,6 @@
-shape BadPathBox (
-    value: i32
-)
-
-impl BadPathBox@encap {
-    pub(foo::bar) value // EXPECT: error[E01151]
-
-    fn drop(self#) {}
-
-    pub fn clone(self) -> BadPathBox {
-        return BadPathBox(value = self.value)
-    }
-}
+import tests/import_test/encap_visibility_lib::CrateBox
 
 fn main() -> i32 {
-    return 0
+    auto box = CrateBox::new(1, 2)
+    return box.private_val
 }

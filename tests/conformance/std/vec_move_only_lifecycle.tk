@@ -10,7 +10,6 @@ impl Resource@encap {
         g_drop_count += 1
     }
 
-    pub fn clone(self) = delete
 }
 
 fn cloneable_vector() -> i32 {

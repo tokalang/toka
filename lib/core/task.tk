@@ -61,7 +61,7 @@ pub shape TaskHandle<T>(
 )
 
 impl<T> TaskHandle<T>@encap {
-    pub(std) coro_handle
+    pub coro_handle
     fn drop(self#) {
         if self.*coro_handle != null {
             __toka_detach_task(self.*coro_handle)

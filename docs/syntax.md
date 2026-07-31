@@ -559,8 +559,7 @@ pub shape Device(
     id: i32,
     secret: i32,
     public_config: i32,
-    crate_state: i32,
-    uart_state: i32
+    shared_state: i32
 )
 pub trait @Readable {
     pub fn read(self) -> i32
@@ -575,30 +574,24 @@ Inside normal `impl` and `trait` blocks, method visibility is written with `pub 
 
 ```toka
 impl Device@encap {
-    pub public_config
-    pub(crate) crate_state
-    pub(os/driver/uart) uart_state
+    pub public_config, shared_state
 
     fn drop(self#) {}
 }
 ```
 
-`pub field` exposes selected fields globally. `pub(crate) field` exposes selected fields inside the crate. `pub(path) field` grants access to a module path.
-
-The `path` in `pub(path)` uses the same module-location path grammar as the left side of an `import`, before `::{...}` item selection. Toka has no source-level `mod` declaration; path-scoped visibility is anchored in resolver-normalized import paths rather than raw substring matching or a Rust-style module tree.
+`pub field` exposes that exact field globally. Parenthesized and wildcard
+forms are not part of `@encap`: `pub(crate)`, `pub(path)`, and `pub *` are
+rejected.
 
 Every `@encap` field grant is explicit. The grammar has no catch-all member
 grant, so adding a field later cannot publish it accidentally:
 
 ```toka
 impl PublicRecord@encap {
-    pub visible_name, visible_id
-    pub(crate) cache_slot
+    pub visible_name, visible_id, cache_slot
 }
 ```
-
-The parenthesized `pub(crate)` and `pub(path)` forms are `@encap`
-member-visibility entries, not top-level declaration modifiers.
 
 ## 8. Member Access And Morphic Fields
 
