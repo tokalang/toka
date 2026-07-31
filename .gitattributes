@@ -1,2 +1,4 @@
 *.tk linguist-language=C++
 *.sh text eol=lf
+# Vendored Unicode source data is hash-locked and retained byte-for-byte.
+official/unicode/data/17.0.0/*.txt -whitespace
