@@ -20,8 +20,9 @@ it is not evidence that the proposed epoch is infeasible.
   changes. No Sema, TKI, cache, access, Copy/Dup, or lowering decision has
   changed.
 - `tools/scripts/test_encap_slice0_audit.py` passes: direct compilation is
-  `Unknown`, workspace identity is deterministic when supplied, and locked
-  package nodes are stable across aliases.
+  `Unknown`; workspace relocation and symlink resolution preserve a supplied
+  logical coordinate; package aliases share their locked node; and toolchain
+  modules receive the configured toolchain coordinate.
 - The existing source-less semantic replay suite passes, including nominal and
   generic module-identity cases. This preserves legacy behaviour; it is not
   evidence for the proposed epoch.
@@ -30,7 +31,7 @@ it is not evidence that the proposed epoch is infeasible.
 
 | RFC Slice 0 exit condition | Current evidence | Result |
 | --- | --- | --- |
-| Identity is deterministic under relocation and import aliases | Package node identity is alias/installation independent; workspace relocation and alias fixture matrix is absent. | Not proven |
+| Identity is deterministic under relocation and import aliases | Workspace relocation and symlink fixtures preserve a supplied coordinate; package aliases share a locked node; toolchain modules have a configured coordinate. | Proven |
 | Same-crate and cross-crate positive/negative matrices complete | Existing `pub(crate)` is unconditional and `pub(path)` remains physical-path based; no shadow access matrix exists. | Not proven |
 | Source, generated TKI, cached TKI identity decisions agree | Legacy replay passes, but it does not serialize or compare shadow coordinates. | Not proven |
 | Custom-drop order/mask and Copy-SCC redlines reviewed | Legacy ownership tests exist, but no proposed hook-tail/Copy-SCC prototype or expected-result matrix exists. | Not proven |
@@ -39,11 +40,10 @@ it is not evidence that the proposed epoch is infeasible.
 
 ## Current consequence
 
-1. Workspace and toolchain node IDs are not yet emitted by the toolchain, so
-   their supported resolver paths remain intentionally `Unknown`.
+1. A loose direct compilation intentionally remains `Unknown`; it cannot
+   obtain a crate identity from its path.
 2. No redline matrix yet compares logical and legacy authorization across
-   relocation, symlink, package alias, source, generated TKI, cached TKI,
-   missing identity, and forged metadata.
+   source, generated TKI, cached TKI, missing identity, and forged metadata.
 3. Custom-hook tail order, raw resource provenance, and typed partial-move
    actions have not been prototyped or redlined under the proposed model.
 4. The three-state Copy SCC/CopyRecipe prototype and Copy/Dup overlap matrix
@@ -57,6 +57,6 @@ continue Slice 0 while keeping all legacy semantics active.
 
 ## Required work before a new decision
 
-Do not activate any proposed `@encap` epoch rule. Finish the five missing
+Do not activate any proposed `@encap` epoch rule. Finish the four missing
 evidence rows above, classify every legacy/shadow disagreement, then issue a
 new review against the exact same exit-gate table.

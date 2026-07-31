@@ -96,23 +96,6 @@ ShadowModuleCoordinate ModuleResolver::deriveShadowCoordinate(
         return result;
     }
 
-    if (!m_WorkspaceRoot.empty() && isWithinRoot(canonicalPath, {m_WorkspaceRoot})) {
-        result.Origin = "workspace";
-        if (m_WorkspaceNodeId.empty()) {
-            result.Reason = "missing workspace node identity";
-            return result;
-        }
-        const std::string logical = logicalPathFromRoot(canonicalPath, m_WorkspaceRoot);
-        if (logical.empty()) {
-            result.Reason = "cannot derive logical module path below workspace root";
-            return result;
-        }
-        result.Known = true;
-        result.CrateId = m_WorkspaceNodeId;
-        result.LogicalModulePath = logical;
-        return result;
-    }
-
     if (isWithinRoot(canonicalPath, m_TrustedSystemRoots)) {
         result.Origin = "toolchain";
         if (m_ToolchainNodeId.empty()) {
@@ -132,6 +115,23 @@ ShadowModuleCoordinate ModuleResolver::deriveShadowCoordinate(
             result.LogicalModulePath = logical;
             return result;
         }
+    }
+
+    if (!m_WorkspaceRoot.empty() && isWithinRoot(canonicalPath, {m_WorkspaceRoot})) {
+        result.Origin = "workspace";
+        if (m_WorkspaceNodeId.empty()) {
+            result.Reason = "missing workspace node identity";
+            return result;
+        }
+        const std::string logical = logicalPathFromRoot(canonicalPath, m_WorkspaceRoot);
+        if (logical.empty()) {
+            result.Reason = "cannot derive logical module path below workspace root";
+            return result;
+        }
+        result.Known = true;
+        result.CrateId = m_WorkspaceNodeId;
+        result.LogicalModulePath = logical;
+        return result;
     }
 
     result.Origin = "unknown";
