@@ -9,7 +9,7 @@ import core/result::{Result}
 import core/str::{str}
 import core/types::{byte, Char32, usize}
 import core/utf8::{Cursor}
-import official/generated/grapheme_tables::{
+import official/unicode/generated/grapheme_tables::{
     grapheme_break_property,
     indic_conjunct_break_property,
     is_extended_pictographic,

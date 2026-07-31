@@ -19,7 +19,7 @@ import sys
 PACKAGE = Path(__file__).resolve().parents[1]
 DATA = PACKAGE / "data" / "17.0.0"
 LOCK = DATA / "SOURCES.lock.json"
-TABLES = PACKAGE / "lib" / "official" / "generated" / "grapheme_tables.tk"
+TABLES = PACKAGE / "lib" / "official" / "unicode" / "generated" / "grapheme_tables.tk"
 CORPUS = PACKAGE / "tests" / "grapheme_break_corpus.tk"
 
 

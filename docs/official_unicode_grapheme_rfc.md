@@ -89,7 +89,7 @@ normalization stays a separate future profile.
 The package will vendor the Unicode 17.0.0 source files used by its generator
 under `official/unicode/data/17.0.0/`, including their upstream version and
 checksums. A checked-in generator emits compact, sorted, non-overlapping Toka
-range tables under `lib/official/generated/`. Qualification must fail
+range tables under `lib/official/unicode/generated/`. Qualification must fail
 when regeneration changes generated output or when the source-data checksums
 do not match the lock metadata. Building a consumer never downloads Unicode
 data and never depends on ICU, CoreFoundation, or the local system Unicode
