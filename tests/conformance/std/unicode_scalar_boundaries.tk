@@ -33,5 +33,20 @@ fn main() -> i32 {
     if text.codepoint_index_at_byte_offset(7:usize).is_some() { return 11 }
     if text.codepoint_index_at_byte_offset(9:usize).is_some() { return 12 }
 
+    // U+FFFD is a valid Unicode scalar; decoder replacement on malformed
+    // input is tracked independently from the scalar value itself.
+    auto replacement# = string::from("�")
+    if !replacement.as_str().is_valid_utf8() { return 13 }
+    if replacement.as_str().as_bytes().try_to_str().is_err() { return 14 }
+
+    auto malformed# = string::from("")
+    malformed#.push_byte_raw(0x80:u8)
+    if malformed.as_str().is_valid_utf8() { return 15 }
+    auto invalid_result = malformed.as_str().as_bytes().try_to_str()
+    if invalid_result.is_ok() { return 16 }
+    auto invalid_error = invalid_result.unwrap_err()
+    if invalid_error.invalid_byte != 0x80:byte { return 17 }
+    if invalid_error.position != 0:usize { return 18 }
+
     return 0
 }

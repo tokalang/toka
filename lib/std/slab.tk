@@ -35,20 +35,15 @@ shape SlabEntry<'T> (
     next_free#: usize = 0
 )
 
-// Keep the slot allocation and its generation after clear. A SlabID is a
-// stable identity, not merely an index: discarding the entry table would let
-// a later insert recreate (index, generation = 1) and revive a stale ID.
-// Returns whether the slot may be reused. A slot at the final usable
-// generation is permanently retired, preserving identity rather than wrapping.
-fn clear_entry<'T>(entry#: SlabEntry<'T>, next_free: usize) -> bool {
-    auto dropped = cede entry.val
-    entry.val = Option<'T>::None
-    if entry.generation >= 0xFFFFFFFE:u32 {
-        entry.next_free = 0xFFFFFFFF:usize
-        return false
+// Consume a slot value before replacing it. Plain aggregate assignment does
+// not own destruction of the overwritten payload, so clear must make the
+// consumption explicit for @encap element types.
+fn consume_slot_value<'T>(cede value: Option<'T>) -> Option<'T> {
+    match cede value {
+        auto Option<'T>::Some('dropped) => {}
+        Option<'T>::None => {}
     }
-    entry.next_free = next_free
-    return true
+    return Option<'T>::None
 }
 
 pub shape Slab<'T> (
@@ -87,8 +82,15 @@ impl<'T> Slab<'T> {
         loop index < entry_count {
             unsafe {
                 auto *#entry# = self.entries.unsafe_get(index)
-                if clear_entry<'T>(entry, next_free) {
+                // Consume the old Option before storing None. Keep the slot
+                // itself so that clear cannot revive a stale SlabID by
+                // recreating generation 1.
+                entry.val = consume_slot_value<'T>(cede entry.val)
+                if entry.generation < 0xFFFFFFFE:u32 {
+                    entry.next_free = next_free
                     next_free = index
+                } else {
+                    entry.next_free = 0xFFFFFFFF:usize
                 }
             }
             index = index + 1:usize
