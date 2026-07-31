@@ -1,0 +1,308 @@
+// Unicode 17.0.0 extended-grapheme segmentation.
+//
+// Tables are generated from vendored UCD data. This module deliberately keeps
+// all offsets in UTF-8 bytes and validates every scalar during each public
+// scan; malformed input is never repaired into an invented boundary.
+
+import core/option::{Option}
+import core/result::{Result}
+import core/str::{str}
+import core/types::{byte, Char32, usize}
+import core/utf8::{Cursor}
+import official/generated/grapheme_tables::{
+    grapheme_break_property,
+    indic_conjunct_break_property,
+    is_extended_pictographic,
+    GCB_CR,
+    GCB_LF,
+    GCB_CONTROL,
+    GCB_EXTEND,
+    GCB_ZWJ,
+    GCB_REGIONAL_INDICATOR,
+    GCB_PREPEND,
+    GCB_SPACING_MARK,
+    GCB_L,
+    GCB_V,
+    GCB_T,
+    GCB_LV,
+    GCB_LVT,
+    INCB_CONSONANT,
+    INCB_EXTEND,
+    INCB_LINKER
+}
+
+pub import core/str::{UnicodeError}
+
+shape Scalar (
+    cp: Char32,
+    start_byte: usize,
+    gcb: i32,
+    incb: i32,
+    extended_pictographic: bool
+)
+
+shape GraphemeRange (
+    start_byte: usize,
+    end_byte: usize
+)
+
+shape GraphemeScanner (
+    text: str,
+    cursor#: Cursor,
+    has_previous#: bool,
+    previous#: Scalar,
+    cluster_start#: usize,
+    ri_count#: usize,
+    incb_state#: i32,
+    ep_extend_prefix#: bool,
+    ep_zwj_prefix#: bool,
+    finished#: bool
+)
+
+impl GraphemeScanner@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+fn unicode_error(text: str, position: usize) -> UnicodeError {
+    return UnicodeError(
+        invalid_byte = text.byte_at(position) as byte,
+        position = position
+    )
+}
+
+fn is_control(gcb: i32) -> bool {
+    return gcb == GCB_CONTROL || gcb == GCB_CR || gcb == GCB_LF
+}
+
+impl GraphemeScanner {
+    fn new(text: str) -> GraphemeScanner <- text {
+        return GraphemeScanner(
+            text = text.clone(),
+            cursor = text.chars(),
+            has_previous = false,
+            previous = Scalar(
+                cp = 0:u32,
+                start_byte = 0:usize,
+                gcb = 0:i32,
+                incb = 0:i32,
+                extended_pictographic = false
+            ),
+            cluster_start = 0:usize,
+            ri_count = 0:usize,
+            incb_state = 0:i32,
+            ep_extend_prefix = false,
+            ep_zwj_prefix = false,
+            finished = false
+        )
+    }
+
+    fn read_scalar(self#) -> Result<Option<Scalar>, UnicodeError> {
+        auto start = self.cursor.current_pos()
+        auto decoded = self.cursor#.next_decoded()
+        if decoded.is_none() {
+            return Result<Option<Scalar>, UnicodeError>::Ok(Option<Scalar>::None)
+        }
+        auto value = decoded.unwrap()
+        if !value.valid {
+            return Result<Option<Scalar>, UnicodeError>::Err(unicode_error(self.text, start))
+        }
+        auto scalar = Scalar(
+            cp = value.cp,
+            start_byte = start,
+            gcb = grapheme_break_property(value.cp),
+            incb = indic_conjunct_break_property(value.cp),
+            extended_pictographic = is_extended_pictographic(value.cp)
+        )
+        return Result<Option<Scalar>, UnicodeError>::Ok(Option<Scalar>::Some(scalar))
+    }
+
+    fn should_break_before(self, next: Scalar) -> bool {
+        auto previous = self.previous
+
+        // GB3, GB4, GB5
+        if previous.gcb == GCB_CR && next.gcb == GCB_LF { return false }
+        if is_control(previous.gcb) || is_control(next.gcb) { return true }
+
+        // GB6, GB7, GB8
+        auto next_is_l_or_v# = next.gcb == GCB_L || next.gcb == GCB_V || next.gcb == GCB_LV || next.gcb == GCB_LVT
+        if previous.gcb == GCB_L && next_is_l_or_v { return false }
+        auto previous_is_lv_or_v# = previous.gcb == GCB_LV || previous.gcb == GCB_V
+        auto next_is_v_or_t# = next.gcb == GCB_V || next.gcb == GCB_T
+        if previous_is_lv_or_v && next_is_v_or_t { return false }
+        auto previous_is_lvt_or_t# = previous.gcb == GCB_LVT || previous.gcb == GCB_T
+        if previous_is_lvt_or_t && next.gcb == GCB_T { return false }
+
+        // GB9, GB9a, GB9b
+        if next.gcb == GCB_EXTEND || next.gcb == GCB_ZWJ { return false }
+        if next.gcb == GCB_SPACING_MARK { return false }
+        if previous.gcb == GCB_PREPEND { return false }
+
+        // GB9c. incb_state is the recognized prefix ending at previous.
+        if self.incb_state == 2:i32 && next.incb == INCB_CONSONANT { return false }
+
+        // GB11. ep_zwj_prefix is true only for Extended_Pictographic
+        // Extend* ZWJ ending at previous.
+        if self.ep_zwj_prefix && next.extended_pictographic { return false }
+
+        // GB12/GB13. ri_count includes the consecutive RI run ending at
+        // previous, so an odd count joins the next RI.
+        if previous.gcb == GCB_REGIONAL_INDICATOR && next.gcb == GCB_REGIONAL_INDICATOR && self.ri_count % 2:usize == 1:usize { return false }
+
+        // GB999
+        return true
+    }
+
+    fn advance_state(self#, scalar: Scalar) {
+        if scalar.gcb == GCB_REGIONAL_INDICATOR {
+            self.ri_count = self.ri_count + 1:usize
+        } else {
+            self.ri_count = 0:usize
+        }
+
+        if scalar.incb == INCB_CONSONANT {
+            self.incb_state = 1:i32
+        } else if scalar.incb == INCB_LINKER {
+            if self.incb_state == 1:i32 || self.incb_state == 2:i32 {
+                self.incb_state = 2:i32
+            } else {
+                self.incb_state = 0:i32
+            }
+        } else if scalar.incb != INCB_EXTEND {
+            self.incb_state = 0:i32
+        }
+
+        if scalar.gcb == GCB_ZWJ {
+            self.ep_zwj_prefix = self.ep_extend_prefix
+            self.ep_extend_prefix = false
+        } else {
+            self.ep_zwj_prefix = false
+            if scalar.gcb != GCB_EXTEND {
+                self.ep_extend_prefix = scalar.extended_pictographic
+            }
+        }
+    }
+
+    fn initialize(self#) -> Result<bool, UnicodeError> {
+        if self.has_previous { return Result<bool, UnicodeError>::Ok(true) }
+        auto first_result = self#.read_scalar()
+        if first_result.is_err() {
+            return Result<bool, UnicodeError>::Err(first_result.unwrap_err())
+        }
+        auto first = first_result.unwrap()
+        if first.is_none() {
+            self.finished = true
+            return Result<bool, UnicodeError>::Ok(false)
+        }
+        auto scalar = first.unwrap()
+        self.previous = scalar
+        self.cluster_start = scalar.start_byte
+        self.has_previous = true
+        self#.advance_state(scalar)
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+
+    fn next_cluster(self#) -> Result<Option<GraphemeRange>, UnicodeError> {
+        if self.finished {
+            return Result<Option<GraphemeRange>, UnicodeError>::Ok(Option<GraphemeRange>::None)
+        }
+        auto initialized = self#.initialize()
+        if initialized.is_err() {
+            return Result<Option<GraphemeRange>, UnicodeError>::Err(initialized.unwrap_err())
+        }
+        if !initialized.unwrap() {
+            return Result<Option<GraphemeRange>, UnicodeError>::Ok(Option<GraphemeRange>::None)
+        }
+
+        loop true {
+            auto following_result = self#.read_scalar()
+            if following_result.is_err() {
+                return Result<Option<GraphemeRange>, UnicodeError>::Err(following_result.unwrap_err())
+            }
+            auto following = following_result.unwrap()
+            if following.is_none() {
+                self.finished = true
+                return Result<Option<GraphemeRange>, UnicodeError>::Ok(
+                    Option<GraphemeRange>::Some(GraphemeRange(
+                        start_byte = self.cluster_start,
+                        end_byte = self.text.len()
+                    ))
+                )
+            }
+
+            auto scalar = following.unwrap()
+            auto boundary = self.should_break_before(scalar)
+            self#.advance_state(scalar)
+            self.previous = scalar
+            if boundary {
+                auto result = GraphemeRange(
+                    start_byte = self.cluster_start,
+                    end_byte = scalar.start_byte
+                )
+                self.cluster_start = scalar.start_byte
+                return Result<Option<GraphemeRange>, UnicodeError>::Ok(Option<GraphemeRange>::Some(result))
+            }
+        }
+        return Result<Option<GraphemeRange>, UnicodeError>::Ok(Option<GraphemeRange>::None)
+    }
+}
+
+pub fn grapheme_count(text: str) -> Result<usize, UnicodeError> {
+    auto scanner# = GraphemeScanner::new(text)
+    auto count#: usize = 0:usize
+    loop true {
+        auto cluster_result = scanner#.next_cluster()
+        if cluster_result.is_err() {
+            return Result<usize, UnicodeError>::Err(cluster_result.unwrap_err())
+        }
+        if cluster_result.unwrap().is_none() { break }
+        count = count + 1:usize
+    }
+    return Result<usize, UnicodeError>::Ok(count)
+}
+
+pub fn grapheme_byte_offset(text: str, grapheme_index: usize) -> Result<Option<usize>, UnicodeError> {
+    auto scanner# = GraphemeScanner::new(text)
+    auto index#: usize = 0:usize
+    auto found# = Option<usize>::None
+    loop true {
+        auto cluster_result = scanner#.next_cluster()
+        if cluster_result.is_err() {
+            return Result<Option<usize>, UnicodeError>::Err(cluster_result.unwrap_err())
+        }
+        auto cluster = cluster_result.unwrap()
+        if cluster.is_none() { break }
+        auto range = cluster.unwrap()
+        if index == grapheme_index {
+            found = Option<usize>::Some(range.start_byte)
+        }
+        index = index + 1:usize
+    }
+    if index == grapheme_index {
+        found = Option<usize>::Some(text.len())
+    }
+    return Result<Option<usize>, UnicodeError>::Ok(found)
+}
+
+pub fn grapheme_index_at_byte_offset(text: str, byte_offset: usize) -> Result<Option<usize>, UnicodeError> {
+    auto scanner# = GraphemeScanner::new(text)
+    auto index#: usize = 0:usize
+    auto found# = Option<usize>::None
+    loop true {
+        auto cluster_result = scanner#.next_cluster()
+        if cluster_result.is_err() {
+            return Result<Option<usize>, UnicodeError>::Err(cluster_result.unwrap_err())
+        }
+        auto cluster = cluster_result.unwrap()
+        if cluster.is_none() { break }
+        auto range = cluster.unwrap()
+        if range.start_byte == byte_offset {
+            found = Option<usize>::Some(index)
+        }
+        index = index + 1:usize
+    }
+    if text.len() == byte_offset {
+        found = Option<usize>::Some(index)
+    }
+    return Result<Option<usize>, UnicodeError>::Ok(found)
+}
