@@ -30,7 +30,8 @@ fn main() -> i32 {
         if slab.get(replacement).is_none() { return 3 }
         if original.index() != replacement.index() { return 4 }
         if original.generation() == replacement.generation() { return 5 }
+        if replacement.generation() != 2:usize { return 6 }
     }
-    if g_drop_count != 2:i64 { return 6 }
+    if g_drop_count != 2:i64 { return 7 }
     return 0
 }

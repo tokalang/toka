@@ -35,14 +35,20 @@ shape SlabEntry<'T> (
     next_free#: usize = 0
 )
 
-// Keep the slot allocation and its generation after clear.  A SlabID is a
+// Keep the slot allocation and its generation after clear. A SlabID is a
 // stable identity, not merely an index: discarding the entry table would let
 // a later insert recreate (index, generation = 1) and revive a stale ID.
-fn clear_entry<'T>(entry#: SlabEntry<'T>, next_free: usize) {
+// Returns whether the slot may be reused. A slot at the final usable
+// generation is permanently retired, preserving identity rather than wrapping.
+fn clear_entry<'T>(entry#: SlabEntry<'T>, next_free: usize) -> bool {
     auto dropped = cede entry.val
     entry.val = Option<'T>::None
-    entry.generation = entry.generation + 1:u32
+    if entry.generation >= 0xFFFFFFFE:u32 {
+        entry.next_free = 0xFFFFFFFF:usize
+        return false
+    }
     entry.next_free = next_free
+    return true
 }
 
 pub shape Slab<'T> (
@@ -77,18 +83,17 @@ impl<'T> Slab<'T> {
         }
 
         auto index#: usize = 0
+        auto next_free# = 0xFFFFFFFF:usize
         loop index < entry_count {
-            auto next_free# = 0xFFFFFFFF:usize
-            if index + 1:usize < entry_count {
-                next_free = index + 1:usize
-            }
             unsafe {
                 auto *#entry# = self.entries.unsafe_get(index)
-                clear_entry<'T>(entry, next_free)
+                if clear_entry<'T>(entry, next_free) {
+                    next_free = index
+                }
             }
             index = index + 1:usize
         }
-        self.free_head = 0:usize
+        self.free_head = next_free
         self.len = 0
     }
 
@@ -103,7 +108,7 @@ impl<'T> Slab<'T> {
             auto entry = SlabEntry<'T>(
                 val = Option<'T>::None,
                 generation = 1:u32,
-                next_free = 0:usize
+                next_free = 0xFFFFFFFF:usize
             )
             self.entries#.push(cede entry)
         } else {
@@ -141,8 +146,12 @@ impl<'T> Slab<'T> {
             
             auto val = cede entry.val
             entry.val = Option<'T>::None
-            entry.next_free = self.free_head
-            self.free_head = idx
+            if entry.generation < 0xFFFFFFFE:u32 {
+                entry.next_free = self.free_head
+                self.free_head = idx
+            } else {
+                entry.next_free = 0xFFFFFFFF:usize
+            }
             self.len = self.len - 1
             return cede val
         }
