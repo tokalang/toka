@@ -63,11 +63,15 @@ def write_consumer(project: Path, dependency: Path) -> None:
         encoding="utf-8",
     )
     (project / "src" / "main.tk").write_text(
+        "import core/option::{Option}\n"
         "import official/unicode::{grapheme_count, grapheme_slice}\n\n"
         "fn main() -> i32 {\n"
         '    if grapheme_count("ÄB").unwrap() != 2:usize { return 1 }\n'
         '    auto first = grapheme_slice("ÄB", 0:usize, 1:usize).unwrap()\n'
-        '    if first.is_none() || !first.unwrap().equals("Ä") { return 2 }\n'
+        "    match cede first {\n"
+        '        auto Option<str>::Some(\'value) => { if !\'value.equals("Ä") { return 2 } }\n'
+        "        Option<str>::None => return 2\n"
+        "    }\n"
         "    return 0\n"
         "}\n",
         encoding="utf-8",
