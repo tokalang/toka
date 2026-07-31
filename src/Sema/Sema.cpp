@@ -1003,6 +1003,10 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
       impl->Methods.front()->Args.size() == 1 &&
       Type::stripMorphology(impl->Methods.front()->Args.front().Name) == "self" &&
       !impl->Methods.front()->Args.front().IsCeded &&
+      !impl->Methods.front()->Args.front().IsValueMutable &&
+      impl->Methods.front()->LifeDependencies.empty() &&
+      Type::stripMorphology(impl->Methods.front()->ReturnType) ==
+          impl->Methods.front()->ReturnType &&
       (impl->Methods.front()->ReturnType == "Self" ||
        resolveType(impl->Methods.front()->ReturnType) == resolveType(impl->TypeName));
   if (!validDup || Slice4DupProviders.count(shape)) {

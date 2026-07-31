@@ -77,6 +77,18 @@ def main() -> int:
                "impl Value@Dup { pub fn dup(self) -> Self { return Value(raw = self.raw) } }\n"
                "fn main() -> i32 { return 0 }\n")
 
+        for name, declaration in (
+                ("dup_mutable_receiver.tk", "pub fn dup(self#) -> Self"),
+                ("dup_consuming_receiver.tk", "pub fn dup(cede self) -> Self"),
+                ("dup_morphic_return.tk", "pub fn dup(self) -> Self#"),
+                ("dup_return_dependency.tk", "pub fn dup(self) -> Self <- self")):
+            reject(root, name,
+                   "shape Resource(raw: i32)\n"
+                   "trait @Dup { pub fn dup(self) -> Self }\n"
+                   "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+                   "impl Resource@Dup { %s { return Resource(raw = self.raw) } }\n"
+                   "fn main() -> i32 { return 0 }\n" % declaration)
+
         reject(root, "deleted_function.tk",
                "fn obsolete() = delete\n"
                "fn main() -> i32 { return 0 }\n")
