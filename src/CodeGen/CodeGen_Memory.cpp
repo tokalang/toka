@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/CodeGen.h"
 #include "toka/MemberAccess.h"
+#include "toka/Parser.h"
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -470,10 +471,11 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
     }
   }
 
-  // 2. Cascade Drop: recursively drop fields only when no destructor owns the
-  // whole object. Explicit struct destructors and synthesized struct drops
-  // both retain that responsibility; synthesized enums are handled above.
-  if (!calledDestructor && m_Shapes.count(typeName)) {
+  // In Slice 3, a custom hook is followed by compiler-owned field cleanup.
+  // Legacy custom destructors retain their previous whole-object behavior.
+  if ((!calledDestructor || (Parser::EncapLifecycleEpochV3 && knownShape &&
+                             knownShape->HasExplicitDrop)) &&
+      m_Shapes.count(typeName)) {
     const ShapeDecl *sh = m_Shapes[typeName];
     llvm::StructType *st = m_StructTypes[typeName];
     if (!st) {
@@ -600,11 +602,16 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
         const bool memberNeedsDrop =
             memberDropType &&
             (memberDropType->isArray() || memberDropType->IsNullable ||
+             (Parser::EncapLifecycleEpochV3 &&
+              (memberDropType->isUniquePtr() || memberDropType->isSharedPtr())) ||
              (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
 
         // Value fields recurse through their semantic type.  This includes
         // fixed arrays, whose elements may themselves require destruction.
-        if (!isPointer) {
+        const bool v3OwningPointer = Parser::EncapLifecycleEpochV3 &&
+            memberDropType &&
+            (memberDropType->isUniquePtr() || memberDropType->isSharedPtr());
+        if (!isPointer || v3OwningPointer) {
            if (memberNeedsDrop) {
              llvm::Value *typedBase = m_Builder.CreateBitCast(ptrAddr, llvm::PointerType::getUnqual(m_Context));
              llvm::Value *fieldPtr = m_Builder.CreateStructGEP(st, typedBase, i, "drop_cascade.gep");

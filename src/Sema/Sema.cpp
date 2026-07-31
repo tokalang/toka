@@ -768,6 +768,22 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
     HasError = true;
     return;
   }
+  if (Parser::EncapLifecycleEpochV3 && dropHooks == 1) {
+    const FunctionDecl *hook = nullptr;
+    for (const auto &method : impl->Methods)
+      if (method->Name == "drop") hook = method.get();
+    const bool validHook = hook && !hook->IsPub && !hook->IsDeleted &&
+        hook->GenericParams.empty() && hook->Effect == EffectKind::None &&
+        hook->ReturnType == "void" && hook->Args.size() == 1 &&
+        Type::stripMorphology(hook->Args[0].Name) == "self" &&
+        hook->Args[0].IsValueMutable;
+    if (!validHook) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v3 drop hook must be private fn drop(self#) -> void");
+      HasError = true;
+      return;
+    }
+  }
   for (const auto &[registeredShape, registered] : Slice2PolicyMap) {
     (void)registeredShape;
     std::string registeredBase = registered.Impl ? registered.Impl->TypeName : "";
@@ -2798,8 +2814,12 @@ void Sema::registerImpl(ImplDecl *Impl) {
               ? resolvedTypeName + "_" + Method->Name
               : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     }
-    MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
-    MethodDecls[resolvedTypeName][Method->Name] = Method.get();
+    const bool isSlice3DropHook = Parser::EncapLifecycleEpochV3 &&
+        getTraitFamilyName(canonicalTrait) == "encap" && Method->Name == "drop";
+    if (!isSlice3DropHook) {
+      MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
+      MethodDecls[resolvedTypeName][Method->Name] = Method.get();
+    }
     implemented.insert(Method->Name);
   }
 
@@ -2958,12 +2978,18 @@ void Sema::declareImpl(ImplDecl *Impl) {
               ? resolvedTypeName + "_" + Method->Name
               : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     }
-    MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
-    MethodDecls[resolvedTypeName][Method->Name] = Method.get();
+    const bool isSlice3DropHook = Parser::EncapLifecycleEpochV3 &&
+        getTraitFamilyName(canonicalTrait) == "encap" && Method->Name == "drop";
+    if (!isSlice3DropHook) {
+      MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
+      MethodDecls[resolvedTypeName][Method->Name] = Method.get();
+    }
     implemented.insert(Method->Name);
   }
 
-  if (!Impl->TraitName.empty()) {
+  if (!Impl->TraitName.empty() &&
+      !(Parser::EncapLifecycleEpochV3 &&
+        getTraitFamilyName(canonicalTrait) == "encap")) {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey];
     for (auto &Method : Impl->Methods) {
@@ -3319,6 +3345,12 @@ void Sema::checkImpl(ImplDecl *Impl) {
 
 void Sema::checkShapeSovereignty() {
   for (auto const &[name, decl] : ShapeMap) {
+    if (Parser::EncapLifecycleEpochV3) {
+      auto owner = DeclarationLexicalScopes.find(decl);
+      if (owner != DeclarationLexicalScopes.end() && owner->second &&
+          owner->second->IsTrustedSystemModule)
+        continue;
+    }
     if (!decl->GenericParams.empty())
       continue;
     if (GenericShapeCache.count(name))
@@ -3505,7 +3537,8 @@ void Sema::analyzeShapes(Module &M) {
 
     const bool hasStructuralDrop =
         M.IsInterface && M.InterfaceStructuralDropShapes.count(S->Name);
-    if (props.HasDrop && !hasExplicitDrop && !hasStructuralDrop) {
+    if (props.HasDrop && !hasExplicitDrop && !hasStructuralDrop &&
+        !Parser::EncapLifecycleEpochV3) {
       // [Ch 7] Synthesize default drop impl for resource-managing shapes
       std::vector<FunctionDecl::Arg> args;
       FunctionDecl::Arg dropArg;

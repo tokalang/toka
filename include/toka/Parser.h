@@ -29,6 +29,8 @@ public:
   // Clean-break @encap policy grammar and access semantics, enabled only by
   // the Slice 2 audit gate until the library migration lands.
   static bool EncapPolicyEpochV2;
+  // Slice 3 lifecycle lowering, enabled only after the Slice 2 policy gate.
+  static bool EncapLifecycleEpochV3;
 
   Parser(const std::vector<Token> &tokens, const std::string &fileName = "")
       : m_Tokens(tokens), m_Pos(0), m_CurrentFile(fileName) {
