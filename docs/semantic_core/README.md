@@ -77,8 +77,8 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   and Copy-SCC redlines form its blocking Slice 0.
 - `encap_slice0_baseline.md` records the legacy resolver, lifecycle, and TKI
   facts against which that blocking, non-semantic Slice 0 is audited.
-- `encap_slice0_go_no_go.md` records the current evidence decision; it is
-  explicitly No-Go for activation until the remaining redline matrix closes.
+- `encap_slice0_go_no_go.md` records the in-progress Slice 0 gate status;
+  activation remains disabled until the remaining redline matrix closes.
 - `typed_todo_rfc.md` freezes the adopted expression-only typed-todo boundary:
   complete expected contracts, zero authority, conditional facts, and the
   no-CodeGen/TKI/cache publication rule.

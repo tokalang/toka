@@ -1,11 +1,10 @@
-# `@encap` Epoch Slice 0 Final Go/No-Go Review
+# `@encap` Epoch Slice 0 Gate Status
 
-**Decision:** **Final No-Go for semantic activation at this revision.**
+**Status:** **In progress — semantic activation remains disabled.**
 
-This is a completed decision, not a claim that Slice 0 implementation is
-complete. The RFC makes all six exit conditions mandatory for a Go decision.
-The evidence below proves that several are still absent, so enabling any epoch
-rule would be unsound regardless of the passing legacy suite.
+This is not a final Go/No-Go decision. The RFC makes all six exit conditions
+mandatory for a Go decision. Missing evidence is work remaining in Slice 0;
+it is not evidence that the proposed epoch is infeasible.
 
 ## Evidence achieved
 
@@ -27,7 +26,7 @@ rule would be unsound regardless of the passing legacy suite.
   generic module-identity cases. This preserves legacy behaviour; it is not
   evidence for the proposed epoch.
 
-## RFC exit-gate audit
+## Current exit-gate audit
 
 | RFC Slice 0 exit condition | Current evidence | Result |
 | --- | --- | --- |
@@ -38,7 +37,7 @@ rule would be unsound regardless of the passing legacy suite.
 | Forged or missing metadata fails closed | Missing resolver input produces `Unknown`; forged package/workspace/TKI metadata has no dedicated matrix. | Partially proven |
 | Existing path grants resolve to one owner and target | No full standard-library, official-package, and build-tool inventory has been generated. | Not proven |
 
-## Consequences
+## Current consequence
 
 1. Workspace and toolchain node IDs are not yet emitted by the toolchain, so
    their supported resolver paths remain intentionally `Unknown`.
@@ -53,8 +52,8 @@ rule would be unsound regardless of the passing legacy suite.
    result exists for the proposed epoch.
 
 The current resolver work is useful preparatory infrastructure, but it does
-not satisfy the semantic epoch's safety case. The correct action is to retain
-the RFC and observation code while keeping all legacy semantics active.
+not yet satisfy the semantic epoch's safety case. The correct action is to
+continue Slice 0 while keeping all legacy semantics active.
 
 ## Required work before a new decision
 
