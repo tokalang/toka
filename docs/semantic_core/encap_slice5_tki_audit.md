@@ -32,7 +32,8 @@ cmake --build build --parallel 2
 python3 tools/scripts/test_encap_slice5_tki_audit.py
 ```
 
-The audit exports a governed Copy capsule and a custom-drop capsule, confirms
-their v2 records, hides the source and replays through the interface, then
-proves both format-1 and forged/missing resolver-identity metadata are
+The audit exports a governed Copy capsule, a user `@Dup` capsule, and a
+custom-drop capsule, confirms their v2 records, hides the source, and replays
+both Copy and one explicit `[dup ...]` provider call through the interface.
+It then proves both format-1 and forged/missing resolver-identity metadata are
 rejected.

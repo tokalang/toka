@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -13,11 +14,13 @@ ROOT = Path(__file__).resolve().parents[2]
 TOKAC = ROOT / "build" / "bin" / "tokac"
 
 
-def compile_source(source: Path, root: Path, *, expect_success: bool) -> subprocess.CompletedProcess[str]:
-    output = source.with_suffix(".o")
+def compile_source(source: Path, root: Path, *, expect_success: bool,
+                   emit_llvm: bool = False) -> subprocess.CompletedProcess[str]:
+    output = source.with_suffix(".ll" if emit_llvm else ".o")
     command = (str(TOKAC), "--encap-epoch=v5", "--workspace-node",
                "slice5-workspace-v1", "--workspace-root", str(root),
-               "-c", "-o", str(output), str(source))
+               "-c", *(("--emit-llvm",) if emit_llvm else ()),
+               "-o", str(output), str(source))
     completed = subprocess.run(command, cwd=ROOT, text=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if (completed.returncode == 0) != expect_success:
@@ -39,12 +42,18 @@ def main() -> int:
             "pub shape NonZero(raw: i32)\n"
             "impl NonZero@encap { pub raw }\n"
             "impl NonZero@Copy {}\n"
+            "trait @Dup { pub fn dup(self) -> Self }\n"
+            "pub shape Resource(raw: i32)\n"
+            "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+            "impl Resource@Dup {\n"
+            "  pub fn dup(self) -> Self { return Resource(raw = self.raw + 1) }\n"
+            "}\n"
             "pub shape Tracked(value: i32)\n"
             "impl Tracked@encap { pub value fn drop(self#) {} }\n"
             "pub fn make() -> NonZero { return NonZero(raw = 7) }\n",
             encoding="utf-8")
         consumer.write_text(
-            "import ./lib::{NonZero, make}\n"
+            "import ./lib::{NonZero, Resource, make}\n"
             "fn main() -> i32 {\n"
             "  auto value = make()\n"
             "  auto copied = NonZero(value)\n"
@@ -63,6 +72,7 @@ def main() -> int:
                 "// @tki v2 policy: NonZero = global:raw",
                 "// @tki v2 copy_witness: NonZero = explicit-verified",
                 "// @tki v2 dup_provider: NonZero = intrinsic-copy",
+                "// @tki v2 dup_provider: Resource = user",
                 "// @tki v2 custom_drop: Tracked = encap_Tracked_drop",
         ):
             assert expected in text, expected
@@ -70,6 +80,19 @@ def main() -> int:
 
         provider.rename(root / "lib.tk.source-hidden")
         compile_source(consumer, root, expect_success=True)
+
+        dup_consumer = root / "dup_main.tk"
+        dup_consumer.write_text(
+            "import ./lib::{Resource}\n"
+            "fn main() -> i32 {\n"
+            "  auto resource = Resource(raw = 1)\n"
+            "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
+            "  return resource.raw + closure()\n"
+            "}\n", encoding="utf-8")
+        compile_source(dup_consumer, root, expect_success=True, emit_llvm=True)
+        dup_ir = dup_consumer.with_suffix(".ll").read_text(encoding="utf-8")
+        dup_calls = re.findall(r"\bcall\b[^\n]*@Dup_Resource_dup\(", dup_ir)
+        assert len(dup_calls) == 1, dup_ir
 
         v1 = text.replace("// @meta format_version: 2",
                           "// @meta format_version: 1", 1)
