@@ -506,6 +506,10 @@ int main(int argc, char **argv) {
   std::vector<std::string> linkLibraries;
   std::vector<std::string> linkFrameworks;
   std::map<std::string, std::string> pkgMap;
+  std::map<std::string, std::string> packageNodeIds;
+  std::string workspaceNodeId;
+  std::string workspaceRoot;
+  std::string toolchainNodeId;
   bool disableBorrowCheck = false;
   bool emitObj = false;
   bool compileOnly = false;
@@ -664,6 +668,36 @@ int main(int argc, char **argv) {
         llvm::errs() << "--pkg requires an argument\n";
         return 1;
       }
+    } else if (arg == "--pkg-node") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--pkg-node requires format import-prefix=opaque-node-id\n";
+        return 1;
+      }
+      std::string mapping = argv[++i];
+      size_t eqPos = mapping.find('=');
+      if (eqPos == std::string::npos || eqPos == 0 || eqPos + 1 >= mapping.size()) {
+        llvm::errs() << "--pkg-node requires format import-prefix=opaque-node-id\n";
+        return 1;
+      }
+      packageNodeIds[mapping.substr(0, eqPos)] = mapping.substr(eqPos + 1);
+    } else if (arg == "--workspace-node") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--workspace-node requires an opaque node id\n";
+        return 1;
+      }
+      workspaceNodeId = argv[++i];
+    } else if (arg == "--workspace-root") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--workspace-root requires a path\n";
+        return 1;
+      }
+      workspaceRoot = argv[++i];
+    } else if (arg == "--toolchain-node") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--toolchain-node requires an opaque node id\n";
+        return 1;
+      }
+      toolchainNodeId = argv[++i];
     } else if (arg == "-v" || arg == "--verbose") {
       verboseMode = true;
     } else if (arg == "-o") {
@@ -906,7 +940,9 @@ int main(int argc, char **argv) {
   std::vector<std::unique_ptr<toka::Module>> astModules;
   bool preferSource = !compileOnly;
   toka::ModuleResolver resolver(sm, searchPaths, pkgMap, preferSource,
-                                trustedSystemRoots);
+                                trustedSystemRoots, packageNodeIds,
+                                workspaceNodeId, workspaceRoot,
+                                toolchainNodeId);
   resolver.setProvidedObjects(objectFiles);
   bool parseSuccess = true;
   for (size_t i = 0; i < sourceFiles.size(); ++i) {
@@ -1004,6 +1040,18 @@ int main(int argc, char **argv) {
                      << escapeJsonString(info.MemoryEvidenceStatus) << "\",\n";
         llvm::outs() << "      \"memory_evidence_reason\": \""
                      << escapeJsonString(info.MemoryEvidenceReason) << "\",\n";
+        llvm::outs() << "      \"shadow_coordinate\": {\n";
+        llvm::outs() << "        \"status\": \""
+                     << (info.ShadowCoordinate.Known ? "known" : "unknown") << "\",\n";
+        llvm::outs() << "        \"crate_id\": \""
+                     << escapeJsonString(info.ShadowCoordinate.CrateId) << "\",\n";
+        llvm::outs() << "        \"logical_module_path\": \""
+                     << escapeJsonString(info.ShadowCoordinate.LogicalModulePath) << "\",\n";
+        llvm::outs() << "        \"origin\": \""
+                     << escapeJsonString(info.ShadowCoordinate.Origin) << "\",\n";
+        llvm::outs() << "        \"reason\": \""
+                     << escapeJsonString(info.ShadowCoordinate.Reason) << "\"\n";
+        llvm::outs() << "      },\n";
 
         bool isRoot = (std::find(roots.begin(), roots.end(), info.CanonicalPath) != roots.end());
         std::string interfaceOut = "";

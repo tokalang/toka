@@ -7,6 +7,7 @@
 #include "toka/InterfaceVersion.h"
 #include <fstream>
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <cstdlib>
 #include <sstream>
@@ -14,19 +15,128 @@
 namespace toka {
 
 static std::string calculateFNV1a(const std::string &str);
+static bool isWithinRoot(const std::string &path,
+                         const std::vector<std::string> &roots);
 
 ModuleResolver::ModuleResolver(SourceManager &sm,
                                std::vector<std::string> searchPaths,
                                std::map<std::string, std::string> pkgMap,
                                bool preferSource,
-                               std::vector<std::string> trustedSystemRoots)
+                               std::vector<std::string> trustedSystemRoots,
+                               std::map<std::string, std::string> packageNodeIds,
+                               std::string workspaceNodeId,
+                               std::string workspaceRoot,
+                               std::string toolchainNodeId)
     : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)),
-      m_PkgMap(std::move(pkgMap)), m_PreferSource(preferSource) {
+      m_PkgMap(std::move(pkgMap)),
+      m_PackageNodeIds(std::move(packageNodeIds)),
+      m_PreferSource(preferSource),
+      m_WorkspaceNodeId(std::move(workspaceNodeId)),
+      m_WorkspaceRoot(std::move(workspaceRoot)),
+      m_ToolchainNodeId(std::move(toolchainNodeId)) {
     for (const auto &root : trustedSystemRoots) {
         m_TrustedSystemRoots.push_back(PathUtils::canonicalize(root));
     }
+    if (!m_WorkspaceRoot.empty())
+        m_WorkspaceRoot = PathUtils::canonicalize(m_WorkspaceRoot);
     const char *useBuildCache = std::getenv("TOKA_USE_LIB_CACHE");
     m_UseBuildCache = useBuildCache && std::string(useBuildCache) == "1";
+}
+
+static std::string logicalPathFromRoot(const std::string &canonicalPath,
+                                       const std::string &canonicalRoot) {
+    std::error_code ec;
+    std::filesystem::path relative = std::filesystem::relative(
+        std::filesystem::path(canonicalPath), std::filesystem::path(canonicalRoot), ec);
+    if (ec || relative.empty() || relative.native().rfind("..", 0) == 0)
+        return "";
+    std::string logical = PathUtils::normalize(relative.string());
+    for (const char *extension : {".tki", ".tk"}) {
+        const size_t length = std::strlen(extension);
+        if (logical.size() > length &&
+            logical.compare(logical.size() - length, length, extension) == 0) {
+            logical.resize(logical.size() - length);
+            break;
+        }
+    }
+    return logical;
+}
+
+ShadowModuleCoordinate ModuleResolver::deriveShadowCoordinate(
+    const std::string &canonicalPath) const {
+    ShadowModuleCoordinate result;
+
+    // A package node is the authoritative input for package identities.  The
+    // installation path is used only to locate the already-locked node; it is
+    // never emitted as, or used as, a crate identity.
+    for (const auto &entry : m_PkgMap) {
+        const std::string target = PathUtils::canonicalize(entry.second);
+        const size_t libMarker = target.find("/lib/");
+        if (libMarker == std::string::npos)
+            continue;
+        const std::string libraryRoot = target.substr(0, libMarker + 4);
+        if (!isWithinRoot(canonicalPath, {libraryRoot}))
+            continue;
+        auto node = m_PackageNodeIds.find(entry.first);
+        if (node == m_PackageNodeIds.end() || node->second.empty()) {
+            result.Origin = "package";
+            result.Reason = "missing locked package node identity for '" + entry.first + "'";
+            return result;
+        }
+        const std::string logical = logicalPathFromRoot(canonicalPath, libraryRoot);
+        if (logical.empty()) {
+            result.Origin = "package";
+            result.Reason = "cannot derive logical module path below package lib root";
+            return result;
+        }
+        result.Known = true;
+        result.CrateId = node->second;
+        result.LogicalModulePath = logical;
+        result.Origin = "package";
+        return result;
+    }
+
+    if (!m_WorkspaceRoot.empty() && isWithinRoot(canonicalPath, {m_WorkspaceRoot})) {
+        result.Origin = "workspace";
+        if (m_WorkspaceNodeId.empty()) {
+            result.Reason = "missing workspace node identity";
+            return result;
+        }
+        const std::string logical = logicalPathFromRoot(canonicalPath, m_WorkspaceRoot);
+        if (logical.empty()) {
+            result.Reason = "cannot derive logical module path below workspace root";
+            return result;
+        }
+        result.Known = true;
+        result.CrateId = m_WorkspaceNodeId;
+        result.LogicalModulePath = logical;
+        return result;
+    }
+
+    if (isWithinRoot(canonicalPath, m_TrustedSystemRoots)) {
+        result.Origin = "toolchain";
+        if (m_ToolchainNodeId.empty()) {
+            result.Reason = "missing configured toolchain node identity";
+            return result;
+        }
+        for (const auto &root : m_TrustedSystemRoots) {
+            if (!isWithinRoot(canonicalPath, {root}))
+                continue;
+            const std::string logical = logicalPathFromRoot(canonicalPath, root);
+            if (logical.empty()) {
+                result.Reason = "cannot derive logical module path below toolchain root";
+                return result;
+            }
+            result.Known = true;
+            result.CrateId = m_ToolchainNodeId;
+            result.LogicalModulePath = logical;
+            return result;
+        }
+    }
+
+    result.Origin = "unknown";
+    result.Reason = "no resolver graph node identity for module";
+    return result;
 }
 
 static bool isWithinRoot(const std::string &path,
@@ -419,6 +529,13 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   info.CacheStatusReason = cacheStatusReason;
   info.SourceHash = sourceHash;
   info.ContentHash = contentHash;
+  // Prefer the resolver-selected source candidate over interface metadata.
+  // `source_path` remains untrusted loading/cache metadata in Slice 0 and can
+  // never grant a shadow crate coordinate by itself.
+  const std::string shadowIdentityPath = originalTkPath.empty()
+      ? canonicalPath
+      : originalTkPath;
+  info.ShadowCoordinate = deriveShadowCoordinate(shadowIdentityPath);
   info.MemoryEvidenceStatus = "NotApplicable";
   if (finalIsInterface) {
       info.SourcePath = meta.SourcePath;

@@ -33,6 +33,16 @@ struct TKIMetadata {
     std::string SourcePath;
 };
 
+// Slice 0 only: this coordinate is observational metadata.  It must not be
+// consulted by legacy visibility, type, cache, or lowering decisions.
+struct ShadowModuleCoordinate {
+    bool Known = false;
+    std::string CrateId;
+    std::string LogicalModulePath;
+    std::string Origin;
+    std::string Reason;
+};
+
 struct ModuleResolutionInfo {
     std::string CanonicalPath;
     bool IsInterface;
@@ -44,6 +54,7 @@ struct ModuleResolutionInfo {
     std::string SourcePath;
     std::string MemoryEvidenceStatus;
     std::string MemoryEvidenceReason;
+    ShadowModuleCoordinate ShadowCoordinate;
 };
 
 class ModuleResolver {
@@ -52,7 +63,11 @@ public:
                    std::vector<std::string> searchPaths,
                    std::map<std::string, std::string> pkgMap = {},
                    bool preferSource = false,
-                   std::vector<std::string> trustedSystemRoots = {});
+                   std::vector<std::string> trustedSystemRoots = {},
+                   std::map<std::string, std::string> packageNodeIds = {},
+                   std::string workspaceNodeId = "",
+                   std::string workspaceRoot = "",
+                   std::string toolchainNodeId = "");
 
     // Parse the entry file and all imports recursively.
     // If overrideSourceCode is non-empty, the entry file content is taken from it (used in playground).
@@ -86,9 +101,13 @@ private:
     SourceManager &m_SourceManager;
     std::vector<std::string> m_SearchPaths;
     std::map<std::string, std::string> m_PkgMap;
+    std::map<std::string, std::string> m_PackageNodeIds;
     bool m_PreferSource;
     bool m_UseBuildCache;
     std::vector<std::string> m_TrustedSystemRoots;
+    std::string m_WorkspaceNodeId;
+    std::string m_WorkspaceRoot;
+    std::string m_ToolchainNodeId;
     std::vector<std::string> m_Roots;
     std::map<std::string, std::string> m_SourceOverrides;
     bool m_VersionedSources = false;
@@ -114,6 +133,7 @@ private:
     // Helper to read and validate metadata from a .tki file
     bool readTKIMetadata(const std::string &path, TKIMetadata &meta);
     TKICacheStatus validateTKIMetadata(const std::string &path, std::string &reason);
+    ShadowModuleCoordinate deriveShadowCoordinate(const std::string &canonicalPath) const;
 };
 
 } // namespace toka
