@@ -4,7 +4,7 @@
 // High-level async combinators and structured concurrency.
 
 import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start};
-import core/marker::{@Dup};
+import core/traits::{@Dup};
 import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
 import std/vec::{Vec};
 import std/io::{println};

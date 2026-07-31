@@ -14,6 +14,23 @@
 
 import core/option::{Option}
 
+// Marker trait for types that can be safely moved.
+pub trait @Move {}
+
+// @Copy is an empty compiler-recognized marker. Structural eligibility is
+// verified by the compiler; library code never supplies an operation body.
+pub trait @Copy {}
+
+// @Dup is the explicit, non-implicit duplication capability.
+pub trait @Dup {
+    pub fn dup(self) -> Self
+}
+
+// Trait for types that have a default value.
+pub trait @Default {
+    pub fn init(self)
+}
+
 pub trait @PartialOrd {
     pub fn cmp(self, other: Self) -> i32
 }

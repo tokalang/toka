@@ -7,9 +7,8 @@ positive-capability model introduced by Slices 1–5.
 
 - `lib/` contains no deleted declarations, wildcard `@Encap` grants, or
   legacy `@Clone` / `@Drop` facets.
-- `core/marker` declares the empty compiler-recognized `@Copy` marker and the
-  explicit `@Dup::dup` capability; `core/traits` defines `@Encap` as an empty
-  policy marker.
+- `core/traits` declares the empty compiler-recognized `@Copy` and `@Encap`
+  markers, plus the explicit `@Dup::dup` capability.
 - `Vec<T>` has one unconditional resource policy. Its ordinary APIs no longer
   supply a conditional policy or a negative copy declaration.
 - `Duration`, `Instant`, `SystemTime`, `DateTime`, reflection `FieldInfo`,
