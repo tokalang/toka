@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -76,6 +77,33 @@ def main() -> int:
             "}\n", encoding="utf-8")
         rejected_closure_copy = compile_source(closure_copy, expect_success=False)
         assert "E04581" in rejected_closure_copy.stderr, rejected_closure_copy.stderr
+
+        dup_capture = root / "dup_capture.tk"
+        dup_capture.write_text(
+            "trait @Dup { pub fn dup(self) -> Self }\n"
+            "shape Resource(raw: i32)\n"
+            "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+            "impl Resource@Dup {\n"
+            "  pub fn dup(self) -> Self { return Resource(raw = self.raw + 1) }\n"
+            "}\n"
+            "fn main() -> i32 {\n"
+            "  auto resource = Resource(raw = 1)\n"
+            "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
+            "  return closure()\n"
+            "}\n", encoding="utf-8")
+        compile_source(dup_capture, expect_success=True)
+        dup_ir = dup_capture.with_suffix(".ll").read_text(encoding="utf-8")
+        dup_calls = re.findall(r"\bcall\b[^\n]*@Dup_Resource_dup\(", dup_ir)
+        assert len(dup_calls) == 1, dup_ir
+
+        reject(root, "dup_capture_without_provider.tk",
+               "shape Resource(raw: i32)\n"
+               "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+               "fn main() -> i32 {\n"
+               "  auto resource = Resource(raw = 1)\n"
+               "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
+               "  return closure()\n"
+               "}\n")
 
         reject(root, "copy_with_resource.tk",
                "shape Resource(^data: i32)\n"

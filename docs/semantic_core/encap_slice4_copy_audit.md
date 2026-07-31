@@ -19,6 +19,9 @@ new compiler-owned facts.
   same type is rejected as an overlap.
 - A user `@Dup` is local to the nominal definition and must contain exactly
   one public, non-consuming, non-generic `dup(self) -> Self` method.
+- `[dup value]` closure capture is explicit: a proven Copy value is copied
+  directly, while a non-Copy value requires a validated local `@Dup` provider
+  and invokes it exactly once when the closure is built.
 - New user `= delete`, `@Clone`, and `@Drop` declarations are rejected in v4.
   An ordinary method named `clone` is still permitted but has no special
   ownership or lowering meaning.  Legacy trusted-system declarations remain
@@ -35,12 +38,12 @@ python3 tools/scripts/test_encap_slice4_audit.py
 
 The audit covers a transparent structural Copy, a valid explicit capsule
 `@Copy`, a capsule without that request, a resource-bearing Copy request, a
-Copy/Dup coherence conflict, removed delete/facet syntax, and an ordinary
-`clone` method.
+Copy/Dup coherence conflict, explicit `dup` closure capture and its single
+provider call, removed delete/facet syntax, and an ordinary `clone` method.
 
 ## Deferred to following slices
 
 The Slice 5 TKI v2 format will serialize Copy/Dup facts and make imported
-opaque types fail closed without a verified witness.  Generic `CopyRecipe`,
-full generic-domain coherence, `[dup ...]`, and the remaining capture-syntax
-changes are tracked by the RFC's later integration work.
+opaque types fail closed without a verified witness. Generic `CopyRecipe`,
+full generic-domain coherence, and the remaining capture-syntax changes are
+tracked by the RFC's later integration work.

@@ -1692,7 +1692,12 @@ public:
   }
 };
 
-enum class CaptureMode { ImplicitBorrow, ExplicitCede, ExplicitCopy };
+enum class CaptureMode {
+  ImplicitBorrow,
+  ExplicitCede,
+  ExplicitCopy,
+  ExplicitDup,
+};
 
 struct CaptureItem {
   std::string Name;

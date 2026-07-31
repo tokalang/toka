@@ -1563,7 +1563,12 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
   int lookahead = 0;
   bool hasArrow = false;
   
-  if (peekAt(lookahead).Kind == TokenType::LBracket && (peekAt(lookahead + 1).Kind == TokenType::KwCede || peekAt(lookahead + 1).Kind == TokenType::KwCopy)) {
+  auto isCaptureModifier = [](const Token &token) {
+    return token.Kind == TokenType::KwCede || token.Kind == TokenType::KwCopy ||
+           (token.Kind == TokenType::Identifier && token.Text == "dup");
+  };
+  if (peekAt(lookahead).Kind == TokenType::LBracket &&
+      isCaptureModifier(peekAt(lookahead + 1))) {
       lookahead++; // '['
       while (peekAt(lookahead).Kind != TokenType::RBracket && peekAt(lookahead).Kind != TokenType::EndOfFile) {
           lookahead++;
@@ -1592,6 +1597,10 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
          cap.Loc = peek().Loc;
          if (match(TokenType::KwCede)) cap.Mode = CaptureMode::ExplicitCede;
          else if (match(TokenType::KwCopy)) cap.Mode = CaptureMode::ExplicitCopy;
+         else if (check(TokenType::Identifier) && peek().Text == "dup") {
+           advance();
+           cap.Mode = CaptureMode::ExplicitDup;
+         }
          else { error(peek(), DiagID::ERR_PARSER_EXPECTED_CEDE_OR_COPY_MODIFIER_IN_CLOSU); return nullptr; }
          
          std::string prefix = "";
@@ -1626,7 +1635,7 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
     consume(TokenType::FatArrow, DiagID::ERR_PARSER_EXPECTED_AFTER_CLOSURE_PARAMETERS);
   }
 
-  if (!hasArrow && check(TokenType::LBracket) && (checkAt(1, TokenType::KwCede) || checkAt(1, TokenType::KwCopy))) {
+  if (!hasArrow && check(TokenType::LBracket) && isCaptureModifier(peekAt(1))) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_AFTER_CLOSURE_CAPTURE_LIST);
       return nullptr;
   }

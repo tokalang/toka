@@ -7087,7 +7087,7 @@ PhysEntity CodeGen::genClosureExpr(const ClosureExpr *expr) {
   // Populate captures
   for (size_t i = 0; i < shapeType->Decl->Members.size(); ++i) {
     const auto &member = shapeType->Decl->Members[i];
-    
+
     llvm::Value *fieldAddr = m_Builder.CreateStructGEP(llvmTy, alloca, i);
 
     if (member.ResolvedType && member.ResolvedType->isReference()) {
@@ -7112,17 +7112,35 @@ PhysEntity CodeGen::genClosureExpr(const ClosureExpr *expr) {
                std::cerr << "CodeGen Internal Error: Captured variable '" << member.Name << "' type could not be resolved.\n";
                continue;
            }
-           auto val = m_Builder.CreateLoad(loadTy, srcAddr);
-           m_Builder.CreateStore(val, fieldAddr);
-           
-           // [Fix] Memory Leak/Double Free: Nullify the original pointer if the capture is `cede`
            bool isCede = false;
+           bool isDup = false;
            for (const auto& cap : expr->ExplicitCaptures) {
-               if (cap.Name == member.Name && cap.Mode == CaptureMode::ExplicitCede) {
-                   isCede = true;
-                   break;
+               if (toka::Type::stripMorphology(cap.Name) != member.Name)
+                   continue;
+               isCede = cap.Mode == CaptureMode::ExplicitCede;
+               isDup = cap.Mode == CaptureMode::ExplicitDup;
+               break;
+           }
+
+           llvm::Value *val = nullptr;
+           if (isDup && member.ResolvedType && member.ResolvedType->isShape()) {
+               std::string typeName = toka::Type::stripMorphology(
+                   member.ResolvedType->getSoulName());
+               std::string providerName = "Dup_" + typeName + "_dup";
+               if (llvm::Function *provider = m_Module->getFunction(providerName)) {
+                   auto receiver = std::make_unique<VariableExpr>(member.Name);
+                   receiver->ResolvedType = member.ResolvedType;
+                   MethodCallExpr duplicate(std::move(receiver), "dup", {});
+                   duplicate.ResolvedType = member.ResolvedType;
+                   PhysEntity result = genMethodCall(&duplicate);
+                   val = result.load(m_Builder);
                }
            }
+           if (!val)
+               val = m_Builder.CreateLoad(loadTy, srcAddr);
+           m_Builder.CreateStore(val, fieldAddr);
+
+           // [Fix] Memory Leak/Double Free: Nullify the original pointer if the capture is `cede`
            if (isCede) {
                if (loadTy->isPointerTy()) {
                    m_Builder.CreateStore(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(loadTy)), srcAddr);

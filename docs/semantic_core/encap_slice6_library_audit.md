@@ -36,10 +36,11 @@ The normative syntax references are [syntax.md](../syntax.md) and
    compiler-owned cleanup tail and cannot be called as a normal method.
 3. `@Copy` is an empty verified marker. Resource duplication is opt-in
    `@Dup { pub fn dup(self) -> Self }`; it is never selected by ordinary
-   assignment, construction, capture, or iterator lowering.
+   assignment, construction, implicit capture, or iterator lowering.
 4. Iterator and closure capture preserve the same boundary: a value is copied
    only by a Copy proof, otherwise it is borrowed or explicitly transferred.
-   They never invoke a library-named duplication method.
+   `[dup ...]` is the one explicit closure form that invokes a validated Dup
+   provider once; no library-named duplication method is selected implicitly.
 5. TKI v2 exports field-graph, policy, Copy, Dup, and custom-drop facts with
    resolver identity. It has no structural lifecycle replay marker.
 

@@ -817,19 +817,21 @@ Capture lists are written at the beginning of the closure body.
 auto f: fn(i32) -> i32 = { [cede env] x => x + env }
 auto r = 10
 auto g: fn(i32) -> i32 = { [copy ~r] x => x + r }
+auto h: fn() -> i32 = { [dup resource] => resource.value }
 ```
 
-`copy` capture is for copyable values or handles. It cannot duplicate ownership
-of resource values; use `cede` to transfer the value, or clone into a separate
-value before capturing.
+`copy` capture is for compiler-proven `@Copy` values and never invokes user
+code. It cannot duplicate resource ownership. Use `cede` to transfer a value,
+or `[dup value]` to explicitly invoke that type's verified `@Dup::dup` provider
+once while building the closure.
 
-When a closure is converted to `dyn fn`, any captured outer variable must be listed explicitly with `cede` or `copy`. This keeps owned, movable closures from silently storing borrowed references to local state.
+When a closure is converted to `dyn fn`, any captured outer variable must be listed explicitly with `cede`, `copy`, or `dup`. This keeps owned, movable closures from silently storing borrowed references to local state.
 
 Ordinary `fn` closures may use implicit borrow captures while they remain local.
 If such a closure escapes, for example by being returned from the current
 function, those implicit captures are checked as lifetime dependencies. Use
-`[cede ...]` or `[copy ...]` when the escaping closure should own or copy the
-captured state instead of borrowing it.
+`[cede ...]`, `[copy ...]`, or `[dup ...]` when the escaping closure should own,
+copy, or explicitly duplicate the captured state instead of borrowing it.
 
 Callable permission follows Toka receiver morphology rather than a family of
 nominal `Fn` traits:

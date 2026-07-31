@@ -548,7 +548,8 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
            }
         } else if (!infoPtr->TypeObj || !infoPtr->TypeObj->isSend(this)) {
            Clo->BoundaryNonSendCaptures.push_back(varName);
-        } else if (explicitMode == CaptureMode::ExplicitCopy &&
+        } else if ((explicitMode == CaptureMode::ExplicitCopy ||
+                    explicitMode == CaptureMode::ExplicitDup) &&
                    !infoPtr->TypeObj->isSync(this)) {
            Clo->BoundaryNonSyncCopyCaptures.push_back(varName);
         }
@@ -556,7 +557,10 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         ShapeMember sm;
         sm.Name = varName;
         
-        if (isExplicit && (explicitMode == CaptureMode::ExplicitCede || explicitMode == CaptureMode::ExplicitCopy)) {
+        if (isExplicit &&
+            (explicitMode == CaptureMode::ExplicitCede ||
+             explicitMode == CaptureMode::ExplicitCopy ||
+             explicitMode == CaptureMode::ExplicitDup)) {
             if (explicitMode == CaptureMode::ExplicitCopy) {
                 bool isResourceCapture = false;
                 if (Parser::EncapCopyEpochV4) {
@@ -590,6 +594,26 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
                       DiagnosticEngine::report(
                           originLoc, DiagID::NOTE_GENERIC,
                           "resource value declared here");
+                    continue;
+                }
+            }
+            if (explicitMode == CaptureMode::ExplicitDup) {
+                bool hasDup = false;
+                if (Parser::EncapCopyEpochV4 && infoPtr->TypeObj) {
+                    hasDup = proveSlice4CopyType(infoPtr->TypeObj);
+                    if (!hasDup && infoPtr->TypeObj->isShape()) {
+                        std::string soul = toka::Type::stripMorphology(
+                            infoPtr->TypeObj->getSoulName());
+                        auto shape = ShapeMap.find(soul);
+                        hasDup = shape != ShapeMap.end() &&
+                                 Slice4DupProviders.count(shape->second);
+                    }
+                }
+                if (!hasDup) {
+                    DiagnosticEngine::report(
+                        Clo->Loc, DiagID::ERR_GENERIC_SEMA,
+                        "[dup ...] capture requires a proven @Copy type or an explicit @Dup provider");
+                    HasError = true;
                     continue;
                 }
             }
