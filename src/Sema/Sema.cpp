@@ -1358,6 +1358,9 @@ void Sema::declareGlobals(Module &M) {
   ModuleScope &ms = ModuleMap[fileName];
   ms.IsTrustedSystemModule =
       ms.IsTrustedSystemModule || M.IsTrustedSystemModule;
+  ms.ShadowCoordinateKnown = M.ShadowCoordinateKnown;
+  ms.ShadowCrateId = M.ShadowCrateId;
+  ms.ShadowLogicalModulePath = M.ShadowLogicalModulePath;
   ModulePathAliases[fileName] = &ms;
   if (!M.ResolvedPath.empty())
     ModulePathAliases[toka::PathUtils::canonicalize(M.ResolvedPath)] = &ms;
@@ -1652,6 +1655,9 @@ void Sema::registerGlobals(Module &M) {
       : toka::PathUtils::canonicalize(
             DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName);
   ModuleScope &ms = ModuleMap[fileName];
+  ms.ShadowCoordinateKnown = M.ShadowCoordinateKnown;
+  ms.ShadowCrateId = M.ShadowCrateId;
+  ms.ShadowLogicalModulePath = M.ShadowLogicalModulePath;
   ModulePathAliases[fileName] = &ms;
   if (!M.ResolvedPath.empty())
     ModulePathAliases[toka::PathUtils::canonicalize(M.ResolvedPath)] = &ms;

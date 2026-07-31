@@ -420,6 +420,9 @@ private:
   struct ModuleScope {
     std::string Name;
     bool IsTrustedSystemModule = false;
+    bool ShadowCoordinateKnown = false;
+    std::string ShadowCrateId;
+    std::string ShadowLogicalModulePath;
     std::map<std::string, SymbolInfo> LexicalSymbols;
     std::map<std::string, SymbolInfo> LexicalTypes;
     std::map<std::string, FunctionDecl *> Functions;

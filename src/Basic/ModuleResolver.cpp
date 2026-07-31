@@ -626,6 +626,11 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->IsTrustedSystemModule =
       isWithinRoot(originalTkPath, m_TrustedSystemRoots) ||
       isWithinRoot(canonicalPath, m_TrustedSystemRoots);
+  module->ShadowCoordinateKnown = info.ShadowCoordinate.Known;
+  module->ShadowCrateId = info.ShadowCoordinate.CrateId;
+  module->ShadowLogicalModulePath = info.ShadowCoordinate.LogicalModulePath;
+  module->ShadowCoordinateOrigin = info.ShadowCoordinate.Origin;
+  module->ShadowCoordinateReason = info.ShadowCoordinate.Reason;
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
   if (finalIsInterface) {
     std::istringstream interfaceLines(code);

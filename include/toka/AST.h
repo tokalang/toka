@@ -1901,6 +1901,12 @@ public:
   bool IsInterface = false;
   bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
+  // Slice 0 resolver evidence only; no current semantic rule consults these.
+  bool ShadowCoordinateKnown = false;
+  std::string ShadowCrateId;
+  std::string ShadowLogicalModulePath;
+  std::string ShadowCoordinateOrigin;
+  std::string ShadowCoordinateReason;
   // `.tki` transport fact: these shapes have compiler-generated structural
   // destructors, not source-defined `@encap drop` implementations.
   std::set<std::string> InterfaceStructuralDropShapes;
