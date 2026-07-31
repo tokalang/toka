@@ -1,0 +1,5 @@
+error[E01253]: 'encap' is reserved for a future language construct
+ --> tests/fail/encap_lowercase_trait_removed.tk:3:12
+   |
+ 3 | impl Value@encap {
+   |            ^

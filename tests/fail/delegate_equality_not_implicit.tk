@@ -1,4 +1,4 @@
-import core/traits::@delegate
+import core/traits::@Delegate
 
 shape Target(value: i32)
 
@@ -10,7 +10,7 @@ impl Target {
 
 shape Wrapper(value: i32)
 
-impl Wrapper@delegate {
+impl Wrapper@Delegate {
     pub fn target(self) -> Target {
         return Target(value = self.value)
     }

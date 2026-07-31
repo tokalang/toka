@@ -1,5 +1,5 @@
 import std/slab::{Slab, SlabID}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 auto g_drop_count# = 0
 
@@ -7,7 +7,7 @@ shape Entry (
     value: i32
 )
 
-impl Entry@encap {
+impl Entry@Encap {
     fn drop(self#) {
         g_drop_count += 1
     }

@@ -2,14 +2,14 @@
 
 import core/types::{usize}
 import std/hashmap::{HashMap, HashMapIterator, Entry, EntryRef}
-import core/traits::{@Hash, @PartialEq, @encap, @Iterable, @Iterator, @BorrowIterator}
+import core/traits::{@Hash, @PartialEq, @Encap, @Iterable, @Iterator, @BorrowIterator}
 import core/option::{Option}
 
 pub shape HashSet<'T>(
     map: HashMap<'T, bool>
 )
 
-impl<'T> HashSet<'T>@encap {
+impl<'T> HashSet<'T>@Encap {
     fn drop(self#) {
         // Map drops automatically
     }

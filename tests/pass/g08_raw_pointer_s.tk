@@ -17,7 +17,7 @@ shape Hero (
     *buf#: [i32]
 )
 
-impl Hero@encap {
+impl Hero@Encap {
     pub buf
 
     fn drop(self#) {

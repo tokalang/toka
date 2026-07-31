@@ -13,13 +13,13 @@
 // limitations under the License.
 
 import std/io::println
-import core/traits::@encap
+import core/traits::@Encap
 
 shape Resource (
     id: i32
 )
 
-impl Resource @encap {
+impl Resource @Encap {
     fn drop(self#) {
         println("Dropping Resource")
     }

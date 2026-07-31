@@ -38,7 +38,7 @@ pub shape DataAccessService (
     ~state: Mutex<DataAccessServiceState>
 )
 
-impl DataAccessService@encap {
+impl DataAccessService@Encap {
     fn drop(self#) {}
 
     pub fn clone(self#) -> DataAccessService

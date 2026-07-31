@@ -98,7 +98,7 @@ pub shape PathGate (
     value: i32
 )
 
-impl PathGate@encap {
+impl PathGate@Encap {
     pub(tmp/path_test/visibility) value
     fn drop(self#) {}
 }

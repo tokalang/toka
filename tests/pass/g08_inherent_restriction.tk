@@ -7,7 +7,7 @@ shape Data(
     ^q: i32    // Insulated soul (default Blocked), Inherit handle
 )
 
-impl Data@encap {
+impl Data@Encap {
     fn drop(self#) {
     println("auto drop")
     }

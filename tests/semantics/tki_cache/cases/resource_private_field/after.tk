@@ -1,8 +1,8 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 pub shape Capsule(id: i32, ^secret: i32)
 
-impl Capsule@encap {
+impl Capsule@Encap {
     pub id
     fn drop(self#) {}
 }

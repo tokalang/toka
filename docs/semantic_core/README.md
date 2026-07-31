@@ -72,7 +72,7 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   lazy-adapter slice (`Map<I,F>` over a consuming source); borrowed/lending
   adapters remain explicitly deferred.
 - `encap_hybrid_policy_rfc.md` proposes a clean-break language epoch that
-  separates explicit `@encap` governance, exact field grants, verified Copy,
+  separates explicit `@Encap` governance, exact field grants, verified Copy,
   explicit Dup, and compiler-only drop plans; resolver identity, custom-drop,
   and Copy-SCC redlines form its blocking Slice 0.
 - `encap_slice0_baseline.md` records the legacy resolver, lifecycle, and TKI

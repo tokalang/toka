@@ -1,4 +1,4 @@
-# `@encap` Slice 4 Copy/Dup audit
+# `@Encap` Slice 4 Copy/Dup audit
 
 Slice 4 is available only through `--encap-epoch=v4`.  It includes the Slice
 2 policy and Slice 3 lifecycle gates, then switches Copy/Dup semantics to the

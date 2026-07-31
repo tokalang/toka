@@ -22,7 +22,7 @@ impl IsFour@Callable {
     }
 }
 
-impl DropToken@encap {
+impl DropToken@Encap {
     fn drop(self#) {
         adapter_drop_count += 1
     }

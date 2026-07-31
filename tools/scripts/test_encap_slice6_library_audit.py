@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression evidence for the @encap Slice 6 library migration."""
+"""Regression evidence for the @Encap Slice 6 library migration."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ LIBRARY_PATTERNS = (
 )
 NORMATIVE_DOCUMENTS = (ROOT / "docs" / "syntax.md",
                        ROOT / "docs" / "syntax_zh.md")
-POLICY_BLOCK = re.compile(r"^\s*impl[^\n]*@encap\s*\{")
+POLICY_BLOCK = re.compile(r"^\s*impl[^\n]*@Encap\s*\{")
 METHOD_DECL = re.compile(r"^\s*(?:pub\s+)?fn\s+([^ (]+)")
 
 
@@ -85,7 +85,7 @@ def assert_policy_blocks_only_contain_drop(source: Path, text: str) -> None:
         if depth == 1:
             method = METHOD_DECL.match(line)
             if method and method.group(1) != "drop":
-                raise AssertionError("%s: @encap policy contains %s" %
+                raise AssertionError("%s: @Encap policy contains %s" %
                                      (source, method.group(1)))
         depth += brace_delta(line)
         if depth == 0:
@@ -111,9 +111,9 @@ def assert_migrated_text() -> None:
     vec = (ROOT / "lib" / "std" / "vec.tk").read_text(encoding="utf-8")
     assert "pub trait @Copy {}" in marker
     assert "pub trait @Dup" in marker and "pub fn dup(self) -> Self" in marker
-    assert "pub trait @encap {}" in traits
-    assert "impl<'T> Vec<'T>@encap" in vec
-    assert "impl<'T: @Copy> Vec<'T>@encap" not in vec
+    assert "pub trait @Encap {}" in traits
+    assert "impl<'T> Vec<'T>@Encap" in vec
+    assert "impl<'T: @Copy> Vec<'T>@Encap" not in vec
 
 
 def reject(root: Path, name: str, source: str) -> None:
@@ -143,10 +143,10 @@ def main() -> int:
             "shape RawHandle(*slot: void)\n"
             "trait @Dup { pub fn dup(self) -> Self }\n"
             "shape Secret(raw: i32)\n"
-            "impl Secret@encap { pub raw }\n"
+            "impl Secret@Encap { pub raw }\n"
             "impl Secret@Copy {}\n"
             "shape TaskRef(*handle: void)\n"
-            "impl TaskRef@encap {\n"
+            "impl TaskRef@Encap {\n"
             "  pub handle\n"
             "  fn drop(self#) {}\n"
             "}\n"

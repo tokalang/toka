@@ -1,5 +1,5 @@
 import core/result::{Result}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import core/types::{usize}
 import std/task::{block_on}
 import std/vec::{Vec}
@@ -8,7 +8,7 @@ auto g_drop_count# = 0
 
 shape Resource(id: i32)
 
-impl Resource@encap {
+impl Resource@Encap {
     fn drop(self#) {
         g_drop_count += 1
     }

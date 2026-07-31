@@ -3,7 +3,7 @@ pub shape WildcardBox (
     secret_val: i32
 )
 
-impl WildcardBox@encap {
+impl WildcardBox@Encap {
     pub open_val
 
     fn drop(self#) {}
@@ -24,7 +24,7 @@ pub shape PathBox (
     private_val: i32
 )
 
-impl PathBox@encap {
+impl PathBox@Encap {
     pub path_val
 
     fn drop(self#) {}
@@ -45,7 +45,7 @@ pub shape CrateBox (
     private_val: i32
 )
 
-impl CrateBox@encap {
+impl CrateBox@Encap {
     pub crate_val
 
     fn drop(self#) {}

@@ -1,6 +1,6 @@
 import core/option::{Option}
 import core/result::{Result}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import core/types::{Addr, ADDR0}
 pub import official/gui/text::{GraphemeSelection, TextEditor, TextSelection}
 import std/vec::{Vec}
@@ -47,7 +47,7 @@ shape UiThreadAffinity (
     *marker: void = null as *void
 )
 
-impl UiThreadAffinity@encap {
+impl UiThreadAffinity@Encap {
     fn drop(self#) {}
 }
 
@@ -789,19 +789,19 @@ impl Scene {
     }
 }
 
-impl Scene@encap {
+impl Scene@Encap {
     fn drop(self#) {}
 }
 
-impl Container@encap {
+impl Container@Encap {
     fn drop(self#) {}
 }
 
-impl ShortcutMap@encap {
+impl ShortcutMap@Encap {
     fn drop(self#) {}
 }
 
-impl TextEvent@encap {
+impl TextEvent@Encap {
     fn drop(self#) {}
 }
 
@@ -1043,6 +1043,6 @@ impl Window {
 
 }
 
-impl Window@encap {
+impl Window@Encap {
     fn drop(self#) { self#.close() }
 }

@@ -6,7 +6,7 @@ auto global_drop_count#: i32 = 0;
 shape SharedResource(
     id: i32
 )
-impl SharedResource@encap {
+impl SharedResource@Encap {
     fn drop(self#) {
         global_drop_count = global_drop_count + 1;
     }

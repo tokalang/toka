@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import std/io::println
-import core/traits::{@encap}
+import core/traits::{@Encap}
 // import std/release::assert // Now in prelude
 
 
@@ -22,7 +22,7 @@ shape Point(
     y:i32,
     &drop_flag#: i32
     )
-impl Point@encap {
+impl Point@Encap {
     pub x, y, drop_flag
     fn drop(self#) {
         println("    Dropping Point x:{} y:{}, drop_flag={}", self.x, self.y, self.drop_flag)

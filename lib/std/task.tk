@@ -42,7 +42,7 @@ shape HostThreadAffinity (
     *marker: void = null as *void
 )
 
-impl HostThreadAffinity@encap {
+impl HostThreadAffinity@Encap {
     fn drop(self#) {}
 }
 

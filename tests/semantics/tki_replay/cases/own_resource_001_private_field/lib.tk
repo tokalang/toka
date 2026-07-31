@@ -1,10 +1,10 @@
 // EXPECT_TKI: pub shape SecretBox(id: i32, secret: string)
-// EXPECT_TKI: impl SecretBox@encap
-import core/traits::{@encap}
+// EXPECT_TKI: impl SecretBox@Encap
+import core/traits::{@Encap}
 
 pub shape SecretBox(id: i32, secret: string)
 
-impl SecretBox@encap {
+impl SecretBox@Encap {
     fn drop(self#) {}
 }
 

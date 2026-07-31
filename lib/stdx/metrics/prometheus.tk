@@ -14,7 +14,7 @@ pub shape MetricEntry (
     value: i64
 )
 
-impl MetricEntry@encap {
+impl MetricEntry@Encap {
     pub name
     pub kind
     pub value
@@ -58,7 +58,7 @@ pub shape PrometheusRegistry (
     entries: Vec<MetricEntry>
 )
 
-impl PrometheusRegistry@encap {
+impl PrometheusRegistry@Encap {
     pub entries
     fn drop(self#) {}
 }

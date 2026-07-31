@@ -1043,7 +1043,7 @@ impl PostgresQueryLimits {
     }
 }
 
-impl PostgresColumn@encap {
+impl PostgresColumn@Encap {
     pub name
     pub type_oid
     fn drop(self#) {}
@@ -1053,7 +1053,7 @@ impl PostgresColumn@encap {
     }
 }
 
-impl PostgresQueryResult@encap {
+impl PostgresQueryResult@Encap {
     pub columns#
     pub rows#
     pub command_tag
@@ -1093,7 +1093,7 @@ impl PostgresQueryResult@encap {
     }
 }
 
-impl PostgresClient@encap {
+impl PostgresClient@Encap {
     fn drop(self#) {
         self#.close()
     }
@@ -1519,7 +1519,7 @@ impl PostgresClient {
     }
 }
 
-impl PostgresParam@encap {
+impl PostgresParam@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> PostgresParam {
@@ -1533,7 +1533,7 @@ impl PostgresParam@encap {
     }
 }
 
-impl PostgresStatement@encap {
+impl PostgresStatement@Encap {
     pub name
     pub parameter_count
     pub closed
@@ -1848,7 +1848,7 @@ fn pool_return_client(state: Mutex<PostgresPoolState>, cede client: PostgresClie
     state_value.idle#.push(cede returned)
 }
 
-impl PostgresPool@encap {
+impl PostgresPool@Encap {
     fn drop(self#) {}
 
     pub fn clone(self#) -> PostgresPool
@@ -1968,7 +1968,7 @@ impl PostgresPool {
     }
 }
 
-impl PostgresPoolLease@encap {
+impl PostgresPoolLease@Encap {
     fn drop(self#) {
         auto held# = self#.take_connection()
         match cede held {
@@ -2075,7 +2075,7 @@ impl PostgresPoolLease {
     }
 }
 
-impl PostgresPoolTransaction@encap {
+impl PostgresPoolTransaction@Encap {
     fn drop(self#) {
         auto held# = self#.take_connection()
         match cede held {

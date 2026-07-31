@@ -4,7 +4,7 @@
 consuming-loop syntax, async iteration, and opaque adapter returns remain
 deferred.
 
-**Depends on:** frozen `@Callable`, `cede`, `@encap`, and synchronous iterator
+**Depends on:** frozen `@Callable`, `cede`, `@Encap`, and synchronous iterator
 protocols.
 
 ## 1. Problem and boundary
@@ -40,7 +40,7 @@ Map<I, F> owns I and F
 Map::next(self#) -> Option<F@Callable::Output>
 ```
 
-`Map<I, F>` is an ordinary concrete `@encap` shape. It owns the source and
+`Map<I, F>` is an ordinary concrete `@Encap` shape. It owns the source and
 callable; its exclusive `next(self#)` advances `I` and invokes `F` with the
 receiver mode declared by `F`. Its item is the derived
 `F@Callable::Output`: every `@Callable` implementation (including a compiler
@@ -70,7 +70,7 @@ no claim about lending references through a later adapter.
    receiver contract. A consuming callable makes the adapter's first use
    consuming or is rejected from the simple repeatable `Map` form.
 5. Adapter destruction drops live source/callback fields exactly once, using
-   the ordinary `@encap` cleanup path.
+   the ordinary `@Encap` cleanup path.
 
 ## 5. Interaction with existing `for`
 

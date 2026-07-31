@@ -3,7 +3,7 @@ import std/ring::{RingCore}
 import std/deque::{VecDeque}
 
 shape CustomResource(val: i32)
-impl CustomResource@encap {
+impl CustomResource@Encap {
     fn drop(self#) {}
 }
 

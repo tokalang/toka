@@ -19,7 +19,7 @@ hold:
 - the same rule can be explained, tested, and replayed across module paths.
 
 Consequently, owned text may be compared with a text literal through its
-read-only `@delegate` view, and an integer literal in a `u64` parameter context
+read-only `@Delegate` view, and an integer literal in a `u64` parameter context
 does not repeat `:u64`. Toka must not silently allocate a `string`, clone a
 resource, insert `cede`, or guess between multiple viable conversions merely
 to shorten source.
@@ -65,7 +65,7 @@ workaround temporaries.
 The first slice closes `ERG-1` and establishes the audit mechanism:
 
 - `string == str` and `str == string` normalize to the core `as_str()`
-  read-only projection; arbitrary user `@delegate` implementations remain
+  read-only projection; arbitrary user `@Delegate` implementations remain
   ineligible for implicit equality.
 - Contextual integer calls and comparisons accept unsuffixed positive and
   negative literals across the core integer widths. Methods, shape fields,

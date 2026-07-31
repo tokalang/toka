@@ -25,7 +25,7 @@ pub shape ReadDir (
     handle: Addr,
     finished#: bool
 )
-impl ReadDir@encap {
+impl ReadDir@Encap {
     pub handle
     pub finished
     

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 //Defines a weak type alias: creates a symbolic synonym for an existing type. 
 //It is semantically identical and transparent to the compiler, allowing seamless interchanging with the underlying type without explicit casting.
@@ -102,7 +102,7 @@ pub shape str(
     len$: usize
 )
 
-impl str@encap {
+impl str@Encap {
     pub buf, len
     fn drop(self#) {}
 }
@@ -117,7 +117,7 @@ pub shape RowFat<'T>(
     len: usize
 )
 
-impl<'T> RowFat<'T>@encap {
+impl<'T> RowFat<'T>@Encap {
     fn drop(self#) {
     }
 
@@ -134,5 +134,5 @@ pub shape RefFat<'T>(
     len: usize
 )
 
-//impl str@encap {    
+//impl str@Encap {
 //}

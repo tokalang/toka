@@ -28,7 +28,7 @@ pub shape HttpHeaderView (
     value_len: usize
 )
 
-impl HttpHeaderView@encap {
+impl HttpHeaderView@Encap {
     pub name_offset, name_len, value_offset, value_len
     fn drop(self#) {}
 }
@@ -79,7 +79,7 @@ pub shape HeaderEntry (
     value: string
 )
 
-impl HeaderEntry@encap {
+impl HeaderEntry@Encap {
     pub key
     pub value
     fn drop(self#) {}
@@ -98,7 +98,7 @@ pub shape HeaderMap (
     entries: Vec<HeaderEntry>
 )
 
-impl HeaderMap@encap {
+impl HeaderMap@Encap {
     pub entries
     fn drop(self#) {}
 }
@@ -256,7 +256,7 @@ pub shape HttpRequest (
     body: string
 )
 
-impl HttpRequest@encap {
+impl HttpRequest@Encap {
     pub method
     pub path
     pub version
@@ -352,7 +352,7 @@ pub shape HttpResponse (
     body: string
 )
 
-impl HttpResponse@encap {
+impl HttpResponse@Encap {
     pub status_code
     pub content_type
     pub headers
@@ -1051,7 +1051,7 @@ pub shape HttpResponseStream (
     err_message#: string
 )
 
-impl HttpResponseStream@encap {
+impl HttpResponseStream@Encap {
     pub status_code, headers, is_chunked
     fn drop(self#) {}
 }

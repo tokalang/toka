@@ -382,7 +382,7 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
     )))
 }
 
-impl RedisArgument@encap {
+impl RedisArgument@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RedisArgument {
@@ -393,7 +393,7 @@ impl RedisArgument@encap {
     }
 }
 
-impl RedisCommand@encap {
+impl RedisCommand@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RedisCommand {
@@ -410,12 +410,12 @@ impl RedisCommand@encap {
     }
 }
 
-impl RedisPipeline@encap {
+impl RedisPipeline@Encap {
     fn drop(self#) {}
 
 }
 
-impl RedisValue@encap {
+impl RedisValue@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RedisValue {
@@ -479,7 +479,7 @@ impl RedisValue {
     }
 }
 
-impl RedisClient@encap {
+impl RedisClient@Encap {
     fn drop(self#) {
         self#.close()
     }
@@ -824,7 +824,7 @@ fn pool_return_client(state: Mutex<RedisPoolState>, cede client: RedisClient) {
     state_value.idle#.push(cede returned)
 }
 
-impl RedisPool@encap {
+impl RedisPool@Encap {
     fn drop(self#) {}
 
     pub fn clone(self#) -> RedisPool
@@ -992,7 +992,7 @@ impl RedisPool {
     }
 }
 
-impl RedisLease@encap {
+impl RedisLease@Encap {
     fn drop(self#) {
         auto held# = self#.take_connection()
         match cede held {

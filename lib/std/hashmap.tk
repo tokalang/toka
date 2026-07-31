@@ -1,5 +1,5 @@
 import core/types::{usize}
-import core/traits::{@Hash, @PartialEq, @encap, @Iterable, @Iterator, @BorrowIterator}
+import core/traits::{@Hash, @PartialEq, @Encap, @Iterable, @Iterator, @BorrowIterator}
 import core/option::{Option}
 import std/vec::{Vec}
 import core/primitives
@@ -16,7 +16,7 @@ pub shape HashMap<'K, 'V> (
     cap#: usize = 0
 )
 
-impl<'K, 'V> HashMap<'K, 'V>@encap {
+impl<'K, 'V> HashMap<'K, 'V>@Encap {
     fn drop(self#) {
         unsafe {
             // 1. Drop elements
@@ -408,7 +408,7 @@ pub shape HashMapIterator<'K, 'V> (
     pos#: usize
 )
 
-impl<'K, 'V> HashMapIterator<'K, 'V>@encap {
+impl<'K, 'V> HashMapIterator<'K, 'V>@Encap {
     pub keys, vals, meta, cap, pos
     fn drop(self#) {}
     

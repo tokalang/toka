@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
+import core/traits::{@Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
 import sys/libc::*
 import core/option::{Option}
 
@@ -89,7 +89,7 @@ impl<'T> Vec<'T> {
 
 }
 
-impl<'T> Vec<'T>@encap {
+impl<'T> Vec<'T>@Encap {
     pub buf, len, cap
     fn drop(self#) {
         unsafe {
@@ -357,7 +357,7 @@ pub shape VecIntoIterator<'T> (
     source#: Vec<'T>
 )
 
-impl<'T> VecIntoIterator<'T>@encap {
+impl<'T> VecIntoIterator<'T>@Encap {
     fn drop(self#) {}
 }
 
@@ -394,7 +394,7 @@ impl<'T> Vec<'T>@Iterable {
     }
 }
 
-impl<'T> VecIterator<'T>@encap {
+impl<'T> VecIterator<'T>@Encap {
     fn drop(self#) {}
 }
 

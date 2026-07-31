@@ -6,7 +6,7 @@ shape Wrapper(
     sz: i32
 )
 
-impl Wrapper@encap {
+impl Wrapper@Encap {
 
     fn drop(self#) {}
 }

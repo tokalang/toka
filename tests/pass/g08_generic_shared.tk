@@ -34,7 +34,7 @@ shape SharedPtr<T>(
     *#wrapper#: RcWrapper<T>
 )
 
-impl<T> SharedPtr<T>@encap {
+impl<T> SharedPtr<T>@Encap {
     fn drop(self#) {
         println("comple call .drop, shared_ptr:{} wrapper:{}", *self as OAddr, self.*wrapper as OAddr)
     }

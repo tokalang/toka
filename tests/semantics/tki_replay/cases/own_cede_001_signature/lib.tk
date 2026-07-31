@@ -1,9 +1,9 @@
 // EXPECT_TKI: pub fn consume_payload(cede p: Payload) -> i32
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 pub shape Payload(val: i32)
 
-impl Payload@encap {
+impl Payload@Encap {
     fn drop(self#) {}
 }
 

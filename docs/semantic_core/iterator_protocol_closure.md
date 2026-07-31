@@ -16,7 +16,7 @@ The frozen facets are:
 - `@BorrowIterator` with associated `BorrowedItem` and
   `next_ref(self#) -> Option<BorrowedItem> <- self`.
 
-Only `@encap`, `@Send`, `@Sync`, and the later `@Callable` protocol are implicit
+Only `@Encap`, `@Send`, `@Sync`, and the later `@Callable` protocol are implicit
 prelude traits. Iterator facets use normal lexical imports when named in
 declarations.
 

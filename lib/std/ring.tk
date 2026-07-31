@@ -1,5 +1,5 @@
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import sys/libc::*
 import core/option::{Option}
 
@@ -141,7 +141,7 @@ impl<'T> RingCore<'T> {
     }
 }
 
-impl<'T> RingCore<'T>@encap {
+impl<'T> RingCore<'T>@Encap {
     pub buf, cap, mask, head, len
 
     fn drop(self#) {

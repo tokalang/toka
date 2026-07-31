@@ -513,7 +513,7 @@ if [ ! -f "$STRING_TKI" ]; then
     echo "FAIL: Expected cached core/string.tki at $STRING_TKI"
     exit 1
 fi
-if ! grep -q "impl string@encap" "$STRING_TKI"; then
+if ! grep -q "impl string@Encap" "$STRING_TKI"; then
     echo "FAIL: core/string.tki did not emit canonical Type@Trait impl syntax"
     exit 1
 fi
@@ -1089,8 +1089,8 @@ if ! grep -q "no member named 'marker'" "$TEST_DIR/where_bad.err"; then
 fi
 echo "PASS: Test 7.16"
 
-# 7.17 Test @encap visibility survives source-less .tki replay.
-echo "Test 7.17: @encap visibility through source-less interface"
+# 7.17 Test @Encap visibility survives source-less .tki replay.
+echo "Test 7.17: @Encap visibility through source-less interface"
 rm -rf "$TEST_DIR/encap_interface"
 mkdir -p "$TEST_DIR/encap_interface"
 
@@ -1100,7 +1100,7 @@ pub shape VisibilityBox(
     secret_val: i32
 )
 
-impl VisibilityBox@encap {
+impl VisibilityBox@Encap {
     pub open_val
 
     fn drop(self#) {}
@@ -1136,13 +1136,13 @@ if [ ! -f "$TEST_DIR/encap_interface/lib.tki" ]; then
     echo "FAIL: encap interface lib.tki was not generated"
     exit 1
 fi
-if ! grep -q "impl VisibilityBox@encap" "$TEST_DIR/encap_interface/lib.tki"; then
-    echo "FAIL: @encap impl was not emitted to lib.tki"
+if ! grep -q "impl VisibilityBox@Encap" "$TEST_DIR/encap_interface/lib.tki"; then
+    echo "FAIL: @Encap impl was not emitted to lib.tki"
     cat "$TEST_DIR/encap_interface/lib.tki"
     exit 1
 fi
 if ! grep -q "pub open_val" "$TEST_DIR/encap_interface/lib.tki"; then
-    echo "FAIL: @encap public field entry was not emitted to lib.tki"
+    echo "FAIL: @Encap public field entry was not emitted to lib.tki"
     cat "$TEST_DIR/encap_interface/lib.tki"
     exit 1
 fi
@@ -1155,18 +1155,18 @@ fi
 mv "$TEST_DIR/encap_interface/lib.tk" "$TEST_DIR/encap_interface/lib.tk.bak"
 
 if ! "$TOKAC_ABS" "$TEST_DIR/encap_interface/main.tk" "$TEST_DIR/encap_interface/lib.o" -o "$TEST_DIR/encap_interface_app" 2> "$TEST_DIR/encap_interface.err"; then
-    echo "FAIL: @encap public field could not be accessed from source-less lib.tki"
+    echo "FAIL: @Encap public field could not be accessed from source-less lib.tki"
     cat "$TEST_DIR/encap_interface.err"
     exit 1
 fi
 "$TEST_DIR/encap_interface_app"
 
 if "$TOKAC_ABS" "$TEST_DIR/encap_interface/private_main.tk" "$TEST_DIR/encap_interface/lib.o" -o "$TEST_DIR/encap_private_app" 2> "$TEST_DIR/encap_private.err"; then
-    echo "FAIL: @encap private field unexpectedly resolved from source-less lib.tki"
+    echo "FAIL: @Encap private field unexpectedly resolved from source-less lib.tki"
     exit 1
 fi
 if ! grep -q "private" "$TEST_DIR/encap_private.err"; then
-    echo "FAIL: expected @encap private field diagnostic"
+    echo "FAIL: expected @Encap private field diagnostic"
     cat "$TEST_DIR/encap_private.err"
     exit 1
 fi

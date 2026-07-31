@@ -59,7 +59,7 @@ pub shape AgentService (
     ~state: Mutex<AgentServiceState>
 )
 
-impl OpenAiCompatibleConfig@encap {
+impl OpenAiCompatibleConfig@Encap {
     fn drop(self#) {}
     pub fn clone(self) -> OpenAiCompatibleConfig {
         return OpenAiCompatibleConfig(url = self.url.clone(), address = self.address,
@@ -67,7 +67,7 @@ impl OpenAiCompatibleConfig@encap {
     }
 }
 
-impl AgentProvider@encap {
+impl AgentProvider@Encap {
     fn drop(self#) {}
     pub fn clone(self) -> AgentProvider {
         match self {
@@ -77,14 +77,14 @@ impl AgentProvider@encap {
     }
 }
 
-impl AgentRunEvent@encap {
+impl AgentRunEvent@Encap {
     fn drop(self#) {}
     pub fn clone(self) -> AgentRunEvent {
         return AgentRunEvent(run_id = self.run_id.clone(), kind = self.kind.clone(), data = self.data.clone())
     }
 }
 
-impl AgentService@encap {
+impl AgentService@Encap {
     fn drop(self#) {}
     pub fn clone(self#) -> AgentService
     effects: return <- self.state { return AgentService(~state = self.~state) }

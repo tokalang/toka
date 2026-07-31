@@ -30,7 +30,7 @@ pub shape TextEditor (
     selection#: GraphemeSelection
 )
 
-impl TextEditor@encap {
+impl TextEditor@Encap {
     fn drop(self#) {}
 }
 

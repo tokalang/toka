@@ -340,7 +340,7 @@ Shape 字段有名字。构造 Shape 使用具名参数。
 auto p = Point(x = 10, y = 20)
 ```
 
-Shape 定义始终是编译器可见的类型契约，即使部分字段通过 `@encap` 对用户隐藏。
+Shape 定义始终是编译器可见的类型契约，即使部分字段通过 `@Encap` 对用户隐藏。
 接口文件必须保留语义检查所需的完整结构事实，包括字段形态、可变性、可空性、
 布局相关属性和 borrow-like 成员类型。可见性只控制用户访问，不擦除编译器知识。
 
@@ -452,7 +452,7 @@ fn convert<T, E1: @ErrorInto<E2>, E2>(value: T) {}
 
 `T: {Drawable, Flyable}`、`T: {@Drawable, @Flyable}`、`T: @{@Drawable, @Flyable}` 这类形式会被拒绝。Import 中的 `path::{...}` 是导入项列表，不是 trait facet set。
 
-标准 prelude 只隐式提供四个语义核心 trait：`@encap`、`@Send`、`@Sync` 与
+标准 prelude 只隐式提供四个语义核心 trait：`@Encap`、`@Send`、`@Sync` 与
 `@Callable`。其他 trait 名称均遵守普通词法模块命名空间，必须在当前模块声明
 或通过 import 显式选择。仅加载一个模块不会让其中未选择的 trait 自动可见。
 
@@ -472,9 +472,12 @@ where:
 }
 ```
 
-`@encap` 是显式资源策略标记。持有资源的 Shape 可以在
-`impl Type@encap` 中定义一个私有生命周期 hook：`fn drop(self#)`。
+`@Encap` 是显式资源策略标记。持有资源的 Shape 可以在
+`impl Type@Encap` 中定义一个私有生命周期 hook：`fn drop(self#)`。
 字段清理由编译器的生命周期计划统一完成，`drop` 不是普通可调用方法。
+
+小写裸词 `encap` 已为未来独立语言构造预留，不能作为标识符使用；当前 trait
+拼写始终是 `@Encap`。
 
 复制能力由编译器的 `@Copy` 证明决定；不能复制的值不需要任何负向声明。
 若类型明确需要产生第二个持有资源的值，应实现带有
@@ -500,10 +503,10 @@ pub trait @Readable {
 
 在普通 `impl` 和 `trait` 块中，方法可见性写作 `pub fn`。没有 `pub` 的方法对定义模块 / 接口语境保持私有。
 
-`@encap` 块还负责成员可见性控制。一旦某个 shape 拥有 `@encap` 块，它的字段在定义源文件之外默认私有，除非 `@encap` 可见性条目显式授权。
+`@Encap` 块还负责成员可见性控制。一旦某个 shape 拥有 `@Encap` 块，它的字段在定义源文件之外默认私有，除非 `@Encap` 可见性条目显式授权。
 
 ```toka
-impl Device@encap {
+impl Device@Encap {
     pub public_config, shared_state
 
     fn drop(self#) {}
@@ -511,13 +514,13 @@ impl Device@encap {
 ```
 
 `pub field` 只全局开放该精确字段。带括号和通配符形式不属于
-`@encap`：`pub(crate)`、`pub(path)` 与 `pub *` 均会被拒绝。
+`@Encap`：`pub(crate)`、`pub(path)` 与 `pub *` 均会被拒绝。
 
-每一个 `@encap` 字段授权都必须逐字段写出；语法没有“全部字段”形式，
+每一个 `@Encap` 字段授权都必须逐字段写出；语法没有“全部字段”形式，
 因此后续新增字段不会被意外公开：
 
 ```toka
-impl PublicRecord@encap {
+impl PublicRecord@Encap {
     pub visible_name, visible_id, cache_slot
 }
 ```

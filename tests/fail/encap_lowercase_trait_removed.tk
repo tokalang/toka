@@ -1,0 +1,5 @@
+shape Value(value: i32)
+
+impl Value@encap {
+    pub value
+}

@@ -1,9 +1,9 @@
 import core/result::{Result}
 import sys/libc::{libc_exit}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Payload(val: i32)
-impl Payload@encap {
+impl Payload@Encap {
     fn drop(self#) {}
 }
 

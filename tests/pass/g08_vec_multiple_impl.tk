@@ -2,7 +2,7 @@ import std/io::println
 
 shape TStruct<T>(val: T)
 
-impl<T> TStruct<T> @encap {
+impl<T> TStruct<T> @Encap {
     fn drop(self#) {
         println("drop TStruct")
     }

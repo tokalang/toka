@@ -656,14 +656,14 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
 
   // Preserve the source-level destructor boundary on instantiated generic
   // records.  A field-level drop mask is only sound for compiler-generated
-  // structural destructors; an `@encap drop` may enforce whole-object
+  // structural destructors; an `@Encap drop` may enforce whole-object
   // invariants.  Generic templates are instantiated before the normal
   // non-generic shape pass, so derive this fact directly from their impl
   // templates.
   const std::string implKey = genericImplKey(Template);
   if (GenericImplMap.count(implKey)) {
     for (auto *implTemplate : GenericImplMap[implKey]) {
-      if (getTraitFamilyName(implTemplate->TraitName) != "encap")
+      if (getTraitFamilyName(implTemplate->TraitName) != "Encap")
         continue;
       for (const auto &method : implTemplate->Methods) {
         if (method->Name == "drop") {

@@ -138,7 +138,7 @@ Toka's bet is that **access representation deserves its own source-level dimensi
 
 ### Explicit Resource Semantics
 
-Toka has no garbage collector. Managed resources are controlled with deterministic destruction, move/transfer semantics, `@encap` lifecycle boundaries, and explicit `clone` / `drop` contracts. Resource transfer across an ownership boundary is written with `cede`.
+Toka has no garbage collector. Managed resources are controlled with deterministic destruction, move/transfer semantics, `@Encap` lifecycle boundaries, and explicit `clone` / `drop` contracts. Resource transfer across an ownership boundary is written with `cede`.
 
 ### Payload-Handle Separation
 

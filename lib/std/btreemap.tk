@@ -1,5 +1,5 @@
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@PartialOrd, @PartialEq, @encap}
+import core/traits::{@PartialOrd, @PartialEq, @Encap}
 import core/option::{Option, Option}
 
 pub fn addr_is_null(a: Addr) -> bool {
@@ -226,7 +226,7 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
     }
 }
 
-impl<'K, 'V> BTreeMap<'K, 'V>@encap {
+impl<'K, 'V> BTreeMap<'K, 'V>@Encap {
     fn drop(self#) {
         unsafe {
             if addr_is_not_null(self.root_addr) {

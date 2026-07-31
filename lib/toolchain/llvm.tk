@@ -3,7 +3,7 @@
 // High-level Object-Oriented LLVM 20 Wrappers for self-hosting.
 
 import core/types::{char, usize, Addr}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import core/result::{Result}
 
 import sys/llvm_ffi::{
@@ -90,7 +90,7 @@ impl LLVMContext {
     }
 }
 
-impl LLVMContext@encap {
+impl LLVMContext@Encap {
     pub handle
     fn drop(self#) {
         self#.dispose()
@@ -297,7 +297,7 @@ impl LLVMModule {
     }
 }
 
-impl LLVMModule@encap {
+impl LLVMModule@Encap {
     pub handle
     fn drop(self#) {
         self#.dispose()
@@ -537,7 +537,7 @@ impl LLVMBuilder {
     }
 }
 
-impl LLVMBuilder@encap {
+impl LLVMBuilder@Encap {
     pub handle
     fn drop(self#) {
         self#.dispose()

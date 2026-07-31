@@ -134,7 +134,7 @@ Toka 的判断是：**访问表示本身应该成为源码里的独立维度**�
 
 ### 显式资源语义
 
-Toka 没有垃圾回收器。托管资源通过确定性析构、move / transfer 语义、`@encap` 生命周期边界，以及显式 `clone` / `drop` 契约管理。跨所有权边界的资源转移写作 `cede`。
+Toka 没有垃圾回收器。托管资源通过确定性析构、move / transfer 语义、`@Encap` 生命周期边界，以及显式 `clone` / `drop` 契约管理。跨所有权边界的资源转移写作 `cede`。
 
 ### Payload-Handle 分离
 

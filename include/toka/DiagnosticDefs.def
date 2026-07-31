@@ -281,7 +281,7 @@ DIAG(ERR_PARSER_EXPECTED_IDENTIFIER_AFTER_IN_MODULE_ALI, Error,   "E01225", "Exp
 DIAG(ERR_PARSER_EXPECTED_ALIAS_OR_TYPE, Error,   "E01226", "Expected 'alias' or 'type'")
 DIAG(ERR_PARSER_EXPECTED_TYPE_ALIAS_NAME, Error,   "E01227", "Expected type alias name")
 DIAG(ERR_PARSER_EXPECTED_IMPL,    Error,   "E01228", "Expected 'impl'")
-DIAG(ERR_PARSER_EXPECTED_PUB_OR_FN_INSIDE_ENCAP_BLOCK, Error,   "E01229", "Expected 'pub' or 'fn' inside @encap block")
+DIAG(ERR_PARSER_EXPECTED_PUB_OR_FN_INSIDE_ENCAP_BLOCK, Error,   "E01229", "Expected 'pub' or 'fn' inside @Encap block")
 DIAG(ERR_PARSER_EXPECTED_METHOD_IN_IMPL_BLOCK, Error,   "E01230", "Expected method in impl block")
 DIAG(ERR_PARSER_EXPECTED_TRAIT,   Error,   "E01231", "Expected 'trait'")
 DIAG(ERR_PARSER_EXPECTED_TRAIT_NAME, Error,   "E01232", "Expected trait name")
@@ -304,7 +304,8 @@ DIAG(ERR_PARSER_SHAPE_MEMBER_DEPENDENCY_UNSUPPORTED, Error,   "E01248", "Shape m
 DIAG(ERR_LEXER_UNTERMINATED_RAW_STRING, Error,   "E01249", "Unterminated raw string literal; expected a closing delimiter with {} double quotes")
 DIAG(ERR_LEXER_RAW_STRING_INDENTATION, Error,   "E01250", "Raw string content line does not match the closing delimiter indentation")
 DIAG(ERR_LEXER_RAW_STRING_DELIMITER, Error,   "E01251", "Raw string closing delimiter must contain exactly {} double quotes and appear on its own line")
-DIAG(ERR_PARSER_ENCAP_NONEXACT_GRANT_REMOVED, Error, "E01252", "@encap accepts only exact field grants: 'pub field[, ...]'")
+DIAG(ERR_PARSER_ENCAP_NONEXACT_GRANT_REMOVED, Error, "E01252", "@Encap accepts only exact field grants: 'pub field[, ...]'")
+DIAG(ERR_PARSER_ENCAP_RESERVED_KEYWORD, Error, "E01253", "'encap' is reserved for a future language construct")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

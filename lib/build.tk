@@ -19,7 +19,7 @@ pub shape ModuleOutputs (
     executable: string = string::from("")
 )
 
-impl ModuleOutputs@encap {
+impl ModuleOutputs@Encap {
     pub interface, object, executable
 
     fn drop(self#) { }
@@ -70,7 +70,7 @@ pub shape ModuleSnapshot (
     dependencies: Vec<string> = Vec<string>::new()
 )
 
-impl ModuleSnapshot@encap {
+impl ModuleSnapshot@Encap {
     pub kind, fallback_triggered, cache_status, cache_status_reason, target_triple
     pub compiler_version, interface_version, source_hash, content_hash, outputs, dependencies
 
@@ -145,7 +145,7 @@ pub shape DependencyManifest (
     modules: HashMap<string, ModuleSnapshot> = HashMap<string, ModuleSnapshot>::new()
 )
 
-impl DependencyManifest@encap {
+impl DependencyManifest@Encap {
     pub manifest_version, roots, modules
 
     fn drop(self#) { }
@@ -217,7 +217,7 @@ pub shape RebuildModuleInfo (
     dirty_deps: Vec<string> = Vec<string>::new()
 )
 
-impl RebuildModuleInfo@encap {
+impl RebuildModuleInfo@Encap {
     pub reason, dirty_deps
 
     fn drop(self#) { }
@@ -265,7 +265,7 @@ pub shape RebuildPlan (
     dirty_modules: HashMap<string, RebuildModuleInfo> = HashMap<string, RebuildModuleInfo>::new()
 )
 
-impl RebuildPlan@encap {
+impl RebuildPlan@Encap {
     pub status, dirty_roots, dirty_modules
 
     fn drop(self#) { }
@@ -340,7 +340,7 @@ pub shape DfsResult (
     chain: Vec<string> = Vec<string>::new()
 )
 
-impl DfsResult@encap {
+impl DfsResult@Encap {
     fn drop(self#) { }
 }
 

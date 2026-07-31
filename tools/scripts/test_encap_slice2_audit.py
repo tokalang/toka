@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end evidence for the @encap policy epoch Slice 2 checks."""
+"""End-to-end evidence for the @Encap policy epoch Slice 2 checks."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def compile_source(source: Path, root: Path, *, expect_success: bool,
 def write_policy(path: Path, grant: str) -> None:
     path.write_text(
         "pub shape Box(visible: i32, hidden: i32)\n"
-        "impl Box@encap {\n"
+        "impl Box@Encap {\n"
         "    " + grant + "\n"
         "}\n"
         "pub fn make() -> Box { return Box(visible = 1, hidden = 2) }\n",
@@ -98,7 +98,7 @@ def main() -> int:
         conditional = root / "conditional.tk"
         conditional.write_text(
             "shape Generic<'T>(value: T)\n"
-            "impl<'T: @Send> Generic<'T>@encap { pub value }\n"
+            "impl<'T: @Send> Generic<'T>@Encap { pub value }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         rejected_conditional = compile_source(conditional, root, expect_success=False)
         if "E0406" not in rejected_conditional.stderr:
@@ -107,8 +107,8 @@ def main() -> int:
         duplicate = root / "duplicate.tk"
         duplicate.write_text(
             "shape Duplicate(value: i32)\n"
-            "impl Duplicate@encap { pub value }\n"
-            "impl Duplicate@encap { pub value }\n"
+            "impl Duplicate@Encap { pub value }\n"
+            "impl Duplicate@Encap { pub value }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         rejected_duplicate = compile_source(duplicate, root, expect_success=False)
         assert "E0406" in rejected_duplicate.stderr
@@ -116,7 +116,7 @@ def main() -> int:
         drop = root / "drop.tk"
         drop.write_text(
             "shape WithDrop(value: i32)\n"
-            "impl WithDrop@encap { pub value fn drop(self#) {} }\n"
+            "impl WithDrop@Encap { pub value fn drop(self#) {} }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         compile_source(drop, root, expect_success=True)
 

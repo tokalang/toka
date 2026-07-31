@@ -4024,14 +4024,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
-    // Check with @encap suffix as fallback
-    std::string encapType = soulType + "@encap";
+    // Check with @Encap suffix as fallback
+    std::string encapType = soulType + "@Encap";
     if (MethodMap.count(encapType) && MethodMap[encapType].count(Met->Method)) {
       return toka::Type::fromString(MethodMap[encapType][Met->Method]);
     }
 
-    // Check with @delegate suffix as fallback (Intrinsic Method Proxying)
-    std::string delegateKey = soulType + "@delegate";
+    // Check with @Delegate suffix as fallback (Intrinsic Method Proxying)
+    std::string delegateKey = soulType + "@Delegate";
     if (ImplMap.count(delegateKey) && ImplMap[delegateKey].count("target")) {
       FunctionDecl* targetMethod = ImplMap[delegateKey]["target"];
       std::string targetReturnTypeStr = targetMethod->ReturnType;

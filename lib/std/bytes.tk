@@ -34,7 +34,7 @@ pub shape Bytes (
     cap#: usize = 0
 )
 
-impl Bytes@encap {
+impl Bytes@Encap {
     fn drop(self#) {
         unsafe {
             if self.*buf != null {

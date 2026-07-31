@@ -13,11 +13,11 @@ TOKAC = os.path.abspath(os.environ.get(
 FLAG = "--experimental-memory-contracts=nocapture"
 
 PROVIDER = """\
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 pub shape Payload(value: i32)
 
-impl Payload@encap {
+impl Payload@Encap {
     fn drop(self#) {}
 }
 

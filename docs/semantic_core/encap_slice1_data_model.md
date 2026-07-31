@@ -1,4 +1,4 @@
-# `@encap` Epoch Slice 1 Data Model
+# `@Encap` Epoch Slice 1 Data Model
 
 **Status:** Complete. This is an internal, audit-only implementation slice.
 No proposed epoch access, Copy/Dup, drop, parser, TKI, or cache decision is
@@ -30,7 +30,7 @@ their legacy registration path until their later rewrite.
 
 ## Marker and Dup preparation
 
-`@encap` and `@Copy` are explicitly rejected as dynamic trait objects through
+`@Encap` and `@Copy` are explicitly rejected as dynamic trait objects through
 the existing object-safety path. They have no dynamic method dictionary in the
 proposed epoch.
 
@@ -46,7 +46,7 @@ that classification into the active trait/coherence rule.
 1. the audit JSON schema and all fact-table populations;
 2. generic empty marker instantiation bookkeeping;
 3. valid and invalid `@Dup` candidate classification; and
-4. rejection of `dyn @encap` and `dyn @Copy` with `E0617`.
+4. rejection of `dyn @Encap` and `dyn @Copy` with `E0617`.
 
 The compiler exposes the audit-only snapshot through:
 

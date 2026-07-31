@@ -31,7 +31,7 @@ shapes, type aliases, and traits consistently in source and source-less `.tki`
 replay. Imported globals retain their canonical CodeGen identity, and generic
 instantiation retains both definition-site and call-site lexical context.
 
-The frozen prelude decision is deliberately narrow: only `@encap`, `@Send`,
+The frozen prelude decision is deliberately narrow: only `@Encap`, `@Send`,
 and `@Sync` are implicit prelude traits. Every other trait requires lexical
 visibility. Core modules that do not import the prelude name their own trait
 dependencies explicitly. Generic trait families retain their type arguments

@@ -1,4 +1,4 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Token(value: i32)
 
@@ -11,7 +11,7 @@ impl Token {
 
 shape Holder(^item#: Token)
 
-impl Holder@encap {
+impl Holder@Encap {
     fn drop(self#) {}
 }
 

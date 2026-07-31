@@ -9,7 +9,7 @@ pub shape FormField (
     value: string
 )
 
-impl FormField@encap {
+impl FormField@Encap {
     fn drop(self#) {}
 
 }

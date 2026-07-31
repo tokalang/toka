@@ -1,5 +1,5 @@
 // Benchmark BST Rotate in Toka (Pure Computational Version)
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape TreeNode (
     val: i32,
@@ -7,7 +7,7 @@ shape TreeNode (
     nul *#right: TreeNode = null as *TreeNode
 )
 
-impl TreeNode@encap {
+impl TreeNode@Encap {
     fn drop(self#) {
         // Handled manually
     }

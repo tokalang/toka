@@ -1,4 +1,4 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 auto g_drop_count# = 0:i32
 
@@ -6,7 +6,7 @@ shape Resource (
     id: i32
 )
 
-impl Resource@encap {
+impl Resource@Encap {
     fn drop(self#) {
         g_drop_count += 1:i32
     }
@@ -21,7 +21,7 @@ shape Holder (
     value: Resource
 )
 
-impl Holder@encap {
+impl Holder@Encap {
     fn drop(self#) {}
 }
 

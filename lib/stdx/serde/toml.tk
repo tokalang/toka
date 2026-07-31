@@ -290,7 +290,7 @@ fn contains_key(entries: Vec<TomlEntry>, key: str) -> bool {
     return false
 }
 
-impl TomlValue@encap {
+impl TomlValue@Encap {
     fn drop(self#) {}
 
 }
@@ -314,7 +314,7 @@ impl TomlValue {
     }
 }
 
-impl TomlEntry@encap {
+impl TomlEntry@Encap {
     fn drop(self#) {}
 
 }
@@ -325,7 +325,7 @@ impl TomlEntry {
     }
 }
 
-impl TomlDocument@encap {
+impl TomlDocument@Encap {
     fn drop(self#) {}
 
 }

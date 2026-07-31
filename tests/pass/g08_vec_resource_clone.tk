@@ -2,7 +2,7 @@ import std/vec::{Vec}
 
 shape ResourceRow(key: u64, value: string)
 
-impl ResourceRow@encap {
+impl ResourceRow@Encap {
     fn drop(self#) {}
 }
 

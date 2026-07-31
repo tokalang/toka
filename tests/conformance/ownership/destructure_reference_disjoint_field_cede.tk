@@ -1,6 +1,6 @@
 shape Token(id: i32)
 
-impl Token@encap {
+impl Token@Encap {
     fn drop(self#) {}
 }
 

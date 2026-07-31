@@ -1,5 +1,5 @@
 // targets/pass/complex_generic.tk
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import std/io::println
 // 1. Value Generics (-1 order)
 shape Buffer<T, N_: usize>(
@@ -15,7 +15,7 @@ shape Node<T>(
     // Recursive: points to the next node of the same type
     nul ^next: Node<T> 
 )
-impl<T> Node<T>@encap {
+impl<T> Node<T>@Encap {
     pub buf
     fn drop(self#) {
         println("dropping Node")

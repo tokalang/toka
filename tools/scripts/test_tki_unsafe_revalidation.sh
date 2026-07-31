@@ -85,7 +85,7 @@ pub shape RawPoint(
   *ptr: i32
 )
 
-impl RawPoint@encap {
+impl RawPoint@Encap {
   fn drop(self#)
 }
 

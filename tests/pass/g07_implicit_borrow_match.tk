@@ -14,7 +14,7 @@ pub fn check_pure_data() {
     auto pt# = Point(x=10, y=20)
     
     // [Copy Semantics Verification]
-    // Since Point does not encompass any @encap resources requiring Drop,
+    // Since Point does not encompass any @Encap resources requiring Drop,
     // the '=' operator natively executes a by-value copy.
     // x and y become independent variables leaving their scope without burden.
     auto (x, y) = pt

@@ -3,7 +3,7 @@
 // A high-performance, elegant Arena Allocator for batch-allocated system resources.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import sys/libc::{libc_malloc, libc_free, libc_memcpy}
 import core/str::{str}
 
@@ -171,14 +171,14 @@ pub fn alloc_str(arena#: Arena, s: str) -> str <- arena | s {
 }
 
 
-impl Arena@encap {
+impl Arena@Encap {
     fn drop(self#) {
         self#.release()
     }
 
 }
 
-impl ArenaChunk@encap {
+impl ArenaChunk@Encap {
     fn drop(self#) {
         // ArenaChunk does not own its memory; the Arena does.
     }

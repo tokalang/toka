@@ -1,6 +1,6 @@
 import std/io::println
 shape Foo(v: i32)
-impl Foo@encap { pub v
+impl Foo@Encap { pub v
     fn drop(self#) { println("Drop Foo") } }
 fn test_func(f: Foo) { println("Inside func: {}", f.v) }
 pub fn main() -> i32 {

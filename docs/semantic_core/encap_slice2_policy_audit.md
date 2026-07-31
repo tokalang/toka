@@ -1,10 +1,10 @@
-# `@encap` Epoch Slice 2 Policy Audit
+# `@Encap` Epoch Slice 2 Policy Audit
 
 **Status:** implementation-backed, gated v6 evidence.
 
 ## Implemented checks
 
-- An `@encap` policy has exact field grants and at most one `drop` hook; a
+- An `@Encap` policy has exact field grants and at most one `drop` hook; a
   wildcard grant or ordinary method is rejected.
 - A policy belongs to the nominal type's defining module, is unique by that
   nominal/module identity, and has no bounded/conditional generic parameter.
@@ -12,7 +12,7 @@
   wildcard forms are parser errors.
 - `CanNameField` is used by member projection, named construction, update and
   spread-generated fields, match patterns, and declaration destructuring.
-- In v2 `@encap` is an authority policy rather than the legacy clone/drop
+- In v2 `@Encap` is an authority policy rather than the legacy clone/drop
   trait/vtable contract.
 
 ## Reproducible evidence

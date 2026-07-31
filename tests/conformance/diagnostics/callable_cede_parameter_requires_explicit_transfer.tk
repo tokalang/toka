@@ -1,9 +1,9 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Token(id: i32)
 shape Consumer()
 
-impl Token@encap {
+impl Token@Encap {
     fn drop(self#) {}
 }
 

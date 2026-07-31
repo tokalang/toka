@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{char, byte, usize, Addr, ADDR0, OAddr, Char32}
-import core/traits::{@encap, @Hash, @PartialEq, @PartialOrd, @delegate, @Send, @Sync}
+import core/traits::{@Encap, @Hash, @PartialEq, @PartialOrd, @Delegate, @Send, @Sync}
 import core/str::{str, cstr, libc_strlen, bytes}
 import core/utf8::{Cursor, REPLACEMENT_CHAR}
 import core/option::{Option}
@@ -44,7 +44,7 @@ pub shape string (
     cap#: usize = 0
 )
 
-impl string@encap {
+impl string@Encap {
     pub cap
 
     fn drop(self#) {
@@ -75,7 +75,7 @@ pub shape SplitIterator (
     delimiter: char
 )
 
-impl SplitIterator@encap {
+impl SplitIterator@Encap {
     fn drop(self#) {}
     
 }
@@ -130,7 +130,7 @@ impl SplitIterator {
     }
 }
 
-impl string@delegate {
+impl string@Delegate {
     pub fn target(self) -> str {
         return self.as_str()
     }

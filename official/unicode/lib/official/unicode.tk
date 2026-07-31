@@ -59,7 +59,7 @@ shape GraphemeScanner (
     finished#: bool
 )
 
-impl GraphemeScanner@encap {
+impl GraphemeScanner@Encap {
     fn drop(self#) {}
 }
 

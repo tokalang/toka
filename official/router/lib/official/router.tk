@@ -39,7 +39,7 @@ pub shape Router (
     routes#: Vec<Route>
 )
 
-impl RouterError@encap {
+impl RouterError@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RouterError {
@@ -50,7 +50,7 @@ impl RouterError@encap {
     }
 }
 
-impl RouteParam@encap {
+impl RouteParam@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RouteParam {
@@ -61,7 +61,7 @@ impl RouteParam@encap {
     }
 }
 
-impl RouteMatch@encap {
+impl RouteMatch@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RouteMatch {
@@ -78,7 +78,7 @@ impl RouteMatch@encap {
     }
 }
 
-impl RouteSegment@encap {
+impl RouteSegment@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> RouteSegment {
@@ -89,7 +89,7 @@ impl RouteSegment@encap {
     }
 }
 
-impl Route@encap {
+impl Route@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> Route {
@@ -108,7 +108,7 @@ impl Route@encap {
     }
 }
 
-impl Router@encap {
+impl Router@Encap {
     fn drop(self#) {}
 
 }

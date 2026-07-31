@@ -10,7 +10,7 @@ pub shape MimeParam (
     quoted: bool
 )
 
-impl MimeParam@encap {
+impl MimeParam@Encap {
     fn drop(self#) {}
 
 }
@@ -99,7 +99,7 @@ fn has_param(params: Vec<MimeParam>, name: str) -> bool {
     return false
 }
 
-impl Mime@encap {
+impl Mime@Encap {
     fn drop(self#) {}
 
 }

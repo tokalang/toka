@@ -37,7 +37,7 @@
 
 仍需要补锁的区域主要不是“功能缺失”，而是“更高阶规则组合缺少专门测试”：
 
-- `@encap` 的 `pub(path)`、`pub(crate)`、`pub * ! ...` 跨模块访问矩阵已补最小正反测试；后续可继续细化 crate 边界模型
+- `@Encap` 的 `pub(path)`、`pub(crate)`、`pub * ! ...` 跨模块访问矩阵已补最小正反测试；后续可继续细化 crate 边界模型
 - `dyn @{A, B}` 作为 trait object 被拒绝的直接 fail case 已补；`dyn @Trait` 跨模块 pub/private 方法边界也已补最小正反测试
 - 常见错误表里的 `let` / `var`、`for x in ...`、字符串 `+` 已补最小 fail 测试
 - hatted 参数的“契约义务”已按 warning 级规则冻结：`&param` 冗余写法直接拒绝，`*` / `^` / `~` 参数只读 payload 时触发 `W0407`
@@ -54,7 +54,7 @@
 | 5. Functions / Parameters / `cede` | 锁定较好 | `cede_param_missing`、`cede_param_unconsumed`、`cede_non_cede_parameter`、default args、effects tests | 后续主要是诊断措辞与组合矩阵细化；核心 cede 契约已经实施 |
 | 5a. PAL / Borrow Safety | 主体冻结 | `g08_pal_stress_test`、branch restore、loop local move、labeled break / continue、borrowed-field escape、borrow / move fail cases | 后续转向精度审计与诊断，不继续扩展主体规则 |
 | 6. Shapes / Enums / Init | 锁定较好 | named init、default field、positional init fail、alias/newtype tests；enum variant constructor 失败矩阵已补 | 后续可转向 variant pattern 诊断细化 |
-| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
+| 7. Methods / Traits / Encapsulation | 功能强，组合继续收紧 | trait、trait bounds、where、associated types、dyn trait、encap visibility 均有测试 | `@Encap` 可见性矩阵与 TKI replay、`dyn @{A, B}` 拒绝、`dyn @Trait`、generic impl `where:` 的 TKI replay 已补最小锁；后续转向更高阶交叉组合 |
 | 8. Member Access / Morphic Fields | 锁定较好 | `g08_member_audit`、`g08_member_parsing`、`g08_morphic_member_identity`、morphic type-side fail cases；`box.'field` / `box.field` 错误对照已补 | 普通字段误写 `.'field` 已收紧为专用诊断；后续转向更高阶组合 |
 | 9. Generics | 锁定较好 | rigid generic、morphic generic、generic alias/newtype、trait bounds、sizeof tests；associated type projection 的 source-less TKI replay 已补 | 后续可转向更高阶 generic / trait / TKI 组合 |
 | 10. Control Flow | 锁定较好 | loop、conditional loop、for、while fail、match range fail | `for x in iter` 已补专门 fail case；后续可继续细化 iterator trait 相关错误 |
@@ -90,7 +90,7 @@
 
    这同时锁住 1.0 的关联类型绑定边界：`dyn @Readable<Item = i32>` 暂不属于公开语法。
 
-3. `@encap` path / crate / wildcard 可见性矩阵
+3. `@Encap` path / crate / wildcard 可见性矩阵
 
    当前 `pub(crate)` 在 `g08_encap_syntax.tk` 中出现，`pub(std)`、`pub *` 在标准库和若干 pass 测试中使用。已新增一个最小跨模块矩阵：
 
@@ -233,11 +233,11 @@
 
    当前 TKI 会把 `where: T: @Marked` 规范化为接口中的 `impl<T: @Marked> Box<T>`。这没有改变语义，并让接口文本与推荐约束风格保持一致。
 
-12. `@encap` visibility through source-less TKI
+12. `@Encap` visibility through source-less TKI
 
-   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.17`：模块定义带 `impl VisibilityBox@encap { pub open_val }` 的 shape，生成 `.o + .tki` 后移走 `.tk` 源文件。主程序可通过接口缓存访问 `open_val`，但访问未授权的 `secret_val` 仍会失败。
+   已在 `tools/scripts/test_tki_cache_validation.sh` 增加 `Test 7.17`：模块定义带 `impl VisibilityBox@Encap { pub open_val }` 的 shape，生成 `.o + .tki` 后移走 `.tk` 源文件。主程序可通过接口缓存访问 `open_val`，但访问未授权的 `secret_val` 仍会失败。
 
-   这确认了 `@encap` 字段可见性不是仅在源码解析时生效，而是模块接口契约的一部分。
+   这确认了 `@Encap` 字段可见性不是仅在源码解析时生效，而是模块接口契约的一部分。
 
 ## 细节复查补充
 
@@ -266,7 +266,7 @@ pointee payload。相关正例已有 `tests/pass/g08_inherent_restriction.tk`，
 
 `W0407` 是 hatted 参数义务的第一步工程化：它只提示“签名声明了 handle，但函数体没有使用 handle 视图”，不禁止 payload 读取，也不把该规则升级为错误。这样可以先暴露可疑签名，同时避免误伤 raw buffer、FFI adapter、测试和标准库中的历史写法。
 
-### `@encap pub(path)` 当前边界
+### `@Encap pub(path)` 当前边界
 
 当前 `pub(path)` 的语义实现已经从任意子串匹配收紧为路径段匹配，可以正确区分 `std` 与 `stdx` 这类前缀相似路径。新增测试使用 `pub(tests/pass)`，同时锁定关键字路径段解析和跨目录授权/拒绝行为。
 
@@ -325,7 +325,7 @@ pointee payload。相关正例已有 `tests/pass/g08_inherent_restriction.tk`，
 
 ## 文档表述风险
 
-### 1. `@encap` wildcard 和 path visibility
+### 1. `@Encap` wildcard 和 path visibility
 
 文档已经写入 `pub *`、`pub * ! field`、`pub(path)`。标准库里有 `pub *`、`pub(std)` 的真实用法，新增测试也已经覆盖排除式 wildcard 和 path-targeted access 的最小正反行为。
 
@@ -357,7 +357,7 @@ pointee payload。相关正例已有 `tests/pass/g08_inherent_restriction.tk`，
 
 ### 阶段 B：跨模块 / TKI 组合测试
 
-associated type projection、`pub import` re-export、dyn trait interface、generic impl `where:`、`@encap` visibility 的最小 source-less `.tki` 回放，以及 generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界都已经锁定。
+associated type projection、`pub import` re-export、dyn trait interface、generic impl `where:`、`@Encap` visibility 的最小 source-less `.tki` 回放，以及 generic impl `where:` 正反用例、dyn trait 跨模块 pub/private 边界都已经锁定。
 
 目标：确保单文件语法规则不会在增量构建和缓存接口中漂移。
 

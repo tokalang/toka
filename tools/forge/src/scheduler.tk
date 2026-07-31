@@ -41,7 +41,7 @@ pub shape WorkerPool (
     ~rx_res_box#: ReceiverBox<u64>
 )
 
-impl WorkerPool@encap {
+impl WorkerPool@Encap {
     fn drop(self#) {}
 }
 

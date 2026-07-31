@@ -1,5 +1,5 @@
 import core/types::{usize}
-import core/traits::{@PartialOrd, @PartialEq, @encap}
+import core/traits::{@PartialOrd, @PartialEq, @Encap}
 import std/btreemap::{BTreeMap}
 
 pub shape BTreeSet<'T: @PartialOrd> (
@@ -12,7 +12,7 @@ impl<'T: @PartialOrd> BTreeSet<'T> {
     }
 }
 
-impl<'T> BTreeSet<'T>@encap {
+impl<'T> BTreeSet<'T>@Encap {
     fn drop(self#) {
         self.map#.clear()
     }

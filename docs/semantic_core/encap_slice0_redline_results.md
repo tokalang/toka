@@ -1,4 +1,4 @@
-# `@encap` Epoch Slice 0 Redline Results
+# `@Encap` Epoch Slice 0 Redline Results
 
 **Status:** Completed audit evidence. This document records expected results
 for the proposed clean-break epoch. It does not enable any proposed parser,
@@ -83,7 +83,7 @@ The reference model has deterministic expected results for:
 - zero, intrinsic, user, and overlapping Dup-provider sets.
 
 This is the Slice 0 expected-result model for the later SCC/fixed-point
-implementation. It makes no current `clone` or `@encap` behaviour change.
+implementation. It makes no current `clone` or `@Encap` behaviour change.
 
 ## 6. Legacy grant inventory
 

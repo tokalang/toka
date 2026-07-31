@@ -32,7 +32,7 @@ later release.
   diagnostics; redundant `&param` remains an error.
 - Trait syntax: `trait @Name`, `Type@Trait`, `@{A, B}` facet sets, and `where:`
   constraints.
-- Prelude trait visibility: `@encap`, `@Send`, `@Sync`, and `@Callable` are
+- Prelude trait visibility: `@Encap`, `@Send`, `@Sync`, and `@Callable` are
   implicitly visible through the standard prelude. Every other trait name
   follows normal lexical import rules and must be declared locally or
   explicitly imported.
@@ -59,7 +59,7 @@ later release.
 - `dyn @Trait`: single-facet trait objects only. Associated-type binding syntax
   is not part of 1.0, so traits with associated types are not object-safe as
   `dyn @Trait`, and forms such as `dyn @Readable<Item = i32>` are rejected.
-- `@encap`: keep the current visibility rules, including `pub`, `pub(crate)`,
+- `@Encap`: keep the current visibility rules, including `pub`, `pub(crate)`,
   `pub(path)`, and wildcard forms.
 - Path-scoped visibility: Toka has no source-level `mod` declaration. The path
   in `pub(path)` uses the same module-location path grammar as the left side of
@@ -170,7 +170,7 @@ later release.
 - Public unsafe/raw API redlines: raw pointer exposure requires explicit
   unsafe/raw naming.
 - TKI replay baseline: associated types, `pub import`, `dyn @Trait`, generic
-  `where:`, and `@encap` visibility must remain source-less compatible.
+  `where:`, and `@Encap` visibility must remain source-less compatible.
 
 ## Late / Post-1.0 Tracking
 

@@ -1,4 +1,4 @@
-# `@encap` Epoch Slice 3 Lifecycle Audit
+# `@Encap` Epoch Slice 3 Lifecycle Audit
 
 **Status:** gated implementation evidence; not a publishable language epoch.
 
@@ -6,7 +6,7 @@
 first lifecycle lowering changes:
 
 - resource-containing workspace shapes no longer receive a synthesized
-  structural `impl T@encap`, clone declaration, or named structural drop
+  structural `impl T@Encap`, clone declaration, or named structural drop
   symbol;
 - a valid custom hook is private `fn drop(self#) -> void`; it is omitted from
   ordinary semantic method lookup;

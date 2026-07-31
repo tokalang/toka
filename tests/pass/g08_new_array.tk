@@ -1,12 +1,12 @@
 // Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 import std/io::println
 import sys/libc::*
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Data(val: i32)
 
-// Auto-drop hook tracking via encap trait
-impl Data@encap {
+// Auto-drop hook tracking via @Encap trait
+impl Data@Encap {
     fn drop(self#) {
         println("Dropping Data with val: {}", self.val)
     }

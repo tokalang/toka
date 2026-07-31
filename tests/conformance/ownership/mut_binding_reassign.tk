@@ -5,7 +5,7 @@ shape Config (
     name: string
 )
 
-impl Config@encap {
+impl Config@Encap {
     pub name
     fn drop(self#) {}
 }

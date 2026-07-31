@@ -1,14 +1,14 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 
 import sys/libc::{libc_snprintf, libc_malloc, libc_free}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import std/vec::{Vec}
 
 pub shape StringBuilder (
     buffer: string
 )
 
-impl StringBuilder@encap {
+impl StringBuilder@Encap {
     fn drop(self#) {
         // string drops automatically
     }
@@ -104,7 +104,7 @@ pub shape AnsiStyle (
     code: string
 )
 
-impl AnsiStyle@encap {
+impl AnsiStyle@Encap {
     fn drop(self#) {}
 }
 
@@ -206,7 +206,7 @@ impl SourceFile {
     }
 }
 
-impl SourceFile@encap {
+impl SourceFile@Encap {
     fn drop(self#) {}
 
 }
@@ -301,7 +301,7 @@ pub shape DiagnosticLabel (
     message: string
 )
 
-impl DiagnosticLabel@encap {
+impl DiagnosticLabel@Encap {
     fn drop(self#) {}
 }
 
@@ -331,7 +331,7 @@ pub shape Diagnostic (
     labels_count: usize
 )
 
-impl Diagnostic@encap {
+impl Diagnostic@Encap {
     fn drop(self#) {}
 }
 

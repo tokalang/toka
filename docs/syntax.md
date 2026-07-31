@@ -404,7 +404,7 @@ auto message = Message(body = cede text)
 ```
 
 Shape definitions remain compiler-visible type contracts even when some fields
-are private through `@encap`. Interface files must preserve the structural facts
+are private through `@Encap`. Interface files must preserve the structural facts
 needed for semantic checking, including field morphology, mutability,
 nullability, layout-relevant attributes, and borrow-like member types. Visibility
 controls user access; it does not erase compiler knowledge.
@@ -519,7 +519,7 @@ fn convert<T, E1: @ErrorInto<E2>, E2>(value: T) {}
 Forms such as `T: {Drawable, Flyable}`, `T: {@Drawable, @Flyable}`, and `T: @{@Drawable, @Flyable}` are rejected. `path::{...}` in imports is an import item list, not a trait facet set.
 
 The standard prelude makes exactly four semantic-core traits implicitly
-visible: `@encap`, `@Send`, `@Sync`, and `@Callable`. All other trait names use
+visible: `@Encap`, `@Send`, `@Sync`, and `@Callable`. All other trait names use
 the ordinary lexical module namespace and must be declared in the current
 module or selected by an import. Loading a module does not make its unselected
 traits visible.
@@ -540,10 +540,14 @@ where:
 }
 ```
 
-`@encap` is an explicit resource-policy marker. A resource-owning shape may
+`@Encap` is an explicit resource-policy marker. A resource-owning shape may
 define one private lifecycle hook, `fn drop(self#)`, in its
-`impl Type@encap` block. The compiler owns the field-cleanup tail; `drop` is
+`impl Type@Encap` block. The compiler owns the field-cleanup tail; `drop` is
 not an ordinary callable method.
+
+The lowercase bare word `encap` is reserved for a future dedicated language
+construct. It cannot be used as an identifier; the current trait spelling is
+always `@Encap`.
 
 Copying is determined by the compiler's `@Copy` proof. Non-copyable values
 simply have no copying capability. A type that intentionally creates another
@@ -570,10 +574,10 @@ At declaration level, leading `pub` exports imports, constants, functions, shape
 
 Inside normal `impl` and `trait` blocks, method visibility is written with `pub fn`. A method without `pub` is private to its defining module/interface context.
 
-`@encap` blocks additionally control member visibility. Once a shape has an `@encap` block, its fields are private outside the defining source file unless an `@encap` visibility entry grants access.
+`@Encap` blocks additionally control member visibility. Once a shape has an `@Encap` block, its fields are private outside the defining source file unless an `@Encap` visibility entry grants access.
 
 ```toka
-impl Device@encap {
+impl Device@Encap {
     pub public_config, shared_state
 
     fn drop(self#) {}
@@ -581,14 +585,14 @@ impl Device@encap {
 ```
 
 `pub field` exposes that exact field globally. Parenthesized and wildcard
-forms are not part of `@encap`: `pub(crate)`, `pub(path)`, and `pub *` are
+forms are not part of `@Encap`: `pub(crate)`, `pub(path)`, and `pub *` are
 rejected.
 
-Every `@encap` field grant is explicit. The grammar has no catch-all member
+Every `@Encap` field grant is explicit. The grammar has no catch-all member
 grant, so adding a field later cannot publish it accidentally:
 
 ```toka
-impl PublicRecord@encap {
+impl PublicRecord@Encap {
     pub visible_name, visible_id, cache_slot
 }
 ```

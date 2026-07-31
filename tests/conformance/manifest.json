@@ -355,7 +355,7 @@
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
-      "description": "Generic Result reference binding preserves an explicit @encap guard until scope exit"
+      "description": "Generic Result reference binding preserves an explicit @Encap guard until scope exit"
     },
     {
       "id": "diag_mut_borrow_err_01",

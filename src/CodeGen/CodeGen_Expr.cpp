@@ -3554,10 +3554,10 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     std::string iterMangled =
         fe->ResolvedIterFn && !fe->ResolvedIterFn->CodegenName.empty()
             ? fe->ResolvedIterFn->CodegenName
-            : "encap_" + stripName + "_iter";
+            : "Encap_" + stripName + "_iter";
     llvm::Function *iterFn = m_Module->getFunction(iterMangled);
     if (!iterFn) {
-        iterMangled = stripName + "_iter"; // Fallback without encap_ prefix
+        iterMangled = stripName + "_iter"; // Fallback without Encap_ prefix
         iterFn = m_Module->getFunction(iterMangled);
     }
     if (!iterFn) {
@@ -3619,7 +3619,7 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
         m_TypeToName.count(iterAlloca->getAllocatedType())) {
       iteratorType = m_TypeToName[iterAlloca->getAllocatedType()];
     }
-    std::string dropName = "encap_" + iteratorType + "_drop";
+    std::string dropName = "Encap_" + iteratorType + "_drop";
     llvm::Function *dropFn = m_Module->getFunction(dropName);
     VariableScopeInfo iteratorInfo;
     iteratorInfo.Name = "__for_iterator";
@@ -3682,7 +3682,7 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     std::string nextFnName =
         fe->ResolvedNextFn && !fe->ResolvedNextFn->CodegenName.empty()
             ? fe->ResolvedNextFn->CodegenName
-            : "encap_" + iterTyName + "_" + nextMethodName;
+            : "Encap_" + iterTyName + "_" + nextMethodName;
     llvm::Function *nextFn = m_Module->getFunction(nextFnName);
     if (!nextFn) {
         nextFnName = iterTyName + "_" + nextMethodName; // Fallback
@@ -4792,7 +4792,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                           }
 
                           llvm::Function *cStrFn = m_Module->getFunction("String_c_str");
-                          llvm::Function *dropFn = m_Module->getFunction("encap_String_drop");
+                          llvm::Function *dropFn = m_Module->getFunction("Encap_String_drop");
 
                           if (cStrFn) {
                               llvm::Value *cstrVal = m_Builder.CreateCall(cStrFn, {tmpAlloca});
@@ -4858,8 +4858,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     if (!pushStrFn) pushStrFn = m_Module->getFunction("string_push_cstr");
     llvm::Function *cStrFn = m_Module->getFunction("String_c_str");
     if (!cStrFn) cStrFn = m_Module->getFunction("string_c_str");
-    llvm::Function *dropFn = m_Module->getFunction("encap_String_drop");
-    if (!dropFn) dropFn = m_Module->getFunction("encap_string_drop");
+    llvm::Function *dropFn = m_Module->getFunction("Encap_String_drop");
+    if (!dropFn) dropFn = m_Module->getFunction("Encap_string_drop");
 
     if (!fromFn || !pushStrFn || !cStrFn) {
         error(call, DiagID::ERR_CODEGEN_STRING_FORMATTING_INTRINSIC_REQUIRES_S);
@@ -5656,7 +5656,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
            fatPtr = m_Builder.CreateInsertValue(fatPtr, opaqueFunc, 1);
            
            if (isDynFn) {
-               std::string dropName = "encap_" + shp->Name + "_drop";
+               std::string dropName = "Encap_" + shp->Name + "_drop";
                llvm::Function *dropFn = m_Module->getFunction(dropName);
                llvm::Value *opaqueDrop = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(m_Context));
                if (dropFn) {

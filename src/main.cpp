@@ -110,7 +110,7 @@ void printHelp() {
       << "  --emit-obj                      Emit native object code\n"
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
-      << "  --encap-slice1-facts=json       Dump audit-only @encap Slice 1 facts\n"
+      << "  --encap-slice1-facts=json       Dump audit-only @Encap Slice 1 facts\n"
       << "  --link-search <path>            Add a native library search path\n"
       << "  --link-lib <name>               Link a native library by name\n"
       << "  --link-framework <name>         Link a macOS system framework by name\n"

@@ -1,4 +1,4 @@
-import core/traits::{@encap, @ErrorInto}
+import core/traits::{@Encap, @ErrorInto}
 import std/error::{ErrorContext, with_context}
 import std/task::{block_on, sleep_async}
 
@@ -10,13 +10,13 @@ shape SourceError(code: i32)
 shape TargetError(code: i32)
 shape LocalToken(id: i32)
 
-impl SourceError@encap {
+impl SourceError@Encap {
     fn drop(self#) {
         source_drops += 1
     }
 }
 
-impl LocalToken@encap {
+impl LocalToken@Encap {
     fn drop(self#) {
         local_drops += 1
     }

@@ -102,7 +102,7 @@ collectEvidenceSummaries(const Module &module,
   std::set<std::string> ambiguousNames;
   std::set<const FunctionDecl *> policyDropHooks;
   for (const auto &impl : module.Impls) {
-    if (impl->TraitName != "encap" && impl->TraitName != "@encap")
+    if (impl->TraitName != "Encap" && impl->TraitName != "@Encap")
       continue;
     for (const auto &method : impl->Methods)
       if (method->Name == "drop")

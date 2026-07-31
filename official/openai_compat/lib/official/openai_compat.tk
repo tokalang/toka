@@ -18,19 +18,19 @@ pub shape OpenAiStreamEvent (
     ApiError(OpenAiApiError) = 3
 )
 
-impl OpenAiCompatError@encap { fn drop(self#) {} pub fn clone(self) -> OpenAiCompatError { return OpenAiCompatError(kind = self.kind.clone(), message = self.message.clone()) } }
-impl OpenAiCompatLimits@encap { fn drop(self#) {} pub fn clone(self) -> OpenAiCompatLimits { return OpenAiCompatLimits(max_json_bytes = self.max_json_bytes, max_tool_calls_per_chunk = self.max_tool_calls_per_chunk) } }
+impl OpenAiCompatError@Encap { fn drop(self#) {} pub fn clone(self) -> OpenAiCompatError { return OpenAiCompatError(kind = self.kind.clone(), message = self.message.clone()) } }
+impl OpenAiCompatLimits@Encap { fn drop(self#) {} pub fn clone(self) -> OpenAiCompatLimits { return OpenAiCompatLimits(max_json_bytes = self.max_json_bytes, max_tool_calls_per_chunk = self.max_tool_calls_per_chunk) } }
 fn clone_option_string(value: Option<string>) -> Option<string> {
     match value {
         auto Option<string>::Some('text) => return Option<string>::Some('text.clone())
         _ => return Option<string>::None
     }
 }
-impl OpenAiToolCallDelta@encap { fn drop(self#) {} pub fn clone(self) -> OpenAiToolCallDelta { return OpenAiToolCallDelta(index = self.index, id = clone_option_string(self.id), name = clone_option_string(self.name), arguments_delta = clone_option_string(self.arguments_delta)) } }
+impl OpenAiToolCallDelta@Encap { fn drop(self#) {} pub fn clone(self) -> OpenAiToolCallDelta { return OpenAiToolCallDelta(index = self.index, id = clone_option_string(self.id), name = clone_option_string(self.name), arguments_delta = clone_option_string(self.arguments_delta)) } }
 impl OpenAiToolCallDelta { pub fn index(self) -> i32 { return self.index } pub fn id(self) -> Option<string> { return clone_option_string(self.id) } pub fn name(self) -> Option<string> { return clone_option_string(self.name) } pub fn arguments_delta(self) -> Option<string> { return clone_option_string(self.arguments_delta) } }
-impl OpenAiApiError@encap { fn drop(self#) {} pub fn clone(self) -> OpenAiApiError { return OpenAiApiError(message = self.message.clone(), kind = clone_option_string(self.kind), code = clone_option_string(self.code)) } }
+impl OpenAiApiError@Encap { fn drop(self#) {} pub fn clone(self) -> OpenAiApiError { return OpenAiApiError(message = self.message.clone(), kind = clone_option_string(self.kind), code = clone_option_string(self.code)) } }
 impl OpenAiApiError { pub fn message(self) -> string { return self.message.clone() } pub fn kind(self) -> Option<string> { return clone_option_string(self.kind) } pub fn code(self) -> Option<string> { return clone_option_string(self.code) } }
-impl OpenAiStreamEvent@encap {
+impl OpenAiStreamEvent@Encap {
     fn drop(self#) {}
     pub fn clone(self) -> OpenAiStreamEvent {
         match self {

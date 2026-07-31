@@ -1,10 +1,10 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Holder (
     value: string
 )
 
-impl Holder@encap {
+impl Holder@Encap {
     fn drop(self#) {}
 }
 

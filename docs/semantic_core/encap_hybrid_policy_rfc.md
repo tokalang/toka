@@ -1,4 +1,4 @@
-# RFC: `@encap` Hybrid Policy and Lifecycle Separation
+# RFC: `@Encap` Hybrid Policy and Lifecycle Separation
 
 **Status:** Proposed clean-break language revision. This RFC is not a
 statement of current compiler behaviour.
@@ -8,7 +8,7 @@ enforcement is not approved until the blocking Slice 0 exit gate is met.
 
 **Compatibility:** Deliberately source-, interface-, and cache-incompatible
 with the current `clone`, `clone = delete`, callable `drop`, structural
-`@encap`, and wildcard-access model. Adoption requires a new language and TKI
+`@Encap`, and wildcard-access model. Adoption requires a new language and TKI
 format epoch; no compatibility shim is part of this proposal.
 
 **Rule IDs:** `ENCAP-POLICY-001`, `ENCAP-ACCESS-001`,
@@ -23,7 +23,7 @@ deterministic cleanup, and source/TKI semantic equivalence.
 Toka keeps the distinctive two-mode access model:
 
 ```text
-shape without explicit @encap       explicit impl Type@encap
+shape without explicit @Encap       explicit impl Type@Encap
 -----------------------------       ------------------------
 Transparent Shape                   Governed Capsule
 fields visible with the type        fields closed by default
@@ -56,19 +56,19 @@ ResourceContract(T) = None | Borrowed(ResourceId) | Owned(ResourceId)
 ```
 
 They are resolver/type-contract provenance, not public traits and not additional
-meanings of `@encap`. In particular, a raw-pointer spelling never creates an
+meanings of `@Encap`. In particular, a raw-pointer spelling never creates an
 `Owned` fact.
 
 In particular:
 
-- `T: @encap` proves only an explicit governance policy.
+- `T: @Encap` proves only an explicit governance policy.
 - `T: @Copy` proves implicit duplication is valid.
 - `T: @Dup` proves an explicit `dup` operation is callable.
 - `DropPlan(T)` is a compiler lifecycle fact, not a user-callable trait.
 
 ## 2. Motivation
 
-The current model overloads one nominal `@encap` implementation with four
+The current model overloads one nominal `@Encap` implementation with four
 unrelated responsibilities:
 
 1. nominal trait satisfaction;
@@ -77,7 +77,7 @@ unrelated responsibilities:
 4. destructor lowering.
 
 That overloading admits contradictory states. A compiler-generated structural
-destructor can create a public `@encap` witness without any authored access
+destructor can create a public `@Encap` witness without any authored access
 policy. A deleted `clone` can count as a required trait method. A private
 `drop(self#)` hook remains callable from privileged source contexts.
 
@@ -87,7 +87,7 @@ with positive, separately checkable facts.
 ## 3. Goals
 
 1. Preserve Toka's zero-noise Transparent Shape syntax.
-2. Make `T: @encap` a sound proof of explicit policy authorship.
+2. Make `T: @Encap` a sound proof of explicit policy authorship.
 3. Make future fields of a Governed Capsule private by construction.
 4. Make implicit copy, explicit duplication, and drop independently testable.
 5. Remove every hidden non-trivial duplication path.
@@ -107,7 +107,7 @@ with positive, separately checkable facts.
 - No general policy-directive language such as
   `policy dup = shared | custom`.
 - No fallible duplication trait in the first revision.
-- No runtime reflection or trait object for `@encap` or `@Copy`.
+- No runtime reflection or trait object for `@Encap` or `@Copy`.
 - No automatic non-trivial fieldwise `@Dup` derivation.
 - No cross-crate `pub(path)` friend grant in the first revision.
 - No field-taking/disarming operation inside a custom drop hook.
@@ -117,7 +117,7 @@ with positive, separately checkable facts.
 
 ### 5.1 Transparent Shape
 
-A nominal shape with no explicit, source-level `impl Type@encap` in its
+A nominal shape with no explicit, source-level `impl Type@Encap` in its
 defining module.
 
 Its fields are accessible wherever the nominal type itself is accessible,
@@ -129,7 +129,7 @@ boundaries, and PAL.
 ### 5.2 Governed Capsule
 
 A nominal shape whose defining module contains exactly one valid
-`impl Type@encap` policy declaration.
+`impl Type@Encap` policy declaration.
 
 Its fields are inaccessible outside the defining module unless an exact
 policy grant authorizes the access context.
@@ -210,7 +210,7 @@ author-maintained unsafe raw state without claiming an `Owned` language fact.
 The new language epoch defines these semantic-core facets:
 
 ```toka
-pub trait @encap {}
+pub trait @Encap {}
 
 pub trait @Copy {}
 
@@ -221,9 +221,9 @@ pub trait @Dup {
 
 They are re-exported by the standard prelude.
 
-`@encap` and `@Copy` are compiler-known marker facets:
+`@Encap` and `@Copy` are compiler-known marker facets:
 
-- `@encap` has special policy-declaration syntax and provenance rules.
+- `@Encap` has special policy-declaration syntax and provenance rules.
 - `@Copy` has no user method and every explicit implementation is structurally
   verified by the compiler.
 
@@ -231,9 +231,9 @@ They are re-exported by the standard prelude.
 
 The old semantic-core `@Clone` and `@Drop` declarations are removed.
 
-## 7. `@encap` policy declaration
+## 7. `@Encap` policy declaration
 
-The body of an `@encap` declaration accepts only:
+The body of an `@Encap` declaration accepts only:
 
 1. exact field-access grants; and
 2. at most one compiler-only `drop` hook.
@@ -245,7 +245,7 @@ pub shape Device(
     native#: usize
 )
 
-impl Device@encap {
+impl Device@Encap {
     pub id
     pub(crate) native
 
@@ -262,12 +262,12 @@ Ordinary methods belong in `impl Device { ... }`. Duplication belongs in
 
 `ENCAP-COHERENCE-001` requires:
 
-1. Only the nominal type's defining module may declare its `@encap` policy.
+1. Only the nominal type's defining module may declare its `@Encap` policy.
 2. A nominal type has at most one policy declaration.
 3. A generic policy must apply uniformly to every instantiation.
 4. A generic policy may repeat the shape's parameters but may not add trait
    bounds or `where:` constraints.
-5. Policy specialization and overlapping `@encap` implementations are
+5. Policy specialization and overlapping `@Encap` implementations are
    rejected.
 6. Type aliases do not acquire an independent policy; a new nominal type may.
 
@@ -276,14 +276,14 @@ Valid:
 ```toka
 shape Box<T>(item: T)
 
-impl<T> Box<T>@encap {
+impl<T> Box<T>@Encap {
 }
 ```
 
 Rejected:
 
 ```toka
-impl<T: @Dup> Box<T>@encap {
+impl<T: @Dup> Box<T>@Encap {
 }
 ```
 
@@ -300,13 +300,13 @@ Compiler-generated structural lifecycle work never creates
 Consequently:
 
 ```toka
-fn governed<T: @encap>(value: T) {}
+fn governed<T: @Encap>(value: T) {}
 ```
 
 accepts a Governed Capsule and rejects a Transparent Shape, including a
 Transparent Shape that requires structural drop.
 
-`T: @encap` does not prove:
+`T: @Encap` does not prove:
 
 - that `T` has non-trivial drop;
 - that `T` is move-only;
@@ -316,9 +316,9 @@ Transparent Shape that requires structural drop.
 
 Those claims require their own facts.
 
-### 7.3 No dynamic `@encap`
+### 7.3 No dynamic `@Encap`
 
-`dyn @encap` is always rejected. Policy metadata is attached to the concrete
+`dyn @Encap` is always rejected. Policy metadata is attached to the concrete
 nominal type and has no runtime method dictionary. Removing methods from the
 marker must not accidentally make it object-safe.
 
@@ -429,7 +429,7 @@ pub * ! secret
 A policy must enumerate every externally accessible field. Adding a new field
 to a Governed Capsule therefore keeps it closed without any author action.
 
-Wildcard tokens in an `@encap` body are parse errors.
+Wildcard tokens in an `@Encap` body are parse errors.
 
 ## 9. Copy semantics
 
@@ -470,7 +470,7 @@ shape Pair(left: Device, right: Device)
 
 ### 9.3 Explicit verified Copy for capsules
 
-An `@encap` policy suppresses automatic Copy derivation. This makes a capsule
+An `@Encap` policy suppresses automatic Copy derivation. This makes a capsule
 move-only by default.
 
 The defining module may explicitly request verified Copy:
@@ -478,7 +478,7 @@ The defining module may explicitly request verified Copy:
 ```toka
 shape NonZero(raw: u32)
 
-impl NonZero@encap {
+impl NonZero@Encap {
 }
 
 impl NonZero@Copy {}
@@ -758,7 +758,7 @@ only the active variant.
 
 Structural drop:
 
-- does not synthesize `impl T@encap`;
+- does not synthesize `impl T@Encap`;
 - does not enter trait or user method maps;
 - does not create a vtable;
 - does not change field visibility;
@@ -787,7 +787,7 @@ This spelling is a compiler hook, not a method:
 
 - it is not registered in ordinary method lookup;
 - it cannot be called explicitly;
-- it is not inherited through `T: @encap`;
+- it is not inherited through `T: @Encap`;
 - it is invoked at most once for each value and exactly once on every
   guaranteed normal cleanup path; and
 - it cannot replace the compiler's structural cleanup of fields.
@@ -929,14 +929,14 @@ for all control-flow, call-summary, return, cancellation, and TKI paths.
 |---|---|---|---|---|---|
 | `Point(f64, f64)` | none | transparent | automatic | intrinsic | trivial |
 | transparent `Pair<Device>` | none | transparent | no | explicit `@Dup` | structural |
-| `Device@encap` | explicit | grants | default no | explicit `@Dup` | structural/custom |
-| `NonZero@encap + @Copy` | explicit | exact grants | verified | intrinsic | trivial |
+| `Device@Encap` | explicit | grants | default no | explicit `@Dup` | structural/custom |
+| `NonZero@Encap + @Copy` | explicit | exact grants | verified | intrinsic | trivial |
 
 The access dichotomy remains simple:
 
 ```text
-no @encap  => transparent fields
-@encap     => closed fields plus exact grants
+no @Encap  => transparent fields
+@Encap     => closed fields plus exact grants
 ```
 
 Ownership remains precise:
@@ -958,7 +958,7 @@ shape Vec<T>(
     // representation fields
 )
 
-impl<T> Vec<T>@encap {
+impl<T> Vec<T>@Encap {
     fn drop(self#) {
         // release custom storage; live elements remain compiler/accounting safe
     }
@@ -987,8 +987,8 @@ The new epoch removes:
 4. `@Clone` and `@Drop` semantic-core traits;
 5. ordinary method lookup for the `drop` hook;
 6. `pub *` and `pub * ! ...` policy entries;
-7. compiler-generated structural `impl T@encap`;
-8. structural `@encap` vtables and trait witnesses;
+7. compiler-generated structural `impl T@Encap`;
+8. structural `@Encap` vtables and trait witnesses;
 9. conditional or overlapping policy implementations.
 
 `clone` need not become a reserved identifier. A user may define an ordinary
@@ -1015,7 +1015,7 @@ MethodMap<T>         -> ordinary callable methods only
 Here `M`, `T`, and `P` use resolver-backed module, canonical type/definition,
 and exact access-path identities, not short names or filesystem strings.
 Generic instantiation must cache `(ImplDefId, ConcreteTypeId)` directly; the
-presence of a first method is not a valid proxy because `@encap` and `@Copy`
+presence of a first method is not a valid proxy because `@Encap` and `@Copy`
 are empty markers.
 
 Elaboration is:
@@ -1028,7 +1028,7 @@ resolver/package graph
 compiler-defined nominal owners
     -> built-in ResourceContractMap entries
 
-explicit impl T@encap
+explicit impl T@Encap
     -> PolicyMap<T>
     -> optional custom-hook candidate
 
@@ -1118,7 +1118,7 @@ contract, or normalized policy-target change invalidates the relevant cache.
 
 TKI v2 must not encode structural lifecycle as:
 
-- `impl T@encap`;
+- `impl T@Encap`;
 - a deleted duplication method;
 - a trait vtable; or
 - a public policy witness.
@@ -1140,7 +1140,7 @@ Source and source-less compilation must agree on:
 The implementation must provide dedicated diagnostics for:
 
 - wildcard policy entries;
-- duplicate, external, conditional, or overlapping `@encap` policies;
+- duplicate, external, conditional, or overlapping `@Encap` policies;
 - malformed, unresolved, crate-escaping, ambiguous, or cross-crate
   `pub(path)` targets;
 - unavailable/forged module or policy identity, with no physical-path
@@ -1159,7 +1159,7 @@ The implementation must provide dedicated diagnostics for:
   forbidden inside a custom hook;
 - a claimed managed wrapper without a compiler/validated-FFI resource
   contract;
-- `dyn @encap` and `dyn @Copy`;
+- `dyn @Encap` and `dyn @Copy`;
 - a TKI format from the previous semantic epoch.
 
 Diagnostics should name the missing positive capability:
@@ -1223,13 +1223,13 @@ Slice 0 exits only when:
   than a base-name string.
 - Key instantiated generic implementations by
   `(ImplDefId, ConcreteTypeId)`, including empty markers.
-- Make `@encap` and `@Copy` compiler-known empty markers.
+- Make `@Encap` and `@Copy` compiler-known empty markers.
 - Add strict `@Dup`.
-- Explicitly exclude `@encap` and `@Copy` from dyn object safety.
+- Explicitly exclude `@Encap` and `@Copy` from dyn object safety.
 
 ### Slice 2: policy parser and access checking
 
-- Restrict `@encap` bodies to exact grants and one drop hook.
+- Restrict `@Encap` bodies to exact grants and one drop hook.
 - Remove wildcard grammar.
 - Enforce owner-module, uniqueness, and unconditional generic policy.
 - Activate Slice 0 resolver identity for same-module, `pub(crate)`, and
@@ -1277,7 +1277,7 @@ Slice 0 exits only when:
 ### Slice 6: library and specification rewrite
 
 - Remove every deleted clone declaration.
-- Reclassify value-like `@encap` types as Transparent or explicit verified
+- Reclassify value-like `@Encap` types as Transparent or explicit verified
   Copy capsules.
 - Rename non-trivial clone operations and call sites to explicit Dup.
 - Replace every wildcard with exact field grants.
@@ -1292,10 +1292,10 @@ Adoption requires source and source-less coverage for all rows below.
 
 ### 19.1 Policy
 
-- A structural-drop Transparent Shape fails `T: @encap`.
+- A structural-drop Transparent Shape fails `T: @Encap`.
 - An explicit policy succeeds even with no drop hook.
 - External, duplicate, conditional, and overlapping policies fail.
-- `dyn @encap` fails.
+- `dyn @Encap` fails.
 
 ### 19.2 Access
 
@@ -1356,7 +1356,7 @@ Adoption requires source and source-less coverage for all rows below.
 ### 19.5 Drop
 
 - Plain nested resource aggregates drop structurally exactly once.
-- Structural drop never satisfies `@encap`.
+- Structural drop never satisfies `@Encap`.
 - A custom hook runs once, then each structural field drops once in the
   frozen struct/array/enum/nullable order, including every early return.
 - Public, extra-parameter, method-generic, non-void, and suspending hook
@@ -1387,18 +1387,18 @@ Adoption requires source and source-less coverage for all rows below.
 
 ## 20. Rejected alternatives
 
-### 20.1 “No `@encap` means POD and Copy”
+### 20.1 “No `@Encap` means POD and Copy”
 
 Rejected. A transparent aggregate may contain a move-only field and require
 structural cleanup. Access transparency does not erase ownership.
 
-### 20.2 “Every `@encap` type is permanently non-Copy”
+### 20.2 “Every `@Encap` type is permanently non-Copy”
 
 Rejected. Private-representation scalar values and borrowed views need an
 explicit, verified way to retain value semantics. Default move-only plus
 verified `@Copy` preserves both safety and usability.
 
-### 20.3 Put `dup` inside the `@encap` block and derive `@Dup`
+### 20.3 Put `dup` inside the `@Encap` block and derive `@Dup`
 
 Rejected for the first revision. It creates a second, implicit way to form a
 nominal behavioural witness and complicates generic bounds, coherence, and TKI
@@ -1468,7 +1468,7 @@ This RFC may be marked adopted only when:
 12. TKI v2 source-less replay matches source compilation; and
 13. the standard library and normative syntax documents contain no legacy
    ownership meaning for `clone`, `@Drop`, deleted methods, or structural
-   `@encap`.
+   `@Encap`.
 
 The resulting language identity is:
 

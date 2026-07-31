@@ -175,7 +175,11 @@ enum class TokenType {
   And,            // &&
   Or,             // ||
   DoubleQuestion, // ??
-  Backtick        // `
+  Backtick,       // `
+
+  // Reserved for a future dedicated encapsulation construct.  Keep this last
+  // so reserving it does not renumber existing tokens exposed in diagnostics.
+  KwEncap
 };
 
 struct Token {

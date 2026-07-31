@@ -1,9 +1,9 @@
 // Before: the public explicit clone method is available.
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 pub shape Resource(value: i32)
 
-impl Resource@encap {
+impl Resource@Encap {
     fn drop(self#) {}
 }
 

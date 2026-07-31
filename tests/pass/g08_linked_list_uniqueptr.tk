@@ -1,12 +1,12 @@
 
 import std/io::println
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Node<T>(
     val: T,
     nul ^next: Node<T>
 )
-impl<T> Node<T>@encap {
+impl<T> Node<T>@Encap {
     pub val
     fn drop(self#) {
         println("dropping {}", self.val)

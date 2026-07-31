@@ -4,7 +4,7 @@ pub fn main() -> i32 {
     auto s# = string::from("")
     s#.push_str("Hello Delegate!")
     
-    // Test the delegate trait fallback explicitly
+    // Test the @Delegate trait fallback explicitly
     // byte_at is defined on str, not string.
     // If the intrinsic works, this will automatically resolve to s.target().byte_at(0)
     // let is deprecated in Toka, use auto

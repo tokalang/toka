@@ -1,5 +1,5 @@
 import core/result::{Result}
-import core/traits::{ @encap }
+import core/traits::{ @Encap }
 import core/types::{ ADDR0 }
 
 shape MyFile(
@@ -8,7 +8,7 @@ shape MyFile(
 
 shape Wrapper(val: i32)
 
-impl MyFile@encap {
+impl MyFile@Encap {
     pub h
 
     fn drop(self#) {}

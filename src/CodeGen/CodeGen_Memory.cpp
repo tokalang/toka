@@ -480,7 +480,7 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
       dropFunc = knownShape->MangledDestructorName;
   }
   if (dropFunc.empty() && !knownShape) {
-    std::string try1 = "encap_" + typeName + "_drop";
+    std::string try1 = "Encap_" + typeName + "_drop";
     std::string try2 = typeName + "_drop"; // Legacy
     if (m_Module->getFunction(try1)) {
         dropFunc = try1;

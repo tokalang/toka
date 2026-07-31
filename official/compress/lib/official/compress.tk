@@ -49,7 +49,7 @@ pub shape Decoder (
     closed#: bool
 )
 
-impl CompressError@encap {
+impl CompressError@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> CompressError {
@@ -61,11 +61,11 @@ impl CompressError@encap {
     }
 }
 
-impl Encoder@encap {
+impl Encoder@Encap {
     fn drop(self#) { self#.release_native() }
 }
 
-impl Decoder@encap {
+impl Decoder@Encap {
     fn drop(self#) { self#.release_native() }
 }
 

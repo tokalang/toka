@@ -17,7 +17,7 @@ pub shape Data (
     private_val: i32
 )
 
-impl Data@encap {
+impl Data@Encap {
     pub public_val
     // private_val is implicitly private
 }

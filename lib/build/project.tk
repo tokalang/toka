@@ -1,4 +1,4 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 pub shape Executable (
     *name: char,
@@ -12,7 +12,7 @@ pub shape Executable (
     ldflags: string = string::from("")
 )
 
-impl Executable@encap {
+impl Executable@Encap {
     pub name, version, src, deps, c_srcs, lib_dirs, libs, include_dirs, ldflags
 
     fn drop(self#) { }
@@ -45,7 +45,7 @@ pub shape Library (
     include_dirs: string = string::from("")
 )
 
-impl Library@encap {
+impl Library@Encap {
     pub name, version, src, deps, c_srcs, lib_dirs, libs, include_dirs
 
     fn drop(self#) { }

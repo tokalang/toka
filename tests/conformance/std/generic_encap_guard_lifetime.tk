@@ -14,7 +14,7 @@ fn main() -> i32 {
 
     // The first guard's `MutexLock<T>` must be released at scope exit.  This
     // second acquisition covers both generic Result payload borrowing and the
-    // explicit @encap destructor carried by its instantiated payload.
+    // explicit @Encap destructor carried by its instantiated payload.
     guard auto Result::Ok(&second) = mutex#.lock() else {
         return 2
     }

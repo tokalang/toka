@@ -99,7 +99,7 @@ treatment for the following until each has its own proof:
 - dynamic array indexes and indexes through container internals;
 - spreads;
 - enum payload projections;
-- aggregates with user-defined `drop` / `@encap` cleanup;
+- aggregates with user-defined `drop` / `@Encap` cleanup;
 
 The same direct-field model is valid across `await`: the mask is a coroutine
 frame local, and cancellation now executes scope unwinding before publishing

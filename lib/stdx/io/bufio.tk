@@ -244,7 +244,7 @@ pub shape AsyncBufferedReader (
     cap: usize
 )
 
-impl AsyncBufferedReader@encap {
+impl AsyncBufferedReader@Encap {
     pub stream
     fn drop(self#) {}
 }

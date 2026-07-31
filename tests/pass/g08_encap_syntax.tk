@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // encap_syntax.tk
-// This file serves as a syntax specification for the @encap system.
+// This file serves as a syntax specification for the @Encap system.
 
 import std/io::println
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 // 1. Physical Layout
 pub shape Device (
@@ -26,8 +26,8 @@ pub shape Device (
     crate_shared: i32
 )
 
-// 2. Access Control (The @encap block)
-impl Device@encap {
+// 2. Access Control (The @Encap block)
+impl Device@Encap {
     pub public_config
     pub crate_shared
     

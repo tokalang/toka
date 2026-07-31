@@ -1,6 +1,6 @@
 import std/ring::{RingCore}
 import core/option::{Option}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import core/types::{usize}
 
 pub shape VecDeque<'T> (
@@ -45,6 +45,6 @@ impl<'T> VecDeque<'T> {
     }
 }
 
-impl<'T> VecDeque<'T>@encap {
+impl<'T> VecDeque<'T>@Encap {
     fn drop(self#) {}
 }

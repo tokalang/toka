@@ -1,5 +1,5 @@
 import core/option::{Option}
-import core/traits::{@encap, @Iterable, @Iterator, @BorrowIterator}
+import core/traits::{@Encap, @Iterable, @Iterator, @BorrowIterator}
 
 pub shape Values(value: i32)
 
@@ -14,7 +14,7 @@ pub shape ValuesCursor(
     done#: bool
 )
 
-impl ValuesCursor@encap {
+impl ValuesCursor@Encap {
     pub value, done
 
     fn drop(self#) {}

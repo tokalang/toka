@@ -8,7 +8,7 @@ shape Tracker (
     cloned: bool
 )
 
-impl Tracker@encap {
+impl Tracker@Encap {
 
     fn drop(self#) {
         println("Dropping Tracker {}", self.id)

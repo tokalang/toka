@@ -18,9 +18,9 @@ pub trait @PartialOrd {
     pub fn cmp(self, other: Self) -> i32
 }
 
-// @encap is an empty compiler-recognized policy marker. Its implementation
+// @Encap is an empty compiler-recognized policy marker. Its implementation
 // carries exact field grants and, optionally, one private lifecycle hook.
-pub trait @encap {}
+pub trait @Encap {}
 
 pub trait @Hash {
     pub fn hash(self) -> u64
@@ -69,6 +69,6 @@ pub trait @Iterable {
     pub fn iter(self) -> Iter <- self
 }
 
-pub trait @delegate<T> {
+pub trait @Delegate<T> {
     pub fn target(self) -> T
 }

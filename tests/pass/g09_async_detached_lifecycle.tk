@@ -5,7 +5,7 @@ auto g_detached_drops# = 0
 
 shape DetachedProbe()
 
-impl DetachedProbe@encap {
+impl DetachedProbe@Encap {
     fn drop(self#) {
         g_detached_drops += 1
     }

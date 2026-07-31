@@ -1,0 +1,5 @@
+error[E01253]: 'encap' is reserved for a future language construct
+ --> tests/fail/encap_reserved_keyword.tk:1:7
+   |
+ 1 | shape encap()
+   |       ^

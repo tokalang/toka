@@ -7,7 +7,7 @@ impl Resource {
 }
 
 shape Container(r: Resource)
-impl Container@encap { fn drop(self#) {} }
+impl Container@Encap { fn drop(self#) {} }
 
 fn main() {
     auto c# = Container(r = Resource(id = 1))

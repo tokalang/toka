@@ -127,7 +127,7 @@ impl<'T: @Send> JoinHandle<'T> {
     }
 }
 
-impl<'T> JoinHandle<'T>@encap {
+impl<'T> JoinHandle<'T>@Encap {
     fn drop(self#) {
         if self.id != 0:Addr {
             sys_thread_detach(self.id)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit-only redlines for the clean-break @encap policy."""
+"""Audit-only redlines for the clean-break @Encap policy."""
 
 from __future__ import annotations
 

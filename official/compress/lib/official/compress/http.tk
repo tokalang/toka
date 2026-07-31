@@ -26,7 +26,7 @@ pub shape HttpCompressionError (
     message: string
 )
 
-impl HttpCompressionError@encap {
+impl HttpCompressionError@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> HttpCompressionError {

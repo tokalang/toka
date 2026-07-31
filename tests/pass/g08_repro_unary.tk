@@ -17,7 +17,7 @@ shape Data (
     val: i32
 )
 
-impl Data@encap {
+impl Data@Encap {
     pub val
     fn drop(self#) {
         println("Dropping Data, val={}", self.val)

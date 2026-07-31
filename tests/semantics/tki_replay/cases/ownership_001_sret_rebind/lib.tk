@@ -6,7 +6,7 @@ pub shape ComplexPayload (
     tag: i32
 )
 
-impl ComplexPayload@encap {
+impl ComplexPayload@Encap {
     pub id, code, tag
     fn drop(self#) {}
 }

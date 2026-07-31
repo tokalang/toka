@@ -132,7 +132,7 @@ pub shape TaskRef (
     *#tcb: void
 )
 
-impl TaskRef@encap {
+impl TaskRef@Encap {
     pub tcb
     fn drop(self#) {
         if self.*tcb != null {

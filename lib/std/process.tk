@@ -53,7 +53,7 @@ pub shape Child(
     reaped#: bool = false
 )
 
-impl Child@encap {
+impl Child@Encap {
     pub pid
 
     fn drop(self#) {

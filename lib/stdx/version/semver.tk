@@ -178,7 +178,7 @@ fn compare_pre_release(left: Vec<PreReleaseId>, right: Vec<PreReleaseId>) -> i32
     return left.len().cmp(right.len())
 }
 
-impl SemVerError@encap {
+impl SemVerError@Encap {
     fn drop(self#) {}
 
 }
@@ -195,7 +195,7 @@ impl SemVerError {
     pub fn message(self) -> string { return string::from(self.message.as_str()) }
 }
 
-impl PreReleaseId@encap {
+impl PreReleaseId@Encap {
     fn drop(self#) {}
 
 }
@@ -209,7 +209,7 @@ impl PreReleaseId {
     }
 }
 
-impl SemVer@encap {
+impl SemVer@Encap {
     fn drop(self#) {}
 
 }

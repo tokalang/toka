@@ -4,7 +4,7 @@ auto g_drops# = 0
 
 shape Token(id: i32)
 
-impl Token@encap {
+impl Token@Encap {
     fn drop(self#) {
         g_drops += 1
     }

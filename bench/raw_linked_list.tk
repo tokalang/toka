@@ -1,12 +1,12 @@
 // Benchmark raw pointer list performance in Toka (Pure Computational Version)
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Node (
     val: i32,
     nul *#next: Node = null as *Node
 )
 
-impl Node@encap {
+impl Node@Encap {
     fn drop(self#) {
         // Handled manually
     }

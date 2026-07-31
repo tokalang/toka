@@ -1527,7 +1527,7 @@ public:
 
   // [NEW] Cache for the mangled name of the destructor (drop method)
   std::string MangledDestructorName;
-  // Distinguishes a source-level `@encap drop` from the compiler-generated
+  // Distinguishes a source-level `@Encap drop` from the compiler-generated
   // structural destructor used for resource-containing records.
   bool HasExplicitDrop = false;
 };
@@ -1907,7 +1907,7 @@ public:
   std::string ShadowCoordinateOrigin;
   std::string ShadowCoordinateReason;
   // `.tki` transport fact: these shapes have compiler-generated structural
-  // destructors, not source-defined `@encap drop` implementations.
+  // destructors, not source-defined `@Encap drop` implementations.
   std::set<std::string> InterfaceStructuralDropShapes;
   // Slice 5 emits these replay facts as TKI v2 comments.  They are derived
   // after semantic analysis; the source declarations remain authoritative.

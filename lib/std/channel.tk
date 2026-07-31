@@ -158,7 +158,7 @@ impl<'T: @Send> Receiver<'T> {
 }
 
 // Drop implementations for sender/receiver cloning
-impl<'T> Sender<'T>@encap {
+impl<'T> Sender<'T>@Encap {
     fn drop(self#) {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {
@@ -188,7 +188,7 @@ impl<'T: @Send> Sender<'T> {
     }
 }
 
-impl<'T> Receiver<'T>@encap {
+impl<'T> Receiver<'T>@Encap {
     fn drop(self#) {
         auto lguard_res = self.channel.state.lock()
         if lguard_res.is_err() {

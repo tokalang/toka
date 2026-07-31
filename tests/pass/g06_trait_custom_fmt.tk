@@ -30,12 +30,12 @@ impl Point@ToFormat {
     }
 }
 
-// Helper functions to work around the compiler's capitalization mismatch bug
+// Runtime helper hooks used by string formatting and cleanup.
 pub fn String_c_str(*s: string) -> *char {
     return s.c_str()
 }
 
-pub fn encap_String_drop(*s: string) {
+pub fn Encap_String_drop(*s: string) {
     // Left empty intentionally to work around the compiler's drop ABI mismatch
 }
 

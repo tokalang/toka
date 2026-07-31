@@ -63,7 +63,7 @@ copy.
 
 - This v1 classifier does not define source-level lifecycle syntax. The
   current source contract uses compiler-owned lifecycle plans, an optional
-  private `@encap` hook, proven `@Copy`, and explicit `@Dup`.
+  private `@Encap` hook, proven `@Copy`, and explicit `@Dup`.
 - It does not add public reflection over ownership classes.
 - It does not decide future `cede` re-rooting or permission-flow rules.
 

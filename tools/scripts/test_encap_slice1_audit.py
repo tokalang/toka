@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression evidence for the audit-only @encap epoch Slice 1 data model."""
+"""Regression evidence for the audit-only @Encap epoch Slice 1 data model."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def main() -> int:
         dup.write_text(
             "pub trait @Dup {}\n"
             "shape Valid(raw: i32)\n"
-            "impl Valid@encap { pub raw fn drop(self#) {} }\n"
+            "impl Valid@Encap { pub raw fn drop(self#) {} }\n"
             "impl Valid@Dup { pub fn dup(self) -> Self { return Valid(raw = self.raw) } }\n"
             "fn main() -> i32 { return 0 }\n", encoding="utf-8")
         dup_facts = facts(dup)
@@ -81,7 +81,7 @@ def main() -> int:
                        expect_success=False)
         assert "E0406" in rejected.stderr
 
-        for name, trait in (("dyn_encap.tk", "encap"), ("dyn_copy.tk", "Copy")):
+        for name, trait in (("dyn_encap.tk", "Encap"), ("dyn_copy.tk", "Copy")):
             source = root / name
             source.write_text(
                 "fn reject(value: dyn @%s) -> i32 { return 0 }\n"

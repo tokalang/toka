@@ -14,7 +14,7 @@
 
 import core/option::{Option}
 import core/types::{Char32, usize}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 // `cp` uses U+FFFD for malformed input so normal iteration can replace bad
 // bytes. `valid` remains separate because U+FFFD is also a valid scalar.
@@ -28,7 +28,7 @@ pub shape Cursor(
     pos#: usize
 )
 
-impl Cursor@encap {
+impl Cursor@Encap {
     pub buf, len, pos
     fn drop(self#) {}
 }

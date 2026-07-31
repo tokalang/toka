@@ -1,12 +1,12 @@
 import core/option::{Option}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import sys/libc::*
 
 auto g_drop_count# = 0
 
 shape Inner(id: i32, closed: bool)
 
-impl Inner@encap {
+impl Inner@Encap {
     fn drop(self#) {
         self#.close()
     }
@@ -23,10 +23,10 @@ impl Inner {
 }
 
 // This mirrors a client resource: the outer value has a custom destructor
-// which closes a nested @encap field rather than relying on structural drop.
+// which closes a nested @Encap field rather than relying on structural drop.
 shape Outer(inner: Inner)
 
-impl Outer@encap {
+impl Outer@Encap {
     fn drop(self#) {
         self.inner#.close()
     }
@@ -39,7 +39,7 @@ shape RawStore<'T> (
     cap#: usize = 0:usize
 )
 
-impl<'T> RawStore<'T>@encap {
+impl<'T> RawStore<'T>@Encap {
     fn drop(self#) {
         unsafe {
             if self.*buf != null {

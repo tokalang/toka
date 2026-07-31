@@ -38,7 +38,7 @@ pub shape WsConnection (
     current_msg_len: usize
 )
 
-impl WsConnection@encap {
+impl WsConnection@Encap {
     pub stream#
     pub is_client
     pub max_payload_size

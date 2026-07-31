@@ -677,7 +677,7 @@ void Sema::recordSlice1ImplFact(ImplDecl *impl,
   DupProviderMap.try_emplace(key, Slice1DupProvider::None);
   DropPlanMap.try_emplace(key, Slice1DropPlan::Unknown);
 
-  if (family == "encap") {
+  if (family == "Encap") {
     PolicyMap[key] = { !impl->IsStructuralDrop, impl->IsStructuralDrop };
     if (impl->IsStructuralDrop) {
       DropPlanMap[key] = Slice1DropPlan::LegacyStructural;
@@ -727,7 +727,7 @@ void Sema::dumpEncapSlice1FactsJSON(std::ostream &out) const {
 
 void Sema::registerSlice2Policy(ImplDecl *impl) {
   if (!impl || impl->IsStructuralDrop ||
-      getTraitFamilyName(impl->TraitName) != "encap")
+      getTraitFamilyName(impl->TraitName) != "Encap")
     return;
 
   std::string base = impl->TypeName;
@@ -742,7 +742,7 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
       shapeOwner == DeclarationLexicalScopes.end() ||
       implOwner->second != shapeOwner->second) {
     DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                             "@encap v2 policy must be declared in the nominal type's defining module");
+                             "@Encap v2 policy must be declared in the nominal type's defining module");
     HasError = true;
     return;
   }
@@ -752,14 +752,14 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
       ++dropHooks;
     else {
       DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v2 accepts only exact field grants and one drop hook");
+                               "@Encap v2 accepts only exact field grants and one drop hook");
       HasError = true;
       return;
     }
   }
   if (dropHooks > 1) {
     DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                             "@encap v2 accepts at most one drop hook");
+                             "@Encap v2 accepts at most one drop hook");
     HasError = true;
     return;
   }
@@ -774,7 +774,7 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
         hook->Args[0].IsValueMutable;
     if (!validHook) {
       DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v3 drop hook must be private fn drop(self#) -> void");
+                               "@Encap v3 drop hook must be private fn drop(self#) -> void");
       HasError = true;
       return;
     }
@@ -788,21 +788,21 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
     if (registered.Impl != impl && registered.Owner == implOwner->second &&
         registeredBase == base) {
       DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v2 permits exactly one policy declaration per nominal type");
+                               "@Encap v2 permits exactly one policy declaration per nominal type");
       HasError = true;
       return;
     }
   }
   if (Slice2PolicyMap.count(shape) && Slice2PolicyMap[shape].Impl != impl) {
     DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                             "@encap v2 permits exactly one policy declaration per nominal type");
+                             "@Encap v2 permits exactly one policy declaration per nominal type");
     HasError = true;
     return;
   }
   for (const auto &parameter : impl->GenericParams) {
     if (!parameter.TraitBounds.empty()) {
       DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@encap v2 generic policies cannot have trait bounds or where constraints");
+                               "@Encap v2 generic policies cannot have trait bounds or where constraints");
       HasError = true;
       return;
     }
@@ -810,7 +810,7 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
   if (!shape->GenericParams.empty() &&
       !genericImplAppliesToWholeShape(shape, impl)) {
     DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                             "@encap v2 generic policies must apply uniformly to the nominal type's complete generic domain");
+                             "@Encap v2 generic policies must apply uniformly to the nominal type's complete generic domain");
     HasError = true;
     return;
   }
@@ -875,7 +875,7 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
   const std::string family = getTraitFamilyName(impl->TraitName);
   if (family == "Clone" || family == "Drop") {
     DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                             "@encap v4 removes the @Clone and @Drop facets");
+                             "@Encap v4 removes the @Clone and @Drop facets");
     HasError = true;
     return;
   }
@@ -1415,7 +1415,7 @@ std::string Sema::getDynTraitName(std::shared_ptr<toka::Type> type) const {
 bool Sema::validateDynTraitObjectSafety(const std::string &traitName,
                                         SourceLocation loc) {
   const std::string family = getTraitFamilyName(traitName);
-  if (family == "encap" || family == "Copy") {
+  if (family == "Encap" || family == "Copy") {
     DiagnosticEngine::report(
         loc, DiagID::ERR_DYN_TRAIT_NOT_OBJECT_SAFE, family, family,
         "compiler-known policy and Copy markers have no dynamic method dictionary");
@@ -3138,14 +3138,14 @@ void Sema::registerGlobals(Module &M) {
       std::string baseName = genericImplKey(Impl->TypeName, Impl->Loc);
       GenericImplMap[baseName].push_back(Impl.get());
       
-      if (Impl->TraitName == "encap" && !Impl->IsStructuralDrop) {
+      if (Impl->TraitName == "Encap" && !Impl->IsStructuralDrop) {
         EncapMap[baseName] = Impl->EncapEntries;
       }
 
       continue; // Skip standard registration for templates
     }
 
-    if (Impl->TraitName == "encap" && !Impl->IsStructuralDrop) {
+    if (Impl->TraitName == "Encap" && !Impl->IsStructuralDrop) {
       std::string encapBaseName = Impl->TypeName;
       size_t lt_encap = encapBaseName.find('<');
       if (lt_encap != std::string::npos) encapBaseName = encapBaseName.substr(0, lt_encap);
@@ -3250,7 +3250,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
               ? resolvedTypeName + "_" + Method->Name
               : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     }
-    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "encap" &&
+    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "Encap" &&
                             Method->Name == "drop";
     if (!isDropHook) {
       MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
@@ -3261,7 +3261,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
   // Populate ImplMap
   if (!Impl->TraitName.empty() &&
-      getTraitFamilyName(canonicalTrait) != "encap" &&
+      getTraitFamilyName(canonicalTrait) != "Encap" &&
       getTraitFamilyName(canonicalTrait) != "Copy") {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey]; // Ensure the key exists even for empty traits
@@ -3270,10 +3270,10 @@ void Sema::registerImpl(ImplDecl *Impl) {
     }
   }
 
-  // Slice 2 makes @encap an authority declaration, not the legacy trait
+  // Slice 2 makes @Encap an authority declaration, not the legacy trait
   // contract that required clone and drop methods.
   if (!Impl->TraitName.empty() &&
-      getTraitFamilyName(canonicalTrait) != "encap" &&
+      getTraitFamilyName(canonicalTrait) != "Encap" &&
       getTraitFamilyName(canonicalTrait) != "Copy") {
     if (traitDecl) {
       TraitDecl *TD = traitDecl;
@@ -3313,7 +3313,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
           MethodDecls[resolvedTypeName][Method->Name] = Method.get();
         } else {
           // [Fix] Optional methods for intrinsic interfaces
-          if (getTraitFamilyName(canonicalTrait) == "delegate") {
+          if (getTraitFamilyName(canonicalTrait) == "Delegate") {
             continue;
           }
 
@@ -3330,15 +3330,15 @@ void Sema::registerImpl(ImplDecl *Impl) {
     }
   }
 
-  // [Toka] Resource Management: Mark type as having drop if @encap is
+  // [Toka] Resource Management: Mark type as having drop if @Encap is
   // implemented
-  if (getTraitFamilyName(canonicalTrait) == "encap") {
+  if (getTraitFamilyName(canonicalTrait) == "Encap") {
     if (implemented.count("drop")) {
       m_ShapeProps[resolvedTypeName].HasDrop = true;
       // [Single Source of Truth] Store the authoritative mangled name
       if (ShapeMap.count(resolvedTypeName)) {
         ShapeMap[resolvedTypeName]->MangledDestructorName =
-            "encap_" + resolvedTypeName + "_drop";
+            "Encap_" + resolvedTypeName + "_drop";
       }
     }
   }
@@ -3415,7 +3415,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
               ? resolvedTypeName + "_" + Method->Name
               : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
     }
-    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "encap" &&
+    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "Encap" &&
                             Method->Name == "drop";
     if (!isDropHook) {
       MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
@@ -3425,7 +3425,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
   }
 
   if (!Impl->TraitName.empty() &&
-      getTraitFamilyName(canonicalTrait) != "encap" &&
+      getTraitFamilyName(canonicalTrait) != "Encap" &&
       getTraitFamilyName(canonicalTrait) != "Copy") {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey];
@@ -3434,12 +3434,12 @@ void Sema::declareImpl(ImplDecl *Impl) {
     }
   }
 
-  if (getTraitFamilyName(canonicalTrait) == "encap") {
+  if (getTraitFamilyName(canonicalTrait) == "Encap") {
     if (implemented.count("drop")) {
       m_ShapeProps[resolvedTypeName].HasDrop = true;
       if (ShapeMap.count(resolvedTypeName)) {
         ShapeMap[resolvedTypeName]->MangledDestructorName =
-            "encap_" + resolvedTypeName + "_drop";
+            "Encap_" + resolvedTypeName + "_drop";
       }
     }
   }
@@ -3887,11 +3887,11 @@ void Sema::analyzeShapes(Module &M) {
       continue;
     auto &props = m_ShapeProps[S->Name];
 
-    // A drop hook is explicit only when it is declared in an @encap policy.
+    // A drop hook is explicit only when it is declared in an @Encap policy.
     bool hasExplicitDrop = false;
     for (auto &I : M.Impls) {
       if (I->TypeName == S->Name &&
-          getTraitFamilyName(I->TraitName) == "encap") {
+          getTraitFamilyName(I->TraitName) == "Encap") {
         for (auto &method : I->Methods) {
           if (method->Name == "drop") {
             hasExplicitDrop = true;

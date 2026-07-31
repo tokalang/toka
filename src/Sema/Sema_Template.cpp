@@ -365,7 +365,7 @@ void Sema::instantiateGenericImpl(
     DeclarationLexicalScopes[RawPtr] = templateOwner->second;
 
   const std::string family = getTraitFamilyName(Template->TraitName);
-  if (family == "encap") {
+  if (family == "Encap") {
     std::string base = Template->TypeName;
     if (size_t generic = base.find('<'); generic != std::string::npos)
       base.resize(generic);

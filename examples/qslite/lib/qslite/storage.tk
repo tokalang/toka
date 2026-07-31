@@ -17,7 +17,7 @@ pub shape DbError(
     message: string
 )
 
-impl DbError@encap {
+impl DbError@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> DbError {
@@ -33,7 +33,7 @@ pub shape Row(
     value: string
 )
 
-impl Row@encap {
+impl Row@Encap {
     fn drop(self#) {}
 
     pub fn clone(self) -> Row {
@@ -49,7 +49,7 @@ pub shape Database(
     rows#: Vec<Row>
 )
 
-impl Database@encap {
+impl Database@Encap {
     fn drop(self#) {}
 
     pub fn len(self) -> usize { return self.rows.len() }

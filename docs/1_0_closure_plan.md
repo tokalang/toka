@@ -107,10 +107,10 @@ through `FZ-4`.
   `ErrorContext<E>` without error erasure.
 - Traits, facet constraints, `where:`, associated `type`/`per type`, and
   single-facet `dyn @Trait` within the frozen object-safety boundary.
-- Implicit prelude visibility for exactly `@encap`, `@Send`, `@Sync`, and
+- Implicit prelude visibility for exactly `@Encap`, `@Send`, `@Sync`, and
   `@Callable`;
   every other trait follows ordinary lexical imports.
-- `@encap`, `pub`, `pub(crate)`, `pub(path)`, wildcard visibility, imports,
+- `@Encap`, `pub`, `pub(crate)`, `pub(path)`, wildcard visibility, imports,
   re-exports, and the filesystem-path/name hyphen boundary.
 - `if`, `guard`, `match`, `loop`, `for`, `break`, `continue`, block `pass`,
   enum exhaustiveness, guard handling, or-pattern consistency, and

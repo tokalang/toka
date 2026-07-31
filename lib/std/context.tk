@@ -201,7 +201,7 @@ impl Canceler {
     }
 }
 
-impl Canceler@encap {
+impl Canceler@Encap {
     fn drop(self#) {
     }
 

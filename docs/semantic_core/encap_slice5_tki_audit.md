@@ -1,4 +1,4 @@
-# `@encap` Slice 5 TKI v2 audit
+# `@Encap` Slice 5 TKI v2 audit
 
 Slice 5 is selected with `--encap-epoch=v5`; it includes the policy,
 lifecycle, and Copy/Dup rules from the preceding epochs.
@@ -12,7 +12,7 @@ lifecycle, and Copy/Dup rules from the preceding epochs.
   path, and a resolver-binding digest.  Under the v5 gate the resolver derives
   the expected identity from its package/workspace/toolchain graph and rejects
   missing or mismatched metadata.  An unbound coordinate is explicit and can
-  never authorize an `@encap` grant.
+  never authorize an `@Encap` grant.
 - Semantic records are emitted as `@tki v2` comments after Sema has completed:
   complete field graph entries, normalized policy grants, Copy proof and
   witness, generic `CopyRecipe`, intrinsic/user Dup provider, and custom-drop

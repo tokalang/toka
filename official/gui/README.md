@@ -13,7 +13,7 @@ text input are designed.
 ## Guarantees
 
 - `Window` never exposes its Objective-C handle through the public Toka API.
-- `Window` is `@encap` and exposes no public clone method; its native handle
+- `Window` is `@Encap` and exposes no public clone method; its native handle
   cannot be copied or accessed outside the package. Explicit `close` and
   deterministic `drop` close and release the native window exactly once.
 - `Window` is intentionally not `@Send`: AppKit and Metal state stays on its

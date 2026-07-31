@@ -180,7 +180,7 @@ pub shape UdpSocket (
     closed: bool
 )
 
-impl UdpSocket@encap {
+impl UdpSocket@Encap {
     fn drop(self#) {
         unsafe {
             if !self.closed {
@@ -274,7 +274,7 @@ pub shape TcpStream (
     closed: bool
 )
 
-impl TcpStream@encap {
+impl TcpStream@Encap {
     pub fd, closed
     fn drop(self#) {
         self#.close()
@@ -891,7 +891,7 @@ pub shape TlsSession (
     *#handle: void
 )
 
-impl TlsSession@encap {
+impl TlsSession@Encap {
     fn drop(self#) {
         self#.close()
     }
@@ -1071,7 +1071,7 @@ pub shape TcpListener (
     closed: bool
 )
 
-impl TcpListener@encap {
+impl TcpListener@Encap {
     fn drop(self#) {
         unsafe {
             if !self.closed {

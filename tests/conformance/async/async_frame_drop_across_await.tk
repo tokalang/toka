@@ -7,7 +7,7 @@ shape ManagedResource (
     &drop_count#: i32
 )
 
-impl ManagedResource@encap {
+impl ManagedResource@Encap {
     pub id, drop_count
     fn drop(self#) {
         self.drop_count += 1

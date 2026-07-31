@@ -17,7 +17,7 @@ import stdx/serde/json::{to_json}
 shape ChatMessage (role: string, content: string)
 shape EndpointTarget (host: string, path: string, address: SocketAddrV4)
 
-impl ChatMessage@encap {
+impl ChatMessage@Encap {
     fn drop(self#) {}
     pub fn clone(self) -> ChatMessage {
         return ChatMessage(role = self.role.clone(), content = self.content.clone())

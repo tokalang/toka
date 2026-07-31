@@ -5,7 +5,7 @@ import core/types::{Addr}
 shape Resource (
     &drop_flag#: i32
 )
-impl Resource@encap {
+impl Resource@Encap {
     pub drop_flag
     fn drop(self#) {
         self.drop_flag += 1
@@ -16,7 +16,7 @@ shape SharedHandle (
     data: Addr,
     *ref_ptr: i32
 )
-impl SharedHandle@encap {
+impl SharedHandle@Encap {
     pub data, ref_ptr
     fn drop(self#) {}
 }

@@ -62,6 +62,10 @@ bool Parser::match(TokenType type) {
 Token Parser::consume(TokenType type, DiagID id) {
   if (check(type))
     return advance();
+  if (type == TokenType::Identifier && check(TokenType::KwEncap)) {
+    error(peek(), DiagID::ERR_PARSER_ENCAP_RESERVED_KEYWORD);
+    return advance();
+  }
   error(peek(), id);
   return peek();
 }

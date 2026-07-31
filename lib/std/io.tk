@@ -93,7 +93,7 @@ impl File {
     }
 }
 
-impl File@encap {
+impl File@Encap {
     fn drop(self#) {
         unsafe {
             if self.owned && self.opened && self.*handle != (ADDR0 as *void) {

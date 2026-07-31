@@ -1,5 +1,5 @@
 import core/option::{Option}
-import core/traits::{@encap, @Iterator, @Callable}
+import core/traits::{@Encap, @Iterator, @Callable}
 
 // A concrete owned lazy adapter. Its result type is derived from the existing
 // call signature of F, so callers do not duplicate callback output metadata.
@@ -8,7 +8,7 @@ pub shape Map<'I, 'F> (
     mapper#: F
 )
 
-impl<'I, 'F> Map<'I, 'F>@encap {
+impl<'I, 'F> Map<'I, 'F>@Encap {
     fn drop(self#) {}
 }
 

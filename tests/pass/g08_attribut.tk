@@ -1,4 +1,4 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import std/io::println
 
 shape S (
@@ -11,7 +11,7 @@ shape S (
     // The above '*' examples apply to all pointer types with identical rules, including raw pointer *, unique pointer ^, shared pointer ~, and reference &
 )
 
-impl S@encap {
+impl S@Encap {
 
     fn drop(self#) {
         println("drop")

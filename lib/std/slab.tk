@@ -1,5 +1,5 @@
 import core/types::{usize}
-import core/traits::{@encap}
+import core/traits::{@Encap}
 import core/option::{Option}
 import std/vec::{Vec}
 
@@ -22,7 +22,7 @@ impl SlabID {
     }
 }
 
-impl SlabID@encap {
+impl SlabID@Encap {
     fn drop(self#) {}
 }
 
@@ -40,7 +40,7 @@ shape SlabEntry<'T> (
 
 // Consume a slot value before replacing it. Plain aggregate assignment does
 // not own destruction of the overwritten payload, so clear must make the
-// consumption explicit for @encap element types.
+// consumption explicit for @Encap element types.
 fn consume_slot_value<'T>(cede value: Option<'T>) -> Option<'T> {
     match cede value {
         auto Option<'T>::Some('dropped) => {}
@@ -205,7 +205,7 @@ impl<'T> Slab<'T> {
     }
 }
 
-impl<'T> Slab<'T>@encap {
+impl<'T> Slab<'T>@Encap {
     fn drop(self#) {
         self#.clear()
     }

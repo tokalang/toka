@@ -1482,7 +1482,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                  fatPtr = m_Builder.CreateInsertValue(fatPtr, opaqueFunc, 1);
                  
                  if (isDynFn) {
-                     std::string dropName = "encap_" + shp->Name + "_drop";
+                     std::string dropName = "Encap_" + shp->Name + "_drop";
                      llvm::Function *dropFn = m_Module->getFunction(dropName);
                      llvm::Value *opaqueDrop = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(m_Context));
                      if (dropFn) {
@@ -1580,7 +1580,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       if (!dropFunc.empty()) {
         hasDrop = true;
       } else {
-        // Simple mangling check: Type_encap_drop
+        // Simple mangling check: Type_Encap_drop
         // Need to strip morphology
         std::string base = typeName;
         while (!base.empty() &&
@@ -2263,9 +2263,9 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
     implementedMethods.insert(method->Name);
   }
 
-  // @encap policies and @Copy markers never participate in a trait vtable.
+  // @Encap policies and @Copy markers never participate in a trait vtable.
   if (!decl->TraitName.empty() &&
-      getTraitFamilyNameForCodeGen(decl->TraitName) != "encap" &&
+      getTraitFamilyNameForCodeGen(decl->TraitName) != "Encap" &&
       getTraitFamilyNameForCodeGen(decl->TraitName) != "Copy") {
     const TraitDecl *trait = nullptr;
     std::string traitLookupName = getTraitFamilyNameForCodeGen(decl->TraitName);
@@ -2567,9 +2567,9 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     }
   }
 
-  // Explicit check for @encap (hybrid trait)
+  // Explicit check for @Encap (hybrid trait)
   if (!callee) {
-    std::string encapFunc = "encap_" + typeName + "_" + expr->Method;
+    std::string encapFunc = "Encap_" + typeName + "_" + expr->Method;
     callee = m_Module->getFunction(encapFunc);
   }
 

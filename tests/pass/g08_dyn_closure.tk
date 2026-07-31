@@ -4,7 +4,7 @@ shape HandlerEnv (
    count: i32
 )
 
-impl HandlerEnv@encap {
+impl HandlerEnv@Encap {
    pub count
     fn drop(self#) {
        libc_printf(c"Dropping handler env! count=%d\n", self.count)

@@ -1,10 +1,10 @@
 // EXPECT: error[E04581]
 
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Env(value: i32)
 
-impl Env@encap {
+impl Env@Encap {
     fn drop(self#) {}
 }
 

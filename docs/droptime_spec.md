@@ -22,7 +22,7 @@ scope-exit callback. Its target paths are part of the source contract and are
 tracked by PAL for the lifetime of the cleanup obligation.
 
 The feature is intended for local unmanaged FFI handles that do not justify a
-named `@encap` wrapper. Movable, returnable, container-stored, shared, or
+named `@Encap` wrapper. Movable, returnable, container-stored, shared, or
 cross-task resources continue to use explicit resource types.
 
 ## 2. Frozen Surface Syntax
@@ -127,7 +127,7 @@ While it is active:
 
 The initial version has no disarm, release, transfer, or early-fire operation.
 Code that needs to move or hand off cleanup ownership must use a named
-`@encap` resource instead.
+`@Encap` resource instead.
 
 A `droptime` statement in a branch is armed only on the executed branch. A
 statement inside a loop body creates one obligation for that iteration's
@@ -166,7 +166,7 @@ The initial version rejects:
 - implicit capture of another local binding; and
 - a cleanup result or propagated cleanup error.
 
-Cleanup APIs that can fail should normally have a named `@encap` wrapper with
+Cleanup APIs that can fail should normally have a named `@Encap` wrapper with
 an explicit consuming `close` operation. `droptime` is a best-effort local
 cleanup boundary and cannot propagate an error from scope exit.
 
@@ -238,7 +238,7 @@ The lowering must:
 2. emit the cleanup body on every normal exit edge from the active scope;
 3. preserve reverse registration order;
 4. avoid duplicate execution at merged control-flow exits; and
-5. preserve ordinary cleanup ordering with surrounding `@encap` values.
+5. preserve ordinary cleanup ordering with surrounding `@Encap` values.
 
 `droptime` does not change the source type of an anchor and does not turn a raw
 pointer into a safe or movable owner.
@@ -258,7 +258,7 @@ droptime *fp {
 }
 ```
 
-Use a named `@encap` type when a resource must be moved, returned, stored,
+Use a named `@Encap` type when a resource must be moved, returned, stored,
 shared, explicitly closed with error handling, or transferred across an
 execution boundary:
 

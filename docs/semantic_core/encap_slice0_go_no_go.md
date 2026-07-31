@@ -1,4 +1,4 @@
-# `@encap` Epoch Slice 0 Gate Status
+# `@Encap` Epoch Slice 0 Gate Status
 
 **Status:** **Slice 0 evidence and Slice 1 data-model preparation complete;
 semantic activation remains disabled.**
@@ -55,6 +55,6 @@ legacy semantic rule active.
 
 ## Required work before a new decision
 
-Do not activate any proposed `@encap` epoch rule. Slice 2 must preserve every
+Do not activate any proposed `@Encap` epoch rule. Slice 2 must preserve every
 redline result and add implementation-backed coverage before it can change
 parser or access decisions.

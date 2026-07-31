@@ -1,11 +1,11 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 auto g_body_runs# = 0
 auto g_drop_count# = 0
 
 shape Token(id: i32)
 
-impl Token@encap {
+impl Token@Encap {
     fn drop(self#) {
         g_drop_count += 1
     }

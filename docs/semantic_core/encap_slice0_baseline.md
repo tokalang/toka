@@ -1,7 +1,7 @@
-# `@encap` Epoch Slice 0 Baseline
+# `@Encap` Epoch Slice 0 Baseline
 
 **Status:** In progress. This document records current behaviour before the
-proposed `@encap` epoch changes any semantic decision. It is not a statement
+proposed `@Encap` epoch changes any semantic decision. It is not a statement
 that the proposed rules are implemented or enabled.
 
 **Authority:** [the hybrid-policy RFC](encap_hybrid_policy_rfc.md) defines the
@@ -14,7 +14,7 @@ Slice 0 may add resolver-owned shadow metadata, redline fixtures, and audit
 reports. It must not alter source acceptance, field visibility, Copy/Dup
 selection, drop lowering, TKI format, cache validity, or code generation.
 
-In particular, a shadow coordinate is evidence only. An `@encap` access check
+In particular, a shadow coordinate is evidence only. An `@Encap` access check
 continues to use the current implementation until a later implementation slice
 explicitly activates the new policy.
 
@@ -26,8 +26,8 @@ explicitly activates the new policy.
 | `pub(crate)` | `Sema_Expr_Member.cpp` currently accepts a crate entry without comparing an access-site and defining crate. | Same-crate and cross-crate shadow outcomes must be measured before the rule is enabled. |
 | `pub(path)` | `Sema_Expr_Member.cpp` uses `PathUtils::modulePathMatchesTarget` with a physical module filename. | Physical path results are legacy outcomes; a logical segment-prefix result must be computed separately. |
 | TKI identity | TKI metadata carries `source_path`; a source-less module may use it as parser/source identity. | Source, generated-TKI, and cached-TKI need one recorded shadow coordinate and a disagreement report. |
-| Structural lifecycle | Sema synthesizes `ImplDecl(..., "encap")` with `IsStructuralDrop`; TKI replays `@tki structural_drop`. | Current structural witnesses are intentional legacy behaviour, not evidence for the new `DropPlan` model. |
-| Capsule grammar | The parser accepts callable methods and wildcard/exclusion grants inside `impl T@encap`. | Existing library use must be inventoried before the later grammar break. |
+| Structural lifecycle | Sema synthesizes `ImplDecl(..., "Encap")` with `IsStructuralDrop`; TKI replays `@tki structural_drop`. | Current structural witnesses are intentional legacy behaviour, not evidence for the new `DropPlan` model. |
+| Capsule grammar | The parser accepts callable methods and wildcard/exclusion grants inside `impl T@Encap`. | Existing library use must be inventoried before the later grammar break. |
 | Resource provenance | Package metadata may declare `native.ffi_resources`, but the compiler has no resolver-bound `ResourceContract(TypeDefId)` fact. | Raw allocation, field spelling, and hook text must not be treated as ownership evidence in Slice 0. |
 | Copy and duplication | Legacy `clone`, deleted clone declarations, and structural lifetime facts remain active. | Copy-SCC and Copy/Dup coherence redlines are observation/prototype work only. |
 

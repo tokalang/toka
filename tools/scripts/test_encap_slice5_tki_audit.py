@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression evidence for the gated @encap Slice 5 TKI v2 contract."""
+"""Regression evidence for the gated @Encap Slice 5 TKI v2 contract."""
 
 from __future__ import annotations
 
@@ -40,26 +40,26 @@ def main() -> int:
         consumer = root / "main.tk"
         provider.write_text(
             "pub shape NonZero(raw: i32)\n"
-            "impl NonZero@encap { pub raw }\n"
+            "impl NonZero@Encap { pub raw }\n"
             "impl NonZero@Copy {}\n"
             "pub shape Capsule<T>(value: T)\n"
-            "impl<T> Capsule<T>@encap { pub value }\n"
+            "impl<T> Capsule<T>@Encap { pub value }\n"
             "impl<T: @Copy> Capsule<T>@Copy {}\n"
             "trait @Dup { pub fn dup(self) -> Self }\n"
             "pub shape Resource(raw: i32)\n"
-            "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+            "impl Resource@Encap { pub raw fn drop(self#) {} }\n"
             "impl Resource@Dup {\n"
             "  pub fn dup(self) -> Self { return Resource(raw = self.raw + 1) }\n"
             "}\n"
             "pub shape Wrapper<T>(value: T)\n"
-            "impl<T> Wrapper<T>@encap { pub value }\n"
+            "impl<T> Wrapper<T>@Encap { pub value }\n"
             "impl<T: @Dup> Wrapper<T>@Dup {\n"
             "  pub fn dup(self) -> Self {\n"
             "    return Wrapper<T>(value = self.value.dup())\n"
             "  }\n"
             "}\n"
             "pub shape Tracked(value: i32)\n"
-            "impl Tracked@encap { pub value fn drop(self#) {} }\n"
+            "impl Tracked@Encap { pub value fn drop(self#) {} }\n"
             "pub fn make() -> NonZero { return NonZero(raw = 7) }\n",
             encoding="utf-8")
         consumer.write_text(
@@ -84,7 +84,7 @@ def main() -> int:
                 "// @tki v2 dup_provider: NonZero = intrinsic-copy",
                 "// @tki v2 copy_recipe: Capsule = all(T:@Copy)",
                 "// @tki v2 dup_provider: Resource = user",
-                "// @tki v2 custom_drop: Tracked = encap_Tracked_drop",
+                "// @tki v2 custom_drop: Tracked = Encap_Tracked_drop",
         ):
             assert expected in text, expected
         assert "structural_drop" not in text

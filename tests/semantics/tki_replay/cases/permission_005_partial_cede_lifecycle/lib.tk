@@ -1,6 +1,6 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 pub shape Token(id: i32, &drops#: i32)
-impl Token@encap { pub id, drops fn drop(self#) { self.drops += 1 } }
+impl Token@Encap { pub id, drops fn drop(self#) { self.drops += 1 } }
 pub shape Pair(
     left: Token,
     right: Token
@@ -20,7 +20,7 @@ pub shape CustomPair(
     left: Token,
     right: Token
 )
-impl CustomPair@encap {
+impl CustomPair@Encap {
     pub left, right
     fn drop(self#) {}
 }

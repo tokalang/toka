@@ -16,7 +16,7 @@ pub import core/types::{str}
 import core/types::{char, byte, usize, Addr, Char32}
 import core/option::{Option}
 import core/result::{Result}
-import core/traits::{@encap, @PartialEq, @PartialOrd, @delegate}
+import core/traits::{@Encap, @PartialEq, @PartialOrd, @Delegate}
 import core/utf8::{Cursor}
 import core/memory::{copy_memory, compare_memory}
 import core/internal/runtime::__toka_panic_handler
@@ -72,7 +72,7 @@ pub shape ViewStrSplitIterator(
     finished#: bool
 )
 
-impl ViewStrSplitIterator@encap {    
+impl ViewStrSplitIterator@Encap {
 
     fn drop(self#) {}
 }
@@ -163,7 +163,7 @@ pub shape ViewStrLinesIterator(
     split_iter#: ViewStrSplitIterator
 )
 
-impl ViewStrLinesIterator@encap {    
+impl ViewStrLinesIterator@Encap {
 
     fn drop(self#) {}
 }
@@ -662,7 +662,7 @@ pub shape cstr(
     *buf: char
 )
 
-impl cstr@encap {
+impl cstr@Encap {
     pub buf
 
 
@@ -678,7 +678,7 @@ impl cstr {
     }
 }
 
-impl cstr@delegate {
+impl cstr@Delegate {
     pub fn target(self) -> str <- self {
         return self.as_str()
     }
@@ -713,7 +713,7 @@ pub shape bytes(
     len$: usize
 )
 
-impl bytes@encap {
+impl bytes@Encap {
     pub buf, len
 
     fn drop(self#) {}

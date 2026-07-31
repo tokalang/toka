@@ -1,14 +1,14 @@
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Token (id: i32)
 
-impl Token@encap {
+impl Token@Encap {
     fn drop(self#) {}
 }
 
 shape Pair (left: Token, right: Token)
 
-impl Pair@encap {
+impl Pair@Encap {
     fn drop(self#) {}
 }
 

@@ -5,10 +5,10 @@ positive-capability model introduced by Slices 1–5.
 
 ## Library migration
 
-- `lib/` contains no deleted declarations, wildcard `@encap` grants, or
+- `lib/` contains no deleted declarations, wildcard `@Encap` grants, or
   legacy `@Clone` / `@Drop` facets.
 - `core/marker` declares the empty compiler-recognized `@Copy` marker and the
-  explicit `@Dup::dup` capability; `core/traits` defines `@encap` as an empty
+  explicit `@Dup::dup` capability; `core/traits` defines `@Encap` as an empty
   policy marker.
 - `Vec<T>` has one unconditional resource policy. Its ordinary APIs no longer
   supply a conditional policy or a negative copy declaration.
@@ -19,7 +19,7 @@ positive-capability model introduced by Slices 1–5.
 - A raw pointer never becomes a managed-resource fact merely by its
   morphology. The Slice 6 witness uses a raw-handle capsule with an explicit
   lifecycle hook and `@Dup` provider to cover that boundary.
-- Every library `@encap` block now contains only exact field grants and an
+- Every library `@Encap` block now contains only exact field grants and an
   optional drop hook. Ordinary methods, including compatibility-named
   `clone` methods, live in separate ordinary impls; v6 no longer exempts
   trusted library policies or Copy/Dup validation.
@@ -35,7 +35,7 @@ The normative syntax references are [syntax.md](../syntax.md) and
 
 1. Transparent shapes expose accessible fields and are Copy only when the
    compiler proves their full field graph Copy-safe.
-2. A capsule is introduced by one `@encap` policy with exact field grants and
+2. A capsule is introduced by one `@Encap` policy with exact field grants and
    an optional private `drop(self#)` hook. The hook is followed by a
    compiler-owned cleanup tail and cannot be called as a normal method.
 3. `@Copy` is an empty verified marker. Resource duplication is opt-in

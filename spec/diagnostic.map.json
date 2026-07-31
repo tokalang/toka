@@ -1556,8 +1556,8 @@
     "E01229": {
       "id": "ERR_PARSER_EXPECTED_PUB_OR_FN_INSIDE_ENCAP_BLOCK",
       "level": "Error",
-      "message": "Expected 'pub' or 'fn' inside @encap block",
-      "description": "Expected 'pub' or 'fn' inside @encap block"
+      "message": "Expected 'pub' or 'fn' inside @Encap block",
+      "description": "Expected 'pub' or 'fn' inside @Encap block"
     },
     "E01230": {
       "id": "ERR_PARSER_EXPECTED_METHOD_IN_IMPL_BLOCK",
@@ -1690,6 +1690,18 @@
       "level": "Error",
       "message": "Raw string closing delimiter must contain exactly {} double quotes and appear on its own line",
       "description": "A multiline raw string closes with a matching quote delimiter on an otherwise blank line."
+    },
+    "E01252": {
+      "id": "ERR_PARSER_ENCAP_NONEXACT_GRANT_REMOVED",
+      "level": "Error",
+      "message": "@Encap accepts only exact field grants: 'pub field[, ...]'",
+      "description": "@Encap grants must name one or more exact fields."
+    },
+    "E01253": {
+      "id": "ERR_PARSER_ENCAP_RESERVED_KEYWORD",
+      "level": "Error",
+      "message": "'encap' is reserved for a future language construct",
+      "description": "The lowercase keyword is reserved; use the @Encap trait until a dedicated construct is introduced."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",

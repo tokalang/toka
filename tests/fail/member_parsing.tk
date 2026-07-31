@@ -1,5 +1,5 @@
 import std/io::println
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 shape Point(
     x: i32,
@@ -10,7 +10,7 @@ shape Node(
     nul ^point: Point
     pp: Point?
 )
-impl Node@encap {
+impl Node@Encap {
     fn drop(self#) {
         println("drop Node")
     }

@@ -436,7 +436,7 @@ private:
     std::map<std::string, VariableDecl *> Globals;
   };
 
-  // RFC @encap epoch Slice 1 facts. These are observational data only until a
+  // RFC @Encap epoch Slice 1 facts. These are observational data only until a
   // later slice explicitly switches a semantic decision to them.
   enum class Slice1ResourceContract { None, Borrowed, Owned };
   enum class Slice1DropPlan { Unknown, LegacyStructural, LegacyCustom };
@@ -470,7 +470,7 @@ private:
   std::set<std::string> GenericImplInstanceMap;
   std::map<const ImplDecl *, std::string> Slice1ImplDefinitionIds;
 
-  // Slice 2 turns @encap entries into an authority policy tied to the
+  // Slice 2 turns @Encap entries into an authority policy tied to the
   // resolver's nominal/module identities, rather than a physical file path.
   struct Slice2Policy {
     ImplDecl *Impl = nullptr;

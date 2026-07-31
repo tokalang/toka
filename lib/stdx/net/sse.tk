@@ -40,7 +40,7 @@ pub shape SseDecoder (
     failed#: bool
 )
 
-impl SseError@encap {
+impl SseError@Encap {
     fn drop(self#) {}
 }
 
@@ -50,7 +50,7 @@ impl SseError {
     }
 }
 
-impl SseEvent@encap {
+impl SseEvent@Encap {
     fn drop(self#) {}
 }
 
@@ -65,7 +65,7 @@ impl SseEvent {
     }
 }
 
-impl SseLimits@encap {
+impl SseLimits@Encap {
     fn drop(self#) {}
 }
 
@@ -76,7 +76,7 @@ impl SseLimits {
     }
 }
 
-impl SseDecoder@encap {
+impl SseDecoder@Encap {
     fn drop(self#) {}
 }
 

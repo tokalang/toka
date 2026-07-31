@@ -4,7 +4,7 @@
 // and unrolled by the Toka compiler's Sema phase.
 
 import core/types::*
-import core/traits::{@encap}
+import core/traits::{@Encap}
 
 // ==========================================
 // 1. Metadata Shapes ( Sema )
@@ -43,7 +43,7 @@ pub shape TypeInfo(
     align: usize
 )
 
-impl TypeInfo@encap {
+impl TypeInfo@Encap {
     pub name, kind, fields, size, align
     fn drop(self#) {}
 }

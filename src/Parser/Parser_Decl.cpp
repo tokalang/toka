@@ -1082,6 +1082,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
 
   std::string traitName;
   std::string typeName;
+  Token traitNameToken = startTok;
 
   if (match(TokenType::At)) {
     // impl Type@Trait
@@ -1091,6 +1092,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
     // or use parseTypeString if Traits can be generic. Existing code used
     // Identifier. Let's upgrade to parseTypeString for future proofing or
     // consistency.
+    traitNameToken = peek();
     traitName = parseTypeString();
   } else if (match(TokenType::KwFor)) {
     // impl Trait for Type
@@ -1104,6 +1106,10 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
   if (!traitName.empty() && traitName[0] == '@') {
     traitName = traitName.substr(1);
   }
+  if (traitName == "encap") {
+    error(traitNameToken, DiagID::ERR_PARSER_ENCAP_RESERVED_KEYWORD);
+    traitName = "Encap";
+  }
 
   parseWhereConstraints(genericParams);
 
@@ -1113,7 +1119,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
   std::vector<EncapEntry> encapEntries;
   std::vector<AssociatedTypeDecl> associatedTypes;
 
-  if (traitName == "encap") {
+  if (traitName == "Encap") {
     while (!check(TokenType::RBrace) && !check(TokenType::EndOfFile)) {
       if ((check(TokenType::KwFn)) ||
           (check(TokenType::KwPub) && checkAt(1, TokenType::KwFn))) {
