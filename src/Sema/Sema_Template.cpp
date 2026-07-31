@@ -14,6 +14,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/Parser.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
 #include <iostream>
@@ -414,7 +415,7 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
     } else if (canonicalBound == "Sync") {
       auto typeObj = toka::Type::fromString(resolvedConcreteType);
       if (typeObj && typeObj->isSync(this)) continue;
-    } else if (canonicalBound == "Clone") {
+    } else if (canonicalBound == "Clone" && !Parser::EncapCopyEpochV4) {
       // Toka permits ordinary value copies unless a type explicitly deletes
       // clone. Treat that language rule as the implicit @Clone contract so a
       // bounded generic implementation is omitted only for move-only types.

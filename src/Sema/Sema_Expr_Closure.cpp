@@ -14,6 +14,7 @@
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/PathUtils.h"
+#include "toka/Parser.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
 #include "toka/Type.h"
@@ -277,6 +278,8 @@ private:
 
 // Implementation of tryInjectAutoClone
 void Sema::tryInjectAutoClone(std::unique_ptr<Expr> &expr) {
+  if (Parser::EncapCopyEpochV4)
+    return;
   if (!expr)
     return;
 

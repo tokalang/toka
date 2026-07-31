@@ -31,6 +31,8 @@ public:
   static bool EncapPolicyEpochV2;
   // Slice 3 lifecycle lowering, enabled only after the Slice 2 policy gate.
   static bool EncapLifecycleEpochV3;
+  // Slice 4 Copy/Dup proof and coherence checks.
+  static bool EncapCopyEpochV4;
 
   Parser(const std::vector<Token> &tokens, const std::string &fileName = "")
       : m_Tokens(tokens), m_Pos(0), m_CurrentFile(fileName) {

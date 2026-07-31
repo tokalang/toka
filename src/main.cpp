@@ -113,6 +113,7 @@ void printHelp() {
       << "  --encap-slice1-facts=json       Dump audit-only @encap Slice 1 facts\n"
       << "  --encap-epoch=v2                Enable Slice 2 @encap policy checks\n"
       << "  --encap-epoch=v3                Enable Slice 2 policy and Slice 3 lifecycle checks\n"
+      << "  --encap-epoch=v4                Enable Slice 2-4 @encap, lifecycle, Copy/Dup checks\n"
       << "  --link-search <path>            Add a native library search path\n"
       << "  --link-lib <name>               Link a native library by name\n"
       << "  --link-framework <name>         Link a macOS system framework by name\n"
@@ -532,6 +533,7 @@ int main(int argc, char **argv) {
   bool dumpEncapSlice1Facts = false;
   bool encapPolicyEpochV2 = false;
   bool encapLifecycleEpochV3 = false;
+  bool encapCopyEpochV4 = false;
   bool dumpSemanticIndex = false;
   bool dumpSemanticContext = false;
   bool structuredDiagnostics = false;
@@ -656,6 +658,10 @@ int main(int argc, char **argv) {
     } else if (arg == "--encap-epoch=v3") {
       encapPolicyEpochV2 = true;
       encapLifecycleEpochV3 = true;
+    } else if (arg == "--encap-epoch=v4") {
+      encapPolicyEpochV2 = true;
+      encapLifecycleEpochV3 = true;
+      encapCopyEpochV4 = true;
     } else if (arg == "--experimental-memory-contracts=nocapture") {
       experimentalNoCapture = true;
     } else if (arg == "--experimental-memory-contracts=readonly") {
@@ -944,6 +950,7 @@ int main(int argc, char **argv) {
   toka::Parser::TargetTriple = resolvedTargetTriple;
   toka::Parser::EncapPolicyEpochV2 = encapPolicyEpochV2;
   toka::Parser::EncapLifecycleEpochV3 = encapLifecycleEpochV3;
+  toka::Parser::EncapCopyEpochV4 = encapCopyEpochV4;
   if (toolchainNodeId.empty()) {
     toolchainNodeId = std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
   }

@@ -482,6 +482,15 @@ private:
   bool canNameEncapField(const ShapeDecl *Shape, const std::string &Field,
                          SourceLocation UseLoc);
 
+  std::map<const ShapeDecl *, const ImplDecl *> Slice4CopyRequests;
+  std::map<const ShapeDecl *, const ImplDecl *> Slice4DupProviders;
+  std::map<const ShapeDecl *, Slice1CopyProof> Slice4CopyProofs;
+  std::set<const ShapeDecl *> Slice4CopyProofInProgress;
+  void registerSlice4Impl(ImplDecl *Impl);
+  void validateSlice4CopyAndDup(Module &M);
+  bool proveSlice4Copy(const ShapeDecl *Shape);
+  bool proveSlice4CopyType(std::shared_ptr<toka::Type> Type);
+
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
   std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;

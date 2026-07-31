@@ -2419,7 +2419,9 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
   // in the legacy trait/vtable contract while the epoch gate is active.
   if (!decl->TraitName.empty() &&
       !(Parser::EncapPolicyEpochV2 &&
-        getTraitFamilyNameForCodeGen(decl->TraitName) == "encap")) {
+        getTraitFamilyNameForCodeGen(decl->TraitName) == "encap") &&
+      !(Parser::EncapCopyEpochV4 &&
+        getTraitFamilyNameForCodeGen(decl->TraitName) == "Copy")) {
     const TraitDecl *trait = nullptr;
     std::string traitLookupName = getTraitFamilyNameForCodeGen(decl->TraitName);
     if (m_Traits.count(traitLookupName)) {

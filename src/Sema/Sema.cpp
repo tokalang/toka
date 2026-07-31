@@ -943,6 +943,146 @@ bool Sema::canNameEncapField(const ShapeDecl *shape, const std::string &field,
   return false;
 }
 
+void Sema::registerSlice4Impl(ImplDecl *impl) {
+  if (!Parser::EncapCopyEpochV4 || !impl)
+    return;
+  auto owner = DeclarationLexicalScopes.find(impl);
+  if (owner != DeclarationLexicalScopes.end() && owner->second &&
+      owner->second->IsTrustedSystemModule)
+    return;
+
+  const std::string family = getTraitFamilyName(impl->TraitName);
+  for (const auto &method : impl->Methods) {
+    if (method->IsDeleted) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@encap v4 removes = delete declarations");
+      HasError = true;
+      return;
+    }
+  }
+  if (family == "Clone" || family == "Drop") {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@encap v4 removes the @Clone and @Drop facets");
+    HasError = true;
+    return;
+  }
+  if (family != "Copy" && family != "Dup")
+    return;
+
+  std::string base = impl->TypeName;
+  if (size_t generic = base.find('<'); generic != std::string::npos)
+    base.resize(generic);
+  ShapeDecl *shape = findVisibleShapeDecl(base, impl->Loc);
+  auto shapeOwner = shape ? DeclarationLexicalScopes.find(shape)
+                          : DeclarationLexicalScopes.end();
+  if (!shape || owner == DeclarationLexicalScopes.end() ||
+      shapeOwner == DeclarationLexicalScopes.end() ||
+      owner->second != shapeOwner->second) {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@Copy and @Dup must be declared in the nominal type's defining module");
+    HasError = true;
+    return;
+  }
+  if (family == "Copy") {
+    if (!impl->Methods.empty() || Slice4CopyRequests.count(shape)) {
+      DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "@Copy is a unique empty compiler marker");
+      HasError = true;
+      return;
+    }
+    Slice4CopyRequests[shape] = impl;
+    return;
+  }
+
+  const bool validDup = impl->Methods.size() == 1 &&
+      impl->Methods.front()->Name == "dup" && impl->Methods.front()->IsPub &&
+      !impl->Methods.front()->IsDeleted &&
+      impl->Methods.front()->Effect == EffectKind::None &&
+      impl->Methods.front()->GenericParams.empty() &&
+      impl->Methods.front()->Args.size() == 1 &&
+      Type::stripMorphology(impl->Methods.front()->Args.front().Name) == "self" &&
+      !impl->Methods.front()->Args.front().IsCeded &&
+      (impl->Methods.front()->ReturnType == "Self" ||
+       resolveType(impl->Methods.front()->ReturnType) == resolveType(impl->TypeName));
+  if (!validDup || Slice4DupProviders.count(shape)) {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@Dup requires one public fn dup(self) -> Self implementation");
+    HasError = true;
+    return;
+  }
+  Slice4DupProviders[shape] = impl;
+}
+
+bool Sema::proveSlice4CopyType(std::shared_ptr<toka::Type> type) {
+  if (!type || type->isUnknown() || type->isUniquePtr() || type->isSharedPtr())
+    return false;
+  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+      type->isDynFn() || type->isVoid() || type->isBoolean() ||
+      type->isInteger() || type->isFloatingPoint())
+    return true;
+  if (type->isArray())
+    return proveSlice4CopyType(type->getArrayElementType());
+  if (!type->isShape())
+    return false;
+  const std::string name = type->getSoulName();
+  auto shape = ShapeMap.find(name);
+  return shape != ShapeMap.end() && proveSlice4Copy(shape->second);
+}
+
+bool Sema::proveSlice4Copy(const ShapeDecl *shape) {
+  if (!shape)
+    return false;
+  auto cached = Slice4CopyProofs.find(shape);
+  if (cached != Slice4CopyProofs.end())
+    return cached->second == Slice1CopyProof::ProvenCopy;
+  if (!Slice4CopyProofInProgress.insert(shape).second) {
+    Slice4CopyProofs[shape] = Slice1CopyProof::ProvenNonCopy;
+    return false;
+  }
+
+  bool copyable = !shape->HasExplicitDrop;
+  const bool governed = Slice2PolicyMap.count(shape) != 0;
+  if (governed && !Slice4CopyRequests.count(shape))
+    copyable = false;
+  for (const auto &member : shape->Members) {
+    if (!copyable)
+      break;
+    copyable = proveSlice4CopyType(getPhysicalType(member));
+    for (const auto &submember : member.SubMembers) {
+      if (!copyable)
+        break;
+      copyable = proveSlice4CopyType(getPhysicalType(submember));
+    }
+  }
+  Slice4CopyProofInProgress.erase(shape);
+  Slice4CopyProofs[shape] = copyable ? Slice1CopyProof::ProvenCopy
+                                      : Slice1CopyProof::ProvenNonCopy;
+  CopyProofMap[canonicalTypeFactKey(shape->Name, shape->Loc)] =
+      Slice4CopyProofs[shape];
+  return copyable;
+}
+
+void Sema::validateSlice4CopyAndDup(Module &M) {
+  if (!Parser::EncapCopyEpochV4 || M.IsTrustedSystemModule)
+    return;
+  for (const auto &shape : M.Shapes) {
+    auto copyRequest = Slice4CopyRequests.find(shape.get());
+    if (copyRequest != Slice4CopyRequests.end()) {
+      if (!Slice2PolicyMap.count(shape.get()) || !proveSlice4Copy(shape.get())) {
+        DiagnosticEngine::report(copyRequest->second->Loc, DiagID::ERR_GENERIC_SEMA,
+                                 "@Copy requires a trivial governed shape whose complete field graph is Copy");
+        HasError = true;
+      }
+    }
+    auto dup = Slice4DupProviders.find(shape.get());
+    if (dup != Slice4DupProviders.end() && proveSlice4Copy(shape.get())) {
+      DiagnosticEngine::report(dup->second->Loc, DiagID::ERR_GENERIC_SEMA,
+                               "a user @Dup implementation overlaps the intrinsic Dup witness of @Copy");
+      HasError = true;
+    }
+  }
+}
+
 static bool typeMentionsSelf(const std::string &typeName) {
   std::string type = trimTypeString(typeName);
   size_t pos = 0;
@@ -1632,6 +1772,13 @@ bool Sema::checkModule(Module &M) {
 
   for (size_t i = 0; i < M.Functions.size(); ++i) {
     if (!M.Functions[i]->GenericParams.empty()) {
+      if (Parser::EncapCopyEpochV4 && M.Functions[i]->IsDeleted &&
+          !M.IsTrustedSystemModule) {
+        DiagnosticEngine::report(M.Functions[i]->Loc,
+                                 DiagID::ERR_GENERIC_SEMA,
+                                 "@encap v4 removes = delete declarations");
+        HasError = true;
+      }
       checkUnsafePublicFunctionBoundary(M.Functions[i].get());
       continue; // [NEW] Skip Generic Templates
     }
@@ -1816,6 +1963,12 @@ void Sema::declareGlobals(Module &M) {
   // 5. Register Traits
   for (auto &Trait : M.Traits) {
     DeclarationLexicalScopes[Trait.get()] = &ms;
+    if (Parser::EncapCopyEpochV4 && !M.IsTrustedSystemModule &&
+        (Trait->Name == "Clone" || Trait->Name == "Drop")) {
+      DiagnosticEngine::report(getLoc(Trait.get()), DiagID::ERR_GENERIC_SEMA,
+                               "@encap v4 removes the @Clone and @Drop facets");
+      HasError = true;
+    }
     ms.Traits[Trait->Name] = Trait.get();
     TraitMap[Trait->Name] = Trait.get();
     SymbolInfo info;
@@ -2826,7 +2979,9 @@ void Sema::registerImpl(ImplDecl *Impl) {
   // Populate ImplMap
   if (!Impl->TraitName.empty() &&
       !(Parser::EncapPolicyEpochV2 &&
-        getTraitFamilyName(canonicalTrait) == "encap")) {
+        getTraitFamilyName(canonicalTrait) == "encap") &&
+      !(Parser::EncapCopyEpochV4 &&
+        getTraitFamilyName(canonicalTrait) == "Copy")) {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey]; // Ensure the key exists even for empty traits
     for (auto &Method : Impl->Methods) {
@@ -2838,7 +2993,9 @@ void Sema::registerImpl(ImplDecl *Impl) {
   // contract that required clone and drop methods.
   if (!Impl->TraitName.empty() &&
       !(Parser::EncapPolicyEpochV2 &&
-        getTraitFamilyName(canonicalTrait) == "encap")) {
+        getTraitFamilyName(canonicalTrait) == "encap") &&
+      !(Parser::EncapCopyEpochV4 &&
+        getTraitFamilyName(canonicalTrait) == "Copy")) {
     if (traitDecl) {
       TraitDecl *TD = traitDecl;
       std::string traitFamily = getTraitFamilyName(canonicalTrait);
@@ -2918,6 +3075,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
 
 void Sema::declareImpl(ImplDecl *Impl) {
   registerSlice2Policy(Impl);
+  registerSlice4Impl(Impl);
   std::string baseName = Impl->TypeName;
   size_t lt = baseName.find('<');
   if (lt != std::string::npos) {
@@ -2989,7 +3147,9 @@ void Sema::declareImpl(ImplDecl *Impl) {
 
   if (!Impl->TraitName.empty() &&
       !(Parser::EncapLifecycleEpochV3 &&
-        getTraitFamilyName(canonicalTrait) == "encap")) {
+        getTraitFamilyName(canonicalTrait) == "encap") &&
+      !(Parser::EncapCopyEpochV4 &&
+        getTraitFamilyName(canonicalTrait) == "Copy")) {
     std::string implKey = resolvedTypeName + "@" + canonicalTrait;
     ImplMap[implKey];
     for (auto &Method : Impl->Methods) {
@@ -3016,6 +3176,16 @@ void Sema::declareImpl(ImplDecl *Impl) {
 }
 
 void Sema::checkFunction(FunctionDecl *Fn) {
+  auto owner = DeclarationLexicalScopes.find(Fn);
+  const bool trusted = owner != DeclarationLexicalScopes.end() && owner->second &&
+                       owner->second->IsTrustedSystemModule;
+  if (Parser::EncapCopyEpochV4 && Fn->IsDeleted && !trusted) {
+    DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_GENERIC_SEMA,
+                             "@encap v4 removes = delete declarations");
+    HasError = true;
+    return;
+  }
+
   // [NEW] Skip Generic Templates
   // We cannot check them until they are instantiated with concrete types.
   if (!Fn->GenericParams.empty())
@@ -3609,6 +3779,7 @@ void Sema::analyzeShapes(Module &M) {
       }
     }
   }
+  validateSlice4CopyAndDup(M);
 }
 
 void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {

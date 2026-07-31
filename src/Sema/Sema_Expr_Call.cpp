@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "toka/AST.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/Parser.h"
 #include "toka/SemanticEvidence.h"
 #include "toka/Sema.h"
 #include "toka/SourceManager.h"
@@ -1537,6 +1538,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               std::string expectedBase = Sh->Name;
               std::string actualBase = argType->getSoulName();
               if (actualBase == expectedBase && actualBase != "unknown") {
+                  if (Parser::EncapCopyEpochV4 && !proveSlice4CopyType(argType)) {
+                    error(Call, DiagID::ERR_GENERIC_SEMA,
+                          "implicit shape copy requires a proven @Copy witness");
+                    return toka::Type::fromString("unknown");
+                  }
                   tryInjectAutoClone(Call->Args[0]);
                   Call->IsIsomorphicCopy = true;
                   return toka::Type::fromString(resolveType(Sh->Name));
