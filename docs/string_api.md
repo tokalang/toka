@@ -8,9 +8,15 @@ This document defines the official API reference, design philosophy, architectur
 
 Toka adheres to a high-safety, zero-cost system programming philosophy. String design in Toka 1.0 strictly follows these key pillars:
 
-### 1.1 Txt vs. Byte Dual-Track Intent Alignment
+### 1.1 Text vs. Byte Dual-Track Intent Alignment
 Text and raw binary data represent fundamentally distinct physical intents. Conflating them is the root of countless security vulnerabilities and performance bottlenecks.
-- **Text (`str`, `string`)**: Guaranteed to be valid UTF-8 sequences. Operations on text (e.g., slicing, character extraction) must respect variable-width logical character boundaries.
+- **Text intent (`str`, `string`)**: Source literals, `push_codepoint`, and
+  `bytes.try_to_str` produce valid UTF-8. `str`/`string` remain
+  length-delimited byte storage, however: explicit raw-byte constructors
+  (`push_byte_raw`, `from_raw`, FFI buffers) can carry invalid UTF-8 for
+  protocol framing and diagnostics. Code requiring Unicode semantics must
+  validate first with `is_valid_utf8()` or a fallible conversion; it must not
+  infer validity from the storage type alone.
 - **Binary (`bytes`)**: A raw physical stream of 8-bit bytes. Operations are purely physical, byte-oriented, and executed with guaranteed $O(1)$ efficiency.
 
 ### 1.2 Honest Complexity Naming
@@ -40,9 +46,12 @@ Toka's string and byte shapes are defined in LLVM with absolute physical clarity
 
 ## 🏛️ 3. Complete API Specifications
 
-### 3.1 `str` (Read-only Text View)
+### 3.1 `str` (Read-only String View)
 
-An immutable UTF-8 string slice. It represents a zero-overhead window into static `.rodata`, stack memory, or an owned heap `string`.
+An immutable, length-delimited string slice. It represents a zero-overhead
+window into static `.rodata`, stack memory, or an owned heap `string`.
+Ordinary text producers yield valid UTF-8, but an explicitly raw or FFI-derived
+view must be validated before an API relies on Unicode properties.
 
 | Method Signature | Complexity | Description |
 | :--- | :--- | :--- |
@@ -91,9 +100,13 @@ An immutable raw byte array view. Highly optimized for binary protocol parsing a
 
 ---
 
-### 3.3 `string` (Owned Mutable Heap Text)
+### 3.3 `string` (Owned Mutable Heap String)
 
-An owned, growable UTF-8 string buffer managed on the heap. Maintains an automatic null terminator (`\0`) at the end of its active length for seamless FFI interoperability.
+An owned, growable byte-backed string buffer managed on the heap. It maintains
+an automatic null terminator (`\0`) at the end of its active length for FFI
+interoperability. `push_str` and `push_codepoint` preserve valid UTF-8 when
+their input is valid; `push_byte_raw` and raw FFI constructors deliberately do
+not validate and are reserved for byte-oriented protocol construction.
 
 | Method Signature | Complexity | Description |
 | :--- | :--- | :--- |
@@ -150,8 +163,9 @@ owned string.
 
 ### 4.2 Text Position Units
 
-The core text APIs above operate on UTF-8 **Unicode scalar values** (the
-`Char32` values yielded by `Cursor`), never on arbitrary byte positions.
+After input has been validated, the core text APIs above operate on UTF-8
+**Unicode scalar values** (the `Char32` values yielded by `Cursor`), never on
+arbitrary byte positions.
 `codepoint_byte_offset` and `codepoint_index_at_byte_offset` are the explicit
 bridge when a protocol or native API uses physical byte offsets. They do not
 implement user-perceived grapheme segmentation: a combining sequence or a
@@ -163,5 +177,9 @@ to this fixed core ABI.
 
 ## ⚖️ 5. Safety and C-FFI Redlines
 
-1. **Physical Copy Boundaries**: `str` is **not** guaranteed to be null-terminated. Passing `str.raw_ptr()` directly into C functions (like `printf` or `strlen`) is strictly prohibited and highly dangerous. Always promote to `cstr` or `string.c_str()`.
+1. **Physical Copy Boundaries**: `str` is **not** guaranteed to be
+   null-terminated or valid UTF-8. Passing `str.raw_ptr()` directly into C
+   functions (like `printf` or `strlen`) is strictly prohibited and highly
+   dangerous. Always promote to `cstr` or `string.c_str()`; validate before a
+   Unicode-aware API.
 2. **Memory Overwrites**: Modifying elements in a `str` view via FFI or unsafe raw pointer manipulations is undefined behavior (UB), as `str` may slice immutable `.rodata` static memory segments. Use `string` for all mutation workflows.
