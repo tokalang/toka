@@ -35,6 +35,16 @@ shape SlabEntry<'T> (
     next_free#: usize = 0
 )
 
+// Keep the slot allocation and its generation after clear.  A SlabID is a
+// stable identity, not merely an index: discarding the entry table would let
+// a later insert recreate (index, generation = 1) and revive a stale ID.
+fn clear_entry<'T>(entry#: SlabEntry<'T>, next_free: usize) {
+    auto dropped = cede entry.val
+    entry.val = Option<'T>::None
+    entry.generation = entry.generation + 1:u32
+    entry.next_free = next_free
+}
+
 pub shape Slab<'T> (
     entries#: Vec<SlabEntry<'T> > = Vec<SlabEntry<'T> >::new(),
     free_head#: usize = 0xFFFFFFFF:usize,
@@ -59,8 +69,26 @@ impl<'T> Slab<'T> {
     }
 
     pub fn clear(self#) {
-        self.entries#.clear()
-        self.free_head = 0xFFFFFFFF:usize
+        auto entry_count = self.entries.len()
+        if entry_count == 0:usize {
+            self.free_head = 0xFFFFFFFF:usize
+            self.len = 0:usize
+            return
+        }
+
+        auto index#: usize = 0
+        loop index < entry_count {
+            auto next_free# = 0xFFFFFFFF:usize
+            if index + 1:usize < entry_count {
+                next_free = index + 1:usize
+            }
+            unsafe {
+                auto *#entry# = self.entries.unsafe_get(index)
+                clear_entry<'T>(entry, next_free)
+            }
+            index = index + 1:usize
+        }
+        self.free_head = 0:usize
         self.len = 0
     }
 

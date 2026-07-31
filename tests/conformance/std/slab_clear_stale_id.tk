@@ -1,0 +1,36 @@
+import std/slab::{Slab, SlabID}
+import core/traits::{@encap}
+
+auto g_drop_count# = 0
+
+shape Entry (
+    value: i32
+)
+
+impl Entry@encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+
+    pub fn clone(self) = delete
+}
+
+fn main() -> i32 {
+    {
+        auto slab# = Slab<Entry>::new()
+        auto original = slab#.insert(cede Entry(value = 7:i32))
+
+        slab#.clear()
+        if g_drop_count != 1:i64 { return 1 }
+        auto replacement = slab#.insert(cede Entry(value = 9:i32))
+
+        // Clearing invalidates every previously issued handle, even when the
+        // replacement reuses the same physical slot.
+        if slab.get(original).is_some() { return 2 }
+        if slab.get(replacement).is_none() { return 3 }
+        if original.index() != replacement.index() { return 4 }
+        if original.generation() == replacement.generation() { return 5 }
+    }
+    if g_drop_count != 2:i64 { return 6 }
+    return 0
+}
