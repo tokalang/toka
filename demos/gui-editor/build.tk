@@ -1,0 +1,6 @@
+import build::{Executable, run_build}
+
+fn main() -> i32 {
+    auto app# = Executable::make(c"gui_editor_demo", c"src/main.tk")
+    return run_build(app)
+}

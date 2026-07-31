@@ -1,0 +1,115 @@
+import core/option::{Option}
+import core/string::{string}
+import official/gui::{App, Event, EventKind, Rect, Scene, TextEditor, TextEvent, TextEventKind, Window}
+
+fn selection_status(editor#: TextEditor) -> string {
+    auto selection = editor.selection()
+    auto status# = string::from("Grapheme selection: ")
+    status#.push_str(selection.anchor().to_string().as_str())
+    status#.push_str(" → ")
+    status#.push_str(selection.active().to_string().as_str())
+    return cede status
+}
+
+fn display_text(editor#: TextEditor) -> string {
+    // The renderer has no text-widget primitive yet, so the demo draws the
+    // caret into the text itself. `active_byte_offset` keeps it on a complete
+    // extended grapheme boundary rather than a UTF-8 byte interior.
+    auto caret = editor.selection().active_byte_offset(editor.text())
+    match cede caret {
+        auto Result<Option<usize>, _>::Ok('offset) => {
+            match cede 'offset {
+                auto Option<usize>::Some('byte) => {
+                    auto value = editor.text()
+                    auto display# = string::new()
+                    display#.push_str(value.substring(0:usize, 'byte))
+                    display#.push_str("|")
+                    display#.push_str(value.substring('byte, value.len()))
+                    return cede display
+                }
+                Option<usize>::None => return string::from(editor.text())
+            }
+        }
+        Result<Option<usize>, _>::Err(_) => return string::from(editor.text())
+    }
+}
+
+fn apply_key(editor#: TextEditor, event: Event) -> bool {
+    if event.kind != EventKind::KeyDown { return false }
+    // macOS virtual key codes. This demo intentionally handles only local
+    // cursor/delete commands; composition stays with the platform text system.
+    if event.code == 123:i32 { return editor#.move_left().unwrap() }
+    if event.code == 124:i32 { return editor#.move_right().unwrap() }
+    if event.code == 51:i32 { return editor#.delete_backward().unwrap() }
+    if event.code == 117:i32 { return editor#.delete_forward().unwrap() }
+    return false
+}
+
+fn drain_text(window#: Window, editor#: TextEditor) -> bool {
+    auto changed# = false
+    loop true {
+        auto next = window#.poll_text().unwrap()
+        match cede next {
+            auto Option<TextEvent>::Some('event) => {
+                if 'event.kind() == TextEventKind::Committed {
+                    if editor#.insert('event.text()).unwrap() { changed = true }
+                }
+            }
+            Option<TextEvent>::None => return changed
+        }
+    }
+    return changed
+}
+
+fn render(window#: Window, editor#: TextEditor) -> bool {
+    auto scene# = Scene::new()
+    scene#.add_rect(Rect(x = 0.0:f64, y = 0.0:f64, width = 1.0:f64, height = 1.0:f64,
+                         red = 0.07:f64, green = 0.09:f64, blue = 0.13:f64, alpha = 1.0:f64))
+    scene#.add_text("Toka grapheme editor", 0.08:f64, 0.08:f64, 0.07:f64,
+                    0.96:f64, 0.97:f64, 1.0:f64, 1.0:f64)
+    scene#.add_text("Click window, then type. | is the cursor. ←/→ move; Delete/⌫ remove one grapheme.",
+                    0.08:f64, 0.18:f64, 0.035:f64,
+                    0.61:f64, 0.70:f64, 0.82:f64, 1.0:f64)
+    scene#.add_rect(Rect(x = 0.08:f64, y = 0.29:f64, width = 0.84:f64, height = 0.22:f64,
+                         red = 0.13:f64, green = 0.17:f64, blue = 0.25:f64, alpha = 1.0:f64))
+    auto display = display_text(editor)
+    scene#.add_text(display.as_str(), 0.11:f64, 0.36:f64, 0.06:f64,
+                    0.96:f64, 0.97:f64, 1.0:f64, 1.0:f64)
+    auto status = selection_status(editor)
+    scene#.add_text(status.as_str(), 0.08:f64, 0.59:f64, 0.035:f64,
+                    0.35:f64, 0.86:f64, 0.58:f64, 1.0:f64)
+    return scene.render(window#, 0.07:f64, 0.09:f64, 0.13:f64, 1.0:f64).is_ok()
+}
+
+fn main() -> i32 {
+    auto app# = App::new()
+    auto opened = Window::open("Toka grapheme editor", 760:i32, 440:i32)
+    if opened.is_err() { return 1 }
+    auto window# = opened.unwrap()
+    if window#.show().is_err() { return 2 }
+    auto editor# = TextEditor::new("").unwrap()
+
+    loop app.is_running() && !window.is_closed() {
+        app#.wait_for_event(16:i32)
+        auto redraw# = drain_text(window, editor)
+        auto draining# = true
+        loop draining {
+            auto next = window#.poll_event().unwrap()
+            match next {
+                auto Option<Event>::Some(event) => {
+                    if event.kind == EventKind::CloseRequested {
+                        window#.close()
+                        draining = false
+                    } else if apply_key(editor, event) {
+                        redraw = true
+                    }
+                }
+                Option<Event>::None => draining = false
+            }
+        }
+        if redraw { window#.request_redraw() }
+        if window#.take_redraw_request().unwrap() && !render(window, editor) { return 3 }
+    }
+    app#.stop()
+    return 0
+}
