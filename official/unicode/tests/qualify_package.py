@@ -45,33 +45,63 @@ def make_sdk(work: Path) -> Path:
 def write_consumer(project: Path, dependency: Path) -> None:
     (project / "src").mkdir(parents=True)
     (project / "package.tk").write_text(
-        "pub const PACKAGE = (\\n"
-        '    name = "unicode_consumer",\\n'
-        '    version = "0.1.0",\\n'
-        "    dependencies = (\\n"
-        "        unicode = %s,\\n"
-        "    )\\n"
-        ")\\n" % json.dumps(str(dependency)),
+        "pub const PACKAGE = (\n"
+        '    name = "unicode_consumer",\n'
+        '    version = "0.1.0",\n'
+        "    dependencies = (\n"
+        "        unicode = %s,\n"
+        "    )\n"
+        ")\n" % json.dumps(str(dependency)),
         encoding="utf-8",
     )
     (project / "build.tk").write_text(
-        "import build::{Executable, run_build}\\n\\n"
-        "fn main() -> i32 {\\n"
-        '    auto app# = Executable::make(c"unicode_consumer", c"src/main.tk")\\n'
-        "    return run_build(app)\\n"
-        "}\\n",
+        "import build::{Executable, run_build}\n\n"
+        "fn main() -> i32 {\n"
+        '    auto app# = Executable::make(c"unicode_consumer", c"src/main.tk")\n'
+        "    return run_build(app)\n"
+        "}\n",
         encoding="utf-8",
     )
     (project / "src" / "main.tk").write_text(
-        "import official/unicode::{grapheme_count, grapheme_slice}\\n\\n"
-        "fn main() -> i32 {\\n"
-        '    if grapheme_count("ÄB").unwrap() != 2:usize { return 1 }\\n'
-        '    auto first = grapheme_slice("ÄB", 0:usize, 1:usize).unwrap()\\n'
-        '    if first.is_none() || !first.unwrap().equals("Ä") { return 2 }\\n'
-        "    return 0\\n"
-        "}\\n",
+        "import official/unicode::{grapheme_count, grapheme_slice}\n\n"
+        "fn main() -> i32 {\n"
+        '    if grapheme_count("ÄB").unwrap() != 2:usize { return 1 }\n'
+        '    auto first = grapheme_slice("ÄB", 0:usize, 1:usize).unwrap()\n'
+        '    if first.is_none() || !first.unwrap().equals("Ä") { return 2 }\n'
+        "    return 0\n"
+        "}\n",
         encoding="utf-8",
     )
+
+
+def selected_package_helper(project: Path, env: dict[str, str]) -> Path | None:
+    candidates = (
+        project / "lib" / "toolchain" / "toka_package.py",
+        project.parent / "lib" / "toolchain" / "toka_package.py",
+        project.parent.parent / "lib" / "toolchain" / "toka_package.py",
+        project.parent.parent.parent / "lib" / "toolchain" / "toka_package.py",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    toka_lib = env.get("TOKA_LIB")
+    if toka_lib:
+        candidate = Path(toka_lib) / "toolchain" / "toka_package.py"
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def fetch_diagnostics(project: Path, env: dict[str, str]) -> str:
+    toka_lib = env.get("TOKA_LIB", "<unset>")
+    helper = selected_package_helper(project, env)
+    manifest = project / "package.tk"
+    manifest_text = manifest.read_text(encoding="utf-8") if manifest.is_file() else "<missing>"
+    return (
+        "selected package helper: %s\n"
+        "TOKA_LIB: %s\n"
+        "consumer package.tk:\n%s"
+    ) % (helper, toka_lib, manifest_text)
 
 
 def main() -> int:
@@ -102,14 +132,26 @@ def main() -> int:
 
         project = work / "consumer"
         write_consumer(project, dependency)
-        run([str(toka), "fetch"], cwd=project, env=environment)
+        expected_helper = (sdk / "toolchain" / "toka_package.py").resolve()
+        if selected_package_helper(project, environment) != expected_helper:
+            raise QualificationError(
+                "consumer did not select the isolated SDK package helper\n" +
+                fetch_diagnostics(project, environment)
+            )
+        try:
+            run([str(toka), "fetch"], cwd=project, env=environment)
+        except QualificationError as error:
+            raise QualificationError(str(error) + "\n" + fetch_diagnostics(project, environment)) from error
         lock = project / "package.lock"
         locked = lock.read_bytes()
-        if not locked.startswith(b"toka-lock-v1\\n") or b"unicode" not in locked:
+        if not locked.startswith(b"toka-lock-v1\n") or b"unicode" not in locked:
             raise QualificationError("unicode consumer did not produce a v1 lock")
         offline = dict(environment)
         offline["TOKA_OFFLINE"] = "1"
-        run([str(toka), "fetch"], cwd=project, env=offline)
+        try:
+            run([str(toka), "fetch"], cwd=project, env=offline)
+        except QualificationError as error:
+            raise QualificationError(str(error) + "\n" + fetch_diagnostics(project, offline)) from error
         if lock.read_bytes() != locked:
             raise QualificationError("offline unicode fetch changed package.lock")
         run([str(toka), "build"], cwd=project, env=offline)
