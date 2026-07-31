@@ -306,3 +306,43 @@ pub fn grapheme_index_at_byte_offset(text: str, byte_offset: usize) -> Result<Op
     }
     return Result<Option<usize>, UnicodeError>::Ok(found)
 }
+
+pub fn grapheme_slice(text: str, start: usize, end: usize) -> Result<Option<str>, UnicodeError> {
+    auto scanner# = GraphemeScanner::new(text)
+    auto index#: usize = 0:usize
+    auto start_offset# = Option<usize>::None
+    auto end_offset# = Option<usize>::None
+
+    loop true {
+        auto cluster_result = scanner#.next_cluster()
+        if cluster_result.is_err() {
+            return Result<Option<str>, UnicodeError>::Err(cluster_result.unwrap_err())
+        }
+        auto cluster = cluster_result.unwrap()
+        if cluster.is_none() { break }
+        auto range = cluster.unwrap()
+        if index == start {
+            start_offset = Option<usize>::Some(range.start_byte)
+        }
+        if index == end {
+            end_offset = Option<usize>::Some(range.start_byte)
+        }
+        index = index + 1:usize
+    }
+
+    if index == start {
+        start_offset = Option<usize>::Some(text.len())
+    }
+    if index == end {
+        end_offset = Option<usize>::Some(text.len())
+    }
+    if start > end || start_offset.is_none() || end_offset.is_none() {
+        return Result<Option<str>, UnicodeError>::Ok(Option<str>::None)
+    }
+
+    auto byte_start = start_offset.unwrap()
+    auto byte_end = end_offset.unwrap()
+    return Result<Option<str>, UnicodeError>::Ok(
+        Option<str>::Some(text.substr(byte_start, byte_end - byte_start))
+    )
+}

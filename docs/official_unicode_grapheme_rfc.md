@@ -1,6 +1,6 @@
 # RFC: `official/unicode` Grapheme Segmentation v1
 
-Status: **proposed; no implementation is implied by this RFC**
+Status: **qualified v1 profile; not yet released**
 
 ## Decision
 
@@ -67,11 +67,14 @@ pub fn grapheme_slice(
     text: str,
     start: usize,
     end: usize
-) -> Result<str, UnicodeError>
+) -> Result<Option<str>, UnicodeError>
 ```
 
-`Option::None` means a valid input with an out-of-range index or a byte offset
-that is not a grapheme boundary. `Result::Err` means malformed UTF-8. All
+`grapheme_byte_offset` returns `Option::None` for a valid, out-of-range
+grapheme index; `grapheme_index_at_byte_offset` returns it for a valid byte
+offset that is not a grapheme boundary. `grapheme_slice` returns it for a
+valid out-of-range endpoint or `start > end`; it returns `Some("")` for equal
+valid grapheme boundaries. `Result::Err` always means malformed UTF-8. All
 reported offsets are physical UTF-8 byte offsets; all indexes are extended
 grapheme indexes. None of these methods allocates. They scan forward in
 `O(input_bytes)` time and use bounded state.
@@ -86,7 +89,7 @@ normalization stays a separate future profile.
 The package will vendor the Unicode 17.0.0 source files used by its generator
 under `official/unicode/data/17.0.0/`, including their upstream version and
 checksums. A checked-in generator emits compact, sorted, non-overlapping Toka
-range tables under `lib/official/unicode/generated/`. Qualification must fail
+range tables under `lib/official/generated/`. Qualification must fail
 when regeneration changes generated output or when the source-data checksums
 do not match the lock metadata. Building a consumer never downloads Unicode
 data and never depends on ICU, CoreFoundation, or the local system Unicode
