@@ -4,3 +4,5 @@ fn main() -> i32 {
     auto box = CrateBox::new(1, 2)
     return box.private_val
 }
+
+// EXPECT: error[E0418]
