@@ -48,5 +48,13 @@ fn main() -> i32 {
     if invalid_error.invalid_byte != 0x80:byte { return 17 }
     if invalid_error.position != 0:usize { return 18 }
 
+    auto offset_malformed# = string::from("A")
+    offset_malformed#.push_byte_raw(0x80:u8)
+    auto offset_result = offset_malformed.as_str().as_bytes().try_to_str()
+    if offset_result.is_ok() { return 19 }
+    auto offset_error = offset_result.unwrap_err()
+    if offset_error.invalid_byte != 0x80:byte { return 20 }
+    if offset_error.position != 1:usize { return 21 }
+
     return 0
 }
