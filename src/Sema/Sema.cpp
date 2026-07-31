@@ -814,6 +814,13 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
       return;
     }
   }
+  if (!shape->GenericParams.empty() &&
+      !genericImplAppliesToWholeShape(shape, impl)) {
+    DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
+                             "@encap v2 generic policies must apply uniformly to the nominal type's complete generic domain");
+    HasError = true;
+    return;
+  }
 
   Slice2Policy policy;
   policy.Impl = impl;
@@ -1069,14 +1076,324 @@ bool Sema::proveSlice4Copy(const ShapeDecl *shape) {
   return copyable;
 }
 
+Sema::Slice4CopyRecipe
+Sema::deriveSlice4CopyRecipeType(std::shared_ptr<toka::Type> type,
+                                 const ShapeDecl *context) {
+  auto always = [] {
+    return Slice4CopyRecipe{Slice4CopyRecipeKind::Always, {}, ""};
+  };
+  auto never = [](const std::string &detail) {
+    return Slice4CopyRecipe{Slice4CopyRecipeKind::Never, {}, detail};
+  };
+  auto dependent = [](const std::string &detail) {
+    return Slice4CopyRecipe{Slice4CopyRecipeKind::Dependent, {}, detail};
+  };
+  auto normalizeParam = [](const std::string &name) {
+    return !name.empty() && name.front() == '\'' ? name.substr(1) : name;
+  };
+  auto combine = [&](Slice4CopyRecipe &into, const Slice4CopyRecipe &next) {
+    if (into.Kind == Slice4CopyRecipeKind::Never ||
+        into.Kind == Slice4CopyRecipeKind::Dependent)
+      return;
+    if (next.Kind == Slice4CopyRecipeKind::Never ||
+        next.Kind == Slice4CopyRecipeKind::Dependent) {
+      into = next;
+      return;
+    }
+    if (next.Kind == Slice4CopyRecipeKind::All) {
+      if (into.Kind == Slice4CopyRecipeKind::Always)
+        into.Kind = Slice4CopyRecipeKind::All;
+      into.Requirements.insert(into.Requirements.end(),
+                               next.Requirements.begin(),
+                               next.Requirements.end());
+    }
+  };
+
+  if (!type || type->isUnknown())
+    return dependent("unresolved field type");
+  if (type->isUniquePtr() || type->isSharedPtr())
+    return never("ownership-bearing field");
+  if (type->isRawPointer() || type->isReference() || type->isFunction() ||
+      type->isDynFn() || type->isVoid() || type->isBoolean() ||
+      type->isInteger() || type->isFloatingPoint())
+    return always();
+  if (type->isArray())
+    return deriveSlice4CopyRecipeType(type->getArrayElementType(), context);
+  if (!type->isShape())
+    return dependent("unsupported field type");
+
+  const std::string typeName = normalizeParam(type->getSoulName());
+  if (context) {
+    for (const auto &parameter : context->GenericParams) {
+      if (normalizeParam(parameter.Name) == typeName) {
+        return Slice4CopyRecipe{Slice4CopyRecipeKind::All, {typeName}, ""};
+      }
+    }
+  }
+
+  auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(type);
+  ShapeDecl *nested = findVisibleShapeDecl(
+      typeName, context ? context->Loc : SourceLocation());
+  if (!nested)
+    return dependent("unresolved field type " + typeName);
+  if (nested->GenericParams.empty())
+    return proveSlice4Copy(nested) ? always()
+                                   : never("non-Copy field " + typeName);
+  if (!shapeType ||
+      shapeType->GenericArgs.size() != nested->GenericParams.size())
+    return dependent("incomplete generic field " + typeName);
+
+  Slice4CopyRecipe nestedRecipe = deriveSlice4CopyRecipe(nested);
+  if (nestedRecipe.Kind == Slice4CopyRecipeKind::Never ||
+      nestedRecipe.Kind == Slice4CopyRecipeKind::Dependent)
+    return nestedRecipe;
+  Slice4CopyRecipe result = always();
+  for (const auto &requirement : nestedRecipe.Requirements) {
+    size_t index = 0;
+    while (index < nested->GenericParams.size() &&
+           normalizeParam(nested->GenericParams[index].Name) != requirement)
+      ++index;
+    if (index == nested->GenericParams.size())
+      return dependent("invalid nested Copy recipe for " + typeName);
+    combine(result, deriveSlice4CopyRecipeType(shapeType->GenericArgs[index],
+                                                context));
+  }
+  return result;
+}
+
+Sema::Slice4CopyRecipe Sema::deriveSlice4CopyRecipe(const ShapeDecl *shape) {
+  auto cached = Slice4CopyRecipes.find(shape);
+  if (cached != Slice4CopyRecipes.end())
+    return cached->second;
+  if (!shape)
+    return {Slice4CopyRecipeKind::Dependent, {}, "missing shape"};
+  if (!Slice4CopyRecipeInProgress.insert(shape).second)
+    return {Slice4CopyRecipeKind::Dependent, {}, "recursive field graph"};
+
+  Slice4CopyRecipe result{Slice4CopyRecipeKind::Always, {}, ""};
+  if (shape->GenericParams.empty()) {
+    result = proveSlice4Copy(shape)
+        ? Slice4CopyRecipe{Slice4CopyRecipeKind::Always, {}, ""}
+        : Slice4CopyRecipe{Slice4CopyRecipeKind::Never, {},
+                           "non-Copy concrete shape"};
+  } else if (shape->HasExplicitDrop) {
+    result = {Slice4CopyRecipeKind::Never, {}, "custom drop"};
+  } else if (Slice2PolicyMap.count(shape) && !Slice4CopyRequests.count(shape)) {
+    result = {Slice4CopyRecipeKind::Never, {},
+              "governed shape without @Copy"};
+  } else {
+    auto combine = [&](const Slice4CopyRecipe &next) {
+      if (result.Kind == Slice4CopyRecipeKind::Never ||
+          result.Kind == Slice4CopyRecipeKind::Dependent)
+        return;
+      if (next.Kind == Slice4CopyRecipeKind::Never ||
+          next.Kind == Slice4CopyRecipeKind::Dependent) {
+        result = next;
+        return;
+      }
+      if (next.Kind == Slice4CopyRecipeKind::All) {
+        if (result.Kind == Slice4CopyRecipeKind::Always)
+          result.Kind = Slice4CopyRecipeKind::All;
+        result.Requirements.insert(result.Requirements.end(),
+                                   next.Requirements.begin(),
+                                   next.Requirements.end());
+      }
+    };
+    std::function<void(const ShapeMember &)> collect =
+        [&](const ShapeMember &member) {
+          combine(deriveSlice4CopyRecipeType(
+              toka::Type::fromString(synthesizePhysicalType(member)), shape));
+          for (const auto &submember : member.SubMembers)
+            collect(submember);
+        };
+    for (const auto &member : shape->Members)
+      collect(member);
+  }
+  if (result.Kind == Slice4CopyRecipeKind::All) {
+    std::sort(result.Requirements.begin(), result.Requirements.end());
+    result.Requirements.erase(
+        std::unique(result.Requirements.begin(), result.Requirements.end()),
+        result.Requirements.end());
+  }
+  Slice4CopyRecipeInProgress.erase(shape);
+  Slice4CopyRecipes[shape] = result;
+  return result;
+}
+
+bool Sema::slice4CopyRequirementIsProven(const ShapeDecl *shape,
+                                         const ImplDecl *impl,
+                                         const std::string &requirement) {
+  auto normalizeParam = [](const std::string &name) {
+    return !name.empty() && name.front() == '\'' ? name.substr(1) : name;
+  };
+  auto hasCopyBound = [&](const std::vector<GenericParam> &parameters,
+                          const std::string &name) {
+    for (const auto &parameter : parameters) {
+      if (normalizeParam(parameter.Name) != name)
+        continue;
+      return std::any_of(parameter.TraitBounds.begin(),
+                         parameter.TraitBounds.end(), [&](const std::string &bound) {
+        return getTraitFamilyName(bound) == "Copy";
+      });
+    }
+    return false;
+  };
+  if (hasCopyBound(shape->GenericParams, requirement))
+    return true;
+
+  auto implType = toka::Type::fromString(impl->TypeName);
+  auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(implType);
+  if (!shapeType || shapeType->GenericArgs.size() != shape->GenericParams.size())
+    return false;
+  size_t index = 0;
+  while (index < shape->GenericParams.size() &&
+         normalizeParam(shape->GenericParams[index].Name) != requirement)
+    ++index;
+  if (index == shape->GenericParams.size())
+    return false;
+
+  const auto &argument = shapeType->GenericArgs[index];
+  const std::string argumentName =
+      argument ? normalizeParam(argument->getSoulName()) : "";
+  if (hasCopyBound(impl->GenericParams, argumentName))
+    return true;
+  return argument && proveSlice4CopyType(argument);
+}
+
+bool Sema::genericImplAppliesToWholeShape(const ShapeDecl *shape,
+                                          const ImplDecl *impl) const {
+  auto normalizeParam = [](const std::string &name) {
+    return !name.empty() && name.front() == '\'' ? name.substr(1) : name;
+  };
+  auto type = toka::Type::fromString(impl->TypeName);
+  auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(type);
+  if (!shapeType || shapeType->Name != shape->Name ||
+      shapeType->GenericArgs.size() != shape->GenericParams.size() ||
+      impl->GenericParams.size() != shape->GenericParams.size())
+    return false;
+  for (size_t i = 0; i < shapeType->GenericArgs.size(); ++i) {
+    if (!shapeType->GenericArgs[i] ||
+        normalizeParam(shapeType->GenericArgs[i]->getSoulName()) !=
+            normalizeParam(impl->GenericParams[i].Name))
+      return false;
+  }
+  return true;
+}
+
+std::string
+Sema::describeSlice4CopyRecipe(const Slice4CopyRecipe &recipe) const {
+  switch (recipe.Kind) {
+  case Slice4CopyRecipeKind::Always:
+    return "always";
+  case Slice4CopyRecipeKind::Never:
+    return "never(" + recipe.Detail + ")";
+  case Slice4CopyRecipeKind::All: {
+    std::string result = "all(";
+    for (size_t i = 0; i < recipe.Requirements.size(); ++i) {
+      if (i)
+        result += ",";
+      result += recipe.Requirements[i] + ":@Copy";
+    }
+    return result + ")";
+  }
+  case Slice4CopyRecipeKind::Dependent:
+    return "dependent(" + recipe.Detail + ")";
+  }
+  return "dependent(unknown)";
+}
+
 void Sema::validateSlice4CopyAndDup(Module &M) {
   if (!Parser::EncapCopyEpochV4 ||
       (M.IsTrustedSystemModule && !Parser::EncapLibraryEpochV6))
     return;
   for (const auto &shape : M.Shapes) {
-    if (!shape->GenericParams.empty())
-      continue;
     auto copyRequest = Slice4CopyRequests.find(shape.get());
+    auto dup = Slice4DupProviders.find(shape.get());
+    if (!shape->GenericParams.empty()) {
+      const Slice4CopyRecipe recipe = deriveSlice4CopyRecipe(shape.get());
+      bool verifiedCopyDomain = false;
+      if (copyRequest != Slice4CopyRequests.end()) {
+        const bool appliesToWholeDomain = genericImplAppliesToWholeShape(
+            shape.get(), copyRequest->second);
+        verifiedCopyDomain = appliesToWholeDomain &&
+            (recipe.Kind == Slice4CopyRecipeKind::Always ||
+             (recipe.Kind == Slice4CopyRecipeKind::All &&
+              std::all_of(recipe.Requirements.begin(), recipe.Requirements.end(),
+                          [&](const std::string &requirement) {
+                return slice4CopyRequirementIsProven(shape.get(),
+                                                     copyRequest->second,
+                                                     requirement);
+              })));
+        if (!Slice2PolicyMap.count(shape.get()) || !verifiedCopyDomain) {
+          DiagnosticEngine::report(
+              copyRequest->second->Loc, DiagID::ERR_GENERIC_SEMA,
+              "@Copy requires a trivial governed shape whose complete field graph is Copy for its entire generic domain");
+          HasError = true;
+        }
+      }
+
+      if (dup != Slice4DupProviders.end()) {
+        const bool validDupDomain = genericImplAppliesToWholeShape(
+            shape.get(), dup->second);
+        if (!validDupDomain) {
+          DiagnosticEngine::report(
+              dup->second->Loc, DiagID::ERR_GENERIC_SEMA,
+              "generic @Dup providers must apply uniformly to the nominal type's complete generic domain");
+          HasError = true;
+        }
+        bool hasIntrinsicCopyDomain = false;
+        bool mayOverlap = false;
+        if (validDupDomain && copyRequest != Slice4CopyRequests.end() &&
+            verifiedCopyDomain) {
+          hasIntrinsicCopyDomain = true;
+          mayOverlap = true;
+        } else if (validDupDomain && !Slice2PolicyMap.count(shape.get()) &&
+                   (recipe.Kind == Slice4CopyRecipeKind::Always ||
+                    recipe.Kind == Slice4CopyRecipeKind::All)) {
+          hasIntrinsicCopyDomain = true;
+          mayOverlap = true;
+          auto dupType = toka::Type::fromString(dup->second->TypeName);
+          auto dupShape = std::dynamic_pointer_cast<toka::ShapeType>(dupType);
+          if (recipe.Kind == Slice4CopyRecipeKind::All && dupShape &&
+              dupShape->GenericArgs.size() == shape->GenericParams.size()) {
+            mayOverlap = false;
+            for (const auto &requirement : recipe.Requirements) {
+              size_t index = 0;
+              while (index < shape->GenericParams.size() &&
+                     shape->GenericParams[index].Name != requirement)
+                ++index;
+              if (index == shape->GenericParams.size()) {
+                mayOverlap = true;
+                break;
+              }
+              const auto &argument = dupShape->GenericArgs[index];
+              const std::string argumentName =
+                  argument ? argument->getSoulName() : "";
+              bool isProviderParameter = std::any_of(
+                  dup->second->GenericParams.begin(),
+                  dup->second->GenericParams.end(),
+                  [&](const GenericParam &parameter) {
+                    return parameter.Name == argumentName ||
+                        (!parameter.Name.empty() && parameter.Name.front() == '\'' &&
+                         parameter.Name.substr(1) == argumentName);
+                  });
+              if (isProviderParameter ||
+                  (argument && proveSlice4CopyType(argument))) {
+                mayOverlap = true;
+                break;
+              }
+            }
+          }
+        }
+        if (hasIntrinsicCopyDomain && mayOverlap) {
+          DiagnosticEngine::report(
+              dup->second->Loc, DiagID::ERR_GENERIC_SEMA,
+              "a generic user @Dup implementation overlaps, or cannot be proved disjoint from, the intrinsic Dup witness of @Copy");
+          HasError = true;
+        }
+      }
+      continue;
+    }
     if (copyRequest != Slice4CopyRequests.end()) {
       if (!Slice2PolicyMap.count(shape.get()) || !proveSlice4Copy(shape.get())) {
         DiagnosticEngine::report(copyRequest->second->Loc, DiagID::ERR_GENERIC_SEMA,
@@ -1084,7 +1401,6 @@ void Sema::validateSlice4CopyAndDup(Module &M) {
         HasError = true;
       }
     }
-    auto dup = Slice4DupProviders.find(shape.get());
     if (dup != Slice4DupProviders.end() && proveSlice4Copy(shape.get())) {
       DiagnosticEngine::report(dup->second->Loc, DiagID::ERR_GENERIC_SEMA,
                                "a user @Dup implementation overlaps the intrinsic Dup witness of @Copy");
@@ -1141,6 +1457,11 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
 
     const bool provenCopy = proveSlice4Copy(shape.get());
     const bool explicitCopy = Slice4CopyRequests.count(shape.get()) != 0;
+    if (!shape->GenericParams.empty()) {
+      M.InterfaceV2Facts.push_back("copy_recipe: " + typeName + " = " +
+                                   describeSlice4CopyRecipe(
+                                       deriveSlice4CopyRecipe(shape.get())));
+    }
     M.InterfaceV2Facts.push_back(
         "copy_proof: " + typeName + " = " +
         (provenCopy ? "proven-copy" : "proven-noncopy"));

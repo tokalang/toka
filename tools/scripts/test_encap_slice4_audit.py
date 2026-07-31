@@ -69,6 +69,27 @@ def main() -> int:
             "}\n", encoding="utf-8")
         compile_source(generic_copy, expect_success=True)
 
+        nested_generic_copy = root / "nested_generic_copy.tk"
+        nested_generic_copy.write_text(
+            "shape Inner<T>(value: T)\n"
+            "impl<T> Inner<T>@encap { pub value }\n"
+            "impl<T: @Copy> Inner<T>@Copy {}\n"
+            "shape Outer<T>(inner: Inner<T>)\n"
+            "impl<T> Outer<T>@encap { pub inner }\n"
+            "impl<T: @Copy> Outer<T>@Copy {}\n"
+            "fn main() -> i32 {\n"
+            "  auto value = Outer<i32>(inner = Inner<i32>(value = 7))\n"
+            "  auto copied = Outer<i32>(value)\n"
+            "  return copied.inner.value - 7\n"
+            "}\n", encoding="utf-8")
+        compile_source(nested_generic_copy, expect_success=True)
+
+        reject(root, "generic_copy_unproven_domain.tk",
+               "shape Capsule<T>(value: T)\n"
+               "impl<T> Capsule<T>@encap { pub value }\n"
+               "impl<T> Capsule<T>@Copy {}\n"
+               "fn main() -> i32 { return 0 }\n")
+
         reject(root, "generic_copy_resource.tk",
                "shape Resource(raw: i32)\n"
                "impl Resource@encap { pub raw fn drop(self#) {} }\n"
@@ -109,6 +130,22 @@ def main() -> int:
             r"\bcall\b[^\n]*@Dup_Wrapper_M_Resource_dup\(", generic_dup_ir)
         assert len(wrapper_calls) == 1, generic_dup_ir
 
+        reject(root, "generic_dup_unsatisfied_bound.tk",
+               "trait @Dup { pub fn dup(self) -> Self }\n"
+               "shape Resource(raw: i32)\n"
+               "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+               "shape Wrapper<T>(value: T)\n"
+               "impl<T> Wrapper<T>@encap { pub value }\n"
+               "impl<T: @Dup> Wrapper<T>@Dup {\n"
+               "  pub fn dup(self) -> Self { return self }\n"
+               "}\n"
+               "fn main() -> i32 {\n"
+               "  auto resource = Resource(raw = 1)\n"
+               "  auto wrapper = Wrapper<Resource>(value = cede resource)\n"
+               "  auto closure: fn() -> i32 = { [dup wrapper] => wrapper.value.raw }\n"
+               "  return closure()\n"
+               "}\n")
+
         reject(root, "generic_copy_dup_overlap.tk",
                "trait @Dup { pub fn dup(self) -> Self }\n"
                "shape Capsule<T>(value: T)\n"
@@ -119,11 +156,38 @@ def main() -> int:
                "    return Capsule<T>(value = self.value)\n"
                "  }\n"
                "}\n"
-               "fn main() -> i32 {\n"
-               "  auto value = Capsule<i32>(value = 1)\n"
-               "  auto closure: fn() -> i32 = { [dup value] => value.value }\n"
-               "  return closure()\n"
-               "}\n")
+               "fn main() -> i32 { return 0 }\n")
+
+        reject(root, "specialized_generic_copy.tk",
+               "shape Pair<T, U>(first: T, second: U)\n"
+               "impl<T, U> Pair<T, U>@encap { pub first, second }\n"
+               "impl<T: @Copy, U: @Copy> Pair<T, i32>@Copy {}\n"
+               "fn main() -> i32 { return 0 }\n")
+
+        reject(root, "specialized_generic_policy.tk",
+               "shape Pair<T, U>(first: T, second: U)\n"
+               "impl<T, U> Pair<T, i32>@encap { pub first, second }\n"
+               "fn main() -> i32 { return 0 }\n")
+
+        reject(root, "generic_dup_duplicate_provider.tk",
+               "trait @Dup { pub fn dup(self) -> Self }\n"
+               "shape Wrapper<T>(value: T)\n"
+               "impl<T> Wrapper<T>@encap { pub value }\n"
+               "impl<T: @Dup> Wrapper<T>@Dup {\n"
+               "  pub fn dup(self) -> Self { return self }\n"
+               "}\n"
+               "impl<T: @Dup> Wrapper<T>@Dup {\n"
+               "  pub fn dup(self) -> Self { return self }\n"
+               "}\n"
+               "fn main() -> i32 { return 0 }\n")
+
+        reject(root, "transparent_generic_dup_overlap.tk",
+               "trait @Dup { pub fn dup(self) -> Self }\n"
+               "shape Transparent<T>(value: T)\n"
+               "impl<T: @Dup> Transparent<T>@Dup {\n"
+               "  pub fn dup(self) -> Self { return self }\n"
+               "}\n"
+               "fn main() -> i32 { return 0 }\n")
 
         reject(root, "capsule_without_copy.tk",
                "shape Secret(raw: i32)\n"

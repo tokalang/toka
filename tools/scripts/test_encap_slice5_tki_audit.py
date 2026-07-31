@@ -82,6 +82,7 @@ def main() -> int:
                 "// @tki v2 policy: NonZero = global:raw",
                 "// @tki v2 copy_witness: NonZero = explicit-verified",
                 "// @tki v2 dup_provider: NonZero = intrinsic-copy",
+                "// @tki v2 copy_recipe: Capsule = all(T:@Copy)",
                 "// @tki v2 dup_provider: Resource = user",
                 "// @tki v2 custom_drop: Tracked = encap_Tracked_drop",
         ):
@@ -100,6 +101,19 @@ def main() -> int:
             "  return copied.value - 7\n"
             "}\n", encoding="utf-8")
         compile_source(generic_consumer, root, expect_success=True)
+
+        generic_noncopy_consumer = root / "generic_noncopy_main.tk"
+        generic_noncopy_consumer.write_text(
+            "import ./lib::{Capsule, Resource}\n"
+            "fn main() -> i32 {\n"
+            "  auto resource = Resource(raw = 7)\n"
+            "  auto value = Capsule<Resource>(value = cede resource)\n"
+            "  auto copied = Capsule<Resource>(value)\n"
+            "  return copied.value.raw\n"
+            "}\n", encoding="utf-8")
+        rejected_generic_noncopy = compile_source(
+            generic_noncopy_consumer, root, expect_success=False)
+        assert "E0406" in rejected_generic_noncopy.stderr, rejected_generic_noncopy.stderr
 
         dup_consumer = root / "dup_main.tk"
         dup_consumer.write_text(

@@ -486,11 +486,28 @@ private:
   std::map<const ShapeDecl *, const ImplDecl *> Slice4DupProviders;
   std::map<const ShapeDecl *, Slice1CopyProof> Slice4CopyProofs;
   std::set<const ShapeDecl *> Slice4CopyProofInProgress;
+  enum class Slice4CopyRecipeKind { Always, Never, All, Dependent };
+  struct Slice4CopyRecipe {
+    Slice4CopyRecipeKind Kind = Slice4CopyRecipeKind::Dependent;
+    std::vector<std::string> Requirements;
+    std::string Detail;
+  };
+  std::map<const ShapeDecl *, Slice4CopyRecipe> Slice4CopyRecipes;
+  std::set<const ShapeDecl *> Slice4CopyRecipeInProgress;
   void registerSlice4Impl(ImplDecl *Impl);
   void validateSlice4CopyAndDup(Module &M);
   void recordSlice5InterfaceFacts(Module &M);
   bool proveSlice4Copy(const ShapeDecl *Shape);
   bool proveSlice4CopyType(std::shared_ptr<toka::Type> Type);
+  Slice4CopyRecipe deriveSlice4CopyRecipe(const ShapeDecl *Shape);
+  Slice4CopyRecipe deriveSlice4CopyRecipeType(
+      std::shared_ptr<toka::Type> Type, const ShapeDecl *Context);
+  bool slice4CopyRequirementIsProven(const ShapeDecl *Shape,
+                                     const ImplDecl *Impl,
+                                     const std::string &Requirement);
+  bool genericImplAppliesToWholeShape(const ShapeDecl *Shape,
+                                      const ImplDecl *Impl) const;
+  std::string describeSlice4CopyRecipe(const Slice4CopyRecipe &Recipe) const;
 
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
