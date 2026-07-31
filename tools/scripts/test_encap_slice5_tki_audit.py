@@ -42,11 +42,21 @@ def main() -> int:
             "pub shape NonZero(raw: i32)\n"
             "impl NonZero@encap { pub raw }\n"
             "impl NonZero@Copy {}\n"
+            "pub shape Capsule<T>(value: T)\n"
+            "impl<T> Capsule<T>@encap { pub value }\n"
+            "impl<T: @Copy> Capsule<T>@Copy {}\n"
             "trait @Dup { pub fn dup(self) -> Self }\n"
             "pub shape Resource(raw: i32)\n"
             "impl Resource@encap { pub raw fn drop(self#) {} }\n"
             "impl Resource@Dup {\n"
             "  pub fn dup(self) -> Self { return Resource(raw = self.raw + 1) }\n"
+            "}\n"
+            "pub shape Wrapper<T>(value: T)\n"
+            "impl<T> Wrapper<T>@encap { pub value }\n"
+            "impl<T: @Dup> Wrapper<T>@Dup {\n"
+            "  pub fn dup(self) -> Self {\n"
+            "    return Wrapper<T>(value = self.value.dup())\n"
+            "  }\n"
             "}\n"
             "pub shape Tracked(value: i32)\n"
             "impl Tracked@encap { pub value fn drop(self#) {} }\n"
@@ -81,6 +91,16 @@ def main() -> int:
         provider.rename(root / "lib.tk.source-hidden")
         compile_source(consumer, root, expect_success=True)
 
+        generic_consumer = root / "generic_main.tk"
+        generic_consumer.write_text(
+            "import ./lib::{Capsule}\n"
+            "fn main() -> i32 {\n"
+            "  auto value = Capsule<i32>(value = 7)\n"
+            "  auto copied = Capsule<i32>(value)\n"
+            "  return copied.value - 7\n"
+            "}\n", encoding="utf-8")
+        compile_source(generic_consumer, root, expect_success=True)
+
         dup_consumer = root / "dup_main.tk"
         dup_consumer.write_text(
             "import ./lib::{Resource}\n"
@@ -93,6 +113,24 @@ def main() -> int:
         dup_ir = dup_consumer.with_suffix(".ll").read_text(encoding="utf-8")
         dup_calls = re.findall(r"\bcall\b[^\n]*@Dup_Resource_dup\(", dup_ir)
         assert len(dup_calls) == 1, dup_ir
+
+        generic_dup_consumer = root / "generic_dup_main.tk"
+        generic_dup_consumer.write_text(
+            "import ./lib::{Resource, Wrapper}\n"
+            "fn main() -> i32 {\n"
+            "  auto resource = Resource(raw = 1)\n"
+            "  auto wrapper = Wrapper<Resource>(value = cede resource)\n"
+            "  auto closure: fn() -> i32 = { [dup wrapper] => wrapper.value.raw }\n"
+            "  return wrapper.value.raw + closure()\n"
+            "}\n", encoding="utf-8")
+        compile_source(generic_dup_consumer, root, expect_success=True,
+                       emit_llvm=True)
+        generic_dup_ir = generic_dup_consumer.with_suffix(".ll").read_text(
+            encoding="utf-8")
+        generic_dup_calls = re.findall(
+            r"\bcall\b[^\n]*@Dup_Wrapper_M_Resource_dup\(",
+            generic_dup_ir)
+        assert len(generic_dup_calls) == 1, generic_dup_ir
 
         v1 = text.replace("// @meta format_version: 2",
                           "// @meta format_version: 1", 1)
