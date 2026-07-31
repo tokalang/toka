@@ -1,6 +1,11 @@
-# `@encap` Epoch Slice 0 Go/No-Go Review
+# `@encap` Epoch Slice 0 Final Go/No-Go Review
 
-**Decision:** **No-Go for semantic activation. Continue Slice 0 evidence work.**
+**Decision:** **Final No-Go for semantic activation at this revision.**
+
+This is a completed decision, not a claim that Slice 0 implementation is
+complete. The RFC makes all six exit conditions mandatory for a Go decision.
+The evidence below proves that several are still absent, so enabling any epoch
+rule would be unsound regardless of the passing legacy suite.
 
 ## Evidence achieved
 
@@ -15,8 +20,25 @@
 - The compiler and bundled tools rebuild successfully after the observation
   changes. No Sema, TKI, cache, access, Copy/Dup, or lowering decision has
   changed.
+- `tools/scripts/test_encap_slice0_audit.py` passes: direct compilation is
+  `Unknown`, workspace identity is deterministic when supplied, and locked
+  package nodes are stable across aliases.
+- The existing source-less semantic replay suite passes, including nominal and
+  generic module-identity cases. This preserves legacy behaviour; it is not
+  evidence for the proposed epoch.
 
-## Blocking evidence still absent
+## RFC exit-gate audit
+
+| RFC Slice 0 exit condition | Current evidence | Result |
+| --- | --- | --- |
+| Identity is deterministic under relocation and import aliases | Package node identity is alias/installation independent; workspace relocation and alias fixture matrix is absent. | Not proven |
+| Same-crate and cross-crate positive/negative matrices complete | Existing `pub(crate)` is unconditional and `pub(path)` remains physical-path based; no shadow access matrix exists. | Not proven |
+| Source, generated TKI, cached TKI identity decisions agree | Legacy replay passes, but it does not serialize or compare shadow coordinates. | Not proven |
+| Custom-drop order/mask and Copy-SCC redlines reviewed | Legacy ownership tests exist, but no proposed hook-tail/Copy-SCC prototype or expected-result matrix exists. | Not proven |
+| Forged or missing metadata fails closed | Missing resolver input produces `Unknown`; forged package/workspace/TKI metadata has no dedicated matrix. | Partially proven |
+| Existing path grants resolve to one owner and target | No full standard-library, official-package, and build-tool inventory has been generated. | Not proven |
+
+## Consequences
 
 1. Workspace and toolchain node IDs are not yet emitted by the toolchain, so
    their supported resolver paths remain intentionally `Unknown`.
@@ -30,8 +52,12 @@
 5. Consequently no migration inventory or source/generated/cached-TKI parity
    result exists for the proposed epoch.
 
-## Required next gate
+The current resolver work is useful preparatory infrastructure, but it does
+not satisfy the semantic epoch's safety case. The correct action is to retain
+the RFC and observation code while keeping all legacy semantics active.
+
+## Required work before a new decision
 
 Do not activate any proposed `@encap` epoch rule. Finish the five missing
-evidence rows above, classify every legacy/shadow disagreement, then replace
-this report with a reviewed Go or permanent No-Go decision.
+evidence rows above, classify every legacy/shadow disagreement, then issue a
+new review against the exact same exit-gate table.
