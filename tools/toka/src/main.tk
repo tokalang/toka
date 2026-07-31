@@ -5,7 +5,7 @@ import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, meta
 import sys/libc::{libc_system, libc_printf, libc_getenv, libc_setenv}
 import std/vec::{Vec}
 import std/process::{Command}
-import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, cmd_publish, cmd_search, resolve_package}
+import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, cmd_publish, cmd_search, resolve_package}
 
 
 fn print_help() {
@@ -488,6 +488,7 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
 
     {
         auto pkg_mappings = build_pkg_mappings()
+        auto pkg_node_mappings = build_pkg_node_mappings()
         auto mapping_env# = string::from("")
         auto mapping_index# = 0:usize
         loop mapping_index < pkg_mappings.len() {
@@ -519,6 +520,12 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             compile#.arg(string::from("--pkg"))
             compile#.arg(cede pkg_mappings.get_ref(pkg_index).clone())
             pkg_index += 1
+        }
+        auto node_index# = 0:usize
+        loop node_index < pkg_node_mappings.len() {
+            compile#.arg(string::from("--pkg-node"))
+            compile#.arg(cede pkg_node_mappings.get_ref(node_index).clone())
+            node_index += 1
         }
         compile#.arg(cede build_file.clone())
         compile#.arg(string::from("-o"))
