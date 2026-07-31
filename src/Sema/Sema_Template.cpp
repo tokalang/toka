@@ -360,6 +360,27 @@ void Sema::instantiateGenericImpl(
   // We must add to M.Impls to own it.
   GenericInstancesModule->Impls.push_back(std::move(NewImpl));
 
+  auto templateOwner = DeclarationLexicalScopes.find(Template);
+  if (templateOwner != DeclarationLexicalScopes.end())
+    DeclarationLexicalScopes[RawPtr] = templateOwner->second;
+
+  const std::string family = getTraitFamilyName(Template->TraitName);
+  if (family == "encap") {
+    std::string base = Template->TypeName;
+    if (size_t generic = base.find('<'); generic != std::string::npos)
+      base.resize(generic);
+    ShapeDecl *templateShape = findVisibleShapeDecl(base, Template->Loc);
+    ShapeDecl *instanceShape =
+        findVisibleShapeDecl(ConcreteTypeName, RawPtr->Loc);
+    auto policy = templateShape ? Slice2PolicyMap.find(templateShape)
+                                : Slice2PolicyMap.end();
+    if (instanceShape && policy != Slice2PolicyMap.end()) {
+      Slice2PolicyMap[instanceShape] =
+          Slice2Policy{RawPtr, policy->second.Owner, RawPtr->EncapEntries};
+    }
+  }
+  registerSlice4Impl(RawPtr);
+
   // Now Register it!
   registerImpl(RawPtr);
 

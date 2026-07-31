@@ -1071,6 +1071,8 @@ void Sema::validateSlice4CopyAndDup(Module &M) {
   if (!Parser::EncapCopyEpochV4 || M.IsTrustedSystemModule)
     return;
   for (const auto &shape : M.Shapes) {
+    if (!shape->GenericParams.empty())
+      continue;
     auto copyRequest = Slice4CopyRequests.find(shape.get());
     if (copyRequest != Slice4CopyRequests.end()) {
       if (!Slice2PolicyMap.count(shape.get()) || !proveSlice4Copy(shape.get())) {

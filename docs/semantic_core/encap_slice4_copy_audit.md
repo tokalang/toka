@@ -22,6 +22,9 @@ new compiler-owned facts.
 - `[dup value]` closure capture is explicit: a proven Copy value is copied
   directly, while a non-Copy value requires a validated local `@Dup` provider
   and invokes it exactly once when the closure is built.
+- A generic `@Copy` or `@Dup` impl is materialized only for concrete
+  instantiations whose bounds hold. The instance receives its own policy and
+  Copy/Dup facts, then runs the same overlap validation as a non-generic type.
 - New user `= delete`, `@Clone`, and `@Drop` declarations are rejected in v4.
   An ordinary method named `clone` is still permitted but has no special
   ownership or lowering meaning.  Legacy trusted-system declarations remain
@@ -38,8 +41,9 @@ python3 tools/scripts/test_encap_slice4_audit.py
 
 The audit covers a transparent structural Copy, a valid explicit capsule
 `@Copy`, a capsule without that request, a resource-bearing Copy request, a
-Copy/Dup coherence conflict, explicit `dup` closure capture and its single
-provider call, removed delete/facet syntax, and an ordinary `clone` method.
+Copy/Dup coherence conflict, conditional generic Copy/Dup selection and
+instance overlap, explicit `dup` closure capture and its single provider
+call, removed delete/facet syntax, and an ordinary `clone` method.
 
 ## Deferred to following slices
 

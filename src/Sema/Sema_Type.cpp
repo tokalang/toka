@@ -643,6 +643,9 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   ShapeDecl *storedDecl = NewDecl.get();
   // Register IMMEDIATELY in Sema's primary map for resolution
   ShapeMap[mangledName] = storedDecl;
+  auto templateOwner = DeclarationLexicalScopes.find(Template);
+  if (templateOwner != DeclarationLexicalScopes.end())
+    DeclarationLexicalScopes[storedDecl] = templateOwner->second;
 
   // Add to CurrentModule to ensure CodeGen visibility
   GenericInstancesModule->Shapes.push_back(std::move(NewDecl));
@@ -798,6 +801,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
                              GenericShape->GenericArgs);
     }
   }
+  validateSlice4CopyAndDup(*GenericInstancesModule);
   auto result = std::dynamic_pointer_cast<ShapeType>(
       NewShapeTy->withAttributes(GenericShape->IsWritable,
                                  GenericShape->IsNullable));

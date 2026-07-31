@@ -57,6 +57,74 @@ def main() -> int:
             "}\n", encoding="utf-8")
         compile_source(valid, expect_success=True)
 
+        generic_copy = root / "generic_copy.tk"
+        generic_copy.write_text(
+            "shape Capsule<T>(value: T)\n"
+            "impl<T> Capsule<T>@encap { pub value }\n"
+            "impl<T: @Copy> Capsule<T>@Copy {}\n"
+            "fn main() -> i32 {\n"
+            "  auto value = Capsule<i32>(value = 1)\n"
+            "  auto copied = Capsule<i32>(value)\n"
+            "  return copied.value\n"
+            "}\n", encoding="utf-8")
+        compile_source(generic_copy, expect_success=True)
+
+        reject(root, "generic_copy_resource.tk",
+               "shape Resource(raw: i32)\n"
+               "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+               "shape Capsule<T>(value: T)\n"
+               "impl<T> Capsule<T>@encap { pub value }\n"
+               "impl<T: @Copy> Capsule<T>@Copy {}\n"
+               "fn main() -> i32 {\n"
+               "  auto resource = Resource(raw = 1)\n"
+               "  auto value = Capsule<Resource>(value = cede resource)\n"
+               "  auto copied = Capsule<Resource>(value)\n"
+               "  return copied.value.raw\n"
+               "}\n")
+
+        generic_dup = root / "generic_dup.tk"
+        generic_dup.write_text(
+            "trait @Dup { pub fn dup(self) -> Self }\n"
+            "shape Resource(raw: i32)\n"
+            "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+            "impl Resource@Dup {\n"
+            "  pub fn dup(self) -> Self { return Resource(raw = self.raw + 1) }\n"
+            "}\n"
+            "shape Wrapper<T>(value: T)\n"
+            "impl<T> Wrapper<T>@encap { pub value }\n"
+            "impl<T: @Dup> Wrapper<T>@Dup {\n"
+            "  pub fn dup(self) -> Self {\n"
+            "    return Wrapper<T>(value = self.value.dup())\n"
+            "  }\n"
+            "}\n"
+            "fn main() -> i32 {\n"
+            "  auto resource = Resource(raw = 1)\n"
+            "  auto wrapper = Wrapper<Resource>(value = cede resource)\n"
+            "  auto closure: fn() -> i32 = { [dup wrapper] => wrapper.value.raw }\n"
+            "  return wrapper.value.raw + closure()\n"
+            "}\n", encoding="utf-8")
+        compile_source(generic_dup, expect_success=True)
+        generic_dup_ir = generic_dup.with_suffix(".ll").read_text(encoding="utf-8")
+        wrapper_calls = re.findall(
+            r"\bcall\b[^\n]*@Dup_Wrapper_M_Resource_dup\(", generic_dup_ir)
+        assert len(wrapper_calls) == 1, generic_dup_ir
+
+        reject(root, "generic_copy_dup_overlap.tk",
+               "trait @Dup { pub fn dup(self) -> Self }\n"
+               "shape Capsule<T>(value: T)\n"
+               "impl<T> Capsule<T>@encap { pub value }\n"
+               "impl<T: @Copy> Capsule<T>@Copy {}\n"
+               "impl<T: @Dup> Capsule<T>@Dup {\n"
+               "  pub fn dup(self) -> Self {\n"
+               "    return Capsule<T>(value = self.value)\n"
+               "  }\n"
+               "}\n"
+               "fn main() -> i32 {\n"
+               "  auto value = Capsule<i32>(value = 1)\n"
+               "  auto closure: fn() -> i32 = { [dup value] => value.value }\n"
+               "  return closure()\n"
+               "}\n")
+
         reject(root, "capsule_without_copy.tk",
                "shape Secret(raw: i32)\n"
                "impl Secret@encap { pub raw }\n"
