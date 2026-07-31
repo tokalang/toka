@@ -89,7 +89,7 @@ def main() -> int:
             "fn main() -> i32 {\n"
             "  auto resource = Resource(raw = 1)\n"
             "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
-            "  return closure()\n"
+            "  return resource.raw + closure()\n"
             "}\n", encoding="utf-8")
         compile_source(dup_capture, expect_success=True)
         dup_ir = dup_capture.with_suffix(".ll").read_text(encoding="utf-8")
@@ -104,6 +104,15 @@ def main() -> int:
                "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
                "  return closure()\n"
                "}\n")
+
+        reject(root, "try_dup_is_not_provider.tk",
+               "trait @Dup { pub fn dup(self) -> Self }\n"
+               "shape Resource(raw: i32)\n"
+               "impl Resource@encap { pub raw fn drop(self#) {} }\n"
+               "impl Resource@Dup {\n"
+               "  pub fn try_dup(self) -> Self { return Resource(raw = self.raw) }\n"
+               "}\n"
+               "fn main() -> i32 { return 0 }\n")
 
         reject(root, "copy_with_resource.tk",
                "shape Resource(^data: i32)\n"
