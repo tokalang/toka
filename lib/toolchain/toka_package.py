@@ -1043,6 +1043,18 @@ def compiler_node_mappings(lock_path: Path) -> list[str]:
     return mappings
 
 
+def workspace_node(manifest_path: Path, lock_path: Path) -> str:
+    if not manifest_path.is_file():
+        raise PackageError("workspace identity requires package.tk")
+    digest = hashlib.sha256()
+    digest.update(b"toka.workspace-node.v1\0")
+    digest.update(manifest_path.read_bytes())
+    digest.update(b"\0")
+    if lock_path.is_file():
+        digest.update(lock_path.read_bytes())
+    return "workspace-v1-" + digest.hexdigest()
+
+
 def remove_dependency(manifest: Path, alias: str) -> bool:
     if not ALIAS_RE.fullmatch(alias):
         raise PackageError("invalid dependency alias")
@@ -1085,6 +1097,10 @@ def main() -> int:
     nodes = subparsers.add_parser("compiler-node-mappings")
     nodes.add_argument("--lock", default="package.lock")
 
+    workspace = subparsers.add_parser("workspace-node")
+    workspace.add_argument("--manifest", default="package.tk")
+    workspace.add_argument("--lock", default="package.lock")
+
     native_plan = subparsers.add_parser("native-build-plan")
     native_plan.add_argument("--lock", default="package.lock")
     native_plan.add_argument("--state", default=".toka")
@@ -1118,6 +1134,8 @@ def main() -> int:
         elif args.command == "compiler-node-mappings":
             for mapping in compiler_node_mappings(Path(args.lock)):
                 print(mapping)
+        elif args.command == "workspace-node":
+            print(workspace_node(Path(args.manifest), Path(args.lock)))
         elif args.command == "native-build-plan":
             print(json.dumps(native_build_plan(Path(args.lock), Path(args.state), target=args.target),
                              sort_keys=True, separators=(",", ":")))

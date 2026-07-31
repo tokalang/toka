@@ -5,7 +5,7 @@ import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, meta
 import sys/libc::{libc_system, libc_printf, libc_getenv, libc_setenv}
 import std/vec::{Vec}
 import std/process::{Command}
-import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, cmd_publish, cmd_search, resolve_package}
+import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search, resolve_package}
 
 
 fn print_help() {
@@ -489,6 +489,7 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
     {
         auto pkg_mappings = build_pkg_mappings()
         auto pkg_node_mappings = build_pkg_node_mappings()
+        auto workspace_node = build_workspace_node()
         auto mapping_env# = string::from("")
         auto mapping_index# = 0:usize
         loop mapping_index < pkg_mappings.len() {
@@ -515,6 +516,12 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         auto compile# = Command::new(cede tokac_path.clone())
         compile#.arg(string::from("-I"))
         compile#.arg(cede default_lib.clone())
+        if !workspace_node.is_empty() {
+            compile#.arg(string::from("--workspace-node"))
+            compile#.arg(cede workspace_node)
+            compile#.arg(string::from("--workspace-root"))
+            compile#.arg(env::current_dir())
+        }
         auto pkg_index# = 0:usize
         loop pkg_index < pkg_mappings.len() {
             compile#.arg(string::from("--pkg"))

@@ -920,6 +920,9 @@ int main(int argc, char **argv) {
     resolvedTargetTriple = envTriple;
   }
   toka::Parser::TargetTriple = resolvedTargetTriple;
+  if (toolchainNodeId.empty()) {
+    toolchainNodeId = std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
+  }
 
   toka::SourceManager sm;
   toka::DiagnosticEngine::init(sm);

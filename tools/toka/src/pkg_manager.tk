@@ -120,6 +120,16 @@ pub fn build_pkg_node_mappings() -> Vec<string> {
     return mappings
 }
 
+pub fn build_workspace_node() -> string {
+    if !exists(string::from("package.tk")) { return string::from("") }
+    auto command# = package_command(string::from("workspace-node"))
+    auto result = command#.output()
+    if result.is_err() { return string::from("") }
+    auto output = result.unwrap()
+    if !output.status.success() { return string::from("") }
+    return output.stdout.trim()
+}
+
 pub fn cmd_publish() -> i32 {
     auto res = read_to_string(string::from("package.tk"))
     if res.is_err() {
