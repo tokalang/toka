@@ -3586,6 +3586,11 @@ void Sema::checkImpl(ImplDecl *Impl) {
 }
 
 void Sema::checkShapeSovereignty() {
+  // Slice 4 replaces the raw-pointer clone/drop heuristic with independent
+  // policy, Copy, Dup, and lifecycle facts. Raw morphology by itself never
+  // establishes managed ownership in the epoch model.
+  if (Parser::EncapCopyEpochV4)
+    return;
   for (auto const &[name, decl] : ShapeMap) {
     // The standard library is migrated and audited as source under Slice 6.
     // Do not reapply the retired raw-pointer/clone heuristic while compiling
@@ -3772,7 +3777,7 @@ void Sema::analyzeShapes(Module &M) {
     }
     S->HasExplicitDrop = hasExplicitDrop;
 
-    if (props.HasRawPtr && !hasExplicitDrop) {
+    if (!Parser::EncapCopyEpochV4 && props.HasRawPtr && !hasExplicitDrop) {
       DiagnosticEngine::report(getLoc(S.get()), DiagID::ERR_UNSAFE_RAW_PTR,
                                S->Name);
       HasError = true;

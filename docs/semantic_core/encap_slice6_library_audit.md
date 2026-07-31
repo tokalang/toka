@@ -16,6 +16,9 @@ positive-capability model introduced by Slices 1–5.
   logging levels, and LLVM's non-owning handle wrappers are transparent.
 - `TaskRef` retains its control block only through an explicit `@Dup`
   provider. No copy operation invokes that retain path implicitly.
+- A raw pointer never becomes a managed-resource fact merely by its
+  morphology. The Slice 6 witness uses a raw-handle capsule with an explicit
+  lifecycle hook and `@Dup` provider to cover that boundary.
 
 An ordinary method whose name is `clone` is not an ownership operation. It is
 kept only for API compatibility where it is a normal library call; it does not
