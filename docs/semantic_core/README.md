@@ -75,6 +75,8 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
   separates explicit `@encap` governance, exact field grants, verified Copy,
   explicit Dup, and compiler-only drop plans; resolver identity, custom-drop,
   and Copy-SCC redlines form its blocking Slice 0.
+- `encap_slice0_baseline.md` records the legacy resolver, lifecycle, and TKI
+  facts against which that blocking, non-semantic Slice 0 is audited.
 - `typed_todo_rfc.md` freezes the adopted expression-only typed-todo boundary:
   complete expected contracts, zero authority, conditional facts, and the
   no-CodeGen/TKI/cache publication rule.
