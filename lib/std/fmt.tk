@@ -13,6 +13,9 @@ impl StringBuilder@encap {
         // string drops automatically
     }
     
+}
+
+impl StringBuilder {
     pub fn clone(self) -> StringBuilder {
         return StringBuilder(
             buffer = self.buffer.clone()
@@ -103,6 +106,9 @@ pub shape AnsiStyle (
 
 impl AnsiStyle@encap {
     fn drop(self#) {}
+}
+
+impl AnsiStyle {
     pub fn clone(self) -> AnsiStyle {
         return AnsiStyle(
             code = self.code.clone()
@@ -202,6 +208,10 @@ impl SourceFile {
 
 impl SourceFile@encap {
     fn drop(self#) {}
+
+}
+
+impl SourceFile {
     pub fn clone(self) -> SourceFile {
         return SourceFile(
             name = self.name.clone(),
@@ -242,7 +252,6 @@ impl SourceFile@encap {
         auto col = offset - line_start + 1
         return Location(line = line_idx + 1, column = col)
     }
-    
     pub fn get_line_content(self, line: usize) -> string {
         auto line_idx = line - 1
         auto size = self.line_starts.len()
@@ -294,6 +303,9 @@ pub shape DiagnosticLabel (
 
 impl DiagnosticLabel@encap {
     fn drop(self#) {}
+}
+
+impl DiagnosticLabel {
     pub fn clone(self) -> DiagnosticLabel {
         return DiagnosticLabel(
             offset = self.offset,
@@ -313,6 +325,9 @@ pub shape Diagnostic (
 
 impl Diagnostic@encap {
     fn drop(self#) {}
+}
+
+impl Diagnostic {
     pub fn clone(self) -> Diagnostic {
         return Diagnostic(
             severity = self.severity,

@@ -12,27 +12,30 @@ impl<'T: @PartialOrd> BTreeSet<'T> {
     }
 }
 
-impl<'T: @PartialOrd> BTreeSet<'T>@encap {
+impl<'T> BTreeSet<'T>@encap {
     fn drop(self#) {
         self.map#.clear()
     }
 
+
+
+
+
+}
+
+impl<'T: @PartialOrd> BTreeSet<'T> {
     pub fn len(self) -> usize {
         return self.map.len()
     }
-
     pub fn is_empty(self) -> bool {
         return self.map.is_empty()
     }
-
     pub fn insert(self#, cede 'val: T) {
         self.map#.insert(cede 'val, true)
     }
-
     pub fn contains(self, 'val: T) -> bool {
         return self.map.contains_key('val)
     }
-
     pub fn clear(self#) {
         self.map#.clear()
     }

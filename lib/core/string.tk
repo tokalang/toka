@@ -46,9 +46,6 @@ pub shape string (
 
 impl string@encap {
     pub cap
-    pub fn clone(self) -> string {
-        return string::from_with_len(self.c_str(), self.len)
-    }
 
     fn drop(self#) {
         unsafe {
@@ -65,6 +62,12 @@ impl string@encap {
     }
 }
 
+impl string {
+    pub fn clone(self) -> string {
+        return string::from_with_len(self.c_str(), self.len)
+    }
+}
+
 pub shape SplitIterator (
     nul *source: [char],
     source_len: usize,
@@ -75,6 +78,9 @@ pub shape SplitIterator (
 impl SplitIterator@encap {
     fn drop(self#) {}
     
+}
+
+impl SplitIterator {
     pub fn clone(self) -> SplitIterator {
         return SplitIterator(
             *source = self.*source,

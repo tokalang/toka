@@ -77,7 +77,7 @@ impl<'T: @Send> Mutex<'T> {
     
 }
 
-impl<'T: @Send> Mutex<'T>@encap {
+impl<'T> Mutex<'T>@encap {
     fn drop(self#) {
         unsafe {
             auto h: Addr = self.handle
@@ -98,7 +98,7 @@ pub shape MutexLock<'T: @Send>(
 impl<'T: @Send> MutexLock<'T>@Send {}
 impl<'T: @Sync> MutexLock<'T>@Sync {}
 
-impl<'T: @Send> MutexLock<'T>@encap {
+impl<'T> MutexLock<'T>@encap {
     fn drop(self#) {
         unsafe {
             if self.handle != 0:Addr {
@@ -190,7 +190,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
     }
 }
 
-impl<'T: @{Send, Sync}> RwMutex<'T>@encap {
+impl<'T> RwMutex<'T>@encap {
     fn drop(self#) {
         unsafe {
             auto h: Addr = self.handle
@@ -211,7 +211,7 @@ pub shape RwReadLock<'T: @{Send, Sync}>(
 impl<'T: @{Send, Sync}> RwReadLock<'T>@Send {}
 impl<'T: @{Send, Sync}> RwReadLock<'T>@Sync {}
 
-impl<'T: @{Send, Sync}> RwReadLock<'T>@encap {
+impl<'T> RwReadLock<'T>@encap {
     fn drop(self#) {
         unsafe {
             if self.handle != 0:Addr {
@@ -237,7 +237,7 @@ pub shape RwWriteLock<'T: @{Send, Sync}>(
 impl<'T: @{Send, Sync}> RwWriteLock<'T>@Send {}
 impl<'T: @{Send, Sync}> RwWriteLock<'T>@Sync {}
 
-impl<'T: @{Send, Sync}> RwWriteLock<'T>@encap {
+impl<'T> RwWriteLock<'T>@encap {
     fn drop(self#) {
         unsafe {
             if self.handle != 0:Addr {
@@ -268,7 +268,7 @@ pub shape CondVar<'T: @Send> (
 impl<'T: @Send> CondVar<'T>@Sync {}
 impl<'T: @Send> CondVar<'T>@Send {}
 
-impl<'T: @Send> CondVar<'T>@encap {
+impl<'T> CondVar<'T>@encap {
     fn drop(self#) {
         unsafe {
             auto h: Addr = self.handle

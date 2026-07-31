@@ -30,14 +30,10 @@ extern fn __toka_str_raw_ptr(s: str) -> *char
 extern fn __toka_bytes_raw_ptr(b: bytes) -> *byte
 
 
-impl str@encap {    
-    pub(core/str) buf, len
-
+impl str {
     pub fn clone(self) -> str <- self {
         return str(&buf = self.&buf, len = self.len)
     }
-    
-    fn drop(self#) {}
 }
 
 impl str@PartialEq {
@@ -73,11 +69,14 @@ pub shape ViewStrSplitIterator(
 )
 
 impl ViewStrSplitIterator@encap {    
+
+    fn drop(self#) {}
+}
+
+impl ViewStrSplitIterator {
     pub fn clone(self) -> ViewStrSplitIterator <- self {
         return ViewStrSplitIterator(&buf = self.&buf, len = self.len, pos = self.pos, sep = self.sep.clone(), finished = self.finished)
     }
-    
-    fn drop(self#) {}
 }
 
 impl ViewStrSplitIterator {
@@ -161,11 +160,14 @@ pub shape ViewStrLinesIterator(
 )
 
 impl ViewStrLinesIterator@encap {    
+
+    fn drop(self#) {}
+}
+
+impl ViewStrLinesIterator {
     pub fn clone(self) -> ViewStrLinesIterator <- self {
         return ViewStrLinesIterator(split_iter = self.split_iter.clone())
     }
-    
-    fn drop(self#) {}
 }
 
 impl ViewStrLinesIterator {
@@ -657,15 +659,19 @@ pub shape cstr(
 )
 
 impl cstr@encap {
+    pub(core/string) buf
+
+
+    fn drop(self#) {}
+}
+
+impl cstr {
     pub fn clone(self) -> cstr <- self {
         return cstr(*buf = self.*buf)
     }
-
     pub fn raw_ptr(self) -> *char {
         return self.*buf
     }
-
-    fn drop(self#) {}
 }
 
 impl cstr@delegate {
@@ -704,11 +710,15 @@ pub shape bytes(
 )
 
 impl bytes@encap {
+    pub(std/bytes) buf, len
+
+    fn drop(self#) {}
+}
+
+impl bytes {
     pub fn clone(self) -> bytes <- self {
         return bytes(&buf = self.&buf, len = self.len)
     }
-
-    fn drop(self#) {}
 }
 
 impl bytes {

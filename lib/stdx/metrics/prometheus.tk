@@ -19,6 +19,9 @@ impl MetricEntry@encap {
     pub kind
     pub value
     fn drop(self#) {}
+}
+
+impl MetricEntry {
     pub fn clone(self) -> MetricEntry {
         return MetricEntry(
             name = string::from(self.name.as_str()),
@@ -58,6 +61,9 @@ pub shape PrometheusRegistry (
 impl PrometheusRegistry@encap {
     pub entries
     fn drop(self#) {}
+}
+
+impl PrometheusRegistry {
     pub fn clone(self) -> PrometheusRegistry {
         auto copied# = Vec<MetricEntry>::new()
         auto index# = 0:usize

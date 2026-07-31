@@ -19,6 +19,8 @@ LIBRARY_PATTERNS = (
 )
 NORMATIVE_DOCUMENTS = (ROOT / "docs" / "syntax.md",
                        ROOT / "docs" / "syntax_zh.md")
+POLICY_BLOCK = re.compile(r"^\s*impl[^\n]*@encap\s*\{")
+METHOD_DECL = re.compile(r"^\s*(?:pub\s+)?fn\s+([^ (]+)")
 
 
 def compile_source(source: Path, *, expect_success: bool) -> subprocess.CompletedProcess[str]:
@@ -35,11 +37,66 @@ def compile_source(source: Path, *, expect_success: bool) -> subprocess.Complete
     return completed
 
 
+def compile_library_source(source: Path, output: Path) -> None:
+    command = (str(TOKAC), "--encap-epoch=v6", "--workspace-node",
+               "slice6-library-v1", "--workspace-root", str(ROOT),
+               "-c", "-o", str(output), str(source))
+    completed = subprocess.run(command, cwd=ROOT, text=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if completed.returncode != 0:
+        raise RuntimeError("library source failed:\n$ %s\n%s" %
+                           (" ".join(command), completed.stderr))
+
+
+def brace_delta(line: str) -> int:
+    depth = 0
+    quoted = False
+    escaped = False
+    for index, char in enumerate(line):
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+            continue
+        if char == "/" and index + 1 < len(line) and line[index + 1] == "/":
+            break
+        if char == '"':
+            quoted = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+    return depth
+
+
+def assert_policy_blocks_only_contain_drop(source: Path, text: str) -> None:
+    depth = 0
+    in_policy = False
+    for line in text.splitlines():
+        if not in_policy:
+            if POLICY_BLOCK.match(line):
+                in_policy = True
+                depth = brace_delta(line)
+            continue
+        if depth == 1:
+            method = METHOD_DECL.match(line)
+            if method and method.group(1) != "drop":
+                raise AssertionError("%s: @encap policy contains %s" %
+                                     (source, method.group(1)))
+        depth += brace_delta(line)
+        if depth == 0:
+            in_policy = False
+
+
 def assert_migrated_text() -> None:
     for source in (ROOT / "lib").rglob("*.tk"):
         text = source.read_text(encoding="utf-8")
         for pattern in LIBRARY_PATTERNS:
             assert not pattern.search(text), "%s: %s" % (source, pattern.pattern)
+        assert_policy_blocks_only_contain_drop(source, text)
 
     for document in NORMATIVE_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
@@ -71,6 +128,13 @@ def main() -> int:
     assert_migrated_text()
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
+        for index, library_source in enumerate((
+                ROOT / "lib" / "core" / "string.tk",
+                ROOT / "lib" / "std" / "vec.tk",
+                ROOT / "lib" / "stdx" / "net" / "http.tk",
+                ROOT / "lib" / "build.tk")):
+            compile_library_source(library_source, root / ("library-%d.o" % index))
+
         valid = root / "valid.tk"
         valid.write_text(
             "shape Point(x: i32)\n"

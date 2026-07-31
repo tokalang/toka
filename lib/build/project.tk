@@ -24,6 +24,9 @@ impl Executable@encap {
     pub(build) ldflags
 
     fn drop(self#) { }
+}
+
+impl Executable {
     pub fn clone(self) -> Executable {
         return Executable(
             *name = self.*name,
@@ -61,6 +64,9 @@ impl Library@encap {
     pub(build) include_dirs
 
     fn drop(self#) { }
+}
+
+impl Library {
     pub fn clone(self) -> Library {
         return Library(
             *name = self.*name,

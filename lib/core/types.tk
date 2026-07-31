@@ -102,6 +102,12 @@ pub shape str(
     len$: usize
 )
 
+impl str@encap {
+    pub(core/str) buf, len
+    pub(core/string) buf, len
+    fn drop(self#) {}
+}
+
 pub shape SourceLoc(
     file: str,
     line: i32
@@ -116,6 +122,9 @@ impl<'T> RowFat<'T>@encap {
     fn drop(self#) {
     }
 
+}
+
+impl<'T> RowFat<'T> {
     pub fn clone(self) -> RowFat<'T> {
         return RowFat<'T>(*buf = self.*buf, len = self.len)
     }

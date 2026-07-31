@@ -13,6 +13,9 @@ pub shape MimeParam (
 impl MimeParam@encap {
     fn drop(self#) {}
 
+}
+
+impl MimeParam {
     pub fn clone(self) -> MimeParam {
         return MimeParam(
             name = string::from(self.name.as_str()),
@@ -99,6 +102,9 @@ fn has_param(params: Vec<MimeParam>, name: str) -> bool {
 impl Mime@encap {
     fn drop(self#) {}
 
+}
+
+impl Mime {
     pub fn clone(self) -> Mime {
         auto copied# = Vec<MimeParam>::new()
         auto index#: usize = 0

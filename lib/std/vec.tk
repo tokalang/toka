@@ -396,6 +396,9 @@ impl<'T> Vec<'T>@Iterable {
 
 impl<'T> VecIterator<'T>@encap {
     fn drop(self#) {}
+}
+
+impl<'T> VecIterator<'T> {
     pub fn clone(self) -> VecIterator<'T> <- self {
         return VecIterator<'T>(
              &buf = self.&buf,

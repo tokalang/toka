@@ -181,6 +181,9 @@ fn compare_pre_release(left: Vec<PreReleaseId>, right: Vec<PreReleaseId>) -> i32
 impl SemVerError@encap {
     fn drop(self#) {}
 
+}
+
+impl SemVerError {
     pub fn clone(self) -> SemVerError {
         return SemVerError(position = self.position, message = string::from(self.message.as_str()))
     }
@@ -195,6 +198,9 @@ impl SemVerError {
 impl PreReleaseId@encap {
     fn drop(self#) {}
 
+}
+
+impl PreReleaseId {
     pub fn clone(self) -> PreReleaseId {
         match self {
             auto PreReleaseId::Numeric(value) => return PreReleaseId::Numeric(value)
@@ -206,6 +212,9 @@ impl PreReleaseId@encap {
 impl SemVer@encap {
     fn drop(self#) {}
 
+}
+
+impl SemVer {
     pub fn clone(self) -> SemVer {
         auto copied_pre# = Vec<PreReleaseId>::new()
         auto pre_index#: usize = 0

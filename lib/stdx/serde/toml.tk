@@ -293,6 +293,9 @@ fn contains_key(entries: Vec<TomlEntry>, key: str) -> bool {
 impl TomlValue@encap {
     fn drop(self#) {}
 
+}
+
+impl TomlValue {
     pub fn clone(self) -> TomlValue {
         match self {
             auto TomlValue::StringValue(&value) => return TomlValue::StringValue(string::from(value.as_str()))
@@ -314,6 +317,9 @@ impl TomlValue@encap {
 impl TomlEntry@encap {
     fn drop(self#) {}
 
+}
+
+impl TomlEntry {
     pub fn clone(self) -> TomlEntry {
         return TomlEntry(key = string::from(self.key.as_str()), value = self.value.clone())
     }
@@ -322,6 +328,9 @@ impl TomlEntry@encap {
 impl TomlDocument@encap {
     fn drop(self#) {}
 
+}
+
+impl TomlDocument {
     pub fn clone(self) -> TomlDocument {
         auto copied# = Vec<TomlEntry>::new()
         auto index#: usize = 0

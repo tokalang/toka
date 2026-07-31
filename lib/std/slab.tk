@@ -24,6 +24,9 @@ impl SlabID {
 
 impl SlabID@encap {
     fn drop(self#) {}
+}
+
+impl SlabID {
     pub fn clone(self) -> SlabID {
         return SlabID(raw = self.raw)
     }

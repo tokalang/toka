@@ -42,6 +42,9 @@ pub shape SseDecoder (
 
 impl SseError@encap {
     fn drop(self#) {}
+}
+
+impl SseError {
     pub fn clone(self) -> SseError {
         return SseError(kind = self.kind.clone(), message = self.message.clone())
     }
@@ -49,6 +52,9 @@ impl SseError@encap {
 
 impl SseEvent@encap {
     fn drop(self#) {}
+}
+
+impl SseEvent {
     pub fn clone(self) -> SseEvent {
         auto id# = Option<string>::None
         match self.id {
@@ -61,6 +67,9 @@ impl SseEvent@encap {
 
 impl SseLimits@encap {
     fn drop(self#) {}
+}
+
+impl SseLimits {
     pub fn clone(self) -> SseLimits {
         return SseLimits(max_line_bytes = self.max_line_bytes, max_event_bytes = self.max_event_bytes,
                          max_buffer_bytes = self.max_buffer_bytes)

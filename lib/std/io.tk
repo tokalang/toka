@@ -104,10 +104,23 @@ impl File@encap {
         }
     }
     
+
+
+
+
+
+
+
+    // Optimized read_line using libc_fgets with zero-allocation stack buffer
+
+
+
+}
+
+impl File {
     pub fn is_valid(self) -> bool {
         return self.opened
     }
-
     pub fn take(self#) -> File {
         auto f = File(
             *handle = self.*#handle,
@@ -119,7 +132,6 @@ impl File@encap {
         self.*handle = ADDR0 as *void
         return f
     }
-    
     pub fn close(self#) {
         unsafe {
             if self.opened {
@@ -129,7 +141,6 @@ impl File@encap {
             }
         }
     }
-    
     pub fn read_to_string(self) -> Result<string, string> {
         unsafe {
             if !self.opened { 
@@ -157,7 +168,6 @@ impl File@encap {
             return res
         }
     }
-    
     pub fn write(self, s: str) -> usize {
         unsafe {
             if !self.opened { return 0 as usize }
@@ -172,7 +182,6 @@ impl File@encap {
             return libc_feof(self.*handle) != 0
         }
     }
-
     pub fn read(self, *buf: u8, len: usize) -> IoSizeResult {
         unsafe {
             if !self.opened { 
@@ -182,15 +191,12 @@ impl File@encap {
             return IoSizeResult::Ok(count as usize)
         }
     }
-
     pub fn write_buf(self, *buf: u8, len: usize) -> usize {
         unsafe {
             if !self.opened { return 0 as usize }
             return libc_fwrite(*buf as *void, 1, len, self.*handle)
         }
     }
-
-    // Optimized read_line using libc_fgets with zero-allocation stack buffer
     pub fn read_line(self) -> Result<string, string> {
         unsafe {
             if !self.opened { 
@@ -225,7 +231,6 @@ impl File@encap {
             return IoStringResult::Ok(s)
         }
     }
-
     pub fn flush(self) {
         unsafe {
             if self.opened {
@@ -233,14 +238,12 @@ impl File@encap {
             }
         }
     }
-
     pub fn seek(self, offset: i64, whence: i32) -> i32 {
         unsafe {
             if !self.opened { return -1 }
             return libc_fseek(self.*handle, offset, whence)
         }
     }
-
     pub fn tell(self) -> i64 {
         unsafe {
             if !self.opened { return -1:i64 }

@@ -205,6 +205,9 @@ impl Canceler@encap {
     fn drop(self#) {
     }
 
+}
+
+impl Canceler {
     pub fn clone(self) -> Canceler
     effects: return <- self.state {
         return Canceler(~state = self.~state)

@@ -19,6 +19,10 @@ positive-capability model introduced by Slices 1–5.
 - A raw pointer never becomes a managed-resource fact merely by its
   morphology. The Slice 6 witness uses a raw-handle capsule with an explicit
   lifecycle hook and `@Dup` provider to cover that boundary.
+- Every library `@encap` block now contains only exact field grants and an
+  optional drop hook. Ordinary methods, including compatibility-named
+  `clone` methods, live in separate ordinary impls; v6 no longer exempts
+  trusted library policies or Copy/Dup validation.
 
 An ordinary method whose name is `clone` is not an ownership operation. It is
 kept only for API compatibility where it is a normal library call; it does not
@@ -47,5 +51,7 @@ The normative syntax references are [syntax.md](../syntax.md) and
 ## Evidence
 
 `tools/scripts/test_encap_slice6_library_audit.py` checks the migrated library
-and normative syntax corpus, then compiles v6 Copy/Dup/transparent examples
-and verifies that removed negative syntax and legacy facets are rejected.
+and normative syntax corpus, rejects ordinary methods inside every policy
+block, compiles representative core/std/stdx/build modules under v6, then
+compiles v6 Copy/Dup/transparent examples and verifies that removed negative
+syntax and legacy facets are rejected.

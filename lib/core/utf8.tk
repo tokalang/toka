@@ -29,15 +29,18 @@ pub shape Cursor(
 )
 
 impl Cursor@encap {
+    pub(core/str) buf, len, pos
+    pub(core/string) buf, len, pos
+    fn drop(self#) {}
+}
+
+impl Cursor {
     pub fn clone(self) -> Cursor <- self {
         return Cursor(&buf = self.&buf, len = self.len, pos = self.pos)
     }
-
     pub fn current_pos(self) -> usize {
         return self.pos
     }
-
-    fn drop(self#) {}
 }
 
 impl Cursor {

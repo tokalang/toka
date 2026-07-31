@@ -12,6 +12,9 @@ pub shape FormField (
 impl FormField@encap {
     fn drop(self#) {}
 
+}
+
+impl FormField {
     pub fn clone(self) -> FormField {
         return FormField(
             name = string::from(self.name.as_str()),

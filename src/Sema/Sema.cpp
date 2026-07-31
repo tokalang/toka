@@ -738,10 +738,12 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
   auto implOwner = DeclarationLexicalScopes.find(impl);
   auto shapeOwner = shape ? DeclarationLexicalScopes.find(shape)
                           : DeclarationLexicalScopes.end();
-  // Slice 6 owns the toolchain migration.  Do not reinterpret its still
-  // legacy entries merely because a workspace opts into the Slice 2 audit.
+  // Older language epochs retain the trusted-library compatibility boundary.
+  // Slice 6 compiles the migrated library under the same policy rules as
+  // workspace source.
   if (implOwner != DeclarationLexicalScopes.end() && implOwner->second &&
-      implOwner->second->IsTrustedSystemModule)
+      implOwner->second->IsTrustedSystemModule &&
+      !Parser::EncapLibraryEpochV6)
     return;
   if (!shape || implOwner == DeclarationLexicalScopes.end() ||
       shapeOwner == DeclarationLexicalScopes.end() ||
@@ -1068,7 +1070,8 @@ bool Sema::proveSlice4Copy(const ShapeDecl *shape) {
 }
 
 void Sema::validateSlice4CopyAndDup(Module &M) {
-  if (!Parser::EncapCopyEpochV4 || M.IsTrustedSystemModule)
+  if (!Parser::EncapCopyEpochV4 ||
+      (M.IsTrustedSystemModule && !Parser::EncapLibraryEpochV6))
     return;
   for (const auto &shape : M.Shapes) {
     if (!shape->GenericParams.empty())

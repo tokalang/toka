@@ -226,7 +226,7 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
     }
 }
 
-impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
+impl<'K, 'V> BTreeMap<'K, 'V>@encap {
     fn drop(self#) {
         unsafe {
             if addr_is_not_null(self.root_addr) {
@@ -237,6 +237,12 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
         }
     }
     
+
+
+
+}
+
+impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V> {
     pub fn is_empty(self) -> bool { return self.len == 0 }
     pub fn len(self) -> usize { return self.len }
 
@@ -249,7 +255,6 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
             }
         }
     }
-
     pub fn insert(self#, cede 'key: K, cede 'val: V) {
         unsafe {
             auto key_buf# = [cede 'key]
@@ -270,11 +275,9 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
             }
         }
     }
-
     pub fn get(self, 'key: K) -> Option<'V> {
         return btree_node_get<'K, 'V>(self.root_addr, 'key)
     }
-
     pub fn contains_key(self, 'key: K) -> bool {
         return self.get('key).is_some()
     }

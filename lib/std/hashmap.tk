@@ -42,6 +42,9 @@ impl<'K, 'V> HashMap<'K, 'V>@encap {
         }
     }
     
+}
+
+impl<'K, 'V> HashMap<'K, 'V> {
     pub fn clone(self) -> HashMap<'K, 'V> {
         unsafe {
             if self.cap == 0 {
@@ -409,6 +412,9 @@ impl<'K, 'V> HashMapIterator<'K, 'V>@encap {
     pub(std) keys, vals, meta, cap, pos
     fn drop(self#) {}
     
+}
+
+impl<'K, 'V> HashMapIterator<'K, 'V> {
     pub fn clone(self) -> HashMapIterator<'K, 'V> <- self {
         return HashMapIterator<'K, 'V>(
             &keys = self.&keys,

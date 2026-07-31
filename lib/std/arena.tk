@@ -183,6 +183,9 @@ impl ArenaChunk@encap {
         // ArenaChunk does not own its memory; the Arena does.
     }
 
+}
+
+impl ArenaChunk {
     pub fn clone(self) -> ArenaChunk {
         return ArenaChunk(
             data = self.data,

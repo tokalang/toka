@@ -25,6 +25,9 @@ impl ModuleOutputs@encap {
     pub(build/internal/codec) executable
 
     fn drop(self#) { }
+}
+
+impl ModuleOutputs {
     pub fn clone(self) -> ModuleOutputs {
         return ModuleOutputs(
             interface = self.interface.clone(),
@@ -83,6 +86,9 @@ impl ModuleSnapshot@encap {
     pub(build/internal/codec) dependencies
 
     fn drop(self#) { }
+}
+
+impl ModuleSnapshot {
     pub fn clone(self) -> ModuleSnapshot {
         auto c_dependencies# = Vec<string>::new()
         auto i# = 0:usize
@@ -156,6 +162,9 @@ impl DependencyManifest@encap {
     pub(build/internal/codec) modules
 
     fn drop(self#) { }
+}
+
+impl DependencyManifest {
     pub fn clone(self) -> DependencyManifest {
         auto c_roots# = Vec<string>::new()
         auto i# = 0:usize
@@ -226,6 +235,9 @@ impl RebuildModuleInfo@encap {
     pub(build/internal/codec) dirty_deps
 
     fn drop(self#) { }
+}
+
+impl RebuildModuleInfo {
     pub fn clone(self) -> RebuildModuleInfo {
         auto c_dirty_deps# = Vec<string>::new()
         auto i# = 0:usize
@@ -273,6 +285,9 @@ impl RebuildPlan@encap {
     pub(build/internal/codec) dirty_modules
 
     fn drop(self#) { }
+}
+
+impl RebuildPlan {
     pub fn clone(self) -> RebuildPlan {
         auto c_dirty_roots# = Vec<string>::new()
         auto i# = 0:usize
@@ -343,6 +358,9 @@ pub shape DfsResult (
 
 impl DfsResult@encap {
     fn drop(self#) { }
+}
+
+impl DfsResult {
     pub fn clone(self) -> DfsResult {
         auto c_chain# = Vec<string>::new()
         auto i# = 0:usize

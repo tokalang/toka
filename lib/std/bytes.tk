@@ -44,6 +44,9 @@ impl Bytes@encap {
         }
     }
 
+}
+
+impl Bytes {
     pub fn clone(self) -> Bytes {
         unsafe {
             if self.cap == 0 || self.len == 0 {

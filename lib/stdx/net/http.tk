@@ -31,6 +31,9 @@ pub shape HttpHeaderView (
 impl HttpHeaderView@encap {
     pub name_offset, name_len, value_offset, value_len
     fn drop(self#) {}
+}
+
+impl HttpHeaderView {
     pub fn clone(self) -> HttpHeaderView {
         return HttpHeaderView(
             name_offset = self.name_offset,
@@ -80,6 +83,9 @@ impl HeaderEntry@encap {
     pub key
     pub value
     fn drop(self#) {}
+}
+
+impl HeaderEntry {
     pub fn clone(self) -> HeaderEntry {
         return HeaderEntry(
             key = string::from(self.key.as_str()),
@@ -95,6 +101,9 @@ pub shape HeaderMap (
 impl HeaderMap@encap {
     pub entries
     fn drop(self#) {}
+}
+
+impl HeaderMap {
     pub fn clone(self) -> HeaderMap {
         auto new_entries# = Vec<HeaderEntry>::new()
         auto idx# = 0:usize
@@ -255,6 +264,9 @@ impl HttpRequest@encap {
     pub body
     fn drop(self#) {}
 
+}
+
+impl HttpRequest {
     pub fn clone(self#) -> HttpRequest {
         return HttpRequest(
             method = self.method,
@@ -347,6 +359,9 @@ impl HttpResponse@encap {
     pub body
     fn drop(self#) {}
 
+}
+
+impl HttpResponse {
     pub fn clone(self#) -> HttpResponse {
         return HttpResponse(
             status_code = self.status_code,
@@ -1039,6 +1054,9 @@ pub shape HttpResponseStream (
 impl HttpResponseStream@encap {
     pub status_code, headers, is_chunked
     fn drop(self#) {}
+}
+
+impl HttpResponseStream {
     pub fn clone(self) -> HttpResponseStream {
         return HttpResponseStream(
             status_code = self.status_code,

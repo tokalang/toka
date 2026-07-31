@@ -16,6 +16,9 @@ impl JsonField@encap {
     pub key
     pub value
     fn drop(self#) {}
+}
+
+impl JsonField {
     pub fn clone(self) -> JsonField {
         return JsonField(
             key = string::from(self.key.as_str()),
