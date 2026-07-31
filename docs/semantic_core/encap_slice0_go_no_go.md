@@ -1,10 +1,10 @@
 # `@encap` Epoch Slice 0 Gate Status
 
-**Status:** **In progress — semantic activation remains disabled.**
+**Status:** **Slice 0 evidence complete — Go to Slice 1 preparation;
+semantic activation remains disabled.**
 
-This is not a final Go/No-Go decision. The RFC makes all six exit conditions
-mandatory for a Go decision. Missing evidence is work remaining in Slice 0;
-it is not evidence that the proposed epoch is infeasible.
+This is a Go only for the RFC's next implementation-preparation slice. It is
+not permission to activate the new epoch or publish a mixed language state.
 
 ## Evidence achieved
 
@@ -26,37 +26,35 @@ it is not evidence that the proposed epoch is infeasible.
 - The existing source-less semantic replay suite passes, including nominal and
   generic module-identity cases. This preserves legacy behaviour; it is not
   evidence for the proposed epoch.
+- [encap_slice0_redline_results.md](encap_slice0_redline_results.md) records
+  the full expected-result audit: logical access, source/TKI/cache identity,
+  lifecycle/resource, Copy/Dup, and the library/build grant inventory.
 
 ## Current exit-gate audit
 
 | RFC Slice 0 exit condition | Current evidence | Result |
 | --- | --- | --- |
 | Identity is deterministic under relocation and import aliases | Workspace relocation and symlink fixtures preserve a supplied coordinate; package aliases share a locked node; toolchain modules have a configured coordinate. | Proven |
-| Same-crate and cross-crate positive/negative matrices complete | Existing `pub(crate)` is unconditional and `pub(path)` remains physical-path based; no shadow access matrix exists. | Not proven |
-| Source, generated TKI, cached TKI identity decisions agree | Legacy replay passes, but it does not serialize or compare shadow coordinates. | Not proven |
-| Custom-drop order/mask and Copy-SCC redlines reviewed | Legacy ownership tests exist, but no proposed hook-tail/Copy-SCC prototype or expected-result matrix exists. | Not proven |
-| Forged or missing metadata fails closed | Missing resolver input produces `Unknown`; forged package/workspace/TKI metadata has no dedicated matrix. | Partially proven |
-| Existing path grants resolve to one owner and target | No full standard-library, official-package, and build-tool inventory has been generated. | Not proven |
+| Same-crate and cross-crate positive/negative matrices complete | The independent RFC model covers owner/global/crate/path/unknown positive and negative cases, and classifies all three legacy/shadow disagreements. | Proven |
+| Source, generated TKI, cached TKI identity decisions agree | One workspace fixture compares source, source-less sibling TKI, cached TKI, and forged `source_path`; all retain the resolver-derived coordinate. | Proven |
+| Custom-drop order/mask and Copy-SCC redlines reviewed | The independent expected-result model fixes custom hook/tail ordering, partial-move eligibility, resource provenance, Copy states, recursive layout, and Dup overlap. | Proven |
+| Forged or missing metadata fails closed | Missing workspace/package node identity yields `Unknown`; a forged TKI `source_path` cannot change a resolver coordinate. | Proven |
+| Existing path grants resolve to one owner and target | Inventory covers every shipped library/build grant: three module targets and the existing `std` logical namespace tree. Wildcards are separately listed for Slice 6 removal. | Proven |
 
 ## Current consequence
 
 1. A loose direct compilation intentionally remains `Unknown`; it cannot
    obtain a crate identity from its path.
-2. No redline matrix yet compares logical and legacy authorization across
-   source, generated TKI, cached TKI, missing identity, and forged metadata.
-3. Custom-hook tail order, raw resource provenance, and typed partial-move
-   actions have not been prototyped or redlined under the proposed model.
-4. The three-state Copy SCC/CopyRecipe prototype and Copy/Dup overlap matrix
-   do not yet exist.
-5. Consequently no migration inventory or source/generated/cached-TKI parity
-   result exists for the proposed epoch.
+2. The redline models are audit evidence, not active Sema/CodeGen behaviour.
+3. Wildcard grants, legacy clone/delete forms, structural witnesses, and
+   physical-path authorization remain active until their assigned later slices.
 
-The current resolver work is useful preparatory infrastructure, but it does
-not yet satisfy the semantic epoch's safety case. The correct action is to
-continue Slice 0 while keeping all legacy semantics active.
+Slice 0 supplies the safety case inputs for later implementation slices. The
+correct next action is to begin Slice 1 data-model work while keeping every
+legacy semantic rule active.
 
 ## Required work before a new decision
 
-Do not activate any proposed `@encap` epoch rule. Finish the four missing
-evidence rows above, classify every legacy/shadow disagreement, then issue a
-new review against the exact same exit-gate table.
+Do not activate any proposed `@encap` epoch rule. Slice 1 must preserve every
+redline result and add implementation-backed coverage before Slice 2 can
+change parsing or access decisions.

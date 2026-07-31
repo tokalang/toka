@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,8 +18,9 @@ PACKAGE = ROOT / "lib" / "toolchain" / "toka_package.py"
 FIXTURE = ROOT / "tests" / "conformance" / "ownership" / "handle_payload_permission.tk"
 
 
-def run(*args: str, cwd: Path | None = None) -> str:
+def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
     completed = subprocess.run(args, cwd=cwd or ROOT, text=True,
+                               env={**os.environ, **(env or {})},
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if completed.returncode:
         raise RuntimeError("command failed:\n$ %s\n%s%s" %
@@ -25,9 +28,10 @@ def run(*args: str, cwd: Path | None = None) -> str:
     return completed.stdout
 
 
-def manifest(*args: str, source: Path = FIXTURE) -> dict[str, object]:
+def manifest(*args: str, source: Path = FIXTURE,
+             env: dict[str, str] | None = None) -> dict[str, object]:
     return json.loads(run(str(TOKAC), "--dump-dependencies=json", "-I", str(ROOT / "lib"),
-                          *args, str(source)))
+                          *args, str(source), env=env))
 
 
 def root_coordinate(document: dict[str, object]) -> dict[str, object]:
@@ -47,6 +51,10 @@ def workspace_manifest(source: Path, root: Path, node: str = "workspace-test-v1"
     return manifest("--workspace-node", node, "--workspace-root", str(root), source=source)
 
 
+def module_coordinate(document: dict[str, object], source: Path) -> dict[str, object]:
+    return document["modules"][str(source.resolve())]["shadow_coordinate"]
+
+
 def main() -> int:
     if not TOKAC.is_file():
         raise RuntimeError("build/bin/tokac is missing; run cmake --build build first")
@@ -61,6 +69,11 @@ def main() -> int:
         "status": "known", "crate_id": "workspace-test-v1",
         "logical_module_path": "tests/conformance/ownership/handle_payload_permission",
         "origin": "workspace", "reason": "",
+    }
+    missing_workspace = root_coordinate(manifest("--workspace-root", str(ROOT)))
+    assert missing_workspace == {
+        "status": "unknown", "crate_id": "", "logical_module_path": "",
+        "origin": "workspace", "reason": "missing workspace node identity",
     }
 
     with tempfile.TemporaryDirectory() as temporary:
@@ -115,6 +128,80 @@ def main() -> int:
             "status": "known", "crate_id": "pkg-alias-v1",
             "logical_module_path": "demo", "origin": "package", "reason": "",
         }
+        missing_package = manifest(
+            "--workspace-node", "workspace-package-v1", "--workspace-root", str(package_app),
+            "--pkg", "second=" + str(package_module), source=package_source)
+        assert module_coordinate(missing_package, package_module) == {
+            "status": "unknown", "crate_id": "", "logical_module_path": "",
+            "origin": "package",
+            "reason": "missing locked package node identity for 'second'",
+        }
+
+        replay_root = temporary_root / "replay-workspace"
+        replay_root.mkdir()
+        replay_source = replay_root / "lib.tk"
+        replay_main = replay_root / "main.tk"
+        replay_source.write_text("pub fn value() -> i32 { return 7 }\n", encoding="utf-8")
+        replay_main.write_text(
+            "import ./lib::{value}\nfn main() -> i32 { return value() - 7 }\n",
+            encoding="utf-8")
+        replay_args = ("--workspace-node", "workspace-replay-v1",
+                       "--workspace-root", str(replay_root))
+        source_replay = manifest(*replay_args, source=replay_main)
+        source_coordinate = module_coordinate(source_replay, replay_source)
+        run(str(TOKAC), "-c", "--emit-interface", str(replay_source),
+            "-o", str(replay_root / "lib.o"))
+        replay_tki = replay_root / "lib.tki"
+        assert replay_tki.is_file()
+        replay_source.rename(replay_root / "lib.tk.hidden")
+        tki_replay = manifest(*replay_args, source=replay_main)
+        tki_coordinate = coordinate_with_path(tki_replay, "lib")
+        assert source_coordinate == tki_coordinate
+
+        cache_root = temporary_root / "cache-workspace"
+        cache_root.mkdir()
+        cache_source = cache_root / "lib.tk"
+        cache_main = cache_root / "main.tk"
+        cache_source.write_text("pub fn value() -> i32 { return 7 }\n", encoding="utf-8")
+        cache_main.write_text(
+            "import ./lib::{value}\nfn main() -> i32 { return value() - 7 }\n",
+            encoding="utf-8")
+        cache_dir = cache_root / "cache"
+        (cache_dir / "objects").mkdir(parents=True)
+        (cache_dir / "interfaces").mkdir()
+        cache_env = {"TOKA_BUILD_DIR": str(cache_dir), "TOKA_USE_LIB_CACHE": "1"}
+        run(str(TOKAC), "-c", "--emit-interface", str(cache_source),
+            "-o", str(cache_dir / "objects" / "lib.o"), env=cache_env)
+        cached_replay = manifest("--workspace-node", "workspace-replay-v1",
+                                 "--workspace-root", str(cache_root), source=cache_main,
+                                 env=cache_env)
+        cached_coordinate = coordinate_with_path(cached_replay, "lib")
+        assert source_coordinate == tki_coordinate
+        assert cached_coordinate == {
+            "status": "known", "crate_id": "workspace-replay-v1",
+            "logical_module_path": "lib", "origin": "workspace", "reason": "",
+        }
+
+        forged_root = temporary_root / "forged-workspace"
+        forged_root.mkdir()
+        forged_source = forged_root / "lib.tk"
+        forged_main = forged_root / "main.tk"
+        forged_source.write_text("pub fn value() -> i32 { return 7 }\n", encoding="utf-8")
+        forged_main.write_text(
+            "import ./lib::{value}\nfn main() -> i32 { return value() - 7 }\n",
+            encoding="utf-8")
+        run(str(TOKAC), "-c", "--emit-interface", str(forged_source),
+            "-o", str(forged_root / "lib.o"))
+        forged_tki = forged_root / "lib.tki"
+        forged_text = forged_tki.read_text(encoding="utf-8")
+        forged_text = forged_text.replace("// @meta source_hash:", "// @meta source_hash: any\n// ignored:", 1)
+        forged_text = re.sub(r"^// @meta source_path: .*", "// @meta source_path: /forged/outside.tk",
+                             forged_text, flags=re.MULTILINE)
+        forged_tki.write_text(forged_text, encoding="utf-8")
+        forged_source.rename(forged_root / "lib.tk.hidden")
+        forged_replay = manifest("--workspace-node", "workspace-replay-v1",
+                                 "--workspace-root", str(forged_root), source=forged_main)
+        assert coordinate_with_path(forged_replay, "lib") == cached_coordinate
 
         lock = temporary_root / "package.lock"
         lock.write_text(
