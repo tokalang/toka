@@ -1,0 +1,37 @@
+import core/option::{Option}
+import core/str::{str}
+import core/string::{string}
+
+fn expect_offset(text: str, scalar_index: usize, expected: usize) -> bool {
+    auto offset = text.codepoint_byte_offset(scalar_index)
+    if offset.is_none() { return false }
+    return offset.unwrap() == expected
+}
+
+fn expect_index(text: str, byte_offset: usize, expected: usize) -> bool {
+    auto index = text.codepoint_index_at_byte_offset(byte_offset)
+    if index.is_none() { return false }
+    return index.unwrap() == expected
+}
+
+fn main() -> i32 {
+    // "A你🙂" is one ASCII, one three-byte scalar, and one four-byte scalar.
+    auto owned# = string::from("A你🙂")
+    auto text = owned.as_str()
+
+    if !expect_offset(text, 0:usize, 0:usize) { return 1 }
+    if !expect_offset(text, 1:usize, 1:usize) { return 2 }
+    if !expect_offset(text, 2:usize, 4:usize) { return 3 }
+    if !expect_offset(text, 3:usize, 8:usize) { return 4 }
+    if text.codepoint_byte_offset(4:usize).is_some() { return 5 }
+
+    if !expect_index(text, 0:usize, 0:usize) { return 6 }
+    if !expect_index(text, 1:usize, 1:usize) { return 7 }
+    if !expect_index(text, 4:usize, 2:usize) { return 8 }
+    if !expect_index(text, 8:usize, 3:usize) { return 9 }
+    if text.codepoint_index_at_byte_offset(2:usize).is_some() { return 10 }
+    if text.codepoint_index_at_byte_offset(7:usize).is_some() { return 11 }
+    if text.codepoint_index_at_byte_offset(9:usize).is_some() { return 12 }
+
+    return 0
+}

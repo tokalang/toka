@@ -64,9 +64,12 @@ text input are designed.
 - `Scrollbar::thumb` derives a thumb bounds from `ScrollState`; `drag_to`
   maps a pointer position back to a clamped offset. `ShortcutMap::bind_in_scope`
   lets a focus scope override a global chord, with global bindings as fallback.
-- `TextSelection` tracks logical anchor/active positions supplied by the
-  caller. `copy_text` and `paste_text` bridge UTF-8 strings to the macOS
-  clipboard; neither API treats byte offsets as Unicode cursor positions.
+- `TextSelection` tracks caller-owned Unicode-scalar anchor/active positions,
+  not UTF-8 byte offsets. `str::codepoint_byte_offset` and
+  `str::codepoint_index_at_byte_offset` bridge scalar positions to native or
+  protocol byte offsets. `copy_text` and `paste_text` bridge UTF-8 strings to
+  the macOS clipboard. Extended grapheme cursor movement remains outside this
+  initial GUI slice.
 - `Layout::inset`, `row`, and `column` return composable `Bounds` values, so
   callers can build nested layouts without native callbacks or DOM state.
 - `Window::poll_event` returns typed `Shown`, pointer, keyboard, resize, and

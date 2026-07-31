@@ -91,6 +91,14 @@
       "description": "String growth and Result<Vec<string>> transfer clean up rejected and returned owned buffers"
     },
     {
+      "id": "std_unicode_scalar_boundaries_01",
+      "path": "std/unicode_scalar_boundaries.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "UTF-8 scalar indices map only to valid physical byte boundaries and back"
+    },
+    {
       "id": "ownership_cede_raw_storage_exactly_once_01",
       "path": "ownership/cede_raw_storage_exactly_once.tk",
       "type": "run",

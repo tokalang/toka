@@ -75,7 +75,10 @@ calculation are complete. Scroll offsets, focus ids, and button interaction
 state are complete. Toggles, modifier-aware key events, and shortcut dispatch
 are complete. The macOS committed-text and IME-composition event pipeline is
 complete, and logical selection ranges plus clipboard access are available.
-Unicode cursor editing and CJK end-to-end acceptance remain. Scrollbar geometry/drag mapping and global-or-local shortcut dispatch
+Unicode grapheme cursor editing and CJK end-to-end acceptance remain. The
+current `TextSelection` unit is a Unicode scalar position, with explicit
+scalar-to-byte conversion in `core/str`; it is never an arbitrary UTF-8 byte
+offset. Scrollbar geometry/drag mapping and global-or-local shortcut dispatch
 are complete. Scrollbar visuals, inertia, and nested shortcut-scope propagation
 are the next slices, before any widget design.
 

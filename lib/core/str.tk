@@ -276,6 +276,44 @@ impl str {
         }
     }
 
+    // Returns the physical UTF-8 byte offset at a Unicode scalar boundary.
+    // Index zero and the position immediately after the final scalar are both
+    // valid boundaries. An index beyond the end returns None.
+    pub fn codepoint_byte_offset(self, codepoint_index: usize) -> Option<usize> {
+        auto iter# = self.chars()
+        auto index#: usize = 0
+        loop index < codepoint_index {
+            if iter#.next().is_none() {
+                return Option<usize>::None
+            }
+            index = index + 1
+        }
+        return Option<usize>::Some(iter.current_pos())
+    }
+
+    // Converts a physical UTF-8 byte offset to a Unicode scalar index. The
+    // offset must be at a scalar boundary; a continuation byte or an offset
+    // beyond the view returns None.
+    pub fn codepoint_index_at_byte_offset(self, byte_offset: usize) -> Option<usize> {
+        if byte_offset > self.len { return Option<usize>::None }
+        if byte_offset == 0:usize { return Option<usize>::Some(0:usize) }
+
+        auto iter# = self.chars()
+        auto index#: usize = 0
+        loop true {
+            if iter#.next().is_none() { break }
+            index = index + 1
+            auto position = iter.current_pos()
+            if position == byte_offset {
+                return Option<usize>::Some(index)
+            }
+            if position > byte_offset {
+                return Option<usize>::None
+            }
+        }
+        return Option<usize>::None
+    }
+
     pub fn chars(self) -> Cursor <- self {
         return Cursor(&buf = self.&buf, len = self.len, pos = 0)
     }

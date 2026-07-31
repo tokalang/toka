@@ -50,6 +50,8 @@ An immutable UTF-8 string slice. It represents a zero-overhead window into stati
 | **`count(self) -> usize`** | $O(N)$ | Iterates and counts logical Unicode characters. |
 | **`slice(self, start: i32, end: i32) -> str`** | $O(N)$ | Returns a sub-slice bounded by logical character boundaries. Negative indices map backwards from end. |
 | **`at(self, idx: usize) -> Option<Char32>`** | $O(N)$ | Obtains the Unicode codepoint at the specified logical index. |
+| **`codepoint_byte_offset(self, idx: usize) -> Option<usize>`** | $O(N)$ | Maps a Unicode scalar index to a UTF-8 byte boundary. Index `0` and the terminal boundary are valid; an index beyond the view returns `None`. |
+| **`codepoint_index_at_byte_offset(self, offset: usize) -> Option<usize>`** | $O(N)$ | Maps a UTF-8 byte boundary to a Unicode scalar index. A continuation-byte or out-of-range offset returns `None`. |
 | **`chars(self) -> Cursor`** | $O(1)$ | Spawns a forward UTF-8 decoding cursor. |
 | **`as_bytes(self) -> bytes`** | $O(1)$ | Zero-cost physical downgrade to raw binary bytes view. |
 | **`is_empty(self) -> bool`** | $O(1)$ | Returns `true` if `byte_count() == 0`. |
@@ -145,6 +147,17 @@ The same zero-cost projection applies to equality with a `str` value or text
 literal in either operand order. Write `command == "scan"`, not
 `command == string::from("scan")`; equality never allocates or consumes the
 owned string.
+
+### 4.2 Text Position Units
+
+The core text APIs above operate on UTF-8 **Unicode scalar values** (the
+`Char32` values yielded by `Cursor`), never on arbitrary byte positions.
+`codepoint_byte_offset` and `codepoint_index_at_byte_offset` are the explicit
+bridge when a protocol or native API uses physical byte offsets. They do not
+implement user-perceived grapheme segmentation: a combining sequence or a
+ZWJ emoji sequence can contain multiple scalar values. Extended grapheme
+cursor movement belongs to a separately versioned Unicode layer rather than
+to this fixed core ABI.
 
 ---
 
