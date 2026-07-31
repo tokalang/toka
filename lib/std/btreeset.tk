@@ -13,8 +13,6 @@ impl<'T: @PartialOrd> BTreeSet<'T> {
 }
 
 impl<'T: @PartialOrd> BTreeSet<'T>@encap {
-    pub fn clone(self) = delete
-
     fn drop(self#) {
         self.map#.clear()
     }

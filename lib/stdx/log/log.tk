@@ -12,9 +12,7 @@ pub shape Logger(
     level: LogLevel
 )
 
-impl Logger@encap {
-    pub *
-    fn drop(self#) {}
+impl Logger {
     pub fn clone(self) -> Logger { return self }
 }
 

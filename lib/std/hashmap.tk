@@ -406,7 +406,7 @@ pub shape HashMapIterator<'K, 'V> (
 )
 
 impl<'K, 'V> HashMapIterator<'K, 'V>@encap {
-    pub(std) *
+    pub(std) keys, vals, meta, cap, pos
     fn drop(self#) {}
     
     pub fn clone(self) -> HashMapIterator<'K, 'V> <- self {

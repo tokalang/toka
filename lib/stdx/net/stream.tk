@@ -22,7 +22,6 @@ impl AsyncStream@encap {
         }
     }
 
-    pub fn clone(self) = delete
 }
 
 impl AsyncStream {

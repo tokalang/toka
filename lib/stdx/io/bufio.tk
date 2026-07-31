@@ -247,7 +247,6 @@ pub shape AsyncBufferedReader (
 impl AsyncBufferedReader@encap {
     pub stream
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl AsyncBufferedReader {

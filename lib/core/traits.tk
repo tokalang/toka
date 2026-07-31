@@ -18,11 +18,9 @@ pub trait @PartialOrd {
     pub fn cmp(self, other: Self) -> i32
 }
 
-pub trait @encap {
-    //pub *
-    pub fn clone(self) -> Self
-    fn drop(self#)
-}
+// @encap is an empty compiler-recognized policy marker. Its implementation
+// carries exact field grants and, optionally, one private lifecycle hook.
+pub trait @encap {}
 
 pub trait @Hash {
     pub fn hash(self) -> u64

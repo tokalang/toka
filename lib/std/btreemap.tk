@@ -237,8 +237,6 @@ impl<'K: @PartialOrd, 'V> BTreeMap<'K, 'V>@encap {
         }
     }
     
-    pub fn clone(self) = delete
-
     pub fn is_empty(self) -> bool { return self.len == 0 }
     pub fn len(self) -> usize { return self.len }
 

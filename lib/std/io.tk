@@ -104,9 +104,6 @@ impl File@encap {
         }
     }
     
-    // Non-owning clone (Weak Reference) to satisfy strict pointer rules
-    pub fn clone(self) = delete
-
     pub fn is_valid(self) -> bool {
         return self.opened
     }

@@ -206,5 +206,4 @@ impl<'T> Slab<'T>@encap {
     fn drop(self#) {
         self#.clear()
     }
-    pub fn clone(self) = delete
 }

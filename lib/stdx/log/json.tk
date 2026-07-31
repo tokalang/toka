@@ -41,9 +41,7 @@ pub shape JsonLogger (
     level: LogLevel
 )
 
-impl JsonLogger@encap {
-    pub *
-    fn drop(self#) {}
+impl JsonLogger {
     pub fn clone(self) -> JsonLogger {
         return JsonLogger(level = self.level)
     }

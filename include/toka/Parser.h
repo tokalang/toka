@@ -35,6 +35,8 @@ public:
   static bool EncapCopyEpochV4;
   // Slice 5 semantic TKI v2 transport and replay checks.
   static bool EncapTkiEpochV5;
+  // Slice 6 library migration: no trusted legacy ownership escape hatch.
+  static bool EncapLibraryEpochV6;
 
   Parser(const std::vector<Token> &tokens, const std::string &fileName = "")
       : m_Tokens(tokens), m_Pos(0), m_CurrentFile(fileName) {

@@ -1,0 +1,47 @@
+# Encap Slice 6: Library And Documentation Migration Audit
+
+Slice 6 makes the library source and current language references match the
+positive-capability model introduced by Slices 1–5.
+
+## Library migration
+
+- `lib/` contains no deleted declarations, wildcard `@encap` grants, or
+  legacy `@Clone` / `@Drop` facets.
+- `core/marker` declares the empty compiler-recognized `@Copy` marker and the
+  explicit `@Dup::dup` capability; `core/traits` defines `@encap` as an empty
+  policy marker.
+- `Vec<T>` has one unconditional resource policy. Its ordinary APIs no longer
+  supply a conditional policy or a negative copy declaration.
+- `Duration`, `Instant`, `SystemTime`, `DateTime`, reflection `FieldInfo`,
+  logging levels, and LLVM's non-owning handle wrappers are transparent.
+- `TaskRef` retains its control block only through an explicit `@Dup`
+  provider. No copy operation invokes that retain path implicitly.
+
+An ordinary method whose name is `clone` is not an ownership operation. It is
+kept only for API compatibility where it is a normal library call; it does not
+provide Copy, Dup, lowering, or trait evidence.
+
+## Current source-language contract
+
+The normative syntax references are [syntax.md](../syntax.md) and
+[syntax_zh.md](../syntax_zh.md). They define the following boundary:
+
+1. Transparent shapes expose accessible fields and are Copy only when the
+   compiler proves their full field graph Copy-safe.
+2. A capsule is introduced by one `@encap` policy with exact field grants and
+   an optional private `drop(self#)` hook. The hook is followed by a
+   compiler-owned cleanup tail and cannot be called as a normal method.
+3. `@Copy` is an empty verified marker. Resource duplication is opt-in
+   `@Dup { pub fn dup(self) -> Self }`; it is never selected by ordinary
+   assignment, construction, capture, or iterator lowering.
+4. Iterator and closure capture preserve the same boundary: a value is copied
+   only by a Copy proof, otherwise it is borrowed or explicitly transferred.
+   They never invoke a library-named duplication method.
+5. TKI v2 exports field-graph, policy, Copy, Dup, and custom-drop facts with
+   resolver identity. It has no structural lifecycle replay marker.
+
+## Evidence
+
+`tools/scripts/test_encap_slice6_library_audit.py` checks the migrated library
+and normative syntax corpus, then compiles v6 Copy/Dup/transparent examples
+and verifies that removed negative syntax and legacy facets are rejected.

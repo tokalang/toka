@@ -10,7 +10,6 @@ pub shape Map<'I, 'F> (
 
 impl<'I, 'F> Map<'I, 'F>@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn invoke_mut<'F: @Callable, 'T>(mapper#: F, cede value: T) -> F@Callable::Output {

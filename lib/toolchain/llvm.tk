@@ -91,11 +91,10 @@ impl LLVMContext {
 }
 
 impl LLVMContext@encap {
-    pub *
+    pub handle
     fn drop(self#) {
         self#.dispose()
     }
-    pub fn clone(self) = delete
 }
 
 // 2. LLVMType
@@ -140,11 +139,9 @@ impl LLVMType {
     }
 }
 
-impl LLVMType@encap {
-    pub *
-    fn drop(self#) {
-        // Managed by Context
-    }
+// LLVMType is a context-managed thin handle and has no resource contract of
+// its own, so it remains transparent.
+impl LLVMType {
     pub fn clone(self) -> LLVMType {
         return LLVMType(*handle = self.*handle)
     }
@@ -226,11 +223,8 @@ impl LLVMValue {
     }
 }
 
-impl LLVMValue@encap {
-    pub *
-    fn drop(self#) {
-        // Managed by Context/Module
-    }
+// LLVMValue is likewise a non-owning transparent handle.
+impl LLVMValue {
     pub fn clone(self) -> LLVMValue {
         return LLVMValue(*handle = self.*handle)
     }
@@ -247,11 +241,8 @@ impl LLVMBasicBlock {
     }
 }
 
-impl LLVMBasicBlock@encap {
-    pub *
-    fn drop(self#) {
-        // Managed by Context/Module
-    }
+// Basic-block handles are non-owning and transparent.
+impl LLVMBasicBlock {
     pub fn clone(self) -> LLVMBasicBlock {
         return LLVMBasicBlock(*handle = self.*handle)
     }
@@ -307,11 +298,10 @@ impl LLVMModule {
 }
 
 impl LLVMModule@encap {
-    pub *
+    pub handle
     fn drop(self#) {
         self#.dispose()
     }
-    pub fn clone(self) = delete
 }
 
 // 6. LLVMBuilder
@@ -548,9 +538,8 @@ impl LLVMBuilder {
 }
 
 impl LLVMBuilder@encap {
-    pub *
+    pub handle
     fn drop(self#) {
         self#.dispose()
     }
-    pub fn clone(self) = delete
 }

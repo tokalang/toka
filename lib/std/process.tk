@@ -60,7 +60,6 @@ impl Child@encap {
         // Child ownership is explicit; drop never introduces hidden blocking.
     }
 
-    pub fn clone(self) = delete
 }
 
 impl Child {

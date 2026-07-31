@@ -156,5 +156,4 @@ impl<'T> RingCore<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }

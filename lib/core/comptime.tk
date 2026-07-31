@@ -30,10 +30,8 @@ pub shape FieldInfo(
     size: usize 
 )
 
-impl FieldInfo@encap {
-    pub *
+impl FieldInfo {
     pub fn clone(self) -> FieldInfo { return self }
-    fn drop(self#) {}
 }
 
 // T
@@ -46,8 +44,7 @@ pub shape TypeInfo(
 )
 
 impl TypeInfo@encap {
-    pub *
-    pub fn clone(self) = delete
+    pub name, kind, fields, size, align
     fn drop(self#) {}
 }
 

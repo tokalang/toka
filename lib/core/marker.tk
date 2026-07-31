@@ -14,16 +14,16 @@
 // lib/core/marker.tk
 // Core compiler traits and markers.
 
-pub trait @Drop {
-    fn drop(self)
-}
-
 // Marker trait for types that can be safely moved.
 pub trait @Move {}
 
-// Trait for types that can create a copy of themselves.
-pub trait @Clone {
-    pub fn clone(self)
+// @Copy is an empty compiler-recognized marker. Structural eligibility is
+// verified by the compiler; library code never supplies an operation body.
+pub trait @Copy {}
+
+// @Dup is the explicit, non-implicit duplication capability.
+pub trait @Dup {
+    pub fn dup(self) -> Self
 }
 
 // Trait for types that have a default value.

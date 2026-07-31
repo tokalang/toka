@@ -200,5 +200,4 @@ impl<'T: @Send> Receiver<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }

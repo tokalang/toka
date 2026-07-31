@@ -26,10 +26,8 @@ pub shape Duration (
     nanos: u32
 )
 
-impl Duration@encap {
-    pub *
+impl Duration {
     pub fn clone(self) -> Duration { return self }
-    fn drop(self#) {}
 }
 
 impl Duration@PartialEq {
@@ -128,10 +126,8 @@ pub shape Instant (
     duration_since_boot: Duration
 )
 
-impl Instant@encap {
-    pub *
+impl Instant {
     pub fn clone(self) -> Instant { return self }
-    fn drop(self#) {}
 }
 
 impl Instant@PartialEq {
@@ -197,10 +193,8 @@ pub shape SystemTime (
     duration_since_epoch: Duration
 )
 
-impl SystemTime@encap {
-    pub *
+impl SystemTime {
     pub fn clone(self) -> SystemTime { return self }
-    fn drop(self#) {}
 }
 
 impl SystemTime@PartialEq {
@@ -327,10 +321,8 @@ pub shape DateTime (
     isdst: i32
 )
 
-impl DateTime@encap {
-    pub *
+impl DateTime {
     pub fn clone(self) -> DateTime { return self }
-    fn drop(self#) {}
 }
 
 impl DateTime {

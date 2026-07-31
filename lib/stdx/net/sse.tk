@@ -69,7 +69,6 @@ impl SseLimits@encap {
 
 impl SseDecoder@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn error(kind: str, message: str) -> SseError {

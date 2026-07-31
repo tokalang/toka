@@ -540,9 +540,16 @@ where:
 }
 ```
 
-`@encap` is used for explicit resource and visibility control. Resource-owning shapes should define lifecycle behavior in an `impl Type@encap` block.
+`@encap` is an explicit resource-policy marker. A resource-owning shape may
+define one private lifecycle hook, `fn drop(self#)`, in its
+`impl Type@encap` block. The compiler owns the field-cleanup tail; `drop` is
+not an ordinary callable method.
 
-Typical lifecycle methods in an `@encap` block include `fn drop(self#)` and `pub fn clone(self) = delete`.
+Copying is determined by the compiler's `@Copy` proof. Non-copyable values
+simply have no copying capability. A type that intentionally creates another
+resource-owning value implements `@Dup` with `pub fn dup(self) -> Self`.
+An ordinary method named `clone` remains possible, but has no ownership,
+copying, lowering, or trait meaning.
 
 Visibility has two syntax layers:
 
@@ -573,7 +580,6 @@ impl Device@encap {
     pub(os/driver/uart) uart_state
 
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 ```
 
@@ -581,16 +587,18 @@ impl Device@encap {
 
 The `path` in `pub(path)` uses the same module-location path grammar as the left side of an `import`, before `::{...}` item selection. Toka has no source-level `mod` declaration; path-scoped visibility is anchored in resolver-normalized import paths rather than raw substring matching or a Rust-style module tree.
 
-For broad data carrier shapes, an `@encap` block may also use wildcard visibility entries:
+Every `@encap` field grant is explicit. The grammar has no catch-all member
+grant, so adding a field later cannot publish it accidentally:
 
 ```toka
 impl PublicRecord@encap {
-    pub *
-    pub * ! secret_key, internal_id
+    pub visible_name, visible_id
+    pub(crate) cache_slot
 }
 ```
 
-`pub *` exposes all fields, and `pub * ! field1, field2` exposes all fields except the listed fields. Wildcard entries are usually an alternative to enumerating individual fields, not something to mix casually with narrower grants. The parenthesized `pub(crate)` and `pub(path)` forms are `@encap` member-visibility entries, not top-level declaration modifiers.
+The parenthesized `pub(crate)` and `pub(path)` forms are `@encap`
+member-visibility entries, not top-level declaration modifiers.
 
 ## 8. Member Access And Morphic Fields
 
@@ -1017,7 +1025,7 @@ uses `free[0]` to release only the storage. Containers whose live elements are
 not a contiguous prefix must drop those elements themselves and then use
 `free[0]`.
 
-Compiler-managed structural drop recurses through fields with ownership,
+The compiler's lifecycle plan recurses through fields with ownership,
 including fixed arrays: dropping a live `[T; N]` drops each live `T`. An array
 element that is a shared or unique handle releases that handle; raw pointers
 and references remain non-owning. Each element counted by `free[count]` is

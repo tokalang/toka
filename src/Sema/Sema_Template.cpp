@@ -396,13 +396,29 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
                             SourceLocation BoundLoc) {
   bool success = true;
   std::string resolvedConcreteType = resolveType(ConcreteType);
+  // A morphic argument can carry its value-mutable suffix through template
+  // substitution (for example `TaskPtr#`). Trait facts are nominal and are
+  // registered on `TaskPtr`, so normalize only the lookup/proof key.
+  std::string nominalConcreteType =
+      toka::Type::stripMorphology(resolvedConcreteType);
 
   for (const auto &bound : TraitBounds) {
     SourceLocation visibilityLoc = BoundLoc.isValid() ? BoundLoc : Loc;
     TraitDecl *trait = findVisibleTraitDecl(bound, visibilityLoc);
     std::string canonicalBound = canonicalTraitName(bound, trait);
-    std::string implKey = resolvedConcreteType + "@" + canonicalBound;
+    std::string implKey = nominalConcreteType + "@" + canonicalBound;
     if (ImplMap.count(implKey)) continue;
+
+    if (Parser::EncapCopyEpochV4 &&
+        getTraitFamilyName(canonicalBound) == "Copy") {
+      if (proveSlice4CopyType(toka::Type::fromString(nominalConcreteType)))
+        continue;
+    }
+    if (Parser::EncapCopyEpochV4 &&
+        getTraitFamilyName(canonicalBound) == "Dup") {
+      if (proveSlice4CopyType(toka::Type::fromString(nominalConcreteType)))
+        continue;
+    }
 
     // [NEW] Fallback for Auto Traits
     if (getTraitFamilyName(canonicalBound) == "Callable") {

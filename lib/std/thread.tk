@@ -135,7 +135,6 @@ impl<'T: @Send> JoinHandle<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 fn __dummy_unused_ref() {

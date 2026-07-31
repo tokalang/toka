@@ -947,7 +947,8 @@ void Sema::registerSlice4Impl(ImplDecl *impl) {
   if (!Parser::EncapCopyEpochV4 || !impl)
     return;
   auto owner = DeclarationLexicalScopes.find(impl);
-  if (owner != DeclarationLexicalScopes.end() && owner->second &&
+  if (!Parser::EncapLibraryEpochV6 &&
+      owner != DeclarationLexicalScopes.end() && owner->second &&
       owner->second->IsTrustedSystemModule)
     return;
 
@@ -1842,7 +1843,7 @@ bool Sema::checkModule(Module &M) {
   for (size_t i = 0; i < M.Functions.size(); ++i) {
     if (!M.Functions[i]->GenericParams.empty()) {
       if (Parser::EncapCopyEpochV4 && M.Functions[i]->IsDeleted &&
-          !M.IsTrustedSystemModule) {
+          (!M.IsTrustedSystemModule || Parser::EncapLibraryEpochV6)) {
         DiagnosticEngine::report(M.Functions[i]->Loc,
                                  DiagID::ERR_GENERIC_SEMA,
                                  "@encap v4 removes = delete declarations");
@@ -2032,7 +2033,8 @@ void Sema::declareGlobals(Module &M) {
   // 5. Register Traits
   for (auto &Trait : M.Traits) {
     DeclarationLexicalScopes[Trait.get()] = &ms;
-    if (Parser::EncapCopyEpochV4 && !M.IsTrustedSystemModule &&
+    if (Parser::EncapCopyEpochV4 &&
+        (!M.IsTrustedSystemModule || Parser::EncapLibraryEpochV6) &&
         (Trait->Name == "Clone" || Trait->Name == "Drop")) {
       DiagnosticEngine::report(getLoc(Trait.get()), DiagID::ERR_GENERIC_SEMA,
                                "@encap v4 removes the @Clone and @Drop facets");
@@ -3246,7 +3248,8 @@ void Sema::declareImpl(ImplDecl *Impl) {
 
 void Sema::checkFunction(FunctionDecl *Fn) {
   auto owner = DeclarationLexicalScopes.find(Fn);
-  const bool trusted = owner != DeclarationLexicalScopes.end() && owner->second &&
+  const bool trusted = !Parser::EncapLibraryEpochV6 &&
+                       owner != DeclarationLexicalScopes.end() && owner->second &&
                        owner->second->IsTrustedSystemModule;
   if (Parser::EncapCopyEpochV4 && Fn->IsDeleted && !trusted) {
     DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_GENERIC_SEMA,
@@ -3584,12 +3587,13 @@ void Sema::checkImpl(ImplDecl *Impl) {
 
 void Sema::checkShapeSovereignty() {
   for (auto const &[name, decl] : ShapeMap) {
-    if (Parser::EncapLifecycleEpochV3) {
-      auto owner = DeclarationLexicalScopes.find(decl);
-      if (owner != DeclarationLexicalScopes.end() && owner->second &&
-          owner->second->IsTrustedSystemModule)
-        continue;
-    }
+    // The standard library is migrated and audited as source under Slice 6.
+    // Do not reapply the retired raw-pointer/clone heuristic while compiling
+    // trusted system modules in an older default language mode.
+    auto owner = DeclarationLexicalScopes.find(decl);
+    if (owner != DeclarationLexicalScopes.end() && owner->second &&
+        owner->second->IsTrustedSystemModule)
+      continue;
     if (!decl->GenericParams.empty())
       continue;
     if (GenericShapeCache.count(name))

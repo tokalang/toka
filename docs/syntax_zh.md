@@ -472,9 +472,14 @@ where:
 }
 ```
 
-`@encap` 用于显式资源与可见性控制。持有资源的 Shape 应在 `impl Type@encap` 块中定义生命周期行为。
+`@encap` 是显式资源策略标记。持有资源的 Shape 可以在
+`impl Type@encap` 中定义一个私有生命周期 hook：`fn drop(self#)`。
+字段清理由编译器的生命周期计划统一完成，`drop` 不是普通可调用方法。
 
-`@encap` 块中的典型生命周期方法包括 `fn drop(self#)` 和 `pub fn clone(self) = delete`。
+复制能力由编译器的 `@Copy` 证明决定；不能复制的值不需要任何负向声明。
+若类型明确需要产生第二个持有资源的值，应实现带有
+`pub fn dup(self) -> Self` 的 `@Dup`。普通名为 `clone` 的方法仍可存在，
+但不具有所有权、复制、lowering 或 trait 语义。
 
 可见性有两层语法：
 
@@ -505,7 +510,6 @@ impl Device@encap {
     pub(os/driver/uart) uart_state
 
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 ```
 
@@ -513,16 +517,18 @@ impl Device@encap {
 
 `pub(path)` 中的 `path` 使用与 `import` 左半部分相同的模块定位路径语法，不包含 `::{...}` 内部名字选择。Toka 没有源码层 `mod` 声明；路径限定可见性锚定在 import resolver 归一化后的导入路径上，而不是任意子串匹配或 Rust 式模块树。
 
-对于宽松的数据承载型 shape，`@encap` 块也可以使用通配可见性条目：
+每一个 `@encap` 字段授权都必须逐字段写出；语法没有“全部字段”形式，
+因此后续新增字段不会被意外公开：
 
 ```toka
 impl PublicRecord@encap {
-    pub *
-    pub * ! secret_key, internal_id
+    pub visible_name, visible_id
+    pub(crate) cache_slot
 }
 ```
 
-`pub *` 开放全部字段，`pub * ! field1, field2` 开放除列出字段以外的全部字段。通配条目通常是逐字段枚举授权的替代方案，不建议随意和更窄的授权混用。带括号的 `pub(crate)` 和 `pub(path)` 是 `@encap` 成员可见性条目，不是顶层声明修饰符。
+带括号的 `pub(crate)` 和 `pub(path)` 是 `@encap` 成员可见性条目，
+不是顶层声明修饰符。
 
 ## 8. 成员访问与 Morphic 字段
 

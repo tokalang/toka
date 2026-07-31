@@ -61,13 +61,11 @@ pub shape TaskHandle<T>(
 )
 
 impl<T> TaskHandle<T>@encap {
-    pub(std) *
+    pub(std) coro_handle
     fn drop(self#) {
         if self.*coro_handle != null {
             __toka_detach_task(self.*coro_handle)
         }
     }
     
-    // Explicitly deleted to ensure TaskHandle is strictly Move-Only and cannot be implicitly copied
-    pub fn clone(self) = delete
 }

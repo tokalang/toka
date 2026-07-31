@@ -44,7 +44,6 @@ shape HostThreadAffinity (
 
 impl HostThreadAffinity@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 // Values move from workers to the host thread.  They must be Send, but the

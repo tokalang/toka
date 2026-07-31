@@ -189,7 +189,6 @@ impl UdpSocket@encap {
             }
         }
     }
-    pub fn clone(self) = delete
 }
 
 impl UdpSocket {
@@ -280,7 +279,6 @@ impl TcpStream@encap {
         self#.close()
     }
 
-    pub fn clone(self) = delete
 }
 
 impl TcpStream {
@@ -897,7 +895,6 @@ impl TlsSession@encap {
         self#.close()
     }
 
-    pub fn clone(self) = delete
 }
 
 impl TlsSession {
@@ -1083,7 +1080,6 @@ impl TcpListener@encap {
         }
     }
 
-    pub fn clone(self) = delete
 }
 
 impl TcpListener {

@@ -88,7 +88,6 @@ impl<'T: @Send> Mutex<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 pub shape MutexLock<'T: @Send>(
@@ -109,7 +108,6 @@ impl<'T: @Send> MutexLock<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 impl<'T: @Send> MutexLock<'T> {
@@ -203,7 +201,6 @@ impl<'T: @{Send, Sync}> RwMutex<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 pub shape RwReadLock<'T: @{Send, Sync}>(
@@ -224,7 +221,6 @@ impl<'T: @{Send, Sync}> RwReadLock<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 impl<'T: @{Send, Sync}> RwReadLock<'T> {
@@ -251,7 +247,6 @@ impl<'T: @{Send, Sync}> RwWriteLock<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 impl<'T: @{Send, Sync}> RwWriteLock<'T> {
@@ -284,7 +279,6 @@ impl<'T: @Send> CondVar<'T>@encap {
         }
     }
     
-    pub fn clone(self) = delete
 }
 
 impl<'T: @Send> CondVar<'T> {

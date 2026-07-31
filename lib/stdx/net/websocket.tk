@@ -48,7 +48,6 @@ impl WsConnection@encap {
     pub fragment_is_text#
     pub current_msg_len#
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 fn string_byte(s: str, idx: usize) -> u8 {

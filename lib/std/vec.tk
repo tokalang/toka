@@ -38,17 +38,9 @@ pub shape Vec<'T> (
 impl<'T: @Send> Vec<'T> @Send {}
 impl<'T: @Sync> Vec<'T> @Sync {}
 
-impl<'T: @Clone> Vec<'T>@encap {
-    pub(std) *
-    fn drop(self#) {
-        unsafe {
-            if self.*buf != null {
-                unsafe free [self.len]self.*#buf
-                self.*buf = null // Explicit nullify
-            }
-        }
-    }
-
+// This is an ordinary library operation. Copy eligibility is provided by the
+// compiler's structural proof, not by the method name.
+impl<'T> Vec<'T> {
     pub fn clone(self) -> Vec<'T> {
         unsafe {
             if self.cap == 0 {
@@ -66,9 +58,8 @@ impl<'T: @Clone> Vec<'T>@encap {
 }
 
 // Copying operations are intentionally kept out of the move-only core impl.
-// This lets Vec<T> hold a live resource whose clone method is deleted, while
-// preserving the familiar APIs for copyable element types.
-impl<'T: @Clone> Vec<'T> {
+// Vec itself remains a capsule; these APIs are ordinary library operations.
+impl<'T> Vec<'T> {
     // Get element at index (Returns Copy/Move)
     pub fn get(self, index: usize) -> 'T {
         unsafe {
@@ -98,12 +89,8 @@ impl<'T: @Clone> Vec<'T> {
 
 }
 
-// @encap currently requires clone. Keep the move-only specialization explicit:
-// it owns and drops its live prefix, but rejects every copy of the Vec itself.
-// The clone-capable implementation above is registered first and therefore
-// wins whenever T satisfies @Clone.
 impl<'T> Vec<'T>@encap {
-    pub(std) *
+    pub(std) buf, len, cap
     fn drop(self#) {
         unsafe {
             if self.*buf != null {
@@ -113,7 +100,6 @@ impl<'T> Vec<'T>@encap {
         }
     }
 
-    pub fn clone(self) = delete
 }
 
 impl<'T> Vec<'T> {
@@ -339,7 +325,7 @@ impl<'T> Vec<'T> {
 
 }
 
-impl<'T: @Clone> Vec<'T> {
+impl<'T> Vec<'T> {
     // Resize vector by cloning the fill value into each new element.
     pub fn resize(self#, new_len: usize, 'val: T) {
         unsafe {
@@ -373,7 +359,6 @@ pub shape VecIntoIterator<'T> (
 
 impl<'T> VecIntoIterator<'T>@encap {
     fn drop(self#) {}
-    pub fn clone(self) = delete
 }
 
 impl<'T> Vec<'T>@IntoIterable {

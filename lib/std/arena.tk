@@ -176,7 +176,6 @@ impl Arena@encap {
         self#.release()
     }
 
-    pub fn clone(self) = delete
 }
 
 impl ArenaChunk@encap {
