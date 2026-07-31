@@ -1,0 +1,274 @@
+import core/option::{Option}
+import core/result::{Result}
+import core/str::{UnicodeError}
+import core/string::{string}
+import core/types::{usize}
+import official/unicode::{
+    grapheme_byte_offset,
+    grapheme_count,
+    grapheme_index_at_byte_offset,
+    grapheme_slice
+}
+
+// TextSelection preserves the original GUI scalar-position contract.
+// GraphemeSelection is the editor-facing adapter: its positions are extended
+// grapheme indexes and can be converted only at valid grapheme boundaries.
+pub shape TextSelection (
+    anchor#: usize,
+    active#: usize
+)
+
+pub shape GraphemeSelection (
+    anchor#: usize,
+    active#: usize
+)
+
+// TextEditor is a headless, single-buffer editing model. It deliberately has
+// no input-event, IME, layout, shaping, or bidi policy.
+pub shape TextEditor (
+    text#: string,
+    selection#: GraphemeSelection
+)
+
+impl TextEditor@encap {
+    fn drop(self#) {}
+    pub fn clone(self) = delete
+}
+
+impl TextSelection {
+    pub fn cursor(position: usize) -> TextSelection { return TextSelection(anchor = position, active = position) }
+
+    pub fn range(anchor: usize, active: usize) -> TextSelection { return TextSelection(anchor = anchor, active = active) }
+
+    pub fn anchor(self) -> usize { return self.anchor }
+
+    pub fn active(self) -> usize { return self.active }
+
+    pub fn start(self) -> usize {
+        if self.anchor < self.active { return self.anchor }
+        return self.active
+    }
+
+    pub fn end(self) -> usize {
+        if self.anchor > self.active { return self.anchor }
+        return self.active
+    }
+
+    pub fn is_collapsed(self) -> bool { return self.anchor == self.active }
+
+    pub fn set_cursor(self#, position: usize) { self.anchor = position; self.active = position }
+
+    pub fn extend_to(self#, position: usize) { self.active = position }
+}
+
+impl GraphemeSelection {
+    pub fn cursor(position: usize) -> GraphemeSelection { return GraphemeSelection(anchor = position, active = position) }
+
+    pub fn range(anchor: usize, active: usize) -> GraphemeSelection { return GraphemeSelection(anchor = anchor, active = active) }
+
+    pub fn anchor(self) -> usize { return self.anchor }
+
+    pub fn active(self) -> usize { return self.active }
+
+    pub fn start(self) -> usize {
+        if self.anchor < self.active { return self.anchor }
+        return self.active
+    }
+
+    pub fn end(self) -> usize {
+        if self.anchor > self.active { return self.anchor }
+        return self.active
+    }
+
+    pub fn is_collapsed(self) -> bool { return self.anchor == self.active }
+
+    pub fn set_cursor(self#, position: usize) { self.anchor = position; self.active = position }
+
+    pub fn extend_to(self#, position: usize) { self.active = position }
+
+    pub fn anchor_byte_offset(self, text: str) -> Result<Option<usize>, UnicodeError> {
+        return grapheme_byte_offset(text, self.anchor)
+    }
+
+    pub fn active_byte_offset(self, text: str) -> Result<Option<usize>, UnicodeError> {
+        return grapheme_byte_offset(text, self.active)
+    }
+
+    pub fn selected_text(self, text: str) -> Result<Option<str>, UnicodeError> {
+        return grapheme_slice(text, self.start(), self.end())
+    }
+
+    pub fn from_text_selection(text: str, selection: TextSelection) -> Result<Option<GraphemeSelection>, UnicodeError> {
+        auto anchor_byte = text.codepoint_byte_offset(selection.anchor())
+        match cede anchor_byte {
+            auto Option<usize>::Some('byte) => {
+                auto anchor = grapheme_index_at_byte_offset(text, 'byte)
+                if anchor.is_err() { return Result<Option<GraphemeSelection>, UnicodeError>::Err(anchor.unwrap_err()) }
+                auto anchor_index = anchor.unwrap()
+                match cede anchor_index {
+                    auto Option<usize>::Some('index) => {
+                        auto active_byte = text.codepoint_byte_offset(selection.active())
+                        match cede active_byte {
+                            auto Option<usize>::Some('active_byte) => {
+                                auto active = grapheme_index_at_byte_offset(text, 'active_byte)
+                                if active.is_err() { return Result<Option<GraphemeSelection>, UnicodeError>::Err(active.unwrap_err()) }
+                                auto active_index = active.unwrap()
+                                match cede active_index {
+                                    auto Option<usize>::Some('active_index) => return Result<Option<GraphemeSelection>, UnicodeError>::Ok(Option<GraphemeSelection>::Some(GraphemeSelection::range('index, 'active_index)))
+                                    Option<usize>::None => return Result<Option<GraphemeSelection>, UnicodeError>::Ok(Option<GraphemeSelection>::None)
+                                }
+                            }
+                            Option<usize>::None => return Result<Option<GraphemeSelection>, UnicodeError>::Ok(Option<GraphemeSelection>::None)
+                        }
+                    }
+                    Option<usize>::None => return Result<Option<GraphemeSelection>, UnicodeError>::Ok(Option<GraphemeSelection>::None)
+                }
+            }
+            Option<usize>::None => return Result<Option<GraphemeSelection>, UnicodeError>::Ok(Option<GraphemeSelection>::None)
+        }
+    }
+
+    pub fn to_text_selection(self, text: str) -> Result<Option<TextSelection>, UnicodeError> {
+        auto anchor_byte = grapheme_byte_offset(text, self.anchor)
+        if anchor_byte.is_err() { return Result<Option<TextSelection>, UnicodeError>::Err(anchor_byte.unwrap_err()) }
+        auto anchor_offset = anchor_byte.unwrap()
+        match cede anchor_offset {
+            auto Option<usize>::Some('byte) => {
+                auto anchor = text.codepoint_index_at_byte_offset('byte)
+                match cede anchor {
+                    auto Option<usize>::Some('index) => {
+                        auto active_byte = grapheme_byte_offset(text, self.active)
+                        if active_byte.is_err() { return Result<Option<TextSelection>, UnicodeError>::Err(active_byte.unwrap_err()) }
+                        auto active_offset = active_byte.unwrap()
+                        match cede active_offset {
+                            auto Option<usize>::Some('active_byte) => {
+                                auto active = text.codepoint_index_at_byte_offset('active_byte)
+                                match cede active {
+                                    auto Option<usize>::Some('active_index) => return Result<Option<TextSelection>, UnicodeError>::Ok(Option<TextSelection>::Some(TextSelection::range('index, 'active_index)))
+                                    Option<usize>::None => return Result<Option<TextSelection>, UnicodeError>::Ok(Option<TextSelection>::None)
+                                }
+                            }
+                            Option<usize>::None => return Result<Option<TextSelection>, UnicodeError>::Ok(Option<TextSelection>::None)
+                        }
+                    }
+                    Option<usize>::None => return Result<Option<TextSelection>, UnicodeError>::Ok(Option<TextSelection>::None)
+                }
+            }
+            Option<usize>::None => return Result<Option<TextSelection>, UnicodeError>::Ok(Option<TextSelection>::None)
+        }
+    }
+}
+
+impl TextEditor {
+    pub fn new(text: str) -> Result<TextEditor, UnicodeError> {
+        auto count = grapheme_count(text)
+        if count.is_err() { return Result<TextEditor, UnicodeError>::Err(count.unwrap_err()) }
+        return Result<TextEditor, UnicodeError>::Ok(TextEditor(
+            text = string::from(text),
+            selection = GraphemeSelection::cursor(0:usize)
+        ))
+    }
+
+    pub fn text(self) -> str { return self.text.as_str() }
+
+    pub fn selection(self) -> GraphemeSelection { return self.selection }
+
+    pub fn set_selection(self#, selection: GraphemeSelection) -> Result<bool, UnicodeError> {
+        auto count = grapheme_count(self.text.as_str())
+        if count.is_err() { return Result<bool, UnicodeError>::Err(count.unwrap_err()) }
+        auto length = count.unwrap()
+        if selection.anchor() > length || selection.active() > length {
+            return Result<bool, UnicodeError>::Ok(false)
+        }
+        self.selection = selection
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+
+    fn replace_range(self#, start: usize, end: usize, replacement: str) -> Result<bool, UnicodeError> {
+        if start > end { return Result<bool, UnicodeError>::Ok(false) }
+        auto inserted_count = grapheme_count(replacement)
+        if inserted_count.is_err() { return Result<bool, UnicodeError>::Err(inserted_count.unwrap_err()) }
+
+        auto source = self.text.as_str()
+        auto start_result = grapheme_byte_offset(source, start)
+        if start_result.is_err() { return Result<bool, UnicodeError>::Err(start_result.unwrap_err()) }
+        auto start_offset = start_result.unwrap()
+        if start_offset.is_none() { return Result<bool, UnicodeError>::Ok(false) }
+        auto end_result = grapheme_byte_offset(source, end)
+        if end_result.is_err() { return Result<bool, UnicodeError>::Err(end_result.unwrap_err()) }
+        auto end_offset = end_result.unwrap()
+        if end_offset.is_none() { return Result<bool, UnicodeError>::Ok(false) }
+
+        auto start_byte = start_offset.unwrap()
+        auto end_byte = end_offset.unwrap()
+        auto next# = string::new()
+        next#.push_str(source.substr(0:usize, start_byte))
+        next#.push_str(replacement)
+        next#.push_str(source.substr(end_byte, source.len() - end_byte))
+        self.text = cede next
+        self.selection = GraphemeSelection::cursor(start + inserted_count.unwrap())
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+
+    pub fn replace_selection(self#, replacement: str) -> Result<bool, UnicodeError> {
+        return self#.replace_range(self.selection.start(), self.selection.end(), replacement)
+    }
+
+    pub fn insert(self#, text: str) -> Result<bool, UnicodeError> {
+        return self#.replace_selection(text)
+    }
+
+    pub fn delete_backward(self#) -> Result<bool, UnicodeError> {
+        if !self.selection.is_collapsed() {
+            return self#.replace_selection("")
+        }
+        if self.selection.active() == 0:usize { return Result<bool, UnicodeError>::Ok(false) }
+        return self#.replace_range(self.selection.active() - 1:usize, self.selection.active(), "")
+    }
+
+    pub fn delete_forward(self#) -> Result<bool, UnicodeError> {
+        if !self.selection.is_collapsed() {
+            return self#.replace_selection("")
+        }
+        auto count = grapheme_count(self.text.as_str())
+        if count.is_err() { return Result<bool, UnicodeError>::Err(count.unwrap_err()) }
+        if self.selection.active() == count.unwrap() { return Result<bool, UnicodeError>::Ok(false) }
+        return self#.replace_range(self.selection.active(), self.selection.active() + 1:usize, "")
+    }
+
+    pub fn move_left(self#) -> Result<bool, UnicodeError> {
+        if !self.selection.is_collapsed() {
+            self.selection#.set_cursor(self.selection.start())
+            return Result<bool, UnicodeError>::Ok(true)
+        }
+        if self.selection.active() == 0:usize { return Result<bool, UnicodeError>::Ok(false) }
+        self.selection#.set_cursor(self.selection.active() - 1:usize)
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+
+    pub fn move_right(self#) -> Result<bool, UnicodeError> {
+        auto count = grapheme_count(self.text.as_str())
+        if count.is_err() { return Result<bool, UnicodeError>::Err(count.unwrap_err()) }
+        if !self.selection.is_collapsed() {
+            self.selection#.set_cursor(self.selection.end())
+            return Result<bool, UnicodeError>::Ok(true)
+        }
+        if self.selection.active() == count.unwrap() { return Result<bool, UnicodeError>::Ok(false) }
+        self.selection#.set_cursor(self.selection.active() + 1:usize)
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+
+    pub fn extend_left(self#) -> Result<bool, UnicodeError> {
+        if self.selection.active() == 0:usize { return Result<bool, UnicodeError>::Ok(false) }
+        self.selection#.extend_to(self.selection.active() - 1:usize)
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+
+    pub fn extend_right(self#) -> Result<bool, UnicodeError> {
+        auto count = grapheme_count(self.text.as_str())
+        if count.is_err() { return Result<bool, UnicodeError>::Err(count.unwrap_err()) }
+        if self.selection.active() == count.unwrap() { return Result<bool, UnicodeError>::Ok(false) }
+        self.selection#.extend_to(self.selection.active() + 1:usize)
+        return Result<bool, UnicodeError>::Ok(true)
+    }
+}

@@ -8,7 +8,9 @@ pub const PACKAGE = (
     compiler = "0.9.9-01",
     entry_modules = ("lib/official/gui.tk"),
     targets = ("macos"),
-    dependencies = (),
+    dependencies = (
+        unicode = "../unicode"
+    ),
     native = (
         required = true,
         macos = (
@@ -31,9 +33,9 @@ pub const PACKAGE = (
 
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
-    summary = "A macOS native window and Metal-surface lifecycle bridge for Toka.",
-    capabilities = ("open and close a native window", "create a CAMetalLayer backed by the system Metal device", "poll the macOS event queue", "participate in a bounded std/task host-event executor turn", "apply Send-only worker updates through a current-thread host mailbox"),
-    non_goals = ("cross-platform support", "widget toolkit", "text input or IME", "render command encoding", "cross-platform event co-wait", "wakeable native dispatch", "worker-to-UI callback execution"),
+    summary = "A macOS native window and Metal-surface lifecycle bridge with a pure grapheme selection adapter for Toka.",
+    capabilities = ("open and close a native window", "create a CAMetalLayer backed by the system Metal device", "poll the macOS event queue", "participate in a bounded std/task host-event executor turn", "apply Send-only worker updates through a current-thread host mailbox", "map editor selections between Unicode scalars and extended grapheme boundaries"),
+    non_goals = ("cross-platform support", "widget toolkit", "text input or IME", "font shaping", "bidi layout", "render command encoding", "cross-platform event co-wait", "wakeable native dispatch", "worker-to-UI callback execution"),
     safety = ("The Objective-C window handle remains private; App and Window stay on the UI thread, Window closes its handle deterministically through drop, and std/task never retains or moves an App event source."),
     qualification = ("python3 official/gui/tests/qualify_macos_spike.py")
 )

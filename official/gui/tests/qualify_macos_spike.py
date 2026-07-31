@@ -14,6 +14,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "official" / "gui"
+UNICODE = ROOT / "official" / "unicode"
 
 
 def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> None:
@@ -84,6 +85,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="toka-gui-") as temporary:
         work = Path(temporary)
         sdk = make_sdk(work, runtime)
+        unicode = work / "unicode"
+        shutil.copytree(UNICODE, unicode)
         dependency = work / "gui"
         shutil.copytree(PACKAGE, dependency)
         consumer = work / "consumer"
@@ -91,21 +94,25 @@ def main() -> int:
         environment = dict(os.environ)
         environment.update({"TOKAC": str(tokac), "TOKA_LIB": str(sdk), "TOKA_OFFLINE": "1"})
         run([str(toka), "fetch"], cwd=consumer, env=environment)
-        expect_failure([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
+        expect_failure([str(tokac), "-I", str(sdk), "-I", str(unicode / "lib"), "-I", str(dependency / "lib"),
                         "--check-only", str(dependency / "tests" / "window_clone_rejected.tk")],
                        cwd=consumer, env=environment)
-        expect_failure([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
+        expect_failure([str(tokac), "-I", str(sdk), "-I", str(unicode / "lib"), "-I", str(dependency / "lib"),
                         "--check-only", str(dependency / "tests" / "window_thread_spawn_rejected.tk")],
                        cwd=consumer, env=environment)
-        expect_failure([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
+        expect_failure([str(tokac), "-I", str(sdk), "-I", str(unicode / "lib"), "-I", str(dependency / "lib"),
                         "--check-only", str(dependency / "tests" / "app_thread_spawn_rejected.tk")],
                        cwd=consumer, env=environment)
-        run([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
-             "--check-only", str(dependency / "tests" / "host_event_source_compile.tk")],
+        run([str(tokac), "-I", str(sdk), "-I", str(unicode / "lib"), "-I", str(dependency / "lib"),
+            "--check-only", str(dependency / "tests" / "host_event_source_compile.tk")],
             cwd=consumer, env=environment)
-        run([str(tokac), "-I", str(sdk), "-I", str(dependency / "lib"),
-             "--check-only", str(dependency / "examples" / "settings.tk")],
+        run([str(tokac), "-I", str(sdk), "-I", str(unicode / "lib"), "-I", str(dependency / "lib"),
+            "--check-only", str(dependency / "examples" / "settings.tk")],
             cwd=consumer, env=environment)
+        run([str(tokac), "-I", str(sdk), "-I", str(unicode / "lib"), "-I", str(dependency / "lib"),
+             str(dependency / "tests" / "grapheme_selection.tk"), "-o", str(work / "grapheme_selection")],
+            cwd=consumer, env=environment)
+        run([str(work / "grapheme_selection")], cwd=consumer, env=environment)
         run([str(toka), "build"], cwd=consumer, env=environment)
         program = consumer / "target" / "debug" / "gui_consumer"
         if not program.is_file():

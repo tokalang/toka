@@ -1,0 +1,86 @@
+import core/option::{Option}
+import core/result::{Result}
+import core/string::{string}
+import core/str::{UnicodeError}
+import core/types::{usize}
+import official/gui/text::{GraphemeSelection, TextEditor, TextSelection}
+
+fn expect_offset(result: Result<Option<usize>, UnicodeError>, expected: usize) -> bool {
+    if result.is_err() { return false }
+    auto maybe = result.unwrap()
+    match cede maybe {
+        auto Option<usize>::Some('value) => return 'value == expected
+        Option<usize>::None => return false
+    }
+}
+
+fn expect_selection(result: Result<Option<GraphemeSelection>, UnicodeError>, anchor: usize, active: usize) -> bool {
+    if result.is_err() { return false }
+    auto maybe = result.unwrap()
+    match cede maybe {
+        auto Option<GraphemeSelection>::Some('value) => return 'value.anchor() == anchor && 'value.active() == active
+        Option<GraphemeSelection>::None => return false
+    }
+}
+
+fn expect_scalar_selection(result: Result<Option<TextSelection>, UnicodeError>, anchor: usize, active: usize) -> bool {
+    if result.is_err() { return false }
+    auto maybe = result.unwrap()
+    match cede maybe {
+        auto Option<TextSelection>::Some('value) => return 'value.anchor() == anchor && 'value.active() == active
+        Option<TextSelection>::None => return false
+    }
+}
+
+fn expect_slice(selection: GraphemeSelection, text: str, expected: str) -> bool {
+    auto result = selection.selected_text(text)
+    if result.is_err() { return false }
+    auto maybe = result.unwrap()
+    match cede maybe {
+        auto Option<str>::Some('value) => return 'value.equals(expected)
+        Option<str>::None => return false
+    }
+}
+
+fn expect_editor_selection(editor#: TextEditor, anchor: usize, active: usize) -> bool {
+    auto selection = editor.selection()
+    return selection.anchor() == anchor && selection.active() == active
+}
+
+fn main() -> i32 {
+    auto owned# = string::from("ÄB")
+    auto text = owned.as_str()
+
+    auto cursor# = GraphemeSelection::cursor(1:usize)
+    if !cursor.is_collapsed() || !expect_offset(cursor.anchor_byte_offset(text), 3:usize) { return 1 }
+    cursor#.extend_to(2:usize)
+    if cursor.is_collapsed() || !expect_offset(cursor.active_byte_offset(text), 4:usize) { return 2 }
+    if !expect_slice(cursor, text, "B") { return 3 }
+
+    if !expect_selection(GraphemeSelection::from_text_selection(text, TextSelection::range(0:usize, 2:usize)), 0:usize, 1:usize) { return 4 }
+    if GraphemeSelection::from_text_selection(text, TextSelection::cursor(1:usize)).unwrap().is_some() { return 5 }
+    if !expect_scalar_selection(GraphemeSelection::range(0:usize, 1:usize).to_text_selection(text), 0:usize, 2:usize) { return 6 }
+    if GraphemeSelection::cursor(3:usize).to_text_selection(text).unwrap().is_some() { return 7 }
+
+    auto created = TextEditor::new(text)
+    if created.is_err() { return 8 }
+    auto editor# = created.unwrap()
+    if !editor#.move_right().unwrap() || !expect_editor_selection(editor, 1:usize, 1:usize) { return 9 }
+    if !editor#.insert("🇨🇳").unwrap() || !editor.text().equals("Ä🇨🇳B") { return 10 }
+    if !expect_editor_selection(editor, 2:usize, 2:usize) { return 11 }
+    if !editor#.delete_backward().unwrap() || !editor.text().equals("ÄB") { return 12 }
+    if !editor#.set_selection(GraphemeSelection::range(0:usize, 1:usize)).unwrap() { return 13 }
+    if !editor#.replace_selection("🙂").unwrap() || !editor.text().equals("🙂B") { return 14 }
+    if !editor#.delete_forward().unwrap() || !editor.text().equals("🙂") { return 15 }
+    if editor#.delete_forward().unwrap() { return 16 }
+    if !editor#.move_left().unwrap() || editor#.move_left().unwrap() { return 17 }
+    if !editor#.extend_right().unwrap() || !expect_editor_selection(editor, 0:usize, 1:usize) { return 18 }
+    if !editor#.delete_backward().unwrap() || !editor.text().equals("") { return 19 }
+    if editor#.set_selection(GraphemeSelection::cursor(1:usize)).unwrap() { return 20 }
+
+    auto malformed# = string::from("")
+    malformed#.push_byte_raw(0x80:u8)
+    if TextEditor::new(malformed.as_str()).is_ok() { return 21 }
+    if editor#.insert(malformed.as_str()).is_ok() || !editor.text().equals("") { return 22 }
+    return 0
+}

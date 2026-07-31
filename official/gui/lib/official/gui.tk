@@ -2,6 +2,7 @@ import core/option::{Option}
 import core/result::{Result}
 import core/traits::{@encap}
 import core/types::{Addr, ADDR0}
+pub import official/gui/text::{GraphemeSelection, TextEditor, TextSelection}
 import std/vec::{Vec}
 import std/task::{@HostEventSource, HostEventPoll}
 
@@ -93,11 +94,6 @@ pub shape TextEventKind (
 pub shape TextEvent (
     kind: TextEventKind,
     text#: string
-)
-
-pub shape TextSelection (
-    anchor#: usize,
-    active#: usize
 )
 
 pub shape Modifiers ()
@@ -230,33 +226,17 @@ impl GuiError {
     pub fn message(self) -> string { return string::from(self.message.as_str()) }
 }
 
+impl TextEvent {
+    pub fn kind(self) -> TextEventKind { return self.kind }
+
+    pub fn text(self) -> str { return self.text.as_str() }
+}
+
 impl Modifiers {
     pub fn shift() -> i32 { return 1:i32 }
     pub fn control() -> i32 { return 2:i32 }
     pub fn option() -> i32 { return 4:i32 }
     pub fn command() -> i32 { return 8:i32 }
-}
-
-impl TextSelection {
-    pub fn cursor(position: usize) -> TextSelection { return TextSelection(anchor = position, active = position) }
-
-    pub fn range(anchor: usize, active: usize) -> TextSelection { return TextSelection(anchor = anchor, active = active) }
-
-    pub fn start(self) -> usize {
-        if self.anchor < self.active { return self.anchor }
-        return self.active
-    }
-
-    pub fn end(self) -> usize {
-        if self.anchor > self.active { return self.anchor }
-        return self.active
-    }
-
-    pub fn is_collapsed(self) -> bool { return self.anchor == self.active }
-
-    pub fn set_cursor(self#, position: usize) { self.anchor = position; self.active = position }
-
-    pub fn extend_to(self#, position: usize) { self.active = position }
 }
 
 impl App {

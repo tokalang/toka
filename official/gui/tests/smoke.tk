@@ -1,4 +1,4 @@
-import official/gui::{App, Bounds, ButtonState, Container, Event, EventKind, FocusState, Layout, Modifiers, Rect, Scene, Scrollbar, ScrollState, ShortcutMap, TextSelection, ToggleState, VirtualList, Window}
+import official/gui::{App, Bounds, ButtonState, Container, Event, EventKind, FocusState, Layout, Modifiers, Rect, Scene, Scrollbar, ScrollState, ShortcutMap, TextEditor, TextSelection, ToggleState, VirtualList, Window}
 import std/vec::{Vec}
 
 fn main() -> i32 {
@@ -19,6 +19,8 @@ fn main() -> i32 {
     if first_event.is_none() { return 10 }
     if first_event.unwrap().kind != EventKind::Shown { return 11 }
     auto scene# = Scene::new()
+    auto editor# = TextEditor::new("").unwrap()
+    if !editor#.insert("Ä").unwrap() || !editor.text().equals("Ä") { return 57 }
     auto panel# = Container::new(Bounds(x = 0.10:f64, y = 0.10:f64, width = 0.35:f64, height = 0.35:f64), true).unwrap()
     panel#.add_rect(Rect(x = 0.0:f64, y = 0.0:f64, width = 1.0:f64, height = 1.0:f64,
                          red = 0.18:f64, green = 0.25:f64, blue = 0.36:f64, alpha = 1.0:f64))
@@ -47,7 +49,9 @@ fn main() -> i32 {
                           red = 0.55:f64, green = 0.36:f64, blue = 0.92:f64, alpha = 1.0:f64))
     if scene#.add_text("Toka GUI", 0.12:f64, 0.12:f64, 0.10:f64,
                        0.98:f64, 0.98:f64, 1.0:f64, 1.0:f64).is_err() { return 19 }
-    if scene.len() != 5:usize { return 14 }
+    if scene#.add_text(editor.text(), 0.12:f64, 0.24:f64, 0.06:f64,
+                       0.70:f64, 0.88:f64, 1.0:f64, 1.0:f64).is_err() { return 58 }
+    if scene.len() != 6:usize { return 14 }
     if scene.render(window#, 0.12:f64, 0.18:f64, 0.28:f64, 1.0:f64).is_err() { return 15 }
     if window#.begin_frame(0.08:f64, 0.10:f64, 0.14:f64, 1.0:f64).is_err() { return 20 }
     if window#.push_clip(0.25:f64, 0.25:f64, 0.50:f64, 0.50:f64).is_err() { return 21 }
