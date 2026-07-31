@@ -1026,6 +1026,23 @@ def compiler_mappings(lock_path: Path, state: Path) -> list[str]:
     return mappings
 
 
+def compiler_node_mappings(lock_path: Path) -> list[str]:
+    """Return import-prefix to opaque locked-package-node mappings.
+
+    The compiler receives these separately from paths so a relocated package
+    installation cannot change its shadow crate identity.
+    """
+    mappings: list[str] = []
+    for alias, entry in sorted(read_lock(lock_path).items()):
+        payload = "\0".join(("toka.package-node.v1", entry.kind, entry.locator,
+                               entry.resolved, entry.archive_sha256,
+                               entry.content_sha256, ",".join(entry.dependencies)))
+        node_id = "pkg-v1-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        mappings.append(alias + "=" + node_id)
+        mappings.append("official/" + alias + "=" + node_id)
+    return mappings
+
+
 def remove_dependency(manifest: Path, alias: str) -> bool:
     if not ALIAS_RE.fullmatch(alias):
         raise PackageError("invalid dependency alias")
@@ -1065,6 +1082,9 @@ def main() -> int:
     mappings.add_argument("--lock", default="package.lock")
     mappings.add_argument("--state", default=".toka")
 
+    nodes = subparsers.add_parser("compiler-node-mappings")
+    nodes.add_argument("--lock", default="package.lock")
+
     native_plan = subparsers.add_parser("native-build-plan")
     native_plan.add_argument("--lock", default="package.lock")
     native_plan.add_argument("--state", default=".toka")
@@ -1094,6 +1114,9 @@ def main() -> int:
             print("resolved %d package(s)" % len(entries))
         elif args.command == "compiler-mappings":
             for mapping in compiler_mappings(Path(args.lock), Path(args.state)):
+                print(mapping)
+        elif args.command == "compiler-node-mappings":
+            for mapping in compiler_node_mappings(Path(args.lock)):
                 print(mapping)
         elif args.command == "native-build-plan":
             print(json.dumps(native_build_plan(Path(args.lock), Path(args.state), target=args.target),
