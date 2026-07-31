@@ -604,6 +604,126 @@ std::string Sema::genericImplKey(const std::string &typeName,
   return baseName;
 }
 
+std::string Sema::canonicalTypeFactKey(const std::string &typeName,
+                                       SourceLocation loc) {
+  std::string baseName = typeName;
+  size_t generic = baseName.find('<');
+  if (generic != std::string::npos)
+    baseName.resize(generic);
+
+  ShapeDecl *shape = findVisibleShapeDecl(baseName, loc);
+  std::string definition = "unresolved:" + baseName;
+  if (shape) {
+    auto scope = DeclarationLexicalScopes.find(shape);
+    if (scope != DeclarationLexicalScopes.end() && scope->second) {
+      const ModuleScope *owner = scope->second;
+      if (owner->ShadowCoordinateKnown) {
+        definition = "crate:" + owner->ShadowCrateId + ";module:" +
+                     owner->ShadowLogicalModulePath + ";shape:" +
+                     shape->Name;
+      } else {
+        definition = "module:" + owner->Name + ";shape:" + shape->Name;
+      }
+    } else {
+      definition = "shape:" +
+                   (shape->CodegenName.empty() ? shape->Name : shape->CodegenName);
+    }
+  }
+
+  return definition + ";concrete:" + resolveType(typeName);
+}
+
+std::string Sema::canonicalImplDefinitionId(const ImplDecl *impl) const {
+  if (!impl)
+    return "impl:<null>";
+
+  auto recorded = Slice1ImplDefinitionIds.find(impl);
+  if (recorded != Slice1ImplDefinitionIds.end())
+    return recorded->second;
+
+  std::string owner = "module:<unknown>";
+  auto scope = DeclarationLexicalScopes.find(impl);
+  if (scope != DeclarationLexicalScopes.end() && scope->second) {
+    const ModuleScope *module = scope->second;
+    if (module->ShadowCoordinateKnown) {
+      owner = "crate:" + module->ShadowCrateId + ";module:" +
+              module->ShadowLogicalModulePath;
+    } else {
+      owner = "module:" + module->Name;
+    }
+  }
+  return owner + ";impl:" + impl->TypeName + "@" + impl->TraitName +
+         ";loc:" + std::to_string(impl->Loc.getRawEncoding());
+}
+
+void Sema::recordSlice1ImplFact(ImplDecl *impl,
+                                const std::string &resolvedTypeName,
+                                const std::string &canonicalTrait) {
+  if (!impl)
+    return;
+
+  const std::string key = impl->GenericParams.empty()
+      ? canonicalTypeFactKey(
+            resolvedTypeName.empty() ? impl->TypeName : resolvedTypeName,
+            impl->Loc)
+      : canonicalImplDefinitionId(impl) + ";template";
+  const std::string family = getTraitFamilyName(canonicalTrait);
+
+  ResourceContractMap.try_emplace(key, Slice1ResourceContract::None);
+  PartialMovePlanMap.try_emplace(key, Slice1PartialMovePlan{});
+  CopyProofMap.try_emplace(key, Slice1CopyProof::Unknown);
+  CopyWitnessMap.try_emplace(key, Slice1CopyWitness::None);
+  DupProviderMap.try_emplace(key, Slice1DupProvider::None);
+  DropPlanMap.try_emplace(key, Slice1DropPlan::Unknown);
+
+  if (family == "encap") {
+    PolicyMap[key] = { !impl->IsStructuralDrop, impl->IsStructuralDrop };
+    if (impl->IsStructuralDrop) {
+      DropPlanMap[key] = Slice1DropPlan::LegacyStructural;
+    } else {
+      for (const auto &method : impl->Methods) {
+        if (method->Name == "drop") {
+          DropPlanMap[key] = Slice1DropPlan::LegacyCustom;
+          break;
+        }
+      }
+    }
+  } else if (family == "Copy") {
+    CopyWitnessMap[key] = Slice1CopyWitness::ExplicitRequest;
+  } else if (family == "Dup") {
+    const bool valid = impl->Methods.size() == 1 &&
+        impl->Methods.front()->Name == "dup" &&
+        impl->Methods.front()->IsPub &&
+        impl->Methods.front()->Args.size() == 1 &&
+        impl->Methods.front()->Args.front().Name == "self" &&
+        !impl->Methods.front()->Args.front().IsCeded &&
+        !impl->Methods.front()->Args.front().IsUnique &&
+        (impl->Methods.front()->ReturnType == "Self" ||
+         resolveType(impl->Methods.front()->ReturnType) == resolvedTypeName);
+    DupProviderMap[key] = valid ? Slice1DupProvider::UserCandidate
+                                : Slice1DupProvider::InvalidCandidate;
+  }
+}
+
+void Sema::dumpEncapSlice1FactsJSON(std::ostream &out) const {
+  size_t invalidDupCandidates = 0;
+  for (const auto &[_, provider] : DupProviderMap) {
+    if (provider == Slice1DupProvider::InvalidCandidate)
+      ++invalidDupCandidates;
+  }
+  out << "{\"schema\":\"toka.encap-slice1\",\"version\":1"
+      << ",\"policy_fact_count\":" << PolicyMap.size()
+      << ",\"resource_contract_fact_count\":" << ResourceContractMap.size()
+      << ",\"drop_plan_fact_count\":" << DropPlanMap.size()
+      << ",\"partial_move_plan_fact_count\":" << PartialMovePlanMap.size()
+      << ",\"copy_proof_fact_count\":" << CopyProofMap.size()
+      << ",\"copy_witness_fact_count\":" << CopyWitnessMap.size()
+      << ",\"dup_provider_fact_count\":" << DupProviderMap.size()
+      << ",\"dup_invalid_candidate_count\":" << invalidDupCandidates
+      << ",\"generic_impl_instance_count\":" << GenericImplInstanceMap.size()
+      << "}";
+}
+
 static bool typeMentionsSelf(const std::string &typeName) {
   std::string type = trimTypeString(typeName);
   size_t pos = 0;
@@ -644,6 +764,15 @@ std::string Sema::getDynTraitName(std::shared_ptr<toka::Type> type) const {
 
 bool Sema::validateDynTraitObjectSafety(const std::string &traitName,
                                         SourceLocation loc) {
+  const std::string family = getTraitFamilyName(traitName);
+  if (family == "encap" || family == "Copy") {
+    DiagnosticEngine::report(
+        loc, DiagID::ERR_DYN_TRAIT_NOT_OBJECT_SAFE, family, family,
+        "compiler-known policy and Copy markers have no dynamic method dictionary");
+    HasError = true;
+    return false;
+  }
+
   TraitDecl *trait = findVisibleTraitDecl(traitName, loc);
   if (!trait)
     return true;
@@ -1639,8 +1768,14 @@ void Sema::declareGlobals(Module &M) {
   }
 
   // 7. Register Impls
+  size_t implIndex = 0;
   for (auto &Impl : M.Impls) {
     DeclarationLexicalScopes[Impl.get()] = &ms;
+    std::string owner = ms.ShadowCoordinateKnown
+        ? "crate:" + ms.ShadowCrateId + ";module:" + ms.ShadowLogicalModulePath
+        : "module:" + ms.Name;
+    Slice1ImplDefinitionIds[Impl.get()] =
+        owner + ";impl-index:" + std::to_string(implIndex++);
     for (auto &Method : Impl->Methods)
       DeclarationLexicalScopes[Method.get()] = &ms;
     declareImpl(Impl.get());
@@ -2377,6 +2512,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
                 ? findVisibleTraitDecl(Impl->TraitName, getLoc(Impl))
                 : findTraitDecl(Impl->TraitName);
   std::string canonicalTrait = canonicalTraitName(Impl->TraitName, traitDecl);
+  recordSlice1ImplFact(Impl, resolvedTypeName, canonicalTrait);
 
   if (getTraitFamilyName(canonicalTrait) == "ErrorInto") {
     size_t begin = canonicalTrait.find('<');
@@ -2556,6 +2692,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
   std::string baseName = Impl->TypeName;
   size_t lt = baseName.find('<');
   if (lt != std::string::npos) {
+    recordSlice1ImplFact(Impl, Impl->TypeName, Impl->TraitName);
     baseName = genericImplKey(baseName, Impl->Loc);
     if (std::find(GenericImplMap[baseName].begin(), GenericImplMap[baseName].end(), Impl) == GenericImplMap[baseName].end()) {
       GenericImplMap[baseName].push_back(Impl);

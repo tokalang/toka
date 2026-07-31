@@ -110,6 +110,7 @@ void printHelp() {
       << "  --emit-obj                      Emit native object code\n"
       << "  --emit-llvm                     Emit LLVM IR\n"
       << "  --emit-interface                Emit a TKI interface\n"
+      << "  --encap-slice1-facts=json       Dump audit-only @encap Slice 1 facts\n"
       << "  --link-search <path>            Add a native library search path\n"
       << "  --link-lib <name>               Link a native library by name\n"
       << "  --link-framework <name>         Link a macOS system framework by name\n"
@@ -526,6 +527,7 @@ int main(int argc, char **argv) {
   bool dumpConditionalFacts = false;
   bool dumpMemorySummaries = false;
   bool dumpMemoryContracts = false;
+  bool dumpEncapSlice1Facts = false;
   bool dumpSemanticIndex = false;
   bool dumpSemanticContext = false;
   bool structuredDiagnostics = false;
@@ -643,6 +645,8 @@ int main(int argc, char **argv) {
       dumpMemorySummaries = true;
     } else if (arg == "--dump-memory-contracts=json") {
       dumpMemoryContracts = true;
+    } else if (arg == "--encap-slice1-facts=json") {
+      dumpEncapSlice1Facts = true;
     } else if (arg == "--experimental-memory-contracts=nocapture") {
       experimentalNoCapture = true;
     } else if (arg == "--experimental-memory-contracts=readonly") {
@@ -780,7 +784,7 @@ int main(int argc, char **argv) {
   if (structuredDiagnostics &&
       (g_JsonDiagnostics || dumpDependencies || dumpAssignmentStats ||
        dumpHandleSurfaceStats || dumpSemanticEvidence || dumpCedeObligations || dumpCapabilities || dumpTodoGoals || dumpConditionalFacts || dumpMemorySummaries ||
-       dumpMemoryContracts || dumpSemanticIndex || dumpSemanticContext ||
+       dumpMemoryContracts || dumpEncapSlice1Facts || dumpSemanticIndex || dumpSemanticContext ||
        !semanticQuery.empty() || runTopologyEval || !explainCode.empty())) {
     llvm::errs() << "--diagnostics-json cannot be combined with another "
                     "JSON, semantic, or evaluation output mode\n";
@@ -839,6 +843,15 @@ int main(int argc, char **argv) {
        g_JsonDiagnostics)) {
     llvm::errs() << "--dump-memory-contracts=json cannot be combined with "
                     "another JSON or evaluation output mode\n";
+    return 1;
+  }
+  if (dumpEncapSlice1Facts &&
+      (dumpMemoryContracts || dumpMemorySummaries || dumpSemanticEvidence ||
+       dumpCedeObligations || dumpCapabilities || dumpTodoGoals ||
+       dumpConditionalFacts || dumpAssignmentStats || dumpHandleSurfaceStats ||
+       dumpDependencies || runTopologyEval || g_JsonDiagnostics)) {
+    llvm::errs() << "--encap-slice1-facts=json cannot be combined with another "
+                    "JSON or evaluation output mode\n";
     return 1;
   }
   if ((dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty()) &&
@@ -1146,6 +1159,13 @@ int main(int argc, char **argv) {
     return 1;
   }
   profile.mark("sema_check");
+
+  if (dumpEncapSlice1Facts) {
+    sema.dumpEncapSlice1FactsJSON(std::cout);
+    std::cout << '\n';
+    profile.finish("tokac");
+    return 0;
+  }
 
   if (dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty()) {
     std::vector<toka::Module *> modules;

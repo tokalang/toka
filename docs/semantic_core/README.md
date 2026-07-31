@@ -82,6 +82,9 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `encap_slice0_redline_results.md` records the reproducible Slice 0
   access/identity, source/TKI/cache, lifecycle/resource, Copy/Dup, and legacy
   grant-inventory results for the proposed epoch.
+- `encap_slice1_data_model.md` records the completed audit-only fact maps,
+  generic marker bookkeeping, Dup candidate classification, and dyn-marker
+  exclusion that prepare the epoch's later semantic slices.
 - `typed_todo_rfc.md` freezes the adopted expression-only typed-todo boundary:
   complete expected contracts, zero authority, conditional facts, and the
   no-CodeGen/TKI/cache publication rule.

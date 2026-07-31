@@ -267,19 +267,18 @@ void Sema::instantiateGenericImpl(
   }
 
   std::string MangledName = resolveType(ConcreteTypeName);
-  
-  // [FIX] Prevent Duplication - Do not instantiate if we already have it
-  // This avoids infinite recursion and LLVM CodeGen duplicate definition crashing
-  if (MethodDecls.count(MangledName)) {
-    // Verify any method from the template exists to be certain
-    if (!Template->Methods.empty()) {
-        std::string firstMethod = Template->Methods[0]->Name;
-        if (MethodDecls[MangledName].count(firstMethod)) {
-            return; // Already Instantiated
-        }
-    } else {
-        return; // Empty impl
-    }
+  const std::string instanceKey = canonicalImplDefinitionId(Template) +
+                                  ";concrete:" + MangledName;
+  const bool firstInstance = GenericImplInstanceMap.insert(instanceKey).second;
+  // Legacy non-empty impl registration has observable downstream effects.
+  // Slice 1 only needs the identity cache to make empty marker impls stable;
+  // retain the historical path for callable impls until their later rewrite.
+  if (!firstInstance && Template->Methods.empty())
+    return;
+  if (MethodDecls.count(MangledName) && !Template->Methods.empty()) {
+    const std::string &firstMethod = Template->Methods.front()->Name;
+    if (MethodDecls[MangledName].count(firstMethod))
+      return;
   }
 
   // 2. Build Substitution Map

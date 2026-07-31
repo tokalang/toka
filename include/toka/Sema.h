@@ -21,6 +21,7 @@
 #include "toka/SemanticEvidence.h"
 #include "toka/ComptimeValue.h"
 #include <map>
+#include <ostream>
 #include <set>
 #include <string>
 #include <vector>
@@ -332,6 +333,7 @@ public:
   const std::map<std::string, ShapeDecl *> &getShapeMap() const {
     return ShapeMap;
   }
+  void dumpEncapSlice1FactsJSON(std::ostream &out) const;
 
 private:
   // Shape Analysis Caches
@@ -433,6 +435,41 @@ private:
     std::map<std::string, TraitDecl *> Traits;
     std::map<std::string, VariableDecl *> Globals;
   };
+
+  // RFC @encap epoch Slice 1 facts. These are observational data only until a
+  // later slice explicitly switches a semantic decision to them.
+  enum class Slice1ResourceContract { None, Borrowed, Owned };
+  enum class Slice1DropPlan { Unknown, LegacyStructural, LegacyCustom };
+  enum class Slice1CopyProof { Unknown, ProvenCopy, ProvenNonCopy };
+  enum class Slice1CopyWitness { None, ExplicitRequest };
+  enum class Slice1DupProvider { None, UserCandidate, InvalidCandidate };
+  struct Slice1PolicyFact {
+    bool IsExplicit = false;
+    bool IsStructuralLegacy = false;
+  };
+  struct Slice1PartialMovePlan {
+    bool IsKnown = false;
+  };
+
+  // The keys are canonical nominal-definition identities plus concrete type
+  // spelling, never the legacy unqualified base type name.
+  std::map<std::string, Slice1PolicyFact> PolicyMap;
+  std::map<std::string, Slice1ResourceContract> ResourceContractMap;
+  std::map<std::string, Slice1DropPlan> DropPlanMap;
+  std::map<std::string, Slice1PartialMovePlan> PartialMovePlanMap;
+  std::map<std::string, Slice1CopyProof> CopyProofMap;
+  std::map<std::string, Slice1CopyWitness> CopyWitnessMap;
+  std::map<std::string, Slice1DupProvider> DupProviderMap;
+
+  std::string canonicalTypeFactKey(const std::string &typeName,
+                                   SourceLocation loc);
+  std::string canonicalImplDefinitionId(const ImplDecl *impl) const;
+  void recordSlice1ImplFact(ImplDecl *impl,
+                            const std::string &resolvedTypeName,
+                            const std::string &canonicalTrait);
+  std::set<std::string> GenericImplInstanceMap;
+  std::map<const ImplDecl *, std::string> Slice1ImplDefinitionIds;
+
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
   std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;

@@ -1,10 +1,10 @@
 # `@encap` Epoch Slice 0 Gate Status
 
-**Status:** **Slice 0 evidence complete — Go to Slice 1 preparation;
+**Status:** **Slice 0 evidence and Slice 1 data-model preparation complete;
 semantic activation remains disabled.**
 
-This is a Go only for the RFC's next implementation-preparation slice. It is
-not permission to activate the new epoch or publish a mixed language state.
+This records completion of the RFC's evidence and data-model preparation. It
+is not permission to activate the new epoch or publish a mixed language state.
 
 ## Evidence achieved
 
@@ -55,6 +55,6 @@ legacy semantic rule active.
 
 ## Required work before a new decision
 
-Do not activate any proposed `@encap` epoch rule. Slice 1 must preserve every
-redline result and add implementation-backed coverage before Slice 2 can
-change parsing or access decisions.
+Do not activate any proposed `@encap` epoch rule. Slice 2 must preserve every
+redline result and add implementation-backed coverage before it can change
+parser or access decisions.
