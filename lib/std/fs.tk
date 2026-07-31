@@ -54,15 +54,17 @@ impl ReadDir {
     pub fn next(self#) -> Option<string> {
         loop !self.finished {
             auto name_opt = sys::readdir_impl(self.handle)
-            if name_opt.is_none() {
-                self.finished = true
-                sys::closedir_impl(self.handle)
-                return Option<string>::None
-            }
-            
-            auto name = name_opt.unwrap()
-            if name.as_str() != "." && name.as_str() != ".." {
-                return Option<string>::Some(name)
+            match cede name_opt {
+                auto Option<string>::Some('name) => {
+                    if 'name.as_str() != "." && 'name.as_str() != ".." {
+                        return Option<string>::Some(cede 'name)
+                    }
+                }
+                Option<string>::None => {
+                    self.finished = true
+                    sys::closedir_impl(self.handle)
+                    return Option<string>::None
+                }
             }
         }
         return Option<string>::None

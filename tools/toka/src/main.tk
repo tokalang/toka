@@ -588,27 +588,27 @@ fn find_newest_executable(dir_path: string) -> string {
     auto dir# = read_dir(dir_path.clone())
     loop {
         auto entry_opt = dir#.next()
-        if entry_opt.is_none() { break }
-        auto entry = entry_opt.unwrap()
-        
-        if entry.as_str() == "." || entry.as_str() == ".." || entry.ends_with(".ll") {
-            continue
-        }
-        
-        auto full_path# = dir_path.clone()
-        full_path#.push_str("/")
-        full_path#.push_str(entry.as_str())
-        
-        auto meta_res = metadata(full_path.clone())
-        if meta_res.is_ok() {
-            auto meta = meta_res.unwrap()
-            if meta.is_file() {
-                auto mtime = meta.modified()
-                if mtime > newest_mtime {
-                    newest_mtime = mtime
-                    newest_file = entry.clone()
+        match cede entry_opt {
+            auto Option<string>::Some('entry) => {
+                if 'entry.ends_with(".ll") {
+                    continue
+                }
+                auto full_path# = dir_path.clone()
+                full_path#.push_str("/")
+                full_path#.push_str('entry.as_str())
+                auto meta_res = metadata(full_path.clone())
+                if meta_res.is_ok() {
+                    auto meta = meta_res.unwrap()
+                    if meta.is_file() {
+                        auto mtime = meta.modified()
+                        if mtime > newest_mtime {
+                            newest_mtime = mtime
+                            newest_file = cede 'entry
+                        }
+                    }
                 }
             }
+            Option<string>::None => break
         }
     }
     dir#.close()
