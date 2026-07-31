@@ -558,10 +558,23 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
         
         if (isExplicit && (explicitMode == CaptureMode::ExplicitCede || explicitMode == CaptureMode::ExplicitCopy)) {
             if (explicitMode == CaptureMode::ExplicitCopy) {
-                bool isResourceCapture = infoPtr->TypeObj && infoPtr->TypeObj->isUniquePtr();
-                if (!isResourceCapture && infoPtr->TypeObj && infoPtr->TypeObj->isShape()) {
-                    std::string soul = toka::Type::stripMorphology(infoPtr->TypeObj->getSoulName());
-                    isResourceCapture = hasDrop(soul);
+                bool isResourceCapture = false;
+                if (Parser::EncapCopyEpochV4) {
+                    // Slice 4 makes closure copy capture use the same
+                    // authoritative structural proof as every other copy.
+                    // In particular, an @encap capsule is move-only until it
+                    // declares a verified @Copy marker, even without a hook.
+                    isResourceCapture =
+                        !proveSlice4CopyType(infoPtr->TypeObj);
+                } else {
+                    isResourceCapture = infoPtr->TypeObj &&
+                                        infoPtr->TypeObj->isUniquePtr();
+                    if (!isResourceCapture && infoPtr->TypeObj &&
+                        infoPtr->TypeObj->isShape()) {
+                        std::string soul = toka::Type::stripMorphology(
+                            infoPtr->TypeObj->getSoulName());
+                        isResourceCapture = hasDrop(soul);
+                    }
                 }
                 if (isResourceCapture) {
                     error(Clo, DiagID::ERR_SEMA_CLOSURE_COPY_CAPTURE_RESOURCE,

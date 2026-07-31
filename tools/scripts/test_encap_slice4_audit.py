@@ -51,7 +51,8 @@ def main() -> int:
             "  auto point_copy = Point(point)\n"
             "  auto value = NonZero(raw = 2)\n"
             "  auto value_copy = NonZero(value)\n"
-            "  return point_copy.x + value_copy.raw\n"
+            "  auto capture: fn() -> i32 = { [copy value] => value.raw }\n"
+            "  return point_copy.x + value_copy.raw + capture()\n"
             "}\n", encoding="utf-8")
         compile_source(valid, expect_success=True)
 
@@ -63,6 +64,18 @@ def main() -> int:
                "  auto copied = Secret(value)\n"
                "  return copied.raw\n"
                "}\n")
+
+        closure_copy = root / "closure_copy_capsule.tk"
+        closure_copy.write_text(
+            "shape Secret(raw: i32)\n"
+            "impl Secret@encap { pub raw }\n"
+            "fn main() -> i32 {\n"
+            "  auto secret = Secret(raw = 1)\n"
+            "  auto closure: fn() -> i32 = { [copy secret] => secret.raw }\n"
+            "  return closure()\n"
+            "}\n", encoding="utf-8")
+        rejected_closure_copy = compile_source(closure_copy, expect_success=False)
+        assert "E04581" in rejected_closure_copy.stderr, rejected_closure_copy.stderr
 
         reject(root, "copy_with_resource.tk",
                "shape Resource(^data: i32)\n"
