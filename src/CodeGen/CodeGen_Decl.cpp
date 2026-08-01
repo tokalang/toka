@@ -118,42 +118,24 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   if (func->ResolvedReturnType) {
     retTypeObj = func->ResolvedReturnType;
   } else {
-    retTypeObj = Type::fromString(func->ReturnType);
+    retTypeObj = func->ReturnTypeSyntax
+                     ? Type::fromSyntax(func->ReturnTypeSyntax)
+                     : Type::fromString(func->ReturnType);
   }
   bool isSRet = shouldReturnSRet(retTypeObj) && func->Effect != EffectKind::Async;
 
   if (!f) {
     std::vector<llvm::Type *> argTypes;
     for (const auto &arg : func->Args) {
-      // Create Type Object from String (Temporary Bridge)
-      // Ideally, FunctionDecl would store shared_ptr<Type>, but for now we
-      // parse.
-      // [New] Annotated AST: Use ResolvedType
       std::shared_ptr<Type> typeObj;
       if (arg.ResolvedType) {
         typeObj = arg.ResolvedType;
       } else {
-        // Fallback to legacy string parsing
-        typeObj = Type::fromString(arg.Type);
-
-        // Permission Decorators (AST overrides Type string if present)
-        if (arg.IsValueMutable)
-          typeObj = typeObj->withAttributes(true, typeObj->IsNullable);
-        if (arg.IsValueNullable || arg.IsPointerNullable)
-          typeObj = typeObj->withAttributes(typeObj->IsWritable, true);
-
-        // [Fix] Apply AST-level Morphology wrappers (Pointer, Unique,
-        // Reference, Shared) The AST 'Type' string often doesn't contain *, ^,
-        // ~ if they were parsed as decorators
-        if (arg.IsReference) {
-          typeObj = std::make_shared<ReferenceType>(typeObj);
-        } else if (arg.IsUnique) {
-          typeObj = std::make_shared<UniquePointerType>(typeObj);
-        } else if (arg.IsShared) {
-          typeObj = std::make_shared<SharedPointerType>(typeObj);
-        } else if (arg.IsRawPointer) {
-          typeObj = std::make_shared<RawPointerType>(typeObj);
-        }
+        // CodeGen normally receives Sema-populated types.  Retain a direct
+        // TypeSyntax fallback for synthetic declarations that bypass Sema;
+        // do not reparse source spelling here.
+        typeObj = arg.TypeSyntax ? Type::fromSyntax(arg.TypeSyntax)
+                                 : Type::fromString(arg.Type);
       }
 
       // Determine LLVM Type
@@ -273,7 +255,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       if (func->ResolvedReturnType) {
         retTypeObj = func->ResolvedReturnType;
       } else {
-        retTypeObj = Type::fromString(func->ReturnType);
+        retTypeObj = func->ReturnTypeSyntax
+                         ? Type::fromSyntax(func->ReturnTypeSyntax)
+                         : Type::fromString(func->ReturnType);
       }
       llvm::Type *actualRetTy = getLLVMType(retTypeObj);
       m_CurrentCoroRetTy = actualRetTy;
@@ -360,29 +344,13 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
     // 2. Resolve Type Object
     std::shared_ptr<Type> typeObj;
-
-    // Lift scope for these flags so loop logic can use them later
-    bool isMutable = argDecl.IsValueMutable;
-    bool isNullable = argDecl.IsValueNullable || argDecl.IsPointerNullable;
+    const bool isMutable = argDecl.IsValueMutable;
 
     if (argDecl.ResolvedType) {
       typeObj = argDecl.ResolvedType;
     } else {
-      typeObj = Type::fromString(argDecl.Type);
-
-      // Apply Function Arg overrides (e.g. "x: i32#")
-      typeObj = typeObj->withAttributes(isMutable, isNullable);
-
-      // [Fix] Apply AST-level Morphology wrappers
-      if (argDecl.IsReference) {
-        typeObj = std::make_shared<ReferenceType>(typeObj);
-      } else if (argDecl.IsUnique) {
-        typeObj = std::make_shared<UniquePointerType>(typeObj);
-      } else if (argDecl.IsShared) {
-        typeObj = std::make_shared<SharedPointerType>(typeObj);
-      } else if (argDecl.IsRawPointer) {
-        typeObj = std::make_shared<RawPointerType>(typeObj);
-      }
+      typeObj = argDecl.TypeSyntax ? Type::fromSyntax(argDecl.TypeSyntax)
+                                   : Type::fromString(argDecl.Type);
     }
 
     // 3. Get LLVM Type from Object
@@ -770,7 +738,11 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
 
   std::shared_ptr<Type> sourceRet = func->ResolvedReturnType
                                         ? func->ResolvedReturnType
-                                        : Type::fromString(func->ReturnType);
+                                        : func->ReturnTypeSyntax
+                                              ? Type::fromSyntax(
+                                                    func->ReturnTypeSyntax)
+                                              : Type::fromString(
+                                                    func->ReturnType);
   const bool returnsVoid = sourceRet && sourceRet->getSoulName() == "void";
 
   llvm::BasicBlock *runDoneBB =
@@ -2039,14 +2011,21 @@ void CodeGen::genGlobal(const Stmt *stmt) {
 void CodeGen::genExtern(const ExternDecl *ext) {
   std::vector<llvm::Type *> argTypes;
   for (const auto &arg : ext->Args) {
-    llvm::Type *t = resolveType(arg.Type, arg.IsRawPointer || arg.IsReference);
+    auto type = arg.ResolvedType
+                    ? arg.ResolvedType
+                    : arg.TypeSyntax ? Type::fromSyntax(arg.TypeSyntax)
+                                     : Type::fromString(arg.Type);
+    llvm::Type *t = getLLVMType(type);
     if (!t) {
       error(ext, DiagID::ERR_CODEGEN_UNRESOLVED_ARGUMENT_TYPE_IN_EXTERN_FUN, arg.Type, ext->Name);
       return;
     }
     argTypes.push_back(t);
   }
-  llvm::Type *retType = resolveType(ext->ReturnType, false);
+  auto returnType = ext->ReturnTypeSyntax
+                        ? Type::fromSyntax(ext->ReturnTypeSyntax)
+                        : Type::fromString(ext->ReturnType);
+  llvm::Type *retType = getLLVMType(returnType);
   if (!retType) {
     error(ext, DiagID::ERR_CODEGEN_UNRESOLVED_RETURN_TYPE_IN_EXTERN_FUNCT, ext->ReturnType, ext->Name);
     return;

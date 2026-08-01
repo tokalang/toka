@@ -1311,7 +1311,11 @@ void Sema::checkStmt(Stmt *S) {
       m_ControlFlowStack.push_back({Var->Name, "void", nullptr, false, true});
       std::shared_ptr<toka::Type> declTargetTy = nullptr;
       if (!Var->TypeName.empty() && Var->TypeName != "auto") {
-        declTargetTy = resolveType(toka::Type::fromString(Var->TypeName), false);
+        declTargetTy = resolveType(
+            Var->DeclaredTypeSyntax
+                ? toka::Type::fromSyntax(Var->DeclaredTypeSyntax)
+                : toka::Type::fromString(Var->TypeName),
+            false);
         if (declTargetTy && (declTargetTy->typeKind == toka::Type::Function || declTargetTy->typeKind == toka::Type::DynFn)) {
            if (auto clo = dynamic_cast<ClosureExpr*>(Var->Init.get())) {
               std::vector<std::shared_ptr<Type>> paramTypes;
@@ -1815,19 +1819,25 @@ void Sema::checkStmt(Stmt *S) {
       }
     }
 
-    std::string fullType =
-        Sema::synthesizePhysicalType(LocalPermission, baseType, false);
-
     if (inferredType && morph.empty() && InitTypeObj &&
         InitTypeObj->isShape()) {
       Info.TypeObj = resolveType(InitTypeObj->withAttributes(
           LocalPermission.SoulWritable, LocalPermission.SoulNullable), false);
       Info.TypeObj->IsCede = false;
     } else {
-      Info.TypeObj = resolveType(toka::Type::fromString(fullType), false);
+      auto directType = resolveType(
+          Sema::synthesizePhysicalTypeObject(
+              LocalPermission,
+              inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax,
+              baseType, false),
+          false);
+      Info.TypeObj = directType;
     }
     if (!Info.TypeObj) {
-      Info.TypeObj = toka::Type::fromString(fullType);
+      Info.TypeObj = Sema::synthesizePhysicalTypeObject(
+          LocalPermission,
+          inferredType ? TypeSyntaxPtr{} : Var->DeclaredTypeSyntax, baseType,
+          false);
     }
 
     // Only a complete contextual todo may seed a conditional binding.  An

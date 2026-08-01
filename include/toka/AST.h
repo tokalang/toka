@@ -201,11 +201,13 @@ class SizeOfExpr : public Expr {
 public:
   std::string TypeStr;
   TypeSyntaxPtr TypeSyntax;
+  std::shared_ptr<Type> OperandType;
   SizeOfExpr(const std::string &ty) : TypeStr(ty) {}
   std::string toString() const override { return "sizeof(" + TypeStr + ")"; }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<SizeOfExpr>(TypeStr);
     n->TypeSyntax = TypeSyntax;
+    n->OperandType = OperandType;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -1034,6 +1036,7 @@ class ComptimeReflectExpr : public Expr {
 public:
   std::string ReflectedTypeStr;
   TypeSyntaxPtr TypeSyntax;
+  std::shared_ptr<Type> ReflectedType;
   
   ComptimeReflectExpr(std::string ty) : ReflectedTypeStr(ty) {}
   
@@ -1041,6 +1044,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<ComptimeReflectExpr>(ReflectedTypeStr);
     n->TypeSyntax = TypeSyntax;
+    n->ReflectedType = ReflectedType;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

@@ -271,6 +271,37 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
         return cached->withAttributes(type->IsWritable, type->IsNullable, type->IsBlocked);
       }
 
+      if (shape->SourceSyntax &&
+          shape->SourceSyntax->NodeKind == TypeSyntax::Kind::AnonymousRecord) {
+        std::vector<ShapeMember> members;
+        members.reserve(shape->SourceSyntax->Fields.size());
+        for (const auto &field : shape->SourceSyntax->Fields) {
+          ShapeMember member;
+          member.Loc = field.Begin;
+          member.Name = field.Name;
+          member.TypeSyntax = field.Type;
+          member.Type = field.Type ? field.Type->toCanonicalString() : "unknown";
+          member.ResolvedType = resolveType(toka::Type::fromSyntax(field.Type),
+                                            force);
+          members.push_back(std::move(member));
+        }
+
+        std::string UniqueName =
+            "__Toka_Anon_Rec_" + std::to_string(AnonRecordCounter++);
+        auto SyntheticShape = std::make_unique<ShapeDecl>(
+            false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct,
+            std::move(members));
+        ShapeMap[UniqueName] = SyntheticShape.get();
+        SyntheticShapes.push_back(std::move(SyntheticShape));
+
+        auto resolvedShapeType = std::make_shared<ShapeType>(UniqueName);
+        resolvedShapeType->resolve(ShapeMap[UniqueName]);
+        ParenthesizedRecordTypes[nameStr] = resolvedShapeType;
+        return resolvedShapeType->withAttributes(type->IsWritable,
+                                                 type->IsNullable,
+                                                 type->IsBlocked);
+      }
+
       std::string inner = nameStr.substr(1, nameStr.size() - 2);
       std::vector<ShapeMember> members;
       int balance = 0;
@@ -705,16 +736,15 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       if (m.ResolvedType)
         return;
 
-      std::string fullTypeStr = Sema::synthesizePhysicalType(m);
-
-      // [NEW] Structural Substitution
-      auto memberTypeObj = toka::Type::fromString(fullTypeStr);
+      // [NEW] Structural Substitution.  The declaration's TypeSyntax is
+      // lowered directly; generic substitution then works on semantic Type
+      // rather than reparsing a synthesized spelling.
+      auto memberTypeObj = Sema::synthesizePhysicalTypeObject(m);
       auto subObj = memberTypeObj->substitute(substMap);
       std::string newStr = subObj->toString();
-      fullTypeStr = newStr;
-      
+
       // Update m.Type to ensure downstream logic (e.g. CodeGen) perceives the substituted template type
-      m.Type = fullTypeStr;
+      m.Type = newStr;
 
       // Reparse the substituted spelling before resolving it.  `subObj` can
       // still carry a symbolic array extent from the template (for example
@@ -722,7 +752,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       // concrete extent.  Resolve the resulting Type object rather than
       // retaining only a string so imported shapes keep their declaration
       // identity even when modules export the same short name.
-      m.ResolvedType = resolveType(toka::Type::fromString(fullTypeStr));
+      m.ResolvedType = resolveType(subObj);
     };
 
     // [NEW] Handle Nested Substitution for SubMembers (Variants)
@@ -926,14 +956,24 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
           bool ok = true;
           for (size_t i = 0; i < paramTypes.size(); ++i) {
             auto expectedArg = paramTypes[i];
-            auto actualArg = resolveType(toka::Type::fromString(invokeFn->Args[i + 1].Type), false);
+            auto actualArg = resolveType(
+                invokeFn->Args[i + 1].ResolvedType
+                    ? invokeFn->Args[i + 1].ResolvedType
+                    : synthesizePhysicalTypeObject(invokeFn->Args[i + 1]),
+                false);
             if (!isTypeCompatible(expectedArg, actualArg)) {
               ok = false;
               break;
             }
           }
           if (ok) {
-            auto sRet = resolveType(invokeFn->ResolvedReturnType ? invokeFn->ResolvedReturnType : toka::Type::fromString(invokeFn->ReturnType), false);
+            auto sRet = resolveType(
+                invokeFn->ResolvedReturnType
+                    ? invokeFn->ResolvedReturnType
+                    : invokeFn->ReturnTypeSyntax
+                          ? toka::Type::fromSyntax(invokeFn->ReturnTypeSyntax)
+                          : toka::Type::fromString(invokeFn->ReturnType),
+                false);
             if (isTypeCompatible(returnType, sRet)) {
               return true;
             }

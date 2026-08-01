@@ -1,10 +1,10 @@
 # RFC: Structured `TypeSyntax` AST
 
-**Status:** Implemented (P1).
+**Status:** Implemented (P1 + P2b).
 
-**Scope:** Parser, source AST, Sema source substitutions, and TKI export.
-CodeGen continues to consume the established semantic `Type` / canonical-text
-boundary; lowering that boundary is a separate P2 project.
+**Scope:** Parser, source AST, Sema source substitutions, direct lowering to
+semantic `Type`, and CodeGen consumption of resolved types. TKI keeps its
+established canonical-text interface.
 
 ## 1. Decision
 
@@ -71,15 +71,40 @@ and prevents diagnostic cascades.
 Sema substitutes source-derived types structurally. If a substitution result
 already originates from the legacy semantic `Type` layer, it is represented as
 a generated named leaf; the source syntax around it is still traversed
-structurally. At the existing semantic and CodeGen boundary, canonical text is
-consumed unchanged.
+structurally.
 
-## 5. Non-goals and P2 marker
+P2b adds `Type::fromSyntax()`: source `TypeSyntax` is recursively lowered to
+semantic `Type` without reparsing its canonical text. Function/extern
+signatures, shape members, local annotations, casts, `sizeof`, allocation,
+and call checking consume that direct result. Binding permissions stay on the
+declaration and are composed with the lowered soul type by
+`synthesizePhysicalTypeObject`; no type spelling is rebuilt merely to recover
+pointer or payload morphology.
+
+Anonymous record syntax is retained on its semantic carrier until Sema creates
+the synthetic record declaration, so its fields are lowered from their
+individual `TypeSyntax` nodes rather than split from parenthesised text.
+`sizeof` and compile-time reflection retain resolved operand types for
+CodeGen. Function, member, and extern CodeGen paths consume those resolved
+objects, with direct syntax lowering only for intentionally synthetic nodes
+that bypass Sema.
+
+Canonical text remains the public `.tki` and diagnostic cache; this change
+does not revise its spelling or ABI.
+
+## 5. Non-goals and remaining bridge
 
 This RFC adds no tuple semantics, multi-facet `dyn`, associated-type bindings,
 or new morphology syntax. It does not change nominal typing, permissions, ABI,
 or `.tki` syntax.
 
-P2 may replace the remaining semantic `Type::fromString()` / CodeGen text
-boundary with structured lowering. It must retain the canonical text contract
-documented here until a separately approved interface-format change.
+This project does not eliminate every `Type::fromString()` call. It remains
+the compatibility bridge for deliberately generated semantic text (notably
+the old generic-template substitution cache), internal compiler-synthesised
+types, and legacy AST nodes that have no `TypeSyntax`. Parser-produced source
+types do not take that route.
+
+A later, independent P3 may carry semantic `Type` through generic-template
+substitution, aliases, and associated-projection resolution, removing the
+generated-text bridge. It must retain the canonical `.tki` contract documented
+here until a separately approved interface-format change.

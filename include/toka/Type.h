@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
+#include "toka/TypeSyntax.h"
 #include <iostream>
 #include <memory>
 #include <string>
@@ -124,6 +125,11 @@ public:
 
   // Static Factory for String Parsing (The Bridge)
   static std::shared_ptr<Type> fromString(const std::string &typeStr);
+
+  // Lowers already-parsed source type syntax without reparsing its canonical
+  // spelling.  Name lookup, aliases, and generic instantiation remain Sema's
+  // responsibility; this only constructs the semantic type shape.
+  static std::shared_ptr<Type> fromSyntax(const TypeSyntaxPtr &syntax);
 
   // Helper: Strip morphology characters (*, ^, &, ~, #, ?, !) to get the "Soul"
   // name
@@ -344,6 +350,10 @@ public:
   std::string Name;
   std::vector<std::shared_ptr<Type>> GenericArgs; // [NEW] Generic Arguments
   std::string VariantSuffix; // For ::VariantName
+  // Retains structural source information for semantic forms which share the
+  // legacy ShapeType carrier (anonymous records and projections).  It is not
+  // part of type identity or exported spelling.
+  TypeSyntaxPtr SourceSyntax;
   ShapeDecl *Decl = nullptr;
   bool IsSync = false; // [NEW] Track atomic reference status based on definition
   ShapeType(const std::string &name,

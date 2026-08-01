@@ -18,5 +18,6 @@ fn apply_syntax_box(value: SyntaxBox,
 
 fn main() -> i32 {
     auto value = SyntaxBox(value = 7)
-    return apply_syntax_box(value, { x => x }, [1, 2, 3, 4])
+    if apply_syntax_box(value, { x => x }, [1, 2, 3, 4]) != 7 { return 1 }
+    return 0
 }

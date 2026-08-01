@@ -285,8 +285,7 @@ void Sema::checkUnsafePublicFunctionBoundary(FunctionDecl *Fn) {
   for (auto &Arg : Fn->Args) {
     std::shared_ptr<toka::Type> type = Arg.ResolvedType;
     if (!type) {
-      type = toka::Type::fromString(
-          resolveType(Sema::synthesizePhysicalType(Arg, false)));
+      type = resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
     }
     if (isUnsafeType(type)) {
       DiagnosticEngine::report(Fn->Loc, DiagID::ERR_EXPOSED_UNSAFE_TYPE,
@@ -298,7 +297,9 @@ void Sema::checkUnsafePublicFunctionBoundary(FunctionDecl *Fn) {
   if (Fn->ReturnType != "void") {
     std::shared_ptr<toka::Type> type = Fn->ResolvedReturnType;
     if (!type) {
-      type = toka::Type::fromString(resolveType(Fn->ReturnType));
+      type = resolveType(Fn->ReturnTypeSyntax
+                             ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax)
+                             : toka::Type::fromString(Fn->ReturnType));
     }
     if (isUnsafeType(type)) {
       DiagnosticEngine::report(Fn->Loc, DiagID::ERR_EXPOSED_UNSAFE_RET,
@@ -324,8 +325,7 @@ void Sema::checkUnsafePublicShapeBoundary(ShapeDecl *Shape) {
   auto checkMember = [&](ShapeMember &member) {
     std::shared_ptr<toka::Type> type = member.ResolvedType;
     if (!type) {
-      type = toka::Type::fromString(
-          resolveType(Sema::synthesizePhysicalType(member)));
+      type = resolveType(Sema::synthesizePhysicalTypeObject(member));
     }
     if (isUnsafeType(type)) {
       DiagnosticEngine::report(Shape->Loc,
@@ -2213,10 +2213,14 @@ void Sema::declareGlobals(Module &M) {
   // 2. Register Externs
   for (auto &Ext : M.Externs) {
     DeclarationLexicalScopes[Ext.get()] = &ms;
-    for (const auto &Arg : Ext->Args) {
+    for (auto &Arg : Ext->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("extern argument", Arg.Name, Arg.Type,
                                   Arg.Permission, Ext->Loc);
+      if (!Arg.ResolvedType) {
+        Arg.ResolvedType =
+            resolveType(Sema::synthesizePhysicalTypeObject(Arg));
+      }
     }
     ms.Externs[Ext->Name] = Ext.get();
     ExternMap[Ext->Name] = Ext.get();
@@ -3520,8 +3524,9 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (Fn->ReturnType != "void") {
     validateTypeVisibilityInType(Fn->ReturnType, getLoc(Fn));
     validateDynTraitObjectSafetyInType(Fn->ReturnType, getLoc(Fn));
-    Fn->ResolvedReturnType =
-        resolveType(toka::Type::fromString(Fn->ReturnType));
+    Fn->ResolvedReturnType = resolveType(
+        Fn->ReturnTypeSyntax ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax)
+                             : toka::Type::fromString(Fn->ReturnType));
   } else {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
   }
@@ -3560,19 +3565,12 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
     SymbolInfo Info;
     // Preserve full generic-substituted Arg.Type values like "&i32".
-    std::string fullType = Sema::synthesizePhysicalType(Arg, false);
-
     // [Fix] Preserve pre-resolved Types (e.g. Synthetic Closures)
     if (Arg.ResolvedType) {
       Info.TypeObj = Arg.ResolvedType;
     } else {
-      auto parsedType = toka::Type::fromString(fullType);
-      if (parsedType && parsedType->typeKind == toka::Type::Shape) {
-        Info.TypeObj = resolveType(parsedType);
-      } else {
-        std::string resolvedStr = resolveType(fullType);
-        Info.TypeObj = toka::Type::fromString(resolvedStr);
-      }
+      Info.TypeObj =
+          resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
 
       // Assign to AST Node for CodeGen
       Arg.ResolvedType = Info.TypeObj;
@@ -3847,10 +3845,9 @@ void Sema::analyzeShapes(Module &M) {
         if (m.ResolvedType)
           return;
 
-        std::string fullTypeStr = Sema::synthesizePhysicalType(m);
+        const std::string fullTypeStr = Sema::synthesizePhysicalType(m);
         validateTypeVisibilityInType(fullTypeStr, getLoc(S.get()));
-        std::string resolvedName = resolveType(fullTypeStr);
-        m.ResolvedType = toka::Type::fromString(resolvedName);
+        m.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(m));
 
         std::shared_ptr<toka::Type> inner = m.ResolvedType;
         while (inner->isPointer() || inner->isArray()) {

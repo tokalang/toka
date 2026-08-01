@@ -733,7 +733,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     size_t fixedCount = std::min(provided, params);
     for (size_t i = 0; i < fixedCount; ++i) {
       auto expectedType =
-          toka::Type::fromString(Sema::synthesizePhysicalType(Candidate->Args[i]));
+          resolveType(Sema::synthesizePhysicalTypeObject(Candidate->Args[i]));
       auto argType = checkExpr(Call->Args[i].get());
       if (!expectedType || !argType || expectedType->isUnknown() ||
           argType->isUnknown()) {
@@ -998,7 +998,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           } else {
              for (size_t i = 0; i < Call->Args.size(); ++i) {
                 Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
-                auto expectedTy = toka::Type::fromString(invokeFn->Args[i + 1].Type);
+                auto expectedTy = invokeFn->Args[i + 1].ResolvedType
+                                      ? invokeFn->Args[i + 1].ResolvedType
+                                      : resolveType(
+                                            Sema::synthesizePhysicalTypeObject(
+                                                invokeFn->Args[i + 1]));
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
                 const auto &param = invokeFn->Args[i + 1];
                 checkCedeArgument(Call->Args[i].get(), param, argTy,
@@ -1448,17 +1452,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   if (Fn) {
     Call->ResolvedFn = Fn;
     for (auto &arg : Fn->Args) {
-      if (arg.ResolvedType &&
-          arg.ResolvedType->typeKind == toka::Type::Shape) {
-        ParamTypes.push_back(arg.ResolvedType);
-      } else {
-        ParamTypes.push_back(
-            toka::Type::fromString(Sema::synthesizePhysicalType(arg)));
-      }
+      // A resolved Shape carries declaration identity. Other parameter kinds
+      // are rebuilt from syntax plus binding permissions so generic pointer
+      // parameters retain their established handle ABI.
+      ParamTypes.push_back(arg.ResolvedType &&
+                                  arg.ResolvedType->typeKind == toka::Type::Shape
+                              ? arg.ResolvedType
+                              : resolveType(
+                                    Sema::synthesizePhysicalTypeObject(arg)));
     }
     ReturnType = Fn->ResolvedReturnType
                      ? Fn->ResolvedReturnType
-                     : toka::Type::fromString(Fn->ReturnType);
+                     : resolveType(Fn->ReturnTypeSyntax
+                                       ? toka::Type::fromSyntax(
+                                             Fn->ReturnTypeSyntax)
+                                       : toka::Type::fromString(
+                                             Fn->ReturnType));
     IsVariadic = Fn->IsVariadic;
 
     // [Effect] Concurrency Check for Function Call
@@ -1479,9 +1488,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     Call->ResolvedExtern = Ext;
     for (auto &arg : Ext->Args) {
       ParamTypes.push_back(
-          toka::Type::fromString(Sema::synthesizePhysicalType(arg)));
+          resolveType(Sema::synthesizePhysicalTypeObject(arg)));
     }
-    ReturnType = toka::Type::fromString(Ext->ReturnType);
+    ReturnType = resolveType(Ext->ReturnTypeSyntax
+                                 ? toka::Type::fromSyntax(Ext->ReturnTypeSyntax)
+                                 : toka::Type::fromString(Ext->ReturnType));
     IsVariadic = Ext->IsVariadic;
 
     // [Effect] Concurrency Check for Extern Call

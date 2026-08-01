@@ -14,6 +14,7 @@
 #include "toka/Type.h"
 #include "toka/AST.h"
 #include "toka/Sema.h"
+#include <algorithm>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -645,7 +646,20 @@ std::shared_ptr<Type> ArrayType::substitute(const std::map<std::string, std::sha
   auto at = std::dynamic_pointer_cast<ArrayType>(withAttributes(IsWritable, IsNullable, IsBlocked));
   if (ElementType) at->ElementType = ElementType->substitute(substMap);
   if (!SymbolicSize.empty() && substMap.count(SymbolicSize)) {
-    at->SymbolicSize = substMap.at(SymbolicSize)->toString();
+    const std::string replacement = substMap.at(SymbolicSize)->toString();
+    const bool numeric = !replacement.empty() &&
+                         std::all_of(replacement.begin(), replacement.end(),
+                                     [](char c) { return c >= '0' && c <= '9'; });
+    if (numeric) {
+      try {
+        at->Size = std::stoull(replacement);
+        at->SymbolicSize.clear();
+      } catch (...) {
+        at->SymbolicSize = replacement;
+      }
+    } else {
+      at->SymbolicSize = replacement;
+    }
   }
   return at;
 }
@@ -750,6 +764,254 @@ static std::string trim(const std::string &str) {
     return str;
   size_t last = str.find_last_not_of(' ');
   return str.substr(first, (last - first + 1));
+}
+
+namespace {
+
+bool isPrimitiveTypeName(const std::string &name) {
+  return name == "i32" || name == "i64" || name == "u32" ||
+         name == "u64" || name == "f32" || name == "f64" ||
+         name == "bool" || name == "char" || name == "i8" ||
+         name == "u8" || name == "i16" || name == "u16" ||
+         name == "usize" || name == "isize" || name == "null" ||
+         name == "none" || name == "Addr" || name == "OAddr";
+}
+
+std::shared_ptr<Type> lowerTypeArgument(const TypeArgumentSyntax &argument) {
+  if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type)
+    return Type::fromSyntax(argument.Type);
+
+  // Const arguments have a distinct syntax category.  The existing semantic
+  // Type representation deliberately carries them as symbolic shape names,
+  // which keeps generic substitution and TKI spelling stable without making
+  // a constant look like a source type at the parser boundary.
+  return std::make_shared<ShapeType>(argument.ConstantText);
+}
+
+std::shared_ptr<Type> lowerNamedType(const std::string &name) {
+  if (name == "void")
+    return std::make_shared<VoidType>();
+  if (name == "unknown")
+    return std::make_shared<UnresolvedType>(name);
+  if (isPrimitiveTypeName(name))
+    return std::make_shared<PrimitiveType>(name);
+  return std::make_shared<ShapeType>(name);
+}
+
+std::shared_ptr<Type>
+replacePointerPointee(const std::shared_ptr<Type> &pointer,
+                      const std::shared_ptr<Type> &pointee) {
+  auto old = std::dynamic_pointer_cast<PointerType>(pointer);
+  if (!old)
+    return pointer;
+
+  std::shared_ptr<PointerType> result;
+  switch (old->typeKind) {
+  case Type::RawPtr:
+    result = std::make_shared<RawPointerType>(pointee);
+    break;
+  case Type::UniquePtr:
+    result = std::make_shared<UniquePointerType>(pointee);
+    break;
+  case Type::SharedPtr:
+    result = std::make_shared<SharedPointerType>(pointee);
+    break;
+  case Type::Reference:
+    result = std::make_shared<ReferenceType>(pointee);
+    break;
+  default:
+    return pointer;
+  }
+  result->IsWritable = old->IsWritable;
+  result->IsNullable = old->IsNullable;
+  result->IsBlocked = old->IsBlocked;
+  result->IsCede = old->IsCede;
+  return result;
+}
+
+bool isGeneratedCanonicalTypeLeaf(const std::string &name) {
+  // TypeSyntax::named() is also used by the pre-existing generic-template
+  // substitution cache.  That cache may hold a whole *generated semantic*
+  // spelling (for example "&string"), whereas parser-produced Named nodes
+  // contain identifiers only.  Keep this narrow compatibility bridge until
+  // template substitution carries semantic Type directly.
+  return name.rfind("nul ", 0) == 0 || name.rfind("cede ", 0) == 0 ||
+         name.find_first_of("*^~&<[(") != std::string::npos;
+}
+
+} // namespace
+
+std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
+  if (!syntax)
+    return std::make_shared<VoidType>();
+
+  switch (syntax->NodeKind) {
+  case TypeSyntax::Kind::Invalid:
+    return std::make_shared<UnresolvedType>(syntax->Text);
+
+  case TypeSyntax::Kind::Named:
+    if (isGeneratedCanonicalTypeLeaf(syntax->Text))
+      return fromString(syntax->Text);
+    return lowerNamedType(syntax->Text);
+
+  case TypeSyntax::Kind::GenericApplication: {
+    std::vector<std::shared_ptr<Type>> arguments;
+    arguments.reserve(syntax->Arguments.size());
+    for (const auto &argument : syntax->Arguments)
+      arguments.push_back(lowerTypeArgument(argument));
+
+    const std::string name = syntax->Subject
+                                 ? syntax->Subject->toCanonicalString()
+                                 : std::string();
+    if (name == "Uninit" && arguments.size() == 1)
+      return std::make_shared<UninitType>(arguments.front());
+    return std::make_shared<ShapeType>(name, std::move(arguments),
+                                       syntax->PathSuffix);
+  }
+
+  case TypeSyntax::Kind::Array: {
+    auto element = fromSyntax(syntax->Subject);
+    const std::string extent = syntax->ExtentArgument.toCanonicalString();
+    uint64_t size = 0;
+    bool numeric = !extent.empty();
+    for (char c : extent)
+      numeric = numeric && c >= '0' && c <= '9';
+    if (numeric) {
+      try {
+        size = std::stoull(extent);
+      } catch (...) {
+        numeric = false;
+      }
+    }
+    return std::make_shared<ArrayType>(element, size,
+                                       numeric ? std::string() : extent);
+  }
+
+  case TypeSyntax::Kind::Slice:
+    return std::make_shared<SliceType>(fromSyntax(syntax->Subject));
+
+  case TypeSyntax::Kind::Tuple:
+  case TypeSyntax::Kind::AnonymousRecord:
+    // These source forms do not have separate legacy semantic Type classes.
+    // Preserve their canonical semantic name; Sema owns their declaration or
+    // projection resolution.  Crucially, no source text is reparsed here.
+    {
+      auto shape = std::make_shared<ShapeType>(syntax->toCanonicalString());
+      shape->SourceSyntax = syntax;
+      return shape;
+    }
+
+  case TypeSyntax::Kind::AssociatedProjection: {
+    auto shape = std::make_shared<ShapeType>(syntax->toCanonicalString());
+    shape->SourceSyntax = syntax;
+    return shape;
+  }
+
+  case TypeSyntax::Kind::DynTrait:
+    return std::make_shared<ShapeType>("dyn @" + syntax->Text);
+
+  case TypeSyntax::Kind::Function: {
+    std::vector<std::shared_ptr<Type>> parameters;
+    parameters.reserve(syntax->Elements.size());
+    for (const auto &parameter : syntax->Elements)
+      parameters.push_back(fromSyntax(parameter));
+    auto result = syntax->HasExplicitResult ? fromSyntax(syntax->Result)
+                                            : std::make_shared<VoidType>();
+    const bool isDyn = syntax->Text.rfind("dyn fn", 0) == 0;
+    const bool mutableReceiver = syntax->Text.find("fn#") != std::string::npos;
+    const bool consumingReceiver = syntax->Text.rfind("cede ", 0) == 0;
+    if (isDyn) {
+      auto function = std::make_shared<DynFnType>(std::move(parameters), result);
+      function->ReceiverMode = consumingReceiver
+                                   ? CallableReceiverMode::Consuming
+                                   : mutableReceiver
+                                         ? CallableReceiverMode::Mutable
+                                         : CallableReceiverMode::Shared;
+      function->IsCede = consumingReceiver;
+      return function;
+    }
+    auto function =
+        std::make_shared<FunctionType>(std::move(parameters), result,
+                                       syntax->IsVariadic);
+    function->ReceiverMode = consumingReceiver
+                                 ? CallableReceiverMode::Consuming
+                                 : mutableReceiver
+                                       ? CallableReceiverMode::Mutable
+                                       : CallableReceiverMode::Shared;
+    function->IsCede = consumingReceiver;
+    return function;
+  }
+
+  case TypeSyntax::Kind::Morphology: {
+    auto subject = fromSyntax(syntax->Subject);
+    if (!subject)
+      return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
+
+    // Legacy Type preserves pointer-handle and payload morphology as two
+    // layers: a trailing source suffix after a complete pointer spelling is
+    // a payload attribute.  Parser-built TypeSyntax normally nests this node
+    // below its pointer prefix; honour the same rule for reconstructed trees.
+    const bool postfixPointer = syntax->IsPostfix && subject->isPointer();
+    const auto attributeTarget =
+        postfixPointer ? subject->getPointeeType() : subject;
+    auto applyPostfix = [&](bool writable, bool nullable, bool blocked) {
+      if (postfixPointer) {
+        auto pointee = attributeTarget->withAttributes(writable, nullable,
+                                                       blocked);
+        return replacePointerPointee(subject, pointee);
+      }
+      return subject->withAttributes(writable, nullable, blocked);
+    };
+
+    if (syntax->Text == "#")
+      return applyPostfix(true, attributeTarget->IsNullable,
+                          attributeTarget->IsBlocked);
+    if (syntax->Text == "?")
+      return applyPostfix(attributeTarget->IsWritable, true,
+                          attributeTarget->IsBlocked);
+    if (syntax->Text == "$")
+      return applyPostfix(attributeTarget->IsWritable,
+                          attributeTarget->IsNullable, true);
+    if (syntax->Text == "cede ") {
+      auto result = subject->withAttributes(subject->IsWritable,
+                                            subject->IsNullable,
+                                            subject->IsBlocked);
+      result->IsCede = true;
+      if (auto function = std::dynamic_pointer_cast<FunctionType>(result))
+        function->ReceiverMode = CallableReceiverMode::Consuming;
+      if (auto function = std::dynamic_pointer_cast<DynFnType>(result))
+        function->ReceiverMode = CallableReceiverMode::Consuming;
+      return result;
+    }
+    if (syntax->Text == "nul") {
+      // `nul` is meaningful only for pointer handles.  This matches the
+      // established semantic bridge while retaining the parser's diagnostic
+      // for invalid source use.
+      if (subject->isPointer()) {
+        auto result = subject->withAttributes(subject->IsWritable, true,
+                                              subject->IsBlocked);
+        result->IsCede = subject->IsCede;
+        return result;
+      }
+      return subject;
+    }
+
+    std::shared_ptr<PointerType> pointer;
+    if (syntax->Text == "*")
+      pointer = std::make_shared<RawPointerType>(subject);
+    else if (syntax->Text == "^")
+      pointer = std::make_shared<UniquePointerType>(subject);
+    else if (syntax->Text == "~")
+      pointer = std::make_shared<SharedPointerType>(subject);
+    else if (syntax->Text == "&")
+      pointer = std::make_shared<ReferenceType>(subject);
+    else
+      return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
+    return pointer;
+  }
+  }
+
+  return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
 }
 
 std::shared_ptr<Type> Type::fromString(const std::string &rawType) {

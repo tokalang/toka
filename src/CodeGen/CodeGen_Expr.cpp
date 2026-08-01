@@ -7449,7 +7449,12 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
 }
 
 PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
-  std::string targetTyStr = expr->ReflectedTypeStr;
+  std::string targetTyStr = expr->ReflectedType
+                                ? expr->ReflectedType->toString()
+                                : expr->TypeSyntax
+                                      ? toka::Type::fromSyntax(expr->TypeSyntax)
+                                            ->toString()
+                                      : expr->ReflectedTypeStr;
   std::string targetSoul = toka::Type::stripPrefixes(targetTyStr);
 
   llvm::Type *typeInfoTy = getLLVMType(toka::Type::fromString("TypeInfo"));

@@ -247,7 +247,12 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
   if (auto e = dynamic_cast<const IfExpr *>(expr))
     return genIfExpr(e);
   if (auto e = dynamic_cast<const SizeOfExpr *>(expr)) {
-    llvm::Type *targetTy = getLLVMType(toka::Type::fromString(e->TypeStr));
+    auto operandType = e->OperandType;
+    if (!operandType && e->TypeSyntax)
+      operandType = toka::Type::fromSyntax(e->TypeSyntax);
+    if (!operandType)
+      operandType = toka::Type::fromString(e->TypeStr);
+    llvm::Type *targetTy = getLLVMType(operandType);
     if (!targetTy) {
       error(e, DiagID::ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, e->TypeStr);
       return PhysEntity(llvm::ConstantInt::get(getIntPtrTy(), 0), "usize", getIntPtrTy(), false);

@@ -806,12 +806,90 @@ private:
     return Signature;
   }
 
+  // Source declarations retain TypeSyntax, while binding permissions live on
+  // the declaration name.  Merge those two independent layers directly into
+  // semantic Type rather than rebuilding a source spelling and parsing it
+  // again.  `LegacySoulType` is used only for older synthesized AST nodes
+  // that have no TypeSyntax.
+  static std::shared_ptr<toka::Type>
+  synthesizePhysicalTypeObject(const BindingPermission &Permission,
+                               const TypeSyntaxPtr &Syntax,
+                               const std::string &LegacySoulType,
+                               bool stripSoulPrefixes = true) {
+    TypeSyntaxPtr soulSyntax = Syntax;
+    // Function-value compatibility has historically consumed the soul part
+    // of a type-side morphology spelling (for example `val: ^T`).  Keep that
+    // convention structurally: declaration-side morphology is represented by
+    // BindingPermission, while this legacy source surface remains a soul
+    // annotation at the call boundary.
+    if (stripSoulPrefixes) {
+      while (soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Morphology &&
+             !soulSyntax->IsPostfix &&
+             (soulSyntax->Text == "nul" || soulSyntax->Text == "*" ||
+              soulSyntax->Text == "^" || soulSyntax->Text == "~" ||
+              soulSyntax->Text == "&" || soulSyntax->Text == "#" ||
+              soulSyntax->Text == "?" || soulSyntax->Text == "$")) {
+        soulSyntax = soulSyntax->Subject;
+      }
+    }
+    std::shared_ptr<toka::Type> soul =
+        soulSyntax ? toka::Type::fromSyntax(soulSyntax)
+               : toka::Type::fromString(LegacySoulType);
+    if (!soul)
+      soul = std::make_shared<toka::UnresolvedType>(LegacySoulType);
+
+    // Source suffixes and declaration-side identity attributes compose.  The
+    // latter only add authority; they must not erase a suffix already parsed
+    // into TypeSyntax.
+    soul = soul->withAttributes(
+        soul->IsWritable || Permission.SoulWritable,
+        soul->IsNullable || Permission.SoulNullable,
+        soul->IsBlocked || Permission.SoulBlocked);
+
+    if (Permission.Morphology == BindingMorphology::None)
+      return soul;
+
+    std::shared_ptr<toka::PointerType> physical;
+    switch (Permission.Morphology) {
+    case BindingMorphology::Raw:
+      physical = std::make_shared<toka::RawPointerType>(soul);
+      break;
+    case BindingMorphology::Unique:
+      physical = std::make_shared<toka::UniquePointerType>(soul);
+      break;
+    case BindingMorphology::Shared:
+      physical = std::make_shared<toka::SharedPointerType>(soul);
+      break;
+    case BindingMorphology::Reference:
+      physical = std::make_shared<toka::ReferenceType>(soul);
+      break;
+    case BindingMorphology::None:
+      break;
+    }
+    if (!physical)
+      return soul;
+
+    physical->IsWritable = Permission.IdentityRebindable;
+    physical->IsNullable = Permission.IdentityNullable;
+    physical->IsBlocked = Permission.IdentityBlocked;
+    return physical;
+  }
+
   // Helper for type synthesis from AST nodes with binding/path permissions.
   template <typename T>
   static std::string synthesizePhysicalType(const T &Arg,
                                             bool stripSoulPrefixes = true) {
     return synthesizePhysicalType(Arg.Permission, getTypeName(Arg),
                                   stripSoulPrefixes);
+  }
+
+  template <typename T>
+  static std::shared_ptr<toka::Type>
+  synthesizePhysicalTypeObject(const T &Arg,
+                               bool stripSoulPrefixes = true) {
+    return synthesizePhysicalTypeObject(Arg.Permission, getTypeSyntax(Arg),
+                                        getTypeName(Arg),
+                                        stripSoulPrefixes);
   }
 
   static std::string getPhysicalTypeName(const ShapeMember &Member) {
@@ -822,7 +900,7 @@ private:
   static std::shared_ptr<toka::Type> getPhysicalType(const ShapeMember &Member) {
     if (Member.ResolvedType)
       return Member.ResolvedType;
-    return toka::Type::fromString(synthesizePhysicalType(Member));
+    return synthesizePhysicalTypeObject(Member);
   }
 
   // Pointer Morphology Strictness
@@ -890,6 +968,18 @@ private:
   static std::string getTypeName(const ExternDecl::Arg &A) { return A.Type; }
   static std::string getTypeName(const VariableDecl &V) { return V.TypeName; }
   static std::string getTypeName(const ShapeMember &M) { return M.Type; }
+  static TypeSyntaxPtr getTypeSyntax(const FunctionDecl::Arg &A) {
+    return A.TypeSyntax;
+  }
+  static TypeSyntaxPtr getTypeSyntax(const ExternDecl::Arg &A) {
+    return A.TypeSyntax;
+  }
+  static TypeSyntaxPtr getTypeSyntax(const VariableDecl &V) {
+    return V.DeclaredTypeSyntax;
+  }
+  static TypeSyntaxPtr getTypeSyntax(const ShapeMember &M) {
+    return M.TypeSyntax;
+  }
 };
 
 } // namespace toka

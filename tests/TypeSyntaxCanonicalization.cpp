@@ -13,11 +13,14 @@
 // limitations under the License.
 
 #include "toka/TypeSyntax.h"
+#include "toka/Type.h"
 #include <iostream>
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
+
+bool g_JsonDiagnostics = false;
 
 namespace {
 
@@ -39,6 +42,18 @@ bool expectCanonical(const std::string &name, const TypeSyntaxPtr &syntax,
   if (actual == expected)
     return true;
   std::cerr << name << ": expected '" << expected << "', got '" << actual
+            << "'\n";
+  return false;
+}
+
+bool expectLowered(const std::string &name, const TypeSyntaxPtr &syntax) {
+  const auto lowered = toka::Type::fromSyntax(syntax);
+  const auto legacy = toka::Type::fromString(syntax->toCanonicalString());
+  const std::string actual = lowered ? lowered->toString() : "<null>";
+  const std::string expected = legacy ? legacy->toString() : "<null>";
+  if (actual == expected)
+    return true;
+  std::cerr << name << ": lowered '" << actual << "', legacy '" << expected
             << "'\n";
   return false;
 }
@@ -85,6 +100,11 @@ int main() {
       TypeSyntax::morphology("cede ", named("Result", 78, 83), loc(78),
                              loc(83)),
       true, false, loc(72), loc(83));
+  const auto consumingFunction = TypeSyntax::morphology(
+      "cede ", TypeSyntax::function("fn", {i32}, named("void", 84, 87),
+                                          false, false, loc(84), loc(87)),
+      loc(84), loc(87));
+  const auto legacyPrefixArray = named("*[0]u8", 88, 94);
   const auto dynTrait = TypeSyntax::dynTrait("Readable<i32>", loc(84), loc(97));
   const auto projection = TypeSyntax::projection(
       generic, "Readable<i32>", "Item", loc(98), loc(118));
@@ -103,6 +123,21 @@ int main() {
   passed &= expectCanonical("invalid recovery",
                             TypeSyntax::invalid("Option<i32", loc(125), loc(134)),
                             "Option<i32");
+
+  passed &= expectLowered("generic direct lowering", generic);
+  passed &= expectLowered("array direct lowering", array);
+  passed &= expectLowered("function direct lowering", function);
+  passed &= expectLowered("consuming function direct lowering",
+                          consumingFunction);
+  passed &= expectLowered("legacy prefix-array bridge", legacyPrefixArray);
+  passed &= expectLowered("morphology direct lowering", postfix);
+  const auto loweredRecord = toka::Type::fromSyntax(record);
+  const auto recordShape = std::dynamic_pointer_cast<toka::ShapeType>(loweredRecord);
+  const bool retainedRecordStructure =
+      recordShape && recordShape->SourceSyntax == record;
+  passed &= retainedRecordStructure;
+  if (!retainedRecordStructure)
+    std::cerr << "anonymous record source structure was not retained\n";
 
   const auto substituted = generic->substitute(
       {{"i32", named("u64", 10, 12)}, {"N_", named("8", 30, 31)}});

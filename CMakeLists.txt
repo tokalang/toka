@@ -139,6 +139,10 @@ endif()
 
 add_subdirectory(src)
 
+if(BUILD_TESTING)
+    target_link_libraries(toka_typesyntax_canonicalization PRIVATE toka_frontend)
+endif()
+
 # Build the native runtime and the user-facing tools into one SDK layout.  The
 # compiler must be built first because the remaining tools are written in Toka.
 find_package(OpenSSL QUIET)

@@ -208,11 +208,11 @@ private:
 
   struct VariableScopeInfo {
     std::string Name;
-    llvm::Value *Alloca;
-    llvm::Type *AllocType; // The type stored at Alloca (Soul or Envelope)
-    bool IsUniquePointer;  // ^Type
-    bool IsShared;         // ~Type
-    bool HasDrop;
+    llvm::Value *Alloca = nullptr;
+    llvm::Type *AllocType = nullptr; // The type stored at Alloca (Soul or Envelope)
+    bool IsUniquePointer = false;    // ^Type
+    bool IsShared = false;           // ~Type
+    bool HasDrop = false;
     std::string DropFunc;
     std::string SoulName; // [New] Correct type name for destructor lookup
     // Fixed arrays need the semantic element type for recursive cleanup; a

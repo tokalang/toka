@@ -288,6 +288,15 @@ public:
     auto syntax = parseType();
     if (syntax && Pos == Tokens.size())
       return syntax;
+    if (isLegacyPrefixArraySpelling()) {
+      // `*[0]u8` is an older compiler-internal cast spelling still used by
+      // the networking runtime.  It was accepted by the former token-text
+      // path even though it is not part of the published `[T; N]` grammar.
+      // Keep its canonical text as an explicit legacy bridge; Type lowering
+      // handles it through the pre-existing semantic representation.
+      return TypeSyntax::named(spelling(0, Tokens.size()), Tokens.front().Loc,
+                               Tokens.back().Loc);
+    }
     const size_t begin = 0;
     return TypeSyntax::invalid(spelling(begin, Tokens.size()), Tokens.front().Loc,
                                Tokens.back().Loc);
@@ -329,6 +338,23 @@ private:
       return true;
     return tok->Kind == TokenType::Identifier && !tok->Text.empty() &&
            tok->Text.back() == '_';
+  }
+
+  bool isLegacyPrefixArraySpelling() const {
+    size_t index = 0;
+    while (index < Tokens.size() &&
+           (Tokens[index].Kind == TokenType::KwNul ||
+            Tokens[index].Kind == TokenType::Star ||
+            Tokens[index].Kind == TokenType::Caret ||
+            Tokens[index].Kind == TokenType::Tilde ||
+            Tokens[index].Kind == TokenType::Ampersand)) {
+      ++index;
+    }
+    return index + 3 < Tokens.size() &&
+           Tokens[index].Kind == TokenType::LBracket &&
+           Tokens[index + 1].Kind == TokenType::Integer &&
+           Tokens[index + 2].Kind == TokenType::RBracket &&
+           isName(&Tokens[index + 3]) && index + 4 == Tokens.size();
   }
 
   std::string spelling(size_t begin, size_t end) const {

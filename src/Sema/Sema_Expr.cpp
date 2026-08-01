@@ -1181,6 +1181,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   }
 
   if (auto *CE = dynamic_cast<ComptimeReflectExpr *>(E)) {
+    CE->ReflectedType = resolveType(
+        CE->TypeSyntax ? toka::Type::fromSyntax(CE->TypeSyntax)
+                       : toka::Type::fromString(CE->ReflectedTypeStr));
+    if (CE->ReflectedType)
+      CE->ReflectedTypeStr = CE->ReflectedType->toString();
     return toka::Type::fromString("TypeInfo");
   }
 
@@ -1842,7 +1847,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return current;
   } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
     validateTypeVisibilityInType(Cast->TargetType, getLoc(Cast));
-    auto targetType = resolveType(toka::Type::fromString(Cast->TargetType));
+    auto targetType = resolveType(
+        Cast->TargetTypeSyntax
+            ? toka::Type::fromSyntax(Cast->TargetTypeSyntax)
+            : toka::Type::fromString(Cast->TargetType));
     validateDynTraitObjectSafetyInType(targetType, getLoc(Cast));
     auto srcType = checkExpr(Cast->Expression.get(), targetType);
 
@@ -3144,7 +3152,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     ce->ResolvedType = innerTy;
     return innerTy;
   } else if (auto *se = dynamic_cast<SizeOfExpr *>(E)) {
-    se->TypeStr = resolveType(se->TypeStr);
+    se->OperandType = resolveType(
+        se->TypeSyntax ? toka::Type::fromSyntax(se->TypeSyntax)
+                       : toka::Type::fromString(se->TypeStr));
+    if (se->OperandType)
+      se->TypeStr = se->OperandType->toString();
     se->ResolvedType = toka::Type::fromString("usize");
     return se->ResolvedType;
   } else if (auto *pe = dynamic_cast<PassExpr *>(E)) {
@@ -3336,7 +3348,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     return toka::Type::fromString("unknown");
   } else if (auto *New = dynamic_cast<NewExpr *>(E)) {
     validateTypeVisibilityInType(New->Type, getLoc(New));
-    std::string resolvedName = resolveType(New->Type);
+    auto resolvedType = resolveType(
+        New->TypeSyntax ? toka::Type::fromSyntax(New->TypeSyntax)
+                        : toka::Type::fromString(New->Type));
+    std::string resolvedName = resolvedType ? resolvedType->toString()
+                                            : New->Type;
 
     // [New] Generic Inference for 'new'
     if (ShapeMap.count(resolvedName)) {
@@ -3349,7 +3365,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               std::dynamic_pointer_cast<toka::ShapeType>(ptrTy->PointeeType);
           if (expShape && (expShape->Name == SD->Name ||
                            expShape->Name.find(SD->Name + "_M") == 0)) {
-            resolvedName = resolveType(expShape->toString());
+            resolvedType = resolveType(expShape);
+            resolvedName = resolvedType ? resolvedType->toString()
+                                        : resolvedName;
           }
         }
       }
@@ -3362,8 +3380,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (resolvedName.find("Uninit<") == 0) {
         // [Safety Pillar 3] Uninit allocation bypasses constructor evaluation
       } else {
-        auto InitTypeObj = checkExpr(New->Initializer.get(),
-                                     toka::Type::fromString(resolvedName));
+        auto InitTypeObj = checkExpr(New->Initializer.get(), resolvedType);
       }
       // Re-propagate the mask from initializer to NewExpr
       // (This will be picked up by checkExpr wrapper and passed to
@@ -3372,9 +3389,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // 'new' usually returns a unique pointer: ^Type# (soul is fully writable)
     m_LastInitMask = ~0ULL;
     if (New->ArraySize) {
-      return toka::Type::fromString("^[" + resolvedName + "]#");
+      auto array = std::make_shared<toka::SliceType>(resolvedType);
+      array = std::dynamic_pointer_cast<toka::SliceType>(
+          array->withAttributes(true, array->IsNullable, array->IsBlocked));
+      return std::make_shared<toka::UniquePointerType>(array);
     }
-    return toka::Type::fromString("^" + resolvedName + "#");
+    auto writable = resolvedType->withAttributes(
+        true, resolvedType->IsNullable, resolvedType->IsBlocked);
+    return std::make_shared<toka::UniquePointerType>(writable);
   } else if (auto *UnsafeE = dynamic_cast<UnsafeExpr *>(E)) {
     bool oldUnsafe = m_InUnsafeContext;
     m_InUnsafeContext = true;
@@ -3390,23 +3412,28 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // Mapping to __toka_alloc
     // Returning raw pointer identity: *Type
     validateTypeVisibilityInType(AllocE->TypeName, getLoc(AllocE));
-    std::string baseType = resolveType(AllocE->TypeName);
+    auto baseTypeObj = resolveType(
+        AllocE->TypeSyntax ? toka::Type::fromSyntax(AllocE->TypeSyntax)
+                           : toka::Type::fromString(AllocE->TypeName));
+    std::string baseType = baseTypeObj ? baseTypeObj->toString()
+                                       : AllocE->TypeName;
     if (AllocE->IsArray) {
       if (AllocE->ArraySize) {
         checkExpr(AllocE->ArraySize.get());
       }
     }
     if (AllocE->Initializer) {
-      checkExpr(AllocE->Initializer.get(), toka::Type::fromString(baseType));
+      checkExpr(AllocE->Initializer.get(), baseTypeObj);
     }
     // [FIX] Update with mangled name for CodeGen, but only if it's NOT an unresolved generic param
     if (baseType.find('\'') == std::string::npos) {
       AllocE->TypeName = baseType;
     }
     if (AllocE->IsArray) {
-      return toka::Type::fromString("*[" + baseType + "]");
+      return std::make_shared<toka::RawPointerType>(
+          std::make_shared<toka::SliceType>(baseTypeObj));
     }
-    return toka::Type::fromString("*" + baseType);
+    return std::make_shared<toka::RawPointerType>(baseTypeObj);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E)) {
     bool oldAllow = m_AllowPermissionSuffix;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects

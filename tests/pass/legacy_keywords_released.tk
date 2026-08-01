@@ -1,5 +1,6 @@
 fn main() -> i32 {
   auto yield = 1
   auto packed = 2
-  return yield + packed
+  if yield + packed != 3 { return 1 }
+  return 0
 }
