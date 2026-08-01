@@ -1,0 +1,24 @@
+// EXPECT_TKI: pub fn inline_view(data: Data) -> &i32 <- data
+// EXPECT_TKI: return <- data.value
+// EXPECT_TKI: return.left <- left.value
+// EXPECT_TKI: return.right <- right.value
+pub shape Data(value: i32)
+
+pub fn inline_view(data: Data) -> &i32 <- data {
+    return &(data.value)
+}
+
+pub fn named_view(data: Data) -> &view: i32
+effects:
+    &view <- data.value
+{
+    return &(data.value)
+}
+
+pub fn split(left: Data, right: Data) -> result: (left: &i32, right: &i32)
+effects:
+    result.left <- left.value
+    result.right <- right.value
+{
+    return (left = &(left.value), right = &(right.value))
+}

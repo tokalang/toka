@@ -188,105 +188,141 @@ bool Parser::looksLikeNamedReturn() const {
          peekAt(look + 1).Kind == TokenType::Colon;
 }
 
-void Parser::appendDependency(std::vector<std::string> &dependencies,
-                              std::string dependency) {
-  if (std::find(dependencies.begin(), dependencies.end(), dependency) ==
-      dependencies.end()) {
-    dependencies.push_back(std::move(dependency));
-  }
-}
-
-std::string Parser::parseDependencyPath(bool allowMemberPath) {
-  match(TokenType::Ampersand);
-  if (!(check(TokenType::Identifier) || check(TokenType::KwSelf) ||
-        check(TokenType::KwUpperSelf))) {
-    error(peek(), DiagID::ERR_PARSER_EXPECTED_DEPENDENCY_IDENTIFIER);
-    return "";
-  }
-
-  std::string dependency = advance().Text;
-  while (allowMemberPath && match(TokenType::Dot)) {
-    if (!(check(TokenType::Identifier) || check(TokenType::Integer))) {
-      error(peek(),
-            DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
-      return "";
-    }
-    dependency += "." + advance().Text;
-  }
-  return dependency;
-}
-
-void Parser::parseDependencyList(std::vector<std::string> &dependencies,
-                                 bool allowMemberPath) {
+std::vector<DependencyPathSyntax>
+Parser::parseReturnDependencySources(bool allowMemberPath) {
+  std::vector<DependencyPathSyntax> sources;
   do {
-    std::string dependency = parseDependencyPath(allowMemberPath);
-    if (dependency.empty())
-      return;
-    appendDependency(dependencies, std::move(dependency));
+    Token begin = peek();
+    const bool isReference = match(TokenType::Ampersand);
+    if (!(check(TokenType::Identifier) || check(TokenType::KwSelf) ||
+          check(TokenType::KwUpperSelf))) {
+      error(peek(), DiagID::ERR_PARSER_EXPECTED_DEPENDENCY_IDENTIFIER);
+      return {};
+    }
+
+    Token root = advance();
+    DependencyPathSyntax source;
+    source.Root = root.Text;
+    source.IsReference = isReference;
+    source.Begin = begin.Loc;
+    source.End = root.Loc;
+    while (allowMemberPath && match(TokenType::Dot)) {
+      if (!(check(TokenType::Identifier) || check(TokenType::Integer))) {
+        error(peek(),
+              DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
+        return {};
+      }
+      Token member = advance();
+      source.Members.push_back(member.Text);
+      source.End = member.Loc;
+    }
+    sources.push_back(std::move(source));
   } while (match(TokenType::Pipe) || match(TokenType::Comma));
+  return sources;
 }
 
-bool Parser::parseEffectsTargetMember(std::string &targetMember) {
-  targetMember.clear();
+bool Parser::parseReturnDependencyTarget(
+    const ReturnContractSyntax &contract, ReturnDependencyTargetSyntax &target) {
+  Token begin = peek();
+  target.Begin = begin.Loc;
+  target.End = begin.Loc;
+  if (match(TokenType::KwReturn)) {
+    target.Kind = ReturnDependencyTargetKind::ReturnValue;
+    target.End = previous().Loc;
+  } else {
+    if (contract.BindingName.empty())
+      return false;
+
+    target.Kind = ReturnDependencyTargetKind::NamedBinding;
+    if (match(TokenType::KwNul))
+      target.BindingPrefix += "nul ";
+    if (match(TokenType::Ampersand))
+      target.BindingPrefix += "&";
+    else if (match(TokenType::Caret))
+      target.BindingPrefix += "^";
+    else if (match(TokenType::Star))
+      target.BindingPrefix += "*";
+    else if (match(TokenType::Tilde))
+      target.BindingPrefix += "~";
+    if (match(TokenType::TokenWrite))
+      target.BindingPrefix += "#";
+    if (!check(TokenType::Identifier) ||
+        peek().Text != contract.BindingName)
+      return false;
+    target.BindingName = advance().Text;
+    target.End = previous().Loc;
+  }
+
   if (!match(TokenType::Dot))
     return true;
 
-  if (check(TokenType::Ampersand) || check(TokenType::Caret) ||
-      check(TokenType::Star) || check(TokenType::Tilde))
-    advance();
-  if (check(TokenType::TokenWrite))
-    advance();
+  if (match(TokenType::Ampersand))
+    target.MemberPrefix += "&";
+  else if (match(TokenType::Caret))
+    target.MemberPrefix += "^";
+  else if (match(TokenType::Star))
+    target.MemberPrefix += "*";
+  else if (match(TokenType::Tilde))
+    target.MemberPrefix += "~";
+  if (match(TokenType::TokenWrite))
+    target.MemberPrefix += "#";
   if (!(check(TokenType::Identifier) || check(TokenType::Integer))) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
     return false;
   }
-  targetMember = advance().Text;
+  target.MemberName = advance().Text;
+  target.End = previous().Loc;
   return true;
 }
 
-bool Parser::parseEffectsTarget(const ReturnContract &contract,
-                                std::string &targetMember) {
-  if (match(TokenType::KwReturn))
-    return parseEffectsTargetMember(targetMember);
-
-  if (contract.BindingName.empty())
+bool Parser::parseReturnDependencyRoute(ReturnContractSyntax &contract,
+                                        ReturnDependencyTargetSyntax target,
+                                        bool allowMemberPath) {
+  if (!match(TokenType::Dependency)) {
+    error(peek(), DiagID::ERR_PARSER_EXPECTED_AFTER_LHS_IN_EFFECTS_BLOCK);
+    return false;
+  }
+  std::vector<DependencyPathSyntax> sources =
+      parseReturnDependencySources(allowMemberPath);
+  if (sources.empty())
     return false;
 
-  match(TokenType::KwNul);
-  if (check(TokenType::Ampersand) || check(TokenType::Caret) ||
-      check(TokenType::Star) || check(TokenType::Tilde))
-    advance();
-  match(TokenType::TokenWrite);
-  if (!check(TokenType::Identifier) ||
-      peek().Text != contract.BindingName)
-    return false;
-  advance();
-  return parseEffectsTargetMember(targetMember);
+  ReturnDependencyRouteSyntax route;
+  route.Target = std::move(target);
+  route.Sources = std::move(sources);
+  route.Begin = route.Target.Begin;
+  route.End = route.Sources.back().End;
+  contract.End = route.End;
+  contract.Routes.push_back(std::move(route));
+  return true;
 }
 
-Parser::ReturnContract Parser::parseReturnContract(bool allowDependencies) {
-  ReturnContract contract;
+ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies) {
+  ReturnContractSyntax contract;
   if (!match(TokenType::Arrow))
     return contract;
 
+  contract.HasArrow = true;
+  contract.Begin = previous().Loc;
+  contract.End = contract.Begin;
   if (match(TokenType::KwAsync))
     contract.Effect = EffectKind::Async;
   else if (match(TokenType::KwWait))
     contract.Effect = EffectKind::Wait;
 
   if (looksLikeNamedReturn()) {
-    bool isPtrNullable = match(TokenType::KwNul);
-    std::string prefix = isPtrNullable ? "nul " : "";
+    if (match(TokenType::KwNul))
+      contract.BindingPrefix += "nul ";
     if (match(TokenType::Ampersand))
-      prefix += "&";
+      contract.BindingPrefix += "&";
     else if (match(TokenType::Star))
-      prefix += "*";
+      contract.BindingPrefix += "*";
     else if (match(TokenType::Caret))
-      prefix += "^";
+      contract.BindingPrefix += "^";
     else if (match(TokenType::Tilde))
-      prefix += "~";
+      contract.BindingPrefix += "~";
     if (match(TokenType::TokenWrite))
-      prefix += "#";
+      contract.BindingPrefix += "#";
 
     Token nameTok =
         consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
@@ -296,12 +332,13 @@ Parser::ReturnContract Parser::parseReturnContract(bool allowDependencies) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
     } else {
       contract.TypeSyntax = parseTypeSyntax();
-      if (!prefix.empty()) {
+      if (!contract.BindingPrefix.empty()) {
         contract.TypeSyntax = TypeSyntax::morphology(
-            prefix, contract.TypeSyntax, contract.TypeSyntax->Begin,
-            contract.TypeSyntax->End);
+            contract.BindingPrefix, contract.TypeSyntax,
+            contract.TypeSyntax->Begin, contract.TypeSyntax->End);
       }
       contract.Type = canonicalType(contract.TypeSyntax);
+      contract.End = contract.TypeSyntax->End;
     }
   } else if (!isTypeStart()) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
@@ -311,17 +348,23 @@ Parser::ReturnContract Parser::parseReturnContract(bool allowDependencies) {
   } else {
     contract.TypeSyntax = parseTypeSyntax();
     contract.Type = canonicalType(contract.TypeSyntax);
+    contract.End = contract.TypeSyntax->End;
   }
 
-  if (match(TokenType::Dependency)) {
+  if (check(TokenType::Dependency)) {
+    Token dependency = peek();
     if (!allowDependencies)
-      error(previous(), DiagID::ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED);
-    parseDependencyList(contract.LifeDependencies, false);
+      error(dependency, DiagID::ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED);
+    ReturnDependencyTargetSyntax target;
+    target.Kind = ReturnDependencyTargetKind::ReturnValue;
+    target.Begin = contract.Begin;
+    target.End = contract.End;
+    parseReturnDependencyRoute(contract, std::move(target), false);
   }
   return contract;
 }
 
-void Parser::parseEffectsBlock(ReturnContract &contract) {
+void Parser::parseReturnContractEffects(ReturnContractSyntax &contract) {
   if (!(check(TokenType::Identifier) && peek().Text == "effects" &&
         checkAt(1, TokenType::Colon))) {
     return;
@@ -330,23 +373,23 @@ void Parser::parseEffectsBlock(ReturnContract &contract) {
   advance();
   advance();
   while (!check(TokenType::LBrace) && !check(TokenType::EndOfFile)) {
-    std::string targetMember;
-    if (!parseEffectsTarget(contract, targetMember)) {
+    ReturnDependencyTargetSyntax target;
+    if (!parseReturnDependencyTarget(contract, target)) {
       if (isEndOfStatement())
         return;
       error(peek(), DiagID::ERR_PARSER_ONLY_RETURN_OR_NAMED_RETURN_LHS_IS_CURR);
       return;
     }
-
-    consume(TokenType::Dependency,
-            DiagID::ERR_PARSER_EXPECTED_AFTER_LHS_IN_EFFECTS_BLOCK);
-    std::vector<std::string> &dependencies =
-        targetMember.empty() ? contract.LifeDependencies
-                             : contract.MemberDependencies[targetMember];
-    parseDependencyList(dependencies, true);
+    if (!parseReturnDependencyRoute(contract, std::move(target), true))
+      return;
   }
 }
 
+/*
+ * Return dependencies are deliberately parsed once into
+ * ReturnDependencyRouteSyntax.  Inline `<-` constructs a return target and
+ * `effects:` supplies a parsed target; both use parseReturnDependencyRoute.
+ */
 std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
   if (match(TokenType::KwUnion)) {
     error(previous(), DiagID::ERR_UNION_DEPRECATED);
@@ -784,9 +827,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   }
   consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
 
-  ReturnContract contract = parseReturnContract(true);
+  ReturnContractSyntax contract = parseReturnContract(true);
   parseWhereConstraints(genericParams);
-  parseEffectsBlock(contract);
+  parseReturnContractEffects(contract);
 
   std::unique_ptr<BlockStmt> body = nullptr;
   if (match(TokenType::Equal)) {
@@ -801,10 +844,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   }
   auto decl = std::make_unique<FunctionDecl>(
       isPub, name.Text, std::move(args), std::move(body), contract.Type,
-      genericParams, std::move(contract.LifeDependencies), contract.Effect);
-  decl->ReturnTypeSyntax = contract.TypeSyntax;
+      genericParams, std::vector<std::string>{}, contract.Effect);
+  decl->setReturnContract(std::move(contract));
   decl->IsVariadic = isVariadic;
-  decl->MemberDependencies = std::move(contract.MemberDependencies);
   decl->setLocation(name, m_CurrentFile);
   return decl;
 }
@@ -890,12 +932,12 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
   }
   consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
 
-  ReturnContract contract = parseReturnContract(false);
+  ReturnContractSyntax contract = parseReturnContract(false);
   expectEndOfStatement();
 
   auto node = std::make_unique<ExternDecl>(name.Text, std::move(args),
                                            contract.Type, contract.Effect);
-  node->ReturnTypeSyntax = contract.TypeSyntax;
+  node->setReturnContract(std::move(contract));
   node->setLocation(name, m_CurrentFile);
   node->IsVariadic = isVariadic;
   return node;

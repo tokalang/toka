@@ -82,15 +82,6 @@ private:
   bool HasError = false;
   bool PanicMode = false;
 
-  struct ReturnContract {
-    std::string Type = "void";
-    TypeSyntaxPtr TypeSyntax;
-    std::string BindingName;
-    EffectKind Effect = EffectKind::None;
-    std::vector<std::string> LifeDependencies;
-    std::map<std::string, std::vector<std::string>> MemberDependencies;
-  };
-
   // Recursive Descent Methods
   std::unique_ptr<FunctionDecl> parseFunctionDecl(bool isPub = false);
   std::unique_ptr<Stmt> parseVariableDecl(bool isPub = false);
@@ -107,16 +98,15 @@ private:
   std::unique_ptr<MatchArm::Pattern> parsePattern();
   std::vector<GenericParam> parseGenericParams();
   bool looksLikeNamedReturn() const;
-  ReturnContract parseReturnContract(bool allowDependencies);
-  void parseEffectsBlock(ReturnContract &contract);
-  void parseDependencyList(std::vector<std::string> &dependencies,
-                           bool allowMemberPath);
-  std::string parseDependencyPath(bool allowMemberPath);
-  bool parseEffectsTarget(const ReturnContract &contract,
-                          std::string &targetMember);
-  bool parseEffectsTargetMember(std::string &targetMember);
-  static void appendDependency(std::vector<std::string> &dependencies,
-                               std::string dependency);
+  ReturnContractSyntax parseReturnContract(bool allowDependencies);
+  void parseReturnContractEffects(ReturnContractSyntax &contract);
+  std::vector<DependencyPathSyntax>
+  parseReturnDependencySources(bool allowMemberPath);
+  bool parseReturnDependencyTarget(const ReturnContractSyntax &contract,
+                                   ReturnDependencyTargetSyntax &target);
+  bool parseReturnDependencyRoute(ReturnContractSyntax &contract,
+                                  ReturnDependencyTargetSyntax target,
+                                  bool allowMemberPath);
   std::string parseTraitBoundName();
   std::vector<std::string> parseTraitFacetTarget();
   void parseWhereConstraints(std::vector<GenericParam> &genericParams,

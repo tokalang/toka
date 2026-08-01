@@ -1,0 +1,23 @@
+import ./lib::{Data, inline_view, named_view, split}
+
+fn main() -> i32 {
+    auto inline_data# = Data(value = 3)
+    auto &inline_ref = inline_view(inline_data)
+    if inline_ref != 3 {
+        return 1
+    }
+
+    auto named_data# = Data(value = 4)
+    auto &named_ref = named_view(named_data)
+    if named_ref != 4 {
+        return 2
+    }
+
+    auto left = Data(value = 5)
+    auto right = Data(value = 6)
+    auto pair = split(left, right)
+    if pair.left != 5 || pair.right != 6 {
+        return 3
+    }
+    return 0
+}

@@ -159,6 +159,7 @@ public:
 
   void visitFunction(FunctionDecl *Fn) {
     sub(Fn->ReturnTypeSyntax, Fn->ReturnType);
+    Fn->syncReturnContractTypeCache();
     for (auto &Arg : Fn->Args) {
       if (MorphicParams.count(Arg.Type)) {
         Arg.IsMorphicExempt = true;

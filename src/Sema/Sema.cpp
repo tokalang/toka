@@ -1999,6 +1999,7 @@ void Sema::applyAssociatedTypeSubstitutions(
     for (const auto &[name, ty] : substitutions) {
       substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                   name, ty);
+      Method->syncReturnContractTypeCache();
       Method->ResolvedReturnType = nullptr;
       for (auto &Arg : Method->Args) {
         substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, name, ty);
@@ -3246,6 +3247,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
   for (auto &Method : Impl->Methods) {
     substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                 "Self", selfTy);
+    Method->syncReturnContractTypeCache();
     Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
       substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, "Self", selfTy);
@@ -3410,6 +3412,7 @@ void Sema::declareImpl(ImplDecl *Impl) {
   for (auto &Method : Impl->Methods) {
     substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                 "Self", selfTy);
+    Method->syncReturnContractTypeCache();
     Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
       substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, "Self", selfTy);
@@ -4487,6 +4490,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
     Arg.ResolvedType = nullptr;
   }
   applyTypeSyntaxSubst(Instance->ReturnTypeSyntax, Instance->ReturnType);
+  Instance->syncReturnContractTypeCache();
 
   // [NEW] Substitute types in Body (Recursive Traversal)
   // We need to traverse Stmt and Expr to find nodes that store type strings:

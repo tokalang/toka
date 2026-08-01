@@ -558,23 +558,34 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     }
     m_OS << ")";
 
-    m_OS << exportReturnType(decl.ReturnTypeSyntax, decl.ReturnType, decl.Effect);
+    m_OS << exportReturnType(decl.ReturnContract.TypeSyntax,
+                             decl.ReturnContract.Type,
+                             decl.ReturnContract.Effect);
 
+    std::vector<std::string> lifeDependencies;
+    std::map<std::string, std::vector<std::string>> memberDependencies;
+    decl.ReturnContract.deriveLegacyDependencies(lifeDependencies,
+                                                 memberDependencies);
+    if (decl.ReturnContract.Routes.empty() &&
+        (!decl.LifeDependencies.empty() || !decl.MemberDependencies.empty())) {
+        lifeDependencies = decl.LifeDependencies;
+        memberDependencies = decl.MemberDependencies;
+    }
     bool hasDottedLifeDependency = false;
-    for (const auto &dep : decl.LifeDependencies) {
+    for (const auto &dep : lifeDependencies) {
         if (dep.find('.') != std::string::npos) {
             hasDottedLifeDependency = true;
             break;
         }
     }
     bool useEffectsBlock =
-        !decl.MemberDependencies.empty() || hasDottedLifeDependency;
+        !memberDependencies.empty() || hasDottedLifeDependency;
 
-    if (!decl.LifeDependencies.empty() && !useEffectsBlock) {
+    if (!lifeDependencies.empty() && !useEffectsBlock) {
         m_OS << " <- ";
-        for (size_t i = 0; i < decl.LifeDependencies.size(); ++i) {
+        for (size_t i = 0; i < lifeDependencies.size(); ++i) {
             if (i > 0) m_OS << " | ";
-            m_OS << decl.LifeDependencies[i];
+            m_OS << lifeDependencies[i];
         }
     }
 
@@ -583,16 +594,16 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         m_Indent++;
         writeln("effects:");
         m_Indent++;
-        if (!decl.LifeDependencies.empty()) {
+        if (!lifeDependencies.empty()) {
             indent();
             m_OS << "return <- ";
-            for (size_t i = 0; i < decl.LifeDependencies.size(); ++i) {
+            for (size_t i = 0; i < lifeDependencies.size(); ++i) {
                 if (i > 0) m_OS << " | ";
-                m_OS << decl.LifeDependencies[i];
+                m_OS << lifeDependencies[i];
             }
             m_OS << "\n";
         }
-        for (const auto &pair : decl.MemberDependencies) {
+        for (const auto &pair : memberDependencies) {
             indent();
             if (pair.first.empty()) {
                 m_OS << "return <- ";
@@ -643,7 +654,9 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
         m_OS << "...";
     }
     m_OS << ")";
-    m_OS << exportReturnType(decl.ReturnTypeSyntax, decl.ReturnType, decl.Effect);
+    m_OS << exportReturnType(decl.ReturnContract.TypeSyntax,
+                             decl.ReturnContract.Type,
+                             decl.ReturnContract.Effect);
     m_OS << "\n";
 }
 

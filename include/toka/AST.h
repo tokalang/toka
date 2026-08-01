@@ -19,6 +19,7 @@
 #include "toka/Type.h" // Added for ResolvedType
 #include "toka/ComptimeValue.h"
 #include "toka/MemorySummary.h"
+#include <algorithm>
 #include <memory>
 #include <set>
 #include <string>
@@ -1601,6 +1602,74 @@ public:
 
 enum class EffectKind { None, Async, Wait };
 
+struct DependencyPathSyntax {
+  std::string Root;
+  std::vector<std::string> Members;
+  bool IsReference = false;
+  SourceLocation Begin;
+  SourceLocation End;
+
+  std::string toCanonicalString() const {
+    std::string result = Root;
+    for (const auto &member : Members)
+      result += "." + member;
+    return result;
+  }
+};
+
+enum class ReturnDependencyTargetKind { ReturnValue, NamedBinding };
+
+struct ReturnDependencyTargetSyntax {
+  ReturnDependencyTargetKind Kind = ReturnDependencyTargetKind::ReturnValue;
+  std::string BindingName;
+  std::string BindingPrefix;
+  std::string MemberName;
+  std::string MemberPrefix;
+  SourceLocation Begin;
+  SourceLocation End;
+};
+
+struct ReturnDependencyRouteSyntax {
+  ReturnDependencyTargetSyntax Target;
+  std::vector<DependencyPathSyntax> Sources;
+  SourceLocation Begin;
+  SourceLocation End;
+};
+
+/// Source-level return contract.  Legacy FunctionDecl fields are derived
+/// caches for Sema and CodeGen while those layers still use string-based
+/// contracts.
+struct ReturnContractSyntax {
+  bool HasArrow = false;
+  std::string Type = "void";
+  TypeSyntaxPtr TypeSyntax;
+  std::string BindingName;
+  std::string BindingPrefix;
+  EffectKind Effect = EffectKind::None;
+  std::vector<ReturnDependencyRouteSyntax> Routes;
+  SourceLocation Begin;
+  SourceLocation End;
+
+  void deriveLegacyDependencies(
+      std::vector<std::string> &lifeDependencies,
+      std::map<std::string, std::vector<std::string>> &memberDependencies) const {
+    lifeDependencies.clear();
+    memberDependencies.clear();
+    auto appendUnique = [](std::vector<std::string> &target,
+                           const std::string &dependency) {
+      if (std::find(target.begin(), target.end(), dependency) == target.end())
+        target.push_back(dependency);
+    };
+    for (const auto &route : Routes) {
+      std::vector<std::string> &target = route.Target.MemberName.empty()
+                                             ? lifeDependencies
+                                             : memberDependencies[route.Target.MemberName];
+      for (const auto &source : route.Sources)
+        appendUnique(target, source.toCanonicalString());
+    }
+  }
+};
+
 class FunctionDecl : public ASTNode {
 public:
   struct Arg {
@@ -1659,6 +1728,7 @@ public:
   std::string ReturnType;
   TypeSyntaxPtr ReturnTypeSyntax;
   EffectKind Effect = EffectKind::None;
+  ReturnContractSyntax ReturnContract;
   std::shared_ptr<toka::Type> ResolvedReturnType;
   std::vector<std::string> LifeDependencies; // [NEW] e.g., <- x|y
   std::map<std::string, std::vector<std::string>> MemberDependencies; // [NEW] e.g. res.&left <- a
@@ -1678,7 +1748,30 @@ public:
                EffectKind effect = EffectKind::None)
       : IsPub(isPub), Name(name), Args(std::move(args)), ReturnType(retType),
         Effect(effect), Body(std::move(body)), GenericParams(std::move(generics)),
-        LifeDependencies(std::move(lifeDeps)) {}
+        LifeDependencies(std::move(lifeDeps)) {
+    ReturnContract.Type = ReturnType;
+    ReturnContract.Effect = Effect;
+    if (!LifeDependencies.empty()) {
+      ReturnDependencyRouteSyntax route;
+      route.Target.Kind = ReturnDependencyTargetKind::ReturnValue;
+      for (const auto &dependency : LifeDependencies)
+        route.Sources.push_back(DependencyPathSyntax{dependency});
+      ReturnContract.Routes.push_back(std::move(route));
+    }
+  }
+  void setReturnContract(ReturnContractSyntax contract) {
+    ReturnContract = std::move(contract);
+    ReturnType = ReturnContract.Type;
+    ReturnTypeSyntax = ReturnContract.TypeSyntax;
+    Effect = ReturnContract.Effect;
+    ReturnContract.deriveLegacyDependencies(LifeDependencies,
+                                            MemberDependencies);
+  }
+  void syncReturnContractTypeCache() {
+    ReturnContract.Type = ReturnType;
+    ReturnContract.TypeSyntax = ReturnTypeSyntax;
+    ReturnContract.Effect = Effect;
+  }
   std::string toString() const override {
     return std::string(IsPub ? "Pub" : "") + "Fn(" + Name + ")";
   }
@@ -1702,7 +1795,7 @@ public:
                                             std::move(clonedBody), ReturnType,
                                             GenericParams, LifeDependencies, Effect);
     n->CodegenName = CodegenName;
-    n->ReturnTypeSyntax = ReturnTypeSyntax;
+    n->setReturnContract(ReturnContract);
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
     n->IsClosureInvoke = IsClosureInvoke;
@@ -1845,11 +1938,26 @@ public:
   std::string ReturnType;
   TypeSyntaxPtr ReturnTypeSyntax;
   EffectKind Effect = EffectKind::None;
+  ReturnContractSyntax ReturnContract;
   bool IsVariadic = false;
 
   ExternDecl(const std::string &name, std::vector<Arg> args,
              std::string retType, EffectKind effect = EffectKind::None)
-      : Name(name), Args(std::move(args)), ReturnType(retType), Effect(effect) {}
+      : Name(name), Args(std::move(args)), ReturnType(retType), Effect(effect) {
+    ReturnContract.Type = ReturnType;
+    ReturnContract.Effect = Effect;
+  }
+  void setReturnContract(ReturnContractSyntax contract) {
+    ReturnContract = std::move(contract);
+    ReturnType = ReturnContract.Type;
+    ReturnTypeSyntax = ReturnContract.TypeSyntax;
+    Effect = ReturnContract.Effect;
+  }
+  void syncReturnContractTypeCache() {
+    ReturnContract.Type = ReturnType;
+    ReturnContract.TypeSyntax = ReturnTypeSyntax;
+    ReturnContract.Effect = Effect;
+  }
   std::string toString() const override { return "Extern(" + Name + ")"; }
   std::unique_ptr<ASTNode> clone() const override {
     std::vector<Arg> clonedArgs;
@@ -1858,7 +1966,7 @@ public:
     }
     auto n =
         std::make_unique<ExternDecl>(Name, std::move(clonedArgs), ReturnType, Effect);
-    n->ReturnTypeSyntax = ReturnTypeSyntax;
+    n->setReturnContract(ReturnContract);
     n->IsVariadic = IsVariadic;
     n->Loc = Loc;
     return n;
