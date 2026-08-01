@@ -1,6 +1,6 @@
 # RFC: Structured `TypeSyntax` AST
 
-**Status:** Implemented (P1 + P2b + P3).
+**Status:** Implemented (P1 + P2b + P3 + P4).
 
 **Scope:** Parser, source AST, Sema source substitutions, direct lowering to
 semantic `Type`, and CodeGen consumption of resolved types. TKI keeps its
@@ -113,13 +113,35 @@ synthesised types, specialised trait-bound text, and legacy AST fields which
 cannot yet carry `TypeSyntax`. They are not used to instantiate parser-derived
 generic type templates, alias targets, or associated projections.
 
-## 6. Non-goals and remaining bridge
+## 6. P4 CodeGen boundary closure
+
+P4 closes CodeGen's remaining direct text-to-`Type` bridges. Type aliases now
+retain their resolved semantic `Type`; function and extern signatures, async
+entrypoint return types, `sizeof` operands, shape layouts, and enum-pattern
+fallbacks lower `ResolvedType` or `TypeSyntax` directly. This prevents a
+parser-derived type from making a `toCanonicalString()` to `fromString()`
+round trip after Sema has already supplied its structure.
+
+`ForExpr` also retains the Sema-derived iterator element `Type`, so CodeGen
+does not reparse the legacy `IterElementType` text cache when it binds the loop
+variable. The text remains for diagnostics, TKI, and tooling.
+
+`CodeGen::lowerTypeSyntax()` is the sole CodeGen compatibility boundary for
+text that has no semantic or syntax object. It is used by source-less legacy
+AST construction and compiler-synthesised symbolic types such as `str` and
+`TypeInfo`. All direct CodeGen calls to `Type::fromString()` therefore pass
+through that named boundary; it is not used for parser-derived declarations
+when a structured carrier is available.
+
+## 7. Non-goals and remaining bridge
 
 This RFC adds no tuple semantics, multi-facet `dyn`, associated-type bindings,
 or new morphology syntax. It does not change nominal typing, permissions, ABI,
 or `.tki` syntax.
 
-This project does not eliminate every `Type::fromString()` call. The remaining
-uses are compatibility boundaries described above; their removal would require
-a separate migration of synthetic compiler types and legacy AST fields. P3
-does not revise the canonical `.tki` contract documented here.
+This project does not eliminate every `Type::fromString()` call. Sema still
+uses it for compiler-synthesised types, source-less compatibility interfaces,
+specialised trait-bound text, and legacy AST fields which cannot yet carry
+`TypeSyntax`. P4 confines the CodeGen equivalent to the named compatibility
+boundary above. Neither project revises the canonical `.tki` contract
+documented here.

@@ -118,9 +118,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   if (func->ResolvedReturnType) {
     retTypeObj = func->ResolvedReturnType;
   } else {
-    retTypeObj = func->ReturnTypeSyntax
-                     ? Type::fromSyntax(func->ReturnTypeSyntax)
-                     : Type::fromString(func->ReturnType);
+    retTypeObj = lowerTypeSyntax(func->ReturnTypeSyntax, func->ReturnType);
   }
   bool isSRet = shouldReturnSRet(retTypeObj) && func->Effect != EffectKind::Async;
 
@@ -134,8 +132,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         // CodeGen normally receives Sema-populated types.  Retain a direct
         // TypeSyntax fallback for synthetic declarations that bypass Sema;
         // do not reparse source spelling here.
-        typeObj = arg.TypeSyntax ? Type::fromSyntax(arg.TypeSyntax)
-                                 : Type::fromString(arg.Type);
+        typeObj = lowerTypeSyntax(arg.TypeSyntax, arg.Type);
       }
 
       // Determine LLVM Type
@@ -255,9 +252,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       if (func->ResolvedReturnType) {
         retTypeObj = func->ResolvedReturnType;
       } else {
-        retTypeObj = func->ReturnTypeSyntax
-                         ? Type::fromSyntax(func->ReturnTypeSyntax)
-                         : Type::fromString(func->ReturnType);
+        retTypeObj = lowerTypeSyntax(func->ReturnTypeSyntax, func->ReturnType);
       }
       llvm::Type *actualRetTy = getLLVMType(retTypeObj);
       m_CurrentCoroRetTy = actualRetTy;
@@ -349,8 +344,7 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     if (argDecl.ResolvedType) {
       typeObj = argDecl.ResolvedType;
     } else {
-      typeObj = argDecl.TypeSyntax ? Type::fromSyntax(argDecl.TypeSyntax)
-                                   : Type::fromString(argDecl.Type);
+      typeObj = lowerTypeSyntax(argDecl.TypeSyntax, argDecl.Type);
     }
 
     // 3. Get LLVM Type from Object
@@ -738,11 +732,8 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
 
   std::shared_ptr<Type> sourceRet = func->ResolvedReturnType
                                         ? func->ResolvedReturnType
-                                        : func->ReturnTypeSyntax
-                                              ? Type::fromSyntax(
-                                                    func->ReturnTypeSyntax)
-                                              : Type::fromString(
-                                                    func->ReturnType);
+                                        : lowerTypeSyntax(func->ReturnTypeSyntax,
+                                                          func->ReturnType);
   const bool returnsVoid = sourceRet && sourceRet->getSoulName() == "void";
 
   llvm::BasicBlock *runDoneBB =
@@ -2013,8 +2004,7 @@ void CodeGen::genExtern(const ExternDecl *ext) {
   for (const auto &arg : ext->Args) {
     auto type = arg.ResolvedType
                     ? arg.ResolvedType
-                    : arg.TypeSyntax ? Type::fromSyntax(arg.TypeSyntax)
-                                     : Type::fromString(arg.Type);
+                    : lowerTypeSyntax(arg.TypeSyntax, arg.Type);
     llvm::Type *t = getLLVMType(type);
     if (!t) {
       error(ext, DiagID::ERR_CODEGEN_UNRESOLVED_ARGUMENT_TYPE_IN_EXTERN_FUN, arg.Type, ext->Name);
@@ -2022,9 +2012,7 @@ void CodeGen::genExtern(const ExternDecl *ext) {
     }
     argTypes.push_back(t);
   }
-  auto returnType = ext->ReturnTypeSyntax
-                        ? Type::fromSyntax(ext->ReturnTypeSyntax)
-                        : Type::fromString(ext->ReturnType);
+  auto returnType = lowerTypeSyntax(ext->ReturnTypeSyntax, ext->ReturnType);
   llvm::Type *retType = getLLVMType(returnType);
   if (!retType) {
     error(ext, DiagID::ERR_CODEGEN_UNRESOLVED_RETURN_TYPE_IN_EXTERN_FUNCT, ext->ReturnType, ext->Name);
@@ -2077,9 +2065,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
                                    DiagID::WARN_CODEGEN_UNRESOLVED,
                                    member.Name);
         }
-        t = resolveType(member.Type,
-                                   member.IsRawPointer || member.IsUnique ||
-                                       member.IsShared || member.IsReference);
+        t = getLLVMType(lowerTypeSyntax(member.TypeSyntax, member.Type));
       }
       if (!t) {
         error(sh, DiagID::ERR_CODEGEN_UNRESOLVED_MEMBER_TYPE_IN_SHAPE, member.Type, sh->Name);
@@ -2096,7 +2082,8 @@ void CodeGen::genShape(const ShapeDecl *sh) {
     if (sh->Members[0].ResolvedType) {
       elemTy = getLLVMType(sh->Members[0].ResolvedType);
     } else {
-      elemTy = resolveType(sh->Members[0].Type, false);
+      elemTy = getLLVMType(
+          lowerTypeSyntax(sh->Members[0].TypeSyntax, sh->Members[0].Type));
     }
     if (!elemTy) {
       error(sh, DiagID::ERR_CODEGEN_UNRESOLVED_ARRAY_ELEMENT_TYPE_IN_SHAPE, sh->Members[0].Type, sh->Name);
@@ -2114,7 +2101,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
       if (member.ResolvedType) {
         t = getLLVMType(member.ResolvedType);
       } else {
-        t = resolveType(member.Type, false);
+        t = getLLVMType(lowerTypeSyntax(member.TypeSyntax, member.Type));
       }
       if (!t) {
         error(sh, DiagID::ERR_CODEGEN_UNRESOLVED_UNION_MEMBER_TYPE_IN_SHAPE, member.Type, sh->Name);
@@ -2158,7 +2145,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
           if (field.ResolvedType) {
             t = getLLVMType(field.ResolvedType);
           } else {
-            t = resolveType(field.Type, false);
+            t = getLLVMType(lowerTypeSyntax(field.TypeSyntax, field.Type));
           }
           if (!t) {
             error(sh, DiagID::ERR_CODEGEN_UNRESOLVED_VARIANT_FIELD_TYPE_IN_ENUM, field.Type, sh->Name);
@@ -2179,7 +2166,8 @@ void CodeGen::genShape(const ShapeDecl *sh) {
         if (variant.ResolvedType) {
           t = getLLVMType(variant.ResolvedType);
         } else {
-          t = resolveType(variant.Type, false);
+          t = getLLVMType(
+              lowerTypeSyntax(variant.TypeSyntax, variant.Type));
         }
         if (!t) {
           error(sh, DiagID::ERR_CODEGEN_UNRESOLVED_VARIANT_PAYLOAD_TYPE_IN_ENU, variant.Type, sh->Name);
@@ -2955,7 +2943,10 @@ llvm::Type *CodeGen::resolveType(const std::string &baseType, bool hasPointer) {
 
   // Check aliases first
   if (m_TypeAliases.count(baseType)) {
-    return resolveType(m_TypeAliases[baseType], hasPointer);
+    llvm::Type *aliasType = getLLVMType(m_TypeAliases[baseType]);
+    return hasPointer && aliasType
+               ? llvm::PointerType::getUnqual(m_Context)
+               : aliasType;
   }
 
   // Handle 'shape' keyword (e.g. shape(u8, u8))

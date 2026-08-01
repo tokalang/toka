@@ -248,10 +248,8 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
     return genIfExpr(e);
   if (auto e = dynamic_cast<const SizeOfExpr *>(expr)) {
     auto operandType = e->OperandType;
-    if (!operandType && e->TypeSyntax)
-      operandType = toka::Type::fromSyntax(e->TypeSyntax);
     if (!operandType)
-      operandType = toka::Type::fromString(e->TypeStr);
+      operandType = lowerTypeSyntax(e->TypeSyntax, e->TypeStr);
     llvm::Type *targetTy = getLLVMType(operandType);
     if (!targetTy) {
       error(e, DiagID::ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, e->TypeStr);
@@ -399,13 +397,14 @@ void CodeGen::discover(const Module &ast) {
 
   }
   for (const auto &alias : ast.TypeAliases) {
-    std::string target = alias->TargetType;
+    std::shared_ptr<Type> target =
+        lowerTypeSyntax(alias->TargetTypeSyntax, alias->TargetType);
     llvm::Triple triple(m_Module->getTargetTriple());
     if (triple.isArch32Bit()) {
       if (alias->Name == "usize" || alias->Name == "Addr" || alias->Name == "OAddr") {
-        target = "u32";
+        target = std::make_shared<PrimitiveType>("u32");
       } else if (alias->Name == "isize") {
-        target = "i32";
+        target = std::make_shared<PrimitiveType>("i32");
       }
     }
     m_TypeAliases[alias->Name] = target;
@@ -416,6 +415,19 @@ void CodeGen::discover(const Module &ast) {
     m_Externs[ext->Name] = ext.get();
   for (const auto &trait : ast.Traits)
     m_Traits[trait->Name] = trait.get();
+}
+
+std::shared_ptr<Type>
+CodeGen::lowerTypeSyntax(const TypeSyntaxPtr &syntax,
+                         const std::string &legacy) const {
+  if (syntax)
+    return Type::fromSyntax(syntax);
+
+  // Source-less interfaces and a small set of compiler-synthesized AST nodes
+  // predate TypeSyntax.  Keep their compatibility parse in this one named
+  // boundary; parser-derived declarations reach CodeGen through `syntax` or
+  // Sema's ResolvedType instead.
+  return Type::fromString(legacy);
 }
 
 void CodeGen::resolveSignatures(const Module &ast) {

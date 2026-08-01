@@ -882,14 +882,10 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
             if (scopePos != std::string::npos) {
               std::string patternShape = gbs->Pat->Name.substr(0, scopePos);
               auto alias = m_TypeAliases.find(patternShape);
-              targetTypeObj = Type::fromString(
-                  alias == m_TypeAliases.end() ? patternShape : alias->second);
+              targetTypeObj = alias == m_TypeAliases.end()
+                                  ? std::make_shared<ShapeType>(patternShape)
+                                  : alias->second;
             }
-          }
-          if (targetTypeObj && !targetTypeObj->isShape()) {
-            auto alias = m_TypeAliases.find(targetTypeObj->toString());
-            if (alias != m_TypeAliases.end())
-              targetTypeObj = Type::fromString(alias->second);
           }
           if (!payloadTypeObj && targetTypeObj && targetTypeObj->isShape()) {
             auto targetShape = std::static_pointer_cast<ShapeType>(

@@ -726,7 +726,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
       args.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(bin->RHS->clone().release())));
       MethodCallExpr mc(std::unique_ptr<Expr>(static_cast<Expr*>(bin->LHS->clone().release())), bin->OverloadedMethod, std::move(args));
       mc.Loc = bin->Loc;
-      mc.ResolvedType = toka::Type::fromString("bool");
+      mc.ResolvedType = lowerTypeSyntax(nullptr, "bool");
       
       PhysEntity ret = genMethodCall(&mc);
       if (bin->Op == "!=") {
@@ -2476,14 +2476,10 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
                 if (scopePos != std::string::npos) {
                   std::string patternShape = subPat->Name.substr(0, scopePos);
                   auto alias = m_TypeAliases.find(patternShape);
-                  targetTypeObj = Type::fromString(
-                      alias == m_TypeAliases.end() ? patternShape : alias->second);
+                  targetTypeObj = alias == m_TypeAliases.end()
+                                      ? std::make_shared<ShapeType>(patternShape)
+                                      : alias->second;
                 }
-              }
-              if (targetTypeObj && !targetTypeObj->isShape()) {
-                auto alias = m_TypeAliases.find(targetTypeObj->toString());
-                if (alias != m_TypeAliases.end())
-                  targetTypeObj = Type::fromString(alias->second);
               }
               if (!payloadTypeObj && targetTypeObj && targetTypeObj->isShape()) {
                 auto targetShape = std::static_pointer_cast<ShapeType>(
@@ -2663,7 +2659,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           if (!pat->Name.empty() && pat->Name[0] == '"') {
             std::string rawLit = pat->Name.substr(1, pat->Name.size() - 2);
             auto strLit = std::make_unique<StringExpr>(rawLit);
-            strLit->ResolvedType = toka::Type::fromString("*char");
+            strLit->ResolvedType = lowerTypeSyntax(nullptr, "*char");
             PhysEntity litEnt = genExpr(strLit.get());
             llvm::Value *rawPtr = litEnt.load(m_Builder);
 
@@ -3807,7 +3803,9 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   } else {
     // Extract payload
     llvm::Value *payloadGEP = m_Builder.CreateStructGEP(optAlloca->getAllocatedType(), optAlloca, 1);
-    elemTy = resolveType(fe->IterElementType, false);
+    elemTy = getLLVMType(fe->ResolvedIterElementType
+                             ? fe->ResolvedIterElementType
+                             : lowerTypeSyntax(nullptr, fe->IterElementType));
     llvm::Value *payloadValuePtr = m_Builder.CreateBitCast(payloadGEP, llvm::PointerType::get(m_Context, 0), "payload_cast");
     elem = m_Builder.CreateLoad(elemTy, payloadValuePtr, vName);
     elemPtr = payloadValuePtr;
@@ -3837,7 +3835,11 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
 
   TokaSymbol sym;
   sym.allocaPtr = vAlloca;
-  fillSymbolMetadata(sym, toka::Type::fromString(fe->IterElementType), elem->getType());
+  fillSymbolMetadata(sym,
+                     fe->ResolvedIterElementType
+                         ? fe->ResolvedIterElementType
+                         : lowerTypeSyntax(nullptr, fe->IterElementType),
+                     elem->getType());
   sym.typeName = fe->IterElementType;
   m_Symbols[vBaseName] = sym;
 
@@ -4671,7 +4673,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                           llvm::Value *lenVal = nullptr;
                           
                           if (argVal->getType()->isPointerTy()) {
-                              llvm::Type *viewStrTy = getLLVMType(toka::Type::fromString("str"));
+                              llvm::Type *viewStrTy = getLLVMType(lowerTypeSyntax(nullptr, "str"));
                               llvm::Value *ptrGEP = m_Builder.CreateStructGEP(viewStrTy, argVal, 0);
                               ptrVal = m_Builder.CreateLoad(m_Builder.getPtrTy(), ptrGEP);
                               llvm::Value *lenGEP = m_Builder.CreateStructGEP(viewStrTy, argVal, 1);
@@ -4747,7 +4749,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                       if (isSRet) {
                           llvm::Type *stringTy = resolveType("string", false);
                           if (!stringTy) stringTy = resolveType("String", false);
-                          if (!stringTy) stringTy = getLLVMType(toka::Type::fromString("string"));
+                          if (!stringTy) stringTy = getLLVMType(lowerTypeSyntax(nullptr, "string"));
                           sretAlloca = createEntryBlockAlloca(stringTy, nullptr, "sret.tmp");
                       }
 
@@ -4868,7 +4870,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
     llvm::Type *stringTy = resolveType("string", false);
     if (!stringTy) stringTy = resolveType("String", false);
-    if (!stringTy) stringTy = getLLVMType(toka::Type::fromString("string"));
+    if (!stringTy) stringTy = getLLVMType(lowerTypeSyntax(nullptr, "string"));
     llvm::Value *sAlloca = createEntryBlockAlloca(stringTy, nullptr, "fmt_string_builder");
     llvm::Value *emptyStr = m_Builder.CreateGlobalString("");
     m_Builder.CreateCall(fromFn, {sAlloca, emptyStr});
@@ -4954,7 +4956,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 if (isSRet) {
                     llvm::Type *stringTy = resolveType("string", false);
                     if (!stringTy) stringTy = resolveType("String", false);
-                    if (!stringTy) stringTy = getLLVMType(toka::Type::fromString("string"));
+                    if (!stringTy) stringTy = getLLVMType(lowerTypeSyntax(nullptr, "string"));
                     sretAlloca = createEntryBlockAlloca(stringTy, nullptr, "sret.tmp");
                 }
 
@@ -5042,7 +5044,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     if (isStringFmt) {
         llvm::Type *stringTy = resolveType("string", false);
         if (!stringTy) stringTy = resolveType("String", false);
-        if (!stringTy) stringTy = getLLVMType(toka::Type::fromString("string"));
+        if (!stringTy) stringTy = getLLVMType(lowerTypeSyntax(nullptr, "string"));
         return m_Builder.CreateLoad(stringTy, sAlloca);
     } else {
         llvm::Value *cstrVal = m_Builder.CreateCall(cStrFn, {sAlloca});
@@ -7457,7 +7459,7 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
                                       : expr->ReflectedTypeStr;
   std::string targetSoul = toka::Type::stripPrefixes(targetTyStr);
 
-  llvm::Type *typeInfoTy = getLLVMType(toka::Type::fromString("TypeInfo"));
+  llvm::Type *typeInfoTy = getLLVMType(lowerTypeSyntax(nullptr, "TypeInfo"));
   if (!typeInfoTy || !typeInfoTy->isSized()) {
       error(expr, DiagID::ERR_CODEGEN_TYPEINFO_SHAPE_NOT_DEFINED_OR_OPAQUE_I);
       return {};
@@ -7469,7 +7471,7 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
   }
   auto *SD = m_Shapes[targetSoul];
 
-  llvm::Type *fieldInfoTy = getLLVMType(toka::Type::fromString("FieldInfo"));
+  llvm::Type *fieldInfoTy = getLLVMType(lowerTypeSyntax(nullptr, "FieldInfo"));
   if (!fieldInfoTy || !fieldInfoTy->isSized()) {
       error(expr, DiagID::ERR_CODEGEN_FIELDINFO_SHAPE_NOT_DEFINED_OR_OPAQUE);
       return {};
@@ -7484,7 +7486,7 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
       
       // name: str (RowFat)
       llvm::Value *namePtr = m_Builder.CreateGlobalString(member.Name);
-      llvm::Type *fatTy = getLLVMType(toka::Type::fromString("str"));
+      llvm::Type *fatTy = getLLVMType(lowerTypeSyntax(nullptr, "str"));
       llvm::Value *nameFat = llvm::UndefValue::get(fatTy);
       nameFat = m_Builder.CreateInsertValue(nameFat, namePtr, {0});
       nameFat = m_Builder.CreateInsertValue(nameFat, llvm::ConstantInt::get(getIntPtrTy(), member.Name.size()), {1});
@@ -7510,7 +7512,7 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
 
   // set name
   llvm::Value *namePtr = m_Builder.CreateGlobalString(targetSoul);
-  llvm::Type *fatTy = getLLVMType(toka::Type::fromString("str"));
+  llvm::Type *fatTy = getLLVMType(lowerTypeSyntax(nullptr, "str"));
   llvm::Value *nameFat = llvm::UndefValue::get(fatTy);
   nameFat = m_Builder.CreateInsertValue(nameFat, namePtr, {0});
   nameFat = m_Builder.CreateInsertValue(nameFat, llvm::ConstantInt::get(getIntPtrTy(), targetSoul.size()), {1});
@@ -7520,9 +7522,10 @@ PhysEntity CodeGen::genComptimeReflectExpr(const ComptimeReflectExpr *expr) {
   m_Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(m_Context), 0), m_Builder.CreateStructGEP(typeInfoTy, typeInfoAlloc, 1));
 
   // set fields (RowFat<FieldInfo>)
-  llvm::Type *fatFieldInfoTy = getLLVMType(toka::Type::fromString("RowFat_M_FieldInfo"));
+  llvm::Type *fatFieldInfoTy =
+      getLLVMType(lowerTypeSyntax(nullptr, "RowFat_M_FieldInfo"));
   if (!fatFieldInfoTy) {
-      fatFieldInfoTy = getLLVMType(toka::Type::fromString("str")); // fallback if aliased
+      fatFieldInfoTy = getLLVMType(lowerTypeSyntax(nullptr, "str")); // fallback if aliased
   }
   llvm::Value *fieldsFat = llvm::UndefValue::get(fatFieldInfoTy);
   fieldsFat = m_Builder.CreateInsertValue(fieldsFat, m_Builder.CreateBitCast(fieldArrayAlloc, llvm::PointerType::getUnqual(m_Context)), {0});

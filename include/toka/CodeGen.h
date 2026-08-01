@@ -188,7 +188,7 @@ private:
   // required.
   std::map<std::string, llvm::StructType *> m_StructTypes;
   std::map<std::string, std::vector<std::string>> m_StructFieldNames;
-  std::map<std::string, std::string> m_TypeAliases;
+  std::map<std::string, std::shared_ptr<Type>> m_TypeAliases;
   std::map<std::string, const ShapeDecl *> m_Shapes;
   std::map<std::string, llvm::Function *> m_DropCascadeHelpers;
   std::set<std::string> m_ActiveDropCascadeTypes;
@@ -249,6 +249,8 @@ private:
   void emitRelease(llvm::Value *sharedHandle, const TokaSymbol &sym, std::shared_ptr<Type> pointeeType);
 
   llvm::Type *resolveType(const std::string &baseType, bool hasPointer);
+  std::shared_ptr<Type> lowerTypeSyntax(const TypeSyntaxPtr &syntax,
+                                        const std::string &legacy) const;
   llvm::Type *getLLVMType(std::shared_ptr<Type> type);
 
   // --- Member Access CodeGen Refactoring Helpers ---

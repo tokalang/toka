@@ -1259,6 +1259,7 @@ public:
   std::unique_ptr<Stmt> Body;
   std::unique_ptr<Stmt> ElseBody;
   std::string IterElementType;
+  std::shared_ptr<toka::Type> ResolvedIterElementType;
   std::string IteratorType;
   FunctionDecl *ResolvedIterFn = nullptr;
   FunctionDecl *ResolvedNextFn = nullptr;
@@ -1283,6 +1284,7 @@ public:
     n->ResolvedType = ResolvedType;
     n->Permission = Permission;
     n->IterElementType = IterElementType;
+    n->ResolvedIterElementType = ResolvedIterElementType;
     n->IteratorType = IteratorType;
     n->ResolvedIterFn = nullptr;
     n->ResolvedNextFn = nullptr;

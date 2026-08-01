@@ -2863,6 +2863,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     CurrentScope->IsLoop = true;
     SymbolInfo Info;
     Info.TypeObj = toka::Type::fromString(fullType);
+    fe->ResolvedIterElementType = Info.TypeObj;
     if (fe->IsReference && !iteratorSourceName.empty()) {
       Info.BorrowedFrom = iteratorSourceName;
       Info.LifeDependencySet.insert(iteratorSourceName);
