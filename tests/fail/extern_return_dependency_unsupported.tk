@@ -1,0 +1,3 @@
+extern fn native_view(value: i32) -> i32 <- value
+
+// EXPECT: error[E01260]

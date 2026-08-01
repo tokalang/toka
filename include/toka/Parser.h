@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 #include <algorithm>
 
 namespace toka {
@@ -82,6 +83,14 @@ private:
   bool HasError = false;
   bool PanicMode = false;
 
+  struct ReturnContract {
+    std::string Type = "void";
+    std::string BindingName;
+    EffectKind Effect = EffectKind::None;
+    std::vector<std::string> LifeDependencies;
+    std::map<std::string, std::vector<std::string>> MemberDependencies;
+  };
+
   // Recursive Descent Methods
   std::unique_ptr<FunctionDecl> parseFunctionDecl(bool isPub = false);
   std::unique_ptr<Stmt> parseVariableDecl(bool isPub = false);
@@ -97,6 +106,17 @@ private:
   std::unique_ptr<MatchArm::Pattern> parseSinglePattern();
   std::unique_ptr<MatchArm::Pattern> parsePattern();
   std::vector<GenericParam> parseGenericParams();
+  bool looksLikeNamedReturn() const;
+  ReturnContract parseReturnContract(bool allowDependencies);
+  void parseEffectsBlock(ReturnContract &contract);
+  void parseDependencyList(std::vector<std::string> &dependencies,
+                           bool allowMemberPath);
+  std::string parseDependencyPath(bool allowMemberPath);
+  bool parseEffectsTarget(const ReturnContract &contract,
+                          std::string &targetMember);
+  bool parseEffectsTargetMember(std::string &targetMember);
+  static void appendDependency(std::vector<std::string> &dependencies,
+                               std::string dependency);
   std::string parseTraitBoundName();
   std::vector<std::string> parseTraitFacetTarget();
   void parseWhereConstraints(std::vector<GenericParam> &genericParams,

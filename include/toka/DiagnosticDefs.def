@@ -311,6 +311,7 @@ DIAG(ERR_PARSER_FOR_LET_REMOVED, Error, "E01256", "'for let' is removed; use 'fo
 DIAG(ERR_PARSER_IMPL_TRAIT_FOR_REMOVED, Error, "E01257", "Trait implementations use 'impl Type@Trait'; 'impl Trait for Type' is removed")
 DIAG(ERR_PARSER_WHERE_IMPL_REMOVED, Error, "E01258", "Where constraints use ':'; 'T impl @Trait' is removed")
 DIAG(ERR_PARSER_EXPECTED_TYPE_ANNOTATION, Error, "E01259", "Expected a type annotation")
+DIAG(ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED, Error, "E01260", "Extern declarations cannot declare return dependencies")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

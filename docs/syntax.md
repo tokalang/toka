@@ -280,6 +280,11 @@ effects:
 }
 ```
 
+Ordinary and `extern fn` declarations share the same return-signature syntax:
+both accept `async`/`wait` effects and an optional named return binding. Dependency routing
+(`<-` and `effects:`) is a Toka-function contract and is not valid on an
+`extern fn` declaration.
+
 The same rule applies to other borrowed views that cross the boundary, including
 `str`, `bytes`, records or shapes containing `&` fields, and closures or async
 values that capture borrowed state. The compiler may use local control-flow
@@ -426,9 +431,14 @@ alias ID = i32
 type UserID = i32
 ```
 
-`alias` is a transparent spelling for its target type. `type` declares a
-distinct nominal type with the same underlying representation, so conversions
-and trait implementations remain explicit.
+`alias` is a transparent spelling for its target: values are assignable in both
+directions, and a shape alias can use the target's constructor. `type` declares
+a distinct nominal type: it is not implicitly assignable to or from its target.
+Construct a shape-backed nominal type with its own name, and use `as Target`
+for an explicit conversion when the representation is compatible. Trait
+implementations are looked up on the nominal type and do not automatically
+apply from its target. Both forms currently lower with the target's native
+layout and calling ABI; equal representation does not erase `type` identity.
 
 ## 7. Methods, Traits, And Encapsulation
 

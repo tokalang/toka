@@ -173,6 +173,173 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
   }
 }
 
+bool Parser::looksLikeNamedReturn() const {
+  int look = 0;
+  if (peekAt(look).Kind == TokenType::KwNul)
+    look++;
+  if (peekAt(look).Kind == TokenType::Ampersand ||
+      peekAt(look).Kind == TokenType::Star ||
+      peekAt(look).Kind == TokenType::Caret ||
+      peekAt(look).Kind == TokenType::Tilde)
+    look++;
+  if (peekAt(look).Kind == TokenType::TokenWrite)
+    look++;
+  return peekAt(look).Kind == TokenType::Identifier &&
+         peekAt(look + 1).Kind == TokenType::Colon;
+}
+
+void Parser::appendDependency(std::vector<std::string> &dependencies,
+                              std::string dependency) {
+  if (std::find(dependencies.begin(), dependencies.end(), dependency) ==
+      dependencies.end()) {
+    dependencies.push_back(std::move(dependency));
+  }
+}
+
+std::string Parser::parseDependencyPath(bool allowMemberPath) {
+  match(TokenType::Ampersand);
+  if (!(check(TokenType::Identifier) || check(TokenType::KwSelf) ||
+        check(TokenType::KwUpperSelf))) {
+    error(peek(), DiagID::ERR_PARSER_EXPECTED_DEPENDENCY_IDENTIFIER);
+    return "";
+  }
+
+  std::string dependency = advance().Text;
+  while (allowMemberPath && match(TokenType::Dot)) {
+    if (!(check(TokenType::Identifier) || check(TokenType::Integer))) {
+      error(peek(),
+            DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
+      return "";
+    }
+    dependency += "." + advance().Text;
+  }
+  return dependency;
+}
+
+void Parser::parseDependencyList(std::vector<std::string> &dependencies,
+                                 bool allowMemberPath) {
+  do {
+    std::string dependency = parseDependencyPath(allowMemberPath);
+    if (dependency.empty())
+      return;
+    appendDependency(dependencies, std::move(dependency));
+  } while (match(TokenType::Pipe) || match(TokenType::Comma));
+}
+
+bool Parser::parseEffectsTargetMember(std::string &targetMember) {
+  targetMember.clear();
+  if (!match(TokenType::Dot))
+    return true;
+
+  if (check(TokenType::Ampersand) || check(TokenType::Caret) ||
+      check(TokenType::Star) || check(TokenType::Tilde))
+    advance();
+  if (check(TokenType::TokenWrite))
+    advance();
+  if (!(check(TokenType::Identifier) || check(TokenType::Integer))) {
+    error(peek(), DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
+    return false;
+  }
+  targetMember = advance().Text;
+  return true;
+}
+
+bool Parser::parseEffectsTarget(const ReturnContract &contract,
+                                std::string &targetMember) {
+  if (match(TokenType::KwReturn))
+    return parseEffectsTargetMember(targetMember);
+
+  if (contract.BindingName.empty())
+    return false;
+
+  match(TokenType::KwNul);
+  if (check(TokenType::Ampersand) || check(TokenType::Caret) ||
+      check(TokenType::Star) || check(TokenType::Tilde))
+    advance();
+  match(TokenType::TokenWrite);
+  if (!check(TokenType::Identifier) ||
+      peek().Text != contract.BindingName)
+    return false;
+  advance();
+  return parseEffectsTargetMember(targetMember);
+}
+
+Parser::ReturnContract Parser::parseReturnContract(bool allowDependencies) {
+  ReturnContract contract;
+  if (!match(TokenType::Arrow))
+    return contract;
+
+  if (match(TokenType::KwAsync))
+    contract.Effect = EffectKind::Async;
+  else if (match(TokenType::KwWait))
+    contract.Effect = EffectKind::Wait;
+
+  if (looksLikeNamedReturn()) {
+    bool isPtrNullable = match(TokenType::KwNul);
+    std::string prefix = isPtrNullable ? "nul " : "";
+    if (match(TokenType::Ampersand))
+      prefix += "&";
+    else if (match(TokenType::Star))
+      prefix += "*";
+    else if (match(TokenType::Caret))
+      prefix += "^";
+    else if (match(TokenType::Tilde))
+      prefix += "~";
+    if (match(TokenType::TokenWrite))
+      prefix += "#";
+
+    Token nameTok =
+        consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
+    contract.BindingName = nameTok.Text;
+    consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
+    if (!isTypeStart()) {
+      error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
+    } else {
+      contract.Type = prefix + parseTypeString();
+    }
+  } else if (!isTypeStart()) {
+    error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
+    if (!isEndOfStatement() && !check(TokenType::LBrace) &&
+        !check(TokenType::Dependency))
+      advance();
+  } else {
+    contract.Type = parseTypeString();
+  }
+
+  if (match(TokenType::Dependency)) {
+    if (!allowDependencies)
+      error(previous(), DiagID::ERR_PARSER_EXTERN_RETURN_DEPENDENCY_UNSUPPORTED);
+    parseDependencyList(contract.LifeDependencies, false);
+  }
+  return contract;
+}
+
+void Parser::parseEffectsBlock(ReturnContract &contract) {
+  if (!(check(TokenType::Identifier) && peek().Text == "effects" &&
+        checkAt(1, TokenType::Colon))) {
+    return;
+  }
+
+  advance();
+  advance();
+  while (!check(TokenType::LBrace) && !check(TokenType::EndOfFile)) {
+    std::string targetMember;
+    if (!parseEffectsTarget(contract, targetMember)) {
+      if (isEndOfStatement())
+        return;
+      error(peek(), DiagID::ERR_PARSER_ONLY_RETURN_OR_NAMED_RETURN_LHS_IS_CURR);
+      return;
+    }
+
+    consume(TokenType::Dependency,
+            DiagID::ERR_PARSER_EXPECTED_AFTER_LHS_IN_EFFECTS_BLOCK);
+    std::vector<std::string> &dependencies =
+        targetMember.empty() ? contract.LifeDependencies
+                             : contract.MemberDependencies[targetMember];
+    parseDependencyList(dependencies, true);
+  }
+}
+
 std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
   if (match(TokenType::KwUnion)) {
     error(previous(), DiagID::ERR_UNION_DEPRECATED);
@@ -600,194 +767,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   }
   consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
 
-  // Return Type
-  std::string retType = "void"; // default
-  std::string retName = "";
-  EffectKind effect = EffectKind::None;
-  if (match(TokenType::Arrow)) {
-    if (match(TokenType::KwAsync)) effect = EffectKind::Async;
-    else if (match(TokenType::KwWait)) effect = EffectKind::Wait;
-
-    int look = 0;
-    if (peekAt(look).Kind == TokenType::KwNul) look++;
-    if (peekAt(look).Kind == TokenType::Ampersand || peekAt(look).Kind == TokenType::Star ||
-        peekAt(look).Kind == TokenType::Caret || peekAt(look).Kind == TokenType::Tilde) look++;
-    if (peekAt(look).Kind == TokenType::TokenWrite) look++;
-
-    if (peekAt(look).Kind == TokenType::Identifier &&
-        peekAt(look + 1).Kind == TokenType::Colon) {
-      bool isPtrNullable = match(TokenType::KwNul);
-      std::string prefix = "";
-      if (isPtrNullable) prefix += "nul ";
-      if (match(TokenType::Ampersand)) prefix += "&";
-      else if (match(TokenType::Star)) prefix += "*";
-      else if (match(TokenType::Caret)) prefix += "^";
-      else if (match(TokenType::Tilde)) prefix += "~";
-      if (match(TokenType::TokenWrite)) prefix += "#";
-
-      Token nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
-      retName = nameTok.Text;
-      consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
-      if (!isTypeStart()) {
-        error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
-      } else {
-        retType = prefix + parseTypeString();
-      }
-    } else if (!isTypeStart()) {
-      error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
-      if (!isEndOfStatement() && !check(TokenType::LBrace) &&
-          !check(TokenType::Dependency))
-        advance();
-    } else {
-      retType = parseTypeString();
-    }
-  }
-  std::vector<std::string> lifeDeps;
-
-  // [NEW] Scan implicitly parsing dependencies from return type string (e.g.
-  // Variant payload fields) Pattern: "<-" [whitespace] [&] Identifier
-  size_t pos = 0;
-  while ((pos = retType.find("<-", pos)) != std::string::npos) {
-    pos += 2; // skip "<-"
-    // skip whitespace
-    while (pos < retType.size() && isspace(retType[pos]))
-      pos++;
-    // skip optional reference sigil '&'
-    if (pos < retType.size() && retType[pos] == '&')
-      pos++;
-
-    // Extract identifier
-    size_t start = pos;
-    if (start < retType.size() &&
-        (isalpha(retType[start]) || retType[start] == '_')) {
-      while (pos < retType.size() &&
-             (isalnum(retType[pos]) || retType[pos] == '_')) {
-        pos++;
-      }
-      std::string dep = retType.substr(start, pos - start);
-      if (!dep.empty()) {
-        bool exists = false;
-        for (const auto &d : lifeDeps)
-          if (d == dep)
-            exists = true;
-        if (!exists)
-          lifeDeps.push_back(dep);
-      }
-    }
-  }
-
-  if (match(TokenType::Dependency)) {
-    do {
-      match(TokenType::Ampersand); // Optional & prefix
-      if (check(TokenType::Identifier) || check(TokenType::KwSelf) ||
-          check(TokenType::KwUpperSelf)) {
-        std::string dep = advance().Text;
-        bool exists = false;
-        for (const auto &d : lifeDeps)
-          if (d == dep)
-            exists = true;
-        if (!exists)
-          lifeDeps.push_back(dep);
-      } else {
-        error(peek(), DiagID::ERR_PARSER_EXPECTED_DEPENDENCY_IDENTIFIER);
-        return nullptr;
-      }
-    } while (match(TokenType::Pipe) || match(TokenType::Comma));
-  }
-
+  ReturnContract contract = parseReturnContract(true);
   parseWhereConstraints(genericParams);
-
-  std::map<std::string, std::vector<std::string>> memberDeps;
-
-  if (check(TokenType::Identifier) && peek().Text == "effects" && checkAt(1, TokenType::Colon)) {
-    advance(); // get 'effects'
-    advance(); // get ':'
-    while (!check(TokenType::LBrace) && !check(TokenType::EndOfFile)) {
-      bool isReturnAlias = false;
-      std::string targetMember = "";
-      if (match(TokenType::KwReturn)) {
-        if (check(TokenType::Dot)) {
-          advance();
-          if (check(TokenType::Ampersand) || check(TokenType::Caret) || check(TokenType::Star) || check(TokenType::Tilde)) advance();
-          if (check(TokenType::TokenWrite)) advance();
-          if (check(TokenType::Identifier) || check(TokenType::Integer)) {
-              if (check(TokenType::Identifier)) targetMember = advance().Text;
-              else targetMember = advance().Text;
-          }
-        }
-        isReturnAlias = true;
-      } else if (!retName.empty()) {
-        int l = 0;
-        if (peekAt(l).Kind == TokenType::KwNul) l++;
-        if (peekAt(l).Kind == TokenType::Ampersand || peekAt(l).Kind == TokenType::Star || 
-            peekAt(l).Kind == TokenType::Caret || peekAt(l).Kind == TokenType::Tilde) l++;
-        if (peekAt(l).Kind == TokenType::TokenWrite) l++;
-
-        if (peekAt(l).Kind == TokenType::Identifier && peekAt(l).Text == retName) {
-          int p = l + 1;
-          std::string testMember;
-          if (peekAt(p).Kind == TokenType::Dot) {
-            p++;
-            if (peekAt(p).Kind == TokenType::Ampersand || peekAt(p).Kind == TokenType::Star || 
-                peekAt(p).Kind == TokenType::Caret || peekAt(p).Kind == TokenType::Tilde) p++;
-            if (peekAt(p).Kind == TokenType::TokenWrite) p++;
-            if (peekAt(p).Kind == TokenType::Identifier || peekAt(p).Kind == TokenType::Integer) {
-              testMember = peekAt(p).Text;
-              p++;
-            }
-          }
-          if (peekAt(p).Kind == TokenType::Dependency) {
-            for (int i=0; i<p; i++) advance(); // consume everything up to Dependency token
-            targetMember = testMember;
-            isReturnAlias = true;
-          }
-        }
-      }
-
-      if (isReturnAlias) {
-        consume(TokenType::Dependency, DiagID::ERR_PARSER_EXPECTED_AFTER_LHS_IN_EFFECTS_BLOCK);
-        do {
-          match(TokenType::Ampersand); // Optional & prefix
-          if (check(TokenType::Identifier) || check(TokenType::KwSelf) ||
-              check(TokenType::KwUpperSelf)) {
-            std::string dep = advance().Text;
-            while (match(TokenType::Dot)) {
-                if (check(TokenType::Identifier) || check(TokenType::Integer)) {
-                    dep += "." + advance().Text;
-                } else {
-                    error(peek(), DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
-                    return nullptr;
-                }
-            }
-            if (targetMember.empty()) {
-              bool exists = false;
-              for (const auto &d : lifeDeps)
-                if (d == dep)
-                  exists = true;
-              if (!exists)
-                lifeDeps.push_back(dep);
-            } else {
-              bool exists = false;
-              for (const auto &d : memberDeps[targetMember])
-                if (d == dep)
-                  exists = true;
-              if (!exists)
-                memberDeps[targetMember].push_back(dep);
-            }
-          } else {
-            error(peek(), DiagID::ERR_PARSER_EXPECTED_DEPENDENCY_IDENTIFIER);
-            return nullptr;
-          }
-        } while (match(TokenType::Pipe) || match(TokenType::Comma));
-      } else {
-        if (isEndOfStatement()) {
-          break;
-        }
-        error(peek(), DiagID::ERR_PARSER_ONLY_RETURN_OR_NAMED_RETURN_LHS_IS_CURR);
-        return nullptr;
-      }
-    }
-  }
+  parseEffectsBlock(contract);
 
   std::unique_ptr<BlockStmt> body = nullptr;
   if (match(TokenType::Equal)) {
@@ -801,10 +783,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
     expectEndOfStatement();
   }
   auto decl = std::make_unique<FunctionDecl>(
-      isPub, name.Text, std::move(args), std::move(body), retType,
-      genericParams, std::move(lifeDeps), effect);
+      isPub, name.Text, std::move(args), std::move(body), contract.Type,
+      genericParams, std::move(contract.LifeDependencies), contract.Effect);
   decl->IsVariadic = isVariadic;
-  decl->MemberDependencies = std::move(memberDeps);
+  decl->MemberDependencies = std::move(contract.MemberDependencies);
   decl->setLocation(name, m_CurrentFile);
   return decl;
 }
@@ -885,23 +867,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
   }
   consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
 
-  std::string retType = "void";
-  EffectKind effect = EffectKind::None;
-  if (match(TokenType::Arrow)) {
-    if (match(TokenType::KwAsync)) effect = EffectKind::Async;
-    else if (match(TokenType::KwWait)) effect = EffectKind::Wait;
-
-    if (!isTypeStart()) {
-      error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
-      if (!isEndOfStatement())
-        advance();
-    } else {
-      retType = parseTypeString();
-    }
-  }
+  ReturnContract contract = parseReturnContract(false);
   expectEndOfStatement();
 
-  auto node = std::make_unique<ExternDecl>(name.Text, std::move(args), retType, effect);
+  auto node = std::make_unique<ExternDecl>(name.Text, std::move(args),
+                                           contract.Type, contract.Effect);
   node->setLocation(name, m_CurrentFile);
   node->IsVariadic = isVariadic;
   return node;
