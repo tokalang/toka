@@ -15,6 +15,7 @@
 
 #include "toka/BindingPermission.h"
 #include "toka/Token.h"
+#include "toka/TypeSyntax.h"
 #include "toka/Type.h" // Added for ResolvedType
 #include "toka/ComptimeValue.h"
 #include "toka/MemorySummary.h"
@@ -31,6 +32,9 @@ class FunctionDecl;
 struct GenericParam {
   std::string Name;
   std::string Type; // Empty if it's a type parameter
+  // Kept in lockstep with Type.  The textual field is the canonical printer
+  // cache consumed by the pre-existing semantic Type / CodeGen boundary.
+  TypeSyntaxPtr TypeSyntax;
   bool IsConst = false;
   std::vector<std::string> TraitBounds;
   bool IsMorphic = false; // [NEW] True if name starts with '
@@ -195,10 +199,12 @@ public:
 class SizeOfExpr : public Expr {
 public:
   std::string TypeStr;
+  TypeSyntaxPtr TypeSyntax;
   SizeOfExpr(const std::string &ty) : TypeStr(ty) {}
   std::string toString() const override { return "sizeof(" + TypeStr + ")"; }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<SizeOfExpr>(TypeStr);
+    n->TypeSyntax = TypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -469,6 +475,7 @@ class CastExpr : public Expr {
 public:
   std::unique_ptr<Expr> Expression;
   std::string TargetType;
+  TypeSyntaxPtr TargetTypeSyntax;
   CastExpr(std::unique_ptr<Expr> expr, const std::string &type)
       : Expression(std::move(expr)), TargetType(type) {}
   std::string toString() const override {
@@ -476,6 +483,7 @@ public:
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<CastExpr>(cloneNode(Expression), TargetType);
+    n->TargetTypeSyntax = TargetTypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -607,6 +615,7 @@ public:
 class AllocExpr : public Expr {
 public:
   std::string TypeName;
+  TypeSyntaxPtr TypeSyntax;
   std::unique_ptr<Expr> Initializer;
   bool IsArray = false;
   std::unique_ptr<Expr> ArraySize;
@@ -622,6 +631,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<AllocExpr>(TypeName, cloneNode(Initializer),
                                          IsArray, cloneNode(ArraySize));
+    n->TypeSyntax = TypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -696,6 +706,7 @@ public:
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
   std::vector<std::string> GenericArgs; // [NEW]
+  std::vector<TypeArgumentSyntax> GenericArgSyntax;
 
   // Semantic Resolution Cache
   FunctionDecl *ResolvedFn = nullptr;
@@ -726,6 +737,7 @@ public:
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<CallExpr>(Callee, cloneVec(Args), GenericArgs);
+    n->GenericArgSyntax = GenericArgSyntax;
     n->OriginalCallee = OriginalCallee;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
@@ -791,6 +803,7 @@ public:
 class NewExpr : public Expr {
 public:
   std::string Type;
+  TypeSyntaxPtr TypeSyntax;
   std::unique_ptr<Expr> Initializer;
   std::unique_ptr<Expr> ArraySize; // [NEW] Support for new [N]T syntax
   NewExpr(const std::string &type, std::unique_ptr<Expr> init, std::unique_ptr<Expr> arraySize = nullptr)
@@ -803,6 +816,7 @@ public:
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<NewExpr>(Type, cloneNode(Initializer), cloneNode(ArraySize));
+    n->TypeSyntax = TypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -812,6 +826,7 @@ public:
 class ArrayInitExpr : public Expr {
 public:
   std::string Type;
+  TypeSyntaxPtr TypeSyntax;
   std::unique_ptr<Expr> Initializer;
   std::unique_ptr<Expr> ArraySize;
   ArrayInitExpr(const std::string &type, std::unique_ptr<Expr> init, std::unique_ptr<Expr> arraySize)
@@ -823,6 +838,7 @@ public:
   }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<ArrayInitExpr>(Type, cloneNode(Initializer), cloneNode(ArraySize));
+    n->TypeSyntax = TypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -1016,12 +1032,14 @@ public:
 class ComptimeReflectExpr : public Expr {
 public:
   std::string ReflectedTypeStr;
+  TypeSyntaxPtr TypeSyntax;
   
   ComptimeReflectExpr(std::string ty) : ReflectedTypeStr(ty) {}
   
   std::string toString() const override { return "CmpReflect:" + ReflectedTypeStr; }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<ComptimeReflectExpr>(ReflectedTypeStr);
+    n->TypeSyntax = TypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -1307,6 +1325,7 @@ public:
   std::string Name;
   std::unique_ptr<Expr> Init;
   std::string TypeName;
+  TypeSyntaxPtr DeclaredTypeSyntax;
   bool IsRawPointer = false;
   bool IsUnique = false;
   bool IsShared = false;
@@ -1330,6 +1349,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<VariableDecl>(Name, cloneNode(Init));
     n->TypeName = TypeName;
+    n->DeclaredTypeSyntax = DeclaredTypeSyntax;
     n->IsRawPointer = IsRawPointer;
     n->IsUnique = IsUnique;
     n->IsShared = IsShared;
@@ -1381,6 +1401,7 @@ public:
   bool IsPub = false;
   std::string Name;
   std::string TargetType;
+  TypeSyntaxPtr TargetTypeSyntax;
   bool IsStrong = false;
   std::vector<GenericParam> GenericParams; // [NEW]
 
@@ -1400,6 +1421,7 @@ struct ShapeMember {
   SourceLocation Loc;
   std::string Name; // Member or Variant name
   std::string Type;
+  TypeSyntaxPtr TypeSyntax;
   int64_t TagValue = -1; // Specific value for tagged enum variants (= 1)
   bool IsRawPointer = false;
   bool IsUnique = false;
@@ -1431,6 +1453,7 @@ struct ShapeMember {
     Loc = other.Loc;
     Name = other.Name;
     Type = other.Type;
+    TypeSyntax = other.TypeSyntax;
     TagValue = other.TagValue;
     IsRawPointer = other.IsRawPointer;
     IsUnique = other.IsUnique;
@@ -1460,6 +1483,7 @@ struct ShapeMember {
     Loc = other.Loc;
     Name = other.Name;
     Type = other.Type;
+    TypeSyntax = other.TypeSyntax;
     TagValue = other.TagValue;
     IsRawPointer = other.IsRawPointer;
     IsUnique = other.IsUnique;
@@ -1583,6 +1607,7 @@ public:
     SourceLocation Loc;
     std::string Name;
     std::string Type;
+    TypeSyntaxPtr TypeSyntax;
     bool IsRawPointer = false;
     bool IsUnique = false;
     bool IsShared = false;
@@ -1607,6 +1632,7 @@ public:
       a.Loc = Loc;
       a.Name = Name;
       a.Type = Type;
+      a.TypeSyntax = TypeSyntax;
       a.IsRawPointer = IsRawPointer;
       a.IsUnique = IsUnique;
       a.IsShared = IsShared;
@@ -1631,6 +1657,7 @@ public:
   std::string CodegenName;
   std::vector<Arg> Args;
   std::string ReturnType;
+  TypeSyntaxPtr ReturnTypeSyntax;
   EffectKind Effect = EffectKind::None;
   std::shared_ptr<toka::Type> ResolvedReturnType;
   std::vector<std::string> LifeDependencies; // [NEW] e.g., <- x|y
@@ -1675,6 +1702,7 @@ public:
                                             std::move(clonedBody), ReturnType,
                                             GenericParams, LifeDependencies, Effect);
     n->CodegenName = CodegenName;
+    n->ReturnTypeSyntax = ReturnTypeSyntax;
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
     n->IsClosureInvoke = IsClosureInvoke;
@@ -1768,6 +1796,7 @@ public:
     SourceLocation Loc;
     std::string Name;
     std::string Type;
+    TypeSyntaxPtr TypeSyntax;
     bool IsRawPointer = false;
     bool IsReference = false;
 
@@ -1792,6 +1821,7 @@ public:
       a.Loc = Loc;
       a.Name = Name;
       a.Type = Type;
+      a.TypeSyntax = TypeSyntax;
       a.IsRawPointer = IsRawPointer;
       a.IsReference = IsReference;
       a.IsUnique = IsUnique;
@@ -1813,6 +1843,7 @@ public:
   std::string Name;
   std::vector<Arg> Args;
   std::string ReturnType;
+  TypeSyntaxPtr ReturnTypeSyntax;
   EffectKind Effect = EffectKind::None;
   bool IsVariadic = false;
 
@@ -1827,6 +1858,7 @@ public:
     }
     auto n =
         std::make_unique<ExternDecl>(Name, std::move(clonedArgs), ReturnType, Effect);
+    n->ReturnTypeSyntax = ReturnTypeSyntax;
     n->IsVariadic = IsVariadic;
     n->Loc = Loc;
     return n;
@@ -1840,13 +1872,22 @@ struct EncapEntry {
 struct AssociatedTypeDecl {
   std::string Name;
   std::string Type;
+  TypeSyntaxPtr TypeSyntax;
   bool IsPer = false;
   SourceLocation Loc;
+};
+
+struct ImplHeaderSyntax {
+  TypeSyntaxPtr Type;
+  std::string TraitName;
+  SourceLocation Begin;
+  SourceLocation End;
 };
 
 class ImplDecl : public ASTNode {
 public:
   std::string TypeName;
+  ImplHeaderSyntax HeaderSyntax;
   std::string TraitName;
   std::vector<std::unique_ptr<FunctionDecl>> Methods;
   std::vector<EncapEntry> EncapEntries;

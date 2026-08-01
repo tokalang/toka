@@ -8,6 +8,7 @@ endif()
 
 project(TokaCompiler VERSION 0.9.9 LANGUAGES C CXX)
 include(GNUInstallDirs)
+include(CTest)
 set(TOKA_RELEASE_VERSION "${TokaCompiler_VERSION}-01" CACHE STRING
     "Version string reported by a release build")
 set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION}")
@@ -126,6 +127,15 @@ separate_arguments(LLVM_DEFS NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFS})
 
 include_directories(${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include)
+
+if(BUILD_TESTING)
+    add_executable(toka_typesyntax_canonicalization
+        tests/TypeSyntaxCanonicalization.cpp)
+    target_include_directories(toka_typesyntax_canonicalization PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    add_test(NAME toka_typesyntax_canonicalization
+        COMMAND toka_typesyntax_canonicalization)
+endif()
 
 add_subdirectory(src)
 

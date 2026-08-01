@@ -66,6 +66,49 @@ substituteTypeString(const std::string &Input,
   return Output;
 }
 
+// Semantic instances may contain a concrete type produced by Type::toString(),
+// which is intentionally still a string boundary in this P1.  A replacement
+// is therefore represented as one generated named leaf, while the source
+// syntax being replaced remains a recursively traversed TypeSyntax tree.
+static TypeSyntaxPtr generatedTypeSyntax(const std::string &spelling,
+                                         SourceLocation begin = {},
+                                         SourceLocation end = {}) {
+  return TypeSyntax::named(spelling, begin, end);
+}
+
+static TypeSyntaxPtr substituteTypeSyntax(
+    const TypeSyntaxPtr &input,
+    const std::map<std::string, std::string> &replacements) {
+  if (!input)
+    return nullptr;
+
+  // Keep the existing Callable result rule, but recognize it structurally.
+  if (input->NodeKind == TypeSyntax::Kind::AssociatedProjection &&
+      input->Text == "Callable" && input->MemberName == "Output" &&
+      input->Subject && input->Subject->NodeKind == TypeSyntax::Kind::Named) {
+    auto it = replacements.find(input->Subject->Text);
+    if (it != replacements.end()) {
+      auto callable = toka::Type::fromString(it->second);
+      if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(callable)) {
+        if (fn->ReturnType)
+          return generatedTypeSyntax(fn->ReturnType->toString(), input->Begin,
+                                     input->End);
+      }
+      if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(callable)) {
+        if (dynFn->ReturnType)
+          return generatedTypeSyntax(dynFn->ReturnType->toString(), input->Begin,
+                                     input->End);
+      }
+    }
+  }
+
+  std::map<std::string, TypeSyntaxPtr> typedReplacements;
+  for (const auto &[name, spelling] : replacements) {
+    typedReplacements.emplace(name, generatedTypeSyntax(spelling));
+  }
+  return input->substitute(typedReplacements);
+}
+
 // --- Helper: Generic Instantiator Visitor ---
 // Traverses the AST and applies substitution to all Type Strings.
 // Since we don't have a central AST Visitor, we implement specific traversals
@@ -85,6 +128,26 @@ public:
     return substituteTypeString(s, Replacements);
   }
 
+  void sub(TypeSyntaxPtr &syntax, std::string &spelling) {
+    if (!syntax) {
+      spelling = sub(spelling);
+      return;
+    }
+    syntax = substituteTypeSyntax(syntax, Replacements);
+    spelling = syntax->toCanonicalString();
+  }
+
+  void sub(TypeArgumentSyntax &argument, std::string &spelling) {
+    if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type) {
+      sub(argument.Type, spelling);
+      return;
+    }
+    auto it = Replacements.find(argument.ConstantText);
+    if (it != Replacements.end())
+      argument.ConstantText = it->second;
+    spelling = argument.toCanonicalString();
+  }
+
   void visitPattern(MatchArm::Pattern *Pat) {
     if (!Pat)
       return;
@@ -95,13 +158,13 @@ public:
   }
 
   void visitFunction(FunctionDecl *Fn) {
-    Fn->ReturnType = sub(Fn->ReturnType);
+    sub(Fn->ReturnTypeSyntax, Fn->ReturnType);
     for (auto &Arg : Fn->Args) {
       if (MorphicParams.count(Arg.Type)) {
         Arg.IsMorphicExempt = true;
         Arg.Permission.MorphicExempt = true;
       }
-      Arg.Type = sub(Arg.Type);
+      sub(Arg.TypeSyntax, Arg.Type);
       // Reset ResolvedType to allow Sema to re-resolve it
       Arg.ResolvedType = nullptr;
     }
@@ -114,7 +177,7 @@ public:
   }
 
   void visitAssociatedType(AssociatedTypeDecl &Assoc) {
-    Assoc.Type = sub(Assoc.Type);
+    sub(Assoc.TypeSyntax, Assoc.Type);
   }
 
   void visitStmt(Stmt *S) {
@@ -130,9 +193,8 @@ public:
     } else if (auto *ExprS = dynamic_cast<ExprStmt *>(S)) {
       visitExpr(ExprS->Expression.get());
     } else if (auto *Var = dynamic_cast<VariableDecl *>(S)) {
-      if (!Var->TypeName.empty()) {
-        Var->TypeName = sub(Var->TypeName);
-      }
+      if (!Var->TypeName.empty())
+        sub(Var->DeclaredTypeSyntax, Var->TypeName);
       Var->ResolvedType = nullptr;
       visitExpr(Var->Init.get());
     } else if (auto *Del = dynamic_cast<DeleteStmt *>(S)) {
@@ -170,13 +232,13 @@ public:
     } else if (auto *Post = dynamic_cast<PostfixExpr *>(E)) {
       visitExpr(Post->LHS.get());
     } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
-      Cast->TargetType = sub(Cast->TargetType);
+      sub(Cast->TargetTypeSyntax, Cast->TargetType);
       visitExpr(Cast->Expression.get());
     } else if (auto *Closure = dynamic_cast<ClosureExpr *>(E)) {
       Closure->ReturnType = sub(Closure->ReturnType);
       visitStmt(Closure->Body.get());
     } else if (auto *SE = dynamic_cast<SizeOfExpr *>(E)) {
-      SE->TypeStr = sub(SE->TypeStr);
+      sub(SE->TypeSyntax, SE->TypeStr);
     } else if (auto *Addr = dynamic_cast<AddressOfExpr *>(E)) {
       visitExpr(Addr->Expression.get());
     } else if (auto *Mem = dynamic_cast<MemberExpr *>(E)) {
@@ -189,15 +251,23 @@ public:
       Call->Callee = sub(Call->Callee);
       for (auto &Arg : Call->Args)
         visitExpr(Arg.get());
-      for (auto &G : Call->GenericArgs)
-        G = sub(G);
+      for (size_t i = 0; i < Call->GenericArgs.size(); ++i) {
+        if (i < Call->GenericArgSyntax.size())
+          sub(Call->GenericArgSyntax[i], Call->GenericArgs[i]);
+        else
+          Call->GenericArgs[i] = sub(Call->GenericArgs[i]);
+      }
     } else if (auto *New = dynamic_cast<NewExpr *>(E)) {
-      New->Type = sub(New->Type);
+      sub(New->TypeSyntax, New->Type);
       visitExpr(New->Initializer.get());
     } else if (auto *Alloc = dynamic_cast<AllocExpr *>(E)) {
-      Alloc->TypeName = sub(Alloc->TypeName); 
+      sub(Alloc->TypeSyntax, Alloc->TypeName);
       visitExpr(Alloc->Initializer.get());
       visitExpr(Alloc->ArraySize.get());
+    } else if (auto *ArrayInit = dynamic_cast<ArrayInitExpr *>(E)) {
+      sub(ArrayInit->TypeSyntax, ArrayInit->Type);
+      visitExpr(ArrayInit->Initializer.get());
+      visitExpr(ArrayInit->ArraySize.get());
     } else if (auto *Arr = dynamic_cast<ArrayExpr *>(E)) {
       for (auto &El : Arr->Elements)
         visitExpr(El.get());

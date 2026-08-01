@@ -214,11 +214,8 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
 
     if (match(TokenType::Less) || match(TokenType::GenericLT)) {
       name += "<";
-      // Manually parse type args simple way or use parseTypeString?
-      // parseTypeString consumes identifiers.
-      // Let's loop.
       while (true) {
-        name += parseTypeString();
+        name += parseTypeArgumentSyntax().toCanonicalString();
         if (match(TokenType::Comma)) {
           name += ",";
         } else {
@@ -358,57 +355,11 @@ std::unique_ptr<Expr> Parser::parseExpr(int minPrec, bool allowTrailingClosure) 
     if (check(TokenType::Colon) || check(TokenType::KwAs) ||
         (peek().Kind == TokenType::Identifier && peek().Text == "as")) {
       advance(); // consume ':' or 'as'
-      std::string typeName = "";
-      int depth = 0;
-      while (true) {
-        Token t = peek();
-        if (depth == 0) {
-          bool shouldBreak = false;
-
-          if (check(TokenType::Greater) && depth == 0)
-            shouldBreak = true;
-          if (check(TokenType::Less) && depth == 0)
-            shouldBreak = true;
-          if ((check(TokenType::Colon) ||
-               (peek().Kind == TokenType::Identifier && peek().Text == "as") ||
-               check(TokenType::KwAs)) &&
-              depth == 0)
-            shouldBreak = true;
-
-          if (check(TokenType::Comma) || check(TokenType::RParen) ||
-              check(TokenType::RBrace) || isEndOfStatement() ||
-              check(TokenType::Equal) || check(TokenType::DoubleEqual) ||
-              check(TokenType::Neq) || check(TokenType::KwIs) ||
-              check(TokenType::LBrace) || check(TokenType::EndOfFile) ||
-              check(TokenType::Plus) || check(TokenType::Minus) ||
-              check(TokenType::Slash) || check(TokenType::And) ||
-              check(TokenType::Percent) || check(TokenType::Or) ||
-              check(TokenType::Dot)) {  // [NEW]
-            shouldBreak = true;
-          }
-
-          if (shouldBreak)
-            break;
-        }
-
-        t = advance();
-        std::string currentText = typeTokenText(t);
-        if (t.Kind == TokenType::Identifier && !currentText.empty() && currentText[0] == '\'') {
-            // currentText = currentText.substr(1);
-        }
-        typeName += currentText;
-        if (currentText == "cede") {
-          typeName += " ";
-        }
-        if (t.Kind == TokenType::LBracket || t.Kind == TokenType::LParen ||
-            t.Kind == TokenType::GenericLT)
-          depth++;
-        else if (t.Kind == TokenType::RBracket || t.Kind == TokenType::RParen ||
-                 t.Kind == TokenType::Greater)
-          depth--;
-      }
+      TypeSyntaxPtr typeSyntax = parseTypeSyntax(true, false, true);
+      std::string typeName = canonicalType(typeSyntax);
       Token tok = previous();
       auto node = std::make_unique<CastExpr>(std::move(lhs), typeName);
+      node->TargetTypeSyntax = std::move(typeSyntax);
       node->setLocation(tok, m_CurrentFile);
       lhs = std::move(node);
       continue;
@@ -596,12 +547,14 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       error(tok, DiagID::ERR_PARSER_EXPECTED_AFTER_SIZEOF);
       return nullptr;
     }
-    auto typeStr = parseRequiredType();
+    auto typeSyntax = parseRequiredTypeSyntax();
+    auto typeStr = canonicalType(typeSyntax);
     if (!match(TokenType::RParen)) {
       error(previous(), DiagID::ERR_PARSER_EXPECTED_AFTER_SIZEOF_TYPE_STRING);
       return nullptr;
     }
     auto node = std::make_unique<SizeOfExpr>(typeStr);
+    node->TypeSyntax = typeSyntax;
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
   } else if (match(TokenType::KwSelf)) {
@@ -635,36 +588,12 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_AFTER_ARRAY_SIZE);
     }
 
-    std::string typeStr = "";
-    if (check(TokenType::Identifier)) {
-      typeStr = parseNamespaceOrIdentifier();
-      if (!typeStr.empty() && typeStr[0] == '\'') {
-          // typeStr = typeStr.substr(1);
-      }
-      // [NEW] Handle Generics for New Type: Node<i32>
-      if (check(TokenType::GenericLT)) {
-        typeStr += advance().Text; // <
-        int balance = 1;
-        while (balance > 0 && !check(TokenType::EndOfFile)) {
-          if (check(TokenType::GenericLT))
-            balance++;
-          else if (check(TokenType::Greater))
-            balance--;
-          typeStr += advance().Text;
-        }
-      }
-
-      while (check(TokenType::Colon) && checkAt(1, TokenType::Colon)) {
-        advance();
-        advance(); // ::
-        typeStr += "::";
-        typeStr +=
-            consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER_2).Text;
-      }
-    } else {
+    if (!check(TokenType::Identifier)) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_TYPE_AFTER_NEW);
       return nullptr;
     }
+    TypeSyntaxPtr typeSyntax = parseTypeSyntax(true, true);
+    std::string typeStr = canonicalType(typeSyntax);
 
     std::unique_ptr<Expr> init = nullptr;
     if (check(TokenType::LBrace)) {
@@ -775,6 +704,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       return nullptr;
     }
     auto node = std::make_unique<NewExpr>(typeStr, std::move(init), std::move(arraySize));
+    node->TypeSyntax = std::move(typeSyntax);
     node->setLocation(kw, m_CurrentFile);
     expr = std::move(node);
   } else if (match(TokenType::LBracket)) {
@@ -798,21 +728,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_AFTER_ARRAY_ELEMENTS);
     if (elements.size() == 1 && check(TokenType::Identifier)) {
       std::unique_ptr<Expr> arraySize = std::move(elements[0]);
-      std::string typeStr = parseNamespaceOrIdentifier();
-      if (check(TokenType::GenericLT)) {
-        typeStr += advance().Text;
-        int balance = 1;
-        while (balance > 0 && !check(TokenType::EndOfFile)) {
-          if (check(TokenType::GenericLT)) balance++;
-          else if (check(TokenType::Greater)) balance--;
-          typeStr += advance().Text;
-        }
-      }
-      while (check(TokenType::Colon) && checkAt(1, TokenType::Colon)) {
-        advance(); advance();
-        typeStr += "::";
-        typeStr += consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_AFTER_2).Text;
-      }
+      TypeSyntaxPtr typeSyntax = parseTypeSyntax(true, true);
+      std::string typeStr = canonicalType(typeSyntax);
       
       std::unique_ptr<Expr> init = nullptr;
       if (check(TokenType::LParen)) {
@@ -868,6 +785,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_INITIALIZER_FOR_ARRAY_INIT_EXP);
       }
       auto node = std::make_unique<ArrayInitExpr>(typeStr, std::move(init), std::move(arraySize));
+      node->TypeSyntax = std::move(typeSyntax);
       node->setLocation(m_Tokens[m_Pos-1], m_CurrentFile);
       expr = std::move(node);
     } else {
@@ -945,13 +863,16 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
     // [NEW] Check for Generics <...>
     std::vector<std::string> genericArgs;
+    std::vector<TypeArgumentSyntax> genericArgSyntax;
     std::string genericSuffix = "";
     if (check(TokenType::GenericLT)) {
       match(TokenType::GenericLT); // consume <
       genericSuffix += "<";
       do {
-        std::string ty = parseTypeString();
+        TypeArgumentSyntax tySyntax = parseTypeArgumentSyntax();
+        std::string ty = tySyntax.toCanonicalString();
         genericArgs.push_back(ty);
+        genericArgSyntax.push_back(std::move(tySyntax));
         genericSuffix += ty;
         if (check(TokenType::Comma)) {
           genericSuffix += ", ";
@@ -1031,6 +952,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         consume(TokenType::RParen, DiagID::ERR_PARSER_EXPECTED_AFTER_ARGUMENTS);
         auto node =
             std::make_unique<CallExpr>(name.Text, std::move(args), genericArgs);
+        node->GenericArgSyntax = genericArgSyntax;
         if (name.HasWrite)
           node->CallableReceiver = CallableReceiverMode::Mutable;
         node->setLocation(name, m_CurrentFile);
@@ -1317,24 +1239,12 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
     consume(TokenType::RBracket, DiagID::ERR_EXPECTED_RBRACKET);
   }
 
-  Token typeTok = peek();
-  std::string typeName = parseNamespaceOrIdentifier();
-  if (!typeName.empty() && typeName[0] == '\'') {
-      // typeName = typeName.substr(1);
+  if (!check(TokenType::Identifier)) {
+    error(peek(), DiagID::ERR_PARSER_EXPECTED_TYPE_AFTER_NEW);
+    return nullptr;
   }
-
-  // [NEW] Handle Generics for Alloc Type: RcWrapper<T>
-  if (check(TokenType::GenericLT)) {
-    typeName += advance().Text; // <
-    int balance = 1;
-    while (balance > 0 && !check(TokenType::EndOfFile)) {
-      if (check(TokenType::GenericLT))
-        balance++;
-      else if (check(TokenType::Greater))
-        balance--;
-      typeName += advance().Text;
-    }
-  }
+  TypeSyntaxPtr typeSyntax = parseTypeSyntax(true, true, true);
+  std::string typeName = canonicalType(typeSyntax);
 
   std::unique_ptr<Expr> init = nullptr;
   if (match(TokenType::LParen)) {
@@ -1384,6 +1294,7 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
 
   auto node = std::make_unique<AllocExpr>(typeName, std::move(init), isArray,
                                           std::move(arraySize));
+  node->TypeSyntax = std::move(typeSyntax);
   node->setLocation(tok, m_CurrentFile);
   return node;
 }

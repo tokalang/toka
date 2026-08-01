@@ -1,0 +1,22 @@
+trait @Readable {
+    type Item
+}
+
+shape SyntaxBox(value: i32)
+
+impl SyntaxBox@Readable {
+    type Item = i32
+}
+
+alias SyntaxBoxSlice = [SyntaxBox]
+
+fn apply_syntax_box(value: SyntaxBox,
+                    callback: fn(i32) -> i32,
+                    bytes: [i32; 4]) -> SyntaxBox@Readable::Item {
+    return callback(value.value)
+}
+
+fn main() -> i32 {
+    auto value = SyntaxBox(value = 7)
+    return apply_syntax_box(value, { x => x }, [1, 2, 3, 4])
+}

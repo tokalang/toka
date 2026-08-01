@@ -1,0 +1,113 @@
+// Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "toka/TypeSyntax.h"
+#include <iostream>
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace {
+
+using toka::SourceLocation;
+using toka::TypeArgumentSyntax;
+using toka::TypeSyntax;
+using toka::TypeSyntaxPtr;
+
+SourceLocation loc(unsigned value) { return SourceLocation(value); }
+
+TypeSyntaxPtr named(const std::string &name, unsigned begin = 1,
+                    unsigned end = 1) {
+  return TypeSyntax::named(name, loc(begin), loc(end));
+}
+
+bool expectCanonical(const std::string &name, const TypeSyntaxPtr &syntax,
+                     const std::string &expected) {
+  const std::string actual = syntax->toCanonicalString();
+  if (actual == expected)
+    return true;
+  std::cerr << name << ": expected '" << expected << "', got '" << actual
+            << "'\n";
+  return false;
+}
+
+} // namespace
+
+int main() {
+  bool passed = true;
+  const auto i32 = named("i32", 10, 12);
+  const auto self = named("Self", 13, 16);
+
+  const auto generic = TypeSyntax::generic(
+      named("Buffer", 20, 25),
+      {TypeArgumentSyntax::type(i32),
+       TypeArgumentSyntax::constant("N_", loc(30), loc(31))},
+      loc(20), loc(32));
+  passed &= expectCanonical("named/Self", self, "Self");
+  passed &= expectCanonical("generic type and const arguments", generic,
+                            "Buffer<i32,N_>");
+  const bool retainedTypeArgumentRange =
+      generic->Arguments[0].Begin == i32->Begin &&
+      generic->Arguments[0].End == i32->End;
+  passed &= retainedTypeArgumentRange;
+  if (!retainedTypeArgumentRange)
+    std::cerr << "type argument source range was not retained\n";
+
+  const auto array = TypeSyntax::array(
+      generic, TypeArgumentSyntax::constant("4", loc(40), loc(40)), loc(33),
+      loc(41));
+  const auto slice = TypeSyntax::slice(i32, loc(42), loc(46));
+  passed &= expectCanonical("array", array, "[Buffer<i32,N_>;4]");
+  passed &= expectCanonical("slice", slice, "[i32]");
+
+  const auto tuple = TypeSyntax::tuple({i32, self}, loc(47), loc(55));
+  const auto record = TypeSyntax::anonymousRecord(
+      {{"value", i32, loc(56), loc(64)},
+       {"next", TypeSyntax::slice(self, loc(65), loc(70)), loc(65), loc(70)}},
+      loc(56), loc(71));
+  passed &= expectCanonical("tuple", tuple, "(i32,Self)");
+  passed &= expectCanonical("anonymous record", record, "(value:i32,next:[Self])");
+
+  const auto function = TypeSyntax::function(
+      "dyn fn#", {i32, TypeSyntax::slice(self, loc(72), loc(77))},
+      TypeSyntax::morphology("cede ", named("Result", 78, 83), loc(78),
+                             loc(83)),
+      true, false, loc(72), loc(83));
+  const auto dynTrait = TypeSyntax::dynTrait("Readable<i32>", loc(84), loc(97));
+  const auto projection = TypeSyntax::projection(
+      generic, "Readable<i32>", "Item", loc(98), loc(118));
+  passed &= expectCanonical("function", function,
+                            "dyn fn#(i32,[Self])->cede Result");
+  passed &= expectCanonical("dyn trait", dynTrait, "dyn @Readable<i32>");
+  passed &= expectCanonical("associated projection", projection,
+                            "Buffer<i32,N_>@Readable<i32>::Item");
+
+  const auto morphology = TypeSyntax::morphology(
+      "nul", TypeSyntax::morphology("*", i32, loc(120), loc(123)), loc(119),
+      loc(123));
+  const auto postfix = TypeSyntax::morphology("#", morphology, loc(119),
+                                               loc(124), true);
+  passed &= expectCanonical("morphology", postfix, "nul*i32#");
+  passed &= expectCanonical("invalid recovery",
+                            TypeSyntax::invalid("Option<i32", loc(125), loc(134)),
+                            "Option<i32");
+
+  const auto substituted = generic->substitute(
+      {{"i32", named("u64", 10, 12)}, {"N_", named("8", 30, 31)}});
+  passed &= expectCanonical("structural substitution", substituted,
+                            "Buffer<u64,8>");
+
+  return passed ? 0 : 1;
+}

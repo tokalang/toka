@@ -222,8 +222,10 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   std::string fullVarName = morphologyPrefix + name.Text;
 
   std::string typeName = "";
+  TypeSyntaxPtr typeSyntax;
   if (match(TokenType::Colon)) {
-    typeName = parseRequiredType();
+    typeSyntax = parseRequiredTypeSyntax();
+    typeName = canonicalType(typeSyntax);
     if (!typeName.empty() && typeName[0] == '\'') {
       errorTypeSideMorphicBinding(name, morphologyPrefix, typeName);
       typeName = typeName.substr(1);
@@ -260,6 +262,7 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
       node->IsValueMutable, node->IsValueNullable, node->IsValueBlocked,
       node->IsMorphicExempt);
   node->TypeName = typeName;
+  node->DeclaredTypeSyntax = typeSyntax;
 
   expectEndOfStatement();
   return node;

@@ -366,6 +366,29 @@ static void replaceTypeNameToken(std::string &text, const std::string &from,
   }
 }
 
+// Source-derived type spellings stay paired with TypeSyntax through Sema.
+// Semantic substitutions that introduce an already-lowered string (for
+// example Self -> a concrete generic instance) use one generated named leaf;
+// they never reopen the old substring parser path.
+static void substituteSourceTypeSyntax(TypeSyntaxPtr &syntax,
+                                      std::string &spelling,
+                                      const std::string &from,
+                                      const std::string &to) {
+  if (!syntax) {
+    replaceTypeNameToken(spelling, from, to);
+    return;
+  }
+  if (from == to) {
+    spelling = syntax->toCanonicalString();
+    return;
+  }
+
+  std::map<std::string, TypeSyntaxPtr> replacements;
+  replacements.emplace(from, TypeSyntax::named(to, syntax->Begin, syntax->End));
+  syntax = syntax->substitute(replacements);
+  spelling = syntax->toCanonicalString();
+}
+
 static size_t findTopLevelChar(const std::string &s, char target,
                                size_t start = 0) {
   int balance = 0;
@@ -1888,8 +1911,8 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
       for (const auto &method : Impl->Methods) {
         if (method && method->Name == "call") {
           Impl->AssociatedTypes.push_back(
-              AssociatedTypeDecl{"Output", method->ReturnType, false,
-                                 method->Loc});
+              AssociatedTypeDecl{"Output", method->ReturnType,
+                                 method->ReturnTypeSyntax, false, method->Loc});
           break;
         }
       }
@@ -1933,10 +1956,13 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
       continue;
     }
 
+    TypeSyntaxPtr resolvedAssocSyntax = implAssoc->TypeSyntax;
     std::string resolvedAssocType = implAssoc->Type;
-    replaceTypeNameToken(resolvedAssocType, "Self", resolvedTypeName);
+    substituteSourceTypeSyntax(resolvedAssocSyntax, resolvedAssocType, "Self",
+                               resolvedTypeName);
     for (const auto &[knownName, knownType] : replacements) {
-      replaceTypeNameToken(resolvedAssocType, knownName, knownType);
+      substituteSourceTypeSyntax(resolvedAssocSyntax, resolvedAssocType,
+                                 knownName, knownType);
     }
     resolvedAssocType = resolveType(resolvedAssocType);
     replacements[name] = resolvedAssocType;
@@ -1971,10 +1997,11 @@ void Sema::applyAssociatedTypeSubstitutions(
 
   for (auto &Method : Impl->Methods) {
     for (const auto &[name, ty] : substitutions) {
-      replaceTypeNameToken(Method->ReturnType, name, ty);
+      substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
+                                  name, ty);
       Method->ResolvedReturnType = nullptr;
       for (auto &Arg : Method->Args) {
-        replaceTypeNameToken(Arg.Type, name, ty);
+        substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, name, ty);
         Arg.ResolvedType = nullptr;
       }
     }
@@ -2219,7 +2246,9 @@ void Sema::declareGlobals(Module &M) {
   // 4. Register TypeAliases
   for (auto &Alias : M.TypeAliases) {
     DeclarationLexicalScopes[Alias.get()] = &ms;
-    std::string target = Alias->TargetType;
+    std::string target = Alias->TargetTypeSyntax
+                             ? Alias->TargetTypeSyntax->toCanonicalString()
+                             : Alias->TargetType;
     if (!toka::Parser::TargetTriple.empty()) {
       std::string triple = toka::Parser::TargetTriple;
       bool is32 = (triple.find("wasm32") != std::string::npos ||
@@ -2270,7 +2299,10 @@ void Sema::declareGlobals(Module &M) {
     }
   }
   for (auto &Alias : M.TypeAliases) {
-    validateDynTraitObjectSafetyInType(Alias->TargetType, getLoc(Alias.get()));
+    validateDynTraitObjectSafetyInType(
+        Alias->TargetTypeSyntax ? Alias->TargetTypeSyntax->toCanonicalString()
+                                : Alias->TargetType,
+        getLoc(Alias.get()));
   }
   for (auto &St : M.Shapes) {
     if (St->CodegenName.empty())
@@ -2540,7 +2572,9 @@ void Sema::registerGlobals(Module &M) {
     ms.LexicalTypes[St->Name] = typeInfo;
   }
   for (auto &Alias : M.TypeAliases) {
-    std::string target = Alias->TargetType;
+    std::string target = Alias->TargetTypeSyntax
+                             ? Alias->TargetTypeSyntax->toCanonicalString()
+                             : Alias->TargetType;
     if (!toka::Parser::TargetTriple.empty()) {
       std::string triple = toka::Parser::TargetTriple;
       bool is32 = (triple.find("wasm32") != std::string::npos ||
@@ -2585,7 +2619,10 @@ void Sema::registerGlobals(Module &M) {
     ms.LexicalTypes[Trait->Name] = traitInfo;
   }
   for (auto &Alias : M.TypeAliases) {
-    validateDynTraitObjectSafetyInType(Alias->TargetType, getLoc(Alias.get()));
+    validateDynTraitObjectSafetyInType(
+        Alias->TargetTypeSyntax ? Alias->TargetTypeSyntax->toCanonicalString()
+                                : Alias->TargetType,
+        getLoc(Alias.get()));
   }
   for (auto &St : M.Shapes) {
     for (const auto &Member : St->Members) {
@@ -3207,10 +3244,11 @@ void Sema::registerImpl(ImplDecl *Impl) {
   // so that callers (like main) typically don't fail to resolve 'Self'.
   std::string selfTy = Impl->TypeName;
   for (auto &Method : Impl->Methods) {
-    replaceTypeNameToken(Method->ReturnType, "Self", selfTy);
+    substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
+                                "Self", selfTy);
     Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
-      replaceTypeNameToken(Arg.Type, "Self", selfTy);
+      substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, "Self", selfTy);
       Arg.ResolvedType = nullptr;
     }
   }
@@ -3305,9 +3343,11 @@ void Sema::registerImpl(ImplDecl *Impl) {
         }
         if (Method->Body) {
           // Trait provides a default implementation
+          TypeSyntaxPtr defaultReturnSyntax = Method->ReturnTypeSyntax;
           std::string defaultReturnType = Method->ReturnType;
           for (const auto &[name, ty] : associatedTypeSubstitutions) {
-            replaceTypeNameToken(defaultReturnType, name, ty);
+            substituteSourceTypeSyntax(defaultReturnSyntax, defaultReturnType,
+                                       name, ty);
           }
           MethodMap[resolvedTypeName][Method->Name] = defaultReturnType;
           MethodDecls[resolvedTypeName][Method->Name] = Method.get();
@@ -3368,10 +3408,11 @@ void Sema::declareImpl(ImplDecl *Impl) {
 
   std::string selfTy = Impl->TypeName;
   for (auto &Method : Impl->Methods) {
-    replaceTypeNameToken(Method->ReturnType, "Self", selfTy);
+    substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
+                                "Self", selfTy);
     Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
-      replaceTypeNameToken(Arg.Type, "Self", selfTy);
+      substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, "Self", selfTy);
       Arg.ResolvedType = nullptr;
     }
   }
@@ -4387,6 +4428,42 @@ FunctionDecl *Sema::instantiateGenericFunction(
     }
   };
 
+  auto applyTypeSyntaxSubst = [&](TypeSyntaxPtr &syntax, std::string &spelling) {
+    if (!syntax) {
+      applySubst(spelling);
+      return;
+    }
+    if (syntax->NodeKind == TypeSyntax::Kind::AssociatedProjection &&
+        syntax->Text == "Callable" && syntax->MemberName == "Output") {
+      // The legacy semantic Type boundary owns callable-result lowering.
+      // Preserve that established rule, then materialize its result as a
+      // generated leaf rather than textually rewriting the projection.
+      applySubst(spelling);
+      syntax = TypeSyntax::named(spelling, syntax->Begin, syntax->End);
+      return;
+    }
+    std::map<std::string, TypeSyntaxPtr> typedSubst;
+    for (const auto &[name, replacement] : substMap) {
+      typedSubst.emplace(name, TypeSyntax::named(replacement,
+                                                  SourceLocation(),
+                                                  SourceLocation()));
+    }
+    syntax = syntax->substitute(typedSubst);
+    spelling = syntax->toCanonicalString();
+  };
+
+  auto applyTypeArgumentSubst = [&](TypeArgumentSyntax &argument,
+                                    std::string &spelling) {
+    if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type) {
+      applyTypeSyntaxSubst(argument.Type, spelling);
+      return;
+    }
+    auto it = substMap.find(argument.ConstantText);
+    if (it != substMap.end())
+      argument.ConstantText = it->second;
+    spelling = argument.toCanonicalString();
+  };
+
   auto refersToMorphicParam = [&](const std::string &typeName) {
     for (const auto &GP : Template->GenericParams) {
       if (!GP.IsMorphic)
@@ -4406,10 +4483,10 @@ FunctionDecl *Sema::instantiateGenericFunction(
       Arg.IsMorphicExempt = true;
       Arg.Permission.MorphicExempt = true;
     }
-    applySubst(Arg.Type);
+    applyTypeSyntaxSubst(Arg.TypeSyntax, Arg.Type);
     Arg.ResolvedType = nullptr;
   }
-  applySubst(Instance->ReturnType);
+  applyTypeSyntaxSubst(Instance->ReturnTypeSyntax, Instance->ReturnType);
 
   // [NEW] Substitute types in Body (Recursive Traversal)
   // We need to traverse Stmt and Expr to find nodes that store type strings:
@@ -4435,17 +4512,17 @@ FunctionDecl *Sema::instantiateGenericFunction(
       e->ResolvedType = nullptr;
 
       if (auto *ne = dynamic_cast<NewExpr *>(e)) {
-        applySubst(ne->Type);
+        applyTypeSyntaxSubst(ne->TypeSyntax, ne->Type);
         if (ne->Initializer)
           visitExpr(ne->Initializer.get());
       } else if (auto *ae = dynamic_cast<AllocExpr *>(e)) {
-        applySubst(ae->TypeName);
+        applyTypeSyntaxSubst(ae->TypeSyntax, ae->TypeName);
         if (ae->Initializer)
           visitExpr(ae->Initializer.get());
         if (ae->ArraySize)
           visitExpr(ae->ArraySize.get());
       } else if (auto *ce = dynamic_cast<CastExpr *>(e)) {
-        applySubst(ce->TargetType);
+        applyTypeSyntaxSubst(ce->TargetTypeSyntax, ce->TargetType);
         if (ce->Expression)
           visitExpr(ce->Expression.get());
       } else if (auto *se = dynamic_cast<SizeOfExpr *>(e)) {
@@ -4453,7 +4530,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
         // `sizeof([u8; N_])`.  Leaving this spelling symbolic makes CodeGen
         // materialize a zero-length array even though the function instance
         // itself was specialized (for example bytes_from_array<32>).
-        applySubst(se->TypeStr);
+        applyTypeSyntaxSubst(se->TypeSyntax, se->TypeStr);
       } else if (auto *ise = dynamic_cast<InitStructExpr *>(e)) {
         applySubst(ise->ShapeName);
         for (auto &m : ise->Members)
@@ -4462,8 +4539,13 @@ FunctionDecl *Sema::instantiateGenericFunction(
         // Function Name (if it has generics embedded?) - Usually handled by
         // Parser logic putting generics in name? If so, applySubst on Callee.
         applySubst(call->Callee);
-        for (auto &s : call->GenericArgs)
-          applySubst(s);
+        for (size_t i = 0; i < call->GenericArgs.size(); ++i) {
+          if (i < call->GenericArgSyntax.size())
+            applyTypeArgumentSubst(call->GenericArgSyntax[i],
+                                   call->GenericArgs[i]);
+          else
+            applySubst(call->GenericArgs[i]);
+        }
         for (auto &arg : call->Args)
           visitExpr(arg.get());
       } else if (auto *mc = dynamic_cast<MethodCallExpr *>(e)) {
@@ -4477,6 +4559,12 @@ FunctionDecl *Sema::instantiateGenericFunction(
         for (auto &m : are->Fields)
           if (m.second)
             visitExpr(m.second.get());
+      } else if (auto *arrayInit = dynamic_cast<ArrayInitExpr *>(e)) {
+        applyTypeSyntaxSubst(arrayInit->TypeSyntax, arrayInit->Type);
+        if (arrayInit->Initializer)
+          visitExpr(arrayInit->Initializer.get());
+        if (arrayInit->ArraySize)
+          visitExpr(arrayInit->ArraySize.get());
       } else if (auto *bin = dynamic_cast<BinaryExpr *>(e)) {
         visitExpr(bin->LHS.get());
         visitExpr(bin->RHS.get());
@@ -4551,7 +4639,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
         for (auto &sub : bs->Statements)
           visitStmt(sub.get());
       } else if (auto *vd = dynamic_cast<VariableDecl *>(s)) {
-        applySubst(vd->TypeName);
+        applyTypeSyntaxSubst(vd->DeclaredTypeSyntax, vd->TypeName);
         vd->ResolvedType = nullptr; // Clear cache
         if (vd->Init)
           visitExpr(vd->Init.get());

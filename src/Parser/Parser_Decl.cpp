@@ -21,13 +21,12 @@
 namespace toka {
 
 std::string Parser::parseTraitBoundName() {
-  std::string name =
-      consume(TokenType::Identifier,
-              DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT)
-          .Text;
-  if (check(TokenType::GenericLT))
-    name += parseTypeString();
-  return name;
+  if (!check(TokenType::Identifier)) {
+    return consume(TokenType::Identifier,
+                   DiagID::ERR_PARSER_EXPECTED_TRAIT_NAME_IN_CONSTRAINT)
+        .Text;
+  }
+  return canonicalType(parseTypeSyntax());
 }
 
 std::vector<GenericParam> Parser::parseGenericParams() {
@@ -66,7 +65,8 @@ std::vector<GenericParam> Parser::parseGenericParams() {
           consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
         } else {
           // Const generic type
-          gp.Type = parseRequiredType();
+          gp.TypeSyntax = parseRequiredTypeSyntax();
+          gp.Type = canonicalType(gp.TypeSyntax);
           gp.IsConst = true;
         }
       }
@@ -295,7 +295,13 @@ Parser::ReturnContract Parser::parseReturnContract(bool allowDependencies) {
     if (!isTypeStart()) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
     } else {
-      contract.Type = prefix + parseTypeString();
+      contract.TypeSyntax = parseTypeSyntax();
+      if (!prefix.empty()) {
+        contract.TypeSyntax = TypeSyntax::morphology(
+            prefix, contract.TypeSyntax, contract.TypeSyntax->Begin,
+            contract.TypeSyntax->End);
+      }
+      contract.Type = canonicalType(contract.TypeSyntax);
     }
   } else if (!isTypeStart()) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
@@ -303,7 +309,8 @@ Parser::ReturnContract Parser::parseReturnContract(bool allowDependencies) {
         !check(TokenType::Dependency))
       advance();
   } else {
-    contract.Type = parseTypeString();
+    contract.TypeSyntax = parseTypeSyntax();
+    contract.Type = canonicalType(contract.TypeSyntax);
   }
 
   if (match(TokenType::Dependency)) {
@@ -429,7 +436,8 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           v.SubKind = ShapeKind::Tuple;
           while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
             ShapeMember field;
-            field.Type = parseRequiredType();
+            field.TypeSyntax = parseRequiredTypeSyntax();
+            field.Type = canonicalType(field.TypeSyntax);
             v.SubMembers.push_back(std::move(field));
             if (!check(TokenType::RParen))
               match(TokenType::Comma);
@@ -528,7 +536,8 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.Type = "";
         }
 
-        std::string rawType = parseRequiredType();
+        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax();
+        std::string rawType = canonicalType(rawTypeSyntax);
         if (kind == ShapeKind::Struct) {
           std::string trimmed = rawType;
           size_t start = trimmed.find_first_not_of(" \t\r\n");
@@ -556,6 +565,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           }
         }
         m.Type = rawType;
+        m.TypeSyntax = rawTypeSyntax;
         m.IsExplicitBound = isExplicitBound;
         m.Permission = BindingPermission::fromLegacy(
             m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
@@ -624,6 +634,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         arg.IsCeded = isCeded;
         arg.Name = "self";
         arg.Type = "Self"; // Default
+        arg.TypeSyntax = TypeSyntax::named("Self", arg.Loc, arg.Loc);
         arg.IsRawPointer = false;
         // Capture mutability from token (e.g. self#)
         if (previous().HasWrite) {
@@ -639,7 +650,8 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           if (!isTypeStart()) {
             error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
           } else {
-            arg.Type = parseTypeString();
+            arg.TypeSyntax = parseTypeSyntax();
+            arg.Type = canonicalType(arg.TypeSyntax);
           }
         }
         arg.Permission = BindingPermission::fromLegacy(
@@ -699,12 +711,14 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         return nullptr;
       }
       std::string argType = "i64"; // recovery type after a reported parse error
+      TypeSyntaxPtr argTypeSyntax;
       if (!match(TokenType::Colon)) {
         error(argName, DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
-        argType = parseTypeString();
+        argTypeSyntax = parseTypeSyntax();
+        argType = canonicalType(argTypeSyntax);
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
       bool typeIsMorphic = !argType.empty() && argType[0] == '\'';
@@ -720,9 +734,12 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       if (argType.rfind("cede ", 0) == 0) {
         arg.IsCeded = true;
         argType = argType.substr(5);
+        argTypeSyntax =
+            TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
       }
       arg.Name = argName.Text;
       arg.Type = argType;
+      arg.TypeSyntax = argTypeSyntax;
       arg.IsRawPointer = hasPointer;
       arg.IsReference = isRef;
       arg.IsMorphicExempt = nameIsMorphic;
@@ -785,6 +802,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   auto decl = std::make_unique<FunctionDecl>(
       isPub, name.Text, std::move(args), std::move(body), contract.Type,
       genericParams, std::move(contract.LifeDependencies), contract.Effect);
+  decl->ReturnTypeSyntax = contract.TypeSyntax;
   decl->IsVariadic = isVariadic;
   decl->MemberDependencies = std::move(contract.MemberDependencies);
   decl->setLocation(name, m_CurrentFile);
@@ -822,12 +840,14 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       }
       Token argName = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
       std::string argType = "i64"; // recovery type after a reported parse error
+      TypeSyntaxPtr argTypeSyntax;
       if (!match(TokenType::Colon)) {
         error(argName, DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
-        argType = parseTypeString();
+        argTypeSyntax = parseTypeSyntax();
+        argType = canonicalType(argTypeSyntax);
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
       bool typeIsMorphic = !argType.empty() && argType[0] == '\'';
@@ -843,9 +863,12 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       if (argType.rfind("cede ", 0) == 0) {
         arg.IsCeded = true;
         argType = argType.substr(5);
+        argTypeSyntax =
+            TypeSyntax::withoutLeadingMorphology(argTypeSyntax, "cede ");
       }
       arg.Name = argName.Text;
       arg.Type = argType;
+      arg.TypeSyntax = argTypeSyntax;
       arg.IsRawPointer = hasPointer;
       arg.IsPointerNullable = isPtrNullable;
       arg.IsValueMutable = argName.HasWrite;
@@ -872,6 +895,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
 
   auto node = std::make_unique<ExternDecl>(name.Text, std::move(args),
                                            contract.Type, contract.Effect);
+  node->ReturnTypeSyntax = contract.TypeSyntax;
   node->setLocation(name, m_CurrentFile);
   node->IsVariadic = isVariadic;
   return node;
@@ -1019,12 +1043,14 @@ std::unique_ptr<TypeAliasDecl> Parser::parseTypeAliasDecl(bool isPub) {
 
   consume(TokenType::Equal, DiagID::ERR_EXPECTED_EQUAL);
 
-  std::string targetType = parseRequiredType();
+  TypeSyntaxPtr targetTypeSyntax = parseRequiredTypeSyntax();
+  std::string targetType = canonicalType(targetTypeSyntax);
 
   expectEndOfStatement();
 
   auto decl = std::make_unique<TypeAliasDecl>(isPub, name.Text, targetType,
                                               isStrong, genericParams);
+  decl->TargetTypeSyntax = targetTypeSyntax;
   decl->setLocation(name, m_CurrentFile);
   return decl;
 }
@@ -1052,10 +1078,12 @@ AssociatedTypeDecl Parser::parseAssociatedTypeDecl(bool requireDefinition) {
 
   if (requireDefinition) {
     consume(TokenType::Equal, DiagID::ERR_PARSER_ASSOCIATED_TYPE_EXPECTED_EQUAL);
-    decl.Type = parseRequiredType();
+    decl.TypeSyntax = parseRequiredTypeSyntax();
+    decl.Type = canonicalType(decl.TypeSyntax);
   } else if (match(TokenType::Equal)) {
     error(startTok, DiagID::ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT);
-    decl.Type = parseRequiredType();
+    decl.TypeSyntax = parseRequiredTypeSyntax();
+    decl.Type = canonicalType(decl.TypeSyntax);
   }
 
   expectEndOfStatement();
@@ -1068,9 +1096,10 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
   // 1. [NEW] Parse Generic Parameters <T, U>
   std::vector<GenericParam> genericParams = parseGenericParams();
 
-  // 2. Parse First Type/Trait String (Not just Identifier)
-  // This allows "Box<T>" or "Iterator<T>"
-  std::string firstTypeStr = parseTypeString(false);
+  // The impl subject is a TypeSyntax; its trait facet remains a separate
+  // grammar so a trait bound is never mistaken for an ordinary type.
+  TypeSyntaxPtr firstTypeSyntax = parseTypeSyntax(false);
+  std::string firstTypeStr = canonicalType(firstTypeSyntax);
 
   std::string traitName;
   std::string typeName;
@@ -1079,17 +1108,18 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
   if (match(TokenType::At)) {
     // impl Type@Trait
     typeName = firstTypeStr;
-    // Trait might also be generic? For now assume identifier or
-    // parseTypeString? Let's assume Traits are strictly Identifiers for now,
-    // or use parseTypeString if Traits can be generic. Existing code used
-    // Identifier. Let's upgrade to parseTypeString for future proofing or
-    // consistency.
     traitNameToken = peek();
-    traitName = parseTypeString();
+    if (check(TokenType::KwEncap)) {
+      // `encap` is reserved, but it is parsed here as a trait-facet token so
+      // the dedicated reserved-keyword diagnostic remains the only error.
+      traitName = advance().Text;
+    } else {
+      traitName = canonicalType(parseTypeSyntax());
+    }
   } else if (match(TokenType::KwFor)) {
     error(previous(), DiagID::ERR_PARSER_IMPL_TRAIT_FOR_REMOVED);
     traitName = firstTypeStr;
-    typeName = parseTypeString();
+    typeName = canonicalType(parseTypeSyntax());
   } else {
     // impl Type
     typeName = firstTypeStr;
@@ -1170,6 +1200,10 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
 
   auto decl = std::make_unique<ImplDecl>(typeName, std::move(methods),
                                          traitName, genericParams);
+  decl->HeaderSyntax.Type = firstTypeSyntax;
+  decl->HeaderSyntax.TraitName = traitName;
+  decl->HeaderSyntax.Begin = firstTypeSyntax ? firstTypeSyntax->Begin : startTok.Loc;
+  decl->HeaderSyntax.End = firstTypeSyntax ? firstTypeSyntax->End : startTok.Loc;
   decl->EncapEntries = std::move(encapEntries);
   decl->AssociatedTypes = std::move(associatedTypes);
   decl->setLocation(startTok, m_CurrentFile);

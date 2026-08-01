@@ -70,20 +70,6 @@ Token Parser::consume(TokenType type, DiagID id) {
   return peek();
 }
 
-std::string Parser::typeTokenText(const Token &tok) const {
-  std::string text = tok.Text;
-  if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
-      tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn) {
-    if (tok.IsBlocked)
-      text += "$";
-    if (tok.HasNull)
-      text += "?";
-    if (tok.HasWrite)
-      text += "#";
-  }
-  return text;
-}
-
 bool Parser::isTypeStart() const {
   switch (peek().Kind) {
   case TokenType::Identifier:
@@ -264,75 +250,544 @@ void Parser::synchronize() {
   }
 }
 
-std::string Parser::parseTypeString(bool allowAssociatedProjection) {
-  std::string type;
-  int balance = 0;
+namespace {
+
+std::string canonicalTypeTokenText(const Token &tok) {
+  std::string text = tok.Text;
+  if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
+      tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn) {
+    if (tok.IsBlocked)
+      text += "$";
+    if (tok.HasNull)
+      text += "?";
+    if (tok.HasWrite)
+      text += "#";
+  }
+  return text;
+}
+
+std::vector<std::string> attachedTypePostfixes(const Token &tok) {
+  std::vector<std::string> result;
+  if (tok.IsBlocked)
+    result.push_back("$");
+  if (tok.HasNull)
+    result.push_back("?");
+  if (tok.HasWrite)
+    result.push_back("#");
+  return result;
+}
+
+class TypeSyntaxBuilder {
+public:
+  explicit TypeSyntaxBuilder(const std::vector<Token> &tokens)
+      : Tokens(tokens) {}
+
+  TypeSyntaxPtr parse() {
+    if (Tokens.empty())
+      return TypeSyntax::invalid("", SourceLocation(), SourceLocation());
+    auto syntax = parseType();
+    if (syntax && Pos == Tokens.size())
+      return syntax;
+    const size_t begin = 0;
+    return TypeSyntax::invalid(spelling(begin, Tokens.size()), Tokens.front().Loc,
+                               Tokens.back().Loc);
+  }
+
+private:
+  const std::vector<Token> &Tokens;
+  size_t Pos = 0;
+
+  bool atEnd() const { return Pos >= Tokens.size(); }
+  const Token *peek() const { return atEnd() ? nullptr : &Tokens[Pos]; }
+  bool check(TokenType kind) const { return peek() && peek()->Kind == kind; }
+
+  const Token *take() {
+    if (atEnd())
+      return nullptr;
+    return &Tokens[Pos++];
+  }
+
+  bool match(TokenType kind) {
+    if (!check(kind))
+      return false;
+    ++Pos;
+    return true;
+  }
+
+  static bool isName(const Token *tok) {
+    return tok && (tok->Kind == TokenType::Identifier ||
+                   tok->Kind == TokenType::KwUpperSelf ||
+                   tok->Kind == TokenType::KwFnType);
+  }
+
+  static bool isConstArgument(const Token *tok) {
+    if (!tok)
+      return false;
+    if (tok->Kind == TokenType::Integer || tok->Kind == TokenType::Float ||
+        tok->Kind == TokenType::KwTrue || tok->Kind == TokenType::KwFalse ||
+        tok->Kind == TokenType::KwNull || tok->Kind == TokenType::KwNone)
+      return true;
+    return tok->Kind == TokenType::Identifier && !tok->Text.empty() &&
+           tok->Text.back() == '_';
+  }
+
+  std::string spelling(size_t begin, size_t end) const {
+    std::string result;
+    for (size_t i = begin; i < end; ++i) {
+      const Token &tok = Tokens[i];
+      result += canonicalTypeTokenText(tok);
+      if (tok.Kind == TokenType::KwCede || tok.Kind == TokenType::KwDyn)
+        result += " ";
+    }
+    return result;
+  }
+
+  TypeSyntaxPtr parseType() {
+    if (atEnd())
+      return nullptr;
+
+    const size_t begin = Pos;
+    std::vector<std::pair<std::string, SourceLocation>> prefixes;
+    while (!atEnd()) {
+      if (match(TokenType::KwNul)) {
+        prefixes.emplace_back("nul", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::KwCede)) {
+        prefixes.emplace_back("cede ", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::Ampersand)) {
+        prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::Star)) {
+        prefixes.emplace_back("*", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::Caret)) {
+        prefixes.emplace_back("^", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::Tilde)) {
+        prefixes.emplace_back("~", Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::TokenWrite)) {
+        prefixes.emplace_back("#", Tokens[Pos - 1].Loc);
+      } else {
+        break;
+      }
+    }
+
+    TypeSyntaxPtr syntax = parsePrimary();
+    if (!syntax) {
+      SourceLocation loc = begin < Tokens.size() ? Tokens[begin].Loc
+                                                  : SourceLocation();
+      return TypeSyntax::invalid(spelling(begin, Pos), loc,
+                                 Pos ? Tokens[Pos - 1].Loc : loc);
+    }
+
+    while (match(TokenType::At)) {
+      const SourceLocation projectionBegin = syntax->Begin;
+      auto trait = parseNamedApplication(false, false);
+      if (!trait || !match(TokenType::Colon) || !match(TokenType::Colon) ||
+          !isName(peek())) {
+        return TypeSyntax::invalid(spelling(begin, Pos), projectionBegin,
+                                   Pos ? Tokens[Pos - 1].Loc : projectionBegin);
+      }
+      const Token *member = take();
+      syntax = TypeSyntax::projection(std::move(syntax),
+                                      trait->toCanonicalString(),
+                                      canonicalTypeTokenText(*member),
+                                      projectionBegin, member->Loc);
+    }
+
+    while (check(TokenType::TokenWrite) || check(TokenType::TokenNull) ||
+           check(TokenType::TokenNone)) {
+      const Token *suffix = take();
+      const SourceLocation begin = syntax->Begin;
+      syntax = TypeSyntax::morphology(canonicalTypeTokenText(*suffix),
+                                      std::move(syntax), begin,
+                                      suffix->Loc, true);
+    }
+
+    for (auto it = prefixes.rbegin(); it != prefixes.rend(); ++it) {
+      const SourceLocation end = syntax->End;
+      syntax = TypeSyntax::morphology(it->first, std::move(syntax), it->second,
+                                      end);
+    }
+    return syntax;
+  }
+
+  TypeSyntaxPtr parsePrimary() {
+    if (atEnd())
+      return nullptr;
+    if (match(TokenType::KwDyn)) {
+      const Token &dyn = Tokens[Pos - 1];
+      if (check(TokenType::KwFn)) {
+        const Token *fn = take();
+        std::string kind = "dyn " + canonicalTypeTokenText(*fn);
+        while (check(TokenType::TokenWrite) || check(TokenType::TokenNull) ||
+               check(TokenType::TokenNone))
+          kind += canonicalTypeTokenText(*take());
+        if (check(TokenType::LParen))
+          return parseFunction(std::move(kind), dyn.Loc);
+        return TypeSyntax::named(std::move(kind), dyn.Loc, fn->Loc);
+      }
+      if (!match(TokenType::At))
+        return TypeSyntax::named("dyn", dyn.Loc, dyn.Loc);
+      if (atEnd())
+        return TypeSyntax::invalid("dyn @", dyn.Loc,
+                                   Pos ? Tokens[Pos - 1].Loc : dyn.Loc);
+
+      // A dyn facet is its own grammar: generic trait arguments and rejected
+      // associated-type bindings must reach Sema as one trait reference so it
+      // can produce the established object-safety diagnostic.  They are not
+      // ordinary type arguments of the enclosing `dyn` type.
+      const size_t traitBegin = Pos;
+      while (!atEnd())
+        take();
+      return TypeSyntax::dynTrait(spelling(traitBegin, Pos), dyn.Loc,
+                                  Tokens[Pos - 1].Loc);
+    }
+    if (match(TokenType::KwFn)) {
+      const Token &fn = Tokens[Pos - 1];
+      std::string kind = canonicalTypeTokenText(fn);
+      while (check(TokenType::TokenWrite) || check(TokenType::TokenNull) ||
+             check(TokenType::TokenNone))
+        kind += canonicalTypeTokenText(*take());
+      if (check(TokenType::LParen))
+        return parseFunction(std::move(kind), fn.Loc);
+      return TypeSyntax::named(std::move(kind), fn.Loc, fn.Loc);
+    }
+    if (match(TokenType::LBracket))
+      return parseArray(Tokens[Pos - 1]);
+    if (match(TokenType::LParen))
+      return parseParenthesized(Tokens[Pos - 1]);
+    return parseNamedApplication(true);
+  }
+
+  TypeSyntaxPtr parseNamedApplication(bool includePathSuffix,
+                                      bool includePathSegments = true) {
+    if (!isName(peek()))
+      return nullptr;
+    const Token *first = take();
+    std::string name = first->Text;
+    std::vector<std::string> postfixes = attachedTypePostfixes(*first);
+    SourceLocation end = first->Loc;
+    while (includePathSegments && check(TokenType::Colon) &&
+           Pos + 2 < Tokens.size() &&
+           Tokens[Pos + 1].Kind == TokenType::Colon &&
+           isName(&Tokens[Pos + 2])) {
+      Pos += 2;
+      const Token *part = take();
+      name += "::" + part->Text;
+      auto partPostfixes = attachedTypePostfixes(*part);
+      postfixes.insert(postfixes.end(), partPostfixes.begin(),
+                       partPostfixes.end());
+      end = part->Loc;
+    }
+
+    auto applyPostfixes = [&](TypeSyntaxPtr result) {
+      for (const auto &postfix : postfixes) {
+        result = TypeSyntax::morphology(postfix, std::move(result),
+                                        first->Loc, end, true);
+      }
+      return result;
+    };
+
+    TypeSyntaxPtr result = TypeSyntax::named(name, first->Loc, end);
+    if (!match(TokenType::GenericLT))
+      return applyPostfixes(std::move(result));
+
+    std::vector<TypeArgumentSyntax> arguments;
+    while (!atEnd() && !check(TokenType::Greater)) {
+      const size_t argumentBegin = Pos;
+      if (isConstArgument(peek())) {
+        int balance = 0;
+        do {
+          if (check(TokenType::LParen) || check(TokenType::LBracket) ||
+              check(TokenType::GenericLT))
+            ++balance;
+          if (check(TokenType::RParen) || check(TokenType::RBracket) ||
+              check(TokenType::Greater))
+            --balance;
+          ++Pos;
+        } while (!atEnd() && balance >= 0 && !check(TokenType::Comma) &&
+                 !check(TokenType::Greater));
+        const size_t argumentEnd = Pos;
+        arguments.push_back(TypeArgumentSyntax::constant(
+            spelling(argumentBegin, argumentEnd), Tokens[argumentBegin].Loc,
+            Tokens[argumentEnd - 1].Loc));
+      } else {
+        auto argument = parseType();
+        if (!argument || Pos == argumentBegin) {
+          if (!atEnd())
+            ++Pos;
+          arguments.push_back(TypeArgumentSyntax::constant(
+              spelling(argumentBegin, Pos), Tokens[argumentBegin].Loc,
+              Tokens[Pos - 1].Loc));
+        } else {
+          auto typeArgument = TypeArgumentSyntax::type(std::move(argument));
+          typeArgument.Begin = Tokens[argumentBegin].Loc;
+          typeArgument.End = Tokens[Pos - 1].Loc;
+          arguments.push_back(std::move(typeArgument));
+        }
+      }
+      if (!match(TokenType::Comma))
+        break;
+    }
+    if (!match(TokenType::Greater))
+      return TypeSyntax::invalid(spelling(0, Pos), first->Loc,
+                                 Pos ? Tokens[Pos - 1].Loc : first->Loc);
+
+    end = Tokens[Pos - 1].Loc;
+    std::string pathSuffix;
+    if (includePathSuffix) {
+    while (check(TokenType::Colon) && Pos + 2 < Tokens.size() &&
+           Tokens[Pos + 1].Kind == TokenType::Colon &&
+           isName(&Tokens[Pos + 2])) {
+      Pos += 2;
+      const Token *part = take();
+      pathSuffix += "::" + part->Text;
+      auto partPostfixes = attachedTypePostfixes(*part);
+      postfixes.insert(postfixes.end(), partPostfixes.begin(),
+                       partPostfixes.end());
+      end = part->Loc;
+    }
+    }
+    return applyPostfixes(TypeSyntax::generic(std::move(result),
+                                               std::move(arguments),
+                                               first->Loc, end,
+                                               std::move(pathSuffix)));
+  }
+
+  TypeSyntaxPtr parseArray(const Token &open) {
+    const size_t begin = Pos - 1;
+    auto element = parseType();
+    if (!element)
+      return TypeSyntax::invalid(spelling(begin, Pos), open.Loc,
+                                 Pos ? Tokens[Pos - 1].Loc : open.Loc);
+    if (match(TokenType::Semicolon)) {
+      const size_t extentBegin = Pos;
+      int balance = 0;
+      while (!atEnd()) {
+        if (check(TokenType::RBracket) && balance == 0)
+          break;
+        if (check(TokenType::LBracket) || check(TokenType::LParen) ||
+            check(TokenType::GenericLT))
+          ++balance;
+        else if (check(TokenType::RBracket) || check(TokenType::RParen) ||
+                 check(TokenType::Greater))
+          --balance;
+        ++Pos;
+      }
+      if (extentBegin == Pos || !match(TokenType::RBracket))
+        return TypeSyntax::invalid(spelling(begin, Pos), open.Loc,
+                                   Pos ? Tokens[Pos - 1].Loc : open.Loc);
+      return TypeSyntax::array(
+          std::move(element),
+          TypeArgumentSyntax::constant(spelling(extentBegin, Pos - 1),
+                                       Tokens[extentBegin].Loc,
+                                       Tokens[Pos - 2].Loc),
+          open.Loc, Tokens[Pos - 1].Loc);
+    }
+    if (!match(TokenType::RBracket))
+      return TypeSyntax::invalid(spelling(begin, Pos), open.Loc,
+                                 Pos ? Tokens[Pos - 1].Loc : open.Loc);
+    return TypeSyntax::slice(std::move(element), open.Loc, Tokens[Pos - 1].Loc);
+  }
+
+  TypeSyntaxPtr parseParenthesized(const Token &open) {
+    const size_t begin = Pos - 1;
+    if (match(TokenType::RParen))
+      return TypeSyntax::tuple({}, open.Loc, Tokens[Pos - 1].Loc);
+
+    const bool isRecord = isName(peek()) && Pos + 1 < Tokens.size() &&
+                          Tokens[Pos + 1].Kind == TokenType::Colon;
+    if (isRecord) {
+      std::vector<TypeSyntax::Field> fields;
+      while (!atEnd() && !check(TokenType::RParen)) {
+        const Token *name = take();
+        if (!name || !match(TokenType::Colon))
+          break;
+        auto fieldType = parseType();
+        fields.push_back({canonicalTypeTokenText(*name), fieldType, name->Loc,
+                          fieldType ? fieldType->End : name->Loc});
+        if (!match(TokenType::Comma))
+          break;
+      }
+      if (!match(TokenType::RParen))
+        return TypeSyntax::invalid(spelling(begin, Pos), open.Loc,
+                                   Pos ? Tokens[Pos - 1].Loc : open.Loc);
+      return TypeSyntax::anonymousRecord(std::move(fields), open.Loc,
+                                         Tokens[Pos - 1].Loc);
+    }
+
+    std::vector<TypeSyntaxPtr> elements;
+    while (!atEnd() && !check(TokenType::RParen)) {
+      auto element = parseType();
+      if (!element)
+        break;
+      elements.push_back(std::move(element));
+      if (!match(TokenType::Comma))
+        break;
+    }
+    if (!match(TokenType::RParen))
+      return TypeSyntax::invalid(spelling(begin, Pos), open.Loc,
+                                 Pos ? Tokens[Pos - 1].Loc : open.Loc);
+    return TypeSyntax::tuple(std::move(elements), open.Loc, Tokens[Pos - 1].Loc);
+  }
+
+  TypeSyntaxPtr parseFunction(std::string kind, SourceLocation begin) {
+    if (!match(TokenType::LParen))
+      return TypeSyntax::invalid(kind, begin, begin);
+    std::vector<TypeSyntaxPtr> parameters;
+    bool variadic = false;
+    while (!atEnd() && !check(TokenType::RParen)) {
+      if (match(TokenType::DotDotDot)) {
+        variadic = true;
+        break;
+      }
+      auto parameter = parseType();
+      if (!parameter)
+        break;
+      parameters.push_back(std::move(parameter));
+      if (!match(TokenType::Comma))
+        break;
+    }
+    if (!match(TokenType::RParen))
+      return TypeSyntax::invalid(kind, begin,
+                                 Pos ? Tokens[Pos - 1].Loc : begin);
+    TypeSyntaxPtr result;
+    const bool hasExplicitResult = match(TokenType::Arrow);
+    if (hasExplicitResult)
+      result = parseType();
+    return TypeSyntax::function(std::move(kind), std::move(parameters),
+                                std::move(result), hasExplicitResult, variadic,
+                                begin, Pos ? Tokens[Pos - 1].Loc : begin);
+  }
+};
+
+} // namespace
+
+TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
+                                      bool stopAtConstructor,
+                                      bool stopAtExpression) {
+  std::vector<Token> tokens;
+  std::vector<TokenType> delimiters;
+  auto isOpeningDelimiter = [](TokenType type) {
+    return type == TokenType::LBracket || type == TokenType::LParen ||
+           type == TokenType::GenericLT;
+  };
+  auto closes = [](TokenType opening, TokenType closing) {
+    return (opening == TokenType::LBracket && closing == TokenType::RBracket) ||
+           (opening == TokenType::LParen && closing == TokenType::RParen) ||
+           (opening == TokenType::GenericLT && closing == TokenType::Greater);
+  };
   while (!check(TokenType::EndOfFile)) {
     TokenType t = peek().Kind;
-    if (t == TokenType::LBracket || t == TokenType::LParen ||
-        t == TokenType::GenericLT)
-      balance++;
-
-    if (balance == 0 &&
+    // A leading `*`, `&`, or other morphology token is part of a type (for
+    // example the cast in `value as *char`).  Once a complete type has begun,
+    // the same token kinds delimit the enclosing expression grammar.
+    const bool expressionBoundary =
+        stopAtExpression && !tokens.empty() && delimiters.empty() &&
+        (check(TokenType::Greater) || check(TokenType::Less) ||
+         check(TokenType::Colon) || check(TokenType::KwAs) ||
+         (check(TokenType::Identifier) && peek().Text == "as") ||
+         check(TokenType::Comma) || check(TokenType::RParen) ||
+         check(TokenType::RBrace) || check(TokenType::Equal) ||
+         check(TokenType::DoubleEqual) || check(TokenType::Neq) ||
+         check(TokenType::KwIs) || check(TokenType::Plus) ||
+         check(TokenType::Minus) || check(TokenType::Star) ||
+         check(TokenType::Slash) || check(TokenType::Percent) ||
+         check(TokenType::And) || check(TokenType::Or) ||
+         check(TokenType::Dot));
+    const bool constructorBoundary =
+        stopAtConstructor && delimiters.empty() && !tokens.empty() &&
+        check(TokenType::LParen);
+    if (expressionBoundary || constructorBoundary ||
+        (delimiters.empty() &&
         (check(TokenType::Comma) || check(TokenType::RParen) ||
          check(TokenType::Equal) || isEndOfStatement() ||
          check(TokenType::LBrace) || check(TokenType::Greater) ||
          check(TokenType::Pipe) || check(TokenType::KwFor) ||
-         check(TokenType::KwWhere) || check(TokenType::Dependency)))
+         check(TokenType::KwWhere) || check(TokenType::Dependency))))
       break;
 
-    // Special handling for @: stop only if it's not following 'dyn'
-    if (balance == 0 && check(TokenType::At)) {
-      std::string compactType = type;
-      compactType.erase(std::remove(compactType.begin(), compactType.end(), ' '),
-                        compactType.end());
-      bool isDynTrait = compactType == "dyn";
+    // A mismatched closing delimiter belongs to the surrounding grammar.  Do
+    // not consume it while recovering an unclosed generic/array/function
+    // type: the TypeSyntax becomes Invalid and the caller still sees its own
+    // delimiter.
+    if (!delimiters.empty() &&
+        (t == TokenType::RBracket || t == TokenType::RParen ||
+         t == TokenType::Greater) &&
+        !closes(delimiters.back(), t))
+      break;
+
+    if (delimiters.empty() && check(TokenType::At)) {
+      const bool isDynTrait = tokens.size() == 1 &&
+                              tokens.front().Kind == TokenType::KwDyn;
       if (isDynTrait && checkAt(1, TokenType::LBrace)) {
         bool wasPanic = PanicMode;
         error(peekAt(1), DiagID::ERR_PARSER_DYN_TRAIT_SET_OBJECT_UNSUPPORTED);
-        if (!wasPanic) {
+        if (!wasPanic)
           PanicMode = false;
-        }
-        type += advance().Text; // '@'
+        tokens.push_back(advance());
         int braceBalance = 0;
         do {
           Token tok = advance();
-          type += tok.Text;
-          if (tok.Kind == TokenType::LBrace) {
-            braceBalance++;
-          } else if (tok.Kind == TokenType::RBrace) {
-            braceBalance--;
-          }
+          tokens.push_back(tok);
+          if (tok.Kind == TokenType::LBrace)
+            ++braceBalance;
+          else if (tok.Kind == TokenType::RBrace)
+            --braceBalance;
         } while (braceBalance > 0 && !check(TokenType::EndOfFile));
         continue;
       }
-      if (!isDynTrait && !type.empty() && !allowAssociatedProjection)
+      if (!isDynTrait && !tokens.empty() && !allowAssociatedProjection)
         break;
     }
 
-    if (t == TokenType::RBracket || t == TokenType::RParen ||
-        t == TokenType::Greater)
-      balance--;
-
-    Token tok = advance();
-    std::string text = typeTokenText(tok);
-    if (tok.Kind == TokenType::Identifier && !text.empty() && text[0] == '\'') {
-        // text = text.substr(1);
+    if (isOpeningDelimiter(t)) {
+      delimiters.push_back(t);
+    } else if (!delimiters.empty() && closes(delimiters.back(), t)) {
+      delimiters.pop_back();
     }
-    type += text;
-    if (tok.Text == "cede" || tok.Text == "dyn") {
-      type += " ";
+    tokens.push_back(advance());
+  }
+  if (tokens.empty())
+    return TypeSyntax::invalid("", peek().Loc, peek().Loc);
+  TypeSyntaxPtr syntax = TypeSyntaxBuilder(tokens).parse();
+  if (syntax->NodeKind == TypeSyntax::Kind::Invalid) {
+    // The caller still owns its surrounding delimiter.  This is a recovered
+    // type error, not a declaration-level synchronization point: entering
+    // panic mode here would make parseBlock consume that delimiter and report
+    // a misleading second error.
+    if (!PanicMode) {
+      HasError = true;
+      DiagnosticEngine::report(tokens.front().Loc, DiagID::ERR_GENERIC_PARSE,
+                               "invalid type syntax");
     }
   }
-  return type;
+  return syntax;
 }
 
-std::string Parser::parseRequiredType() {
+TypeSyntaxPtr Parser::parseRequiredTypeSyntax() {
   if (!isTypeStart()) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_TYPE_ANNOTATION);
-    return "";
+    return TypeSyntax::invalid("", peek().Loc, peek().Loc);
   }
-  return parseTypeString();
+  return parseTypeSyntax();
+}
+
+TypeArgumentSyntax Parser::parseTypeArgumentSyntax() {
+  const Token &start = peek();
+  const bool isConst =
+      start.Kind == TokenType::Integer || start.Kind == TokenType::Float ||
+      start.Kind == TokenType::KwTrue || start.Kind == TokenType::KwFalse ||
+      (start.Kind == TokenType::Identifier && !start.Text.empty() &&
+       start.Text.back() == '_');
+  if (isConst) {
+    Token value = advance();
+    return TypeArgumentSyntax::constant(canonicalTypeTokenText(value), value.Loc,
+                                        value.Loc);
+  }
+  return TypeArgumentSyntax::type(parseTypeSyntax());
+}
+
+std::string Parser::canonicalType(const TypeSyntaxPtr &syntax,
+                                  const std::string &fallback) {
+  return syntax ? syntax->toCanonicalString() : fallback;
 }
 
 bool Parser::isNextNamedField(int startOffset) const {

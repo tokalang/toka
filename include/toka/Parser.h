@@ -77,7 +77,6 @@ private:
   bool rejectTypeSideReferenceParameter(const Token &nameTok,
                                         const std::string &bindingPrefix,
                                         std::string &typeName);
-  std::string typeTokenText(const Token &tok) const;
   bool isTypeStart() const;
 
   bool HasError = false;
@@ -85,6 +84,7 @@ private:
 
   struct ReturnContract {
     std::string Type = "void";
+    TypeSyntaxPtr TypeSyntax;
     std::string BindingName;
     EffectKind Effect = EffectKind::None;
     std::vector<std::string> LifeDependencies;
@@ -149,8 +149,13 @@ private:
 
   std::unique_ptr<Expr> parseExpr(int minPrec = 0, bool allowTrailingClosure = true);
   std::unique_ptr<Expr> parsePrimary(bool allowTrailingClosure = true);
-  std::string parseTypeString(bool allowAssociatedProjection = true);
-  std::string parseRequiredType();
+  TypeSyntaxPtr parseTypeSyntax(bool allowAssociatedProjection = true,
+                                bool stopAtConstructor = false,
+                                bool stopAtExpression = false);
+  TypeSyntaxPtr parseRequiredTypeSyntax();
+  TypeArgumentSyntax parseTypeArgumentSyntax();
+  static std::string canonicalType(const TypeSyntaxPtr &syntax,
+                                   const std::string &fallback = "");
   bool isNextNamedField(int startOffset = 0) const;
   bool isNamedInitList() const;
   std::string parseNamespaceOrIdentifier();

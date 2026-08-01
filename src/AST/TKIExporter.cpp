@@ -127,14 +127,21 @@ static std::string exportBindingType(const std::string &typeStr) {
     return stripped;
 }
 
+static std::string exportTypeSyntax(const TypeSyntaxPtr &syntax,
+                                    const std::string &fallback) {
+    return syntax ? syntax->toCanonicalString() : fallback;
+}
+
 static bool hasTypeSideMorphicPrefix(const std::string &typeStr) {
     std::string stripped = toka::Type::stripPrefixes(typeStr);
     return !stripped.empty() && stripped[0] == '\'';
 }
 
-static std::string exportReturnType(const std::string &returnType,
+static std::string exportReturnType(const TypeSyntaxPtr &returnSyntax,
+                                    const std::string &returnType,
                                     EffectKind effect) {
-    bool hasReturnType = !returnType.empty() && returnType != "void";
+    const std::string canonicalReturn = exportTypeSyntax(returnSyntax, returnType);
+    bool hasReturnType = !canonicalReturn.empty() && canonicalReturn != "void";
     if (!hasReturnType && effect == EffectKind::None) {
         return "";
     }
@@ -144,7 +151,7 @@ static std::string exportReturnType(const std::string &returnType,
     } else if (effect == EffectKind::Wait) {
         result += "wait ";
     }
-    result += hasReturnType ? returnType : "void";
+    result += hasReturnType ? canonicalReturn : "void";
     return result;
 }
 
@@ -375,7 +382,7 @@ void TKIExporter::exportTypeAlias(const TypeAliasDecl &decl) {
     if (decl.IsPub) m_OS << "pub ";
     m_OS << (decl.IsStrong ? "type " : "alias ") << decl.Name;
     printGenericParams(decl.GenericParams);
-    m_OS << " = " << decl.TargetType;
+    m_OS << " = " << exportTypeSyntax(decl.TargetTypeSyntax, decl.TargetType);
     m_OS << "\n";
 }
 
@@ -387,7 +394,9 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
     printGenericParams(decl.GenericParams);
 
     if (decl.Kind == ShapeKind::Array) {
-        m_OS << " = [" << decl.Members[0].Type << "; " << decl.ArraySize << "]\n";
+        const auto &member = decl.Members[0];
+        m_OS << " = [" << exportTypeSyntax(member.TypeSyntax, member.Type)
+             << "; " << decl.ArraySize << "]\n";
         return;
     }
 
@@ -397,13 +406,14 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
             if (i > 0) m_OS << ", ";
             const auto &m = decl.Members[i];
             std::string varStr = reconstructVar(
-                m.Name, m.Type,
+                m.Name, exportTypeSyntax(m.TypeSyntax, m.Type),
                 m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
                 m.IsPointerNullable, m.IsRebindable, m.IsRebindBlocked,
                 m.IsExplicitBound, m.IsMorphicExempt, false,
                 m.IsValueMutable, m.IsValueNullable, m.IsValueBlocked
             );
-            m_OS << varStr << ": " << exportBindingType(m.Type);
+            m_OS << varStr << ": " << exportBindingType(
+                exportTypeSyntax(m.TypeSyntax, m.Type));
             if (m.DefaultValue) {
                 m_OS << " = ";
                 exportExpr(m.DefaultValue.get());
@@ -412,7 +422,8 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
     } else if (decl.Kind == ShapeKind::Tuple) {
         for (size_t i = 0; i < decl.Members.size(); ++i) {
             if (i > 0) m_OS << ", ";
-            m_OS << decl.Members[i].Type;
+            const auto &member = decl.Members[i];
+            m_OS << exportTypeSyntax(member.TypeSyntax, member.Type);
         }
     } else if (decl.Kind == ShapeKind::Enum) {
         for (size_t i = 0; i < decl.Members.size(); ++i) {
@@ -423,7 +434,8 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
                 m_OS << "(";
                 for (size_t j = 0; j < m.SubMembers.size(); ++j) {
                     if (j > 0) m_OS << ", ";
-                    m_OS << m.SubMembers[j].Type;
+                    const auto &member = m.SubMembers[j];
+                    m_OS << exportTypeSyntax(member.TypeSyntax, member.Type);
                 }
                 m_OS << ")";
             }
@@ -439,7 +451,7 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
             if (!m.Name.empty() && m.Name != std::to_string(i)) {
                 m_OS << m.Name << ": ";
             }
-            m_OS << m.Type;
+            m_OS << exportTypeSyntax(m.TypeSyntax, m.Type);
         }
     }
     m_OS << ")\n";
@@ -495,9 +507,11 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
     if (!decl.TraitName.empty()) {
         std::string cleanTrait = decl.TraitName;
         if (cleanTrait[0] == '@') cleanTrait = cleanTrait.substr(1);
-        m_OS << decl.TypeName << "@" << cleanTrait << " {\n";
+        m_OS << exportTypeSyntax(decl.HeaderSyntax.Type, decl.TypeName)
+             << "@" << cleanTrait << " {\n";
     } else {
-        m_OS << decl.TypeName << " {\n";
+        m_OS << exportTypeSyntax(decl.HeaderSyntax.Type, decl.TypeName)
+             << " {\n";
     }
     m_Indent++;
 
@@ -505,7 +519,8 @@ void TKIExporter::exportImpl(const ImplDecl &decl) {
     for (const auto &assoc : decl.AssociatedTypes) {
         indent();
         if (assoc.IsPer) m_OS << "per ";
-        m_OS << "type " << assoc.Name << " = " << assoc.Type << "\n";
+        m_OS << "type " << assoc.Name << " = "
+             << exportTypeSyntax(assoc.TypeSyntax, assoc.Type) << "\n";
     }
 
     // Encap entries
@@ -543,7 +558,7 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     }
     m_OS << ")";
 
-    m_OS << exportReturnType(decl.ReturnType, decl.Effect);
+    m_OS << exportReturnType(decl.ReturnTypeSyntax, decl.ReturnType, decl.Effect);
 
     bool hasDottedLifeDependency = false;
     for (const auto &dep : decl.LifeDependencies) {
@@ -610,13 +625,14 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
         if (i > 0) m_OS << ", ";
         const auto &arg = decl.Args[i];
         std::string varStr = reconstructVar(
-            arg.Name, arg.Type,
+            arg.Name, exportTypeSyntax(arg.TypeSyntax, arg.Type),
             arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
             arg.IsPointerNullable, arg.IsRebindable, arg.IsRebindBlocked,
             false, arg.IsMorphicExempt, arg.IsCeded,
             arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
         );
-        m_OS << varStr << ": " << exportBindingType(arg.Type);
+        m_OS << varStr << ": " << exportBindingType(
+            exportTypeSyntax(arg.TypeSyntax, arg.Type));
         if (arg.DefaultValue) {
             m_OS << " = ";
             exportExpr(arg.DefaultValue.get());
@@ -627,7 +643,7 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
         m_OS << "...";
     }
     m_OS << ")";
-    m_OS << exportReturnType(decl.ReturnType, decl.Effect);
+    m_OS << exportReturnType(decl.ReturnTypeSyntax, decl.ReturnType, decl.Effect);
     m_OS << "\n";
 }
 
@@ -637,7 +653,7 @@ void TKIExporter::exportGlobal(const Stmt &stmt) {
         indent();
         m_OS << "pub const ";
         std::string varStr = reconstructVar(
-            decl->Name, decl->TypeName,
+            decl->Name, exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName),
             decl->IsRawPointer, decl->IsUnique, decl->IsShared, decl->IsReference,
             decl->IsPointerNullable, decl->IsRebindable, decl->IsRebindBlocked,
             false, decl->IsMorphicExempt, false,
@@ -645,8 +661,10 @@ void TKIExporter::exportGlobal(const Stmt &stmt) {
         );
         m_OS << varStr;
         if (!decl->TypeName.empty() &&
-            decl->TypeName.rfind("__Toka_Anon_Rec_", 0) != 0) {
-            m_OS << ": " << exportBindingType(decl->TypeName);
+            exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName)
+                .rfind("__Toka_Anon_Rec_", 0) != 0) {
+            m_OS << ": " << exportBindingType(
+                exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName));
         }
         m_OS << " = ";
         uint64_t val = 0;
@@ -669,7 +687,8 @@ void TKIExporter::printGenericParams(const std::vector<GenericParam> &params) {
             if (gp.Type.empty()) {
                 m_OS << "const " << gp.Name;
             } else {
-                m_OS << gp.Name << ": " << gp.Type;
+                m_OS << gp.Name << ": "
+                     << exportTypeSyntax(gp.TypeSyntax, gp.Type);
             }
         } else {
             m_OS << gp.Name;
@@ -691,21 +710,22 @@ void TKIExporter::printGenericParams(const std::vector<GenericParam> &params) {
 }
 
 void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
+    const std::string type = exportTypeSyntax(arg.TypeSyntax, arg.Type);
     bool nameHasMorphicPrefix = !arg.Name.empty() && arg.Name[0] == '\'';
     bool keepTypeSideCede =
-        arg.IsCeded && hasTypeSideMorphicPrefix(arg.Type) &&
+        arg.IsCeded && hasTypeSideMorphicPrefix(type) &&
         !nameHasMorphicPrefix && !arg.IsMorphicExempt;
     std::string varStr = reconstructVar(
-        arg.Name, keepTypeSideCede ? exportBindingType(arg.Type) : arg.Type,
+        arg.Name, keepTypeSideCede ? exportBindingType(type) : type,
         arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
         arg.IsPointerNullable, arg.IsRebindable, arg.IsRebindBlocked,
         false, arg.IsMorphicExempt, keepTypeSideCede ? false : arg.IsCeded,
         arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
     );
     if (keepTypeSideCede) {
-        m_OS << varStr << ": cede " << toka::Type::stripPrefixes(arg.Type);
+        m_OS << varStr << ": cede " << toka::Type::stripPrefixes(type);
     } else {
-        m_OS << varStr << ": " << exportBindingType(arg.Type);
+        m_OS << varStr << ": " << exportBindingType(type);
     }
     if (arg.DefaultValue) {
         m_OS << " = ";
@@ -731,7 +751,8 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (dynamic_cast<const UnsetExpr *>(expr)) {
         m_OS << "unset";
     } else if (auto sz = dynamic_cast<const SizeOfExpr *>(expr)) {
-        m_OS << "sizeof(" << sz->TypeStr << ")";
+        m_OS << "sizeof(" << exportTypeSyntax(sz->TypeSyntax, sz->TypeStr)
+             << ")";
     } else if (auto var = dynamic_cast<const VariableExpr *>(expr)) {
         if (!stripHats) {
             if (var->IsUnique) m_OS << "^";
@@ -795,7 +816,8 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << ".start";
     } else if (auto cast = dynamic_cast<const CastExpr *>(expr)) {
         exportExpr(cast->Expression.get());
-        m_OS << " as " << cast->TargetType;
+        m_OS << " as "
+             << exportTypeSyntax(cast->TargetTypeSyntax, cast->TargetType);
     } else if (auto addr = dynamic_cast<const AddressOfExpr *>(expr)) {
         m_OS << "&";
         exportExpr(addr->Expression.get());
@@ -833,7 +855,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             if (alloc->ArraySize) exportExpr(alloc->ArraySize.get());
             m_OS << "]";
         }
-        m_OS << alloc->TypeName;
+        m_OS << exportTypeSyntax(alloc->TypeSyntax, alloc->TypeName);
         if (alloc->Initializer) {
             m_OS << "(";
             exportExpr(alloc->Initializer.get());
@@ -863,7 +885,9 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             m_OS << "<";
             for (size_t i = 0; i < call->GenericArgs.size(); ++i) {
                 if (i > 0) m_OS << ", ";
-                m_OS << call->GenericArgs[i];
+                m_OS << (i < call->GenericArgSyntax.size()
+                             ? call->GenericArgSyntax[i].toCanonicalString()
+                             : call->GenericArgs[i]);
             }
             m_OS << ">";
         }
@@ -892,7 +916,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             exportExpr(ne->ArraySize.get());
             m_OS << "]";
         }
-        m_OS << ne->Type;
+        m_OS << exportTypeSyntax(ne->TypeSyntax, ne->Type);
         if (ne->Initializer) {
             m_OS << "(";
             exportExpr(ne->Initializer.get());
@@ -901,7 +925,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (auto ae = dynamic_cast<const ArrayInitExpr *>(expr)) {
         m_OS << "new [";
         exportExpr(ae->ArraySize.get());
-        m_OS << "]" << ae->Type;
+        m_OS << "]" << exportTypeSyntax(ae->TypeSyntax, ae->Type);
         if (ae->Initializer) {
             m_OS << "(";
             exportExpr(ae->Initializer.get());
@@ -921,7 +945,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (auto cmpF = dynamic_cast<const ComptimeFieldExpr *>(expr)) {
         m_OS << cmpF->FieldName;
     } else if (auto cmpR = dynamic_cast<const ComptimeReflectExpr *>(expr)) {
-        m_OS << cmpR->ReflectedTypeStr;
+        m_OS << exportTypeSyntax(cmpR->TypeSyntax, cmpR->ReflectedTypeStr);
     } else if (auto matchEx = dynamic_cast<const MatchExpr *>(expr)) {
         m_OS << "match ";
         exportExpr(matchEx->Target.get());

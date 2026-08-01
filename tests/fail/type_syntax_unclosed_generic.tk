@@ -1,0 +1,4 @@
+// EXPECT: error[E0105]
+fn takes_missing_generic(value: Option<i32) -> i32 {
+    return 0
+}
