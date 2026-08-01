@@ -636,7 +636,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   // Create partial decl first to allow recursion
   auto NewDecl = std::make_unique<ShapeDecl>(
       Template->IsPub, mangledName, std::vector<GenericParam>{}, Template->Kind,
-      std::vector<ShapeMember>{}, Template->IsPacked);
+      std::vector<ShapeMember>{});
   NewDecl->CodegenName = mangledName;
   NewDecl->Loc = Template->Loc;
 
@@ -758,7 +758,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
         // We can access ShapeMap from Sema
         if (ShapeMap.count(st->Name)) {
           ShapeDecl *SD = ShapeMap[st->Name];
-          if (SD->Kind == ShapeKind::Enum && !SD->IsPacked) {
+          if (SD->Kind == ShapeKind::Enum) {
             invalid = true;
             reason = "strict enum";
           }

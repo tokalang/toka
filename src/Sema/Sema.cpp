@@ -3851,8 +3851,7 @@ void Sema::analyzeShapes(Module &M) {
           // Check if it's a Strict Enum
           if (ShapeMap.count(st->Name)) {
             ShapeDecl *SD = ShapeMap[st->Name];
-            if (SD->Kind == ShapeKind::Enum &&
-                !SD->IsPacked) { // Packed is C-enum
+            if (SD->Kind == ShapeKind::Enum) {
               invalid = true;
               reason = "strict enum";
             }

@@ -361,6 +361,9 @@ alias ID = i32
 type UserID = i32
 ```
 
+`alias` 是目标类型的透明别名；`type` 声明具有相同底层表示但不同身份的名义类型，
+因此转换和 Trait 实现必须显式书写。
+
 ## 7. 方法、Trait 与封装
 
 方法定义在 `impl` 块中。
@@ -456,7 +459,7 @@ fn convert<T, E1: @ErrorInto<E2>, E2>(value: T) {}
 `@Callable`。其他 trait 名称均遵守普通词法模块命名空间，必须在当前模块声明
 或通过 import 显式选择。仅加载一个模块不会让其中未选择的 trait 自动可见。
 
-约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束。推荐形式与泛型参数约束一致：`T: @Trait` 或 `T: @{Trait1, Trait2}` 表示必须存在对应的 trait 实现。历史形式 `T impl @Trait` 仍被接受为兼容写法，但不是推荐风格。
+约束较多或需要独立表达时，使用 `where:` 区块。每一行是一条编译期约束，形式与泛型参数约束一致：`T: @Trait` 或 `T: @{Trait1, Trait2}`，表示必须存在对应的 trait 实现。
 
 ```toka
 fn copy<T>(io: T)
@@ -617,7 +620,13 @@ loop count < 10 {
 for auto x in [1, 2, 3] {
     println("{}", x)
 }
+
+for auto x# in [1, 2, 3] {
+    x = x + 1
+}
 ```
+
+`#` 使迭代绑定可写。迭代绑定关键字始终是 `auto`；`for let` 不属于 Toka 语法。
 
 非数组迭代使用 `core/traits` 中三个普通 trait；它们不是隐式 prelude
 trait：
@@ -941,6 +950,7 @@ Toka 1.x 保持冻结 1.0 表面中程序的源码层含义。新增能力以及
 | `let x = 1` / `var x = 1` | `auto x = 1` | Toka 使用 `auto` 声明局部绑定 |
 | `while cond { ... }` | `loop cond { ... }` | 条件循环使用 `loop` |
 | `for x in iter { ... }` | `for auto x in iter { ... }` | 迭代绑定必须显式 |
+| `for let x in iter { ... }` | `for auto x# in iter { ... }` | `#` 使迭代绑定可写 |
 | `Point(1, 2)` | `Point(x = 1, y = 2)` | Shape 初始化使用具名字段 |
 | `*p` 读取 payload | `p` | 裸名操作 payload |
 | `*p = value` 写 payload | `p = value` | 带帽赋值操作 handle |

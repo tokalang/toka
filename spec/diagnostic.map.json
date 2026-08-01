@@ -1379,12 +1379,6 @@
       "message": "Expected '>' to close generic parameters",
       "description": "Expected '>' to close generic parameters"
     },
-    "E01200": {
-      "id": "ERR_PARSER_EXPECTED_SHAPE_AFTER_PACKED",
-      "level": "Error",
-      "message": "Expected 'shape' after 'packed'",
-      "description": "Expected 'shape' after 'packed'"
-    },
     "E01201": {
       "id": "ERR_PARSER_EXPECTED_SHAPE_NAME",
       "level": "Error",
@@ -1640,8 +1634,8 @@
     "E01243": {
       "id": "ERR_PARSER_EXPECTED_WHERE_RELATION",
       "level": "Error",
-      "message": "Expected ':' or 'impl' in where constraint",
-      "description": "Expected ':' or 'impl' in where constraint"
+      "message": "Expected ':' in where constraint",
+      "description": "Where constraints use ':' between the subject and its trait facet target."
     },
     "E01244": {
       "id": "ERR_PARSER_DEPRECATED_KEYWORD_VAR_USE_AUTO_FOR_VAR",
@@ -1708,6 +1702,36 @@
       "level": "Error",
       "message": "Expected a return type annotation",
       "description": "Every return signature must provide a type, including one with a named return binding."
+    },
+    "E01255": {
+      "id": "ERR_PARSER_EXPECTED_PARAMETER_TYPE",
+      "level": "Error",
+      "message": "Expected a parameter type annotation",
+      "description": "Every non-receiver parameter must provide a type annotation."
+    },
+    "E01256": {
+      "id": "ERR_PARSER_FOR_LET_REMOVED",
+      "level": "Error",
+      "message": "'for let' is removed; use 'for auto name# in ...' for a writable iteration binding",
+      "description": "Iteration bindings always use auto; # makes the binding writable."
+    },
+    "E01257": {
+      "id": "ERR_PARSER_IMPL_TRAIT_FOR_REMOVED",
+      "level": "Error",
+      "message": "Trait implementations use 'impl Type@Trait'; 'impl Trait for Type' is removed",
+      "description": "Use the Type@Trait implementation form."
+    },
+    "E01258": {
+      "id": "ERR_PARSER_WHERE_IMPL_REMOVED",
+      "level": "Error",
+      "message": "Where constraints use ':'; 'T impl @Trait' is removed",
+      "description": "Use T: @Trait or T: @{Trait1, Trait2}."
+    },
+    "E01259": {
+      "id": "ERR_PARSER_EXPECTED_TYPE_ANNOTATION",
+      "level": "Error",
+      "message": "Expected a type annotation",
+      "description": "A declaration type position must begin with a valid type form."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",

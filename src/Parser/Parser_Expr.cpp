@@ -584,13 +584,6 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     expr = parseContinue();
   } else if (match(TokenType::KwPass)) {
     expr = parsePass();
-  } else if (match(TokenType::KwYield)) {
-    // Treat yield as pass for now, or keep it separate if needed
-    Token tok = previous();
-    auto val = parseExpr();
-    auto node = std::make_unique<PassExpr>(std::move(val));
-    node->setLocation(tok, m_CurrentFile);
-    expr = std::move(node);
   } else if (match(TokenType::KwCede)) {
     Token tok = previous();
     auto val = parseExpr(0, allowTrailingClosure);
@@ -603,7 +596,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       error(tok, DiagID::ERR_PARSER_EXPECTED_AFTER_SIZEOF);
       return nullptr;
     }
-    auto typeStr = parseTypeString();
+    auto typeStr = parseRequiredType();
     if (!match(TokenType::RParen)) {
       error(previous(), DiagID::ERR_PARSER_EXPECTED_AFTER_SIZEOF_TYPE_STRING);
       return nullptr;
@@ -1464,11 +1457,9 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   if (tok.Kind != TokenType::KwFor)
     tok = consume(TokenType::KwFor, DiagID::ERR_PARSER_EXPECTED_FOR);
 
-  bool isMut = match(TokenType::KwLet);
-  bool isAuto = false;
-  if (!isMut)
-    isAuto = match(TokenType::KwAuto);
-  if (!isMut && !isAuto) {
+  if (match(TokenType::KwLet)) {
+    error(previous(), DiagID::ERR_PARSER_FOR_LET_REMOVED);
+  } else if (!match(TokenType::KwAuto)) {
     consume(TokenType::KwAuto, DiagID::ERR_PARSER_EXPECTED_AUTO_OR_LET_DECLARATION_IN_FOR);
   }
   std::string morphologyPrefix = "";
@@ -1492,6 +1483,7 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   }
   Token varName =
       consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_IN_FOR);
+  bool isMut = varName.HasWrite;
   consume(TokenType::KwIn, DiagID::ERR_PARSER_EXPECTED_IN_IN_FOR_LOOP);
   auto collection = parseExpr(0, false);
   auto body = parseStmt();

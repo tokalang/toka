@@ -1,0 +1,6 @@
+fn main() -> i32 {
+    for auto item# in [1] {
+        item = 2
+    }
+    return 0
+}

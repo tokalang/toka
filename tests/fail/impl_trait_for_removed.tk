@@ -1,0 +1,6 @@
+trait @Marked {}
+shape Value()
+
+impl @Marked for Value {}
+
+// EXPECT: error[E01257]

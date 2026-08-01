@@ -1,0 +1,3 @@
+extern fn external(value) -> i64
+
+// EXPECT: error[E01255]

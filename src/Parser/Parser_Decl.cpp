@@ -66,7 +66,7 @@ std::vector<GenericParam> Parser::parseGenericParams() {
           consume(TokenType::RBrace, DiagID::ERR_PARSER_EXPECTED_CLOSING_TRAIT_BOUNDS);
         } else {
           // Const generic type
-          gp.Type = parseTypeString();
+          gp.Type = parseRequiredType();
           gp.IsConst = true;
         }
       }
@@ -136,7 +136,11 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
 
     Token subject = advance();
     if (!match(TokenType::Colon)) {
-      consume(TokenType::KwImpl, DiagID::ERR_PARSER_EXPECTED_WHERE_RELATION);
+      if (match(TokenType::KwImpl)) {
+        error(previous(), DiagID::ERR_PARSER_WHERE_IMPL_REMOVED);
+      } else {
+        consume(TokenType::Colon, DiagID::ERR_PARSER_EXPECTED_WHERE_RELATION);
+      }
     }
     std::vector<std::string> bounds = parseTraitFacetTarget();
 
@@ -170,18 +174,12 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
 }
 
 std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
-  bool isUnion = false;
   if (match(TokenType::KwUnion)) {
     error(previous(), DiagID::ERR_UNION_DEPRECATED);
     return nullptr;
   } else {
-    match(TokenType::KwShape); // Optional if packed
-    match(TokenType::KwPacked);
+    match(TokenType::KwShape);
   }
-
-  bool packed = !isUnion && previous().Kind == TokenType::KwPacked;
-  if (packed)
-    consume(TokenType::KwShape, DiagID::ERR_PARSER_EXPECTED_SHAPE_AFTER_PACKED);
 
   Token name = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_SHAPE_NAME);
 
@@ -198,7 +196,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
     }
   }
 
-  ShapeKind kind = isUnion ? ShapeKind::Union : ShapeKind::Struct;
+  ShapeKind kind = ShapeKind::Struct;
   std::vector<ShapeMember> members;
   int64_t arraySize = 0;
 
@@ -264,7 +262,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           v.SubKind = ShapeKind::Tuple;
           while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
             ShapeMember field;
-            field.Type = parseTypeString();
+            field.Type = parseRequiredType();
             v.SubMembers.push_back(std::move(field));
             if (!check(TokenType::RParen))
               match(TokenType::Comma);
@@ -363,7 +361,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.Type = "";
         }
 
-        std::string rawType = parseTypeString();
+        std::string rawType = parseRequiredType();
         if (kind == ShapeKind::Struct) {
           std::string trimmed = rawType;
           size_t start = trimmed.find_first_not_of(" \t\r\n");
@@ -411,7 +409,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
   }
 
   auto decl = std::make_unique<ShapeDecl>(isPub, name.Text, genericParams, kind,
-                                          std::move(members), packed);
+                                          std::move(members));
   decl->ArraySize = arraySize;
   // decl->FileName = m_CurrentFile;
   decl->setLocation(name, m_CurrentFile);
@@ -471,7 +469,11 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
 
         // [Fix] Allow explicit type annotation: self: Type
         if (match(TokenType::Colon)) {
-          arg.Type = parseTypeString();
+          if (!isTypeStart()) {
+            error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
+          } else {
+            arg.Type = parseTypeString();
+          }
         }
         arg.Permission = BindingPermission::fromLegacy(
             arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
@@ -529,8 +531,12 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
         return nullptr;
       }
-      std::string argType = "i64"; // fallback
-      if (match(TokenType::Colon)) {
+      std::string argType = "i64"; // recovery type after a reported parse error
+      if (!match(TokenType::Colon)) {
+        error(argName, DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
+      } else if (!isTypeStart()) {
+        error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
+      } else {
         argType = parseTypeString();
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
@@ -833,8 +839,12 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         argPrefix = "*";
       }
       Token argName = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
-      std::string argType = "i64";
-      if (match(TokenType::Colon)) {
+      std::string argType = "i64"; // recovery type after a reported parse error
+      if (!match(TokenType::Colon)) {
+        error(argName, DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
+      } else if (!isTypeStart()) {
+        error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
+      } else {
         argType = parseTypeString();
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
@@ -1039,7 +1049,7 @@ std::unique_ptr<TypeAliasDecl> Parser::parseTypeAliasDecl(bool isPub) {
 
   consume(TokenType::Equal, DiagID::ERR_EXPECTED_EQUAL);
 
-  std::string targetType = parseTypeString();
+  std::string targetType = parseRequiredType();
 
   expectEndOfStatement();
 
@@ -1072,10 +1082,10 @@ AssociatedTypeDecl Parser::parseAssociatedTypeDecl(bool requireDefinition) {
 
   if (requireDefinition) {
     consume(TokenType::Equal, DiagID::ERR_PARSER_ASSOCIATED_TYPE_EXPECTED_EQUAL);
-    decl.Type = parseTypeString();
+    decl.Type = parseRequiredType();
   } else if (match(TokenType::Equal)) {
     error(startTok, DiagID::ERR_PARSER_TRAIT_ASSOCIATED_TYPE_CANNOT_HAVE_DEFAULT);
-    decl.Type = parseTypeString();
+    decl.Type = parseRequiredType();
   }
 
   expectEndOfStatement();
@@ -1107,7 +1117,7 @@ std::unique_ptr<ImplDecl> Parser::parseImpl() {
     traitNameToken = peek();
     traitName = parseTypeString();
   } else if (match(TokenType::KwFor)) {
-    // impl Trait for Type
+    error(previous(), DiagID::ERR_PARSER_IMPL_TRAIT_FOR_REMOVED);
     traitName = firstTypeStr;
     typeName = parseTypeString();
   } else {

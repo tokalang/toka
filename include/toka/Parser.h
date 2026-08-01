@@ -130,6 +130,7 @@ private:
   std::unique_ptr<Expr> parseExpr(int minPrec = 0, bool allowTrailingClosure = true);
   std::unique_ptr<Expr> parsePrimary(bool allowTrailingClosure = true);
   std::string parseTypeString(bool allowAssociatedProjection = true);
+  std::string parseRequiredType();
   bool isNextNamedField(int startOffset = 0) const;
   bool isNamedInitList() const;
   std::string parseNamespaceOrIdentifier();

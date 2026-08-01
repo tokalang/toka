@@ -1,8 +1,8 @@
 # Toka 语法内部笔记
 
-> This file preserves the earlier working notes for compiler and AI-assisted
-> development. It includes historical pitfalls, deprecated forms, and internal
-> reminders. For public syntax documentation, see `docs/syntax.md` and
+> This file preserves earlier working notes only. It is not a normative source
+> for compiler or AI-assisted development: historical rows may describe removed
+> syntax. For the current language contract, see `docs/syntax.md` and
 > `docs/syntax_zh.md`.
 
 # Toka 语法说明 按表格罗列
@@ -90,12 +90,12 @@
 | `type ID = i32` | 类型克隆 | 以已有类型为原型声明新类型 |
 | **封装与可见性控制 (Visibility)** | | |
 | 无 `@Encap` 的 Shape 声明 | `shape Box(v: i32)` | 若没有任何关联的 `impl @Encap`，其所有成员**默认全部 public** (为了基础数据聚合的方便性)。|
-| `@Encap` 控制块接管 | `impl Box@Encap { ... }` | 一旦为其声明该块，**结构体所有成员默认全部转为 Private (不可见)**，全面接管管控。此时若想开放，**必须明确使用以下的 `pub` 语法精细控制**。|
-| `pub field1, field2` | 全局公开 | 重新向全域开放对后续字段的合法可见性，**支持使用逗号 `,` 分隔批量解封多个字段**。|
-| `pub(crate) field1` | 包级跨文件可见 | 仅在当前所属包(Crate)内公开，同样支持逗号分隔多个。|
-| `pub(os::driver) field`| 精准模块授权 | 将可见特权单独下放发给指定的路径模块 (极其优雅且强大的安全越权控制架构)，同样支持逗号分隔多个。|
-| `pub * ! secret, id`     | 反向排除法 (黑名单) | 除被排外的目标资产 (如 `secret`, `id`) 继续死守隐身外，其他所有字段一键解封变为全局公有化(Public)，**排外名单支持逗号 `,` 分隔**。|
-| 同物理文件上帝视角 (God-eye) | | **重要特权**：无论 `@Encap` 怎么严格，只要调用地点和 `shape` 定义处于**同一个物理文件(.tk)**内，编译器会因“知根知底”而自动豁免所有封锁，允许直接访问任意私有字段（专供内部库底层互通使用）。|
+| `@Encap` 控制块接管 | `impl Box@Encap { ... }` | 一旦为其声明该块，结构体成员默认 private；仅能通过下列精确 `pub` 授权开放。|
+| `pub field1, field2` | 全局公开 | 向全域开放明确列出的字段；可用逗号批量列出。|
+| ~~`pub(crate) field1`~~ | **已移除** | 不存在包级或路径级授权。|
+| ~~`pub(os::driver) field`~~ | **已移除** | 不存在模块路径授权。|
+| ~~`pub * ! secret, id`~~ | **已移除** | 不存在 wildcard 或反向排除授权。|
+| 同物理文件上帝视角 | **不存在** | 同一物理文件不绕过 `@Encap` 可见性检查。|
 | **连续多元素排列类型** | | |
 | `[T; N]` | 静态数组 (Array) | 编译时固定大小的连续数组，他是一个泛型类型，使用时 `T` 和 `N` 必须具体 |
 | `[T]` | 动态数组 (Slice/Vec) | 一等动态数组实体，作为胖指针 (Fat Pointer) 携带内建运行时长度跨越内存。除了静态展开，平时他不能独立存在，必须搭配指针形态 如独占数组 `^p: [i32]` 或引用切片 `&p: [i32]` 等组合使用。 |

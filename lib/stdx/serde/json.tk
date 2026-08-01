@@ -580,7 +580,7 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
     }
 }
 
-pub fn deserialize_nested_shape<'T>('obj#, json_str: str) -> JsonRes <- json_str {
+pub fn deserialize_nested_shape<'T>('obj#: T, json_str: str) -> JsonRes <- json_str {
     auto res# = json_skip_whitespace(json_str)
     if res.len() == 0 || res.byte_at(0) != 123 { return JsonRes::Err("Expected {") }
     res = res.substr(1, res.len() - 1)

@@ -72,8 +72,9 @@ separate compatibility decision is approved.
 
 The implemented split keeps `lib/build.tk` as the facade and executor,
 re-exports `Executable` and `Library` from `lib/build/project.tk`, and places
-reflection decoding and platform support in `lib/build/internal`. Exact
-`pub(path)` grants preserve private fields across those implementation modules.
+reflection decoding and platform support in `lib/build/internal`. The
+pre-clean-break `pub(path)` approach is removed; private fields are not
+preserved through path-scoped grants.
 
 ## 5. Sustained Scenarios
 
@@ -129,7 +130,8 @@ entire interface build. TKI round-trip and trusted-evidence gates cover the
 conservative fallback.
 
 No PAL, ownership, effects, async, visibility, or TKI language rule changed.
-The split uses the frozen `pub import` and `pub(path)` contracts.
+The split uses the frozen `pub import` contract; it does not rely on
+path-scoped field visibility.
 
 ## 7. Finding Classification
 

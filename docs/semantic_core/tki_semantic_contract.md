@@ -113,7 +113,7 @@ including information hidden from user access by visibility:
 - field payload mutability and blocked inheritance,
 - field nullability,
 - field defaults when semantically relevant,
-- packed/array/enum/union shape kind,
+- array/enum/union shape kind,
 - layout-relevant attributes,
 - borrow-like field types,
 - resource-bearing field facts needed for drop/clone/copy prevention,

@@ -383,7 +383,6 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
     if (decl.Name.rfind("__Toka_Anon_Rec_", 0) == 0) return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
-    if (decl.IsPacked) m_OS << "packed ";
     m_OS << "shape " << decl.Name;
     printGenericParams(decl.GenericParams);
 

@@ -110,8 +110,8 @@ through `FZ-4`.
 - Implicit prelude visibility for exactly `@Encap`, `@Send`, `@Sync`, and
   `@Callable`;
   every other trait follows ordinary lexical imports.
-- `@Encap`, `pub`, `pub(crate)`, `pub(path)`, wildcard visibility, imports,
-  re-exports, and the filesystem-path/name hyphen boundary.
+- `@Encap` exact field grants, imports, re-exports, and the filesystem-path/name
+  hyphen boundary. `pub(crate)`, `pub(path)`, and wildcard visibility are removed.
 - `if`, `guard`, `match`, `loop`, `for`, `break`, `continue`, block `pass`,
   enum exhaustiveness, guard handling, or-pattern consistency, and
   resource-safe patterns.
@@ -167,7 +167,6 @@ unless it is separately promoted through a new audited decision.
   combinators, and structured concurrency.
 - Global destructuring and formatted `String`/`str` printing beyond the
   currently supported plain formatting path.
-- Resolver-normalized cross-package identity refinements for `pub(path)`.
 - PAL-derived backend `noalias`, further memory-contract promotion, and
   build-cache performance redesign not required by correctness.
 

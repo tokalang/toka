@@ -1490,7 +1490,6 @@ struct ShapeMember {
 class ShapeDecl : public ASTNode {
 public:
   bool IsPub = false;
-  bool IsPacked = false;
   std::string Name;
   std::string CodegenName;
   // struct GenericParam moved to top-level
@@ -1503,8 +1502,8 @@ public:
 
   ShapeDecl(bool isPub, const std::string &name,
             std::vector<GenericParam> generics, ShapeKind kind,
-            std::vector<ShapeMember> members, bool packed = false)
-      : IsPub(isPub), IsPacked(packed), Name(name),
+            std::vector<ShapeMember> members)
+      : IsPub(isPub), Name(name),
         GenericParams(std::move(generics)), Kind(kind),
         Members(std::move(members)) {}
 

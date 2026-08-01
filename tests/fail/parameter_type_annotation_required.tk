@@ -1,0 +1,5 @@
+fn local(value) -> i64 {
+    return value
+}
+
+// EXPECT: error[E01255]

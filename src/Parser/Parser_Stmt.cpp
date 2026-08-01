@@ -223,7 +223,7 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
 
   std::string typeName = "";
   if (match(TokenType::Colon)) {
-    typeName = parseTypeString();
+    typeName = parseRequiredType();
     if (!typeName.empty() && typeName[0] == '\'') {
       errorTypeSideMorphicBinding(name, morphologyPrefix, typeName);
       typeName = typeName.substr(1);

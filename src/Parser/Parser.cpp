@@ -248,7 +248,6 @@ void Parser::synchronize() {
       case TokenType::KwConst:
       case TokenType::KwShape:
       case TokenType::KwUnion:
-      case TokenType::KwPacked:
       case TokenType::KwTrait:
       case TokenType::KwImpl:
       case TokenType::KwImport:
@@ -326,6 +325,14 @@ std::string Parser::parseTypeString(bool allowAssociatedProjection) {
     }
   }
   return type;
+}
+
+std::string Parser::parseRequiredType() {
+  if (!isTypeStart()) {
+    error(peek(), DiagID::ERR_PARSER_EXPECTED_TYPE_ANNOTATION);
+    return "";
+  }
+  return parseTypeString();
 }
 
 bool Parser::isNextNamedField(int startOffset) const {
@@ -460,8 +467,7 @@ std::unique_ptr<Module> Parser::parseModule() {
       module->Impls.push_back(parseImpl());
     } else if (check(TokenType::KwTrait)) {
       module->Traits.push_back(parseTrait(isPub));
-    } else if (check(TokenType::KwShape) || check(TokenType::KwPacked) ||
-               check(TokenType::KwUnion)) {
+    } else if (check(TokenType::KwShape) || check(TokenType::KwUnion)) {
       module->Shapes.push_back(parseShape(isPub));
     } else if (check(TokenType::Identifier) && checkAt(1, TokenType::Equal)) {
       // Legacy or alternate struct init?

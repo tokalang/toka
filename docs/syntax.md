@@ -426,6 +426,10 @@ alias ID = i32
 type UserID = i32
 ```
 
+`alias` is a transparent spelling for its target type. `type` declares a
+distinct nominal type with the same underlying representation, so conversions
+and trait implementations remain explicit.
+
 ## 7. Methods, Traits, And Encapsulation
 
 Methods are defined in `impl` blocks.
@@ -524,7 +528,7 @@ the ordinary lexical module namespace and must be declared in the current
 module or selected by an import. Loading a module does not make its unselected
 traits visible.
 
-For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. The recommended form matches generic parameter bounds: `T: @Trait` or `T: @{Trait1, Trait2}` means the corresponding trait implementation must exist. The historical form `T impl @Trait` is still accepted for compatibility, but it is not the recommended style.
+For declarations with non-trivial constraints, use a `where:` block. Each line is one compile-time constraint. The form matches generic parameter bounds: `T: @Trait` or `T: @{Trait1, Trait2}` means the corresponding trait implementation must exist.
 
 ```toka
 fn copy<T>(io: T)
@@ -689,7 +693,14 @@ loop count < 10 {
 for auto x in [1, 2, 3] {
     println("{}", x)
 }
+
+for auto x# in [1, 2, 3] {
+    x = x + 1
+}
 ```
+
+`#` makes the iteration binding writable. The binding keyword is always
+`auto`; `for let` is not part of Toka syntax.
 
 Non-array iteration uses three ordinary traits from `core/traits`. They are not
 implicit prelude traits:
@@ -1084,6 +1095,7 @@ and do not carry a cross-version compatibility promise.
 | `let x = 1` / `var x = 1` | `auto x = 1` | Toka uses `auto` for local binding declarations |
 | `while cond { ... }` | `loop cond { ... }` | Conditional loops use `loop` |
 | `for x in iter { ... }` | `for auto x in iter { ... }` | Iteration bindings are explicit |
+| `for let x in iter { ... }` | `for auto x# in iter { ... }` | `#` makes an iteration binding writable |
 | `Point(1, 2)` | `Point(x = 1, y = 2)` | Shape initialization is named |
 | `*p` to read the payload | `p` | Plain names operate on payload |
 | `*p = value` to write payload | `p = value` | Hat assignment operates on the handle |

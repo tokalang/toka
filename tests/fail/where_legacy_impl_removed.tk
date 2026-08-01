@@ -1,0 +1,14 @@
+trait @Marked {}
+
+fn use_marked<T>(value: T) -> i32
+where:
+    T impl @Marked
+{
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}
+
+// EXPECT: error[E01258]

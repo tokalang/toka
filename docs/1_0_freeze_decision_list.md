@@ -59,12 +59,8 @@ later release.
 - `dyn @Trait`: single-facet trait objects only. Associated-type binding syntax
   is not part of 1.0, so traits with associated types are not object-safe as
   `dyn @Trait`, and forms such as `dyn @Readable<Item = i32>` are rejected.
-- `@Encap`: keep the current visibility rules, including `pub`, `pub(crate)`,
-  `pub(path)`, and wildcard forms.
-- Path-scoped visibility: Toka has no source-level `mod` declaration. The path
-  in `pub(path)` uses the same module-location path grammar as the left side of
-  an `import`, before item selection. It is interpreted by the import resolver,
-  not by raw substring matching or a Rust-style module tree.
+- `@Encap`: exact global field grants only: `pub field[, ...]`. `pub(crate)`,
+  `pub(path)`, and wildcard forms are removed from the language surface.
 - Hyphen boundary: kebab-case is allowed only in filesystem-oriented
   module-location paths, including `.tk` file names. Names created inside `.tk`
   source and entering Toka's semantic namespace, including import aliases,
@@ -206,9 +202,6 @@ core contract ships.
 
 ## Postpone After 1.0
 
-- Full resolver-normalized package identity for `pub(path)`, including package
-  roots, library roots, and cross-package path normalization. This should refine
-  the import/path model rather than introduce a source-level `mod` concept.
 - Multi-facet trait objects such as `dyn @{A, B}`.
 - Associated type binding syntax for `dyn @Trait`.
 - Object lifetime / ownership annotations for dyn objects.

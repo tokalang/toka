@@ -1,5 +1,9 @@
 # RFC: `@Encap` Hybrid Policy and Lifecycle Separation
 
+> **Superseded by the 2026-08 clean-break @Encap design.** This historical RFC
+> describes removed scoped and wildcard visibility forms; it is not normative
+> for the current compiler or library surface.
+
 **Status:** Proposed clean-break language revision. This RFC is not a
 statement of current compiler behaviour.
 

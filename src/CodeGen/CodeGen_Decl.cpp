@@ -2109,7 +2109,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
       body.push_back(t);
       fieldNames.push_back(member.Name);
     }
-    st->setBody(body, sh->IsPacked);
+    st->setBody(body, false);
     m_StructFieldNames[sh->Name] = fieldNames;
     m_StructFieldNames[shapeName] = fieldNames;
   } else if (sh->Kind == ShapeKind::Array) {
@@ -2125,7 +2125,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
     }
     llvm::Type *arrTy = llvm::ArrayType::get(elemTy, sh->ArraySize);
     body.push_back(arrTy);
-    st->setBody(body, sh->IsPacked);
+    st->setBody(body, false);
   } else if (sh->Kind == ShapeKind::Union) {
     // Legacy bare union: find max size and alignment
     uint64_t maxSize = 0;
@@ -2155,7 +2155,7 @@ void CodeGen::genShape(const ShapeDecl *sh) {
 
     body.push_back(
         llvm::ArrayType::get(llvm::Type::getInt8Ty(m_Context), maxSize));
-    st->setBody(body, sh->IsPacked);
+    st->setBody(body, false);
 
     std::vector<std::string> fieldNames;
     for (const auto &member : sh->Members) {
