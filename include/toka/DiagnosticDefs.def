@@ -306,6 +306,7 @@ DIAG(ERR_LEXER_RAW_STRING_INDENTATION, Error,   "E01250", "Raw string content li
 DIAG(ERR_LEXER_RAW_STRING_DELIMITER, Error,   "E01251", "Raw string closing delimiter must contain exactly {} double quotes and appear on its own line")
 DIAG(ERR_PARSER_ENCAP_NONEXACT_GRANT_REMOVED, Error, "E01252", "@Encap accepts only exact field grants: 'pub field[, ...]'")
 DIAG(ERR_PARSER_ENCAP_RESERVED_KEYWORD, Error, "E01253", "'encap' is reserved for a future language construct")
+DIAG(ERR_PARSER_EXPECTED_RETURN_TYPE, Error, "E01254", "Expected a return type annotation")
 
 // --- Warnings ---
 DIAG(WARN_CODEGEN_UNRESOLVED,     Warning, "W0701", "Unresolved member type for '{}'; defaulting to i32")

@@ -18,19 +18,19 @@ pub fn E32() -> f32 { return 2.71828183:f32 }
 // --- The Float Trait ---
 
 pub trait @Float {
-    pub fn sin(self) -> self
-    pub fn cos(self) -> self
-    pub fn tan(self) -> self
-    pub fn asin(self) -> self
-    pub fn acos(self) -> self
-    pub fn atan(self) -> self
-    pub fn sqrt(self) -> self
-    pub fn log(self) -> self
-    pub fn exp(self) -> self
-    pub fn abs(self) -> self
-    pub fn floor(self) -> self
-    pub fn ceil(self) -> self
-    pub fn pow(self, exp: self) -> self
+    pub fn sin(self) -> Self
+    pub fn cos(self) -> Self
+    pub fn tan(self) -> Self
+    pub fn asin(self) -> Self
+    pub fn acos(self) -> Self
+    pub fn atan(self) -> Self
+    pub fn sqrt(self) -> Self
+    pub fn log(self) -> Self
+    pub fn exp(self) -> Self
+    pub fn abs(self) -> Self
+    pub fn floor(self) -> Self
+    pub fn ceil(self) -> Self
+    pub fn pow(self, exp: Self) -> Self
 }
 
 // --- Implementation for f64 ---

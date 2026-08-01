@@ -84,6 +84,28 @@ std::string Parser::typeTokenText(const Token &tok) const {
   return text;
 }
 
+bool Parser::isTypeStart() const {
+  switch (peek().Kind) {
+  case TokenType::Identifier:
+  case TokenType::KwUpperSelf:
+  case TokenType::KwFn:
+  case TokenType::KwFnType:
+  case TokenType::KwDyn:
+  case TokenType::KwCede:
+  case TokenType::KwNul:
+  case TokenType::Ampersand:
+  case TokenType::Star:
+  case TokenType::Caret:
+  case TokenType::Tilde:
+  case TokenType::TokenWrite:
+  case TokenType::LBracket:
+  case TokenType::LParen:
+    return true;
+  default:
+    return false;
+  }
+}
+
 void Parser::expectEndOfStatement() {
   if (isEndOfStatement()) {
     if (match(TokenType::Semicolon)) {

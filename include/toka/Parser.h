@@ -77,6 +77,7 @@ private:
                                         const std::string &bindingPrefix,
                                         std::string &typeName);
   std::string typeTokenText(const Token &tok) const;
+  bool isTypeStart() const;
 
   bool HasError = false;
   bool PanicMode = false;

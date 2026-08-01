@@ -1,0 +1,5 @@
+fn missing() -> {
+    return
+}
+
+// EXPECT: error[E01254]

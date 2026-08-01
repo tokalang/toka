@@ -1,0 +1,5 @@
+pub trait @InvalidReturn {
+    pub fn invalid(self) -> self
+}
+
+// EXPECT: error[E01254]

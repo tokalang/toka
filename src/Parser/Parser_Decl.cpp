@@ -602,30 +602,38 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
     if (match(TokenType::KwAsync)) effect = EffectKind::Async;
     else if (match(TokenType::KwWait)) effect = EffectKind::Wait;
 
-    if (!check(TokenType::Dependency) && !check(TokenType::LBrace)) {
-      int look = 0;
-      if (peekAt(look).Kind == TokenType::KwNul) look++;
-      if (peekAt(look).Kind == TokenType::Ampersand || peekAt(look).Kind == TokenType::Star || 
-          peekAt(look).Kind == TokenType::Caret || peekAt(look).Kind == TokenType::Tilde) look++;
-      if (peekAt(look).Kind == TokenType::TokenWrite) look++;
-      
-      if (peekAt(look).Kind == TokenType::Identifier && peekAt(look+1).Kind == TokenType::Colon) {
-        bool isPtrNullable = match(TokenType::KwNul);
-        std::string prefix = "";
-        if (isPtrNullable) prefix += "nul ";
-        if (match(TokenType::Ampersand)) prefix += "&";
-        else if (match(TokenType::Star)) prefix += "*";
-        else if (match(TokenType::Caret)) prefix += "^";
-        else if (match(TokenType::Tilde)) prefix += "~";
-        if (match(TokenType::TokenWrite)) prefix += "#";
+    int look = 0;
+    if (peekAt(look).Kind == TokenType::KwNul) look++;
+    if (peekAt(look).Kind == TokenType::Ampersand || peekAt(look).Kind == TokenType::Star ||
+        peekAt(look).Kind == TokenType::Caret || peekAt(look).Kind == TokenType::Tilde) look++;
+    if (peekAt(look).Kind == TokenType::TokenWrite) look++;
 
-        Token nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
-        retName = nameTok.Text;
-        consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
-        retType = prefix + parseTypeString();
+    if (peekAt(look).Kind == TokenType::Identifier &&
+        peekAt(look + 1).Kind == TokenType::Colon) {
+      bool isPtrNullable = match(TokenType::KwNul);
+      std::string prefix = "";
+      if (isPtrNullable) prefix += "nul ";
+      if (match(TokenType::Ampersand)) prefix += "&";
+      else if (match(TokenType::Star)) prefix += "*";
+      else if (match(TokenType::Caret)) prefix += "^";
+      else if (match(TokenType::Tilde)) prefix += "~";
+      if (match(TokenType::TokenWrite)) prefix += "#";
+
+      Token nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
+      retName = nameTok.Text;
+      consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
+      if (!isTypeStart()) {
+        error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
       } else {
-        retType = parseTypeString();
+        retType = prefix + parseTypeString();
       }
+    } else if (!isTypeStart()) {
+      error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
+      if (!isEndOfStatement() && !check(TokenType::LBrace) &&
+          !check(TokenType::Dependency))
+        advance();
+    } else {
+      retType = parseTypeString();
     }
   }
   std::vector<std::string> lifeDeps;
@@ -873,7 +881,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
     if (match(TokenType::KwAsync)) effect = EffectKind::Async;
     else if (match(TokenType::KwWait)) effect = EffectKind::Wait;
 
-    if (!check(TokenType::Semicolon)) {
+    if (!isTypeStart()) {
+      error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
+      if (!isEndOfStatement())
+        advance();
+    } else {
       retType = parseTypeString();
     }
   }
