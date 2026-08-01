@@ -17,94 +17,72 @@
 #include "toka/Parser.h"
 #include "toka/Sema.h"
 #include "toka/Type.h"
+#include <cctype>
 #include <iostream>
 #include <sstream>
 
 namespace toka {
 
-// --- Helper: String-based Type Substitution ---
-// Replaces generic params (e.g. "T") with concrete types (e.g. "i32") in a type
-// string.
-static std::string
-substituteTypeString(const std::string &Input,
-                     const std::map<std::string, std::string> &Map) {
-  if (Input.empty()) return "";
-
-  // Preserve the binding of a callable result projection when the substituted
-  // callable is a function type.  `fn(A) -> R@Callable::Output` would parse
-  // as a projection on R, not on the original generic F.
-  for (const auto &[K, V] : Map) {
-    if (Input != K + "@Callable::Output")
-      continue;
-    auto callable = toka::Type::fromString(V);
-    if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(callable)) {
-      if (fn->ReturnType)
-        return fn->ReturnType->toString();
-    }
-    if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(callable)) {
-      if (dynFn->ReturnType)
-        return dynFn->ReturnType->toString();
-    }
-    // A named callable is resolved through the regular associated-type table
-    // after the generic template is instantiated.
-    return V + "@Callable::Output";
-  }
-  
-  auto typeObj = toka::Type::fromString(Input);
-  if (!typeObj) return Input;
-  
-  std::map<std::string, std::shared_ptr<toka::Type>> ObjMap;
-  for (const auto &[K, V] : Map) {
-    ObjMap[K] = toka::Type::fromString(V);
-  }
-  
-  auto subObj = typeObj->substitute(ObjMap);
-  std::string Output = subObj->toString();
-
-  if (Input != Output) {
-  }
-  return Output;
+static bool isTypeNameBoundary(char c) {
+  return !std::isalnum(static_cast<unsigned char>(c)) && c != '_';
 }
 
-// Semantic instances may contain a concrete type produced by Type::toString(),
-// which is intentionally still a string boundary in this P1.  A replacement
-// is therefore represented as one generated named leaf, while the source
-// syntax being replaced remains a recursively traversed TypeSyntax tree.
-static TypeSyntaxPtr generatedTypeSyntax(const std::string &spelling,
-                                         SourceLocation begin = {},
-                                         SourceLocation end = {}) {
-  return TypeSyntax::named(spelling, begin, end);
+// Non-type fields such as a callee name still use text.  Keep their
+// substitution token-aware; all actual type positions use TypeSyntax below.
+static std::string substituteTextualName(
+    const std::string &input,
+    const std::map<std::string, std::shared_ptr<toka::Type>> &replacements) {
+  std::string result = input;
+  for (const auto &[name, replacement] : replacements) {
+    if (name.empty() || !replacement)
+      continue;
+    const std::string value = replacement->toString();
+    size_t pos = 0;
+    while ((pos = result.find(name, pos)) != std::string::npos) {
+      const bool startOk = pos == 0 || isTypeNameBoundary(result[pos - 1]);
+      const size_t end = pos + name.size();
+      const bool endOk = end == result.size() || isTypeNameBoundary(result[end]);
+      if (startOk && endOk) {
+        result.replace(pos, name.size(), value);
+        pos += value.size();
+      } else {
+        pos += name.size();
+      }
+    }
+  }
+  return result;
 }
 
 static TypeSyntaxPtr substituteTypeSyntax(
     const TypeSyntaxPtr &input,
-    const std::map<std::string, std::string> &replacements) {
+    const std::map<std::string, std::shared_ptr<toka::Type>> &replacements) {
   if (!input)
     return nullptr;
 
-  // Keep the existing Callable result rule, but recognize it structurally.
+  // `F@Callable::Output` must lower before F is substituted by a function
+  // type, otherwise the projection would bind to the function spelling.
   if (input->NodeKind == TypeSyntax::Kind::AssociatedProjection &&
       input->Text == "Callable" && input->MemberName == "Output" &&
       input->Subject && input->Subject->NodeKind == TypeSyntax::Kind::Named) {
     auto it = replacements.find(input->Subject->Text);
     if (it != replacements.end()) {
-      auto callable = toka::Type::fromString(it->second);
+      const auto &callable = it->second;
       if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(callable)) {
         if (fn->ReturnType)
-          return generatedTypeSyntax(fn->ReturnType->toString(), input->Begin,
-                                     input->End);
+          return fn->ReturnType->toSyntax(input->Begin, input->End);
       }
       if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(callable)) {
         if (dynFn->ReturnType)
-          return generatedTypeSyntax(dynFn->ReturnType->toString(), input->Begin,
-                                     input->End);
+          return dynFn->ReturnType->toSyntax(input->Begin, input->End);
       }
     }
   }
 
   std::map<std::string, TypeSyntaxPtr> typedReplacements;
-  for (const auto &[name, spelling] : replacements) {
-    typedReplacements.emplace(name, generatedTypeSyntax(spelling));
+  for (const auto &[name, replacement] : replacements) {
+    if (replacement)
+      typedReplacements.emplace(name,
+                                replacement->toSyntax(input->Begin, input->End));
   }
   return input->substitute(typedReplacements);
 }
@@ -114,18 +92,19 @@ static TypeSyntaxPtr substituteTypeSyntax(
 // Since we don't have a central AST Visitor, we implement specific traversals
 // here.
 class GenericInstantiator {
-  const std::map<std::string, std::string> &Replacements;
+  const std::map<std::string, std::shared_ptr<toka::Type>> &Replacements;
   const std::set<std::string> &MorphicParams;
 
 public:
-  GenericInstantiator(const std::map<std::string, std::string> &map,
+  GenericInstantiator(const std::map<std::string,
+                                    std::shared_ptr<toka::Type>> &map,
                       const std::set<std::string> &morphicParams)
       : Replacements(map), MorphicParams(morphicParams) {}
 
   std::string sub(const std::string &s) {
     if (s.empty())
       return "";
-    return substituteTypeString(s, Replacements);
+    return substituteTextualName(s, Replacements);
   }
 
   void sub(TypeSyntaxPtr &syntax, std::string &spelling) {
@@ -144,7 +123,7 @@ public:
     }
     auto it = Replacements.find(argument.ConstantText);
     if (it != Replacements.end())
-      argument.ConstantText = it->second;
+      argument.ConstantText = it->second ? it->second->toString() : "unknown";
     spelling = argument.toCanonicalString();
   }
 
@@ -354,19 +333,19 @@ void Sema::instantiateGenericImpl(
   }
 
   // 2. Build Substitution Map
-  std::map<std::string, std::string> Replacements;
+  std::map<std::string, std::shared_ptr<toka::Type>> Replacements;
   std::set<std::string> MorphicParams;
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     std::string k = Template->GenericParams[i].Name;
-    std::string v = GenericArgs[i]->toString();
-    Replacements[k] = v;
+    Replacements[k] = GenericArgs[i];
     if (Template->GenericParams[i].IsMorphic) {
       MorphicParams.insert(k);
       if (!k.empty() && k[0] == '\'') {
         MorphicParams.insert(k.substr(1));
       }
     }
-    if (!k.empty() && k[0] == '\'') Replacements[k.substr(1)] = v;
+    if (!k.empty() && k[0] == '\'')
+      Replacements[k.substr(1)] = GenericArgs[i];
   }
 
   // 3. Clone and Substitute
@@ -402,7 +381,8 @@ void Sema::instantiateGenericImpl(
     for (const auto &arg : GenericArgs)
       recordInstantiationType(ClonedFn.get(), resolveType(arg));
     recordInstantiationType(
-        ClonedFn.get(), resolveType(toka::Type::fromString(ConcreteTypeName)));
+        ClonedFn.get(), resolveType(std::make_shared<toka::ShapeType>(
+                            ConcreteTypeName)));
 
     NewMethods.push_back(std::move(ClonedFn));
   }
@@ -475,10 +455,8 @@ std::vector<std::string> Sema::substituteTraitBounds(
 
   std::vector<std::string> result;
   result.reserve(Bounds.size());
-  for (const auto &bound : Bounds) {
-    auto type = toka::Type::fromString(bound);
-    result.push_back(type ? type->substitute(replacements)->toString() : bound);
-  }
+  for (const auto &bound : Bounds)
+    result.push_back(substituteTextualName(bound, replacements));
   return result;
 }
 

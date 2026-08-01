@@ -58,12 +58,27 @@ bool expectLowered(const std::string &name, const TypeSyntaxPtr &syntax) {
   return false;
 }
 
+bool expectSemanticRoundTrip(const std::string &name,
+                             const TypeSyntaxPtr &syntax) {
+  const auto lowered = toka::Type::fromSyntax(syntax);
+  const auto reified = lowered ? lowered->toSyntax() : nullptr;
+  const auto replayed = reified ? toka::Type::fromSyntax(reified) : nullptr;
+  const std::string expected = lowered ? lowered->toString() : "<null>";
+  const std::string actual = replayed ? replayed->toString() : "<null>";
+  if (actual == expected)
+    return true;
+  std::cerr << name << ": expected semantic round-trip '" << expected
+            << "', got '" << actual << "'\n";
+  return false;
+}
+
 } // namespace
 
 int main() {
   bool passed = true;
   const auto i32 = named("i32", 10, 12);
   const auto self = named("Self", 13, 16);
+  const auto voidType = named("void", 17, 20);
 
   const auto generic = TypeSyntax::generic(
       named("Buffer", 20, 25),
@@ -71,6 +86,7 @@ int main() {
        TypeArgumentSyntax::constant("N_", loc(30), loc(31))},
       loc(20), loc(32));
   passed &= expectCanonical("named/Self", self, "Self");
+  passed &= expectSemanticRoundTrip("void semantic reification", voidType);
   passed &= expectCanonical("generic type and const arguments", generic,
                             "Buffer<i32,N_>");
   const bool retainedTypeArgumentRange =
@@ -108,11 +124,15 @@ int main() {
   const auto dynTrait = TypeSyntax::dynTrait("Readable<i32>", loc(84), loc(97));
   const auto projection = TypeSyntax::projection(
       generic, "Readable<i32>", "Item", loc(98), loc(118));
+  const auto writableProjection = TypeSyntax::morphology(
+      "#", projection, loc(98), loc(119), true);
   passed &= expectCanonical("function", function,
                             "dyn fn#(i32,[Self])->cede Result");
   passed &= expectCanonical("dyn trait", dynTrait, "dyn @Readable<i32>");
   passed &= expectCanonical("associated projection", projection,
                             "Buffer<i32,N_>@Readable<i32>::Item");
+  passed &= expectCanonical("morphic associated projection", writableProjection,
+                            "Buffer<i32,N_>@Readable<i32>::Item#");
 
   const auto morphology = TypeSyntax::morphology(
       "nul", TypeSyntax::morphology("*", i32, loc(120), loc(123)), loc(119),
@@ -131,6 +151,16 @@ int main() {
                           consumingFunction);
   passed &= expectLowered("legacy prefix-array bridge", legacyPrefixArray);
   passed &= expectLowered("morphology direct lowering", postfix);
+  passed &= expectSemanticRoundTrip("generic semantic reification", generic);
+  passed &= expectSemanticRoundTrip("array semantic reification", array);
+  passed &= expectSemanticRoundTrip("function semantic reification", function);
+  passed &= expectSemanticRoundTrip("consuming function semantic reification",
+                                    consumingFunction);
+  passed &= expectSemanticRoundTrip("dyn trait semantic reification", dynTrait);
+  passed &= expectSemanticRoundTrip("projection semantic reification", projection);
+  passed &= expectSemanticRoundTrip("morphic projection semantic reification",
+                                    writableProjection);
+  passed &= expectSemanticRoundTrip("morphology semantic reification", postfix);
   const auto loweredRecord = toka::Type::fromSyntax(record);
   const auto recordShape = std::dynamic_pointer_cast<toka::ShapeType>(loweredRecord);
   const bool retainedRecordStructure =

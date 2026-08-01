@@ -131,6 +131,11 @@ public:
   // responsibility; this only constructs the semantic type shape.
   static std::shared_ptr<Type> fromSyntax(const TypeSyntaxPtr &syntax);
 
+  // Reifies an already-lowered semantic type as structural source syntax.
+  // This is used by semantic substitution; it never reparses `toString()`.
+  TypeSyntaxPtr toSyntax(SourceLocation begin = {},
+                         SourceLocation end = {}) const;
+
   // Helper: Strip morphology characters (*, ^, &, ~, #, ?, !) to get the "Soul"
   // name
   static std::string stripMorphology(const std::string &name);

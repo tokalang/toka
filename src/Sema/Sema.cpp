@@ -367,9 +367,6 @@ static void replaceTypeNameToken(std::string &text, const std::string &from,
 }
 
 // Source-derived type spellings stay paired with TypeSyntax through Sema.
-// Semantic substitutions that introduce an already-lowered string (for
-// example Self -> a concrete generic instance) use one generated named leaf;
-// they never reopen the old substring parser path.
 static void substituteSourceTypeSyntax(TypeSyntaxPtr &syntax,
                                       std::string &spelling,
                                       const std::string &from,
@@ -385,6 +382,24 @@ static void substituteSourceTypeSyntax(TypeSyntaxPtr &syntax,
 
   std::map<std::string, TypeSyntaxPtr> replacements;
   replacements.emplace(from, TypeSyntax::named(to, syntax->Begin, syntax->End));
+  syntax = syntax->substitute(replacements);
+  spelling = syntax->toCanonicalString();
+}
+
+static void substituteSourceTypeSyntax(
+    TypeSyntaxPtr &syntax, std::string &spelling, const std::string &from,
+    const std::shared_ptr<toka::Type> &to) {
+  if (!to) {
+    substituteSourceTypeSyntax(syntax, spelling, from, "unknown");
+    return;
+  }
+  if (!syntax) {
+    replaceTypeNameToken(spelling, from, to->toString());
+    return;
+  }
+
+  std::map<std::string, TypeSyntaxPtr> replacements;
+  replacements.emplace(from, to->toSyntax(syntax->Begin, syntax->End));
   syntax = syntax->substitute(replacements);
   spelling = syntax->toCanonicalString();
 }
@@ -1868,10 +1883,10 @@ void Sema::validateTraitAssociatedTypes(TraitDecl *Trait) {
   }
 }
 
-std::map<std::string, std::string>
+std::map<std::string, std::shared_ptr<toka::Type>>
 Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
                               const std::string &resolvedTypeName) {
-  std::map<std::string, std::string> replacements;
+  std::map<std::string, std::shared_ptr<toka::Type>> replacements;
   if (!Impl)
     return replacements;
 
@@ -1958,14 +1973,22 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
 
     TypeSyntaxPtr resolvedAssocSyntax = implAssoc->TypeSyntax;
     std::string resolvedAssocType = implAssoc->Type;
+    std::shared_ptr<toka::Type> resolvedSelf =
+        Impl->HeaderSyntax.Type
+            ? resolveType(toka::Type::fromSyntax(Impl->HeaderSyntax.Type))
+            : std::make_shared<toka::ShapeType>(resolvedTypeName);
     substituteSourceTypeSyntax(resolvedAssocSyntax, resolvedAssocType, "Self",
-                               resolvedTypeName);
+                               resolvedSelf);
     for (const auto &[knownName, knownType] : replacements) {
       substituteSourceTypeSyntax(resolvedAssocSyntax, resolvedAssocType,
                                  knownName, knownType);
     }
-    resolvedAssocType = resolveType(resolvedAssocType);
-    replacements[name] = resolvedAssocType;
+    std::shared_ptr<toka::Type> resolvedAssoc =
+        resolvedAssocSyntax ? toka::Type::fromSyntax(resolvedAssocSyntax)
+                           : toka::Type::fromString(resolvedAssocType);
+    resolvedAssoc = resolveType(resolvedAssoc);
+    resolvedAssocType = resolvedAssoc ? resolvedAssoc->toString() : "unknown";
+    replacements[name] = resolvedAssoc;
 
     std::string canonical = canonicalTraitName(Impl->TraitName, Trait);
     std::string traitKey =
@@ -1983,15 +2006,16 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
       continue;
     }
 
-    AssociatedTypeMap[assocKey] =
-        AssociatedTypeBinding{resolvedAssocType, implAssoc->IsPer, implAssoc->Loc};
+    AssociatedTypeMap[assocKey] = AssociatedTypeBinding{
+        resolvedAssocType, resolvedAssoc, implAssoc->IsPer, implAssoc->Loc};
   }
 
   return replacements;
 }
 
 void Sema::applyAssociatedTypeSubstitutions(
-    ImplDecl *Impl, const std::map<std::string, std::string> &substitutions) {
+    ImplDecl *Impl,
+    const std::map<std::string, std::shared_ptr<toka::Type>> &substitutions) {
   if (!Impl || substitutions.empty())
     return;
 
@@ -2076,6 +2100,63 @@ std::string Sema::resolveAssociatedTypeProjection(const std::string &typeName,
   }
 
   return "";
+}
+
+std::shared_ptr<toka::Type>
+Sema::resolveAssociatedTypeProjection(const TypeSyntaxPtr &syntax,
+                                      bool force) {
+  if (!syntax || syntax->NodeKind != TypeSyntax::Kind::AssociatedProjection ||
+      !syntax->Subject || syntax->Text.empty() || syntax->MemberName.empty())
+    return nullptr;
+
+  auto selfType = resolveType(toka::Type::fromSyntax(syntax->Subject), force);
+  if (!selfType)
+    return nullptr;
+  const std::string resolvedSelf = selfType->toString();
+
+  std::string exactTrait = syntax->Text;
+  if (!exactTrait.empty() && exactTrait.front() == '@')
+    exactTrait.erase(exactTrait.begin());
+  if (TraitDecl *trait = findVisibleTraitDecl(exactTrait, syntax->Begin))
+    exactTrait = canonicalTraitName(exactTrait, trait);
+
+  const std::string exactKey =
+      resolvedSelf + "@" + exactTrait + "::" + syntax->MemberName;
+  if (auto exact = AssociatedTypeMap.find(exactKey);
+      exact != AssociatedTypeMap.end())
+    return exact->second.ResolvedType
+               ? resolveType(exact->second.ResolvedType, force)
+               : nullptr;
+
+  const std::string family = getTraitFamilyName(exactTrait);
+  const std::string familyKey =
+      resolvedSelf + "@" + family + "::" + syntax->MemberName;
+  if (auto associated = AssociatedTypeMap.find(familyKey);
+      associated != AssociatedTypeMap.end())
+    return associated->second.ResolvedType
+               ? resolveType(associated->second.ResolvedType, force)
+               : nullptr;
+
+  if (family == "Callable" && syntax->MemberName == "Output") {
+    if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(selfType))
+      return fn->ReturnType ? resolveType(fn->ReturnType, force) : nullptr;
+    if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(selfType))
+      return dynFn->ReturnType ? resolveType(dynFn->ReturnType, force) : nullptr;
+
+    auto impl = ImplMap.find(resolvedSelf + "@Callable");
+    if (impl != ImplMap.end()) {
+      auto call = impl->second.find("call");
+      if (call != impl->second.end() && call->second) {
+        if (call->second->ReturnTypeSyntax)
+          return resolveType(
+              toka::Type::fromSyntax(call->second->ReturnTypeSyntax), force);
+        return resolveType(toka::Type::fromString(call->second->ReturnType),
+                           force);
+      }
+    }
+  }
+
+  return nullptr;
 }
 
 bool Sema::checkModule(Module &M) {
@@ -2254,6 +2335,7 @@ void Sema::declareGlobals(Module &M) {
     std::string target = Alias->TargetTypeSyntax
                              ? Alias->TargetTypeSyntax->toCanonicalString()
                              : Alias->TargetType;
+    TypeSyntaxPtr targetSyntax = Alias->TargetTypeSyntax;
     if (!toka::Parser::TargetTriple.empty()) {
       std::string triple = toka::Parser::TargetTriple;
       bool is32 = (triple.find("wasm32") != std::string::npos ||
@@ -2268,9 +2350,11 @@ void Sema::declareGlobals(Module &M) {
         }
       }
     }
-    ms.TypeAliases[Alias->Name] = {target, Alias->IsStrong,
+    if (!targetSyntax || targetSyntax->toCanonicalString() != target)
+      targetSyntax = TypeSyntax::named(target, Alias->Loc, Alias->Loc);
+    ms.TypeAliases[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                    Alias->GenericParams};
-    TypeAliasMap[Alias->Name] = {target, Alias->IsStrong,
+    TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                  Alias->GenericParams};
     SymbolInfo info;
     info.TypeObj = toka::Type::fromString(Alias->Name);
@@ -2580,6 +2664,7 @@ void Sema::registerGlobals(Module &M) {
     std::string target = Alias->TargetTypeSyntax
                              ? Alias->TargetTypeSyntax->toCanonicalString()
                              : Alias->TargetType;
+    TypeSyntaxPtr targetSyntax = Alias->TargetTypeSyntax;
     if (!toka::Parser::TargetTriple.empty()) {
       std::string triple = toka::Parser::TargetTriple;
       bool is32 = (triple.find("wasm32") != std::string::npos ||
@@ -2594,9 +2679,11 @@ void Sema::registerGlobals(Module &M) {
         }
       }
     }
-    ms.TypeAliases[Alias->Name] = {target, Alias->IsStrong,
+    if (!targetSyntax || targetSyntax->toCanonicalString() != target)
+      targetSyntax = TypeSyntax::named(target, Alias->Loc, Alias->Loc);
+    ms.TypeAliases[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                    Alias->GenericParams};
-    TypeAliasMap[Alias->Name] = {target, Alias->IsStrong,
+    TypeAliasMap[Alias->Name] = {target, targetSyntax, Alias->IsStrong,
                                  Alias->GenericParams};
 
     SymbolInfo aliasInfo;
@@ -3240,7 +3327,7 @@ void Sema::registerImpl(ImplDecl *Impl) {
     }
   }
 
-  std::map<std::string, std::string> associatedTypeSubstitutions =
+  std::map<std::string, std::shared_ptr<toka::Type>> associatedTypeSubstitutions =
       registerAssociatedTypes(Impl, traitDecl, resolvedTypeName);
   AssociatedTypeSubstitutionCache[Impl] = associatedTypeSubstitutions;
 
@@ -3805,10 +3892,10 @@ void Sema::checkImpl(ImplDecl *Impl) {
 
   auto assocIt = AssociatedTypeSubstitutionCache.find(Impl);
   if (assocIt != AssociatedTypeSubstitutionCache.end()) {
-    for (const auto &[name, typeName] : assocIt->second) {
+    for (const auto &[name, type] : assocIt->second) {
       SymbolInfo Sym;
       Sym.IsTypeAlias = true;
-      Sym.TypeObj = resolveType(toka::Type::fromString(typeName));
+      Sym.TypeObj = resolveType(type);
       CurrentScope->define(name, Sym);
     }
   }
@@ -4380,52 +4467,34 @@ FunctionDecl *Sema::instantiateGenericFunction(
   // [NEW] 2.5 Substitute Generic Types in Signature
   // We must update Arg types and ReturnType so callers see concrete types
   // (e.g. i32 instead of T)
-  std::map<std::string, std::string> substMap;
+  std::map<std::string, std::shared_ptr<toka::Type>> substMap;
   for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
     const auto &GP = Template->GenericParams[i];
-    std::string substValue = resolveType(Args[i])->toString();
+    auto substValue = resolveType(Args[i]);
     substMap[GP.Name] = substValue;
     if (GP.IsMorphic && !GP.Name.empty() && GP.Name[0] == '\'')
       substMap[GP.Name.substr(1)] = substValue;
   }
 
   auto applySubst = [&](std::string &s) {
-    // Function-type spellings cannot be substituted textually into
-    // `F@Callable::Output`: without this special case, the projection binds
-    // to the function return spelling rather than to F. Resolve the derived
-    // result before ordinary textual substitution.
-    for (auto const &[K, V] : substMap) {
+    for (const auto &[K, V] : substMap) {
       if (s != K + "@Callable::Output")
         continue;
-      auto callableType = toka::Type::fromString(V);
-      if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(callableType)) {
+      if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(V)) {
         if (fn->ReturnType) {
           s = fn->ReturnType->toString();
           return;
         }
       }
-      if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(callableType)) {
+      if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(V)) {
         if (dynFn->ReturnType) {
           s = dynFn->ReturnType->toString();
           return;
         }
       }
     }
-    for (auto const &[K, V] : substMap) {
-      size_t pos = 0;
-      while ((pos = s.find(K, pos)) != std::string::npos) {
-        auto isWordChar = [](char c) { return std::isalnum(c) || c == '_'; };
-        bool startOk = (pos == 0) || !isWordChar(s[pos - 1]);
-        bool endOk =
-            (pos + K.size() == s.size()) || !isWordChar(s[pos + K.size()]);
-        if (startOk && endOk) {
-          s.replace(pos, K.size(), V);
-          pos += V.size();
-        } else {
-          pos += K.size();
-        }
-      }
-    }
+    for (const auto &[K, V] : substMap)
+      replaceTypeNameToken(s, K, V ? V->toString() : "unknown");
   };
 
   auto applyTypeSyntaxSubst = [&](TypeSyntaxPtr &syntax, std::string &spelling) {
@@ -4434,19 +4503,34 @@ FunctionDecl *Sema::instantiateGenericFunction(
       return;
     }
     if (syntax->NodeKind == TypeSyntax::Kind::AssociatedProjection &&
-        syntax->Text == "Callable" && syntax->MemberName == "Output") {
-      // The legacy semantic Type boundary owns callable-result lowering.
-      // Preserve that established rule, then materialize its result as a
-      // generated leaf rather than textually rewriting the projection.
-      applySubst(spelling);
-      syntax = TypeSyntax::named(spelling, syntax->Begin, syntax->End);
-      return;
+        syntax->Text == "Callable" && syntax->MemberName == "Output" &&
+        syntax->Subject &&
+        syntax->Subject->NodeKind == TypeSyntax::Kind::Named) {
+      auto replacement = substMap.find(syntax->Subject->Text);
+      if (replacement != substMap.end()) {
+        if (auto fn = std::dynamic_pointer_cast<toka::FunctionType>(
+                replacement->second)) {
+          if (fn->ReturnType) {
+            syntax = fn->ReturnType->toSyntax(syntax->Begin, syntax->End);
+            spelling = syntax->toCanonicalString();
+            return;
+          }
+        }
+        if (auto dynFn = std::dynamic_pointer_cast<toka::DynFnType>(
+                replacement->second)) {
+          if (dynFn->ReturnType) {
+            syntax = dynFn->ReturnType->toSyntax(syntax->Begin, syntax->End);
+            spelling = syntax->toCanonicalString();
+            return;
+          }
+        }
+      }
     }
     std::map<std::string, TypeSyntaxPtr> typedSubst;
     for (const auto &[name, replacement] : substMap) {
-      typedSubst.emplace(name, TypeSyntax::named(replacement,
-                                                  SourceLocation(),
-                                                  SourceLocation()));
+      if (replacement)
+        typedSubst.emplace(name,
+                           replacement->toSyntax(syntax->Begin, syntax->End));
     }
     syntax = syntax->substitute(typedSubst);
     spelling = syntax->toCanonicalString();
@@ -4460,7 +4544,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
     }
     auto it = substMap.find(argument.ConstantText);
     if (it != substMap.end())
-      argument.ConstantText = it->second;
+      argument.ConstantText = it->second ? it->second->toString() : "unknown";
     spelling = argument.toCanonicalString();
   };
 
@@ -4604,7 +4688,8 @@ FunctionDecl *Sema::instantiateGenericFunction(
         if (auto *ve = dynamic_cast<VariableExpr *>(rep->Count.get())) {
           std::string name = Type::stripMorphology(ve->Name);
           if (substMap.count(name)) {
-            std::string valStr = substMap[name];
+            std::string valStr = substMap[name] ? substMap[name]->toString()
+                                                 : "unknown";
             // Check if it's a number
             try {
               uint64_t val = std::stoull(valStr);

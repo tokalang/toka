@@ -386,14 +386,20 @@ private:
   std::map<std::string, const ImportDecl*> ShapeImportMap; // [NEW] Track which ImportDecl brought in a shape/type
   struct AliasInfo {
     std::string Target;
+    TypeSyntaxPtr TargetSyntax;
     bool IsStrong;
     std::vector<GenericParam> GenericParams; // [NEW]
   };
   struct AssociatedTypeBinding {
     std::string Type;
+    std::shared_ptr<toka::Type> ResolvedType;
     bool IsPer = false;
     SourceLocation Loc;
   };
+  std::shared_ptr<toka::Type> lowerAliasTarget(const AliasInfo &alias) const;
+  std::shared_ptr<toka::Type> instantiateAliasTarget(
+      const AliasInfo &alias,
+      const std::vector<std::shared_ptr<toka::Type>> &arguments) const;
   std::map<std::string, AliasInfo> TypeAliasMap;
   // TypeName -> {MethodName -> ReturnType}
   std::map<std::string, std::map<std::string, std::string>> MethodMap;
@@ -403,7 +409,8 @@ private:
   // Key: "StructName@TraitName" -> {MethodName -> FunctionDecl*}
   std::map<std::string, std::map<std::string, FunctionDecl *>> ImplMap;
   std::map<std::string, AssociatedTypeBinding> AssociatedTypeMap;
-  std::map<const ImplDecl *, std::map<std::string, std::string>>
+  std::map<const ImplDecl *,
+           std::map<std::string, std::shared_ptr<toka::Type>>>
       AssociatedTypeSubstitutionCache;
   std::set<const TraitDecl *> CheckedAssociatedTypeTraits;
   std::map<std::string, std::vector<EncapEntry>> EncapMap;
@@ -661,11 +668,14 @@ private:
   bool isBorrowLikeType(std::shared_ptr<toka::Type> type) const;
   std::string resolveAssociatedTypeProjection(const std::string &typeName,
                                               bool force);
-  std::map<std::string, std::string>
+  std::shared_ptr<toka::Type>
+  resolveAssociatedTypeProjection(const TypeSyntaxPtr &syntax, bool force);
+  std::map<std::string, std::shared_ptr<toka::Type>>
   registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
                           const std::string &resolvedTypeName);
   void applyAssociatedTypeSubstitutions(
-      ImplDecl *Impl, const std::map<std::string, std::string> &substitutions);
+      ImplDecl *Impl,
+      const std::map<std::string, std::shared_ptr<toka::Type>> &substitutions);
   void validateTraitAssociatedTypes(TraitDecl *Trait);
   void registerImpl(ImplDecl *Impl);
   void declareImpl(ImplDecl *Impl);

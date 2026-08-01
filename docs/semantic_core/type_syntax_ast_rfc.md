@@ -1,6 +1,6 @@
 # RFC: Structured `TypeSyntax` AST
 
-**Status:** Implemented (P1 + P2b).
+**Status:** Implemented (P1 + P2b + P3).
 
 **Scope:** Parser, source AST, Sema source substitutions, direct lowering to
 semantic `Type`, and CodeGen consumption of resolved types. TKI keeps its
@@ -92,19 +92,34 @@ that bypass Sema.
 Canonical text remains the public `.tki` and diagnostic cache; this change
 does not revise its spelling or ABI.
 
-## 5. Non-goals and remaining bridge
+## 5. P3 semantic substitution closure
+
+P3 carries semantic `Type` through generic-template instantiation, generic
+alias expansion, and associated-type projection resolution. Alias definitions
+retain their parsed target `TypeSyntax`; generic substitutions operate on
+semantic `Type` values and reify them structurally only when updating a cloned
+source AST's canonical cache. Associated-type bindings and per-impl
+substitution caches likewise retain the resolved `Type`, with text retained
+only as the existing diagnostic, TKI, and CodeGen-facing cache.
+
+`Type::toSyntax()` performs that reification without parsing `toString()`.
+Its semantic round-trip is covered alongside the TypeSyntax printer matrix for
+generic arguments, arrays, functions, dyn traits, associated projections, and
+morphology. Generic aliases, generic impls, associated types, source-less TKI
+projection replay, and TKI cache validation retain their established results.
+
+The legacy string overloads remain only for source-less interfaces, internal
+synthesised types, specialised trait-bound text, and legacy AST fields which
+cannot yet carry `TypeSyntax`. They are not used to instantiate parser-derived
+generic type templates, alias targets, or associated projections.
+
+## 6. Non-goals and remaining bridge
 
 This RFC adds no tuple semantics, multi-facet `dyn`, associated-type bindings,
 or new morphology syntax. It does not change nominal typing, permissions, ABI,
 or `.tki` syntax.
 
-This project does not eliminate every `Type::fromString()` call. It remains
-the compatibility bridge for deliberately generated semantic text (notably
-the old generic-template substitution cache), internal compiler-synthesised
-types, and legacy AST nodes that have no `TypeSyntax`. Parser-produced source
-types do not take that route.
-
-A later, independent P3 may carry semantic `Type` through generic-template
-substitution, aliases, and associated-projection resolution, removing the
-generated-text bridge. It must retain the canonical `.tki` contract documented
-here until a separately approved interface-format change.
+This project does not eliminate every `Type::fromString()` call. The remaining
+uses are compatibility boundaries described above; their removal would require
+a separate migration of synthetic compiler types and legacy AST fields. P3
+does not revise the canonical `.tki` contract documented here.

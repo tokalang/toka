@@ -15,6 +15,7 @@
 #include "toka/AST.h"
 #include "toka/Sema.h"
 #include <algorithm>
+#include <cctype>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -839,7 +840,166 @@ bool isGeneratedCanonicalTypeLeaf(const std::string &name) {
          name.find_first_of("*^~&<[(") != std::string::npos;
 }
 
+TypeSyntaxPtr applyTypeSyntaxAttributes(TypeSyntaxPtr syntax, const Type &type,
+                                        SourceLocation begin,
+                                        SourceLocation end) {
+  if (type.IsNullable)
+    syntax = TypeSyntax::morphology("?", std::move(syntax), begin, end, true);
+  if (type.IsWritable)
+    syntax = TypeSyntax::morphology("#", std::move(syntax), begin, end, true);
+  if (type.IsBlocked)
+    syntax = TypeSyntax::morphology("$", std::move(syntax), begin, end, true);
+  if (type.IsCede)
+    syntax = TypeSyntax::morphology("cede ", std::move(syntax), begin, end);
+  return syntax;
+}
+
+TypeSyntaxPtr withoutOuterTypeAttributes(TypeSyntaxPtr syntax) {
+  while (syntax && syntax->NodeKind == TypeSyntax::Kind::Morphology &&
+         (syntax->Text == "?" || syntax->Text == "#" ||
+          syntax->Text == "$" || syntax->Text == "cede "))
+    syntax = syntax->Subject;
+  return syntax;
+}
+
+TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
+                                 SourceLocation end) {
+  TypeSyntaxPtr syntax;
+  if (dynamic_cast<const VoidType *>(&type)) {
+    syntax = TypeSyntax::named("void", begin, end);
+  } else if (auto primitive = dynamic_cast<const PrimitiveType *>(&type)) {
+    syntax = TypeSyntax::named(primitive->Name, begin, end);
+  } else if (auto unresolved = dynamic_cast<const UnresolvedType *>(&type)) {
+    syntax = TypeSyntax::invalid(unresolved->Name, begin, end);
+  } else if (auto uninit = dynamic_cast<const UninitType *>(&type)) {
+    syntax = TypeSyntax::generic(
+        TypeSyntax::named("Uninit", begin, end),
+        {TypeArgumentSyntax::type(uninit->InnerType
+                                      ? uninit->InnerType->toSyntax(begin, end)
+                                      : TypeSyntax::named("unknown", begin, end))},
+        begin, end);
+  } else if (auto pointer = dynamic_cast<const PointerType *>(&type)) {
+    TypeSyntaxPtr pointee = pointer->PointeeType
+                                ? pointer->PointeeType->toSyntax(begin, end)
+                                : TypeSyntax::named("unknown", begin, end);
+    std::string prefix = "*";
+    switch (pointer->typeKind) {
+    case Type::UniquePtr:
+      prefix = "^";
+      break;
+    case Type::SharedPtr:
+      prefix = "~";
+      break;
+    case Type::Reference:
+      prefix = "&";
+      break;
+    default:
+      break;
+    }
+    syntax = TypeSyntax::morphology(prefix, std::move(pointee), begin, end);
+    // Handle attributes are represented as leading morphology so a
+    // source->semantic->source round-trip preserves which layer owns them.
+    if (pointer->IsNullable)
+      syntax = TypeSyntax::morphology("nul", std::move(syntax), begin, end);
+    if (pointer->IsWritable)
+      syntax = TypeSyntax::morphology("#", std::move(syntax), begin, end);
+    if (pointer->IsBlocked)
+      syntax = TypeSyntax::morphology("$", std::move(syntax), begin, end);
+    if (pointer->IsCede)
+      syntax = TypeSyntax::morphology("cede ", std::move(syntax), begin,
+                                      end);
+    return syntax;
+  } else if (auto array = dynamic_cast<const ArrayType *>(&type)) {
+    const std::string extent = array->SymbolicSize.empty()
+                                   ? std::to_string(array->Size)
+                                   : array->SymbolicSize;
+    syntax = TypeSyntax::array(
+        array->ElementType ? array->ElementType->toSyntax(begin, end)
+                           : TypeSyntax::named("unknown", begin, end),
+        TypeArgumentSyntax::constant(extent, begin, end), begin, end);
+  } else if (auto slice = dynamic_cast<const SliceType *>(&type)) {
+    syntax = TypeSyntax::slice(
+        slice->ElementType ? slice->ElementType->toSyntax(begin, end)
+                           : TypeSyntax::named("unknown", begin, end),
+        begin, end);
+  } else if (auto shape = dynamic_cast<const ShapeType *>(&type)) {
+    if (shape->SourceSyntax)
+      return applyTypeSyntaxAttributes(
+          withoutOuterTypeAttributes(shape->SourceSyntax), type, begin, end);
+    if (shape->Name.rfind("dyn @", 0) == 0)
+      syntax = TypeSyntax::dynTrait(shape->Name.substr(5), begin, end);
+    else if (shape->GenericArgs.empty())
+      syntax = TypeSyntax::named(shape->Name, begin, end);
+    else {
+      std::vector<TypeArgumentSyntax> arguments;
+      arguments.reserve(shape->GenericArgs.size());
+      for (const auto &argument : shape->GenericArgs) {
+        TypeSyntaxPtr argumentSyntax = argument
+                                           ? argument->toSyntax(begin, end)
+                                           : TypeSyntax::named("unknown", begin,
+                                                                    end);
+        const bool isConst = argumentSyntax->NodeKind == TypeSyntax::Kind::Named &&
+                             (!argumentSyntax->Text.empty() &&
+                              (std::all_of(argumentSyntax->Text.begin(),
+                                           argumentSyntax->Text.end(),
+                                           [](unsigned char c) {
+                                             return std::isdigit(c);
+                                           }) ||
+                               argumentSyntax->Text.back() == '_'));
+        arguments.push_back(isConst
+                                ? TypeArgumentSyntax::constant(
+                                      argumentSyntax->Text, begin, end)
+                                : TypeArgumentSyntax::type(
+                                      std::move(argumentSyntax)));
+      }
+      syntax = TypeSyntax::generic(TypeSyntax::named(shape->Name, begin, end),
+                                   std::move(arguments), begin, end,
+                                   shape->VariantSuffix);
+      return applyTypeSyntaxAttributes(std::move(syntax), type, begin, end);
+    }
+  } else if (auto function = dynamic_cast<const FunctionType *>(&type)) {
+    std::vector<TypeSyntaxPtr> parameters;
+    parameters.reserve(function->ParamTypes.size());
+    for (const auto &parameter : function->ParamTypes)
+      parameters.push_back(parameter ? parameter->toSyntax(begin, end)
+                                     : TypeSyntax::named("unknown", begin, end));
+    const std::string kind = function->ReceiverMode == CallableReceiverMode::Mutable
+                                 ? "fn#"
+                                 : "fn";
+    syntax = TypeSyntax::function(
+        kind, std::move(parameters),
+        function->ReturnType ? function->ReturnType->toSyntax(begin, end)
+                             : TypeSyntax::named("void", begin, end),
+        function->ReturnType && function->ReturnType->typeKind != Type::Void,
+        function->IsVariadic, begin, end);
+    return applyTypeSyntaxAttributes(std::move(syntax), type, begin, end);
+  } else if (auto function = dynamic_cast<const DynFnType *>(&type)) {
+    std::vector<TypeSyntaxPtr> parameters;
+    parameters.reserve(function->ParamTypes.size());
+    for (const auto &parameter : function->ParamTypes)
+      parameters.push_back(parameter ? parameter->toSyntax(begin, end)
+                                     : TypeSyntax::named("unknown", begin, end));
+    const std::string kind = function->ReceiverMode == CallableReceiverMode::Mutable
+                                 ? "dyn fn#"
+                                 : "dyn fn";
+    syntax = TypeSyntax::function(
+        kind, std::move(parameters),
+        function->ReturnType ? function->ReturnType->toSyntax(begin, end)
+                             : TypeSyntax::named("void", begin, end),
+        function->ReturnType && function->ReturnType->typeKind != Type::Void,
+        false, begin, end);
+    return applyTypeSyntaxAttributes(std::move(syntax), type, begin, end);
+  } else {
+    syntax = TypeSyntax::invalid(type.toString(), begin, end);
+  }
+  return applyTypeSyntaxAttributes(std::move(syntax), type, begin, end);
+}
+
 } // namespace
+
+TypeSyntaxPtr Type::toSyntax(SourceLocation begin, SourceLocation end) const {
+  return typeSyntaxFromType(*this, begin, end);
+}
 
 std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
   if (!syntax)
