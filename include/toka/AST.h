@@ -928,9 +928,17 @@ class MatchArm {
 public:
   struct Pattern : public ASTNode {
     enum Kind { Literal, Variable, Decons, Wildcard, Or, Elision, Range };
+    enum class BindingOrigin { Fresh, Existing };
     Kind PatternKind;
     std::string Name;        // For Variable/Decons (e.g., "Maybe::One")
     uint64_t LiteralVal = 0; // For Literal
+    // `auto` is source-level provenance: it either marks this pattern as the
+    // whole-pattern shorthand or marks this variable leaf as fresh.
+    bool HasAutoBinding = false;
+    BindingOrigin Binding = BindingOrigin::Existing;
+    std::shared_ptr<Type> MatchedValueType;
+    std::shared_ptr<Type> ExistingBindingType;
+    std::string EqualityMethod;
     bool IsReference = false;
     bool IsValueMutable = false;
     bool IsValueBlocked = false;
@@ -941,13 +949,15 @@ public:
 
     Pattern(Kind k) : PatternKind(k) {}
     std::string toString() const override {
+      const std::string autoPrefix = HasAutoBinding ? "auto " : "";
       switch (PatternKind) {
       case Literal:
-        return std::to_string(LiteralVal);
+        return autoPrefix + std::to_string(LiteralVal);
       case Variable:
-        return (IsReference ? "&" : "") + Name + (IsValueMutable ? "#" : "");
+        return autoPrefix + (IsReference ? "&" : "") + Name +
+               (IsValueMutable ? "#" : "");
       case Decons: {
-        std::string s = Name + "(";
+        std::string s = autoPrefix + Name + "(";
         for (size_t i = 0; i < SubPatterns.size(); ++i) {
           if (i > 0)
             s += ", ";
@@ -960,17 +970,19 @@ public:
         return s;
       }
       case Wildcard:
-        return "_";
+        return autoPrefix + "_";
       case Elision:
-        return "..";
+        return autoPrefix + "..";
       case Range: {
         if (SubPatterns.size() == 2) {
-          return SubPatterns[0]->toString() + (IsInclusive ? " ..= " : " ..< ") + SubPatterns[1]->toString();
+          return autoPrefix + SubPatterns[0]->toString() +
+                 (IsInclusive ? " ..= " : " ..< ") +
+                 SubPatterns[1]->toString();
         }
         return "RangePattern(invalid)";
       }
       case Or: {
-        std::string s = "";
+        std::string s = autoPrefix;
         for (size_t i = 0; i < SubPatterns.size(); ++i) {
           if (i > 0)
             s += " | ";
@@ -990,6 +1002,11 @@ public:
       auto n = std::make_unique<Pattern>(PatternKind);
       n->Name = Name;
       n->LiteralVal = LiteralVal;
+      n->HasAutoBinding = HasAutoBinding;
+      n->Binding = Binding;
+      n->MatchedValueType = MatchedValueType;
+      n->ExistingBindingType = ExistingBindingType;
+      n->EqualityMethod = EqualityMethod;
       n->IsReference = IsReference;
       n->IsValueMutable = IsValueMutable;
       n->IsValueBlocked = IsValueBlocked;

@@ -1,5 +1,5 @@
 error[E04531]: Mismatched morphology in named pattern matching: left-hand pattern '&s' has morphology 'reference (&)', but right-hand field 'v1' has morphology 'plain value (None)'. Under Hat Rule, they must be perfectly symmetric (e.g. &s = .&v1).
- --> tests/fail/destruct_match_asymmetry_fail.tk:10:9
+ --> tests/fail/destruct_match_asymmetry_fail.tk:10:14
     |
- 10 |         Pair(a = .v0, &s = .v1) => {
-    |         ^
+ 10 |         auto Pair(a = .v0, &s = .v1) => {
+    |              ^

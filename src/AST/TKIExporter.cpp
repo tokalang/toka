@@ -1176,6 +1176,8 @@ void TKIExporter::exportBlock(const BlockStmt &block) {
 
 void TKIExporter::exportPattern(const MatchArm::Pattern *pat) {
     if (!pat) return;
+    if (pat->HasAutoBinding)
+        m_OS << "auto ";
     switch (pat->PatternKind) {
         case MatchArm::Pattern::Literal:
             m_OS << pat->LiteralVal;

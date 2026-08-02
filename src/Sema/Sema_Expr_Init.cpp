@@ -277,6 +277,55 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       break;
     }
 
+    if (Pat->Binding == MatchArm::Pattern::BindingOrigin::Existing) {
+      const bool hasBindingDecorator =
+          Pat->IsReference || Pat->IsValueMutable || Pat->IsValueBlocked ||
+          Pat->Permission.Morphology != BindingMorphology::None ||
+          Pat->Permission.IdentityRebindable ||
+          Pat->Permission.IdentityNullable || Pat->Permission.IdentityBlocked;
+      SymbolInfo *existing = nullptr;
+      if (hasBindingDecorator || !CurrentScope->findSymbol(Pat->Name, existing) ||
+          !existing || !existing->IsDeclaredVariable || !existing->TypeObj) {
+        error(Pat, DiagID::ERR_PATTERN_IDENTIFIER_MUST_REFER_TO_EXISTING,
+              Pat->Name, Pat->Name);
+        break;
+      }
+
+      auto matchedType = toka::Type::fromString(T);
+      if (!matchedType ||
+          (!isTypeCompatible(matchedType, existing->TypeObj) &&
+           !isTypeCompatible(existing->TypeObj, matchedType))) {
+        error(Pat, DiagID::ERR_INVALID_OP, "==", T,
+              existing->TypeObj->toString());
+        break;
+      }
+
+      auto resolvedMatched = resolveType(matchedType, true);
+      if (resolvedMatched && resolvedMatched->isShape()) {
+        const std::string shapeName = resolvedMatched->getSoulName();
+        if (MethodMap.count(shapeName) && MethodMap[shapeName].count("eq")) {
+          Pat->EqualityMethod = "eq";
+        } else {
+          error(Pat, DiagID::ERR_INVALID_OP, "==", T,
+                existing->TypeObj->toString());
+          break;
+        }
+      } else if (!resolvedMatched ||
+                 (!resolvedMatched->isInteger() &&
+                  !resolvedMatched->isFloatingPoint() &&
+                  !resolvedMatched->isBoolean() &&
+                  !resolvedMatched->isPointer())) {
+        error(Pat, DiagID::ERR_INVALID_OP, "==", T,
+              existing->TypeObj->toString());
+        break;
+      }
+
+      existing->HasBeenUsed = true;
+      Pat->MatchedValueType = matchedType;
+      Pat->ExistingBindingType = existing->TypeObj;
+      break;
+    }
+
     auto expectedTypeObj = toka::Type::fromString(T);
     bool isMorphicExempt = (!Pat->Name.empty() && Pat->Name[0] == '\'');
     if (expectedTypeObj->isReference() && !Pat->IsReference && !isMorphicExempt) {

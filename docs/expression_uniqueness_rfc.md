@@ -73,6 +73,20 @@ Consequently, `Result::Pair(auto fresh, expected)` can express a fresh
 extraction constrained by a value already in scope without an auxiliary
 destructure or an implicit name-meaning heuristic.
 
+An existing-reference leaf is evaluated only after every enclosing constructor,
+variant tag, and literal/structural condition has matched. It then constrains
+the matched value with ordinary Toka equality:
+
+```toka
+// First match `Result::Ok`; then test `payload == expected`.
+Result::Ok(expected)
+```
+
+The comparison direction is `matchedValue == existingValue`. It uses the same
+built-in and `eq`-overload semantics as source-level `==`; it neither creates
+a new binding nor substitutes object identity for value equality. A type that
+cannot participate in ordinary `==` is not a valid existing-reference pattern.
+
 `auto` affects only binding provenance. A constructor head such as
 `Result::Ok` or `Result::Pair` must retain ordinary pattern-constructor name
 resolution; `auto` never causes an identifier such as `Some` to be guessed as
@@ -88,8 +102,6 @@ EU-01 deliberately does not decide:
 
 - whether enum pattern constructors must always use a qualified
   `Type::Variant` path or may be imported into a pattern namespace;
-- the exact equality/identity operation used when an existing reference is
-  constrained by a matched value; or
 - wildcard spelling, import shorthand, return-dependency shorthand, or any
   other expression-uniqueness issue.
 

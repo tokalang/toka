@@ -1,0 +1,70 @@
+import core/traits::{@PartialEq}
+
+shape Payload(value: i32)
+
+impl Payload@PartialEq {
+    pub fn eq(self, other: Payload) -> bool {
+        return self.value == other.value
+    }
+}
+
+shape Outcome(
+    Ok(i32) |
+    Pair(i32, i32) |
+    Payload(Payload) |
+    Err
+)
+
+fn export_pattern<T>(value: Outcome, expected: i32) -> i32 {
+    auto result = match value {
+        Outcome::Pair(auto fresh, expected) => { pass fresh }
+        _ => { pass 0 }
+    }
+    return result
+}
+
+fn main() -> i32 {
+    auto expected = 7
+
+    auto same = Outcome::Ok(7)
+    match same {
+        Outcome::Ok(expected) => {}
+        _ => return 1
+    }
+
+    auto different = Outcome::Ok(8)
+    match different {
+        Outcome::Ok(expected) => return 2
+        _ => {}
+    }
+
+    auto literal = Outcome::Ok(8)
+    match literal {
+        Outcome::Ok(7) => return 3
+        _ => {}
+    }
+
+    auto pair = Outcome::Pair(5, 7)
+    match pair {
+        Outcome::Pair(auto fresh, expected) => {
+            if fresh != 5 { return 4 }
+        }
+        _ => return 5
+    }
+
+    match same {
+        auto Outcome::Ok(fresh) => {
+            if fresh != expected { return 6 }
+        }
+        _ => return 7
+    }
+
+    auto expectedPayload = Payload(value = 7)
+    auto payloadResult = Outcome::Payload(Payload(value = 7))
+    match payloadResult {
+        Outcome::Payload(expectedPayload) => {}
+        _ => return 8
+    }
+
+    return 0
+}

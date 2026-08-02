@@ -1,0 +1,12 @@
+shape Outcome(
+    Ok(i32) |
+    Err
+)
+
+fn main() -> i32 {
+    auto value = Outcome::Ok(7)
+    match value {
+        Outcome::Ok(missing) => return 0 // EXPECT: error[E04608]
+        _ => return 1
+    }
+}

@@ -2378,9 +2378,66 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
     }
   }
 
+  std::function<bool(const MatchArm::Pattern *)> hasValueConstraint =
+      [&](const MatchArm::Pattern *pattern) {
+        if (!pattern)
+          return false;
+        if (pattern->PatternKind == MatchArm::Pattern::Literal ||
+            pattern->PatternKind == MatchArm::Pattern::Range ||
+            (pattern->PatternKind == MatchArm::Pattern::Variable &&
+             pattern->Binding ==
+                 MatchArm::Pattern::BindingOrigin::Existing)) {
+          return true;
+        }
+        for (const auto &subPattern : pattern->SubPatterns) {
+          if (hasValueConstraint(subPattern.get()))
+            return true;
+        }
+        return false;
+      };
+  std::function<bool(const MatchArm::Pattern *)> isTopLevelZeroPayloadVariant =
+      [&](const MatchArm::Pattern *pattern) {
+        if (!pattern || baseShapeName.empty() || !m_Shapes.count(baseShapeName) ||
+            m_Shapes[baseShapeName]->Kind != ShapeKind::Enum) {
+          return false;
+        }
+        if (pattern->PatternKind == MatchArm::Pattern::Or) {
+          return !pattern->SubPatterns.empty() &&
+                 std::all_of(pattern->SubPatterns.begin(),
+                             pattern->SubPatterns.end(),
+                             [&](const auto &subPattern) {
+                               return isTopLevelZeroPayloadVariant(
+                                   subPattern.get());
+                             });
+        }
+        if (pattern->PatternKind != MatchArm::Pattern::Variable)
+          return false;
+
+        std::string variantName = pattern->Name;
+        const size_t scopePos = variantName.rfind("::");
+        if (scopePos != std::string::npos)
+          variantName = variantName.substr(scopePos + 2);
+        for (const auto &member : m_Shapes[baseShapeName]->Members) {
+          if (member.Name == variantName &&
+              (member.Type.empty() || member.Type == "void") &&
+              member.SubMembers.empty()) {
+            return true;
+          }
+        }
+        return false;
+      };
+  bool hasValueConstraints = false;
+  for (const auto &arm : expr->Arms) {
+    if (hasValueConstraint(arm->Pat.get()) &&
+        !isTopLevelZeroPayloadVariant(arm->Pat.get())) {
+      hasValueConstraints = true;
+      break;
+    }
+  }
+
   if (baseShapeName != "" && m_Shapes.count(baseShapeName) &&
       m_Shapes[baseShapeName]->Kind == ShapeKind::Enum && !anyArmHasGuard &&
-      !hasRepeatedEnumTag) {
+      !hasRepeatedEnumTag && !hasValueConstraints) {
     const ShapeDecl *sh = m_Shapes[baseShapeName];
     llvm::Value *tagVal = m_Builder.CreateExtractValue(targetVal, 0, "tag");
 
@@ -2659,6 +2716,86 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
     // case. The C++ control flow jumps to 'else' boundary, so it's fine.
   } else {
     // General pattern matching (Sequence of Ifs)
+    auto emitExistingBindingEquality =
+        [&](const MatchArm::Pattern *pat, llvm::Value *matchedValue,
+            const std::string &matchedType) -> llvm::Value * {
+      if (!pat || !pat->ExistingBindingType)
+        return m_Builder.getInt1(false);
+
+      auto existing = std::make_unique<VariableExpr>(pat->Name);
+      existing->ResolvedType = pat->ExistingBindingType;
+
+      if (!pat->EqualityMethod.empty()) {
+        static unsigned patternValueId = 0;
+        const std::string temporaryName =
+            ".match_value_" + std::to_string(patternValueId++);
+        llvm::AllocaInst *temporaryAddr = createEntryBlockAlloca(
+            matchedValue->getType(), nullptr, temporaryName);
+        m_Builder.CreateStore(matchedValue, temporaryAddr);
+
+        TokaSymbol temporary;
+        temporary.allocaPtr = temporaryAddr;
+        temporary.soulType = matchedValue->getType();
+        temporary.typeName = matchedType;
+        temporary.soulTypeObj = pat->MatchedValueType;
+        m_Symbols.emplace(temporaryName, temporary);
+
+        auto matched = std::make_unique<VariableExpr>(temporaryName);
+        matched->ResolvedType = pat->MatchedValueType;
+        std::vector<std::unique_ptr<Expr>> args;
+        args.push_back(std::move(existing));
+        MethodCallExpr equality(std::move(matched), pat->EqualityMethod,
+                                std::move(args));
+        equality.ResolvedType = lowerTypeSyntax(nullptr, "bool");
+        llvm::Value *result = genMethodCall(&equality).load(m_Builder);
+        m_Symbols.erase(temporaryName);
+        return result ? result : m_Builder.getInt1(false);
+      }
+
+      llvm::Value *existingValue = genExpr(existing.get()).load(m_Builder);
+      if (!existingValue)
+        return m_Builder.getInt1(false);
+
+      auto unwrapHandle = [&](llvm::Value *value) {
+        while (value->getType()->isStructTy()) {
+          const unsigned count = value->getType()->getStructNumElements();
+          if (count != 1 && count != 2)
+            break;
+          value = m_Builder.CreateExtractValue(value, 0);
+        }
+        return value;
+      };
+      matchedValue = unwrapHandle(matchedValue);
+      existingValue = unwrapHandle(existingValue);
+
+      if (matchedValue->getType()->isFloatingPointTy() &&
+          existingValue->getType()->isFloatingPointTy()) {
+        return m_Builder.CreateFCmpOEQ(matchedValue, existingValue,
+                                       "pattern_eq");
+      }
+      if (matchedValue->getType() != existingValue->getType()) {
+        if (matchedValue->getType()->isIntegerTy() &&
+            existingValue->getType()->isIntegerTy()) {
+          if (matchedValue->getType()->getIntegerBitWidth() >
+              existingValue->getType()->getIntegerBitWidth()) {
+            existingValue = m_Builder.CreateZExt(existingValue,
+                                                  matchedValue->getType());
+          } else {
+            matchedValue = m_Builder.CreateZExt(matchedValue,
+                                                 existingValue->getType());
+          }
+        } else if (matchedValue->getType()->isPointerTy() &&
+                   existingValue->getType()->isPointerTy()) {
+          existingValue = m_Builder.CreateBitCast(existingValue,
+                                                   matchedValue->getType());
+        } else {
+          return m_Builder.getInt1(false);
+        }
+      }
+      return m_Builder.CreateICmpEQ(matchedValue, existingValue,
+                                    "pattern_eq");
+    };
+
     for (const auto &arm : expr->Arms) {
       llvm::BasicBlock *armBB =
           llvm::BasicBlock::Create(m_Context, "match_arm", func);
@@ -2821,6 +2958,9 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
               return m_Builder.CreateICmpEQ(
                   tagVal, llvm::ConstantInt::get(tagVal->getType(), tag));
             }
+          }
+          if (pat->Binding == MatchArm::Pattern::BindingOrigin::Existing) {
+            return emitExistingBindingEquality(pat, currVal, currSemaType);
           }
           return m_Builder.getInt1(true);
         } else if (pat->PatternKind == MatchArm::Pattern::Wildcard ||
@@ -3904,6 +4044,9 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
   if (targetType && targetType->isVoidTy()) return;
 
   if (pat->PatternKind == MatchArm::Pattern::Variable) {
+    if (pat->Binding == MatchArm::Pattern::BindingOrigin::Existing)
+      return;
+
     llvm::Value *val = targetAddr;
     std::string pName = pat->Name;
     bool isUnique = false;
@@ -6616,9 +6759,12 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
 
     // [Fix] ShapeKind Aware Type Lookup
     llvm::Type *elemTy = nullptr;
+    std::shared_ptr<Type> fieldType;
     auto kind = ShapeKind::Struct;
     if (m_Shapes.count(shapeName)) {
       kind = m_Shapes[shapeName]->Kind;
+      if (idx >= 0 && idx < static_cast<int>(m_Shapes[shapeName]->Members.size()))
+        fieldType = m_Shapes[shapeName]->Members[idx].ResolvedType;
       if (kind == ShapeKind::Union) {
         auto sh = m_Shapes[shapeName];
         if (idx >= 0 && idx < (int)sh->Members.size()) {
@@ -6669,6 +6815,17 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
 
     if (!fieldVal)
       return nullptr;
+
+    // A fresh unique allocation assigned to a shared field owns only its data
+    // pointer. The field stores a shared { data, refcount } handle, so create
+    // that first handle before the aggregate is materialized.
+    if (fieldType && fieldType->isSharedPtr() &&
+        fieldVal->getType()->isPointerTy() &&
+        isOwnedUniquePromotionSource(f.second.get())) {
+      TokaSymbol sharedField;
+      sharedField.morphology = Morphology::Shared;
+      fieldVal = emitPromotion(fieldVal, elemTy, sharedField);
+    }
 
     llvm::Value *fieldAddr = nullptr;
     if (m_Shapes.count(shapeName)) {

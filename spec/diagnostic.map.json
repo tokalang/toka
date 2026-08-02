@@ -2573,6 +2573,12 @@
       "message": "Field '{}' receives an owning value from '{}'; use 'cede {}' to transfer ownership explicitly",
       "description": "An owned lvalue must be explicitly ceded when it initializes an owning field."
     },
+    "E04608": {
+      "id": "ERR_PATTERN_IDENTIFIER_MUST_REFER_TO_EXISTING",
+      "level": "Error",
+      "message": "Pattern identifier '{}' does not name an existing variable; use 'auto {}' to introduce a fresh binding",
+      "description": "A pattern identifier without auto is a value constraint, not a declaration."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

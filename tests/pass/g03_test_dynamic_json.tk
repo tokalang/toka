@@ -17,20 +17,20 @@ fn put_ptr(*s: string) {
 
 fn print_json_node(val: JsonNode) {
     match val {
-        NullNode(n) => { put(string::from("null")) }
-        BoolNode(b) => { 
+        auto NullNode(n) => { put(string::from("null")) }
+        auto BoolNode(b) => {
             if b { put(string::from("true")) } else { put(string::from("false")) }
         }
-        NumNode(n) => { 
+        auto NumNode(n) => {
             auto num_str = string::from_f64(n)
             put(num_str) 
         }
-        StrNode(&s) => {
+        auto StrNode(&s) => {
             put(string::from("\""))
             put(s)
             put(string::from("\""))
         }
-        ArrayNode(&arr_ptr) => {
+        auto ArrayNode(&arr_ptr) => {
             put(string::from("["))
             auto arr_iter# = arr_ptr.iter()
             auto first# = true
@@ -43,7 +43,7 @@ fn print_json_node(val: JsonNode) {
             }
             put(string::from("]"))
         }
-        ObjectNode(&map_ptr) => {
+        auto ObjectNode(&map_ptr) => {
             put(string::from("{"))
             auto iter# = map_ptr#.iter()
             auto first# = true
@@ -67,20 +67,20 @@ fn print_json_node(val: JsonNode) {
 
 fn print_json_node_ptr(*val_ptr: JsonNode) {
     match val_ptr {
-        NullNode(n) => { put(string::from("null")) }
-        BoolNode(b) => { 
+        auto NullNode(n) => { put(string::from("null")) }
+        auto BoolNode(b) => {
             if b { put(string::from("true")) } else { put(string::from("false")) }
         }
-        NumNode(n) => { 
+        auto NumNode(n) => {
             auto num_str = string::from_f64(n)
             put(num_str) 
         }
-        StrNode(&s) => {
+        auto StrNode(&s) => {
             put(string::from("\""))
             put(s)
             put(string::from("\""))
         }
-        ArrayNode(&arr_ptr) => {
+        auto ArrayNode(&arr_ptr) => {
             put(string::from("["))
             auto arr_iter# = arr_ptr.iter()
             auto first# = true
@@ -94,7 +94,7 @@ fn print_json_node_ptr(*val_ptr: JsonNode) {
             }
             put(string::from("]"))
         }
-        ObjectNode(&map_ptr) => {
+        auto ObjectNode(&map_ptr) => {
             put(string::from("{"))
             auto iter# = map_ptr#.iter()
             auto first# = true
@@ -130,7 +130,7 @@ pub fn main() -> i32 {
     
     // Test match functionality over dynamic JSON Node!
     match root {
-        ObjectNode(&map_ptr) => {
+        auto ObjectNode(&map_ptr) => {
             println("Found root object!")
             
             println("--- Keys inside Object ---")

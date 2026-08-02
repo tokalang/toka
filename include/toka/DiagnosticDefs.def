@@ -456,6 +456,7 @@ DIAG(ERR_SEMA_CEDE_RECEIVER_PROJECTION_UNSUPPORTED, Error, "E04601", "Cannot con
 DIAG(ERR_SEMA_CEDE_RECEIVER_NOT_OWNED, Error, "E04602", "Cannot pass non-owned receiver '{}' to 'cede self'; consuming receivers require an owned value or unique receiver")
 DIAG(ERR_TYPE_ASCRIPTION_MISMATCH, Error, "E04606", "Type ascription '{}' is incompatible with expression type '{}'")
 DIAG(ERR_SEMA_FIELD_INITIALIZER_MUST_BE_EXPLICITLY_CEDED, Error, "E04607", "Field '{}' receives an owning value from '{}'; use 'cede {}' to transfer ownership explicitly")
+DIAG(ERR_PATTERN_IDENTIFIER_MUST_REFER_TO_EXISTING, Error, "E04608", "Pattern identifier '{}' does not name an existing variable; use 'auto {}' to introduce a fresh binding")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

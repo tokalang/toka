@@ -281,7 +281,7 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
 std::unique_ptr<GuardBindStmt> Parser::parseGuardBindStmt() {
   Token tok = consume(TokenType::KwGuard, DiagID::ERR_PARSER_EXPECTED_GUARD);
   consume(TokenType::KwAuto, DiagID::ERR_PARSER_EXPECTED_AUTO_AFTER_GUARD);
-  auto pat = parsePattern();
+  auto pat = parsePattern(true);
   consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_IN_GUARD_AUTO_STATEMENT);
   auto target = parseExpr();
   consume(TokenType::KwElse, DiagID::ERR_PARSER_EXPECTED_ELSE_AFTER_GUARD_TARGET_EXPRES);

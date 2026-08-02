@@ -53,7 +53,7 @@ fn test_match_conditional_move() {
         auto ~x = create_shared_resource(99);
         auto opt = Option<i32>::Some(10);
         match opt {
-            Option::Some(v) => {
+            auto Option::Some(v) => {
                 if (v == 999) {
                     auto ~sink = cede ~x;
                 }

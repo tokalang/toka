@@ -94,8 +94,8 @@ private:
   AssociatedTypeDecl parseAssociatedTypeDecl(bool requireDefinition);
   bool isAssociatedTypeDeclStart() const;
   std::unique_ptr<Expr> parseMatchExpr();
-  std::unique_ptr<MatchArm::Pattern> parseSinglePattern();
-  std::unique_ptr<MatchArm::Pattern> parsePattern();
+  std::unique_ptr<MatchArm::Pattern> parseSinglePattern(bool inheritedFresh = false);
+  std::unique_ptr<MatchArm::Pattern> parsePattern(bool inheritedFresh = false);
   std::vector<GenericParam> parseGenericParams();
   bool looksLikeNamedReturn() const;
   ReturnContractSyntax parseReturnContract(bool allowDependencies);

@@ -7,7 +7,7 @@ fn main() -> i32 {
     auto t = Pair(v0 = 10, v1 = 20)
     auto res = match t {
         // Error: Mismatched morphology in named pattern matching
-        Pair(a = .v0, &s = .v1) => {
+        auto Pair(a = .v0, &s = .v1) => {
             pass 1
         }
         _ => {

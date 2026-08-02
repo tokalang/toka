@@ -20,16 +20,20 @@
 
 namespace toka {
 
-std::unique_ptr<MatchArm::Pattern> Parser::parsePattern() {
-  auto pat = parseSinglePattern();
+std::unique_ptr<MatchArm::Pattern> Parser::parsePattern(bool inheritedFresh) {
+  auto pat = parseSinglePattern(inheritedFresh);
   if (!pat) return nullptr;
 
   if (check(TokenType::Pipe)) {
     auto orPat = std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Or);
     orPat->Loc = pat->Loc;
+    const bool wholePatternFresh = inheritedFresh || pat->HasAutoBinding;
+    orPat->HasAutoBinding = pat->HasAutoBinding;
+    if (orPat->HasAutoBinding)
+      pat->HasAutoBinding = false;
     orPat->SubPatterns.push_back(std::move(pat));
     while (match(TokenType::Pipe)) {
-      auto next = parseSinglePattern();
+      auto next = parseSinglePattern(wholePatternFresh);
       if (next) {
         orPat->SubPatterns.push_back(std::move(next));
       }
@@ -40,7 +44,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parsePattern() {
   return pat;
 }
 
-std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
+std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFresh) {
   if (match(TokenType::DotDot)) {
     auto p = std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Elision);
     p->Loc = previous().Loc;
@@ -56,6 +60,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
   bool isRebindable = false;
   bool isRebindBlocked = false;
   bool hasAutoBinding = match(TokenType::KwAuto);
+  const bool introducesFresh = inheritedFresh || hasAutoBinding;
 
   std::string morphologyPrefix = "";
   while (true) {
@@ -114,7 +119,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     consume(TokenType::LParen, DiagID::ERR_PARSER_EXPECTED_LPAREN);
     std::vector<std::unique_ptr<MatchArm::Pattern>> subs;
     while (!check(TokenType::RParen) && !check(TokenType::EndOfFile)) {
-      subs.push_back(parsePattern());
+      subs.push_back(parsePattern(introducesFresh));
       if (!check(TokenType::RParen))
         match(TokenType::Comma);
     }
@@ -123,6 +128,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     p->Loc = lpTok.Loc;
     p->Name = "";
     p->SubPatterns = std::move(subs);
+    p->HasAutoBinding = hasAutoBinding;
     p->IsReference = isRef;
     p->Permission = BindingPermission::fromLegacy(
         isPointer, isUnique, isShared, isRef, isRebindable,
@@ -136,6 +142,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
       check(TokenType::KwTrue) || check(TokenType::KwFalse)) {
     auto p = std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Literal);
     p->Loc = peek().Loc;
+    p->HasAutoBinding = hasAutoBinding;
     Token t = advance();
     if (t.Kind == TokenType::String || t.Kind == TokenType::ViewString) {
       p->Name = "\"" + t.Text + "\"";
@@ -250,7 +257,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
         } else {
           if (isNextNamedField(0)) {
             hasNamed = true;
-            auto pat = parsePattern();
+            auto pat = parsePattern(introducesFresh);
             consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_AFTER_PATTERN);
             consume(TokenType::Dot, DiagID::ERR_PARSER_EXPECTED_AFTER_IN_NAMED_PATTERN);
 
@@ -278,7 +285,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
             subNames.push_back(fieldName);
           } else {
             hasPositional = true;
-            subs.push_back(parsePattern());
+            subs.push_back(parsePattern(introducesFresh));
             subNames.push_back("");
           }
         }
@@ -294,6 +301,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
       p->Name = name;
       p->SubPatterns = std::move(subs);
       p->SubPatternNames = std::move(subNames);
+      p->HasAutoBinding = hasAutoBinding;
       p->IsReference = isRef;
       p->Permission = BindingPermission::fromLegacy(
           isPointer, isUnique, isShared, isRef, isRebindable,
@@ -304,6 +312,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     auto p = std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Variable);
     p->Loc = nameTok.Loc;
     p->Name = morphologyPrefix + name;
+    p->HasAutoBinding = hasAutoBinding;
+    p->Binding = introducesFresh ? MatchArm::Pattern::BindingOrigin::Fresh
+                                 : MatchArm::Pattern::BindingOrigin::Existing;
     p->IsReference = isRef;
     p->IsValueMutable = nameTok.HasWrite;
     p->IsValueBlocked = nameTok.IsBlocked;
