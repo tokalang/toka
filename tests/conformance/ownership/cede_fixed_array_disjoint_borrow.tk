@@ -12,7 +12,7 @@ impl Token@Encap {
 
 fn main() -> i32 {
     {
-        auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+        auto values = [Token(id = 1), Token(id = 2)]:[Token; 2]
         auto &borrow = &(values[0])
         auto taken = cede values[1]
         if borrow.id != 1 { return 1 }

@@ -1,6 +1,6 @@
 fn main() -> i32 {
     auto flag = true
-    auto x#: i32 = unset
+    auto x# = uninit:i32
 
     if flag {
         loop {

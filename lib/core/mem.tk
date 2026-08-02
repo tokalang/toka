@@ -16,7 +16,7 @@
 
 pub fn bit_cast<'To, 'From>('val: From) -> 'To {
     unsafe {
-        auto 'dummy: To
+        auto 'dummy = uninit:To
         return 'dummy
     }
 }

@@ -84,7 +84,7 @@ fn parse_note_id(value: str) -> Option<i64> {
     }
 
     auto id# = 0:i64
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index)
         if byte < 48 || byte > 57 {

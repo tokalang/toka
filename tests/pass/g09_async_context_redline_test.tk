@@ -4,9 +4,9 @@ import std/task::{block_on, sleep_async};
 import std/context::{background, with_cancel, with_timeout, Canceler};
 import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read_context, net_async_read_timeout};
 
-auto test_deadline_expired_ok#: bool = false;
-auto test_parent_cascade_ok#: bool = false;
-auto test_token_unregistered_ok#: bool = false;
+auto test_deadline_expired_ok# = false:bool;
+auto test_parent_cascade_ok# = false:bool;
+auto test_token_unregistered_ok# = false:bool;
 
 pub fn trigger_cancel_parent_task(cede c: Canceler) -> async i32 {
     auto owned_c# = cede c;

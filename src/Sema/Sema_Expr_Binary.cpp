@@ -665,8 +665,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     }
 
     // [FIX] Unset Safety: Allow writing to immutable fields if they are
-    // unset [FIX] Unset Safety: Allow writing to immutable fields if
-    // they are unset
+    // uninitialized [FIX] Uninit Safety: Allow writing to immutable fields if
+    // they are uninitialized
     bool isLHSUnset = false;
     if (auto *M = dynamic_cast<MemberExpr *>(Bin->LHS.get())) {
       Expr *Traverse = M->Object.get();
@@ -728,7 +728,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // A writable outer aggregate is not an authority source for a nested
     // field.  Once the field path has been resolved, its declaration-derived
     // capability is decisive unless this is the one permitted initialization
-    // of an unset slot.  In particular, `node#.shared_field.payload = ...`
+    // of an uninitialized slot.  In particular, `node#.shared_field.payload = ...`
     // cannot manufacture P for a `~field: T` declaration.
     if (payloadCapabilityDenied && !payloadFlowDenied && !isLHSUnset) {
       error(Bin->LHS.get(),
@@ -1067,7 +1067,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (assignmentKind == AssignmentSemanticKind::Handle)
       updateHandleFlowCeiling();
 
-    // [Fix] Update InitMask logic for 'unset' variables
+    // [Fix] Update InitMask logic for uninitialized variables
     Expr *LHSExpr = Bin->LHS.get();
 
     // Helper lambda for back-propagation
@@ -1331,9 +1331,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     return lhsType->withAttributes(false, lhsType->IsNullable);
   }
 
-  if (Bin->Op == "band" || Bin->Op == "bor" || Bin->Op == "bxor" ||
-      Bin->Op == "bshl" || Bin->Op == "bshr" ||
-      Bin->Op == "&" || Bin->Op == "|" || Bin->Op == "^" ||
+  if (Bin->Op == "&" || Bin->Op == "|" || Bin->Op == "^" ||
       Bin->Op == "<<" || Bin->Op == ">>") {
     if (!resolveType(lhsType, true)->isInteger() ||
         !resolveType(rhsType, true)->isInteger()) {

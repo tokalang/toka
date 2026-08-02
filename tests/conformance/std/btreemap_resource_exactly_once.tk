@@ -23,7 +23,7 @@ pub fn clone(self) -> Resource {
 fn main() -> i32 {
     {
         auto map# = BTreeMap<i32, Resource>::new()
-        auto id#: i32 = 0:i32
+        auto id# = 0:i32
         loop id < 12:i32 {
             auto resource = Resource(id = id)
             map#.insert(id, cede resource)

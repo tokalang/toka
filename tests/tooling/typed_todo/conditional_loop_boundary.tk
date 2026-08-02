@@ -1,10 +1,10 @@
 fn select() -> i32 {
-    auto answer: i32 = todo
-    auto slot#: i32 = 0
+    auto answer = todo:i32
+    auto slot# = 0:i32
     loop false {
         slot = answer
     }
-    auto observed: i32 = slot
+    auto observed = slot:i32
     return observed
 }
 

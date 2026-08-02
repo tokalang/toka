@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    auto values#: [i32; 2] = [1, 2]
+    auto values# = [1, 2]:[i32; 2]
     match values[0] {
         auto &borrow# => {
             borrow = 3

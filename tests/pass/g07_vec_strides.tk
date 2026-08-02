@@ -8,8 +8,8 @@ fn main() -> i32 {
         v#.push(10)
         v#.push(20)
         
-        auto *ptr0: i32 = v.unsafe_get(0)
-        auto *ptr1: i32 = v.unsafe_get(1)
+        auto *ptr0 = v.unsafe_get(0):*i32
+        auto *ptr1 = v.unsafe_get(1):*i32
         
         auto addr0 = *ptr0 as usize
         auto addr1 = *ptr1 as usize

@@ -170,7 +170,7 @@ public:
 class UnsetExpr : public Expr {
 public:
   UnsetExpr() {}
-  std::string toString() const override { return "unset"; }
+  std::string toString() const override { return "uninit"; }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<UnsetExpr>();
     n->Loc = Loc;
@@ -474,18 +474,28 @@ public:
 };
 
 
+enum class CastKind {
+  Implicit,
+  Conversion,
+  Ascription,
+};
+
 class CastExpr : public Expr {
 public:
   std::unique_ptr<Expr> Expression;
   std::string TargetType;
   TypeSyntaxPtr TargetTypeSyntax;
-  CastExpr(std::unique_ptr<Expr> expr, const std::string &type)
-      : Expression(std::move(expr)), TargetType(type) {}
+  CastKind Kind = CastKind::Implicit;
+  CastExpr(std::unique_ptr<Expr> expr, const std::string &type,
+           CastKind kind = CastKind::Implicit)
+      : Expression(std::move(expr)), TargetType(type), Kind(kind) {}
   std::string toString() const override {
-    return "Cast(" + Expression->toString() + " as " + TargetType + ")";
+    const char *form = Kind == CastKind::Ascription ? ":" : "as";
+    return "Cast(" + Expression->toString() + " " + form + " " +
+           TargetType + ")";
   }
   std::unique_ptr<ASTNode> clone() const override {
-    auto n = std::make_unique<CastExpr>(cloneNode(Expression), TargetType);
+    auto n = std::make_unique<CastExpr>(cloneNode(Expression), TargetType, Kind);
     n->TargetTypeSyntax = TargetTypeSyntax;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;

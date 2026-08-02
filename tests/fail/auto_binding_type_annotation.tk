@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto value: i32 = 1 // EXPECT: error[E01261]
+    return value
+}

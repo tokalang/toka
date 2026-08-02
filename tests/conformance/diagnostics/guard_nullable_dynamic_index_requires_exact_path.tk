@@ -1,10 +1,10 @@
 shape Token(id: i32)
 
 fn main() -> i32 {
-    auto values: [Token?; 1] = [Token(id = 7)]
+    auto values = [Token(id = 7)]:[Token?; 1]
     auto index = 0
     guard values[index] {
-        auto target: Token = cede values[index]
+        auto target = cede values[index]:Token
         return target.id
     } else {
         return 0

@@ -1,15 +1,15 @@
 error[E0432]: Yielding for loop must pass a value
- --> tests/fail/must_yield_i32.tk:15:37
+ --> tests/fail/must_yield_i32.tk:15:32
     |
- 15 |     auto y: i32 = for auto x in [1] {
-    |                                     ^
+ 15 |     auto y = for auto x in [1] {
+    |                                ^
 error[E0432]: Yielding 'or' block must pass a value
  --> tests/fail/must_yield_i32.tk:18:10
     |
  18 |     } or {
     |          ^
-error[E0409]: Cannot initialize variable of type 'i32' with value of type 'void'
- --> tests/fail/must_yield_i32.tk:15:10
+error[E04606]: Type ascription 'i32' is incompatible with expression type 'void'
+ --> tests/fail/must_yield_i32.tk:21:6
     |
- 15 |     auto y: i32 = for auto x in [1] {
-    |          ^
+ 21 |     }:i32
+    |      ^

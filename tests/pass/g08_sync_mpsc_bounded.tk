@@ -11,12 +11,12 @@ pub fn main() -> i32 {
     pair.tx#.send(cede 2:i32).unwrap()
     
     // cede pair completely into the closure
-    auto f#: fn#() -> cede i32 = { [cede pair#] =>
+    auto f# = { [cede pair#] =>
         auto val1 = pair.rx#.recv().unwrap()
         auto val2 = pair.rx#.recv().unwrap()
         auto val3 = pair.rx#.recv().unwrap()
         return cede 0
-    }
+    }:fn#() -> cede i32
     auto t# = thread_spawn<i32>(cede f)
     
     // Now send the 3rd item, this should block until the receiver pops

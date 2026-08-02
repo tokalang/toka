@@ -4,7 +4,7 @@ shape Bound(
 )
 
 fn main() -> i32 {
-    auto b: Bound
+    auto b = uninit:Bound
     if true {
         auto local = 10
         // b should borrow 'local'. 

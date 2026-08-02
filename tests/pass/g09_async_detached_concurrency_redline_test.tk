@@ -2,7 +2,7 @@ import std/io::{println};
 import std/task::{block_on, detach_forget, sleep_async};
 import core/task as core_task;
 
-auto g_counter#: i32 = 0;
+auto g_counter# = 0:i32;
 
 fn async_worker(ms: i32) -> async i32 {
     if ms > 0 {

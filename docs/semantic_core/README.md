@@ -88,6 +88,12 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `typed_todo_rfc.md` freezes the adopted expression-only typed-todo boundary:
   complete expected contracts, zero authority, conditional facts, and the
   no-CodeGen/TKI/cache publication rule.
+- `init_contract_rfc.md` records the proposed explicit initialization-obligation
+  contract: `uninit` source state, two-sided `init` parameters, lexical init
+  proof scopes, and the separation from raw `Uninit<T>` storage.
+- `unit_void_never_rfc.md` freezes the separation of ordinary Unit, ABI/raw
+  `void`, and explicit non-completion (`never`), including its initial narrow
+  implementation surface.
 - [`../typed_todo_goals_v1.md`](../typed_todo_goals_v1.md) freezes the
   independent requirement-only JSON protocol for incomplete typed-todo edits.
 - [`../conditional_facts_v1.md`](../conditional_facts_v1.md) defines the

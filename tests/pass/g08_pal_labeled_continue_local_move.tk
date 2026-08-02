@@ -3,7 +3,7 @@ shape Data(id: i32)
 fn main() -> i32 {
     auto i# = 0
 
-    auto outer: void = loop i < 2 {
+    auto outer = loop i < 2 {
         i += 1
         loop {
             auto ^p = new Data(id = i)
@@ -12,7 +12,7 @@ fn main() -> i32 {
                 continue to outer
             }
         }
-    }
+    }:void
 
     return i - 2
 }

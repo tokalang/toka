@@ -3,8 +3,8 @@ fn identity(value: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    auto answer: i32 = todo
-    auto arithmetic: i32 = answer + 1
-    auto through_call: i32 = identity(arithmetic)
+    auto answer = todo:i32
+    auto arithmetic = answer + 1:i32
+    auto through_call = identity(arithmetic):i32
     return through_call
 }

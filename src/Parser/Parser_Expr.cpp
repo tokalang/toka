@@ -55,7 +55,7 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
   bool isPtrNullable = false;
   bool isRebindable = false;
   bool isRebindBlocked = false;
-  match(TokenType::KwAuto); // skip auto if present
+  bool hasAutoBinding = match(TokenType::KwAuto);
 
   std::string morphologyPrefix = "";
   while (true) {
@@ -208,6 +208,10 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
       advance();
       return std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Wildcard);
     }
+    if (peek().Text == "default" && !hasAutoBinding) {
+      error(peek(), DiagID::ERR_PARSER_DEFAULT_WILDCARD_REMOVED);
+      return nullptr;
+    }
 
     Token nameTok = peek();
     std::string name = parseNamespaceOrIdentifier();
@@ -310,10 +314,6 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern() {
     return p;
   }
 
-  if (match(TokenType::KwDefault)) {
-    return std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Wildcard);
-  }
-
   error(peek(), DiagID::ERR_PARSER_EXPECTED_PATTERN);
   return nullptr;
 }
@@ -354,13 +354,15 @@ std::unique_ptr<Expr> Parser::parseExpr(int minPrec, bool allowTrailingClosure) 
   while (true) {
     if (check(TokenType::Colon) || check(TokenType::KwAs) ||
         (peek().Kind == TokenType::Identifier && peek().Text == "as")) {
-      advance(); // consume ':' or 'as'
+      Token introducer = advance(); // consume ':' or 'as'
       TypeSyntaxPtr typeSyntax = parseTypeSyntax(true, false, true);
       std::string typeName = canonicalType(typeSyntax);
-      Token tok = previous();
-      auto node = std::make_unique<CastExpr>(std::move(lhs), typeName);
+      const CastKind kind = introducer.Kind == TokenType::Colon
+                                ? CastKind::Ascription
+                                : CastKind::Conversion;
+      auto node = std::make_unique<CastExpr>(std::move(lhs), typeName, kind);
       node->TargetTypeSyntax = std::move(typeSyntax);
-      node->setLocation(tok, m_CurrentFile);
+      node->setLocation(introducer, m_CurrentFile);
       lhs = std::move(node);
       continue;
     } // Closes if (check(KwAs))
@@ -376,6 +378,12 @@ std::unique_ptr<Expr> Parser::parseExpr(int minPrec, bool allowTrailingClosure) 
     Token op = advance();
     if (op.Kind == TokenType::Minus && !op.HasSpacesAround) {
       error(op, DiagID::ERR_PARSER_MINUS_OPERATOR_MUST_BE_SURROUNDED);
+    }
+    if ((op.Kind == TokenType::Ampersand || op.Kind == TokenType::Pipe ||
+         op.Kind == TokenType::Caret || op.Kind == TokenType::LessLess ||
+         op.Kind == TokenType::GreaterGreater) &&
+        !op.HasSpacesAround) {
+      error(op, DiagID::ERR_PARSER_BITWISE_OPERATOR_MUST_BE_SURROUNDED);
     }
     auto rhs = parseExpr(prec + 1, allowTrailingClosure);
     if (!rhs) {
@@ -398,8 +406,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       match(TokenType::PlusPlus) || match(TokenType::MinusMinus) ||
       match(TokenType::Caret) || match(TokenType::Tilde) ||
       match(TokenType::Star) || match(TokenType::Ampersand) ||
-      match(TokenType::And) || match(TokenType::At) ||
-      match(TokenType::KwBnot)) {
+      match(TokenType::And) || match(TokenType::At)) {
     Token tok = previous();
     TokenType op = tok.Kind;
     auto sub = parsePrimary(allowTrailingClosure);
@@ -480,7 +487,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     auto node = std::make_unique<MagicExpr>(tok.Kind);
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
-  } else if (match(TokenType::KwUnset)) {
+  } else if (match(TokenType::KwUninit)) {
     Token tok = previous();
     auto node = std::make_unique<UnsetExpr>();
     node->setLocation(tok, m_CurrentFile);
@@ -1055,11 +1062,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
       // Check if it's Spread operator .*
       // We must avoid conflicts with obj.*ptr (raw pointer hat member access).
-      // If we see Star and the next token is NOT a member name (Identifier, KwUnset, KwNull, KwSelf),
+      // If we see Star and the next token is NOT a member name (Identifier, KwUninit, KwNull, KwSelf),
       // we consume the Star and parse it as a SpreadExpr.
       if (check(TokenType::Star) &&
           !checkAt(1, TokenType::Identifier) &&
-          !checkAt(1, TokenType::KwUnset) &&
+          !checkAt(1, TokenType::KwUninit) &&
           !checkAt(1, TokenType::KwNull) &&
           !checkAt(1, TokenType::KwSelf)) {
         consume(TokenType::Star, DiagID::ERR_PARSER_EXPECTED_STAR); // Safely consume the Star
@@ -1081,7 +1088,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       else if (match(TokenType::DoubleQuestion))
         prefix = previous().Text;
 
-      if (match(TokenType::Identifier) || match(TokenType::KwUnset) ||
+      if (match(TokenType::Identifier) || match(TokenType::KwUninit) ||
           match(TokenType::KwNull) || match(TokenType::KwSelf)) {
         std::string memberName = prefix + previous().Text;
         // Method Call check

@@ -11,7 +11,7 @@ impl Token@Encap {
 }
 
 fn transfer_after_payload_guard() -> i32 {
-    auto ^source#: Token? = new Token(id = 7)
+    auto ^source# = new Token(id = 7):^Token?
     guard source {
         auto ^target = cede ^source
         if target.id != 7 {

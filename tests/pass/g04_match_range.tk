@@ -12,7 +12,7 @@ fn test_int(x: i32) -> i32 {
             println("10 to 20")
             return 2
         }
-        default => {
+        _ => {
             println("others")
             return 0
         }
@@ -29,7 +29,7 @@ fn test_char(c: char) -> i32 {
             println("uppercase except Z")
             return 2
         }
-        default => {
+        _ => {
             println("other char")
             return 0
         }
@@ -42,7 +42,7 @@ fn test_nested(n: Node) -> i32 {
             println("matched node")
             return 1
         }
-        default => {
+        _ => {
             println("other node")
             return 0
         }

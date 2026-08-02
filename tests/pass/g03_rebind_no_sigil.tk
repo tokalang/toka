@@ -12,7 +12,7 @@ pub fn __toka_free(nul *#ptr: i32) {
 }
 
 pub fn main() -> i32 {
-    auto nul *#p: i32 = null
+    auto nul *#p = null:nul *i32
     __toka_free(*#p)
     return 0
 }

@@ -71,7 +71,7 @@ fn parse_core_number(input: str, start: usize, end: usize) -> Result<i64, SemVer
     if end - start > 1:usize && input.byte_at(start) as u8 == '0' as u8 {
         return Result<i64, SemVerError>::Err(error(start, "version number has a leading zero"))
     }
-    auto value#: i64 = 0:i64
+    auto value# = 0:i64
     auto index# = start
     loop index < end {
         auto byte = input.byte_at(index) as u8
@@ -149,7 +149,7 @@ fn parse_pre_release(input: str, start: usize, end: usize) -> Result<Vec<PreRele
 }
 
 fn compare_pre_release(left: Vec<PreReleaseId>, right: Vec<PreReleaseId>) -> i32 {
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < left.len() && index < right.len() {
         auto left_id = left.get_ref(index).clone()
         auto right_id = right.get_ref(index).clone()
@@ -217,13 +217,13 @@ impl SemVer@Encap {
 impl SemVer {
     pub fn clone(self) -> SemVer {
         auto copied_pre# = Vec<PreReleaseId>::new()
-        auto pre_index#: usize = 0
+        auto pre_index# = 0:usize
         loop pre_index < self.pre_release.len() {
             copied_pre#.push(cede self.pre_release.get_ref(pre_index).clone())
             pre_index = pre_index + 1:usize
         }
         auto copied_build# = Vec<string>::new()
-        auto build_index#: usize = 0
+        auto build_index# = 0:usize
         loop build_index < self.build.len() {
             copied_build#.push(cede string::from(self.build.get_ref(build_index).as_str()))
             build_index = build_index + 1:usize
@@ -310,7 +310,7 @@ impl SemVer {
         output#.push_str(string::from_i64(self.minor).as_str())
         output#.push_byte_raw('.' as u8)
         output#.push_str(string::from_i64(self.patch).as_str())
-        auto pre_index#: usize = 0
+        auto pre_index# = 0:usize
         loop pre_index < self.pre_release.len() {
             if pre_index == 0:usize { output#.push_byte_raw('-' as u8) }
             else { output#.push_byte_raw('.' as u8) }
@@ -320,7 +320,7 @@ impl SemVer {
             }
             pre_index = pre_index + 1:usize
         }
-        auto build_index#: usize = 0
+        auto build_index# = 0:usize
         loop build_index < self.build.len() {
             if build_index == 0:usize { output#.push_byte_raw('+' as u8) }
             else { output#.push_byte_raw('.' as u8) }

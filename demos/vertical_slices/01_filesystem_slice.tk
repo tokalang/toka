@@ -38,7 +38,7 @@ fn main() -> i32 {
 
     // Directory Traversal
     auto dir_iter# = read_dir(test_dir.clone())
-    auto entry_count#: usize = 0
+    auto entry_count# = 0:usize
     loop {
         auto item_opt = dir_iter#.next()
         if item_opt.is_none() { break }

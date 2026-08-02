@@ -1,0 +1,7 @@
+fn main() -> i32 {
+    auto value = match 1 {
+        1 => { pass 1 }
+        default => { pass 0 } // EXPECT: error[E0125B]
+    }
+    return value
+}

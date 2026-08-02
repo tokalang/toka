@@ -18,7 +18,7 @@ fn append_frame(out#: Vec<u8>, tag: u8, cede body: Vec<u8>) {
     auto owned# = cede body
     out#.push(tag)
     append_u32(out, (owned.len() + 4:usize) as u32)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < owned.len() {
         out#.push(owned.get(index))
         index = index + 1:usize
@@ -35,7 +35,7 @@ fn read_exact_tcp_async(stream#: TcpStream, length: usize) -> async bool {
         auto count = received.bytes_read
         auto returned# = received#.take_buffer()
         if count == 0:usize { return false }
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < count {
             output#.push(returned#.get(index))
             index = index + 1:usize
@@ -74,7 +74,7 @@ fn scram_initial_text(packet: Vec<u8>) -> Result<string, string> {
     if packet.len() < 10:usize || packet.get(0:usize) != 'p' as u8 {
         return Result<string, string>::Err(string::from("invalid SASL initial packet"))
     }
-    auto cursor#: usize = 5:usize
+    auto cursor# = 5:usize
     loop cursor < packet.len() && packet.get(cursor) != 0:u8 {
         cursor = cursor + 1:usize
     }
@@ -189,7 +189,7 @@ fn tls_scram_server_async(cede listener: TcpListener) -> async i32 {
     auto offered# = Vec<u8>::new()
     append_u32(offered, 10:u32)
     auto mechanism = string::from("SCRAM-SHA-256")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < mechanism.len() { offered#.push(mechanism.byte_at(index) as u8); index = index + 1:usize }
     offered#.push(0:u8)
     offered#.push(0:u8)

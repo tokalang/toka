@@ -108,7 +108,7 @@ fn json_error(status_code: i32, message: str) -> HttpResponse {
 
 fn bytes_from_string(value: str) -> Bytes {
     auto raw# = Vec<u8>::with_capacity(value.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         raw#.push(value.byte_at(index) as u8)
         index += 1:usize
@@ -118,7 +118,7 @@ fn bytes_from_string(value: str) -> Bytes {
 
 fn string_starts_with(value: str, prefix: str) -> bool {
     if value.len() < prefix.len() { return false }
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < prefix.len() {
         if value.byte_at(index) != prefix.byte_at(index) { return false }
         index += 1:usize
@@ -127,7 +127,7 @@ fn string_starts_with(value: str, prefix: str) -> bool {
 }
 
 fn vec_contains(values#: Vec<string>, candidate: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < values.len() {
         if values.get(index).as_str().equals(candidate) { return true }
         index += 1:usize
@@ -184,7 +184,7 @@ pub fn openai_compatible_request_path(endpoint: str) -> Result<string, string> {
 
 fn query_types(count: usize) -> Vec<u32> {
     auto types# = Vec<u32>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < count { types#.push(25:u32); index += 1:usize }
     return types
 }
@@ -362,7 +362,7 @@ impl AgentService {
             auto locked = self.state.lock()
             if locked.is_err() { return Result<string, string>::Err(string::from("agent service mutex failure")) }
             auto *state# = locked.unwrap().get_ref()
-            auto index#: usize = 0:usize
+            auto index# = 0:usize
             loop index < state.http_tools.len() {
                 if string_starts_with(url, state.http_tools.get(index).as_str()) { allowed = true }
                 index += 1:usize
@@ -451,7 +451,7 @@ impl AgentService {
         auto locked = self.state.lock()
         if locked.is_err() { return json_error(500:i32, "agent service mutex failure") }
         auto *state# = locked.unwrap().get_ref()
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < state.events.len() {
             auto event = state.events.get(index).clone()
             if event.run_id.as_str().equals(run_id) {

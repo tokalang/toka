@@ -30,8 +30,8 @@ fn modify(arg: i32) {
 
 fn main() {
     // 1. Type mismatch in assignment (Implicit conversion disabled)
-    auto a: i64 = 10
-    auto b: i32 = a // Error: i64 to i32
+    auto a = 10:i64
+    auto b = a:i32// Error: i64 to i32
 
     // 2. Type mismatch in function call
     takes_i32(a) // Error: expected i32, got i64
@@ -46,8 +46,8 @@ fn main() {
 
     // 5. Binary operation type mismatch
     // (We will use explicit types to trigger it until parser supports : annotation in expressions)
-    auto e1: i32 = 10
-    auto e2: i64 = 20
+    auto e1 = 10:i32
+    auto e2 = 20:i64
     auto e3 = e1 + e2 // Error: i32 + i64
 
     // 6. Struct initialization type mismatch

@@ -3,7 +3,7 @@ shape Pair(item: Token?)
 
 fn consume(pair: Pair) -> i32 {
     guard pair.item {
-        auto target: Token = cede pair.item
+        auto target = cede pair.item:Token
         return target.id
     } else {
         return 0

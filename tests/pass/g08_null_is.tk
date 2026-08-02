@@ -29,7 +29,7 @@ fn main() -> i32 {
         assert(false, "p is null (Logic should not reach here)")
     }
 
-    auto nul ^q:Data = null
+    auto nul ^q = null:nul ^Data
     guard ^q {
         println("Error: q should be null\n")
         assert(false, "q is not null (Logic should not reach here)")

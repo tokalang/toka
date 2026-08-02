@@ -86,9 +86,9 @@ fn main() -> i32 {
     auto closure_values# = Vec<i32>::new()
     closure_values#.push(3)
     auto closure_source = closure_values.into_iter()
-    auto increment#: fn#(i32) -> i32 = { value =>
+    auto increment# = { value =>
         return value + 1
-    }
+    }:fn#(i32) -> i32
     auto closure_map# = map(cede closure_source, cede increment)
     match closure_map#.next() {
         Option<i32>::Some(value) => { if value != 4 { return 11 } }

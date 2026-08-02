@@ -46,7 +46,7 @@ fn copy_range(input: str, start: usize, end: usize) -> string {
 }
 
 fn trimmed(input: str) -> string {
-    auto start#: usize = 0
+    auto start# = 0:usize
     auto end# = input.len()
     loop start < end && is_space(input.byte_at(start) as u8) {
         start = start + 1:usize
@@ -58,8 +58,8 @@ fn trimmed(input: str) -> string {
 }
 
 fn without_comment(input: str) -> Result<string, string> {
-    auto index#: usize = 0
-    auto quote#: u8 = 0:u8
+    auto index# = 0:usize
+    auto quote# = 0:u8
     auto escaped# = false
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
@@ -87,7 +87,7 @@ fn without_comment(input: str) -> Result<string, string> {
 fn valid_dotted_key(key: str) -> bool {
     if key.len() == 0:usize { return false }
     auto needs_byte# = true
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < key.len() {
         auto byte = key.byte_at(index) as u8
         if byte == '.' as u8 {
@@ -104,8 +104,8 @@ fn valid_dotted_key(key: str) -> bool {
 }
 
 fn find_assignment(line: str) -> usize {
-    auto index#: usize = 0
-    auto quote#: u8 = 0:u8
+    auto index# = 0:usize
+    auto quote# = 0:u8
     auto escaped# = false
     loop index < line.len() {
         auto byte = line.byte_at(index) as u8
@@ -133,7 +133,7 @@ fn parse_basic_string(raw: str) -> Result<TomlValue, string> {
         return Result<TomlValue, string>::Err(string::from("invalid TOML basic string"))
     }
     auto value# = string::from("")
-    auto index#: usize = 1
+    auto index# = 1:usize
     auto end = raw.len() - 1:usize
     loop index < end {
         auto byte# = raw.byte_at(index) as u8
@@ -169,7 +169,7 @@ fn parse_literal_string(raw: str) -> Result<TomlValue, string> {
         return Result<TomlValue, string>::Err(string::from("invalid TOML literal string"))
     }
     auto value# = string::from("")
-    auto index#: usize = 1
+    auto index# = 1:usize
     auto end = raw.len() - 1:usize
     loop index < end {
         auto byte = raw.byte_at(index) as u8
@@ -184,15 +184,15 @@ fn parse_literal_string(raw: str) -> Result<TomlValue, string> {
 
 fn parse_integer(raw: str) -> Result<TomlValue, string> {
     if raw.len() == 0:usize { return Result<TomlValue, string>::Err(string::from("empty TOML integer")) }
-    auto index#: usize = 0
-    auto sign#: i64 = 1:i64
+    auto index# = 0:usize
+    auto sign# = 1:i64
     if raw.byte_at(0:usize) as u8 == '-' as u8 {
         sign = -1:i64
         index = 1:usize
     } else if raw.byte_at(0:usize) as u8 == '+' as u8 {
         index = 1:usize
     }
-    auto value#: i64 = 0:i64
+    auto value# = 0:i64
     auto digits# = false
     auto previous_underscore# = false
     loop index < raw.len() {
@@ -233,10 +233,10 @@ fn parse_value(raw: str, depth: usize) -> Result<TomlValue, string> {
             return Result<TomlValue, string>::Err(string::from("unterminated TOML array"))
         }
         auto values# = Vec<TomlValue>::new()
-        auto start#: usize = 1
-        auto index#: usize = 1
-        auto nested#: usize = 0
-        auto quote#: u8 = 0:u8
+        auto start# = 1:usize
+        auto index# = 1:usize
+        auto nested# = 0:usize
+        auto quote# = 0:u8
         auto escaped# = false
         auto end = value.len() - 1:usize
         loop index < end {
@@ -281,7 +281,7 @@ fn parse_value(raw: str, depth: usize) -> Result<TomlValue, string> {
 }
 
 fn contains_key(entries: Vec<TomlEntry>, key: str) -> bool {
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < entries.len() {
         auto entry = entries.get(index).clone()
         if entry.key.as_str().equals(key) { return true }
@@ -303,7 +303,7 @@ impl TomlValue {
             auto TomlValue::BooleanValue(value) => return TomlValue::BooleanValue(value)
             auto TomlValue::ArrayValue(&values) => {
                 auto copied# = Vec<TomlValue>::new()
-                auto index#: usize = 0
+                auto index# = 0:usize
                 loop index < values.len() {
                     copied#.push(cede values.get(index).clone())
                     index = index + 1:usize
@@ -333,7 +333,7 @@ impl TomlDocument@Encap {
 impl TomlDocument {
     pub fn clone(self) -> TomlDocument {
         auto copied# = Vec<TomlEntry>::new()
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < self.entries.len() {
             copied#.push(cede self.entries.get(index).clone())
             index = index + 1:usize
@@ -386,7 +386,7 @@ impl TomlDocument {
     pub fn parse(input: str) -> Result<TomlDocument, string> {
         auto entries# = Vec<TomlEntry>::new()
         auto section# = string::from("")
-        auto line_start#: usize = 0
+        auto line_start# = 0:usize
         loop line_start <= input.len() {
             auto line_end# = line_start
             loop line_end < input.len() && input.byte_at(line_end) as u8 != '\n' as u8 {
@@ -437,7 +437,7 @@ impl TomlDocument {
     pub fn len(self) -> usize { return self.entries.len() }
 
     pub fn get(self, key: str) -> Option<TomlValue> {
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < self.entries.len() {
             auto entry = self.entries.get(index).clone()
             if entry.key.as_str().equals(key) {

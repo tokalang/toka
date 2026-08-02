@@ -59,7 +59,7 @@ fn main() -> i32 {
             retries = retries + 1
         }
         
-        auto buf: [u8; 10] = [0:u8; 10]
+        auto buf = [0:u8; 10]:[u8; 10]
         auto *buf_ptr# = &buf[0] as *u8
         
         // This should block/loop until all 10 bytes are read

@@ -32,7 +32,7 @@ fn is_unreserved(value: u8) -> bool {
 
 pub fn encode(input: bytes) -> string {
     auto encoded# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto value = input.at(index).unwrap() as u8
         if is_unreserved(value) {
@@ -50,7 +50,7 @@ pub fn encode(input: bytes) -> string {
 pub fn decode(input: str) -> Result<Vec<u8>, DecodeError> {
     auto input_len = input.len()
     auto decoded# = Vec<u8>::with_capacity(input_len)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input_len {
         auto value = input.byte_at(index) as u8
         if value != '%' as u8 {

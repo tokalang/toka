@@ -3,7 +3,7 @@ import ./lib::{Token}
 
 fn main() -> i32 {
     auto drops# = 0
-    auto values: [Token; 1] = [Token(id = 1, &drops = &drops)]
+    auto values = [Token(id = 1, &drops = &drops)]:[Token; 1]
     auto taken = cede values[0]
     return values[0].id + taken.id
 }

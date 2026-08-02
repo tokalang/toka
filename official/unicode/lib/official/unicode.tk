@@ -248,7 +248,7 @@ impl GraphemeScanner {
 
 pub fn grapheme_count(text: str) -> Result<usize, UnicodeError> {
     auto scanner# = GraphemeScanner::new(text)
-    auto count#: usize = 0:usize
+    auto count# = 0:usize
     loop true {
         auto cluster_result = scanner#.next_cluster()
         if cluster_result.is_err() {
@@ -262,7 +262,7 @@ pub fn grapheme_count(text: str) -> Result<usize, UnicodeError> {
 
 pub fn grapheme_byte_offset(text: str, grapheme_index: usize) -> Result<Option<usize>, UnicodeError> {
     auto scanner# = GraphemeScanner::new(text)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     auto found# = Option<usize>::None
     loop true {
         auto cluster_result = scanner#.next_cluster()
@@ -285,7 +285,7 @@ pub fn grapheme_byte_offset(text: str, grapheme_index: usize) -> Result<Option<u
 
 pub fn grapheme_index_at_byte_offset(text: str, byte_offset: usize) -> Result<Option<usize>, UnicodeError> {
     auto scanner# = GraphemeScanner::new(text)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     auto found# = Option<usize>::None
     loop true {
         auto cluster_result = scanner#.next_cluster()
@@ -308,7 +308,7 @@ pub fn grapheme_index_at_byte_offset(text: str, byte_offset: usize) -> Result<Op
 
 pub fn grapheme_slice(text: str, start: usize, end: usize) -> Result<Option<str>, UnicodeError> {
     auto scanner# = GraphemeScanner::new(text)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     auto start_offset# = Option<usize>::None
     auto end_offset# = Option<usize>::None
 

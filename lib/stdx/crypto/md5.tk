@@ -8,10 +8,10 @@ pub shape Md5 (
     bitlen: u64
 )
 
-fn f(x: u32, y: u32, z: u32) -> u32 { return (x & y) | ((bnot x) & z) }
-fn g(x: u32, y: u32, z: u32) -> u32 { return (x & z) | (y & (bnot z)) }
+fn f(x: u32, y: u32, z: u32) -> u32 { return (x & y) | ((~ x) & z) }
+fn g(x: u32, y: u32, z: u32) -> u32 { return (x & z) | (y & (~ z)) }
 fn h(x: u32, y: u32, z: u32) -> u32 { return x ^ y ^ z }
-fn i(x: u32, y: u32, z: u32) -> u32 { return y ^ (x | (bnot z)) }
+fn i(x: u32, y: u32, z: u32) -> u32 { return y ^ (x | (~ z)) }
 
 fn rotl(val: u32, n: u32) -> u32 {
     return (val << n) | (val >> (32 - n))
@@ -19,8 +19,8 @@ fn rotl(val: u32, n: u32) -> u32 {
 
 impl Md5 {
     fn process_block(self#) {
-        auto m#: [u32; 16] = [0; 16]
-        auto j#: usize = 0
+        auto m# = [0; 16]:[u32; 16]
+        auto j# = 0:usize
         loop j < 16 {
             auto b0 = u32(self.data[j * 4])
             auto b1 = u32(self.data[j * 4 + 1])
@@ -180,7 +180,7 @@ impl Md5 {
         
         self#.process_block()
         
-        auto hash#: [u8; 16] = [0; 16]
+        auto hash# = [0; 16]:[u8; 16]
         auto j# = 0
         loop j < 4 {
             // State is also little-endian in MD5

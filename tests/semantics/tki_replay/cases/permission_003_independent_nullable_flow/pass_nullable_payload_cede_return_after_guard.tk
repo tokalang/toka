@@ -1,7 +1,7 @@
 import ./lib::{Cell}
 
 fn make() -> cede Cell {
-    auto ^source#: Cell? = new Cell(value = 7)
+    auto ^source# = new Cell(value = 7):^Cell?
     guard source {
         return cede source
     } else {

@@ -11,7 +11,7 @@ fn accepts_selected<T: @ImportedTrait>(value: T) -> i32 {
 }
 
 fn main() -> i32 {
-    auto value: ImportedAlias = SelectedShape(value = chosen_value())
+    auto value = SelectedShape(value = chosen_value()):ImportedAlias
     auto trait_result = accepts_selected<SelectedShape>(value)
     return chosen_global + trait_result - 4
 }

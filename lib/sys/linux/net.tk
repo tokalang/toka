@@ -50,7 +50,7 @@ fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
         _p_family = 2:u16
 
         // Offset 2: port (u16)
-        auto nport: u16 = libc_htons(port as u16)
+        auto nport = libc_htons(port as u16):u16
         auto *_p_port# = (*base_ptr as usize + 2) as *u16
         _p_port = nport
 
@@ -59,7 +59,7 @@ fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
         _p_addr = ip as u32
 
         // Offset 8..16: Zero
-        auto i#: usize = 8
+        auto i# = 8:usize
         loop i < 16 {
             auto *_p_z# = (*base_ptr as usize + i) as *char
             _p_z = 0 as char
@@ -222,7 +222,7 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
             auto *p0 = (*addr_buf as usize + 2) as *u8
             auto *p1 = (*addr_buf as usize + 3) as *u8
             auto *_pp# = *out_port
-            _pp = ((p0 as i32) bshl 8) bor (p1 as i32)
+            _pp = ((p0 as i32) << 8) | (p1 as i32)
 
             auto *a = (*addr_buf as usize + 4) as *u8
             auto *b = (*addr_buf as usize + 5) as *u8
@@ -233,7 +233,7 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
             auto cu = c as usize
             auto du = d as usize
             auto *_ph# = *out_host
-            _ph = au bor (bu bshl 8) bor (cu bshl 16) bor (du bshl 24)
+            _ph = au | (bu << 8) | (cu << 16) | (du << 24)
         }
         libc_free(*addr_buf as *void)
         libc_free(*addrlen as *void)
@@ -251,7 +251,7 @@ pub fn net_set_nonblocking_impl(fd: i32) -> bool {
         if flags < 0 {
             return false
         }
-        return fcntl(fd, 4, flags bor 2048) == 0
+        return fcntl(fd, 4, flags | 2048) == 0
     }
 }
 

@@ -1,7 +1,7 @@
 import ./lib::{Cell, consume}
 
 fn main() -> i32 {
-    auto ^source#: Cell? = new Cell(value = 7)
+    auto ^source# = new Cell(value = 7):^Cell?
     auto result# = 2
     guard source {
         result = consume(cede source)

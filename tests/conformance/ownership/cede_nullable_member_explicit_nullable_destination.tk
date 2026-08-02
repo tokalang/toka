@@ -3,7 +3,7 @@ shape Pair(item: Token?)
 
 fn main() -> i32 {
     auto pair = Pair(item = Token(id = 7))
-    auto target: Token? = cede pair.item
+    auto target = cede pair.item:Token?
     guard target {
         return target.id - 7
     } else {

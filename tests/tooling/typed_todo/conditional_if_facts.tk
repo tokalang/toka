@@ -1,15 +1,15 @@
 fn select(cond: bool) -> i32 {
-    auto answer: i32 = todo
-    auto live: i32 = if cond {
+    auto answer = todo:i32
+    auto live = if cond {
         pass answer
     } else {
         pass 0
-    }
-    auto dead: i32 = if true {
+    }:i32
+    auto dead = if true {
         pass 0
     } else {
         pass answer
-    }
+    }:i32
     return live + dead
 }
 

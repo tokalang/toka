@@ -34,7 +34,7 @@ impl char {
     pub fn to_digit(self, radix: u32) -> Option<u32> {
         if radix > 36 { return Option<u32>::None }
         
-        auto val#: u32 = 0
+        auto val# = 0:u32
         auto valid# = false
         auto c = self
         

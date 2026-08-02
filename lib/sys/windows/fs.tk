@@ -150,14 +150,14 @@ pub fn stat_impl(path: Addr) -> Addr {
         auto *ws# = libc_malloc(sizeof(WinStat)) as *WinStat
         ws.size = 0
         ws.mode = 0x8000 // REG
-        auto is_dir = (attr band 0x00000010:u32) != 0
+        auto is_dir = (attr & 0x00000010:u32) != 0
         if is_dir {
             ws.mode = 0x4000 // DIR
         } else {
             auto *fd# = libc_malloc(sizeof(WIN32_FIND_DATAW)) as *WIN32_FIND_DATAW
             auto h = FindFirstFileW(*wpath, *fd as Addr)
             if h as Addr != 0xFFFFFFFFFFFFFFFF:Addr {
-                ws.size = ((fd.nFileSizeHigh as u64) bshl 32) bor (fd.nFileSizeLow as u64)
+                ws.size = ((fd.nFileSizeHigh as u64) << 32) | (fd.nFileSizeLow as u64)
                 FindClose(h)
             }
             libc_free(*fd as *void)
@@ -195,9 +195,9 @@ pub fn stat_get_mtime_impl(handle: Addr) -> i64 {
 }
 
 pub fn stat_is_dir_impl(mode: u32) -> bool {
-    return (mode band 0x4000) != 0
+    return (mode & 0x4000) != 0
 }
 
 pub fn stat_is_file_impl(mode: u32) -> bool {
-    return (mode band 0x8000) != 0
+    return (mode & 0x8000) != 0
 }

@@ -16,7 +16,7 @@ import std/io::println
 fn main() -> i32 {
     println("--- Stress Test: Nested Jump ---\n")
     // 1. Pressure Test: 5-level nested loop with long-jump
-    auto res: void = loop { // Level 1 (Label: res)
+    auto res = loop { // Level 1 (Label: res)
         println("Entering Level 1\n")
         loop { // Level 2
             loop { // Level 3
@@ -32,7 +32,7 @@ fn main() -> i32 {
             println("Error: Level 2 not skipped\n")
         }
         println("Error: Level 1 body reaching end\n")
-    }
+    }:void
 
     println("\n--- Sovereignty Test: Mutation + continue ---\n")
     // 3. Sovereignty Test: state modification across continue

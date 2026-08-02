@@ -1,7 +1,7 @@
 import core/result::{Result}
 import std/task::{HostEventPoll, @HostEventSource, block_on, pump_with_host, sleep, sleep_async}
 
-auto completed#: i32 = 0:i32
+auto completed# = 0:i32
 
 shape FakeHost (
     calls#: i32,

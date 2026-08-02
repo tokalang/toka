@@ -33,15 +33,15 @@ pub fn __toka_atomic_fetch_sub<T>(ptr#: T, val: T, _order: Ordering) -> T {
 }
 
 pub fn __toka_atomic_fetch_and<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    unsafe { auto old = ptr; ptr = old band val; return old }
+    unsafe { auto old = ptr; ptr = old & val; return old }
 }
 
 pub fn __toka_atomic_fetch_or<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    unsafe { auto old = ptr; ptr = old bor val; return old }
+    unsafe { auto old = ptr; ptr = old | val; return old }
 }
 
 pub fn __toka_atomic_fetch_xor<T>(ptr#: T, val: T, _order: Ordering) -> T {
-    unsafe { auto old = ptr; ptr = old bxor val; return old }
+    unsafe { auto old = ptr; ptr = old ^ val; return old }
 }
 
 pub fn __toka_atomic_swap<T>(ptr#: T, val: T, _order: Ordering) -> T {

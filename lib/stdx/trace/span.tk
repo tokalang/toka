@@ -97,12 +97,12 @@ impl SourceMap {
         }
 
         auto offset = target - src_start
-        auto line#: usize = 1
-        auto col#: usize = 1
+        auto line# = 1:usize
+        auto col# = 1:usize
 
         unsafe {
             auto *buf = self.source.raw_ptr() as *[char]
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < offset {
                 if buf[i] == '\n' {
                     line = line + 1:usize
@@ -110,7 +110,7 @@ impl SourceMap {
                 } else {
                     // Filter out UTF-8 continuation bytes to compute correct character-based column
                     auto b = buf[i] as u8
-                    auto mask = b band 0xC0
+                    auto mask = b & 0xC0
                     if mask != 0x80 {
                         col = col + 1:usize
                     }

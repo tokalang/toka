@@ -55,53 +55,53 @@ impl Cursor {
                 return Utf8Char(cp=cp_ret, bytes=1, valid=true)
             }
             
-            auto m1 = b0 band 0xE0:u8
+            auto m1 = b0 & 0xE0:u8
             if m1 == 0xC0:u8 { // 2-byte (110xxxxx)
                 if self.pos + 1 >= self.len { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) }
                 auto b1 = self.buf[self.pos+1] as u8
-                auto m1_1 = b1 band 0xC0:u8
+                auto m1_1 = b1 & 0xC0:u8
                 if m1_1 != 0x80:u8 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) }
                 
-                auto cp1 = (b0 band 0x1F:u8) as Char32
-                auto cp2 = (b1 band 0x3F:u8) as Char32
-                auto cp = (cp1 bshl 6) bor cp2
+                auto cp1 = (b0 & 0x1F:u8) as Char32
+                auto cp2 = (b1 & 0x3F:u8) as Char32
+                auto cp = (cp1 << 6) | cp2
                 if cp < 0x80 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) } // Reject overlong encoding
                 return Utf8Char(cp=cp, bytes=2, valid=true)
             }
             
-            auto m2 = b0 band 0xF0:u8
+            auto m2 = b0 & 0xF0:u8
             if m2 == 0xE0:u8 { // 3-byte (1110xxxx)
                 if self.pos + 2 >= self.len { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) }
                 auto b1 = self.buf[self.pos+1] as u8
                 auto b2 = self.buf[self.pos+2] as u8
-                auto m2_1 = b1 band 0xC0:u8
-                auto m2_2 = b2 band 0xC0:u8
+                auto m2_1 = b1 & 0xC0:u8
+                auto m2_2 = b2 & 0xC0:u8
                 if m2_1 != 0x80:u8 || m2_2 != 0x80:u8 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) }
                 
-                auto cp1 = (b0 band 0x0F:u8) as Char32
-                auto cp2 = (b1 band 0x3F:u8) as Char32
-                auto cp3 = (b2 band 0x3F:u8) as Char32
-                auto cp = ((cp1 bshl 12) bor (cp2 bshl 6)) bor cp3
+                auto cp1 = (b0 & 0x0F:u8) as Char32
+                auto cp2 = (b1 & 0x3F:u8) as Char32
+                auto cp3 = (b2 & 0x3F:u8) as Char32
+                auto cp = ((cp1 << 12) | (cp2 << 6)) | cp3
                 if cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF) { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) } // Reject overlong and surrogates
                 return Utf8Char(cp=cp, bytes=3, valid=true)
             }
             
-            auto m3 = b0 band 0xF8:u8
+            auto m3 = b0 & 0xF8:u8
             if m3 == 0xF0:u8 { // 4-byte (11110xxx)
                 if self.pos + 3 >= self.len { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) }
                 auto b1 = self.buf[self.pos+1] as u8
                 auto b2 = self.buf[self.pos+2] as u8
                 auto b3 = self.buf[self.pos+3] as u8
-                auto m3_1 = b1 band 0xC0:u8
-                auto m3_2 = b2 band 0xC0:u8
-                auto m3_3 = b3 band 0xC0:u8
+                auto m3_1 = b1 & 0xC0:u8
+                auto m3_2 = b2 & 0xC0:u8
+                auto m3_3 = b3 & 0xC0:u8
                 if m3_1 != 0x80:u8 || m3_2 != 0x80:u8 || m3_3 != 0x80:u8 { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) }
                 
-                auto cp1 = (b0 band 0x07:u8) as Char32
-                auto cp2 = (b1 band 0x3F:u8) as Char32
-                auto cp3 = (b2 band 0x3F:u8) as Char32
-                auto cp4 = (b3 band 0x3F:u8) as Char32
-                auto cp = (((cp1 bshl 18) bor (cp2 bshl 12)) bor (cp3 bshl 6)) bor cp4
+                auto cp1 = (b0 & 0x07:u8) as Char32
+                auto cp2 = (b1 & 0x3F:u8) as Char32
+                auto cp3 = (b2 & 0x3F:u8) as Char32
+                auto cp4 = (b3 & 0x3F:u8) as Char32
+                auto cp = (((cp1 << 18) | (cp2 << 12)) | (cp3 << 6)) | cp4
                 if cp < 0x10000 || cp > 0x10FFFF { return Utf8Char(cp=REPLACEMENT_CHAR, bytes=1, valid=false) } // Reject overlong and out of bounds
                 return Utf8Char(cp=cp, bytes=4, valid=true)
             }

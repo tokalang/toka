@@ -19,7 +19,7 @@ fn main() -> i32 {
         i += 1:usize
     }
     
-    auto root#: JsonNode = JsonNode::NullNode(0)
+    auto root# = JsonNode::NullNode(0):JsonNode
     auto parse_res = root#.parse_json(string_buf.as_str())
     
     if parse_res.is_err() {

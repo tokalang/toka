@@ -6,7 +6,7 @@ shape Pair(item: Cell?)
 fn main() -> i32 {
     auto pair = Pair(item = none)
     if pair.item is null {
-        auto target: Cell = cede pair.item
+        auto target = cede pair.item:Cell
         return target.value
     }
     return 0

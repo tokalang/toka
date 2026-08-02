@@ -59,9 +59,11 @@ fn main() -> i32 {
 
 ```toka
 auto x = 1
-auto y: i64 = 10
-auto z = 10:i64
+auto y = 10:i64
 ```
+
+`auto` 绑定必须有初始化表达式，且不能在左侧写类型注解。需要约束初始化表达式
+类型时写 `expression: Type`；需要实际转换时写 `expression as Type`。
 
 整数字面量采用上下文提供的唯一整数类型，包括函数或方法参数、赋值目标、
 返回类型以及比较中已经确定类型的另一侧。仅当不存在唯一上下文，或位宽本身
@@ -88,16 +90,16 @@ Toka 1.0 刻意区分三种“无”。它们的物理表示可能同构，但�
 
 | 语义域 | 表层写法 | 空状态 | 含义 |
 | :--- | :--- | :--- | :--- |
-| 可空 handle | `nul *p: T`、`nul ^p: T`、`nul ~p: T` | `null` | handle 存储存在，但不指向对象 |
-| 可空 payload | `value: T?` | `none` | payload 槽位存在，但当前没有 payload 值 |
-| 可选结果 | `result: Option<T>` | `Option<T>::None` | 一次操作没有产生结果 |
+| 可空 handle | `nul *T`、`nul ^T`、`nul ~T` | `null` | handle 存储存在，但不指向对象 |
+| 可空 payload | `T?` | `none` | payload 槽位存在，但当前没有 payload 值 |
+| 可选结果 | `Option<T>` | `Option<T>::None` | 一次操作没有产生结果 |
 
 例如：
 
 ```toka
-auto nul *ptr: i32 = null
-auto maybe: i32? = none
-auto result: Option<i32> = Option<i32>::None
+auto nul *ptr = null:nul *i32
+auto maybe = none:i32?
+auto result = Option<i32>::None:Option<i32>
 ```
 
 `T?` 不是 `Option<T>` 的语法糖，`none` 不是 `Option<T>::None`，可空
@@ -298,7 +300,7 @@ PAL 扩展到 raw pointer；raw pointer 仍属于显式 unsafe / FFI 边界。
 
 ### PAL (Path-Anchored Ledger) 静态安全边界
 
-对 Toka 1.0 来说，PAL 冻结为 **Path-Anchored Ledger（路径锚定账本）**：safe 语言子集中的局部、基于路径的安全检查器。它将借用、所有权转移和失效风险记录到源码级存储路径上，跟踪借用路径、payload 修改、handle 重绑定、资源移动、unset 状态，以及 `if`、`guard`、`match`、`loop`、`for`、`break`、`continue` 产生的分析状态。
+对 Toka 1.0 来说，PAL 冻结为 **Path-Anchored Ledger（路径锚定账本）**：safe 语言子集中的局部、基于路径的安全检查器。它将借用、所有权转移和失效风险记录到源码级存储路径上，跟踪借用路径、payload 修改、handle 重绑定、资源移动、未初始化状态，以及 `if`、`guard`、`match`、`loop`、`for`、`break`、`continue` 产生的分析状态。
 
 稳定契约遵循四条核心规则：
 1. **独占所有权是唯一的（Unique ownership is exclusive）：** `^` 资源在任意时刻只能由一个有效 handle 拥有。
@@ -589,7 +591,8 @@ fn id<'T>('x: T) -> 'T {
 }
 ```
 
-局部绑定同理：写 `auto 'local: T = expr`，不要写 `auto local: 'T = expr`。
+局部绑定也遵循这条规则：写 `auto 'local = expr:T`，不要写
+`auto local: 'T = expr`。单引号仍在绑定侧；类型 ascription 属于初始化表达式。
 
 在纯类型位置，写 `'T`：
 
@@ -667,20 +670,20 @@ iterator 或 async-iterator 协议。
 
 当前语法没有 `while`；条件循环使用 `loop condition { ... }`。
 
-`match` 支持字面量、range、变体、guard、or-pattern、通配符和 `default`。
+`match` 支持字面量、range、变体、guard、or-pattern 和 `_` 通配符。
 
 ```toka
 auto value = match x {
     0 => { pass 10 }
     auto v if v > 0 => { pass v }
-    default => { pass -1 }
+    _ => { pass -1 }
 }
 ```
 
 对 1.0 来说，enum match 会进行安全穷尽检查。每个变体都必须被无 guard
-的穷尽 pattern 覆盖，或者由 `_` / `default` 兜底；带 guard 的 arm 只能细化
-某个 case，不计入穷尽性。非 enum 目标需要无 guard 的 wildcard、`default`
-或无条件变量 arm。编译器不尝试证明整数、range 或字符串的完整值域覆盖。
+的穷尽 pattern 覆盖，或者由 `_` 兜底；带 guard 的 arm 只能细化某个 case，
+不计入穷尽性。非 enum 目标需要无 guard 的 wildcard 或无条件变量 arm。
+编译器不尝试证明整数、range 或字符串的完整值域覆盖。
 
 `pass` 从块表达式中产出值。
 
@@ -739,18 +742,18 @@ Toka 1.0 的解构声明只允许出现在局部作用域。模块级全局可�
 闭包使用 `{ ... => ... }` 语法。
 
 ```toka
-auto add: fn(i32, i32) -> i32 = { a, b => a + b }
-auto inc: fn(i32) -> i32 = { .a + 1 }
-auto zero: fn() -> i32 = { => 0 }
+auto add = { a, b => a + b }:fn(i32, i32) -> i32
+auto inc = { .a + 1 }:fn(i32) -> i32
+auto zero = { => 0 }:fn() -> i32
 ```
 
 捕获列表写在闭包体开头。
 
 ```toka
-auto f: fn(i32) -> i32 = { [cede env] x => x + env }
+auto f = { [cede env] x => x + env }:fn(i32) -> i32
 auto r = 10
-auto g: fn(i32) -> i32 = { [copy ~r] x => x + r }
-auto h: fn() -> i32 = { [dup resource] => resource.value }
+auto g = { [copy ~r] x => x + r }:fn(i32) -> i32
+auto h = { [dup resource] => resource.value }:fn() -> i32
 ```
 
 `copy` 捕获只用于经编译器证明的 `@Copy` 值，且绝不调用用户代码。它不能复制
@@ -779,10 +782,10 @@ Callable 权限沿用 Toka 的接收者形态，而不是建立一组名义上�
 绑定权限与 callable 权限彼此独立：
 
 ```toka
-auto counter#: fn#(i32) -> i32 = { [cede state] value =>
+auto counter# = { [cede state] value =>
     state.value = state.value + value
     state.value
-}
+}:fn#(i32) -> i32
 auto next = counter#(1)
 ```
 
@@ -829,15 +832,15 @@ return 契约会保存在同版本 TKI 中。
 诊断，且都会令检查/构建保持非零失败。
 
 ```toka
-auto answer: i32 = todo      // 已知完整的 `i32` 需求
+auto answer = todo:i32       // 已知完整的 `i32` 需求
 if todo {                    // 已知完整的 `bool` 需求
     return 0
 }
 ```
 
-只有周边上下文已经决定需求时，编译器才记录该需求：显式类型的局部绑定、向既有
-绑定赋值、布尔条件、已解析的普通调用参数，或显式实例化的泛型调用。这些情况仍
-会以 `E04603` 报告程序不完整。需要由洞参与推断的上下文，例如
+只有周边上下文已经决定需求时，编译器才记录该需求：带 ascription 的初始化表达式、
+向既有绑定赋值、布尔条件、已解析的普通调用参数，或显式实例化的泛型调用。这些
+情况仍会以 `E04603` 报告程序不完整。需要由洞参与推断的上下文，例如
 `auto answer = todo` 或 `identity(todo)`，则以 `E04604` 报告需求不足。
 
 洞不能代表 place、能力、来源关系或转移。前缀/后缀访问、成员/索引访问、guard、

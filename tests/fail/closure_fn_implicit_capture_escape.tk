@@ -1,6 +1,6 @@
 fn make_bad() -> fn() -> i32 {
     auto value = 9
-    auto f: fn() -> i32 = { => value }
+    auto f = { => value }:fn() -> i32
     return f // EXPECT: error[E0455]
 }
 

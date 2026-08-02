@@ -13,7 +13,7 @@ extern fn sleep(seconds: i32) -> i32
 
 fn bytes_from_string(value: str) -> Vec<u8> {
     auto bytes# = Vec<u8>::with_capacity(value.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         bytes#.push(value.byte_at(index) as u8)
         index = index + 1:usize
@@ -23,7 +23,7 @@ fn bytes_from_string(value: str) -> Vec<u8> {
 
 fn string_from_bytes(buffer: Vec<u8>) -> string {
     auto text# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < buffer.len() {
         text#.push_byte_raw(buffer.get(index))
         index = index + 1:usize
@@ -81,7 +81,7 @@ fn run_async_e2e_test() -> async i32 {
                 auto s# = listener#.accept()
                 if !s.is_valid() { return cede 1 }
 
-                auto buf: [char; 256] = [0 as char; 256]
+                auto buf = [0 as char; 256]:[char; 256]
                 auto *buf_ptr# = &buf[0] as *u8
                 auto r_res = s#.read(*buf_ptr, 256)
                 if r_res.is_err() { return cede 1 }

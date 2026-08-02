@@ -111,7 +111,7 @@ impl<'T> RingCore<'T> {
         }
         unsafe {
             auto idx = (self.head + self.len - 1) & self.mask
-            auto 'val: T = cede self.buf[idx]
+            auto 'val = cede self.buf[idx]:T
             self.len -= 1
             return Option<'T>::Some(cede 'val)
         }
@@ -122,7 +122,7 @@ impl<'T> RingCore<'T> {
             return Option<'T>::None
         }
         unsafe {
-            auto 'val: T = cede self.buf[self.head]
+            auto 'val = cede self.buf[self.head]:T
             self.head = (self.head + 1) & self.mask
             self.len -= 1
             return Option<'T>::Some(cede 'val)

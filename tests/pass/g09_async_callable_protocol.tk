@@ -4,10 +4,10 @@ shape AsyncCounter(value: i32)
 
 fn run_callable() -> async i32 {
     auto state# = AsyncCounter(value = 40)
-    auto callback#: fn#(i32) -> i32 = { [cede state] value =>
+    auto callback# = { [cede state] value =>
         state.value = state.value + value
         state.value
-    }
+    }:fn#(i32) -> i32
 
     sleep_async(1).await
     return callback#(2)

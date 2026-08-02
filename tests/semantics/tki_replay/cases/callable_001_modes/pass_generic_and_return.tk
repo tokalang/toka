@@ -2,9 +2,9 @@ import ./lib::{invoke_mut}
 
 pub fn main() -> i32 {
     auto offset = 3
-    auto callback#: fn#(i32) -> i32 = { value =>
+    auto callback# = { value =>
         offset + value
-    }
+    }:fn#(i32) -> i32
     if invoke_mut(callback, 4) != 7 {
         return 1
     }

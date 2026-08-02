@@ -96,7 +96,8 @@ static bool isNullableType(const std::shared_ptr<Type> &type) {
 
 static bool isNullableCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
-  return cede && cede->Value && isNullableType(cede->Value->ResolvedType);
+  auto *source = cede ? unwrapCedeDirectSource(cede->Value.get()) : nullptr;
+  return source && isNullableType(source->ResolvedType);
 }
 
 AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
@@ -830,8 +831,12 @@ std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
                                   taskDependencies.end());
   E->ResolvedType = T;
 
-  if (!dynamic_cast<UnsetExpr *>(E) && !dynamic_cast<InitStructExpr *>(E) &&
-      !dynamic_cast<ArrayInitExpr *>(E)) {
+  const auto *cast = dynamic_cast<CastExpr *>(E);
+  const bool isAscribedUninit =
+      cast && cast->Kind == CastKind::Ascription &&
+      dynamic_cast<UnsetExpr *>(cast->Expression.get());
+  if (!dynamic_cast<UnsetExpr *>(E) && !isAscribedUninit &&
+      !dynamic_cast<InitStructExpr *>(E) && !dynamic_cast<ArrayInitExpr *>(E)) {
     m_LastInitMask = ~0ULL;
   }
   bool hasRefs = false;
@@ -1198,6 +1203,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   }
 
   if (dynamic_cast<CharLiteralExpr *>(E)) {
+    // A character literal, like a numeric literal, obtains its exact storage
+    // width from an enclosing type ascription.  `Char16` is a transparent
+    // alias of `u16`, so returning the contextual integer type preserves the
+    // established literal-ascription rule without inserting a conversion.
+    if (m_ExpectedType) {
+      auto physicalExpected = resolveType(m_ExpectedType, true);
+      if (physicalExpected && physicalExpected->isInteger())
+        return m_ExpectedType;
+    }
     return toka::Type::fromString("char");
   }
 
@@ -1207,12 +1221,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                   m_CheckingNegativeIntegerLiteral);
       return m_ExpectedType;
     }
+    if (m_ExpectedType &&
+        (m_ExpectedType->isAddrType() || m_ExpectedType->isOAddrType()))
+      return m_ExpectedType;
     if (Num->Value > 9223372036854775807ULL)
       return toka::Type::fromString("u64");
     if (Num->Value > 2147483647)
       return toka::Type::fromString("i64");
     return toka::Type::fromString("i32");
   } else if (auto *Flt = dynamic_cast<FloatExpr *>(E)) {
+    if (m_ExpectedType && m_ExpectedType->isFloatingPoint())
+      return m_ExpectedType;
     return toka::Type::fromString("f64");
   } else if (auto *Bool = dynamic_cast<BoolExpr *>(E)) {
     return toka::Type::fromString("bool");
@@ -1852,7 +1871,50 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             ? toka::Type::fromSyntax(Cast->TargetTypeSyntax)
             : toka::Type::fromString(Cast->TargetType));
     validateDynTraitObjectSafetyInType(targetType, getLoc(Cast));
-    auto srcType = checkExpr(Cast->Expression.get(), targetType);
+    if (Cast->Kind == CastKind::Implicit) {
+      checkExpr(Cast->Expression.get(), targetType);
+      return targetType;
+    }
+
+    if (Cast->Kind == CastKind::Ascription) {
+      if (auto *closure = dynamic_cast<ClosureExpr *>(Cast->Expression.get())) {
+        std::vector<std::shared_ptr<Type>> parameterTypes;
+        std::shared_ptr<Type> returnType;
+        if (targetType->typeKind == Type::Function) {
+          auto functionType = std::static_pointer_cast<FunctionType>(targetType);
+          parameterTypes = functionType->ParamTypes;
+          returnType = functionType->ReturnType;
+        } else if (targetType->typeKind == Type::DynFn) {
+          auto functionType = std::static_pointer_cast<DynFnType>(targetType);
+          parameterTypes = functionType->ParamTypes;
+          returnType = functionType->ReturnType;
+        }
+        if (returnType) {
+          closure->InjectedParamTypes = std::move(parameterTypes);
+          if (closure->ReturnType.empty() || closure->ReturnType == "unknown")
+            closure->ReturnType = returnType->toString();
+        }
+      }
+    }
+
+    auto srcType = Cast->Kind == CastKind::Ascription
+                       ? checkExpr(Cast->Expression.get(), targetType)
+                       : checkExpr(Cast->Expression.get());
+
+    if (Cast->Kind == CastKind::Ascription) {
+      if (dynamic_cast<UnsetExpr *>(Cast->Expression.get())) {
+        m_LastInitMask = 0;
+        return targetType;
+      }
+      // Resolving an ascription target may already have diagnosed an unknown
+      // type.  Do not turn that primary name-resolution error into a second,
+      // misleading compatibility failure.
+      if (!targetType->isUnknown() && !isTypeCompatible(targetType, srcType)) {
+        error(Cast, DiagID::ERR_TYPE_ASCRIPTION_MISMATCH, Cast->TargetType,
+              srcType ? srcType->toString() : "unknown");
+      }
+      return targetType;
+    }
 
     // Rule: Numeric Casts (Always allowed for standard numeric types)
     auto srcTypeResolved = resolveType(srcType, true);
@@ -2149,7 +2211,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // A branch may appear inside a nested block while mutating a binding from
     // an enclosing scope.  Snapshot the visible bindings, not just the
     // current block, so a terminating arm cannot leave its parent local in an
-    // unset state on the reachable sibling path.
+    // uninitialized state on the reachable sibling path.
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);

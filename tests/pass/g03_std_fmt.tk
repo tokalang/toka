@@ -25,7 +25,7 @@ fn main() -> i32 {
     if !b.to_string().eq(string::from("true")) { return 202 }
     
     // u64
-    auto u: u64 = 123456789012345
+    auto u = 123456789012345:u64
     // "123456789012345"
     // Use unsafe to check u64 conversion, snprintf used
     auto su = u.to_string()

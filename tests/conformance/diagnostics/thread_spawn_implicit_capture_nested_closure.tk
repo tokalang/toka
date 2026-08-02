@@ -2,12 +2,12 @@ import std/thread::thread_spawn
 
 fn main() -> i32 {
     auto value = 7
-    auto borrowed: fn() -> cede i32 = { =>
+    auto borrowed = { =>
         return cede value
-    }
-    auto outer: fn() -> cede i32 = { [cede borrowed] =>
+    }:fn() -> cede i32
+    auto outer = { [cede borrowed] =>
         return cede borrowed()
-    }
+    }:fn() -> cede i32
     auto handle# = thread_spawn<i32>(cede outer)
     return 0
 }

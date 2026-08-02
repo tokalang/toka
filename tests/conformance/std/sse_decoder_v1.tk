@@ -5,7 +5,7 @@ import stdx/net/sse::{SseDecoder, SseLimits}
 
 fn make_bytes(value: str) -> Bytes {
     auto raw# = Vec<u8>::with_capacity(value.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() { raw#.push(value.byte_at(index) as u8); index += 1:usize }
     return Bytes::from_vec(cede raw)
 }

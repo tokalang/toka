@@ -23,7 +23,7 @@ fn main() -> i32 {
     v#.push(cede Element(name = string::from("Second")))
 
     // 10x repeated read via .clone() to verify vector buffer is never moved/freed
-    auto i#: usize = 0
+    auto i# = 0:usize
     loop i < 10:usize {
         auto elem1 = v#.get(0).clone()
         assert(elem1.name.as_str().equals("First"), "Element 0 name mismatch")

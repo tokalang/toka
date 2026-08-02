@@ -6,7 +6,7 @@ import stdx/encoding/hex
 
 fn bytes(input: str) -> Vec<u8> {
     auto output# = Vec<u8>::with_capacity(input.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         output#.push(input.byte_at(index) as u8)
         index = index + 1:usize
@@ -27,7 +27,7 @@ fn append_u32(out#: Vec<u8>, value: u32) {
 }
 
 fn append_text(out#: Vec<u8>, value: str) {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         out#.push(value.byte_at(index) as u8)
         index = index + 1:usize
@@ -44,7 +44,7 @@ fn frame(tag: u8, cede body: Vec<u8>) -> Vec<u8> {
     auto output# = Vec<u8>::with_capacity(1:usize + 4:usize + owned.len())
     output#.push(tag)
     append_u32(output, (owned.len() + 4:usize) as u32)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < owned.len() {
         output#.push(owned.get(index))
         index = index + 1:usize
@@ -76,7 +76,7 @@ fn test_authentication_and_fragmentation() {
     auth#.push(0:u8)
     auto packet = frame('R' as u8, cede auth)
     auto fragment# = Vec<u8>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 8:usize {
         fragment#.push(packet.get(index))
         index = index + 1:usize

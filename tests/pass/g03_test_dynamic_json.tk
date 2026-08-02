@@ -118,7 +118,7 @@ pub fn main() -> i32 {
     auto json_str = string::from("{\"name\": \"Toka\", \"version\": 1.0, \"is_fast\": true, \"scores\": [100, 99.5], \"meta\": {\"type\": null}}")
     auto v_str = json_str.as_str()
     
-    auto root#: JsonNode = JsonNode::NullNode(0)
+    auto root# = JsonNode::NullNode(0):JsonNode
     println("Starting parse...")
     auto parse_res = root#.parse_json_internal(v_str, 0:usize)
     println("Finished parse!")

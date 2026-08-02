@@ -9,8 +9,8 @@ error[E0467]: Variable 'y' implies pointer type '*i32' but lacks explicit sigil.
  27 |     auto y = *x // Error: cannot dereference non-pointer
     |          ^
     |   👉 help: Variable implies pointer type but lacks explicit sigil. Did you mean '^var'?
-error[E0409]: Cannot initialize variable of type 'i32' with value of type 'str'
- --> tests/fail/sema_strict.tk:30:10
+error[E04606]: Type ascription 'i32' is incompatible with expression type 'str'
+ --> tests/fail/sema_strict.tk:30:21
     |
- 30 |     auto z: i32 = "hello" // Error: mismatch
-    |          ^
+ 30 |     auto z = "hello":i32// Error: mismatch
+    |                     ^

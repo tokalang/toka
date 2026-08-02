@@ -5,7 +5,7 @@ impl Token@Encap {
 }
 
 fn main() -> i32 {
-    auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+    auto values = [Token(id = 1), Token(id = 2)]:[Token; 2]
     auto total# = 0
     for auto &value in values {
         total += value.id

@@ -2,9 +2,9 @@ shape LocalCounter(value: i32)
 
 fn main() -> i32 {
     auto count# = LocalCounter(value = 0)
-    auto increment#: fn#(i32) -> i32 = { [cede count] value =>
+    auto increment# = { [cede count] value =>
         count.value = count.value + value
         count.value
-    }
+    }:fn#(i32) -> i32
     return increment(1) // EXPECT: error[E04590]
 }

@@ -51,7 +51,7 @@ pub fn __path_canonicalize(p: string) -> string {
         res#.push_str("/")
     }
 
-    auto i#: u64 = 0
+    auto i# = 0:u64
     loop i < resolved_parts.len() {
         if i > 0 {
             res#.push_str("/")

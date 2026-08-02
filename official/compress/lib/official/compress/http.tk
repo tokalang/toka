@@ -55,7 +55,7 @@ fn compress_error(operation: str, source: CompressError) -> HttpCompressionError
 
 fn body_bytes(source: str) -> Bytes {
     auto bytes# = Vec<u8>::with_capacity(source.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < source.len() {
         bytes#.push(source.byte_at(index) as u8)
         index = index + 1:usize
@@ -67,7 +67,7 @@ fn body_string(cede source: Bytes) -> string {
     auto source# = cede source
     auto bytes# = source#.into_vec()
     auto result# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < bytes.len() {
         result#.push_byte_raw(bytes.get(index))
         index = index + 1:usize
@@ -78,7 +78,7 @@ fn body_string(cede source: Bytes) -> string {
 fn append_bytes(target#: Vec<u8>, cede source: Bytes) {
     auto source# = cede source
     auto bytes# = source#.into_vec()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < bytes.len() {
         target#.push(bytes.get(index))
         index = index + 1:usize
@@ -86,7 +86,7 @@ fn append_bytes(target#: Vec<u8>, cede source: Bytes) {
 }
 
 fn find_byte(source: str, target: u8) -> i32 {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < source.len() {
         if source.byte_at(index) as u8 == target { return index as i32 }
         index = index + 1:usize
@@ -109,9 +109,9 @@ fn parse_quality(value: str) -> Result<i32, HttpCompressionError> {
     if value.byte_at(1:usize) as u8 != '.' as u8 || value.len() > 5:usize {
         return Result<i32, HttpCompressionError>::Err(policy_error("accept_encoding", "Accept-Encoding q value must have at most three decimal places"))
     }
-    auto quality#: i32 = 0:i32
-    auto index#: usize = 2:usize
-    auto scale#: i32 = 100:i32
+    auto quality# = 0:i32
+    auto index# = 2:usize
+    auto scale# = 100:i32
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if byte < '0' as u8 || byte > '9' as u8 {
@@ -141,11 +141,11 @@ pub fn negotiate_response_encoding(cede accept_encoding: Option<string>) -> Resu
                 return Result<HttpContentEncoding, HttpCompressionError>::Ok(HttpContentEncoding::Identity())
             }
             auto gzip_seen# = false
-            auto gzip_q#: i32 = 0:i32
+            auto gzip_q# = 0:i32
             auto identity_seen# = false
-            auto identity_q#: i32 = 0:i32
+            auto identity_q# = 0:i32
             auto wildcard_seen# = false
-            auto wildcard_q#: i32 = 0:i32
+            auto wildcard_q# = 0:i32
             auto directives# = source.split(44)
             loop !directives#.is_done() {
                 auto directive# = directives#.next()
@@ -162,7 +162,7 @@ pub fn negotiate_response_encoding(cede accept_encoding: Option<string>) -> Resu
                 if coding.len() == 0:usize || !is_valid_header_name(coding) {
                     return Result<HttpContentEncoding, HttpCompressionError>::Err(policy_error("accept_encoding", "Accept-Encoding contains an invalid coding token"))
                 }
-                auto quality#: i32 = 1000:i32
+                auto quality# = 1000:i32
                 if separator >= 0:i32 {
                     auto parameters = item.substr(separator as usize + 1:usize, item.len() - separator as usize - 1:usize).trim()
                     if find_byte(parameters, ';' as u8) >= 0:i32 {
@@ -187,10 +187,10 @@ pub fn negotiate_response_encoding(cede accept_encoding: Option<string>) -> Resu
                     wildcard_seen = true
                 }
             }
-            auto selected_gzip#: i32 = 0:i32
+            auto selected_gzip# = 0:i32
             if gzip_seen { selected_gzip = gzip_q }
             else if wildcard_seen { selected_gzip = wildcard_q }
-            auto selected_identity#: i32 = 1000:i32
+            auto selected_identity# = 1000:i32
             if identity_seen { selected_identity = identity_q }
             else if wildcard_seen { selected_identity = wildcard_q }
             if selected_gzip <= 0:i32 && selected_identity <= 0:i32 {
@@ -239,7 +239,7 @@ fn response_headers(cede source: HeaderMap, content_length: usize, gzip: bool) -
     auto source# = cede source
     auto headers# = HeaderMap::new()
     auto prior_vary# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < source.entries.len() {
         auto entry = source.entries.get(index).clone()
         if entry.key.as_str().eq_ignore_ascii_case("content-length") ||
@@ -271,7 +271,7 @@ fn response_headers(cede source: HeaderMap, content_length: usize, gzip: bool) -
 fn request_headers(cede source: HeaderMap, content_length: usize) -> Result<HeaderMap, HttpCompressionError> {
     auto source# = cede source
     auto headers# = HeaderMap::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < source.entries.len() {
         auto entry = source.entries.get(index).clone()
         if entry.key.as_str().eq_ignore_ascii_case("content-length") ||

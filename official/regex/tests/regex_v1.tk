@@ -114,7 +114,7 @@ fn test_find_all() {
 
 fn test_non_backtracking_adversarial_shape() {
     auto input# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 1024:usize {
         input#.push_byte_raw('a' as u8)
         index = index + 1:usize

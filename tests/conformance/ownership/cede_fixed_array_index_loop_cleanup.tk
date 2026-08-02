@@ -13,7 +13,7 @@ impl Token@Encap {
 fn main() -> i32 {
     {
         auto i# = 0
-        auto values: [Token; 2] = [Token(id = 1), Token(id = 2)]
+        auto values = [Token(id = 1), Token(id = 2)]:[Token; 2]
         loop i < 1 {
             auto taken = cede values[0]
             assert(taken.id == 1, "loop-local cede owns the fixed-array element")

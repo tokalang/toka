@@ -1,7 +1,7 @@
 import std/io::{println};
 import std/task::{block_on, detach_forget, sleep_async};
 
-auto bg_task_completed#: i32 = 0;
+auto bg_task_completed# = 0:i32;
 
 fn async_bg_worker() -> async i32 {
     sleep_async(50).await;

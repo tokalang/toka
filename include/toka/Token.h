@@ -48,7 +48,6 @@ enum class TokenType {
   KwDyn,
   KwMove,
   KwWhere,
-  KwDefault,
   KwDelete,
   KwFinal,
   KwFnType, // Fn
@@ -58,7 +57,6 @@ enum class TokenType {
   KwNul,
   KwElse,
   KwMatch,
-  KwCase,
   KwFor,
   KwWhile,
   KwBreak,
@@ -68,12 +66,6 @@ enum class TokenType {
   KwPass,
   KwTo,
   KwOr,
-  KwBand,
-  KwBor,
-  KwBxor,
-  KwBnot,
-  KwBshl,
-  KwBshr,
 
   KwTask,
   KwSuspend,
@@ -102,7 +94,7 @@ enum class TokenType {
   KwUnsafe,
   KwAlloc,
   KwFree,
-  KwUnset,
+  KwUninit,
   KwTodo,
   KwVariant,
   KwUnion,
@@ -257,21 +249,13 @@ inline int getPrecedence(TokenType T) {
   case TokenType::Or:
     return 3;
   case TokenType::Ampersand:
-    return 10; // Same as KwBand
+    return 10;
   case TokenType::Pipe:
   case TokenType::Caret:
-    return 5; // Same as KwBor/KwBxor
+    return 5;
   case TokenType::LessLess:
   case TokenType::GreaterGreater:
-    return 20; // Same as KwBshl/KwBshr
-  case TokenType::KwBshl:
-  case TokenType::KwBshr:
-    return 20; // High precedence (multiplication level)
-  case TokenType::KwBand:
-    return 10; // Medium precedence (additive level)
-  case TokenType::KwBor:
-  case TokenType::KwBxor:
-    return 5; // Low precedence (comparison level)
+    return 20;
   default:
     return -1;
   }

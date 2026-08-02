@@ -99,7 +99,7 @@ fn get_dirname(path: string) -> string {
     auto idx_opt = path.as_str().last_index_of('/' as char)
     auto idx_opt2 = path.as_str().last_index_of('\\' as char)
     
-    auto last_slash_pos#: i32 = -1
+    auto last_slash_pos# = -1:i32
     if idx_opt.is_some() {
         last_slash_pos = idx_opt.unwrap() as i32
     }
@@ -239,7 +239,7 @@ fn get_basename(path: string) -> string {
     auto idx_opt = path.as_str().last_index_of('/' as char)
     auto idx_opt2 = path.as_str().last_index_of('\\' as char)
     
-    auto last_slash_pos#: i32 = -1
+    auto last_slash_pos# = -1:i32
     if idx_opt.is_some() {
         last_slash_pos = idx_opt.unwrap() as i32
     }
@@ -604,7 +604,7 @@ fn cmd_run_single(file: string) -> i32 {
 
 fn find_newest_executable(dir_path: string) -> string {
     auto newest_file# = string::from("")
-    auto newest_mtime#: i64 = -2
+    auto newest_mtime# = -2:i64
     
     auto dir# = read_dir(dir_path.clone())
     loop {
@@ -1194,7 +1194,7 @@ fn main() -> i32 {
     if cmd.eq(string::from("build")) {
         auto use_forge# = false
         auto extra_args# = Vec<string>::new()
-        auto idx#: i32 = (2 + shift) as i32
+        auto idx# = (2 + shift) as i32:i32
         loop idx < argc {
             auto arg = env::get_arg(idx)
             if arg.eq(string::from("--forge")) || arg.eq(string::from("-f")) {
@@ -1209,7 +1209,7 @@ fn main() -> i32 {
     
     if cmd.eq(string::from("run")) {
         auto use_forge# = false
-        auto idx#: i32 = (2 + shift) as i32
+        auto idx# = (2 + shift) as i32:i32
         auto single_file# = string::from("")
         loop idx < argc {
             auto arg = env::get_arg(idx)

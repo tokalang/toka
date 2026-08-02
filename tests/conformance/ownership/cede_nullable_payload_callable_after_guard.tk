@@ -10,7 +10,7 @@ impl Consumer@Callable {
 
 fn main() -> i32 {
     auto consumer = Consumer()
-    auto ^source#: Token? = new Token(id = 8)
+    auto ^source# = new Token(id = 8):^Token?
     auto result# = 0
     guard source {
         result = consumer(cede source)

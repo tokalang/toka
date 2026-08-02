@@ -12,7 +12,7 @@ fn append_u32(out#: Vec<u8>, value: u32) {
 }
 
 fn append_text(out#: Vec<u8>, value: str) {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         out#.push(value.byte_at(index) as u8)
         index = index + 1:usize
@@ -28,7 +28,7 @@ fn append_frame(out#: Vec<u8>, tag: u8, cede body: Vec<u8>) {
     auto owned# = cede body
     out#.push(tag)
     append_u32(out, (owned.len() + 4:usize) as u32)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < owned.len() {
         out#.push(owned.get(index))
         index = index + 1:usize

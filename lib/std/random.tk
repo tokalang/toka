@@ -25,7 +25,7 @@ pub fn fill_secure_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string>
 // Allocate and fill an owned byte buffer with OS entropy.
 pub fn secure_random_bytes(length: usize) -> Result<Vec<u8>, string> {
     auto buffer# = Vec<u8>::new()
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < length {
         buffer#.push(0:u8)
         index = index + 1:usize

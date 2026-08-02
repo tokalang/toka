@@ -42,7 +42,7 @@ pub fn thread_spawn<'T: @Send>(cede f: cede fn#() -> cede 'T) -> JoinHandle<'T> 
         auto captured_box = box_ptr
         
         // 2. Define capturing trampoline matching C-ABI implicitly via fat ptrs
-        auto tramp_fn: fn() -> Addr = { [cede captured_box] =>
+        auto tramp_fn = { [cede captured_box] =>
             unsafe {
                 auto closure# = captured_box.closure
                 auto self_ptr = captured_box.self_ptr
@@ -58,7 +58,7 @@ pub fn thread_spawn<'T: @Send>(cede f: cede fn#() -> cede 'T) -> JoinHandle<'T> 
                 
                 return (*ret_ptr) as Addr
             }
-        }
+        }:fn() -> Addr
         
         // Box the trampoline manually via sys_alloc_thread_env to avoid compiler managed auto-drop
         auto *tramp_buf# = (sys_alloc_thread_env(sizeof(TrampBox) as usize) as *TrampBox)
@@ -146,7 +146,7 @@ fn __dummy_unused_ref() {
             sys_thread_join(0:Addr)
             sys_thread_detach(0:Addr)
             unwrap_fat_pointer(0:Addr)
-            auto err: Error = Error::new(0:i32, string::from(""))
+            auto err = Error::new(0:i32, string::from("")):Error
             __unused_dummy()
             auto _ = err
         }

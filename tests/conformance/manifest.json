@@ -1249,7 +1249,7 @@
       "expected_diagnostic_code": "E0410",
       "expected_span_line": 15,
       "timeout_seconds": 10,
-      "description": "A consuming unique field receiver leaves that exact field unset"
+      "description": "A consuming unique field receiver leaves that exact field uninitialized"
     },
     {
       "id": "diag_cede_unique_field_receiver_custom_drop_rejected_01",
@@ -1885,7 +1885,7 @@
       "id": "diag_aggregate_owned_field_requires_cede_01",
       "path": "diagnostics/aggregate_owned_field_requires_cede.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04603",
+      "expected_diagnostic_code": "E04607",
       "expected_span_line": 14,
       "timeout_seconds": 10,
       "description": "An aggregate field cannot implicitly duplicate an owning local value"
@@ -1902,7 +1902,7 @@
       "id": "diag_aggregate_owned_field_projection_requires_cede_01",
       "path": "diagnostics/aggregate_owned_field_projection_requires_cede.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04603",
+      "expected_diagnostic_code": "E04607",
       "expected_span_line": 23,
       "timeout_seconds": 10,
       "description": "An aggregate field cannot implicitly duplicate an owning field projection"

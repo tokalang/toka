@@ -14,7 +14,7 @@ pub fn main() -> i32 {
     // Consumer
     auto ~thread_m = ~m
     auto ~thread_cv = ~cv
-    auto consumer#: fn#() -> cede i32 = { [cede thread_m, cede thread_cv] =>
+    auto consumer# = { [cede thread_m, cede thread_cv] =>
         println("Consumer locking mutex...")
         auto ~local_m = ~thread_m
         auto ~local_cv = ~thread_cv
@@ -31,7 +31,7 @@ pub fn main() -> i32 {
         println("Consumer got value: {}", s_ptr.val)
         assert(s_ptr.val == 42, "Consumer expected value 42")
         return cede 0
-    }
+    }:fn#() -> cede i32
     
     auto t# = thread_spawn<i32>(consumer)
     

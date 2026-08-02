@@ -19,7 +19,7 @@ fn async_http_stream_server(port: u16) -> async i32 {
 
     auto resp_str = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nContent-Type: text/plain\r\n\r\nHello Stream"
     auto resp_bytes# = Vec<u8>::with_capacity(resp_str.len())
-    auto idx#: usize = 0
+    auto idx# = 0:usize
     loop idx < resp_str.len() {
         resp_bytes#.push(resp_str.as_bytes().at(idx).unwrap() as u8)
         idx += 1
@@ -75,7 +75,7 @@ pub fn main_async() -> async i32 {
     auto start_time = current_time_ms()
 
     // Qualification 1: 1000x Owned Bytes container creation, from_vec/into_vec buffer stealing & Slice view
-    auto iter_count#: usize = 0
+    auto iter_count# = 0:usize
     loop iter_count < 1000:usize {
         auto v# = Vec<u8>::with_capacity(1024)
         v#.push(65:u8)
@@ -97,7 +97,7 @@ pub fn main_async() -> async i32 {
     println("[Bench 1/2 PASSED] 1000x Bytes Container Buffer Stealing & Slice View in {} ms!", step1_time - start_time)
 
     // Qualification 2: HTTP Incremental Parser & Streaming Body read_chunk_into_async
-    auto port: u16 = 39447:u16
+    auto port = 39447:u16
     auto server_task = async_http_stream_server(port).start
     auto client_task = async_http_stream_client(port).start
 

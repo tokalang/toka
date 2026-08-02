@@ -2,7 +2,7 @@ import std/io::{println};
 import std/task::{block_on, detach_forget, sleep_async};
 import core/task as core_task;
 
-auto g_completed_count#: i32 = 0;
+auto g_completed_count# = 0:i32;
 
 fn async_batch_worker(id: i32) -> async i32 {
     g_completed_count = g_completed_count + 1;

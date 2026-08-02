@@ -1,7 +1,7 @@
 import core/types::{Addr, usize, ADDR0}
 
 pub fn main() -> i32 {
-    auto a: Addr = ADDR0
+    auto a = ADDR0:Addr
     if a != ADDR0 {
         return 1
     }

@@ -8,7 +8,7 @@ note: cede return declared here
    |
  3 | fn produce_data() -> cede Data {
    |    ^
-error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new Data(...)' stringently
+error[E0459]: Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new cede Data(...)' stringently
  --> tests/fail/expect_cede_return.tk:9:11
    |
  9 |     auto ^d = produce_data()

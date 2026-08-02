@@ -1,9 +1,9 @@
 import ./lib::{Cell}
 
 fn main() -> i32 {
-    auto values: [Cell?; 1] = [Cell(value = 9)]
+    auto values = [Cell(value = 9)]:[Cell?; 1]
     guard values[0] {
-        auto target: Cell = cede values[0]
+        auto target = cede values[0]:Cell
         return target.value - 9
     } else {
         return 1

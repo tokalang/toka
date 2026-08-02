@@ -6,9 +6,9 @@ import std/task::{block_on, sleep_async};
 import std/context::{background, with_cancel, Canceler};
 import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read_timeout, net_async_read_context};
 
-auto server_timeout_detected#: bool = false;
-auto server_context_cancel_detected#: bool = false;
-auto server_success_detected#: bool = false;
+auto server_timeout_detected# = false:bool;
+auto server_context_cancel_detected# = false:bool;
+auto server_success_detected# = false:bool;
 
 pub fn trigger_cancel_task(cede c: Canceler) -> async i32 {
     auto owned_c# = cede c;

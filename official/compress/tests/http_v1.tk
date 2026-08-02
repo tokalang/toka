@@ -26,8 +26,8 @@ fn header_is(headers: HeaderMap, name: str, expected: str) -> bool {
 }
 
 fn header_count(headers: HeaderMap, name: str) -> usize {
-    auto count#: usize = 0:usize
-    auto index#: usize = 0:usize
+    auto count# = 0:usize
+    auto index# = 0:usize
     loop index < headers.entries.len() {
         auto entry = headers.entries.get(index).clone()
         if entry.key.as_str().eq_ignore_ascii_case(name) { count = count + 1:usize }
@@ -39,9 +39,9 @@ fn header_count(headers: HeaderMap, name: str) -> usize {
 fn contains_text(source: str, needle: str) -> bool {
     if needle.len() == 0:usize { return true }
     if needle.len() > source.len() { return false }
-    auto start#: usize = 0:usize
+    auto start# = 0:usize
     loop start + needle.len() <= source.len() {
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < needle.len() {
             if source.byte_at(start + index) as u8 != needle.byte_at(index) as u8 { break }
             index = index + 1:usize

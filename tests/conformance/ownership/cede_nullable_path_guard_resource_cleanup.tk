@@ -18,7 +18,7 @@ fn cede_member_after_guard() -> i32 {
         if pair.item is null {
             return 1
         } else {
-            auto target: Token = cede pair.item
+            auto target = cede pair.item:Token
             assert(target.id == 7, "guarded member cede owns the payload")
         }
     }
@@ -27,11 +27,11 @@ fn cede_member_after_guard() -> i32 {
 
 fn cede_index_after_guard() -> i32 {
     {
-        auto values: [Token?; 1] = [Token(id = 9)]
+        auto values = [Token(id = 9)]:[Token?; 1]
         if values[0] is null {
             return 1
         } else {
-            auto target: Token = cede values[0]
+            auto target = cede values[0]:Token
             assert(target.id == 9, "guarded index cede owns the payload")
         }
     }

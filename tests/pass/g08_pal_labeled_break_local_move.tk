@@ -1,7 +1,7 @@
 shape Data(id: i32)
 
 fn main() -> i32 {
-    auto outer: void = loop {
+    auto outer = loop {
         loop {
             auto ^p = new Data(id = 1)
             auto ^taken = cede ^p
@@ -9,7 +9,7 @@ fn main() -> i32 {
                 break to outer
             }
         }
-    }
+    }:void
 
     return 0
 }

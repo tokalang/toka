@@ -122,7 +122,7 @@ def main():
         parser_seed.replace("Data(value = 7)", "Unknown(value = 7)"),
         "fn take(cede value: i32) -> i32 { return value }\nfn main() -> i32 { return take(1) }\n",
         "shape Box(value: i32)\nfn main() -> i32 { auto a = Box(value=1); auto b = cede a; return a.value }\n",
-        "fn main() -> i32 { auto x: i32 = true; return x }\n",
+        "fn main() -> i32 { auto x = true:i32; return x }\n",
         "fn main() -> i32 { auto x = missing(); return x }\n",
         "shape Pair(left: i32, right: i32)\nfn main() -> i32 { auto p = Pair(left=1); return p.left }\n",
         "fn worker() -> async i32 { return 0 }\nfn main() -> i32 { return worker().await }\n",

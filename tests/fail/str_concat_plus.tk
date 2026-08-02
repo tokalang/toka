@@ -1,6 +1,6 @@
 fn main() -> i32 {
-    auto a: str = "hello"
-    auto b: str = "world"
+    auto a = "hello":str
+    auto b = "world":str
     auto c = a + b
     return 0
 }

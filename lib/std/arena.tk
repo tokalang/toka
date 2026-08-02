@@ -44,7 +44,7 @@ impl Arena {
         }
 
         // Align size to 8 bytes boundary
-        auto aligned_size = (size + 7:usize) band (bnot 7:usize)
+        auto aligned_size = (size + 7:usize) & (~ 7:usize)
 
         unsafe {
             // 1. Attempt to find space in existing chunks

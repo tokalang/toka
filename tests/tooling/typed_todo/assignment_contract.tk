@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    auto value#: i32 = 0
+    auto value# = 0:i32
     value = todo
     return value
 }

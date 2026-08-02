@@ -57,7 +57,7 @@ fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
         p_family = 2:u16
 
         // Offset 2: port (u16)
-        auto nport: u16 = libc_htons(port as u16)
+        auto nport = libc_htons(port as u16):u16
         auto *p_port# = (*base_ptr as usize + 2) as *u16
         p_port = nport
 
@@ -66,7 +66,7 @@ fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
         p_addr = ip as u32
 
         // Offset 8..16: Zero
-        auto i#: usize = 8
+        auto i# = 8:usize
         loop i < 16 {
             auto *p_z# = (*base_ptr as usize + i) as *char
             p_z = 0 as char
@@ -207,7 +207,7 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
             auto *p0 = (*addr_buf as usize + 2) as *u8
             auto *p1 = (*addr_buf as usize + 3) as *u8
             auto *pp# = *out_port
-            pp = ((p0 as i32) bshl 8) bor (p1 as i32)
+            pp = ((p0 as i32) << 8) | (p1 as i32)
 
             auto *a = (*addr_buf as usize + 4) as *u8
             auto *b = (*addr_buf as usize + 5) as *u8
@@ -218,7 +218,7 @@ pub fn net_recvfrom_impl(fd: i32, *buf: u8, len: usize, *out_host: usize, *out_p
             auto cu = c as usize
             auto du = d as usize
             auto *ph# = *out_host
-            ph = au bor (bu bshl 8) bor (cu bshl 16) bor (du bshl 24)
+            ph = au | (bu << 8) | (cu << 16) | (du << 24)
         }
         libc_free(*addr_buf as *void)
         libc_free(*addrlen as *void)
@@ -249,7 +249,7 @@ pub fn net_set_nonblocking_impl(fd: i32) -> bool {
     unsafe {
         if fd == -1 { return false }
         toka_ensure_wsa_initialized()
-        auto mode#: u32 = 1
+        auto mode# = 1:u32
         return ioctlsocket(fd, 0x8004667e:u32, *(mode) as *u32) == 0
     }
 }
@@ -262,7 +262,7 @@ pub shape WinReactor (
     capacity: i32
 )
 
-auto g_win_reactor#: Addr = 0:Addr
+auto g_win_reactor# = 0:Addr
 
 fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
     unsafe {
@@ -283,7 +283,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
             auto *p_fd = (r.fds as usize + (i as usize) * 4:usize) as *i32
             auto *p_is_write = (r.is_write as usize + (i as usize) * 4:usize) as *i32
 
-            auto expected_is_write#: i32 = 0
+            auto expected_is_write# = 0:i32
             if is_write {
                 expected_is_write = 1
             }
@@ -298,7 +298,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
 
         // Strict boundary check (Max 64 concurrent descriptors in Windows select)
         if r.count >= 64 {
-            auto msg: str = "Windows Select Reactor capacity exceeded (Max 64 concurrent descriptors)"
+            auto msg = "Windows Select Reactor capacity exceeded (Max 64 concurrent descriptors)":str
             toka_panic(msg.raw_ptr() as Addr, msg.len() as i32)
             return false
         }
@@ -308,7 +308,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
         auto *p_coro# = (r.coros as usize + (r.count as usize) * 8:usize) as *Addr
         p_coro = coro
 
-        auto is_w#: i32 = 0
+        auto is_w# = 0:i32
         if is_write {
             is_w = 1
         }

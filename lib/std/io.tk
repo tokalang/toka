@@ -54,7 +54,7 @@ impl File {
                     IoError::new("open", 22:i32, "file mode is longer than seven bytes")
                 )
             }
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *src = mode.raw_ptr() as *[char]
             loop i < mode_len {
                 temp_buf[i] = src[i]
@@ -256,7 +256,7 @@ impl File {
 
 import core/types::{Addr}
 
-auto g_stdin_handle#: Addr = 0:Addr
+auto g_stdin_handle# = 0:Addr
 pub fn get_stdin() -> File {
     unsafe {
         if g_stdin_handle == 0:Addr { g_stdin_handle = libc_fdopen(0, c"r") as Addr }
@@ -264,7 +264,7 @@ pub fn get_stdin() -> File {
     }
 }
 
-auto g_stdout_handle#: Addr = 0:Addr
+auto g_stdout_handle# = 0:Addr
 pub fn get_stdout() -> File {
     unsafe {
         if g_stdout_handle == 0:Addr { g_stdout_handle = libc_fdopen(1, c"w") as Addr }
@@ -272,7 +272,7 @@ pub fn get_stdout() -> File {
     }
 }
 
-auto g_stderr_handle#: Addr = 0:Addr
+auto g_stderr_handle# = 0:Addr
 pub fn get_stderr() -> File {
     unsafe {
         if g_stderr_handle == 0:Addr { g_stderr_handle = libc_fdopen(2, c"w") as Addr }

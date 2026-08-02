@@ -1,7 +1,7 @@
 shape Token(id: i32)
 
 fn make() -> cede Token {
-    auto ^source#: Token? = new Token(id = 7)
+    auto ^source# = new Token(id = 7):^Token?
     guard source {
         return cede source
     } else {

@@ -7,7 +7,7 @@ fn main() -> i32 {
 
     // From u8
     auto u = 20:u8
-    auto x: Char32 = u as Char32
+    auto x = u as Char32:Char32
     assert(x == 20:u32, "FAIL: u8 to Char32 cast")
 
     // Compound cast

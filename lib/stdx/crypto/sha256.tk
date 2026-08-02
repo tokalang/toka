@@ -26,7 +26,7 @@ fn rotr(x: u32, n: u32) -> u32 {
 }
 
 fn ch(x: u32, y: u32, z: u32) -> u32 {
-    return (x & y) ^ ((bnot x) & z)
+    return (x & y) ^ ((~ x) & z)
 }
 
 fn maj(x: u32, y: u32, z: u32) -> u32 {
@@ -51,7 +51,7 @@ fn sig1(x: u32) -> u32 {
 
 impl Sha256 {
     fn process_block(self#, *k: [u32; 64]) {
-        auto w#: [u32; 64] = [0; 64]
+        auto w# = [0; 64]:[u32; 64]
         
         // Initialize first 16 words from data block
         auto i1# = 0
@@ -128,7 +128,7 @@ impl Sha256 {
     }
 
     pub fn update_view(self#, input: bytes) {
-        auto i#: usize = 0:usize
+        auto i# = 0:usize
         loop i < input.len() {
             auto b = input.at(i).unwrap() as u8
             self.data[self.datalen] = b
@@ -198,7 +198,7 @@ impl Sha256 {
         
         self#.process_block(&SHA256_K)
         
-        auto hash#: [u8; 32] = [0; 32]
+        auto hash# = [0; 32]:[u8; 32]
         auto j# = 0
         loop j < 8 {
             hash[j * 4] = u8(self.state[j] >> 24)

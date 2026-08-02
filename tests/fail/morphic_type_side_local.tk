@@ -1,6 +1,6 @@
-// EXPECT: error[E0105]:
+// EXPECT: error[E0463]:
 
 fn main() -> i32 {
-    auto x: 'T = 1
+    auto x = 1:'T
     return 0
 }

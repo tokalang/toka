@@ -214,6 +214,8 @@ public:
     } else if (auto *Cast = dynamic_cast<CastExpr *>(E)) {
       sub(Cast->TargetTypeSyntax, Cast->TargetType);
       visitExpr(Cast->Expression.get());
+    } else if (auto *Cede = dynamic_cast<CedeExpr *>(E)) {
+      visitExpr(Cede->Value.get());
     } else if (auto *Closure = dynamic_cast<ClosureExpr *>(E)) {
       Closure->ReturnType = sub(Closure->ReturnType);
       visitStmt(Closure->Body.get());

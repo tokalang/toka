@@ -66,7 +66,7 @@ impl RouteMatch@Encap {
 
     pub fn clone(self) -> RouteMatch {
         auto copied# = Vec<RouteParam>::with_capacity(self.params.len())
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.params.len() {
             copied#.push(cede self.params.get(index).clone())
             index = index + 1:usize
@@ -94,7 +94,7 @@ impl Route@Encap {
 
     pub fn clone(self) -> Route {
         auto copied# = Vec<RouteSegment>::with_capacity(self.segments.len())
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.segments.len() {
             copied#.push(cede self.segments.get(index).clone())
             index = index + 1:usize
@@ -125,7 +125,7 @@ fn valid_parameter_name(value: str) -> bool {
          first == '_' as u8) {
         return false
     }
-    auto index#: usize = 1:usize
+    auto index# = 1:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if !((byte >= 'a' as u8 && byte <= 'z' as u8) ||
@@ -140,7 +140,7 @@ fn valid_parameter_name(value: str) -> bool {
 }
 
 fn has_reserved_path_byte(value: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if byte == '?' as u8 || byte == '#' as u8 { return true }
@@ -162,8 +162,8 @@ fn parse_pattern(pattern: str) -> Result<Vec<RouteSegment>, RouterError> {
         return Result<Vec<RouteSegment>, RouterError>::Ok(cede segments)
     }
 
-    auto start#: usize = 1:usize
-    auto index#: usize = 1:usize
+    auto start# = 1:usize
+    auto index# = 1:usize
     loop index < pattern.len() {
         if pattern.byte_at(index) as u8 == '/' as u8 {
             if index == start {
@@ -206,7 +206,7 @@ fn target_segments(target: str) -> Option<Vec<string>> {
     }
 
     auto path_end# = target.len()
-    auto query_index#: usize = 0:usize
+    auto query_index# = 0:usize
     loop query_index < target.len() {
         if target.byte_at(query_index) as u8 == '?' as u8 {
             path_end = query_index
@@ -218,8 +218,8 @@ fn target_segments(target: str) -> Option<Vec<string>> {
     auto segments# = Vec<string>::new()
     if path_end == 1:usize { return Option<Vec<string>>::Some(cede segments) }
 
-    auto start#: usize = 1:usize
-    auto index#: usize = 1:usize
+    auto start# = 1:usize
+    auto index# = 1:usize
     loop index < path_end {
         if target.byte_at(index) as u8 == '/' as u8 {
             if index == start { return Option<Vec<string>>::None() }
@@ -234,8 +234,8 @@ fn target_segments(target: str) -> Option<Vec<string>> {
 }
 
 fn literal_count(segments: Vec<RouteSegment>) -> usize {
-    auto count#: usize = 0:usize
-    auto index#: usize = 0:usize
+    auto count# = 0:usize
+    auto index# = 0:usize
     loop index < segments.len() {
         match segments.get(index).clone() {
             auto RouteSegment::Literal(_) => count = count + 1:usize
@@ -248,7 +248,7 @@ fn literal_count(segments: Vec<RouteSegment>) -> usize {
 
 fn same_shape(left: Route, right: Route) -> bool {
     if left.segments.len() != right.segments.len() { return false }
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < left.segments.len() {
         match left.segments.get(index).clone() {
             auto RouteSegment::Literal(&left_literal) => match right.segments.get(index).clone() {
@@ -269,7 +269,7 @@ fn same_shape(left: Route, right: Route) -> bool {
 
 fn shapes_overlap(left: Route, right: Route) -> bool {
     if left.segments.len() != right.segments.len() { return false }
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < left.segments.len() {
         match left.segments.get(index).clone() {
             auto RouteSegment::Literal(&left_literal) => match right.segments.get(index).clone() {
@@ -287,7 +287,7 @@ fn shapes_overlap(left: Route, right: Route) -> bool {
 
 fn route_matches(route: Route, target: Vec<string>) -> bool {
     if route.segments.len() != target.len() { return false }
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < route.segments.len() {
         match route.segments.get(index).clone() {
             auto RouteSegment::Literal(&literal) => {
@@ -302,7 +302,7 @@ fn route_matches(route: Route, target: Vec<string>) -> bool {
 
 fn route_match(route: Route, target: Vec<string>) -> RouteMatch {
     auto params# = Vec<RouteParam>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < route.segments.len() {
         match route.segments.get(index).clone() {
             auto RouteSegment::Parameter(&name) => {
@@ -327,7 +327,7 @@ impl RouteMatch {
     pub fn route_name(self) -> string { return string::from(self.name.as_str()) }
 
     pub fn param(self, name: str) -> Option<string> {
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.params.len() {
             auto parameter = self.params.get(index).clone()
             if parameter.name.as_str().equals(name) {
@@ -355,7 +355,7 @@ impl Router {
         auto parsed = parse_pattern(pattern)
         if parsed.is_err() { return Result<(), RouterError>::Err(parsed.unwrap_err()) }
         auto segments = parsed.unwrap()
-        auto parameter_index#: usize = 0:usize
+        auto parameter_index# = 0:usize
         loop parameter_index < segments.len() {
             match segments.get(parameter_index).clone() {
                 auto RouteSegment::Parameter(&parameter) => {
@@ -385,7 +385,7 @@ impl Router {
         )
         candidate.literal_count = literal_count(candidate.segments)
 
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.routes.len() {
             auto existing = self.routes.get(index).clone()
             if existing.method == candidate.method {
@@ -410,9 +410,9 @@ impl Router {
         if parsed.is_none() { return Option<RouteMatch>::None() }
         auto segments = parsed.unwrap()
         auto found# = false
-        auto best_index#: usize = 0:usize
-        auto best_literal_count#: usize = 0:usize
-        auto index#: usize = 0:usize
+        auto best_index# = 0:usize
+        auto best_literal_count# = 0:usize
+        auto index# = 0:usize
         loop index < self.routes.len() {
             auto route = self.routes.get(index).clone()
             if route.method == method && route_matches(route, segments) {
@@ -435,12 +435,12 @@ impl Router {
         auto parsed = target_segments(target)
         if parsed.is_none() { return cede methods }
         auto segments = parsed.unwrap()
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.routes.len() {
             auto route = self.routes.get(index).clone()
             if route_matches(route, segments) {
                 auto duplicate# = false
-                auto seen#: usize = 0:usize
+                auto seen# = 0:usize
                 loop seen < methods.len() {
                     if methods.get(seen) == route.method { duplicate = true }
                     seen = seen + 1:usize

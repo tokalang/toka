@@ -1,5 +1,5 @@
-error[E0409]: Cannot initialize variable of type '*Data' with value of type 'null'
- --> tests/fail/strict_null_identity.tk:19:11
+error[E04606]: Type ascription '*Data' is incompatible with expression type 'null'
+ --> tests/fail/strict_null_identity.tk:19:19
     |
- 19 |     auto *d: Data = null // EXPECT: error[E0409]:
-    |           ^
+ 19 |     auto *d = null:*Data // EXPECT: error[E04606]:
+    |                   ^

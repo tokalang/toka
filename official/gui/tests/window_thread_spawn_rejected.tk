@@ -2,9 +2,9 @@ import official/gui::{Window}
 import std/thread::{thread_spawn}
 
 fn launch(cede window: Window) {
-    auto worker: fn() -> cede i32 = { [cede window] =>
+    auto worker = { [cede window] =>
         return cede 0
-    }
+    }:fn() -> cede i32
     auto handle# = thread_spawn<i32>(cede worker)
     handle#.detach()
 }

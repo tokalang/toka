@@ -1,8 +1,8 @@
 error[E0450]: Invalid cast: cannot convert 'Addr' to '&Data' via 'as'; only 'Addr' and '*' conversions are supported
- --> tests/fail/unsafe_cast_escape.tk:9:37
+ --> tests/fail/unsafe_cast_escape.tk:9:33
    |
  9 |         return (*raw_b as Addr) as &Data
-   |                                     ^
+   |                                 ^
 error[E0454]: Returning reference to parameter 'b' requires explicit dependency declaration (<- b)
  --> tests/fail/unsafe_cast_escape.tk:9:9
    |
@@ -14,10 +14,10 @@ note: undeclared return dependency originates here
  4 | fn cheat(a: Data, b: Data) -> &res: Data
    |                   ^
 error[E0450]: Invalid cast: cannot convert 'Addr' to '&Data' via 'as'; only 'Addr' and '*' conversions are supported
- --> tests/fail/unsafe_cast_escape.tk:18:35
+ --> tests/fail/unsafe_cast_escape.tk:18:31
     |
  18 |         return (*raw as Addr) as &Data
-    |                                   ^
+    |                               ^
 error[E0455]: Returning reference to local variable 'untraced unsafe cast' is unsafe
  --> tests/fail/unsafe_cast_escape.tk:18:9
     |

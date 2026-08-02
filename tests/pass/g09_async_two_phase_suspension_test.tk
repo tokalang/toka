@@ -2,7 +2,7 @@ import std/io::{println};
 import std/task::{block_on, sleep_async};
 import core/task as core_task;
 
-auto step_progress#: i32 = 0;
+auto step_progress# = 0:i32;
 
 fn async_two_phase_worker() -> async i32 {
     step_progress = 1;

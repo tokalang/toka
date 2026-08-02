@@ -7,7 +7,7 @@ impl Token@Encap {
 }
 
 fn main() -> i32 {
-    auto values: [Token; 1] = [Token(id = 1)]
+    auto values = [Token(id = 1)]:[Token; 1]
     guard auto &borrow = values[0] else { return 1 }
     auto taken = cede values[0]
     return taken.id

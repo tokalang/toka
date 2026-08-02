@@ -14,7 +14,7 @@ extern fn toka_ensure_test_cert_files(*cert_path: char, *key_path: char) -> i32
 
 fn bytes_from_string(value: str) -> Vec<u8> {
     auto bytes# = Vec<u8>::with_capacity(value.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         bytes#.push(value.byte_at(index) as u8)
         index = index + 1:usize

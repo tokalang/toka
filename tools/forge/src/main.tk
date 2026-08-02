@@ -12,7 +12,7 @@ import sys/thread::{sys_alloc_thread_env, sys_free_thread_env}
 
 fn submit_ready_tasks(*graph#: DependencyGraph, *pool#: WorkerPool, *exec_boxes#: Vec<u64>) {
     auto *_read_graph = *graph
-    auto idx#: u64 = 0
+    auto idx# = 0:u64
     loop idx < graph.registered_ids.len() {
         auto id = graph.registered_ids.get(idx)
         auto node_opt = graph.slab.get(id.clone())
@@ -68,8 +68,8 @@ fn main() -> i32 {
     auto cache_path# = string::from(".forge_cache")
     
     auto arg_list = env::args()
-    auto idx#: u64 = 1
-    auto one: u64 = 1
+    auto idx# = 1:u64
+    auto one = 1:u64
     loop idx < arg_list.len() {
         auto arg = arg_list.get(idx)
         if arg.as_str() == "-j" && idx + one < arg_list.len() {
@@ -103,7 +103,7 @@ fn main() -> i32 {
     
     // 4. Count remaining tasks
     auto remaining_tasks# = 0
-    auto scan_idx#: u64 = 0
+    auto scan_idx# = 0:u64
     loop scan_idx < graph.registered_ids.len() {
         auto id = graph.registered_ids.get(scan_idx)
         auto node_opt = graph.slab.get(id.clone())
@@ -145,9 +145,9 @@ fn main() -> i32 {
         }
         auto res_ptr = res_opt.unwrap()
         auto success# = false
-        auto mtime#: i64 = 0
-        auto size#: u64 = 0
-        auto index#: u64 = 0
+        auto mtime# = 0:i64
+        auto size# = 0:u64
+        auto index# = 0:u64
         unsafe {
             auto *#res = (res_ptr as Addr) as *#TaskResult
             success = res.success
@@ -198,7 +198,7 @@ fn main() -> i32 {
                 }
             }
             
-            auto d_idx#: u64 = 0
+            auto d_idx# = 0:u64
             loop d_idx < dependents.len() {
                 auto dep_id = dependents.get(d_idx)
                 auto &#dep_node# = graph.slab#.get_mut(dep_id.clone()).unwrap()
@@ -220,7 +220,7 @@ fn main() -> i32 {
 
 fn free_exec_boxes(exec_boxes: Vec<u64>) {
     unsafe {
-        auto i#: u64 = 0
+        auto i# = 0:u64
         loop i < exec_boxes.len() {
             auto ptr = exec_boxes.get(i) as Addr
             auto *#exec = ptr as *#TaskExec

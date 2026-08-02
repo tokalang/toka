@@ -28,8 +28,8 @@ pub fn from_utf16(*w: u16) -> string {
     }
 }
 
-auto g_win_argc#: i32 = 0
-auto g_win_argv#: Addr = 0:Addr
+auto g_win_argc# = 0:i32
+auto g_win_argv# = 0:Addr
 
 pub fn args_impl() -> i32 {
     unsafe {

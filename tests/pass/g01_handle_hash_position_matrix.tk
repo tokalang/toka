@@ -5,7 +5,7 @@ shape Cell(
 fn raw_identity_rebind() -> i32 {
     auto a# = 10
     auto b# = 20
-    auto *#p: i32 = *#a
+    auto *#p = *#a:*i32
 
     if p != 10 {
         return 1

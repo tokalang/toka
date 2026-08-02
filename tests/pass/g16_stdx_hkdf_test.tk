@@ -5,7 +5,7 @@ import stdx/encoding/hex
 
 fn sequence(length: usize, first: u8) -> Vec<u8> {
     auto values# = Vec<u8>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < length {
         values#.push(first + index as u8)
         index = index + 1:usize
@@ -15,7 +15,7 @@ fn sequence(length: usize, first: u8) -> Vec<u8> {
 
 fn repeated(length: usize, value: u8) -> Vec<u8> {
     auto values# = Vec<u8>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < length {
         values#.push(value)
         index = index + 1:usize
@@ -40,7 +40,7 @@ fn main() -> i32 {
                "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"),
            "HKDF derive must match RFC 5869 case 1 OKM")
 
-    auto prk_zero: [u8; 32] = [0:u8; 32]
+    auto prk_zero = [0:u8; 32]:[u8; 32]
     assert(expand(prk_zero, "".as_bytes(), 8161:usize).is_err(),
            "HKDF expand must reject output beyond 255 blocks")
     return 0

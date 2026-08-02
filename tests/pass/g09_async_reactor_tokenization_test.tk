@@ -5,8 +5,8 @@ import std/io::{println};
 import std/task::{block_on, sleep_async};
 import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_accept, net_async_read};
 
-auto server_received_bytes#: usize = 0;
-auto client_received_bytes#: usize = 0;
+auto server_received_bytes# = 0:usize;
+auto client_received_bytes# = 0:usize;
 
 pub fn async_socket_server(cede listener: TcpListener) -> async i32 {
     auto owned_listener# = cede listener;

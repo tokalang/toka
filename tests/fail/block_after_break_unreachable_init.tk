@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    auto x#: i32 = unset
+    auto x# = uninit:i32
 
     loop {
         break

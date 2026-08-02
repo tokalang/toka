@@ -83,7 +83,7 @@ impl WorkerPool {
             auto rx_addr_val = rx_exec_addr
             auto tx_addr_val = tx_res_addr
             
-            auto work_fn: fn() -> i32 = { [cede rx_addr_val, cede tx_addr_val] =>
+            auto work_fn = { [cede rx_addr_val, cede tx_addr_val] =>
                 unsafe {
                     auto *#box_ptr = rx_addr_val as *#ReceiverBox<u64>
                     auto *#tx_ptr = tx_addr_val as *#SenderBox<u64>
@@ -107,8 +107,8 @@ impl WorkerPool {
                         }
                         
                         // 2. Query output metadata
-                        auto mtime#: i64 = 0
-                        auto size#: u64 = 0
+                        auto mtime# = 0:i64
+                        auto size# = 0:u64
                         if success {
                             auto meta_res = metadata(exec.out_path.clone())
                             if meta_res.is_ok() {
@@ -132,8 +132,7 @@ impl WorkerPool {
                     }
                     return 0
                 }
-            }
-            
+            }:fn() -> i32
             auto handle# = thread_spawn<i32>(cede work_fn)
             handle#.detach()
             i += 1

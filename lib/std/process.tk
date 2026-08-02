@@ -221,10 +221,10 @@ impl Command {
     pub fn output(self#) -> Result<Output, ProcessError> {
         auto argv_blob = self.packed_argv()!
         unsafe {
-            auto stdout_data#: Addr = 0:Addr
-            auto stdout_len#: usize = 0
-            auto stderr_data#: Addr = 0:Addr
-            auto stderr_len#: usize = 0
+            auto stdout_data# = 0:Addr
+            auto stdout_len# = 0:usize
+            auto stderr_data# = 0:Addr
+            auto stderr_len# = 0:usize
             auto exit_code# = -1
             auto signal# = 0
             auto error = toka_process_output_packed(

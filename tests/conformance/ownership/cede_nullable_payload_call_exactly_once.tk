@@ -16,7 +16,7 @@ fn consume(cede token: Token) -> i32 {
 }
 
 fn main() -> i32 {
-    auto ^source#: Token? = new Token(id = 7)
+    auto ^source# = new Token(id = 7):^Token?
     guard source {
         if consume(cede source) != 7 {
             return 1

@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    auto s: str = "Toka"
+    auto s = "Toka":str
     auto c = s[2] // error[E0490]: Subscript indexing is disabled for UTF-8 'str'
     return 0
 }

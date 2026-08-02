@@ -8,7 +8,7 @@ pub shape IntSlot(value: i32)
 impl IntSlot@Slot<i32> {
     per type Value = i32
     pub fn get(self) -> Value {
-        auto tmp: Value = self.value
+        auto tmp = self.value:Value
         return tmp
     }
 }

@@ -8,7 +8,7 @@ shape Point(
 
 fn main() -> i32 {
     // Case 1: Simple Init via Ref
-    auto p# : Point = unset
+    auto p# = uninit:Point
     {
         auto &refP# = &p
         refP.x = 10
@@ -20,17 +20,17 @@ fn main() -> i32 {
     assert(p.x == 10, "p.x check")
     
     // Case 2: Pass/Break with Clean Ref
-    auto q# : i32 = unset
+    auto q# = uninit:i32
     auto &refQ# = &q
     refQ = 100
     // Now Ref is clean.
     
     // Using reference in Pass/If
-    auto val:i32 = if true {
+    auto val = if true {
         pass refQ // OK because refQ is clean
     } else {
         pass refQ
-    }
+    }:i32
 
     assert(val == 100, "val check")
     

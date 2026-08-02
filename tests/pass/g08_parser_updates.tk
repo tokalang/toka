@@ -41,7 +41,7 @@ fn main() -> i32 {
     }
     {
         // Nullable Pointer
-        auto nul ^p3:Data = null
+        auto nul ^p3 = null:nul ^Data
 
         // New syntax: 'is' operator for null check. 
         guard ^p3 {

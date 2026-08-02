@@ -4,7 +4,7 @@ import std/vec::{Vec}
 
 fn wire(input: str) -> Vec<u8> {
     auto bytes# = Vec<u8>::with_capacity(input.len())
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < input.len() {
         bytes#.push(input.byte_at(index) as u8)
         index = index + 1:usize
@@ -14,7 +14,7 @@ fn wire(input: str) -> Vec<u8> {
 
 fn same_wire(left: Vec<u8>, right: str) -> bool {
     if left.len() != right.len() { return false }
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < left.len() {
         if left.get(index) != right.byte_at(index) as u8 { return false }
         index = index + 1:usize

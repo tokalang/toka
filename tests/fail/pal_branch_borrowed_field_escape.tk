@@ -4,7 +4,7 @@ shape Bound(
 
 fn main() -> i32 {
     auto flag = true
-    auto b: Bound
+    auto b = uninit:Bound
 
     if flag {
         auto local = 10

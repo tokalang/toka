@@ -2,6 +2,6 @@
 import ./lib::{Cell}
 
 fn main() -> i32 {
-    auto ^source#: Cell? = new Cell(value = 1)
+    auto ^source# = new Cell(value = 1):^Cell?
     return Cell::consume_static(cede source)
 }

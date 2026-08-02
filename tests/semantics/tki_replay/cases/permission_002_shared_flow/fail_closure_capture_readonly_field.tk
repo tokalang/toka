@@ -5,9 +5,9 @@ fn main() -> i32 {
     auto ~source# = new Cell(value = 1)
     auto holder = ReadonlyHolder(~cell = ~source)
     auto ~view = holder.~cell
-    auto invoke#: fn#() -> i32 = { [cede view] =>
+    auto invoke# = { [cede view] =>
         view.value = 2
         return 0
-    }
+    }:fn#() -> i32
     return invoke#()
 }

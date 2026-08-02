@@ -6,7 +6,7 @@ fn choose(value: bool) -> i32 {
         false => {
             pass 0
         }
-        default => {
+        _ => {
             pass 0
         }
     }

@@ -58,7 +58,7 @@ runtime-and-static **live mask**:
 
 ```text
 bit i = 1  field i is initialized and remains owned by the aggregate
-bit i = 0  field i is unset or has been ceded
+bit i = 0  field i is uninitialized or has been ceded
 ```
 
 It is the same field numbering used by `InitMask`.

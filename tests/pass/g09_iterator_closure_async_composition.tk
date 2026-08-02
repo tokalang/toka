@@ -40,7 +40,7 @@ fn main() -> i32 {
     eager_values#.push(2)
     eager_values#.push(3)
     auto bias = 4
-    auto shared: fn(i32) -> i32 = { value => value + bias }
+    auto shared = { value => value + bias }:fn(i32) -> i32
     if sum_mapped(eager_values, shared) != 18 {
         return 1
     }
@@ -50,10 +50,10 @@ fn main() -> i32 {
     async_values#.push(2)
     async_values#.push(3)
     auto counter# = MapperState(value = 0)
-    auto mutable_mapper#: fn#(i32) -> i32 = { [cede counter] value =>
+    auto mutable_mapper# = { [cede counter] value =>
         counter.value = counter.value + 1
         value * counter.value
-    }
+    }:fn#(i32) -> i32
 
     auto task = sum_mapped_async(
         cede async_values,
@@ -64,10 +64,10 @@ fn main() -> i32 {
     }
 
     auto payload = OncePayload(value = 9)
-    auto once: cede fn() -> i32 = { [cede payload] =>
+    auto once = { [cede payload] =>
         auto owned = cede payload
         return owned.value
-    }
+    }:cede fn() -> i32
     if invoke_once(cede once) != 9 {
         return 3
     }

@@ -75,7 +75,7 @@ fn copy_range(input: str, start: usize, end: usize) -> string {
 
 fn lower_ascii(input: string) -> string {
     auto output# = string::from("")
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte# = input.as_str().byte_at(index) as u8
         if byte >= 'A' as u8 && byte <= 'Z' as u8 {
@@ -88,7 +88,7 @@ fn lower_ascii(input: string) -> string {
 }
 
 fn has_param(params: Vec<MimeParam>, name: str) -> bool {
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < params.len() {
         auto param = params.get(index).clone()
         if param.name.as_str().equals(name) {
@@ -107,7 +107,7 @@ impl Mime@Encap {
 impl Mime {
     pub fn clone(self) -> Mime {
         auto copied# = Vec<MimeParam>::new()
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < self.params.len() {
             copied#.push(cede self.params.get(index).clone())
             index = index + 1:usize
@@ -232,7 +232,7 @@ impl Mime {
 
     pub fn parameter(self, name: str) -> Option<string> {
         auto normalized = lower_ascii(name.to_string())
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < self.params.len() {
             auto param = self.params.get(index).clone()
             if param.name.as_str().equals(normalized.as_str()) {
@@ -245,7 +245,7 @@ impl Mime {
 
     pub fn to_string(self) -> string {
         auto output# = self.essence()
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < self.params.len() {
             auto param = self.params.get(index).clone()
             output#.push_str("; ")
@@ -253,7 +253,7 @@ impl Mime {
             output#.push_byte_raw('=' as u8)
             if param.quoted {
                 output#.push_byte_raw('"' as u8)
-                auto value_index#: usize = 0
+                auto value_index# = 0:usize
                 loop value_index < param.value.len() {
                     auto byte = param.value.as_str().byte_at(value_index) as u8
                     if byte == '"' as u8 || byte == '\\' as u8 {

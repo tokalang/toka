@@ -10,7 +10,7 @@ import core/types::{usize, Addr}
 fn main() -> i32 {
     println("Testing Toka Native Span & SourceMap...")
 
-    auto source: str = "fn main() -> i32 {\n    auto x = 42\n    return 0\n}"
+    auto source = "fn main() -> i32 {\n    auto x = 42\n    return 0\n}":str
     auto map = SourceMap::new("main.tk", source)
 
     // 1. Create a Span corresponding to "x = 42"
@@ -24,7 +24,7 @@ fn main() -> i32 {
     // 2. Test to_str mapping
     auto resolved_str = span.to_str(source)
     println("Span content: '{}'", resolved_str)
-    auto expected1: str = "x = 42"
+    auto expected1 = "x = 42":str
     assert(resolved_str == expected1, "resolved_str should be 'x = 42'")
 
     // 3. Test resolve_loc mapping (line & column)
@@ -37,14 +37,14 @@ fn main() -> i32 {
     auto span2 = Span::new((source.raw_ptr() as usize + 39:usize) as Addr, 6:usize) // "return"
     auto resolved_str2 = span2.to_str(source)
     println("Span2 content: '{}'", resolved_str2)
-    auto expected2: str = "return"
+    auto expected2 = "return":str
     assert(resolved_str2 == expected2, "resolved_str2 should be 'return'")
 
     auto combined = span.combine(span2)
     auto resolved_combined = combined.to_str(source)
     println("Combined span content: '{}'", resolved_combined)
     // Combined span should cover from offset 28 to 45, which is "x = 42\n    return"
-    auto expected3: str = "x = 42\n    return"
+    auto expected3 = "x = 42\n    return":str
     assert(resolved_combined == expected3, "combined should match exact range")
 
     // 5. Test Unicode / UTF-8 character column resolution
@@ -52,7 +52,7 @@ fn main() -> i32 {
     // "fn main() -> i32 {\n" is 19 characters/bytes.
     // "" contains 6 Chinese characters, which take 6 * 3 = 18 bytes in UTF-8.
     // Let's verify character-based column counting!
-    auto unicode_source: str = "fn main() -> i32 {\n    // 中文字符注释\n    auto"
+    auto unicode_source = "fn main() -> i32 {\n    // 中文字符注释\n    auto":str
     auto unicode_map = SourceMap::new("unicode.tk", unicode_source)
     
     // Offset calculation:
@@ -69,7 +69,7 @@ fn main() -> i32 {
     auto unicode_span = Span::new((unicode_source.raw_ptr() as usize + 49:usize) as Addr, 4:usize)
     auto unicode_loc = unicode_map.resolve_loc(unicode_span)
     println("Unicode source offset 49 resolves to: line={}, column={}", unicode_loc.line, unicode_loc.column)
-    auto expected_auto: str = "auto"
+    auto expected_auto = "auto":str
     assert(unicode_span.to_str(unicode_source) == expected_auto, "should resolve to 'auto'")
     
     // Let's resolve the character '' (the 5th Chinese char) in "    // "

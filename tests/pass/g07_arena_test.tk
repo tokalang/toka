@@ -65,7 +65,7 @@ fn main() -> i32 {
     // 4. Test alloc_str
     {
         println("Testing alloc_str...")
-        auto orig_str: str = "TokaLangSelfHosting AST Node string Persistence"
+        auto orig_str = "TokaLangSelfHosting AST Node string Persistence":str
         auto arena_str = alloc_str(arena, orig_str)
 
         println("orig_str: '{}', arena_str: '{}'", orig_str, arena_str)

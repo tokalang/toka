@@ -188,7 +188,7 @@ impl SourceFile {
         auto len = source.len() as usize
         unsafe {
             auto *b = source.c_str() as *[char]
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < len {
                 auto c = b[i]
                 if c == 10:char {
@@ -234,8 +234,8 @@ impl SourceFile {
             return Location(line = 1:usize, column = 1:usize)
         }
         
-        auto low#: usize = 0
-        auto high#: usize = size - 1
+        auto low# = 0:usize
+        auto high# = size - 1:usize
         
         loop low < high {
             auto mid = low + (high - low + 1) / 2
@@ -260,7 +260,7 @@ impl SourceFile {
         }
         
         auto start = self.line_starts.get(line_idx) as i32
-        auto end#: i32 = 0
+        auto end# = 0:i32
         if line_idx + 1 < size {
             end = self.line_starts.get(line_idx + 1) as i32
         } else {
@@ -410,8 +410,8 @@ impl Diagnostic {
             return sb.to_string()
         }
         
-        auto max_line#: usize = 1
-        auto i#: usize = 0
+        auto max_line# = 1:usize
+        auto i# = 0:usize
         unsafe {
             loop i < self.labels_count {
                 auto label = self.labels[i].clone()
@@ -467,7 +467,7 @@ impl Diagnostic {
                 sb#.append_spaces((loc.column - 1) as i32)
                 if color { sb#.append(sev_style.code.clone()) }
                 
-                auto wave_len#: i32 = label.length as i32
+                auto wave_len# = label.length as i32:i32
                 if wave_len <= 0 { wave_len = 1 }
                 auto w# = 0
                 loop w < wave_len {

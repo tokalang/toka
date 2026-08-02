@@ -2,7 +2,7 @@ import ./lib::{Token}
 
 fn check_branch(take_first: bool, drops#: i32) -> i32 {
     {
-        auto values: [Token; 2] = [Token(id = 1, &drops = &drops), Token(id = 2, &drops = &drops)]
+        auto values = [Token(id = 1, &drops = &drops), Token(id = 2, &drops = &drops)]:[Token; 2]
         if take_first {
             auto taken = cede values[0]
             if taken.id != 1 { return 1 }

@@ -39,12 +39,12 @@ fn base64_value(value: u8) -> i32 {
 
 pub fn encode(input: bytes) -> string {
     auto encoded# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto remaining = input.len() - index
         auto first = input.at(index).unwrap() as u32
-        auto second#: u32 = 0:u32
-        auto third#: u32 = 0:u32
+        auto second# = 0:u32
+        auto third# = 0:u32
         if remaining > 1:usize { second = input.at(index + 1:usize).unwrap() as u32 }
         if remaining > 2:usize { third = input.at(index + 2:usize).unwrap() as u32 }
         auto triple = (first << 16:u32) | (second << 8:u32) | third
@@ -69,12 +69,12 @@ pub fn encode_vec(cede input: Vec<u8>) -> string {
 // RFC 4648 §5 alphabet without '=' padding, suitable for URL path and query values.
 pub fn encode_url_safe_no_pad(input: bytes) -> string {
     auto encoded# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto remaining = input.len() - index
         auto first = input.at(index).unwrap() as u32
-        auto second#: u32 = 0:u32
-        auto third#: u32 = 0:u32
+        auto second# = 0:u32
+        auto third# = 0:u32
         if remaining > 1:usize { second = input.at(index + 1:usize).unwrap() as u32 }
         if remaining > 2:usize { third = input.at(index + 2:usize).unwrap() as u32 }
         auto triple = (first << 16:u32) | (second << 8:u32) | third
@@ -93,7 +93,7 @@ pub fn encode_url_safe_no_pad(input: bytes) -> string {
 
 pub fn encode_fixed20(data: [u8; 20]) -> string {
     auto values# = Vec<u8>::with_capacity(20:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 20:usize {
         values#.push(data[index])
         index = index + 1:usize
@@ -107,7 +107,7 @@ pub fn decode(input: str) -> Result<Vec<u8>, DecodeError> {
             decode_error(input.len(), "Base64 input length must be a multiple of four"))
     }
     auto decoded# = Vec<u8>::with_capacity((input.len() / 4:usize) * 3:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto first = base64_value(input.byte_at(index) as u8)
         if first < 0:i32 { return Result<Vec<u8>, DecodeError>::Err(decode_error(index, "invalid Base64 character")) }

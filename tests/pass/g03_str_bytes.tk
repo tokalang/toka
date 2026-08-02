@@ -2,7 +2,7 @@ import std/io::{println}
 
 fn main() -> i32 {
     // 1. Define high-level Str
-    auto s: str = "Toka 1.0"
+    auto s = "Toka 1.0":str
     println("Original str: {}", s)
 
     // 2. Downgrade to raw bytes with 0-cost

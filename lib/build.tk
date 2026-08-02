@@ -968,7 +968,7 @@ fn run_build_impl(
 
         auto has_plan# = false
         auto manifest_path# = string::from(".toka/build/manifest.json")
-        auto idx_arg#: i32 = 0
+        auto idx_arg# = 0:i32
         loop idx_arg < env::args_count() {
             auto arg = env::get_arg(idx_arg)
             if arg == "--plan" {

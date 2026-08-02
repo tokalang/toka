@@ -61,7 +61,6 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"dyn", TokenType::KwDyn},
     {"move", TokenType::KwMove},
     {"where", TokenType::KwWhere},
-    {"default", TokenType::KwDefault},
     {"del", TokenType::KwDelete},
     {"final", TokenType::KwFinal},
     {"Fn", TokenType::KwFnType},
@@ -70,19 +69,12 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"nul", TokenType::KwNul},
     {"else", TokenType::KwElse},
     {"match", TokenType::KwMatch},
-    {"case", TokenType::KwCase},
     {"for", TokenType::KwFor},
     {"while", TokenType::KwWhile},
     {"loop", TokenType::KwLoop},
     {"pass", TokenType::KwPass},
     {"to", TokenType::KwTo},
     {"or", TokenType::KwOr},
-    {"band", TokenType::KwBand},
-    {"bor", TokenType::KwBor},
-    {"bxor", TokenType::KwBxor},
-    {"bnot", TokenType::KwBnot},
-    {"bshl", TokenType::KwBshl},
-    {"bshr", TokenType::KwBshr},
     {"break", TokenType::KwBreak},
     {"continue", TokenType::KwContinue},
     {"return", TokenType::KwReturn},
@@ -114,7 +106,7 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"unsafe", TokenType::KwUnsafe},
     {"alloc", TokenType::KwAlloc},
     {"free", TokenType::KwFree},
-    {"unset", TokenType::KwUnset},
+    {"uninit", TokenType::KwUninit},
     {"todo", TokenType::KwTodo},
     {"variant", TokenType::KwVariant},
     {"union", TokenType::KwUnion},
@@ -313,6 +305,11 @@ Token Lexer::punctuation() {
   // Check for caret special handling
   if (c == '^') {
     Token t{TokenType::Caret, "^", line, col};
+    bool spaceBefore = (m_Current - 2 >= m_Source) &&
+                       std::isspace(static_cast<unsigned char>(m_Current[-2]));
+    bool spaceAfter =
+        std::isspace(static_cast<unsigned char>(m_Current[0]));
+    t.HasSpacesAround = spaceBefore && spaceAfter;
     // Check attributes for Pointer
     if (match('#')) {
       t.IsSwappablePtr = true;
@@ -350,6 +347,11 @@ Token Lexer::punctuation() {
     }
     {
       Token t{TokenType::Ampersand, "&", line, col};
+      bool spaceBefore = (m_Current - 2 >= m_Source) &&
+                         std::isspace(static_cast<unsigned char>(m_Current[-2]));
+      bool spaceAfter =
+          std::isspace(static_cast<unsigned char>(m_Current[0]));
+      t.HasSpacesAround = spaceBefore && spaceAfter;
       if (match('#')) {
         t.IsSwappablePtr = true;
         t.Text += "#";
@@ -377,7 +379,15 @@ Token Lexer::punctuation() {
       advance();
       return Token{TokenType::Or, "||", line, col};
     }
-    return Token{TokenType::Pipe, "|", line, col};
+    {
+      bool spaceBefore = (m_Current - 2 >= m_Source) &&
+                         std::isspace(static_cast<unsigned char>(m_Current[-2]));
+      bool spaceAfter =
+          std::isspace(static_cast<unsigned char>(m_Current[0]));
+      Token t{TokenType::Pipe, "|", line, col};
+      t.HasSpacesAround = spaceBefore && spaceAfter;
+      return t;
+    }
   case '+':
     if (peek() == '=') {
       advance();
@@ -461,7 +471,9 @@ Token Lexer::punctuation() {
       bool spaceAfter = std::isspace(m_Current[1]);
       if (spaceBefore && spaceAfter) {
         advance();
-        return Token{TokenType::LessLess, "<<", line, col};
+        Token t{TokenType::LessLess, "<<", line, col};
+        t.HasSpacesAround = true;
+        return t;
       }
     }
     if (peek() == '-') {
@@ -485,7 +497,9 @@ Token Lexer::punctuation() {
       bool spaceAfter = std::isspace(m_Current[1]);
       if (spaceBefore && spaceAfter) {
         advance();
-        return Token{TokenType::GreaterGreater, ">>", line, col};
+        Token t{TokenType::GreaterGreater, ">>", line, col};
+        t.HasSpacesAround = true;
+        return t;
       }
     }
     if (peek() == '=') {

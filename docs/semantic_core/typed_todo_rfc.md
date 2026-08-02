@@ -40,8 +40,8 @@ TodoExpr    ::= "todo"
 first parse as `VariableExpr("todo")`. Parentheses are transparent:
 
 ```toka
-auto answer: i32 = todo
-auto same: i32 = (todo)
+auto answer = todo:i32
+auto same = (todo):i32
 ```
 
 The keyword is reserved in every user identifier namespace. A repository audit
@@ -83,7 +83,7 @@ provenance/dependencies.
 The todo may consume such a requirement in these v1 contexts:
 
 ```toka
-auto value: i32 = todo       // declared target contract
+auto value = todo:i32        // ascribed initializer contract
 value = todo                 // existing LHS contract
 return todo                  // declared return contract
 send(todo)                   // only after callee and parameter are unique

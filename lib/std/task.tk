@@ -231,9 +231,9 @@ auto g_task_queue# = Vec<TaskPtr>(*buf=null, len=0, cap=0)
 auto g_timer_queue# = TimerHeap(data=Vec<TimerEntry>(*buf=null, len=0, cap=0))
 auto g_detached_tasks# = Vec<TaskPtr>(*buf=null, len=0, cap=0)
 
-auto g_mutex_ptr#: Addr = 0:Addr
-auto g_mutex_init#: bool = false
-auto g_reactor_fd#: i32 = -1
+auto g_mutex_ptr# = 0:Addr
+auto g_mutex_init# = false:bool
+auto g_reactor_fd# = -1:i32
 
 pub fn get_reactor_fd() -> i32 {
     if g_reactor_fd == -1 {

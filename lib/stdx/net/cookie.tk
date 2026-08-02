@@ -33,7 +33,7 @@ fn is_token_byte(byte: u8) -> bool {
 
 fn lower_ascii(input: str) -> string {
     auto output# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte# = input.byte_at(index) as u8
         if byte >= 'A' as u8 && byte <= 'Z' as u8 {
@@ -46,7 +46,7 @@ fn lower_ascii(input: str) -> string {
 }
 
 fn trim_ows(input: str) -> string {
-    auto start#: usize = 0:usize
+    auto start# = 0:usize
     auto end# = input.len()
     loop start < end && (input.byte_at(start) as u8 == ' ' as u8 || input.byte_at(start) as u8 == 9:u8) {
         start = start + 1:usize
@@ -64,7 +64,7 @@ fn trim_ows(input: str) -> string {
 }
 
 fn is_cookie_value(input: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
         if byte <= 32:u8 || byte == 127:u8 || byte == ';' as u8 || byte == ',' as u8 || byte == '\\' as u8 || byte == '"' as u8 {
@@ -77,8 +77,8 @@ fn is_cookie_value(input: str) -> bool {
 
 fn parse_max_age(input: str) -> Result<i64, string> {
     if input.len() == 0:usize { return Result<i64, string>::Err(string::from("Cookie Max-Age is empty")) }
-    auto value#: i64 = 0:i64
-    auto index#: usize = 0:usize
+    auto value# = 0:i64
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
         if byte < '0' as u8 || byte > '9' as u8 {
@@ -129,7 +129,7 @@ fn append_same_site(output#: string, value: Option<SameSite>) {
 impl Cookie {
     pub fn new(name: str, value: str) -> Result<Cookie, string> {
         if name.len() == 0:usize { return Result<Cookie, string>::Err(string::from("Cookie name is empty")) }
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < name.len() {
             if !is_token_byte(name.byte_at(index) as u8) {
                 return Result<Cookie, string>::Err(string::from("Cookie name must be a token"))
@@ -168,8 +168,8 @@ impl Cookie {
     }
 
     pub fn parse(input: str) -> Result<Cookie, string> {
-        auto segment_start#: usize = 0:usize
-        auto segment_end#: usize = 0:usize
+        auto segment_start# = 0:usize
+        auto segment_end# = 0:usize
         loop segment_end < input.len() && input.byte_at(segment_end) as u8 != ';' as u8 {
             segment_end = segment_end + 1:usize
         }
@@ -180,7 +180,7 @@ impl Cookie {
         if equals == segment_end { return Result<Cookie, string>::Err(string::from("Set-Cookie is missing name=value")) }
         auto name# = string::from("")
         auto value# = string::from("")
-        auto index#: usize = segment_start
+        auto index# = segment_start:usize
         loop index < equals { name#.push_byte_raw(input.byte_at(index) as u8); index = index + 1:usize }
         index = equals + 1:usize
         loop index < segment_end { value#.push_byte_raw(input.byte_at(index) as u8); index = index + 1:usize }
@@ -204,7 +204,7 @@ impl Cookie {
             loop index < segment_end { raw#.push_byte_raw(input.byte_at(index) as u8); index = index + 1:usize }
             auto attribute = trim_ows(raw.as_str())
             if attribute.len() != 0:usize {
-                auto attribute_equals#: usize = 0:usize
+                auto attribute_equals# = 0:usize
                 loop attribute_equals < attribute.len() && attribute.as_str().byte_at(attribute_equals) as u8 != '=' as u8 {
                     attribute_equals = attribute_equals + 1:usize
                 }

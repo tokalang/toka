@@ -22,7 +22,7 @@ pub fn main() -> i32 {
     }
     
     auto ~thread_m = ~m
-    auto f: fn() -> cede i32 = { [cede thread_m] =>
+    auto f = { [cede thread_m] =>
         sleep_ms(100:u32)
         auto ~local_m = ~thread_m
         auto mut_guard2 = local_m.lock().unwrap()
@@ -30,7 +30,7 @@ pub fn main() -> i32 {
         mut_val2 = mut_val2 + 20
         println("Worker thread changed data to: {}", mut_val2)
         return cede 0
-    }
+    }:fn() -> cede i32
     auto handle# = thread_spawn<i32>(cede f)
     
     auto join_res = handle#.join()

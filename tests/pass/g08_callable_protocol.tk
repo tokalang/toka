@@ -48,16 +48,16 @@ fn main() -> i32 {
     if apply_mut(accumulator, 2) != 22 { return 7 }
 
     auto nested# = Accumulator(value = 30)
-    auto nested_callback#: fn#(i32) -> i32 = { [cede nested] value =>
+    auto nested_callback# = { [cede nested] value =>
         nested#(value)
-    }
+    }:fn#(i32) -> i32
     if nested_callback#(1) != 31 { return 8 }
 
     auto state# = LocalCounter(value = 10)
-    auto mutate#: fn#(i32) -> i32 = { [cede state] value =>
+    auto mutate# = { [cede state] value =>
         state.value = state.value + value
         state.value
-    }
+    }:fn#(i32) -> i32
     if apply_mut(mutate, 5) != 15 { return 2 }
 
     auto values# = Vec<i32>::new()
@@ -65,18 +65,18 @@ fn main() -> i32 {
     values#.push(2)
     values#.push(3)
     auto factor# = LocalCounter(value = 2)
-    auto mapper#: fn#(i32) -> i32 = { [cede factor] value =>
+    auto mapper# = { [cede factor] value =>
         factor.value = factor.value + 1
         value * factor.value
-    }
+    }:fn#(i32) -> i32
     if sum_mapped(values, mapper) != 26 { return 3 }
 
     {
         auto first = Token(id = 7)
         auto second = Token(id = 9)
-        auto take: cede fn() -> cede Token = { [cede first, cede second] =>
+        auto take = { [cede first, cede second] =>
             return cede first
-        }
+        }:cede fn() -> cede Token
         auto result = cede take()
         if result.id != 7 { return 4 }
         if g_drops != 1 { return 5 }

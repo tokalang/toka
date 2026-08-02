@@ -9,15 +9,15 @@ fn main() -> i32 {
     v#.push(100)
     v#.push(200)
 
-    auto sum#: i32 = 0
+    auto sum# = 0:i32
     auto it# = v.iter()
-    auto done#: bool = false
+    auto done# = false:bool
 
     loop !done {
         auto opt = it#.next_ref()
         match opt {
             auto OptRefI32::Some(&ref_val) => {
-                auto val: i32 = ref_val
+                auto val = ref_val:i32
                 sum += val
             }
             auto OptRefI32::None => {

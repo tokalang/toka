@@ -193,8 +193,8 @@ shape CodepointRange(start: Char32, end: Char32, kind: i32)
 
 """ + render_ranges("GCB_RANGES", "GcbRange", gcb) + "\n" + render_ranges("INCB_RANGES", "IncbRange", incb) + "\n" + render_ranges("EXTENDED_PICTOGRAPHIC_RANGES", "CodepointRange", pictographic) + """
 pub fn grapheme_break_property(cp: Char32) -> i32 {
-    auto low#: usize = 0:usize
-    auto high#: usize = GCB_RANGES_COUNT
+    auto low# = 0:usize
+    auto high# = GCB_RANGES_COUNT:usize
     loop low < high {
         auto middle = low + ((high - low) / 2:usize)
         auto range = GCB_RANGES[middle]
@@ -210,8 +210,8 @@ pub fn grapheme_break_property(cp: Char32) -> i32 {
 }
 
 pub fn indic_conjunct_break_property(cp: Char32) -> i32 {
-    auto low#: usize = 0:usize
-    auto high#: usize = INCB_RANGES_COUNT
+    auto low# = 0:usize
+    auto high# = INCB_RANGES_COUNT:usize
     loop low < high {
         auto middle = low + ((high - low) / 2:usize)
         auto range = INCB_RANGES[middle]
@@ -227,8 +227,8 @@ pub fn indic_conjunct_break_property(cp: Char32) -> i32 {
 }
 
 pub fn is_extended_pictographic(cp: Char32) -> bool {
-    auto low#: usize = 0:usize
-    auto high#: usize = EXTENDED_PICTOGRAPHIC_RANGES_COUNT
+    auto low# = 0:usize
+    auto high# = EXTENDED_PICTOGRAPHIC_RANGES_COUNT:usize
     loop low < high {
         auto middle = low + ((high - low) / 2:usize)
         auto range = EXTENDED_PICTOGRAPHIC_RANGES[middle]

@@ -4,7 +4,7 @@ import core/option::{Option}
 alias OptI32 = Option<i32>
 
 fn process_number(opt: Option<i32>) -> i32 {
-    auto result#: i32 = 0
+    auto result# = 0:i32
     match opt {
         auto OptI32::Some(val) if val > 10 => {
             result = val * 2
@@ -20,8 +20,8 @@ fn process_number(opt: Option<i32>) -> i32 {
 }
 
 fn sum_filtered_loop(threshold: i32) -> i32 {
-    auto i#: i32 = 0
-    auto sum#: i32 = 0
+    auto i# = 0:i32
+    auto sum# = 0:i32
     loop i < 10 {
         i += 1
         auto opt = Option<i32>::Some(i)

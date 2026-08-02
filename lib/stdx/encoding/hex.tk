@@ -32,7 +32,7 @@ fn hex_value(value: u8) -> i32 {
 
 pub fn encode(input: bytes) -> string {
     auto encoded# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto value = input.at(index).unwrap() as u8
         encoded#.push_byte_raw(hex_character(value >> 4:u8))
@@ -49,7 +49,7 @@ pub fn encode_vec(cede input: Vec<u8>) -> string {
 
 pub fn encode_fixed16(data: [u8; 16]) -> string {
     auto values# = Vec<u8>::with_capacity(16:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 16:usize {
         values#.push(data[index])
         index = index + 1:usize
@@ -59,7 +59,7 @@ pub fn encode_fixed16(data: [u8; 16]) -> string {
 
 pub fn encode_fixed20(data: [u8; 20]) -> string {
     auto values# = Vec<u8>::with_capacity(20:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 20:usize {
         values#.push(data[index])
         index = index + 1:usize
@@ -69,7 +69,7 @@ pub fn encode_fixed20(data: [u8; 20]) -> string {
 
 pub fn encode_fixed32(data: [u8; 32]) -> string {
     auto values# = Vec<u8>::with_capacity(32:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 32:usize {
         values#.push(data[index])
         index = index + 1:usize
@@ -83,7 +83,7 @@ pub fn decode(input: str) -> Result<Vec<u8>, DecodeError> {
             decode_error(input.len(), "hex input must contain an even number of bytes"))
     }
     auto decoded# = Vec<u8>::with_capacity(input.len() / 2:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto high = hex_value(input.byte_at(index) as u8)
         if high < 0:i32 {

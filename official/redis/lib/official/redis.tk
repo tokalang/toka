@@ -153,7 +153,7 @@ fn pool_error(message: str) -> RedisError {
 }
 
 fn append_text(out#: Vec<u8>, input: str) {
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < input.len() {
         out#.push(input.byte_at(index) as u8)
         index = index + 1:usize
@@ -182,7 +182,7 @@ fn append_text_bulk(out#: Vec<u8>, value: str) {
 fn append_binary_bulk(out#: Vec<u8>, value: Bytes) {
     append_bulk_header(out, value.len())
     auto view = value.as_slice()
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < view.len() {
         out#.push(view.at(index).unwrap() as u8)
         index = index + 1:usize
@@ -219,7 +219,7 @@ fn parse_i64(buffer: Vec<u8>, start: usize, end: usize) -> Result<i64, RedisErro
         }
     }
 
-    auto magnitude#: i64 = 0:i64
+    auto magnitude# = 0:i64
     loop cursor < end {
         auto byte = buffer.get(cursor)
         if byte < '0' as u8 || byte > '9' as u8 {
@@ -262,7 +262,7 @@ fn bytes_from_range(buffer: Vec<u8>, start: usize, end: usize) -> Bytes {
 }
 
 fn append_bytes(target#: Vec<u8>, source: Vec<u8>) {
-    auto cursor#: usize = 0:usize
+    auto cursor# = 0:usize
     loop cursor < source.len() {
         target#.push(source.get(cursor))
         cursor = cursor + 1:usize
@@ -271,7 +271,7 @@ fn append_bytes(target#: Vec<u8>, source: Vec<u8>) {
 
 fn suffix_from(input: Vec<u8>, start: usize) -> Vec<u8> {
     auto remaining# = Vec<u8>::with_capacity(input.len() - start)
-    auto index#: usize = start
+    auto index# = start:usize
     loop index < input.len() {
         remaining#.push(input.get(index))
         index = index + 1:usize
@@ -363,7 +363,7 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
 
     auto values# = Vec<RedisValue>::with_capacity(count as usize)
     auto cursor# = after_line
-    auto index#: usize = 0
+    auto index# = 0:usize
     loop index < count as usize {
         auto nested = decode_at(buffer, cursor, depth + 1:usize)
         if nested.is_err() { return Result<RedisDecode, RedisError>::Err(nested.unwrap_err()) }
@@ -398,7 +398,7 @@ impl RedisCommand@Encap {
 
     pub fn clone(self) -> RedisCommand {
         auto copied# = Vec<RedisArgument>::with_capacity(self.args.len())
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.args.len() {
             copied#.push(cede self.args.get(index).clone())
             index = index + 1:usize
@@ -426,7 +426,7 @@ impl RedisValue@Encap {
             auto RedisValue::Bulk(&value) => return RedisValue::Bulk(value.clone())
             auto RedisValue::Array(&values) => {
                 auto copied# = Vec<RedisValue>::with_capacity(values.len())
-                auto index#: usize = 0
+                auto index# = 0:usize
                 loop index < values.len() {
                     copied#.push(cede values.get(index).clone())
                     index = index + 1:usize
@@ -514,7 +514,7 @@ impl RedisCommand {
         wire#.push('\n' as u8)
         append_text_bulk(wire, self.name.as_str())
 
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < self.args.len() {
             auto argument = self.args.get(index).clone()
             match argument {
@@ -713,7 +713,7 @@ impl RedisClient {
         }
         auto expected = pipeline.commands.len()
         auto wire# = Vec<u8>::new()
-        auto command_index#: usize = 0:usize
+        auto command_index# = 0:usize
         loop command_index < expected {
             auto command = pipeline.commands.get(command_index).clone()
             auto encoded = command.into_wire()
@@ -727,7 +727,7 @@ impl RedisClient {
             return Result<Vec<RedisValue>, RedisError>::Err(written.unwrap_err())
         }
         auto replies# = Vec<RedisValue>::with_capacity(expected)
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < expected {
             auto reply = self#.read_reply_async().await
             if reply.is_err() {
@@ -909,8 +909,8 @@ impl RedisPool {
     pub fn try_acquire_async(self#) -> async Result<RedisLease, RedisError>
     effects: return <- self.state {
         auto address# = Option<SocketAddrV4>::None
-        auto connect_timeout_ms#: i32 = 0:i32
-        auto tls_mode#: i32 = 0:i32
+        auto connect_timeout_ms# = 0:i32
+        auto tls_mode# = 0:i32
         auto server_name# = string::from("")
         auto ca_file# = string::from("")
         {
@@ -975,7 +975,7 @@ impl RedisPool {
         if timeout_ms <= 0:i32 {
             return Result<RedisLease, RedisError>::Err(pool_error("Redis pool acquire timeout must be positive"))
         }
-        auto waited#: i32 = 0:i32
+        auto waited# = 0:i32
         loop waited < timeout_ms {
             auto acquired# = self#.try_acquire_async().await
             if acquired.is_ok() { return cede acquired }

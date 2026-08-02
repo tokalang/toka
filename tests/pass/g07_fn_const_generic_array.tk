@@ -10,7 +10,7 @@ fn make_array<N_: usize>() -> [i32; N_] {
 fn sum_array<N_: usize>(arr: [i32; N_]) -> i32 {
     auto sum# = 0
     // Manual loop without iterator to ensure base functionality
-    auto i#: usize = 0
+    auto i# = 0:usize
     loop {
         if i == N_ { break }
         sum = sum + arr[i]

@@ -101,7 +101,7 @@ impl SplitIterator {
              
              auto start = self.current_pos
              auto found# = false
-             auto i#: usize = start
+             auto i# = start:usize
              
              loop i < self.source_len {
                  if self.source[i] == self.delimiter {
@@ -389,17 +389,17 @@ impl string {
         if cp < 0x80 {
             self#.push_byte_raw(cp as u8)
         } else if cp < 0x800 {
-            self#.push_byte_raw(((cp bshr 6) bor 0xC0) as u8)
-            self#.push_byte_raw(((cp band 0x3F) bor 0x80) as u8)
+            self#.push_byte_raw(((cp >> 6) | 0xC0) as u8)
+            self#.push_byte_raw(((cp & 0x3F) | 0x80) as u8)
         } else if cp < 0x10000 {
-            self#.push_byte_raw(((cp bshr 12) bor 0xE0) as u8)
-            self#.push_byte_raw((((cp bshr 6) band 0x3F) bor 0x80) as u8)
-            self#.push_byte_raw(((cp band 0x3F) bor 0x80) as u8)
+            self#.push_byte_raw(((cp >> 12) | 0xE0) as u8)
+            self#.push_byte_raw((((cp >> 6) & 0x3F) | 0x80) as u8)
+            self#.push_byte_raw(((cp & 0x3F) | 0x80) as u8)
         } else {
-            self#.push_byte_raw(((cp bshr 18) bor 0xF0) as u8)
-            self#.push_byte_raw((((cp bshr 12) band 0x3F) bor 0x80) as u8)
-            self#.push_byte_raw((((cp bshr 6) band 0x3F) bor 0x80) as u8)
-            self#.push_byte_raw(((cp band 0x3F) bor 0x80) as u8)
+            self#.push_byte_raw(((cp >> 18) | 0xF0) as u8)
+            self#.push_byte_raw((((cp >> 12) & 0x3F) | 0x80) as u8)
+            self#.push_byte_raw((((cp >> 6) & 0x3F) | 0x80) as u8)
+            self#.push_byte_raw(((cp & 0x3F) | 0x80) as u8)
         }
     }
 
@@ -423,7 +423,7 @@ impl string {
                 return Option<Char32>::Some(b0 as Char32)
             }
             auto scan_pos# = last_byte_pos
-            loop scan_pos > 0 && ((b[scan_pos] as u8) band 0xC0:u8) == 0x80:u8 {
+            loop scan_pos > 0 && ((b[scan_pos] as u8) & 0xC0:u8) == 0x80:u8 {
                 scan_pos = scan_pos - 1
             }
             auto cp_len = l - scan_pos
@@ -431,7 +431,7 @@ impl string {
             if copy_len > 4 {
                 copy_len = 4
             }
-            auto stack_buf#: [u8; 4] = [0:u8; 4]
+            auto stack_buf# = [0:u8; 4]:[u8; 4]
             auto i# = 0:usize
             loop i < copy_len {
                 stack_buf#[i] = b[scan_pos + i] as u8
@@ -531,7 +531,7 @@ impl string {
     pub fn to_upper(self) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
         unsafe {
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *b# = (res.c_str() as usize) as *[char]#
             loop i < res.len {
                 auto c = b[i]
@@ -547,7 +547,7 @@ impl string {
     pub fn to_lower(self) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
         unsafe {
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *b# = (res.c_str() as usize) as *[char]#
             loop i < res.len {
                 auto c = b[i]
@@ -566,7 +566,7 @@ impl string {
 
     pub fn to_ascii_lowercase_in_place(self#) {
         unsafe {
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *b# = (self.c_str() as usize) as *[char]#
             loop i < self.len {
                 auto c = b[i]
@@ -585,7 +585,7 @@ impl string {
     pub fn replace(self, old_c: char, new_c: char) -> string {
         auto res# = string::from_with_len(self.c_str(), self.len)
         unsafe {
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *b# = (res.c_str() as usize) as *[char]#
             loop i < res.len {
                 if b[i] == old_c {
@@ -613,7 +613,7 @@ impl string {
         
         auto res# = string::from("")
         unsafe {
-             auto i#: usize = 0
+             auto i# = 0:usize
              auto *s_buf = self.*buf
              auto *old_buf = old_s.raw_ptr() as *[char]
              
@@ -622,7 +622,7 @@ impl string {
                   if i + old_len > self.len {
                       is_match = false
                   } else {
-                      auto j#: usize = 0
+                      auto j# = 0:usize
                       loop j < old_len {
                           auto idx = i + j
                           if s_buf[idx] != old_buf[j] {
@@ -660,7 +660,7 @@ impl string {
         if self.len <= 1 { return self.clone() }
         unsafe {
             auto res# = string::from_with_len(self.c_str(), self.len)
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *dest# = (res.c_str() as usize) as *[char]#
             auto *src = self.*buf
             loop i < self.len {
@@ -675,12 +675,12 @@ impl string {
 impl string@Hash {
     pub fn hash(self) -> u64 {
         unsafe {
-            auto hash#: u64 = 5381
-            auto i#: usize = 0
+            auto hash# = 5381:u64
+            auto i# = 0:usize
             auto *b = self.*buf
             loop i < self.len {
                 auto c = b[i] as u64
-                hash = ((hash bshl 5) + hash) + c
+                hash = ((hash << 5) + hash) + c
                 i = i + 1
             }
             return hash
@@ -697,7 +697,7 @@ impl string@PartialEq {
 impl string@PartialOrd {
     pub fn cmp(self, other: string) -> i32 {
         unsafe {
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto *b1 = self.c_str()
             auto *b2 = other.c_str()
             loop i < self.len && i < other.len {

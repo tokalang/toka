@@ -4,7 +4,7 @@ fn main() -> i32 {
         0..=10 => {
             return 1
         }
-        default => {
+        _ => {
             return 0
         }
     }

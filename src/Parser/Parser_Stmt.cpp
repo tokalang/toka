@@ -22,6 +22,7 @@ namespace toka {
 
 std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   bool isConst = match(TokenType::KwConst);
+  bool isAutoBinding = !isConst;
   if (!isConst) {
     if (match(TokenType::KwLet)) {
       error(previous(), DiagID::ERR_PARSER_DEPRECATED_KEYWORD_LET_USE_AUTO_FOR_VAR);
@@ -224,6 +225,9 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   std::string typeName = "";
   TypeSyntaxPtr typeSyntax;
   if (match(TokenType::Colon)) {
+    if (isAutoBinding)
+      error(previous(), DiagID::ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION,
+            fullVarName);
     typeSyntax = parseRequiredTypeSyntax();
     typeName = canonicalType(typeSyntax);
     if (!typeName.empty() && typeName[0] == '\'') {
@@ -236,6 +240,12 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   if (match(TokenType::Equal)) {
     init = parseExpr();
   }
+  // Prefer the enclosing syntax error when a malformed token still follows
+  // the binding name (for example `auto max-size = 1`).  The dedicated
+  // missing-initializer diagnostic applies only to a completed declaration.
+  if (isAutoBinding && !init && isEndOfStatement())
+    error(name, DiagID::ERR_PARSER_AUTO_BINDING_REQUIRES_INITIALIZER,
+          fullVarName);
 
   // Use fullVarName uniformly (e.g. `&x` directly as name)
   auto node = std::make_unique<VariableDecl>(fullVarName, std::move(init));

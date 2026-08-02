@@ -8,7 +8,7 @@ impl Token {
 }
 
 fn main() -> i32 {
-    auto ^source#: Token? = new Token(id = 7)
+    auto ^source# = new Token(id = 7):^Token?
     auto result# = 0
     guard source {
         result = Token::consume(cede source)

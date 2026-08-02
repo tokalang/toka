@@ -762,7 +762,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (dynamic_cast<const NoneExpr *>(expr)) {
         m_OS << "none";
     } else if (dynamic_cast<const UnsetExpr *>(expr)) {
-        m_OS << "unset";
+        m_OS << "uninit";
     } else if (auto sz = dynamic_cast<const SizeOfExpr *>(expr)) {
         m_OS << "sizeof(" << exportTypeSyntax(sz->TypeSyntax, sz->TypeStr)
              << ")";
@@ -798,7 +798,6 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             case TokenType::Plus: opStr = "+"; break;
             case TokenType::Minus: opStr = "-"; break;
             case TokenType::Bang: opStr = "!"; break;
-            case TokenType::KwBnot: opStr = "bnot "; break;
             default: break;
         }
         m_OS << opStr;
@@ -829,8 +828,13 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << ".start";
     } else if (auto cast = dynamic_cast<const CastExpr *>(expr)) {
         exportExpr(cast->Expression.get());
-        m_OS << " as "
-             << exportTypeSyntax(cast->TargetTypeSyntax, cast->TargetType);
+        if (cast->Kind == CastKind::Ascription) {
+            m_OS << ":"
+                 << exportTypeSyntax(cast->TargetTypeSyntax, cast->TargetType);
+        } else if (cast->Kind == CastKind::Conversion) {
+            m_OS << " as "
+                 << exportTypeSyntax(cast->TargetTypeSyntax, cast->TargetType);
+        }
     } else if (auto addr = dynamic_cast<const AddressOfExpr *>(expr)) {
         m_OS << "&";
         exportExpr(addr->Expression.get());

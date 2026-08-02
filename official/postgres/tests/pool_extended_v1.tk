@@ -17,7 +17,7 @@ fn append_u32(out#: Vec<u8>, value: u32) {
 }
 
 fn append_text(out#: Vec<u8>, value: str) {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         out#.push(value.byte_at(index) as u8)
         index += 1
@@ -33,7 +33,7 @@ fn append_frame(out#: Vec<u8>, tag: u8, cede body: Vec<u8>) {
     auto body# = cede body
     out#.push(tag)
     append_u32(out, (body.len() + 4:usize) as u32)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < body.len() {
         out#.push(body.get(index))
         index += 1
@@ -103,7 +103,7 @@ fn write_async(stream#: TcpStream, cede bytes: Vec<u8>) -> async bool {
 }
 
 fn has_tag(packet: Vec<u8>, tag: u8) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < packet.len() {
         if packet.get(index) == tag { return true }
         index += 1
@@ -130,7 +130,7 @@ fn server_async(cede listener: TcpListener) -> async i32 {
     if !write_async(stream, cede hello).await { stream#.close(); return 3 }
 
     // Lease parameterized query, then transaction parameterized query.
-    auto step#: i32 = 0:i32
+    auto step# = 0:i32
     loop step < 2:i32 {
         if !expect_async(stream, 'P' as u8).await { stream#.close(); return 4 + step * 4:i32 }
         auto prepared# = Vec<u8>::new()

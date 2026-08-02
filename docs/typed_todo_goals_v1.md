@@ -26,7 +26,7 @@ For example:
 
 ```toka
 fn main() -> i32 {
-    auto answer: i32 = todo
+    auto answer = todo:i32
     return answer
 }
 ```

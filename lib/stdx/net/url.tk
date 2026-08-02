@@ -30,7 +30,7 @@ fn from_hex_char(c: char) -> i32 {
 
 fn lower_ascii(input: str) -> string {
     auto output# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte# = input.byte_at(index) as u8
         if byte >= 'A' as u8 && byte <= 'Z' as u8 {
@@ -48,7 +48,7 @@ fn is_scheme(input: str) -> bool {
     if !((first >= 'a' as u8 && first <= 'z' as u8) || (first >= 'A' as u8 && first <= 'Z' as u8)) {
         return false
     }
-    auto index#: usize = 1:usize
+    auto index# = 1:usize
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
         if !((byte >= 'a' as u8 && byte <= 'z' as u8) ||
@@ -64,8 +64,8 @@ fn is_scheme(input: str) -> bool {
 
 fn parse_port(input: str) -> Result<u16, string> {
     if input.len() == 0:usize { return Result<u16, string>::Err(string::from("URL port is empty")) }
-    auto value#: i32 = 0:i32
-    auto index#: usize = 0:usize
+    auto value# = 0:i32
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
         if byte < '0' as u8 || byte > '9' as u8 {
@@ -83,7 +83,7 @@ fn parse_port(input: str) -> Result<u16, string> {
 
 fn is_valid_host(input: str, allow_colon: bool) -> bool {
     if input.len() == 0:usize { return false }
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
         if byte <= 32:u8 || byte == 127:u8 || byte == '/' as u8 || byte == '?' as u8 ||
@@ -98,7 +98,7 @@ fn is_valid_host(input: str, allow_colon: bool) -> bool {
 
 pub fn url_encode(input: string) -> string {
     auto res# = string::from("")
-    auto i#: usize = 0
+    auto i# = 0:usize
     auto len = input.len()
     
     loop i < len {
@@ -109,8 +109,8 @@ pub fn url_encode(input: string) -> string {
             res#.push_char(b as char)
         } else {
             res#.push_char('%')
-            res#.push_char(to_hex_char(b bshr 4))
-            res#.push_char(to_hex_char(b band 0x0F))
+            res#.push_char(to_hex_char(b >> 4))
+            res#.push_char(to_hex_char(b & 0x0F))
         }
         i = i + 1
     }
@@ -121,7 +121,7 @@ pub fn url_encode(input: string) -> string {
 // Helper for decoding
 fn decode_internal(input: string, plus_as_space: bool) -> Result<string, string> {
     auto res# = string::from("")
-    auto i#: usize = 0
+    auto i# = 0:usize
     auto len = input.len()
     
     loop i < len {
@@ -142,7 +142,7 @@ fn decode_internal(input: string, plus_as_space: bool) -> Result<string, string>
             if h1 < 0 || h2 < 0 {
                 return Result<string, string>::Err(string::from("invalid percent encoding: invalid hex characters"))
             }
-            auto b = ((h1 bshl 4) bor h2) as u8
+            auto b = ((h1 << 4) | h2) as u8
             res#.push_char(b as char)
             i = i + 3
             continue
@@ -266,7 +266,7 @@ pub fn parse_url(input: string) -> Result<Url, string> {
 
     // Brackets disambiguate IPv6 literals from the host:port separator.
     if host_port.as_str().byte_at(0:usize) as u8 == '[' as u8 {
-        auto close#: usize = 1:usize
+        auto close# = 1:usize
         loop close < host_port.len() && host_port.as_str().byte_at(close) as u8 != ']' as u8 {
             close = close + 1:usize
         }
@@ -288,9 +288,9 @@ pub fn parse_url(input: string) -> Result<Url, string> {
             url.port = parsed_port.unwrap()
         }
     } else {
-        auto colon#: usize = 0:usize
-        auto colon_count#: usize = 0:usize
-        auto index#: usize = 0:usize
+        auto colon# = 0:usize
+        auto colon_count# = 0:usize
+        auto index# = 0:usize
         loop index < host_port.len() {
             if host_port.as_str().byte_at(index) as u8 == ':' as u8 {
                 colon = index

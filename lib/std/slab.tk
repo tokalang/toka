@@ -9,16 +9,16 @@ pub shape SlabID (
 
 impl SlabID {
     pub fn new(index: usize, generation: usize) -> SlabID {
-        auto raw_val = (index as u64) bor ((generation as u64) bshl 32:u64)
+        auto raw_val = (index as u64) | ((generation as u64) << 32:u64)
         return SlabID(raw = raw_val)
     }
 
     pub fn index(self) -> usize {
-        return (self.raw band 0xFFFFFFFF:u64) as usize
+        return (self.raw & 0xFFFFFFFF:u64) as usize
     }
 
     pub fn generation(self) -> usize {
-        return (self.raw bshr 32:u64) as usize
+        return (self.raw >> 32:u64) as usize
     }
 }
 
@@ -80,7 +80,7 @@ impl<'T> Slab<'T> {
             return
         }
 
-        auto index#: usize = 0
+        auto index# = 0:usize
         auto next_free# = 0xFFFFFFFF:usize
         loop index < entry_count {
             unsafe {

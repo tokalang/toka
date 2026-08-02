@@ -10,7 +10,7 @@ auto g_cancellation_client_continued# = 0:i32
 
 fn wire_bytes(input: str) -> Vec<u8> {
     auto output# = Vec<u8>::with_capacity(input.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         output#.push(input.byte_at(index) as u8)
         index = index + 1:usize
@@ -326,7 +326,7 @@ pub fn main_async() -> async i32 {
     if sixth_port == 0:u16 { return 22 }
     auto cancellation_server_task = cancellation_server_async(cede sixth_listener).start
     auto cancellation_client_task = cancellation_client_async(sixth_port).start
-    auto waited#: i32 = 0:i32
+    auto waited# = 0:i32
     loop g_cancellation_server_received == 0:i32 && waited < 100:i32 {
         sleep_async(1:i64).await
         waited += 1:i32

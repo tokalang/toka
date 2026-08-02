@@ -63,7 +63,7 @@ impl<'T> RawStore<'T> {
             auto next_cap# = self.cap * 2:usize
             if next_cap == 0:usize { next_cap = 2:usize }
             auto *next# = unsafe alloc [next_cap] T
-            auto index#: usize = 0:usize
+            auto index# = 0:usize
             loop index < self.len {
                 next[index] = cede self.buf[index]
                 index += 1:usize

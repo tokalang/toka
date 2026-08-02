@@ -464,8 +464,8 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   // 3. Resolve RHS Value
   llvm::Value *rhsVal = nullptr;
 
-  // [Fix] Handle UnsetExpr (x = unset)
-  // Generating code for 'unset' directly returns nullptr/error in genExpr.
+  // [Fix] Handle UnsetExpr (x = uninit)
+  // Generating code for 'uninit' directly returns nullptr/error in genExpr.
   // We must handle it here to produce an UndefValue.
   if (dynamic_cast<const UnsetExpr *>(rhsExpr)) {
     // Generate Undef for LHS Type
@@ -508,7 +508,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
         rhsVal = llvm::UndefValue::get(destTy);
       }
     } else {
-      // Cannot infer type for unset assignment. CodeGen error?
+      // Cannot infer type for an uninitialized assignment. CodeGen error?
       // Sema should have caught this or we rely on explicit typing.
       return nullptr;
     }
@@ -1412,15 +1412,15 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
     // Should have been handled above
     return nullptr;
   }
-  if (bin->Op == "band" || bin->Op == "&")
+  if (bin->Op == "&")
     return m_Builder.CreateAnd(lhs, rhs, "andtmp");
-  if (bin->Op == "bor" || bin->Op == "|")
+  if (bin->Op == "|")
     return m_Builder.CreateOr(lhs, rhs, "ortmp");
-  if (bin->Op == "bxor" || bin->Op == "^")
+  if (bin->Op == "^")
     return m_Builder.CreateXor(lhs, rhs, "xortmp");
-  if (bin->Op == "bshl" || bin->Op == "<<")
+  if (bin->Op == "<<")
     return m_Builder.CreateShl(lhs, rhs, "shltmp");
-  if (bin->Op == "bshr" || bin->Op == ">>") {
+  if (bin->Op == ">>") {
     // Check signedness of LHS
     if (lhs->getType()->isIntegerTy()) {
       // If type implies signedness (in Toka Types, not LLVM types which are
@@ -1481,7 +1481,8 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     return newVal;
   }
 
-  if (unary->Op == TokenType::KwBnot || (unary->Op == TokenType::Tilde && unary->RHS->ResolvedType && unary->RHS->ResolvedType->isInteger())) {
+  if (unary->Op == TokenType::Tilde && unary->RHS->ResolvedType &&
+      unary->RHS->ResolvedType->isInteger()) {
     PhysEntity rhs_ent = genExpr(unary->RHS.get()).load(m_Builder);
     llvm::Value *rhs = rhs_ent.load(m_Builder);
     if (!rhs)
@@ -1689,6 +1690,9 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
 PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
   if (!cast->Expression)
     return nullptr;
+
+  if (cast->Kind != CastKind::Conversion)
+    return genExpr(cast->Expression.get());
 
   bool targetIsOAddr = (cast->TargetType == "OAddr");
   const UnaryExpr *UE = dynamic_cast<const UnaryExpr *>(cast->Expression.get());
@@ -2035,6 +2039,11 @@ PhysEntity CodeGen::genLiteralExpr(const Expr *expr) {
                                   num->Value);
   }
   if (auto *flt = dynamic_cast<const FloatExpr *>(expr)) {
+    if (expr->ResolvedType) {
+      llvm::Type *targetTy = getLLVMType(expr->ResolvedType);
+      if (targetTy && targetTy->isFloatingPointTy())
+        return llvm::ConstantFP::get(targetTy, flt->Value);
+    }
     return llvm::ConstantFP::get(llvm::Type::getDoubleTy(m_Context),
                                  flt->Value);
   }
@@ -2082,6 +2091,11 @@ PhysEntity CodeGen::genLiteralExpr(const Expr *expr) {
     return PhysEntity(fatVal, "str", fatVal->getType(), false);
   }
   if (auto *chr = dynamic_cast<const CharLiteralExpr *>(expr)) {
+    if (expr->ResolvedType) {
+      llvm::Type *targetTy = getLLVMType(expr->ResolvedType);
+      if (targetTy && targetTy->isIntegerTy())
+        return llvm::ConstantInt::get(targetTy, chr->Value);
+    }
     return llvm::ConstantInt::get(llvm::Type::getInt8Ty(m_Context), chr->Value);
   }
   return nullptr;

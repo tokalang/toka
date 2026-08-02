@@ -114,7 +114,7 @@ fn empty_class(negated: bool) -> ByteClass {
 
 fn add_class_byte(class#: ByteClass, byte: u8) {
     auto shift = (byte as u64) & 63:u64
-    auto bit: u64 = (1:u64) << shift
+    auto bit = (1:u64) << shift:u64
     if byte < 64:u8 { class.bits0 = class.bits0 | bit }
     else if byte < 128:u8 { class.bits1 = class.bits1 | bit }
     else if byte < 192:u8 { class.bits2 = class.bits2 | bit }
@@ -132,7 +132,7 @@ fn add_class_range(class#: ByteClass, first: u8, last: u8) {
 
 fn class_contains(class: ByteClass, byte: u8) -> bool {
     auto shift = (byte as u64) & 63:u64
-    auto bit: u64 = (1:u64) << shift
+    auto bit = (1:u64) << shift:u64
     auto included# = false
     if byte < 64:u8 { included = (class.bits0 & bit) != 0:u64 }
     else if byte < 128:u8 { included = (class.bits1 & bit) != 0:u64 }
@@ -180,7 +180,7 @@ fn merge_patches(cede first: Vec<Patch>, cede second: Vec<Patch>) -> Vec<Patch> 
     auto first_values = cede first
     auto second_values = cede second
     auto merged# = Vec<Patch>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < first_values.len() {
         merged#.push(first_values.get(index))
         index = index + 1:usize
@@ -195,7 +195,7 @@ fn merge_patches(cede first: Vec<Patch>, cede second: Vec<Patch>) -> Vec<Patch> 
 
 fn patch_all(program#: Vec<NfaState>, cede patches: Vec<Patch>, target: i32) {
     auto patch_values = cede patches
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < patch_values.len() {
         auto patch = patch_values.get(index)
         auto state# = program.get(patch.state_id as usize)
@@ -323,7 +323,7 @@ fn parse_class(pattern: str, position: usize) -> Result<ParsedClass, RegexError>
             ))
         }
 
-        auto first#: u8 = 0:u8
+        auto first# = 0:u8
         if pattern.byte_at(cursor) as u8 == '\\' as u8 {
             auto escaped_position = cursor + 1:usize
             if escaped_position >= pattern.len() {
@@ -342,7 +342,7 @@ fn parse_class(pattern: str, position: usize) -> Result<ParsedClass, RegexError>
            cursor + 1:usize < pattern.len() && pattern.byte_at(cursor + 1:usize) as u8 != ']' as u8 {
             auto dash_position = cursor
             cursor = cursor + 1:usize
-            auto last#: u8 = 0:u8
+            auto last# = 0:u8
             if pattern.byte_at(cursor) as u8 == '\\' as u8 {
                 auto escaped_position = cursor + 1:usize
                 if escaped_position >= pattern.len() {
@@ -461,7 +461,7 @@ fn parse_repeat_count(pattern: str, position: usize) -> Result<ParsedRepetition,
         return Result<ParsedRepetition, RegexError>::Err(error(position, "expected decimal repetition count"))
     }
 
-    auto minimum#: usize = 0:usize
+    auto minimum# = 0:usize
     loop cursor < pattern.len() {
         auto digit = decimal_digit(pattern.byte_at(cursor) as u8)
         if digit < 0:i32 { break }
@@ -493,7 +493,7 @@ fn parse_repeat_count(pattern: str, position: usize) -> Result<ParsedRepetition,
         return Result<ParsedRepetition, RegexError>::Err(error(cursor, "expected decimal repetition upper bound"))
     }
 
-    auto maximum#: usize = 0:usize
+    auto maximum# = 0:usize
     loop cursor < pattern.len() {
         auto digit = decimal_digit(pattern.byte_at(cursor) as u8)
         if digit < 0:i32 { break }
@@ -558,7 +558,7 @@ fn parse_concatenation(pattern: str, position: usize, depth: usize, program#: Ve
                 if repetition.is_err() { return Result<ParsedFragment, RegexError>::Err(repetition.unwrap_err()) }
                 auto bounds = repetition.unwrap()
                 auto repeated# = empty_fragment(program)
-                auto produced#: usize = 0:usize
+                auto produced# = 0:usize
 
                 // Reparse each copy so every repetition owns independent NFA
                 // states and unresolved exits. The first atom has already
@@ -580,7 +580,7 @@ fn parse_concatenation(pattern: str, position: usize, depth: usize, program#: Ve
                     repeated = concat_fragments(program, cede repeated, cede starred)
                 } else {
                     auto optional_count = bounds.maximum as usize - bounds.minimum
-                    auto optional_index#: usize = 0:usize
+                    auto optional_index# = 0:usize
                     loop optional_index < optional_count {
                         auto copied = parse_repeat_copy(pattern, cursor, depth, program, classes)
                         if copied.is_err() { return Result<ParsedFragment, RegexError>::Err(copied.unwrap_err()) }
@@ -634,7 +634,7 @@ fn parse_expression(pattern: str, position: usize, depth: usize, program#: Vec<N
 
 fn empty_seen(program: Vec<NfaState>) -> Vec<bool> {
     auto seen# = Vec<bool>::new()
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < program.len() {
         seen#.push(false)
         index = index + 1:usize
@@ -686,7 +686,7 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
                    cede active: Vec<ActiveState>, input: str, cursor: usize,
                    next#: ThreadSet) {
     auto current = cede active
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < current.len() {
         auto thread = current.get(index)
         auto state = program.get(thread.state_id as usize)
@@ -716,7 +716,7 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
 }
 
 fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>) -> Option<Match> {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < active.len() {
         auto candidate = active.get(index)
         if program.get(candidate.state_id as usize).kind == STATE_MATCH {
@@ -789,7 +789,7 @@ impl Regex {
 
     pub fn find_all(self, input: str) -> Vec<Match> {
         auto matches# = Vec<Match>::new()
-        auto cursor#: usize = 0:usize
+        auto cursor# = 0:usize
         loop cursor <= input.len() {
             auto found = self.find_from(input, cursor)
             if found.is_none() { break }

@@ -1,5 +1,5 @@
-error[E0409]: Cannot initialize variable of type '*i32' with value of type 'null'
- --> tests/fail/non_null_nullptr.tk:2:11
+error[E04606]: Type ascription '*i32' is incompatible with expression type 'null'
+ --> tests/fail/non_null_nullptr.tk:2:19
    |
- 2 |     auto *p: i32 = null // EXPECT: error[E0409]:
-   |           ^
+ 2 |     auto *p = null:*i32 // EXPECT: error[E04606]:
+   |                   ^

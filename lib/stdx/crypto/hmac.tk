@@ -9,12 +9,12 @@ import stdx/encoding/hex
 const BLOCK_LEN: usize = 64
 
 fn normalized_key(key: bytes) -> [u8; 64] {
-    auto block#: [u8; 64] = [0:u8; 64]
+    auto block# = [0:u8; 64]:[u8; 64]
     if key.len() > BLOCK_LEN {
         auto hash# = Sha256::new()
         hash#.update_view(key)
         auto digest = hash#.finalize()
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < 32:usize {
             block[index] = digest[index]
             index = index + 1:usize
@@ -22,7 +22,7 @@ fn normalized_key(key: bytes) -> [u8; 64] {
         return block
     }
 
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < key.len() {
         block[index] = key.at(index).unwrap() as u8
         index = index + 1:usize
@@ -32,9 +32,9 @@ fn normalized_key(key: bytes) -> [u8; 64] {
 
 pub fn hmac_sha256(key: bytes, message: bytes) -> [u8; 32] {
     auto key_block = normalized_key(key)
-    auto inner_pad#: [u8; 64] = [0:u8; 64]
-    auto outer_pad#: [u8; 64] = [0:u8; 64]
-    auto index#: usize = 0:usize
+    auto inner_pad# = [0:u8; 64]:[u8; 64]
+    auto outer_pad# = [0:u8; 64]:[u8; 64]
+    auto index# = 0:usize
     loop index < BLOCK_LEN {
         inner_pad[index] = key_block[index] ^ 0x36:u8
         outer_pad[index] = key_block[index] ^ 0x5c:u8

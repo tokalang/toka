@@ -22,10 +22,10 @@ pub fn get_file_info(path: string) -> Option<FileInfo> {
 
 pub fn parse_i64(s: string) -> i64 {
     unsafe {
-        auto val#: i64 = 0
+        auto val# = 0:i64
         auto *b = s.c_str() as *[char]
         if *b == null { return 0:i64 }
-        auto i#: usize = 0
+        auto i# = 0:usize
         auto neg# = false
         if b[0] == 45:char { // '-'
             neg = true
@@ -47,10 +47,10 @@ pub fn parse_i64(s: string) -> i64 {
 
 pub fn parse_u64(s: string) -> u64 {
     unsafe {
-        auto val#: u64 = 0
+        auto val# = 0:u64
         auto *b = s.c_str() as *[char]
         if *b == null { return 0:u64 }
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < s.len() {
             auto c = b[i] as i32
             if c >= 48 && c <= 57 {

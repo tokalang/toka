@@ -1,7 +1,7 @@
 shape Node(val: i32)
 
 fn check_shared_handle() -> i32 {
-    auto nul ~#node#: Node? = null
+    auto nul ~#node# = null:nul ~Node?
     auto outcome# = 0
 
     guard node {
@@ -24,7 +24,7 @@ fn check_shared_handle() -> i32 {
 }
 
 fn check_reference_payload() -> i32 {
-    auto node#: Node? = none
+    auto node# = none:Node?
     {
         auto &view = &node
         guard view {
@@ -46,7 +46,7 @@ fn check_reference_payload() -> i32 {
 }
 
 fn check_value_payload() -> i32 {
-    auto node#: Node? = none
+    auto node# = none:Node?
     guard node {
         return 1
     } else {
@@ -64,7 +64,7 @@ fn check_value_payload() -> i32 {
 
 fn check_raw_payload() -> i32 {
     unsafe {
-        auto nul *#node#: Node? = null
+        auto nul *#node# = null:nul *Node?
         guard node {
             return 1
         } else {
@@ -83,7 +83,7 @@ fn check_raw_payload() -> i32 {
 
 fn main() -> i32 {
     // The outer ^# handle stays live while its nullable payload changes.
-    auto nul ^#node#: Node? = new Node(val = 7)
+    auto nul ^#node# = new Node(val = 7):nul ^Node?
     auto outcome# = 0
 
     node = none
@@ -111,7 +111,7 @@ fn main() -> i32 {
 
     // An empty handle is distinct from an allocated handle with an empty
     // payload.  A handle rebind establishes a fresh present payload.
-    auto nul ^#absent#: Node? = null
+    auto nul ^#absent# = null:nul ^Node?
     guard absent {
         return 3
     } else {

@@ -1,4 +1,4 @@
-error[E0415]: Cannot infer type from 'nullptr'; explicit type annotation required (e.g., 'auto *p: Type = ...')
+error[E0415]: Cannot infer type from 'null'; use an RHS type ascription (e.g., 'auto *p = null:*Type')
  --> tests/fail/nullptr_auto.tk:16:15
     |
  16 |     auto nul ~p = null

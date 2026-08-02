@@ -7,6 +7,6 @@ pub fn make_adder(base: ClosureBase) -> fn(i32) -> i32
 effects:
     return <- base
 {
-    auto adder: fn(i32) -> i32 = { value => base.value + value }
+    auto adder = { value => base.value + value }:fn(i32) -> i32
     return adder
 }

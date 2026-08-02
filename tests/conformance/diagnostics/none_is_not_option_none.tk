@@ -2,6 +2,6 @@
 import core/option::{Option}
 
 fn main() -> i32 {
-    auto value: Option<i32> = none
+    auto value = none:Option<i32>
     return 0
 }

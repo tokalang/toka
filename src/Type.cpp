@@ -774,7 +774,8 @@ bool isPrimitiveTypeName(const std::string &name) {
          name == "u64" || name == "f32" || name == "f64" ||
          name == "bool" || name == "char" || name == "i8" ||
          name == "u8" || name == "i16" || name == "u16" ||
-         name == "usize" || name == "isize" || name == "null" ||
+         name == "usize" || name == "isize" || name == "byte" ||
+         name == "null" ||
          name == "none" || name == "Addr" || name == "OAddr";
 }
 
@@ -1450,7 +1451,8 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   if (s == "i32" || s == "i64" || s == "u32" || s == "u64" || s == "f32" ||
       s == "f64" || s == "bool" || s == "char" || s == "i8" ||
       s == "u8" || s == "i16" || s == "u16" || s == "usize" || s == "isize" ||
-      s == "null" || s == "none" || s == "Addr" || s == "OAddr") {
+      s == "byte" || s == "null" || s == "none" || s == "Addr" ||
+      s == "OAddr") {
     auto prim = std::make_shared<PrimitiveType>(s);
     prim->IsWritable = isWritable;
     prim->IsNullable = isNullable;

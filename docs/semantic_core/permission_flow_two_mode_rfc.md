@@ -141,7 +141,7 @@ The implemented projection form is branch-local and direction-sensitive:
 if record.item is null {
     // record.item remains nullable here
 } else {
-    auto item: Item = cede record.item // same path, proven non-null
+    auto item = cede record.item:Item // same path, proven non-null
 }
 ```
 
@@ -151,7 +151,7 @@ constant index:
 
 ```toka
 guard record.item {
-    auto item: Item = cede record.item
+    auto item = cede record.item:Item
 } else {
     return
 }

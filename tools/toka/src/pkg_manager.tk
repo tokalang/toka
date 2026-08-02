@@ -370,7 +370,7 @@ pub fn cmd_search(query: string) -> i32 {
     
     auto catalog = parsed.unwrap()
     auto found# = 0
-    auto i#: usize = 0
+    auto i# = 0:usize
     
     println("\nSearch Results:")
     println("---------------")

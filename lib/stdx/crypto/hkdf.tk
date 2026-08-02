@@ -11,7 +11,7 @@ const MAX_OUTPUT_LEN: usize = 8160
 
 pub fn extract(salt: bytes, input_key_material: bytes) -> [u8; 32] {
     if salt.len() == 0:usize {
-        auto zero_salt: [u8; 32] = [0:u8; 32]
+        auto zero_salt = [0:u8; 32]:[u8; 32]
         return hmac_sha256(bytes_from_array<32>(zero_salt), input_key_material)
     }
     return hmac_sha256(salt, input_key_material)
@@ -24,18 +24,18 @@ pub fn expand(pseudorandom_key: [u8; 32], info: bytes,
     }
 
     auto output# = Vec<u8>::with_capacity(output_len)
-    auto previous#: [u8; 32] = [0:u8; 32]
-    auto block_index#: u8 = 1:u8
+    auto previous# = [0:u8; 32]:[u8; 32]
+    auto block_index# = 1:u8
     loop output.len() < output_len {
         auto input# = Vec<u8>::new()
         if block_index > 1:u8 {
-            auto previous_index#: usize = 0:usize
+            auto previous_index# = 0:usize
             loop previous_index < HASH_LEN {
                 input#.push(previous[previous_index])
                 previous_index = previous_index + 1:usize
             }
         }
-        auto info_index#: usize = 0:usize
+        auto info_index# = 0:usize
         loop info_index < info.len() {
             input#.push(info.at(info_index).unwrap() as u8)
             info_index = info_index + 1:usize
@@ -45,7 +45,7 @@ pub fn expand(pseudorandom_key: [u8; 32], info: bytes,
         auto input_owner = Bytes::from_vec(cede input)
         previous = hmac_sha256(bytes_from_array<32>(pseudorandom_key), input_owner.as_slice())
 
-        auto digest_index#: usize = 0:usize
+        auto digest_index# = 0:usize
         loop digest_index < HASH_LEN && output.len() < output_len {
             output#.push(previous[digest_index])
             digest_index = digest_index + 1:usize

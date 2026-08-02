@@ -12,14 +12,14 @@ fn test_header_view_accessors() {
     println("[Test] Testing HttpHeaderView Name & Value Owner Accessors...")
     auto raw_header_str = "HTTP/1.1 200 OK\r\nHost: localhost\r\nContent-Type: text/plain\r\n\r\n"
     auto raw_buf# = Vec<u8>::with_capacity(raw_header_str.len())
-    auto idx#: usize = 0
+    auto idx# = 0:usize
     loop idx < raw_header_str.len() {
         raw_buf#.push(raw_header_str.as_bytes().at(idx).unwrap() as u8)
         idx += 1
     }
 
     auto v1 = HttpHeaderView(name_offset=17:usize, name_len=4:usize, value_offset=23:usize, value_len=9:usize)
-    auto rep#: usize = 0
+    auto rep# = 0:usize
     loop rep < 10:usize {
         assert(v1.name(raw_buf#).as_str().equals("Host"), "HeaderView name mismatch")
         assert(v1.value(raw_buf#).as_str().equals("localhost"), "HeaderView value mismatch")
@@ -98,7 +98,7 @@ fn async_http_server(port: u16) -> async i32 {
     auto request_bytes = received#.take_buffer()
     println("[Server] Read {} request bytes", bytes_read)
     auto req_str# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < bytes_read {
         req_str#.push_byte_raw(request_bytes.get(index))
         index = index + 1:usize
@@ -201,7 +201,7 @@ fn async_http_chunked_server(port: u16) -> async i32 {
 
     auto part1_str = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r"
     auto part1_vec# = Vec<u8>::with_capacity(part1_str.len())
-    auto i1#: usize = 0
+    auto i1# = 0:usize
     loop i1 < part1_str.len() {
         part1_vec#.push(part1_str.as_bytes().at(i1).unwrap() as u8)
         i1 += 1
@@ -211,7 +211,7 @@ fn async_http_chunked_server(port: u16) -> async i32 {
 
     auto part2_str = "\nHello\r\n6\r\n World\r\n0\r\nTrailer-Header: Trailer-Val"
     auto part2_vec# = Vec<u8>::with_capacity(part2_str.len())
-    auto i2#: usize = 0
+    auto i2# = 0:usize
     loop i2 < part2_str.len() {
         part2_vec#.push(part2_str.as_bytes().at(i2).unwrap() as u8)
         i2 += 1
@@ -221,7 +221,7 @@ fn async_http_chunked_server(port: u16) -> async i32 {
 
     auto part3_str = "ue\r\n\r\n"
     auto part3_vec# = Vec<u8>::with_capacity(part3_str.len())
-    auto i3#: usize = 0
+    auto i3# = 0:usize
     loop i3 < part3_str.len() {
         part3_vec#.push(part3_str.as_bytes().at(i3).unwrap() as u8)
         i3 += 1
@@ -272,7 +272,7 @@ fn async_http_chunked_client(port: u16) -> async i32 {
             final_eof = true
             break
         }
-        auto k#: usize = 0
+        auto k# = 0:usize
         loop k < res.bytes_read {
             body_str#.push_byte_raw(res.buffer#.get(k))
             k += 1
@@ -331,7 +331,7 @@ fn main_async() -> async i32 {
 
     auto _t1 = async_connect_timeout_test().await
 
-    auto port: u16 = 38443:u16
+    auto port = 38443:u16
     auto server_task = async_http_server(port).start
     auto client_task = async_http_client_test(port).start
 
@@ -341,7 +341,7 @@ fn main_async() -> async i32 {
     auto c_res = client_task.await
     assert(c_res == 0, "Async HTTP Client failed")
 
-    auto chunked_port: u16 = 38444:u16
+    auto chunked_port = 38444:u16
     println("[Chunked Test] Starting chunked server/client on port {}...", chunked_port)
     auto c_server_task = async_http_chunked_server(chunked_port).start
     auto c_client_task = async_http_chunked_client(chunked_port).start

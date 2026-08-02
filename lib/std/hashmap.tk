@@ -20,18 +20,18 @@ impl<'K, 'V> HashMap<'K, 'V>@Encap {
     fn drop(self#) {
         unsafe {
             // 1. Drop elements
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < self.cap {
                  auto *m = self.meta.unsafe_get(i)
                  if m == 1 {
                      // Drop key
                      {
-                         auto 'k: K = cede self.keys.buf[i] // Copy/Move out
+                         auto 'k = cede self.keys.buf[i]:K// Copy/Move out
                      }
                      
                      // Drop val
                      {
-                         auto 'v: V = cede self.vals.buf[i]
+                         auto 'v = cede self.vals.buf[i]:V
                      }
                  }
                  i += 1
@@ -54,7 +54,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
             auto v# = Vec<'V>::with_capacity(self.cap)
             auto m# = Vec<u8>::with_capacity(self.cap)
             
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < self.cap {
                 auto m_val = self.meta.get(i)
                 m#.push(m_val)
@@ -131,14 +131,14 @@ impl<'K, 'V> HashMap<'K, 'V> {
         
         auto capacity = self.cap
         // Optimization: capacity is power of 2, use mask
-        auto idx# = ('key.hash() as usize) band (capacity - 1)
+        auto idx# = ('key.hash() as usize) & (capacity - 1)
         auto start_idx = idx
-        auto found_slot#: usize = capacity
+        auto found_slot# = capacity:usize
         auto is_new# = false
         
         loop true {
             unsafe {
-                auto *m_ptr#: u8 = self.meta.unsafe_get(idx)
+                auto *m_ptr# = self.meta.unsafe_get(idx):*u8
                 if m_ptr == 0 {
                     if found_slot == capacity {
                         found_slot = idx
@@ -153,7 +153,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
                     }
                 } else {
                     // Occupied. Check Key match.
-                    auto *'k_ptr#: K = self.keys.unsafe_get(idx)
+                    auto *'k_ptr# = self.keys.unsafe_get(idx):*K
                     if 'k_ptr.eq('key) {
                         found_slot = idx
                         is_new = false
@@ -162,7 +162,7 @@ impl<'K, 'V> HashMap<'K, 'V> {
                 }
             }
             
-            idx = (idx + 1) band (capacity - 1)
+            idx = (idx + 1) & (capacity - 1)
             if idx == start_idx { break }
         }
         
@@ -183,34 +183,34 @@ impl<'K, 'V> HashMap<'K, 'V> {
             auto new_m# = Vec<u8>::with_capacity(new_cap) // Empty buffer
             
             // Populate meta with 0 up to new_cap
-            auto j#: usize = 0
+            auto j# = 0:usize
             loop j < new_cap {
                 new_m#.push(0)
                 j += 1
             }
             
             // Re-hash and move elements
-            auto i#: usize = 0
+            auto i# = 0:usize
             auto moved_count# = 0
             loop i < self.cap {
-                auto *m_ptr#: u8 = self.meta.unsafe_get(i)
+                auto *m_ptr# = self.meta.unsafe_get(i):*u8
                 if m_ptr == 1 {
                      moved_count += 1
-                     auto 'key: K = cede self.keys.buf[i]
-                     auto 'val: V = cede self.vals.buf[i]
+                     auto 'key = cede self.keys.buf[i]:K
+                     auto 'val = cede self.vals.buf[i]:V
                      
-                     auto idx# = ('key.hash() as usize) band (new_cap - 1)
+                     auto idx# = ('key.hash() as usize) & (new_cap - 1)
                      auto start_idx = idx
                      
                      loop true {
-                         auto *nm_ptr#: u8 = new_m.unsafe_get(idx)
+                         auto *nm_ptr# = new_m.unsafe_get(idx):*u8
                          if nm_ptr == 0 {
                              nm_ptr = 1
                              new_k.buf[idx] = cede 'key
                              new_v.buf[idx] = cede 'val
                              break
                          }
-                         idx = (idx + 1) band (new_cap - 1)
+                         idx = (idx + 1) & (new_cap - 1)
                      }
                 }
                 i += 1
@@ -238,12 +238,12 @@ impl<'K, 'V> HashMap<'K, 'V> {
     pub fn get(self, 'key: K) -> Option<'V> {
          auto capacity = self.cap
          if capacity == 0 { return Option<'V>::None }
-         auto idx# = ('key.hash() as usize) band (capacity - 1)
+         auto idx# = ('key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
 
          loop true {
              unsafe {
-                 auto *m_ptr#: u8 = self.meta.unsafe_get(idx)
+                 auto *m_ptr# = self.meta.unsafe_get(idx):*u8
 
                  if m_ptr == 0 {
                      return Option<'V>::None
@@ -251,15 +251,15 @@ impl<'K, 'V> HashMap<'K, 'V> {
 
                  if m_ptr == 1 {
                      // Occupied, check key
-                     auto *'k_ptr#: K = self.keys.unsafe_get(idx)
+                     auto *'k_ptr# = self.keys.unsafe_get(idx):*K
                      if 'k_ptr.eq('key) {
-                         auto *'v_ptr#: V = self.vals.unsafe_get(idx)
+                         auto *'v_ptr# = self.vals.unsafe_get(idx):*V
                          return Option<'V>::Some('v_ptr)
                      }
                  }
              }
 
-             idx = (idx + 1) band (capacity - 1)
+             idx = (idx + 1) & (capacity - 1)
              if idx == start_idx {
                  return Option<'V>::None
              }
@@ -271,26 +271,26 @@ impl<'K, 'V> HashMap<'K, 'V> {
     effects: return <- self {
          auto capacity = self.cap
          if capacity == 0 { return Option<&'V>::None }
-         auto idx# = ('key.hash() as usize) band (capacity - 1)
+         auto idx# = ('key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
 
          loop true {
              unsafe {
-                 auto *m_ptr#: u8 = self.meta.unsafe_get(idx)
+                 auto *m_ptr# = self.meta.unsafe_get(idx):*u8
 
                  if m_ptr == 0 {
                      return Option<&'V>::None
                  }
 
                  if m_ptr == 1 {
-                     auto *'k_ptr#: K = self.keys.unsafe_get(idx)
+                     auto *'k_ptr# = self.keys.unsafe_get(idx):*K
                      if 'k_ptr.eq('key) {
                          return Option<&'V>::Some(&self.vals.buf[idx])
                      }
                  }
              }
 
-             idx = (idx + 1) band (capacity - 1)
+             idx = (idx + 1) & (capacity - 1)
              if idx == start_idx {
                  return Option<&'V>::None
              }
@@ -306,28 +306,28 @@ impl<'K, 'V> HashMap<'K, 'V> {
     pub fn remove(self#, 'key: K) -> Option<'V> {
          auto capacity = self.cap
          if capacity == 0 { return Option<'V>::None }
-         auto idx# = ('key.hash() as usize) band (capacity - 1)
+         auto idx# = ('key.hash() as usize) & (capacity - 1)
          auto start_idx = idx
          
          loop true {
              unsafe {
-                 auto *m_ptr#: u8 = self.meta.unsafe_get(idx)
+                 auto *m_ptr# = self.meta.unsafe_get(idx):*u8
                  if m_ptr == 0 {
                      return Option<'V>::None
                  }
                  if m_ptr == 1 {
-                     auto *'k_ptr#: K = self.keys.unsafe_get(idx)
+                     auto *'k_ptr# = self.keys.unsafe_get(idx):*K
                      if 'k_ptr.eq('key) {
                          m_ptr = 2 // Mark as tombstone
                          self.len -= 1
                          
-                         auto 'old_k: K = cede self.keys.buf[idx]
-                         auto 'old_v: V = cede self.vals.buf[idx]
+                         auto 'old_k = cede self.keys.buf[idx]:K
+                         auto 'old_v = cede self.vals.buf[idx]:V
                          return Option<'V>::Some(cede 'old_v)
                      }
                  }
              }
-             idx = (idx + 1) band (capacity - 1)
+             idx = (idx + 1) & (capacity - 1)
              if idx == start_idx { break }
          }
          return Option<'V>::None
@@ -337,11 +337,11 @@ impl<'K, 'V> HashMap<'K, 'V> {
         unsafe {
             auto i# = 0:usize
             loop i < self.cap {
-                auto *m_ptr#: u8 = self.meta.unsafe_get(i)
+                auto *m_ptr# = self.meta.unsafe_get(i):*u8
                 if m_ptr == 1 {
                     m_ptr = 0
-                    auto '_old_k: K = cede self.keys.buf[i]
-                    auto '_old_v: V = cede self.vals.buf[i]
+                    auto '_old_k = cede self.keys.buf[i]:K
+                    auto '_old_v = cede self.vals.buf[i]:V
                 } else {
                     if m_ptr == 2 {
                         m_ptr = 0

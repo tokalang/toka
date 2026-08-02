@@ -8,9 +8,9 @@ pub fn invoke_mut<F: @Callable>(f#: F, value: i32) -> i32 {
 
 pub fn make_counter(start: i32) -> dyn fn#(i32) -> i32 {
     auto counter# = Counter(value = start)
-    auto callback#: dyn fn#(i32) -> i32 = { [cede counter] value =>
+    auto callback# = { [cede counter] value =>
         counter.value = counter.value + value
         counter.value
-    }
+    }:dyn fn#(i32) -> i32
     return callback
 }

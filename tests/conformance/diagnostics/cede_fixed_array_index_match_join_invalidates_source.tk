@@ -8,7 +8,7 @@ impl Token@Encap {
 
 fn main() -> i32 {
     auto selector = 0
-    auto values: [Token; 1] = [Token(id = 1)]
+    auto values = [Token(id = 1)]:[Token; 1]
     match selector {
         0 => {
             auto taken = cede values[0]

@@ -45,7 +45,7 @@ struct SymbolInfo {
   bool Moved = false;
   SourceLocation MoveLoc;
   uint64_t InitMask =
-      ~0ULL; // 0=unset, 1=set. For shapes, each bit corresponds to a member.
+      ~0ULL; // 0=uninitialized, 1=initialized. For shapes, each bit corresponds to a member.
 
   // "Hot Potato" Tracking
   // If this symbol is a Reference (&T), this mask tracks the InitMask of the

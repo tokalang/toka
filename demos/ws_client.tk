@@ -47,7 +47,7 @@ fn client_task() -> async i32 {
     libc_memcpy((*#temp_buf as *void), (p_str.raw_ptr() as *void), p_len)
     
     unsafe {
-        auto i#: usize = 0
+        auto i# = 0:usize
         auto m0 = 0xA1:i32; auto m1 = 0xB2:i32; auto m2 = 0xC3:i32; auto m3 = 0xD4:i32
         while i < p_len {
             auto original = temp_buf[i] as i32

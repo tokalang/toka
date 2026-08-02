@@ -65,9 +65,12 @@ Local variables are declared with `auto`.
 
 ```toka
 auto x = 1
-auto y: i64 = 10
-auto z = 10:i64
+auto y = 10:i64
 ```
+
+An `auto` binding always has an initializer and never has a left-side type
+annotation. Use `expression: Type` to ascribe the initializer's type, or
+`expression as Type` for an explicit conversion.
 
 An integer literal adopts the unique integer type supplied by its context,
 including a function or method parameter, assignment target, return type, or
@@ -98,16 +101,16 @@ system:
 
 | Domain | Surface form | Empty state | Meaning |
 | :--- | :--- | :--- | :--- |
-| Nullable handle | `nul *p: T`, `nul ^p: T`, `nul ~p: T` | `null` | A handle is present as storage but does not designate an object |
-| Nullable payload | `value: T?` | `none` | A payload slot is present but currently contains no payload value |
-| Optional result | `result: Option<T>` | `Option<T>::None` | An operation produced no result |
+| Nullable handle | `nul *T`, `nul ^T`, `nul ~T` | `null` | A handle is present as storage but does not designate an object |
+| Nullable payload | `T?` | `none` | A payload slot is present but currently contains no payload value |
+| Optional result | `Option<T>` | `Option<T>::None` | An operation produced no result |
 
 For example:
 
 ```toka
-auto nul *ptr: i32 = null
-auto maybe: i32? = none
-auto result: Option<i32> = Option<i32>::None
+auto nul *ptr = null:nul *i32
+auto maybe = none:i32?
+auto result = Option<i32>::None:Option<i32>
 ```
 
 `T?` is not syntax sugar for `Option<T>`, `none` is not
@@ -348,7 +351,7 @@ domain `Result` error. It is not an implicit conversion performed by ordinary
 
 ### PAL (Path-Anchored Ledger) Static Safety Boundary
 
-For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based safety checker for the safe language subset. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, tracking borrowed paths, payload mutation, handle rebinding, resource moves, unset state, and the analysis state produced by `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`.
+For Toka 1.0, PAL is frozen as **Path-Anchored Ledger**: a local, path-based safety checker for the safe language subset. It records borrow, ownership-transfer, and invalidation facts against source-level storage paths, tracking borrowed paths, payload mutation, handle rebinding, resource moves, uninitialized state, and the analysis state produced by `if`, `guard`, `match`, `loop`, `for`, `break`, and `continue`.
 
 The stable contract is governed by four core rules:
 1. **Unique ownership is exclusive:** A `^` resource is owned by one valid handle at any time.
@@ -666,7 +669,9 @@ fn id<'T>('x: T) -> 'T {
 }
 ```
 
-The same rule applies to local bindings: write `auto 'local: T = expr`, not `auto local: 'T = expr`.
+The same rule applies to local bindings: write `auto 'local = expr:T`, not
+`auto local: 'T = expr`. The quote remains binding-side; the type ascription
+belongs to the initializer.
 
 In pure type positions, write `'T`:
 
@@ -748,22 +753,22 @@ iterator or async-iterator protocol.
 
 `while` is not part of the current syntax; use `loop condition { ... }`.
 
-`match` supports literals, ranges, variants, guards, or-patterns, wildcards,
-and `default`.
+`match` supports literals, ranges, variants, guards, or-patterns, and the `_`
+wildcard.
 
 ```toka
 auto value = match x {
     0 => { pass 10 }
     auto v if v > 0 => { pass v }
-    default => { pass -1 }
+    _ => { pass -1 }
 }
 ```
 
 For 1.0, enum matches are checked for safe exhaustiveness. Every variant must
-be covered by an unguarded exhaustive pattern or by `_` / `default`; guarded
-arms refine a case but do not count as exhaustive. For non-enum targets, use an
-unguarded wildcard, `default`, or unconditional variable arm. The compiler does
-not try to prove full integer, range, or string value-domain coverage.
+be covered by an unguarded exhaustive pattern or by `_`; guarded arms refine a
+case but do not count as exhaustive. For non-enum targets, use an unguarded
+wildcard or unconditional variable arm. The compiler does not try to prove full
+integer, range, or string value-domain coverage.
 
 `pass` yields a value from a block expression.
 
@@ -824,18 +829,18 @@ with `E0744`; destructure that value inside a function instead.
 Closures use `{ ... => ... }` syntax.
 
 ```toka
-auto add: fn(i32, i32) -> i32 = { a, b => a + b }
-auto inc: fn(i32) -> i32 = { .a + 1 }
-auto zero: fn() -> i32 = { => 0 }
+auto add = { a, b => a + b }:fn(i32, i32) -> i32
+auto inc = { .a + 1 }:fn(i32) -> i32
+auto zero = { => 0 }:fn() -> i32
 ```
 
 Capture lists are written at the beginning of the closure body.
 
 ```toka
-auto f: fn(i32) -> i32 = { [cede env] x => x + env }
+auto f = { [cede env] x => x + env }:fn(i32) -> i32
 auto r = 10
-auto g: fn(i32) -> i32 = { [copy ~r] x => x + r }
-auto h: fn() -> i32 = { [dup resource] => resource.value }
+auto g = { [copy ~r] x => x + r }:fn(i32) -> i32
+auto h = { [dup resource] => resource.value }:fn() -> i32
 ```
 
 `copy` capture is for compiler-proven `@Copy` values and never invokes user
@@ -869,10 +874,10 @@ it does not make the closure consuming unless the body transfers that value.
 Binding permission remains separate from callable permission:
 
 ```toka
-auto counter#: fn#(i32) -> i32 = { [cede state] value =>
+auto counter# = { [cede state] value =>
     state.value = state.value + value
     state.value
-}
+}:fn#(i32) -> i32
 auto next = counter#(1)
 ```
 
@@ -931,18 +936,18 @@ Every occurrence has its own diagnostic and keeps the check/build result
 nonzero.
 
 ```toka
-auto answer: i32 = todo      // a complete `i32` requirement is known
+auto answer = todo:i32       // a complete `i32` requirement is known
 if todo {                    // a complete `bool` requirement is known
     return 0
 }
 ```
 
 The compiler records a requirement only when the surrounding context already
-determines it: an explicitly typed local binding, assignment to an existing
-binding, a boolean condition, an ordinary resolved call parameter, or an
-explicitly instantiated generic call. The program remains incomplete and
-reports `E04603` in those cases. A context that would need inference, such as
-`auto answer = todo` or `identity(todo)`, reports `E04604` instead.
+determines it: an ascribed initializer, assignment to an existing binding, a
+boolean condition, an ordinary resolved call parameter, or an explicitly
+instantiated generic call. The program remains incomplete and reports `E04603`
+in those cases. A context that would need inference, such as `auto answer =
+todo` or `identity(todo)`, reports `E04604` instead.
 
 Holes cannot stand for a place, capability, provenance, or transfer. Prefix
 and postfix access, member/index access, guards, `cede todo`, and todos passed

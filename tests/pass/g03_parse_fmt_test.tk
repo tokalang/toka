@@ -2,7 +2,7 @@ import std/io::println
 
 fn main() -> i32 {
     auto val = 42
-    auto ptr_val: usize = 0xABCD
+    auto ptr_val = 0xABCD:usize
     auto f_val = 3.14159
     
     println("Int padding: {:04}", val)

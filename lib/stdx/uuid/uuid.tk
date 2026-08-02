@@ -41,9 +41,9 @@ impl Uuid {
             return Result<Uuid, string>::Err(string::from("UUID must contain 36 ASCII bytes"))
         }
 
-        auto raw#: [u8; 16] = [0:u8; 16]
-        auto source#: usize = 0
-        auto target#: usize = 0
+        auto raw# = [0:u8; 16]:[u8; 16]
+        auto source# = 0:usize
+        auto target# = 0:usize
         loop target < 16:usize {
             if source == 8:usize || source == 13:usize || source == 18:usize || source == 23:usize {
                 if input.byte_at(source) != '-' {
@@ -65,7 +65,7 @@ impl Uuid {
 
     pub fn to_string(self) -> string {
         auto output# = string::from("")
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < 16:usize {
             if index == 4:usize || index == 6:usize || index == 8:usize || index == 10:usize {
                 output#.push_byte_raw('-' as u8)
@@ -83,7 +83,7 @@ impl Uuid {
     }
 
     pub fn is_nil(self) -> bool {
-        auto index#: usize = 0
+        auto index# = 0:usize
         loop index < 16:usize {
             if self.bytes[index] != 0:u8 {
                 return false
@@ -100,8 +100,8 @@ impl Uuid {
         }
 
         auto random = random_result.unwrap()
-        auto raw#: [u8; 16] = [0:u8; 16]
-        auto index#: usize = 0
+        auto raw# = [0:u8; 16]:[u8; 16]
+        auto index# = 0:usize
         loop index < 16:usize {
             raw[index] = random.get(index)
             index = index + 1:usize

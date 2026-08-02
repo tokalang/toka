@@ -1,9 +1,9 @@
 fn select(tag: i32) -> i32 {
-    auto answer: i32 = todo
-    auto chosen: i32 = match tag {
+    auto answer = todo:i32
+    auto chosen = match tag {
         0 => { pass answer }
-        default => { pass 0 }
-    }
+        _ => { pass 0 }
+    }:i32
     return chosen
 }
 

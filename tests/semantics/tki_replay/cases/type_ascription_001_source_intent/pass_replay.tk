@@ -1,0 +1,11 @@
+import ./lib::{ascribe, convert}
+
+fn main() -> i32 {
+    if ascribe<i32>(7:i32) != 7:i32 {
+        return 1
+    }
+    if convert<i32>(7:i32) != 7:i32 {
+        return 2
+    }
+    return 0
+}

@@ -5,7 +5,7 @@ fn main() -> i32 {
     auto values# = Vec<i32>::new()
     values#.push(1)
     auto source = values.into_iter()
-    auto once: cede fn(i32) -> i32 = { value => return value }
+    auto once = { value => return value }:cede fn(i32) -> i32
     auto mapped = map(cede source, cede once)
     return 0
 }

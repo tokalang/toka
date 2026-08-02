@@ -1,26 +1,26 @@
 fn test_closure(arg: i32) -> i32 {
     // 1. Implicit parameters
-    auto f1: fn(i32) -> i32 = { .a + 1 }
+    auto f1 = { .a + 1 }:fn(i32) -> i32
     
     // 2. Explicit cede capture with explicit parameters
     auto x = arg + 5
-    auto f2: fn(i32) -> i32 = { [cede x] y => y + x }
+    auto f2 = { [cede x] y => y + x }:fn(i32) -> i32
     
     // 3. Explicit copy capture with trailing closure 
     auto r = arg * 2
     auto val = 10
     // (We will just test assignment for now, no trailing until high-order functions exist)
-    auto f3: fn(i32) -> i32 = { [copy ~r] z => z + r }
+    auto f3 = { [copy ~r] z => z + r }:fn(i32) -> i32
     
     // 4. Multiple explicit parameters
-    auto f4: fn(i32, i32) -> i32 = { a, b => a + b }
+    auto f4 = { a, b => a + b }:fn(i32, i32) -> i32
     
     // 5. Implicit return from block
     auto env = arg - 1
-    auto f5: fn(i32) -> i32 = { [cede env] => 
+    auto f5 = { [cede env] =>
         auto temp = .a + env
         temp // implicitly returned
-    }
+    }:fn(i32) -> i32
     
     return 0
 }

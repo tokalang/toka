@@ -14,7 +14,7 @@
 import std/io::println
 
 fn main() -> i32 {
-    auto x: i32? = 10 // Nullable integer (not typical in Toka but testing the mechanism)
+    auto x = 10:i32?// Nullable integer (not typical in Toka but testing the mechanism)
     guard x {
         println("x is not null: {}", x)
     }

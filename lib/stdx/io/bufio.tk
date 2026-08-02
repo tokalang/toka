@@ -275,7 +275,7 @@ impl AsyncBufferedReader {
         auto received# = refill.unwrap()
         auto count = received.bytes_read
         auto bytes = received#.take_buffer()
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < count {
             self.buf[index] = bytes.get(index)
             index = index + 1:usize
@@ -370,7 +370,7 @@ impl AsyncBufferedReader {
                 to_copy = available
             }
             owned#.unsafe_set_len(0:usize)
-            auto index#: usize = 0:usize
+            auto index# = 0:usize
             loop index < to_copy {
                 owned#.push(self.buf[self.pos + index])
                 index = index + 1:usize

@@ -64,7 +64,7 @@ pub fn to_lower_char(c: char) -> char {
 
 pub fn to_lower_string(s: str) -> string {
     auto res# = string::from("")
-    auto i#: usize = 0
+    auto i# = 0:usize
     auto len = s.len()
     loop i < len {
         res#.push_char(to_lower_char(s.at(i).unwrap() as char))
@@ -99,7 +99,7 @@ pub fn is_valid_base64_key(s: str) -> bool {
         if p21 != (65 as char) && p21 != (81 as char) && p21 != (103 as char) && p21 != (119 as char) {
             return false
         }
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < 22 {
             auto c = s.at(i).unwrap() as i32
             auto is_alpha = (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
@@ -114,7 +114,7 @@ pub fn is_valid_base64_key(s: str) -> bool {
 }
 
 pub fn is_valid_utf8(buf_slice: Vec<u8>) -> bool {
-    auto i#: usize = 0
+    auto i# = 0:usize
     auto len = buf_slice.len()
     loop i < len {
             auto b = buf_slice.get(i) as u32
@@ -170,13 +170,13 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     crlf_single#.push_char(13 as char)
     crlf_single#.push_char(10 as char)
 
-    auto tries#: usize = 0
+    auto tries# = 0:usize
     auto buf_vec# = Vec<u8>::with_capacity(1024)
-    auto i_init#: usize = 0
+    auto i_init# = 0:usize
     loop i_init < 1024 { buf_vec#.push(0:u8); i_init += 1 }
 
     auto total_read_bytes# = Vec<u8>::new()
-    auto header_end_idx#: usize = 0
+    auto header_end_idx# = 0:usize
 
     loop !headers_done {
         auto read_res = stream#.read_into_async(cede buf_vec, 1024:usize, 10000).await
@@ -192,13 +192,13 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
             return Result<WsConnection, string>::Err(string::from("Connection closed before headers"))
         }
 
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < bytes_read {
             total_read_bytes#.push(buf_vec.get(i))
             i += 1
         }
 
-        auto i_text#: usize = 0
+        auto i_text# = 0:usize
         loop i_text < bytes_read {
             req_str#.push_byte_raw(buf_vec.get(i_text))
             i_text += 1
@@ -224,10 +224,10 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
 
     auto is_first_line# = true
     auto has_valid_get# = false
-    auto count_upgrade#: usize = 0
-    auto count_connection#: usize = 0
-    auto count_version#: usize = 0
-    auto count_key#: usize = 0
+    auto count_upgrade# = 0:usize
+    auto count_connection# = 0:usize
+    auto count_version# = 0:usize
+    auto count_key# = 0:usize
     auto sec_key# = string::from("")
 
     loop true {
@@ -312,7 +312,7 @@ pub fn ws_accept_stream_async(stream#: AsyncStream) -> async Result<WsConnection
     resp_str#.push_str("\r\n\r\n")
 
     auto resp_buf# = Vec<u8>::with_capacity(resp_str.len())
-    auto resp_i#: usize = 0
+    auto resp_i# = 0:usize
     loop resp_i < resp_str.len() {
         resp_buf#.push(string_byte(resp_str.as_str(), resp_i))
         resp_i += 1
@@ -387,7 +387,7 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     req_buf#.push_str("\r\nSec-WebSocket-Version: 13\r\n\r\n")
 
     auto req_bytes# = Vec<u8>::with_capacity(req_buf.len())
-    auto req_i#: usize = 0
+    auto req_i# = 0:usize
     loop req_i < req_buf.len() {
         req_bytes#.push(string_byte(req_buf.as_str(), req_i))
         req_i += 1
@@ -400,12 +400,12 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
     // Read Handshake Response
     auto resp_str# = string::from("")
     auto headers_done# = false
-    auto tries#: usize = 0
+    auto tries# = 0:usize
     auto buf_vec# = Vec<u8>::with_capacity(1024)
-    auto i_cl_init#: usize = 0
+    auto i_cl_init# = 0:usize
     loop i_cl_init < 1024 { buf_vec#.push(0:u8); i_cl_init += 1 }
     auto total_read_bytes# = Vec<u8>::new()
-    auto header_end_idx#: usize = 0
+    auto header_end_idx# = 0:usize
 
     loop !headers_done {
         auto read_res = stream#.read_into_async(cede buf_vec, 1024:usize, 10000).await
@@ -421,13 +421,13 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
             return Result<WsConnection, string>::Err(string::from("Server closed connection during handshake"))
         }
 
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < bytes_read {
             total_read_bytes#.push(buf_vec.get(i))
             i += 1
         }
 
-        auto i_text#: usize = 0
+        auto i_text# = 0:usize
         loop i_text < bytes_read {
             resp_str#.push_byte_raw(buf_vec.get(i_text))
             i_text += 1
@@ -453,9 +453,9 @@ pub fn ws_connect_stream_async(stream#: AsyncStream, host: string, path: string)
 
     auto is_first_line# = true
     auto has_valid_101# = false
-    auto count_upgrade#: usize = 0
-    auto count_connection#: usize = 0
-    auto count_accept#: usize = 0
+    auto count_upgrade# = 0:usize
+    auto count_connection# = 0:usize
+    auto count_accept# = 0:usize
     auto server_accept# = string::from("")
 
     loop true {
@@ -636,7 +636,7 @@ impl WsConnection {
             if rr_bytes == 0 {
                 return Result<Vec<u8>, string>::Err(string::from("Unexpected EOF while reading WebSocket frame"))
             }
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < rr_bytes {
                 out#.push(rr_buf#.get(i))
                 i += 1
@@ -718,7 +718,7 @@ impl WsConnection {
             } else {
                 if payload_len == 127 {
                     auto ext8_vec# = Vec<u8>::with_capacity(8)
-                    auto i_8#: usize = 0
+                    auto i_8# = 0:usize
                     loop i_8 < 8 { ext8_vec#.push(0:u8); i_8 += 1 }
                     auto ext8_res = self#.read_exact_owned_async(8:usize).await
                     if ext8_res.is_err() {
@@ -750,7 +750,7 @@ impl WsConnection {
 
             auto mask_vec# = Vec<u8>::with_capacity(4)
             if masked {
-                auto i_m#: usize = 0
+                auto i_m# = 0:usize
                 loop i_m < 4 { mask_vec#.push(0:u8); i_m += 1 }
                 auto mask_res = self#.read_exact_owned_async(4:usize).await
                 if mask_res.is_err() {
@@ -762,7 +762,7 @@ impl WsConnection {
             // Read payload data
             auto payload_vec# = Vec<u8>::with_capacity(payload_len)
             if payload_len > 0 {
-                auto i_p#: usize = 0
+                auto i_p# = 0:usize
                 loop i_p < payload_len { payload_vec#.push(0:u8); i_p += 1 }
                 auto payload_res = self#.read_exact_owned_async(payload_len).await
                 if payload_res.is_err() {
@@ -773,7 +773,7 @@ impl WsConnection {
 
             // Unmask if masked
             if masked && payload_len > 0 {
-                auto j#: usize = 0
+                auto j# = 0:usize
                 loop j < payload_len {
                     auto masked_byte = (payload_vec.get(j) as u8) ^ (mask_vec.get(j % 4) as u8)
                     payload_vec#.set(j, masked_byte)
@@ -810,7 +810,7 @@ impl WsConnection {
                             // Validate Close reason UTF-8 encoding
                             if payload_len > 2 {
                                 auto reason# = Vec<u8>::with_capacity(payload_len - 2)
-                                auto reason_i#: usize = 2
+                                auto reason_i# = 2:usize
                                 loop reason_i < payload_len {
                                     reason#.push(payload_vec.get(reason_i))
                                     reason_i += 1
@@ -864,7 +864,7 @@ impl WsConnection {
 
             // Append raw payload bytes across fragments into msg_bin
             if payload_len > 0 {
-                auto k#: usize = 0
+                auto k# = 0:usize
                 loop k < payload_len {
                     msg_bin#.push(payload_vec.get(k))
                     k += 1
@@ -882,7 +882,7 @@ impl WsConnection {
                             self#.send_protocol_error_close_async().await
                             return Result<WsMessage, string>::Err(string::from("RFC 6455 Protocol Error: Text message payload MUST be valid UTF-8"))
                         }
-                        auto text_i#: usize = 0
+                        auto text_i# = 0:usize
                         loop text_i < total_bin_len {
                             msg_text#.push_byte_raw(msg_bin.get(text_i))
                             text_i += 1
@@ -918,7 +918,7 @@ impl WsConnection {
         auto frame_vec# = Vec<u8>::with_capacity(14 + p_len)
         frame_vec#.push(0x81:u8)
 
-        auto mask_bit#: u8 = 0:u8
+        auto mask_bit# = 0:u8
         if self.is_client {
             mask_bit = 0x80:u8
         }
@@ -955,14 +955,14 @@ impl WsConnection {
             frame_vec#.push(mask_key.get(2))
             frame_vec#.push(mask_key.get(3))
 
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < p_len {
                 auto b = string_byte(s, i) ^ mask_key.get(i % 4)
                 frame_vec#.push(b)
                 i += 1
             }
         } else {
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < p_len {
                 frame_vec#.push(string_byte(s, i))
                 i += 1
@@ -985,7 +985,7 @@ impl WsConnection {
 
         auto frame_vec# = Vec<u8>::with_capacity(14 + p_len)
         frame_vec#.push(0x82:u8)
-        auto mask_bit#: u8 = 0:u8
+        auto mask_bit# = 0:u8
         if self.is_client {
             mask_bit = 0x80:u8
         }
@@ -1017,18 +1017,18 @@ impl WsConnection {
             }
             auto mask_key# = mask_res.unwrap()
 
-            auto k#: usize = 0
+            auto k# = 0:usize
             loop k < 4 {
                 frame_vec#.push(mask_key.get(k))
                 k += 1
             }
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < p_len {
                 frame_vec#.push(payload.get(i) ^ mask_key.get(i % 4))
                 i += 1
             }
         } else {
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < p_len {
                 frame_vec#.push(payload.get(i))
                 i += 1
@@ -1061,7 +1061,7 @@ impl WsConnection {
         auto frame_vec# = Vec<u8>::with_capacity(6 + p_len)
         frame_vec#.push(0x80:u8 + opcode)
 
-        auto mask_bit#: u8 = 0:u8
+        auto mask_bit# = 0:u8
         if self.is_client {
             mask_bit = 0x80:u8
         }
@@ -1074,18 +1074,18 @@ impl WsConnection {
             }
             auto mask_key# = mask_res.unwrap()
 
-            auto k#: usize = 0
+            auto k# = 0:usize
             loop k < 4 {
                 frame_vec#.push(mask_key.get(k))
                 k += 1
             }
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < p_len {
                 frame_vec#.push(payload.get(i) ^ mask_key.get(i % 4))
                 i += 1
             }
         } else {
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < p_len {
                 frame_vec#.push(payload.get(i))
                 i += 1

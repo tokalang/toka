@@ -5,7 +5,7 @@ import sys/libc::{libc_abort}
 
 pub fn main() -> i32 {
     print_line(string::from("Start Min-Heap"))
-    auto min_cmp: fn(i32, i32) -> bool = { a, b => a < b }
+    auto min_cmp = { a, b => a < b }:fn(i32, i32) -> bool
     auto min_heap# = BinaryHeap<i32>::new(min_cmp)
     min_heap#.push(5)
     min_heap#.push(2)
@@ -24,7 +24,7 @@ pub fn main() -> i32 {
     if !min_heap.is_empty() { libc_abort() }
     
     print_line(string::from("Start Max-Heap"))
-    auto max_cmp: fn(i32, i32) -> bool = { a, b => a > b }
+    auto max_cmp = { a, b => a > b }:fn(i32, i32) -> bool
     auto max_heap# = BinaryHeap<i32>::new(max_cmp)
     max_heap#.push(5)
     max_heap#.push(2)

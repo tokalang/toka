@@ -98,12 +98,6 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   if (Unary->Op == TokenType::Tilde && rhsType->isInteger()) {
       return rhsType; // Bitwise NOT on integer
   }
-  if (Unary->Op == TokenType::KwBnot) {
-      if (!rhsType->isInteger()) {
-          error(Unary, DiagID::ERR_OPERAND_TYPE_MISMATCH, "bnot", "integer", rhsInfo);
-      }
-      return rhsType;
-  }
 
   if (Unary->Op == TokenType::Bang) {
     if (!rhsType->isBoolean()) {

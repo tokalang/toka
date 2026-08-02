@@ -15,12 +15,12 @@ fn create_counter(start: i32) -> dyn fn#(i32) -> i32 {
    libc_printf(c"Start is: %d\n", start)
    auto env# = HandlerEnv(count = start)
    libc_printf(c"Init env.count: %d\n", env.count)
-   auto f#: dyn fn#(i32) -> i32 = { [cede env] x =>
+   auto f# = { [cede env] x =>
        libc_printf(c"Before invoke: count=%d, expected=%d\n", env.count, x)
        env.count = env.count + x
        libc_printf(c"After invoke: count=%d\n", env.count)
        env.count
-   }
+   }:dyn fn#(i32) -> i32
    return f
 }
 

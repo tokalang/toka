@@ -80,9 +80,9 @@ pub fn stat_get_mtime_impl(handle: Addr) -> i64 {
 // 0x4000 = 16384 (DIR)
 // 0x8000 = 32768 (REG)
 pub fn stat_is_dir_impl(mode: u32) -> bool {
-    return (mode band 61440:u32) == 16384:u32
+    return (mode & 61440:u32) == 16384:u32
 }
 
 pub fn stat_is_file_impl(mode: u32) -> bool {
-    return (mode band 61440:u32) == 32768:u32
+    return (mode & 61440:u32) == 32768:u32
 }

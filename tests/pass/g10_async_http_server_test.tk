@@ -29,7 +29,7 @@ fn handle_request(req#: HttpRequest) -> HttpResponse {
 fn process_client(cede stream: TcpStream) -> async i32 {
     unsafe {
         auto stream# = cede stream
-        auto buf: [char; 1024] = [0 as char; 1024]
+        auto buf = [0 as char; 1024]:[char; 1024]
         auto *buf_ptr# = &buf[0] as *u8
         
         auto read_res = net_async_read(stream, *buf_ptr, 1024:usize).await
@@ -102,7 +102,7 @@ fn async_client_runner(port: u16) -> async i32 {
         auto write_res = stream#.write_string_async(req_line).await
         
         // Read response
-        auto buf: [char; 1024] = [0 as char; 1024]
+        auto buf = [0 as char; 1024]:[char; 1024]
         auto *buf_ptr# = &buf[0] as *u8
         auto read_res = net_async_read(stream, *buf_ptr, 1024:usize).await
         

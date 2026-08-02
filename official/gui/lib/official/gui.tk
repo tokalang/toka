@@ -300,7 +300,7 @@ impl Layout {
         auto item_width = (bounds.width - gap * ((count - 1:i32) as f64)) / (count as f64)
         if item_width <= 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("row gap exceeds available width")) }
         auto output# = Vec<Bounds>::with_capacity(count as usize)
-        auto index#: i32 = 0:i32
+        auto index# = 0:i32
         loop index < count {
             output#.push(Bounds(x = bounds.x + (item_width + gap) * (index as f64), y = bounds.y,
                                 width = item_width, height = bounds.height))
@@ -316,7 +316,7 @@ impl Layout {
         auto item_height = (bounds.height - gap * ((count - 1:i32) as f64)) / (count as f64)
         if item_height <= 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("column gap exceeds available height")) }
         auto output# = Vec<Bounds>::with_capacity(count as usize)
-        auto index#: i32 = 0:i32
+        auto index# = 0:i32
         loop index < count {
             output#.push(Bounds(x = bounds.x, y = bounds.y + (item_height + gap) * (index as f64),
                                 width = bounds.width, height = item_height))
@@ -327,8 +327,8 @@ impl Layout {
 
     pub fn row_weighted(bounds: Bounds, weights: Vec<f64>, gap: f64) -> Result<Vec<Bounds>, GuiError> {
         if weights.len() == 0:usize || gap < 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("invalid weighted row layout")) }
-        auto total#: f64 = 0.0:f64
-        auto index#: usize = 0:usize
+        auto total# = 0.0:f64
+        auto index# = 0:usize
         loop index < weights.len() {
             auto weight = weights.get(index)
             if weight <= 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("layout weights must be positive")) }
@@ -338,7 +338,7 @@ impl Layout {
         auto available = bounds.width - gap * ((weights.len() - 1:usize) as f64)
         if available <= 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("row gap exceeds available width")) }
         auto output# = Vec<Bounds>::with_capacity(weights.len())
-        auto cursor#: f64 = bounds.x
+        auto cursor# = bounds.x:f64
         index = 0:usize
         loop index < weights.len() {
             auto item_width = available * weights.get(index) / total
@@ -351,8 +351,8 @@ impl Layout {
 
     pub fn column_weighted(bounds: Bounds, weights: Vec<f64>, gap: f64) -> Result<Vec<Bounds>, GuiError> {
         if weights.len() == 0:usize || gap < 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("invalid weighted column layout")) }
-        auto total#: f64 = 0.0:f64
-        auto index#: usize = 0:usize
+        auto total# = 0.0:f64
+        auto index# = 0:usize
         loop index < weights.len() {
             auto weight = weights.get(index)
             if weight <= 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("layout weights must be positive")) }
@@ -362,7 +362,7 @@ impl Layout {
         auto available = bounds.height - gap * ((weights.len() - 1:usize) as f64)
         if available <= 0.0:f64 { return Result<Vec<Bounds>, GuiError>::Err(gui_error("column gap exceeds available height")) }
         auto output# = Vec<Bounds>::with_capacity(weights.len())
-        auto cursor#: f64 = bounds.y
+        auto cursor# = bounds.y:f64
         index = 0:usize
         loop index < weights.len() {
             auto item_height = available * weights.get(index) / total
@@ -565,7 +565,7 @@ impl ShortcutMap {
     }
 
     pub fn bind_in_scope(self#, scope_id: i32, key_code: i32, modifiers: i32, action_id: i32) -> Result<i32, GuiError> {
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.bindings.len() {
             auto binding = self.bindings.get(index)
             if binding.scope_id == scope_id && binding.key_code == key_code && binding.modifiers == modifiers {
@@ -584,7 +584,7 @@ impl ShortcutMap {
 
     pub fn dispatch_for_scope(self, event: Event, scope_id: i32) -> Option<i32> {
         if event.kind != EventKind::KeyDown { return Option<i32>::None }
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.bindings.len() {
             auto binding = self.bindings.get(index)
             if binding.scope_id == scope_id && binding.key_code == event.code && binding.modifiers == event.modifiers {
@@ -633,7 +633,7 @@ impl Container {
         if self.clip && window#.push_clip(current.x, current.y, current.width, current.height).is_err() {
             return Result<i32, GuiError>::Err(gui_error("could not push container clip"))
         }
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.nodes.len() {
             auto *node = self.nodes.get_ref(index)
             match node {
@@ -720,7 +720,7 @@ impl Scene {
         }
         auto item_width = (width - gap * ((count - 1:i32) as f64)) / (count as f64)
         if item_width <= 0.0:f64 { return Result<i32, GuiError>::Err(gui_error("row gap exceeds available width")) }
-        auto index#: i32 = 0:i32
+        auto index# = 0:i32
         loop index < count {
             self#.add_rect(Rect(x = x + (item_width + gap) * (index as f64), y = y,
                                  width = item_width, height = height, red = red,
@@ -737,7 +737,7 @@ impl Scene {
         }
         auto item_height = (height - gap * ((count - 1:i32) as f64)) / (count as f64)
         if item_height <= 0.0:f64 { return Result<i32, GuiError>::Err(gui_error("column gap exceeds available height")) }
-        auto index#: i32 = 0:i32
+        auto index# = 0:i32
         loop index < count {
             self#.add_rect(Rect(x = x, y = y + (item_height + gap) * (index as f64),
                                  width = width, height = item_height, red = red,
@@ -751,7 +751,7 @@ impl Scene {
         if window#.begin_frame(red, green, blue, alpha).is_err() {
             return Result<i32, GuiError>::Err(gui_error("could not begin Scene frame"))
         }
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < self.nodes.len() {
             auto *node = self.nodes.get_ref(index)
             match node {

@@ -58,7 +58,7 @@ fn test_named_match() -> i32 {
         Config(10 = .host, 8080 = .port, 1 = .debug) => {
             pass 1
         }
-        default => {
+        _ => {
             pass 0
         }
     }
@@ -71,7 +71,7 @@ fn test_named_match() -> i32 {
         Config(8080 = .port, _ = .debug, ..) => {
             pass 2
         }
-        default => {
+        _ => {
             pass 0
         }
     }
@@ -84,7 +84,7 @@ fn test_named_match() -> i32 {
         Config(1 = .debug, _ = .host, ..) => {
             pass 3
         }
-        default => {
+        _ => {
             pass 0
         }
     }

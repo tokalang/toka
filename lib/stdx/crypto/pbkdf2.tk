@@ -15,7 +15,7 @@ const MAX_OUTPUT_LEN: usize = 67108864:usize
 
 fn append_salt_and_block(salt: bytes, block_index: u32) -> Bytes {
     auto input# = Vec<u8>::with_capacity(salt.len() + 4:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < salt.len() {
         input#.push(salt.at(index).unwrap() as u8)
         index = index + 1:usize
@@ -39,15 +39,15 @@ pub fn derive_sha256(password: bytes, salt: bytes, iterations: u32,
     }
 
     auto output# = Vec<u8>::with_capacity(output_len)
-    auto block_index#: u32 = 1:u32
+    auto block_index# = 1:u32
     loop output.len() < output_len {
         auto input = append_salt_and_block(salt, block_index)
         auto u# = hmac_sha256(password, input.as_slice())
         auto accumulated# = u
-        auto round#: u32 = 1:u32
+        auto round# = 1:u32
         loop round < iterations {
             u = hmac_sha256(password, bytes_from_array<32>(u))
-            auto index#: usize = 0:usize
+            auto index# = 0:usize
             loop index < HASH_LEN {
                 accumulated[index] = accumulated[index] ^ u[index]
                 index = index + 1:usize
@@ -55,7 +55,7 @@ pub fn derive_sha256(password: bytes, salt: bytes, iterations: u32,
             round = round + 1:u32
         }
 
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < HASH_LEN && output.len() < output_len {
             output#.push(accumulated[index])
             index = index + 1:usize

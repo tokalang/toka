@@ -1,7 +1,7 @@
 import std/io::{println};
 
-auto body_run_count#: i32 = 0;
-auto global_drop_count#: i32 = 0;
+auto body_run_count# = 0:i32;
+auto global_drop_count# = 0:i32;
 
 shape SharedResource(
     id: i32

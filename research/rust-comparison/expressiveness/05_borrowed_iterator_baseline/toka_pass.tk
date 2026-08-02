@@ -8,14 +8,14 @@ fn main() -> i32 {
     values#.push(100)
     values#.push(200)
 
-    auto sum#: i32 = 0
+    auto sum# = 0:i32
     auto iter# = values.iter()
-    auto done#: bool = false
+    auto done# = false:bool
     loop !done {
         auto item = iter#.next_ref()
         match item {
             auto OptRefI32::Some(&value) => {
-                auto copied: i32 = value
+                auto copied = value:i32
                 sum += copied
             }
             auto OptRefI32::None => { done = true }

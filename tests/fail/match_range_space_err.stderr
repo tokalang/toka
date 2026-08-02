@@ -3,8 +3,8 @@ error[E01138]: Range operators '..<' and '..=' must be surrounded by spaces
    |
  4 |         0..=10 => {
    |          ^
-error[E01172]: Expected expression
- --> tests/fail/match_range_space_err.tk:7:9
+error[E0101]: Expected ';' or newline after statement
+ --> tests/fail/match_range_space_err.tk:7:11
    |
- 7 |         default => {
-   |         ^
+ 7 |         _ => {
+   |           ^

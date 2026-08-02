@@ -3,7 +3,7 @@ fn immediate() -> async i32 {
 }
 
 fn invalid_maybe_unset(flag: bool) -> async i32 {
-    auto value#: i32 = unset
+    auto value# = uninit:i32
 
     if flag {
         value = 7

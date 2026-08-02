@@ -263,7 +263,7 @@ fn append_u32_be(out#: Vec<u8>, value: u32) {
 }
 
 fn append_text(out#: Vec<u8>, value: str) {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         out#.push(value.byte_at(index) as u8)
         index = index + 1:usize
@@ -276,7 +276,7 @@ fn append_cstring(out#: Vec<u8>, value: str) {
 }
 
 fn contains_nul(value: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         if value.byte_at(index) as u8 == 0:u8 { return true }
         index = index + 1:usize
@@ -285,7 +285,7 @@ fn contains_nul(value: str) -> bool {
 }
 
 fn contains_byte(value: str, target: u8) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         if value.byte_at(index) as u8 == target { return true }
         index = index + 1:usize
@@ -294,7 +294,7 @@ fn contains_byte(value: str, target: u8) -> bool {
 }
 
 fn is_ascii_credential(value: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if byte < 32:u8 || byte > 126:u8 { return false }
@@ -305,7 +305,7 @@ fn is_ascii_credential(value: str) -> bool {
 
 fn escape_scram_username(value: str) -> string {
     auto escaped# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if byte == ',' as u8 { escaped#.push_str("=2C") }
@@ -318,8 +318,8 @@ fn escape_scram_username(value: str) -> string {
 
 fn parse_u32_decimal(value: str) -> Result<u32, PostgresError> {
     if value.len() == 0:usize { return Result<u32, PostgresError>::Err(error("authentication", 0:usize, "SCRAM iteration count is empty")) }
-    auto parsed#: u32 = 0:u32
-    auto index#: usize = 0:usize
+    auto parsed# = 0:u32
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if byte < '0' as u8 || byte > '9' as u8 {
@@ -344,9 +344,9 @@ fn parse_scram_server_first(value: str) -> Result<ScramServerFirst, PostgresErro
     auto saw_nonce# = false
     auto saw_salt# = false
     auto saw_iterations# = false
-    auto cursor#: usize = 0:usize
+    auto cursor# = 0:usize
     loop cursor < value.len() {
-        auto field_end#: usize = cursor
+        auto field_end# = cursor:usize
         loop field_end < value.len() && value.byte_at(field_end) as u8 != ',' as u8 {
             field_end = field_end + 1:usize
         }
@@ -406,7 +406,7 @@ fn sha256_bytes(value: bytes) -> [u8; 32] {
 }
 
 fn scram_nonce_from_bare(value: str) -> Result<string, PostgresError> {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index + 2:usize < value.len() {
         if value.byte_at(index) as u8 == ',' as u8 &&
            value.byte_at(index + 1:usize) as u8 == 'r' as u8 &&
@@ -436,7 +436,7 @@ fn read_u32_be(input: Vec<u8>, offset: usize) -> u32 {
 
 fn text_range(input: Vec<u8>, start: usize, end: usize) -> string {
     auto output# = string::from("")
-    auto index#: usize = start
+    auto index# = start:usize
     loop index < end {
         output#.push_byte_raw(input.get(index))
         index = index + 1:usize
@@ -446,7 +446,7 @@ fn text_range(input: Vec<u8>, start: usize, end: usize) -> string {
 
 fn bytes_range(input: Vec<u8>, start: usize, end: usize) -> Bytes {
     auto output# = Vec<u8>::with_capacity(end - start)
-    auto index#: usize = start
+    auto index# = start:usize
     loop index < end {
         output#.push(input.get(index))
         index = index + 1:usize
@@ -455,7 +455,7 @@ fn bytes_range(input: Vec<u8>, start: usize, end: usize) -> Bytes {
 }
 
 fn parse_cstring(input: Vec<u8>, start: usize, end: usize) -> Result<ParsedText, PostgresError> {
-    auto cursor#: usize = start
+    auto cursor# = start:usize
     loop cursor < end {
         if input.get(cursor) == 0:u8 {
             return Result<ParsedText, PostgresError>::Ok(ParsedText(
@@ -471,7 +471,7 @@ fn parse_cstring(input: Vec<u8>, start: usize, end: usize) -> Result<ParsedText,
 fn parse_server_error(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresServerError, PostgresError> {
     auto sqlstate# = string::from("")
     auto message# = string::from("PostgreSQL server error")
-    auto cursor#: usize = start
+    auto cursor# = start:usize
     loop cursor < end {
         auto field = input.get(cursor)
         cursor = cursor + 1:usize
@@ -513,7 +513,7 @@ fn parse_authentication(input: Vec<u8>, start: usize, end: usize) -> Result<Post
     }
     if code == 10:i32 {
         auto mechanisms# = Vec<string>::new()
-        auto cursor#: usize = start + 4:usize
+        auto cursor# = start + 4:usize
         loop cursor < end {
             if input.get(cursor) == 0:u8 {
                 if cursor + 1:usize != end { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "SASL mechanism list has bytes after terminator")) }
@@ -558,8 +558,8 @@ fn parse_row_description(input: Vec<u8>, start: usize, end: usize) -> Result<Pos
     auto count = read_u16_be(input, start) as usize
     if count > MAX_COLUMNS { return Result<PostgresMessage, PostgresError>::Err(limit_error(start, "RowDescription column count exceeds limit")) }
     auto columns# = Vec<PostgresColumn>::with_capacity(count)
-    auto cursor#: usize = start + 2:usize
-    auto index#: usize = 0:usize
+    auto cursor# = start + 2:usize
+    auto index# = 0:usize
     loop index < count {
         auto name = parse_cstring(input, cursor, end)
         if name.is_err() { return Result<PostgresMessage, PostgresError>::Err(name.unwrap_err()) }
@@ -580,8 +580,8 @@ fn parse_data_row(input: Vec<u8>, start: usize, end: usize) -> Result<PostgresMe
     auto count = read_u16_be(input, start) as usize
     if count > MAX_COLUMNS { return Result<PostgresMessage, PostgresError>::Err(limit_error(start, "DataRow column count exceeds limit")) }
     auto values# = Vec<Option<Bytes>>::with_capacity(count)
-    auto cursor#: usize = start + 2:usize
-    auto index#: usize = 0:usize
+    auto cursor# = start + 2:usize
+    auto index# = 0:usize
     loop index < count {
         if end - cursor < 4:usize { return Result<PostgresMessage, PostgresError>::Err(protocol_error(cursor, "DataRow value length is truncated")) }
         auto encoded_length = read_u32_be(input, cursor)
@@ -611,7 +611,7 @@ fn parse_parameter_description(input: Vec<u8>, start: usize, end: usize) -> Resu
         return Result<PostgresMessage, PostgresError>::Err(protocol_error(start, "ParameterDescription has invalid length"))
     }
     auto oids# = Vec<u32>::with_capacity(count)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < count {
         oids#.push(read_u32_be(input, start + 2:usize + index * 4:usize))
         index = index + 1:usize
@@ -638,7 +638,7 @@ pub fn startup_message(user: str, database: str) -> Result<Vec<u8>, PostgresErro
     }
     auto frame# = Vec<u8>::with_capacity(payload.len() + 4:usize)
     append_u32_be(frame, (payload.len() + 4:usize) as u32)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < payload.len() {
         frame#.push(payload.get(index))
         index = index + 1:usize
@@ -684,7 +684,7 @@ fn append_parse_message(out#: Vec<u8>, statement: str, sql: str,
     append_cstring(body, statement)
     append_cstring(body, sql)
     append_u16_be(body, param_type_oids.len() as u16)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < param_type_oids.len() {
         append_u32_be(body, param_type_oids.get(index))
         index = index + 1:usize
@@ -728,7 +728,7 @@ fn append_bind_message(out#: Vec<u8>, statement: str, cede params: Vec<PostgresP
 
     // Supply one format code per parameter. This keeps binary values binary
     // without changing the conventional text representation for scalar data.
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < values.len() {
         match values.get(index) {
             auto PostgresParam::Bytes(_) => append_u16_be(body, 1:u16)
@@ -750,7 +750,7 @@ fn append_bind_message(out#: Vec<u8>, statement: str, cede params: Vec<PostgresP
             auto PostgresParam::Bytes(&value) => {
                 append_i32_be(body, value.len() as i32)
                 auto view = value.as_slice()
-                auto byte_index#: usize = 0:usize
+                auto byte_index# = 0:usize
                 loop byte_index < view.len() {
                     body#.push(view.at(byte_index).unwrap() as u8)
                     byte_index = byte_index + 1:usize
@@ -805,7 +805,7 @@ fn sasl_initial_message(mechanism: str, initial: str) -> Result<Vec<u8>, Postgre
     auto frame# = Vec<u8>::with_capacity(body.len() + 5:usize)
     frame#.push('p' as u8)
     append_u32_be(frame, (body.len() + 4:usize) as u32)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < body.len() {
         frame#.push(body.get(index))
         index = index + 1:usize
@@ -828,7 +828,7 @@ fn sasl_response_message(response: str) -> Result<Vec<u8>, PostgresError> {
 }
 
 fn append_bytes(target#: Vec<u8>, source: Vec<u8>) {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < source.len() {
         target#.push(source.get(index))
         index = index + 1:usize
@@ -837,7 +837,7 @@ fn append_bytes(target#: Vec<u8>, source: Vec<u8>) {
 
 fn suffix_from(input: Vec<u8>, start: usize) -> Vec<u8> {
     auto remaining# = Vec<u8>::with_capacity(input.len() - start)
-    auto index#: usize = start
+    auto index# = start:usize
     loop index < input.len() {
         remaining#.push(input.get(index))
         index = index + 1:usize
@@ -853,8 +853,8 @@ fn add_query_bytes(current: usize, additional: usize, maximum: usize) -> Result<
 }
 
 fn data_row_bytes(values: Vec<Option<Bytes>>) -> usize {
-    auto total#: usize = 0:usize
-    auto index#: usize = 0:usize
+    auto total# = 0:usize
+    auto index# = 0:usize
     loop index < values.len() {
         auto *value = values.get_ref(index)
         match value {
@@ -867,7 +867,7 @@ fn data_row_bytes(values: Vec<Option<Bytes>>) -> usize {
 }
 
 fn contains_mechanism(values: Vec<string>, expected: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < values.len() {
         if values.get(index).equals(expected) { return true }
         index = index + 1:usize
@@ -1061,18 +1061,18 @@ impl PostgresQueryResult@Encap {
 
     pub fn clone(self) -> PostgresQueryResult {
         auto columns# = Vec<PostgresColumn>::with_capacity(self.columns.len())
-        auto column_index#: usize = 0:usize
+        auto column_index# = 0:usize
         loop column_index < self.columns.len() {
             columns#.push(cede self.columns.get(column_index).clone())
             column_index = column_index + 1:usize
         }
 
         auto rows# = Vec<Vec<Option<Bytes>>>::with_capacity(self.rows.len())
-        auto row_index#: usize = 0:usize
+        auto row_index# = 0:usize
         loop row_index < self.rows.len() {
             auto *source_row = self.rows.get_ref(row_index)
             auto copied_row# = Vec<Option<Bytes>>::with_capacity(source_row.len())
-            auto value_index#: usize = 0:usize
+            auto value_index# = 0:usize
             loop value_index < source_row.len() {
                 auto *source_value = source_row.get_ref(value_index)
                 match source_value {
@@ -1427,8 +1427,8 @@ impl PostgresClient {
         auto current_columns# = Vec<PostgresColumn>::new()
         auto current_rows# = Vec<Vec<Option<Bytes>>>::new()
         auto has_row_description# = false
-        auto total_rows#: usize = 0:usize
-        auto total_bytes#: usize = 0:usize
+        auto total_rows# = 0:usize
+        auto total_bytes# = 0:usize
 
         loop true {
             auto received = self#.read_frame_async().await
@@ -1578,8 +1578,8 @@ impl PostgresStatement {
         auto current_columns# = Vec<PostgresColumn>::new()
         auto current_rows# = Vec<Vec<Option<Bytes>>>::new()
         auto has_row_description# = false
-        auto total_rows#: usize = 0:usize
-        auto total_bytes#: usize = 0:usize
+        auto total_rows# = 0:usize
+        auto total_bytes# = 0:usize
 
         loop true {
             auto received = client#.read_frame_async().await
@@ -1951,7 +1951,7 @@ impl PostgresPool {
         if timeout_ms <= 0:i32 {
             return Result<PostgresPoolLease, PostgresError>::Err(pool_error("PostgreSQL pool acquire timeout must be positive"))
         }
-        auto waited#: i32 = 0:i32
+        auto waited# = 0:i32
         loop waited < timeout_ms {
             auto acquired# = self#.try_acquire_async().await
             if acquired.is_ok() { return cede acquired }
@@ -2225,7 +2225,7 @@ pub fn scram_client_final(password: str, client_first_bare: str,
     auth_message#.push_str(without_proof.as_str())
     auto client_signature = hmac_sha256(bytes_from_array<32>(stored_key), auth_message.as_str().as_bytes())
     auto proof# = Vec<u8>::with_capacity(32:usize)
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < 32:usize {
         proof#.push(client_key[index] ^ client_signature[index])
         index = index + 1:usize
@@ -2270,7 +2270,7 @@ pub fn decode_backend_one(input: Vec<u8>) -> Result<PostgresDecode, PostgresErro
     if length + 1:usize > MAX_FRAME_BYTES { return Result<PostgresDecode, PostgresError>::Err(limit_error(1:usize, "PostgreSQL frame exceeds 16 MiB limit")) }
     auto total = length + 1:usize
     if input.len() < total { return Result<PostgresDecode, PostgresError>::Ok(PostgresDecode::NeedMore()) }
-    auto start: usize = 5:usize
+    auto start = 5:usize
     auto end = total
     auto parsed = if tag == 'R' as u8 {
         pass parse_authentication(input, start, end)

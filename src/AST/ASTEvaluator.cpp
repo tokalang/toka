@@ -92,6 +92,12 @@ std::unique_ptr<Expr> ASTEvaluator::foldExpression(std::unique_ptr<Expr> E, Scop
         return num;
       }
     }
+  } else if (auto *Cast = dynamic_cast<CastExpr *>(E.get())) {
+    // An ascription preserves the source expression's value semantics.  Fold
+    // inside it so compile-time rewrites such as `field.get(x): T` retain the
+    // same behavior as their un-ascribed form.
+    Cast->Expression =
+        foldExpression(std::move(Cast->Expression), CurrentScope, SemaInstance);
   } else if (auto *Met = dynamic_cast<MethodCallExpr *>(E.get())) {
     Met->Object = foldExpression(std::move(Met->Object), CurrentScope, SemaInstance);
     if (auto *CFE = dynamic_cast<ComptimeFieldExpr *>(Met->Object.get())) {

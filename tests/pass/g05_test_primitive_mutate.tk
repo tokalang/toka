@@ -5,7 +5,7 @@ impl i32 {
 }
 
 pub fn main() -> i32 {
-    auto v#: i32 = 0
+    auto v# = 0:i32
     v#.mutate()
     if v != 42 { return 1 }
     return 0

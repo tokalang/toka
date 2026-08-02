@@ -11,41 +11,41 @@ impl Token@Encap {
 }
 
 fn clear_payload() {
-    auto ^#token#: Token? = new Token(id = 1)
+    auto ^#token# = new Token(id = 1):^Token?
     token = none
 }
 
 fn replace_payload() {
-    auto ^#token#: Token? = new Token(id = 2)
+    auto ^#token# = new Token(id = 2):^Token?
     token = Token(id = 3)
 }
 
 fn rebind_after_empty_payload() {
-    auto ^#token#: Token? = new Token(id = 4)
+    auto ^#token# = new Token(id = 4):^Token?
     token = none
     ^token = new Token(id = 5)
 }
 
 fn rebind_live_payload() {
-    auto ^#token#: Token? = new Token(id = 6)
+    auto ^#token# = new Token(id = 6):^Token?
     ^token = new Token(id = 7)
 }
 
 fn shared_clear_payload() {
-    auto nul ~#token#: Token? = null
+    auto nul ~#token# = null:nul ~Token?
     ~token = new Token(id = 8)
     token = none
 }
 
 fn shared_rebind_after_empty_payload() {
-    auto nul ~#token#: Token? = null
+    auto nul ~#token# = null:nul ~Token?
     ~token = new Token(id = 9)
     token = none
     ~token = new Token(id = 10)
 }
 
 fn shared_rebind_live_payload() {
-    auto nul ~#token#: Token? = null
+    auto nul ~#token# = null:nul ~Token?
     ~token = new Token(id = 11)
     ~token = new Token(id = 12)
 }

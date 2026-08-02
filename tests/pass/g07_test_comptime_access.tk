@@ -12,14 +12,14 @@ pub fn main() -> i32 {
         for auto field in reflect<User>().fields {
             // we have field.name and field.type_name
             if (field.name == "name") {
-                auto val: str = field.get(u)
+                auto val = field.get(u):str
                 println("name = {}", val.raw_ptr())
             } else if (field.name == "id") {
-                auto val: i32 = field.get(u)
+                auto val = field.get(u):i32
                 println("id = {}", val)
                 
                 field.set(u, 99)
-                auto check_val: i32 = field.get(u)
+                auto check_val = field.get(u):i32
                 println("check id = {}", check_val)
             }
         }

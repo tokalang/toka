@@ -7,7 +7,7 @@ fn main() -> i32 {
     if pair.item is null {
         return 1
     } else {
-        auto target: Cell = cede pair.item
+        auto target = cede pair.item:Cell
         return target.value - 7
     }
 }

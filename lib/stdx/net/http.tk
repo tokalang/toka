@@ -214,7 +214,7 @@ impl HeaderMap {
         auto norm_key = key.to_ascii_lowercase()
         auto idx# = 0:usize
         auto found# = false
-        auto found_idx#: usize = 0
+        auto found_idx# = 0:usize
         loop idx < self.entries.len() {
             auto entry = self.entries#.get(idx).clone()
             if entry.key.as_str().eq_ignore_ascii_case(key.as_str()) {
@@ -492,7 +492,7 @@ pub shape HttpServerConnection (
 
 fn bytes_to_string(buf#: Vec<u8>) -> string {
     auto output# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < buf.len() {
         output#.push_byte_raw(buf#.get(index))
         index = index + 1:usize
@@ -521,7 +521,7 @@ impl HttpServerConnection {
             if n_read == 0:usize {
                 return Result<HttpRequest, string>::Err(cede last_error)
             }
-            auto index#: usize = 0:usize
+            auto index# = 0:usize
             loop index < n_read {
                 received#.push(read_buffer#.get(index))
                 index = index + 1:usize
@@ -538,7 +538,7 @@ impl HttpServerConnection {
         if self.closed { return Result<(), string>::Err(string::from("HTTP connection is closed")) }
         auto wire = response.to_string()
         auto bytes# = Vec<u8>::with_capacity(wire.len())
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < wire.len() {
             bytes#.push(wire.as_str().byte_at(index) as u8)
             index = index + 1:usize
@@ -627,7 +627,7 @@ pub fn find_header_boundary(req_str: str) -> HeaderBoundary {
 pub fn find_header_boundary_vec(buf#: Vec<u8>) -> HeaderBoundary {
     auto len = buf.len()
     if len < 2 { return HeaderBoundary(index = -1, delim_len = 0:usize) }
-    auto idx#: usize = 0
+    auto idx# = 0:usize
     loop idx + 1 < len {
         auto b0 = buf#.get(idx) as i32
         auto b1 = buf#.get(idx + 1) as i32
@@ -652,7 +652,7 @@ pub fn string_slice(s: string, start: usize, len: usize) -> string {
     auto end# = start + len
     if end > s.len() { end = s.len() }
     auto res# = string::from("")
-    auto i#: usize = start
+    auto i# = start:usize
     auto bytes = s.as_str().as_bytes()
     loop i < end {
         res#.push_byte_raw(bytes.at(i).unwrap() as u8)
@@ -1120,7 +1120,7 @@ impl HttpResponseStream {
             if n_read == 0:usize {
                 break
             }
-            auto i#: usize = 0
+            auto i# = 0:usize
             loop i < n_read {
                 body#.push(chunk#.get(i))
                 i += 1
@@ -1230,7 +1230,7 @@ impl HttpResponseStream {
             return self#.read_non_chunked_into_async(cede owned, max_len, timeout_ms).await
         }
 
-        auto copied_bytes#: usize = 0
+        auto copied_bytes# = 0:usize
         auto is_done# = false
 
         loop !is_done {
@@ -1243,8 +1243,8 @@ impl HttpResponseStream {
                 break
             }
             if self.chunk_state == 0 {
-                auto crlf_pos#: i32 = -1
-                auto idx#: usize = 0
+                auto crlf_pos# = -1:i32
+                auto idx# = 0:usize
                 loop idx + 1 < self.surplus_buf.len() {
                     if self.surplus_buf#.get(idx) == 13:u8 && self.surplus_buf#.get(idx + 1) == 10:u8 {
                         crlf_pos = idx as i32
@@ -1275,7 +1275,7 @@ impl HttpResponseStream {
                         is_done = true
                         break
                     }
-                    auto k#: usize = 0
+                    auto k# = 0:usize
                     loop k < nr.bytes_read {
                         self.surplus_buf#.push(nr.buffer#.get(k))
                         k += 1
@@ -1291,10 +1291,10 @@ impl HttpResponseStream {
                     break
                 }
 
-                auto hex_val#: usize = 0
+                auto hex_val# = 0:usize
                 auto valid_hex# = false
                 auto parse_err# = false
-                auto h_i#: usize = 0
+                auto h_i# = 0:usize
                 loop h_i < line_len {
                     auto b = self.surplus_buf#.get(h_i)
                     if b == 59:u8 { break }
@@ -1302,7 +1302,7 @@ impl HttpResponseStream {
                         h_i += 1
                         continue
                     }
-                    auto digit#: usize = 0
+                    auto digit# = 0:usize
                     if b >= 48:u8 && b <= 57:u8 {
                         digit = (b as usize) - 48:usize
                         valid_hex = true
@@ -1364,7 +1364,7 @@ impl HttpResponseStream {
                         is_done = true
                         break
                     }
-                    auto k#: usize = 0
+                    auto k# = 0:usize
                     loop k < nr.bytes_read {
                         self.surplus_buf#.push(nr.buffer#.get(k))
                         k += 1
@@ -1426,7 +1426,7 @@ impl HttpResponseStream {
                         is_done = true
                         break
                     }
-                    auto k#: usize = 0
+                    auto k# = 0:usize
                     loop k < nr.bytes_read {
                         self.surplus_buf#.push(nr.buffer#.get(k))
                         k += 1
@@ -1453,8 +1453,8 @@ impl HttpResponseStream {
             }
 
             if self.chunk_state == 3 {
-                auto crlf_pos#: i32 = -1
-                auto idx#: usize = 0
+                auto crlf_pos# = -1:i32
+                auto idx# = 0:usize
                 loop idx + 1 < self.surplus_buf.len() {
                     if self.surplus_buf#.get(idx) == 13:u8 && self.surplus_buf#.get(idx + 1) == 10:u8 {
                         crlf_pos = idx as i32
@@ -1479,7 +1479,7 @@ impl HttpResponseStream {
                         is_done = true
                         break
                     }
-                    auto k#: usize = 0
+                    auto k# = 0:usize
                     loop k < nr.bytes_read {
                         self.surplus_buf#.push(nr.buffer#.get(k))
                         k += 1
@@ -1609,8 +1609,8 @@ impl HttpClient {
         auto raw_header_buf# = Vec<u8>::with_capacity(4096)
         auto read_chunk# = Vec<u8>::with_capacity(4096)
 
-        auto boundary_idx#: i32 = -1
-        auto delim_len#: usize = 0
+        auto boundary_idx# = -1:i32
+        auto delim_len# = 0:usize
 
         loop {
             auto read_res = owned_stream#.read_into_async(cede read_chunk, 4096:usize, self.timeout_ms).await
@@ -1627,7 +1627,7 @@ impl HttpClient {
             }
 
             auto read_chunk# = res#.take_buffer()
-            auto k#: usize = 0
+            auto k# = 0:usize
             loop k < n_read {
                 raw_header_buf#.push(read_chunk#.get(k))
                 k += 1
@@ -1648,7 +1648,7 @@ impl HttpClient {
 
         auto h_len = boundary_idx as usize
         auto header_str# = string::from("")
-        auto h_i#: usize = 0
+        auto h_i# = 0:usize
         loop h_i < h_len {
             header_str#.push_char(raw_header_buf#.get(h_i) as char)
             h_i += 1
@@ -1687,7 +1687,7 @@ impl HttpClient {
         auto status_code = code_res.unwrap() as i32
 
         auto headers_view# = Vec<HttpHeaderView>::new()
-        auto line_offset#: usize = status_line_str.len() + 2:usize
+        auto line_offset# = status_line_str.len() + 2:usize
 
         loop !iter#.is_done() {
             auto line# = iter#.next()
@@ -1733,7 +1733,7 @@ impl HttpClient {
         auto body_start = h_len + delim_len
         auto surplus_buf# = Vec<u8>::new()
         if total_buf_len > body_start {
-            auto s_idx#: usize = body_start
+            auto s_idx# = body_start:usize
             loop s_idx < total_buf_len {
                 auto sb = raw_header_buf#.get(s_idx)
                 surplus_buf#.push(sb)
@@ -1741,7 +1741,7 @@ impl HttpClient {
             }
         }
 
-        auto cl_rem#: i64 = -1:i64
+        auto cl_rem# = -1:i64
         auto cl_opt = resp_headers#.get("content-length")
         if cl_opt.is_some() {
             auto cl_res = parse_content_length(cl_opt.unwrap().as_str())
@@ -1798,7 +1798,7 @@ impl HttpClient {
             if n_read == 0 {
                 break
             }
-            auto k#: usize = 0
+            auto k# = 0:usize
             loop k < n_read {
                 body_vec#.push(chunk_buf#.get(k))
                 k += 1
@@ -1808,7 +1808,7 @@ impl HttpClient {
         stream_obj#.close()
 
         auto body_str# = string::from("")
-        auto b_idx#: usize = 0
+        auto b_idx# = 0:usize
         loop b_idx < body_vec.len() {
             auto b_val = body_vec#.get(b_idx)
             body_str#.push_byte_raw(b_val)
@@ -1853,7 +1853,7 @@ impl HttpClient {
             if n_read == 0 {
                 break
             }
-            auto k#: usize = 0
+            auto k# = 0:usize
             loop k < n_read {
                 body_vec#.push(chunk_buf#.get(k))
                 k += 1
@@ -1863,7 +1863,7 @@ impl HttpClient {
         stream_obj#.close()
 
         auto body_str# = string::from("")
-        auto b_idx#: usize = 0
+        auto b_idx# = 0:usize
         loop b_idx < body_vec.len() {
             auto b_val = body_vec#.get(b_idx)
             body_str#.push_byte_raw(b_val)
@@ -1908,7 +1908,7 @@ impl HttpClient {
             if n_read == 0 {
                 break
             }
-            auto k#: usize = 0
+            auto k# = 0:usize
             loop k < n_read {
                 body_vec#.push(chunk_buf#.get(k))
                 k += 1
@@ -1918,7 +1918,7 @@ impl HttpClient {
         stream_obj#.close()
 
         auto body_str# = string::from("")
-        auto b_idx#: usize = 0
+        auto b_idx# = 0:usize
         loop b_idx < body_vec.len() {
             auto b_val = body_vec#.get(b_idx)
             body_str#.push_byte_raw(b_val)

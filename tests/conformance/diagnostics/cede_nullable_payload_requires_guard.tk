@@ -1,7 +1,7 @@
 shape Token(id: i32)
 
 fn main() -> i32 {
-    auto ^source#: Token? = new Token(id = 1)
+    auto ^source# = new Token(id = 1):^Token?
     auto ^target = cede ^source
     return 0
 }

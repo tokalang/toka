@@ -125,7 +125,7 @@ pub shape Ipv4Addr (
 
 impl Ipv4Addr {
     pub fn new(a: u8, b: u8, c: u8, d: u8) -> Ipv4Addr {
-        auto octets: [u8; 4] = [a, b, c, d]
+        auto octets = [a, b, c, d]:[u8; 4]
         return Ipv4Addr(octets = octets)
     }
 
@@ -134,14 +134,14 @@ impl Ipv4Addr {
         auto b = self.octets[1] as u32
         auto c = self.octets[2] as u32
         auto d = self.octets[3] as u32
-        return a bor (b bshl 8) bor (c bshl 16) bor (d bshl 24)
+        return a | (b << 8) | (c << 16) | (d << 24)
     }
 
     pub fn from_u32(ip: u32) -> Ipv4Addr {
-        auto a = (ip band 0xFF) as u8
-        auto b = ((ip bshr 8) band 0xFF) as u8
-        auto c = ((ip bshr 16) band 0xFF) as u8
-        auto d = ((ip bshr 24) band 0xFF) as u8
+        auto a = (ip & 0xFF) as u8
+        auto b = ((ip >> 8) & 0xFF) as u8
+        auto c = ((ip >> 16) & 0xFF) as u8
+        auto d = ((ip >> 24) & 0xFF) as u8
         return Ipv4Addr::new(a, b, c, d)
     }
 }
@@ -224,7 +224,7 @@ impl UdpSocket {
                 return Result<usize, string>::Err(string::from("Socket closed"))
             }
             auto ip_num = addr.ip.to_u32()
-            auto n: i64 = sysnet::net_sendto_impl(self.fd, *buf, len, ip_num as usize, addr.port as i32)
+            auto n = sysnet::net_sendto_impl(self.fd, *buf, len, ip_num as usize, addr.port as i32):i64
             if n < 0:i64 {
                 return Result<usize, string>::Err(string::from("send_to failed"))
             }
@@ -241,7 +241,7 @@ impl UdpSocket {
             auto out_port = 0:i32
             auto *ph = (&out_host as Addr) as *usize
             auto *pp = (&out_port as Addr) as *i32
-            auto n: i64 = sysnet::net_recvfrom_impl(self.fd, *buf, len, *ph, *pp)
+            auto n = sysnet::net_recvfrom_impl(self.fd, *buf, len, *ph, *pp):i64
             if n < 0:i64 {
                 return Result<UdpRecvInfo, string>::Err(string::from("recv_from failed"))
             }
@@ -431,7 +431,7 @@ impl TcpStream {
             if self.closed {
                 return Result<usize, string>::Err(string::from("Stream closed"))
             }
-            auto n: i64 = sysnet::net_read_impl(my_fd, *buf, len)
+            auto n = sysnet::net_read_impl(my_fd, *buf, len):i64
             if n < 0 {
                 return Result<usize, string>::Err(string::from("Read error"))
             }
@@ -465,7 +465,7 @@ impl TcpStream {
             if self.closed {
                 return Result<usize, string>::Err(string::from("Stream closed"))
             }
-            auto n: i64 = sysnet::net_write_impl(my_fd, *buf, len)
+            auto n = sysnet::net_write_impl(my_fd, *buf, len):i64
             if n < 0 {
                 return Result<usize, string>::Err(string::from("Write error"))
             }
@@ -1356,7 +1356,7 @@ pub fn net_async_read_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, s
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_read_impl(fd, *buf, len)
+                auto n = sysnet::net_read_impl(fd, *buf, len):i64
                 if n >= 0:i64 {
                     ret = Result<usize, string>::Ok(n as usize)
                     done = true
@@ -1401,7 +1401,7 @@ pub fn net_async_read_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32)
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_read_impl(fd, *buf, len)
+                auto n = sysnet::net_read_impl(fd, *buf, len):i64
                 if n >= 0:i64 {
                     sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
@@ -1501,7 +1501,7 @@ pub fn net_async_read_context_fd(fd: i32, *buf: u8, len: usize, canceler: Cancel
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_read_impl(fd, *buf, len)
+                auto n = sysnet::net_read_impl(fd, *buf, len):i64
                 if n >= 0:i64 {
                     sleep_async(0:i64).await
                     ret = Result<usize, string>::Ok(n as usize)
@@ -1673,7 +1673,7 @@ pub fn net_async_write_fd(fd: i32, *buf: u8, len: usize) -> async Result<usize, 
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_write_impl(fd, *buf, len)
+                auto n = sysnet::net_write_impl(fd, *buf, len):i64
                 if n >= 0:i64 {
                     ret = Result<usize, string>::Ok(n as usize)
                     done = true
@@ -1717,7 +1717,7 @@ pub fn net_async_write_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32
 
             auto done# = false
             loop !done {
-                auto n: i64 = sysnet::net_write_impl(fd, *buf, len)
+                auto n = sysnet::net_write_impl(fd, *buf, len):i64
                 if n >= 0:i64 {
                     ret = Result<usize, string>::Ok(n as usize)
                     done = true

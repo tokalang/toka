@@ -8,23 +8,23 @@ fn expect_u64(val: u64) {
 
 fn main() -> i32 {
     // 1. Literal widening
-    auto a: u64 = 42
+    auto a = 42:u64
     expect_u64(a)
 
     // 2. Variable widening
-    auto b: u32 = 42
-    auto c: u64 = b
+    auto b = 42:u32
+    auto c = b:u64
     expect_u64(c)
 
     // 3. Smaller to larger
-    auto d: u8 = 42
-    auto e: i32 = d
+    auto d = 42:u8
+    auto e = d:i32
     if e == 42 {
         println("u8 to i32 widening passed")
     }
 
     // 4. Function call argument widening
-    auto f: u16 = 42
+    auto f = 42:u16
     expect_u64(f)
 
     return 0

@@ -55,7 +55,7 @@ fn main() -> i32 {
 
     {
         auto captured = CleanupToken(id = 12)
-        auto invoke: fn() -> i32 = { [cede captured] => captured.id }
+        auto invoke = { [cede captured] => captured.id }:fn() -> i32
         assert(invoke() == 12, "cede capture payload")
     }
     assert(g_drop_count == 4, "cede capture drops exactly once")

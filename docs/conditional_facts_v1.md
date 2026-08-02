@@ -16,10 +16,10 @@ same `conditional_on` todo IDs through direct aliases, non-transfer expression
 operands, and resolved call arguments:
 
 ```toka
-auto answer: i32 = todo
-auto forwarded: i32 = answer
-auto doubled: i32 = forwarded + forwarded
-auto observed: i32 = identity(doubled)
+auto answer = todo:i32
+auto forwarded = answer:i32
+auto doubled = (forwarded + forwarded):i32
+auto observed = identity(doubled):i32
 ```
 
 Both facts are `status: "conditional"` and list the parser-local ID of the

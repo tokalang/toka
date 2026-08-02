@@ -2,9 +2,9 @@ import official/gui::{App}
 import std/thread::{thread_spawn}
 
 fn launch(cede app: App) {
-    auto worker: fn() -> cede i32 = { [cede app] =>
+    auto worker = { [cede app] =>
         return cede 0
-    }
+    }:fn() -> cede i32
     auto handle# = thread_spawn<i32>(cede worker)
     handle#.detach()
 }

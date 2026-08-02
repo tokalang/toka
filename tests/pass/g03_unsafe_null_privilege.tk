@@ -5,7 +5,7 @@ extern fn libc_free(*ptr: void)
 fn main() -> i32 {
     auto val# = 42
     // p is a non-nullable raw pointer, initialized to the address of val
-    auto *#p: i32 = *#val
+    auto *#p = *#val:*i32
 
     unsafe {
         // 1. We can pass null to an extern fn expecting a non-nullable raw pointer

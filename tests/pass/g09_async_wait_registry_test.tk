@@ -2,7 +2,7 @@ import std/io::{println};
 import std/task::{block_on, sleep_async};
 import core/task as core_task;
 
-auto counter#: i32 = 0;
+auto counter# = 0:i32;
 
 fn async_timer_task_a() -> async i32 {
     sleep_async(10).await;

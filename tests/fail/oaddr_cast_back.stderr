@@ -1,5 +1,5 @@
 error[E0450]: Invalid cast: cannot convert 'OAddr' to '*i32' via 'as'; only 'Addr' and '*' conversions are supported
- --> tests/fail/oaddr_cast_back.tk:7:28
+ --> tests/fail/oaddr_cast_back.tk:7:19
    |
- 7 |     auto *p2: i32 = oa as *i32 // EXPECT: error[E0450]:
-   |                            ^
+ 7 |     auto *p2 = oa as *i32 // EXPECT: error[E0450]:
+   |                   ^

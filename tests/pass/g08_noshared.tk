@@ -91,7 +91,7 @@ fn main() -> i32 {
     println("[{}]rec.b is {}", logi++, rec.b)
     println("[{}]rec.c is {}", logi++, rec.c)
 
-    auto pt: PointPair = PointPair(x = 100, y = 200)
+    auto pt = PointPair(x = 100, y = 200):PointPair
     processPoint(pt)
 
     auto PointPair(pair_x = .x, pair_y = .y) = pt

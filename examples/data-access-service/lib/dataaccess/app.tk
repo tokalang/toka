@@ -87,7 +87,7 @@ fn note_response(id: str, source: str) -> HttpResponse {
 // so every application response and event remains correlatable.
 fn is_valid_request_id(value: str) -> bool {
     if value.len() == 0:usize || value.len() > 128:usize { return false }
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if !((byte >= 'A' as u8 && byte <= 'Z' as u8) ||

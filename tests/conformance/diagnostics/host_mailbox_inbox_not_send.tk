@@ -4,9 +4,9 @@ import std/thread::{thread_spawn}
 fn main() -> i32 {
     auto mailbox# = host_mailbox<i32>()
     auto inbox = cede mailbox.inbox
-    auto worker: fn() -> cede i32 = { [cede inbox] =>
+    auto worker = { [cede inbox] =>
         return cede 0:i32
-    }
+    }:fn() -> cede i32
     auto handle# = thread_spawn<i32>(cede worker)
     handle#.detach()
     return 0:i32

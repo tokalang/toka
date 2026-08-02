@@ -2,8 +2,8 @@ import std/io::println
 import core/types::{OAddr}
 
 fn main() -> i32 {
-    auto *p: i32 = unsafe alloc i32(10)
+    auto *p = unsafe alloc i32(10):*i32
     auto oa = *p as OAddr
-    auto *p2: i32 = oa as *i32 // EXPECT: error[E0450]:
+    auto *p2 = oa as *i32 // EXPECT: error[E0450]:
     return 0
 }

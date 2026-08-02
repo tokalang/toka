@@ -52,7 +52,7 @@ def main() -> int:
             "  auto point_copy = Point(point)\n"
             "  auto value = NonZero(raw = 2)\n"
             "  auto value_copy = NonZero(value)\n"
-            "  auto capture: fn() -> i32 = { [copy value] => value.raw }\n"
+            "  auto capture = { [copy value] => value.raw }:fn() -> i32\n"
             "  return point_copy.x + value_copy.raw + capture()\n"
             "}\n", encoding="utf-8")
         compile_source(valid, expect_success=True)
@@ -121,7 +121,7 @@ def main() -> int:
             "fn main() -> i32 {\n"
             "  auto resource = Resource(raw = 1)\n"
             "  auto wrapper = Wrapper<Resource>(value = cede resource)\n"
-            "  auto closure: fn() -> i32 = { [dup wrapper] => wrapper.value.raw }\n"
+            "  auto closure = { [dup wrapper] => wrapper.value.raw }:fn() -> i32\n"
             "  return wrapper.value.raw + closure()\n"
             "}\n", encoding="utf-8")
         compile_source(generic_dup, expect_success=True)
@@ -142,7 +142,7 @@ def main() -> int:
                "fn main() -> i32 {\n"
                "  auto resource = Resource(raw = 1)\n"
                "  auto wrapper = Wrapper<Resource>(value = cede resource)\n"
-               "  auto closure: fn() -> i32 = { [dup wrapper] => wrapper.value.raw }\n"
+               "  auto closure = { [dup wrapper] => wrapper.value.raw }:fn() -> i32\n"
                "  return closure()\n"
                "}\n")
 
@@ -204,7 +204,7 @@ def main() -> int:
             "impl Secret@Encap { pub raw }\n"
             "fn main() -> i32 {\n"
             "  auto secret = Secret(raw = 1)\n"
-            "  auto closure: fn() -> i32 = { [copy secret] => secret.raw }\n"
+            "  auto closure = { [copy secret] => secret.raw }:fn() -> i32\n"
             "  return closure()\n"
             "}\n", encoding="utf-8")
         rejected_closure_copy = compile_source(closure_copy, expect_success=False)
@@ -220,7 +220,7 @@ def main() -> int:
             "}\n"
             "fn main() -> i32 {\n"
             "  auto resource = Resource(raw = 1)\n"
-            "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
+            "  auto closure = { [dup resource] => resource.raw }:fn() -> i32\n"
             "  return resource.raw + closure()\n"
             "}\n", encoding="utf-8")
         compile_source(dup_capture, expect_success=True)
@@ -233,7 +233,7 @@ def main() -> int:
                "impl Resource@Encap { pub raw fn drop(self#) {} }\n"
                "fn main() -> i32 {\n"
                "  auto resource = Resource(raw = 1)\n"
-               "  auto closure: fn() -> i32 = { [dup resource] => resource.raw }\n"
+               "  auto closure = { [dup resource] => resource.raw }:fn() -> i32\n"
                "  return closure()\n"
                "}\n")
 

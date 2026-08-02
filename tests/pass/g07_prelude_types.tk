@@ -2,10 +2,10 @@
 // This test verifies that Option, Result and their variants are available via prelude
 
 fn test_option() {
-    auto x : Option<i32> = Option<i32>::Some(10)
+    auto x = Option<i32>::Some(10):Option<i32>
     assert(x.is_some(), "Should be some")
     
-    auto y : Option<i32> = Option<i32>::None()
+    auto y = Option<i32>::None():Option<i32>
     assert(y.is_none(), "Should be none")
     
     match x {
@@ -15,10 +15,10 @@ fn test_option() {
 }
 
 fn test_result() {
-    auto res : Result<i32, str> = Result<i32, str>::Ok(200)
+    auto res = Result<i32, str>::Ok(200):Result<i32, str>
     assert(res.is_ok(), "Should be ok")
     
-    auto err : Result<i32, str> = Result<i32, str>::Err("Error")
+    auto err = Result<i32, str>::Err("Error"):Result<i32, str>
     assert(err.is_err(), "Should be err")
     
     match res {

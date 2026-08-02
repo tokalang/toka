@@ -4,11 +4,11 @@ fn main() -> i32 {
     auto outer_cnt# = 0
     auto inner_cnt# = 0
 
-    auto outer: void = loop {
+    auto outer = loop {
         outer_cnt += 1
         println("Outer loop iteration")
 
-        auto inner: void = loop {
+        auto inner = loop {
             inner_cnt += 1
             println("Inner loop iteration")
 
@@ -16,9 +16,8 @@ fn main() -> i32 {
                 // Break all the way out to outer
                 break to outer
             }
-        }
-    }
-
+        }:void
+    }:void
     println("Finished nested loop. outer_cnt: {}, inner_cnt: {}", outer_cnt, inner_cnt)
     assert(outer_cnt == 1, "outer_cnt should be 1")
     assert(inner_cnt == 3, "inner_cnt should be 3")

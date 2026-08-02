@@ -502,7 +502,10 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
   // 1. Validate Indices (must be integer loops)
   for (auto &idxExpr : Idx->Indices) {
     idxExpr = foldGenericConstant(std::move(idxExpr)); // [FIX]
-    auto idxType = checkExpr(idxExpr.get());
+    // The enclosing expression's expected type applies to the indexed value,
+    // never to its subscript.  In particular, an `Addr` ascription on a
+    // surrounding assignment must not turn a numeric index into `Addr`.
+    auto idxType = checkExpr(idxExpr.get(), nullptr);
     if (!idxType->isInteger()) {
       error(Idx, DiagID::ERR_SEMA_ARRAY_INDEX_MUST_BE_INTEGER_GOT, idxType->toString());
     }

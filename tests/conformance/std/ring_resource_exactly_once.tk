@@ -22,7 +22,7 @@ pub fn clone(self) -> Resource {
 fn main() -> i32 {
     {
         auto ring# = RingCore<Resource>::new()
-        auto id#: i32 = 0:i32
+        auto id# = 0:i32
         loop id < 8:i32 {
             auto resource = Resource(id = id)
             ring#.push_back(cede resource)

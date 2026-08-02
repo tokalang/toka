@@ -2,10 +2,10 @@ shape Cell(value#: i32)
 
 fn main() -> i32 {
     auto cell# = Cell(value = 1)
-    auto callback#: fn#() = { =>
+    auto callback# = { =>
         cell.value = 2
         return
-    }
+    }:fn#()
 
     callback#()
     assert(cell.value == 2,

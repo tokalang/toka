@@ -22,7 +22,7 @@ pub fn args_impl() -> i32 {
             return 0
         }
         auto count# = 0
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < len as usize {
             auto *p = (*buf as usize + i) as *char
             if p == (0 as char) {
@@ -50,8 +50,8 @@ pub fn get_arg_impl(index: i32) -> string {
         }
         
         auto count# = 0
-        auto i#: usize = 0
-        auto start#: usize = 0
+        auto i# = 0:usize
+        auto start# = 0:usize
         
         loop i < len as usize {
             auto *p = (*buf as usize + i) as *char

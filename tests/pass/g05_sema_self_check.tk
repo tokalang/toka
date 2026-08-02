@@ -17,7 +17,7 @@ impl Rect {
 
     // 3. 'Self' in variable declaration
     pub fn clone(self) -> Self {
-        auto self_copy: Self = unset
+        auto self_copy = uninit:Self
         self_copy = Rect(width=self.width, height=self.height)
         return self_copy
     }

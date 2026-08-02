@@ -84,10 +84,16 @@ static VariableExpr *findVariableExpr(Expr *E) {
 
 static bool isNullableCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
-  if (!cede || !cede->Value || !cede->Value->ResolvedType)
+  if (!cede || !cede->Value)
     return false;
 
-  auto sourceType = cede->Value->ResolvedType;
+  const Expr *source = cede->Value.get();
+  while (auto *cast = dynamic_cast<const CastExpr *>(source))
+    source = cast->Expression.get();
+  if (!source || !source->ResolvedType)
+    return false;
+
+  auto sourceType = source->ResolvedType;
   auto sourceSoul = sourceType->getSoulType();
   return sourceType->IsNullable ||
          (sourceSoul && sourceSoul->IsNullable);

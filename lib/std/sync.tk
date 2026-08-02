@@ -58,7 +58,7 @@ impl<'T: @Send> Mutex<'T> {
                 return Result<MutexLock<'T>, Error>::Err(Error::new(rc, msg))
             }
             
-            auto temp_h: Addr = self.handle
+            auto temp_h = self.handle:Addr
             auto *mut_ptr = ((*self) as *Mutex<'T>)
             
             return Result<MutexLock<'T>, Error>::Ok(MutexLock<'T>(
@@ -88,7 +88,7 @@ impl<'T: @Send> Mutex<'T> {
 impl<'T> Mutex<'T>@Encap {
     fn drop(self#) {
         unsafe {
-            auto h: Addr = self.handle
+            auto h = self.handle:Addr
             if h != 0:Addr {
                 sys_mutex_destroy(h)
                                 self.handle = 0:Addr
@@ -152,7 +152,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
                 return Result<RwReadLock<'T>, Error>::Err(Error::new(rc, msg))
             }
             
-            auto temp_h: Addr = self.handle
+            auto temp_h = self.handle:Addr
             auto *mut_ptr = ((*self) as *RwMutex<'T>)
             
             return Result<RwReadLock<'T>, Error>::Ok(RwReadLock<'T>(
@@ -173,7 +173,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
                 return Result<RwWriteLock<'T>, Error>::Err(Error::new(rc, msg))
             }
             
-            auto temp_h: Addr = self.handle
+            auto temp_h = self.handle:Addr
             auto *mut_ptr = ((*self) as *RwMutex<'T>)
             
             return Result<RwWriteLock<'T>, Error>::Ok(RwWriteLock<'T>(
@@ -201,7 +201,7 @@ impl<'T: @{Send, Sync}> RwMutex<'T> {
 impl<'T> RwMutex<'T>@Encap {
     fn drop(self#) {
         unsafe {
-            auto h: Addr = self.handle
+            auto h = self.handle:Addr
             if h != 0:Addr {
                 sys_rwlock_destroy(h)
                                 self.handle = 0:Addr
@@ -279,7 +279,7 @@ impl<'T: @Send> CondVar<'T>@Send {}
 impl<'T> CondVar<'T>@Encap {
     fn drop(self#) {
         unsafe {
-            auto h: Addr = self.handle
+            auto h = self.handle:Addr
             if h != 0:Addr {
                 sys_cond_destroy(h)
                                 self.handle = 0:Addr

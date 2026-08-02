@@ -919,9 +919,15 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   llvm::Value *closureEnvAddr = nullptr;
   llvm::Type *closureEnvType = nullptr;
   std::string closureEnvTypeName;
+  const Expr *sourceInitExpr = var->Init.get();
   if (var->Init) {
-    // [Fix] Handle UnsetExpr: Skip generation for explicit 'unset'
-    if (dynamic_cast<const UnsetExpr *>(var->Init.get())) {
+    // [Fix] Handle UnsetExpr: Skip generation for explicit 'uninit'.
+    Expr *initExpr = var->Init.get();
+    if (auto *cast = dynamic_cast<const CastExpr *>(initExpr);
+        cast && cast->Kind == CastKind::Ascription)
+      initExpr = cast->Expression.get();
+    sourceInitExpr = initExpr;
+    if (dynamic_cast<const UnsetExpr *>(initExpr)) {
       // Do nothing -> initVal remains nullptr.
       // This prevents 'Store' from being generated later, leaving memory
       // uninitialized (or garbage).
@@ -930,7 +936,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     } else {
       m_CFStack.push_back({varName, nullptr, nullptr, nullptr});
       scopeBeforeInit = m_ScopeStack.empty() ? 0 : m_ScopeStack.back().size();
-      PhysEntity initEnt = genExpr(var->Init.get());
+      PhysEntity initEnt = genExpr(initExpr);
 
       // [Fix] Array-to-Pointer Decay Interception
       // Check if RHS is physically an array type that should decay to a
@@ -1153,7 +1159,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
 
   std::shared_ptr<Type> nullableSoulType =
       var->ResolvedType ? var->ResolvedType->getSoulType() : nullptr;
-  if (dynamic_cast<const NewExpr *>(var->Init.get()) && initVal &&
+  if (dynamic_cast<const NewExpr *>(sourceInitExpr) && initVal &&
       initVal->getType()->isPointerTy() && nullableSoulType &&
       nullableSoulType->IsNullable && elemTy && elemTy->isStructTy()) {
     initVal = wrapFreshAllocationAsNullableSoul(
@@ -1395,18 +1401,18 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
 
   // [NEW] Fat pointer synthesis for Closures in VariableDecl
   if (initVal && initVal->getType() != type && type && type->isStructTy() && (type->getStructNumElements() == 2 || type->getStructNumElements() == 3) && type->getStructElementType(0)->isPointerTy() && type->getStructElementType(1)->isPointerTy()) {
-      if (var->Init && var->Init->ResolvedType && var->Init->ResolvedType->isShape()) {
-         auto shp = std::static_pointer_cast<toka::ShapeType>(var->Init->ResolvedType);
+      if (sourceInitExpr && sourceInitExpr->ResolvedType && sourceInitExpr->ResolvedType->isShape()) {
+         auto shp = std::static_pointer_cast<toka::ShapeType>(sourceInitExpr->ResolvedType);
          if (shp->Name.find("__Closure_") == 0) {
              bool isDynFn = type->getStructNumElements() == 3;
              llvm::Type *envTy = initVal->getType();
-             closureEnvType = getLLVMType(var->Init->ResolvedType);
+             closureEnvType = getLLVMType(sourceInitExpr->ResolvedType);
              closureEnvTypeName = shp->Name;
              llvm::Value *envPtrAddr;
              
              if (isDynFn) {
                  // Heap Allocation for `dyn fn`
-                 llvm::Type *objTy = getLLVMType(var->Init->ResolvedType);
+                 llvm::Type *objTy = getLLVMType(sourceInitExpr->ResolvedType);
                  
                   llvm::Function *mallocFn = m_Module->getFunction("malloc");
                   if (!mallocFn) {

@@ -10,7 +10,7 @@ fn main() -> i32 {
         Pair(a = .v0, &s = .v1) => {
             pass 1
         }
-        default => {
+        _ => {
             pass 0
         }
     }

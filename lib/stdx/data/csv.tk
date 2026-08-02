@@ -44,9 +44,9 @@ pub fn parse_records(input: str) -> Result<Vec<Vec<string>>, CsvError> {
     auto in_quotes# = false
     auto quote_closed# = false
     auto record_started# = false
-    auto i#: usize = 0
-    auto line#: usize = 1
-    auto column#: usize = 1
+    auto i# = 0:usize
+    auto line# = 1:usize
+    auto column# = 1:usize
 
     loop i < input.len() {
         auto byte = input.byte_at(i) as u8
@@ -160,7 +160,7 @@ pub fn parse_records(input: str) -> Result<Vec<Vec<string>>, CsvError> {
 fn write_field(cede field: string, output#: string) {
     auto owned_field = cede field
     auto quoted# = false
-    auto i#: usize = 0
+    auto i# = 0:usize
     loop i < owned_field.len() {
         auto byte = owned_field.as_str().byte_at(i) as u8
         if byte == 44:u8 || byte == 34:u8 || byte == 13:u8 || byte == 10:u8 {
@@ -182,10 +182,10 @@ fn write_field(cede field: string, output#: string) {
 pub fn write_records(cede records: Vec<Vec<string>>) -> string {
     auto owned_records = cede records
     auto output# = string::from("")
-    auto row_index#: usize = 0
+    auto row_index# = 0:usize
     loop row_index < owned_records.len() {
         auto *row = owned_records.get_ref(row_index)
-        auto field_index#: usize = 0
+        auto field_index# = 0:usize
         loop field_index < row.len() {
             if field_index > 0 { output#.push_byte_raw(44:u8) }
             auto field = row.get_ref(field_index).clone()
@@ -201,7 +201,7 @@ pub fn write_records(cede records: Vec<Vec<string>>) -> string {
 
 fn quotes_closed(input: str) -> bool {
     auto in_quotes# = false
-    auto i#: usize = 0
+    auto i# = 0:usize
     loop i < input.len() {
         auto byte = input.byte_at(i) as u8
         if byte == 34:u8 {
@@ -222,7 +222,7 @@ fn quotes_closed(input: str) -> bool {
 pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: usize)
                              -> Result<Option<Vec<string>>, CsvError> {
     auto record# = string::from("")
-    auto line#: usize = 1
+    auto line# = 1:usize
     loop true {
         auto line_result = reader#.read_line()
         if line_result.is_err() {

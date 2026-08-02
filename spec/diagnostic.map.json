@@ -95,20 +95,20 @@
     "E0410": {
       "id": "ERR_USE_UNSET",
       "level": "Error",
-      "message": "Use of unset variable or member '{}'",
-      "description": "Use of unset variable or member '{}'"
+      "message": "Use of uninitialized variable or member '{}'",
+      "description": "Use of uninitialized variable or member '{}'"
     },
     "E0411": {
       "id": "ERR_ESCAPE_UNSET",
       "level": "Error",
-      "message": "Cannot escape an unset or dirty variable '{}'",
-      "description": "Cannot escape an unset or dirty variable '{}'"
+      "message": "Cannot escape an uninitialized or dirty variable '{}'",
+      "description": "Cannot escape an uninitialized or dirty variable '{}'"
     },
     "E0412": {
       "id": "ERR_DIRTY_REF_ESCAPE",
       "level": "Error",
-      "message": "Reference '{}' to unset variable '{}' escapes scope without initialization",
-      "description": "Reference '{}' to unset variable '{}' escapes scope without initialization"
+      "message": "Reference '{}' to uninitialized variable '{}' escapes scope without initialization",
+      "description": "Reference '{}' to uninitialized variable '{}' escapes scope without initialization"
     },
     "E0413": {
       "id": "ERR_INVALID_OP",
@@ -125,8 +125,8 @@
     "E0415": {
       "id": "ERR_INFER_NULLPTR",
       "level": "Error",
-      "message": "Cannot infer type from 'nullptr'; explicit type annotation required (e.g., 'auto *p: Type = ...')",
-      "description": "Cannot infer type from 'nullptr'; explicit type annotation required (e.g., 'auto *p: Type = ...')"
+      "message": "Cannot infer type from 'null'; use an RHS type ascription (e.g., 'auto *p = null:*Type')",
+      "description": "Cannot infer type from 'null'; use an RHS type ascription (e.g., 'auto *p = null:*Type')"
     },
     "E0459": {
       "id": "ERR_IMPLICIT_BOX_PROHIBITED",
@@ -1482,10 +1482,10 @@
       "description": "Only 'return <- ...' or named return LHS is currently supported in effects block"
     },
     "E01218": {
-      "id": "ERR_PARSER_EXPECTED_DELETE_AFTER_FOR_DELETED_FUNCT",
+      "id": "ERR_PARSER_DELETED_FUNCTIONS_REMOVED",
       "level": "Error",
-      "message": "Expected 'delete' after '=' for deleted function",
-      "description": "Expected 'delete' after '=' for deleted function"
+      "message": "The '= delete' function syntax has been removed",
+      "description": "Function declarations cannot use '= delete'."
     },
     "E01219": {
       "id": "ERR_PARSER_EXPECTED_EXTERN",
@@ -1738,6 +1738,30 @@
       "level": "Error",
       "message": "Extern declarations cannot declare return dependencies",
       "description": "Return dependencies describe Toka function contracts and are not valid on FFI declarations."
+    },
+    "E01261": {
+      "id": "ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION",
+      "level": "Error",
+      "message": "'auto' binding '{}' cannot have a declaration-side type annotation; ascribe its initializer instead",
+      "description": "An auto binding infers its type from the RHS expression."
+    },
+    "E01262": {
+      "id": "ERR_PARSER_AUTO_BINDING_REQUIRES_INITIALIZER",
+      "level": "Error",
+      "message": "'auto' binding '{}' requires an initializer",
+      "description": "An auto binding always derives its type from an initializer."
+    },
+    "E01263": {
+      "id": "ERR_PARSER_DEFAULT_WILDCARD_REMOVED",
+      "level": "Error",
+      "message": "'default' is not a match wildcard; use '_' instead",
+      "description": "The sole match wildcard spelling is '_'."
+    },
+    "E01264": {
+      "id": "ERR_PARSER_BITWISE_OPERATOR_MUST_BE_SURROUNDED",
+      "level": "Error",
+      "message": "Binary bitwise operators must be surrounded by spaces",
+      "description": "Whitespace distinguishes binary bitwise operators from morphology syntax."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",
@@ -2536,6 +2560,18 @@
       "level": "Error",
       "message": "Todo is not supported in this context; it is a requirement-only expression, not a place, capability, or resource",
       "description": "Todos cannot be used as a place, through a view, or in a prefix/postfix operation"
+    },
+    "E04606": {
+      "id": "ERR_TYPE_ASCRIPTION_MISMATCH",
+      "level": "Error",
+      "message": "Type ascription '{}' is incompatible with expression type '{}'",
+      "description": "An ascription constrains an expression but does not request a conversion."
+    },
+    "E04607": {
+      "id": "ERR_SEMA_FIELD_INITIALIZER_MUST_BE_EXPLICITLY_CEDED",
+      "level": "Error",
+      "message": "Field '{}' receives an owning value from '{}'; use 'cede {}' to transfer ownership explicitly",
+      "description": "An owned lvalue must be explicitly ceded when it initializes an owning field."
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

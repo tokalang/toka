@@ -826,7 +826,7 @@ impl IntBox@Readable {
     type Item = i32
 
     pub fn read(self) -> Item {
-        auto tmp: Item = self.value
+        auto tmp = self.value:Item
         return tmp
     }
 }

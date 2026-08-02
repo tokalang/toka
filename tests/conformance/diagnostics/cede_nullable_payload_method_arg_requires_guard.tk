@@ -10,6 +10,6 @@ impl Sink {
 
 fn main() -> i32 {
     auto sink = Sink()
-    auto ^source#: Token? = new Token(id = 1)
+    auto ^source# = new Token(id = 1):^Token?
     return sink.consume(cede source)
 }

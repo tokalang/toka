@@ -29,10 +29,16 @@ static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
 static bool isNullableCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
-  if (!cede || !cede->Value || !cede->Value->ResolvedType)
+  if (!cede || !cede->Value)
     return false;
 
-  auto sourceType = cede->Value->ResolvedType;
+  const Expr *source = cede->Value.get();
+  while (auto *cast = dynamic_cast<const CastExpr *>(source))
+    source = cast->Expression.get();
+  if (!source || !source->ResolvedType)
+    return false;
+
+  auto sourceType = source->ResolvedType;
   auto sourceSoul = sourceType->getSoulType();
   return sourceType->IsNullable ||
          (sourceSoul && sourceSoul->IsNullable);
@@ -1349,6 +1355,13 @@ void Sema::checkStmt(Stmt *S) {
       m_IsConsumingEffect = oldConsuming;
       m_ExpectedWritability = oldExpectedWritability;
       InitType = InitTypeObj->toString();
+      if (auto *ascription = dynamic_cast<CastExpr *>(Var->Init.get());
+          ascription && ascription->Kind == CastKind::Ascription) {
+        // The source ascription is the inferred binding type.  In particular,
+        // semantic Type rendering may omit callable `cede` morphology that is
+        // still part of the source contract.
+        InitType = ascription->TargetType;
+      }
 
       // `cede` does not prove that a nullable source is non-null.  A guard
       // narrows the source binding in its success scope, so this check uses
@@ -1365,15 +1378,14 @@ void Sema::checkStmt(Stmt *S) {
         // `auto value = cede nullable` infers a nullable value.  Any written
         // value type or handle morphology is a destination declaration and
         // must therefore state whether it accepts nullability explicitly.
+        const auto *sourceAscription =
+            dynamic_cast<const CastExpr *>(cede->Value.get());
         const bool hasDeclaredDestination =
             !inferredType || Var->IsRawPointer || Var->IsUnique ||
-            Var->IsShared || Var->IsReference;
-        auto sourceType = cede->Value ? cede->Value->ResolvedType : nullptr;
-        auto sourceSoul = sourceType ? sourceType->getSoulType() : nullptr;
-        const bool sourceIsNullable =
-            sourceType &&
-            (sourceType->IsNullable ||
-             (sourceSoul && sourceSoul->IsNullable));
+            Var->IsShared || Var->IsReference ||
+            (sourceAscription &&
+             sourceAscription->Kind == CastKind::Ascription);
+        const bool sourceIsNullable = isNullableCedeSource(cede);
         if (hasDeclaredDestination && !targetAllowsNull && sourceIsNullable) {
           DiagnosticEngine::report(
               getLoc(Var),
@@ -1435,17 +1447,23 @@ void Sema::checkStmt(Stmt *S) {
 
     // 4. If type not specified, infer from init
     if (Var->TypeName.empty() || Var->TypeName == "auto") {
-      if (InitType.empty() || InitType == "void") {
+      const auto *ascription = dynamic_cast<CastExpr *>(Var->Init.get());
+      const bool isExplicitVoidBinding =
+          InitType == "void" && ascription &&
+          ascription->Kind == CastKind::Ascription;
+      if (InitType.empty() || (InitType == "void" && !isExplicitVoidBinding)) {
         DiagnosticEngine::report(getLoc(Var), DiagID::ERR_TYPE_REQUIRED,
                                  Var->Name);
         HasError = true;
         Var->TypeName = "unknown";
       } else {
         std::string Inferred = InitType;
-        // A cede return marks transfer across the call edge. Binding the
-        // result accepts that transfer, so the local variable has the
-        // underlying owned type rather than a persistent cede-qualified type.
-        if (Inferred.rfind("cede ", 0) == 0) {
+        // A `cede` expression marks transfer across a call edge. Binding its
+        // result accepts that transfer, so the local has the underlying owned
+        // type.  A RHS type ascription such as `closure:cede fn()` is instead
+        // an explicit callable contract and must retain its receiver mode.
+        if (dynamic_cast<CedeExpr *>(Var->Init.get()) &&
+            Inferred.rfind("cede ", 0) == 0) {
           Inferred = Inferred.substr(5);
         }
         if (Inferred == "null") {
@@ -1459,7 +1477,18 @@ void Sema::checkStmt(Stmt *S) {
         // morphology from inferred soul
         if (Var->IsRawPointer || Var->IsUnique || Var->IsShared ||
             Var->IsReference) {
-          if (Inferred.find("nul ") == 0) Inferred = Inferred.substr(4);
+          // TypeSyntax canonicalizes the nullable-handle wrapper as `nul^T`,
+          // while legacy hand-written spelling may use `nul ^T`.  Both name
+          // the same RHS type; remove only the wrapper before matching the
+          // binding's explicit handle morphology.
+          if (Inferred.rfind("nul ", 0) == 0) {
+            Inferred = Inferred.substr(4);
+          } else if (Inferred.rfind("nul", 0) == 0 &&
+                     Inferred.size() > 3 &&
+                     (Inferred[3] == '*' || Inferred[3] == '^' ||
+                      Inferred[3] == '~' || Inferred[3] == '&')) {
+            Inferred = Inferred.substr(3);
+          }
           if (!Inferred.empty() && (Inferred[0] == '*' || Inferred[0] == '^' ||
                                     Inferred[0] == '~' || Inferred[0] == '&')) {
             Inferred = Inferred.substr(1);

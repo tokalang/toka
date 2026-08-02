@@ -23,7 +23,7 @@ pub fn main() -> i32 {
     auto ~m4 = ~m
     auto ~m5 = ~m
 
-    auto f1: fn() -> cede i32 = { [cede m1] =>
+    auto f1 = { [cede m1] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m1
@@ -34,9 +34,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return cede 0
-    }
+    }:fn() -> cede i32
 
-    auto f2: fn() -> cede i32 = { [cede m2] =>
+    auto f2 = { [cede m2] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m2
@@ -46,9 +46,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return cede 0
-    }
+    }:fn() -> cede i32
 
-    auto f3: fn() -> cede i32 = { [cede m3] =>
+    auto f3 = { [cede m3] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m3
@@ -58,9 +58,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return cede 0
-    }
+    }:fn() -> cede i32
 
-    auto f4: fn() -> cede i32 = { [cede m4] =>
+    auto f4 = { [cede m4] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m4
@@ -70,9 +70,9 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return cede 0
-    }
+    }:fn() -> cede i32
 
-    auto f5: fn() -> cede i32 = { [cede m5] =>
+    auto f5 = { [cede m5] =>
         auto i# = 0
         loop i < 50000 {
             auto ~local = ~m5
@@ -82,7 +82,7 @@ pub fn main() -> i32 {
             i = i + 1
         }
         return cede 0
-    }
+    }:fn() -> cede i32
 
     println("Spawning 5 threads, each doing 50000 local clone/drops of ~Mutex...")
 

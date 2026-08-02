@@ -12,9 +12,9 @@ shape Env(
 
 fn create_sret_closure(b: i64) -> dyn fn(i64) -> LargeResult {
     auto env = Env(base = b)
-    auto f: dyn fn(i64) -> LargeResult = { [cede env] x =>
+    auto f = { [cede env] x =>
         LargeResult(v1 = env.base + x, v2 = env.base + x + 1, v3 = env.base + x + 2)
-    }
+    }:dyn fn(i64) -> LargeResult
     return f
 }
 

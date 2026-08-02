@@ -1,7 +1,7 @@
 import ./lib::{Cell}
 
 fn main() -> i32 {
-    auto values: [Cell?; 1] = [Cell(value = 7)]
+    auto values = [Cell(value = 7)]:[Cell?; 1]
     auto target = cede values[0]
     guard target {
         return target.value - 7

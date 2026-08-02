@@ -2,7 +2,7 @@ import std/io::{println};
 import std/task::{block_on};
 import core/option::{Option};
 
-auto global_drop_count#: i32 = 0;
+auto global_drop_count# = 0:i32;
 
 shape SharedResource(
     id: i32
@@ -44,7 +44,7 @@ fn test_cede_shared_move() {
 fn test_scalar_bnot_move() {
     auto value = 1;
     auto moved = cede ~value;
-    assert(moved == -2, "cede ~value scalar bnot mismatch!");
+    assert(moved == -2, "cede ~value scalar ~ mismatch!");
 }
 
 fn test_match_conditional_move() {

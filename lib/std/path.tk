@@ -51,7 +51,7 @@ impl Path {
             }
         }
         
-        auto sub_start#: usize = 0
+        auto sub_start# = 0:usize
         if sub.len() > 0 {
             auto first = sub.byte_at(0)
             if first == 47:char || first == 92:char {
@@ -76,7 +76,7 @@ impl Path {
         }
         
         auto last_dot# = idx as i64
-        auto i#: i64 = (idx + 1) as i64
+        auto i# = (idx + 1) as i64:i64
         loop i < self.inner.len() as i64 {
             if self.inner.byte_at(i as usize) == 46:char {
                 last_dot = i
@@ -93,8 +93,8 @@ impl Path {
     }
 
     pub fn basename(self) -> string {
-        auto last_slash#: i64 = -1
-        auto i#: usize = 0
+        auto last_slash# = -1:i64
+        auto i# = 0:usize
         loop i < self.inner.len() {
             auto c = self.inner.byte_at(i)
             if c == 47:char || c == 92:char { // '/' or '\\'
@@ -116,8 +116,8 @@ impl Path {
     }
 
     pub fn dirname(self) -> string {
-        auto last_slash#: i64 = -1
-        auto i#: usize = 0
+        auto last_slash# = -1:i64
+        auto i# = 0:usize
         loop i < self.inner.len() {
             auto c = self.inner.byte_at(i)
             if c == 47:char || c == 92:char { // '/' or '\\'

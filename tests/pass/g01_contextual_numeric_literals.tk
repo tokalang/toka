@@ -27,7 +27,7 @@ pub fn main() -> i32 {
     if limits.value != 66 { return 9 }
     if return_u64() != 65 { return 10 }
 
-    auto assigned#: u64 = 67
+    auto assigned# = 67:u64
     assigned = 68
     if assigned != 68 { return 11 }
     return 0

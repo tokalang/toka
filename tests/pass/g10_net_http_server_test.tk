@@ -47,7 +47,7 @@ pub fn main() -> i32 {
                 auto s# = listener#.accept()
                 if !s.is_valid() { return cede 1 }
 
-                auto buf: [char; 1024] = [0 as char; 1024]
+                auto buf = [0 as char; 1024]:[char; 1024]
                 auto *buf_ptr# = &buf[0] as *u8
 
                 auto read_res = s#.read(*buf_ptr, 1024)
@@ -83,7 +83,7 @@ pub fn main() -> i32 {
         assert(write_res.is_ok(), "Client write failed")
 
         // Read response
-        auto buf: [char; 1024] = [0 as char; 1024]
+        auto buf = [0 as char; 1024]:[char; 1024]
         auto *buf_ptr# = &buf[0] as *u8
         auto read_res = stream#.read(*buf_ptr, 1024)
         assert(read_res.is_ok(), "Client read failed")

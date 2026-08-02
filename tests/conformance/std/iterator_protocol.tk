@@ -10,10 +10,10 @@ fn main() -> i32 {
     v#.push(20)
     v#.push(30)
 
-    auto sum#: i32 = 0
-    auto count#: usize = 0
+    auto sum# = 0:i32
+    auto count# = 0:usize
     auto it# = v.iter()
-    auto done#: bool = false
+    auto done# = false:bool
 
     loop !done {
         auto opt = it#.next()

@@ -1,7 +1,7 @@
 import std/io::println
 
 fn main() -> i32 {
-    auto y : i32? = none
+    auto y = none:i32?
     
     if y == none {
         println("y == none works!")
@@ -9,7 +9,7 @@ fn main() -> i32 {
         assert(false, "y should be none!")
     }
 
-    auto z : i32? = 100
+    auto z = 100:i32?
     if z != none {
         println("z != none works!")
     } else {

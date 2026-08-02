@@ -36,13 +36,13 @@ fn main() -> i32 {
     // This triggers a chain of monomorphizations:
     // Node<i32> -> Buffer<i32, 5> -> [i32; 5]
     
-    auto ^head: Node<i32> = new Node<i32>(
+    auto ^head = new Node<i32>(
         // Using array repeat initialization syntax [val; count], the compiler internally uses memset to efficiently implement array broadcast initialization
         // Here the compiler needs to recognize [0; 5] matching [i32; 5]
         buf = Buffer<i32, 5>(data=[0,1,2,3,4], len=5), 
         
         ^next = null
-    )
+    ):^Node<i32>
     for auto i in [0,1,2,3,4] {
         println("head.buf.data[{}] = {}", i, head.buf.data[i])
         assert(head.buf.data[i] == i,"check head.val[{}]")

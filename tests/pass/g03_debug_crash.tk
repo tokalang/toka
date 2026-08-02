@@ -1,4 +1,4 @@
 fn main() -> i32 {
-    auto f4: fn(i32, i32) -> i32 = { a, b => a + b }
+    auto f4 = { a, b => a + b }:fn(i32, i32) -> i32
     return 0
 }

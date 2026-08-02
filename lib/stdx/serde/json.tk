@@ -69,7 +69,7 @@ impl bool@ToJson {
 // always be escaped, including control bytes without a short escape spelling.
 pub fn write_escaped_json_string(s: str, buf#: string) {
     buf#.push_str("\"")
-    auto i#: usize = 0
+    auto i# = 0:usize
     loop i < s.len() {
         auto c = s.byte_at(i)
         if c == 34 { buf#.push_str("\\\"") }      // '"'
@@ -81,8 +81,8 @@ pub fn write_escaped_json_string(s: str, buf#: string) {
         else if c == 9 { buf#.push_str("\\t") }
         else if c < 32 {
             auto byte = c as u8
-            auto high = byte bshr 4:u8
-            auto low = byte band 15:u8
+            auto high = byte >> 4:u8
+            auto low = byte & 15:u8
             buf#.push_str("\\u00")
             if high < 10:u8 { buf#.push_byte_raw(48:u8 + high) }
             else { buf#.push_byte_raw(87:u8 + high) }
@@ -132,7 +132,7 @@ impl<'T: @ToJson> Vec<'T>@ToJson {
     pub fn write_json(self, buf#: string) -> string {
         buf#.push_str("[")
         auto first# = true
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < self.len() {
             if !first { buf#.push_str(",") }
             first = false
@@ -227,10 +227,10 @@ impl i32@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem# = json_skip_whitespace(json)
         if rem.len() == 0 { return JsonRes::Err("EOF") }
-        auto i#: usize = 0
+        auto i# = 0:usize
         auto neg# = false
         if rem.byte_at(0) == 45 { neg = true; i = 1 }
-        auto val#: i32 = 0
+        auto val# = 0:i32
         auto found# = false
         loop i < rem.len() {
             auto c = rem.byte_at(i)
@@ -297,7 +297,7 @@ fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
         if json.len() > 0 { json = json.substr(1, json.len() - 1) }
         return JsonRes::Ok(json)
     } else if c == 34 { // '"'
-        auto i#: usize = 1
+        auto i# = 1:usize
         loop i < json.len() {
             auto ch = json.byte_at(i)
             if ch == 34 { return JsonRes::Ok(json.substr(i + 1, json.len() - i - 1)) }
@@ -306,7 +306,7 @@ fn _json_skip_value(json_in: str, depth: usize) -> JsonRes <- json_in {
         }
         return JsonRes::Err("Unterminated string")
     } else {
-        auto i#: usize = 0
+        auto i# = 0:usize
         loop i < json.len() {
             auto b = json.byte_at(i)
             if b == 32 || b == 10 || b == 13 || b == 9 || b == 44 || b == 125 || b == 93 { break }
@@ -322,10 +322,10 @@ impl f64@FromJson {
         auto skip_res = json_skip_value(rem)!
         auto val_str = rem.substr(0, rem.len() - skip_res.len())
         
-        auto i#: usize = 0
+        auto i# = 0:usize
         auto n = val_str.len()
-        auto result#: f64 = 0.0
-        auto sign#: f64 = 1.0
+        auto result# = 0.0:f64
+        auto sign# = 1.0:f64
         
         if i < n && val_str.byte_at(i) == 45 { sign = -1.0; i += 1 }
         else if i < n && val_str.byte_at(i) == 43 { i += 1 }
@@ -336,7 +336,7 @@ impl f64@FromJson {
         }
         if i < n && val_str.byte_at(i) == 46 { // '.'
             i += 1
-            auto frac#: f64 = 0.1
+            auto frac# = 0.1:f64
             loop i < n && val_str.byte_at(i) >= 48 && val_str.byte_at(i) <= 57 {
                 result = result + ((val_str.byte_at(i) - 48) as f64) * frac
                 frac = frac * 0.1
@@ -345,10 +345,10 @@ impl f64@FromJson {
         }
         if i < n && (val_str.byte_at(i) == 101 || val_str.byte_at(i) == 69) {
             i += 1
-            auto exp_sign#: f64 = 1.0
+            auto exp_sign# = 1.0:f64
             if i < n && val_str.byte_at(i) == 45 { exp_sign = -1.0; i += 1 }
             else if i < n && val_str.byte_at(i) == 43 { i += 1 }
-            auto exp#: f64 = 0.0
+            auto exp# = 0.0:f64
             loop i < n && val_str.byte_at(i) >= 48 && val_str.byte_at(i) <= 57 {
                 exp = exp * 10.0 + ((val_str.byte_at(i) - 48) as f64)
                 i += 1
@@ -361,11 +361,11 @@ impl f64@FromJson {
 }
 
 fn json_parse_hex4(rem: str, start: usize) -> u32 {
-    auto cp#: u32 = 0:u32
-    auto j#: usize = 0
+    auto cp# = 0:u32
+    auto j# = 0:usize
     loop j < 4 {
         auto c = rem.byte_at(start + j)
-        auto val#: u32 = 0:u32
+        auto val# = 0:u32
         if c >= 48 && c <= 57 { val = (c - 48) as u32 }
         else if c >= 65 && c <= 70 { val = ((c - 65) + 10) as u32 }
         else if c >= 97 && c <= 102 { val = ((c - 97) + 10) as u32 }
@@ -396,7 +396,7 @@ impl string@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem = json_skip_whitespace(json)
         if rem.len() == 0 || rem.byte_at(0) != 34 { return JsonRes::Err("Expected string") }
-        auto i#: usize = 1
+        auto i# = 1:usize
         auto closed# = false
         loop i < rem.len() {
             auto c = rem.byte_at(i)
@@ -406,7 +406,7 @@ impl string@FromJson {
         }
         if !closed { return JsonRes::Err("Unterminated string") }
         auto new_str# = string::from("")
-        auto j#: usize = 1
+        auto j# = 1:usize
         loop j < i {
             auto c = rem.byte_at(j)
             if c == 92 {
@@ -444,7 +444,7 @@ impl str@FromJson {
     pub fn parse_json(self#, json: str) -> JsonRes <- json {
         auto rem = json_skip_whitespace(json)
         if rem.len() == 0 || rem.byte_at(0) != 34 { return JsonRes::Err("Expected string") }
-        auto i#: usize = 1
+        auto i# = 1:usize
         loop i < rem.len() {
             auto c = rem.byte_at(i)
             if c == 34 {
@@ -469,7 +469,7 @@ impl<'T: @FromJson> Option<'T>@FromJson {
         unsafe {
             auto ^buf = new [1]Uninit<'T>()
             libc_memset(*buf as *void, 0, sizeof('T))
-            auto *'val#: T = (*buf + 0) as *'T
+            auto *'val# = (*buf + 0) as *'T:*T
             rem = 'val#.parse_json(rem)!
             self = Option<'T>::Some(cede 'val)
             return JsonRes::Ok(rem)
@@ -494,13 +494,13 @@ impl<'T: @FromJson, 'E: @FromJson> Result<'T, 'E>@FromJson {
             if key.equals("Ok") {
                 auto ^buf = new [1]Uninit<'T>()
                 libc_memset(*buf as *void, 0, sizeof('T))
-                auto *'val#: T = (*buf + 0) as *'T
+                auto *'val# = (*buf + 0) as *'T:*T
                 rem = 'val#.parse_json(rem)!
                 self = Result<'T, 'E>::Ok(cede 'val)
             } else if key.equals("Err") {
                 auto ^buf = new [1]Uninit<'E>()
                 libc_memset(*buf as *void, 0, sizeof('E))
-                auto *'e#: E = (*buf + 0) as *'E
+                auto *'e# = (*buf + 0) as *'E:*E
                 rem = 'e#.parse_json(rem)!
                 self = Result<'T, 'E>::Err(cede 'e)
             } else {
@@ -534,7 +534,7 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
             unsafe {
                 auto ^k_buf = new [1]Uninit<'K>()
                 libc_memset(*k_buf as *void, 0, sizeof('K))
-                auto *'key#: K = (*k_buf + 0) as *'K
+                auto *'key# = (*k_buf + 0) as *'K:*K
                 res = 'key#.parse_json(res)!
                 
                 res = json_skip_whitespace(res)
@@ -543,7 +543,7 @@ impl<'K: @FromJson, 'V: @FromJson> HashMap<'K, 'V>@FromJson {
                 
                 auto ^v_buf = new [1]Uninit<'V>()
                 libc_memset(*v_buf as *void, 0, sizeof('V))
-                auto *'val#: V = (*v_buf + 0) as *'V
+                auto *'val# = (*v_buf + 0) as *'V:*V
                 res = 'val#.parse_json(res)!
                 
                 self#.insert(cede 'key, cede 'val)
@@ -571,7 +571,7 @@ impl<'T: @FromJson> Vec<'T>@FromJson {
             unsafe {
                 auto ^item_buf = new [1]Uninit<'T>()
                 libc_memset(*item_buf as *void, 0, sizeof('T))
-                auto *'item#: T = (*item_buf + 0) as *'T
+                auto *'item# = (*item_buf + 0) as *'T:*T
                 res = 'item#.parse_json(res)!
                 self#.push(cede 'item)
             }
@@ -682,7 +682,7 @@ impl JsonNode {
                 rem = json_skip_whitespace(rem)
                 if rem.len() == 0 || rem.byte_at(0) != 58 { return JsonRes::Err("Expected :") }
                 rem = rem.substr(1, rem.len() - 1)
-                auto val#: JsonNode = JsonNode::NullNode(0)
+                auto val# = JsonNode::NullNode(0):JsonNode
                 rem = val#.parse_json_internal(rem, depth + 1)!
                 map#.insert(cede key, cede val)
             }
@@ -701,7 +701,7 @@ impl JsonNode {
                     rem = json_skip_whitespace(rem)
                 }
                 first = false
-                auto val#: JsonNode = JsonNode::NullNode(0)
+                auto val# = JsonNode::NullNode(0):JsonNode
                 rem = val#.parse_json_internal(rem, depth + 1)!
                 arr#.push(cede val)
             }

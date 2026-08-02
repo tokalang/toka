@@ -86,7 +86,7 @@ fn error(kind: str, message: str) -> SseError {
 
 fn line_as_string(line#: Vec<u8>, line_len: usize) -> string {
     auto value# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < line_len {
         value#.push_byte_raw(line#.get(index))
         index += 1:usize
@@ -96,8 +96,8 @@ fn line_as_string(line#: Vec<u8>, line_len: usize) -> string {
 
 fn decimal_retry(value: str) -> Option<i32> {
     if value.len() == 0:usize { return Option<i32>::None }
-    auto total#: i64 = 0:i64
-    auto index#: usize = 0:usize
+    auto total# = 0:i64
+    auto index# = 0:usize
     loop index < value.len() {
         auto byte = value.byte_at(index) as u8
         if byte < '0' as u8 || byte > '9' as u8 { return Option<i32>::None }
@@ -109,7 +109,7 @@ fn decimal_retry(value: str) -> Option<i32> {
 }
 
 fn contains_nul(value: str) -> bool {
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         if value.byte_at(index) as u8 == 0:u8 { return true }
         index += 1:usize
@@ -205,7 +205,7 @@ impl SseDecoder {
         }
         self.event_bytes += line_len
         self.event_open = true
-        auto colon#: usize = 0:usize
+        auto colon# = 0:usize
         loop colon < line_len && line#.get(colon) != ':' as u8 { colon += 1:usize }
         auto field = line_as_string(line, colon)
         auto value_start# = colon
@@ -235,7 +235,7 @@ impl SseDecoder {
         auto input# = cede input
         auto bytes# = input#.into_vec()
         auto events# = Vec<SseEvent>::new()
-        auto index#: usize = 0:usize
+        auto index# = 0:usize
         loop index < bytes.len() {
             self.pending#.push(bytes#.get(index))
             if self.event_bytes + self.pending.len() > self.limits.max_buffer_bytes {

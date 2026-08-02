@@ -4,6 +4,6 @@ import ./lib::{make_vault, read_id}
 
 fn main() -> i32 {
     auto vault = make_vault()
-    auto copied: fn() -> i32 = { [copy vault] => read_id(vault) }
+    auto copied = { [copy vault] => read_id(vault) }:fn() -> i32
     return copied()
 }

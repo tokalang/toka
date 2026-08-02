@@ -1,5 +1,5 @@
 fn main() -> i32 {
     auto value = 1
-    auto nul &r: i32 = &value // EXPECT: error[E01113]
+    auto nul &r = &value:nul &i32// EXPECT: error[E01113]
     return 0
 }

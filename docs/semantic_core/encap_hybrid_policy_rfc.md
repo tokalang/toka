@@ -841,7 +841,7 @@ Consequently the hook does not own or mutate a structural field live mask:
 enum-variant, nullable-presence, array, and nested states. It does not mean an
 arbitrary partial-move mask for the custom aggregate.
 
-- `cede self.field`, `unset`, explicit field drop/forget, a consuming field
+- `cede self.field`, `uninit`, explicit field drop/forget, a consuming field
   receiver/argument, replacement of a structural field, and whole-`self`
   transfer/return/capture are rejected;
 - `self` or a reference/raw view derived from it cannot escape into a return,
@@ -1159,7 +1159,7 @@ The implementation must provide dedicated diagnostics for:
 - direct, mutual, or non-regular recursive value layout;
 - direct invocation of the `drop` hook;
 - a public, extra-parameter, method-generic, non-void, or suspending drop hook;
-- `cede`, unset/replacement, consuming access, or opaque whole-self calls
+- `cede`, uninit/replacement, consuming access, or opaque whole-self calls
   forbidden inside a custom hook;
 - a claimed managed wrapper without a compiler/validated-FFI resource
   contract;
@@ -1365,7 +1365,7 @@ Adoption requires source and source-less coverage for all rows below.
   frozen struct/array/enum/nullable order, including every early return.
 - Public, extra-parameter, method-generic, non-void, and suspending hook
   signatures fail.
-- Custom-hook field `cede`, unset/replacement, consuming receiver/argument,
+- Custom-hook field `cede`, uninit/replacement, consuming receiver/argument,
   discriminant/presence forging, and opaque whole-self calls fail.
 - A raw pointer, `Addr`, allocator result, field name, or release call never
   becomes an owning type fact. A validated wrapper `ResourceContract`

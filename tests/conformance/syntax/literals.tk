@@ -1,9 +1,9 @@
 import std/io::{println}
 
 fn main() -> i32 {
-    auto a: i32 = 42
-    auto b: u64 = 1000000:u64
-    auto s: str = "Toka Conformance"
+    auto a = 42:i32
+    auto b = 1000000:u64
+    auto s = "Toka Conformance":str
     
     assert(a == 42, "i32 literal mismatch")
     assert(b == 1000000:u64, "u64 literal mismatch")

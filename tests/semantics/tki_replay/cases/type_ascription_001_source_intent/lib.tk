@@ -1,0 +1,12 @@
+// EXPECT_TKI: auto ascribed = value:T
+// EXPECT_TKI: auto converted = value as T
+
+pub fn ascribe<T>(value: T) -> T {
+    auto ascribed = value:T
+    return ascribed
+}
+
+pub fn convert<T>(value: T) -> T {
+    auto converted = value as T
+    return converted
+}

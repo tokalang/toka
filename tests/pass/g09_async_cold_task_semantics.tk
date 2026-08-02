@@ -1,7 +1,7 @@
 import std/io::{println};
 import std/task::{block_on};
 
-auto side_effect_counter#: i32 = 0;
+auto side_effect_counter# = 0:i32;
 
 fn increment_effect() -> i32 {
     side_effect_counter = side_effect_counter + 1;

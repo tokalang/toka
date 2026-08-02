@@ -31,7 +31,7 @@ fn run_server(port: u16) -> i32 {
         
         println("[Server] Accepted connection!")
         
-        auto buf: [char; 128] = [0 as char; 128]
+        auto buf = [0 as char; 128]:[char; 128]
         auto *buf_ptr# = &buf[0] as *u8
         
         loop true {
@@ -94,7 +94,7 @@ pub fn main() -> i32 {
         }
         
         // Read Echo
-        auto buf: [char; 128] = [0 as char; 128]
+        auto buf = [0 as char; 128]:[char; 128]
         auto *buf_ptr# = &buf[0] as *u8
         auto read_res = stream#.read(*buf_ptr, 128)
         

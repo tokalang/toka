@@ -2,14 +2,14 @@
 
 // Case 1: Escape Dirty Reference via Return
 fn test_return_unset() -> &i32 {
-    auto x : i32 = unset
+    auto x = uninit:i32
     auto &ref = &x
     return ref // EXPECT: error[E0412]:
 }
 
 // Case 2: Escape Dirty Reference via Break
 fn test_break_unset() -> void {
-    auto y : i32 = unset
+    auto y = uninit:i32
     loop {
         auto &refY = &y
         break
@@ -18,7 +18,7 @@ fn test_break_unset() -> void {
 
 // Case 3: Escape Dirty Reference via Pass (in If)
 fn test_pass_unset() -> void {
-    auto z : i32 = unset
+    auto z = uninit:i32
     auto &refZ = &z
     
     // Wrap in expression that yields
@@ -31,10 +31,10 @@ fn test_pass_unset() -> void {
 
 // Case 4: Scope Escape (Hot Potato not cleaned)
 fn test_scope_escape() -> void {
-    auto a : i32 = unset
+    auto a = uninit:i32
     {
         auto &refA = &a
-        // refA goes out of scope, but 'a' is still unset!
+        // refA goes out of scope, but 'a' is still uninit!
         // This should trigger ERR_DIRTY_REF_ESCAPE
     } // EXPECT: error[E0412]:
 }

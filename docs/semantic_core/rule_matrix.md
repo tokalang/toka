@@ -164,7 +164,7 @@ Primary references:
 
 - Status: Core guarantee
 - Source form: `if`, `guard`, `match`, `loop`, `for`, `break`, `continue`
-  with move, unset, or borrow state changes
+  with move, uninitialized, or borrow state changes
 - Operation class: `Invalidation`, move state, init state, borrow state
 - Decision: branch and loop state must merge without allowing use-after-move,
   use-before-init, or invalid borrowed state.

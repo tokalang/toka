@@ -702,11 +702,27 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
   };
   while (!check(TokenType::EndOfFile)) {
     TokenType t = peek().Kind;
+    const bool containsOnlyTypePrefixes =
+        !tokens.empty() &&
+        std::all_of(tokens.begin(), tokens.end(), [](const Token &token) {
+          return token.Kind == TokenType::KwNul ||
+                 token.Kind == TokenType::KwCede ||
+                 token.Kind == TokenType::Ampersand ||
+                 token.Kind == TokenType::Star ||
+                 token.Kind == TokenType::Caret ||
+                 token.Kind == TokenType::Tilde ||
+                 token.Kind == TokenType::TokenWrite;
+        });
+    const bool nextIsTypePrefix =
+        check(TokenType::Ampersand) || check(TokenType::Star) ||
+        check(TokenType::Caret) || check(TokenType::Tilde) ||
+        check(TokenType::TokenWrite);
     // A leading `*`, `&`, or other morphology token is part of a type (for
     // example the cast in `value as *char`).  Once a complete type has begun,
     // the same token kinds delimit the enclosing expression grammar.
     const bool expressionBoundary =
         stopAtExpression && !tokens.empty() && delimiters.empty() &&
+        !(containsOnlyTypePrefixes && nextIsTypePrefix) &&
         (check(TokenType::Greater) || check(TokenType::Less) ||
          check(TokenType::Colon) || check(TokenType::KwAs) ||
          (check(TokenType::Identifier) && peek().Text == "as") ||

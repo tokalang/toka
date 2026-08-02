@@ -1,6 +1,6 @@
 import core/result::{Result}
 import std/error::{Error}
 fn main() -> i32 {
-    auto res: Result<(), Error> = Result<(), Error>::Ok(())
+    auto res = Result<(), Error>::Ok(()):Result<(), Error>
     return 0
 }

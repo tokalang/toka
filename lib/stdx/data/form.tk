@@ -35,7 +35,7 @@ impl FormField {
 fn decoded_string(cede values: Vec<u8>) -> string {
     auto owned# = cede values
     auto output# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < owned.len() {
         output#.push_byte_raw(owned.get(index))
         index = index + 1:usize
@@ -46,7 +46,7 @@ fn decoded_string(cede values: Vec<u8>) -> string {
 pub fn encode_component(input: str) -> string {
     auto percent_encoded = percent::encode(input.as_bytes())
     auto output# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < percent_encoded.len() {
         if index + 2:usize < percent_encoded.len() &&
            percent_encoded.as_str().byte_at(index) as u8 == '%' as u8 &&
@@ -64,7 +64,7 @@ pub fn encode_component(input: str) -> string {
 
 pub fn decode_component(input: str) -> Result<string, string> {
     auto percent_input# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < input.len() {
         auto byte = input.byte_at(index) as u8
         if byte == '+' as u8 {
@@ -83,7 +83,7 @@ pub fn decode_component(input: str) -> Result<string, string> {
 
 pub fn parse(input: str) -> Result<Vec<FormField>, string> {
     auto fields# = Vec<FormField>::new()
-    auto start#: usize = 0:usize
+    auto start# = 0:usize
     loop start < input.len() {
         auto end# = start
         loop end < input.len() && input.byte_at(end) as u8 != '&' as u8 {
@@ -129,7 +129,7 @@ pub fn parse(input: str) -> Result<Vec<FormField>, string> {
 
 pub fn format(fields: Vec<FormField>) -> string {
     auto output# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < fields.len() {
         if index > 0:usize { output#.push_byte_raw('&' as u8) }
         auto field = fields.get(index).clone()

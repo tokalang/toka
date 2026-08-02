@@ -18,8 +18,8 @@ fn main() -> i32 {
         // Modify raw_ptr to disable ECHO and ICANON
         // c_lflag is at offset 24 (u64)
         
-        // Use bnot, band
-        raw_ptr.c_lflag = raw_ptr.c_lflag band (bnot ((ECHO as u64) bor (ICANON as u64)))
+        // Use ~, &
+        raw_ptr.c_lflag = raw_ptr.c_lflag & (~ ((ECHO as u64) | (ICANON as u64)))
 
         // Apply raw settings
         tcsetattr(0, TCSANOW, *raw_ptr)

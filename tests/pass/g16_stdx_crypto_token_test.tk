@@ -16,7 +16,7 @@ fn main() -> i32 {
     assert(token.is_ok(), "Base64URL token generation must use OS randomness successfully")
     auto value = token.unwrap()
     assert(value.len() == 22:usize, "16 random bytes must encode to 22 unpadded Base64URL characters")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < value.len() {
         assert(is_url_safe_byte(value.as_str().byte_at(index) as u8),
                "Base64URL token must contain only URL-safe alphabet bytes")

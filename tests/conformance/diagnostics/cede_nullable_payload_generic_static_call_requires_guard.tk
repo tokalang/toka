@@ -8,6 +8,6 @@ impl<T> Carrier<T> {
 }
 
 fn main() -> i32 {
-    auto ^source#: Carrier<i32>? = new Carrier<i32>(value = 1)
+    auto ^source# = new Carrier<i32>(value = 1):^Carrier<i32>?
     return Carrier<i32>::consume(cede source)
 }

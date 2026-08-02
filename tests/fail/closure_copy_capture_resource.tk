@@ -10,6 +10,6 @@ impl Env@Encap {
 
 fn main() -> i32 {
     auto env = Env(value = 5)
-    auto f: fn() -> i32 = { [copy env] => env.value }
+    auto f = { [copy env] => env.value }:fn() -> i32
     return f()
 }

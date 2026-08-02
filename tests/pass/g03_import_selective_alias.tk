@@ -13,7 +13,7 @@ fn accepts_selected<T: @ImportedTrait>(value: T) -> i32 {
 
 fn main() -> i32 {
     auto direct = ImportedShape(value = chosen_value())
-    auto via_alias: ImportedAlias = SelectedShape(value = 0)
+    auto via_alias = SelectedShape(value = 0):ImportedAlias
     auto constrained = SelectedShape(value = 1)
     auto trait_result = accepts_selected<SelectedShape>(constrained)
     return direct.value + via_alias.value + chosen_global + trait_result - 11

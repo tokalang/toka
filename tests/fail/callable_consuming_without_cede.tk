@@ -2,9 +2,9 @@ shape Token(id: i32)
 
 fn main() -> i32 {
     auto token = Token(id = 7)
-    auto take: cede fn() -> cede Token = { [cede token] =>
+    auto take = { [cede token] =>
         return cede token
-    }
+    }:cede fn() -> cede Token
     auto result = take() // EXPECT: error[E04591]
     return result.id
 }

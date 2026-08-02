@@ -6,7 +6,7 @@ fn consume(cede token: Token) -> i32 {
 }
 
 fn call_after_guard() -> i32 {
-    auto ^source#: Token? = new Token(id = 7)
+    auto ^source# = new Token(id = 7):^Token?
     auto result# = 2
     guard source {
         result = consume(cede source)

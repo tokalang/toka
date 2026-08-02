@@ -13,7 +13,8 @@ receiver morphology:
 - `call(cede self, ...)` and `cede fn(...)` consume the callable.
 
 The `#` in `fn#(...)` is callable capability. A binding still needs its own
-`#` to grant exclusive access, for example `auto f#: fn#() = ...` and `f#()`.
+`#` to grant exclusive access, for example `auto f# = { => 0 }:fn#()` and
+`f#()`.
 These facts are represented independently in the type checker.
 
 ## Closure Inference And Ownership

@@ -79,7 +79,7 @@ fn streaming_body(model: str, history: Vec<ChatMessage>, prompt: str) -> string 
     auto body# = string::from("{\"model\":")
     body#.push_str(to_json(string::from(model)).as_str())
     body#.push_str(",\"stream\":true,\"messages\":[")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < history.len() {
         auto message = history.get(index)
         if index > 0:usize { body#.push_char(',') }
@@ -100,7 +100,7 @@ fn streaming_body(model: str, history: Vec<ChatMessage>, prompt: str) -> string 
 fn bytes_as_string(cede bytes: Vec<u8>, max_len: usize) -> string {
     auto source = cede bytes
     auto text# = string::from("")
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < source.len() && index < max_len {
         text#.push_byte_raw(source#.get(index))
         index += 1:usize

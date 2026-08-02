@@ -11,7 +11,7 @@ import std/vec::{Vec}
 
 fn value_bytes(text: str) -> Bytes {
     auto values# = Vec<u8>::with_capacity(text.len())
-    auto index#: usize = 0:usize
+    auto index# = 0:usize
     loop index < text.len() {
         values#.push(text.byte_at(index) as u8)
         index += 1:usize

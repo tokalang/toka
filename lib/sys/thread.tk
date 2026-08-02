@@ -40,7 +40,7 @@ pub fn sys_thread_join(tid: Addr) -> Addr {
             return 0:Addr // Could potentially return error code but 0 means no result
         }
         
-        auto raw_res: Addr = retval_ptr
+        auto raw_res = retval_ptr:Addr
         libc_free((*retval_ptr) as *void)
         
         return raw_res

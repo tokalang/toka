@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 fn main() -> i32 {
-    auto y: i32 = for auto x in [1] {
+    auto y = for auto x in [1] {
         // missing pass
         // EXPECT: error[E0432]:
     } or {
         // missing pass
         // EXPECT: error[E0432]:
-    }
-    // EXPECT: Cannot initialize variable of type 'i32' with value of type 'void'
+    }:i32
+    // EXPECT: error[E04606]: Type ascription 'i32' is incompatible with expression type 'void'
     return 0
 }

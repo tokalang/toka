@@ -95,7 +95,7 @@ fn main() -> i32 {
     assert(rec.a == 1, "rec.a mismatch")
     assert(rec.c == 1.1, "rec.c mismatch")
 
-    auto pt: PointPair = PointPair(x = 100, y = 200)
+    auto pt = PointPair(x = 100, y = 200):PointPair
     processPoint(pt)
 
     auto PointPair(pair_x = .x, pair_y = .y) = pt

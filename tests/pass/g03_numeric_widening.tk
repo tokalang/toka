@@ -2,25 +2,25 @@ import std/io::println
 
 fn main() -> i32 {
     // 1. Safe Integer Widening (Omitted 'as')
-    auto a: i8 = 42;
-    auto b: i32 = a;     // Implicit widening from i8 -> i32
-    auto c: i64 = b;     // Implicit widening from i32 -> i64
+    auto a = 42:i8;
+    auto b = a:i32;     // Implicit widening from i8 -> i32
+    auto c = b:i64;     // Implicit widening from i32 -> i64
 
     // 2. Safe Float Widening (Omitted 'as')
     // float literals are inherently f64. If we want a native f32 we might need an explicit cast or let it be.
     // We'll skip f32 initialization with f64 literal to avoid narrowing error.
     // A better test:
-    auto d: f32 = 0 as f32; // 0 promotes to f32
-    auto e: f64 = d;     // Implicit widening from f32 -> f64
+    auto d = 0 as f32:f32; // 0 promotes to f32
+    auto e = d:f64;     // Implicit widening from f32 -> f64
 
     // 3. Unsafe Narrowing (Requires explicit 'as')
     // If we removed 'as i32', the compiler would now reject this safety-wise
-    auto f: i32 = c as i32;
-    auto g: i8 = f as i8;
+    auto f = c as i32:i32;
+    auto g = f as i8:i8;
 
     // 4. Safe Unsigned to wider Signed
-    auto u: u8 = 200;
-    auto s: i32 = u;     // Implicit widening from u8 -> i32
+    auto u = 200:u8;
+    auto s = u:i32;     // Implicit widening from u8 -> i32
 
     println("{}","Numeric Widening test passed!");
     return 0;
