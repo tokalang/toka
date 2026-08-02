@@ -514,7 +514,7 @@ pub trait @Readable {
 
 在普通 `impl` 和 `trait` 块中，方法可见性写作 `pub fn`。没有 `pub` 的方法对定义模块 / 接口语境保持私有。
 
-`@Encap` 块还负责成员可见性控制。一旦某个 shape 拥有 `@Encap` 块，它的字段在定义源文件之外默认私有，除非 `@Encap` 可见性条目显式授权。
+`@Encap` 块还负责成员可见性控制。一旦某个 shape 拥有 `@Encap` 块，它的字段在定义模块之外默认私有，除非 `@Encap` 可见性条目显式授权。
 
 ```toka
 impl Device@Encap {

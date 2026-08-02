@@ -29,8 +29,10 @@ provide Copy, Dup, lowering, or trait evidence.
 
 ## Current source-language contract
 
-The normative syntax references are [syntax.md](../syntax.md) and
-[syntax_zh.md](../syntax_zh.md). They define the following boundary:
+The normative references are [syntax.md](../syntax.md),
+[syntax_zh.md](../syntax_zh.md), and the concise semantic entry point
+[encap_current_contract.md](encap_current_contract.md). They define the
+following boundary:
 
 1. Transparent shapes expose accessible fields and are Copy only when the
    compiler proves their full field graph Copy-safe.

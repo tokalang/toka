@@ -71,10 +71,13 @@ compiler, `docs/syntax.md`, and `docs/1_0_freeze_decision_list.md`.
 - `owned_lazy_iterator_rfc.md` records the implemented first post-1.0 owned
   lazy-adapter slice (`Map<I,F>` over a consuming source); borrowed/lending
   adapters remain explicitly deferred.
-- `encap_hybrid_policy_rfc.md` proposes a clean-break language epoch that
-  separates explicit `@Encap` governance, exact field grants, verified Copy,
-  explicit Dup, and compiler-only drop plans; resolver identity, custom-drop,
-  and Copy-SCC redlines form its blocking Slice 0.
+- `encap_current_contract.md` is the normative semantic entry point for the
+  implemented `@Encap` boundary: explicit governance, exact field grants,
+  verified Copy, explicit Dup, compiler-owned cleanup, and source-less TKI
+  agreement.
+- `encap_hybrid_policy_rfc.md` is an archived pre-clean-break design record;
+  it includes removed scoped/wildcard grant forms and is not a current
+  decision source.
 - `encap_slice0_baseline.md` records the legacy resolver, lifecycle, and TKI
   facts against which that blocking, non-semantic Slice 0 is audited.
 - `encap_slice0_go_no_go.md` records the completed Slice 0 evidence gate and

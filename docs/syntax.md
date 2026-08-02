@@ -592,7 +592,7 @@ At declaration level, leading `pub` exports imports, constants, functions, shape
 
 Inside normal `impl` and `trait` blocks, method visibility is written with `pub fn`. A method without `pub` is private to its defining module/interface context.
 
-`@Encap` blocks additionally control member visibility. Once a shape has an `@Encap` block, its fields are private outside the defining source file unless an `@Encap` visibility entry grants access.
+`@Encap` blocks additionally control member visibility. Once a shape has an `@Encap` block, its fields are private outside the defining module unless an `@Encap` visibility entry grants access.
 
 ```toka
 impl Device@Encap {

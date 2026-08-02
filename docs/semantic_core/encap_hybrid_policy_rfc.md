@@ -1,19 +1,19 @@
 # RFC: `@Encap` Hybrid Policy and Lifecycle Separation
 
-> **Superseded by the 2026-08 clean-break @Encap design.** This historical RFC
-> describes removed scoped and wildcard visibility forms; it is not normative
-> for the current compiler or library surface.
+> **Archive — not normative.** This historical RFC describes a pre-2026-08
+> design, including removed scoped and wildcard visibility forms. Do not use it
+> to decide current compiler or library behaviour. The current semantic entry
+> point is [`encap_current_contract.md`](encap_current_contract.md).
 
-**Status:** Proposed clean-break language revision. This RFC is not a
-statement of current compiler behaviour.
+**Status:** Superseded design record.
 
-**Implementation gate:** Specification work may proceed, but semantic
-enforcement is not approved until the blocking Slice 0 exit gate is met.
+**Historical implementation gate:** This pre-clean-break gate is retained only
+to explain the audit sequence. It does not constrain the current v6 contract.
 
-**Compatibility:** Deliberately source-, interface-, and cache-incompatible
-with the current `clone`, `clone = delete`, callable `drop`, structural
-`@Encap`, and wildcard-access model. Adoption requires a new language and TKI
-format epoch; no compatibility shim is part of this proposal.
+**Historical compatibility premise:** The proposal deliberately rejected a
+compatibility shim for `clone`, `clone = delete`, callable `drop`, structural
+`@Encap`, and wildcard access. The current contract records the adopted
+clean-break result rather than this proposal's staged epoch plan.
 
 **Rule IDs:** `ENCAP-POLICY-001`, `ENCAP-ACCESS-001`,
 `ENCAP-COHERENCE-001`, `OWN-RESOURCE-001`, `OWN-COPY-001`,
