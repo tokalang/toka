@@ -329,7 +329,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         // [Toka 1.3] Unit Variant Support: Allow omission of
         // parentheses
         if (SD->Kind == ShapeKind::Enum || SD->Kind == ShapeKind::Union) {
-          bool isUnit = (Field.Type == "void" || Field.Type.empty());
+          bool isUnit = Field.IsUnitVariant;
           if (isUnit) {
             Memb->IsStatic =
                 true; // Mark as static for CodeGen to generate constant

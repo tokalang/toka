@@ -8,7 +8,7 @@ first lifecycle lowering changes:
 - resource-containing workspace shapes no longer receive a synthesized
   structural `impl T@Encap`, clone declaration, or named structural drop
   symbol;
-- a valid custom hook is private `fn drop(self#) -> void`; it is omitted from
+- a valid custom hook is private `fn drop(self#)`; it is omitted from
   ordinary semantic method lookup;
 - on normal custom-hook return, the compiler continues with its structural
   field tail. Owning pointer fields enter that tail in declaration order; and

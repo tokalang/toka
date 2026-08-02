@@ -8,7 +8,7 @@ error[E0432]: Yielding 'or' block must pass a value
     |
  18 |     } or {
     |          ^
-error[E04606]: Type ascription 'i32' is incompatible with expression type 'void'
+error[E04606]: Type ascription 'i32' is incompatible with expression type '()'
  --> tests/fail/must_yield_i32.tk:21:6
     |
  21 |     }:i32

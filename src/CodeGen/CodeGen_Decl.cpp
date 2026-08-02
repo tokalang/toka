@@ -120,7 +120,13 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   } else {
     retTypeObj = lowerTypeSyntax(func->ReturnTypeSyntax, func->ReturnType);
   }
-  bool isSRet = shouldReturnSRet(retTypeObj) && func->Effect != EffectKind::Async;
+  const ReturnResultKind resultKind = func->ReturnContract.ResultKind;
+  const bool usesVoidResultABI =
+      resultKind == ReturnResultKind::Unit ||
+      resultKind == ReturnResultKind::AbiVoid ||
+      resultKind == ReturnResultKind::Never;
+  bool isSRet = !usesVoidResultABI && shouldReturnSRet(retTypeObj) &&
+                func->Effect != EffectKind::Async;
 
   if (!f) {
     std::vector<llvm::Type *> argTypes;
@@ -188,7 +194,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         argTypes.push_back(t);
     }
 
-    llvm::Type *retType = getLLVMType(retTypeObj);
+    llvm::Type *retType = usesVoidResultABI
+                               ? llvm::Type::getVoidTy(m_Context)
+                               : getLLVMType(retTypeObj);
     if (!retType) {
       error(func, DiagID::ERR_CODEGEN_UNRESOLVED_RETURN_TYPE_FOR_FUNCTION, funcName);
       return nullptr;
@@ -643,7 +651,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
 
     if (func->Effect == EffectKind::Async) {
       genCoroutineReturn(nullptr);
-    } else if (func->ReturnType == "void" || func->Name == "main") {
+    } else if (resultKind == ReturnResultKind::Unit ||
+               resultKind == ReturnResultKind::AbiVoid ||
+               func->Name == "main") {
       if (func->Name == "main" && !f->getReturnType()->isVoidTy()) {
         m_Builder.CreateRet(
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(m_Context), 0));
@@ -2167,7 +2177,8 @@ void CodeGen::genShape(const ShapeDecl *sh) {
             llvm::StructType::get(m_Context, fieldTypes, false);
         variantSize = DL.getTypeAllocSize(st).getFixedValue();
         variantAlign = DL.getABITypeAlign(st).value();
-      } else if (!variant.Type.empty() && variant.Type != "void") {
+      } else if (!variant.IsUnitVariant && !variant.Type.empty() &&
+                 variant.Type != "void") {
         llvm::Type *t = nullptr;
         if (variant.ResolvedType) {
           t = getLLVMType(variant.ResolvedType);
@@ -2455,6 +2466,12 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         if (isSRet) {
             ci->addParamAttr(0, llvm::Attribute::get(m_Context, llvm::Attribute::StructRet, getLLVMType(expr->ResolvedType)));
             return PhysEntity(sretAlloc, expr->ResolvedType->getSoulName(), getLLVMType(expr->ResolvedType), true);
+        }
+        if (expr->ResolvedType && expr->ResolvedType->isUnit() &&
+            ci->getType()->isVoidTy()) {
+          llvm::Type *unitTy = getLLVMType(expr->ResolvedType);
+          return PhysEntity(llvm::Constant::getNullValue(unitTy),
+                            expr->ResolvedType->toString(), unitTy, false);
         }
         return ci;
       }
@@ -2867,6 +2884,15 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     return PhysEntity(handle, taskName, handleTy, false);
   }
 
+  // Ordinary methods use the same void ABI for Unit as ordinary functions,
+  // but a Unit method call can still be bound or stored in source code.
+  if (expr->ResolvedType && expr->ResolvedType->isUnit() &&
+      ci->getType()->isVoidTy()) {
+    llvm::Type *unitTy = getLLVMType(expr->ResolvedType);
+    return PhysEntity(llvm::Constant::getNullValue(unitTy),
+                      expr->ResolvedType->toString(), unitTy, false);
+  }
+
   std::string retTypeName = "";
   if (fd)
     retTypeName = fd->ReturnType;
@@ -3092,7 +3118,7 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   // [Chapter 6 Extension] Nullable Soul Wrapper: { T, i1 }
   // Only for non-pointers. Pointers are natively nullable in LLVM.
   if (type->IsNullable && !type->isPointer() && !type->isSmartPointer() &&
-      !type->isReference() && !type->isVoid()) {
+      !type->isReference() && !type->isVoid() && !type->isNever()) {
     // Get raw type without nullable attribute to avoid infinite recursion
     auto baseTyObj =
         type->withAttributes(type->IsWritable, false, type->IsBlocked);
@@ -3130,8 +3156,17 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
       return llvm::PointerType::getUnqual(m_Context);
   }
 
-  // Handle Void
+  // Unit has one ordinary storage representation.  Functions with a Unit
+  // result select LLVM void separately in genFunction above.
+  if (type->typeKind == Type::Unit) {
+    return llvm::Type::getInt8Ty(m_Context);
+  }
+
+  // ABI void and bottom have no LLVM value representation.
   if (type->typeKind == Type::Void) {
+    return llvm::Type::getVoidTy(m_Context);
+  }
+  if (type->typeKind == Type::Never) {
     return llvm::Type::getVoidTy(m_Context);
   }
 

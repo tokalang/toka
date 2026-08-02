@@ -16,8 +16,8 @@ fn main() -> i32 {
                 // Break all the way out to outer
                 break to outer
             }
-        }:void
-    }:void
+        }:()
+    }:()
     println("Finished nested loop. outer_cnt: {}, inner_cnt: {}", outer_cnt, inner_cnt)
     assert(outer_cnt == 1, "outer_cnt should be 1")
     assert(inner_cnt == 3, "inner_cnt should be 3")

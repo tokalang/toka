@@ -87,6 +87,7 @@ static std::unordered_map<std::string, TokenType> Keywords = {
     {"Channel", TokenType::KwChannel},
     {"cede", TokenType::KwCede},
     {"encap", TokenType::KwEncap},
+    {"never", TokenType::KwNever},
     {"copy", TokenType::KwCopy},
     {"import", TokenType::KwImport},
     {"pub", TokenType::KwPub},

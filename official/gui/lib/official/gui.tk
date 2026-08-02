@@ -37,7 +37,7 @@ extern fn toka_gui_macos_next_text_kind(handle: Addr) -> i32
 extern fn toka_gui_macos_text_value(handle: Addr) -> Addr
 extern fn toka_gui_macos_event_width(handle: Addr) -> i32
 extern fn toka_gui_macos_event_height(handle: Addr) -> i32
-extern fn toka_gui_macos_destroy_window(handle: Addr)
+extern fn toka_gui_macos_destroy_window(handle: Addr) -> void
 
 pub shape GuiError (
     message: string

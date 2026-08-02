@@ -137,21 +137,29 @@ static bool hasTypeSideMorphicPrefix(const std::string &typeStr) {
     return !stripped.empty() && stripped[0] == '\'';
 }
 
-static std::string exportReturnType(const TypeSyntaxPtr &returnSyntax,
-                                    const std::string &returnType,
-                                    EffectKind effect) {
-    const std::string canonicalReturn = exportTypeSyntax(returnSyntax, returnType);
-    bool hasReturnType = !canonicalReturn.empty() && canonicalReturn != "void";
-    if (!hasReturnType && effect == EffectKind::None) {
+static std::string exportReturnType(const ReturnContractSyntax &contract,
+                                    bool isExtern) {
+    const std::string canonicalReturn =
+        exportTypeSyntax(contract.TypeSyntax, contract.Type);
+    if (contract.ResultKind == ReturnResultKind::Unit &&
+        contract.Effect == EffectKind::None && !isExtern)
         return "";
-    }
     std::string result = " -> ";
-    if (effect == EffectKind::Async) {
+    if (contract.Effect == EffectKind::Async) {
         result += "async ";
-    } else if (effect == EffectKind::Wait) {
+    } else if (contract.Effect == EffectKind::Wait) {
         result += "wait ";
     }
-    result += hasReturnType ? canonicalReturn : "void";
+    // Invalid source externs are retained as explicit ABI void in exported
+    // interfaces so a source-less replay does not reintroduce omission.
+    if (contract.ResultKind == ReturnResultKind::Unit) {
+        if (isExtern)
+            result += "void";
+        else if (contract.HasExplicitResultType)
+            result += "()";
+    }
+    else
+        result += canonicalReturn;
     return result;
 }
 
@@ -558,9 +566,7 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     }
     m_OS << ")";
 
-    m_OS << exportReturnType(decl.ReturnContract.TypeSyntax,
-                             decl.ReturnContract.Type,
-                             decl.ReturnContract.Effect);
+    m_OS << exportReturnType(decl.ReturnContract, /*isExtern=*/false);
 
     std::vector<std::string> lifeDependencies;
     std::map<std::string, std::vector<std::string>> memberDependencies;
@@ -654,9 +660,7 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
         m_OS << "...";
     }
     m_OS << ")";
-    m_OS << exportReturnType(decl.ReturnContract.TypeSyntax,
-                             decl.ReturnContract.Type,
-                             decl.ReturnContract.Effect);
+    m_OS << exportReturnType(decl.ReturnContract, /*isExtern=*/true);
     m_OS << "\n";
 }
 

@@ -32,7 +32,7 @@ fn main() -> i32 {
             println("Error: Level 2 not skipped\n")
         }
         println("Error: Level 1 body reaching end\n")
-    }:void
+    }:()
 
     println("\n--- Sovereignty Test: Mutation + continue ---\n")
     // 3. Sovereignty Test: state modification across continue

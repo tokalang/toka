@@ -1,4 +1,4 @@
-pub fn foo(ptr: *i32) -> void {
+pub fn foo(ptr: *i32) {
 }
 
 fn main() -> i32 {

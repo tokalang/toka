@@ -817,7 +817,7 @@ std::unique_ptr<Expr> Sema::foldGenericConstant(std::unique_ptr<Expr> E) {
 
 std::shared_ptr<toka::Type> Sema::checkExpr(Expr *E) {
   if (!E)
-    return toka::Type::fromString("void");
+    return toka::Type::fromString("()");
   ActiveNodeRAII Active(E);
   m_LastInitMask = ~0ULL; // Default to fully set
   auto T = checkExprImpl(E);
@@ -1121,7 +1121,7 @@ bool Sema::checkStrictMorphology(ASTNode *Node, MorphKind Target,
 
 std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   if (!E)
-    return toka::Type::fromString("void");
+    return toka::Type::fromString("()");
 
   if (dynamic_cast<TodoExpr *>(E)) {
     auto *todo = static_cast<TodoExpr *>(E);
@@ -2107,7 +2107,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         
         bool isReceiver = false;
         if (!m_ControlFlowStack.empty()) isReceiver = m_ControlFlowStack.back().IsReceiver;
-        m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+        m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
         
         if (ie->ComptimeTaken) {
             checkStmt(ie->Then.get());
@@ -2115,7 +2115,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             checkStmt(ie->Else.get());
         }
         
-        auto retTypeObj = m_ControlFlowStack.back().ExpectedTypeObj ? m_ControlFlowStack.back().ExpectedTypeObj : toka::Type::fromString("void");
+        auto retTypeObj = m_ControlFlowStack.back().ExpectedTypeObj ? m_ControlFlowStack.back().ExpectedTypeObj : toka::Type::fromString("()");
         m_ControlFlowStack.pop_back();
         return retTypeObj;
     }
@@ -2205,7 +2205,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
 
-    m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
 
     // Save Mask & Moved State for Intersection Rule
     // A branch may appear inside a nested block while mutating a binding from
@@ -2234,7 +2234,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool thenReturns = allPathsJump(ie->Then.get());
     m_ControlFlowStack.pop_back();
 
-    std::string elseType = "void";
+    std::string elseType = NoProducedValue;
     std::shared_ptr<toka::Type> elseTypeObj;
     bool elseReturns = false;
     if (ie->Else) {
@@ -2243,7 +2243,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
       PALCheckerState.restore(palBefore);
 
-      m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
       if (narrowElse)
         applyNarrowing();
       checkStmt(ie->Else.get());
@@ -2336,19 +2336,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (isReceiver) {
-      if (thenType == "void" && !allPathsJump(ie->Then.get()))
+      if (thenType == NoProducedValue && !allPathsJump(ie->Then.get()))
         error(ie->Then.get(), DiagID::ERR_YIELD_VALUE_REQUIRED, "if branch");
       if (!ie->Else)
         error(ie, DiagID::ERR_YIELD_ELSE_REQUIRED);
-      else if (elseType == "void" && !allPathsJump(ie->Else.get()))
+      else if (elseType == NoProducedValue && !allPathsJump(ie->Else.get()))
         error(ie->Else.get(), DiagID::ERR_YIELD_VALUE_REQUIRED, "else branch");
     }
 
-    if (thenType != "void" && elseType != "void" &&
+    if (thenType != NoProducedValue && elseType != NoProducedValue &&
         !isTypeCompatible(thenTypeObj, elseTypeObj)) {
       error(ie, DiagID::ERR_BRANCH_TYPE_MISMATCH, "If", thenType, elseType);
     }
-    return toka::Type::fromString((thenType != "void") ? thenType : elseType);
+    const std::string result =
+        (thenType != NoProducedValue) ? thenType : elseType;
+    return toka::Type::fromString(result == NoProducedValue ? "()" : result);
   } else if (auto *guard = dynamic_cast<GuardExpr *>(E)) {
     auto condType = checkExpr(guard->Condition.get());
     if (condType->isUnknown())
@@ -2402,7 +2404,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (!varExpr && !isProjectionGuard) {
       error(guard->Condition.get(), DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_VARIABLE);
-      return std::make_shared<VoidType>();
+      return std::make_shared<UnitType>();
     }
 
     SymbolInfo *infoPtr = nullptr;
@@ -2568,7 +2570,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
-    return std::make_shared<VoidType>();
+    return std::make_shared<UnitType>();
   } else if (auto *le = dynamic_cast<LoopExpr *>(E)) {
     if (le->Condition) {
       auto condTy = checkExpr(le->Condition.get(), toka::Type::fromString("bool"));
@@ -2617,7 +2619,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
 
-    if (isReceiver && (!m_ControlFlowStack.empty() && m_ControlFlowStack.back().ExpectedType != "void")) {
+    if (isReceiver && (!m_ControlFlowStack.empty() &&
+                       m_ControlFlowStack.back().ExpectedType != NoProducedValue)) {
       error(le, DiagID::ERR_SEMA_TOKA_1_0_DOES_NOT_SUPPORT_YIELDING_VALUES);
     }
 
@@ -2628,7 +2631,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.back().IsReceiver = isReceiver;
       tookOver = true;
     } else {
-      m_ControlFlowStack.push_back({"", "void", nullptr, true, isReceiver});
+      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, true, isReceiver});
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
 
@@ -2709,7 +2712,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // fact past the loop until that dedicated fixed-point slice exists.
     restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
 
-    return std::make_shared<VoidType>();
+    return std::make_shared<UnitType>();
   } else if (auto *fe = dynamic_cast<ForExpr *>(E)) {
     // [Phase 2] Comptime Macro Unroll Detection
     bool isMacroUnroll = false;
@@ -2751,12 +2754,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       } else {
         error(fe, DiagID::ERR_SEMA_CANNOT_REFLECT_UNINSTANTIATED_OR_PRIMITIV, targetSoul);
       }
-      return toka::Type::fromString("void");
+      return toka::Type::fromString("()");
     }
 
     auto collTypeObj = checkExpr(fe->Collection.get());
     std::string collType = collTypeObj->toString();
-    std::string elemType = "void"; // fallback
+    std::string elemType = "unknown"; // recovery only
     std::string soulType = collTypeObj->getSoulType()->toString();
 
     bool isArray = false;
@@ -2778,7 +2781,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
     }
 
-    std::string fullType = "void";
+    std::string fullType = "unknown";
     AccessPath iteratorSourcePath;
     std::string iteratorSourceName;
     bool iteratorBorrowAdded = false;
@@ -2944,7 +2947,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_ControlFlowStack.back().IsReceiver = isReceiver; // Sync receiver status
       tookOver = true;
     } else {
-      m_ControlFlowStack.push_back({"", "void", nullptr, true, isReceiver});
+      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, true, isReceiver});
     }
     size_t loopFlowIndex = m_ControlFlowStack.size() - 1;
     checkStmt(fe->Body.get());
@@ -2979,7 +2982,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto movedBody = captureVisibleMoved(CurrentScope);
     auto palBody = PALCheckerState.snapshot();
 
-    std::string elseType = "void";
+    std::string elseType = NoProducedValue;
     std::shared_ptr<toka::Type> elseTypeObj;
     bool elseJumps = false;
     std::map<std::string, uint64_t> masksElse = masksBefore;
@@ -2989,7 +2992,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore);
       PALCheckerState.restore(palBefore);
 
-      m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(fe->ElseBody.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
@@ -3066,26 +3069,28 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
 
     if (isReceiver) {
-      if (bodyType == "void" && !bodyJumps)
+      if (bodyType == NoProducedValue && !bodyJumps)
         error(fe->Body.get(), DiagID::ERR_YIELD_VALUE_REQUIRED, "for loop");
       if (!fe->ElseBody)
         error(fe, DiagID::ERR_YIELD_OR_REQUIRED, "for");
-      else if (elseType == "void" && !elseJumps)
+      else if (elseType == NoProducedValue && !elseJumps)
         error(fe->ElseBody.get(), DiagID::ERR_YIELD_VALUE_REQUIRED,
               "'or' block");
     }
 
-    if (bodyType != "void" && !fe->ElseBody) {
+    if (bodyType != NoProducedValue && !fe->ElseBody) {
       error(fe, DiagID::ERR_YIELD_OR_REQUIRED, "for");
     }
-    if (bodyType != "void" && elseType != "void" &&
+    if (bodyType != NoProducedValue && elseType != NoProducedValue &&
         !isTypeCompatible(bodyTypeObj, elseTypeObj)) {
       error(fe, DiagID::ERR_BRANCH_TYPE_MISMATCH, "For loop", bodyType,
             elseType);
     }
     if (iteratorBorrowAdded)
       PALCheckerState.releaseBorrow(iteratorSourcePath);
-    return toka::Type::fromString((bodyType != "void") ? bodyType : elseType);
+    const std::string result =
+        (bodyType != NoProducedValue) ? bodyType : elseType;
+    return toka::Type::fromString(result == NoProducedValue ? "()" : result);
   } else if (auto *ce = dynamic_cast<CedeExpr *>(E)) {
     if (auto *todo = dynamic_cast<TodoExpr *>(ce->Value.get())) {
       SemanticEvidence::recordTodoGoal(
@@ -3229,16 +3234,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool isPrefixFor = dynamic_cast<ForExpr *>(pe->Value.get());
     bool isPrefixLoop = dynamic_cast<LoopExpr *>(pe->Value.get());
 
-    std::string valType = "void";
+    std::string valType = NoProducedValue;
     std::shared_ptr<toka::Type> valTypeObj;
     if (isPrefixMatch || isPrefixIf || isPrefixFor ||
         isPrefixLoop) {
-      m_ControlFlowStack.push_back({"", "void", nullptr, false, true});
+      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, true});
       valTypeObj = checkExpr(pe->Value.get());
       valType = valTypeObj->toString();
       m_ControlFlowStack.pop_back();
 
-      if (valType == "void") {
+      if (valType == NoProducedValue) {
         error(pe, DiagID::ERR_SEMA_PREFIX_PASS_EXPECTS_A_VALUE_YIELDING_EXPR);
       }
     } else {
@@ -3266,7 +3271,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
            it != m_ControlFlowStack.rend(); ++it) {
         if (it->IsReceiver) {
           foundReceiver = true;
-          if (it->ExpectedType == "void") {
+          if (it->ExpectedType == NoProducedValue) {
             it->ExpectedType = valType;
             it->ExpectedTypeObj = valTypeObj;
           } else if (!isTypeCompatible(it->ExpectedTypeObj, valTypeObj)) {
@@ -3281,12 +3286,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(pe, DiagID::ERR_PASS_NO_RECEIVER);
     }
 
-    return toka::Type::fromString((isPrefixMatch || isPrefixIf || isPrefixFor ||
-                                   isPrefixLoop)
-                                      ? valType
-                                      : "void");
+    const std::string result =
+        (isPrefixMatch || isPrefixIf || isPrefixFor || isPrefixLoop)
+            ? valType
+            : "()";
+    return toka::Type::fromString(result == NoProducedValue ? "()" : result);
   } else if (auto *be = dynamic_cast<BreakExpr *>(E)) {
-    std::string valType = "void";
+    std::string valType = NoProducedValue;
     std::shared_ptr<toka::Type> valTypeObj;
     if (be->Value) {
       error(be, DiagID::ERR_SEMA_TOKA_1_0_DOES_NOT_SUPPORT_YIELDING_VALU_2);
@@ -3327,8 +3333,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (target) {
       target->BreakStates.push_back(captureAnalysisState());
-      if (valType != "void") {
-        if (target->ExpectedType == "void") {
+      if (valType != NoProducedValue) {
+        if (target->ExpectedType == NoProducedValue) {
           target->ExpectedType = valType;
           target->ExpectedTypeObj = valTypeObj;
         } else if (!isTypeCompatible(target->ExpectedTypeObj, valTypeObj)) {
@@ -3336,7 +3342,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       }
     }
-    return toka::Type::fromString("void");
+    return toka::Type::fromString("()");
   } else if (auto *ce = dynamic_cast<ContinueExpr *>(E)) {
     // Continue target must be a loop
     ControlFlowInfo *target = nullptr;
@@ -3360,7 +3366,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (target)
       target->ContinueStates.push_back(captureAnalysisState());
-    return toka::Type::fromString("void");
+    return toka::Type::fromString("()");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
     return checkCallExpr(Call);
   } else if (auto *awaitEx = dynamic_cast<AwaitExpr *>(E)) {
@@ -4474,7 +4480,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *me = dynamic_cast<MatchExpr *>(E)) {
     auto targetTypeObj = checkExpr(me->Target.get());
     std::string targetType = targetTypeObj->toString();
-    std::string resultType = "void";
+    std::string resultType = NoProducedValue;
     std::shared_ptr<toka::Type> resultTypeObj;
 
     if (me->Target) {
@@ -4527,20 +4533,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 "match guard", "bool", arm->Guard->ResolvedType->toString());
         }
       }
-      m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+      m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
       checkStmt(arm->Body.get());
       std::string armType = m_ControlFlowStack.back().ExpectedType;
       auto armTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
       m_ControlFlowStack.pop_back();
 
-      if (isReceiver && armType == "void" && !allPathsJump(arm->Body.get())) {
+      if (isReceiver && armType == NoProducedValue && !allPathsJump(arm->Body.get())) {
         error(arm->Body.get(), DiagID::ERR_YIELD_VALUE_REQUIRED, "match arm");
       }
 
-      if (resultType == "void") {
+      if (resultType == NoProducedValue) {
         resultType = armType;
         resultTypeObj = armTypeObj;
-      } else if (armType != "void" && !isTypeCompatible(resultTypeObj, armTypeObj)) {
+      } else if (armType != NoProducedValue && !isTypeCompatible(resultTypeObj, armTypeObj)) {
         error(me, DiagID::ERR_BRANCH_TYPE_MISMATCH, "match", resultType, armType);
       }
 
@@ -4589,7 +4595,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       restoreMatchEntryState();
     }
 
-    if (isReceiver && resultType == "void") {
+    if (isReceiver && resultType == NoProducedValue) {
       error(me, DiagID::ERR_YIELD_VALUE_REQUIRED, "match expression");
     }
 
@@ -4622,7 +4628,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (ShapeMap.count(baseShapeName)) {
             ShapeDecl *SD = ShapeMap[baseShapeName];
             for (auto &Memb : SD->Members) {
-              bool noPayload = Memb.Type.empty() || Memb.Type == "void";
+              bool noPayload = Memb.IsUnitVariant ||
+                               (Memb.Type.empty() && Memb.SubMembers.empty());
               if (Memb.Name == patName && noPayload && Memb.SubMembers.empty()) {
                 isVariant = true;
                 break;
@@ -4749,7 +4756,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   }
                 }
               }
-            } else if (!foundMemb->Type.empty() && foundMemb->Type != "void") {
+            } else if (!foundMemb->IsUnitVariant &&
+                       !foundMemb->Type.empty()) {
               size_t elisionIndex = -1;
               size_t elisionCount = 0;
               for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
@@ -4787,7 +4795,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
           }
           if (foundMemb) {
-            bool noPayload = foundMemb->Type.empty() || foundMemb->Type == "void";
+            bool noPayload = foundMemb->IsUnitVariant ||
+                             (foundMemb->Type.empty() &&
+                              foundMemb->SubMembers.empty());
             if (noPayload && foundMemb->SubMembers.empty()) {
               matchedVariants.insert(vName);
             }
@@ -4837,7 +4847,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
-    return toka::Type::fromString(resultType);
+    return toka::Type::fromString(resultType == NoProducedValue ? "()"
+                                                                  : resultType);
   }
 
   return toka::Type::fromString("unknown");

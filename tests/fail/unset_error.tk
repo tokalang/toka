@@ -1,5 +1,5 @@
 
-pub fn main() -> void {
+pub fn main() {
     auto x# = uninit:i32;
     // EXPECT: error[E0410]:
     auto y = x; 

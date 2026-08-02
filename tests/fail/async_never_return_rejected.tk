@@ -1,0 +1,5 @@
+fn wrong() -> async never {
+    unreachable
+}
+
+// EXPECT: error[E04612]

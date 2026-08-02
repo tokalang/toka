@@ -6,7 +6,7 @@ fn main() -> i32 {
             x = 7
             break to outer
         }
-    }:void
+    }:()
 
     assert(x == 7, "labeled break should carry initialization state")
     return 0

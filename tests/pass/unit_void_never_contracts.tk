@@ -1,0 +1,45 @@
+extern fn foreign_no_value(value: i32) -> void
+
+shape UnitMarker(value: ())
+shape OpaqueHandle(*raw: void)
+shape UnitMethodProbe(value: i32)
+
+impl UnitMethodProbe {
+    fn finish(self) {
+    }
+}
+
+fn record() {
+}
+
+fn identity<'T>('value: T) -> 'T {
+    return 'value
+}
+
+fn stop() -> never {
+    unreachable
+}
+
+fn choose(valid: bool) -> i32 {
+    if valid {
+        return 7
+    }
+    stop()
+}
+
+fn panic_path(valid: bool) -> i32 {
+    if valid {
+        return 1
+    }
+    panic("fatal")
+}
+
+fn main() -> i32 {
+    auto completed = record()
+    auto _typed_unit = identity<()>(completed)
+    auto marker = UnitMarker(value = completed)
+    auto probe = UnitMethodProbe(value = 0)
+    auto _completed_method = probe.finish()
+    identity<i32>(choose(true) + panic_path(true))
+    return 0
+}

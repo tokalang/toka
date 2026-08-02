@@ -26,7 +26,7 @@ extern fn toka_compress_process(handle: Addr, input: Addr, input_len: usize, fin
 extern fn toka_compress_output_len(handle: Addr) -> usize
 extern fn toka_compress_output_cap(handle: Addr) -> usize
 extern fn toka_compress_take_output(handle: Addr) -> Addr
-extern fn toka_compress_free(handle: Addr)
+extern fn toka_compress_free(handle: Addr) -> void
 
 pub shape CompressionFormat (
     Gzip = 0 |

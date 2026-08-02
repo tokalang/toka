@@ -506,7 +506,7 @@ pub fn __toka_spawn_blocking(*task: void) {
 
 // === Thread & Time Utilities ===
 extern fn __builtin_coro_current_handle() -> *void
-extern fn __builtin_coro_suspend()
+extern fn __builtin_coro_suspend() -> void
 
 pub fn sleep_async(ms: i32) -> async i32 {
     auto *handle = __builtin_coro_current_handle()

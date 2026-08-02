@@ -609,7 +609,7 @@ pub fn ws_connect_insecure_url_async(url_str: string, default_addr: SocketAddrV4
 }
 
 impl WsConnection {
-    pub fn send_protocol_error_close_async(self#) -> async void {
+    pub fn send_protocol_error_close_async(self#) -> async {
         auto close_payload# = Vec<u8>::with_capacity(2)
         close_payload#.push(0x03:u8)
         close_payload#.push(0xEA:u8)

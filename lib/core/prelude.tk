@@ -23,7 +23,7 @@ pub import core/traits::{@Encap, @Send, @Sync, @Callable}
 
 import core/internal/runtime::__toka_panic_handler;
 
-pub fn panic(message: str) {
+pub fn panic(message: str) -> never {
     __toka_panic_handler(message)
 }
 

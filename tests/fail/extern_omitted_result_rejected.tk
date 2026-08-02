@@ -1,0 +1,3 @@
+extern fn foreign_no_value(value: i32)
+
+// EXPECT: error[E04611]

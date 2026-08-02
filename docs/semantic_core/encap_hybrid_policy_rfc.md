@@ -782,7 +782,7 @@ fn drop(self#) {
 }
 ```
 
-The only valid signature is `fn drop(self#) -> void`: non-public, one
+The only valid signature is `fn drop(self#)`: non-public, one
 receiver, no additional parameters, no method-local generic parameters, and
 no async/wait/suspending effect. Enclosing nominal generic parameters remain
 available.

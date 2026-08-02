@@ -572,6 +572,10 @@ private:
     std::vector<AnalysisState> BreakStates;
     std::vector<AnalysisState> ContinueStates;
   };
+  // This is analysis state, not a source type.  In particular it must never
+  // reuse ABI `void`, which remains a real FFI type.
+  inline static constexpr const char *NoProducedValue =
+      "<no-produced-value>";
   std::vector<ControlFlowInfo> m_ControlFlowStack;
 
   struct FlowSummary {

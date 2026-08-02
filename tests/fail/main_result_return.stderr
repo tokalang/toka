@@ -1,4 +1,4 @@
-error[E04596]: Toka 1.0 main must return i32 or void, including async main; move fallible work into a Result-returning helper and handle it at the entry boundary
+error[E04596]: Toka 1.0 main must return i32 or omit its Unit result, including async main; move fallible work into a Result-returning helper and handle it at the entry boundary
  --> tests/fail/main_result_return.tk:1:4
    |
  1 | fn main() -> Result<i32, string> {

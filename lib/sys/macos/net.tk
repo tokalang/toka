@@ -170,7 +170,7 @@ pub fn net_accept_impl(fd: i32) -> i32 {
     }
 }
 
-extern fn toka_trace_cleanup_fd(fd: i32)
+extern fn toka_trace_cleanup_fd(fd: i32) -> void
 
 pub fn net_close_impl(fd: i32) {
     unsafe {
@@ -261,9 +261,9 @@ pub fn reactor_create_impl() -> i32 {
     }
 }
 
-extern fn toka_reactor_del_fd(reactor_fd: i32, fd: i32)
-extern fn toka_reactor_del_read(reactor_fd: i32, fd: i32, expected_key: u64)
-extern fn toka_reactor_del_write(reactor_fd: i32, fd: i32, expected_key: u64)
+extern fn toka_reactor_del_fd(reactor_fd: i32, fd: i32) -> void
+extern fn toka_reactor_del_read(reactor_fd: i32, fd: i32, expected_key: u64) -> void
+extern fn toka_reactor_del_write(reactor_fd: i32, fd: i32, expected_key: u64) -> void
 extern fn toka_reactor_add_read(reactor_fd: i32, fd: i32, key: u64) -> i32
 extern fn toka_reactor_add_write(reactor_fd: i32, fd: i32, key: u64) -> i32
 

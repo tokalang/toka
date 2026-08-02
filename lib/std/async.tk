@@ -10,7 +10,7 @@ import std/vec::{Vec};
 import std/io::{println};
 
 extern fn __builtin_coro_current_handle() -> *void
-extern fn __builtin_coro_suspend()
+extern fn __builtin_coro_suspend() -> void
 
 pub shape RaceWinner<'T1, 'T2> (
     First('T1) = 1 |
@@ -254,7 +254,7 @@ impl TaskScope {
         return reaped
     }
 
-    pub fn join_async(self#) -> async void {
+    pub fn join_async(self#) -> async {
         loop !self.is_done() {
             sleep_async(1:i32).await
         }
@@ -276,7 +276,7 @@ impl TaskScope {
         return true
     }
 
-    pub fn close(cede self) -> async void {
+    pub fn close(cede self) -> async {
         auto scope# = cede self
         scope#.cancel_all()
         scope#.join_async().await

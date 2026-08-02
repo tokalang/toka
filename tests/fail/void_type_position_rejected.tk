@@ -1,0 +1,3 @@
+shape Invalid(value: void)
+
+// EXPECT: error[E01265]

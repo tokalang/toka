@@ -274,49 +274,7 @@ static AccessCapability deriveDestructureFieldCapability(
 }
 
 bool Sema::allPathsReturn(Stmt *S) {
-  if (!S)
-    return false;
-  if (dynamic_cast<ReturnStmt *>(S) || dynamic_cast<UnreachableStmt *>(S))
-    return true;
-  if (auto *B = dynamic_cast<BlockStmt *>(S)) {
-    for (const auto &Sub : B->Statements) {
-      if (allPathsReturn(Sub.get()))
-        return true;
-    }
-    return false;
-  }
-  if (auto *Unsafe = dynamic_cast<UnsafeStmt *>(S)) {
-    return allPathsReturn(Unsafe->Statement.get());
-  }
-  // Expressions wrapped in Stmt
-  if (auto *ES = dynamic_cast<ExprStmt *>(S)) {
-    Expr *E = ES->Expression.get();
-    if (auto *If = dynamic_cast<IfExpr *>(E)) {
-      if (If->Else && allPathsReturn(If->Then.get()) &&
-          allPathsReturn(If->Else.get()))
-        return true;
-      return false;
-    }
-    if (auto *Guard = dynamic_cast<GuardExpr *>(E)) {
-      if (Guard->Else && allPathsReturn(Guard->Then.get()) &&
-          allPathsReturn(Guard->Else.get()))
-        return true;
-      return false;
-    }
-    if (auto *Match = dynamic_cast<MatchExpr *>(E)) {
-      for (const auto &Arm : Match->Arms) {
-        if (!allPathsReturn(Arm->Body.get()))
-          return false;
-      }
-      return true;
-    }
-    if (auto *Loop = dynamic_cast<LoopExpr *>(E)) {
-      if (allPathsReturn(Loop->Body.get()))
-        return true;
-      return false;
-    }
-  }
-  return false;
+  return S && !summarizeFlow(S).CanFallThrough;
 }
 
 void Sema::mergeFlowExits(FlowSummary &dst, const FlowSummary &src) {
@@ -366,6 +324,11 @@ Sema::FlowSummary Sema::summarizeFlowExpr(Expr *E) {
   FlowSummary result;
   if (!E)
     return result;
+
+  if (E->ResolvedType && E->ResolvedType->isNever()) {
+    result.CanFallThrough = false;
+    return result;
+  }
 
   if (auto *Break = dynamic_cast<BreakExpr *>(E)) {
     result.CanFallThrough = false;
@@ -590,8 +553,15 @@ void Sema::checkStmt(Stmt *S) {
 
     exitScope();
   } else if (auto *Ret = dynamic_cast<ReturnStmt *>(S)) {
-    std::string ExprType = "void";
-    std::shared_ptr<toka::Type> ExprTypeObj = toka::Type::fromString("void");
+    if (CurrentFunction &&
+        CurrentFunction->ReturnContract.ResultKind == ReturnResultKind::Never) {
+      DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_NEVER_FUNCTION_RETURN,
+                               CurrentFunction->Name);
+      HasError = true;
+      return;
+    }
+    std::string ExprType = "()";
+    std::shared_ptr<toka::Type> ExprTypeObj = toka::Type::fromString("()");
     if (Ret->ReturnValue) {
       Ret->ReturnValue = foldGenericConstant(std::move(Ret->ReturnValue));
       m_ControlFlowStack.push_back(
@@ -1267,7 +1237,7 @@ void Sema::checkStmt(Stmt *S) {
     m_InUnsafeContext = oldUnsafe;
   } else if (auto *ExprS = dynamic_cast<ExprStmt *>(S)) {
     // Standalone expressions are NOT receivers
-    m_ControlFlowStack.push_back({"", "void", nullptr, false, false});
+    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, false});
     ExprS->Expression = foldGenericConstant(std::move(ExprS->Expression));
     auto exprType = checkExpr(ExprS->Expression.get());
     m_ControlFlowStack.pop_back();
@@ -1314,7 +1284,7 @@ void Sema::checkStmt(Stmt *S) {
       Var->Init = foldGenericConstant(std::move(Var->Init));
       if (Var->IsReference)
         m_AllowUnsetUsage = true;
-      m_ControlFlowStack.push_back({Var->Name, "void", nullptr, false, true});
+      m_ControlFlowStack.push_back({Var->Name, NoProducedValue, nullptr, false, true});
       std::shared_ptr<toka::Type> declTargetTy = nullptr;
       if (!Var->TypeName.empty() && Var->TypeName != "auto") {
         declTargetTy = resolveType(
@@ -1447,11 +1417,7 @@ void Sema::checkStmt(Stmt *S) {
 
     // 4. If type not specified, infer from init
     if (Var->TypeName.empty() || Var->TypeName == "auto") {
-      const auto *ascription = dynamic_cast<CastExpr *>(Var->Init.get());
-      const bool isExplicitVoidBinding =
-          InitType == "void" && ascription &&
-          ascription->Kind == CastKind::Ascription;
-      if (InitType.empty() || (InitType == "void" && !isExplicitVoidBinding)) {
+      if (InitType.empty() || InitType == "void") {
         DiagnosticEngine::report(getLoc(Var), DiagID::ERR_TYPE_REQUIRED,
                                  Var->Name);
         HasError = true;
@@ -2355,7 +2321,7 @@ void Sema::checkStmt(Stmt *S) {
     if (!m_ControlFlowStack.empty()) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
     }
-    m_ControlFlowStack.push_back({"", "void", nullptr, false, isReceiver});
+    m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
     checkStmt(GuardBind->ElseBody.get());
     m_ControlFlowStack.pop_back();
 

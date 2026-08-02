@@ -14,10 +14,10 @@ error[E0412]: Reference '&refY' to uninitialized variable 'y' escapes scope with
  13 |     loop {
     |          ^
 error[E0412]: Reference '&refZ' to uninitialized variable 'z' escapes scope without initialization
- --> tests/fail/unset_escape.tk:20:30
+ --> tests/fail/unset_escape.tk:20:22
     |
- 20 | fn test_pass_unset() -> void {
-    |                              ^
+ 20 | fn test_pass_unset() {
+    |                      ^
 error[E0412]: Reference '&refA' to uninitialized variable 'a' escapes scope without initialization
  --> tests/fail/unset_escape.tk:35:5
     |

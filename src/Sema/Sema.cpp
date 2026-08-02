@@ -807,12 +807,13 @@ void Sema::registerSlice2Policy(ImplDecl *impl) {
       if (method->Name == "drop") hook = method.get();
     const bool validHook = hook && !hook->IsPub &&
         hook->GenericParams.empty() && hook->Effect == EffectKind::None &&
-        hook->ReturnType == "void" && hook->Args.size() == 1 &&
+        hook->ReturnContract.ResultKind == ReturnResultKind::Unit &&
+        !hook->ReturnContract.HasArrow && hook->Args.size() == 1 &&
         Type::stripMorphology(hook->Args[0].Name) == "self" &&
         hook->Args[0].IsValueMutable;
     if (!validHook) {
       DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,
-                               "@Encap v3 drop hook must be private fn drop(self#) -> void");
+                               "@Encap v3 drop hook must be private fn drop(self#)");
       HasError = true;
       return;
     }
@@ -2294,6 +2295,13 @@ void Sema::declareGlobals(Module &M) {
   // 2. Register Externs
   for (auto &Ext : M.Externs) {
     DeclarationLexicalScopes[Ext.get()] = &ms;
+    // Foreign ABI results are never inferred.  Typed extern results remain
+    // valid, while no-value ABI must say `-> void` explicitly.
+    if (Ext->ReturnContract.ResultKind == ReturnResultKind::Unit) {
+      DiagnosticEngine::report(getLoc(Ext.get()),
+                               DiagID::ERR_EXTERN_RESULT_CONTRACT, Ext->Name);
+      HasError = true;
+    }
     for (auto &Arg : Ext->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("extern argument", Arg.Name, Arg.Type,
@@ -3607,8 +3615,29 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   m_LastLifeDependencies.clear();
   m_LastFieldDependencies.clear();
 
-  // [New] Annotated AST: Resolve Return Type Object
-  if (Fn->ReturnType != "void") {
+  const ReturnResultKind resultKind = Fn->ReturnContract.ResultKind;
+  if (resultKind == ReturnResultKind::AbiVoid) {
+    DiagnosticEngine::report(getLoc(Fn),
+                             DiagID::ERR_ORDINARY_VOID_RETURN_CONTRACT,
+                             Fn->Name);
+    HasError = true;
+  } else if (resultKind == ReturnResultKind::Unit &&
+             Fn->ReturnContract.HasExplicitResultType) {
+    DiagnosticEngine::report(getLoc(Fn),
+                             DiagID::ERR_EXPLICIT_UNIT_RETURN_CONTRACT,
+                             Fn->Name);
+    HasError = true;
+  }
+  if (resultKind == ReturnResultKind::Never &&
+      (Fn->Effect != EffectKind::None || !Fn->ReturnContract.BindingName.empty() ||
+       !Fn->ReturnContract.Routes.empty() || Fn->Name == "main")) {
+    DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_NEVER_RETURN_CONTRACT);
+    HasError = true;
+  }
+
+  // Resolve ordinary Unit, ABI void, and bottom independently.  The legacy
+  // string cache remains only a bridge into the existing semantic layers.
+  if (resultKind != ReturnResultKind::AbiVoid) {
     validateTypeVisibilityInType(Fn->ReturnType, getLoc(Fn));
     validateDynTraitObjectSafetyInType(Fn->ReturnType, getLoc(Fn));
     Fn->ResolvedReturnType = resolveType(
@@ -3621,7 +3650,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (Fn->Name == "main" && Fn->ResolvedReturnType) {
     auto mainRet = resolveType(Fn->ResolvedReturnType, false);
     std::string mainRetName = mainRet ? mainRet->getSoulName() : "unknown";
-    if (mainRetName != "i32" && mainRetName != "void") {
+    if (mainRetName != "i32" && !Fn->ResolvedReturnType->isUnit()) {
       DiagnosticEngine::report(getLoc(Fn),
                                DiagID::ERR_SEMA_MAIN_RETURN_CONTRACT);
       HasError = true;
@@ -3731,8 +3760,14 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       }
     }
 
-    // Check if all paths return if return type is not void
-    if (Fn->ReturnType != "void") {
+    if (resultKind == ReturnResultKind::Never) {
+      if (!allPathsJump(Fn->Body.get())) {
+        DiagnosticEngine::report(getLoc(Fn),
+                                 DiagID::ERR_NEVER_FUNCTION_COMPLETES,
+                                 Fn->Name);
+        HasError = true;
+      }
+    } else if (resultKind == ReturnResultKind::Typed) {
       if (!allPathsReturn(Fn->Body.get())) {
         DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_CONTROL_REACHES_END,
                                  Fn->Name);
@@ -3952,8 +3987,10 @@ void Sema::analyzeShapes(Module &M) {
         }
       };
 
-      // Resolve the member itself (struct field or legacy union variant)
-      resolveShapeMemberType(member);
+      // A unit enum variant has an explicit semantic payload state, not an
+      // empty spelling that should be lowered as a type.
+      if (!(S->Kind == ShapeKind::Enum && member.IsUnitVariant))
+        resolveShapeMemberType(member);
       
       // Resolve SubMembers (mostly payloads for Enum variants)
       for (auto &subMemb : member.SubMembers) {
@@ -3961,7 +3998,7 @@ void Sema::analyzeShapes(Module &M) {
       }
 
       // 5. Basic Validation (Optional but good)
-      if (member.ResolvedType->isUnknown()) {
+      if (member.ResolvedType && member.ResolvedType->isUnknown()) {
         // ... (keep existing comments if any, or just ignore unknown)
       }
 

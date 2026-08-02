@@ -1,0 +1,4 @@
+fn wrong() -> void {
+}
+
+// EXPECT: error[E04609]

@@ -14,14 +14,14 @@ import core/task as core_task
 import std/error::{IoError}
 
 extern fn __builtin_coro_current_handle() -> *void
-extern fn __builtin_coro_suspend()
+extern fn __builtin_coro_suspend() -> void
 extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
-extern fn toka_tls_close(*handle: void)
+extern fn toka_tls_close(*handle: void) -> void
 extern fn toka_tls_context_new() -> *void
 extern fn toka_tls_server_context_new() -> *void
 extern fn toka_tls_server_context_new_with_cert_file(*cert: char, *key: char) -> *void
-extern fn toka_tls_set_verify_mode(*handle: void, verify_peer: i32)
+extern fn toka_tls_set_verify_mode(*handle: void, verify_peer: i32) -> void
 extern fn toka_tls_set_ca_file(*handle: void, *ca_path: char) -> i32
 extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
 extern fn toka_tls_connect(*handle: void, fd: i32) -> i32

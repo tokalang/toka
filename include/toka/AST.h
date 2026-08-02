@@ -1474,6 +1474,9 @@ struct ShapeMember {
   // For enum variant payloads and legacy bare unions.
   std::vector<ShapeMember> SubMembers;
   ShapeKind SubKind = ShapeKind::Struct;
+  // A unit enum variant has no payload.  This is deliberately not encoded as
+  // an empty type spelling or ABI `void`.
+  bool IsUnitVariant = false;
 
   // Resolution Cache from Sema
   std::shared_ptr<toka::Type> ResolvedType = nullptr;
@@ -1504,6 +1507,7 @@ struct ShapeMember {
     Permission = other.Permission;
     SubMembers = other.SubMembers;
     SubKind = other.SubKind;
+    IsUnitVariant = other.IsUnitVariant;
     ResolvedType = other.ResolvedType;
     if (other.DefaultValue) {
       DefaultValue = std::unique_ptr<Expr>(
@@ -1534,6 +1538,7 @@ struct ShapeMember {
     Permission = other.Permission;
     SubMembers = other.SubMembers;
     SubKind = other.SubKind;
+    IsUnitVariant = other.IsUnitVariant;
     ResolvedType = other.ResolvedType;
     if (other.DefaultValue) {
       DefaultValue = std::unique_ptr<Expr>(
@@ -1652,6 +1657,8 @@ struct DependencyPathSyntax {
 
 enum class ReturnDependencyTargetKind { ReturnValue, NamedBinding };
 
+enum class ReturnResultKind { Unit, Typed, AbiVoid, Never };
+
 struct ReturnDependencyTargetSyntax {
   ReturnDependencyTargetKind Kind = ReturnDependencyTargetKind::ReturnValue;
   std::string BindingName;
@@ -1674,14 +1681,38 @@ struct ReturnDependencyRouteSyntax {
 /// contracts.
 struct ReturnContractSyntax {
   bool HasArrow = false;
-  std::string Type = "void";
+  // `-> async` / `-> wait` carries an effect but intentionally omits a
+  // result type.  Keep that distinct from a source-level `-> ()` so generic
+  // substitution and contract diagnostics retain source intent.
+  bool HasExplicitResultType = false;
+  // A legacy string cache derived by the parser/printer boundary.  The
+  // result category is authoritative: an omitted ordinary result is Unit,
+  // not ABI `void`.
+  std::string Type = "()";
   TypeSyntaxPtr TypeSyntax;
+  ReturnResultKind ResultKind = ReturnResultKind::Unit;
   std::string BindingName;
   std::string BindingPrefix;
   EffectKind Effect = EffectKind::None;
   std::vector<ReturnDependencyRouteSyntax> Routes;
   SourceLocation Begin;
   SourceLocation End;
+
+  void classifyResult() {
+    if (!HasArrow) {
+      ResultKind = ReturnResultKind::Unit;
+      Type = "()";
+      return;
+    }
+    if (Type == "void")
+      ResultKind = ReturnResultKind::AbiVoid;
+    else if (Type == "never")
+      ResultKind = ReturnResultKind::Never;
+    else if (Type == "()")
+      ResultKind = ReturnResultKind::Unit;
+    else
+      ResultKind = ReturnResultKind::Typed;
+  }
 
   void deriveLegacyDependencies(
       std::vector<std::string> &lifeDependencies,
@@ -1784,6 +1815,8 @@ public:
         LifeDependencies(std::move(lifeDeps)) {
     ReturnContract.Type = ReturnType;
     ReturnContract.Effect = Effect;
+    ReturnContract.HasArrow = ReturnType != "()";
+    ReturnContract.classifyResult();
     if (!LifeDependencies.empty()) {
       ReturnDependencyRouteSyntax route;
       route.Target.Kind = ReturnDependencyTargetKind::ReturnValue;
@@ -1794,6 +1827,7 @@ public:
   }
   void setReturnContract(ReturnContractSyntax contract) {
     ReturnContract = std::move(contract);
+    ReturnContract.classifyResult();
     ReturnType = ReturnContract.Type;
     ReturnTypeSyntax = ReturnContract.TypeSyntax;
     Effect = ReturnContract.Effect;
@@ -1801,9 +1835,18 @@ public:
                                             MemberDependencies);
   }
   void syncReturnContractTypeCache() {
+    const bool wasExplicitTypedResult =
+        ReturnContract.HasExplicitResultType &&
+        ReturnContract.ResultKind == ReturnResultKind::Typed;
     ReturnContract.Type = ReturnType;
     ReturnContract.TypeSyntax = ReturnTypeSyntax;
     ReturnContract.Effect = Effect;
+    ReturnContract.classifyResult();
+    // Generic substitution may turn a source-level `-> T` into Unit.  That
+    // remains an explicit typed result contract; only source `-> ()` is the
+    // redundant spelling rejected for ordinary functions.
+    if (wasExplicitTypedResult && ReturnContract.Type == "()")
+      ReturnContract.ResultKind = ReturnResultKind::Typed;
   }
   std::string toString() const override {
     return std::string(IsPub ? "Pub" : "") + "Fn(" + Name + ")";
@@ -1979,17 +2022,26 @@ public:
       : Name(name), Args(std::move(args)), ReturnType(retType), Effect(effect) {
     ReturnContract.Type = ReturnType;
     ReturnContract.Effect = Effect;
+    ReturnContract.HasArrow = ReturnType != "()";
+    ReturnContract.classifyResult();
   }
   void setReturnContract(ReturnContractSyntax contract) {
     ReturnContract = std::move(contract);
+    ReturnContract.classifyResult();
     ReturnType = ReturnContract.Type;
     ReturnTypeSyntax = ReturnContract.TypeSyntax;
     Effect = ReturnContract.Effect;
   }
   void syncReturnContractTypeCache() {
+    const bool wasExplicitTypedResult =
+        ReturnContract.HasExplicitResultType &&
+        ReturnContract.ResultKind == ReturnResultKind::Typed;
     ReturnContract.Type = ReturnType;
     ReturnContract.TypeSyntax = ReturnTypeSyntax;
     ReturnContract.Effect = Effect;
+    ReturnContract.classifyResult();
+    if (wasExplicitTypedResult && ReturnContract.Type == "()")
+      ReturnContract.ResultKind = ReturnResultKind::Typed;
   }
   std::string toString() const override { return "Extern(" + Name + ")"; }
   std::unique_ptr<ASTNode> clone() const override {

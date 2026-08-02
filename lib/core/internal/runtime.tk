@@ -16,6 +16,7 @@ import core/types::{str}
 
 extern fn libc_abort() -> void
 
-pub fn __toka_panic_handler(_msg: str) {
+pub fn __toka_panic_handler(_msg: str) -> never {
     libc_abort()
+    unreachable
 }

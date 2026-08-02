@@ -259,7 +259,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     if (ShapeMap.count(baseShapeName)) {
       ShapeDecl *SD = ShapeMap[baseShapeName];
       for (auto &Memb : SD->Members) {
-        bool noPayload = Memb.Type.empty() || Memb.Type == "void";
+        bool noPayload = Memb.IsUnitVariant ||
+                         (Memb.Type.empty() && Memb.SubMembers.empty());
         if (Memb.Name == patName && noPayload && Memb.SubMembers.empty()) {
           isVariant = true;
           break;
@@ -760,7 +761,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
 
         if (foundMemb) {
           if (Pat->SubPatterns.size() > 0) {
-            bool noPayload = foundMemb->Type.empty() || foundMemb->Type == "void";
+            bool noPayload = foundMemb->IsUnitVariant ||
+                             (foundMemb->Type.empty() &&
+                              foundMemb->SubMembers.empty());
             if (noPayload && foundMemb->SubMembers.empty()) {
               DiagnosticEngine::report(
                   getLoc(Pat), DiagID::ERR_VARIANT_NO_PAYLOAD, variantName);

@@ -1,6 +1,6 @@
 import std/io::println
 
-extern fn libc_free(*ptr: void)
+extern fn libc_free(*ptr: void) -> void
 
 fn main() -> i32 {
     auto val# = 42

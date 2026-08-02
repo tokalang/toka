@@ -1,0 +1,3 @@
+shape Invalid(value: never)
+
+// EXPECT: error[E01261]

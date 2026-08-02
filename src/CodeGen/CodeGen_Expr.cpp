@@ -2245,7 +2245,8 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
     resultType = llvm::Type::getInt32Ty(m_Context);
 
   llvm::AllocaInst *resultAddr = nullptr;
-  if (!resultType->isVoidTy()) {
+  if (!resultType->isVoidTy() &&
+      !(expr->ResolvedType && expr->ResolvedType->isUnit())) {
     resultAddr =
         createEntryBlockAlloca(resultType, nullptr, "match_result_addr");
   }
@@ -2418,9 +2419,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
         if (scopePos != std::string::npos)
           variantName = variantName.substr(scopePos + 2);
         for (const auto &member : m_Shapes[baseShapeName]->Members) {
-          if (member.Name == variantName &&
-              (member.Type.empty() || member.Type == "void") &&
-              member.SubMembers.empty()) {
+          if (member.Name == variantName && member.IsUnitVariant) {
             return true;
           }
         }
@@ -2520,7 +2519,8 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           const ShapeMember *variant = vMatch.Variant;
           const MatchArm::Pattern *subPat = vMatch.Pat;
 
-          if (!variant->SubMembers.empty() || !variant->Type.empty()) {
+          if (!variant->IsUnitVariant &&
+              (!variant->SubMembers.empty() || !variant->Type.empty())) {
             llvm::Value *payloadAddr =
                 m_Builder.CreateStructGEP(targetType, targetAddr, 1);
 
@@ -3264,7 +3264,11 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   m_ScopeStack.pop_back();
 
   if (!resultAddr) {
-    // Void result
+    if (expr->ResolvedType && expr->ResolvedType->isUnit()) {
+      return PhysEntity(llvm::Constant::getNullValue(resultType), "()",
+                        resultType, false);
+    }
+    // No result
     return PhysEntity(nullptr, "", llvm::Type::getVoidTy(m_Context), false);
   }
   return PhysEntity(
@@ -3278,7 +3282,8 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
   llvm::Type *resTy = nullptr;
   if (resultAddr) {
     resTy = resultAddr->getAllocatedType();
-  } else if (ie->ResolvedType && !ie->ResolvedType->isVoid()) {
+  } else if (ie->ResolvedType && !ie->ResolvedType->isVoid() &&
+             !ie->ResolvedType->isUnit()) {
     resTy = getLLVMType(ie->ResolvedType);
     resultAddr = createEntryBlockAlloca(resTy, nullptr, "if_result_addr");
     m_Builder.CreateStore(llvm::Constant::getNullValue(resTy), resultAddr);
@@ -3314,6 +3319,11 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
       }
       if (resultAddr) {
         return m_Builder.CreateLoad(resTy, resultAddr, "if_result");
+      }
+      if (ie->ResolvedType && ie->ResolvedType->isUnit()) {
+        llvm::Type *unitTy = getLLVMType(ie->ResolvedType);
+        return PhysEntity(llvm::Constant::getNullValue(unitTy), "()", unitTy,
+                          false);
       }
       return PhysEntity();
   }
@@ -3375,13 +3385,19 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
   if (resultAddr) {
     return m_Builder.CreateLoad(resTy, resultAddr, "if_result");
   }
+  if (ie->ResolvedType && ie->ResolvedType->isUnit()) {
+    llvm::Type *unitTy = getLLVMType(ie->ResolvedType);
+    return PhysEntity(llvm::Constant::getNullValue(unitTy), "()", unitTy,
+                      false);
+  }
   return PhysEntity();
 }
 
 PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   llvm::AllocaInst *resultAddr = nullptr;
   llvm::Type *resTy = nullptr;
-  if (guard->ResolvedType && !guard->ResolvedType->isVoid()) {
+  if (guard->ResolvedType && !guard->ResolvedType->isVoid() &&
+      !guard->ResolvedType->isUnit()) {
     resTy = getLLVMType(guard->ResolvedType);
     resultAddr = createEntryBlockAlloca(resTy, nullptr, "guard_result_addr");
     m_Builder.CreateStore(llvm::Constant::getNullValue(resTy), resultAddr);
@@ -3580,16 +3596,24 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   if (resultAddr) {
     return m_Builder.CreateLoad(resTy, resultAddr, "guard_result");
   }
+  if (guard->ResolvedType && guard->ResolvedType->isUnit()) {
+    llvm::Type *unitTy = getLLVMType(guard->ResolvedType);
+    return PhysEntity(llvm::Constant::getNullValue(unitTy), "()", unitTy,
+                      false);
+  }
   return PhysEntity();
 }
 
 PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {
   llvm::Function *f = m_Builder.GetInsertBlock()->getParent();
   
-  // Result via alloca
-  llvm::AllocaInst *resultAddr = createEntryBlockAlloca(
-      m_Builder.getInt32Ty(), nullptr, "loop_result_addr");
-  m_Builder.CreateStore(m_Builder.getInt32(0), resultAddr);
+  const bool isUnitResult = le->ResolvedType && le->ResolvedType->isUnit();
+  llvm::AllocaInst *resultAddr = nullptr;
+  if (!isUnitResult) {
+    resultAddr = createEntryBlockAlloca(m_Builder.getInt32Ty(), nullptr,
+                                        "loop_result_addr");
+    m_Builder.CreateStore(m_Builder.getInt32(0), resultAddr);
+  }
 
   llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(m_Context, "loop_after");
 
@@ -3636,6 +3660,11 @@ PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {
 
   afterBB->insertInto(f);
   m_Builder.SetInsertPoint(afterBB);
+  if (isUnitResult) {
+    llvm::Type *unitTy = getLLVMType(le->ResolvedType);
+    return PhysEntity(llvm::Constant::getNullValue(unitTy), "()", unitTy,
+                      false);
+  }
   return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr,
                               "loop_result");
 }
@@ -3647,8 +3676,13 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
         genStmt(body.get());
         m_ScopeStack.pop_back();
     }
-    // Dummy void return
-    return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", m_Builder.getInt32Ty(), false);
+    if (fe->ResolvedType && fe->ResolvedType->isUnit()) {
+      llvm::Type *unitTy = getLLVMType(fe->ResolvedType);
+      return PhysEntity(llvm::Constant::getNullValue(unitTy), "()", unitTy,
+                        false);
+    }
+    return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()),
+                      "void", m_Builder.getInt32Ty(), false);
   }
 
   PhysEntity collSourceEnt = genExpr(fe->Collection.get());
@@ -3676,10 +3710,13 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(m_Context, "for_else");
   llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(m_Context, "for_after");
 
-  // Result via alloca
-  llvm::AllocaInst *resultAddr = createEntryBlockAlloca(
-      m_Builder.getInt32Ty(), nullptr, "for_result_addr");
-  m_Builder.CreateStore(m_Builder.getInt32(0), resultAddr);
+  const bool isUnitResult = fe->ResolvedType && fe->ResolvedType->isUnit();
+  llvm::AllocaInst *resultAddr = nullptr;
+  if (!isUnitResult) {
+    resultAddr = createEntryBlockAlloca(m_Builder.getInt32Ty(), nullptr,
+                                        "for_result_addr");
+    m_Builder.CreateStore(m_Builder.getInt32(0), resultAddr);
+  }
 
   // Loop index
   llvm::AllocaInst *idxAlloca = createEntryBlockAlloca(
@@ -4034,6 +4071,11 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   m_Builder.SetInsertPoint(afterBB);
   executeScopeUnwinding(iteratorScopeDepth);
   m_ScopeStack.pop_back();
+  if (isUnitResult) {
+    llvm::Type *unitTy = getLLVMType(fe->ResolvedType);
+    return PhysEntity(llvm::Constant::getNullValue(unitTy), "()", unitTy,
+                      false);
+  }
   return m_Builder.CreateLoad(m_Builder.getInt32Ty(), resultAddr, "for_result");
 }
 
@@ -6196,7 +6238,17 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       llvm::Value *sVal = llvm::UndefValue::get(handleTy);
       sVal = m_Builder.CreateInsertValue(sVal, ci, 0, "task.wrap");
       
-      return PhysEntity(sVal, tName, handleTy, false);
+    return PhysEntity(sVal, tName, handleTy, false);
+  }
+
+  // Source-level Unit is a real storable value, while its ordinary function
+  // ABI intentionally remains LLVM void. Materialize the canonical Unit value
+  // after the call when the result participates in another expression.
+  if (call->ResolvedType && call->ResolvedType->isUnit() &&
+      ci->getType()->isVoidTy()) {
+    llvm::Type *unitTy = getLLVMType(call->ResolvedType);
+    return PhysEntity(llvm::Constant::getNullValue(unitTy),
+                      call->ResolvedType->toString(), unitTy, false);
   }
 
   return ci;

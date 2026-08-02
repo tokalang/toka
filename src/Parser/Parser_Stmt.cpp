@@ -228,7 +228,7 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
     if (isAutoBinding)
       error(previous(), DiagID::ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION,
             fullVarName);
-    typeSyntax = parseRequiredTypeSyntax();
+    typeSyntax = parseRequiredTypeSyntax(hasPointer);
     typeName = canonicalType(typeSyntax);
     if (!typeName.empty() && typeName[0] == '\'') {
       errorTypeSideMorphicBinding(name, morphologyPrefix, typeName);

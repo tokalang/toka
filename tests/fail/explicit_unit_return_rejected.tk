@@ -1,0 +1,4 @@
+fn wrong() -> () {
+}
+
+// EXPECT: error[E04610]

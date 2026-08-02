@@ -1,0 +1,4 @@
+fn wrong() -> never {
+}
+
+// EXPECT: error[E04613]

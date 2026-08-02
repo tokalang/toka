@@ -1,0 +1,5 @@
+fn wrong() -> never {
+    return
+}
+
+// EXPECT: error[E04614]

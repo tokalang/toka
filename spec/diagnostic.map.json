@@ -1697,6 +1697,12 @@
       "message": "'encap' is reserved for a future language construct",
       "description": "The lowercase keyword is reserved; use the @Encap trait until a dedicated construct is introduced."
     },
+    "E01261": {
+      "id": "ERR_PARSER_NEVER_TYPE_RESTRICTED",
+      "level": "Error",
+      "message": "'never' is currently permitted only as a synchronous ordinary function result",
+      "description": "The initial never surface is restricted to an ordinary synchronous function result contract."
+    },
     "E01254": {
       "id": "ERR_PARSER_EXPECTED_RETURN_TYPE",
       "level": "Error",
@@ -1762,6 +1768,12 @@
       "level": "Error",
       "message": "Binary bitwise operators must be surrounded by spaces",
       "description": "Whitespace distinguishes binary bitwise operators from morphology syntax."
+    },
+    "E01265": {
+      "id": "ERR_PARSER_VOID_TYPE_RESTRICTED",
+      "level": "Error",
+      "message": "'void' is reserved for extern ABI results and raw pointer pointees",
+      "description": "ABI void is not an ordinary source-level value type."
     },
     "E04476": {
       "id": "ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER",
@@ -2504,8 +2516,8 @@
     "E04596": {
       "id": "ERR_SEMA_MAIN_RETURN_CONTRACT",
       "level": "Error",
-      "message": "Toka 1.0 main must return i32 or void, including async main; move fallible work into a Result-returning helper and handle it at the entry boundary",
-      "description": "The Toka main entry point must return i32 or void"
+      "message": "Toka 1.0 main must return i32 or omit its Unit result, including async main; move fallible work into a Result-returning helper and handle it at the entry boundary",
+      "description": "The Toka main entry point must return i32 or omit its Unit result"
     },
     "E04597": {
       "id": "ERR_SEMA_ERROR_CONVERSION_SIGNATURE",
@@ -2578,6 +2590,42 @@
       "level": "Error",
       "message": "Pattern identifier '{}' does not name an existing variable; use 'auto {}' to introduce a fresh binding",
       "description": "A pattern identifier without auto is a value constraint, not a declaration."
+    },
+    "E04609": {
+      "id": "ERR_ORDINARY_VOID_RETURN_CONTRACT",
+      "level": "Error",
+      "message": "Ordinary function '{}' must omit the return arrow for Unit; 'void' is reserved for extern ABI",
+      "description": "Ordinary completed actions use an omitted return contract, not ABI void."
+    },
+    "E04610": {
+      "id": "ERR_EXPLICIT_UNIT_RETURN_CONTRACT",
+      "level": "Error",
+      "message": "Ordinary function '{}' must omit '-> ()'; omission is the Unit contract",
+      "description": "The function-result spelling for Unit is uniquely an omitted arrow."
+    },
+    "E04611": {
+      "id": "ERR_EXTERN_RESULT_CONTRACT",
+      "level": "Error",
+      "message": "Extern function '{}' must declare an explicit ABI result; use '-> void' for no value",
+      "description": "Foreign declarations must never infer a no-value ABI from an omitted result."
+    },
+    "E04612": {
+      "id": "ERR_NEVER_RETURN_CONTRACT",
+      "level": "Error",
+      "message": "'-> never' is limited to synchronous ordinary functions without named returns or dependencies",
+      "description": "The initial never surface deliberately excludes async, named returns, and return dependencies."
+    },
+    "E04613": {
+      "id": "ERR_NEVER_FUNCTION_COMPLETES",
+      "level": "Error",
+      "message": "Function '{}' declares '-> never' but has a reachable normal completion",
+      "description": "Every reachable path in a never function must be non-completing."
+    },
+    "E04614": {
+      "id": "ERR_NEVER_FUNCTION_RETURN",
+      "level": "Error",
+      "message": "Function '{}' declares '-> never' and cannot use 'return'",
+      "description": "A return statement would complete a never function normally."
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

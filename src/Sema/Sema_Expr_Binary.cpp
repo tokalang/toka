@@ -159,7 +159,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           lhsName = RV->Name;
       }
     }
-    m_ControlFlowStack.push_back({lhsName, "void", nullptr, false, false});
+    m_ControlFlowStack.push_back({lhsName, NoProducedValue, nullptr, false, false});
   }
 
   if (!isAssign)

@@ -1,11 +1,11 @@
 # RFC: Unit, `void`, and `never`
 
-**Status:** Design decisions frozen; implementation pending.
+**Status:** Implemented (initial restricted `never` surface).
 
 **Scope:** This RFC separates Toka's ordinary no-result value, its ABI-level
 no-value representation, and non-completion. It fixes their source-level
-meaning before any parser, Sema, CodeGen, or `.tki` change. It does not add
-`never` to the language yet.
+meaning through Parser, Sema, CodeGen, and `.tki`. The initial restricted
+`never` surface is part of the language.
 
 ## 1. Motivation
 
@@ -79,11 +79,20 @@ For an ordinary Toka function, an omitted return contract means Unit:
 fn log(message: string) {
     print(message)
 }
+
+fn flush_async() -> async {
+    flush_pending().await
+}
 ```
 
 `-> ()` is rejected in an ordinary function declaration. It would repeat the
 same completed-action intent with a second spelling. Function type syntax
 follows the same rule: an omitted result is Unit.
+
+`async` and `wait` are effects rather than result types. When an ordinary
+effectful function completes with Unit, `-> async` or `-> wait` carries the
+effect while deliberately omitting a result type; it is not an alternate
+spelling of `-> ()`.
 
 This rule does not prohibit `()` in ordinary type positions; it only chooses
 one function-contract spelling for Unit.
@@ -170,7 +179,25 @@ The implementation is complete only when all of the following hold:
   named internal state, with tests for empty blocks, branches, enum payloads,
   ordinary returns, FFI returns, and raw pointers.
 
-## 7. Relation to expression uniqueness
+## 7. Implementation record
+
+The implementation adds distinct semantic `UnitType`, `VoidType`, and
+`NeverType` values; a structured return-result category; a named flow-only
+no-produced-value state; explicit Unit enum-variant metadata; and a
+bottom-aware compatibility rule. Ordinary Unit functions lower with LLVM's
+no-result function ABI while Unit used as stored data retains ordinary layout;
+a Unit-producing call materializes that stored value when its result is bound
+or embedded in another expression.
+
+The parser reserves `never`; Sema restricts it to synchronous ordinary
+functions and rejects named/dependent, async, external, and `main` forms,
+ordinary `return`, and reachable normal completion. TKI now preserves omitted
+Unit, effect-only Unit contracts, `-> void`, and `-> never` distinctly.
+Regression coverage includes a Unit field, ordinary and method call results
+stored as Unit, generic `T = ()`, ordinary/FFI contracts, bottom flow, invalid
+placements, and source-less TKI replay.
+
+## 8. Relation to expression uniqueness
 
 This RFC supplies the result-contract rule referenced by EU-06 in
 `docs/expression_uniqueness_rfc.md`: function-result omission, `void`, and

@@ -48,9 +48,10 @@ not use kebab-case. Therefore `as http-client`, `http-client::send()`, and
 `(package-name = "...")` are invalid. In expression syntax, binary `-` is an
 operator and must be surrounded by spaces, as in `a - b`.
 
-The entry point is `main`. Toka 1.0 accepts `i32` or `void` as its return type,
-including for async `main`. A `Result`-returning helper must be handled at this
-boundary; `main -> Result<...>` is reserved for a future termination protocol.
+The entry point is `main`. Toka 1.0 accepts `i32` or an omitted Unit result,
+including `fn main() -> async { ... }` for async `main`. A `Result`-returning
+helper must be handled at this boundary; `main -> Result<...>` is reserved for
+a future termination protocol.
 
 Comments:
 

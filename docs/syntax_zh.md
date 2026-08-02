@@ -42,8 +42,8 @@ fn main() -> i32 {
 
 连字符只属于路径层。凡是在 `.tk` 源码内部新产生、并进入 Toka 语义名字空间的名字，都必须是普通 identifier：变量、函数、类型、字段、import alias、import item alias、以及可选择的 namespace 都不使用 kebab-case。因此 `as http-client`、`http-client::send()`、`(package-name = "...")` 都是非法形式。在表达式语法中，二元 `-` 是操作符，必须用空格隔开，例如 `a - b`。
 
-入口函数是 `main`。Toka 1.0 接受 `i32` 或 `void` 返回类型，async `main`
-也遵循相同规则。返回 `Result` 的工作函数必须在入口边界显式处理；
+入口函数是 `main`。Toka 1.0 接受 `i32` 或省略的 Unit 返回契约，async `main`
+写作 `fn main() -> async { ... }`，也遵循相同规则。返回 `Result` 的工作函数必须在入口边界显式处理；
 `main -> Result<...>` 留待未来 termination 协议。
 
 注释：

@@ -111,12 +111,26 @@ std::shared_ptr<Type> cloneWithAttrs(const T *original, bool w, bool n,
 
 // --- Implementations ---
 
+std::shared_ptr<Type> UnitType::withAttributes(bool w, bool n, bool b) const {
+  return cloneWithAttrs(this, w, n, b);
+}
+
+bool UnitType::isSend(class Sema *S) const { return true; }
+bool UnitType::isSync(class Sema *S) const { return true; }
+
 std::shared_ptr<Type> VoidType::withAttributes(bool w, bool n, bool b) const {
   return cloneWithAttrs(this, w, n, b);
 }
 
 bool VoidType::isSend(class Sema *S) const { return true; }
 bool VoidType::isSync(class Sema *S) const { return true; }
+
+std::shared_ptr<Type> NeverType::withAttributes(bool w, bool n, bool b) const {
+  return cloneWithAttrs(this, w, n, b);
+}
+
+bool NeverType::isSend(class Sema *S) const { return true; }
+bool NeverType::isSync(class Sema *S) const { return true; }
 
 std::string UninitType::toString() const {
   std::string s = "";
@@ -791,6 +805,8 @@ std::shared_ptr<Type> lowerTypeArgument(const TypeArgumentSyntax &argument) {
 }
 
 std::shared_ptr<Type> lowerNamedType(const std::string &name) {
+  if (name == "never")
+    return std::make_shared<NeverType>();
   if (name == "void")
     return std::make_shared<VoidType>();
   if (name == "unknown")
@@ -866,7 +882,11 @@ TypeSyntaxPtr withoutOuterTypeAttributes(TypeSyntaxPtr syntax) {
 TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
                                  SourceLocation end) {
   TypeSyntaxPtr syntax;
-  if (dynamic_cast<const VoidType *>(&type)) {
+  if (dynamic_cast<const UnitType *>(&type)) {
+    syntax = TypeSyntax::tuple({}, begin, end);
+  } else if (dynamic_cast<const NeverType *>(&type)) {
+    syntax = TypeSyntax::named("never", begin, end);
+  } else if (dynamic_cast<const VoidType *>(&type)) {
     syntax = TypeSyntax::named("void", begin, end);
   } else if (auto primitive = dynamic_cast<const PrimitiveType *>(&type)) {
     syntax = TypeSyntax::named(primitive->Name, begin, end);
@@ -970,8 +990,8 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
     syntax = TypeSyntax::function(
         kind, std::move(parameters),
         function->ReturnType ? function->ReturnType->toSyntax(begin, end)
-                             : TypeSyntax::named("void", begin, end),
-        function->ReturnType && function->ReturnType->typeKind != Type::Void,
+                             : TypeSyntax::tuple({}, begin, end),
+        function->ReturnType && !function->ReturnType->isUnit(),
         function->IsVariadic, begin, end);
     return applyTypeSyntaxAttributes(std::move(syntax), type, begin, end);
   } else if (auto function = dynamic_cast<const DynFnType *>(&type)) {
@@ -986,8 +1006,8 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
     syntax = TypeSyntax::function(
         kind, std::move(parameters),
         function->ReturnType ? function->ReturnType->toSyntax(begin, end)
-                             : TypeSyntax::named("void", begin, end),
-        function->ReturnType && function->ReturnType->typeKind != Type::Void,
+                             : TypeSyntax::tuple({}, begin, end),
+        function->ReturnType && !function->ReturnType->isUnit(),
         false, begin, end);
     return applyTypeSyntaxAttributes(std::move(syntax), type, begin, end);
   } else {
@@ -1004,7 +1024,7 @@ TypeSyntaxPtr Type::toSyntax(SourceLocation begin, SourceLocation end) const {
 
 std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
   if (!syntax)
-    return std::make_shared<VoidType>();
+    return std::make_shared<UnitType>();
 
   switch (syntax->NodeKind) {
   case TypeSyntax::Kind::Invalid:
@@ -1052,6 +1072,9 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
     return std::make_shared<SliceType>(fromSyntax(syntax->Subject));
 
   case TypeSyntax::Kind::Tuple:
+    if (syntax->Elements.empty())
+      return std::make_shared<UnitType>();
+    [[fallthrough]];
   case TypeSyntax::Kind::AnonymousRecord:
     // These source forms do not have separate legacy semantic Type classes.
     // Preserve their canonical semantic name; Sema owns their declaration or
@@ -1077,7 +1100,7 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
     for (const auto &parameter : syntax->Elements)
       parameters.push_back(fromSyntax(parameter));
     auto result = syntax->HasExplicitResult ? fromSyntax(syntax->Result)
-                                            : std::make_shared<VoidType>();
+                                            : std::make_shared<UnitType>();
     const bool isDyn = syntax->Text.rfind("dyn fn", 0) == 0;
     const bool mutableReceiver = syntax->Text.find("fn#") != std::string::npos;
     const bool consumingReceiver = syntax->Text.rfind("cede ", 0) == 0;
@@ -1178,7 +1201,7 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
 std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   std::string s = trim(rawType);
   if (s.empty())
-    return std::make_shared<VoidType>();
+    return std::make_shared<UnitType>();
 
   // [NEW] Strip Lifetime Dependency "<-" (Metadata Only)
   int balance = 0;
@@ -1299,7 +1322,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       if (arrowPos != std::string::npos) {
         retType = Type::fromString(trim(s.substr(arrowPos + 2)));
       } else {
-        retType = std::make_shared<VoidType>();
+        retType = std::make_shared<UnitType>();
       }
       
       auto fnNode = std::make_shared<DynFnType>(paramTypes, retType);
@@ -1358,7 +1381,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       if (arrowPos != std::string::npos) {
         retType = Type::fromString(trim(s.substr(arrowPos + 2)));
       } else {
-        retType = std::make_shared<VoidType>();
+        retType = std::make_shared<UnitType>();
       }
       
       auto fnNode = std::make_shared<FunctionType>(paramTypes, retType);
@@ -1446,6 +1469,10 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
     }
   }
 
+  if (s == "()")
+    return std::make_shared<UnitType>();
+  if (s == "never")
+    return std::make_shared<NeverType>();
   if (s == "void")
     return std::make_shared<VoidType>();
   if (s == "i32" || s == "i64" || s == "u32" || s == "u64" || s == "f32" ||

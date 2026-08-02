@@ -2,14 +2,14 @@
 
 extern fn toka_opendir_impl(path: Addr) -> Addr
 extern fn toka_readdir_impl(dir: Addr) -> Addr
-extern fn toka_closedir_impl(dir: Addr)
+extern fn toka_closedir_impl(dir: Addr) -> void
 extern fn toka_readdir_name(entry: Addr) -> Addr
 
 extern fn toka_stat_impl(path: Addr) -> Addr
 extern fn toka_stat_mode(handle: Addr) -> u32
 extern fn toka_stat_size(handle: Addr) -> u64
 extern fn toka_stat_mtime(handle: Addr) -> i64
-extern fn toka_stat_free(handle: Addr)
+extern fn toka_stat_free(handle: Addr) -> void
 
 extern fn toka_panic(msg_ptr: Addr, len: i32) -> void
 extern fn toka_get_last_error() -> i32

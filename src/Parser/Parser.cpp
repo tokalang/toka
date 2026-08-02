@@ -75,6 +75,7 @@ bool Parser::isTypeStart() const {
   case TokenType::Identifier:
   case TokenType::KwUpperSelf:
   case TokenType::KwFn:
+  case TokenType::KwNever:
   case TokenType::KwFnType:
   case TokenType::KwDyn:
   case TokenType::KwCede:
@@ -255,7 +256,8 @@ namespace {
 std::string canonicalTypeTokenText(const Token &tok) {
   std::string text = tok.Text;
   if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
-      tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn) {
+      tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn ||
+      tok.Kind == TokenType::KwNever) {
     if (tok.IsBlocked)
       text += "$";
     if (tok.HasNull)
@@ -275,6 +277,53 @@ std::vector<std::string> attachedTypePostfixes(const Token &tok) {
   if (tok.HasWrite)
     result.push_back("#");
   return result;
+}
+
+bool usesVoidOutsideRawPointee(const TypeSyntaxPtr &syntax,
+                               bool rawPointee = false) {
+  if (!syntax)
+    return false;
+
+  switch (syntax->NodeKind) {
+  case TypeSyntax::Kind::Named:
+    return syntax->Text == "void" && !rawPointee;
+  case TypeSyntax::Kind::Morphology:
+    // A raw-pointer morphology is the only type constructor that may carry
+    // ABI void.  Any other prefix starts a new pointee context.
+    return usesVoidOutsideRawPointee(
+        syntax->Subject,
+        syntax->IsPostfix ? rawPointee : syntax->Text == "*");
+  case TypeSyntax::Kind::GenericApplication:
+    if (usesVoidOutsideRawPointee(syntax->Subject))
+      return true;
+    for (const auto &argument : syntax->Arguments) {
+      if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type &&
+          usesVoidOutsideRawPointee(argument.Type))
+        return true;
+    }
+    return false;
+  case TypeSyntax::Kind::Array:
+  case TypeSyntax::Kind::Slice:
+  case TypeSyntax::Kind::AssociatedProjection:
+    return usesVoidOutsideRawPointee(syntax->Subject);
+  case TypeSyntax::Kind::Tuple:
+  case TypeSyntax::Kind::Function:
+    for (const auto &element : syntax->Elements) {
+      if (usesVoidOutsideRawPointee(element))
+        return true;
+    }
+    return usesVoidOutsideRawPointee(syntax->Result);
+  case TypeSyntax::Kind::AnonymousRecord:
+    for (const auto &field : syntax->Fields) {
+      if (usesVoidOutsideRawPointee(field.Type))
+        return true;
+    }
+    return false;
+  case TypeSyntax::Kind::Invalid:
+  case TypeSyntax::Kind::DynTrait:
+    return false;
+  }
+  return false;
 }
 
 class TypeSyntaxBuilder {
@@ -326,7 +375,8 @@ private:
   static bool isName(const Token *tok) {
     return tok && (tok->Kind == TokenType::Identifier ||
                    tok->Kind == TokenType::KwUpperSelf ||
-                   tok->Kind == TokenType::KwFnType);
+                   tok->Kind == TokenType::KwFnType ||
+                   tok->Kind == TokenType::KwNever);
   }
 
   static bool isConstArgument(const Token *tok) {
@@ -688,7 +738,9 @@ private:
 
 TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
                                       bool stopAtConstructor,
-                                      bool stopAtExpression) {
+                                      bool stopAtExpression,
+                                      bool allowNever,
+                                      bool allowAbiVoid) {
   std::vector<Token> tokens;
   std::vector<TokenType> delimiters;
   auto isOpeningDelimiter = [](TokenType type) {
@@ -790,6 +842,27 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
   if (tokens.empty())
     return TypeSyntax::invalid("", peek().Loc, peek().Loc);
   TypeSyntaxPtr syntax = TypeSyntaxBuilder(tokens).parse();
+  const bool containsNever = std::any_of(
+      tokens.begin(), tokens.end(), [](const Token &token) {
+        return token.Kind == TokenType::KwNever;
+      });
+  if (!allowNever && containsNever) {
+    if (!PanicMode) {
+      HasError = true;
+      DiagnosticEngine::report(tokens.front().Loc,
+                               DiagID::ERR_PARSER_NEVER_TYPE_RESTRICTED);
+    }
+  }
+  const bool isDirectAbiVoid =
+      allowAbiVoid && syntax->NodeKind == TypeSyntax::Kind::Named &&
+      syntax->Text == "void";
+  if (!isDirectAbiVoid && usesVoidOutsideRawPointee(syntax)) {
+    if (!PanicMode) {
+      HasError = true;
+      DiagnosticEngine::report(tokens.front().Loc,
+                               DiagID::ERR_PARSER_VOID_TYPE_RESTRICTED);
+    }
+  }
   if (syntax->NodeKind == TypeSyntax::Kind::Invalid) {
     // The caller still owns its surrounding delimiter.  This is a recovered
     // type error, not a declaration-level synchronization point: entering
@@ -804,12 +877,12 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
   return syntax;
 }
 
-TypeSyntaxPtr Parser::parseRequiredTypeSyntax() {
+TypeSyntaxPtr Parser::parseRequiredTypeSyntax(bool allowDirectVoid) {
   if (!isTypeStart()) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_TYPE_ANNOTATION);
     return TypeSyntax::invalid("", peek().Loc, peek().Loc);
   }
-  return parseTypeSyntax();
+  return parseTypeSyntax(true, false, false, false, allowDirectVoid);
 }
 
 TypeArgumentSyntax Parser::parseTypeArgumentSyntax() {

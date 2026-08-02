@@ -3,7 +3,7 @@ trait @Readable {
 }
 
 trait @Writable {
-    pub fn write(self#, value: i32) -> void
+    pub fn write(self#, value: i32)
 }
 
 fn use_object(obj: dyn @{Readable, Writable}) -> i32 {

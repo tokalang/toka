@@ -150,11 +150,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
           if (hasStr) {
               error(Call, DiagID::ERR_SEMA_COMPILE_TIME_ERROR, errStr);
-              return toka::Type::fromString("void");
+              return toka::Type::fromString("()");
           }
       }
       error(Call, DiagID::ERR_SEMA_COMPILE_ERROR_REQUIRES_A_STRING_LITERAL);
-      return toka::Type::fromString("void");
+      return toka::Type::fromString("()");
   }
 
   // 1c. core/mem::bit_cast intrinsic
@@ -222,7 +222,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       if (Call->Args.empty()) {
           error(Call, DiagID::ERR_SEMA_REQUIRES_AT_LEAST_A_FORMAT_STRING_ARGUMEN, CallName);
-          return toka::Type::fromString("void");
+          return toka::Type::fromString("()");
       }
 
       Call->Args[0] = foldGenericConstant(std::move(Call->Args[0]));
@@ -235,7 +235,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           fmt = VSE->Value;
       } else {
           error(Call->Args[0].get(), DiagID::ERR_SEMA_FORMAT_ARGUMENT_MUST_BE_A_STRING_LITERAL, CallName);
-          return toka::Type::fromString("void");
+          return toka::Type::fromString("()");
       }
 
       std::vector<std::string> formatSpecifiers;
@@ -259,7 +259,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       size_t providedArgs = Call->Args.size() - 1;
       if (expectedArgs != providedArgs) {
           error(Call, DiagID::ERR_SEMA_FORMAT_STRING_PLACEHOLDER_COUNT_DOES_NOT, std::to_string(expectedArgs), std::to_string(providedArgs));
-          return toka::Type::fromString("void");
+          return toka::Type::fromString("()");
       }
 
       for (size_t i = 1; i < Call->Args.size(); i++) {
@@ -298,11 +298,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
           if (!MethodMap.count(soulTy) || !MethodMap[soulTy].count(requiredMethod)) {
               error(Call->Args[i].get(), DiagID::ERR_SEMA_TYPE_DOES_NOT_IMPLEMENT_TRAIT_OR_METHOD, soulTy, requiredTrait, requiredMethod);
-              return toka::Type::fromString("void");
+              return toka::Type::fromString("()");
           }
       }
 
-      return toka::Type::fromString("void");
+      return toka::Type::fromString("()");
   }
 
   bool treatAsIntrinsic = false;
@@ -331,7 +331,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
     if (!visible) {
       error(Call, DiagID::ERR_SEMA_REQUIRES_AT_LEAST_A_FORMAT_STRING, CallName);
-      return toka::Type::fromString("void");
+      return toka::Type::fromString("()");
     }
     for (auto &Arg : Call->Args) {
       Arg = foldGenericConstant(std::move(Arg)); // [FIX]
@@ -382,7 +382,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
         if (!MethodMap.count(soulTy) || !MethodMap[soulTy].count(requiredMethod)) {
             error(Call->Args[i].get(), DiagID::ERR_SEMA_TYPE_DOES_NOT_IMPLEMENT_TRAIT_OR_METHOD, soulTy, requiredTrait, requiredMethod);
-            return toka::Type::fromString("void");
+            return toka::Type::fromString("()");
         }
       }
       auto strTy = resolveType(toka::Type::fromString("string"));
@@ -391,7 +391,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (!strTy) strTy = toka::Type::fromString("string");
       return strTy;
     }
-    return toka::Type::fromString("void");
+    return toka::Type::fromString("()");
   }
 
   std::shared_ptr<toka::FunctionType> funcType = nullptr;
@@ -650,12 +650,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         for (auto &Memb : SD->Members) {
           if (Memb.Name == VariantName) {
             // Enum Variant Constructor: Variant(Args...) -> ShapeName
-            bool hasPayload = !Memb.SubMembers.empty() ||
-                              (!Memb.Type.empty() && Memb.Type != "void");
+            bool hasPayload = !Memb.IsUnitVariant &&
+                              (!Memb.SubMembers.empty() || !Memb.Type.empty());
             size_t expectedCount = 0;
             if (!Memb.SubMembers.empty()) {
               expectedCount = Memb.SubMembers.size();
-            } else if (!Memb.Type.empty() && Memb.Type != "void") {
+            } else if (!Memb.IsUnitVariant && !Memb.Type.empty()) {
               expectedCount = 1;
             }
 
@@ -1736,7 +1736,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
       if (Call->Args.size() != 1) {
         error(Call, DiagID::ERR_SEMA_UNION_REQUIRES_EXACTLY_ONE_ARGUMENT, CallName);
-        return toka::Type::fromString("void");
+        return toka::Type::fromString("()");
       }
       Expr *argExpr = Call->Args[0].get();
       Expr *valExpr = argExpr;

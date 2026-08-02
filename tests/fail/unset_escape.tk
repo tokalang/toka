@@ -8,7 +8,7 @@ fn test_return_unset() -> &i32 {
 }
 
 // Case 2: Escape Dirty Reference via Break
-fn test_break_unset() -> void {
+fn test_break_unset() {
     auto y = uninit:i32
     loop {
         auto &refY = &y
@@ -17,7 +17,7 @@ fn test_break_unset() -> void {
 }
 
 // Case 3: Escape Dirty Reference via Pass (in If)
-fn test_pass_unset() -> void {
+fn test_pass_unset() {
     auto z = uninit:i32
     auto &refZ = &z
     
@@ -30,7 +30,7 @@ fn test_pass_unset() -> void {
 }
 
 // Case 4: Scope Escape (Hot Potato not cleaned)
-fn test_scope_escape() -> void {
+fn test_scope_escape() {
     auto a = uninit:i32
     {
         auto &refA = &a

@@ -12,7 +12,7 @@ Each function and extern declaration owns one `ReturnContractSyntax`:
 
 ```text
 ReturnContractSyntax = {
-  HasArrow, TypeSyntax, canonical Type,
+  HasArrow, HasExplicitResultType, TypeSyntax, canonical Type,
   BindingName, BindingPrefix,
   Effect,
   Routes: [ReturnDependencyRouteSyntax]
@@ -48,6 +48,12 @@ MemberDependencies}` remain derived caches for existing Sema and CodeGen
 consumers. They are populated from `ReturnContractSyntax` at parse time and
 kept in sync when generic or associated-type substitution changes the return
 type.
+
+`HasExplicitResultType` preserves source intent across that substitution. For
+example, `fn id<T>(x: T) -> T` instantiated with `T = ()` remains a typed
+result contract; it must not be reclassified as a source-written `-> ()`.
+Conversely, `-> async` carries an effect with no explicit result type and is
+the canonical Unit contract for an async function.
 
 TKI export consumes the structured contract and deliberately retains its
 existing canonical presentation: a named return target is emitted as `return`

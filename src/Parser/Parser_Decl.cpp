@@ -297,7 +297,8 @@ bool Parser::parseReturnDependencyRoute(ReturnContractSyntax &contract,
   return true;
 }
 
-ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies) {
+ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies,
+                                                 bool allowNever) {
   ReturnContractSyntax contract;
   if (!match(TokenType::Arrow))
     return contract;
@@ -331,7 +332,8 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies) {
     if (!isTypeStart()) {
       error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
     } else {
-      contract.TypeSyntax = parseTypeSyntax();
+      contract.TypeSyntax = parseTypeSyntax(true, false, false, allowNever);
+      contract.HasExplicitResultType = true;
       if (!contract.BindingPrefix.empty()) {
         contract.TypeSyntax = TypeSyntax::morphology(
             contract.BindingPrefix, contract.TypeSyntax,
@@ -341,14 +343,30 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies) {
       contract.End = contract.TypeSyntax->End;
     }
   } else if (!isTypeStart()) {
+    // Effects are declaration modifiers, not result types.  `-> async` and
+    // `-> wait` therefore spell a Unit task/result without inventing a
+    // redundant `void` or `()` type annotation.
+    if (contract.Effect != EffectKind::None &&
+        (check(TokenType::LBrace) || isEndOfStatement())) {
+      contract.classifyResult();
+      return contract;
+    }
     error(peek(), DiagID::ERR_PARSER_EXPECTED_RETURN_TYPE);
     if (!isEndOfStatement() && !check(TokenType::LBrace) &&
         !check(TokenType::Dependency))
       advance();
   } else {
-    contract.TypeSyntax = parseTypeSyntax();
+    contract.TypeSyntax = parseTypeSyntax(true, false, false, allowNever,
+                                          true);
+    contract.HasExplicitResultType = true;
     contract.Type = canonicalType(contract.TypeSyntax);
     contract.End = contract.TypeSyntax->End;
+  }
+
+  contract.classifyResult();
+  if (contract.ResultKind == ReturnResultKind::Never &&
+      (!allowNever || contract.TypeSyntax->NodeKind != TypeSyntax::Kind::Named)) {
+    error(peek(), DiagID::ERR_PARSER_NEVER_TYPE_RESTRICTED);
   }
 
   if (check(TokenType::Dependency)) {
@@ -491,6 +509,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           v.TagValue = std::stoull(
               consume(TokenType::Integer, DiagID::ERR_PARSER_EXPECTED_TAG).Text, nullptr, 0);
         }
+        v.IsUnitVariant = v.SubMembers.empty();
         members.push_back(std::move(v));
         if (!check(TokenType::RParen))
           match(TokenType::Pipe);
@@ -579,7 +598,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.Type = "";
         }
 
-        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax();
+        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax(m.IsRawPointer);
         std::string rawType = canonicalType(rawTypeSyntax);
         if (kind == ShapeKind::Struct) {
           std::string trimmed = rawType;
@@ -760,7 +779,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
-        argTypeSyntax = parseTypeSyntax();
+        argTypeSyntax = parseTypeSyntax(true, false, false, false, hasPointer);
         argType = canonicalType(argTypeSyntax);
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
@@ -827,7 +846,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   }
   consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
 
-  ReturnContractSyntax contract = parseReturnContract(true);
+  ReturnContractSyntax contract = parseReturnContract(true, true);
   parseWhereConstraints(genericParams);
   parseReturnContractEffects(contract);
 
@@ -888,7 +907,8 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
-        argTypeSyntax = parseTypeSyntax();
+        argTypeSyntax =
+            parseTypeSyntax(true, false, false, false, argPrefix == "*");
         argType = canonicalType(argTypeSyntax);
       }
       bool nameIsMorphic = !argName.Text.empty() && argName.Text[0] == '\'';
@@ -932,7 +952,7 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
   }
   consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
 
-  ReturnContractSyntax contract = parseReturnContract(false);
+  ReturnContractSyntax contract = parseReturnContract(false, false);
   expectEndOfStatement();
 
   auto node = std::make_unique<ExternDecl>(name.Text, std::move(args),

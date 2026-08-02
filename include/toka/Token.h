@@ -167,9 +167,10 @@ enum class TokenType {
   DoubleQuestion, // ??
   Backtick,       // `
 
-  // Reserved for a future dedicated encapsulation construct.  Keep this last
-  // so reserving it does not renumber existing tokens exposed in diagnostics.
-  KwEncap
+  // Keep new reserved words at the end so they do not renumber tokens exposed
+  // in diagnostics.
+  KwEncap,
+  KwNever
 };
 
 struct Token {

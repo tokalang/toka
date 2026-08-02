@@ -37,7 +37,9 @@ class Type : public std::enable_shared_from_this<Type> {
 public:
   enum Kind {
     Primitive,
+    Unit,
     Void,
+    Never,
     RawPtr,
     UniquePtr,
     SharedPtr,
@@ -103,7 +105,9 @@ public:
   bool isSlice() const { return typeKind == Slice; }
   bool isFunction() const { return typeKind == Function; }
   bool isDynFn() const { return typeKind == DynFn; }
+  bool isUnit() const { return typeKind == Unit; }
   bool isVoid() const { return typeKind == Void; }
+  bool isNever() const { return typeKind == Never; }
   bool isUnknown() const { return typeKind == Unresolved; }
   bool isUninit() const { return typeKind == UninitWrapper; }
 
@@ -181,10 +185,35 @@ public:
 
 // --- Basic Types ---
 
+// `()` is Toka's ordinary completed-action value.  It deliberately has a
+// distinct semantic identity from ABI `void`, even though an ordinary
+// Unit-returning function is lowered with LLVM's void result ABI.
+class UnitType : public Type {
+public:
+  UnitType() : Type(Unit) {}
+  std::string toString() const override { return "()"; }
+  std::shared_ptr<Type> withAttributes(bool w, bool n,
+                                       bool b = false) const override;
+  bool isSend(class Sema* S = nullptr) const override;
+  bool isSync(class Sema* S = nullptr) const override;
+};
+
 class VoidType : public Type {
 public:
   VoidType() : Type(Void) {}
   std::string toString() const override { return "void"; }
+  std::shared_ptr<Type> withAttributes(bool w, bool n,
+                                       bool b = false) const override;
+  bool isSend(class Sema* S = nullptr) const override;
+  bool isSync(class Sema* S = nullptr) const override;
+};
+
+// `never` is the bottom type.  It has no source-level values, but is
+// assignment-compatible with any target because evaluation cannot continue.
+class NeverType : public Type {
+public:
+  NeverType() : Type(Never) {}
+  std::string toString() const override { return "never"; }
   std::shared_ptr<Type> withAttributes(bool w, bool n,
                                        bool b = false) const override;
   bool isSend(class Sema* S = nullptr) const override;

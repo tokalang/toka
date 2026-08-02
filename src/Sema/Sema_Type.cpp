@@ -633,7 +633,8 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
       resolveMember(sub);
     }
 
-    resolveMember(member);
+    if (!(storedDecl->Kind == ShapeKind::Enum && member.IsUnitVariant))
+      resolveMember(member);
   }
 
   auto instance = std::make_shared<ShapeType>(mangledName);
@@ -719,6 +720,11 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
 
   if (Target->isUnknown() || Source->isUnknown())
     return true;
+
+  if (Source->isNever())
+    return true;
+  if (Target->isNever())
+    return Source->isNever();
 
   // [CORE] Strong Type Wall: Strict Name Identity (Shapes only)
   bool isTShape =

@@ -98,7 +98,8 @@ private:
   std::unique_ptr<MatchArm::Pattern> parsePattern(bool inheritedFresh = false);
   std::vector<GenericParam> parseGenericParams();
   bool looksLikeNamedReturn() const;
-  ReturnContractSyntax parseReturnContract(bool allowDependencies);
+  ReturnContractSyntax parseReturnContract(bool allowDependencies,
+                                           bool allowNever = false);
   void parseReturnContractEffects(ReturnContractSyntax &contract);
   std::vector<DependencyPathSyntax>
   parseReturnDependencySources(bool allowMemberPath);
@@ -141,8 +142,10 @@ private:
   std::unique_ptr<Expr> parsePrimary(bool allowTrailingClosure = true);
   TypeSyntaxPtr parseTypeSyntax(bool allowAssociatedProjection = true,
                                 bool stopAtConstructor = false,
-                                bool stopAtExpression = false);
-  TypeSyntaxPtr parseRequiredTypeSyntax();
+                                bool stopAtExpression = false,
+                                bool allowNever = false,
+                                bool allowAbiVoid = false);
+  TypeSyntaxPtr parseRequiredTypeSyntax(bool allowDirectVoid = false);
   TypeArgumentSyntax parseTypeArgumentSyntax();
   static std::string canonicalType(const TypeSyntaxPtr &syntax,
                                    const std::string &fallback = "");
