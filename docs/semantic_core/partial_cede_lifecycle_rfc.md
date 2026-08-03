@@ -1,10 +1,13 @@
 # RFC: Partial `cede` Lifecycle
 
-**Status:** Direct-field and fixed-array constant-index slices implemented;
-required work remains before partial `cede` becomes a general language
-guarantee.
+**Status:** Bounded direct-record-field and fixed-array constant-index design
+contract frozen. A legacy `InitMask`/moved-path/drop-mask slice exists, but it
+is not yet proved conformant to the proposed PlaceState Core; current-HEAD
+conformance and exact Sema/CodeGen eligibility alignment remain subject to P-1
+requalification. Partial `cede` is not a general projection feature.
 
-**Depends on:** `PERM-STATIC-01`, `OWN-FLOW-01`, and `OWN-FLOW-02`.
+**Depends on:** [PlaceState Core](place_state_core_rfc.md), `PERM-STATIC-01`,
+`OWN-FLOW-01`, and `OWN-FLOW-02`.
 
 ## 1. Boundary
 
@@ -51,92 +54,179 @@ representation invariant (for example, a Vec removes an element from its
 logical length before custom `drop` runs).  That is useful existing behaviour,
 not a sufficient general language model.
 
-## 3. Proposed model
+## 3. Normative bounded model
 
-For a compiler-managed aggregate with `N <= 64` direct fields, define a
-runtime-and-static **live mask**:
+The semantic state is the exact-place fact defined by the PlaceState Core. A
+runtime **cleanup-live mask** is only its lowering
+for supported resource aggregates; it is not authority and cannot distinguish
+never-constructed storage from a constructed value that was moved out.
+
+For an eligible compiler-managed aggregate projection that has non-trivial
+cleanup, define:
 
 ```text
-bit i = 1  field i is initialized and remains owned by the aggregate
-bit i = 0  field i is uninitialized or has been ceded
+bit i = 1  projection i owns an armed cleanup obligation
+bit i = 0  projection i owns no armed cleanup obligation
 ```
 
-It is the same field numbering used by `InitMask`.
+The mask uses the same stable projection numbering as the static place tree,
+but it does not decide whether a projection is readable or transferable. A
+trivially droppable projection may need no runtime cleanup bit at all. The
+static PlaceState ledger alone records availability:
+
+```text
+live projection       = (Constructed, Present)
+ceded projection      = (Constructed, MovedOut)
+never-constructed     = (NeverConstructed, Present)
+```
 
 1. A direct `cede base.field_i`, or an eligible owned local direct-field
-   consuming receiver, first satisfies PAL invalidation for the exact
-   projection, then clears bit `i`.
-2. A read of `base.field_i` requires bit `i = 1`; an assignment initializes it
-   again and sets bit `i = 1`.
-3. A whole-value read requires all declared field bits; a whole `cede base`
-   requires all bits and then invalidates the root exactly once.
-4. Branch joins intersect live masks.  A field ceded on only one continuing
-   branch is therefore unavailable after the join until it is reinitialized.
-5. Scope exit drops only fields whose live bits are set, in declaration order
-   compatible with the existing aggregate drop convention.
+   consuming receiver, first completes every fallible preparation and proves
+   PAL invalidation for the exact projection. If it writes an existing
+   destination, that destination must also satisfy `OWN-FLOW-01`'s canonical
+   source/destination disjointness rule: equal, either prefix direction, and
+   unknown relations reject before any static-state or cleanup-mask change.
+   Disjointness is necessary, not sufficient; both ends must be admitted by
+   the frozen capability matrix and share one Sema/CodeGen proof for old-
+   destination retirement and source cleanup transfer. Destination capture,
+   cleanup-obligation transfer, the `Live -> Moved` static transition, and
+   cleanup-bit disarm then form one non-suspending semantic commit. There is no
+   cancellation, suspension, callback, or fallible edge inside that commit;
+   failure before it leaves the source `Live` and cleanup armed. A genuinely
+   fresh destination has no old-destination retirement.
+2. A read of `base.field_i` requires the definite constructed/present fact. An
+   admitted ordinary repopulation transitions constructed/moved-out back to
+   constructed/present and, for a non-trivially droppable projection, arms
+   exactly one new cleanup duty. It is not the proposed first-construction
+   `init` transition.
+3. A whole-value read or whole `cede base` requires every required static
+   projection fact to be `Live`; cleanup bits are not a substitute for that
+   test. Whole transfer then invalidates the root and transfers any cleanup
+   obligations exactly once.
+4. Static branch joins form the conservative set of possible place states. A
+   field ceded on only one continuing branch is therefore not definitely live
+   after the join and remains unavailable until a permitted transition proves
+   otherwise. For a non-trivial projection, the runtime cleanup mask retains
+   the actual branch's cleanup ownership; it is not a general runtime
+   availability witness.
+5. Scope exit invokes non-trivial field cleanup only where the corresponding
+   cleanup bit is armed, in declaration order compatible with the existing
+   aggregate drop convention. Trivial fields require no runtime bit or drop.
 
 The semantic transition is independent of H/P authority:
 
 ```text
 effective operation = declaration authority ∩ direct-flow ceiling
                       ∩ use-site request ∩ PAL permission
-partial cede         = exact-path invalidation + live-mask transition
+partial cede         = exact-path invalidation
+                       + cleanup-mask transition when applicable
 ```
 
-## 4. Deliberate initial limit
+## 4. Frozen capability matrix
 
-The initial implementation supports direct named fields of local,
-compiler-managed, non-custom-drop record shapes and constant indexes of local
-fixed arrays of at most 64 value elements. It rejects a direct field transfer
-from a local aggregate with an explicit `drop`, and rejects a dynamic resource
-array index in ordinary code. A consuming method receiver is implemented only
-for owned values and the direct-field subset; shared, borrowed, and raw
-receivers are rejected with `E04602`, while nonlocal and indexed receiver
-projections are rejected with `E04601` until they share the full source-slot
-and drop-mask proof. It retains the current library-invariant
-treatment for the following until each has its own proof:
+| Projection | Required eligibility | Status |
+|---|---|---|
+| record direct field | local compiler-managed record, at most 64 direct fields, no explicit custom drop, no shared member that would invalidate the compiler-owned field-drop plan | admitted candidate bounded slice; legacy evidence requires PlaceState requalification |
+| fixed-array constant index | local fixed array with at most 64 elements and a statically known in-range index | admitted candidate bounded slice; legacy evidence requires PlaceState requalification |
+| owned consuming receiver | whole owned value or the admitted local direct-field subset | admitted candidate bounded slice; exact source-slot evidence required |
+| nonlocal or indexed consuming receiver | no complete source-slot/drop-mask proof | rejected |
+| dynamic/container index, spread, enum payload, nested projection | no general stable mask/cleanup proof | ordinary safe source rejects; resolver-owned intrinsic or explicit `unsafe` implementation only |
+| custom-drop or otherwise opaque aggregate | compiler cannot split the destructor invariant | rejected |
+
+The lowering must reject before CodeGen whenever the exact static eligibility
+and runtime cleanup representation do not agree. In particular, checking only
+the selected index `< 64` is insufficient when the containing aggregate itself
+has no admissible mask.
+
+A consuming method receiver remains available only for owned values and the
+direct-field subset. Shared, borrowed, and raw receivers are rejected with
+`E04602`; nonlocal and indexed receiver projections are rejected with `E04601`
+until they share the complete source-slot and cleanup-mask proof.
+
+The following are not general language guarantees. A resolver-owned intrinsic
+may enforce them internally, or an explicit `unsafe` implementation may assume
+them inside its audited boundary; ordinary safe source cannot claim a
+"library invariant" to enter these cases:
 
 - dynamic array indexes and indexes through container internals;
 - spreads;
 - enum payload projections;
 - aggregates with user-defined `drop` / `@Encap` cleanup;
 
-The same direct-field model is valid across `await`: the mask is a coroutine
-frame local, and cancellation now executes scope unwinding before publishing
-the canceled result.  This is evidenced only for the direct-field slice; it
-does not widen the unsupported projection forms above.
+The synchronous bounded slice does not authorize a partial state to cross
+`await`. Such a path must be rejected or held behind a non-default experimental
+gate until the separate async/place cleanup bridge proves stable frame storage,
+caught-cancellation continuation, and cleanup-before-terminal behavior at the
+same revision. Historical cancellation tests are targets for that bridge, not
+evidence that it is already closed. The bridge does not widen the unsupported
+projection forms above.
 
 This avoids a superficially safe compiler transformation that would either
 double-drop a custom container field or silently leak its remaining fields.
 
-## 5. Required implementation slices
+## 5. Required implementation and requalification slices
 
-1. **Sema (implemented):** exact direct-field and fixed-array constant-index
-   `InitMask` clearing rejects use-after-partial-cede and permits a
-   reinitialization to restore the projection.
-2. **CodeGen (implemented):** a per-local `i64` drop mask for eligible
-   aggregates and fixed arrays clears on supported partial `cede`, restores on
-   direct assignment, and dispatches recursive element drops conditionally at
-   scope exit.
-3. **Control flow:** preserve the mask through `if`, `guard`, `match`, loops,
-   return unwinding, and error propagation.
-4. **Eligibility:** diagnose custom-drop cases and retain index, spread, and
-   enum projections outside the generic record algorithm.
-5. **Evidence:** positive exactly-once cleanup, reinitialization,
-   branch-join, and cancellation-across-`await` coverage plus negative
-   use-after-move, explicit-custom-drop, and nonlocal/indexed consuming
-   receiver rejection are in the conformance
-   suite. Fixed-array constant-index coverage now includes normal scope exit,
-   reinitialization, return unwinding, `if`/`match`-join liveness, bounded-loop
-   cleanup, and cancellation across `await`; dynamic resource index rejection
-   prevents an untracked lifecycle path.
-   `permission_005_partial_cede_lifecycle` replays the direct-field and
-   fixed-array constant-index paths source-less before widening eligibility.
+1. **Sema transition (legacy slice, requalification required):** exact direct-
+   field and fixed-array constant-index state clearing must be reconciled with
+   `Live -> Moved` and reject use-after-partial-cede; an admitted repopulation
+   restores `Moved -> Live` without creating `Init` authority.
+2. **CodeGen mask (legacy slice, requalification required):** a per-local `i64`
+   cleanup mask for eligible non-trivial aggregate projections and fixed arrays
+   clears on the same atomic partial-`cede` commit, restores on admitted
+   repopulation, and dispatches recursive element drops conditionally at scope
+   exit. It never supplies static availability.
+3. **Synchronous control flow:** every `if`, `guard`, `match`, loop, return, and
+   supported error/unwind edge carries the same PlaceState, direct-flow
+   ceiling, PAL, and cleanup facts; a specialized merge may not omit one
+   domain. Cancellation belongs to the separate async bridge.
+4. **Shared eligibility:** Sema and CodeGen consume the exact matrix in Section
+   4. Over-limit, shared-member, custom-drop, nested, nonlocal, index, spread,
+   and enum cases reject before lowering whenever the matrix does not admit
+   them.
+5. **Synchronous evidence:** recorded legacy slices include fixed-array
+   lifecycle/drop-mask work (`b6e37756`, `baac987e`, `b5f9823d`), direct-field
+   source-less replay (`5ce0ccc2`), and consuming-field receiver closure
+   (`e810ecd7`). That dated evidence covers exactly-once cleanup,
+   reinitialization, branch joins, fixed-array constant-index normal exit/
+   return unwind/bounded loops, and the recorded negative use-after-move,
+   custom-drop, dynamic-index, and nonlocal/indexed consuming-receiver cases.
+   It does **not** currently qualify exact/prefix source-destination overlap.
+   P-1 must add same-whole, same-field, same-index, ancestor/descendant, and
+   unknown-overlap negatives plus disjoint controls, then replay that matrix
+   source-backed and source-less before widening eligibility.
+   Cancellation-across-`await` cases are evidence only for the later
+   async/place bridge. At its recorded slice,
+   `permission_005_partial_cede_lifecycle` replayed bounded direct-field and
+   fixed-array constant-index lifecycle paths; it must not be cited as current-
+   HEAD or overlap-rejection evidence until those gates are actually rerun and
+   pass.
+
+H/P declarations, stable field numbering, field graphs, and structural
+Copy/drop eligibility are declaration facts recomputed by the TKI importer.
+Consuming-body discharge and async frame cleanup are body-derived; they require
+source/retained-body recheck or a separately accepted-provenance,
+exact-object-bound attestation. A standalone TKI or audit record cannot assert
+either into authority or lifecycle acceptance.
+
+The pre-manifest closure level is Level A only: source and TKI consumers may
+recompute declaration/call-site facts, but body fulfilment requires source or a
+retained canonical body that the consumer rechecks, lowers, and links as its
+own object. A separately supplied provider object is outside that proof.
+Traditional bodyless `TKI + object` fulfilment is Level B and remains closed
+until accepted-provenance, exact-object-bound attestation is qualified.
+Historical bodyless execution/replay results are evidence for those recorded
+objects, not general fulfilment trust.
+
+The current-HEAD P-1 gate must re-run these slices. Historical implementation
+evidence does not certify that Sema eligibility and CodeGen mask availability
+still agree at the revision being qualified.
 
 ## 6. Exit criterion
 
 Partial `cede` may be described as a general language feature only when each
 supported path has matching static liveness and runtime drop evidence.  Until
 then, it remains an implementation-limited operation: permission-safe by the
-two-mode flow classifier, but lifecycle-guaranteed only where a library
-invariant or a dedicated conformance case proves it.
+two-mode flow classifier, but lifecycle-guaranteed only for a matrix row whose
+complete current-revision Sema, CodeGen, cleanup, replay, and negative gates all
+pass. Resolver-owned intrinsics and explicit `unsafe` invariants remain scoped
+exceptions and do not promote a safe-language row.

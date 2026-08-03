@@ -1,157 +1,482 @@
-# RFC: Initialization Contracts
+# RFC: Delayed Initialization Contracts
 
-**Status:** The `uninit` spelling is implemented; the `init` contract remains
-design-only.
+**Status:** `uninit` is implemented. The future `init` design direction is
+frozen but not activated or implemented. Sections labelled frozen record
+design decisions, not current parser, Sema, CodeGen, TKI, or public behavior.
 
-**Scope:** This RFC records the implemented `uninit` source spelling and a
-proposed, explicit initialization-obligation contract for `init`. It builds on
-the existing local `InitMask` analysis; only the future `init` surface remains
-outside current parser, Sema, CodeGen, TKI, and public syntax behavior.
+**Scope:** A delayed-initialization contract proves a transition of an exact
+storage place from `Uninitialized` to `Initialized`. It is neither an optional
+value nor an ordinary write permission. The first implementation is local,
+synchronous, and whole-place only. It includes an explicit lexical promise
+block; field-wise and async extensions require their own evidence.
+
+**Depends on:** the construction-origin and availability model in
+[place_state_core_rfc.md](place_state_core_rfc.md), plus declaration-backed H/P
+authority and canonical PAL path identity. In this RFC, `Uninitialized` and
+`Initialized` are source-facing names for definite PlaceState facts; they do not
+define a second state machine.
 
 ## 1. Motivation
 
-Toka already distinguishes an initialized slot from a slot that may not be
-read, and conservatively merges that fact through branches, loops, and async
-suspension. The implemented `uninit` spelling exposes that state without
-providing a first-class way to transfer or discharge an initialization
-obligation at a function boundary.
+Toka already records a bounded definite-initialization approximation in
+`InitMask`, merges it through control flow, and uses it for static rejection of
+reads, ordinary borrows, escapes, and transfers from an uninitialized path.
+`uninit` makes that fact visible in source, but the representation does not by
+itself distinguish never-constructed storage from a moved-out place or prove
+runtime cleanup. An ordinary assignment also neither expresses nor safely
+transfers the obligation to make a never-constructed place live.
 
-Initialization should be as explicit as ownership transfer:
+The missing capability is intentionally analogous to `cede`, but it has the
+opposite state transition:
 
 ```text
-cede: initialized, caller-owned value  -> caller no longer owns the value
-init:  caller-owned uninitialized place -> caller receives an initialized value
+cede:    Live caller-owned value -> Moved
+init:    Never caller-owned place -> Live
 ```
 
-An `init` contract therefore describes a state transition on a storage place,
-not a nullable value, default value, or ordinary output parameter.
+`init` is an authority over one state transition of one place. It is not
+payload write permission (`#`) and it must never be inferred from a mutable
+binding.
 
-## 2. Frozen decisions
+## 2. Terms and state model
 
-### IC-01: `uninit` names the source state
+An **exact place** is a source-level, addressable storage path with canonical
+PAL identity and a PlaceState fact. `InitMask` may encode a bounded projection
+of that fact, but is not its semantic definition. An exact place is not a value
+expression, temporary, arbitrary pointer, or ordinary borrow.
 
-The lower-case expression spelling is `uninit`, not `unset`.
+The source-facing names in this RFC map to PlaceState as follows:
+
+| Name in this RFC | PlaceState meaning |
+|---|---|
+| `Uninitialized` | definite `Never = NeverConstructed + Present` |
+| `Initialized` | definite `Live = Constructed + Present` |
+| `Maybe` | the non-singleton analysis fact `{Never, Live}` owned by an active lexical `init` block |
+| contract handoff | an access quarantine and outstanding obligation, not a concrete PlaceState |
+
+The relevant source permissions are:
+
+| State | Permitted operation |
+|---|---|
+| `Uninitialized` | explicit `init`, or handoff to an `init` contract |
+| `Maybe` | only `place is uninit` inside its active lexical `init` block |
+| `Initialized` | ordinary reads, borrows, moves, and writes allowed by the binding's ordinary morphology |
+| contract handoff | no caller use until the callee's declared post-state is applied |
+
+`Maybe` is not a concrete state or enum case; it is the bounded non-empty state
+set above and is not a public object state. It exists only inside the lexical
+`init` block that owns it. On every normal return from a valid `init` call, the
+handoff quarantine is discharged and the caller receives the definite `Live`
+post-state; on a diverging path no post-state is required.
+
+`Moved = Constructed + MovedOut` is deliberately not an `Uninitialized`
+state. It never satisfies an `init` precondition. If ordinary morphology permits
+repopulation, that distinct `Moved -> Live` transition is governed by the
+PlaceState Core and ordinary H/P/PAL rules, not by this contract.
+
+## 3. Frozen direction
+
+### IC-01: `uninit` establishes typed empty storage
+
+`uninit` remains the lower-case source spelling. Its type must come from the
+RHS, consistent with the frozen `auto` rule:
 
 ```toka
-auto value# = uninit:i32
+auto value = uninit:i32
+auto user = uninit:User
 ```
 
-`uninit` creates a known, typed, not-yet-initialized slot. It may be used only
-where an initialization-state origin is meaningful; it is not a general
-operation for clearing an already initialized value. A read, escape, transfer,
-or ordinary borrow of an uninitialized part remains rejected by the existing
-initialization and PAL rules.
+`auto value: i32 = uninit` is not admitted. `auto` has no declaration-side
+type annotation; `uninit:i32` is the complete type-bearing initializer.
 
-The old `unset` keyword is removed rather than retained as a compatibility
-alias. Toka has no released source-compatibility obligation for it.
-
-### IC-02: `init` is a two-sided initialization contract
-
-An `init` parameter receives an uninitialized writable place, not a value of
-type `T`. Its callee owns the obligation to leave that place fully initialized
-on every reachable non-diverging return path. The call site explicitly grants
-the same contract, analogous to the two-sided `cede` spelling.
-
-Illustrative grammar only:
+The binding's ordinary morphology remains meaningful after initialization, but
+does not decide whether the first initialization is allowed. Thus an ordinary
+immutable binding is valid:
 
 ```toka
-fn parse(input: str, init out#: Message) -> bool {
-    out = Message::decode(input)
-    return true
+auto value = uninit:i32
+init value = 100
+println(value)
+
+// Rejected: `value` is now an ordinary immutable binding.
+value = 300
+```
+
+All local binding forms whose declaration denotes stable storage may begin as
+`uninit`; this includes handles when their binding itself is a storage place.
+It does not make an arbitrary expression, a borrowed view without backing
+storage, or a raw-pointer target an `init` place. Existing PAL alias and
+authority checks remain in force.
+
+### IC-02: initialization is an explicit state transition
+
+The proposed direct form is:
+
+```toka
+init place = expression
+```
+
+It is valid only when `place` has the definite `Uninitialized`/`Never` fact and `expression`
+produces a complete compatible value. It is the only direct source operation
+that makes an `uninit` place live. Plain `place = expression` is an ordinary
+assignment and must be rejected while `place` is uninitialized.
+
+The transition is deliberately permitted once even for a binding that will be
+read-only after initialization. It does not grant a general `#` payload-write
+right, and it does not allow a second initialization.
+
+No runtime "double-init panic" is part of the safe-language design. If a
+reachable control-flow path can execute `init place = ...` after that exact
+place is already initialized, the program is rejected statically. `init` does
+not imply `break`: a loop may continue when its flow facts prove that no second
+initialization can occur. In the ordinary search-loop case, `break` is simply
+the proof that avoids a reachable repeat.
+
+### IC-03: state permissions and lexical exit
+
+`Uninitialized` is not "an invalid value". It is a storage place that has not
+yet constructed a `T`. It owns storage identity, one direct construction
+transition, and the ability to hand that transition to an `init` contract; it
+does not own any value-level right over `T`.
+
+| Operation | `Uninitialized` | `Maybe` | `Initialized` |
+|---|---|---|---|
+| `init place = value` | allowed | rejected until narrowed | rejected |
+| `callee(init place)` | allowed | rejected until narrowed | rejected |
+| `init place { ... }` | allowed | rejected | rejected |
+| `place is uninit` | rejected as statically redundant | allowed in its owning block | rejected as statically redundant |
+| read, borrow, member/index access, ordinary argument, `cede`, capture, return | rejected | rejected | ordinary rules apply |
+| ordinary assignment, payload write, handle rebind, copy, or `dup` | rejected | rejected | ordinary morphology rules apply |
+
+The distinction in the first three rows is intentional. A `Maybe` fact grants
+no value operation because not every state in `{Never, Live}` satisfies one,
+and it grants no direct construction because one member may already be live.
+The only way to obtain a definite `Uninitialized` fact from this set is the true
+arm of `place is uninit`.
+
+A sound implementation keeps three linear facts distinct:
+
+```text
+InitAuthority(p)                       // permits one Never -> Live transition
+InitDischargeObligation(id, p, required_postcondition)
+                                           // a named boundary's proof duty
+CleanupObligation<T>(p)                // owns destruction of an actually Live T
+```
+
+`InitAuthority` exists for an eligible `Never` place and may be transferred to
+a construction callee or consumed by first construction. An
+`InitDischargeObligation` exists only because an explicit lexical block,
+unconditional `init` formal, or Outcome Contract creates that proof duty; an
+outer obligation may be suspended/delegated through a nested call but is not
+duplicated or silently discharged by it. A `CleanupObligation<T>` exists only
+after construction of a value that requires cleanup and follows ordinary value
+ownership. Neither of the first two is a `T` cleanup duty.
+
+A bare local such as `auto value = uninit:T` may end an ordinary lexical scope
+while still `Uninitialized`. It owns `InitAuthority(value)` but no
+`InitDischargeObligation`. Lexical retirement consumes that authority together
+with the place identity. Nothing has constructed a `T`, so CodeGen must emit no
+`T` drop. This is not an undischarged contract. It is the same cleanup principle
+used for a moved or otherwise absent path: destroy only an actually live value.
+
+The mandatory-discharge surfaces are deliberately narrower:
+
+| Exit | Required state |
+|---|---|
+| ordinary local scope exit | `Initialized`, `Uninitialized`, or `Moved`; drop only `Initialized`/`Live` |
+| normal fallthrough from `init place { ... }` | `Initialized` only |
+| ordinary return from a function owning `init` parameter | `Initialized` only |
+| path that does not reach a local block's fallthrough (`return`, `panic`, `never`) | no local-block post-state; any enclosing function contract still applies |
+
+`Maybe` may never leave its owning `init` block by normal fallthrough,
+capture, ordinary argument passing, cross-block merge, or suspension.
+
+### IC-04: flow proof is the only way to use the completed value
+
+Every read of the place, and every ordinary exit from the scope that needs the
+place to be live, requires the `Initialized` state on all reachable paths.
+Branches, `match`, `guard`, `loop`, `for`, `break`, and `continue` use the
+existing exact-path merge machinery; `init` must not introduce a parallel
+definite-assignment checker.
+
+In particular, `uninit` is not a value and cannot be compared:
+
+```toka
+// Rejected: reads `value` and treats `uninit` as a runtime sentinel.
+if value == uninit { ... }
+```
+
+A place-state predicate is the only permitted observation form inside the
+active lexical block that owns the `Maybe` fact:
+
+```toka
+init value {
+    // ... control flow may have initialized `value` ...
+    if value is uninit {
+        init value = fallback
+    }
+}
+```
+
+`value is uninit` is neither equality nor an ordinary expression that reads
+`value`. Its left operand is parsed and checked as an exact place. It is
+permitted only as a control-flow condition, not as a first-class `bool` that
+may be stored, returned, or escaped. The true branch narrows the place to
+`Uninitialized`; the false branch narrows it to `Initialized`.
+
+It deliberately does not reuse `guard`. A nullable `guard` proves path
+presence and requires its failure branch to diverge. An initialization-state
+test has two continuing branches whose merge must establish a new state, so
+overloading `guard` would give one keyword incompatible control-flow meanings.
+
+### IC-05: `init` is a two-sided parameter contract
+
+The proposed parameter and call syntax is:
+
+```toka
+fn setup_user(init user: User) {
+    init user = User(name = "Alice", age = 18)
 }
 
-auto message# = uninit:Message
-auto ok = parse(input, init message)
+auto my_user = uninit:User
+setup_user(init my_user)
 ```
 
-The exact parameter morphology and call-site token arrangement remain a
-grammar-design item, but the following semantic facts are frozen:
+An `init` parameter is not a `User` value. Entry receives the caller's unique
+`InitAuthority(place)` and establishes one unconditional
+`InitDischargeObligation(formal, place, Live)` over the exact place with a
+definite `Never` fact. Within the callee, the authority may only be:
 
-- the caller supplies a compatible uninitialized storage place with the
-  required write authority;
-- the callee cannot read, borrow, return, capture, or cede its uninitialized
-  content as a `T`;
-- initializing constituent fields is permitted when it establishes a complete
-  initialized value by the required exit;
-- the callee must discharge the obligation on every reachable ordinary return,
-  including error-valued and propagation-driven returns; and
-- a diverging path has no return obligation.
+- discharged with `init user = ...`;
+- forwarded explicitly to another matching `init` parameter; or
+- used in narrowly specified structural initialization operations that prove
+  the whole place initialized.
 
-On successful contract checking, the caller's post-call analysis state records
-the exact place as initialized. A callee that leaves any reachable return path
-incomplete is rejected at the declaration boundary, just as a `cede` callee
-that fails its transfer obligation is rejected.
+It cannot be read, borrowed as `User`, returned, captured, ceded, or passed as
+an ordinary `User` argument. Forwarding transfers the same authority and
+delegates the construction step to the nested contract; the forwarding
+function's own unconditional discharge obligation remains active. Its normal
+return is valid only after the nested result proves the same place `Live` and
+thereby satisfies that outer post-state. This gives arbitrary nesting a static,
+compositional guarantee without duplicating an authority or cleanup duty.
 
-### IC-03: An `init` block is a lexical proof scope
+Every reachable ordinary return from an `init` function must leave each `init`
+parameter initialized. A function that can return an ordinary failure before
+initialization cannot declare an unconditional `init` parameter. The bounded
+conditional form is specified separately by
+[`outcome_contract_rfc.md`](outcome_contract_rfc.md); it must not silently
+weaken this unconditional guarantee.
 
-An `init` block is a future lexical scope in which one or more named
-initialization obligations must be discharged before the block's ordinary
-exit. It is a static proof boundary, not a runtime constructor call or a
-default-value mechanism. The exact block spelling and whether it lists its
-target places are intentionally not frozen by this RFC.
+### IC-06: `init place { ... }` is a lexical promise boundary
 
-The block uses the same exact-path `InitMask` state and control-flow merge
-rules as ordinary local initialization. It must not introduce a second,
-weaker definite-assignment analysis.
-
-### IC-04: `Uninit<T>` remains a separate raw-storage wrapper
-
-`uninit:T` and `Uninit<T>` are related but distinct:
-
-- `uninit:T` is a source-level state of a local or structural slot, checked by
-  initialization facts and later discharged by initialization.
-- `Uninit<T>` is the existing raw/container storage wrapper. It has `T`'s
-  physical layout but bypasses construction and drop for slots such as
-  `new [N]Uninit<T>()`.
-
-Neither form is an ordinary readable `T`, and neither provides an implicit
-conversion to the other.
-
-### IC-05: Keyword policy
-
-`uninit` becomes a reserved expression keyword. `init` is initially a
-contextual keyword: it is special only in a contract parameter, a contract
-argument, or the future init-block grammar. It remains usable as an ordinary
-method name elsewhere, preserving the existing `@Default::init` protocol.
-
-## 3. Relation to expression uniqueness
-
-The frozen `EU-02` rule in `docs/expression_uniqueness_rfc.md` requires every
-`auto` binding to have an initializer and to infer its type from the RHS.
-`uninit:T` is the explicit initializer for a later-initialized local:
+The language should also expose the obligation directly at a complex local
+construction site:
 
 ```toka
-auto record# = uninit:Record
+auto user = uninit:User
+
+init user {
+    if cached {
+        init user = load_cached()
+    } else {
+        setup_user(init user)
+    }
+} // Every normal fallthrough path has made `user` Initialized.
+
+println(user)
 ```
 
-It is not an exception that reintroduces `auto record: Record`.
+The block does not create a second kind of assignment or a second construction
+authority. Its target must already be an exact place with a definite
+`Uninitialized`/`Never` fact and one `InitAuthority`; block entry adds one
+lexical `InitDischargeObligation(block, place, Live)`. Its body still uses
+`init user = value` or `callee(init user)` to consume/delegate the authority and
+prove the required state. The closing brace is a local proof boundary: every
+path that reaches it normally must have made the target initialized and
+discharged that block obligation.
 
-## 4. Open design items
+This includes runtime-dependent construction paths. A block may temporarily
+contain the analysis fact `Maybe = {Never, Live}`, but it must resolve that
+fact internally, normally through
+`if user is uninit { init user = fallback }`; `Maybe` may not escape through
+the block's normal fallthrough.
 
-The following require a separate decision before implementation:
+`return`, `panic`, and another `never`-producing path do not reach the code
+after the block and therefore do not need to invent a value merely to satisfy
+the lexical promise. The initial implementation rejects `break` or `continue`
+that exits across an `init` block; this keeps an unfinished obligation from
+being silently carried to an outer control-flow target. A later relaxation
+requires explicit target-state merge evidence.
 
-1. The exact syntax and target-list form of an `init` block.
-2. The exact parameter and call-site morphology syntax for `init` places.
-3. Whether an `init` obligation may remain live across `.await`, and the
-   corresponding PAL/source-less replay evidence.
-4. Whether a callable may report a non-returning failure channel that does not
-   require initialization, and, if so, the explicit signature contract for
-   that exception.
-5. Diagnostics, error codes, and the precise allowed structural-field
-   initialization forms for a future `init` contract.
+This surface is not needed to make the dataflow algorithm sound, but it is
+needed for a readable and auditable language: it puts a multi-branch
+construction promise next to the code that discharges it and localizes the
+diagnostic to the closing brace rather than a later use.
 
-## 5. Implementation gate
+### IC-07: ordinary morphology and initialization authority are separate
 
-Implementation must provide parser, Sema, PAL, CodeGen, TKI, and source-less
-replay agreement for all of the following:
+The `init` contract bypasses neither PAL nor the normal permission system. Its
+`InitAuthority` grants exactly one construction transition; its separate
+`InitDischargeObligation` states what a named boundary must prove. Neither
+authorizes later replacement, payload mutation, handle rebinding, alias escape,
+or lifetime shortening. After a successful transition, the binding returns
+immediately to its normal declared authority.
 
-- a local `uninit:T` cannot be read before complete initialization;
-- branches, loops, guards, matches, and suspension preserve or reject the
-  exact initialization state conservatively;
-- an `init` callee is rejected if any reachable ordinary return leaves its
+This is why `init user: User` has no mandatory `#`: the parameter's authority
+comes from the explicit `InitAuthority` handoff denoted by its contract rather
+than from a mutable binding spelling.
+
+### IC-08: `Uninit<T>` is distinct raw storage
+
+`uninit:T` is an initialization state of a source place. `Uninit<T>` remains
+the raw/container storage wrapper with `T`'s physical layout and construction /
+drop bypass behavior. Neither is an ordinary readable `T`, and neither
+implicitly converts to the other.
+
+### IC-09: keyword policy
+
+`uninit` remains a reserved expression keyword. `init` is contextual: special
+only in its contract parameter, contract argument, or statement grammar.
+Existing protocol names such as `@Default::init` therefore remain valid.
+
+## 4. Deliberately deferred decisions
+
+1. Async `init` contracts and whether an outstanding obligation may cross
+   `.await`, cancellation, or task-scope exit. The first implementation must
+   reject outstanding `init` obligations at suspension.
+2. Implementation and activation of the bounded branch-dependent contract in
+   `outcome_contract_rfc.md`; it remains outside `init` P1.
+3. Field-wise/array-element `init` contracts, aggregate completion proofs, and
+   the corresponding source-less TKI representation.
+4. Diagnostics and error-code allocation.
+
+## 5. Coherence, completion boundary, and state observation
+
+The core design is internally coherent because every surface form has one
+state effect over the same exact place:
+
+| Surface | Required input state | Normal post-state |
+|---|---|---|
+| `init p = value` | definite `Never` (`Uninitialized`) | definite `Live` (`Initialized`) |
+| `f(init p)` where `f` has an `init` parameter | definite `Never` (`Uninitialized`) | definite `Live` (`Initialized`) |
+| `init p { ... }` | definite `Never` (`Uninitialized`) | definite `Live` (`Initialized`) on normal fallthrough |
+
+Ordinary assignment is intentionally absent from this table: it never accepts
+`Never`. It operates on `Live`, or performs the separate `Moved -> Live`
+repopulation transition only where ordinary morphology, H/P, PAL, and the
+bounded capability matrix explicitly permit that operation. It never substitutes
+for `init`. The same separation makes immutable construction and nested
+forwarding consistent rather than special cases.
+
+The design is complete enough for a first `init` implementation at the local
+state level. Outcome Contracts, field-wise initialization, and async remain
+subsequent slices. It deliberately does not become a reversible-lifecycle
+proposal.
+
+### Frozen state predicate and runtime representation
+
+The familiar search-and-fallback shape keeps its runtime-dependent state inside
+the lexical proof boundary:
+
+```toka
+auto value = uninit:i32
+init value {
+    for item in items {
+        if item == target {
+            init value = item
+            break
+        }
+    }
+    // `value` is Live on one runtime path and Never on another.
+    if value is uninit {
+        init value = fallback
+    }
+}
+// `value` is definitely Initialized here.
+```
+
+Inside the block, the compiler's ordinary definite-initialization analysis may
+call the resulting set `{Never, Live}` `Maybe`, but cannot answer a source-level
+test without more representation.
+`value == uninit` remains invalid because it reads uninitialized storage and
+pretends that `uninit` is a value.
+
+`value is uninit` is frozen as the dedicated place predicate. For each local
+that reaches a `{Never, Live}` join and whose state is observed, CodeGen carries
+a private initialization flag beside the storage, splits flow on that flag, and
+elides it again once the state becomes definitely initialized. The true arm can
+safely use `init value = ...`; the false arm can safely read `value`.
+
+The compiler still rejects a possibly repeated `init` outside a narrowing true
+arm. The flag is a representation for the declared state test and cleanup, not
+a fallback runtime double-init panic.
+
+For resource values, the same private flag gates cleanup on every synchronous
+exceptional exit supported by P1. This is precisely why state observation
+belongs in this RFC and cannot be smuggled in as equality syntax.
+
+A later Outcome Contract may feed a mixed `{Never, Live}` branch join into this
+block only by consuming its result witness and atomically transferring the
+selected PlaceState, conditional `InitAuthority`, and any required cleanup bit
+to this exact block-owned discriminator before the result tag is destroyed.
+Without that lowering handoff, the mixed join is rejected rather than treated
+as an ordinary `Maybe` fact.
+
+## 6. Implementation gates
+
+Implementation is gated on the P-1 baseline qualification ordered by
+[semantic_contract_evolution_roadmap_rfc.md](semantic_contract_evolution_roadmap_rfc.md)
+and the PlaceState contract in
+[place_state_core_rfc.md](place_state_core_rfc.md).
+`InitMask` alone must not be treated as proof that a place was never
+constructed rather than constructed and later moved.
+
+The initial Level-A implementation must provide Parser, Sema, PAL, CodeGen,
+TKI, and retained-body source-less replay agreement for all of the following.
+Signature contracts are declaration-recomputed on import. Callee fulfilment
+must come from compiled source or a retained canonical body that the consumer
+can recheck, lower, and link as the object generated by that same trusted
+compile action. A retained body cannot justify a separate provider object.
+Traditional bodyless `TKI + object` positive parity is a separate Level-B gate:
+it fails closed until the semantic-manifest layer supplies an accepted-
+provenance, exact-object-bound attestation path.
+
+- immutable and writable local bindings can start as `uninit:T`;
+- only `init place = expression` can initialize the local, exactly once;
+- `InitAuthority`, each named `InitDischargeObligation`, and live-value cleanup
+  are represented and conserved separately; a bare `Never` local may retire
+  its authority with storage, while an active block/formal/witness obligation
+  cannot;
+- all reads and every operation or exit that requires a live value reject a
+  fact containing `Never` or `Moved`;
+- branch and loop facts distinguish definitely initialized, definitely
+  uninitialized, moved-out, and conflicting re-initialization paths;
+- `place is uninit` observes an exact place without reading its storage,
+  narrows its two branches correctly, and may not escape as a `bool` value;
+- an `init place { ... }` block rejects every normal fallthrough path that
+  leaves its target incomplete, and rejects nonlocal loop transfers in its
+  first implementation;
+- an `init` parameter cannot be used as `T`, but may be correctly forwarded;
+- an `init` callee is rejected if any reachable ordinary return leaves the
   target incomplete;
-- a valid `init` call updates the caller's exact-path state to initialized;
-- aliasing, borrowing, cede, capture, escape, and raw-pointer boundaries
-  cannot bypass the obligation; and
-- `Uninit<T>` allocation/drop behavior remains distinct from local
-  initialization-state tracking.
+- a successful call updates the caller's exact path to initialized;
+- aliases, borrows, `cede`, captures, raw boundaries, and suspension cannot
+  bypass the obligation; and
+- `Uninit<T>` retains its separate allocation and drop behavior.
+
+Runtime-`Maybe` locals additionally require correct private flag allocation,
+narrowing, and synchronous exceptional cleanup.
+
+### Future async extension gate (not part of P1)
+
+P1 rejects an outstanding `init` handoff or `Maybe` fact at suspension. A
+future async slice may relax that rule only after the async/place cleanup bridge
+preserves the fact and private discriminator in the coroutine frame, treats a
+caught cancellation as continuing control flow, and performs state-dependent
+cleanup before unhandled terminal cancellation is published.
+
+Logical reset remains an initialized object's explicit domain operation such as
+`device.reset#()` or `device.close#()`. A future need for FFI in-place storage
+reuse or explicit destruction must be proposed as a separate lifecycle RFC,
+with `@Encap` drop, borrow, cancellation, and cleanup evidence; it does not
+reserve `deinit` as an `init` keyword today.

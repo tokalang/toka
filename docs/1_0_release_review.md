@@ -1,14 +1,24 @@
 # Toka 1.0 Release Review Report
 
 **Revision Under Audit**: `01e6e88be4aef4593fd630355c9763755ed05bd4` (Pre-release Tag: `v0.9.9-rc4`)
-**Status**: Current-revision Tier 1 gate passed; GitHub pre-release published
+**Status**: Recorded-revision Tier 1 gate passed; GitHub pre-release published
 **Date**: 2026-07-27
+
+**Authority:** This report qualifies only the revision named above. It is
+historical evidence, not current-HEAD qualification. Current blockers and the
+active P-1 gate are tracked in
+[`semantic_contract_evolution_roadmap_rfc.md`](semantic_core/semantic_contract_evolution_roadmap_rfc.md).
 
 ---
 
 ## 1. Review Executive Summary
 
-This document records the official Release Review for the `v0.9.9-rc4` pre-release. The current revision includes the GAP-LANG-04 handle identity / payload write separation closure and its release qualification. Its Tier 1 gate completed successfully before the annotated tag was created; the tag resolves exactly to the audited revision. This is a pre-release, not a final `v1.0.0` freeze tag.
+This document records the official Release Review for the `v0.9.9-rc4`
+pre-release. The audited revision includes the GAP-LANG-04 handle identity /
+payload write separation closure and its release qualification. Its Tier 1
+gate completed successfully before the annotated tag was created; the tag
+resolves exactly to the audited revision. This is a pre-release, not a final
+`v1.0.0` freeze tag.
 
 ---
 

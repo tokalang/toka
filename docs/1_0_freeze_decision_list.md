@@ -1,10 +1,15 @@
 # Toka 1.0 Freeze Decision List
 
-Execution status, blockers, and final release stop conditions are tracked in
-[`1_0_closure_plan.md`](1_0_closure_plan.md). This document remains the
-normative record of 1.0 scope and exclusions.
+**Authority:** This document remains the frozen normative record of the 1.0
+scope and exclusions. The execution status in
+[`1_0_closure_plan.md`](1_0_closure_plan.md) is historical evidence for its
+recorded candidate, ending at revision
+`ca8181129c6d726f1295f5546171e18360b05bcb`; it is not current-HEAD
+qualification. Current-HEAD blockers and the active P-1 requalification gate
+are tracked in
+[`semantic_contract_evolution_roadmap_rfc.md`](semantic_core/semantic_contract_evolution_roadmap_rfc.md).
 
-This document records the current freeze direction for Toka 1.0. It is not a
+This document records the adopted freeze direction for Toka 1.0. It is not a
 new language proposal. Its purpose is to separate the public syntax and
 semantics that should be stabilized for 1.0 from work that can safely move to a
 later release.

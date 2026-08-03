@@ -1,6 +1,14 @@
 # Async Runtime Lifecycle Audit
 
-Status: `Complete`
+Status: `Complete` for its recorded historical Phase-1 frame/local-lifetime
+scope only, at implementation revision `fd087c7a` (2026-07-13).
+
+Authority note: this audit predates the normative TCB/result protocol. It does
+not qualify current-HEAD cancellation, completion subscriptions, non-trivial
+detached-result typed drop, private result claiming, the two-sided detach/
+terminal drain race, or frame reclamation under those obligations. Those are
+owned by [`../async_runtime_tcb_rfc.md`](../async_runtime_tcb_rfc.md), especially
+its current-revision Section 8 gates.
 
 This audit hardens the runtime implementation of the frozen Toka 1.0 async
 surface. It does not add timeout, join combinators, cancellation semantics, or
@@ -25,6 +33,13 @@ The scheduler now records live detached handles. A handle that is already done
 is destroyed immediately; a suspended detached handle is destroyed by the
 scheduler after completion. `detach_forget` now requires an explicit `cede`
 transfer and registers the frame before clearing the caller-visible handle.
+
+The evidence below establishes the recorded frame/local cleanup behavior. It
+does not establish that a live non-trivial result is privately claimed,
+typed-dropped, and changed to `Taken` before frame destruction, nor that detach
+and terminal publication cannot miss one another. The later TCB contract may
+therefore impose a stronger reclamation guard without reopening this historical
+finding.
 
 ### Context helpers retained unowned raw state addresses
 
@@ -76,7 +91,9 @@ form instead of suspending forever. No new network error type is introduced.
 ## Stop Decision
 
 This audit stops after normal task/frame ownership and background-state
-lifetime are closed and unsafe forced cancellation is removed from the 1.0
-surface. Future timeout, cancellation, task groups, async join combinators, or
-structured concurrency require a separate design decision and cannot reopen
-this implementation audit implicitly.
+lifetime in the recorded Phase-1 slice are closed and unsafe forced
+cancellation is removed from the 1.0 surface. “Closed” here does not certify a
+live result obligation or current-HEAD TCB conformance. Future timeout,
+cancellation, task groups, async join combinators, structured concurrency, and
+typed detached-result reclamation require the separate normative design and
+current-revision gates; they cannot be inferred from this implementation audit.

@@ -1,11 +1,20 @@
-# Audit: Current Implementation Against Two-Mode Permission Flow
+# Audit: Recorded Implementation Evidence Against Two-Mode Permission Flow
 
-**Audit target:** the working implementation after direct-source PAL closure
-for nested patterns, destructuring, and reference iteration.
+**Audit target:** revision `7ccb649e7678494ac0f0fc3a8ae6b240a8dc6600`
+after direct-source PAL closure for nested patterns, destructuring, and
+reference iteration.
 
 **Audit date:** 2026-07-27
 
-**Result:** the static authority layer is implemented and evidenced. A first
+**Authority note:** This is dated implementation evidence, not the current
+normative status source. The bounded capability matrix is owned by
+`permission_flow_two_mode_rfc.md`; current-revision qualification is owned by
+`semantic_contract_evolution_roadmap_rfc.md`. References below to a Proposed
+RFC or an in-progress language gap describe the audit date and are retained as
+history.
+
+**Recorded result:** at that revision, the static authority layer was
+implemented and evidenced. A first
 direct-source Shared-flow slice is implemented for local initialization,
 assignment/call use, returns, field initialization, nested match/guard pattern
 binding, readonly-reference destructuring, and fixed-array/protocol reference
@@ -33,7 +42,11 @@ guarantee.
 - pattern binding: `src/Sema/Sema_Expr_Init.cpp`, `src/Sema/Sema_Stmt.cpp`,
   and `src/Sema/Sema_Expr.cpp`.
 
-## Current direct-source PAL evidence
+These source-less runners record declaration replay and execution at the audit
+revision. They do not establish Level-B bodyless provider-fulfilment trust for
+a separately supplied object.
+
+## Recorded direct-source PAL evidence
 
 - Nested `match` and `guard` reference patterns now retain their exact member
   projection in PAL. A borrow of `pair.left` rejects `cede pair.left` while
@@ -57,7 +70,7 @@ guarantee.
 
 ## Findings
 
-| RFC rule | Current evidence | Assessment |
+| RFC rule | Recorded evidence | Assessment |
 |---|---|---|
 | Audit status | A `Partial` assessment below identifies a proposed RFC generalization or an explicitly excluded 1.x form. It does not reopen the verified frozen 1.0 surface recorded in `docs/1_0_gap_ledger.md`. | **Scope note** |
 | Iron rule: a shared view never amplifies Payload authority | `PermissionFlow` derives a one-hop RHS fact. Fresh local Shared bindings and existing variable/field handle rebindings retain a payload ceiling, and declaration boundaries enforce it for payload assignment, mutable calls, returns, fields, match/guard binders, and destructuring reference fields. `cede_shared_existing_lhs_cannot_amplify_payload` proves an explicit `~target = cede ~source` is a handle rebind, not an implicit payload assignment, and its later payload write is rejected. `cede_shared_field_rebind_cannot_amplify_payload` proves the same field path is lowered as an envelope rebind; its branch variant proves the ceiling survives a control-flow join, while the reset test proves a later independent rebind removes only that exact ceiling. `reference_field_rebind_cannot_amplify_payload` covers the formerly early-returning `&#field = &source` path. Toka 1.0 has no independent indexed-element handle-rebind surface; `index_handle_rebind_is_not_a_1_0_surface` makes that boundary explicit. `permission_002_shared_flow` repeats shared variable and field cases source-less alongside readonly and writable imported reference fields, match binders, and guard binders. | **Verified for frozen 1.0 surface**: an object-level freeze/sealed ceiling has no 1.0 syntax carrier and is a 1.x proposal, not an open 1.0 rule. |
@@ -74,31 +87,39 @@ guarantee.
 
 ## Concrete implementation gaps
 
-1. `CedeExpr` now classifies member/index/spread paths as Shared, so they do
+1. Existing-LHS transfer has no recorded current-revision proof that Sema and
+   CodeGen reject canonical source/destination equality or prefix overlap
+   before retiring the old destination. In particular, the historical suite
+   does not qualify `^x = cede ^x`, direct hatted self-move, same-field, or
+   same-index replacement, nor a source-invalidating Shared-handle self-rebind
+   where that syntax is admitted. P-1 must treat those as negative source/TKI
+   gates; this audit must not be read as authorizing self-transfer or defining
+   it as a no-op.
+2. `CedeExpr` now classifies member/index/spread paths as Shared, so they do
    not rebuild payload authority. Local initialization rejects nullable-to-
    non-null transfer unless the existing direct-binding `guard` narrowing has
    removed nullability. Direct named fields of eligible local records and
    constant indexes of eligible local fixed arrays now have a bounded
    projected-path proof and per-projection drop state; other projections
    remain outside that lifecycle guarantee.
-2. Local initialization and destructuring in `src/Sema/Sema_Stmt.cpp`, plus
+3. Local initialization and destructuring in `src/Sema/Sema_Stmt.cpp`, plus
    match/guard binding in `src/Sema/Sema_Expr_Init.cpp`, store a one-hop
    payload ceiling without rewriting the declaration. Destructuring also
    preserves the binder's declared `BindingPermission`, so a writable
    reference field retains its declared Payload capability while a readonly
    field remains capped. `permission_002_shared_flow` replays both outcomes
    against a source-less imported shape interface.
-3. `isTypeCompatible` in `src/Sema/Sema_Type.cpp` is morphology/type
+4. `isTypeCompatible` in `src/Sema/Sema_Type.cpp` is morphology/type
    compatibility. It cannot serve as the authority-flow decision because it is
    intentionally bidirectional in several non-permission cases and has no
    path, move, guard, or PAL inputs.
-4. Source-less `.tki` replay covers imported reference-field destructuring,
+5. Source-less `.tki` replay covers imported reference-field destructuring,
    match, and guard flow propagation, direct guarded unique transfer,
    unguarded nullable rejection, and an exported `$` field ceiling. It does
    not yet exercise a general freeze/sealed-object ceiling because none is
    currently represented in the language model.
 
-5. Direct-source PAL coverage now includes nested struct and enum
+6. Direct-source PAL coverage now includes nested struct and enum
    match/guard patterns, ordinary destructuring, and fixed-array/protocol
    reference iteration. Enum payloads use their enclosing enum target as a
    conservative direct source because they lack a separately nameable source
@@ -118,9 +139,9 @@ guarantee.
    `partial_cede_lifecycle_rfc.md` is now implemented; add its branch, replay,
    and async evidence before widening that surface.
 
-## Release conclusion
+## Historical release conclusion
 
-`PERM-STATIC-01` may remain a verified static guarantee. `OWN-FLOW-01` and
-`OWN-FLOW-02` are proposed rules with partial prerequisites only. The language
-gap should remain **in progress** until the listed negative tests and source/
-`.tki` evidence pass.
+At the audit date, `PERM-STATIC-01` could remain a verified static guarantee,
+while `OWN-FLOW-01` and `OWN-FLOW-02` were proposed rules with partial
+prerequisites. That historical conclusion does not override the later bounded
+matrix or certify a newer compiler revision.

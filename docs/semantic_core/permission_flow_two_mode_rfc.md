@@ -1,7 +1,10 @@
 # RFC: Two-Mode Permission Flow
 
-**Status:** Proposed semantic-core rule; not a statement of current compiler
-behaviour.
+**Status:** Bounded design contract frozen. Existing implementation evidence is
+uneven across the capability matrix and remains subject to the current-HEAD
+P-1 requalification gate; the historical audit's `Partial` rows are not
+promoted by this document. Any unlisted or unqualified generalization must fail
+closed.
 
 **Rule IDs:** `PERM-STATIC-01`, `OWN-FLOW-01`, `OWN-FLOW-02`
 
@@ -21,8 +24,9 @@ The already-frozen static rule is:
 This RFC specifies only the next layer: what happens when a value flows into a
 **fresh** binding. It does not weaken the static rule, and it does not make
 `cede` an unrestricted privilege-escalation mechanism.  Its authority rules
-are implemented for the bounded transfer forms documented here; the remaining
-generalization work is tracked explicitly rather than implied by the syntax.
+have implementation evidence for bounded subsets documented here; the
+qualification status of each surface remains explicit rather than implied by
+the syntax.
 
 The effective permission for an operation remains:
 
@@ -54,8 +58,10 @@ declaration, subject to the referent ceiling.
   or pattern binder. Its declaration fixes its local H/P authority.
 - **Existing binding:** an already introduced storage location. A later
   assignment supplies a value but cannot redefine its H/P authority.
-- **Referent ceiling:** a property of the object/path being observed, such as
-  `$`/freeze/sealed payload immutability. It survives transfer.
+- **Referent ceiling:** a compiler-represented property of the object/path being
+  observed. The currently evidenced example is `$` field/payload immutability;
+  any future freeze/sealed carrier requires its own implementation and replay
+  qualification. An established ceiling survives transfer.
 - **Capability:** permission supplied by a declaration plus its flow ceiling.
 - **Intent:** the operation requested by source syntax, including `#`.
 - **PAL permission:** the path-anchored ledger's current alias/borrow result.
@@ -66,7 +72,7 @@ Every transfer must be classified before permissions are derived.
 
 | Mode | Sources | Meaning |
 |---|---|---|
-| **Independent** | owned value or `^` unique ownership, transferred as a whole with `cede` | The source is invalidated and the fresh binding becomes a new ownership root. |
+| **Independent** | owned value or `^` unique ownership, transferred as a whole by `cede` or a direct hatted unique move | The source is invalidated and the fresh binding becomes a new ownership root. |
 | **Shared** | `~`, `&`, and ordinary non-moving alias propagation | The fresh binding is another view of an existing referent. |
 | **Unsafe raw boundary** | `*` | Safe code treats it as non-upgrading shared observation. Any payload capability requires an explicit `unsafe` boundary. |
 
@@ -82,13 +88,33 @@ or `^` unique source, or a direct hatted unique move—from an owned value or
 `^` unique source:
 
 1. The exact source path must be non-null, not moved, and PAL-invalidatable.
-2. The source is invalidated exactly once when the transfer succeeds.
-3. A fresh LHS obtains H from its own declaration.
-4. A fresh LHS obtains P from its own declaration, capped by the transferred
+2. If the destination is an existing place, Sema must compare
+   `CanonicalPlace(source)` and `CanonicalPlace(destination)` before any
+   lifecycle effect. Only a proven `Disjoint` relation is admitted. `Equal`,
+   either ancestor/descendant relation, and an unknown relation reject before
+   retirement, capture, invalidation, or cleanup-mask change. This comparison
+   concerns storage places/handle slots, not whether distinct handles happen
+   to denote the same referent. In particular, `^x = cede ^x` and `^x = ^x`
+   are rejected rather than defined as no-ops.
+3. The source is invalidated exactly once when the transfer succeeds.
+4. A fresh LHS obtains H from its own declaration.
+5. A fresh LHS obtains P from its own declaration, capped by the transferred
    referent ceiling. The old binding's local P marker does not permanently
    reduce a newly owned root.
-5. An existing LHS retains its declared H/P; `cede` supplies a value, not a
-   redeclaration.
+6. An existing LHS retains its declared H/P; `cede` supplies a value, not a
+   redeclaration. Replacing a live resource composes with PlaceState cleanup:
+   canonical disjointness and all fallible preparation are proved first, then
+   old-destination retirement, destination capture, source invalidation, and
+   cleanup-obligation transfer form one non-suspending semantic commit.
+   Failure before commit leaves both places and their cleanup ownership
+   unchanged.
+
+A fresh local initializer, fresh pattern binder, callee `cede` formal, and
+return root introduce distinct destination storage by construction and have no
+old-destination retirement. NRVO, `sret`, or another physical storage elision
+is valid only when lowering preserves that logical fresh-transfer/disarm
+contract; an optimization cannot expose physical aliasing as permission for a
+source/destination overlap.
 
 Thus the following is valid when `Data` is not frozen and `p` is a whole
 unique owner:
@@ -101,9 +127,10 @@ auto ^#q# = cede ^p
 auto ^#r# = ^q
 ```
 
-It is not valid if the object carries a `$`/freeze/sealed ceiling that forbids
-payload writes. `cede` transfers ownership; it does not erase referent
-restrictions.
+It is not valid if the object carries an implemented `$` payload ceiling that
+forbids writes. `cede` transfers ownership; it does not erase a represented
+referent restriction. This sentence does not claim a general freeze/sealed
+carrier.
 
 ### OWN-FLOW-02: Shared flow
 
@@ -124,7 +151,11 @@ For `~`, `&`, and non-moving alias propagation:
    destination spells `#`.
 3. `cede` is not a payload-upgrade operator for Shared sources. If syntax
    permits moving such a handle, it may transfer only the handle ownership
-   described by its type; it does not increase referent capability.
+   described by its type; it does not increase referent capability. Any such
+   source-invalidating move into an existing destination also inherits
+   `OWN-FLOW-01`'s canonical-place `Disjoint` precondition and atomic
+   replacement order. Thus an admitted `~x = cede ~x` form is rejected before
+   handle release or place-state change rather than treated as self-rebind.
 4. References additionally require the existing lifetime/escape rules.
 5. Raw pointers follow this rule in safe code; an explicit `unsafe` operation
    is required before raw payload authority can be used.
@@ -165,19 +196,24 @@ that proof.
 ## 6. Patterns and partial moves
 
 Pattern binding must use the same classifier and derivation rules as local
-initialization. Until explicit owned move-pattern semantics are implemented,
-patterns are conservative Shared/borrow bindings: they must not re-root
-payload authority.
+initialization. No owned move-pattern is in this bounded surface. Any currently
+admitted pattern/reference binder is conservative Shared/borrow flow and must
+not re-root payload authority; pattern forms without current-revision evidence
+remain qualification-pending and fail closed if they would need ownership
+transfer.
 
 Whole-binding `cede` is the general Independent form. Partial projections are
 always Shared for authority, but have a separate, deliberately bounded
 lifecycle implementation: a direct named field of an eligible local
 compiler-managed record and a constant index of an eligible local fixed array
 may be ceded using exact per-projection liveness and drop masks. Other member,
-index, destructuring, spread, enum, or custom-drop forms remain rejected or
-are limited to their library representation invariant. The lifecycle contract
-and its evidence are normative in `partial_cede_lifecycle_rfc.md`; none of
-these bounded partial forms re-root Payload authority.
+index, destructuring, spread, enum, or custom-drop forms remain rejected in
+ordinary safe source. A resolver-owned intrinsic may enforce its own
+representation invariant, and an explicit `unsafe` implementation may assume
+one inside its audited boundary; neither exception grants the form to safe
+source. The lifecycle contract and its evidence are normative in
+`partial_cede_lifecycle_rfc.md`; none of these bounded partial forms re-root
+Payload authority.
 
 ## 7. Call and return boundaries
 
@@ -187,19 +223,65 @@ capability. A `cede` parameter can accept an Independent transfer only when
 its source and PAL state satisfy `OWN-FLOW-01`; shared/ref/raw arguments keep
 the ceilings of `OWN-FLOW-02`.
 
-## 8. Required conformance evidence
+## 8. Bounded capability matrix and qualification evidence
 
-Before this RFC can be promoted from Proposed:
+The following matrix is the complete normative surface of this RFC. A syntax
+that can name a broader transfer does not make that transfer part of the
+contract.
 
-- negative tests for every shared-source attempt to obtain P through a fresh
-  binding, argument, return, method receiver, field, or pattern;
-- positive and negative whole-`^` `cede` tests, including source invalidation
-  and `$` referent ceilings;
-- nullable guarded and unguarded transfer tests over canonical paths;
-- `.tki` replay preserving flow-relevant signature facts;
-- PAL conflict tests proving transfer does not bypass active borrows; and
-- diagnostics that identify whether rejection came from declaration authority,
-  flow ceiling, null proof, or PAL.
+| Flow form | Authority classification | Contract status |
+|---|---|---|
+| whole owned/unique transfer into a fresh binding, parameter, return, or whole owned consuming receiver | Independent; destination declaration supplies local H/P subject to retained represented ceilings | design-frozen; current-revision qualification required per surface |
+| `~`, `&`, and ordinary alias propagation through currently admitted locals, calls, returns, fields, closures, and conservative reference/pattern binders | Shared; direct source supplies the non-amplifying payload ceiling | design-frozen; historical `Partial` surfaces remain qualification-pending |
+| source-invalidating transfer into an existing binding | destination keeps its declaration; only a canonically proven disjoint source/destination pair may enter the atomic PlaceState/cleanup commit in `OWN-FLOW-01`, including an admitted moving Shared-handle form | design-frozen; current-revision cleanup and overlap-rejection evidence required |
+| direct nullable whole/member or fixed-array constant-index transfer after a same-path guard | guard refines presence only; it grants no H/P | bounded frozen surface |
+| direct-field or fixed-array constant-index partial `cede`, including the direct-field consuming-receiver subset | Shared for authority; lifecycle governed separately by `partial_cede_lifecycle_rfc.md` | bounded surface only where that lifecycle RFC admits and qualifies the exact place |
+| safe raw observation | Shared/non-upgrading | frozen conservative boundary |
+| dynamic/container index, spread, enum payload, arbitrary nested/nonlocal consuming receiver, custom-drop projection | no general classification or lifecycle authority | safe source rejects; resolver-owned intrinsic or explicit `unsafe` boundary only |
+| unsafe raw authority | outside this safe-flow contract | explicit unsafe boundary required |
+
+Promotion of an additional row requires all of:
+
+- negative tests for every shared-source attempt to obtain P through each new
+  binding, argument, return, receiver, field, or pattern surface;
+- positive and negative whole-transfer tests, including source invalidation
+  and retained referent ceilings;
+- canonical-place overlap tests rejecting exact self-transfer, both
+  ancestor/descendant directions, and an unprovable relation before any drop
+  or state change; source-backed and source-less consumers must agree on the
+  same rule and diagnostic, while a proven distinct-root control remains
+  accepted;
+- nullable guarded and unguarded tests over canonical paths where applicable;
+- `.tki` replay preserving every flow-relevant signature and declaration fact;
+- PAL conflict tests proving transfer cannot bypass an active overlap;
+- `if`, `guard`, `match`, and loop joins preserving direct-flow ceilings from
+  every continuing predecessor without branch-order dependence; and
+- diagnostics that distinguish declaration authority, flow ceiling, null
+  proof, PAL conflict, and unsupported lifecycle eligibility.
+
+TKI carries no ambient flow authority. H/P declarations, represented referent
+ceilings, field graphs, structural Copy/drop eligibility, and the canonical
+field identities used by source/destination disjointness are parsed,
+recomputed, and compared by the importer. The consumer always performs the
+call-site/place overlap check; an interface cannot assert that two consumer
+places are disjoint. A consuming callee's body discharge or async cleanup is
+body-derived and requires source/retained-body recheck or a separately
+accepted object-bound attestation. Audit comments, standalone TKI labels, and
+ordinary package metadata cannot promote either class.
+
+Before the Semantic Manifest payload is qualified, this RFC can close only its
+Level-A provider profile: declaration and call-site facts are recomputed from
+source or TKI, while consuming-body fulfilment comes from source or a retained
+canonical body that the consumer rechecks, lowers, and links as the object from
+that same compile action. A provider-supplied object is not covered. Traditional
+bodyless `TKI + object` fulfilment is Level B and requires the later accepted-
+provenance, exact-object-bound attestation. Historical bodyless execution or
+replay runners are recorded ABI/replay evidence only; they do not establish
+that fulfilment trust.
+
+Historical audit evidence is recorded in
+`permission_flow_two_mode_audit.md`. It does not replace the roadmap's
+current-HEAD requalification gate.
 
 ## 9. Non-goals
 

@@ -3,8 +3,11 @@
 **Status:** Proposed post-1.0 extension. No source syntax or runtime behavior
 is changed by this document.
 
-**Depends on:** frozen PAL path/dependency rules, async task completion, task
-cancellation, and `@Send` / `@Sync` where work crosses OS threads.
+**Depends on:** frozen PAL path/dependency rules; current-revision conformance
+to the normative async TCB runtime-core gates and the async/place language
+bridge; a separate lexical `TaskScope` cleanup contract; and `@Send` / `@Sync`
+where work crosses OS threads. An explicit runtime `TaskScope.close()` API alone
+does not satisfy the lexical-scope dependency.
 
 ## 1. Problem and boundary
 
@@ -49,9 +52,12 @@ completion point.
 ### Invariants
 
 1. A scoped child cannot outlive its anchor `S`.
-2. Normal scope exit waits until every registered child is terminal.
+2. Normal scope exit waits until every registered child is terminal, has no
+   active registration, has discharged its scope-owned result disposition, and
+   has released its registry reference.
 3. Cancellation/error exit first requests child cancellation, then waits until
-   every child is terminal and its cleanup has run.
+   every child satisfies that same terminal/no-active/result/reference closure
+   and its cleanup has run.
 4. A scoped child, its task handle, and any closure/aggregate containing its
    scope dependency cannot return, detach, cede to an outer task, or be stored
    into an escaping location.
@@ -60,12 +66,17 @@ completion point.
 6. If a child may execute on a different OS thread, its captures additionally
    satisfy the existing `@Send` / `@Sync` requirements. Lexical completion is
    not a data-race proof.
+7. The first slice rejects a child result type carrying `S` or any borrowed
+   dependency. Borrowed/yielded scoped results require a later contract; a
+   terminal child with such a live result cannot be used to release `S`.
 
 ## 4. Runtime contract
 
-The existing `TaskScope` owns runtime references and can cancel/drain children,
-but it currently does not carry lexical borrowing semantics. A scoped-task
-implementation must add a separate static/runtime handshake:
+The existing explicit `TaskScope` API is intended to own runtime references and
+cancel/drain children, but it currently does not carry lexical borrowing
+semantics or prove automatic cleanup on every scope exit. A scoped-task
+implementation must first close the normative TCB gates and the separate
+lexical `TaskScope` cleanup contract, then add this static/runtime handshake:
 
 ```text
 enter scope S
@@ -73,7 +84,8 @@ enter scope S
   run child work
 exit scope S
   join normally, or cancel then join on unwinding
-  release S only after all children are terminal
+  discharge each scope-owned result and registry reference
+  release S only after terminal + no-active + result/ref closure for all children
 ```
 
 For async parents, scope exit must be an explicit suspension-capable operation
@@ -116,8 +128,18 @@ The first executable acceptance suite must include:
 - parent cleanup after the scope, proving the borrow is no longer live;
 - rejected task-handle return, detached start, aggregate escape, and
   parent-move-during-child cases;
-- cancellation and panic/error-path cleanup with exactly-once child drop;
+- cancellation plus supported ordinary error/early-return cleanup with exactly-
+  once child drop; Toka's frozen non-unwinding panic boundary gains no cleanup
+  promise from this RFC;
 - a source-less interface/replay case that preserves the non-escape contract.
+
+The first provider-proof profile is Level A only: source-backed providers or a
+source-less declaration with a retained canonical body are rechecked by the
+consumer, which lowers that exact body and links only its own generated object.
+Non-escape, every-exit join, and cleanup fulfilment are body-derived; a
+standalone bodyless TKI or separately supplied provider object therefore fails
+closed. Level-B bodyless use requires the later accepted-provenance, exact-
+object-bound Semantic Manifest attestation for these same obligations.
 
 ## 8. Open questions deliberately deferred
 
@@ -126,5 +148,8 @@ The first executable acceptance suite must include:
 - Result/error aggregation and sibling cancellation policy.
 - Nested scopes, dynamic child creation, and work stealing.
 - Scoped tasks that themselves yield borrowed results.
+
+The last item is fail-closed in the first slice, as required by Invariant 7;
+it is not merely an untested accepted form.
 
 None of these questions justifies weakening the 1.0 detached-boundary rule.

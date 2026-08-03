@@ -1,79 +1,421 @@
 # Toka Async Runtime P5 Specification: Task Cancellation, Join Substrate & Structured Concurrency
 
-**Document Status**: Draft / Runtime Closure Pending  
-**Target Release**: Toka v0.9.5-P5  
+**Document Status**: Implementation/closure record; conformance and
+current-HEAD requalification pending.
+
+**Historical Target**: Toka v0.9.5-P5
+
+**Authority:** This document is subordinate to
+[`async_runtime_tcb_rfc.md`](async_runtime_tcb_rfc.md), which is the normative
+design contract. If this record conflicts with that RFC, the TCB RFC wins. This
+record does not by itself claim that cancellation, result reclamation, cold
+cancel, or suspension rollback is implemented conformantly.
 
 ---
 
 ## 1. Executive Summary
 
-This specification defines the formal mechanics for:
+This record tracks the intended Phase 5 implementation and closure evidence for:
 1. **Linearized Task Cancellation**: Atomic cancellation of active tasks competing through `WaitRegistry` winner CAS.
 2. **Completion Subscription & Join**: Subscription mechanism waking waiters upon task completion or cancellation.
 3. **N-Way WaitSet Allocation**: Atomic allocation of $N$-slot wait sets for multi-way race combinators.
 4. **Loser Cleanup Guarantee**: Absolute invariant that `race2` / `select2` combinators do not return to caller until loser tasks are fully terminated and disarmed.
-5. **Structured Concurrency (`TaskScope`)**: Retained task lifetime management guaranteeing zero orphan tasks and zero UAF (Use-After-Free).
+5. **Structured Concurrency (`TaskScope`)**: Retained task lifetime management
+   intended to guarantee zero orphan tasks and zero UAF (Use-After-Free).
 
 ---
 
 ## 2. Cancellation Linearization Architecture
 
 ### 2.1 TCB State Machine & Active Registration Link
-Every `TokaTCB` tracks:
-- `_Atomic uint32_t state`: `TOKA_TCB_CREATED` (0), `TOKA_TCB_RUNNING` (1), `TOKA_TCB_SUSPENDED` (2), `TOKA_TCB_QUEUED` (3), `TOKA_TCB_COMPLETED` (4), `TOKA_TCB_PREPARING` (5), `TOKA_TCB_COMPLETED_CANCELED` (7).
-- `_Atomic uint8_t cancel_requested`: atomic boolean flag.
-- `_Atomic uint8_t cancel_handled`: set only when the current coroutine
-  explicitly observes cancellation through `.await?`; it permits normal
-  domain completion instead of `TOKA_TCB_COMPLETED_CANCELED`.
-- `_Atomic uint32_t active_wait_id` and `_Atomic uint32_t active_slot_gen`: links suspended task to its active `WaitRegistration` / `WaitSet`.
+The Phase 5 model expects each `TokaTCB` to track the following fields; their
+current implementation and atomic ordering remain subject to Section 6:
+- a full `TaskToken(task_id, task_instance_generation)` used by ready, wait,
+  join, and cancellation entries; a bare reusable numeric ID is insufficient;
+- `_Atomic state`: the complete normative state set, including `Created`,
+  `Queued(gen)`, `Running(gen)`, `Preparing(gen)`,
+  `PreparingWithPendingWake(gen)`, `Suspended(gen)`, `FinalizingNormal`,
+  `FinalizingCanceled`, `Completed`, and `CompletedCanceled`; numeric ABI values
+  are not frozen by this subordinate record.
+- preparing/suspended epochs carry `Ordinary` or one of four compiler/runtime-
+  only cleanup kinds:
+
+  ```text
+  AwaitCleanup(cancel_epoch, await_obligation_id)
+  ResolutionCleanup(cancel_epoch, await_obligation_id)
+  ScopeCleanup(task_cleanup_obligation_id)
+  SourceCleanup(source_obligation_id)
+  ```
+
+  `AwaitCleanup` requires `Handling` plus a matching `CancelOwned` aggregate and
+  `CancelClaimed` await component. `ResolutionCleanup` requires `Requested`
+  plus `ResolutionOwned` and `NormalClaimed`. `ScopeCleanup` encodes only the
+  stable task-cleanup aggregate id, waits only for validated progress from its
+  retained closing descriptors, and revalidates one of three exact current
+  key/mode pairs: `ParentEpoch(e) + CancelOwned + Handling(e)`,
+  `ParentEpoch(e) + ResolutionOwned + Requested(e)`, or
+  `SourceOutcome(source_token, disposition) + SourceOwned + Open|Consumed`.
+  `SourceCleanup` drains a canceled source and mandatory losers under
+  `SourceOwned` while the
+  parent remains `Open|Consumed`; a later parent request may convert that same
+  aggregate to `CancelOwned + Handling` without changing the stable aggregate
+  id or winning either source- or scope-cleanup WaitSet. Await,
+  resolution, and source cleanup admit only their retained child-terminal
+  sources; scope cleanup admits only `ScopeProgress`.
+- `_Atomic cancel_state`: the normative
+  `Open(e) | Requested(e) | Handling(e) | Consumed(e) | Closed` cancellation-
+  admission state, or an equivalent combined arbitration word; an
+  independently writable boolean is insufficient.
+- `lifetime_ref_count` (or an equivalent checked hazard/ownership scheme):
+  every `TaskHandle`, `TaskRef`, queue entry, wait/subscription, registry node,
+  and helper that may dereference the TCB owns a reference. Retain validates a
+  full token under registry protection, never resurrects zero, and fails closed
+  on overflow. Frame eligibility does not by itself permit TCB/slot reuse.
+- `frame_access_state = Open(pin_count) | Retired` (or an equivalent checked
+  guard): every worker resume, final-suspend/terminal publisher, cold finalizer,
+  typed claimant, and cleanup callback retains a pin through its last frame
+  access. `Open(0)` remains acquirable by a legitimate claimant; after
+  revalidating all other frame guards, only the reclaimer may CAS
+  `Open(0) -> Retired`. Acquisition from `Retired` fails closed.
+- `queue_publication`: the normative `NoTicket | Unpublished(full ticket) |
+  Published(full ticket)` state paired with each `Queued(gen)` epoch; scheduler
+  insertion uses the TCB RFC's linearizable `publish_once` primitive.
+- `WaitSetToken? active_wait_set`: links a preparing or suspended task to the
+  one group that arbitrates all of that suspension's registrations. The token
+  carries `wait_set_id` and `wait_set_generation`; each member registration
+  separately carries its full `WaitToken`. Bare reusable numeric IDs and a
+  single-slot active-wait link are forbidden.
+- `completion_registry`: the child-terminal subscription arbiter. Every node
+  binds the parent full `WaitToken`, child full `TaskToken`, and exactly-once
+  retained-reference ownership; a check-then-append callback list is not
+  conforming.
+- `result_owner`: tagged private authority: `ConsumerOwned(disposition)` or
+  `RuntimeOwned(Detached | ScopeNode(full_node_token))`. Activated handle drop/detach uses
+  `RuntimeOwned(Detached)` and the two-sided detached drain.
+  `RuntimeOwned(ScopeNode(...))` reserves the private claim for that exact
+  structured node and routes result readiness through its helpable progress
+  protocol; the generic detached helper must reject it. An independently
+  sampled detached boolean or untagged runtime owner is insufficient.
+- each armed await has an internal
+  `AwaitResolution(oid) = Armed | NormalClaimed |
+  SourceCanceledClaimed(source) | CancelClaimed(e) | Discharged` word. Its
+  joint claim against child terminal kind and parent cancellation, not a sampled
+  cancel-state load followed later by result handoff, is the result-disposition
+  linearization point.
+- `cleanup_obligation`: at most one task-wide aggregate for the current cleanup
+  origin:
+
+  ```text
+  CleanupKey = ParentEpoch(e) | SourceOutcome(source_token, disposition)
+  disposition = Capture | Propagate
+
+  TaskCleanupObligation(CleanupKey, oid) =
+    Armed(CancelOwned | ResolutionOwned | SourceOwned, components)
+    | Discharged
+  ```
+
+  `CancelOwned` and `ResolutionOwned` require `ParentEpoch(e)` and pair with
+  `Handling(e)` and `Requested(e)`, respectively. `SourceOwned` requires a
+  fixed `SourceOutcome(source_token, disposition)` and pairs with
+  `Open|Consumed`. `Capture` owns only the current await/combinator cleanup and
+  does not disturb unrelated scopes. `Propagate` also closes structured
+  registration and canonicalizes every active scope descriptor into the same
+  aggregate before parent finalization. Components are
+  optional `AwaitDrain`/`CanceledSourceDrain`, zero or more mandatory losers and
+  scope descriptors, and zero or more suppressed frame-value drops. Each names
+  exact, non-overlapping result, await, registry, reference-release, and callback
+  authority ids. Overlap between a race operand, its structured node, and a
+  scope descriptor must reference the existing descriptor or atomically
+  transfer-and-tombstone authority; it may not duplicate a component. Finishing
+  one component never consumes/closes the parent state. Only the aggregate-empty
+  commit may publish aggregate `Discharged` and expose CFG or finalization.
+
+`.await?` produces an explicit continuing control-flow outcome; it does not set
+a persistent `cancel_handled` bit. A current-task request consumes its exact
+epoch directly only when no cleanup aggregate is armed. Otherwise the task
+builds or extends the canonical aggregate, quarantines CFG under the mode above,
+and consumes/closes only after every component is discharged. A post-
+`NormalClaimed` request stays `Requested(e)` through `ResolutionCleanup` and
+any required `ScopeCleanup`; it cannot claim the child result again and may
+typed-drop an already transferred winner through one keyed frame-value
+component. `SourceCanceledClaimed` creates no parent epoch: its fixed
+disposition drains remaining operands under `SourceOwned`; `Capture` reaches an
+explicit no-value boundary without disturbing unrelated scopes, while
+`Propagate` first folds every active scope descriptor into that aggregate and
+then propagates source cancellation. The eventual body return or unhandled
+cancellation/source outcome chooses the normative finalization transition.
 
 ### 2.2 Linearization Invariant
-When `toka_task_request_cancel(tcb)` is invoked:
-1. `cancel_requested` is atomically set to `1`.
-2. If `state == TOKA_TCB_SUSPENDED` and `active_wait_id != TOKA_NO_WAIT_ID` (0xFFFFFFFF):
-   - `toka_wait_registry_try_wake(active_wait_id, active_slot_gen)` is called.
-   - If CAS on `WaitSet` succeeds, the task transitions to `TOKA_TCB_QUEUED` and is pushed onto the ready queue with cancellation wake status.
-   - If CAS on `WaitSet` fails (e.g. IO or timer event won first), the cancellation flag remains set. Upon resuming, the task detects `cancel_requested == 1` and unwinds.
-3. When unwinding, the coroutine executes cleanup destructors and transitions state to `TOKA_TCB_COMPLETED_CANCELED`.
+When `toka_task_request_cancel(tcb)` competes with an active wait:
+
+1. It acquire-validates and retains the full `active_wait_set` token and the
+   matching group, then checks that the TCB still links that same group.
+2. It first checks cancellation state, aggregate mode, and suspension kind.
+   An existing `Requested(e)` or `Handling(e)` is a duplicate: it may help
+   already selected cleanup work but cannot win a still-waiting
+   `AwaitCleanup`, `ResolutionCleanup`, `ScopeCleanup`, or `SourceCleanup`
+   group, consume the epoch, or create another wake. A request encountering
+   `Armed(SourceOutcome(source_token, disposition), SourceOwned)` with
+   `Open|Consumed` is the other cleanup-set exception: one
+   cancellation/cleanup-arbiter transaction admits the next checked epoch,
+   re-keys and converts the same aggregate to
+   `ParentEpoch(e) + CancelOwned + Handling(e)`, and adds any newly required
+   scope/value components without winning, uninstalling, or changing the kind
+   of an active `SourceCleanup` or source-owned `ScopeCleanup` set. Only an
+   `Ordinary` `Waiting` group with parent `Open|Consumed` attempts the shared
+   `Waiting -> WonPending(TaskCanceled)` CAS. Per-slot winner CAS is forbidden.
+3. Only the chosen descriptor, or a bounded helper completing that same
+   descriptor, may admit the next `Requested(e)` epoch and claim the matching
+   TCB schedule action. It then publishes `WonCommitted`, invalidates every
+   group slot, clears the matching TCB link, and calls `publish_once` for the
+   claimed full queue ticket. A matching unpublished ticket inserts once, a
+   matching published ticket is a no-op, and `NoTicket`/mismatch rejects.
+4. If ready, timeout, or completion already selected the group, a wait-local
+   cancellation event returns without side effects. A task-level cancellation
+   request instead bounded-helps committed logical uninstall and retries the
+   TCB cancellation/finalization arbiter; it cannot be lost merely because the
+   old wait already has a winner. Stale full tokens still fail without a TCB
+   dereference.
+5. An unhandled cancellation runs coroutine cleanup before it publishes
+   `TOKA_TCB_COMPLETED_CANCELED`. Explicit `.await?` capture may continue to a
+   later normal domain result, but cannot fabricate a `T` or bypass the same
+   one-shot terminal/result protocol.
+
+Each cleanup completion commits one component under the aggregate arbiter,
+then performs physical reference release with no runtime arbiter held. If components
+remain, the commit selects the next permitted cleanup kind while preserving
+`Requested|Handling` (or `Open|Consumed` for unconverted `SourceOwned`). If the
+component set becomes empty, one non-suspending final commit discharges the aggregate and
+either consumes/closes the task-cancellation epoch or propagates/captures the
+source-only outcome. No component may expose user CFG, finalization, or a
+second result claim on its own.
+
+Tasks without an active registration use the TCB cancellation/terminal
+arbitration defined by the normative RFC. In particular, cold `Created`
+cancellation must claim the task, destroy frame-owned obligations without
+running the body, and only then publish terminal cancellation. The exact current
+implementation remains subject to the closure gates in Section 6.
+
+Completion subscription uses the child TCB RFC's terminal/registry arbiter.
+After the fully initialized parent set is linked/`Waiting`, the subscriber
+holds the parent install/uninstall arbiter and then the child registry arbiter,
+revalidates that same full parent token/link/state, and either installs an
+`Active` full-token node before terminal or acquire-observes terminal and
+immediately routes the same `ChildTerminal` event without installing. A group
+winner serializes through the parent arbiter, so a node cannot be linked after
+the set has stopped waiting. Terminal publisher and logical unsubscribe compete
+`Active -> Selected(Publisher|Unsubscriber)`; any owner/helper must then win the
+single `Selected -> CommitClaimed` transition before it may attempt the
+publisher event (if selected), remove the node, release retained references,
+and publish `Inactive`. The child registry is closed and terminal/result state
+is release-published before `Selected(Publisher)` becomes visible; a committer
+acquires that terminal state before sending `ChildTerminal`. If a publisher
+event wins the parent group, its source
+node reaches `Inactive` before whole-group teardown. A waiter retains the node
+and releases both arbiters before waiting; waiting while holding the parent
+arbiter is forbidden. Selector/helper descriptor refs keep node storage and its
+TCB/WaitSet refs alive across logical unlink; physical free waits for
+`Inactive` and every such ref release. A helper obtains its first descriptor
+reference only under the child registry arbiter or from an already retained
+hazard—never by loading a bare pointer before ref-increment. The unique
+`CommitClaimed` owner action is inline, bounded, non-suspending, invokes no user
+cleanup, and cannot enqueue work to the same executor and wait for it.
+
+Any result/frame cleanup ownership claimed while a runtime arbiter is held
+retains the TCB/frame, releases every scheduler, wait, completion, scope,
+terminal, and cancellation arbiter, and only then invokes the compiler-installed
+typed callback. `Taken` or terminal state is release-published after the
+callback returns; cleanup code is never invoked under those arbiters.
 
 ---
 
 ## 3. Loser Cleanup Guarantee (`race2`)
 
-For `race2(cede first, cede second) -> async RaceWinner`:
-1. **Preparation**: Allocates 2-slot `WaitSet` bound to parent task `(task_id, wait_gen)`.
-2. **Subscription**: Subscribes completion notifications for `first` and `second`.
-3. **Suspension**: Two-phase suspend on parent coroutine.
-4. **Winner Resolution & Loser Join**:
-   - Inspects `toka_wait_registry_is_winner`.
-   - Issues `task_cancel(loser)`.
-   - **Mandatory Join**: Awaits `loser` until `toka_tcb_is_done(loser)` returns `true` (`TOKA_TCB_COMPLETED` or `TOKA_TCB_COMPLETED_CANCELED`).
-   - Releases `WaitSet` slots.
-   - Returns `RaceWinner::First(res1)` or `RaceWinner::Second(res2)`.
+The intended conforming sequence for
+`race2(cede first, cede second) -> async RaceWinner` is:
 
-No caller receives the result of `race2` until the loser task is completely terminated and disarmed.
+1. **Preparation**: Allocate a 2-slot `WaitSet` bound to the parent
+   `(TaskToken, task_schedule_generation)` and subscribe both children before
+   activating either cold handle.
+2. **Logical uninstall**: Acquire-capture the immutable winner descriptor and
+   retained authorities, complete/observe `WonCommitted`, invalidate both
+   registrations, clear the matching `active_wait_set`, and disarm the old
+   teardown obligation before any callback, return, unwind, or nested wait.
+3. **Joint resolution**: Under the cancellation/cleanup arbiter, resolve the
+   selected child's terminal kind, parent state, and canonical task-cleanup
+   aggregate in one transaction:
+
+   - selected `Completed` plus parent `Open|Consumed` claims
+     `NormalClaimed`, authorizes exactly one typed winner disposition, and
+     records the mandatory loser component;
+   - selected `CompletedCanceled` plus parent `Open|Consumed` claims
+     `SourceCanceledClaimed(source)`, fixes the boundary's `Capture|Propagate`
+     disposition, creates
+     `TaskCleanupObligation(SourceOutcome(source_token, disposition), oid)` in
+     `SourceOwned` mode for the canceled source and loser components, and
+     creates no parent cancellation epoch; `Propagate` additionally closes
+     registration and folds every active scope descriptor into that aggregate,
+     while `Capture` does not disturb unrelated scopes;
+     or
+   - an already admitted parent `Requested(e)` claims `CancelClaimed(e)`,
+     builds/extends `TaskCleanupObligation(ParentEpoch(e), oid)` in
+     `CancelOwned` mode from both operands and overlapping structured work, and
+     jointly enters `Handling(e)`.
+
+   A race operand, its structured node, and a scope descriptor may share
+   identity but cannot duplicate result-disposition or retained-reference
+   authority in different components.
+4. **Join and drain**: Only `NormalClaimed` moves a selected payload into one
+   armed typed winner temporary. The combinator cancels every non-winning or
+   source-cleanup operand and waits until it is terminal, all registrations are
+   inactive, and its result obligation is discharged. A live normal loser
+   result is privately claimed once, typed-dropped, and only then published
+   `ReadyLive -> Taken`; a canceled operand has no payload.
+5. **Aggregate commit**: Completing one operand commits only its component.
+   If `NormalClaimed` remains selected and no parent request suppresses it, the
+   final disposition publishes `Discharged` and constructs exactly one
+   `RaceWinner`. If the first terminal child was canceled, no `RaceWinner` is
+   constructed: `SourceCleanup` drains the other operand and, for `Propagate`,
+   `ScopeCleanup` drains the active scope descriptors before the aggregate-
+   empty commit propagates that source cancellation or reaches an explicit no-
+   value boundary. A parent request arriving during source-owned cleanup re-keys
+   and converts that same aggregate, preserving its `oid` and components, to
+   `ParentEpoch(e) + CancelOwned + Handling(e)` without winning the cleanup
+   group.
+
+If a post-`NormalClaimed` request is admitted while loser or scope cleanup
+remains, only `ResolutionCleanup(e, await_obligation_id)` and
+`ScopeCleanup(task_cleanup_obligation_id)` are permitted. The `ResolutionOwned`
+aggregate preserves `Requested(e)`, the typed winner witness, and every named
+loser/scope/value obligation until the aggregate-empty commit; repeated task
+cancellation coalesces outside those groups.
+
+If parent task cancellation wins before normal/source resolution, both operands
+become cancel-join-drain components and no winner is constructed. If a child-
+canceled source claim wins first, source cleanup and a racing parent request must still
+produce exactly one ordered outcome: source-only propagation/capture, or
+conversion to the parent-cancellation aggregate. Neither path may fabricate a
+typed winner or repeat an operand claim.
+
+A conforming implementation must not expose any `race2` outcome until every
+non-returned operand is terminal, disarmed, and result-discharged. Terminal state
+alone is not this predicate.
 
 ---
 
 ## 4. Retained Lifetime (`TaskRef` & `TaskScope`)
 
-- `TaskScope` manages tasks using `TaskRef` objects holding explicit TCB reference counts (`tcb->ref_count`).
-- Even if `TaskHandle` is detached or dropped by the caller, `TaskScope` retains valid references to the TCB.
-- `scope.close().await`:
-  1. Issues `cancel_all()`.
-  2. Joins all tracked tasks until `toka_tcb_is_done` returns `true`.
-  3. Releases retained TCB reference counts.
-- Eliminates UAF (Use-After-Free) entirely.
+The Phase 5 retained-lifetime target is:
 
-## 5. Cancellation and Synchronous Wait Boundaries
+- `TaskScope` manages tasks using `TaskRef` objects holding the full `TaskToken`
+  and checked `lifetime_ref_count` ownership.
+- Owning heterogeneous enrollment consumes the typed `TaskHandle` in one
+  transaction: validate/retain the full token, transfer
+  `ConsumerOwned -> RuntimeOwned(ScopeNode(full_node_token))`, link that exact
+  node with typed-drop disposition, and only then activate or expose the child.
+  The generic detached drain must reject this owner; result readiness routes to
+  the node's progress protocol. Failure before commit leaves caller cleanup
+  authority intact; failure after commit joins the registry's closing
+  descriptor. The current split
+  `task_ref_from_handle(cede handle)` followed by `track_ref`/`start` does not
+  establish this ordering and is not Phase-5 conformance evidence. A plain
+  retain/join-only `TaskRef` has no result disposition and cannot be used to
+  steal or wait for an externally consumer-owned payload.
+- Its registry has `Open | Closing(reason) | Closed` state under the same
+  parent-cancellation/close arbiter used for child registration. Registration
+  either links `Tracked` (and, for a new child, does so before activation/
+  exposure), acquire-observes an already terminal child for immediate drain,
+  or observes `Closing` and joins that still-live cancel-join-drain descriptor.
+  Observing `Closed` rejects before lifecycle/result-authority transfer,
+  releases the temporary retain, and leaves the full typed handle/cleanup
+  authority with the caller. If cancellation is `Requested|Handling` while the
+  registry is still `Open`, registration either creates/joins one concrete
+  `Closing(TaskCanceled(epoch), descriptor)`, adds its canonical
+  `ScopeDescriptor` component to the task-wide aggregate, or rejects before
+  authority transfer. `Requested + ResolutionOwned` preserves `Requested` and
+  extends that aggregate; `Handling + CancelOwned` extends its matching
+  aggregate; an unobserved `Requested` may jointly establish
+  `Handling + CancelOwned`. It cannot create a parallel scope obligation or
+  duplicate authority already represented by an await/race component. A
+  snapshot followed by an unlocked close flag is insufficient.
+- An observer registration retains its own valid TCB reference even if an
+  external `TaskHandle` is later detached or dropped. An owning enrollment has
+  no later ordinary drop of the consumed handle; its committed registry/runtime
+  references replace that obligation.
+- Parent/scope-before-child is the only nested lock order. Close/cancel holds the
+  scope arbiter only to publish `Closing`, select nodes, retain immutable work,
+  and update in-flight accounting. It releases that arbiter before requesting
+  cancellation, installing/waiting on progress, claiming results, decrementing
+  delegated references, or invoking typed cleanup. A child terminal publisher
+  releases the child arbiter before acquiring the scope arbiter.
+- Every selected node is a helpable state machine:
+
+  ```text
+  CommitClaimed(CancelPending)
+    -> WaitingTerminal
+    -> WaitingNoActive
+    -> ResultPending
+    -> CallbackClaimed(owner)?
+    -> ReleaseReady
+    -> Inactive
+  ```
+
+  Helpers may request cancellation and advance bounded phases. The sole
+  `CallbackClaimed` owner retains the frame, releases all runtime arbiters,
+  performs the non-suspending typed drop, and release-publishes progress.
+  `ReleaseReady -> Inactive` uniquely owns registry removal, in-flight
+  decrement, and retained-reference handoff. Observer-only nodes skip result
+  phases and leave external `ConsumerOwned` results untouched.
+- `ScopeProgress` uses a subscribe-or-observe arm handshake. Scope-cleanup
+  prepare/commit first revalidates the stable aggregate id and its exact current
+  key/mode pair; a source-to-parent conversion leaves the suspension kind
+  unchanged. After the parent publishes and links a fully initialized
+  `ScopeCleanup` WaitSet, it enters the retained descriptor's progress arbiter
+  and revalidates the full parent
+  `WaitToken`, active-set link, `Waiting` state, descriptor identity, and phase
+  snapshot. If phase already advanced or the descriptor is `Closed`, it links
+  nothing and routes one immediate progress attempt after unlocking; otherwise
+  it links `Active` before unlock. Phase publication and unsubscribe compete
+  through equivalent `Active -> Selected -> CommitClaimed -> Inactive` states.
+  A selected publisher retains descriptor/parent references, releases the
+  descriptor arbiter, and only then attempts the parent group CAS. Terminal,
+  no-active, result-drop completion, node `Inactive`, and descriptor `Closed`
+  all publish progress. This covers progress-before-arm, arm-before-progress,
+  and progress-during-arm without a new generation domain.
+- A conforming close drains every selected node through `Inactive`; only an
+  empty registry with all node-owned result dispositions discharged and no in-
+  flight selected descriptor may publish `Closing -> Closed`. Each closed
+  descriptor removes only its canonical aggregate component. Remaining await,
+  loser, value, or scope components select the next cleanup kind without
+  consuming/closing the parent state; only the task-wide aggregate-empty commit
+  can do so. A future typed join API must define a separate typed reservation/
+  return channel; `TaskScope.close` does not transfer results.
+- The retained references are the intended UAF-prevention substrate. Frame
+  release follows the TCB's five frame guards, including irreversible frame-
+  access retirement; the TCB and task-registry slot
+  remain live until every owner/handle/`TaskRef`/queue/wait/subscription/helper
+  reference is released. If frame and TCB are coallocated, reference zero is
+  also a frame-free guard. The record does not claim closure until cancellation,
+  join, result discharge, frame reclamation, and TCB lifetime pass the gates
+  below.
+
+## 5. Required Cancellation and Synchronous Wait Boundaries
 
 - `race2` installs completion subscriptions before activating either input. It
   then idempotently starts both inputs, so cold `TaskHandle` values are valid
   race operands.
 - A structured combinator registers each child TCB with its parent cancellation
-  context. Parent cancellation snapshots and cancels all registered children;
-  their timer/IO registrations are reclaimed before the canceled parent frame
-  is released.
+  context through the shared registry arbiter. Parent cancellation atomically
+  closes open registration and selects all tracked children; a racing
+  registration either creates/enters a concrete closing descriptor or is
+  rejected before ownership transfer; register-after-`Closed` cannot resurrect
+  a completed descriptor. Natural completion and close compete
+  `Tracked -> ChildSelected | CloseSelected -> CommitClaimed -> Inactive`;
+  selected nodes remain in in-flight accounting until terminal/no-active state,
+  their node-authorized result disposition, and retained references are all
+  discharged. Every owning selected child's timer/IO registrations and result
+  obligation are discharged before the canceled parent frame is released;
+  observer-only registration never grants result authority.
 - Async `.await` propagates `CANCELED` through the current coroutine and does
   not fabricate a `T` payload. A synchronous `.wait`/`block_on` encountering
   an unhandled canceled task is a non-returning runtime error; callers needing
@@ -83,3 +425,198 @@ No caller receives the result of `race2` until the loser task is completely term
   cancellation through this boundary may return a normal domain outcome; the
   runtime records that completion as `COMPLETED`, not as an unhandled canceled
   task.
+- Child-terminal delivery, a direct `WaitOutcome::SourceCanceled`, and parent
+  cancellation jointly claim the await's `AwaitResolution` under the
+  cancellation/cleanup arbiter. A normal child plus parent `Open|Consumed`
+  claims `NormalClaimed` and authorizes one typed transfer. A canceled
+  child/source plus parent `Open|Consumed` claims
+  `SourceCanceledClaimed(source)`, fixes the boundary's `Capture|Propagate`
+  disposition, and has no `T`; remaining work uses
+  `TaskCleanupObligation(SourceOutcome(source_token, disposition), oid)` in
+  `SourceOwned` mode. `Capture` owns only this await/combinator's components;
+  `Propagate` also closes structured registration and adds every active scope
+  descriptor. A single canceled await with no asynchronous component left,
+  including no scope required by `Propagate`, performs its bounded no-payload
+  validation and delegated reference release and publishes
+  `SourceCanceledClaimed -> Discharged` without installing an empty aggregate.
+  Only after that release may `Capture` continue with parent `Open|Consumed`, or
+  `Propagate` jointly close it with canceled finalization. A pre-claim parent
+  `Requested(e)` instead claims `CancelClaimed(e)`, establishes
+  `TaskCleanupObligation(ParentEpoch(e), oid)` in `CancelOwned` mode, and jointly
+  enters `Handling(e)`. A post-normal-claim request establishes or extends
+  `ParentEpoch(e) + ResolutionOwned`, preserves `Requested(e)`, and cannot claim
+  the child result again.
+- An await whose parent task cancellation wins does not immediately enter user
+  CFG or terminal frame cleanup. After uninstalling the old parent WaitSet, an
+  internal await-cleanup continuation cancels and joins the retained child to
+  terminal/no-active-registration, then typed-drops any normal result while
+  retaining the child reference and aggregate component. It may suspend only
+  with the shielded `AwaitCleanup(e, await_obligation_id)` kind on a new child-
+  terminal-only WaitSet; repeated task cancellation coalesces and cannot win
+  that group.
+  After any callback returns outside runtime arbiters, a component commit proves
+  result discharge, publishes `CancelClaimed -> Discharged`, and removes only
+  that exact authority. Delegated decrements run outside all arbiters. If
+  components remain, the same commit selects the next permitted
+  `AwaitCleanup`, `ResolutionCleanup`, `ScopeCleanup`, or `SourceCleanup` while
+  preserving the mode-appropriate parent state. Only the aggregate-empty final
+  commit may publish aggregate `Discharged` and consume/close a parent epoch, or
+  publish `SourceCanceledClaimed -> Discharged` and capture/propagate the fixed
+  `SourceOutcome` disposition. `Capture` preserves parent `Open|Consumed`;
+  `Propagate` jointly closes it with canceled finalization after all required
+  scope descriptors are closed. User CFG and parent terminal cleanup are
+  invisible until that commit and its delegated releases finish.
+
+## 6. Pending Phase 5 Closure Gates
+
+Phase 5 remains open until current-revision evidence proves all of the following
+against the normative TCB RFC:
+
+1. **CAS-first cancellation:** ready, timeout, completion, and cancellation
+   races across every slot have one group winner; only a winning/helped
+   `TaskCanceled` descriptor admits
+   `Open(e)|Consumed(e) -> Requested(e+1)` or claims its cancellation wake.
+   `ChildTerminal`/source-canceled winners schedule without changing the parent
+   epoch. Losing and stale wait-local events have no side effects. A task-level
+   request that encounters a ready/timeout winner
+   helps or observes committed uninstall and retries the TCB arbiter, without
+   duplicating queue publication or losing the request.
+2. **Result take/drop:** a normal result is published `Pending -> ReadyLive` and
+   only after acquire-observing normal terminal completion exactly one claimant
+   performs private `Unclaimed -> Claimed`, transfers or invokes the compiler-
+   installed typed drop entry, and then publishes the frozen public transition
+   `ReadyLive -> Taken`. A second claim fails;
+   canceled completion has no readable payload, and all publications obey the
+   normative release/acquire edges. A re-entrant destructor probe proves typed
+   result/frame cleanup is invoked with no runtime arbiter held.
+3. **Cold no-body cleanup-before-terminal:** canceling a `Created` task or
+   dropping its last handle never runs its body, drops frame-owned `cede`
+   parameters and other armed obligations exactly once, and publishes/notifies
+   terminal cancellation or reclaims the frame only after that cleanup.
+4. **Suspend rollback:** every allocation or registration failure after
+   `prepare_suspend` aborts the suspension, completes or invalidates any
+   `WonPending` descriptor, disarms partial timer/reactor/completion/progress/
+   parent-cancellation registrations, restores a runnable TCB state, and
+   releases all temporary wait-set/slot, TCB, and descriptor references without
+   resetting or discharging task-wide cleanup. The four internal kinds retain
+   their exact pre-attempt authority: `AwaitCleanup` preserves
+   `Handling + CancelOwned + CancelClaimed`; `ResolutionCleanup` preserves
+   `Requested + ResolutionOwned + NormalClaimed` and every winner/loser/value
+   witness; `ScopeCleanup` preserves its stable aggregate id, exact current
+   key/mode pair, retained descriptors, and phase snapshots—including the
+   source-owned or atomically converted form; and `SourceCleanup` preserves
+   `SourceOutcome(source_token, disposition) + SourceOwned` with
+   `Open|Consumed + SourceCanceledClaimed`, or the same components after atomic
+   conversion to
+   `ParentEpoch(e) + CancelOwned + Handling(e)`. Only nodes installed by the
+   failed WaitSet attempt are invalidated.
+5. **Identity freshness:** stale ready, wait, join, and cancellation entries
+   carrying an old task-instance, wait-set, or wait-slot generation cannot
+   retain, schedule, drain, or release a newer TCB/group that reused the
+   numeric slot; every generation domain fails closed at exhaustion.
+6. **Structured join consumers:** `race2`, `select2`, and explicit `TaskScope`
+   close paths do not return until losing/canceled children are terminal, their
+   registrations are disarmed, and their result/frame obligations are
+   discharged. The old winner WaitSet is logically uninstalled before the
+   loser cancel/join path may install another suspension. This does not
+   establish lexical borrowed-task semantics.
+7. **Queue publication:** forced preemption after a successful TCB queue claim,
+   after `WonCommitted`, and after logical uninstall proves a helper publishes
+   the same full ticket exactly once. A late helper after worker dequeue sees
+   `NoTicket`/generation mismatch and cannot reinsert or resume the epoch.
+8. **Completion subscription:** completion-before-subscribe,
+   subscribe-before-completion, normal/canceled terminal publication,
+   parent-arm-vs-child-terminal, another-source-wins-during-arm, publisher-vs-
+   unsubscriber, and stale child/parent token permutations prove one
+   `ChildTerminal` group attempt and exactly one registry removal/retained-
+   reference release, with no orphan node or lost wake. Initial helper ref
+   acquisition is registry/hazard protected, and a forced single-worker run
+   proves the bounded `CommitClaimed` action never waits on queued self-work.
+9. **Await resolution and task-wide cleanup barrier:** parent cancellation at
+   every child lifecycle point, normal/canceled child terminal delivery, direct
+   `WaitOutcome::SourceCanceled`, and cancellation immediately before/after the
+   joint resolution prove exactly one `NormalClaimed`,
+   `SourceCanceledClaimed`, or `CancelClaimed`. A pre-claim request jointly
+   performs `Requested -> Handling`; a post-`NormalClaimed` request remains
+   `Requested` under `ResolutionOwned` and cannot reselect the result. Single-
+   child canceled capture/propagation, first-child-canceled and both-canceled
+   `race2`, and a parent request during `SourceCleanup` or source-owned
+   `ScopeCleanup` prove that no `T` or `RaceWinner` is fabricated. `Capture`
+   preserves `Open|Consumed` and leaves
+   unrelated scopes alone; `Propagate` closes registration and drains every
+   active scope descriptor before canceled finalization. The atomic
+   conversion from `SourceOutcome(source_token, disposition) + SourceOwned` to
+   `ParentEpoch(e) + CancelOwned` jointly performs
+   `Open|Consumed -> Handling(e)`, retains the aggregate `oid`, does not change
+   an active `ScopeCleanup` kind, and neither wins that progress set nor loses
+   or duplicates any source/loser/scope/value component.
+
+   Forced single-worker cases exercise `AwaitCleanup`, `ResolutionCleanup`,
+   `ScopeCleanup`, and `SourceCleanup` and prove that each kind accepts only its
+   declared child-terminal or `ScopeProgress` source. The old set is inactive
+   before an internal cleanup set is installed; repeated task cancellation
+   coalesces outside that set. Component commits preserve the mode-appropriate
+   `Requested|Handling|Open|Consumed` state, perform typed callbacks and
+   delegated releases outside arbiters, and cannot expose CFG or finalization.
+   A component commit may complete its matching `AwaitResolution` and remove
+   only that exact authority. Except for the bounded single-canceled-await fast
+   path with no aggregate, `SourceCanceledClaimed` remains armed until the same
+   aggregate is empty, whether its key is still `SourceOutcome` or has converted
+   to `ParentEpoch`. Only that aggregate-empty commit publishes the
+   `TaskCleanupObligation` and retained resolution witness as `Discharged` and
+   consumes/closes or preserves the parent state according to its key and
+   disposition. Every normal child result
+   is transferred or typed-dropped exactly once, and parent-canceled `race2`
+   drains both operands without constructing a winner.
+10. **Detach/complete race:** detach before terminal, terminal before detach,
+    detach between `ReadyLive` and `Completed`, canceled completion, and
+    concurrent drain helpers all invoke the same acquire
+    `try_drain_detached_result` protocol only for `RuntimeOwned(Detached)`.
+    Exactly one runtime claimant typed-drops a live detached result and publishes
+    `Taken`; no ordering strands the obligation or reclaims the frame first.
+    `RuntimeOwned(ScopeNode(full_node_token))` is rejected by this helper and
+    routes result readiness to that exact node's Gate 11 progress protocol.
+11. **Structured-child registry and progress:** register-before-close,
+    close-before-register, already-terminal registration, natural completion
+    versus close selection, repeated close/cancel help, multiple scopes, racing
+    enrollment, and stale-token permutations prove no activated child is
+    omitted and no result/reference authority appears in two aggregate
+    components. Owning cold enrollment proves
+    `ConsumerOwned -> RuntimeOwned(ScopeNode(full_node_token))` and registry
+    linking precede activation; `Open + Requested` creates/joins a real closing
+    descriptor or rejects before transfer; register-after-`Closed` releases only
+    its temporary retain and preserves caller authority. Observer-only nodes do
+    not claim or block on an external result.
+
+    Forced preemption and re-entrant/single-worker cases help every node through
+    `CommitClaimed(CancelPending)`, `WaitingTerminal`, `WaitingNoActive`,
+    `ResultPending`, optional `CallbackClaimed`, `ReleaseReady`, and `Inactive`
+    in order, with the unique typed callback outside all runtime arbiters and
+    the fixed parent/scope-before-child lock order. Progress-before-arm, arm-
+    before-progress, progress-during-arm, stale parent/descriptor identity, terminal/no-active,
+    result-callback completion, node `Inactive`, and descriptor `Closed` prove
+    the `ScopeProgress` subscribe-or-observe handshake has no lost wake and adds
+    no generation domain. `ScopeCleanup` binds the stable aggregate `oid` and
+    revalidates its exact current `ParentEpoch + CancelOwned + Handling`,
+    `ParentEpoch + ResolutionOwned + Requested`, or
+    `SourceOutcome(source_token, disposition) + SourceOwned + Open|Consumed`
+    pair while descriptors remain; source-to-parent conversion preserves the
+    `oid` and active progress set. A descriptor
+    reaches `Closed` only after every selected node is `Inactive` and all node-
+    owned dispositions/references are discharged; closing it removes only its
+    canonical component, and only the task-wide aggregate-empty commit may
+    consume/close the parent state.
+12. **TCB lifetime references:** an extra `TaskRef` retained across terminal,
+    result drain, subscription teardown, and eligible frame release keeps the
+    TCB and registry slot live and unreused. Stale/overflow retain fails closed,
+    zero is not resurrected, and coallocated frame/TCB storage is not freed
+    until the final checked reference is released.
+13. **Frame-access retirement:** forced preemption after terminal publication and
+    concurrent detached `ReadyLive -> Taken`, but before the terminal publisher,
+    final-suspend, or cold finalizer releases its last pin, proves the frame is
+    not reclaimed. A still-valid claimant may race `Open(0) -> Open(1)`; only a
+    reclaimer that revalidates the other guards and wins `Open(0) -> Retired`
+    may null/free storage. Stale, overflow, and retired acquisition fail closed.
+
+An ABI baseline, a source-only functional test, or a historical phase result is
+supporting evidence, not proof that these gates are closed.

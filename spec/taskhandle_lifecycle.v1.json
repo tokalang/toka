@@ -12,57 +12,57 @@
     },
     {
       "name": "activate",
-      "source_states": ["created"],
-      "target_states": ["queued", "running"],
-      "handle_obligation": "start, await, and wait may activate a created handle; repeated start does not create a second execution.",
-      "result_obligation": "The result remains pending until terminal completion.",
-      "guarantees": ["start queues work and never inlines the task body on the caller stack."]
+      "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
+      "target_states": ["queued", "running", "suspended", "completed", "completed-canceled"],
+      "handle_obligation": "start, await, and wait may activate a created handle; a repeated start of an already activated or terminal handle preserves its state and does not create a second execution.",
+      "result_obligation": "First activation leaves the result pending until terminal completion; repeated activation preserves the existing result state and cannot republish or reclaim it.",
+      "guarantees": ["start queues work and never inlines the task body on the caller stack.", "If a structured scope consumes a cold handle, lifecycle and result authority transfer and registry linking commit before activation; ordinary consumed-handle drop cannot intervene."]
     },
     {
       "name": "await",
       "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
       "target_states": ["completed", "completed-canceled"],
       "handle_obligation": "The awaiter is resumed exactly once after the child becomes terminal.",
-      "result_obligation": "A normal ready-live result is consumed once; a canceled result propagates cancellation and does not fabricate a payload.",
-      "guarantees": ["Completion before continuation registration remains linearized."]
+      "result_obligation": "After acquire-observing normal terminal completion, one claimant may privately claim and consume the ready-live result; a canceled result propagates cancellation and does not fabricate a payload.",
+      "guarantees": ["Completion before continuation registration remains linearized.", "Normal child-result disposition and parent cancellation share one resolution claim; the awaiting frame uniquely owns a normal-claimed result, while a cancellation that wins first enters the cancel-join-drain path.", "A cancellation admitted after normal disposition cannot double-claim the child result, but remains pending for the immediate boundary after mandatory cleanup and may suppress source-visible delivery.", "If parent cancellation wins while the child is active, an internal cancel-join-drain barrier reaches child terminal and discharges its result before user continuation or parent finalization."]
     },
     {
       "name": "await-outcome",
       "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
       "target_states": ["completed", "completed-canceled"],
       "handle_obligation": "The awaiter is resumed exactly once after the child becomes terminal.",
-      "result_obligation": "A normal ready-live result is consumed once as Some(T); a canceled result is represented as None without fabricating T.",
-      "guarantees": ["Cancellation capture is explicit at the .await? boundary."]
+      "result_obligation": "After acquire-observing normal terminal completion, one claimant may privately claim and consume the ready-live result as Some(T); a canceled result is represented as None without fabricating T.",
+      "guarantees": ["Cancellation capture is explicit at the .await? boundary.", "Normal child-result disposition and parent cancellation share one resolution claim; the awaiting frame uniquely owns a normal-claimed result, while a cancellation that wins first enters the cancel-join-drain path.", "A cancellation admitted after normal disposition cannot double-claim the child result, but remains pending for the immediate boundary after mandatory cleanup and may suppress source-visible delivery.", "If parent cancellation wins while the child is active, an internal cancel-join-drain barrier reaches child terminal and discharges its result before returning None."]
     },
     {
       "name": "cancel",
-      "source_states": ["created", "queued", "running", "preparing", "suspended"],
-      "target_states": ["queued", "completed-canceled"],
-      "handle_obligation": "Cancellation marks the task and wakes or queues a suspended task so that cleanup can run.",
-      "result_obligation": "A canceled completion publishes canceled, never a readable result payload.",
-      "guarantees": ["Cancellation is inherited by an awaited child and cancels active wait registrations."]
+      "source_states": ["created", "queued", "running", "suspended"],
+      "target_states": ["queued", "running", "suspended", "completed", "completed-canceled"],
+      "handle_obligation": "Cancellation requests one observation epoch, wakes or queues suspended work, and may leave a running task running until its next observation boundary.",
+      "result_obligation": "Unhandled cancellation publishes canceled with no readable payload; explicit current-task cancellation capture may consume that request and later publish an ordinary normal result.",
+      "guarantees": ["Cancellation admitted against an ordinary wait wakes or queues that task and cancels the matching active registrations; a repeated request during AwaitCleanup, ResolutionCleanup, SourceCleanup, or ScopeCleanup coalesces and may help retained work but does not uninstall or win the cleanup-only wait.", "Cancellation is inherited by an awaited child through the cancel-join-drain obligation.", "The .await? boundary consumes a captured current-task cancellation once and may continue to normal completion."]
     },
     {
       "name": "drop",
       "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
       "target_states": ["released", "detached"],
       "handle_obligation": "Dropping a created handle reclaims its frame; dropping an activated handle transfers runtime ownership through detach.",
-      "result_obligation": "An unstarted frame drops frame-owned cede parameters without running the body.",
-      "guarantees": ["Owner release is linearized exactly once."]
+      "result_obligation": "Cold drop destroys frame-owned cede parameters without running the body and publishes canceled before reclaim; when an activated or completed task still has a ConsumerOwned result obligation, drop atomically transfers it to RuntimeOwned(Detached) and participates in the same detach/terminal drain so any normal ready-live result is typed-dropped and published taken before frame reclamation.",
+      "guarantees": ["Owner release is linearized exactly once.", "Cold drop discharges every frame-owned no-body cleanup obligation before canceled terminal publication, completion notification, or reclaim.", "Activated and completed drop use the two-sided RuntimeOwned(Detached) result drain; neither a late detach nor terminal publication can strand a live payload."]
     },
     {
       "name": "detach",
       "source_states": ["created", "queued", "running", "suspended", "completed", "completed-canceled"],
       "target_states": ["detached", "released"],
       "handle_obligation": "The runtime owns an activated detached task until it reaches a terminal state.",
-      "result_obligation": "A detached task result is not exposed to the caller; an untaken live result is reclaimed with its frame.",
+      "result_obligation": "After acquire-observing normal terminal completion, a detached ready-live result is privately claimed once, destroyed through its compiler-installed typed drop entry, and published taken before frame reclamation; a canceled result has no payload.",
       "guarantees": ["block_on drains runtime-owned detached work before executor shutdown."]
     }
   ],
   "result_states": [
-    {"name": "pending", "value": 0, "meaning": "No terminal result is published.", "successor_states": ["ready-live", "canceled"]},
-    {"name": "ready-live", "value": 1, "meaning": "A normal result payload is available for exactly one take.", "successor_states": ["taken"]},
-    {"name": "taken", "value": 2, "meaning": "The normal payload was consumed and cannot be taken again.", "successor_states": []},
+    {"name": "pending", "value": 0, "meaning": "No normal payload ownership commit or canceled no-payload result has been published.", "successor_states": ["ready-live", "canceled"]},
+    {"name": "ready-live", "value": 1, "meaning": "A normal result payload has been committed, but no claimant may read or privately claim it until acquire-observing the task's normal terminal state; after that gate it permits exactly one typed transfer or destruction.", "successor_states": ["taken"]},
+    {"name": "taken", "value": 2, "meaning": "The unique claimant completed typed transfer or destruction of the normal payload; it cannot be claimed again.", "successor_states": []},
     {"name": "canceled", "value": 3, "meaning": "Cancellation completed without publishing a result payload.", "successor_states": []}
   ],
   "redline_tests": [

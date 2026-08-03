@@ -1,8 +1,15 @@
 # Toka 1.0 Closure Plan
 
-Status: `Frozen`
+Status: `Frozen historical ledger`
 
-This document is the single execution index for taking Toka from the current
+**Evidence authority:** Status terms such as `Complete`, `current candidate`,
+and `Frozen` in this document are relative to the recorded 1.0/RC evidence and
+its final candidate revision
+`ca8181129c6d726f1295f5546171e18360b05bcb`. They do not certify current HEAD.
+Current-HEAD blockers and P-1 requalification are tracked in
+[`semantic_contract_evolution_roadmap_rfc.md`](semantic_core/semantic_contract_evolution_roadmap_rfc.md).
+
+This document was the execution index for taking Toka from the then-current
 0.9.8 line to the 1.0 language and compiler freeze. It records scope, phase
 status, blockers, evidence, and stop conditions. It does not duplicate the
 language specification or redefine an existing language rule.
@@ -307,7 +314,7 @@ an external supported-platform result. Ordinary incomplete work remains
 - Version and interface metadata are updated only after all earlier phases are
   `Complete`.
 
-## 8. Current Evidence Baseline
+## 8. Recorded Evidence Baseline
 
 The starting baseline already includes:
 
@@ -328,7 +335,7 @@ The starting baseline already includes:
 - completed the iterator-protocol closure and its replacement four-target
   `v0.9.8-09-RC` matrix; that report is historical evidence and predates the
   active `0.9.9-01` tooling candidate;
-- completed current-candidate qualification at revision
+- completed candidate qualification at revision
   `ca8181129c6d726f1295f5546171e18360b05bcb`: release-gate run `29910583851`
   passed all 13 stages on Linux x64/arm64 and macOS x64/arm64 with clean
   schema-version-2 reports;
@@ -365,8 +372,9 @@ Toka 1.0 may be frozen only when all of the following are true:
 - all backend memory contracts remain non-default unless separately promoted.
 
 The `v0.9.8-08-RC` evidence at revision `3ab00dff` and the later
-`v0.9.8-09-RC` evidence at revision `a39c6acd` are historical baselines. The
-current frozen candidate is `0.9.9-01` at revision
+`v0.9.8-09-RC` evidence at revision `a39c6acd` are historical baselines. At
+this ledger's final qualification point, the frozen candidate was `0.9.9-01`
+at revision
 `ca8181129c6d726f1295f5546171e18360b05bcb`; it includes the later SDK,
 semantic tooling, AI interfaces, and scale qualification and passed the
 four-target matrix in run `29910583851`. The document is therefore `Frozen`

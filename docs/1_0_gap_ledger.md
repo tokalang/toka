@@ -1,9 +1,19 @@
 # Toka 1.0 Qualification Evidence Ledger
 
-**Status**: Qualification & Discovery Ledger (RC4 current-revision Tier 1 qualification complete)
-**Authority Hierarchy**:
-- Normative language and compiler rules are governed by [`docs/1_0_freeze_decision_list.md`](1_0_freeze_decision_list.md) and [`docs/1_0_closure_plan.md`](1_0_closure_plan.md).
-- This ledger tracks empirical evidence (conformance tests, benchmark logs, sanitizer build smoke, micro-slices) for production qualification.
+**Status:** Historical Qualification & Discovery Ledger. RC4 Tier 1 was
+complete for recorded candidate revision
+`01e6e88be4aef4593fd630355c9763755ed05bd4`; this is not current-HEAD
+qualification.
+
+**Authority hierarchy:**
+
+- Frozen 1.0 language scope and exclusions are governed by
+  [`1_0_freeze_decision_list.md`](1_0_freeze_decision_list.md). The linked
+  closure plan and this ledger retain exact-revision historical evidence.
+- Current-HEAD blockers and the active P-1 requalification gate are tracked in
+  [`semantic_contract_evolution_roadmap_rfc.md`](semantic_core/semantic_contract_evolution_roadmap_rfc.md).
+- This ledger tracks empirical evidence (conformance tests, benchmark logs,
+  sanitizer build smoke, micro-slices) for its recorded production candidates.
 
 ---
 
@@ -33,7 +43,7 @@
   example is composition evidence, not a new generic `Pool<T>` or web
   framework contract. The complete matrix and release procedure are in
   [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
-- **Current maintainer evidence (2026-07-30, `c6cb0b73`)**: the full
+- **Recorded maintainer evidence (2026-07-30, `c6cb0b73`)**: the full
   conformance runner completed `214 Passed, 0 Failed`; the TaskHandle
   lifecycle, cede-obligation, and H/P capability ABI gates passed; and
   `build/data-access-real-service.json` reported `status: passed`. The Docker
@@ -55,7 +65,7 @@
 | **GAP-LANG-03b** | **Async Task Cancellation Destructors**<br>Rich cancellation and exactly-once destructor invocation upon task handle cancellation. | Language | `P2` | Post-1.0 | `planned` | `docs/1_0_closure_plan.md#cancellation` |
 | **GAP-LANG-04** | **Handle Identity / Payload Write Separation**<br>For an existing binding, effective authority is `declaration/signature capability ∩ use-site intent ∩ PAL permission`. A handle-side `#` (`*#p`, `^#p`, `~#p`, `&#p`) authorizes only rebinding that handle; it cannot authorize bare, member, indexed, call-argument, callable, or mutable-receiver payload writes. Shared flow additionally enforces `effective-P(LHS) = declared-P(LHS) ∩ effective-P(direct RHS)` without provenance traversal at local, call, return, field, match/guard, and destructuring declaration boundaries. Whole-unique `cede` creates a fresh root whose H/P comes from its declaration, subject to the existing `$` field ceiling and same-path nullable guard rules. | Language | `P0` | Yes | `closed` | Conformance: `handle_identity_not_payload_writable_*.tk`, `call_*_cannot_supply_*.tk`, `static_call_handle_only_cannot_supply_payload.tk`, `callable_argument_cannot_forge_payload.tk`, `raw_payload_write_requires_unsafe.tk`, `method_use_site_cannot_forge_payload.tk`, `ownership_call_permission_capability_matrix_01`, `ownership_callable_argument_permission_matrix_01`, `shared_view_cannot_amplify_payload*.tk`, `cede_shared_*rebind*.tk`, `reference_field_rebind_cannot_amplify_payload.tk`, `cede_unique_readonly_source_creates_writable_owner.tk`, and guarded-nullable cases. Source-less replay: `permission_001_capability` through `permission_005_partial_cede_lifecycle` (25/25 case set). Release: [RC4 Tier 1 run 30246461701](https://github.com/tokalang/toka/actions/runs/30246461701), all four targets passed. |
 
-**Current direct-source PAL closure (2026-07-27):** nested struct and enum
+**Recorded direct-source PAL closure (2026-07-27, `7ccb649e`):** nested struct and enum
 `match`/`guard` reference patterns, ordinary destructuring, and
 fixed-array/protocol reference iteration now preserve their direct source
 storage and register PAL borrows. Enum payloads conservatively register their
@@ -74,7 +84,7 @@ source-less replay evidence. Indexed elements have payload and partial-`cede`
 operations but no independent handle-rebind surface in 1.0. A general
 freeze/sealed-object referent ceiling is not represented by frozen syntax and
 is therefore a 1.x design proposal, not an unresolved 1.0 implementation
-gap. The current revision passed the Tier 1 multi-platform Release Review in
+gap. The recorded RC4 candidate passed the Tier 1 multi-platform Release Review in
 [run 30246461701](https://github.com/tokalang/toka/actions/runs/30246461701).
 
 ### B. Compiler & Lowering

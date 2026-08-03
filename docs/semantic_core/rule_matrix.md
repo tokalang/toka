@@ -1,8 +1,12 @@
 # Toka 1.0 Semantic Rule Matrix
 
-This matrix records the semantic-core freeze audit. It maps the current
-language contract to implementation areas and existing tests. It does not
-define new language behavior.
+This matrix records the frozen 1.0 semantic-core contract and the audit links
+that existed for its recorded evidence slices. Those implementation areas,
+diagnostics, and tests are historical or qualification targets unless a fresh
+gate binds them to the exact current HEAD; this matrix does not itself certify
+current conformance or define new language behavior. Current blockers and P-1
+requalification are tracked in
+[`semantic_contract_evolution_roadmap_rfc.md`](semantic_contract_evolution_roadmap_rfc.md).
 
 Primary references:
 
@@ -199,7 +203,12 @@ Primary references:
 - Status: Core guarantee
 - Source form: moving or `cede`-ing a `^T` resource, then using the source
 - Operation class: `OwnershipTransfer`, `Invalidation`
-- Decision: the moved source path cannot be used after transfer.
+- Decision: the moved source path cannot be used after transfer. A source-
+  invalidating move into an existing destination additionally requires the
+  canonical paths to be `Disjoint`; equality, either prefix direction, and
+  unknown overlap reject before destination retirement, source invalidation,
+  or cleanup-state change. This overlap rule is design-frozen but remains a
+  current-HEAD P-1 implementation/evidence blocker.
 - Rationale: a unique resource has one valid owner at a time.
 - Primary diagnostics: `E0438`, `E0440`, `E04501`
 - Implementation areas: `src/Sema/Sema_Expr.cpp`,
@@ -216,7 +225,10 @@ Primary references:
 - Replay tests: `tests/semantics/tki_replay/cases/own_cede_003_generic_methods`
   covers generic resource transfer through imported functions and methods,
   including use-after-move rejection.
-- Coverage closure: none known for frozen generic unique transfer.
+- Coverage closure: generic unique transfer has recorded coverage, but exact
+  self-transfer, ancestor/descendant, unknown-overlap, and disjoint-control
+  source/TKI gates are missing at current HEAD; see
+  `permission_flow_two_mode_rfc.md` `OWN-FLOW-01`.
 
 ### OWN-CEDE-001: `cede` parameters are explicit transfer obligations
 
@@ -224,7 +236,8 @@ Primary references:
 - Source form: `fn f(cede r: R)`, call `f(cede r)`, body consumes `r`
 - Operation class: `CedeObligation`, `OwnershipTransfer`
 - Decision: callers must explicitly pass `cede`; callees must consume, forward,
-  store, return, or otherwise complete the obligation.
+  store, return, or otherwise complete the obligation. Any existing-destination
+  transfer also inherits `OWN-MOVE-001`'s canonical-disjointness precondition.
 - Rationale: declared transfer is both permission and obligation.
 - Primary diagnostics: `E0473`, `E0474`, `E04509`, `E04570`
 - Implementation areas: `src/Sema/Sema_Expr_Call.cpp`,
@@ -464,16 +477,24 @@ Primary references:
   `.start`.
 - Coverage closure: none known for the frozen 1.0 suspension/state boundary.
 
-### ASYNC-LIFECYCLE-001: Task frames and detached state retain one explicit owner
+### ASYNC-LIFECYCLE-001: Historical Phase-1 task-frame/local ownership
 
-- Status: `Frozen` for normal completion and detach; cancellation remains
-  `Post1.0`.
+- Status: `Frozen` only for the recorded 1.0 frame/local-lifetime slice. It is
+  not current-HEAD TCB conformance and does not freeze non-trivial live-result
+  reclamation; cancellation and the stronger result protocol remain pending
+  under the normative async TCB RFC.
 - Runtime form: `TaskHandle` drop, `detach_forget`, scheduler completion,
   context propagation helpers.
 - Rule: dropping or explicitly detaching a live handle transfers frame cleanup
   to the scheduler; a completed frame is destroyed exactly once. Detached
   helpers must own state carried across their execution boundary rather than
   retain an unowned raw address.
+- Result-obligation boundary: the historical evidence does not prove private
+  claim, typed drop, `ReadyLive -> Taken`, or the detach/terminal two-sided
+  drain race for a non-trivial result. Frame reclamation under those facts is
+  governed by
+  [`../async_runtime_tcb_rfc.md`](../async_runtime_tcb_rfc.md), Section 8.1,
+  and remains current-revision qualification-pending.
 - Conservative boundary: force-destroy cancellation, task groups, recursive
   child cancellation, and awaiter unlinking are not part of the 1.0 contract.
 - Evidence: `g09_async_detached_lifecycle.tk`,
