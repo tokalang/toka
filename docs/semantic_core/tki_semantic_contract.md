@@ -101,6 +101,23 @@ Replay requirement:
 - Call sites must never need to inspect a source body to decide whether an
   escaped borrow is valid.
 
+### Outcome Contracts And Retained Bodies
+
+An `outcomes:` block is declaration data and must round-trip with its exact
+`init` formal, direct return variants, and `init`/`uninit` post-states. On
+import, Sema resolves those spellings to the formal index and the nominal enum
+member identities before callers, callee return checks, or CodeGen use them.
+
+The first source-less completion level is retained-body rechecking. A generated
+TKI retains the body of a resolved Outcome function, and source-less CodeGen
+lowers that rechecked body instead of accepting a provider object as evidence
+of fulfilment. A bodyless interface carrying the same declaration is not a
+Level-A provider and calls through it fail with `E04631`.
+
+This is not a Semantic Witness ABI or a bodyless attestation. Canonical wire
+identities, declaration witnesses, exact-object binding, and provider
+provenance remain governed by `semantic_manifest_envelope_rfc.md`.
+
 ### Shape Structure
 
 Shape definitions must preserve all structure needed for semantic checking,

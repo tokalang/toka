@@ -137,6 +137,9 @@ run_case() {
         local exe="$work_dir/$stem.exe"
         local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" "-o" "$exe")
         local compile_only=0
+        if grep -q "SOURCELESS_RECHECKED_BODY" "$consumer"; then
+            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "-o" "$exe")
+        fi
         if grep -q "COMPILE_ONLY" "$consumer"; then
             compile_only=1
             exe="$work_dir/$stem.o"
@@ -177,7 +180,11 @@ run_case() {
             case_failed=1
             continue
         fi
-        if "$TOKAC_ABS" --dump-semantic-evidence=json "$consumer" "$lib_obj" -o "$exe" > "$work_dir/$stem.out" 2> "$work_dir/$stem.err"; then
+        local compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "$lib_obj" "-o" "$exe")
+        if grep -q "SOURCELESS_RECHECKED_BODY" "$consumer"; then
+            compile_cmd=("$TOKAC_ABS" "--dump-semantic-evidence=json" "$consumer" "-o" "$exe")
+        fi
+        if "${compile_cmd[@]}" > "$work_dir/$stem.out" 2> "$work_dir/$stem.err"; then
             echo "FAIL $case_name/$stem: expected failure but compilation passed"
             case_failed=1
             continue

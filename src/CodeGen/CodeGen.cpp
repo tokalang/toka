@@ -481,7 +481,9 @@ void CodeGen::generate(const Module &ast) {
 
   // Generate Functions (Body Phase)
   for (const auto &func : ast.Functions) {
-    genFunction(func.get(), "", declOnly);
+    const bool recheckOutcomeBody = declOnly && func->Body &&
+        func->ResolvedOutcomeTransition.has_value();
+    genFunction(func.get(), "", declOnly && !recheckOutcomeBody);
     if (hasErrors())
       return;
   }

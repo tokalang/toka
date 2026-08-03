@@ -603,11 +603,12 @@ void Sema::checkStmt(Stmt *S) {
     if (CurrentFunction) {
       const std::string outcomeVariant =
           directOutcomeVariantName(Ret->ReturnValue.get());
-      const OutcomeTransitionSyntax *declaredOutcome =
-          CurrentFunction->OutcomeContractValidated
-              ? CurrentFunction->OutcomeContract.find(outcomeVariant)
+      const FunctionDecl::OutcomeTransition::Case *declaredOutcome =
+          CurrentFunction->ResolvedOutcomeTransition
+              ? CurrentFunction->ResolvedOutcomeTransition->findVariant(
+                    outcomeVariant)
               : nullptr;
-      if (CurrentFunction->OutcomeContractValidated && !declaredOutcome) {
+      if (CurrentFunction->ResolvedOutcomeTransition && !declaredOutcome) {
         DiagnosticEngine::report(
             getLoc(Ret), DiagID::ERR_OUTCOME_CONTRACT_INVALID,
             CurrentFunction->Name,
@@ -617,10 +618,10 @@ void Sema::checkStmt(Stmt *S) {
       for (const auto &Arg : CurrentFunction->Args) {
         if (!Arg.IsInit)
           continue;
-        const OutcomeTransitionSyntax *outcome = nullptr;
+        const FunctionDecl::OutcomeTransition::Case *outcome = nullptr;
         if (declaredOutcome) {
           outcome = declaredOutcome;
-          if (outcome->Subject != Arg.Name)
+          if (CurrentFunction->ResolvedOutcomeTransition->Subject != &Arg)
             outcome = nullptr;
         }
         SymbolInfo *Info = nullptr;

@@ -4758,20 +4758,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             ? outcomeCall->ResolvedFn
             : nullptr;
     std::string outcomePlace;
-    if (outcomeFunction && outcomeFunction->OutcomeContractValidated) {
+    if (outcomeFunction && outcomeFunction->ResolvedOutcomeTransition) {
       outcomeCall->OutcomeMatchConsumed = true;
-      const std::string &subject =
-          outcomeFunction->OutcomeContract.Transitions.front().Subject;
-      for (size_t i = 0; i < outcomeFunction->Args.size() &&
-                         i < outcomeCall->Args.size();
-           ++i) {
-        if (outcomeFunction->Args[i].Name != subject)
-          continue;
+      const auto &transition = *outcomeFunction->ResolvedOutcomeTransition;
+      if (transition.SubjectIndex < outcomeCall->Args.size()) {
         if (auto *place = dynamic_cast<VariableExpr *>(
-                outcomeCall->Args[i].get())) {
+                outcomeCall->Args[transition.SubjectIndex].get()))
           outcomePlace = place->Name;
-        }
-        break;
       }
       if (outcomePlace.empty()) {
         DiagnosticEngine::report(getLoc(me),
@@ -4812,7 +4805,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.restore(palBefore);
     };
 
-    std::set<std::string> outcomeMatchedVariants;
+    std::set<const ShapeMember *> outcomeMatchedVariants;
     bool hasInvalidOutcomeArm = false;
 
     for (auto &arm : me->Arms) {
@@ -4820,10 +4813,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       enterScope();
       if (outcomeFunction) {
         const std::string variant = directMatchVariantName(arm->Pat.get());
-        const OutcomeTransitionSyntax *transition =
-            outcomeFunction->OutcomeContract.find(variant);
+        const auto &outcome = *outcomeFunction->ResolvedOutcomeTransition;
+        const FunctionDecl::OutcomeTransition::Case *transition =
+            outcome.findVariant(variant);
         if (arm->Guard || !transition ||
-            !outcomeMatchedVariants.insert(variant).second) {
+            !outcomeMatchedVariants.insert(transition->Variant).second) {
           DiagnosticEngine::report(getLoc(arm->Pat.get()),
                                    DiagID::ERR_OUTCOME_MATCH_ARM_INVALID);
           HasError = true;
@@ -4905,8 +4899,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (outcomeFunction) {
-      std::set<std::string> declaredVariants;
-      for (const auto &transition : outcomeFunction->OutcomeContract.Transitions)
+      std::set<const ShapeMember *> declaredVariants;
+      for (const auto &transition :
+           outcomeFunction->ResolvedOutcomeTransition->Cases)
         declaredVariants.insert(transition.Variant);
       if (!hasInvalidOutcomeArm && outcomeMatchedVariants != declaredVariants) {
         DiagnosticEngine::report(getLoc(me),

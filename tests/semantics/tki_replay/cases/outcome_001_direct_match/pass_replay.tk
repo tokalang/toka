@@ -1,3 +1,4 @@
+// SOURCELESS_RECHECKED_BODY
 import ./lib::{BuildOutcome, try_build}
 
 fn main() -> i32 {

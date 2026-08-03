@@ -6232,17 +6232,13 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   // that storage owns a live value and its corresponding cleanup obligation.
   if (funcDecl) {
     llvm::Value *outcomeIsLive = nullptr;
-    if (funcDecl->OutcomeContractValidated &&
-        !funcDecl->OutcomeContract.empty() &&
+    if (funcDecl->ResolvedOutcomeTransition &&
         (!isSRet || sretAlloc) &&
         (isSRet || !ci->getType()->isVoidTy())) {
-      std::string enumName = funcDecl->ResolvedReturnType
-                                 ? funcDecl->ResolvedReturnType->getSoulName()
-                                 : funcDecl->ReturnType;
-      enumName = Type::stripMorphology(enumName);
-      const size_t generic = enumName.find('<');
-      if (generic != std::string::npos)
-        enumName = enumName.substr(0, generic);
+      const auto &transition = *funcDecl->ResolvedOutcomeTransition;
+      std::string enumName = transition.ReturnEnum
+          ? transition.ReturnEnum->Name
+          : funcDecl->ReturnType;
       auto enumIt = m_Shapes.find(enumName);
       llvm::Value *outcomeResult = ci;
       if (isSRet) {
@@ -6256,24 +6252,18 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         llvm::Value *tag =
             m_Builder.CreateExtractValue(outcomeResult, 0, "outcome.tag");
         outcomeIsLive = llvm::ConstantInt::getFalse(m_Context);
-        for (const auto &transition : funcDecl->OutcomeContract.Transitions) {
-          if (transition.Post != OutcomePostState::Init)
+        for (const auto &caseTransition : transition.Cases) {
+          if (caseTransition.Post != OutcomePostState::Init ||
+              !caseTransition.Variant)
             continue;
-          for (size_t index = 0; index < enumIt->second->Members.size();
-               ++index) {
-            const auto &member = enumIt->second->Members[index];
-            if (member.Name != transition.Variant)
-              continue;
-            const int tagValue = member.TagValue == -1
-                                     ? static_cast<int>(index)
-                                     : static_cast<int>(member.TagValue);
-            llvm::Value *matches = m_Builder.CreateICmpEQ(
-                tag, llvm::ConstantInt::get(tag->getType(), tagValue),
-                "outcome.is_live");
-            outcomeIsLive = m_Builder.CreateOr(outcomeIsLive, matches,
-                                                "outcome.any_live");
-            break;
-          }
+          const int tagValue = caseTransition.Variant->TagValue == -1
+              ? static_cast<int>(caseTransition.VariantOrdinal)
+              : static_cast<int>(caseTransition.Variant->TagValue);
+          llvm::Value *matches = m_Builder.CreateICmpEQ(
+              tag, llvm::ConstantInt::get(tag->getType(), tagValue),
+              "outcome.is_live");
+          outcomeIsLive = m_Builder.CreateOr(outcomeIsLive, matches,
+                                              "outcome.any_live");
         }
       }
     }
@@ -6284,7 +6274,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       if (auto *place = dynamic_cast<const VariableExpr *>(call->Args[i].get())) {
         if (outcomeIsLive)
           markInitState(place, outcomeIsLive);
-        else if (funcDecl->OutcomeContract.empty())
+        else if (!funcDecl->ResolvedOutcomeTransition)
           markInitLive(place);
       }
     }

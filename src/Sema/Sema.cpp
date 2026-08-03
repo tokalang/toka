@@ -3649,7 +3649,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
   }
 
-  Fn->OutcomeContractValidated = false;
+  Fn->ResolvedOutcomeTransition.reset();
   if (!Fn->OutcomeContract.empty()) {
     auto invalidOutcome = [&](const std::string &detail) {
       DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_OUTCOME_CONTRACT_INVALID,
@@ -3674,6 +3674,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     if (!returnEnum || returnEnum->Kind != ShapeKind::Enum) {
       invalidOutcome("return type must be a direct nominal enum");
     } else {
+      FunctionDecl::OutcomeTransition resolved;
+      resolved.ReturnEnum = returnEnum;
       const FunctionDecl::Arg *outcomeFormal = nullptr;
       std::set<std::string> declaredVariants;
       bool valid = true;
@@ -3696,9 +3698,11 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       std::set<std::string> coveredVariants;
       for (const auto &transition : Fn->OutcomeContract.Transitions) {
         const FunctionDecl::Arg *subject = nullptr;
-        for (const auto &arg : Fn->Args) {
-          if (arg.Name == transition.Subject) {
-            subject = &arg;
+        size_t subjectIndex = 0;
+        for (size_t index = 0; index < Fn->Args.size(); ++index) {
+          if (Fn->Args[index].Name == transition.Subject) {
+            subject = &Fn->Args[index];
+            subjectIndex = index;
             break;
           }
         }
@@ -3712,14 +3716,33 @@ void Sema::checkFunction(FunctionDecl *Fn) {
           valid = false;
         }
         outcomeFormal = subject;
-        if (!declaredVariants.count(transition.Variant)) {
+        const ShapeMember *variant = nullptr;
+        size_t variantOrdinal = 0;
+        for (size_t index = 0; index < returnEnum->Members.size(); ++index) {
+          if (returnEnum->Members[index].Name == transition.Variant) {
+            variant = &returnEnum->Members[index];
+            variantOrdinal = index;
+            break;
+          }
+        }
+        if (!variant) {
           invalidOutcome("entry names a variant absent from the return enum");
           valid = false;
+          continue;
         }
         if (!coveredVariants.insert(transition.Variant).second) {
           invalidOutcome("each return variant may appear only once");
           valid = false;
+          continue;
         }
+        if (resolved.Subject && resolved.Subject != subject) {
+          valid = false;
+          continue;
+        }
+        resolved.Subject = subject;
+        resolved.SubjectIndex = subjectIndex;
+        resolved.Cases.push_back(
+            {variant, variantOrdinal, transition.Post});
       }
       if (!outcomeFormal) {
         invalidOutcome("entries must name one init formal");
@@ -3729,7 +3752,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         invalidOutcome("entries must cover every direct return variant exactly once");
         valid = false;
       }
-      Fn->OutcomeContractValidated = valid;
+      if (valid)
+        Fn->ResolvedOutcomeTransition = std::move(resolved);
     }
   }
 
@@ -3846,7 +3870,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     // Explicit returns check their own path at the return expression.  Only
     // a reachable normal fallthrough remains to be discharged here.
     if (!allPathsJump(Fn->Body.get())) {
-      if (Fn->OutcomeContractValidated) {
+      if (Fn->ResolvedOutcomeTransition) {
         DiagnosticEngine::report(
             getLoc(Fn), DiagID::ERR_OUTCOME_CONTRACT_INVALID, Fn->Name,
             "function can fall through without selecting an outcome variant");

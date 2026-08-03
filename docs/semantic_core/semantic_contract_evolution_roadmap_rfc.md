@@ -278,7 +278,19 @@ The first slice must be narrow:
 The hard proof is binding the result-discriminant fact and the exact-place fact
 so that losing the result can neither fabricate a `Live` fact, discard an outer
 proof duty, nor duplicate or lose the place's linear `InitAuthority` or cleanup
-ownership.
+ownership. The implementation resolves an `OutcomeTransition` after parsing:
+its subject is a formal index and its cases identify members of the resolved
+nominal return enum by ordinal. Caller analysis, callee return checks, cleanup
+lowering, and TKI printing consume this representation rather than the parsed
+string entries.
+
+Source-less P1 is Level A only. The exporter retains an Outcome provider body;
+the importer rechecks it and lowers that checked body itself. A bodyless
+interface can replay the declaration for diagnostics but cannot establish
+callee fulfilment and is rejected at a call with `E04631`. The replay fixture
+and body-stripping adversarial test cover both boundaries. A canonical
+declaration-witness wire format and any bodyless object-attested Level B remain
+behind the semantic-manifest payload gate.
 
 ### 4.4 Async closure and scoped children
 
@@ -330,9 +342,11 @@ The envelope distinguishes four trust classes:
    unsafe and cannot gain safe authority merely from a manifest.
 
 The object-attested payload is frozen only after `OutcomeTransition` IR is
-stable. Source-backed and retained-body-rechecked Outcome conformance does not
-wait for that payload. The payload later enables Level-B bodyless parity for
-`init`, Outcome, and async cleanup obligations.
+stable. The resolved formal/variant representation and Level-A retained-body
+replay are the first prerequisites; they do not themselves freeze a manifest
+payload. Source-backed and retained-body-rechecked Outcome conformance does
+not wait for that payload. The payload later enables Level-B bodyless parity
+for `init`, Outcome, and async cleanup obligations.
 
 ### 4.6 Subsequent capability RFCs
 

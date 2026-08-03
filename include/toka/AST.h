@@ -21,6 +21,7 @@
 #include "toka/MemorySummary.h"
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -1865,6 +1866,38 @@ public:
     }
   };
 
+  // This is the resolved semantic form of an `outcomes:` declaration.  The
+  // syntax block remains available for parsing and diagnostics; consumers use
+  // these declaration identities after Sema has checked the contract.
+  struct OutcomeTransition {
+    struct Case {
+      const ShapeMember *Variant = nullptr;
+      size_t VariantOrdinal = 0;
+      OutcomePostState Post = OutcomePostState::Uninit;
+    };
+
+    const Arg *Subject = nullptr;
+    size_t SubjectIndex = 0;
+    const ShapeDecl *ReturnEnum = nullptr;
+    std::vector<Case> Cases;
+
+    const Case *findVariant(const std::string &name) const {
+      for (const auto &entry : Cases) {
+        if (entry.Variant && entry.Variant->Name == name)
+          return &entry;
+      }
+      return nullptr;
+    }
+
+    const Case *findVariant(const ShapeMember *variant) const {
+      for (const auto &entry : Cases) {
+        if (entry.Variant == variant)
+          return &entry;
+      }
+      return nullptr;
+    }
+  };
+
   bool IsPub = false;
   std::string Name;
   std::string CodegenName;
@@ -1883,7 +1916,7 @@ public:
   bool IsVariadic = false;
   bool IsClosureInvoke = false;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
-  bool OutcomeContractValidated = false;
+  std::optional<OutcomeTransition> ResolvedOutcomeTransition;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
   FunctionDecl *TemplateOrigin = nullptr;  // Tooling identity for an instance.
 

@@ -1,10 +1,11 @@
 # RFC: Outcome Contracts
 
-**Status:** Implemented narrow P1. This document records the frozen first-slice
-surface spelling, semantic contract, and acceptance gates. Parser, semantic
-checking, code generation, and source-less TKI replay support the direct,
-synchronous, exhaustive-match subset; later sections marked deferred remain
-design work.
+**Status:** Implemented narrow P1 at Level A. This document records the frozen
+first-slice surface spelling, semantic contract, and acceptance gates. Parser,
+semantic checking, code generation, and source-less retained-body TKI replay
+support the direct, synchronous, exhaustive-match subset. A bodyless
+`TKI + object` provider remains Level B and is deliberately rejected; later
+sections marked deferred remain design work.
 
 **Depends on:** a qualified current baseline, the shared PlaceState Core,
 whole-place synchronous `init` P1, and structured return contracts.
@@ -148,7 +149,7 @@ existence and cleanup responsibility; they are not authority-upgrade contracts.
 
 ## 5. Dedicated semantic representation
 
-Outcome state changes use a dedicated typed representation rather than
+Outcome state changes use a dedicated resolved representation rather than
 return-dependency `effects:` routes:
 
 ```text
@@ -163,7 +164,10 @@ OutcomeTransition = {
 
 `Subject` is a formal-root identity, not source text. `Variant` is a nominal
 variant identity from the direct return type, not a string comparison against
-a printed name. Cases must be exhaustive, non-overlapping, and deterministic.
+a printed name. The implementation stores the resolved formal index and enum
+member ordinal/pointer after validating the parsed declaration; callers,
+returns, matches, and CodeGen consume that representation. Cases must be
+exhaustive, non-overlapping, and deterministic.
 
 Return dependencies remain orthogonal. A function may have both dependency
 routes and an Outcome Contract, but neither representation is inferred from or
@@ -378,7 +382,9 @@ branch-independent transition, but it is not part of this RFC.
 ## 11. TKI and separate-compilation gates
 
 Outcome Contracts are semantic interface data, not comments or diagnostic
-evidence. Adoption requires:
+evidence. The current Level-A implementation re-parses the declaration and
+rechecks a retained canonical provider body; it does not yet serialize a
+standalone structured transition ABI. Completing the later wire ABI requires:
 
 1. a versioned structured TKI representation that reconstructs typed
    `OutcomeTransition` records;
@@ -396,9 +402,10 @@ fulfilment merely by asserting a transition. Support therefore has two
 explicit completion levels:
 
 1. **Level A, source/body-rechecked:** source-backed providers and source-less
-   providers retaining a canonical body are checked directly. The consumer
-   lowers that exact checked body and links only its own generated object; a
-   provider-supplied object is not covered. This level does not depend on the
+   providers retaining a canonical body are checked directly. The current TKI
+   exporter retains bodies for resolved Outcome functions; source-less CodeGen
+   lowers that checked body rather than linking a provider object. A bodyless
+   declaration is rejected with `E04631`. This level does not depend on the
    Semantic Manifest.
 2. **Level B, object-attested source-less:** a bodyless provider may be used
    only after the separate manifest RFC defines an accepted provenance and

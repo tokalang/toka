@@ -260,7 +260,10 @@ def main():
         ("fail", ([sys.executable, "tools/scripts/test_verify_fail.py",
                    "--exclude-file", "spec/ci_quarantined_fail_tests.list"],)),
         ("warn", ([sys.executable, "tools/scripts/test_verify_warn.py"],)),
-        ("semantic_replay", (["tools/scripts/test_semantic_replay.sh"],)),
+        ("semantic_replay", (
+            ["tools/scripts/test_semantic_replay.sh"],
+            ["bash", "tools/scripts/test_outcome_body_recheck.sh"],
+        )),
         ("cache_invalidation", (["tools/scripts/test_semantic_cache_invalidation.sh"],)),
         ("tooling", (
             [sys.executable, "tools/scripts/test_developer_experience.py",

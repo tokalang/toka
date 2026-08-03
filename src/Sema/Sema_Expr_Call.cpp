@@ -2386,14 +2386,21 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // private {Never, Live} quarantine until its direct match selects one
   // declared result variant.
   const bool hasOutcomeContract =
-      Fn && Fn->OutcomeContractValidated && !Fn->OutcomeContract.empty();
-  if (hasOutcomeContract) {
+      Fn && Fn->ResolvedOutcomeTransition.has_value();
+  const bool hasRecheckedOutcomeContract = hasOutcomeContract && Fn->Body;
+  if (hasOutcomeContract && !Fn->Body) {
+    DiagnosticEngine::report(getLoc(Call),
+                             DiagID::ERR_OUTCOME_BODY_RECHECK_REQUIRED,
+                             Call->Callee);
+    HasError = true;
+  }
+  if (hasRecheckedOutcomeContract) {
     Call->RequiresOutcomeMatch = true;
     Call->OutcomeMatchConsumed = false;
     m_OutcomePendingCalls.push_back(Call);
   }
   for (SymbolInfo *place : completedInitPlaces) {
-    if (hasOutcomeContract) {
+    if (hasRecheckedOutcomeContract) {
       place->InitMask = 0;
       place->PlaceStateMask = placeStateMask(PlaceState::Never) |
                               placeStateMask(PlaceState::Live);

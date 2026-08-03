@@ -3,7 +3,10 @@
 These tests verify that source and source-less `.tki` paths preserve the same
 Toka 1.0 semantic facts. Each case first compiles every consumer against the
 provider source, then hides the provider `.tk` and repeats the same decisions
-against only the generated interface plus object file.
+against only the generated interface plus object file. A case marked
+`SOURCELESS_RECHECKED_BODY` retains and recompiles its provider body instead;
+this is the Level-A path for Outcome Contracts and does not link the provider
+object.
 
 Case layout:
 

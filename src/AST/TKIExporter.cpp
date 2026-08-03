@@ -626,14 +626,17 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         indent();
     }
 
-    if (!decl.OutcomeContract.empty()) {
+    if (decl.ResolvedOutcomeTransition) {
         m_OS << "\n";
         m_Indent++;
         writeln("outcomes:");
         m_Indent++;
-        for (const auto &transition : decl.OutcomeContract.Transitions) {
+        const auto &outcome = *decl.ResolvedOutcomeTransition;
+        for (const auto &transition : outcome.Cases) {
             indent();
-            m_OS << transition.Variant << " => " << transition.Subject
+            m_OS << (transition.Variant ? transition.Variant->Name : "<invalid>")
+                 << " => "
+                 << (outcome.Subject ? outcome.Subject->Name : "<invalid>")
                  << ": "
                  << (transition.Post == OutcomePostState::Init ? "init"
                                                                 : "uninit")
@@ -644,7 +647,8 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
     }
 
     bool hasGenerics = !decl.GenericParams.empty();
-    if (decl.Body && (hasGenerics || forceKeepBody)) {
+    if (decl.Body &&
+        (hasGenerics || forceKeepBody || decl.ResolvedOutcomeTransition)) {
         m_OS << " ";
         exportBlock(*decl.Body);
     } else {
