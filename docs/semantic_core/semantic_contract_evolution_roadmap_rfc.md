@@ -238,7 +238,24 @@ is Level B after the semantic-manifest payload, so it does not create an
 [`outcome_contract_rfc.md`](outcome_contract_rfc.md) is the first contract
 extension after `init` P1. It expresses a post-state conditional on a directly
 discriminated nominal result, for example that an output place becomes live
-only on `Result::Ok`.
+only on `Result::Ok`. Its frozen first-slice spelling is a dedicated
+declaration contract block:
+
+```toka
+fn try_read(init out: Packet) -> Result<(), IoError>
+outcomes:
+    Ok  => out: init
+    Err => out: uninit
+{
+    ...
+}
+```
+
+`outcomes:` follows the contract-block placement of `effects:`, but is a
+different semantic channel: `=>` selects an exact-place post-state from a
+result variant; it does not route a return dependency with `<-`. Calls remain
+`try_read(init packet)` and the immediate discriminator consumption chooses
+the caller state.
 
 The first slice must be narrow:
 

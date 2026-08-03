@@ -1,8 +1,9 @@
 # RFC: Outcome Contracts
 
 **Status:** Proposed post-`init` extension. This document records a bounded
-candidate semantic contract and its acceptance gates. It does not add source
-syntax, change TKI, or claim current implementation support.
+candidate semantic contract, its frozen first-slice surface spelling, and its
+acceptance gates. It does not claim current parser, TKI, or implementation
+support.
 
 **Depends on:** a qualified current baseline, the shared PlaceState Core,
 whole-place synchronous `init` P1, and structured return contracts.
@@ -13,11 +14,14 @@ An Outcome Contract makes one caller-visible exact-place post-state depend on
 the directly returned nominal result discriminator. Its first use is fallible
 construction:
 
-```text
-try_read(init out: Packet) -> Result<(), IoError>
-
-Ok  => out is Live
-Err => out is Never
+```toka
+fn try_read(init out: Packet) -> Result<(), IoError>
+outcomes:
+    Ok  => out: init
+    Err => out: uninit
+{
+    ...
+}
 ```
 
 The contract is not an ordinary mutation effect. It transfers the unique
@@ -31,8 +35,9 @@ lexical or function obligation remains linked to the selected post-state and is
 not silently discharged by an `Err => Never` branch. PlaceState by itself never
 creates `InitAuthority`.
 
-This RFC deliberately freezes the semantic model before choosing a final
-source spelling. Examples in this document are descriptive, not parser syntax.
+`init` and `uninit` are source-level post-state atoms in this block. They map
+to the internal `Live` and `Never` states, respectively; the latter names are
+not source spelling.
 
 ## 2. First-slice boundary
 
@@ -51,7 +56,52 @@ It rejects fields, elements, dereferences, temporaries, globals, captures,
 dynamic projections, nested result discriminators, structural/tagless unions,
 and an affected place that is aliased or PAL-non-invalidatable.
 
-## 3. Place-state foundation
+## 3. Frozen first-slice surface syntax
+
+The `outcomes:` block is a function-declaration contract block, analogous in
+placement to `effects:`:
+
+```toka
+fn try_read(init out: Packet) -> Result<(), IoError>
+outcomes:
+    Ok  => out: init
+    Err => out: uninit
+{
+    ...
+}
+```
+
+It has these fixed first-slice rules:
+
+- It occurs at most once, after the function signature and before the body.
+  If both declaration contract blocks occur, canonical source and TKI order is
+  `effects:` followed by `outcomes:`.
+- Each entry has the direct nominal result variant on the left of `=>` and an
+  exact outcome-governed formal followed by `: init` or `: uninit` on the
+  right. These state atoms are contract grammar, not ordinary expressions.
+- The presence of this block turns the one listed `init` formal into the
+  distinct outcome-governed construction contract. Without it, `init out`
+  retains its existing unconditional `Never -> Live` normal-return meaning.
+- Calls retain the ordinary explicit handoff spelling: `try_read(init packet)`.
+  There is no `outcome init` call marker. The returned direct discriminator,
+  immediately consumed under Section 7, selects the post-state.
+- `=>` deliberately differs from the `effects:` route operator `<-`:
+  an outcome variant selects a state for a place, whereas an effects route
+  declares an escaping return dependency on a source path.
+
+For example, a caller uses the same direct construction spelling and lets the
+recognized match establish the branch fact:
+
+```toka
+auto packet = uninit: Packet
+
+match try_read(init packet) {
+    Ok  => consume(packet)
+    Err => recover()
+}
+```
+
+## 4. Place-state foundation
 
 The interface-visible PlaceState factorization is:
 
@@ -95,7 +145,7 @@ After witness consumption, the place is still governed by its declaration,
 direct-flow ceiling, Encap policy, and PAL state. Outcome Contracts refine
 existence and cleanup responsibility; they are not authority-upgrade contracts.
 
-## 4. Dedicated semantic representation
+## 5. Dedicated semantic representation
 
 Outcome state changes use a dedicated typed representation rather than
 return-dependency `effects:` routes:
@@ -126,7 +176,7 @@ handoff operations of `init` P1, but it is not an ordinary `init` formal with a
 silently conditional postcondition. Absent the distinct contract, every
 ordinary return remains subject to the unconditional `Never -> Live` contract.
 
-## 5. Callee obligations
+## 6. Callee obligations
 
 ### OC-CALLEE-01: Entry handoff
 
@@ -161,7 +211,7 @@ the failure case declares `Never`, or return success with the place
 uninitialized when success declares `Live`. It must use a different explicit
 contract if its states differ.
 
-## 6. Caller obligations and the latent branch witness
+## 7. Caller obligations and the latent branch witness
 
 ### OC-CALLER-01: Call precondition
 
@@ -202,14 +252,14 @@ The witness must be consumed immediately by one of these forms:
 
 1. a direct `match` on the call result;
 2. a direct discriminant guard recognized by Sema; or
-3. direct error propagation under Section 8.
+3. direct error propagation under Section 9.
 
 The result may not first be stored in an ordinary local, returned, captured,
 placed in an aggregate, passed to another call, or hidden behind a generic or
 dynamic abstraction. This is intentionally stricter than ordinary Result use.
 The call and its immediate discriminator consumption form one semantic
 expression with no intervening user operation or suspension. Any nonlocal exit
-is rejected unless it is the direct propagation form in Section 8; lowering
+is rejected unless it is the direct propagation form in Section 9; lowering
 must nevertheless preserve the returned tag long enough to perform the correct
 state-dependent cleanup on every supported compiler/runtime unwind.
 
@@ -239,7 +289,7 @@ ordinary `Maybe = {Never, Live}`. If lowering cannot perform this
 non-suspending commit with the exact block discriminator, the first slice
 rejects the mixed join rather than retaining an unbound cleanup fact.
 
-## 7. Authority, contract, and cleanup conservation
+## 8. Authority, contract, and cleanup conservation
 
 The proof uses three distinct linear sorts:
 
@@ -285,7 +335,7 @@ without dropping `T`, but only when no `InitDischargeObligation` or pending
 OutcomeWitness still names that place. A callee handoff or pending witness
 cannot use storage retirement to escape or discard its proof duty.
 
-## 8. Error propagation and `?`
+## 9. Error propagation and `?`
 
 Toka's current error-propagation spelling is postfix `!`. This RFC does not
 introduce `?`; if a later syntax proposal adds `?`, it must obey the identical
@@ -310,7 +360,7 @@ Thus propagation may make `out` Live on the continuing path while leaving it
 function with an unconditional `init out` obligation if that failure edge
 would return before initializing `out`.
 
-## 9. Result discard
+## 10. Result discard
 
 A result carrying an unconsumed OutcomeWitness cannot be discarded, including
 by an expression statement, ignored binding or standalone `_` that does not
@@ -327,7 +377,7 @@ The first slice rejects standalone discard even when all declared branches
 happen to have the same post-state. A later simplification may erase a provably
 branch-independent transition, but it is not part of this RFC.
 
-## 10. TKI and separate-compilation gates
+## 11. TKI and separate-compilation gates
 
 Outcome Contracts are semantic interface data, not comments or diagnostic
 evidence. Adoption requires:
@@ -361,7 +411,7 @@ Adding or changing an Outcome Contract changes the semantic interface digest
 and invalidates dependent caches. The interface-format version changes only
 when the structured encoding or schema changes.
 
-## 11. Required evidence
+## 12. Required evidence
 
 Before implementation is described as supported, the conformance matrix must
 cover:
@@ -386,7 +436,7 @@ cover:
 - stale, malformed, incomplete, duplicated, and forged TKI transitions; and
 - exact agreement between static state and runtime cleanup counts.
 
-## 12. Non-goals
+## 13. Non-goals
 
 This RFC does not add:
 
