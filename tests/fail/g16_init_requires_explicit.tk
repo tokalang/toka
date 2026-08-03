@@ -1,0 +1,6 @@
+// CHECK: error[E04617]
+fn main() -> i32 {
+    auto value = uninit:i32
+    value = 42:i32
+    return value
+}

@@ -365,21 +365,33 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   bool isRefAssign = false;
   bool isUnsetInit = false;
   const bool isExplicitInit = Bin->IsInitialization;
+  auto *initTarget = dynamic_cast<VariableExpr *>(Bin->LHS.get());
+  SymbolInfo *initTargetInfo = nullptr;
+  const bool isWholePlainLocal =
+      initTarget && !initTarget->IsRawPointer && !initTarget->IsUnique &&
+      !initTarget->IsShared && !initTarget->IsValueMutable &&
+      !initTarget->IsValueNullable && !initTarget->IsValueBlocked &&
+      CurrentScope->findSymbol(initTarget->Name, initTargetInfo) &&
+      initTargetInfo && initTargetInfo->IsDeclaredVariable &&
+      !initTargetInfo->IsDeclaredMutable;
   if (isExplicitInit) {
     isUnsetInit = true;
-    auto *target = dynamic_cast<VariableExpr *>(Bin->LHS.get());
-    SymbolInfo *targetInfo = nullptr;
-    const bool isWholePlainLocal =
-        target && !target->IsRawPointer && !target->IsUnique &&
-        !target->IsShared && !target->IsValueMutable &&
-        !target->IsValueNullable && !target->IsValueBlocked &&
-        CurrentScope->findSymbol(target->Name, targetInfo) && targetInfo &&
-        targetInfo->IsDeclaredVariable;
-    if (!isWholePlainLocal || targetInfo->Moved ||
-        targetInfo->InitMask != 0) {
+    if (!isWholePlainLocal || initTargetInfo->Moved ||
+        initTargetInfo->InitMask != 0 ||
+        !hasExactlyPlaceState(initTargetInfo->PlaceStateMask,
+                              PlaceState::Never)) {
       error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
-            target ? target->Name : "<place>");
+            initTarget ? initTarget->Name : "<place>");
     }
+  } else if (isAssign && isWholePlainLocal &&
+             hasPlaceState(initTargetInfo->PlaceStateMask,
+                           PlaceState::Never)) {
+    error(Bin, DiagID::ERR_INIT_REQUIRES_EXPLICIT, initTarget->Name,
+          initTarget->Name);
+    // Continue through the legacy initialization lowering after reporting the
+    // source-contract violation so recovery does not emit a second immutable
+    // assignment diagnostic for the same write.
+    isUnsetInit = true;
   }
   if (m_IsUnsetInitCall) {
     isRefAssign = true;

@@ -714,23 +714,36 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       return false;
     }
 
-    std::vector<std::pair<Scope *, std::map<std::string, bool>>> movedSnapshot;
+    struct FlowSnapshot {
+      Scope *ScopePtr;
+      std::map<std::string, bool> Moved;
+      std::map<std::string, uint8_t> PlaceStateMasks;
+    };
+    std::vector<FlowSnapshot> movedSnapshot;
     for (Scope *scope = CurrentScope; scope; scope = scope->Parent) {
       std::map<std::string, bool> moved;
+      std::map<std::string, uint8_t> placeStateMasks;
       for (const auto &entry : scope->Symbols) {
         moved[entry.first] = entry.second.Moved;
+        placeStateMasks[entry.first] = entry.second.PlaceStateMask;
       }
-      movedSnapshot.push_back({scope, std::move(moved)});
+      movedSnapshot.push_back(
+          {scope, std::move(moved), std::move(placeStateMasks)});
     }
 
     auto restoreMoved = [&]() {
       for (auto &entry : movedSnapshot) {
-        Scope *scope = entry.first;
-        for (const auto &moved : entry.second) {
+        Scope *scope = entry.ScopePtr;
+        for (const auto &moved : entry.Moved) {
           auto it = scope->Symbols.find(moved.first);
           if (it != scope->Symbols.end()) {
             it->second.Moved = moved.second;
           }
+        }
+        for (const auto &placeState : entry.PlaceStateMasks) {
+          auto it = scope->Symbols.find(placeState.first);
+          if (it != scope->Symbols.end())
+            it->second.PlaceStateMask = placeState.second;
         }
       }
     };

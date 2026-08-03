@@ -1,0 +1,5 @@
+error[E04617]: Cannot assign to uninitialized local 'value'; use 'init value = ...'
+ --> tests/fail/g16_init_requires_explicit.tk:4:11
+   |
+ 4 |     value = 42:i32
+   |           ^

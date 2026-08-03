@@ -26,13 +26,16 @@ permits only an eligible immutable plain local, and rejects a moved, already
 initialized, or otherwise ineligible recognized target. It reuses the existing
 initialization lowering only after that check. It has positive,
 repeated-construction-negative, and retained-generic-body TKI replay coverage.
+Its whole-place state set is captured and unioned at the existing `if`, `guard`,
+`match`, `loop`, `for`, `break`, and `continue` joins, so `Never | Live` is the
+private `Maybe` fact rather than a second spelling of an all-zero `InitMask`.
 
 It deliberately does **not** yet make the full P1 contract public: legacy
-ordinary assignment to an `uninit` local is still accepted; the analysis does
-not yet represent the required `Never` / `Moved` / `Maybe` distinction at every
-control-flow join; `init place { ... }`, `place is uninit`, and `init` formals
-are not implemented. The next implementation slice must close those gaps before
-claiming P1 activation.
+ordinary assignment remains available for writable, handle, reference, and
+projection initialization paths outside this scaffold; field-wise cleanup and
+general exact-place authority are not yet represented; `init place { ... }`,
+`place is uninit`, and `init` formals are not implemented. The next
+implementation slice must close those gaps before claiming P1 activation.
 
 ## 1. Motivation
 

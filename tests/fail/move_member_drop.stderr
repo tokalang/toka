@@ -1,5 +1,5 @@
 error[E0439]: Cannot move member 'r' out of shape 'Container' because it implements 'drop'
- --> tests/fail/move_member_drop.tk:15:10
+ --> tests/fail/move_member_drop.tk:15:15
     |
- 15 |     r2 = cede c.r 
-    |          ^
+ 15 |     init r2 = cede c.r
+    |               ^

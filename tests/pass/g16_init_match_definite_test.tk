@@ -1,0 +1,20 @@
+shape Choice(
+    First |
+    Second
+)
+
+fn build(choice: Choice) -> i32 {
+    auto value = uninit:i32
+    match choice {
+        Choice::First => { init value = 1:i32 }
+        Choice::Second => { init value = 2:i32 }
+    }
+    if value == 1:i32 || value == 2:i32 {
+        return 0:i32
+    }
+    return 1:i32
+}
+
+fn main() -> i32 {
+    return build(Choice::First)
+}

@@ -1,8 +1,8 @@
 error[E0456]: Object 'b' (lived longer) cannot depend on 'local' (lived shorter)
- --> tests/fail/ref_life_bound.tk:20:11
+ --> tests/fail/ref_life_bound.tk:20:9
     |
- 20 |         b = Bound(&ref=&local) 
-    |           ^
+ 20 |         init b = Bound(&ref=&local)
+    |         ^
 note: shorter-lived dependency declared here
  --> tests/fail/ref_life_bound.tk:9:14
    |

@@ -1,6 +1,10 @@
 // EXPECT_TKI: init value = 42:i32
-pub fn init_value<T>(input: T) -> i32 {
+pub fn init_value<T>(input: T, flag: bool) -> i32 {
     auto value = uninit:i32
-    init value = 42:i32
+    if flag {
+        init value = 42:i32
+    } else {
+        init value = 43:i32
+    }
     return value
 }

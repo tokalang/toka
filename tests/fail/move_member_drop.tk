@@ -12,5 +12,5 @@ impl Container@Encap { fn drop(self#) {} }
 fn main() {
     auto c# = Container(r = Resource(id = 1))
     auto r2 = uninit:Resource
-    r2 = cede c.r 
+    init r2 = cede c.r
 }

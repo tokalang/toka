@@ -1894,6 +1894,9 @@ void Sema::checkStmt(Stmt *S) {
     } else {
       Info.InitMask = 0;
     }
+    Info.PlaceStateMask = Info.InitMask == 0
+                              ? placeStateMask(PlaceState::Never)
+                              : placeStateMask(PlaceState::Live);
 
     // Rule: Numeric Substitution (Constant variables)
     if (Var->Init && Var->TypeName == "i32" && !Var->IsValueMutable) {

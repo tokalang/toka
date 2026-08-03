@@ -2639,6 +2639,12 @@
       "message": "'init' requires a definite uninitialized local place; '{}' is not eligible",
       "description": "The direct init transition applies once to a whole local that is definitely never-constructed and has not been moved."
     },
+    "E04617": {
+      "id": "ERR_INIT_REQUIRES_EXPLICIT",
+      "level": "Error",
+      "message": "Cannot assign to uninitialized local '{}'; use 'init {} = ...'",
+      "description": "A normal assignment cannot discharge first-construction authority. Use the explicit init transition only after the place is definitely never-constructed."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

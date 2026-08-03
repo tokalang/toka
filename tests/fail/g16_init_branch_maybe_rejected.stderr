@@ -1,0 +1,5 @@
+error[E04616]: 'init' requires a definite uninitialized local place; 'value' is not eligible
+ --> tests/fail/g16_init_branch_maybe_rejected.tk:7:5
+   |
+ 7 |     init value = 2:i32
+   |     ^
