@@ -1873,12 +1873,16 @@ public:
     struct Case {
       const ShapeMember *Variant = nullptr;
       size_t VariantOrdinal = 0;
+      std::string VariantIdentity;
       OutcomePostState Post = OutcomePostState::Uninit;
     };
 
     const Arg *Subject = nullptr;
     size_t SubjectIndex = 0;
+    std::string FunctionIdentity;
+    std::string SubjectIdentity;
     const ShapeDecl *ReturnEnum = nullptr;
+    std::string ReturnEnumIdentity;
     std::vector<Case> Cases;
 
     const Case *findVariant(const std::string &name) const {

@@ -397,6 +397,14 @@ standalone structured transition ABI. Completing the later wire ABI requires:
    caller acceptance, rejection, place state, diagnostics, and cleanup
    lowering.
 
+The current exporter additionally emits a deterministic `@tki v2
+outcome_transition:` audit record for each resolved top-level Outcome function.
+Its canonical subject uses the resolver module coordinate, function signature,
+and formal index; each case uses the resolved enum declaration, variant name,
+and ordinal. It is deliberately a comment-only cross-check: import recomputes
+the same identity from declarations, but no compiler rule reads the comment or
+treats an unbound coordinate as semantic authority.
+
 An unbound or ordinary third-party TKI cannot establish body-derived
 fulfilment merely by asserting a transition. Support therefore has two
 explicit completion levels:

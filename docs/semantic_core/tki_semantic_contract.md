@@ -118,6 +118,14 @@ This is not a Semantic Witness ABI or a bodyless attestation. Canonical wire
 identities, declaration witnesses, exact-object binding, and provider
 provenance remain governed by `semantic_manifest_envelope_rfc.md`.
 
+For the later declaration-identity gate, the exporter emits an audit-only
+`@tki v2 outcome_transition:` record for every resolved top-level Outcome
+function. The record length-frames its resolver module coordinate, function
+signature, formal index, enum declaration, and variant name/ordinal, and is
+stable across source-less TKI replay. It contains no source path, source
+location, AST address, or authority claim; parser/importer behavior is
+unchanged by the comment.
+
 ### Shape Structure
 
 Shape definitions must preserve all structure needed for semantic checking,

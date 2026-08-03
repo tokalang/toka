@@ -695,6 +695,95 @@ std::string Sema::canonicalImplDefinitionId(const ImplDecl *impl) const {
          ";loc:" + std::to_string(impl->Loc.getRawEncoding());
 }
 
+static void appendCanonicalIdentityField(std::string &out,
+                                         const std::string &name,
+                                         const std::string &value) {
+  out += name + "=" + std::to_string(value.size()) + ":" + value + ";";
+}
+
+std::string
+Sema::canonicalOutcomeModuleIdentity(const ModuleScope *module) const {
+  if (!module || !module->ShadowCoordinateKnown)
+    return "unbound";
+  std::string result;
+  appendCanonicalIdentityField(result, "crate", module->ShadowCrateId);
+  appendCanonicalIdentityField(result, "module",
+                               module->ShadowLogicalModulePath);
+  return result;
+}
+
+std::string Sema::canonicalOutcomeFunctionIdentity(FunctionDecl *fn) {
+  std::string result = "toka-outcome-def-v1;";
+  const ModuleScope *owner = nullptr;
+  auto scope = DeclarationLexicalScopes.find(fn);
+  if (scope != DeclarationLexicalScopes.end())
+    owner = scope->second;
+  appendCanonicalIdentityField(result, "owner",
+                               canonicalOutcomeModuleIdentity(owner));
+  appendCanonicalIdentityField(result, "kind", "function");
+  appendCanonicalIdentityField(result, "name", fn ? fn->Name : "<null>");
+  appendCanonicalIdentityField(result, "generic-arity",
+                               fn ? std::to_string(fn->GenericParams.size())
+                                  : "0");
+  appendCanonicalIdentityField(result, "effect",
+                               fn ? std::to_string(static_cast<unsigned>(fn->Effect))
+                                  : "0");
+  if (!fn)
+    return result;
+  for (size_t index = 0; index < fn->Args.size(); ++index) {
+    const auto &arg = fn->Args[index];
+    const std::string prefix = "arg" + std::to_string(index) + "-";
+    appendCanonicalIdentityField(
+        result, prefix + "kind", arg.IsInit ? "init" : "ordinary");
+    appendCanonicalIdentityField(
+        result, prefix + "cede", arg.IsCeded ? "1" : "0");
+    appendCanonicalIdentityField(
+        result, prefix + "type",
+        arg.ResolvedType ? arg.ResolvedType->toString()
+                         : synthesizePhysicalType(arg));
+  }
+  appendCanonicalIdentityField(
+      result, "return",
+      fn->ResolvedReturnType ? fn->ResolvedReturnType->toString()
+                             : fn->ReturnType);
+  return result;
+}
+
+std::string
+Sema::canonicalOutcomeShapeIdentity(const ShapeDecl *shape) const {
+  std::string result = "toka-outcome-def-v1;";
+  const ModuleScope *owner = nullptr;
+  auto scope = DeclarationLexicalScopes.find(shape);
+  if (scope != DeclarationLexicalScopes.end())
+    owner = scope->second;
+  appendCanonicalIdentityField(result, "owner",
+                               canonicalOutcomeModuleIdentity(owner));
+  appendCanonicalIdentityField(result, "kind", "shape");
+  appendCanonicalIdentityField(result, "name", shape ? shape->Name : "<null>");
+  appendCanonicalIdentityField(result, "generic-arity",
+                               shape ? std::to_string(shape->GenericParams.size())
+                                     : "0");
+  return result;
+}
+
+void Sema::populateOutcomeTransitionIdentities(FunctionDecl *fn) {
+  if (!fn || !fn->ResolvedOutcomeTransition)
+    return;
+
+  auto &transition = *fn->ResolvedOutcomeTransition;
+  transition.FunctionIdentity = canonicalOutcomeFunctionIdentity(fn);
+  transition.SubjectIdentity = transition.FunctionIdentity + "formal=" +
+      std::to_string(transition.SubjectIndex) + ";";
+  transition.ReturnEnumIdentity =
+      canonicalOutcomeShapeIdentity(transition.ReturnEnum);
+  for (auto &entry : transition.Cases) {
+    entry.VariantIdentity = transition.ReturnEnumIdentity + "variant-name=" +
+        std::to_string(entry.Variant ? entry.Variant->Name.size() : 0) + ":" +
+        (entry.Variant ? entry.Variant->Name : "") + ";variant-ordinal=" +
+        std::to_string(entry.VariantOrdinal) + ";";
+  }
+}
+
 void Sema::recordSlice1ImplFact(ImplDecl *impl,
                                 const std::string &resolvedTypeName,
                                 const std::string &canonicalTrait) {
@@ -1409,6 +1498,25 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
       M.InterfaceV2Facts.push_back("custom_drop: " + typeName + " = " +
                                    shape->MangledDestructorName);
     }
+  }
+  for (const auto &fn : M.Functions) {
+    if (!fn->ResolvedOutcomeTransition)
+      continue;
+    const auto &transition = *fn->ResolvedOutcomeTransition;
+    std::vector<std::string> cases;
+    for (const auto &entry : transition.Cases) {
+      cases.push_back(entry.VariantIdentity + "post=" +
+                      (entry.Post == OutcomePostState::Init ? "init" :
+                                                               "uninit") +
+                      ";");
+    }
+    std::sort(cases.begin(), cases.end());
+    std::string record = "outcome_transition: " +
+        transition.FunctionIdentity + "subject=" + transition.SubjectIdentity +
+        "result=" + transition.ReturnEnumIdentity;
+    for (const auto &entry : cases)
+      record += "case=" + entry;
+    M.InterfaceV2Facts.push_back(std::move(record));
   }
   std::sort(M.InterfaceV2Facts.begin(), M.InterfaceV2Facts.end());
 }
@@ -2189,6 +2297,7 @@ bool Sema::checkModule(Module &M) {
     }
     checkImpl(M.Impls[i].get());
   }
+  recordSlice5InterfaceFacts(M);
   // ...
 
   // Transfer ownership of synthetic anonymous record shapes to the Module
@@ -3742,7 +3851,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         resolved.Subject = subject;
         resolved.SubjectIndex = subjectIndex;
         resolved.Cases.push_back(
-            {variant, variantOrdinal, transition.Post});
+            {variant, variantOrdinal, {}, transition.Post});
       }
       if (!outcomeFormal) {
         invalidOutcome("entries must name one init formal");
@@ -3860,6 +3969,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     CurrentScope->define(Arg.Name, Info);
 
   }
+
+  populateOutcomeTransitionIdentities(Fn);
 
   // --- Sema: Safety Redline Boundaries ---
   checkUnsafePublicFunctionBoundary(Fn);
@@ -4263,7 +4374,6 @@ void Sema::analyzeShapes(Module &M) {
     }
   }
   validateSlice4CopyAndDup(M);
-  recordSlice5InterfaceFacts(M);
 }
 
 void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {

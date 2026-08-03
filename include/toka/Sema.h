@@ -497,6 +497,10 @@ private:
   std::string canonicalTypeFactKey(const std::string &typeName,
                                    SourceLocation loc);
   std::string canonicalImplDefinitionId(const ImplDecl *impl) const;
+  std::string canonicalOutcomeModuleIdentity(const ModuleScope *module) const;
+  std::string canonicalOutcomeFunctionIdentity(FunctionDecl *fn);
+  std::string canonicalOutcomeShapeIdentity(const ShapeDecl *shape) const;
+  void populateOutcomeTransitionIdentities(FunctionDecl *fn);
   void recordSlice1ImplFact(ImplDecl *impl,
                             const std::string &resolvedTypeName,
                             const std::string &canonicalTrait);

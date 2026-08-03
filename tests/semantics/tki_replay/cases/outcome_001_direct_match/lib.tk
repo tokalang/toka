@@ -1,4 +1,5 @@
 // EXPECT_TKI: outcomes:
+// EXPECT_TKI: outcome_transition:
 // EXPECT_TKI: Ok => out: init
 // EXPECT_TKI: Err => out: uninit
 pub shape BuildOutcome(

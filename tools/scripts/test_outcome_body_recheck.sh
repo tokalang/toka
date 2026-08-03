@@ -18,6 +18,19 @@ if ! grep -Fq "init out = 42:i32" "$TEST_DIR/lib.tki"; then
     exit 1
 fi
 cp "$TEST_DIR/lib.tki" "$TEST_DIR/lib.tki.good"
+mv "$TEST_DIR/lib.tk" "$TEST_DIR/lib.tk.source-hidden"
+
+# The audit identity is recomputed from declarations during source-less TKI
+# replay.  It must not depend on AST addresses or the provider source path.
+"$TOKAC" -c "$TEST_DIR/lib.tki" -o "$TEST_DIR/replayed.o"
+grep '^// @tki v2 outcome_transition:' "$TEST_DIR/lib.tki.good" \
+    > "$TEST_DIR/source.identity"
+grep '^// @tki v2 outcome_transition:' "$TEST_DIR/replayed.tki" \
+    > "$TEST_DIR/replayed.identity"
+if ! cmp -s "$TEST_DIR/source.identity" "$TEST_DIR/replayed.identity"; then
+    echo "FAIL: Outcome identity changed across source-less TKI replay" >&2
+    exit 1
+fi
 
 # Keep the signature and outcome declaration, but remove the retained
 # provider body.  This models a bodyless third-party TKI, which cannot
@@ -25,7 +38,6 @@ cp "$TEST_DIR/lib.tki" "$TEST_DIR/lib.tki.good"
 sed -n '1,/^    Err => out: uninit$/p' "$TEST_DIR/lib.tki" \
     > "$TEST_DIR/lib.tki.stripped"
 mv "$TEST_DIR/lib.tki.stripped" "$TEST_DIR/lib.tki"
-mv "$TEST_DIR/lib.tk" "$TEST_DIR/lib.tk.source-hidden"
 
 if "$TOKAC" -c "$TEST_DIR/main.tk" -o "$TEST_DIR/main.o" \
     > "$TEST_DIR/out" 2> "$TEST_DIR/err"; then

@@ -282,7 +282,9 @@ ownership. The implementation resolves an `OutcomeTransition` after parsing:
 its subject is a formal index and its cases identify members of the resolved
 nominal return enum by ordinal. Caller analysis, callee return checks, cleanup
 lowering, and TKI printing consume this representation rather than the parsed
-string entries.
+string entries. TKI additionally carries a deterministic audit-only identity
+record for top-level resolved Outcome functions; it is not a witness payload
+and does not make an unbound interface trusted.
 
 Source-less P1 is Level A only. The exporter retains an Outcome provider body;
 the importer rechecks it and lowers that checked body itself. A bodyless

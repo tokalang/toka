@@ -1199,8 +1199,15 @@ int main(int argc, char **argv) {
 
   if (emitInterface) {
     for (const auto &ast : astModules) {
-      std::string canonicalPath = toka::PathUtils::canonicalize(ast->SourcePath);
-      bool isRoot = (std::find(roots.begin(), roots.end(), canonicalPath) != roots.end());
+      std::string canonicalSourcePath =
+          toka::PathUtils::canonicalize(ast->SourcePath);
+      std::string canonicalResolvedPath =
+          toka::PathUtils::canonicalize(ast->ResolvedPath);
+      bool isRoot =
+          (std::find(roots.begin(), roots.end(), canonicalSourcePath) !=
+               roots.end() ||
+           std::find(roots.begin(), roots.end(), canonicalResolvedPath) !=
+               roots.end());
       if (isRoot) {
         std::string outPath = getFinalInterfacePath(outputFile, ast->SourcePath);
 
