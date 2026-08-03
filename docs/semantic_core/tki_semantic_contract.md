@@ -215,6 +215,11 @@ completed in phase 2:
   by `tests/semantics/tki_replay/cases/own_cede_001_signature`,
   `own_cede_002_return`, and `own_cede_003_generic_methods`, including generic
   functions, methods, double consumption, and use after transfer.
+- Synchronous `init` parameter contracts through imported `.tki`: covered by
+  `tests/semantics/tki_replay/cases/init_002_parameter`. The interface retains
+  the `init` formal and explicit call-place spelling; source-backed and
+  source-less consumers agree that a normal call makes the caller place live,
+  while a missing handoff reports `E04622`.
 - Whole-return dependencies through imported `.tki`: covered by
   `tests/semantics/tki_replay/cases/eff_ret_001_return_deps` for references,
   `str`, and `bytes` views.
