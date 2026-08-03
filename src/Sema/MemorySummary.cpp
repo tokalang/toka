@@ -226,6 +226,8 @@ private:
         RootSet childRoots = rootsFromStmt(child.get());
         result.insert(childRoots.begin(), childRoots.end());
       }
+    } else if (auto *initBlock = dynamic_cast<const InitBlockStmt *>(stmt)) {
+      result = rootsFromStmt(initBlock->Body.get());
     }
     return result;
   }
@@ -637,6 +639,8 @@ private:
     if (auto *block = dynamic_cast<const BlockStmt *>(stmt)) {
       for (const auto &child : block->Statements)
         visitStmt(child.get());
+    } else if (auto *initBlock = dynamic_cast<const InitBlockStmt *>(stmt)) {
+      visitStmt(initBlock->Body.get());
     } else if (auto *ret = dynamic_cast<const ReturnStmt *>(stmt)) {
       visitExpr(ret->ReturnValue.get());
       addLocal(Summary, provenanceRoots(ret->ReturnValue.get()),

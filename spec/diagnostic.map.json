@@ -2645,6 +2645,18 @@
       "message": "Cannot assign to uninitialized local '{}'; use 'init {} = ...'",
       "description": "A normal assignment cannot discharge first-construction authority. Use the explicit init transition only after the place is definitely never-constructed."
     },
+    "E04618": {
+      "id": "ERR_INIT_BLOCK_UNFULFILLED",
+      "level": "Error",
+      "message": "'init {}' block can fall through before '{}' is initialized",
+      "description": "A lexical init block creates a local proof obligation: every normal fallthrough path must leave its target definitely initialized."
+    },
+    "E04619": {
+      "id": "ERR_INIT_BLOCK_EXIT",
+      "level": "Error",
+      "message": "Cannot {} across an active 'init' block",
+      "description": "A break or continue cannot carry an unfinished lexical initialization obligation to an outer control-flow target."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

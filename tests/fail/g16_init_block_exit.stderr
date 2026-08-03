@@ -1,0 +1,5 @@
+error[E04619]: Cannot break across an active 'init' block
+ --> tests/fail/g16_init_block_exit.tk:6:13
+   |
+ 6 |             break
+   |             ^

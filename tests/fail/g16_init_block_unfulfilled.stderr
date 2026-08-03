@@ -1,0 +1,5 @@
+error[E04618]: 'init value' block can fall through before 'value' is initialized
+ --> tests/fail/g16_init_block_unfulfilled.tk:4:5
+   |
+ 4 |     init value {
+   |     ^

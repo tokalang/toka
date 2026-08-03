@@ -295,6 +295,9 @@ Sema::FlowSummary Sema::summarizeFlow(Stmt *S) {
     return result;
   }
 
+  if (auto *InitBlock = dynamic_cast<InitBlockStmt *>(S))
+    return summarizeFlow(InitBlock->Body.get());
+
   if (auto *B = dynamic_cast<BlockStmt *>(S)) {
     bool canReachNext = true;
     result.CanFallThrough = true;
@@ -439,7 +442,35 @@ void Sema::checkStmt(Stmt *S) {
 
   ActiveNodeRAII Active(S);
 
-  if (auto *Block = dynamic_cast<BlockStmt *>(S)) {
+  if (auto *InitBlock = dynamic_cast<InitBlockStmt *>(S)) {
+    SymbolInfo *targetInfo = nullptr;
+    const bool isWholePlainLocal =
+        !InitBlock->IsValueMutable && !InitBlock->IsValueNullable &&
+        !InitBlock->IsValueBlocked &&
+        CurrentScope->findSymbol(InitBlock->PlaceName, targetInfo) &&
+        targetInfo && targetInfo->IsDeclaredVariable &&
+        !targetInfo->IsDeclaredMutable;
+    const bool hasInitAuthority =
+        isWholePlainLocal && !targetInfo->Moved && targetInfo->InitMask == 0 &&
+        hasExactlyPlaceState(targetInfo->PlaceStateMask, PlaceState::Never);
+    if (!hasInitAuthority)
+      error(InitBlock, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
+            InitBlock->PlaceName);
+
+    m_InitBlockControlFlowDepths.push_back(m_ControlFlowStack.size());
+    checkStmt(InitBlock->Body.get());
+    m_InitBlockControlFlowDepths.pop_back();
+
+    if (hasInitAuthority && !allPathsJump(InitBlock->Body.get())) {
+      SymbolInfo *postState = nullptr;
+      if (!CurrentScope->findSymbol(InitBlock->PlaceName, postState) ||
+          !postState ||
+          !hasExactlyPlaceState(postState->PlaceStateMask, PlaceState::Live)) {
+        error(InitBlock, DiagID::ERR_INIT_BLOCK_UNFULFILLED,
+              InitBlock->PlaceName, InitBlock->PlaceName);
+      }
+    }
+  } else if (auto *Block = dynamic_cast<BlockStmt *>(S)) {
     enterScope();
     bool hasDiverged = false;
     for (auto &SubStmt : Block->Statements) {

@@ -1144,6 +1144,33 @@ public:
   }
 };
 
+// `init place { ... }` is a lexical proof boundary.  The body does not gain a
+// second write operation; it must discharge the place's existing first-
+// construction authority before normal fallthrough.
+class InitBlockStmt : public Stmt {
+public:
+  std::string PlaceName;
+  SourceLocation PlaceLoc;
+  bool IsValueMutable = false;
+  bool IsValueNullable = false;
+  bool IsValueBlocked = false;
+  std::unique_ptr<BlockStmt> Body;
+
+  InitBlockStmt(std::string placeName, std::unique_ptr<BlockStmt> body)
+      : PlaceName(std::move(placeName)), Body(std::move(body)) {}
+
+  std::string toString() const override { return "InitBlock(" + PlaceName + ")"; }
+  std::unique_ptr<ASTNode> clone() const override {
+    auto n = std::make_unique<InitBlockStmt>(PlaceName, cloneNode(Body));
+    n->PlaceLoc = PlaceLoc;
+    n->IsValueMutable = IsValueMutable;
+    n->IsValueNullable = IsValueNullable;
+    n->IsValueBlocked = IsValueBlocked;
+    n->Loc = Loc;
+    return n;
+  }
+};
+
 class ReturnStmt : public Stmt {
 public:
   std::unique_ptr<Expr> ReturnValue;

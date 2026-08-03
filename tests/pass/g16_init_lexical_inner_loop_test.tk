@@ -1,0 +1,10 @@
+fn main() -> i32 {
+    auto value = uninit:i32
+    init value {
+        loop {
+            init value = 42:i32
+            break
+        }
+    }
+    return value - 42:i32
+}

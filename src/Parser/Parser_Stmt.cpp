@@ -316,8 +316,11 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
   if (check(TokenType::KwReturn))
     return parseReturn();
   // `init` stays contextual so protocol members named `init` remain ordinary
-  // identifiers. The P1 direct form accepts one stable local name here;
-  // projections and contracts are added by later P1 slices.
+  // identifiers. The P1 forms accept one stable local name here; projections
+  // and contracts are added by later P1 slices.
+  if (check(TokenType::Identifier) && peek().Text == "init" &&
+      checkAt(1, TokenType::Identifier) && checkAt(2, TokenType::LBrace))
+    return parseInitBlockStmt();
   if (check(TokenType::Identifier) && peek().Text == "init" &&
       checkAt(1, TokenType::Identifier) && checkAt(2, TokenType::Equal))
     return parseInitStmt();
@@ -360,6 +363,21 @@ std::unique_ptr<Stmt> Parser::parseInitStmt() {
   assignment->IsInitialization = true;
   assignment->Loc = init.Loc;
   return std::make_unique<ExprStmt>(std::move(assignment));
+}
+
+std::unique_ptr<Stmt> Parser::parseInitBlockStmt() {
+  Token init = advance();
+  Token target = consume(TokenType::Identifier,
+                         DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME);
+  auto body = parseBlock();
+
+  auto block = std::make_unique<InitBlockStmt>(target.Text, std::move(body));
+  block->PlaceLoc = target.Loc;
+  block->IsValueMutable = target.HasWrite;
+  block->IsValueNullable = target.HasNull;
+  block->IsValueBlocked = target.IsBlocked;
+  block->setLocation(init, m_CurrentFile);
+  return block;
 }
 
 std::unique_ptr<BlockStmt> Parser::parseBlock() {

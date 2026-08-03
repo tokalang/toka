@@ -128,6 +128,8 @@ private:
     } else if (auto *block = dynamic_cast<BlockStmt *>(stmt)) {
       for (auto &child : block->Statements)
         visitStmt(child.get());
+    } else if (auto *initBlock = dynamic_cast<InitBlockStmt *>(stmt)) {
+      visitStmt(initBlock->Body.get());
     } else if (auto *ret = dynamic_cast<ReturnStmt *>(stmt)) {
       visitExpr(ret->ReturnValue.get());
     } else if (auto *exprStmt = dynamic_cast<ExprStmt *>(stmt)) {

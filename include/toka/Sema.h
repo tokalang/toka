@@ -604,6 +604,10 @@ private:
   inline static constexpr const char *NoProducedValue =
       "<no-produced-value>";
   std::vector<ControlFlowInfo> m_ControlFlowStack;
+  // Each active lexical init obligation records the control-flow stack depth
+  // at its entry. A break or continue may only target a loop introduced after
+  // that point, so an unfinished obligation cannot escape its proof boundary.
+  std::vector<size_t> m_InitBlockControlFlowDepths;
 
   struct FlowSummary {
     bool CanFallThrough = true;

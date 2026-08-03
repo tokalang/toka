@@ -1130,6 +1130,10 @@ void TKIExporter::exportStmt(const Stmt *stmt, bool indentStmt) {
         m_OS << "\n";
     } else if (auto block = dynamic_cast<const BlockStmt *>(stmt)) {
         exportBlock(*block);
+    } else if (auto initBlock = dynamic_cast<const InitBlockStmt *>(stmt)) {
+        indent();
+        m_OS << "init " << initBlock->PlaceName << " ";
+        exportBlock(*initBlock->Body);
     } else if (auto ret = dynamic_cast<const ReturnStmt *>(stmt)) {
         indent();
         m_OS << "return";

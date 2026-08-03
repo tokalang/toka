@@ -3474,6 +3474,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
 
     if (target) {
+      size_t targetDepth = static_cast<size_t>(
+          std::distance(m_ControlFlowStack.data(), target));
+      if (!m_InitBlockControlFlowDepths.empty() &&
+          targetDepth < m_InitBlockControlFlowDepths.back())
+        error(be, DiagID::ERR_INIT_BLOCK_EXIT, "break");
       target->BreakStates.push_back(captureAnalysisState());
       if (valType != NoProducedValue) {
         if (target->ExpectedType == NoProducedValue) {
@@ -3506,8 +3511,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
-    if (target)
+    if (target) {
+      size_t targetDepth = static_cast<size_t>(
+          std::distance(m_ControlFlowStack.data(), target));
+      if (!m_InitBlockControlFlowDepths.empty() &&
+          targetDepth < m_InitBlockControlFlowDepths.back())
+        error(ce, DiagID::ERR_INIT_BLOCK_EXIT, "continue");
       target->ContinueStates.push_back(captureAnalysisState());
+    }
     return toka::Type::fromString("()");
   } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
     return checkCallExpr(Call);

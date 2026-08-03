@@ -168,6 +168,8 @@ public:
       for (auto &Sub : Block->Statements) {
         visitStmt(Sub.get());
       }
+    } else if (auto *InitBlock = dynamic_cast<InitBlockStmt *>(S)) {
+      visitStmt(InitBlock->Body.get());
     } else if (auto *Ret = dynamic_cast<ReturnStmt *>(S)) {
       visitExpr(Ret->ReturnValue.get());
     } else if (auto *ExprS = dynamic_cast<ExprStmt *>(S)) {

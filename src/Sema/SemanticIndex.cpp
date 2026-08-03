@@ -736,6 +736,12 @@ private:
         popScope();
       return;
     }
+    if (auto *value = dynamic_cast<const InitBlockStmt *>(statement)) {
+      addOccurrence(lookup(value->PlaceName), SemanticReferenceRole::Write,
+                    rangeFor(value->PlaceLoc, value->PlaceName));
+      visitStmt(value->Body.get());
+      return;
+    }
     if (auto *ret = dynamic_cast<const ReturnStmt *>(statement)) {
       visitExpr(ret->ReturnValue.get(), SemanticReferenceRole::Read);
       return;

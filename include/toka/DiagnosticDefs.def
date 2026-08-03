@@ -468,6 +468,8 @@ DIAG(ERR_NEVER_FUNCTION_RETURN, Error, "E04614", "Function '{}' declares '-> nev
 DIAG(ERR_SEMA_CEDE_OVERLAPPING_DESTINATION, Error, "E04615", "Cannot transfer '{}' into overlapping destination '{}'")
 DIAG(ERR_INIT_REQUIRES_UNINITIALIZED, Error, "E04616", "'init' requires a definite uninitialized local place; '{}' is not eligible")
 DIAG(ERR_INIT_REQUIRES_EXPLICIT, Error, "E04617", "Cannot assign to uninitialized local '{}'; use 'init {} = ...'")
+DIAG(ERR_INIT_BLOCK_UNFULFILLED, Error, "E04618", "'init {}' block can fall through before '{}' is initialized")
+DIAG(ERR_INIT_BLOCK_EXIT, Error, "E04619", "Cannot {} across an active 'init' block")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

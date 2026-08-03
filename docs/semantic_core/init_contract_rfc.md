@@ -2,9 +2,10 @@
 
 **Status:** `uninit` is implemented. A narrow `init local = value` scaffold is
 implemented for a whole immutable plain local with a definite, never-constructed
-state; it preserves the spelling through TKI and retained-body source-less
-replay. It is not activation of `init` P1. Sections labelled frozen record
-design decisions beyond that scaffold, not current public behavior.
+state. The direct form and lexical `init local { ... }` proof boundary preserve
+their spelling through TKI and retained-body source-less replay. This is not
+activation of `init` P1. Sections labelled frozen record design decisions beyond
+that scaffold, not current public behavior.
 
 **Scope:** A delayed-initialization contract proves a transition of an exact
 storage place from `Uninitialized` to `Initialized`. It is neither an optional
@@ -30,12 +31,19 @@ Its whole-place state set is captured and unioned at the existing `if`, `guard`,
 `match`, `loop`, `for`, `break`, and `continue` joins, so `Never | Live` is the
 private `Maybe` fact rather than a second spelling of an all-zero `InitMask`.
 
+The scaffold also recognizes `init local { ... }` as a lexical proof boundary.
+Its entry requires the same definite `Never` local as the direct form; each
+normal fallthrough must leave it definitely `Live`. A `return`-only body needs
+no post-state, while `break` or `continue` targeting outside the block is
+rejected. The body has no additional write authority and uses the direct form
+to construct the target.
+
 It deliberately does **not** yet make the full P1 contract public: legacy
 ordinary assignment remains available for writable, handle, reference, and
 projection initialization paths outside this scaffold; field-wise cleanup and
-general exact-place authority are not yet represented; `init place { ... }`,
-`place is uninit`, and `init` formals are not implemented. The next
-implementation slice must close those gaps before claiming P1 activation.
+general exact-place authority are not yet represented; `place is uninit` and
+`init` formals are not implemented. The next implementation slice must close
+those gaps before claiming P1 activation.
 
 ## 1. Motivation
 

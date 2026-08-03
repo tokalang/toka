@@ -352,6 +352,8 @@ llvm::Value *CodeGen::genStmt(const Stmt *stmt) {
 
   if (auto s = dynamic_cast<const BlockStmt *>(stmt))
     return genBlockStmt(s);
+  if (auto s = dynamic_cast<const InitBlockStmt *>(stmt))
+    return genBlockStmt(s->Body.get());
   if (auto s = dynamic_cast<const ReturnStmt *>(stmt))
     return genReturnStmt(s);
   if (auto s = dynamic_cast<const VariableDecl *>(stmt))

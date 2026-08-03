@@ -254,6 +254,8 @@ public:
       for (auto &stmt : B->Statements) {
         traverseStmt(stmt.get());
       }
+    } else if (auto *InitBlock = dynamic_cast<InitBlockStmt *>(S)) {
+      traverseStmt(InitBlock->Body.get());
     } else if (auto *R = dynamic_cast<ReturnStmt *>(S)) {
       traverseExpr(R->ReturnValue.get());
     } else if (auto *E = dynamic_cast<ExprStmt *>(S)) {

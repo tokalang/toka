@@ -4761,6 +4761,8 @@ FunctionDecl *Sema::instantiateGenericFunction(
       if (auto *bs = dynamic_cast<BlockStmt *>(s)) {
         for (auto &sub : bs->Statements)
           visitStmt(sub.get());
+      } else if (auto *initBlock = dynamic_cast<InitBlockStmt *>(s)) {
+        visitStmt(initBlock->Body.get());
       } else if (auto *vd = dynamic_cast<VariableDecl *>(s)) {
         applyTypeSyntaxSubst(vd->DeclaredTypeSyntax, vd->TypeName);
         vd->ResolvedType = nullptr; // Clear cache
