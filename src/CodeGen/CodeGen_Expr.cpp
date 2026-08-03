@@ -723,6 +723,19 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
 
   const BinaryExpr *bin = expr;
 
+  if (bin->IsInitStatePredicate) {
+    auto *target = dynamic_cast<const VariableExpr *>(bin->LHS.get());
+    llvm::Value *isLive = getInitLiveFlag(target);
+    if (!isLive) {
+      error(bin, DiagID::ERR_CODEGEN,
+            "init-state predicate target has no liveness flag");
+      return nullptr;
+    }
+    llvm::Value *isUninitialized = m_Builder.CreateNot(isLive, "is_uninit");
+    return PhysEntity(isUninitialized, "bool", isUninitialized->getType(),
+                      false);
+  }
+
   // [Phase 2] Syntactic Sugar / Operator Overloading Dispatch
   if (!bin->OverloadedMethod.empty()) {
       std::vector<std::unique_ptr<Expr>> args;

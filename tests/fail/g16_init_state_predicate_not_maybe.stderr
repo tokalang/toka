@@ -1,0 +1,5 @@
+error[E04620]: 'value is uninit' is only valid as the direct condition for its owning 'init value' block while construction is unresolved
+ --> tests/fail/g16_init_state_predicate_not_maybe.tk:5:18
+   |
+ 5 |         if value is uninit {
+   |                  ^

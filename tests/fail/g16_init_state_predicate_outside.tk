@@ -1,0 +1,7 @@
+// CHECK: error[E04620]
+fn main() {
+    auto value = uninit:i32
+    if value is uninit {
+        init value = 1:i32
+    }
+}

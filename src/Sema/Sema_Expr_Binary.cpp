@@ -174,6 +174,31 @@ static bool proveDistinctArrayElements(const ArrayIndexExpr *destination,
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
                    Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
+  if (Bin->Op == "is" && dynamic_cast<UnsetExpr *>(Bin->RHS.get())) {
+    auto *target = dynamic_cast<VariableExpr *>(Bin->LHS.get());
+    SymbolInfo *targetInfo = nullptr;
+    const bool isOwningMaybeTarget =
+        m_ExpectedInitStatePredicate == Bin && target &&
+        !target->IsRawPointer && !target->IsUnique && !target->IsShared &&
+        !target->IsValueMutable && !target->IsValueNullable &&
+        !target->IsValueBlocked && !m_InitBlockContexts.empty() &&
+        m_InitBlockContexts.back().PlaceName == target->Name &&
+        CurrentScope->findSymbol(target->Name, targetInfo) && targetInfo &&
+        targetInfo->IsDeclaredVariable &&
+        hasPlaceState(targetInfo->PlaceStateMask, PlaceState::Never) &&
+        hasPlaceState(targetInfo->PlaceStateMask, PlaceState::Live) &&
+        !hasPlaceState(targetInfo->PlaceStateMask, PlaceState::Moved);
+    if (!isOwningMaybeTarget) {
+      error(Bin, DiagID::ERR_INIT_STATE_PREDICATE,
+            target ? target->Name : "<place>",
+            !m_InitBlockContexts.empty()
+                ? m_InitBlockContexts.back().PlaceName
+                : "<place>");
+    } else {
+      Bin->IsInitStatePredicate = true;
+    }
+    return toka::Type::fromString("bool");
+  }
   // Normal assignment preserves RHS-first analysis because the RHS can carry
   // a borrow or transfer.  A todo carries neither, so it is the one case
   // where we may first inspect the LHS solely to supply its complete target

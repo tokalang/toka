@@ -1,0 +1,33 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape CleanupToken(
+    id: i32
+)
+
+impl CleanupToken@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn build(flag: bool) -> i32 {
+    auto value = uninit:CleanupToken
+    init value {
+        if flag {
+            init value = CleanupToken(id = 1)
+        }
+        if value is uninit {
+            init value = CleanupToken(id = 2)
+        }
+    }
+    return value.id
+}
+
+fn main() -> i32 {
+    assert(build(true) == 1, "preinitialized path keeps its value")
+    assert(build(false) == 2, "predicate takes fallback path")
+    assert(g_drop_count == 2, "each constructed value drops once")
+    return 0
+}

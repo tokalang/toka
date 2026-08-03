@@ -1,0 +1,10 @@
+// CHECK: error[E04620]
+fn main() -> i32 {
+    auto value = uninit:i32
+    init value {
+        if value is uninit {
+            return 0:i32
+        }
+        return 1:i32
+    }
+}

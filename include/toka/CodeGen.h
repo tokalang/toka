@@ -231,6 +231,7 @@ private:
 
   void suppressDropForMove(const std::string &name);
   void markInitLive(const BinaryExpr *assignment);
+  llvm::Value *getInitLiveFlag(const VariableExpr *place);
   void suppressDropForPartialMove(const MemberExpr *member);
   void suppressDropForPartialMove(const ArrayIndexExpr *index);
   void restoreDropForMemberAssignment(const MemberExpr *member);

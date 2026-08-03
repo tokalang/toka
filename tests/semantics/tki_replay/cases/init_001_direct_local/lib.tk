@@ -1,10 +1,12 @@
 // EXPECT_TKI: init value {
+// EXPECT_TKI: value is uninit
 pub fn init_value<T>(input: T, flag: bool) -> i32 {
     auto value = uninit:i32
     init value {
         if flag {
             init value = 42:i32
-        } else {
+        }
+        if value is uninit {
             init value = 43:i32
         }
     }

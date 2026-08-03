@@ -311,6 +311,25 @@ void CodeGen::markInitLive(const BinaryExpr *assignment) {
   }
 }
 
+llvm::Value *CodeGen::getInitLiveFlag(const VariableExpr *place) {
+  if (!place)
+    return nullptr;
+
+  const std::string placeName = Type::stripMorphology(place->Name);
+  for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (Type::stripMorphology(entry->Name) != placeName)
+        continue;
+      if (!entry->InitFlag)
+        return nullptr;
+      return m_Builder.CreateLoad(llvm::Type::getInt1Ty(m_Context),
+                                  entry->InitFlag, placeName + ".init.live");
+    }
+  }
+  return nullptr;
+}
+
 void CodeGen::suppressDropForPartialMove(const MemberExpr *member) {
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();

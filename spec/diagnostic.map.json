@@ -2657,6 +2657,12 @@
       "message": "Cannot {} across an active 'init' block",
       "description": "A break or continue cannot carry an unfinished lexical initialization obligation to an outer control-flow target."
     },
+    "E04620": {
+      "id": "ERR_INIT_STATE_PREDICATE",
+      "level": "Error",
+      "message": "'{} is uninit' is only valid as the direct condition for its owning 'init {}' block while construction is unresolved",
+      "description": "The predicate observes a private Maybe construction fact. It is not a value comparison and cannot be used outside the lexical init proof boundary."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

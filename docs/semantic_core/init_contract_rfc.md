@@ -38,6 +38,13 @@ no post-state, while `break` or `continue` targeting outside the block is
 rejected. The body has no additional write authority and uses the direct form
 to construct the target.
 
+Within that block, the scaffold recognizes `if local is uninit { ... }` only
+as the direct condition for the owning local while its fact is `Never | Live`.
+The true branch receives `Never`, the false branch receives `Live`, and the
+predicate lowers through the local's runtime liveness flag rather than reading
+uninitialized storage. `guard`, compound conditions, predicates on another
+place, and predicates outside the owning block remain outside this slice.
+
 For an explicit `uninit` local, lowering now keeps a runtime liveness flag
 separate from the storage and from resource cleanup metadata. It begins false;
 a successful direct `init` sets it true. Scope cleanup consults the same flag,
@@ -47,9 +54,9 @@ resource is dropped exactly on the paths that made it live.
 It deliberately does **not** yet make the full P1 contract public: legacy
 ordinary assignment remains available for writable, handle, reference, and
 projection initialization paths outside this scaffold; field-wise cleanup and
-general exact-place authority are not yet represented; `place is uninit` and
-`init` formals are not implemented. The next implementation slice must close
-those gaps before claiming P1 activation.
+general exact-place authority are not yet represented; `init` formals and
+state predicates beyond the owning direct `if` are not implemented. The next
+implementation slice must close those gaps before claiming P1 activation.
 
 ## 1. Motivation
 

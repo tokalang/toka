@@ -457,9 +457,10 @@ void Sema::checkStmt(Stmt *S) {
       error(InitBlock, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
             InitBlock->PlaceName);
 
-    m_InitBlockControlFlowDepths.push_back(m_ControlFlowStack.size());
+    m_InitBlockContexts.push_back(
+        {InitBlock->PlaceName, m_ControlFlowStack.size()});
     checkStmt(InitBlock->Body.get());
-    m_InitBlockControlFlowDepths.pop_back();
+    m_InitBlockContexts.pop_back();
 
     if (hasInitAuthority && !allPathsJump(InitBlock->Body.get())) {
       SymbolInfo *postState = nullptr;

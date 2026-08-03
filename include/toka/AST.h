@@ -330,6 +330,9 @@ public:
   // `init place = value` shares assignment lowering but carries a distinct
   // construction transition contract.
   bool IsInitialization = false;
+  // `place is uninit` is a compile-time state observation with a dedicated
+  // runtime liveness lowering. It is never a value comparison with `uninit`.
+  bool IsInitStatePredicate = false;
   AssignmentSemanticKind AssignmentKind =
       AssignmentSemanticKind::Unclassified;
   std::unique_ptr<Expr> LHS, RHS;
@@ -344,6 +347,7 @@ public:
     auto n = std::make_unique<BinaryExpr>(Op, cloneNode(LHS), cloneNode(RHS));
     n->OverloadedMethod = OverloadedMethod;
     n->IsInitialization = IsInitialization;
+    n->IsInitStatePredicate = IsInitStatePredicate;
     n->AssignmentKind = AssignmentKind;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;

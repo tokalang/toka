@@ -2153,7 +2153,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         return retTypeObj;
     }
 
-    auto condTypeObj = checkExpr(ie->Condition.get(), toka::Type::fromString("bool"));
+    const BinaryExpr *oldExpectedInitStatePredicate =
+        m_ExpectedInitStatePredicate;
+    m_ExpectedInitStatePredicate =
+        dynamic_cast<BinaryExpr *>(ie->Condition.get());
+    auto condTypeObj =
+        checkExpr(ie->Condition.get(), toka::Type::fromString("bool"));
+    m_ExpectedInitStatePredicate = oldExpectedInitStatePredicate;
     std::string condType = condTypeObj->toString();
 
     // Type narrowing for null checks is branch-sensitive.  `x is null`
@@ -2167,18 +2173,33 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool narrowThen = false;
     bool narrowElse = false;
     VariableExpr *narrowedVariable = nullptr;
+    bool narrowsInitState = false;
+    VariableExpr *initStateVariable = nullptr;
+    SymbolInfo initStateOriginal;
 
     if (auto *bin = dynamic_cast<BinaryExpr *>(ie->Condition.get())) {
-      const bool comparesNull =
-          dynamic_cast<NullExpr *>(bin->RHS.get()) ||
-          dynamic_cast<NoneExpr *>(bin->RHS.get());
-      if (bin->Op == "is" || bin->Op == "is!") {
-        narrowThen = (bin->Op == "is" && !comparesNull) ||
-                      (bin->Op == "is!" && comparesNull);
-        narrowElse = bin->Op == "is" && comparesNull;
+      if (bin->IsInitStatePredicate) {
+        initStateVariable = dynamic_cast<VariableExpr *>(bin->LHS.get());
+        if (initStateVariable) {
+          SymbolInfo *infoPtr = nullptr;
+          if (CurrentScope->findSymbol(initStateVariable->Name, infoPtr) &&
+              infoPtr) {
+            narrowsInitState = true;
+            initStateOriginal = *infoPtr;
+          }
+        }
+      } else {
+        const bool comparesNull =
+            dynamic_cast<NullExpr *>(bin->RHS.get()) ||
+            dynamic_cast<NoneExpr *>(bin->RHS.get());
+        if (bin->Op == "is" || bin->Op == "is!") {
+          narrowThen = (bin->Op == "is" && !comparesNull) ||
+                        (bin->Op == "is!" && comparesNull);
+          narrowElse = bin->Op == "is" && comparesNull;
+        }
       }
 
-      if (narrowThen || narrowElse) {
+      if (!narrowsInitState && (narrowThen || narrowElse)) {
         Expr *lhs = bin->LHS.get();
         std::string path = getPathString(lhs);
         if (!path.empty()) {
@@ -2233,6 +2254,27 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_NarrowedPaths.erase(narrowedVar);
     };
 
+    auto applyInitStateNarrowing = [&](PlaceState state) {
+      if (!narrowsInitState || !initStateVariable)
+        return;
+      SymbolInfo *infoPtr = nullptr;
+      if (!CurrentScope->findSymbol(initStateVariable->Name, infoPtr) ||
+          !infoPtr)
+        return;
+      infoPtr->PlaceStateMask = placeStateMask(state);
+      infoPtr->Moved = false;
+      infoPtr->InitMask = state == PlaceState::Never ? 0 : ~0ULL;
+    };
+
+    auto restoreInitStateNarrowing = [&]() {
+      if (!narrowsInitState || !initStateVariable)
+        return;
+      SymbolInfo *infoPtr = nullptr;
+      if (CurrentScope->findSymbol(initStateVariable->Name, infoPtr) &&
+          infoPtr)
+        *infoPtr = initStateOriginal;
+    };
+
     bool isReceiver = false;
     if (!m_ControlFlowStack.empty()) {
       isReceiver = m_ControlFlowStack.back().IsReceiver;
@@ -2251,7 +2293,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
-    if (narrowThen)
+    if (narrowsInitState)
+      applyInitStateNarrowing(PlaceState::Never);
+    else if (narrowThen)
       applyNarrowing();
     checkStmt(ie->Then.get());
 
@@ -2261,7 +2305,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto conditionalThen = captureVisibleConditionalTodoIds(CurrentScope);
     auto palThen = PALCheckerState.snapshot();
 
-    if (narrowThen)
+    if (narrowsInitState)
+      restoreInitStateNarrowing();
+    else if (narrowThen)
       restoreNarrowing();
 
     std::string thenType = m_ControlFlowStack.back().ExpectedType;
@@ -2280,17 +2326,22 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
-      if (narrowElse)
+      if (narrowsInitState)
+        applyInitStateNarrowing(PlaceState::Live);
+      else if (narrowElse)
         applyNarrowing();
       checkStmt(ie->Else.get());
       elseType = m_ControlFlowStack.back().ExpectedType;
       elseTypeObj = m_ControlFlowStack.back().ExpectedTypeObj;
       elseReturns = allPathsJump(ie->Else.get());
+      auto masksElse = captureVisibleInitMasks(CurrentScope);
       auto conditionalElse = captureVisibleConditionalTodoIds(CurrentScope);
       auto placeStateMasksElse = captureVisiblePlaceStateMasks(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
-      if (narrowElse)
+      if (narrowsInitState)
+        restoreInitStateNarrowing();
+      else if (narrowElse)
         restoreNarrowing();
 
       // Intersection Rule
@@ -2318,7 +2369,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (!CurrentScope->findSymbol(pair.first, info) || !info)
             continue;
           uint64_t thenM = masksThen.count(pair.first) ? masksThen[pair.first] : 0;
-          info->InitMask &= thenM;
+          uint64_t elseM = masksElse.count(pair.first) ? masksElse[pair.first] : 0;
+          info->InitMask = thenM & elseM;
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           info->Moved = info->Moved || thenMoved;
           uint8_t thenPlaceStates =
@@ -2359,6 +2411,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeStateMasksBefore.count(pair.first)
                   ? placeStateMasksBefore[pair.first]
                   : 0;
+          if (narrowsInitState && initStateVariable &&
+              pair.first == initStateVariable->Name) {
+            info->Moved = false;
+            info->PlaceStateMask = placeStateMask(PlaceState::Live);
+            info->InitMask = ~0ULL;
+          }
         } else {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           info->Moved = movedBefore[pair.first] || thenMoved;
@@ -2371,6 +2429,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   ? placeStateMasksThen[pair.first]
                   : 0;
           info->PlaceStateMask = beforePlaceStates | thenPlaceStates;
+          if (narrowsInitState && initStateVariable &&
+              pair.first == initStateVariable->Name) {
+            info->PlaceStateMask = thenPlaceStates |
+                                   placeStateMask(PlaceState::Live);
+            info->Moved = false;
+            info->InitMask = hasExactlyPlaceState(info->PlaceStateMask,
+                                                   PlaceState::Live)
+                                 ? ~0ULL
+                                 : 0;
+          }
         }
       }
       for (const auto &pair : conditionalBefore) {
@@ -3476,8 +3544,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (target) {
       size_t targetDepth = static_cast<size_t>(
           std::distance(m_ControlFlowStack.data(), target));
-      if (!m_InitBlockControlFlowDepths.empty() &&
-          targetDepth < m_InitBlockControlFlowDepths.back())
+      if (!m_InitBlockContexts.empty() &&
+          targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(be, DiagID::ERR_INIT_BLOCK_EXIT, "break");
       target->BreakStates.push_back(captureAnalysisState());
       if (valType != NoProducedValue) {
@@ -3514,8 +3582,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (target) {
       size_t targetDepth = static_cast<size_t>(
           std::distance(m_ControlFlowStack.data(), target));
-      if (!m_InitBlockControlFlowDepths.empty() &&
-          targetDepth < m_InitBlockControlFlowDepths.back())
+      if (!m_InitBlockContexts.empty() &&
+          targetDepth < m_InitBlockContexts.back().ControlFlowDepth)
         error(ce, DiagID::ERR_INIT_BLOCK_EXIT, "continue");
       target->ContinueStates.push_back(captureAnalysisState());
     }
