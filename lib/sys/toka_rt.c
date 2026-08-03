@@ -856,6 +856,12 @@ typedef enum {
     TOKA_RESULT_OWNER_DETACHED = 2
 } TokaResultOwner;
 
+typedef enum {
+    TOKA_RESULT_DISPOSITION_UNCLAIMED = 0,
+    TOKA_RESULT_DISPOSITION_DROPPING = 1,
+    TOKA_RESULT_DISPOSITION_DROPPED = 2
+} TokaResultDisposition;
+
 typedef struct TokaTCB {
     uint64_t id;
     void *coro_frame;
@@ -865,7 +871,7 @@ typedef struct TokaTCB {
     _Atomic uint8_t cancel_requested;
     _Atomic uint8_t cancel_handled;
     _Atomic uint8_t result_owner;
-    _Atomic uint8_t result_drop_claimed;
+    _Atomic uint8_t result_disposition;
     void (*result_drop_fn)(void *);
     _Atomic uint32_t ref_count;
     _Atomic uint8_t detached;
@@ -1139,7 +1145,8 @@ void* toka_task_create_with_result_drop(void *coro_frame, void *promise,
     atomic_store(&tcb->cancel_requested, 0);
     atomic_store(&tcb->cancel_handled, 0);
     atomic_store(&tcb->result_owner, TOKA_RESULT_OWNER_CONSUMER);
-    atomic_store(&tcb->result_drop_claimed, 0);
+    atomic_store(&tcb->result_disposition,
+                 TOKA_RESULT_DISPOSITION_UNCLAIMED);
     tcb->result_drop_fn = result_drop_fn;
     atomic_store(&tcb->ref_count, 1);
     atomic_store(&tcb->detached, 0);
@@ -1589,6 +1596,14 @@ void *toka_task_result_value_ptr(void *promise_ptr) {
 int toka_task_take_result(void *promise_ptr) {
     if (!promise_ptr) return 0;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
+    if (tcb &&
+        (atomic_load_explicit(&tcb->result_owner, memory_order_acquire) !=
+             TOKA_RESULT_OWNER_CONSUMER ||
+         atomic_load_explicit(&tcb->result_disposition, memory_order_acquire) !=
+             TOKA_RESULT_DISPOSITION_UNCLAIMED)) {
+        return 0;
+    }
     uint8_t expected = TOKA_RESULT_STATE_READYLIVE;
     if (atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected, TOKA_RESULT_STATE_TAKEN, memory_order_acq_rel, memory_order_acquire)) {
         return 1;
@@ -1600,10 +1615,11 @@ int toka_task_take_result(void *promise_ptr) {
     return 0;
 }
 
-// Both scope closing and detached completion use this one linear claim:
-// ReadyLive -> Taken is the public result-state transition and the private
-// drop claim.  The caller owns a stable TCB reference; the extra retain keeps
-// the TCB alive if the generated drop hook re-enters task code.
+// Both scope closing and detached completion use this one linear disposition.
+// It first publishes Dropping as the private exclusion claim, runs the typed
+// callback, then release-publishes ReadyLive -> Taken and Dropped. The caller
+// owns a stable TCB reference; the extra retain keeps the TCB alive if the
+// generated drop hook re-enters task code.
 static int toka_task_dispose_result_for_owner(TokaTCB *tcb,
                                               TokaResultOwner owner) {
     if (!tcb || atomic_load(&tcb->result_owner) != owner) return 0;
@@ -1619,19 +1635,23 @@ static int toka_task_dispose_result_for_owner(TokaTCB *tcb,
     }
     if (state != TOKA_RESULT_STATE_READYLIVE) return 0;
 
-    uint8_t expected_state = TOKA_RESULT_STATE_READYLIVE;
+    uint8_t expected_disposition = TOKA_RESULT_DISPOSITION_UNCLAIMED;
     if (!atomic_compare_exchange_strong_explicit(
-            &hdr->result_state, &expected_state, TOKA_RESULT_STATE_TAKEN,
-            memory_order_acq_rel, memory_order_acquire)) {
-        return expected_state == TOKA_RESULT_STATE_CANCELED ||
-               expected_state == TOKA_RESULT_STATE_TAKEN;
+            &tcb->result_disposition, &expected_disposition,
+            TOKA_RESULT_DISPOSITION_DROPPING, memory_order_acq_rel,
+            memory_order_acquire)) {
+        return expected_disposition == TOKA_RESULT_DISPOSITION_DROPPED;
     }
 
-    atomic_store_explicit(&tcb->result_drop_claimed, 1, memory_order_release);
     atomic_fetch_add(&tcb->ref_count, 1);
     if (tcb->result_drop_fn) {
         tcb->result_drop_fn(toka_task_result_value_ptr(tcb->promise));
     }
+    atomic_store_explicit(&hdr->result_state, TOKA_RESULT_STATE_TAKEN,
+                          memory_order_release);
+    atomic_store_explicit(&tcb->result_disposition,
+                          TOKA_RESULT_DISPOSITION_DROPPED,
+                          memory_order_release);
     toka_task_release(tcb);
     return 1;
 }

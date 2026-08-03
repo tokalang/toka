@@ -338,18 +338,18 @@ late child is rejected before transfer. The current substrate additionally
 transfers `Consumer -> Scope` result authority during accepted enrollment and
 installs a compiler-generated, return-type-specific drop hook. `reap_finished`,
 successful `finish_close`, and scope destruction's fallback transfer to the
-detached owner claim `ReadyLive -> Taken` exactly once, retain the TCB across
-the callback, and invoke that hook only after releasing the registry arbiter.
-`await`, `wait`, and async entry result extraction likewise claim `ReadyLive ->
-Taken` before moving the payload, so a later handle drop cannot repeat the
-disposition.
+detached owner publish `Unclaimed -> Dropping`, retain the TCB across the
+callback, invoke that hook only after releasing the registry arbiter, then
+release-publish `ReadyLive -> Taken` and `Dropped`. `await`, `wait`, and async
+entry result extraction claim `ReadyLive -> Taken` before moving the payload,
+so a later handle drop cannot repeat the disposition.
 
 This remains a deliberately restricted result-disposition substrate, not
-Phase-5 conformance: `Taken` is currently the pre-callback exclusion claim,
-not a descriptor-backed post-callback publication. It still lacks full-token
-validation, reason/aggregate arbitration, callback-completion descriptors,
-helpable close progress, and TCB/slot retention independent of frame
-eligibility.
+Phase-5 conformance: `Dropping`/`Dropped` is only a per-TCB completion marker,
+not a descriptor that can aggregate cancellation reason, scope progress, and
+helpable completion. It still lacks full-token validation, reason/aggregate
+arbitration, those aggregate callback-completion descriptors, helpable close
+progress, and TCB/slot retention independent of frame eligibility.
 - Its registry has `Open | Closing(reason) | Closed` state under the same
   parent-cancellation/close arbiter used for child registration. Registration
   either links `Tracked` (and, for a new child, does so before activation/
