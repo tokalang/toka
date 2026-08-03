@@ -48,7 +48,8 @@ CDW P1 is not:
 
 The `@tki v2` audit comments remain ignorable. In particular, an `unbound`
 audit identity is evidence for tests and debugging only; it is never a valid
-`ModuleCoordinate` for a future witness record.
+`ModuleCoordinate` for a future witness record. A `coordinate=known` audit
+marker is likewise only an observability signal, not a witness or authority.
 
 ## 3. P1 record and consumer-owned classification
 
@@ -191,6 +192,12 @@ implementation facts:
 - source-less retained-body replay reconstructs the same audit bytes without
   relying on AST address or source path.
 
+The audit record also carries `coordinate=known` only when the resolver has a
+known coordinate for both the function owner and the direct return-enum owner;
+otherwise it carries `coordinate=unbound`. Ordinary local compilation remains
+valid in the latter case. This reports the P1 coordinate boundary without
+making the comment part of TKI import, caller acceptance, or cache authority.
+
 The comment is intentionally not CDW1: it is textual, has no manifest
 envelope, permits `unbound` for local test modules, and is not parsed by the
 importer. It may be used as a regression oracle while the actual encoder and
@@ -219,7 +226,13 @@ provenance and exact-object-binding rules in the Semantic Manifest Envelope.
 
 ## 9. Next decision
 
-The next implementation decision is not "add a digest." It is whether the
-resolver can make `ModuleCoordinate` mandatory for the small P1 record domain
-without breaking ordinary local compilation. If not, CDW1 remains a proposed
-schema and the current audit record continues to provide no authority.
+The resolver boundary is now established for the small P1 domain: an explicit
+workspace, package, or toolchain node can provide a stable coordinate, while
+ordinary local compilation remains coordinate-unbound. The audit marker proves
+that source and retained-body source-less replay preserve this distinction; it
+does not make a coordinate mandatory or activate CDW1.
+
+The next implementation decision is still not "add a digest." It is whether
+the narrow domain has sufficiently canonical type encoding and importer-owned
+reconstruction to justify implementing the structured, ignored CDW1 encoder
+before any manifest or bodyless-provider design is considered.

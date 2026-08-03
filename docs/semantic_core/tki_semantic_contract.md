@@ -124,7 +124,10 @@ function. The record length-frames its resolver module coordinate, function
 signature, formal index, enum declaration, and variant name/ordinal, and is
 stable across source-less TKI replay. It contains no source path, source
 location, AST address, or authority claim; parser/importer behavior is
-unchanged by the comment.
+unchanged by the comment. Its audit-only `coordinate=known` label appears only
+when both the function and direct return-enum owners have resolver-known
+coordinates; ordinary local compilation instead reports `coordinate=unbound`.
+Neither label changes importer behavior.
 
 ### Shape Structure
 

@@ -771,6 +771,17 @@ void Sema::populateOutcomeTransitionIdentities(FunctionDecl *fn) {
     return;
 
   auto &transition = *fn->ResolvedOutcomeTransition;
+  auto hasKnownOwnerCoordinate = [this](const auto *declaration) {
+    auto scope = DeclarationLexicalScopes.find(declaration);
+    return scope != DeclarationLexicalScopes.end() && scope->second &&
+           scope->second->ShadowCoordinateKnown;
+  };
+  // The Outcome formal is rooted at `fn`; each case is rooted at the direct
+  // return enum.  This audit bit is deliberately narrower than a future CDW
+  // record and remains non-authoritative until that schema is activated.
+  transition.HasKnownDeclarationCoordinates =
+      hasKnownOwnerCoordinate(fn) &&
+      hasKnownOwnerCoordinate(transition.ReturnEnum);
   transition.FunctionIdentity = canonicalOutcomeFunctionIdentity(fn);
   transition.SubjectIdentity = transition.FunctionIdentity + "formal=" +
       std::to_string(transition.SubjectIndex) + ";";
@@ -1512,6 +1523,8 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
     }
     std::sort(cases.begin(), cases.end());
     std::string record = "outcome_transition: " +
+        std::string("coordinate=") +
+        (transition.HasKnownDeclarationCoordinates ? "known;" : "unbound;") +
         transition.FunctionIdentity + "subject=" + transition.SubjectIdentity +
         "result=" + transition.ReturnEnumIdentity;
     for (const auto &entry : cases)

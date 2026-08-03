@@ -403,7 +403,10 @@ Its canonical subject uses the resolver module coordinate, function signature,
 and formal index; each case uses the resolved enum declaration, variant name,
 and ordinal. It is deliberately a comment-only cross-check: import recomputes
 the same identity from declarations, but no compiler rule reads the comment or
-treats an unbound coordinate as semantic authority.
+treats either coordinate state as semantic authority. `coordinate=known`
+appears only when the function and direct return-enum owners both carry
+resolver-known coordinates; ordinary local compilation reports
+`coordinate=unbound`.
 
 An unbound or ordinary third-party TKI cannot establish body-derived
 fulfilment merely by asserting a transition. Support therefore has two

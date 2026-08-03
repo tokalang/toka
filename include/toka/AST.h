@@ -1883,6 +1883,10 @@ public:
     std::string SubjectIdentity;
     const ShapeDecl *ReturnEnum = nullptr;
     std::string ReturnEnumIdentity;
+    // Audit-only P1 admission condition: every identity root in this narrow
+    // declaration fact has a resolver-owned coordinate.  It grants no import
+    // authority and does not enable a declaration witness payload.
+    bool HasKnownDeclarationCoordinates = false;
     std::vector<Case> Cases;
 
     const Case *findVariant(const std::string &name) const {
