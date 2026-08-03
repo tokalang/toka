@@ -1,0 +1,7 @@
+import ./lib::{initialize}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    initialize(init value)
+    return value - 42:i32
+}

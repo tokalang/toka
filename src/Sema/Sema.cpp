@@ -3715,6 +3715,31 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Info.DeclLoc = argLoc;
     Info.IsCeded = Arg.IsCeded;
     Info.IsFunctionParameter = true;
+    if (Arg.IsInit) {
+      const bool isPlainValue = !Arg.IsCeded && !Arg.IsRawPointer &&
+                                !Arg.IsUnique && !Arg.IsShared &&
+                                !Arg.IsReference && !Arg.IsRebindable &&
+                                !Arg.IsValueMutable &&
+                                !Arg.IsPointerNullable &&
+                                !Arg.IsValueNullable &&
+                                !Arg.IsValueBlocked && Arg.Name != "self" &&
+                                Fn->Effect == EffectKind::None &&
+                                Fn->ReturnContract.ResultKind !=
+                                    ReturnResultKind::Never;
+      if (!isPlainValue) {
+        DiagnosticEngine::report(argLoc, DiagID::ERR_INIT_PARAMETER_INVALID,
+                                 Arg.Name);
+        HasError = true;
+      }
+      // An init formal aliases caller storage.  It begins unavailable to
+      // ordinary reads and becomes Live only through `init param = ...`.
+      Info.InitMask = 0;
+      Info.PlaceStateMask = placeStateMask(PlaceState::Never);
+      // The contract itself consumes the formal's place authority; this also
+      // keeps bodyless TKI declarations from reporting a spurious unused
+      // value warning for a parameter that cannot be read.
+      Info.HasBeenUsed = true;
+    }
     if (Info.TypeObj && (Info.TypeObj->isFunction() || Info.TypeObj->isDynFn()))
       Info.CallableReceiver = getCallableReceiverMode(*Info.TypeObj);
 
@@ -3731,6 +3756,24 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   if (Fn->Body) {
     checkStmt(Fn->Body.get());
+
+    // Explicit returns check their own path at the return expression.  Only
+    // a reachable normal fallthrough remains to be discharged here.
+    if (!allPathsJump(Fn->Body.get())) {
+      for (auto &Arg : Fn->Args) {
+        if (!Arg.IsInit)
+          continue;
+        SymbolInfo *Info = nullptr;
+        SourceLocation argLoc = Arg.Loc.isValid() ? Arg.Loc : getLoc(Fn);
+        if (CurrentScope->findSymbol(Arg.Name, Info) && Info &&
+            !hasExactlyPlaceState(Info->PlaceStateMask, PlaceState::Live)) {
+          DiagnosticEngine::report(
+              argLoc, DiagID::ERR_INIT_PARAMETER_UNFULFILLED, Fn->Name,
+              Arg.Name);
+          HasError = true;
+        }
+      }
+    }
 
     for (auto &Arg : Fn->Args) {
       if (!Arg.IsCeded)

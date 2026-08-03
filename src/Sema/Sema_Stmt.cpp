@@ -585,6 +585,20 @@ void Sema::checkStmt(Stmt *S) {
 
     exitScope();
   } else if (auto *Ret = dynamic_cast<ReturnStmt *>(S)) {
+    if (CurrentFunction) {
+      for (const auto &Arg : CurrentFunction->Args) {
+        if (!Arg.IsInit)
+          continue;
+        SymbolInfo *Info = nullptr;
+        if (!CurrentScope->findSymbol(Arg.Name, Info) || !Info ||
+            !hasExactlyPlaceState(Info->PlaceStateMask, PlaceState::Live)) {
+          DiagnosticEngine::report(
+              getLoc(Ret), DiagID::ERR_INIT_PARAMETER_UNFULFILLED,
+              CurrentFunction->Name, Arg.Name);
+          HasError = true;
+        }
+      }
+    }
     if (CurrentFunction &&
         CurrentFunction->ReturnContract.ResultKind == ReturnResultKind::Never) {
       DiagnosticEngine::report(getLoc(Ret), DiagID::ERR_NEVER_FUNCTION_RETURN,

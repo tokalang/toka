@@ -1,0 +1,14 @@
+// A synchronous init formal receives caller-owned storage and fulfills it.
+fn initialize(init out: i32) {
+    init out = 42:i32
+}
+
+fn forward(init out: i32) {
+    initialize(init out)
+}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    forward(init value)
+    return value - 42:i32
+}

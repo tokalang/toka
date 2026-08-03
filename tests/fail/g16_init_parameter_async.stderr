@@ -1,0 +1,5 @@
+error[E04621]: 'init out' parameter must be a plain immutable parameter of a synchronous ordinary function
+ --> tests/fail/g16_init_parameter_async.tk:2:20
+   |
+ 2 | fn initialize(init out: i32) -> async {
+   |                    ^

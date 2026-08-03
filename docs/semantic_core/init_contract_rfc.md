@@ -1,18 +1,17 @@
 # RFC: Delayed Initialization Contracts
 
-**Status:** `uninit` is implemented. A narrow `init local = value` scaffold is
-implemented for a whole immutable plain local with a definite, never-constructed
-state. The direct form and lexical `init local { ... }` proof boundary preserve
-their spelling through TKI and retained-body source-less replay. This is not
-activation of `init` P1. Sections labelled frozen record design decisions beyond
-that scaffold, not current public behavior.
+**Status:** the P1 whole-place synchronous core is implemented: `uninit`, direct
+`init local = value`, lexical `init local { ... }`, its restricted `is uninit`
+predicate, and plain synchronous `init` formals. The formal signature and the
+contextual `init` call argument survive source-less TKI replay. Field-wise,
+outcome-dependent, and async contracts remain deferred.
 
 **Scope:** A delayed-initialization contract proves a transition of an exact
 storage place from `Uninitialized` to `Initialized`. It is neither an optional
 value nor an ordinary write permission. P1 is local, synchronous, and
-whole-place only, including an explicit lexical promise block; the active
-scaffold implements only its direct local-construction subset. Field-wise and
-async extensions require their own evidence.
+whole-place only, including an explicit lexical promise block and an explicit
+cross-function formal handoff. Field-wise and async extensions require their
+own evidence.
 
 **Depends on:** the construction-origin and availability model in
 [place_state_core_rfc.md](place_state_core_rfc.md), plus declaration-backed H/P
@@ -51,12 +50,15 @@ a successful direct `init` sets it true. Scope cleanup consults the same flag,
 so an unconstructed resource is never dropped and a conditionally constructed
 resource is dropped exactly on the paths that made it live.
 
-It deliberately does **not** yet make the full P1 contract public: legacy
-ordinary assignment remains available for writable, handle, reference, and
-projection initialization paths outside this scaffold; field-wise cleanup and
-general exact-place authority are not yet represented; `init` formals and
-state predicates beyond the owning direct `if` are not implemented. The next
-implementation slice must close those gaps before claiming P1 activation.
+The implemented formal slice is intentionally smaller than a general out
+parameter: only a plain immutable, synchronous ordinary function parameter is
+eligible; the actual must be an explicit `init` direct local or another active
+`init` formal in the definite `Never` state. The ABI passes caller-owned storage
+by address, the callee owns no cleanup, and every normal fallthrough or explicit
+`return` must prove the formal `Live`. A matching call changes the caller place
+to `Live`; no value read, ordinary write permission, or cleanup transfer occurs
+at the handoff. Async, methods/callable values, projections, and conditionally
+successful construction remain outside this slice.
 
 ## 1. Motivation
 

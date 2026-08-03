@@ -1,0 +1,5 @@
+error[E04624]: Function 'initialize' can return before initializing parameter 'out'
+ --> tests/fail/g16_init_parameter_unfulfilled.tk:2:20
+   |
+ 2 | fn initialize(init out: i32) {
+   |                    ^

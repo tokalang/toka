@@ -1,0 +1,9 @@
+// CHECK: error[E04623]
+fn initialize(init out: i32) {
+    init out = 1:i32
+}
+
+fn main() {
+    auto value = 0:i32
+    initialize(init value)
+}

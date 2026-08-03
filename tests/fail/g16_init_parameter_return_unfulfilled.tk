@@ -1,0 +1,9 @@
+// CHECK: error[E04624]
+fn initialize(init out: i32) {
+    return
+}
+
+fn main() {
+    auto value = uninit:i32
+    initialize(init value)
+}

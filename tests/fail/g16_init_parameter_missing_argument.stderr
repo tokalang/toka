@@ -1,0 +1,5 @@
+error[E04622]: Parameter 'out' requires an explicit 'init' place argument
+ --> tests/fail/g16_init_parameter_missing_argument.tk:7:17
+   |
+ 7 |     initialize(1:i32)
+   |                 ^

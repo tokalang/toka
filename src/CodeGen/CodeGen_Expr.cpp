@@ -5558,14 +5558,16 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     const auto *cededArg =
         dynamic_cast<const CedeExpr *>(call->Args[i].get());
     bool isRef = false;
+    bool isInit = false;
     if (funcDecl && i < funcDecl->Args.size()) {
       isRef = funcDecl->Args[i].IsReference;
+      isInit = funcDecl->Args[i].IsInit;
     } else if (extDecl && i < extDecl->Args.size()) {
       isRef = extDecl->Args[i].IsReference;
     }
 
     llvm::Value *val = nullptr;
-    bool shouldPassAddr = isRef;
+    bool shouldPassAddr = isRef || isInit;
     llvm::Type *pTy = nullptr;
     size_t paramIdx = isSRet ? i + 1 : i;
     if (callee && paramIdx < callee->getFunctionType()->getNumParams())
@@ -6224,6 +6226,19 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   }
 
   llvm::CallInst *ci = m_Builder.CreateCall(callee->getFunctionType(), callee, argsV);
+
+  // A synchronous init formal has just constructed caller-owned storage.  The
+  // semantic post-state is Live, so its runtime observation and cleanup flags
+  // must become live at this same call boundary.
+  if (funcDecl) {
+    for (size_t i = 0; i < funcDecl->Args.size() && i < call->Args.size();
+         ++i) {
+      if (!funcDecl->Args[i].IsInit)
+        continue;
+      if (auto *place = dynamic_cast<const VariableExpr *>(call->Args[i].get()))
+        markInitLive(place);
+    }
+  }
 
   if (!cededNullablePayloadShells.empty()) {
     llvm::Function *freeFn = m_Module->getFunction("free");

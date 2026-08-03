@@ -1,0 +1,8 @@
+// CHECK: error[E04622]
+fn initialize(init out: i32) {
+    init out = 1:i32
+}
+
+fn main() {
+    initialize(1:i32)
+}

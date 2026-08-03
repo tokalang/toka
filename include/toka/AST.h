@@ -726,6 +726,8 @@ public:
   std::string Callee;
   std::string OriginalCallee;
   std::vector<std::unique_ptr<Expr>> Args;
+  // Parallel to Args: an init argument denotes storage, never an rvalue.
+  std::vector<bool> IsInitArgument;
   std::vector<std::string> GenericArgs; // [NEW]
   std::vector<TypeArgumentSyntax> GenericArgSyntax;
 
@@ -738,9 +740,15 @@ public:
   CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
 
   CallExpr(const std::string &callee, std::vector<std::unique_ptr<Expr>> args,
-           std::vector<std::string> genericArgs = {})
+           std::vector<std::string> genericArgs = {},
+           std::vector<bool> initArguments = {})
       : Callee(callee), OriginalCallee(callee), Args(std::move(args)),
+        IsInitArgument(std::move(initArguments)),
         GenericArgs(std::move(genericArgs)) {}
+
+  bool isInitArgument(size_t index) const {
+    return index < IsInitArgument.size() && IsInitArgument[index];
+  }
 
   std::string toString() const override {
     std::string s = "Call(" + Callee;
@@ -757,7 +765,8 @@ public:
     return s;
   }
   std::unique_ptr<ASTNode> clone() const override {
-    auto n = std::make_unique<CallExpr>(Callee, cloneVec(Args), GenericArgs);
+    auto n = std::make_unique<CallExpr>(Callee, cloneVec(Args), GenericArgs,
+                                        IsInitArgument);
     n->GenericArgSyntax = GenericArgSyntax;
     n->OriginalCallee = OriginalCallee;
     n->Loc = Loc;
@@ -1790,6 +1799,8 @@ public:
     bool IsValueBlocked = false;  // "$" identifier attribute
     bool IsMorphicExempt = false; // [NEW] Exempt from strict hat rules
     bool IsCeded = false;         // [NEW] Ownership consumed by callee
+    // The callee constructs caller-owned storage supplied as `init place`.
+    bool IsInit = false;
     BindingPermission Permission;
 
     std::shared_ptr<toka::Type> ResolvedType;
@@ -1813,6 +1824,7 @@ public:
       a.IsValueBlocked = IsValueBlocked;
       a.IsMorphicExempt = IsMorphicExempt;
       a.IsCeded = IsCeded;
+      a.IsInit = IsInit;
       a.Permission = Permission;
       a.ResolvedType = ResolvedType;
       a.DefaultValue = cloneNode(DefaultValue);

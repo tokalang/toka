@@ -142,6 +142,8 @@ private:
 
   std::unique_ptr<Expr> parseExpr(int minPrec = 0, bool allowTrailingClosure = true);
   std::unique_ptr<Expr> parsePrimary(bool allowTrailingClosure = true);
+  std::vector<std::unique_ptr<Expr>>
+  parseCallArguments(std::vector<bool> &initArguments);
   TypeSyntaxPtr parseTypeSyntax(bool allowAssociatedProjection = true,
                                 bool stopAtConstructor = false,
                                 bool stopAtExpression = false,

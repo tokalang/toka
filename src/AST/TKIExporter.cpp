@@ -727,6 +727,8 @@ void TKIExporter::printGenericParams(const std::vector<GenericParam> &params) {
 }
 
 void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
+    if (arg.IsInit)
+        m_OS << "init ";
     const std::string type = exportTypeSyntax(arg.TypeSyntax, arg.Type);
     bool nameHasMorphicPrefix = !arg.Name.empty() && arg.Name[0] == '\'';
     bool keepTypeSideCede =
@@ -917,6 +919,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << "(";
         for (size_t i = 0; i < call->Args.size(); ++i) {
             if (i > 0) m_OS << ", ";
+            if (call->isInitArgument(i)) m_OS << "init ";
             exportExpr(call->Args[i].get());
         }
         m_OS << ")";

@@ -407,6 +407,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                               PlaceState::Never)) {
       error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
             initTarget ? initTarget->Name : "<place>");
+    } else {
+      // Construction consumes the place authority even though it is not an
+      // ordinary value read; it should satisfy the binding-use diagnostic.
+      initTargetInfo->HasBeenUsed = true;
     }
   } else if (isAssign && isWholePlainLocal &&
              hasPlaceState(initTargetInfo->PlaceStateMask,
@@ -777,14 +781,14 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       isLHSWritable = true;
     bool payloadCapabilityDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
-        !lhsCapability.PayloadWritable;
+        !lhsCapability.PayloadWritable && !isUnsetInit;
     bool handleCapabilityDenied =
         assignmentKind == AssignmentSemanticKind::Handle &&
         !lhsCapability.HandleRebindable;
     bool payloadFlowDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
         lhsCapability.PayloadFlowRestricted &&
-        !lhsCapability.PayloadWritable;
+        !lhsCapability.PayloadWritable && !isUnsetInit;
     if (payloadFlowDenied) {
       error(Bin->LHS.get(),
             DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);

@@ -688,12 +688,19 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       if (check(TokenType::DotDotDot))
         break;
 
+      // `init` is contextual: a parameter named `init` remains valid when
+      // immediately followed by its type colon.
+      bool isInit = check(TokenType::Identifier) && peek().Text == "init" &&
+                    !checkAt(1, TokenType::Colon);
+      if (isInit)
+        advance();
       bool isCeded = match(TokenType::KwCede);
 
       if (firstArg && match(TokenType::KwSelf)) {
         FunctionDecl::Arg arg;
         arg.Loc = previous().Loc;
         arg.IsCeded = isCeded;
+        arg.IsInit = isInit;
         arg.Name = "self";
         arg.Type = "Self"; // Default
         arg.TypeSyntax = TypeSyntax::named("Self", arg.Loc, arg.Loc);
@@ -793,6 +800,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       FunctionDecl::Arg arg;
       arg.Loc = argName.Loc;
       arg.IsCeded = isCeded;
+      arg.IsInit = isInit;
       if (argType.rfind("cede ", 0) == 0) {
         arg.IsCeded = true;
         argType = argType.substr(5);

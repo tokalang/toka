@@ -294,6 +294,13 @@ void CodeGen::markInitLive(const BinaryExpr *assignment) {
   if (!target)
     return;
 
+  markInitLive(target);
+}
+
+void CodeGen::markInitLive(const VariableExpr *target) {
+  if (!target)
+    return;
+
   const std::string targetName = Type::stripMorphology(target->Name);
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();

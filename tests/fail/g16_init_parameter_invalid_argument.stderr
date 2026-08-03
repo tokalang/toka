@@ -1,0 +1,5 @@
+error[E04623]: 'init' argument for 'out' must be a definite uninitialized immutable local place
+ --> tests/fail/g16_init_parameter_invalid_argument.tk:8:21
+   |
+ 8 |     initialize(init value)
+   |                     ^

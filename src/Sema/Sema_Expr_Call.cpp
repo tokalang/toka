@@ -753,6 +753,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     for (size_t i = 0; i < fixedCount; ++i) {
       auto expectedType =
           resolveType(Sema::synthesizePhysicalTypeObject(Candidate->Args[i]));
+      if (Candidate->Args[i].IsInit) {
+        if (!Call->isInitArgument(i) ||
+            !dynamic_cast<VariableExpr *>(Call->Args[i].get())) {
+          accepts = false;
+          break;
+        }
+        continue;
+      }
+      if (Call->isInitArgument(i)) {
+        accepts = false;
+        break;
+      }
       auto argType = checkExpr(Call->Args[i].get());
       if (!expectedType || !argType || expectedType->isUnknown() ||
           argType->isUnknown()) {
@@ -1934,6 +1946,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   std::vector<CallArgPALFact> callArgPALFacts;
+  std::vector<SymbolInfo *> completedInitPlaces;
   auto isReadOnlyBorrowViewArgument = [&](Expr *expr) -> bool {
     if (!expr)
       return false;
@@ -1979,6 +1992,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
 
     auto paramType = (i < ParamTypes.size()) ? ParamTypes[i] : nullptr;
+    const bool isInitParam = Fn && i < Fn->Args.size() && Fn->Args[i].IsInit;
+    const bool isInitArgument = Call->isInitArgument(i);
     const bool expectedCedeTransfer =
         (Fn && i < Fn->Args.size() && Fn->Args[i].IsCeded) ||
         (Ext && i < Ext->Args.size() && Ext->Args[i].IsCeded);
@@ -1997,12 +2012,47 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
        }
     }
 
-    const bool oldExpectedCedeTransfer = m_ExpectedCedeTransfer;
-    m_ExpectedCedeTransfer = expectedCedeTransfer;
-    auto argType = i < precheckedArgTypes.size() && precheckedArgTypes[i]
-                       ? precheckedArgTypes[i]
-                       : checkExpr(Call->Args[i].get(), paramType);
-    m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
+    std::shared_ptr<toka::Type> argType;
+    if (isInitParam && isInitArgument) {
+      auto *place = dynamic_cast<VariableExpr *>(Call->Args[i].get());
+      SymbolInfo *placeInfo = nullptr;
+      const bool isWholePlainLocal =
+          place && !place->IsRawPointer && !place->IsUnique &&
+          !place->IsShared && !place->IsValueMutable &&
+          !place->IsValueNullable && !place->IsValueBlocked &&
+          CurrentScope->findSymbol(place->Name, placeInfo) && placeInfo &&
+          placeInfo->IsDeclaredVariable && !placeInfo->IsDeclaredMutable &&
+          !placeInfo->Moved &&
+          placeInfo->InitMask == 0 &&
+          hasExactlyPlaceState(placeInfo->PlaceStateMask, PlaceState::Never);
+      if (!isWholePlainLocal) {
+        error(Call->Args[i].get(), DiagID::ERR_INIT_ARGUMENT_INVALID,
+              Fn->Args[i].Name);
+        argType = toka::Type::fromString("unknown");
+      } else {
+        argType = placeInfo->TypeObj;
+        Call->Args[i]->ResolvedType = argType;
+        placeInfo->HasBeenUsed = true;
+        completedInitPlaces.push_back(placeInfo);
+      }
+    } else {
+      if (isInitParam && !isInitArgument)
+        error(Call->Args[i].get(), DiagID::ERR_INIT_ARGUMENT_REQUIRED,
+              Fn->Args[i].Name);
+      if (!isInitParam && isInitArgument) {
+        const std::string parameter =
+            Fn && i < Fn->Args.size() ? Fn->Args[i].Name :
+            (Ext && i < Ext->Args.size() ? Ext->Args[i].Name : "<none>");
+        error(Call->Args[i].get(), DiagID::ERR_INIT_ARGUMENT_UNEXPECTED,
+              std::to_string(i + 1), parameter);
+      }
+      const bool oldExpectedCedeTransfer = m_ExpectedCedeTransfer;
+      m_ExpectedCedeTransfer = expectedCedeTransfer;
+      argType = i < precheckedArgTypes.size() && precheckedArgTypes[i]
+                    ? precheckedArgTypes[i]
+                    : checkExpr(Call->Args[i].get(), paramType);
+      m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
+    }
     projectOwnedStringView(Call->Args[i], argType, paramType);
 
     if (isExecutionBoundaryCalleeName(OriginalName)) {
@@ -2329,6 +2379,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         Call->Args[i]->ResolvedType = paramType;
       }
     }
+  }
+
+  // A successful synchronous init call is the callee's construction proof at
+  // the caller boundary.  Keep this state transition separate from ordinary
+  // value argument checking: no read or move occurred at the call site.
+  for (SymbolInfo *place : completedInitPlaces) {
+    place->InitMask = ~0ULL;
+    place->PlaceStateMask = placeStateMask(PlaceState::Live);
   }
 
   for (size_t i = 0; i < callArgPALFacts.size(); ++i) {

@@ -171,6 +171,11 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
           (isDirectValue && (isAggregate || arg.IsValueMutable)) ||
           arg.IsRebindable || arg.IsUnique || arg.IsShared;
 
+      // An init formal is an explicit out-place ABI: it aliases caller-owned
+      // storage even for scalars, and never transfers cleanup ownership.
+      if (arg.IsInit)
+        needsCapture = true;
+
       // [NEW] Lifetime Union: Force capture if param is a dependency
       for (const auto &dep : func->LifeDependencies) {
         if (dep == arg.Name && isDirectValue) {
@@ -410,6 +415,9 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         (isDirectValue && (isAggregate || argDecl.IsValueMutable)) ||
         argDecl.IsRebindable || argDecl.IsUnique || argDecl.IsShared;
 
+    if (argDecl.IsInit)
+      needsCapture = true;
+
     // [NEW] Lifetime Union: Force capture if param is a dependency
     for (const auto &dep : func->LifeDependencies) {
       if (dep == argDecl.Name && isDirectValue) {
@@ -437,7 +445,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
     bool isDirectType = typeObj && !typeObj->isPointer() && !typeObj->isReference() && !argDecl.IsShared && !argDecl.IsUnique && !typeObj->isUniquePtr() && !typeObj->isSharedPtr();
     bool isScalarValue = isDirectType && !needsCapture && !pTy->isStructTy() && !pTy->isArrayTy();
 
-    if (func->Effect == EffectKind::Async) {
+    if (argDecl.IsInit) {
+      // The incoming pointer is the caller's place itself.  Do not create an
+      // intermediate slot: `init param = value` must write that place.
+      finalStorage = &arg;
+      isOwnedParam = false;
+    } else if (func->Effect == EffectKind::Async) {
       if (argDecl.IsShared || (typeObj && typeObj->isSharedPtr())) {
         llvm::Type *sharedStructTy = getLLVMType(typeObj);
         llvm::AllocaInst *alloca = createEntryBlockAlloca(sharedStructTy, nullptr, argName + ".addr");

@@ -961,15 +961,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
                                                 std::move(fields));
         expr->setLocation(name, m_CurrentFile);
       } else {
-        std::vector<std::unique_ptr<Expr>> args;
-        if (!check(TokenType::RParen)) {
-          do {
-            args.push_back(parseExpr());
-          } while (match(TokenType::Comma));
-        }
+        std::vector<bool> initArguments;
+        std::vector<std::unique_ptr<Expr>> args =
+            parseCallArguments(initArguments);
         consume(TokenType::RParen, DiagID::ERR_PARSER_EXPECTED_AFTER_ARGUMENTS);
         auto node =
-            std::make_unique<CallExpr>(name.Text, std::move(args), genericArgs);
+            std::make_unique<CallExpr>(name.Text, std::move(args), genericArgs,
+                                       std::move(initArguments));
         node->GenericArgSyntax = genericArgSyntax;
         if (name.HasWrite)
           node->CallableReceiver = CallableReceiverMode::Mutable;
@@ -998,15 +996,14 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
 
         if (match(TokenType::LParen)) {
           // Function Call on Member
-          std::vector<std::unique_ptr<Expr>> args;
-          if (!check(TokenType::RParen)) {
-            do {
-              args.push_back(parseExpr());
-            } while (match(TokenType::Comma));
-          }
+          std::vector<bool> initArguments;
+          std::vector<std::unique_ptr<Expr>> args =
+              parseCallArguments(initArguments);
           consume(TokenType::RParen, DiagID::ERR_PARSER_EXPECTED_AFTER_ARGUMENTS);
           
-          auto node = std::make_unique<CallExpr>(fullCallee, std::move(args));
+          auto node = std::make_unique<CallExpr>(
+              fullCallee, std::move(args), std::vector<std::string>{},
+              std::move(initArguments));
           node->setLocation(name, m_CurrentFile);
           expr = std::move(node);
         } else {
@@ -1236,6 +1233,22 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
   }
 
   return expr;
+}
+
+std::vector<std::unique_ptr<Expr>>
+Parser::parseCallArguments(std::vector<bool> &initArguments) {
+  std::vector<std::unique_ptr<Expr>> args;
+  if (check(TokenType::RParen))
+    return args;
+  do {
+    const bool isInit = check(TokenType::Identifier) && peek().Text == "init" &&
+                        checkAt(1, TokenType::Identifier);
+    if (isInit)
+      advance();
+    args.push_back(parseExpr());
+    initArguments.push_back(isInit);
+  } while (match(TokenType::Comma));
+  return args;
 }
 
 std::unique_ptr<Expr> Parser::parseUnsafeExpr() {
