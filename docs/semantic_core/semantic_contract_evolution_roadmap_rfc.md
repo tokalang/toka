@@ -69,14 +69,16 @@ transfer. This repairs that blocker but does not yet prove every lifecycle
 combination in the P-1 exit gate.
 
 The safe standard-library surface now accepts a cold task only through
-`spawn_into(scope, cede task)`. Its module-private `TaskRef` receives the
-consumed handle's owner reference, links into the scope before activation, and
-the consumed handle is cleared before its ordinary detach hook can run. The
-former public `task_ref_from_handle` / `track_ref` split is quarantined.
-This removes that surface race, but the current TaskScope path and TCB
-lifetime-reference model remain unqualified until the `AS` gates prove the
-runtime registry's atomic close/enroll arbitration, typed result disposition,
-and TCB/slot retention independently of frame eligibility.
+`spawn_into(scope, cede task)`. The former public `task_ref_from_handle` /
+`track_ref` split is quarantined, and an opaque runtime TaskScope registry now
+linearizes `Open -> Closing` against enrollment. A closing registry rejects
+before ownership transfer and returns the original typed handle; an accepted
+child is linked before activation and replaces the consumed handle's ordinary
+detach owner. This closes the old safe-surface gap and creates the first AS
+runtime substrate, but it does not qualify TaskScope or TCB lifetime yet: the
+remaining AS gates require full-token/parent-cancellation arbitration, typed
+result disposition, helpable close progress, and TCB/slot retention
+independently of frame eligibility.
 
 ### P-1 exit gate
 

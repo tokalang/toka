@@ -44,6 +44,14 @@ extern fn toka_task_mark_current_cancellation_handled(*coro_frame: void) -> i32
 extern fn toka_task_subscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_task_unsubscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_task_retain(*tcb: void) -> void
+extern fn toka_task_scope_create() -> *void
+extern fn toka_task_scope_try_enroll(*scope: void, *tcb: void) -> i32
+extern fn toka_task_scope_begin_close(*scope: void) -> i32
+extern fn toka_task_scope_is_done(*scope: void) -> i32
+extern fn toka_task_scope_request_cancel_all(*scope: void) -> void
+extern fn toka_task_scope_reap_finished(*scope: void) -> u32
+extern fn toka_task_scope_finish_close(*scope: void) -> i32
+extern fn toka_task_scope_release(*scope: void) -> void
 
 // Hook for standard library scheduler to mark task as detached
 pub fn __toka_detach_task(*handle: void) {

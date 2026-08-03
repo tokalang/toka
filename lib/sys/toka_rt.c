@@ -897,6 +897,39 @@ void toka_task_release(void *tcb_ptr);
 static toka_mutex_t g_rt_mutex = TOKA_MUTEX_INIT;
 static _Atomic uint64_t g_next_task_id = 1;
 
+// This is deliberately a runtime-owned registry rather than a library Vec:
+// enrollment and the Open -> Closing transition must share one arbiter.  It is
+// only the first structured-scope substrate; typed result disposition and
+// parent cancellation aggregation are added by later AS slices.
+typedef enum {
+    TOKA_TASK_SCOPE_OPEN = 0,
+    TOKA_TASK_SCOPE_CLOSING = 1,
+    TOKA_TASK_SCOPE_CLOSED = 2
+} TokaTaskScopeState;
+
+typedef struct {
+    uint32_t state;
+    TokaTCB **children;
+    uint32_t child_count;
+    uint32_t child_capacity;
+} TokaTaskScopeRegistry;
+
+static int toka_task_scope_ensure_capacity_locked(TokaTaskScopeRegistry *scope) {
+    if (scope->child_count < scope->child_capacity) return 1;
+    if (scope->child_capacity > UINT32_MAX / 2) return 0;
+    uint32_t new_capacity = scope->child_capacity == 0 ? 4 : scope->child_capacity * 2;
+#if SIZE_MAX < UINT32_MAX
+    if (new_capacity > SIZE_MAX / sizeof(TokaTCB*)) return 0;
+#endif
+    TokaTCB **children = (TokaTCB**)realloc(
+        scope->children, new_capacity * sizeof(TokaTCB*)
+    );
+    if (!children) return 0;
+    scope->children = children;
+    scope->child_capacity = new_capacity;
+    return 1;
+}
+
 static TokaScheduledItem *g_ready_queue = NULL;
 static size_t g_ready_capacity = 0;
 static size_t g_ready_head = 0;
@@ -1581,6 +1614,190 @@ void toka_task_retain(void *tcb_ptr) {
     if (!tcb_ptr) return;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
     atomic_fetch_add(&tcb->ref_count, 1);
+}
+
+void* toka_task_scope_create(void) {
+    TokaTaskScopeRegistry *scope =
+        (TokaTaskScopeRegistry*)calloc(1, sizeof(TokaTaskScopeRegistry));
+    if (!scope) return NULL;
+    scope->state = TOKA_TASK_SCOPE_OPEN;
+    return scope;
+}
+
+// On success, ownership of the caller-held TCB reference moves into the
+// registry.  No retain is taken: the source TaskHandle is cleared immediately
+// after this call by the standard-library wrapper.
+int toka_task_scope_try_enroll(void *scope_ptr, void *tcb_ptr) {
+    if (!scope_ptr || !tcb_ptr) return 0;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+
+    toka_mutex_lock(&g_rt_mutex);
+    if (scope->state != TOKA_TASK_SCOPE_OPEN) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    if (!toka_task_scope_ensure_capacity_locked(scope)) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return -1;
+    }
+    scope->children[scope->child_count++] = tcb;
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
+// Closing is idempotent.  A completed scope is never reopened.
+int toka_task_scope_begin_close(void *scope_ptr) {
+    if (!scope_ptr) return 0;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    toka_mutex_lock(&g_rt_mutex);
+    if (scope->state == TOKA_TASK_SCOPE_OPEN) {
+        scope->state = TOKA_TASK_SCOPE_CLOSING;
+    }
+    int active = scope->state == TOKA_TASK_SCOPE_CLOSING;
+    toka_mutex_unlock(&g_rt_mutex);
+    return active;
+}
+
+int toka_task_scope_is_done(void *scope_ptr) {
+    if (!scope_ptr) return 1;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    toka_mutex_lock(&g_rt_mutex);
+    for (uint32_t i = 0; i < scope->child_count; ++i) {
+        if (!toka_tcb_is_terminal(atomic_load(&scope->children[i]->state))) {
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return 1;
+}
+
+// Snapshot retained references before cancellation.  Requesting cancellation
+// is intentionally outside the scope arbiter: a child path may publish
+// terminal state and must never wait on this registry lock.
+void toka_task_scope_request_cancel_all(void *scope_ptr) {
+    if (!scope_ptr) return;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    TokaTCB **children = NULL;
+    uint32_t child_count = 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    child_count = scope->child_count;
+    if (child_count > 0) {
+        children = (TokaTCB**)malloc(child_count * sizeof(TokaTCB*));
+        if (!children) {
+            toka_mutex_unlock(&g_rt_mutex);
+            fprintf(stderr, "Fatal error: unable to snapshot TaskScope children.\n");
+            abort();
+        }
+        for (uint32_t i = 0; i < child_count; ++i) {
+            children[i] = scope->children[i];
+            atomic_fetch_add(&children[i]->ref_count, 1);
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+
+    for (uint32_t i = 0; i < child_count; ++i) {
+        toka_task_request_cancel(children[i]);
+        toka_task_release(children[i]);
+    }
+    free(children);
+}
+
+uint32_t toka_task_scope_reap_finished(void *scope_ptr) {
+    if (!scope_ptr) return 0;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    TokaTCB **finished = NULL;
+    uint32_t finished_count = 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    if (scope->child_count > 0) {
+        finished = (TokaTCB**)malloc(scope->child_count * sizeof(TokaTCB*));
+        if (!finished) {
+            toka_mutex_unlock(&g_rt_mutex);
+            fprintf(stderr, "Fatal error: unable to reap TaskScope children.\n");
+            abort();
+        }
+    }
+    uint32_t i = 0;
+    while (i < scope->child_count) {
+        TokaTCB *child = scope->children[i];
+        if (toka_tcb_is_terminal(atomic_load(&child->state))) {
+            finished[finished_count++] = child;
+            scope->children[i] = scope->children[scope->child_count - 1];
+            scope->child_count--;
+        } else {
+            i++;
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+
+    for (uint32_t j = 0; j < finished_count; ++j) {
+        toka_task_release(finished[j]);
+    }
+    free(finished);
+    return finished_count;
+}
+
+// Only an empty terminal registry can publish Closed.  The terminal entries'
+// owning references are released after leaving the arbiter.
+int toka_task_scope_finish_close(void *scope_ptr) {
+    if (!scope_ptr) return 0;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    TokaTCB **finished = NULL;
+    uint32_t finished_count = 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    if (scope->state == TOKA_TASK_SCOPE_CLOSED) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 1;
+    }
+    if (scope->state != TOKA_TASK_SCOPE_CLOSING) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return 0;
+    }
+    for (uint32_t i = 0; i < scope->child_count; ++i) {
+        if (!toka_tcb_is_terminal(atomic_load(&scope->children[i]->state))) {
+            toka_mutex_unlock(&g_rt_mutex);
+            return 0;
+        }
+    }
+    finished = scope->children;
+    finished_count = scope->child_count;
+    scope->children = NULL;
+    scope->child_count = 0;
+    scope->child_capacity = 0;
+    scope->state = TOKA_TASK_SCOPE_CLOSED;
+    toka_mutex_unlock(&g_rt_mutex);
+
+    for (uint32_t i = 0; i < finished_count; ++i) {
+        toka_task_release(finished[i]);
+    }
+    free(finished);
+    return 1;
+}
+
+void toka_task_scope_release(void *scope_ptr) {
+    if (!scope_ptr) return;
+    TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
+    TokaTCB **children = NULL;
+    uint32_t child_count = 0;
+
+    toka_mutex_lock(&g_rt_mutex);
+    children = scope->children;
+    child_count = scope->child_count;
+    scope->children = NULL;
+    scope->child_count = 0;
+    scope->child_capacity = 0;
+    scope->state = TOKA_TASK_SCOPE_CLOSED;
+    toka_mutex_unlock(&g_rt_mutex);
+
+    for (uint32_t i = 0; i < child_count; ++i) {
+        toka_task_release(children[i]);
+    }
+    free(children);
+    free(scope);
 }
 
 int toka_task_register_cancel_child(void *parent_frame, void *child_ptr) {

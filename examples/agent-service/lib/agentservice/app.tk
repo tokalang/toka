@@ -540,7 +540,9 @@ pub fn serve_until_canceled_async(cede service: AgentService, cede listener: Tcp
             return Result<bool, string>::Err(accepted.unwrap_err())
         }
         auto worker = serve_connection_async(cede service#.clone(), cede accepted.unwrap(), cede canceler#.clone()).start
-        spawn_into(scope, cede worker)
+        if spawn_into(scope, cede worker).is_err() {
+            return Result<bool, string>::Err(string::from("TaskScope closed before worker enrollment"))
+        }
     }
     return Result<bool, string>::Err(string::from("unreachable service loop exit"))
 }

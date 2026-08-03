@@ -13,9 +13,10 @@ positive-capability model introduced by Slices 1–5.
   supply a conditional policy or a negative copy declaration.
 - `Duration`, `Instant`, `SystemTime`, `DateTime`, reflection `FieldInfo`,
   logging levels, and LLVM's non-owning handle wrappers are transparent.
-- `TaskRef` is an internal `TaskScope` implementation type. It has no public
-  duplication or handle-conversion API; the safe `spawn_into` path transfers
-  the consumed `TaskHandle` owner reference directly into the scope.
+- `TaskScope` child references are opaque runtime-registry nodes, not public
+  values. There is no public `TaskRef`, duplication, or handle-conversion API;
+  `spawn_into` transfers the consumed `TaskHandle` owner reference only after
+  the registry admits it, otherwise returning that exact typed handle.
 - A raw pointer never becomes a managed-resource fact merely by its
   morphology. The Slice 6 witness uses a raw-handle capsule with an explicit
   lifecycle hook and `@Dup` provider to cover that boundary.

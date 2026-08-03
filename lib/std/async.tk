@@ -3,10 +3,9 @@
 // std/async.tk
 // High-level async combinators and structured concurrency.
 
-import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start};
-import core/traits::{@Dup};
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
+import core/result::{Result};
 import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
-import std/vec::{Vec};
 import std/io::{println};
 
 extern fn __builtin_coro_current_handle() -> *void
@@ -128,90 +127,41 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
     }
 }
 
-shape TaskRef (
-    *#tcb: void
-)
-
-impl TaskRef@Encap {
-    pub tcb
-    fn drop(self#) {
-        if self.*tcb != null {
-            toka_task_release(self.*tcb)
-            self.*tcb = null as *void
-        }
-    }
-
-}
-
-impl TaskRef {
-    pub fn is_done(self) -> bool {
-        if self.*tcb != null {
-            return toka_tcb_is_done(self.*tcb)
-        }
-        return true
-    }
-
-    pub fn request_cancel(self) {
-        if self.*tcb != null {
-            toka_task_request_cancel(self.*tcb)
-        }
-    }
-
-    pub fn release(self#) {
-        if self.*tcb != null {
-            toka_task_release(self.*tcb)
-            self.*tcb = null as *void
-        }
-    }
-}
-
 pub shape TaskScope (
-    refs: Vec<TaskRef>
+    *#registry: void
 )
+
+impl TaskScope@Encap {
+    fn drop(self#) {
+        if self.*registry != null {
+            toka_task_scope_release(self.*registry)
+            self.*registry = null as *void
+        }
+    }
+}
 
 impl TaskScope {
     pub fn new() -> TaskScope {
-        return TaskScope(refs = Vec<TaskRef>::new())
+        auto *registry = toka_task_scope_create()
+        assert(*registry != null as *void, "TaskScope registry allocation failed")
+        return TaskScope(*registry = *registry)
     }
 
     pub fn cancel_all(self#) {
-        auto i# = 0:usize
-        loop i < self.refs.len() {
-            auto *tr = self.refs.get_ref(i)
-            tr.request_cancel()
-            i += 1
+        if self.*registry != null as *void {
+            toka_task_scope_request_cancel_all(self.*registry)
         }
     }
 
     pub fn is_done(self) -> bool {
-        auto i# = 0:usize
-        loop i < self.refs.len() {
-            auto *tr = self.refs.get_ref(i)
-            if !tr.is_done() {
-                return false
-            }
-            i += 1
-        }
-        return true
+        return toka_task_scope_is_done(self.*registry) != 0
     }
 
-    // Release completed task references during long-lived service operation.
-    // Pending tasks stay tracked for later cancellation and join.  The vector
-    // order is not semantically observable by TaskScope.
+    // Release completed scope-owned references during long-lived service
+    // operation. Registry mutation and terminal observation share the runtime
+    // arbiter; pending tasks remain linked for later cancellation and join.
     pub fn reap_finished(self#) -> usize {
-        auto live# = Vec<TaskRef>::new()
-        auto reaped# = 0:usize
-        loop self.refs.len() > 0:usize {
-            auto tr# = self.refs#.pop().unwrap()
-            if tr.is_done() {
-                tr#.release()
-                reaped += 1
-            } else {
-                live#.push(cede tr)
-            }
-        }
-        self.refs = cede live
-        return reaped
+        return toka_task_scope_reap_finished(self.*registry) as usize
     }
 
     pub fn join_async(self#) -> async {
@@ -227,8 +177,11 @@ impl TaskScope {
         auto deadline = current_time_ms() + (drain_timeout_ms as i64)
         loop !self.is_done() {
             if drain_timeout_ms <= 0:i32 || current_time_ms() >= deadline {
+                toka_task_scope_begin_close(self.*registry)
                 self#.cancel_all()
                 self#.join_async().await
+                assert(toka_task_scope_finish_close(self.*registry) != 0,
+                       "TaskScope close completed with a live child")
                 return false
             }
             sleep_async(1:i32).await
@@ -238,25 +191,33 @@ impl TaskScope {
 
     pub fn close(cede self) -> async {
         auto scope# = cede self
+        if toka_task_scope_begin_close(scope.*registry) == 0 {
+            return
+        }
         scope#.cancel_all()
         scope#.join_async().await
+        assert(toka_task_scope_finish_close(scope.*registry) != 0,
+               "TaskScope close completed with a live child")
     }
 }
 
-// Consume a typed task into a scope without exposing its TCB or requiring the
-// caller to name its result type. Generic deduction recovers 'T from the
-// TaskHandle wrapper at this call boundary.
-pub fn spawn_into<'T>(scope#: TaskScope, cede task: TaskHandle<'T>) {
-    // One non-suspending ownership transaction:
-    // TaskHandle owner -> local TaskRef -> scope registry -> active task.
-    // Clearing the consumed handle prevents its drop hook from detaching the
-    // TCB between ownership transfer and registry linkage.
+// Consume a typed cold task into a runtime registry without exposing its TCB
+// or requiring the caller to name its result type.  A rejected enrollment
+// returns the untouched handle: Close won before lifecycle authority moved.
+pub fn spawn_into<'T>(scope#: TaskScope, cede task: TaskHandle<'T>) -> Result<(), TaskHandle<'T>> {
     auto owned# = cede task
     auto *tcb_ptr = task_get_coro_handle<'T>(owned)
-    if *tcb_ptr != null as *void {
-        auto tr# = TaskRef(*tcb = *tcb_ptr)
-        owned.*coro_handle = null as *void
-        scope.refs#.push(cede tr)
-        toka_task_start(*tcb_ptr)
+    if *tcb_ptr == null as *void || scope.*registry == null as *void {
+        return Result<(), TaskHandle<'T>>::Err(cede owned)
     }
+
+    // The runtime arbiter linearizes Open enrollment against Closing. On
+    // success the registry owns this handle's TCB reference; clear the handle
+    // before activation so its drop hook cannot detach that transferred owner.
+    if toka_task_scope_try_enroll(scope.*registry, *tcb_ptr) != 1 {
+        return Result<(), TaskHandle<'T>>::Err(cede owned)
+    }
+    owned.*coro_handle = null as *void
+    toka_task_start(*tcb_ptr)
+    return Result<(), TaskHandle<'T>>::Ok(())
 }

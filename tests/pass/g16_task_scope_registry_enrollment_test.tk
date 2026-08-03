@@ -1,0 +1,48 @@
+// Runtime TaskScope registry: close wins before later cold enrollment, and
+// rejected enrollment preserves the typed handle for its caller.
+import std/io::{println}
+import std/task::{block_on, sleep_async}
+import std/async::{TaskScope, spawn_into}
+import core/result::{Result}
+import core/task::{TaskHandle}
+
+fn delayed_value(value: i32) -> async i32 {
+    sleep_async(8:i32).await
+    return value
+}
+
+fn registry_close_before_enroll() -> async i32 {
+    auto scope# = TaskScope::new()
+    auto first = delayed_value(1:i32).start
+    match cede spawn_into(scope, cede first) {
+        auto Result<(), TaskHandle<i32>>::Ok(_) => {}
+        auto Result<(), TaskHandle<i32>>::Err('returned) => {
+            auto value = 'returned.await
+            assert(value == 1:i32, "open registry must accept its first child")
+            return 1:i32
+        }
+    }
+
+    assert(!scope#.shutdown_async(0:i32).await,
+           "zero drain window must close the registry after cancellation")
+
+    auto later = delayed_value(23:i32).start
+    match cede spawn_into(scope, cede later) {
+        auto Result<(), TaskHandle<i32>>::Ok(_) => {
+            assert(false, "closed registry must reject a cold task")
+            return 2:i32
+        }
+        auto Result<(), TaskHandle<i32>>::Err('returned) => {
+            auto value = 'returned.await
+            assert(value == 23:i32,
+                   "rejected enrollment must return the original typed handle")
+        }
+    }
+    return 0:i32
+}
+
+fn main() {
+    auto result = block_on(registry_close_before_enroll())
+    assert(result == 0:i32, "TaskScope registry enrollment test failed")
+    println("g16_task_scope_registry_enrollment_test PASSED")
+}

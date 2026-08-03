@@ -72,9 +72,10 @@ accept, which is race-prone and invalidates ownership of the listener.
 
 `TaskScope` gains three distinct operations:
 
-- `spawn_into(scope, cede task)` consumes a typed task handle, retains it in
-  the scope, and schedules it without exposing a TCB or requiring the caller
-  to spell the task result type;
+- `spawn_into(scope, cede task)` attempts the typed handoff, schedules an
+  accepted child without exposing a TCB or requiring the caller to spell the
+  result type, and returns `Result<(), TaskHandle<T>>`; a scope that has begun
+  closing returns the untouched handle to its caller;
 - `is_done()` checks whether every retained task is terminal;
 - `join_async()` waits without requesting cancellation;
 - `shutdown_async(drain_timeout_ms)` first drains, then cancels and joins only
