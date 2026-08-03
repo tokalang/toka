@@ -3,7 +3,8 @@
 **Status:** the P1 whole-place synchronous core is implemented: `uninit`, direct
 `init local = value`, lexical `init local { ... }`, its restricted `is uninit`
 predicate, and plain synchronous `init` formals. The formal signature and the
-contextual `init` call argument survive source-less TKI replay. Field-wise,
+contextual `init` call argument, including retained generic bodies, survive
+source-less TKI replay. Field-wise,
 outcome-dependent, and async contracts remain deferred. A fulfilled local may
 remain in an async frame, but an unresolved lexical construction obligation
 cannot cross `.await`.

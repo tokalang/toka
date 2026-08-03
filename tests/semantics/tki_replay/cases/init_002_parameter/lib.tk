@@ -1,4 +1,9 @@
 // EXPECT_TKI: fn initialize(init out: i32)
+// EXPECT_TKI: fn initialize_generic<T>(init out: T, value: T)
 pub fn initialize(init out: i32) {
     init out = 42:i32
+}
+
+pub fn initialize_generic<T>(init out: T, value: T) {
+    init out = value
 }

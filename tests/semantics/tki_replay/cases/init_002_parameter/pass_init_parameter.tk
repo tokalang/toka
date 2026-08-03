@@ -1,7 +1,9 @@
-import ./lib::{initialize}
+import ./lib::{initialize, initialize_generic}
 
 fn main() -> i32 {
     auto value = uninit:i32
     initialize(init value)
-    return value - 42:i32
+    auto generic_value = uninit:i32
+    initialize_generic<i32>(init generic_value, 43:i32)
+    return value + generic_value - 85:i32
 }

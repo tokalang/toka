@@ -1,0 +1,9 @@
+fn initialize<T>(init out: T, value: T) {
+    init out = value
+}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    initialize<i32>(init value, 42:i32)
+    return value - 42:i32
+}
