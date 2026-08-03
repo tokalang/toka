@@ -1,0 +1,22 @@
+// Outcome Contracts P1 applies equally to the prelude Result enum.
+import core/result::{Result}
+
+fn try_read(init out: i32, fail: bool) -> Result<(), i32>
+outcomes:
+    Ok => out: init
+    Err => out: uninit
+{
+    if fail {
+        return Result<(), i32>::Err(1)
+    }
+    init out = 7:i32
+    return Result<(), i32>::Ok(())
+}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    match try_read(init value, false) {
+        auto Result<(), i32>::Ok(_) => return value - 7:i32
+        auto Result<(), i32>::Err(_) => return 1
+    }
+}

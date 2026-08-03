@@ -27,6 +27,21 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static std::string directOutcomeVariantName(const Expr *expr) {
+  std::string name;
+  if (const auto *init = dynamic_cast<const InitStructExpr *>(expr)) {
+    name = init->ShapeName;
+  } else if (const auto *call = dynamic_cast<const CallExpr *>(expr)) {
+    name = call->Callee;
+  } else {
+    return {};
+  }
+  const size_t separator = name.rfind("::");
+  if (separator == std::string::npos)
+    return {};
+  return name.substr(separator + 2);
+}
+
 static bool isNullableCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
   if (!cede || !cede->Value)
@@ -586,15 +601,45 @@ void Sema::checkStmt(Stmt *S) {
     exitScope();
   } else if (auto *Ret = dynamic_cast<ReturnStmt *>(S)) {
     if (CurrentFunction) {
+      const std::string outcomeVariant =
+          directOutcomeVariantName(Ret->ReturnValue.get());
+      const OutcomeTransitionSyntax *declaredOutcome =
+          CurrentFunction->OutcomeContractValidated
+              ? CurrentFunction->OutcomeContract.find(outcomeVariant)
+              : nullptr;
+      if (CurrentFunction->OutcomeContractValidated && !declaredOutcome) {
+        DiagnosticEngine::report(
+            getLoc(Ret), DiagID::ERR_OUTCOME_CONTRACT_INVALID,
+            CurrentFunction->Name,
+            "return must construct one direct declared outcome variant");
+        HasError = true;
+      }
       for (const auto &Arg : CurrentFunction->Args) {
         if (!Arg.IsInit)
           continue;
+        const OutcomeTransitionSyntax *outcome = nullptr;
+        if (declaredOutcome) {
+          outcome = declaredOutcome;
+          if (outcome->Subject != Arg.Name)
+            outcome = nullptr;
+        }
         SymbolInfo *Info = nullptr;
+        const PlaceState requiredState =
+            outcome && outcome->Post == OutcomePostState::Uninit
+                ? PlaceState::Never
+                : PlaceState::Live;
         if (!CurrentScope->findSymbol(Arg.Name, Info) || !Info ||
-            !hasExactlyPlaceState(Info->PlaceStateMask, PlaceState::Live)) {
-          DiagnosticEngine::report(
-              getLoc(Ret), DiagID::ERR_INIT_PARAMETER_UNFULFILLED,
-              CurrentFunction->Name, Arg.Name);
+            !hasExactlyPlaceState(Info->PlaceStateMask, requiredState)) {
+          if (outcome) {
+            DiagnosticEngine::report(
+                getLoc(Ret), DiagID::ERR_OUTCOME_RETURN_STATE, outcomeVariant,
+                Arg.Name,
+                requiredState == PlaceState::Live ? "init" : "uninit");
+          } else {
+            DiagnosticEngine::report(
+                getLoc(Ret), DiagID::ERR_INIT_PARAMETER_UNFULFILLED,
+                CurrentFunction->Name, Arg.Name);
+          }
           HasError = true;
         }
       }

@@ -575,7 +575,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         sym.soulType = getLLVMType(typeObj);
     }
 
-    if (needsCapture && !storesMovedUniqueHandleDirectly) {
+    if (needsCapture && !storesMovedUniqueHandleDirectly &&
+        !argDecl.IsInit) {
       sym.mode = AddressingMode::Pointer;
       // If captured, we add a level of indirection (ptr -> ptr*)
       sym.indirectionLevel++;

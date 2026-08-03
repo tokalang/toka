@@ -34,6 +34,18 @@ namespace toka {
 
 static SourceLocation getLoc(ASTNode *Node) { return Node->Loc; }
 
+static std::string directMatchVariantName(const MatchArm::Pattern *pattern) {
+  if (!pattern ||
+      (pattern->PatternKind != MatchArm::Pattern::Variable &&
+       pattern->PatternKind != MatchArm::Pattern::Decons)) {
+    return {};
+  }
+  const size_t separator = pattern->Name.rfind("::");
+  if (separator == std::string::npos)
+    return {};
+  return pattern->Name.substr(separator + 2);
+}
+
 static Expr *unwrapCedeDirectSource(Expr *E) {
   while (E) {
     if (auto *unary = dynamic_cast<UnaryExpr *>(E)) {
@@ -4739,6 +4751,39 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     AccessCapability targetCapability = targetFlow.DirectCapability;
     if (targetFlow.Kind == PermissionFlowKind::Shared)
       targetCapability.PayloadFlowRestricted = true;
+
+    CallExpr *outcomeCall = dynamic_cast<CallExpr *>(me->Target.get());
+    FunctionDecl *outcomeFunction =
+        outcomeCall && outcomeCall->RequiresOutcomeMatch
+            ? outcomeCall->ResolvedFn
+            : nullptr;
+    std::string outcomePlace;
+    if (outcomeFunction && outcomeFunction->OutcomeContractValidated) {
+      outcomeCall->OutcomeMatchConsumed = true;
+      const std::string &subject =
+          outcomeFunction->OutcomeContract.Transitions.front().Subject;
+      for (size_t i = 0; i < outcomeFunction->Args.size() &&
+                         i < outcomeCall->Args.size();
+           ++i) {
+        if (outcomeFunction->Args[i].Name != subject)
+          continue;
+        if (auto *place = dynamic_cast<VariableExpr *>(
+                outcomeCall->Args[i].get())) {
+          outcomePlace = place->Name;
+        }
+        break;
+      }
+      if (outcomePlace.empty()) {
+        DiagnosticEngine::report(getLoc(me),
+                                 DiagID::ERR_OUTCOME_MATCH_REQUIRED,
+                                 outcomeCall->Callee);
+        HasError = true;
+        outcomeFunction = nullptr;
+      }
+    } else {
+      outcomeFunction = nullptr;
+    }
+
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
     std::map<std::string, uint8_t> placeStateMasksBefore;
@@ -4767,9 +4812,32 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       PALCheckerState.restore(palBefore);
     };
 
+    std::set<std::string> outcomeMatchedVariants;
+    bool hasInvalidOutcomeArm = false;
+
     for (auto &arm : me->Arms) {
       restoreMatchEntryState();
       enterScope();
+      if (outcomeFunction) {
+        const std::string variant = directMatchVariantName(arm->Pat.get());
+        const OutcomeTransitionSyntax *transition =
+            outcomeFunction->OutcomeContract.find(variant);
+        if (arm->Guard || !transition ||
+            !outcomeMatchedVariants.insert(variant).second) {
+          DiagnosticEngine::report(getLoc(arm->Pat.get()),
+                                   DiagID::ERR_OUTCOME_MATCH_ARM_INVALID);
+          HasError = true;
+          hasInvalidOutcomeArm = true;
+        } else {
+          SymbolInfo *placeInfo = nullptr;
+          if (CurrentScope->findSymbol(outcomePlace, placeInfo) && placeInfo) {
+            const bool isLive = transition->Post == OutcomePostState::Init;
+            placeInfo->InitMask = isLive ? ~0ULL : 0;
+            placeInfo->PlaceStateMask = placeStateMask(
+                isLive ? PlaceState::Live : PlaceState::Never);
+          }
+        }
+      }
       checkPattern(arm->Pat.get(), targetType, targetCapability, targetPath,
                    targetAccessPath);
       if (arm->Guard) {
@@ -4833,6 +4901,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                    PALCheckerState.snapshot(), true);
           mergedPAL = nextMerged;
         }
+      }
+    }
+
+    if (outcomeFunction) {
+      std::set<std::string> declaredVariants;
+      for (const auto &transition : outcomeFunction->OutcomeContract.Transitions)
+        declaredVariants.insert(transition.Variant);
+      if (!hasInvalidOutcomeArm && outcomeMatchedVariants != declaredVariants) {
+        DiagnosticEngine::report(getLoc(me),
+                                 DiagID::ERR_OUTCOME_MATCH_ARM_INVALID);
+        HasError = true;
       }
     }
 

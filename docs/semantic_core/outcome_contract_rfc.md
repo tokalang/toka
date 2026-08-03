@@ -1,9 +1,10 @@
 # RFC: Outcome Contracts
 
-**Status:** Proposed post-`init` extension. This document records a bounded
-candidate semantic contract, its frozen first-slice surface spelling, and its
-acceptance gates. It does not claim current parser, TKI, or implementation
-support.
+**Status:** Implemented narrow P1. This document records the frozen first-slice
+surface spelling, semantic contract, and acceptance gates. Parser, semantic
+checking, code generation, and source-less TKI replay support the direct,
+synchronous, exhaustive-match subset; later sections marked deferred remain
+design work.
 
 **Depends on:** a qualified current baseline, the shared PlaceState Core,
 whole-place synchronous `init` P1, and structured return contracts.
@@ -48,8 +49,7 @@ The first slice accepts only:
 - actual arguments that are whole, stable, caller-owned local places;
 - a direct nominal `Result` or directly declared nominal enum return type;
 - exhaustive transitions keyed by that result's immediate variant identity;
-- immediate consumption by a recognized `match`, discriminant guard, or
-  direct error-propagation form; and
+- immediate consumption by one direct, exhaustive `match` on the call result;
 - synchronous calls and synchronous callee bodies.
 
 It rejects fields, elements, dereferences, temporaries, globals, captures,
@@ -84,7 +84,8 @@ It has these fixed first-slice rules:
   retains its existing unconditional `Never -> Live` normal-return meaning.
 - Calls retain the ordinary explicit handoff spelling: `try_read(init packet)`.
   There is no `outcome init` call marker. The returned direct discriminator,
-  immediately consumed under Section 7, selects the post-state.
+  immediately consumed by a direct exhaustive `match` under Section 7, selects
+  the post-state.
 - `=>` deliberately differs from the `effects:` route operator `<-`:
   an outcome variant selects a state for a place, whereas an effects route
   declares an escaping return dependency on a source path.
@@ -96,8 +97,8 @@ recognized match establish the branch fact:
 auto packet = uninit: Packet
 
 match try_read(init packet) {
-    Ok  => consume(packet)
-    Err => recover()
+    auto Result<(), IoError>::Ok(_)  => consume(packet)
+    auto Result<(), IoError>::Err(_) => recover()
 }
 ```
 
@@ -248,31 +249,27 @@ not the lexical `Maybe` predicate and does not permit `p is uninit`.
 
 ### OC-CALLER-03: Immediate consumption
 
-The witness must be consumed immediately by one of these forms:
-
-1. a direct `match` on the call result;
-2. a direct discriminant guard recognized by Sema; or
-3. direct error propagation under Section 9.
+The witness must be consumed immediately by one direct exhaustive `match` on
+the call result. Each first-slice arm names one immediate nominal variant; a
+wildcard, or-pattern, discriminant guard, or nested discriminator is rejected.
 
 The result may not first be stored in an ordinary local, returned, captured,
 placed in an aggregate, passed to another call, or hidden behind a generic or
 dynamic abstraction. This is intentionally stricter than ordinary Result use.
 The call and its immediate discriminator consumption form one semantic
-expression with no intervening user operation or suspension. Any nonlocal exit
-is rejected unless it is the direct propagation form in Section 9; lowering
-must nevertheless preserve the returned tag long enough to perform the correct
-state-dependent cleanup on every supported compiler/runtime unwind.
+expression with no intervening user operation, suspension, or nonlocal exit.
+Lowering must nevertheless preserve the returned tag long enough to perform the
+correct state-dependent cleanup on every supported compiler/runtime unwind.
 
 At entry to each matched branch, Sema applies only that variant's declared
 post-state. More generally, each recognized continuation has a statically
-known `VariantSet`. Sema may apply one post-state to that continuation only when
-every variant in the set declares the same post-state. A wildcard, or-pattern,
-guard-false complement, or propagated failure set mixing `Never` and `Live`
-must be split further before place access or is rejected in the first slice.
-A later join with different branch states is valid only when the existing
-PlaceState rules can contain and discharge the difference inside the place's
-active lexical `init` block. Otherwise all continuing branches must converge to
-the same definite state or have no common continuation.
+known one-variant `VariantSet`. Sema applies that variant's declared post-state
+to its matching arm. Wildcards, or-patterns, guards, and propagated failure
+sets are outside the first slice. A later join with different branch states is
+valid only when the existing PlaceState rules can contain and discharge the
+difference inside the place's active lexical `init` block. Otherwise all
+continuing branches must converge to the same definite state or have no common
+continuation.
 
 That mixed-state join has an explicit lowering commit. Before the result
 temporary or its nominal tag is destroyed, witness consumption atomically
@@ -335,13 +332,14 @@ without dropping `T`, but only when no `InitDischargeObligation` or pending
 OutcomeWitness still names that place. A callee handoff or pending witness
 cannot use storage retirement to escape or discard its proof duty.
 
-## 9. Error propagation and `?`
+## 9. Deferred error propagation and `?`
 
-Toka's current error-propagation spelling is postfix `!`. This RFC does not
-introduce `?`; if a later syntax proposal adds `?`, it must obey the identical
-semantic rule below.
+Toka's current error-propagation spelling is postfix `!`. It cannot consume an
+OutcomeWitness in P1; any such call must appear in the direct exhaustive match
+of Section 7. This RFC does not introduce `?`.
 
-A direct propagation operator may consume an OutcomeWitness only when:
+The following is a deferred extension design. A direct propagation operator may
+consume an OutcomeWitness only when:
 
 1. the operator statically identifies one continuing success variant and the
    propagated failure variant or variants;
@@ -368,10 +366,10 @@ inspect the tag, implicit Unit conversion, or temporary destruction.
 Discarding the result would discard the only static evidence selecting the
 place's post-state.
 
-An exhaustive recognized `match` is different: its wildcard/or-pattern arm
-does consume the discriminator witness, and is admitted exactly when that
-arm's statically computed `VariantSet` is homogeneous as required by Section
-6. It is not a general permission to ignore the call result.
+An exhaustive recognized direct `match` is different: naming every immediate
+variant exactly once consumes the discriminator witness and applies the
+corresponding one-variant post-state. Wildcard/or-pattern arms are not admitted
+in P1. This is not a general permission to ignore the call result.
 
 The first slice rejects standalone discard even when all declared branches
 happen to have the same post-state. A later simplification may erase a provably
@@ -424,10 +422,9 @@ cover:
 - every callee mismatch between returned variant and place state;
 - use before witness consumption and use under the wrong variant;
 - witness storage, escape, copy, capture, argument passing, and discard;
-- direct match, direct guard, and propagation success/failure edges;
-- three-or-more-variant enums whose wildcard, guard complement, or or-pattern
-  is accepted only for a homogeneous post-state `VariantSet`;
-- enclosing unconditional-`init` rejection on a propagated failure;
+- direct exhaustive-match success/failure edges, one direct variant per arm;
+- rejection of direct guards, wildcard/or-pattern arms, result storage, and
+  error propagation before their separate extensions are enabled;
 - branch joins inside and outside an active lexical `init` block, including
   result-tag destruction immediately after the atomic handoff to the block's
   private state/cleanup discriminator;
@@ -443,6 +440,8 @@ This RFC does not add:
 - field-wise or indexed outcome initialization;
 - nested-result or arbitrary predicate postconditions;
 - async completion, cancellation, timeout, or task-frame transitions;
+- discriminant guards, wildcard/or-pattern outcome arms, or error propagation
+  in the first slice;
 - general typestate, session types, or protocol capabilities;
 - algebraic effects, effect rows, or handlers;
 - a reuse or reinterpretation of return-dependency `effects:` syntax;

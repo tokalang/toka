@@ -738,6 +738,10 @@ public:
   int MatchedMemberIdx = -1; // For enum variant selection
   bool IsIsomorphicCopy = false; // [NEW] Copy/Move constructor intercept
   CallableReceiverMode CallableReceiver = CallableReceiverMode::Shared;
+  // An outcome-governed init call cannot be used until its direct match has
+  // consumed the returned discriminator.
+  bool RequiresOutcomeMatch = false;
+  bool OutcomeMatchConsumed = false;
 
   CallExpr(const std::string &callee, std::vector<std::unique_ptr<Expr>> args,
            std::vector<std::string> genericArgs = {},
@@ -1778,6 +1782,35 @@ struct ReturnContractSyntax {
   }
 };
 
+// Outcome Contracts are independent of return-dependency routes.  Their
+// source spelling is `Variant => place: init|uninit`; Sema resolves both names
+// to the direct nominal return variant and the exact init formal.
+enum class OutcomePostState { Init, Uninit };
+
+struct OutcomeTransitionSyntax {
+  std::string Variant;
+  std::string Subject;
+  OutcomePostState Post = OutcomePostState::Uninit;
+  SourceLocation Begin;
+  SourceLocation End;
+};
+
+struct OutcomeContractSyntax {
+  std::vector<OutcomeTransitionSyntax> Transitions;
+  SourceLocation Begin;
+  SourceLocation End;
+
+  bool empty() const { return Transitions.empty(); }
+
+  const OutcomeTransitionSyntax *find(const std::string &variant) const {
+    for (const auto &transition : Transitions) {
+      if (transition.Variant == variant)
+        return &transition;
+    }
+    return nullptr;
+  }
+};
+
 class FunctionDecl : public ASTNode {
 public:
   struct Arg {
@@ -1840,6 +1873,7 @@ public:
   TypeSyntaxPtr ReturnTypeSyntax;
   EffectKind Effect = EffectKind::None;
   ReturnContractSyntax ReturnContract;
+  OutcomeContractSyntax OutcomeContract;
   std::shared_ptr<toka::Type> ResolvedReturnType;
   std::vector<std::string> LifeDependencies; // [NEW] e.g., <- x|y
   std::map<std::string, std::vector<std::string>> MemberDependencies; // [NEW] e.g. res.&left <- a
@@ -1849,6 +1883,7 @@ public:
   bool IsVariadic = false;
   bool IsClosureInvoke = false;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
+  bool OutcomeContractValidated = false;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
   FunctionDecl *TemplateOrigin = nullptr;  // Tooling identity for an instance.
 
@@ -1919,6 +1954,7 @@ public:
                                             GenericParams, LifeDependencies, Effect);
     n->CodegenName = CodegenName;
     n->setReturnContract(ReturnContract);
+    n->OutcomeContract = OutcomeContract;
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
     n->IsClosureInvoke = IsClosureInvoke;

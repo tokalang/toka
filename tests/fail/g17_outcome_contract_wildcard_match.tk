@@ -1,0 +1,21 @@
+// CHECK: error[E04630]
+shape BuildOutcome(
+    Ok(i32) |
+    Err(i32)
+)
+
+fn try_build(init out: i32) -> BuildOutcome
+outcomes:
+    Ok => out: init
+    Err => out: uninit
+{
+    init out = 42:i32
+    return BuildOutcome::Ok(0)
+}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    match try_build(init value) {
+        _ => return 0
+    }
+}

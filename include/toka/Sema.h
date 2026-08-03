@@ -613,6 +613,7 @@ private:
   // `place is uninit` is valid only in the owning direct `if` condition.
   std::vector<InitBlockContext> m_InitBlockContexts;
   const BinaryExpr *m_ExpectedInitStatePredicate = nullptr;
+  std::vector<CallExpr *> m_OutcomePendingCalls;
 
   struct FlowSummary {
     bool CanFallThrough = true;

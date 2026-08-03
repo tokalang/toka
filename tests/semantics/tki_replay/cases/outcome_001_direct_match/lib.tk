@@ -1,0 +1,19 @@
+// EXPECT_TKI: outcomes:
+// EXPECT_TKI: Ok => out: init
+// EXPECT_TKI: Err => out: uninit
+pub shape BuildOutcome(
+    Ok(i32) |
+    Err(i32)
+)
+
+pub fn try_build(init out: i32, fail: bool) -> BuildOutcome
+outcomes:
+    Ok => out: init
+    Err => out: uninit
+{
+    if fail {
+        return BuildOutcome::Err(1)
+    }
+    init out = 42:i32
+    return BuildOutcome::Ok(0)
+}

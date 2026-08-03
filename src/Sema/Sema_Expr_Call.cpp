@@ -2381,12 +2381,26 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
   }
 
-  // A successful synchronous init call is the callee's construction proof at
-  // the caller boundary.  Keep this state transition separate from ordinary
-  // value argument checking: no read or move occurred at the call site.
+  // An ordinary synchronous init call establishes Live at the caller
+  // boundary.  An Outcome Contract instead leaves the exact place in a
+  // private {Never, Live} quarantine until its direct match selects one
+  // declared result variant.
+  const bool hasOutcomeContract =
+      Fn && Fn->OutcomeContractValidated && !Fn->OutcomeContract.empty();
+  if (hasOutcomeContract) {
+    Call->RequiresOutcomeMatch = true;
+    Call->OutcomeMatchConsumed = false;
+    m_OutcomePendingCalls.push_back(Call);
+  }
   for (SymbolInfo *place : completedInitPlaces) {
-    place->InitMask = ~0ULL;
-    place->PlaceStateMask = placeStateMask(PlaceState::Live);
+    if (hasOutcomeContract) {
+      place->InitMask = 0;
+      place->PlaceStateMask = placeStateMask(PlaceState::Never) |
+                              placeStateMask(PlaceState::Live);
+    } else {
+      place->InitMask = ~0ULL;
+      place->PlaceStateMask = placeStateMask(PlaceState::Live);
+    }
   }
 
   for (size_t i = 0; i < callArgPALFacts.size(); ++i) {

@@ -1,0 +1,5 @@
+error[E04630]: Outcome match arm must name one direct declared result variant
+ --> tests/fail/g17_outcome_contract_wildcard_match.tk:19:9
+    |
+ 19 |         _ => return 0
+    |         ^

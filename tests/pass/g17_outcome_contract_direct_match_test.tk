@@ -1,0 +1,60 @@
+// Outcome Contracts P1: a direct exhaustive match selects whether the caller
+// owned init place becomes live.  The conditional drop flag must agree.
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape CleanupToken(
+    id: i32
+)
+
+impl CleanupToken@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape BuildOutcome(
+    Ok(i32) |
+    Err(i32)
+)
+
+fn try_build(init out: CleanupToken, fail: bool) -> BuildOutcome
+outcomes:
+    Ok => out: init
+    Err => out: uninit
+{
+    if fail {
+        return BuildOutcome::Err(1)
+    }
+    init out = CleanupToken(id = 42)
+    return BuildOutcome::Ok(0)
+}
+
+fn construct_and_drop() -> i32 {
+    auto value = uninit:CleanupToken
+    match try_build(init value, false) {
+        auto BuildOutcome::Ok(_) => {
+            if value.id != 42 { return 1 }
+        }
+        auto BuildOutcome::Err(_) => return 2
+    }
+    return 0
+}
+
+fn remain_uninitialized() -> i32 {
+    auto value = uninit:CleanupToken
+    match try_build(init value, true) {
+        auto BuildOutcome::Ok(_) => return 3
+        auto BuildOutcome::Err(_) => {}
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    if construct_and_drop() != 0 { return 4 }
+    assert(g_drop_count == 1, "successful outcome drops exactly once")
+    if remain_uninitialized() != 0 { return 5 }
+    assert(g_drop_count == 1, "failed outcome does not drop uninitialized storage")
+    return 0
+}

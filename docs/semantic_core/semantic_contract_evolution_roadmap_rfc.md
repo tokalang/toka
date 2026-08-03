@@ -236,10 +236,11 @@ is Level B after the semantic-manifest payload, so it does not create an
 ### 4.3 Outcome Contracts
 
 [`outcome_contract_rfc.md`](outcome_contract_rfc.md) is the first contract
-extension after `init` P1. It expresses a post-state conditional on a directly
-discriminated nominal result, for example that an output place becomes live
-only on `Result::Ok`. Its frozen first-slice spelling is a dedicated
-declaration contract block:
+extension after `init` P1. Its narrow synchronous direct-match P1 is
+implemented. It expresses a post-state conditional on a directly discriminated
+nominal result, for example that an output place becomes live only on
+`Result::Ok`. Its frozen first-slice spelling is a dedicated declaration
+contract block:
 
 ```toka
 fn try_read(init out: Packet) -> Result<(), IoError>
@@ -262,8 +263,9 @@ The first slice must be narrow:
 - exactly one outcome-governed whole-place construction formal, reusing `init`
   P1 place eligibility but represented as a distinct conditional contract;
 - direct nominal `Result` or enum variants only;
-- the result must be immediately matched/guarded before the affected place is
-  accessible;
+- the result must be immediately consumed by one direct exhaustive `match`
+  before the affected place is accessible; guards, propagation, stored results,
+  and wildcard/or-pattern outcome arms are deferred;
 - `InitAuthority`, the call/enclosing discharge obligations, and live-value
   cleanup remain three conserved linear sorts; a mixed `{Never, Live}` join is
   admitted only inside an active lexical `init` block and only after the result

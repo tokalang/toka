@@ -1,0 +1,5 @@
+error[E04629]: Outcome call 'try_build' must be consumed immediately by a direct exhaustive match
+ --> tests/fail/g17_outcome_contract_unmatched.tk:18:19
+    |
+ 18 |     auto result = try_build(init value)
+    |                   ^

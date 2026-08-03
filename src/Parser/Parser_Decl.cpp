@@ -403,6 +403,44 @@ void Parser::parseReturnContractEffects(ReturnContractSyntax &contract) {
   }
 }
 
+OutcomeContractSyntax Parser::parseOutcomeContract() {
+  OutcomeContractSyntax contract;
+  if (!(check(TokenType::Identifier) && peek().Text == "outcomes" &&
+        checkAt(1, TokenType::Colon))) {
+    return contract;
+  }
+
+  Token begin = advance();
+  contract.Begin = begin.Loc;
+  advance();
+  while (!check(TokenType::LBrace) && !check(TokenType::EndOfFile)) {
+    Token variant = consume(TokenType::Identifier,
+                            DiagID::ERR_PARSER_EXPECTED_VARIANT);
+    consume(TokenType::FatArrow, DiagID::ERR_PARSER_EXPECTED);
+    Token subject = consume(TokenType::Identifier,
+                            DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
+    consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
+
+    OutcomeTransitionSyntax transition;
+    transition.Variant = variant.Text;
+    transition.Subject = subject.Text;
+    transition.Begin = variant.Loc;
+    if (check(TokenType::Identifier) && peek().Text == "init") {
+      transition.Post = OutcomePostState::Init;
+      transition.End = advance().Loc;
+    } else if (match(TokenType::KwUninit)) {
+      transition.Post = OutcomePostState::Uninit;
+      transition.End = previous().Loc;
+    } else {
+      error(peek(), DiagID::ERR_PARSER_EXPECTED_VARIANT);
+      return contract;
+    }
+    contract.Transitions.push_back(std::move(transition));
+  }
+  contract.End = previous().Loc;
+  return contract;
+}
+
 /*
  * Return dependencies are deliberately parsed once into
  * ReturnDependencyRouteSyntax.  Inline `<-` constructs a return target and
@@ -857,6 +895,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
   ReturnContractSyntax contract = parseReturnContract(true, true);
   parseWhereConstraints(genericParams);
   parseReturnContractEffects(contract);
+  OutcomeContractSyntax outcomeContract = parseOutcomeContract();
 
   std::unique_ptr<BlockStmt> body = nullptr;
   if (match(TokenType::Equal)) {
@@ -873,6 +912,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       isPub, name.Text, std::move(args), std::move(body), contract.Type,
       genericParams, std::vector<std::string>{}, contract.Effect);
   decl->setReturnContract(std::move(contract));
+  decl->OutcomeContract = std::move(outcomeContract);
   decl->IsVariadic = isVariadic;
   decl->setLocation(name, m_CurrentFile);
   return decl;

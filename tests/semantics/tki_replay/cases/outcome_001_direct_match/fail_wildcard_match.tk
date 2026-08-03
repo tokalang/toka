@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E04630
+import ./lib::{try_build}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    match try_build(init value, false) {
+        _ => return 0
+    }
+}

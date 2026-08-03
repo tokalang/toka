@@ -1,0 +1,5 @@
+error[E04628]: Return variant 'Ok' requires outcome parameter 'out' to be init
+ --> tests/fail/g17_outcome_contract_return_state.tk:12:5
+    |
+ 12 |     return BuildOutcome::Ok(0)
+    |     ^

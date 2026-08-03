@@ -1,0 +1,13 @@
+// CHECK: error[E04628]
+shape BuildOutcome(
+    Ok(i32) |
+    Err(i32)
+)
+
+fn bad_build(init out: i32) -> BuildOutcome
+outcomes:
+    Ok => out: init
+    Err => out: uninit
+{
+    return BuildOutcome::Ok(0)
+}

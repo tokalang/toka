@@ -298,6 +298,10 @@ void CodeGen::markInitLive(const BinaryExpr *assignment) {
 }
 
 void CodeGen::markInitLive(const VariableExpr *target) {
+  markInitState(target, llvm::ConstantInt::getTrue(m_Context));
+}
+
+void CodeGen::markInitState(const VariableExpr *target, llvm::Value *isLive) {
   if (!target)
     return;
 
@@ -308,11 +312,9 @@ void CodeGen::markInitLive(const VariableExpr *target) {
       if (Type::stripMorphology(entry->Name) != targetName)
         continue;
       if (entry->InitFlag)
-        m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
-                              entry->InitFlag);
+        m_Builder.CreateStore(isLive, entry->InitFlag);
       if (entry->DropFlag)
-        m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
-                              entry->DropFlag);
+        m_Builder.CreateStore(isLive, entry->DropFlag);
       return;
     }
   }

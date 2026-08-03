@@ -626,6 +626,23 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
         indent();
     }
 
+    if (!decl.OutcomeContract.empty()) {
+        m_OS << "\n";
+        m_Indent++;
+        writeln("outcomes:");
+        m_Indent++;
+        for (const auto &transition : decl.OutcomeContract.Transitions) {
+            indent();
+            m_OS << transition.Variant << " => " << transition.Subject
+                 << ": "
+                 << (transition.Post == OutcomePostState::Init ? "init"
+                                                                : "uninit")
+                 << "\n";
+        }
+        m_Indent -= 2;
+        indent();
+    }
+
     bool hasGenerics = !decl.GenericParams.empty();
     if (decl.Body && (hasGenerics || forceKeepBody)) {
         m_OS << " ";

@@ -3609,6 +3609,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   std::string savedBorrowSource = m_LastBorrowSource;
   auto savedLifeDependencies = m_LastLifeDependencies;
   auto savedFieldDependencies = m_LastFieldDependencies;
+  auto savedOutcomePendingCalls = std::move(m_OutcomePendingCalls);
+  m_OutcomePendingCalls.clear();
   CurrentFunction = Fn;
   CurrentFunctionReturnType = Fn->ReturnType;
   m_LastBorrowSource.clear();
@@ -3645,6 +3647,90 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                              : toka::Type::fromString(Fn->ReturnType));
   } else {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
+  }
+
+  Fn->OutcomeContractValidated = false;
+  if (!Fn->OutcomeContract.empty()) {
+    auto invalidOutcome = [&](const std::string &detail) {
+      DiagnosticEngine::report(getLoc(Fn), DiagID::ERR_OUTCOME_CONTRACT_INVALID,
+                               Fn->Name, detail);
+      HasError = true;
+    };
+
+    ShapeDecl *returnEnum = nullptr;
+    if (auto shape = std::dynamic_pointer_cast<ShapeType>(
+            Fn->ResolvedReturnType)) {
+      returnEnum = shape->Decl;
+    }
+    if (!returnEnum) {
+      std::string base = Type::stripMorphology(Fn->ReturnType);
+      const size_t generic = base.find('<');
+      if (generic != std::string::npos)
+        base = base.substr(0, generic);
+      auto found = ShapeMap.find(base);
+      if (found != ShapeMap.end())
+        returnEnum = found->second;
+    }
+    if (!returnEnum || returnEnum->Kind != ShapeKind::Enum) {
+      invalidOutcome("return type must be a direct nominal enum");
+    } else {
+      const FunctionDecl::Arg *outcomeFormal = nullptr;
+      std::set<std::string> declaredVariants;
+      bool valid = true;
+      size_t initFormalCount = 0;
+      for (const auto &arg : Fn->Args) {
+        if (arg.IsInit)
+          ++initFormalCount;
+      }
+      if (initFormalCount != 1) {
+        invalidOutcome("the first slice requires exactly one init formal");
+        valid = false;
+      }
+      for (const auto &member : returnEnum->Members)
+        declaredVariants.insert(member.Name);
+      if (declaredVariants.empty()) {
+        invalidOutcome("return enum has no direct variants");
+        valid = false;
+      }
+
+      std::set<std::string> coveredVariants;
+      for (const auto &transition : Fn->OutcomeContract.Transitions) {
+        const FunctionDecl::Arg *subject = nullptr;
+        for (const auto &arg : Fn->Args) {
+          if (arg.Name == transition.Subject) {
+            subject = &arg;
+            break;
+          }
+        }
+        if (!subject || !subject->IsInit) {
+          invalidOutcome("each entry must name the same init formal");
+          valid = false;
+          continue;
+        }
+        if (outcomeFormal && outcomeFormal != subject) {
+          invalidOutcome("only one outcome-governed init formal is allowed");
+          valid = false;
+        }
+        outcomeFormal = subject;
+        if (!declaredVariants.count(transition.Variant)) {
+          invalidOutcome("entry names a variant absent from the return enum");
+          valid = false;
+        }
+        if (!coveredVariants.insert(transition.Variant).second) {
+          invalidOutcome("each return variant may appear only once");
+          valid = false;
+        }
+      }
+      if (!outcomeFormal) {
+        invalidOutcome("entries must name one init formal");
+        valid = false;
+      }
+      if (coveredVariants != declaredVariants) {
+        invalidOutcome("entries must cover every direct return variant exactly once");
+        valid = false;
+      }
+      Fn->OutcomeContractValidated = valid;
+    }
   }
 
   if (Fn->Name == "main" && Fn->ResolvedReturnType) {
@@ -3760,6 +3846,12 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     // Explicit returns check their own path at the return expression.  Only
     // a reachable normal fallthrough remains to be discharged here.
     if (!allPathsJump(Fn->Body.get())) {
+      if (Fn->OutcomeContractValidated) {
+        DiagnosticEngine::report(
+            getLoc(Fn), DiagID::ERR_OUTCOME_CONTRACT_INVALID, Fn->Name,
+            "function can fall through without selecting an outcome variant");
+        HasError = true;
+      }
       for (auto &Arg : Fn->Args) {
         if (!Arg.IsInit)
           continue;
@@ -3773,6 +3865,14 @@ void Sema::checkFunction(FunctionDecl *Fn) {
           HasError = true;
         }
       }
+    }
+
+    for (CallExpr *call : m_OutcomePendingCalls) {
+      if (!call || call->OutcomeMatchConsumed)
+        continue;
+      DiagnosticEngine::report(getLoc(call), DiagID::ERR_OUTCOME_MATCH_REQUIRED,
+                               call->Callee);
+      HasError = true;
     }
 
     for (auto &Arg : Fn->Args) {
@@ -3877,6 +3977,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   }
 
   exitScope();
+  m_OutcomePendingCalls = std::move(savedOutcomePendingCalls);
   CurrentFunctionReturnType = savedRet; // [FIX] Restore state
   CurrentFunction = savedFn;
   if (savedFn) {

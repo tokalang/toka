@@ -212,8 +212,11 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
 
   if (check(TokenType::Identifier)) {
     if (peek().Text == "_") {
-      advance();
-      return std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Wildcard);
+      Token wildcard = advance();
+      auto pattern =
+          std::make_unique<MatchArm::Pattern>(MatchArm::Pattern::Wildcard);
+      pattern->Loc = wildcard.Loc;
+      return pattern;
     }
     if (peek().Text == "default" && !hasAutoBinding) {
       error(peek(), DiagID::ERR_PARSER_DEFAULT_WILDCARD_REMOVED);

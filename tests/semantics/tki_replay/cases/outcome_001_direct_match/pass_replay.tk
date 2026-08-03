@@ -1,0 +1,9 @@
+import ./lib::{BuildOutcome, try_build}
+
+fn main() -> i32 {
+    auto value = uninit:i32
+    match try_build(init value, false) {
+        auto BuildOutcome::Ok(_) => return value - 42:i32
+        auto BuildOutcome::Err(_) => return 1
+    }
+}

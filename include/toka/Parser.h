@@ -101,6 +101,7 @@ private:
   ReturnContractSyntax parseReturnContract(bool allowDependencies,
                                            bool allowNever = false);
   void parseReturnContractEffects(ReturnContractSyntax &contract);
+  OutcomeContractSyntax parseOutcomeContract();
   std::vector<DependencyPathSyntax>
   parseReturnDependencySources(bool allowMemberPath);
   bool parseReturnDependencyTarget(const ReturnContractSyntax &contract,

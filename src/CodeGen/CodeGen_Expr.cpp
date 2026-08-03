@@ -6227,16 +6227,66 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
   llvm::CallInst *ci = m_Builder.CreateCall(callee->getFunctionType(), callee, argsV);
 
-  // A synchronous init formal has just constructed caller-owned storage.  The
-  // semantic post-state is Live, so its runtime observation and cleanup flags
-  // must become live at this same call boundary.
+  // An ordinary synchronous init formal has constructed caller-owned storage.
+  // An Outcome Contract instead uses the direct enum tag to select whether
+  // that storage owns a live value and its corresponding cleanup obligation.
   if (funcDecl) {
+    llvm::Value *outcomeIsLive = nullptr;
+    if (funcDecl->OutcomeContractValidated &&
+        !funcDecl->OutcomeContract.empty() &&
+        (!isSRet || sretAlloc) &&
+        (isSRet || !ci->getType()->isVoidTy())) {
+      std::string enumName = funcDecl->ResolvedReturnType
+                                 ? funcDecl->ResolvedReturnType->getSoulName()
+                                 : funcDecl->ReturnType;
+      enumName = Type::stripMorphology(enumName);
+      const size_t generic = enumName.find('<');
+      if (generic != std::string::npos)
+        enumName = enumName.substr(0, generic);
+      auto enumIt = m_Shapes.find(enumName);
+      llvm::Value *outcomeResult = ci;
+      if (isSRet) {
+        llvm::Type *resultType = getLLVMType(call->ResolvedType);
+        outcomeResult = m_Builder.CreateLoad(resultType, sretAlloc,
+                                             "outcome.result");
+      }
+      if (enumIt != m_Shapes.end() &&
+          enumIt->second->Kind == ShapeKind::Enum &&
+          outcomeResult->getType()->isStructTy()) {
+        llvm::Value *tag =
+            m_Builder.CreateExtractValue(outcomeResult, 0, "outcome.tag");
+        outcomeIsLive = llvm::ConstantInt::getFalse(m_Context);
+        for (const auto &transition : funcDecl->OutcomeContract.Transitions) {
+          if (transition.Post != OutcomePostState::Init)
+            continue;
+          for (size_t index = 0; index < enumIt->second->Members.size();
+               ++index) {
+            const auto &member = enumIt->second->Members[index];
+            if (member.Name != transition.Variant)
+              continue;
+            const int tagValue = member.TagValue == -1
+                                     ? static_cast<int>(index)
+                                     : static_cast<int>(member.TagValue);
+            llvm::Value *matches = m_Builder.CreateICmpEQ(
+                tag, llvm::ConstantInt::get(tag->getType(), tagValue),
+                "outcome.is_live");
+            outcomeIsLive = m_Builder.CreateOr(outcomeIsLive, matches,
+                                                "outcome.any_live");
+            break;
+          }
+        }
+      }
+    }
     for (size_t i = 0; i < funcDecl->Args.size() && i < call->Args.size();
          ++i) {
       if (!funcDecl->Args[i].IsInit)
         continue;
-      if (auto *place = dynamic_cast<const VariableExpr *>(call->Args[i].get()))
-        markInitLive(place);
+      if (auto *place = dynamic_cast<const VariableExpr *>(call->Args[i].get())) {
+        if (outcomeIsLive)
+          markInitState(place, outcomeIsLive);
+        else if (funcDecl->OutcomeContract.empty())
+          markInitLive(place);
+      }
     }
   }
 
