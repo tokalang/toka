@@ -787,6 +787,15 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
       releaseFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
                                           "toka_task_release", m_Module.get());
     }
+    llvm::Function *clearCurrentFn =
+        m_Module->getFunction("toka_task_clear_current");
+    if (!clearCurrentFn) {
+      llvm::FunctionType *ft = llvm::FunctionType::get(
+          m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+      clearCurrentFn = llvm::Function::Create(
+          ft, llvm::Function::ExternalLinkage, "toka_task_clear_current",
+          m_Module.get());
+    }
     llvm::Function *getFrameForRunFn =
         m_Module->getFunction("toka_tcb_get_coro_frame");
     if (!getFrameForRunFn) {
@@ -833,6 +842,7 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
     llvm::Function *resumeFn = llvm::Intrinsic::getOrInsertDeclaration(
         m_Module.get(), llvm::Intrinsic::coro_resume);
     m_Builder.CreateCall(resumeFn, {frameForRun});
+    m_Builder.CreateCall(clearCurrentFn, {queued});
     m_Builder.CreateCall(releaseFn, {queued});
     m_Builder.CreateBr(pollBB);
 

@@ -329,10 +329,15 @@ substrate moves the child collection behind an opaque `TaskScope` registry. Its
 handle before activation, and returns `Err(TaskHandle<T>)` unchanged if closing
 already won. Explicit `close()` and the timed-out branch of `shutdown_async`
 publish `Closing` before cancellation and publish `Closed` only after every
-linked child is terminal and its scope-held reference is released. This is a
-necessary close/enroll substrate, not Phase-5 conformance: it still lacks
-full-token validation, parent-cancellation/aggregate arbitration, typed result
-disposition, and the helpable close-progress protocol specified below.
+linked child is terminal and its scope-held reference is released. A scope
+created while a task is running is also registered in that parent's
+mutex-protected scope list; parent cancellation snapshots a temporary scope
+reference, publishes `Closing`, then requests child cancellation outside the
+arbiter. Enrollment observes the parent's request under the same arbiter, so a
+late child is rejected before transfer. This is a necessary close/enroll and
+parent-cancellation substrate, not Phase-5 conformance: it still lacks
+full-token validation, reason/aggregate arbitration, typed result disposition,
+and the helpable close-progress protocol specified below.
 - Its registry has `Open | Closing(reason) | Closed` state under the same
   parent-cancellation/close arbiter used for child registration. Registration
   either links `Tracked` (and, for a new child, does so before activation/

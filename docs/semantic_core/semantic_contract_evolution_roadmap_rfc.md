@@ -76,9 +76,11 @@ before ownership transfer and returns the original typed handle; an accepted
 child is linked before activation and replaces the consumed handle's ordinary
 detach owner. This closes the old safe-surface gap and creates the first AS
 runtime substrate, but it does not qualify TaskScope or TCB lifetime yet: the
-remaining AS gates require full-token/parent-cancellation arbitration, typed
-result disposition, helpable close progress, and TCB/slot retention
-independently of frame eligibility.
+registry now observes its parent's cancellation request under the same arbiter
+and selects its children after publishing `Closing`. The remaining AS gates
+still require full-token and reason/aggregate arbitration, typed result
+disposition, helpable close progress, and TCB/slot retention independently of
+frame eligibility.
 
 ### P-1 exit gate
 

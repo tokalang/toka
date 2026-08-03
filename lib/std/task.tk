@@ -267,7 +267,7 @@ pub fn __toka_spawn(*task: void) {
     }
 }
 
-import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion, toka_task_unsubscribe_completion, toka_task_retain, toka_tcb_is_canceled}
+import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion, toka_task_unsubscribe_completion, toka_task_retain, toka_tcb_is_canceled, toka_task_clear_current}
 
 pub fn task_cancel<'T>(handle: TaskHandle<'T>) {
     auto *tcb = task_get_coro_handle<'T>(handle)
@@ -357,6 +357,7 @@ fn drain_ready_tasks() -> i32 {
                 __toka_coro_resume(frame_addr as *void)
                 resumed += 1:i32
             }
+            core_task::toka_task_clear_current(tcb_addr as *void)
             core_task::toka_task_release(tcb_addr as *void)
         }
     }

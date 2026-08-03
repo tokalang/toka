@@ -1,0 +1,58 @@
+// Parent cancellation closes its registered TaskScope and selects every child
+// before the parent can finish its own cancellation path.
+import std/io::{println}
+import std/task::{block_on, sleep_async, task_cancel}
+import std/async::{TaskScope, spawn_into}
+import core/result::{Result}
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_start}
+
+auto g_child_cleanup_count# = 0:i32
+
+shape ChildCleanup()
+
+impl ChildCleanup@Encap {
+    fn drop(self#) {
+        g_child_cleanup_count += 1:i32
+    }
+}
+
+fn child_waiting_for_parent_cancel() -> async i32 {
+    auto cleanup = ChildCleanup()
+    sleep_async(1000:i32).await
+    return 1:i32
+}
+
+fn parent_with_scope() -> async i32 {
+    auto scope# = TaskScope::new()
+    auto child = child_waiting_for_parent_cancel().start
+    match cede spawn_into(scope, cede child) {
+        auto Result<(), TaskHandle<i32>>::Ok(_) => {}
+        auto Result<(), TaskHandle<i32>>::Err('returned) => {
+            auto value = 'returned.await
+            return value
+        }
+    }
+    sleep_async(1000:i32).await
+    return 0:i32
+}
+
+fn parent_cancel_closes_scope() -> async i32 {
+    auto parent = parent_with_scope().start
+    auto *parent_tcb = task_get_coro_handle<i32>(parent)
+    toka_task_start(*parent_tcb)
+
+    // Let parent registration and child activation commit before cancellation.
+    sleep_async(10:i32).await
+    task_cancel(parent)
+    sleep_async(20:i32).await
+
+    assert(g_child_cleanup_count == 1:i32,
+           "parent cancellation must cancel the registered TaskScope child")
+    return 0:i32
+}
+
+fn main() {
+    auto result = block_on(parent_cancel_closes_scope())
+    assert(result == 0:i32, "TaskScope parent-cancellation test failed")
+    println("g16_task_scope_parent_cancel_test PASSED")
+}

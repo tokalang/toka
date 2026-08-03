@@ -839,6 +839,7 @@ static inline int toka_tcb_is_terminal(uint32_t st) {
 }
 
 typedef struct TokaTCB TokaTCB;
+typedef struct TokaTaskScopeRegistry TokaTaskScopeRegistry;
 void toka_task_release(void *tcb_ptr);
 int toka_task_request_cancel(void *tcb_ptr);
 int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
@@ -871,6 +872,9 @@ typedef struct TokaTCB {
     TokaTCB **cancel_children;
     uint32_t cancel_child_count;
     uint32_t cancel_child_capacity;
+    TokaTaskScopeRegistry **cancel_scopes;
+    uint32_t cancel_scope_count;
+    uint32_t cancel_scope_capacity;
 } TokaTCB;
 
 static void toka_wait_registry_cancel_active(TokaTCB *tcb);
@@ -907,12 +911,14 @@ typedef enum {
     TOKA_TASK_SCOPE_CLOSED = 2
 } TokaTaskScopeState;
 
-typedef struct {
+struct TokaTaskScopeRegistry {
+    _Atomic uint32_t ref_count;
     uint32_t state;
+    TokaTCB *parent;
     TokaTCB **children;
     uint32_t child_count;
     uint32_t child_capacity;
-} TokaTaskScopeRegistry;
+};
 
 static int toka_task_scope_ensure_capacity_locked(TokaTaskScopeRegistry *scope) {
     if (scope->child_count < scope->child_capacity) return 1;
@@ -927,6 +933,30 @@ static int toka_task_scope_ensure_capacity_locked(TokaTaskScopeRegistry *scope) 
     if (!children) return 0;
     scope->children = children;
     scope->child_capacity = new_capacity;
+    return 1;
+}
+
+static int toka_task_scope_parent_ensure_capacity_locked(TokaTCB *parent) {
+    if (parent->cancel_scope_count < parent->cancel_scope_capacity) return 1;
+    if (parent->cancel_scope_capacity > UINT32_MAX / 2) return 0;
+    uint32_t new_capacity =
+        parent->cancel_scope_capacity == 0 ? 2 : parent->cancel_scope_capacity * 2;
+#if SIZE_MAX < UINT32_MAX
+    if (new_capacity > SIZE_MAX / sizeof(TokaTaskScopeRegistry*)) return 0;
+#endif
+    TokaTaskScopeRegistry **scopes = (TokaTaskScopeRegistry**)realloc(
+        parent->cancel_scopes, new_capacity * sizeof(TokaTaskScopeRegistry*)
+    );
+    if (!scopes) return 0;
+    parent->cancel_scopes = scopes;
+    parent->cancel_scope_capacity = new_capacity;
+    return 1;
+}
+
+static int toka_task_scope_retain_locked(TokaTaskScopeRegistry *scope) {
+    uint32_t refs = atomic_load(&scope->ref_count);
+    if (refs == 0 || refs == UINT32_MAX) return 0;
+    atomic_store(&scope->ref_count, refs + 1);
     return 1;
 }
 
@@ -1302,6 +1332,12 @@ int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb
     }
 }
 
+void toka_task_clear_current(void *tcb_ptr) {
+    if (g_current_tcb == (TokaTCB*)tcb_ptr) {
+        g_current_tcb = NULL;
+    }
+}
+
 static uint32_t g_active_detached_task_count = 0;
 
 uint32_t toka_task_active_detached_count(void) {
@@ -1563,6 +1599,7 @@ void toka_task_release(void *tcb_ptr) {
     TokaCompletionSubscriber *subs_to_free = NULL;
     TokaTCB **children_to_release = NULL;
     uint32_t child_count = 0;
+    TokaTaskScopeRegistry **scopes_to_free = NULL;
 
     toka_mutex_lock(&g_rt_mutex);
     if (atomic_fetch_sub(&tcb->ref_count, 1) == 1) {
@@ -1586,6 +1623,10 @@ void toka_task_release(void *tcb_ptr) {
         tcb->cancel_children = NULL;
         tcb->cancel_child_count = 0;
         tcb->cancel_child_capacity = 0;
+        scopes_to_free = tcb->cancel_scopes;
+        tcb->cancel_scopes = NULL;
+        tcb->cancel_scope_count = 0;
+        tcb->cancel_scope_capacity = 0;
 
         toka_mutex_unlock(&g_rt_mutex);
 
@@ -1604,6 +1645,7 @@ void toka_task_release(void *tcb_ptr) {
             toka_task_release(children_to_release[i]);
         }
         free(children_to_release);
+        free(scopes_to_free);
         free(tcb);
         return;
     }
@@ -1620,7 +1662,29 @@ void* toka_task_scope_create(void) {
     TokaTaskScopeRegistry *scope =
         (TokaTaskScopeRegistry*)calloc(1, sizeof(TokaTaskScopeRegistry));
     if (!scope) return NULL;
+    atomic_store(&scope->ref_count, 1);
     scope->state = TOKA_TASK_SCOPE_OPEN;
+
+    // A scope keeps its parent TCB alive, while the parent stores only a
+    // mutex-protected weak list entry. Cancellation snapshots a temporary
+    // scope reference under that same lock, so neither side can resurrect or
+    // dereference a released registry.
+    TokaTCB *parent = lookup_tcb_by_frame_retained(NULL);
+    if (parent) {
+        toka_mutex_lock(&g_rt_mutex);
+        if (!toka_task_scope_parent_ensure_capacity_locked(parent)) {
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_task_release(parent);
+            free(scope);
+            return NULL;
+        }
+        scope->parent = parent;
+        parent->cancel_scopes[parent->cancel_scope_count++] = scope;
+        if (atomic_load(&parent->cancel_requested)) {
+            scope->state = TOKA_TASK_SCOPE_CLOSING;
+        }
+        toka_mutex_unlock(&g_rt_mutex);
+    }
     return scope;
 }
 
@@ -1633,6 +1697,9 @@ int toka_task_scope_try_enroll(void *scope_ptr, void *tcb_ptr) {
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
 
     toka_mutex_lock(&g_rt_mutex);
+    if (scope->parent && atomic_load(&scope->parent->cancel_requested)) {
+        scope->state = TOKA_TASK_SCOPE_CLOSING;
+    }
     if (scope->state != TOKA_TASK_SCOPE_OPEN) {
         toka_mutex_unlock(&g_rt_mutex);
         return 0;
@@ -1783,8 +1850,34 @@ void toka_task_scope_release(void *scope_ptr) {
     TokaTaskScopeRegistry *scope = (TokaTaskScopeRegistry*)scope_ptr;
     TokaTCB **children = NULL;
     uint32_t child_count = 0;
+    TokaTCB *parent = NULL;
 
     toka_mutex_lock(&g_rt_mutex);
+    uint32_t refs = atomic_load(&scope->ref_count);
+    if (refs == 0) {
+        toka_mutex_unlock(&g_rt_mutex);
+        fprintf(stderr, "Fatal error: TaskScope registry reference underflow.\n");
+        abort();
+    }
+    if (refs > 1) {
+        atomic_store(&scope->ref_count, refs - 1);
+        toka_mutex_unlock(&g_rt_mutex);
+        return;
+    }
+    atomic_store(&scope->ref_count, 0);
+
+    parent = scope->parent;
+    if (parent) {
+        for (uint32_t i = 0; i < parent->cancel_scope_count; ++i) {
+            if (parent->cancel_scopes[i] == scope) {
+                parent->cancel_scopes[i] =
+                    parent->cancel_scopes[parent->cancel_scope_count - 1];
+                parent->cancel_scope_count--;
+                break;
+            }
+        }
+        scope->parent = NULL;
+    }
     children = scope->children;
     child_count = scope->child_count;
     scope->children = NULL;
@@ -1797,6 +1890,7 @@ void toka_task_scope_release(void *scope_ptr) {
         toka_task_release(children[i]);
     }
     free(children);
+    if (parent) toka_task_release(parent);
     free(scope);
 }
 
@@ -2443,6 +2537,8 @@ int toka_task_request_cancel(void *tcb_ptr) {
     TokaTCB *child_tcb = NULL;
     TokaTCB **cancel_children = NULL;
     uint32_t cancel_child_count = 0;
+    TokaTaskScopeRegistry **cancel_scopes = NULL;
+    uint32_t cancel_scope_count = 0;
     toka_mutex_lock(&g_rt_mutex);
     uintptr_t child_val = atomic_load(&tcb->active_child_tcb);
     if (child_val != 0) {
@@ -2462,6 +2558,26 @@ int toka_task_request_cancel(void *tcb_ptr) {
             atomic_fetch_add(&cancel_children[i]->ref_count, 1);
         }
     }
+    cancel_scope_count = tcb->cancel_scope_count;
+    if (cancel_scope_count > 0) {
+        cancel_scopes = (TokaTaskScopeRegistry**)malloc(
+            cancel_scope_count * sizeof(TokaTaskScopeRegistry*)
+        );
+        if (!cancel_scopes) {
+            toka_mutex_unlock(&g_rt_mutex);
+            fprintf(stderr, "Fatal error: unable to snapshot cancellation scopes.\n");
+            abort();
+        }
+        for (uint32_t i = 0; i < cancel_scope_count; ++i) {
+            TokaTaskScopeRegistry *scope = tcb->cancel_scopes[i];
+            if (!toka_task_scope_retain_locked(scope)) {
+                toka_mutex_unlock(&g_rt_mutex);
+                fprintf(stderr, "Fatal error: invalid TaskScope cancellation reference.\n");
+                abort();
+            }
+            cancel_scopes[i] = scope;
+        }
+    }
     toka_mutex_unlock(&g_rt_mutex);
     if (child_tcb) {
         toka_task_request_cancel(child_tcb);
@@ -2472,6 +2588,12 @@ int toka_task_request_cancel(void *tcb_ptr) {
         toka_task_release(cancel_children[i]);
     }
     free(cancel_children);
+    for (uint32_t i = 0; i < cancel_scope_count; ++i) {
+        toka_task_scope_begin_close(cancel_scopes[i]);
+        toka_task_scope_request_cancel_all(cancel_scopes[i]);
+        toka_task_scope_release(cancel_scopes[i]);
+    }
+    free(cancel_scopes);
 
     toka_mutex_lock(&g_rt_mutex);
     uint32_t expected_st = TOKA_TCB_CREATED;

@@ -45,6 +45,7 @@ extern fn toka_task_subscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32
 extern fn toka_task_unsubscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_task_retain(*tcb: void) -> void
 extern fn toka_task_scope_create() -> *void
+extern fn toka_task_clear_current(*tcb: void) -> void
 extern fn toka_task_scope_try_enroll(*scope: void, *tcb: void) -> i32
 extern fn toka_task_scope_begin_close(*scope: void) -> i32
 extern fn toka_task_scope_is_done(*scope: void) -> i32
