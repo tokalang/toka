@@ -1,0 +1,16 @@
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn constructed_before_await() -> async i32 {
+    auto value = uninit:i32
+    init value {
+        init value = 7:i32
+        immediate().await
+    }
+    return value
+}
+
+fn main() -> i32 {
+    return 0
+}

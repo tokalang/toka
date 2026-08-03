@@ -1,0 +1,5 @@
+error[E04626]: Cannot suspend while 'init value' still has an unresolved construction obligation
+ --> tests/fail/g16_init_block_await_unresolved.tk:12:21
+    |
+ 12 |         immediate().await
+    |                     ^

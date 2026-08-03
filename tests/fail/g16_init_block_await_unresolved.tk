@@ -1,0 +1,22 @@
+// CHECK: error[E04626]
+fn immediate() -> async i32 {
+    return 0
+}
+
+fn incomplete_across_await(flag: bool) -> async i32 {
+    auto value = uninit:i32
+    init value {
+        if flag {
+            init value = 1:i32
+        }
+        immediate().await
+        if value is uninit {
+            init value = 2:i32
+        }
+    }
+    return value
+}
+
+fn main() -> i32 {
+    return 0
+}

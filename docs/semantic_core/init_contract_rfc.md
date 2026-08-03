@@ -4,7 +4,9 @@
 `init local = value`, lexical `init local { ... }`, its restricted `is uninit`
 predicate, and plain synchronous `init` formals. The formal signature and the
 contextual `init` call argument survive source-less TKI replay. Field-wise,
-outcome-dependent, and async contracts remain deferred.
+outcome-dependent, and async contracts remain deferred. A fulfilled local may
+remain in an async frame, but an unresolved lexical construction obligation
+cannot cross `.await`.
 
 **Scope:** A delayed-initialization contract proves a transition of an exact
 storage place from `Uninitialized` to `Initialized`. It is neither an optional
@@ -19,7 +21,7 @@ authority and canonical PAL path identity. In this RFC, `Uninitialized` and
 `Initialized` are source-facing names for definite PlaceState facts; they do not
 define a second state machine.
 
-### Current scaffold boundary
+### Implemented P1 boundary
 
 The implemented direct form recognizes contextual `init local = expression`,
 permits only an eligible immutable plain local, and rejects a moved, already
@@ -513,11 +515,14 @@ narrowing, and synchronous exceptional cleanup.
 
 ### Future async extension gate (not part of P1)
 
-P1 rejects an outstanding `init` handoff or `Maybe` fact at suspension. A
-future async slice may relax that rule only after the async/place cleanup bridge
-preserves the fact and private discriminator in the coroutine frame, treats a
-caught cancellation as continuing control flow, and performs state-dependent
-cleanup before unhandled terminal cancellation is published.
+P1 rejects a suspension while an active lexical `init` block's target is still
+`Never` or `Maybe`; an already `Live` target is an ordinary coroutine-frame
+local. Async `init` formals remain rejected, so no cross-function construction
+handoff can suspend. A future async slice may relax either boundary only after
+the async/place cleanup bridge preserves the outstanding fact and private
+discriminator in the coroutine frame, treats a caught cancellation as
+continuing control flow, and performs state-dependent cleanup before unhandled
+terminal cancellation is published.
 
 Logical reset remains an initialized object's explicit domain operation such as
 `device.reset#()` or `device.close#()`. A future need for FFI in-place storage

@@ -3595,6 +3595,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       error(awaitEx,
             DiagID::ERR_CODEGEN_AWAIT_CAN_ONLY_BE_USED_INSIDE_AN_ASYNC);
     }
+    // The P1 lexical construction proof is synchronous.  A fully constructed
+    // target is an ordinary frame local, but an unresolved Never/Maybe fact
+    // must not cross a coroutine suspension before the async/place bridge has
+    // a frame-level obligation and cleanup proof.
+    for (const auto &context : m_InitBlockContexts) {
+      SymbolInfo *target = nullptr;
+      if (!CurrentScope->findSymbol(context.PlaceName, target) || !target ||
+          !hasExactlyPlaceState(target->PlaceStateMask, PlaceState::Live)) {
+        error(awaitEx, DiagID::ERR_INIT_BLOCK_SUSPEND, context.PlaceName);
+      }
+    }
     bool oldConsuming = m_IsConsumingEffect;
     m_IsConsumingEffect = true;
     auto innerType = checkExpr(awaitEx->Expression.get());
