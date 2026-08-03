@@ -1,7 +1,7 @@
 // AR-P5 Redline Qualification Test Suite: Linearized Cancellation, Loser Cleanup & TaskScope UAF Resistance
 import std/io::{println};
 import std/task::{block_on, sleep_async, task_is_cancel_requested, task_is_canceled, task_cancel};
-import std/async::{race2, RaceWinner, TaskScope, TaskRef, task_ref_from_handle};
+import std/async::{race2, RaceWinner, TaskScope, spawn_into};
 import core/task::{task_get_coro_handle, toka_tcb_is_done};
 
 auto g_side_effect_count# = 0;
@@ -52,8 +52,8 @@ fn test_task_scope_uaf_resistance() -> async i32 {
     auto t1 = slow_worker_with_side_effects().start;
     auto t2 = slow_worker_with_side_effects().start;
 
-    scope#.track_ref(cede task_ref_from_handle<i32>(cede t1));
-    scope#.track_ref(cede task_ref_from_handle<i32>(cede t2));
+    spawn_into(scope, cede t1);
+    spawn_into(scope, cede t2);
 
     // Handles t1 and t2 fall out of scope / are dropped here, but TaskScope retains TCB refs
     scope.close().await;

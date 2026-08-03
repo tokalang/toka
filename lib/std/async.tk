@@ -128,7 +128,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
     }
 }
 
-pub shape TaskRef (
+shape TaskRef (
     *#tcb: void
 )
 
@@ -143,32 +143,7 @@ impl TaskRef@Encap {
 
 }
 
-// Retaining the task-control block creates a second owning reference and is
-// therefore an explicit duplication capability, never an implicit copy.
-impl TaskRef@Dup {
-    pub fn dup(self) -> TaskRef {
-        if self.*tcb != null {
-            toka_task_retain(self.*tcb)
-        }
-        return TaskRef(*tcb = self.*tcb)
-    }
-}
-
-pub fn task_ref_from_handle<'T>(cede handle: TaskHandle<'T>) -> TaskRef {
-    auto owned# = cede handle
-    auto *tcb_ptr = task_get_coro_handle<'T>(owned)
-    if *tcb_ptr != null as *void {
-        toka_task_retain(*tcb_ptr)
-        return TaskRef(*tcb = *tcb_ptr)
-    }
-    return TaskRef(*tcb = null as *void)
-}
-
 impl TaskRef {
-    pub fn from_handle<'T>(cede handle: TaskHandle<'T>) -> TaskRef {
-        return task_ref_from_handle<'T>(cede handle)
-    }
-
     pub fn is_done(self) -> bool {
         if self.*tcb != null {
             return toka_tcb_is_done(self.*tcb)
@@ -197,21 +172,6 @@ pub shape TaskScope (
 impl TaskScope {
     pub fn new() -> TaskScope {
         return TaskScope(refs = Vec<TaskRef>::new())
-    }
-
-    pub fn track_ref(self#, cede tr: TaskRef) {
-        if tr.*tcb != null as *void {
-            toka_task_start(tr.*tcb)
-        }
-        self.refs#.push(cede tr)
-    }
-
-    pub fn track<'T>(self#, cede handle: TaskHandle<'T>) {
-        auto tr = task_ref_from_handle<'T>(cede handle)
-        if tr.*tcb != null as *void {
-            toka_task_start(tr.*tcb)
-        }
-        self.refs#.push(cede tr)
     }
 
     pub fn cancel_all(self#) {
@@ -287,5 +247,16 @@ impl TaskScope {
 // caller to name its result type. Generic deduction recovers 'T from the
 // TaskHandle wrapper at this call boundary.
 pub fn spawn_into<'T>(scope#: TaskScope, cede task: TaskHandle<'T>) {
-    scope#.track_ref(cede task_ref_from_handle<'T>(cede task))
+    // One non-suspending ownership transaction:
+    // TaskHandle owner -> local TaskRef -> scope registry -> active task.
+    // Clearing the consumed handle prevents its drop hook from detaching the
+    // TCB between ownership transfer and registry linkage.
+    auto owned# = cede task
+    auto *tcb_ptr = task_get_coro_handle<'T>(owned)
+    if *tcb_ptr != null as *void {
+        auto tr# = TaskRef(*tcb = *tcb_ptr)
+        owned.*coro_handle = null as *void
+        scope.refs#.push(cede tr)
+        toka_task_start(*tcb_ptr)
+    }
 }

@@ -1,7 +1,7 @@
 // AR-P5 Qualification Test: TaskScope Structured Concurrency
 import std/io::{println};
 import std/task::{block_on, sleep_async};
-import std/async::{TaskScope, task_ref_from_handle};
+import std/async::{TaskScope, spawn_into};
 
 fn worker_task(id: i32) -> async i32 {
     println("[Worker] Started worker");
@@ -20,16 +20,16 @@ fn async_scope_runner() -> async i32 {
     auto t2 = worker_task(2).start;
     auto t3 = worker_task(3).start;
 
-    scope#.track_ref(cede task_ref_from_handle<i32>(cede t1));
-    scope#.track_ref(cede task_ref_from_handle<i32>(cede t2));
-    scope#.track_ref(cede task_ref_from_handle<i32>(cede t3));
+    spawn_into(scope, cede t1);
+    spawn_into(scope, cede t2);
+    spawn_into(scope, cede t3);
 
     // Close scope: cancels all workers and waits for them to join
     scope.close().await;
 
     auto graceful_scope# = TaskScope::new();
     auto graceful_worker = worker_task(4).start;
-    graceful_scope#.track_ref(cede task_ref_from_handle<i32>(cede graceful_worker));
+    spawn_into(graceful_scope, cede graceful_worker);
     assert(graceful_scope#.shutdown_async(1000:i32).await,
            "drain window must preserve a normally completing task");
     assert(graceful_scope#.reap_finished() == 1:usize,
@@ -37,7 +37,7 @@ fn async_scope_runner() -> async i32 {
 
     auto deadline_scope# = TaskScope::new();
     auto deadline_worker = worker_task(5).start;
-    deadline_scope#.track_ref(cede task_ref_from_handle<i32>(cede deadline_worker));
+    spawn_into(deadline_scope, cede deadline_worker);
     assert(!deadline_scope#.shutdown_async(0:i32).await,
            "expired drain window must cancel and join remaining work");
 

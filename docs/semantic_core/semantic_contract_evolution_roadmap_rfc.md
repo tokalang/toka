@@ -68,13 +68,15 @@ rejections source-backed and source-less, plus a disjoint existing-destination
 transfer. This repairs that blocker but does not yet prove every lifecycle
 combination in the P-1 exit gate.
 
-The async closure review likewise found that the current standard-library
-sequence `task_ref_from_handle(cede handle)` followed by `track_ref`/`start`
-does not prove an atomic cold-handle handoff: ordinary consumed-handle drop can
-race the later registry link/activation. The current TaskScope path and TCB
-lifetime-reference model remain unqualified until the `AS` gates prove atomic
-owning enrollment, result disposition, and TCB/slot retention independently of
-frame eligibility.
+The safe standard-library surface now accepts a cold task only through
+`spawn_into(scope, cede task)`. Its module-private `TaskRef` receives the
+consumed handle's owner reference, links into the scope before activation, and
+the consumed handle is cleared before its ordinary detach hook can run. The
+former public `task_ref_from_handle` / `track_ref` split is quarantined.
+This removes that surface race, but the current TaskScope path and TCB
+lifetime-reference model remain unqualified until the `AS` gates prove the
+runtime registry's atomic close/enroll arbitration, typed result disposition,
+and TCB/slot retention independently of frame eligibility.
 
 ### P-1 exit gate
 

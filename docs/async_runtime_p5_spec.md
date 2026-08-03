@@ -321,6 +321,15 @@ The Phase 5 retained-lifetime target is:
   establish this ordering and is not Phase-5 conformance evidence. A plain
   retain/join-only `TaskRef` has no result disposition and cannot be used to
   steal or wait for an externally consumer-owned payload.
+
+The current standard-library repair removes that public split: `TaskRef` is
+module-private and `spawn_into(scope, cede task)` transfers the consumed
+handle's owner reference to a local scope reference, links that reference, and
+only then starts the child. Clearing the consumed handle suppresses its normal
+detach hook. This is a safe-surface quarantine and link-before-activation
+repair; it does not establish the registry state, typed result-disposition, or
+close-arbitration requirements in this section and is therefore not Phase-5
+conformance evidence by itself.
 - Its registry has `Open | Closing(reason) | Closed` state under the same
   parent-cancellation/close arbiter used for child registration. Registration
   either links `Tracked` (and, for a new child, does so before activation/
