@@ -7543,6 +7543,15 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
 
     m_Builder.SetInsertPoint(readyBB);
+    llvm::Function *takeResultFn = m_Module->getFunction("toka_task_take_result");
+    if (!takeResultFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+        takeResultFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage, "toka_task_take_result",
+            m_Module.get());
+    }
+    m_Builder.CreateCall(takeResultFn, {targetPromisePtrRaw});
     llvm::Value *readyVal = nullptr;
     if (!targetInnerTy->isVoidTy()) {
         llvm::Function *valuePtrFn = m_Module->getFunction("toka_task_result_value_ptr");
@@ -7553,12 +7562,6 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
         llvm::Value *targetValPtrRaw = m_Builder.CreateCall(valuePtrFn, {targetPromisePtrRaw}, "target.val.ptr");
         llvm::Value *targetValPtr = m_Builder.CreatePointerCast(targetValPtrRaw, llvm::PointerType::getUnqual(targetInnerTy));
         readyVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
-        llvm::Function *clearFn = m_Module->getFunction("toka_task_clear_result_payload");
-        if (!clearFn) {
-            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
-            clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_clear_result_payload", m_Module.get());
-        }
-        m_Builder.CreateCall(clearFn, {targetPromisePtrRaw});
         if (!awaitExpr->CatchesCancellation) {
             return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
         }
@@ -7654,6 +7657,15 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
     m_Builder.CreateUnreachable();
 
     m_Builder.SetInsertPoint(readyBB);
+    llvm::Function *takeResultFn = m_Module->getFunction("toka_task_take_result");
+    if (!takeResultFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+        takeResultFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage, "toka_task_take_result",
+            m_Module.get());
+    }
+    m_Builder.CreateCall(takeResultFn, {targetPromisePtrRaw});
     
     if (!targetInnerTy->isVoidTy()) {
         llvm::Function *valuePtrFn = m_Module->getFunction("toka_task_result_value_ptr");
@@ -7664,12 +7676,6 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
         llvm::Value *targetValPtrRaw = m_Builder.CreateCall(valuePtrFn, {targetPromisePtrRaw}, "target.val.ptr");
         llvm::Value *targetValPtr = m_Builder.CreatePointerCast(targetValPtrRaw, llvm::PointerType::getUnqual(targetInnerTy));
         llvm::Value *targetVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
-        llvm::Function *clearFn = m_Module->getFunction("toka_task_clear_result_payload");
-        if (!clearFn) {
-            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
-            clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_clear_result_payload", m_Module.get());
-        }
-        m_Builder.CreateCall(clearFn, {targetPromisePtrRaw});
         return PhysEntity(targetVal, waitExpr->ResolvedType->toString(), targetInnerTy, false);
     }
     

@@ -850,6 +850,12 @@ typedef struct TokaCompletionSubscriber {
     uint32_t slot_gen;
 } TokaCompletionSubscriber;
 
+typedef enum {
+    TOKA_RESULT_OWNER_CONSUMER = 0,
+    TOKA_RESULT_OWNER_SCOPE = 1,
+    TOKA_RESULT_OWNER_DETACHED = 2
+} TokaResultOwner;
+
 typedef struct TokaTCB {
     uint64_t id;
     void *coro_frame;
@@ -858,6 +864,9 @@ typedef struct TokaTCB {
     _Atomic uint32_t state;
     _Atomic uint8_t cancel_requested;
     _Atomic uint8_t cancel_handled;
+    _Atomic uint8_t result_owner;
+    _Atomic uint8_t result_drop_claimed;
+    void (*result_drop_fn)(void *);
     _Atomic uint32_t ref_count;
     _Atomic uint8_t detached;
     _Atomic uint8_t detached_counted;
@@ -878,6 +887,8 @@ typedef struct TokaTCB {
 } TokaTCB;
 
 static void toka_wait_registry_cancel_active(TokaTCB *tcb);
+static int toka_task_try_drain_detached_result(TokaTCB *tcb);
+static int toka_task_dispose_scope_result(TokaTCB *tcb);
 
 static void toka_task_try_release_owner(TokaTCB *tcb) {
     if (!tcb) return;
@@ -1115,7 +1126,8 @@ static void unregister_frame_map(void *frame) {
     toka_mutex_unlock(&g_rt_mutex);
 }
 
-void* toka_task_create(void *coro_frame, void *promise) {
+void* toka_task_create_with_result_drop(void *coro_frame, void *promise,
+                                        void (*result_drop_fn)(void *)) {
     TokaTCB *tcb = (TokaTCB*)calloc(1, sizeof(TokaTCB));
     if (!tcb) return NULL;
 
@@ -1126,6 +1138,9 @@ void* toka_task_create(void *coro_frame, void *promise) {
     atomic_store(&tcb->state, TOKA_TCB_CREATED);
     atomic_store(&tcb->cancel_requested, 0);
     atomic_store(&tcb->cancel_handled, 0);
+    atomic_store(&tcb->result_owner, TOKA_RESULT_OWNER_CONSUMER);
+    atomic_store(&tcb->result_drop_claimed, 0);
+    tcb->result_drop_fn = result_drop_fn;
     atomic_store(&tcb->ref_count, 1);
     atomic_store(&tcb->detached, 0);
     atomic_store(&tcb->detached_counted, 0);
@@ -1145,6 +1160,12 @@ void* toka_task_create(void *coro_frame, void *promise) {
         register_frame_map(coro_frame, tcb);
     }
     return (void*)tcb;
+}
+
+// Preserve the two-argument runtime ABI for direct C probes and older TKI
+// artifacts. Compiler-generated tasks use the typed drop-aware entry point.
+void* toka_task_create(void *coro_frame, void *promise) {
+    return toka_task_create_with_result_drop(coro_frame, promise, NULL);
 }
 
 int toka_task_start(void *tcb_ptr) {
@@ -1400,6 +1421,7 @@ void toka_task_complete(void *promise_ptr) {
             free(subs);
         }
 
+        toka_task_try_drain_detached_result(tcb);
         toka_task_try_release_owner(tcb);
     }
 
@@ -1449,6 +1471,7 @@ void toka_task_complete_canceled(void *promise_ptr) {
             free(subs);
         }
 
+        toka_task_try_drain_detached_result(tcb);
         toka_task_try_release_owner(tcb);
     }
 
@@ -1496,17 +1519,26 @@ int toka_task_register_continuation(void *child_promise_ptr, void *parent_tcb_pt
     return toka_task_await_prepare(child_promise_ptr, parent_tcb_ptr);
 }
 
-void toka_task_detach(void *tcb_ptr) {
-    if (!tcb_ptr) return;
-    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+static void toka_task_detach_owned(TokaTCB *tcb, TokaResultOwner expected_owner) {
+    if (!tcb) return;
 
-    // 1. Transient retain to prevent UAF window during detach execution
+    // The caller owns one reference. Hold an additional transient reference
+    // while terminal result disposition runs outside the runtime arbiter.
     atomic_fetch_add(&tcb->ref_count, 1);
 
-    // 2. Mark as detached
+    uint8_t expected = expected_owner;
+    if (!atomic_compare_exchange_strong(&tcb->result_owner, &expected,
+                                        TOKA_RESULT_OWNER_DETACHED)) {
+        toka_task_release(tcb);
+        return;
+    }
+
+    // Mark detached only after its result authority has moved. A scope-owned
+    // task therefore cannot be silently detached through the public handle
+    // path while it remains enrolled.
     atomic_store(&tcb->detached, 1);
 
-    // 3. Linearized counter increment under g_rt_mutex
+    // Linearize the observability counter with terminal completion.
     toka_mutex_lock(&g_rt_mutex);
     uint32_t st = atomic_load(&tcb->state);
     if (!toka_tcb_is_terminal(st) && st != TOKA_TCB_CREATED) {
@@ -1517,11 +1549,14 @@ void toka_task_detach(void *tcb_ptr) {
     }
     toka_mutex_unlock(&g_rt_mutex);
 
-    // 4. Try release owner if completed or created
+    toka_task_try_drain_detached_result(tcb);
     toka_task_try_release_owner(tcb);
 
-    // 5. Release transient reference
     toka_task_release(tcb);
+}
+
+void toka_task_detach(void *tcb_ptr) {
+    toka_task_detach_owned((TokaTCB*)tcb_ptr, TOKA_RESULT_OWNER_CONSUMER);
 }
 
 void toka_tcb_get_wait_token(void *tcb_ptr, uint64_t *out_task_id, uint64_t *out_gen) {
@@ -1563,6 +1598,51 @@ int toka_task_take_result(void *promise_ptr) {
         return -1;
     }
     return 0;
+}
+
+// Both scope closing and detached completion use this one linear claim:
+// ReadyLive -> Taken is the public result-state transition and the private
+// drop claim.  The caller owns a stable TCB reference; the extra retain keeps
+// the TCB alive if the generated drop hook re-enters task code.
+static int toka_task_dispose_result_for_owner(TokaTCB *tcb,
+                                              TokaResultOwner owner) {
+    if (!tcb || atomic_load(&tcb->result_owner) != owner) return 0;
+    if (!tcb->promise) return 1;
+
+    struct TokaPromiseHeader *hdr =
+        (struct TokaPromiseHeader*)tcb->promise;
+    uint8_t state = atomic_load_explicit(&hdr->result_state,
+                                         memory_order_acquire);
+    if (state == TOKA_RESULT_STATE_CANCELED ||
+        state == TOKA_RESULT_STATE_TAKEN) {
+        return 1;
+    }
+    if (state != TOKA_RESULT_STATE_READYLIVE) return 0;
+
+    uint8_t expected_state = TOKA_RESULT_STATE_READYLIVE;
+    if (!atomic_compare_exchange_strong_explicit(
+            &hdr->result_state, &expected_state, TOKA_RESULT_STATE_TAKEN,
+            memory_order_acq_rel, memory_order_acquire)) {
+        return expected_state == TOKA_RESULT_STATE_CANCELED ||
+               expected_state == TOKA_RESULT_STATE_TAKEN;
+    }
+
+    atomic_store_explicit(&tcb->result_drop_claimed, 1, memory_order_release);
+    atomic_fetch_add(&tcb->ref_count, 1);
+    if (tcb->result_drop_fn) {
+        tcb->result_drop_fn(toka_task_result_value_ptr(tcb->promise));
+    }
+    toka_task_release(tcb);
+    return 1;
+}
+
+static int toka_task_try_drain_detached_result(TokaTCB *tcb) {
+    return toka_task_dispose_result_for_owner(tcb,
+                                              TOKA_RESULT_OWNER_DETACHED);
+}
+
+static int toka_task_dispose_scope_result(TokaTCB *tcb) {
+    return toka_task_dispose_result_for_owner(tcb, TOKA_RESULT_OWNER_SCOPE);
 }
 
 void toka_task_clear_result_payload(void *promise_ptr) {
@@ -1708,6 +1788,12 @@ int toka_task_scope_try_enroll(void *scope_ptr, void *tcb_ptr) {
         toka_mutex_unlock(&g_rt_mutex);
         return -1;
     }
+    uint8_t expected_owner = TOKA_RESULT_OWNER_CONSUMER;
+    if (!atomic_compare_exchange_strong(&tcb->result_owner, &expected_owner,
+                                        TOKA_RESULT_OWNER_SCOPE)) {
+        toka_mutex_unlock(&g_rt_mutex);
+        return -2;
+    }
     scope->children[scope->child_count++] = tcb;
     toka_mutex_unlock(&g_rt_mutex);
     return 1;
@@ -1801,6 +1887,7 @@ uint32_t toka_task_scope_reap_finished(void *scope_ptr) {
     toka_mutex_unlock(&g_rt_mutex);
 
     for (uint32_t j = 0; j < finished_count; ++j) {
+        toka_task_dispose_scope_result(finished[j]);
         toka_task_release(finished[j]);
     }
     free(finished);
@@ -1839,6 +1926,7 @@ int toka_task_scope_finish_close(void *scope_ptr) {
     toka_mutex_unlock(&g_rt_mutex);
 
     for (uint32_t i = 0; i < finished_count; ++i) {
+        toka_task_dispose_scope_result(finished[i]);
         toka_task_release(finished[i]);
     }
     free(finished);
@@ -1887,7 +1975,10 @@ void toka_task_scope_release(void *scope_ptr) {
     toka_mutex_unlock(&g_rt_mutex);
 
     for (uint32_t i = 0; i < child_count; ++i) {
-        toka_task_release(children[i]);
+        // Scope destruction may be triggered by an enclosing cancellation
+        // path. Transfer its owning reference to the detached protocol rather
+        // than releasing a still-live child underneath its coroutine frame.
+        toka_task_detach_owned(children[i], TOKA_RESULT_OWNER_SCOPE);
     }
     free(children);
     if (parent) toka_task_release(parent);

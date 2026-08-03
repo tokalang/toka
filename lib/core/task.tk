@@ -25,6 +25,7 @@ extern fn toka_task_abort_suspend(*coro_frame: void) -> i32
 extern fn toka_task_publish_result_state(*promise: void, state: u8) -> void
 extern fn toka_task_get_result_state(*promise: void) -> u8
 extern fn toka_task_result_value_ptr(*promise: void) -> *void
+extern fn toka_task_take_result(*promise: void) -> i32
 extern fn toka_task_active_detached_count() -> u32
 extern fn toka_ready_queue_capacity() -> u32
 extern fn toka_ready_queue_count() -> u32

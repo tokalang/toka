@@ -334,10 +334,22 @@ created while a task is running is also registered in that parent's
 mutex-protected scope list; parent cancellation snapshots a temporary scope
 reference, publishes `Closing`, then requests child cancellation outside the
 arbiter. Enrollment observes the parent's request under the same arbiter, so a
-late child is rejected before transfer. This is a necessary close/enroll and
-parent-cancellation substrate, not Phase-5 conformance: it still lacks
-full-token validation, reason/aggregate arbitration, typed result disposition,
-and the helpable close-progress protocol specified below.
+late child is rejected before transfer. The current substrate additionally
+transfers `Consumer -> Scope` result authority during accepted enrollment and
+installs a compiler-generated, return-type-specific drop hook. `reap_finished`,
+successful `finish_close`, and scope destruction's fallback transfer to the
+detached owner claim `ReadyLive -> Taken` exactly once, retain the TCB across
+the callback, and invoke that hook only after releasing the registry arbiter.
+`await`, `wait`, and async entry result extraction likewise claim `ReadyLive ->
+Taken` before moving the payload, so a later handle drop cannot repeat the
+disposition.
+
+This remains a deliberately restricted result-disposition substrate, not
+Phase-5 conformance: `Taken` is currently the pre-callback exclusion claim,
+not a descriptor-backed post-callback publication. It still lacks full-token
+validation, reason/aggregate arbitration, callback-completion descriptors,
+helpable close progress, and TCB/slot retention independent of frame
+eligibility.
 - Its registry has `Open | Closing(reason) | Closed` state under the same
   parent-cancellation/close arbiter used for child registration. Registration
   either links `Tracked` (and, for a new child, does so before activation/

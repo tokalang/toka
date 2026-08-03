@@ -77,10 +77,16 @@ child is linked before activation and replaces the consumed handle's ordinary
 detach owner. This closes the old safe-surface gap and creates the first AS
 runtime substrate, but it does not qualify TaskScope or TCB lifetime yet: the
 registry now observes its parent's cancellation request under the same arbiter
-and selects its children after publishing `Closing`. The remaining AS gates
-still require full-token and reason/aggregate arbitration, typed result
-disposition, helpable close progress, and TCB/slot retention independently of
-frame eligibility.
+and selects its children after publishing `Closing`. Accepted enrollment also
+transfers result authority from the handle consumer to the scope; its generated
+typed drop hook is reached by reaping/closing only after `ReadyLive -> Taken`
+has excluded a consumer claim and after the arbiter is released. `await` and
+`wait` make the same state claim before moving a payload, while abandoned scope
+ownership transfers to the detached disposal path. This is restricted runtime
+evidence only: the remaining AS gates still require full-token and
+reason/aggregate arbitration, a descriptor-backed callback-completion state,
+helpable close progress, and TCB/slot retention independently of frame
+eligibility.
 
 ### P-1 exit gate
 

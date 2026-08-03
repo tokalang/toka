@@ -1,0 +1,71 @@
+// A scope that owns a completed task must consume the returned resource with
+// its concrete drop plan before it releases the task's TCB reference.
+import std/io::{println}
+import std/task::{block_on, sleep_async}
+import std/async::{TaskScope, spawn_into}
+import core/result::{Result}
+import core/task::{TaskHandle}
+
+auto g_result_drop_count# = 0:i32
+
+shape ScopeResultProbe()
+
+impl ScopeResultProbe@Encap {
+    fn drop(self#) {
+        g_result_drop_count += 1:i32
+    }
+}
+
+fn completed_scope_result() -> async ScopeResultProbe {
+    return ScopeResultProbe()
+}
+
+fn run() -> async i32 {
+    auto scope# = TaskScope::new()
+    auto child = completed_scope_result().start
+    match cede spawn_into(scope, cede child) {
+        auto Result<(), TaskHandle<ScopeResultProbe>>::Ok(_) => {}
+        auto Result<(), TaskHandle<ScopeResultProbe>>::Err('returned) => {
+            auto value = 'returned.await
+            return 1:i32
+        }
+    }
+
+    // Let the child publish ReadyLive before the scope turns Closing. Close
+    // then owns the only legal result-disposition path.
+    sleep_async(1:i32).await
+    scope.close().await
+    assert(g_result_drop_count == 1:i32,
+           "TaskScope must drop its completed result exactly once")
+    return 0:i32
+}
+
+fn reap_completed_result() -> async i32 {
+    auto scope# = TaskScope::new()
+    auto child = completed_scope_result().start
+    match cede spawn_into(scope, cede child) {
+        auto Result<(), TaskHandle<ScopeResultProbe>>::Ok(_) => {}
+        auto Result<(), TaskHandle<ScopeResultProbe>>::Err('returned) => {
+            auto value = 'returned.await
+            return 1:i32
+        }
+    }
+
+    scope#.join_async().await
+    assert(scope#.reap_finished() == 1:usize,
+           "reap_finished must release the completed child")
+    assert(g_result_drop_count == 1:i32,
+           "reap_finished must drop its completed result exactly once")
+    scope.close().await
+    return 0:i32
+}
+
+fn main() -> i32 {
+    auto result = block_on(run())
+    assert(result == 0:i32, "TaskScope result disposition test failed")
+    g_result_drop_count = 0:i32
+    auto reaped = block_on(reap_completed_result())
+    assert(reaped == 0:i32, "TaskScope reap result disposition test failed")
+    println("g16_task_scope_result_disposition_test PASSED")
+    return 0:i32
+}

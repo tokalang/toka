@@ -273,6 +273,32 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       }
       m_CurrentCoroPromiseType = promiseType;
       m_CurrentCoroPromise = createEntryBlockAlloca(promiseType, nullptr, "coro.promise");
+
+      // A task result can be consumed by await/wait or, after ownership moves
+      // into a TaskScope, disposed by the runtime.  Generate the latter as a
+      // private typed thunk instead of asking the runtime to guess a payload
+      // layout from the promise bytes.
+      llvm::Function *resultDropFn = nullptr;
+      if (!actualRetTy->isVoidTy()) {
+          const std::string resultDropName =
+              "__toka_task_result_drop_" + f->getName().str();
+          resultDropFn = m_Module->getFunction(resultDropName);
+          if (!resultDropFn) {
+              auto *dropTy = llvm::FunctionType::get(
+                  m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+              resultDropFn = llvm::Function::Create(
+                  dropTy, llvm::Function::PrivateLinkage, resultDropName,
+                  m_Module.get());
+              auto savedIP = m_Builder.saveIP();
+              auto *dropEntry = llvm::BasicBlock::Create(
+                  m_Context, "entry", resultDropFn);
+              m_Builder.SetInsertPoint(dropEntry);
+              emitDropForType(resultDropFn->getArg(0), retTypeObj);
+              if (!m_Builder.GetInsertBlock()->getTerminator())
+                  m_Builder.CreateRetVoid();
+              m_Builder.restoreIP(savedIP);
+          }
+      }
       
       llvm::Function *idFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_id);
       llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(m_Context), 0);
@@ -293,13 +319,24 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::Function *beginFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_begin);
       m_CurrentCoroHandle = m_Builder.CreateCall(beginFn, {m_CurrentCoroId, alloc});
       
-      // Call toka_task_create(coroHandle, promise) to allocate stable TCB
-      llvm::Function *taskCreateFn = m_Module->getFunction("toka_task_create");
+      // Compiler-generated tasks pass the private typed result drop hook.
+      // The legacy two-argument ABI remains available to direct C probes.
+      llvm::Function *taskCreateFn =
+          m_Module->getFunction("toka_task_create_with_result_drop");
       if (!taskCreateFn) {
-          llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy(), m_Builder.getPtrTy()}, false);
-          taskCreateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_create", m_Module.get());
+          llvm::FunctionType *ft = llvm::FunctionType::get(
+              m_Builder.getPtrTy(),
+              {m_Builder.getPtrTy(), m_Builder.getPtrTy(), m_Builder.getPtrTy()},
+              false);
+          taskCreateFn = llvm::Function::Create(
+              ft, llvm::Function::ExternalLinkage,
+              "toka_task_create_with_result_drop", m_Module.get());
       }
-      m_CurrentCoroTCB = m_Builder.CreateCall(taskCreateFn, {m_CurrentCoroHandle, m_CurrentCoroPromise});
+      llvm::Value *dropHook = resultDropFn
+          ? static_cast<llvm::Value*>(resultDropFn)
+          : llvm::ConstantPointerNull::get(m_Builder.getPtrTy());
+      m_CurrentCoroTCB = m_Builder.CreateCall(
+          taskCreateFn, {m_CurrentCoroHandle, m_CurrentCoroPromise, dropHook});
 
       m_CurrentCoroSuspendRetBB = llvm::BasicBlock::Create(m_Context, "coro.suspend.ret");
       m_CurrentCoroCleanupBB = llvm::BasicBlock::Create(m_Context, "coro.cleanup.ret");
@@ -893,6 +930,14 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
     m_Builder.CreateRet(m_Builder.getInt32(1));
 
   m_Builder.SetInsertPoint(readyBB);
+  llvm::Function *takeResultFn = m_Module->getFunction("toka_task_take_result");
+  if (!takeResultFn) {
+    llvm::FunctionType *ft = llvm::FunctionType::get(
+        m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
+    takeResultFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                                           "toka_task_take_result", m_Module.get());
+  }
+  m_Builder.CreateCall(takeResultFn, {promise});
   if (returnsVoid) {
     m_Builder.CreateCall(detachFn, {tcb});
     if (isWasm)
@@ -913,15 +958,6 @@ void CodeGen::genAsyncMainEntrypoint(llvm::Function *asyncMain,
   llvm::Value *valuePtr = m_Builder.CreateCall(valuePtrFn, {promise});
   llvm::Value *result = m_Builder.CreateLoad(m_Builder.getInt32Ty(), valuePtr,
                                                "async_main.result");
-  llvm::Function *clearFn =
-      m_Module->getFunction("toka_task_clear_result_payload");
-  if (!clearFn) {
-    llvm::FunctionType *ft = llvm::FunctionType::get(
-        m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
-    clearFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
-                                      "toka_task_clear_result_payload", m_Module.get());
-  }
-  m_Builder.CreateCall(clearFn, {promise});
   m_Builder.CreateCall(detachFn, {tcb});
   if (isWasm)
     m_Builder.CreateRetVoid();
