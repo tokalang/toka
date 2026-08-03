@@ -315,6 +315,12 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     return std::make_unique<ExprStmt>(parseForExpr());
   if (check(TokenType::KwReturn))
     return parseReturn();
+  // `init` stays contextual so protocol members named `init` remain ordinary
+  // identifiers. The P1 direct form accepts one stable local name here;
+  // projections and contracts are added by later P1 slices.
+  if (check(TokenType::Identifier) && peek().Text == "init" &&
+      checkAt(1, TokenType::Identifier) && checkAt(2, TokenType::Equal))
+    return parseInitStmt();
   if (check(TokenType::KwLet) || check(TokenType::KwAuto) ||
       (check(TokenType::Identifier) && peek().Text == "var"))
     return parseVariableDecl(false);
@@ -334,6 +340,26 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     return std::make_unique<ExprStmt>(std::move(expr));
   }
   return nullptr;
+}
+
+std::unique_ptr<Stmt> Parser::parseInitStmt() {
+  Token init = advance();
+  Token target = consume(TokenType::Identifier,
+                         DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME);
+  consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_AFTER_VARIABLE_NAME);
+  auto value = parseExpr();
+  expectEndOfStatement();
+
+  auto place = std::make_unique<VariableExpr>(target.Text);
+  place->Loc = target.Loc;
+  place->IsValueMutable = target.HasWrite;
+  place->IsValueNullable = target.HasNull;
+  place->IsValueBlocked = target.IsBlocked;
+  auto assignment = std::make_unique<BinaryExpr>(
+      "=", std::move(place), std::move(value));
+  assignment->IsInitialization = true;
+  assignment->Loc = init.Loc;
+  return std::make_unique<ExprStmt>(std::move(assignment));
 }
 
 std::unique_ptr<BlockStmt> Parser::parseBlock() {

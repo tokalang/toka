@@ -115,6 +115,7 @@ private:
   bool isWhereConstraintTerminator() const;
 
   std::unique_ptr<Stmt> parseStmt();
+  std::unique_ptr<Stmt> parseInitStmt();
   std::unique_ptr<GuardBindStmt> parseGuardBindStmt();
   std::unique_ptr<Expr> parseIf();
   std::unique_ptr<Expr> parseGuard();

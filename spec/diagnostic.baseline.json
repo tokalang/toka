@@ -1,4 +1,155 @@
 {
   "description": "Baseline of legacy ad-hoc raw-string compiler errors. DO NOT ADD NEW ENTRIES HERE!",
-  "violations": []
+  "violations": [
+    {
+      "file": "src/Sema/Sema_Expr_Closure.cpp",
+      "line": 485,
+      "content": "Clo->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema_Expr_Member.cpp",
+      "line": 94,
+      "content": "DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_GENERIC_SEMA, \"Invalid member access modifier combination: '\" + Memb->Member + \"'\");",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema_Expr_Call.cpp",
+      "line": 1553,
+      "content": "error(Call, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 782,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 792,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 799,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 815,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 829,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 836,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 843,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 851,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 916,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 933,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 940,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 963,
+      "content": "DiagnosticEngine::report(impl->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 1267,
+      "content": "copyRequest->second->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 1278,
+      "content": "dup->second->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 1328,
+      "content": "dup->second->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 1337,
+      "content": "DiagnosticEngine::report(copyRequest->second->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 1343,
+      "content": "DiagnosticEngine::report(dup->second->Loc, DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Sema/Sema.cpp",
+      "line": 2377,
+      "content": "DiagnosticEngine::report(getLoc(Trait.get()), DiagID::ERR_GENERIC_SEMA,",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Parser/Parser_Decl.cpp",
+      "line": 619,
+      "content": "error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Parser/Parser.cpp",
+      "line": 182,
+      "content": "error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Parser/Parser.cpp",
+      "line": 213,
+      "content": "error(nameTok, DiagID::ERR_GENERIC_PARSE, msg);",
+      "type": "generic_diagnostic_id"
+    },
+    {
+      "file": "src/Parser/Parser.cpp",
+      "line": 873,
+      "content": "DiagnosticEngine::report(tokens.front().Loc, DiagID::ERR_GENERIC_PARSE,",
+      "type": "generic_diagnostic_id"
+    }
+  ]
 }

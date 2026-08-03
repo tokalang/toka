@@ -7,8 +7,9 @@ import sys
 import json
 
 # Configuration
-SRC_DIR = "/home/zhyi/GitDP/tokalang/src"
-BASELINE_PATH = "/home/zhyi/GitDP/tokalang/spec/diagnostic.baseline.json"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+SRC_DIR = os.path.join(ROOT_DIR, "src")
+BASELINE_PATH = os.path.join(ROOT_DIR, "spec", "diagnostic.baseline.json")
 
 # Regex patterns
 # 1. error(something, "literal...")
@@ -29,7 +30,7 @@ def scan_files():
                 
             file_path = os.path.join(root, file)
             # Make path relative to workspace root for portability in baseline
-            rel_path = os.path.relpath(file_path, "/home/zhyi/GitDP/tokalang")
+            rel_path = os.path.relpath(file_path, ROOT_DIR)
             
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 for line_idx, line in enumerate(f, 1):

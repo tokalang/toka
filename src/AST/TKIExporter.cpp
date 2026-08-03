@@ -789,6 +789,8 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (auto deref = dynamic_cast<const DereferenceExpr *>(expr)) {
         exportExpr(deref->Expression.get(), /*stripHats=*/true);
     } else if (auto bin = dynamic_cast<const BinaryExpr *>(expr)) {
+        if (bin->IsInitialization)
+            m_OS << "init ";
         exportExpr(bin->LHS.get());
         m_OS << " " << bin->Op << " ";
         exportExpr(bin->RHS.get());

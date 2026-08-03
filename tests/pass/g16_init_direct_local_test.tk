@@ -1,0 +1,6 @@
+// The direct P1 construction form initializes a whole immutable local once.
+fn main() -> i32 {
+    auto value = uninit:i32
+    init value = 42:i32
+    return value - 42:i32
+}

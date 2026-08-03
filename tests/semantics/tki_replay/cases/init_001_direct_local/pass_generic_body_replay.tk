@@ -1,0 +1,5 @@
+import ./lib::{init_value}
+
+fn main() -> i32 {
+    return init_value(0:i32) - 42:i32
+}

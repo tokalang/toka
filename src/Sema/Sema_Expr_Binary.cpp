@@ -364,6 +364,23 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   }
   bool isRefAssign = false;
   bool isUnsetInit = false;
+  const bool isExplicitInit = Bin->IsInitialization;
+  if (isExplicitInit) {
+    isUnsetInit = true;
+    auto *target = dynamic_cast<VariableExpr *>(Bin->LHS.get());
+    SymbolInfo *targetInfo = nullptr;
+    const bool isWholePlainLocal =
+        target && !target->IsRawPointer && !target->IsUnique &&
+        !target->IsShared && !target->IsValueMutable &&
+        !target->IsValueNullable && !target->IsValueBlocked &&
+        CurrentScope->findSymbol(target->Name, targetInfo) && targetInfo &&
+        targetInfo->IsDeclaredVariable;
+    if (!isWholePlainLocal || targetInfo->Moved ||
+        targetInfo->InitMask != 0) {
+      error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
+            target ? target->Name : "<place>");
+    }
+  }
   if (m_IsUnsetInitCall) {
     isRefAssign = true;
     isUnsetInit = true;

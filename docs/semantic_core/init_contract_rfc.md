@@ -1,20 +1,38 @@
 # RFC: Delayed Initialization Contracts
 
-**Status:** `uninit` is implemented. The future `init` design direction is
-frozen but not activated or implemented. Sections labelled frozen record
-design decisions, not current parser, Sema, CodeGen, TKI, or public behavior.
+**Status:** `uninit` is implemented. A narrow `init local = value` scaffold is
+implemented for a whole immutable plain local with a definite, never-constructed
+state; it preserves the spelling through TKI and retained-body source-less
+replay. It is not activation of `init` P1. Sections labelled frozen record
+design decisions beyond that scaffold, not current public behavior.
 
 **Scope:** A delayed-initialization contract proves a transition of an exact
 storage place from `Uninitialized` to `Initialized`. It is neither an optional
-value nor an ordinary write permission. The first implementation is local,
-synchronous, and whole-place only. It includes an explicit lexical promise
-block; field-wise and async extensions require their own evidence.
+value nor an ordinary write permission. P1 is local, synchronous, and
+whole-place only, including an explicit lexical promise block; the active
+scaffold implements only its direct local-construction subset. Field-wise and
+async extensions require their own evidence.
 
 **Depends on:** the construction-origin and availability model in
 [place_state_core_rfc.md](place_state_core_rfc.md), plus declaration-backed H/P
 authority and canonical PAL path identity. In this RFC, `Uninitialized` and
 `Initialized` are source-facing names for definite PlaceState facts; they do not
 define a second state machine.
+
+### Current scaffold boundary
+
+The implemented direct form recognizes contextual `init local = expression`,
+permits only an eligible immutable plain local, and rejects a moved, already
+initialized, or otherwise ineligible recognized target. It reuses the existing
+initialization lowering only after that check. It has positive,
+repeated-construction-negative, and retained-generic-body TKI replay coverage.
+
+It deliberately does **not** yet make the full P1 contract public: legacy
+ordinary assignment to an `uninit` local is still accepted; the analysis does
+not yet represent the required `Never` / `Moved` / `Maybe` distinction at every
+control-flow join; `init place { ... }`, `place is uninit`, and `init` formals
+are not implemented. The next implementation slice must close those gaps before
+claiming P1 activation.
 
 ## 1. Motivation
 

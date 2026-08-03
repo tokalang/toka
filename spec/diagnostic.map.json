@@ -1745,7 +1745,7 @@
       "message": "Extern declarations cannot declare return dependencies",
       "description": "Return dependencies describe Toka function contracts and are not valid on FFI declarations."
     },
-    "E01261": {
+    "E01266": {
       "id": "ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION",
       "level": "Error",
       "message": "'auto' binding '{}' cannot have a declaration-side type annotation; ascribe its initializer instead",
@@ -2632,6 +2632,12 @@
       "level": "Error",
       "message": "Cannot transfer '{}' into overlapping destination '{}'",
       "description": "A source-invalidating transfer into existing storage requires the source and destination places to be provably disjoint."
+    },
+    "E04616": {
+      "id": "ERR_INIT_REQUIRES_UNINITIALIZED",
+      "level": "Error",
+      "message": "'init' requires a definite uninitialized local place; '{}' is not eligible",
+      "description": "The direct init transition applies once to a whole local that is definitely never-constructed and has not been moved."
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

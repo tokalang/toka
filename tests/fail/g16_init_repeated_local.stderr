@@ -1,0 +1,5 @@
+error[E04616]: 'init' requires a definite uninitialized local place; 'value' is not eligible
+ --> tests/fail/g16_init_repeated_local.tk:5:5
+   |
+ 5 |     init value = 2:i32
+   |     ^
