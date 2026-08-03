@@ -287,6 +287,30 @@ int CodeGen::getDirectArrayDropIndex(const VariableScopeInfo &entry,
   return static_cast<int>(constant->Value);
 }
 
+void CodeGen::markInitLive(const BinaryExpr *assignment) {
+  if (!assignment)
+    return;
+  auto *target = dynamic_cast<const VariableExpr *>(assignment->LHS.get());
+  if (!target)
+    return;
+
+  const std::string targetName = Type::stripMorphology(target->Name);
+  for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
+    for (auto entry = m_ScopeStack[i].rbegin();
+         entry != m_ScopeStack[i].rend(); ++entry) {
+      if (Type::stripMorphology(entry->Name) != targetName)
+        continue;
+      if (entry->InitFlag)
+        m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                              entry->InitFlag);
+      if (entry->DropFlag)
+        m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
+                              entry->DropFlag);
+      return;
+    }
+  }
+}
+
 void CodeGen::suppressDropForPartialMove(const MemberExpr *member) {
   for (int i = static_cast<int>(m_ScopeStack.size()) - 1; i >= 0; --i) {
     for (auto entry = m_ScopeStack[i].rbegin();

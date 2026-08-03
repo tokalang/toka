@@ -699,6 +699,9 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     }
   }
 
+  if (assignmentSite && assignmentSite->IsInitialization)
+    markInitLive(assignmentSite);
+
   m_InLHS = false;
   return PhysEntity(rhsVal, "void", rhsVal->getType(), false);
 }

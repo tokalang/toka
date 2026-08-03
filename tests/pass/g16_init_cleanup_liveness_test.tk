@@ -1,0 +1,36 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape CleanupToken(
+    id: i32
+)
+
+impl CleanupToken@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+fn discard_unconstructed() {
+    auto value = uninit:CleanupToken
+}
+
+fn construct_on_every_path(flag: bool) {
+    auto value = uninit:CleanupToken
+    if flag {
+        init value = CleanupToken(id = 1)
+    } else {
+        init value = CleanupToken(id = 2)
+    }
+}
+
+fn main() -> i32 {
+    discard_unconstructed()
+    assert(g_drop_count == 0, "unconstructed local must not drop")
+    construct_on_every_path(true)
+    assert(g_drop_count == 1, "constructed local drops once")
+    construct_on_every_path(false)
+    assert(g_drop_count == 2, "each constructed path drops once")
+    return 0
+}

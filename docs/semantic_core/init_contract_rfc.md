@@ -38,6 +38,12 @@ no post-state, while `break` or `continue` targeting outside the block is
 rejected. The body has no additional write authority and uses the direct form
 to construct the target.
 
+For an explicit `uninit` local, lowering now keeps a runtime liveness flag
+separate from the storage and from resource cleanup metadata. It begins false;
+a successful direct `init` sets it true. Scope cleanup consults the same flag,
+so an unconstructed resource is never dropped and a conditionally constructed
+resource is dropped exactly on the paths that made it live.
+
 It deliberately does **not** yet make the full P1 contract public: legacy
 ordinary assignment remains available for writable, handle, reference, and
 projection initialization paths outside this scaffold; field-wise cleanup and

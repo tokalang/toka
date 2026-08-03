@@ -975,6 +975,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   llvm::Value *closureEnvAddr = nullptr;
   llvm::Type *closureEnvType = nullptr;
   std::string closureEnvTypeName;
+  bool startsUninitialized = !var->Init;
   const Expr *sourceInitExpr = var->Init.get();
   if (var->Init) {
     // [Fix] Handle UnsetExpr: Skip generation for explicit 'uninit'.
@@ -984,6 +985,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       initExpr = cast->Expression.get();
     sourceInitExpr = initExpr;
     if (dynamic_cast<const UnsetExpr *>(initExpr)) {
+      startsUninitialized = true;
       // Do nothing -> initVal remains nullptr.
       // This prevents 'Store' from being generated later, leaving memory
       // uninitialized (or garbage).
@@ -1671,8 +1673,16 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     if (alloca && (hasDrop || var->IsUnique || var->IsShared)) {
       info.DropFlag = createEntryBlockAlloca(
           llvm::Type::getInt1Ty(m_Context), nullptr, varName + ".drop.live");
-      m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
-                            info.DropFlag);
+      m_Builder.CreateStore(
+          llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context),
+                                 !startsUninitialized),
+          info.DropFlag);
+    }
+    if (alloca && startsUninitialized) {
+      info.InitFlag = createEntryBlockAlloca(
+          llvm::Type::getInt1Ty(m_Context), nullptr, varName + ".init.live");
+      m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context),
+                            info.InitFlag);
     }
 
     // Direct member `cede` can be made safe for compiler-managed records: a

@@ -218,6 +218,10 @@ private:
     // Fixed arrays need the semantic element type for recursive cleanup; a
     // string soul name alone cannot describe their element layout.
     std::shared_ptr<Type> DropType;
+    // Explicit `uninit` storage has identity but no constructed value.  This
+    // flag is distinct from a resource's drop flag because scalar locals may
+    // also need a runtime `place is uninit` observation.
+    llvm::Value *InitFlag = nullptr;
     llvm::Value *DropFlag = nullptr;
     // Compiler-managed record values use this field-level liveness mask after
     // a direct member `cede`. Custom destructors retain whole-object control.
@@ -226,6 +230,7 @@ private:
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
 
   void suppressDropForMove(const std::string &name);
+  void markInitLive(const BinaryExpr *assignment);
   void suppressDropForPartialMove(const MemberExpr *member);
   void suppressDropForPartialMove(const ArrayIndexExpr *index);
   void restoreDropForMemberAssignment(const MemberExpr *member);
