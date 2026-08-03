@@ -350,6 +350,12 @@ payload. Source-backed and retained-body-rechecked Outcome conformance does
 not wait for that payload. The payload later enables Level-B bodyless parity
 for `init`, Outcome, and async cleanup obligations.
 
+[`canonical_declaration_witness_rfc.md`](canonical_declaration_witness_rfc.md)
+now proposes the candidate P1 encoding and atomic comparison rules for the
+declaration-recomputed Outcome record. It remains an activation gate, not an
+enabled TKI payload: resolver-known coordinates, generic/method identities,
+structured decoding, and the full tamper matrix must close first.
+
 ### 4.6 Subsequent capability RFCs
 
 Safe `unsafe` wrapper obligations may require public safe wrappers to expose

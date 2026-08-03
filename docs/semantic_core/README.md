@@ -112,6 +112,10 @@ change current language behavior or implementation status.
   envelope, record criticality, trust classes, accepted producer provenance,
   exact-object binding, and fail-closed validation. Its language payload
   remains deferred until PlaceState, `init`, and `OutcomeTransition` are stable.
+- `canonical_declaration_witness_rfc.md` proposes the first candidate
+  declaration-recomputed record schema for a narrow Outcome signature. It is
+  not activated by the current audit-only TKI identity comments and grants no
+  bodyless authority.
 - `encap_slice0_baseline.md` records the legacy resolver, lifecycle, and TKI
   facts against which that blocking, non-semantic Slice 0 is audited.
 - `encap_slice0_go_no_go.md` records the completed Slice 0 evidence gate and
