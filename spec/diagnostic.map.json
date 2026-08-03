@@ -2627,6 +2627,12 @@
       "message": "Function '{}' declares '-> never' and cannot use 'return'",
       "description": "A return statement would complete a never function normally."
     },
+    "E04615": {
+      "id": "ERR_SEMA_CEDE_OVERLAPPING_DESTINATION",
+      "level": "Error",
+      "message": "Cannot transfer '{}' into overlapping destination '{}'",
+      "description": "A source-invalidating transfer into existing storage requires the source and destination places to be provably disjoint."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",

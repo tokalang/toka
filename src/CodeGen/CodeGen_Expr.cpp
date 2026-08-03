@@ -2524,9 +2524,12 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
             llvm::Value *payloadAddr =
                 m_Builder.CreateStructGEP(targetType, targetAddr, 1);
 
-            if (variant->Type == "void" &&
-                subPat->SubPatterns.size() == 1 &&
-                subPat->SubPatterns[0]->IsReference) {
+            if (subPat->SubPatterns.size() == 1 &&
+                subPat->SubPatterns[0]->IsReference &&
+                (variant->Type == "void" ||
+                 (variant->SubMembers.size() == 1 &&
+                  variant->SubMembers[0].ResolvedType &&
+                  variant->SubMembers[0].ResolvedType->isReference()))) {
               // A specialized generic enum can retain `void` in its AST
               // variant.  Whether its physical payload is a pointer comes
               // from the resolved generic argument, not from the pattern:

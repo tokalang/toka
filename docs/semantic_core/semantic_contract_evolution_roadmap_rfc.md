@@ -50,18 +50,23 @@ TaskHandle-lifecycle crash in an await CodeGen path, while the focused Encap
 Slice 5 and unsafe-TKI audits passed. P-1 begins from those red gates and must
 record fresh results at the exact revision eventually qualified.
 
-The documentation-closure rerun reaches
-`tests/pass/g11_async_p5_redline_test.tk` and the current `tokac` exits 139 with
-no diagnostic. That remains a compiler/runtime baseline failure, not evidence
-against the JSON/document shape and not a gate that this planning edit may mark
-green.
+The requalification repair branch closes the two reproduced compiler crashes:
+source-less guard reference payloads now lower from their resolved semantic
+type, and Unit's `TaskHandle_M___` mangling is recovered as `()` before await
+lowering. The focused TaskHandle lifecycle gate, including
+`g11_async_p5_redline_test.tk`, now passes. This is current repair evidence,
+not Phase-5/TCB conformance or a reason to mark the entire P-1 exit green.
 
-The closure review also found no current-revision Sema/CodeGen qualification
-for an existing-destination self-transfer such as `^x = cede ^x`; the present
-move/reset and old-destination replacement path must be treated as a safety
-blocker until canonical disjointness rejects it before lowering and the
-source/TKI negative matrix passes. Freezing the rule below does not repair that
-implementation gap.
+Existing-destination source-invalidating transfer now performs a canonical
+place-overlap preflight before RHS analysis can mark its source moved. It
+rejects `cede` and direct `^` transfer with `E04615` for equal, ancestor,
+descendant, and dynamic/unprovable paths; the latter remains fail-closed.
+The narrow affine-index handoff retained by `Vec` is admitted only inside an
+explicit `unsafe` container invariant, never as a safe-language alias proof.
+The `permission_005_partial_cede_lifecycle` replay case exercises these
+rejections source-backed and source-less, plus a disjoint existing-destination
+transfer. This repairs that blocker but does not yet prove every lifecycle
+combination in the P-1 exit gate.
 
 The async closure review likewise found that the current standard-library
 sequence `task_ref_from_handle(cede handle)` followed by `track_ref`/`start`

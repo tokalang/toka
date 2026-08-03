@@ -1,0 +1,11 @@
+// EXPECT_ERROR: E04615
+import ./lib::{Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto values# = [Token(id = 1, &drops = &drops), Token(id = 2, &drops = &drops)]:[Token; 2]
+    auto destination = 0
+    auto source = 1
+    values[destination] = cede values[source]
+    return 0
+}

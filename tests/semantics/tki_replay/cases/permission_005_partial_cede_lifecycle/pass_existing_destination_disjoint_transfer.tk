@@ -1,0 +1,11 @@
+import ./lib::{ReceiverToken}
+
+fn main() -> i32 {
+    auto ^#destination = new ReceiverToken(id = 1)
+    auto ^source = new ReceiverToken(id = 2)
+    ^destination = cede ^source
+    if destination.id != 2 {
+        return 1
+    }
+    return 0
+}

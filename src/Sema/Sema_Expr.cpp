@@ -3383,6 +3383,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (tName.find("TaskHandle_M_") != std::string::npos) {
         size_t pos = tName.find("TaskHandle_M_");
         std::string inner = tName.substr(pos + 13);
+        // Unit is spelled `()` in the semantic type system and mangles to
+        // `__` in a TaskHandle instance name.  Recover its semantic spelling
+        // before type resolution instead of treating the mangled fragment as
+        // an unresolved shape.
+        if (inner == "__")
+            inner = "()";
         awaitEx->AwaitedType = resolveType(toka::Type::fromString(inner));
         if (awaitEx->CatchesCancellation) {
             awaitEx->ResolvedType =
@@ -3407,6 +3413,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (tName.find("TaskHandle_M_") != std::string::npos) {
         size_t pos = tName.find("TaskHandle_M_");
         std::string inner = tName.substr(pos + 13);
+        if (inner == "__")
+            inner = "()";
         waitEx->ResolvedType = toka::Type::fromString(inner);
         return waitEx->ResolvedType;
     }

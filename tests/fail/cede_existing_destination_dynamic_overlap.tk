@@ -1,0 +1,14 @@
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+impl Token@Encap { fn drop(self#) {} }
+
+fn main() -> i32 {
+    auto values# = [Token(id = 1), Token(id = 2)]:[Token; 2]
+    auto destination = 0
+    auto source = 1
+    values[destination] = cede values[source]
+    return 0
+}
+
+// EXPECT: error[E04615]:

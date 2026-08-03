@@ -465,6 +465,7 @@ DIAG(ERR_EXTERN_RESULT_CONTRACT, Error, "E04611", "Extern function '{}' must dec
 DIAG(ERR_NEVER_RETURN_CONTRACT, Error, "E04612", "'-> never' is limited to synchronous ordinary functions without named returns or dependencies")
 DIAG(ERR_NEVER_FUNCTION_COMPLETES, Error, "E04613", "Function '{}' declares '-> never' but has a reachable normal completion")
 DIAG(ERR_NEVER_FUNCTION_RETURN, Error, "E04614", "Function '{}' declares '-> never' and cannot use 'return'")
+DIAG(ERR_SEMA_CEDE_OVERLAPPING_DESTINATION, Error, "E04615", "Cannot transfer '{}' into overlapping destination '{}'")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

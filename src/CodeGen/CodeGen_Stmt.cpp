@@ -862,6 +862,21 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
   m_Builder.SetInsertPoint(contBB);
   
   if (variant && !gbs->Pat->SubPatterns.empty()) {
+      if (gbs->Pat->SubPatterns.size() == 1 &&
+          gbs->Pat->SubPatterns[0]->IsReference &&
+          variant->SubMembers.size() == 1 &&
+          variant->SubMembers[0].ResolvedType &&
+          variant->SubMembers[0].ResolvedType->isReference()) {
+          llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
+              targetType, targetAddr, 1, "enum_payload_addr");
+          llvm::Value *payloadRef = m_Builder.CreateLoad(
+              llvm::PointerType::getUnqual(m_Context), payloadAddr,
+              "enum_ref_payload");
+          genPatternBinding(gbs->Pat->SubPatterns[0].get(), payloadRef,
+                            llvm::PointerType::getUnqual(m_Context),
+                            variant->SubMembers[0].ResolvedType);
+          return nullptr;
+      }
       if (variant->Type == "void" && gbs->Pat->SubPatterns.size() == 1 &&
           gbs->Pat->SubPatterns[0]->IsReference) {
           llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
@@ -917,7 +932,11 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
       std::vector<llvm::Type*> fieldTypes;
       
       if (!variant->SubMembers.empty()) {
-          for (const auto& f : variant->SubMembers) fieldTypes.push_back(resolveType(f.Type, false));
+          for (const auto &f : variant->SubMembers) {
+              fieldTypes.push_back(f.ResolvedType
+                                       ? getLLVMType(f.ResolvedType)
+                                       : resolveType(f.Type, false));
+          }
           payloadLayoutType = llvm::StructType::get(m_Context, fieldTypes, false);
       } else if (!variant->Type.empty()) {
           payloadLayoutType = resolveType(variant->Type, false);

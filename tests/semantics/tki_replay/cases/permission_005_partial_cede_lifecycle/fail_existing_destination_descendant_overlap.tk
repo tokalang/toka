@@ -1,0 +1,8 @@
+// EXPECT_ERROR: E04615
+import ./lib::{ReceiverToken}
+
+fn main() -> i32 {
+    auto ^#value = new ReceiverToken(id = 1)
+    value.id = cede ^value
+    return 0
+}

@@ -1,0 +1,9 @@
+shape Cell(value: i32)
+
+fn main() -> i32 {
+    auto ^#cell = new Cell(value = 1)
+    ^cell = cede cell.value
+    return 0
+}
+
+// EXPECT: error[E04615]:

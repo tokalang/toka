@@ -19,6 +19,7 @@
 #include "toka/Type.h"
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -118,6 +119,57 @@ static const VariableExpr *directBindingAssignmentTarget(const Expr *expr) {
   return dynamic_cast<const VariableExpr *>(expr);
 }
 
+// An unsafe container implementation may state its own loop-bound invariant
+// for an affine dynamic index.  Keep the recognized form deliberately narrow:
+// anything outside `index`, `index + N`, or `index - N` remains unknown and
+// therefore overlaps for a cede transfer.
+static bool getSimpleAffineIndex(const Expr *expr, std::string &base,
+                                 int64_t &offset) {
+  if (auto *variable = dynamic_cast<const VariableExpr *>(expr)) {
+    base = Type::stripMorphology(variable->Name);
+    offset = 0;
+    return true;
+  }
+
+  auto *binary = dynamic_cast<const BinaryExpr *>(expr);
+  if (!binary || (binary->Op != "+" && binary->Op != "-"))
+    return false;
+
+  auto *variable = dynamic_cast<const VariableExpr *>(binary->LHS.get());
+  auto *number = dynamic_cast<const NumberExpr *>(binary->RHS.get());
+  if (!variable || !number ||
+      number->Value > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+    return false;
+
+  base = Type::stripMorphology(variable->Name);
+  offset = static_cast<int64_t>(number->Value);
+  if (binary->Op == "-")
+    offset = -offset;
+  return true;
+}
+
+static bool proveDistinctArrayElements(const ArrayIndexExpr *destination,
+                                       const ArrayIndexExpr *source) {
+  if (!destination || !source ||
+      destination->Indices.size() != source->Indices.size())
+    return false;
+
+  for (size_t i = 0; i < destination->Indices.size(); ++i) {
+    std::string destinationBase;
+    std::string sourceBase;
+    int64_t destinationOffset = 0;
+    int64_t sourceOffset = 0;
+    if (getSimpleAffineIndex(destination->Indices[i].get(), destinationBase,
+                             destinationOffset) &&
+        getSimpleAffineIndex(source->Indices[i].get(), sourceBase,
+                             sourceOffset) &&
+        destinationBase == sourceBase &&
+        destinationOffset != sourceOffset)
+      return true;
+  }
+  return false;
+}
+
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
@@ -133,6 +185,55 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   // [Toka 1.3] Evaluation Order: Check RHS first to avoid LHS
   // borrows/moves blocking RHS usage (e.g. &#cursor = cursor.&next)
   Bin->RHS = foldGenericConstant(std::move(Bin->RHS));
+
+  // A source-invalidating cede or direct unique transfer into existing storage
+  // must establish canonical disjointness before either side is checked:
+  // checking the RHS first would mark the source moved before discovering a self- or prefix
+  // overlap. Fresh bindings are handled by declaration checking and do not
+  // enter this assignment path.
+  if (isAssign) {
+    Expr *transferSource = nullptr;
+    if (auto *cede = dynamic_cast<CedeExpr *>(Bin->RHS.get())) {
+      transferSource = cede->Value.get();
+    } else if (auto *unary = dynamic_cast<UnaryExpr *>(Bin->RHS.get());
+               unary && unary->Op == TokenType::Caret) {
+      transferSource = unary->RHS.get();
+    }
+    if (transferSource) {
+      const AccessPath destination =
+          canonicalizeAccessPath(makeAccessPath(Bin->LHS.get()));
+      const AccessPath source =
+          canonicalizeAccessPath(makeAccessPath(transferSource));
+      const auto *destinationIndex =
+          dynamic_cast<const ArrayIndexExpr *>(Bin->LHS.get());
+      const auto *sourceIndex =
+          dynamic_cast<const ArrayIndexExpr *>(transferSource);
+      const AccessPath destinationIndexedBase = destinationIndex
+          ? canonicalizeAccessPath(makeAccessPath(destinationIndex->Array.get()))
+          : AccessPath{};
+      const AccessPath sourceIndexedBase = sourceIndex
+          ? canonicalizeAccessPath(makeAccessPath(sourceIndex->Array.get()))
+          : AccessPath{};
+      const bool hasSameIndexedBase =
+          destinationIndex && sourceIndex &&
+          destinationIndexedBase && sourceIndexedBase &&
+          destinationIndexedBase == sourceIndexedBase;
+      // Integer overflow and slice bounds are runtime concerns, so this is
+      // not a safe-language alias proof.  It is only the narrow handoff
+      // admitted within an explicit unsafe container invariant (for example
+      // Vec's bounded shift loop).
+      const bool unsafeAffineHandoff =
+          m_InUnsafeContext && hasSameIndexedBase &&
+          proveDistinctArrayElements(destinationIndex, sourceIndex);
+      if (destination && source && !unsafeAffineHandoff &&
+          classifyAccessPathOverlap(destination, source) !=
+              AccessPathOverlap::NoOverlap) {
+        error(Bin, DiagID::ERR_SEMA_CEDE_OVERLAPPING_DESTINATION,
+              source.toDebugString(), destination.toDebugString());
+        return toka::Type::fromString("unknown");
+      }
+    }
+  }
   m_LastBorrowSource = ""; // [NEW] Clear stale borrow source
   std::shared_ptr<toka::Type> rhsType;
   if (!rhsIsTodo)
