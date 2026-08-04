@@ -1,0 +1,19 @@
+pub shape Packet(value: i32)
+pub type PacketAlias = Packet
+
+pub shape BuildOutcome(
+    Ok(i32) |
+    Err(i32)
+)
+
+pub fn try_build(init out: PacketAlias, fail: bool) -> BuildOutcome
+outcomes:
+    Ok => out: init
+    Err => out: uninit
+{
+    if fail {
+        return BuildOutcome::Err(1)
+    }
+    init out = PacketAlias(value = 42)
+    return BuildOutcome::Ok(0)
+}

@@ -21,6 +21,10 @@ if ! grep -Fq "coordinate=unbound;" "$TEST_DIR/lib.tki"; then
     echo "FAIL: ordinary local Outcome audit did not remain coordinate-unbound" >&2
     exit 1
 fi
+if ! grep -Fq "type-domain=unavailable;" "$TEST_DIR/lib.tki"; then
+    echo "FAIL: coordinate-unbound Outcome audit did not close its type domain" >&2
+    exit 1
+fi
 
 # A resolver-owned workspace coordinate makes the narrow declaration fact
 # eligible for a future witness schema.  The audit marker is still not parsed
@@ -33,10 +37,43 @@ if ! grep -Fq "coordinate=known;" "$TEST_DIR/known/lib.tki"; then
     echo "FAIL: resolver-known Outcome audit did not report a known coordinate" >&2
     exit 1
 fi
+if ! grep -Fq "type-domain=canonical-v1;" "$TEST_DIR/known/lib.tki"; then
+    echo "FAIL: concrete known-coordinate Outcome types were not canonicalized" >&2
+    exit 1
+fi
+
+# A nominal init formal must carry its defining coordinate inside the
+# candidate type identity, and preserve it across source-less replay.
+mkdir -p "$TEST_DIR/nominal"
+cp "$CASE_DIR/lib_nominal.tk" "$TEST_DIR/nominal/lib.tk"
+"$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/nominal/lib.tk" -o "$TEST_DIR/nominal/lib.o"
+if ! grep -Fq "type-domain=canonical-v1;" "$TEST_DIR/nominal/lib.tki"; then
+    echo "FAIL: known nominal Outcome formal missed canonical type domain" >&2
+    exit 1
+fi
+if ! grep -Fq "name=6:Packet;" "$TEST_DIR/nominal/lib.tki"; then
+    echo "FAIL: canonical Outcome type identity missed nominal Packet definition" >&2
+    exit 1
+fi
+
+# Strong aliases are not silently encoded as their temporary synthetic shape.
+# Until aliases receive a stable definition identity, the P1 type domain must
+# reject them even under an otherwise known workspace coordinate.
+mkdir -p "$TEST_DIR/strong-alias"
+cp "$CASE_DIR/lib_strong_alias.tk" "$TEST_DIR/strong-alias/lib.tk"
+"$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/strong-alias/lib.tk" -o "$TEST_DIR/strong-alias/lib.o"
+if ! grep -Fq "type-domain=unavailable;" \
+    "$TEST_DIR/strong-alias/lib.tki"; then
+    echo "FAIL: strong-alias Outcome type was silently admitted to P1" >&2
+    exit 1
+fi
 
 cp "$TEST_DIR/lib.tki" "$TEST_DIR/lib.tki.good"
 mv "$TEST_DIR/lib.tk" "$TEST_DIR/lib.tk.source-hidden"
 mv "$TEST_DIR/known/lib.tk" "$TEST_DIR/known/lib.tk.source-hidden"
+mv "$TEST_DIR/nominal/lib.tk" "$TEST_DIR/nominal/lib.tk.source-hidden"
 cp "$CASE_DIR/pass_replay.tk" "$TEST_DIR/known/main.tk"
 
 # The audit identity is recomputed from declarations during source-less TKI
@@ -60,6 +97,18 @@ grep '^// @tki v2 outcome_transition:' "$TEST_DIR/known/replayed.tki" \
 if ! cmp -s "$TEST_DIR/known/source.identity" \
     "$TEST_DIR/known/replayed.identity"; then
     echo "FAIL: known-coordinate Outcome identity changed across source-less TKI replay" >&2
+    exit 1
+fi
+
+"$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/nominal/lib.tki" -o "$TEST_DIR/nominal/replayed.o"
+grep '^// @tki v2 outcome_transition:' "$TEST_DIR/nominal/lib.tki" \
+    > "$TEST_DIR/nominal/source.identity"
+grep '^// @tki v2 outcome_transition:' "$TEST_DIR/nominal/replayed.tki" \
+    > "$TEST_DIR/nominal/replayed.identity"
+if ! cmp -s "$TEST_DIR/nominal/source.identity" \
+    "$TEST_DIR/nominal/replayed.identity"; then
+    echo "FAIL: nominal Outcome type identity changed across source-less TKI replay" >&2
     exit 1
 fi
 

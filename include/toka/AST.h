@@ -1887,6 +1887,10 @@ public:
     // declaration fact has a resolver-owned coordinate.  It grants no import
     // authority and does not enable a declaration witness payload.
     bool HasKnownDeclarationCoordinates = false;
+    // The current audit-only candidate type encoding admits only concrete
+    // first-order physical types with resolver-known nominal owners.  An
+    // unavailable result is fail-closed for a future CDW schema.
+    bool HasCanonicalTypeIdentities = false;
     std::vector<Case> Cases;
 
     const Case *findVariant(const std::string &name) const {

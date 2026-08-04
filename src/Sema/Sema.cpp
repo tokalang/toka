@@ -701,6 +701,16 @@ static void appendCanonicalIdentityField(std::string &out,
   out += name + "=" + std::to_string(value.size()) + ":" + value + ";";
 }
 
+static void appendCanonicalOutcomeTypeAttributes(std::string &out,
+                                                 const toka::Type &type) {
+  appendCanonicalIdentityField(out, "cede", type.IsCede ? "1" : "0");
+  appendCanonicalIdentityField(out, "writable",
+                               type.IsWritable ? "1" : "0");
+  appendCanonicalIdentityField(out, "nullable",
+                               type.IsNullable ? "1" : "0");
+  appendCanonicalIdentityField(out, "blocked", type.IsBlocked ? "1" : "0");
+}
+
 std::string
 Sema::canonicalOutcomeModuleIdentity(const ModuleScope *module) const {
   if (!module || !module->ShadowCoordinateKnown)
@@ -712,7 +722,99 @@ Sema::canonicalOutcomeModuleIdentity(const ModuleScope *module) const {
   return result;
 }
 
-std::string Sema::canonicalOutcomeFunctionIdentity(FunctionDecl *fn) {
+bool Sema::canonicalOutcomeTypeIdentity(
+    const std::shared_ptr<toka::Type> &type, std::string &result) const {
+  if (!type)
+    return false;
+
+  result = "toka-outcome-type-v1;";
+  appendCanonicalOutcomeTypeAttributes(result, *type);
+  auto appendChild = [&](const std::string &name,
+                         const std::shared_ptr<toka::Type> &child) {
+    std::string childIdentity;
+    if (!canonicalOutcomeTypeIdentity(child, childIdentity))
+      return false;
+    appendCanonicalIdentityField(result, name, childIdentity);
+    return true;
+  };
+
+  if (dynamic_cast<const toka::UnitType *>(type.get())) {
+    appendCanonicalIdentityField(result, "kind", "unit");
+    return true;
+  }
+  if (dynamic_cast<const toka::VoidType *>(type.get())) {
+    appendCanonicalIdentityField(result, "kind", "void");
+    return true;
+  }
+  if (dynamic_cast<const toka::NeverType *>(type.get())) {
+    appendCanonicalIdentityField(result, "kind", "never");
+    return true;
+  }
+  if (const auto *primitive =
+          dynamic_cast<const toka::PrimitiveType *>(type.get())) {
+    appendCanonicalIdentityField(result, "kind", "primitive");
+    appendCanonicalIdentityField(result, "name", primitive->Name);
+    return true;
+  }
+  if (const auto *pointer =
+          dynamic_cast<const toka::PointerType *>(type.get())) {
+    std::string kind;
+    switch (pointer->typeKind) {
+    case toka::Type::RawPtr:
+      kind = "raw-pointer";
+      break;
+    case toka::Type::UniquePtr:
+      kind = "unique-pointer";
+      break;
+    case toka::Type::SharedPtr:
+      kind = "shared-pointer";
+      break;
+    case toka::Type::Reference:
+      kind = "reference";
+      break;
+    default:
+      return false;
+    }
+    appendCanonicalIdentityField(result, "kind", kind);
+    return appendChild("pointee", pointer->PointeeType);
+  }
+  if (const auto *array = dynamic_cast<const toka::ArrayType *>(type.get())) {
+    // Symbolic extents belong to the generic-constant domain, which P1 has
+    // not bound canonically yet.
+    if (!array->SymbolicSize.empty())
+      return false;
+    appendCanonicalIdentityField(result, "kind", "array");
+    appendCanonicalIdentityField(result, "extent", std::to_string(array->Size));
+    return appendChild("element", array->ElementType);
+  }
+  if (const auto *slice = dynamic_cast<const toka::SliceType *>(type.get())) {
+    appendCanonicalIdentityField(result, "kind", "slice");
+    return appendChild("element", slice->ElementType);
+  }
+  if (const auto *shape = dynamic_cast<const toka::ShapeType *>(type.get())) {
+    // No generic binders, aliases, anonymous records, projections, or enum
+    // constructor suffixes are admitted by the narrow P1 type domain.
+    if (!shape->Decl || !shape->GenericArgs.empty() ||
+        !shape->VariantSuffix.empty() || !shape->Decl->GenericParams.empty())
+      return false;
+    auto owner = DeclarationLexicalScopes.find(shape->Decl);
+    if (owner == DeclarationLexicalScopes.end() || !owner->second ||
+        !owner->second->ShadowCoordinateKnown)
+      return false;
+    appendCanonicalIdentityField(result, "kind", "nominal");
+    appendCanonicalIdentityField(result, "definition",
+                                 canonicalOutcomeShapeIdentity(shape->Decl));
+    return true;
+  }
+
+  // Function, dynamic-function, unresolved, Uninit, and all future type
+  // kinds remain outside the concrete first-order P1 domain.
+  return false;
+}
+
+std::string Sema::canonicalOutcomeFunctionIdentity(FunctionDecl *fn,
+                                                   bool &hasCanonicalTypes) {
+  hasCanonicalTypes = fn != nullptr;
   std::string result = "toka-outcome-def-v1;";
   const ModuleScope *owner = nullptr;
   auto scope = DeclarationLexicalScopes.find(fn);
@@ -730,6 +832,15 @@ std::string Sema::canonicalOutcomeFunctionIdentity(FunctionDecl *fn) {
                                   : "0");
   if (!fn)
     return result;
+  auto appendPhysicalType = [&](const std::string &field,
+                                const std::shared_ptr<toka::Type> &type) {
+    std::string identity;
+    if (!canonicalOutcomeTypeIdentity(type, identity)) {
+      hasCanonicalTypes = false;
+      identity = "unavailable";
+    }
+    appendCanonicalIdentityField(result, field, identity);
+  };
   for (size_t index = 0; index < fn->Args.size(); ++index) {
     const auto &arg = fn->Args[index];
     const std::string prefix = "arg" + std::to_string(index) + "-";
@@ -737,15 +848,9 @@ std::string Sema::canonicalOutcomeFunctionIdentity(FunctionDecl *fn) {
         result, prefix + "kind", arg.IsInit ? "init" : "ordinary");
     appendCanonicalIdentityField(
         result, prefix + "cede", arg.IsCeded ? "1" : "0");
-    appendCanonicalIdentityField(
-        result, prefix + "type",
-        arg.ResolvedType ? arg.ResolvedType->toString()
-                         : synthesizePhysicalType(arg));
+    appendPhysicalType(prefix + "type", arg.ResolvedType);
   }
-  appendCanonicalIdentityField(
-      result, "return",
-      fn->ResolvedReturnType ? fn->ResolvedReturnType->toString()
-                             : fn->ReturnType);
+  appendPhysicalType("return", fn->ResolvedReturnType);
   return result;
 }
 
@@ -782,7 +887,8 @@ void Sema::populateOutcomeTransitionIdentities(FunctionDecl *fn) {
   transition.HasKnownDeclarationCoordinates =
       hasKnownOwnerCoordinate(fn) &&
       hasKnownOwnerCoordinate(transition.ReturnEnum);
-  transition.FunctionIdentity = canonicalOutcomeFunctionIdentity(fn);
+  transition.FunctionIdentity = canonicalOutcomeFunctionIdentity(
+      fn, transition.HasCanonicalTypeIdentities);
   transition.SubjectIdentity = transition.FunctionIdentity + "formal=" +
       std::to_string(transition.SubjectIndex) + ";";
   transition.ReturnEnumIdentity =
@@ -1525,6 +1631,9 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
     std::string record = "outcome_transition: " +
         std::string("coordinate=") +
         (transition.HasKnownDeclarationCoordinates ? "known;" : "unbound;") +
+        "type-domain=" +
+        (transition.HasCanonicalTypeIdentities ? "canonical-v1;" :
+                                                "unavailable;") +
         transition.FunctionIdentity + "subject=" + transition.SubjectIdentity +
         "result=" + transition.ReturnEnumIdentity;
     for (const auto &entry : cases)

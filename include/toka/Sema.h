@@ -498,7 +498,10 @@ private:
                                    SourceLocation loc);
   std::string canonicalImplDefinitionId(const ImplDecl *impl) const;
   std::string canonicalOutcomeModuleIdentity(const ModuleScope *module) const;
-  std::string canonicalOutcomeFunctionIdentity(FunctionDecl *fn);
+  bool canonicalOutcomeTypeIdentity(const std::shared_ptr<toka::Type> &type,
+                                    std::string &result) const;
+  std::string canonicalOutcomeFunctionIdentity(FunctionDecl *fn,
+                                               bool &hasCanonicalTypes);
   std::string canonicalOutcomeShapeIdentity(const ShapeDecl *shape) const;
   void populateOutcomeTransitionIdentities(FunctionDecl *fn);
   void recordSlice1ImplFact(ImplDecl *impl,

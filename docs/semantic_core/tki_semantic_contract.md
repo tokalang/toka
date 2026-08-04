@@ -127,7 +127,11 @@ location, AST address, or authority claim; parser/importer behavior is
 unchanged by the comment. Its audit-only `coordinate=known` label appears only
 when both the function and direct return-enum owners have resolver-known
 coordinates; ordinary local compilation instead reports `coordinate=unbound`.
-Neither label changes importer behavior.
+Neither label changes importer behavior. The function signature uses an
+audit-only `toka-outcome-type-v1` identity for concrete first-order physical
+types with resolver-known nominal owners; unsupported generic, strong-alias,
+projection, anonymous-record, symbolic-extent, and callable forms report
+`type-domain=unavailable` rather than falling back to display text.
 
 ### Shape Structure
 

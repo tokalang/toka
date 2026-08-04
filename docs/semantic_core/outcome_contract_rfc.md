@@ -406,7 +406,11 @@ the same identity from declarations, but no compiler rule reads the comment or
 treats either coordinate state as semantic authority. `coordinate=known`
 appears only when the function and direct return-enum owners both carry
 resolver-known coordinates; ordinary local compilation reports
-`coordinate=unbound`.
+`coordinate=unbound`. The audit signature encodes concrete first-order
+physical types through `toka-outcome-type-v1`, including a resolver-owned
+nominal definition rather than a short shape name. Generic domains, strong
+aliases, anonymous records, projections, symbolic extents, and callable forms
+remain `type-domain=unavailable`; no compiler rule reads either result.
 
 An unbound or ordinary third-party TKI cannot establish body-derived
 fulfilment merely by asserting a transition. Support therefore has two

@@ -100,6 +100,33 @@ generic Outcome function record, so generic domains, substitutions, and
 constraints remain an explicit activation blocker rather than an implicit
 source-text fallback.
 
+### 4.1 Current audit-only type boundary
+
+The implementation now records a candidate `toka-outcome-type-v1` identity in
+the `outcome_transition` audit comment instead of using `Type::toString()`.
+It is not CDW1 byte encoding and is not parsed by the importer. Its deliberately
+small domain admits only concrete first-order physical types:
+
+- unit, ABI void, never, and primitive types;
+- raw, unique, shared, and reference handles over an admitted type;
+- fixed-size arrays with a numeric extent and slices over an admitted type; and
+- non-generic nominal types whose defining declaration has a resolver-known
+  coordinate.
+
+Every node records its physical `cede`, writable, nullable, and blocked bits.
+A nominal node records its defining shape identity rather than an unqualified
+display name. Function types, dynamic function types, `Uninit`, anonymous
+records, projections, variant suffixes, symbolic const extents, generic
+arguments, and strong aliases are outside this domain. In each such case (or
+when any nominal owner is coordinate-unbound), the complete audit record says
+`type-domain=unavailable`; it must not fall back to a source spelling.
+
+This boundary makes source and retained-body source-less replay observable
+without prematurely choosing CDW1's final binary type grammar. It also keeps
+the eventual generic-binder and strong-alias definition identities as explicit
+work, rather than accidentally treating a temporary synthetic shape name as a
+stable witness subject.
+
 ## 5. Canonical byte encoding
 
 The proposed schema identifier is `toka.declaration-witness`, version `1`.
@@ -192,6 +219,13 @@ implementation facts:
 - source-less retained-body replay reconstructs the same audit bytes without
   relying on AST address or source path.
 
+Its function signature uses the audit-only `toka-outcome-type-v1` identity for
+the admitted concrete first-order domain, including resolver-owned nominal
+definitions. A strong alias or another unsupported type form produces
+`type-domain=unavailable` rather than a text fallback. This gives the future
+encoder a conservative source/source-less oracle, but does not make the text
+format a CDW1 payload.
+
 The audit record also carries `coordinate=known` only when the resolver has a
 known coordinate for both the function owner and the direct return-enum owner;
 otherwise it carries `coordinate=unbound`. Ordinary local compilation remains
@@ -232,7 +266,9 @@ ordinary local compilation remains coordinate-unbound. The audit marker proves
 that source and retained-body source-less replay preserve this distinction; it
 does not make a coordinate mandatory or activate CDW1.
 
-The next implementation decision is still not "add a digest." It is whether
-the narrow domain has sufficiently canonical type encoding and importer-owned
-reconstruction to justify implementing the structured, ignored CDW1 encoder
-before any manifest or bodyless-provider design is considered.
+The audit now establishes a conservative concrete-type seed and rejects every
+other form explicitly. The next implementation decision is still not "add a
+digest." It is whether to encode this exact known-coordinate, non-generic,
+first-order subset in a structured but importer-ignored CDW1 prototype, with
+source/source-less reconstruction tests, before considering generic binders,
+strong aliases, a manifest, or any bodyless-provider design.
