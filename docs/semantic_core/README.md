@@ -4,7 +4,9 @@
 ledger for its recorded 1.0/RC work and revision; its `Complete` labels are not
 current-HEAD requalification. The active current-HEAD P-1 status, blockers, and
 post-1.0 dependency order are tracked by
-[`semantic_contract_evolution_roadmap_rfc.md`](semantic_contract_evolution_roadmap_rfc.md).
+[`semantic_contract_evolution_roadmap_rfc.md`](semantic_contract_evolution_roadmap_rfc.md)
+and its revision-bound
+[`p1_current_head_qualification.md`](p1_current_head_qualification.md) ledger.
 This directory provides the semantic contracts and dated evidence used by both.
 
 This directory is the phase-1 audit surface for the Toka 1.0 semantic core.
@@ -100,6 +102,9 @@ change current language behavior or implementation status.
   permission/partial-cede closure, `init`, Outcome Contracts, async task and
   place-cleanup closure, and a later provenance-bound semantic manifest
   payload.
+- `p1_current_head_qualification.md` is the revision-bound P-1 audit ledger.
+  It records a blocked current-HEAD attempt rather than treating historical
+  release evidence as a baseline qualification.
 - `place_state_core_rfc.md` proposes the candidate internal production-language
   construction-origin/availability facts, exact-place transitions, cleanup
   correspondence, and bounded fail-closed gates. It is not a user-visible
