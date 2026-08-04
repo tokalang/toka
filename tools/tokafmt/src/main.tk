@@ -2,8 +2,6 @@ import std/env
 import std/io::{File, print, println}
 import std/fs
 
-import src/lexer::{Lexer}
-import src/printer::{Printer}
 import core/str::{str}
 
 pub shape TokenKind(
@@ -22,27 +20,19 @@ pub shape TokenKind(
 
 pub shape Token (
     kind: TokenKind,
-    lexeme_addr: Addr,
-    lexeme_len: usize,
+    lexeme: str,
     line: i32,
     col: i32
 )
 
 impl Token {
-    pub fn new(kind: TokenKind, lexeme_addr: Addr, lexeme_len: usize, line: i32, col: i32) -> Token {
+    pub fn new(kind: TokenKind, lexeme: str, line: i32, col: i32) -> Token <- lexeme {
         return Token(
             kind = kind,
-            lexeme_addr = lexeme_addr,
-            lexeme_len = lexeme_len,
+            lexeme = lexeme,
             line = line,
             col = col
         )
-    }
-
-    pub fn lexeme(self) -> str <- self {
-        unsafe {
-            return str::from_raw_parts(self.lexeme_addr as *char, self.lexeme_len)
-        }
     }
 }
 
@@ -107,9 +97,9 @@ impl Lexer {
         return u_pos >= self.source.len()
     }
 
-    pub fn next_token(self#) -> Token {
+    pub fn next_token(self#) -> Token <- self {
         if self.is_eof() {
-            return Token::new(TokenKind::EOF(), (_str_cast("")).raw_ptr() as Addr, (_str_cast("")).len(), self.line, self.col)
+            return Token::new(TokenKind::EOF(), _str_cast(""), self.line, self.col)
         }
 
         auto start_line = self.line
@@ -123,7 +113,7 @@ impl Lexer {
                 self#.advance()
             }
             auto ws = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Whitespace(), (ws).raw_ptr() as Addr, (ws).len(), start_line, start_col)
+            return Token::new(TokenKind::Whitespace(), ws, start_line, start_col)
         }
 
         // Block Comments
@@ -140,7 +130,7 @@ impl Lexer {
                 self#.advance()
             }
             auto comm = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Comment(), (comm).raw_ptr() as Addr, (comm).len(), start_line, start_col)
+            return Token::new(TokenKind::Comment(), comm, start_line, start_col)
         }
 
         // Line Comments
@@ -150,7 +140,7 @@ impl Lexer {
                 self#.advance()
             }
             auto comm = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Comment(), (comm).raw_ptr() as Addr, (comm).len(), start_line, start_col)
+            return Token::new(TokenKind::Comment(), comm, start_line, start_col)
         }
 
         // Identifier or Keyword
@@ -166,7 +156,7 @@ impl Lexer {
             if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") {
                 kind = TokenKind::Keyword()
             }
-            return Token::new(kind, (ident).raw_ptr() as Addr, (ident).len(), start_line, start_col)
+            return Token::new(kind, ident, start_line, start_col)
         }
 
         // Number
@@ -184,7 +174,7 @@ impl Lexer {
                 }
             }
             auto num = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Number(), (num).raw_ptr() as Addr, (num).len(), start_line, start_col)
+            return Token::new(TokenKind::Number(), num, start_line, start_col)
         }
 
         // string Literal
@@ -201,7 +191,7 @@ impl Lexer {
                 self#.advance() // Consume closing quote
             }
             auto str_val = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::StringLit(), (str_val).raw_ptr() as Addr, (str_val).len(), start_line, start_col)
+            return Token::new(TokenKind::StringLit(), str_val, start_line, start_col)
         }
         
         // Single Character Literal or Morphology
@@ -216,7 +206,7 @@ impl Lexer {
                 self#.advance()
             }
             auto str_val2 = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::CharLit(), (str_val2).raw_ptr() as Addr, (str_val2).len(), start_line, start_col)
+            return Token::new(TokenKind::CharLit(), str_val2, start_line, start_col)
         }
 
         // Delimiters
@@ -224,7 +214,7 @@ impl Lexer {
             auto start_idx = self.pos
             self#.advance()
             auto delim_str = self.source.substring(start_idx as usize, self.pos as usize)
-            return Token::new(TokenKind::Delimiter(), (delim_str).raw_ptr() as Addr, (delim_str).len(), start_line, start_col)
+            return Token::new(TokenKind::Delimiter(), delim_str, start_line, start_col)
         }
 
         // Operators & Morphology
@@ -248,17 +238,11 @@ impl Lexer {
             self#.advance()
         }
         auto op = self.source.substring(start_idx_op as usize, self.pos as usize)
-        return Token::new(TokenKind::Operator(), (op).raw_ptr() as Addr, (op).len(), start_line, start_col)
+        return Token::new(TokenKind::Operator(), op, start_line, start_col)
     }
 }
 
 fn _str_cast(s: str) -> str <- s { return s.clone() }
-
-fn rebuild_str(addr: Addr, len: usize) -> str <- addr {
-    unsafe {
-        return str::from_raw_parts(addr as *char, len)
-    }
-}
 
 pub shape Printer (
     indent_level#: i32,
@@ -306,17 +290,17 @@ impl Printer {
             
             auto is_namespace_brace = last_lexeme.equals("::")
             
-            if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("import") {
+            if t.lexeme.equals("import") {
                 in_import = true
-            } else if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("shape") {
+            } else if t.lexeme.equals("shape") {
                 self.in_shape = true
             }
             
             if t.kind == TokenKind::Whitespace() {
                 auto nl_count# = 0
                 auto i# = 0 as usize
-                loop i < rebuild_str(t.lexeme_addr, t.lexeme_len).len() {
-                    if rebuild_str(t.lexeme_addr, t.lexeme_len).at(i).unwrap() as char == '\n' {
+                loop i < t.lexeme.len() {
+                    if t.lexeme.at(i).unwrap() as char == '\n' {
                         nl_count = nl_count + 1
                     }
                     i = i + 1
@@ -337,30 +321,30 @@ impl Printer {
             }
             
             // Space collapsing for { and else
-            if t.kind == TokenKind::Delimiter() && rebuild_str(t.lexeme_addr, t.lexeme_len).equals("{") {
+            if t.kind == TokenKind::Delimiter() && t.lexeme.equals("{") {
                 if !is_namespace_brace {
                     pending_nl_count = 0
                     pending_space = true
                 }
-            } else if t.kind == TokenKind::Keyword() && rebuild_str(t.lexeme_addr, t.lexeme_len).equals("else") {
+            } else if t.kind == TokenKind::Keyword() && t.lexeme.equals("else") {
                 pending_nl_count = 0
                 pending_space = true
             }
             
             // Adjust indent on closing brace/paren BEFORE printing
             if t.kind == TokenKind::Delimiter() {
-                if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("}") {
+                if t.lexeme.equals("}") {
                     if !in_import && self.indent_level > 0 {
                         self.indent_level = self.indent_level - 1
                         if !self.needs_indent && pending_nl_count == 0 {
                             pending_nl_count = 1
                         }
                     }
-                } else if rebuild_str(t.lexeme_addr, t.lexeme_len).equals(")") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("]") {
+                } else if t.lexeme.equals(")") || t.lexeme.equals("]") {
                     if self.indent_level > 0 {
                         self.indent_level = self.indent_level - 1
                     }
-                    if rebuild_str(t.lexeme_addr, t.lexeme_len).equals(")") && self.in_shape && self.paren_depth > 0 {
+                    if t.lexeme.equals(")") && self.in_shape && self.paren_depth > 0 {
                         self.paren_depth = self.paren_depth - 1
                         if self.paren_depth == 0 {
                             if !self.needs_indent && pending_nl_count == 0 {
@@ -396,21 +380,21 @@ impl Printer {
             }
 
             auto is_binary_op# = false
-            if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("=") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("==") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("->") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("=>") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("+") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("-") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("*") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("/") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("<=") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals(">=") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("!=") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("&&") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("||") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("as") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("|") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("&") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("^") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("<<") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals(">>") {
+            if t.lexeme.equals("=") || t.lexeme.equals("==") || t.lexeme.equals("->") || t.lexeme.equals("=>") || t.lexeme.equals("+") || t.lexeme.equals("-") || t.lexeme.equals("*") || t.lexeme.equals("/") || t.lexeme.equals("<=") || t.lexeme.equals(">=") || t.lexeme.equals("!=") || t.lexeme.equals("&&") || t.lexeme.equals("||") || t.lexeme.equals("as") || t.lexeme.equals("|") || t.lexeme.equals("&") || t.lexeme.equals("^") || t.lexeme.equals("<<") || t.lexeme.equals(">>") {
                 is_binary_op = true
             }
             
             // Special case for | at start of line (match branch)
-            if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("|") && did_indent {
+            if t.lexeme.equals("|") && did_indent {
                 is_binary_op = false
             }
 
-            if in_import && rebuild_str(t.lexeme_addr, t.lexeme_len).equals("/") {
+            if in_import && t.lexeme.equals("/") {
                 is_binary_op = false
             }
 
             // Pointer vs Multiplication & Unary minus vs Binary minus
-            if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("*") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("-") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("&") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("~") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("^") {
+            if t.lexeme.equals("*") || t.lexeme.equals("-") || t.lexeme.equals("&") || t.lexeme.equals("~") || t.lexeme.equals("^") {
                 if last_kind == TokenKind::Operator() || last_kind == TokenKind::Keyword() || last_lexeme.equals("(") || last_lexeme.equals("[") || last_lexeme.equals(",") || last_lexeme.equals("::") || last_kind == TokenKind::Unknown() {
                     is_binary_op = false
                 }
@@ -420,7 +404,7 @@ impl Printer {
             if t.kind == TokenKind::Operator() && is_binary_op {
                 pending_space = true
             }
-            if t.kind == TokenKind::Delimiter() && rebuild_str(t.lexeme_addr, t.lexeme_len).equals("{") {
+            if t.kind == TokenKind::Delimiter() && t.lexeme.equals("{") {
                 if !is_namespace_brace {
                     pending_space = true
                 }
@@ -430,7 +414,7 @@ impl Printer {
                     pending_space = true
                 }
             }
-            if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("(") {
+            if t.lexeme.equals("(") {
                 if last_lexeme.equals("if") || last_lexeme.equals("while") || last_lexeme.equals("match") || last_lexeme.equals("for") {
                     pending_space = true
                 }
@@ -439,10 +423,10 @@ impl Printer {
             // Consume pending space
             if pending_space && !self.needs_indent {
                 auto should_space# = true
-                if rebuild_str(t.lexeme_addr, t.lexeme_len).equals(",") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals(";") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals(":") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals(")") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("]") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("#") {
+                if t.lexeme.equals(",") || t.lexeme.equals(";") || t.lexeme.equals(":") || t.lexeme.equals(")") || t.lexeme.equals("]") || t.lexeme.equals("#") {
                     should_space = false
                 }
-                if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("::") {
+                if t.lexeme.equals("::") {
                     should_space = false
                 }
                 if last_lexeme.equals("(") || last_lexeme.equals("[") || last_lexeme.equals("::") {
@@ -453,7 +437,7 @@ impl Printer {
                         should_space = false
                     }
                 }
-                if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("(") && last_kind == TokenKind::Identifier() {
+                if t.lexeme.equals("(") && last_kind == TokenKind::Identifier() {
                     should_space = false
                 }
                 if should_space {
@@ -463,33 +447,33 @@ impl Printer {
             }
 
             // Print the lexeme
-            self.output#.push_buf(t.lexeme_addr as *u8, t.lexeme_len)
+            self.output#.push_str(t.lexeme)
             
             // Force space requirements AFTER the token
             if t.kind == TokenKind::Operator() && is_binary_op {
                 pending_space = true
             }
             if t.kind == TokenKind::Delimiter() {
-                if rebuild_str(t.lexeme_addr, t.lexeme_len).equals(",") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals(":") {
+                if t.lexeme.equals(",") || t.lexeme.equals(":") {
                     pending_space = true
                 }
             }
             
             last_kind = t.kind
-            last_lexeme = rebuild_str(t.lexeme_addr, t.lexeme_len).clone()
+            last_lexeme = t.lexeme.clone()
             last_was_binary_op = is_binary_op
             
             // Adjust indent AFTER opening brace/paren
             if t.kind == TokenKind::Delimiter() {
-                if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("{") {
+                if t.lexeme.equals("{") {
                     if !is_namespace_brace {
                         self.indent_level = self.indent_level + 1
                         pending_nl_count = 1
                         just_forced_newline = true
                     }
-                } else if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("(") || rebuild_str(t.lexeme_addr, t.lexeme_len).equals("[") {
+                } else if t.lexeme.equals("(") || t.lexeme.equals("[") {
                     self.indent_level = self.indent_level + 1
-                    if rebuild_str(t.lexeme_addr, t.lexeme_len).equals("(") && self.in_shape {
+                    if t.lexeme.equals("(") && self.in_shape {
                         if self.paren_depth == 0 {
                             pending_nl_count = 1
                             just_forced_newline = true
@@ -500,7 +484,8 @@ impl Printer {
             }
         }
         
-        return self.output
+        auto result = self.output.clone()
+        return cede result
     }
 }
 
