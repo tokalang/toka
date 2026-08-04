@@ -4,6 +4,7 @@
 set -euo pipefail
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
+CDW1_CHECK="${CDW1_CHECK:-./build/bin/toka_canonical_declaration_witness}"
 CASE_DIR="tests/semantics/tki_replay/cases/outcome_001_direct_match"
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/toka_outcome_recheck.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -124,6 +125,20 @@ if ! cmp -s "$TEST_DIR/known/source.cdw1" "$TEST_DIR/known/replayed.cdw1"; then
     echo "FAIL: CDW1 prototype changed across source-less TKI replay" >&2
     exit 1
 fi
+# The test-only codec reads the exported bytes after TKI replay has ignored the
+# comment. Source bytes, standalone canonical decoding, and the declaration-
+# reconstructed source-less bytes must all agree.
+sed 's/^\/\/ @tki v2 cdw1: //' "$TEST_DIR/known/source.cdw1" \
+    > "$TEST_DIR/known/source.cdw1.hex"
+sed 's/^\/\/ @tki v2 cdw1: //' "$TEST_DIR/known/replayed.cdw1" \
+    > "$TEST_DIR/known/replayed.cdw1.hex"
+"$CDW1_CHECK" --hex-file "$TEST_DIR/known/source.cdw1.hex" \
+    > "$TEST_DIR/known/decoded.cdw1.hex"
+if ! cmp -s "$TEST_DIR/known/decoded.cdw1.hex" \
+    "$TEST_DIR/known/replayed.cdw1.hex"; then
+    echo "FAIL: standalone CDW1 codec disagreed with declaration replay" >&2
+    exit 1
+fi
 
 "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/nominal/lib.tki" -o "$TEST_DIR/nominal/replayed.o"
@@ -151,6 +166,14 @@ cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
 sed '/^\/\/ @tki v2 cdw1:/s|.*|// @tki v2 cdw1: malformed|' \
     "$TEST_DIR/known/lib.tki" > "$TEST_DIR/known/lib.tki.cdw.tampered"
 mv "$TEST_DIR/known/lib.tki.cdw.tampered" "$TEST_DIR/known/lib.tki"
+sed 's/^\/\/ @tki v2 cdw1: //' "$TEST_DIR/known/lib.tki" \
+    > "$TEST_DIR/known/malformed.cdw1.hex"
+if "$CDW1_CHECK" --hex-file "$TEST_DIR/known/malformed.cdw1.hex" \
+    > "$TEST_DIR/known/malformed.cdw1.out" \
+    2> "$TEST_DIR/known/malformed.cdw1.err"; then
+    echo "FAIL: standalone CDW1 codec accepted malformed audit bytes" >&2
+    exit 1
+fi
 if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-ignored.o" \
     > "$TEST_DIR/known/comment-ignored.out" \

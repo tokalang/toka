@@ -204,7 +204,12 @@ The standalone strict decoder accepts only one complete CDW1
 value, UTF-8 identity, nested enum reference, parameter position, and post-state
 atom, then re-encodes the decoded record and requires byte-for-byte equality.
 Thus a sequence that is structurally readable but non-canonical is rejected.
-The decoder has no `.tki` comment or importer call path.
+The decoder has no production `.tki` comment or importer call path. The
+source-less conformance test alone extracts a produced comment, passes its raw
+hexadecimal to the standalone codec, and compares the result with the
+declaration-reconstructed source-less bytes. It also proves that malformed
+comment bytes are rejected by the codec while the compiler continues to ignore
+them.
 
 The prototype therefore cannot make a declaration more acceptable, permit a
 bodyless provider, or create any caller, cleanup, or object-link authority.
@@ -308,8 +313,10 @@ source/retained-body source-less encoding without turning its comment into
 authority.
 
 The next implementation decision is still not "add a digest." It is whether
-to compare an independently reconstructed declaration record against this
-standalone codec while preserving the importer-ignored boundary. That work
-needs the remaining malformed/reordered/unknown-field matrix at the
-declaration boundary, and remains separate from generic binders, strong
-aliases, a manifest, and every bodyless-provider design.
+to introduce any importer-visible declaration comparison. The current test-only
+path already compares exported raw bytes, standalone codec canonicalization,
+and declaration-reconstructed source-less bytes without granting authority.
+Any importer integration must first define its diagnostic/failure behavior and
+the complete declaration-boundary tamper matrix; it remains separate from
+generic binders, strong aliases, a manifest, and every bodyless-provider
+design.

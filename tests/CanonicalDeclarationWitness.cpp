@@ -1,6 +1,9 @@
 #include "toka/CanonicalDeclarationWitness.h"
 
 #include <cassert>
+#include <fstream>
+#include <iostream>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -30,9 +33,57 @@ OutcomeDeclarationWitnessInput sample() {
   return input;
 }
 
+std::optional<unsigned> hexNibble(char value) {
+  if (value >= '0' && value <= '9')
+    return value - '0';
+  if (value >= 'a' && value <= 'f')
+    return value - 'a' + 10;
+  return std::nullopt;
+}
+
+std::optional<std::string> decodeHex(const std::string &hex) {
+  if (hex.empty() || hex.size() % 2 != 0)
+    return std::nullopt;
+  std::string bytes;
+  bytes.reserve(hex.size() / 2);
+  for (size_t index = 0; index < hex.size(); index += 2) {
+    auto high = hexNibble(hex[index]);
+    auto low = hexNibble(hex[index + 1]);
+    if (!high || !low)
+      return std::nullopt;
+    bytes.push_back(static_cast<char>((*high << 4) | *low));
+  }
+  return bytes;
+}
+
+int verifyHexFile(const char *path) {
+  std::ifstream file(path);
+  std::string hex;
+  if (!std::getline(file, hex))
+    return 1;
+  auto bytes = decodeHex(hex);
+  if (!bytes)
+    return 1;
+  auto decoded =
+      CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(*bytes);
+  if (!decoded)
+    return 1;
+  auto canonical =
+      CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(*decoded);
+  if (!canonical)
+    return 1;
+  std::cout << CanonicalDeclarationWitnessEncoder::hexEncode(*canonical)
+            << '\n';
+  return 0;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc == 3 && std::string(argv[1]) == "--hex-file")
+    return verifyHexFile(argv[2]);
+  assert(argc == 1);
+
   auto input = sample();
   auto first = CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(input);
   assert(first);
