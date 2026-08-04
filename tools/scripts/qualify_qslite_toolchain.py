@@ -188,7 +188,7 @@ def write_consumer(project: Path, dependency: Path) -> None:
         "fn main() -> i32 {\n"
         '    auto path = string::from("consumer.qslite")\n'
         "    remove_file(path.clone())\n"
-        "    auto opened = open_database(path.clone())\n"
+        "    auto opened = open_database(cede path.clone())\n"
         "    if opened.is_err() { return 1 }\n"
         "    auto database# = opened.unwrap()\n"
         '    if database#.upsert(7:u64, string::from("locked")).is_err() { return 2 }\n'
