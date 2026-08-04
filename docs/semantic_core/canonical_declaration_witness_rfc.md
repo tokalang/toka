@@ -1,7 +1,7 @@
 # RFC: Canonical Declaration Witness
 
 **Status:** Proposed P1 schema and activation gate, with an implemented
-audit-only encoder prototype. The prototype adds an ignorable `@tki v2 cdw1:`
+audit-only codec prototype. The prototype adds an ignorable `@tki v2 cdw1:`
 hex comment for the admitted P1 subset; it changes no source syntax, metadata
 authority, cache behavior, import decision, or object-link rule. The existing
 `@tki v2 outcome_transition:` comment remains a distinct implementation audit
@@ -174,7 +174,7 @@ identifiers and type encodings must already be the compiler's normalized
 canonical forms. No platform newline, locale, map iteration order, quoted
 display text, or filesystem spelling participates.
 
-### 5.1 Current audit-only encoder prototype
+### 5.1 Current audit-only codec prototype
 
 The compiler now encodes this exact P1 subset when all admission gates close:
 resolver-known function and return-enum coordinates, a non-generic top-level
@@ -199,7 +199,13 @@ bytes. The retained-body source-less replay test requires identical emitted
 bytes; malformed, absent, or altered `cdw1:` comments remain deliberately
 ignored by the importer.
 
-There is intentionally no CDW1 decoder or importer comparison at this stage.
+The standalone strict decoder accepts only one complete CDW1
+`outcome-transition` record. It validates every frame, tag set, fixed-width
+value, UTF-8 identity, nested enum reference, parameter position, and post-state
+atom, then re-encodes the decoded record and requires byte-for-byte equality.
+Thus a sequence that is structurally readable but non-canonical is rejected.
+The decoder has no `.tki` comment or importer call path.
+
 The prototype therefore cannot make a declaration more acceptable, permit a
 bodyless provider, or create any caller, cleanup, or object-link authority.
 
@@ -277,8 +283,8 @@ Implementing CDW1 requires all of the following at one exact compiler revision:
 1. canonical type and generic-domain encodings for every admitted declaration;
 2. resolver-known coordinates and stable owner identity for every admitted
    record, with tests that reject an unbound or forged coordinate;
-3. a structured encoder and decoder independent of `@tki` comments; the
-   encoder prototype exists, but a strict decoder remains required;
+3. a structured encoder and strict decoder independent of `@tki` comments;
+   the audit-only codec prototype now meets this representation boundary;
 4. importer reconstruction and atomic byte comparison before any consumer can
    observe a record;
 5. duplicate, reorder, omission, unknown-tag/version, and altered-identity
@@ -302,8 +308,8 @@ source/retained-body source-less encoding without turning its comment into
 authority.
 
 The next implementation decision is still not "add a digest." It is whether
-to add an independently framed strict decoder and declaration reconstruction
-comparison while preserving the importer-ignored boundary, with the full
-malformed/reordered/unknown-field test matrix. That decision remains separate
-from generic binders, strong aliases, a manifest, and every bodyless-provider
-design.
+to compare an independently reconstructed declaration record against this
+standalone codec while preserving the importer-ignored boundary. That work
+needs the remaining malformed/reordered/unknown-field matrix at the
+declaration boundary, and remains separate from generic binders, strong
+aliases, a manifest, and every bodyless-provider design.

@@ -14,6 +14,7 @@
 #include "toka/CanonicalDeclarationWitness.h"
 
 #include <algorithm>
+#include <initializer_list>
 #include <limits>
 #include <utility>
 
@@ -137,6 +138,238 @@ std::string u32Bytes(uint32_t value) {
 
 std::string u8Bytes(bool value) {
   return std::string(1, value ? '\x01' : '\x00');
+}
+
+class ByteReader {
+public:
+  explicit ByteReader(const std::string &bytes) : Bytes(bytes) {}
+
+  bool readU8(uint8_t &value) {
+    if (Offset == Bytes.size())
+      return false;
+    value = static_cast<unsigned char>(Bytes[Offset++]);
+    return true;
+  }
+
+  bool readU16BE(uint16_t &value) {
+    uint8_t high = 0;
+    uint8_t low = 0;
+    if (!readU8(high) || !readU8(low))
+      return false;
+    value = static_cast<uint16_t>((high << 8) | low);
+    return true;
+  }
+
+  bool readU32BE(uint32_t &value) {
+    uint8_t first = 0;
+    uint8_t second = 0;
+    uint8_t third = 0;
+    uint8_t fourth = 0;
+    if (!readU8(first) || !readU8(second) || !readU8(third) ||
+        !readU8(fourth))
+      return false;
+    value = (static_cast<uint32_t>(first) << 24) |
+            (static_cast<uint32_t>(second) << 16) |
+            (static_cast<uint32_t>(third) << 8) | fourth;
+    return true;
+  }
+
+  bool readBytes(size_t count, std::string &value) {
+    if (count > Bytes.size() - Offset)
+      return false;
+    value.assign(Bytes.data() + Offset, count);
+    Offset += count;
+    return true;
+  }
+
+  bool atEnd() const { return Offset == Bytes.size(); }
+
+private:
+  const std::string &Bytes;
+  size_t Offset = 0;
+};
+
+std::optional<std::vector<Field>> decodeFieldList(ByteReader &reader) {
+  uint16_t count = 0;
+  if (!reader.readU16BE(count))
+    return std::nullopt;
+
+  std::vector<Field> fields;
+  fields.reserve(count);
+  uint16_t previous = 0;
+  bool hasPrevious = false;
+  for (uint16_t index = 0; index < count; ++index) {
+    uint16_t tag = 0;
+    uint32_t length = 0;
+    std::string bytes;
+    if (!reader.readU16BE(tag) || !reader.readU32BE(length) ||
+        !reader.readBytes(length, bytes) ||
+        (hasPrevious && tag <= previous))
+      return std::nullopt;
+    fields.emplace_back(tag, std::move(bytes));
+    previous = tag;
+    hasPrevious = true;
+  }
+  return fields;
+}
+
+std::optional<std::vector<Field>> decodeNestedFieldList(
+    const std::string &bytes) {
+  ByteReader reader(bytes);
+  auto fields = decodeFieldList(reader);
+  if (!fields || !reader.atEnd())
+    return std::nullopt;
+  return fields;
+}
+
+std::optional<std::vector<std::string>> decodeSequence(ByteReader &reader) {
+  uint32_t count = 0;
+  if (!reader.readU32BE(count))
+    return std::nullopt;
+
+  std::vector<std::string> items;
+  for (uint32_t index = 0; index < count; ++index) {
+    uint32_t length = 0;
+    std::string item;
+    if (!reader.readU32BE(length) || !reader.readBytes(length, item))
+      return std::nullopt;
+    items.push_back(std::move(item));
+  }
+  return items;
+}
+
+std::optional<std::vector<std::string>> decodeNestedSequence(
+    const std::string &bytes) {
+  ByteReader reader(bytes);
+  auto items = decodeSequence(reader);
+  if (!items || !reader.atEnd())
+    return std::nullopt;
+  return items;
+}
+
+bool hasTags(const std::vector<Field> &fields,
+             std::initializer_list<uint16_t> expectedTags) {
+  if (fields.size() != expectedTags.size())
+    return false;
+  size_t index = 0;
+  for (uint16_t tag : expectedTags) {
+    if (fields[index++].first != tag)
+      return false;
+  }
+  return true;
+}
+
+const std::string *findField(const std::vector<Field> &fields, uint16_t tag) {
+  for (const auto &[fieldTag, bytes] : fields) {
+    if (fieldTag == tag)
+      return &bytes;
+  }
+  return nullptr;
+}
+
+std::optional<uint32_t> decodeU32Field(const std::string &bytes) {
+  if (bytes.size() != 4)
+    return std::nullopt;
+  ByteReader reader(bytes);
+  uint32_t value = 0;
+  if (!reader.readU32BE(value) || !reader.atEnd())
+    return std::nullopt;
+  return value;
+}
+
+std::optional<bool> decodeBoolField(const std::string &bytes) {
+  if (bytes.size() != 1)
+    return std::nullopt;
+  if (bytes[0] == '\x00')
+    return false;
+  if (bytes[0] == '\x01')
+    return true;
+  return std::nullopt;
+}
+
+std::optional<OutcomeDeclarationWitnessInput::NominalEnum>
+decodeEnumIdentity(const std::string &bytes) {
+  auto fields = decodeNestedFieldList(bytes);
+  if (!fields || !hasTags(*fields, {0x0211, 0x0212, 0x0213, 0x0214, 0x0215}))
+    return std::nullopt;
+  const std::string *crateId = findField(*fields, 0x0211);
+  const std::string *modulePath = findField(*fields, 0x0212);
+  const std::string *kind = findField(*fields, 0x0213);
+  const std::string *name = findField(*fields, 0x0214);
+  const std::string *arityBytes = findField(*fields, 0x0215);
+  if (!crateId || !modulePath || !kind || !name || !arityBytes ||
+      *kind != "enum" || !isValidUtf8(*crateId) ||
+      !isValidUtf8(*modulePath) || !isValidUtf8(*name))
+    return std::nullopt;
+  auto arity = decodeU32Field(*arityBytes);
+  if (!arity)
+    return std::nullopt;
+  return OutcomeDeclarationWitnessInput::NominalEnum{
+      *crateId, *modulePath, *name, *arity};
+}
+
+std::optional<std::vector<OutcomeDeclarationWitnessInput::Parameter>>
+decodeParameters(const std::string &bytes) {
+  auto items = decodeNestedSequence(bytes);
+  if (!items)
+    return std::nullopt;
+
+  std::vector<OutcomeDeclarationWitnessInput::Parameter> parameters;
+  parameters.reserve(items->size());
+  for (size_t index = 0; index < items->size(); ++index) {
+    auto fields = decodeNestedFieldList((*items)[index]);
+    if (!fields ||
+        !hasTags(*fields, {0x0111, 0x0112, 0x0113, 0x0114}))
+      return std::nullopt;
+    const std::string *indexBytes = findField(*fields, 0x0111);
+    const std::string *contractKind = findField(*fields, 0x0112);
+    const std::string *cededBytes = findField(*fields, 0x0113);
+    const std::string *type = findField(*fields, 0x0114);
+    if (!indexBytes || !contractKind || !cededBytes || !type ||
+        !hasCanonicalTypeIdentity(*type))
+      return std::nullopt;
+    auto parameterIndex = decodeU32Field(*indexBytes);
+    auto isCeded = decodeBoolField(*cededBytes);
+    if (!parameterIndex || !isCeded || *parameterIndex != index ||
+        (*contractKind != "init" && *contractKind != "ordinary"))
+      return std::nullopt;
+    parameters.push_back({*parameterIndex, *contractKind == "init", *isCeded,
+                          *type});
+  }
+  return parameters;
+}
+
+std::optional<std::vector<OutcomeDeclarationWitnessInput::Case>>
+decodeCases(const std::string &bytes, const std::string &enumIdentity) {
+  auto items = decodeNestedSequence(bytes);
+  if (!items)
+    return std::nullopt;
+
+  std::vector<OutcomeDeclarationWitnessInput::Case> cases;
+  cases.reserve(items->size());
+  for (const auto &item : *items) {
+    auto fields = decodeNestedFieldList(item);
+    if (!fields || !hasTags(*fields, {0x0221, 0x0222}))
+      return std::nullopt;
+    const std::string *variantBytes = findField(*fields, 0x0221);
+    const std::string *post = findField(*fields, 0x0222);
+    if (!variantBytes || !post || (*post != "init" && *post != "uninit"))
+      return std::nullopt;
+    auto variant = decodeNestedFieldList(*variantBytes);
+    if (!variant || !hasTags(*variant, {0x0231, 0x0232, 0x0233}))
+      return std::nullopt;
+    const std::string *variantEnum = findField(*variant, 0x0231);
+    const std::string *name = findField(*variant, 0x0232);
+    const std::string *ordinalBytes = findField(*variant, 0x0233);
+    if (!variantEnum || !name || !ordinalBytes || *variantEnum != enumIdentity ||
+        name->empty() || !isValidUtf8(*name))
+      return std::nullopt;
+    auto ordinal = decodeU32Field(*ordinalBytes);
+    if (!ordinal)
+      return std::nullopt;
+    cases.push_back({*name, *ordinal, *post == "init"});
+  }
+  return cases;
 }
 
 std::optional<std::string>
@@ -271,6 +504,96 @@ std::string CanonicalDeclarationWitnessEncoder::hexEncode(
     result.push_back(kHex[value & 0x0f]);
   }
   return result;
+}
+
+std::optional<OutcomeDeclarationWitnessInput>
+CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(
+    const std::string &bytes) {
+  ByteReader reader(bytes);
+  std::string magic;
+  if (!reader.readBytes(sizeof(kMagic) - 1, magic) ||
+      magic != std::string(kMagic, sizeof(kMagic) - 1))
+    return std::nullopt;
+  uint16_t version = 0;
+  uint32_t recordCount = 0;
+  uint32_t recordLength = 0;
+  std::string recordBytes;
+  if (!reader.readU16BE(version) || version != 1 ||
+      !reader.readU32BE(recordCount) || recordCount != 1 ||
+      !reader.readU32BE(recordLength) ||
+      !reader.readBytes(recordLength, recordBytes) || !reader.atEnd())
+    return std::nullopt;
+
+  auto record = decodeNestedFieldList(recordBytes);
+  if (!record || !hasTags(*record, {0x0001, 0x0002, 0x0003, 0x0004, 0x0005}))
+    return std::nullopt;
+  const std::string *kind = findField(*record, 0x0001);
+  const std::string *criticality = findField(*record, 0x0002);
+  const std::string *trustClass = findField(*record, 0x0003);
+  const std::string *subjectBytes = findField(*record, 0x0004);
+  const std::string *payloadBytes = findField(*record, 0x0005);
+  if (!kind || !criticality || !trustClass || !subjectBytes || !payloadBytes ||
+      *kind != "outcome-transition" || *criticality != "SafetyRequired" ||
+      *trustClass != "RecomputedDeclarationFact")
+    return std::nullopt;
+
+  auto subject = decodeNestedFieldList(*subjectBytes);
+  if (!subject ||
+      !hasTags(*subject,
+               {0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,
+                0x0108}))
+    return std::nullopt;
+  const std::string *functionCrateId = findField(*subject, 0x0101);
+  const std::string *functionModulePath = findField(*subject, 0x0102);
+  const std::string *functionKind = findField(*subject, 0x0103);
+  const std::string *functionName = findField(*subject, 0x0104);
+  const std::string *functionArityBytes = findField(*subject, 0x0105);
+  const std::string *effectKindBytes = findField(*subject, 0x0106);
+  const std::string *parametersBytes = findField(*subject, 0x0107);
+  const std::string *resultType = findField(*subject, 0x0108);
+  if (!functionCrateId || !functionModulePath || !functionKind || !functionName ||
+      !functionArityBytes || !effectKindBytes || !parametersBytes || !resultType ||
+      *functionKind != "function" || !isValidUtf8(*functionCrateId) ||
+      !isValidUtf8(*functionModulePath) || !isValidUtf8(*functionName) ||
+      !hasCanonicalTypeIdentity(*resultType))
+    return std::nullopt;
+  auto functionArity = decodeU32Field(*functionArityBytes);
+  auto effectKind = decodeU32Field(*effectKindBytes);
+  auto parameters = decodeParameters(*parametersBytes);
+  if (!functionArity || !effectKind || !parameters)
+    return std::nullopt;
+
+  auto payload = decodeNestedFieldList(*payloadBytes);
+  if (!payload || !hasTags(*payload, {0x0201, 0x0202, 0x0203}))
+    return std::nullopt;
+  const std::string *formalIndexBytes = findField(*payload, 0x0201);
+  const std::string *enumIdentityBytes = findField(*payload, 0x0202);
+  const std::string *casesBytes = findField(*payload, 0x0203);
+  if (!formalIndexBytes || !enumIdentityBytes || !casesBytes)
+    return std::nullopt;
+  auto formalIndex = decodeU32Field(*formalIndexBytes);
+  auto returnEnum = decodeEnumIdentity(*enumIdentityBytes);
+  auto cases = decodeCases(*casesBytes, *enumIdentityBytes);
+  if (!formalIndex || !returnEnum || !cases)
+    return std::nullopt;
+
+  OutcomeDeclarationWitnessInput input;
+  input.FunctionCrateId = *functionCrateId;
+  input.FunctionLogicalModulePath = *functionModulePath;
+  input.FunctionName = *functionName;
+  input.FunctionGenericArity = *functionArity;
+  input.EffectKind = *effectKind;
+  input.Parameters = std::move(*parameters);
+  input.CanonicalResultType = *resultType;
+  input.OutcomeFormalIndex = *formalIndex;
+  input.ReturnEnum = std::move(*returnEnum);
+  input.Cases = std::move(*cases);
+
+  auto canonical =
+      CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(input);
+  if (!canonical || *canonical != bytes)
+    return std::nullopt;
+  return input;
 }
 
 } // namespace toka

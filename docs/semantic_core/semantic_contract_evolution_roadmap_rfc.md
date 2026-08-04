@@ -354,8 +354,8 @@ for `init`, Outcome, and async cleanup obligations.
 now proposes the candidate P1 encoding and atomic comparison rules for the
 declaration-recomputed Outcome record. Its exact known-coordinate,
 non-generic, concrete first-order subset now has an encoder-only `cdw1:`
-audit probe, which remains an activation gate rather than an enabled TKI
-payload: structured decoding, declaration reconstruction/atomic comparison,
+audit probe and standalone strict decoder. It remains an activation gate rather
+than an enabled TKI payload: declaration reconstruction/atomic comparison,
 generic/method identities, and the full tamper matrix must close first.
 
 ### 4.6 Subsequent capability RFCs

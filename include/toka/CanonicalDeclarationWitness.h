@@ -68,4 +68,13 @@ public:
   static std::string hexEncode(const std::string &bytes);
 };
 
+class CanonicalDeclarationWitnessDecoder {
+public:
+  // Accepts one complete, canonical CDW1 outcome-transition record. Any
+  // malformed, unsupported, or non-canonical byte sequence returns nullopt.
+  // This codec is independent of TKI comments and importer authority.
+  static std::optional<OutcomeDeclarationWitnessInput>
+  decodeOutcomeTransition(const std::string &bytes);
+};
+
 } // namespace toka

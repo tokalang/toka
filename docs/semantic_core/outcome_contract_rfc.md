@@ -417,8 +417,8 @@ the exporter additionally emits a lowercase-hex `@tki v2 cdw1:` encoder probe
 for the candidate declaration-witness byte grammar. Its bytes are required to
 be stable across retained-body source-less replay, but the parser/importer
 ignore the comment entirely; it does not serialize authority or admit a
-bodyless provider. Strict decoding and independently reconstructed comparison
-remain later activation gates.
+bodyless provider. Strict decoding is currently standalone; independently
+reconstructed comparison remains a later activation gate.
 
 An unbound or ordinary third-party TKI cannot establish body-derived
 fulfilment merely by asserting a transition. Support therefore has two

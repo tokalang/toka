@@ -139,8 +139,8 @@ probe. Its raw bytes follow the candidate CDW1 declaration-witness grammar and
 must remain equal across retained-body source-less replay. The parser and
 importer ignore this comment completely: missing, malformed, or altered
 hexadecimal does not change Level-A acceptance and cannot enable a bodyless
-provider. A future strict decoder and independently reconstructed comparison
-remain an activation gate.
+provider. The strict decoder is currently a standalone codec; independently
+reconstructed declaration comparison remains an activation gate.
 
 ### Shape Structure
 

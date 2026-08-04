@@ -5,6 +5,7 @@
 #include <utility>
 
 using toka::CanonicalDeclarationWitnessEncoder;
+using toka::CanonicalDeclarationWitnessDecoder;
 using toka::OutcomeDeclarationWitnessInput;
 
 namespace {
@@ -36,6 +37,12 @@ int main() {
   auto first = CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(input);
   assert(first);
   assert(first->rfind("toka.declaration-witness\0\0\1\0\0\0\1", 0) == 0);
+  auto decoded =
+      CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(*first);
+  assert(decoded);
+  auto reencoded =
+      CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(*decoded);
+  assert(reencoded && *reencoded == *first);
 
   std::swap(input.Cases[0], input.Cases[1]);
   auto reordered =
@@ -52,5 +59,49 @@ int main() {
   const std::string hex = CanonicalDeclarationWitnessEncoder::hexEncode(*first);
   assert(hex.rfind("746f6b612e6465636c61726174696f6e2d7769746e65737300", 0) ==
          0);
+
+  constexpr size_t kHeaderSize =
+      sizeof("toka.declaration-witness\0") - 1 + 2 + 4 + 4;
+  std::string truncated = *first;
+  truncated.pop_back();
+  assert(!CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(truncated));
+
+  std::string trailing = *first;
+  trailing.push_back('\0');
+  assert(!CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(trailing));
+
+  std::string unsupportedVersion = *first;
+  unsupportedVersion[sizeof("toka.declaration-witness\0") - 1] = '\0';
+  unsupportedVersion[sizeof("toka.declaration-witness\0")] = '\2';
+  assert(!CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(
+      unsupportedVersion));
+
+  std::string unknownField = *first;
+  unknownField[kHeaderSize + 2] = '\0';
+  unknownField[kHeaderSize + 3] = '\0';
+  assert(!CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(
+      unknownField));
+
+  std::string reorderedField = *first;
+  const size_t secondTag =
+      kHeaderSize + 2 + 2 + 4 + std::string("outcome-transition").size();
+  reorderedField[kHeaderSize + 2] = '\0';
+  reorderedField[kHeaderSize + 3] = '\2';
+  reorderedField[secondTag] = '\0';
+  reorderedField[secondTag + 1] = '\1';
+  assert(!CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(
+      reorderedField));
+
+  input = sample();
+  input.Cases = {{"Err", 0, false}, {"Foo", 0, true}};
+  auto distinctCases =
+      CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(input);
+  assert(distinctCases);
+  std::string duplicateVariant = *distinctCases;
+  const size_t foo = duplicateVariant.find("Foo");
+  assert(foo != std::string::npos);
+  duplicateVariant.replace(foo, 3, "Err");
+  assert(!CanonicalDeclarationWitnessDecoder::decodeOutcomeTransition(
+      duplicateVariant));
   return 0;
 }
