@@ -263,6 +263,7 @@ pub fn read_record<'R: @Reader>(reader#: BufferedReader<'R>, max_record_bytes: u
         return Result<Option<Vec<string>>, CsvError>::Ok(
             Option<Vec<string>>::Some(cede row))
     }
+    unreachable
 }
 
 // Write one owned record through the existing buffered writer. The caller

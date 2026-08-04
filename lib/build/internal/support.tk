@@ -30,7 +30,6 @@ pub fn __path_canonicalize(p: string) -> string {
     auto norm# = __path_normalize(path_str)
     auto parts = norm.split('/' as i32)
     auto resolved_parts# = Vec<string>::new()
-    resolved_parts = cede resolved_parts
 
     loop !parts.is_done() {
         auto part = parts#.next()
