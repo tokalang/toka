@@ -5,7 +5,7 @@ fn main() -> i32 {
     auto path = string::from("/tmp/qslite-vertical.db")
     remove_file(path.clone())
     {
-        auto opened = open_database(path.clone())
+        auto opened = open_database(cede path.clone())
         assert(opened.is_ok(), "create failed")
         auto database# = opened.unwrap()
         assert(database#.upsert(20, string::from("twenty")).is_ok(), "insert 20 failed")
@@ -16,7 +16,7 @@ fn main() -> i32 {
         assert(database.scan_text() == "10\tten\n20\tTWENTY\n", "scan is not ordered")
     }
     {
-        auto reopened = open_database(path.clone())
+        auto reopened = open_database(cede path.clone())
         assert(reopened.is_ok(), "reopen failed")
         auto database# = reopened.unwrap()
         assert(database.get(10).unwrap() == "ten", "row 10 did not persist")
@@ -24,7 +24,7 @@ fn main() -> i32 {
         assert(database#.remove(10).unwrap(), "delete failed")
     }
     {
-        auto reopened = open_database(path.clone())
+        auto reopened = open_database(cede path.clone())
         assert(reopened.is_ok(), "second reopen failed")
         auto database = reopened.unwrap()
         assert(database.len() == 1, "delete did not persist")

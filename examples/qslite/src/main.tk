@@ -12,7 +12,7 @@ fn main() -> i32 {
     if argc < 3 { return usage() }
     auto path = get_arg(1)
     auto command = get_arg(2)
-    auto opened = open_database(path)
+    auto opened = open_database(cede path)
     if opened.is_err() {
         auto problem = opened.unwrap_err()
         println("error[{}]: {}", problem.code(), problem.message())

@@ -19,7 +19,9 @@ pub shape DbError(
 
 impl DbError@Encap {
     fn drop(self#) {}
+}
 
+impl DbError {
     pub fn clone(self) -> DbError {
         return DbError(code = self.code, message = self.message.clone())
     }
@@ -35,7 +37,9 @@ pub shape Row(
 
 impl Row@Encap {
     fn drop(self#) {}
+}
 
+impl Row {
     pub fn clone(self) -> Row {
         return Row(key = self.key, value = self.value.clone())
     }
@@ -51,7 +55,9 @@ pub shape Database(
 
 impl Database@Encap {
     fn drop(self#) {}
+}
 
+impl Database {
     pub fn len(self) -> usize { return self.rows.len() }
 
     pub fn get(self, key: u64) -> Option<string> {
@@ -300,12 +306,12 @@ fn persist_content(path: string, content: string) -> Result<bool, DbError> {
     return Result<bool, DbError>::Ok(true)
 }
 
-pub fn open_database(path: string) -> Result<Database, DbError> {
+pub fn open_database(cede path: string) -> Result<Database, DbError> {
     if !exists(path.clone()) {
         auto created = persist_content(path.clone(), string::from("QSLITE\t1\n"))
         if created.is_err() { return Result<Database, DbError>::Err(created.unwrap_err()) }
         auto empty = Vec<Row>::new()
-        return Result<Database, DbError>::Ok(Database(path = path, rows = cede empty))
+        return Result<Database, DbError>::Ok(Database(path = cede path, rows = cede empty))
     }
     auto file# = File::open(path.clone(), "rb")
     if !file.is_valid() {
@@ -318,5 +324,5 @@ pub fn open_database(path: string) -> Result<Database, DbError> {
     }
     auto decoded = decode(content_result.unwrap())
     if decoded.is_err() { return Result<Database, DbError>::Err(decoded.unwrap_err()) }
-    return Result<Database, DbError>::Ok(Database(path = path, rows = decoded.unwrap()))
+    return Result<Database, DbError>::Ok(Database(path = cede path, rows = decoded.unwrap()))
 }
