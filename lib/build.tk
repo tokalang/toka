@@ -484,7 +484,7 @@ fn check_dirty_recursive(
     memo#: HashMap<string, DfsResult>,
     visiting#: HashMap<string, bool>
 ) -> DfsResult {
-    auto memo_opt = memo.get(node)
+    auto memo_opt = memo.get_ref(node)
     if memo_opt.is_none() == false {
         return cede memo_opt.unwrap().clone()
     }
@@ -498,7 +498,7 @@ fn check_dirty_recursive(
         )
     }
     
-    auto dirty_reason_opt = dirty_map.get(node)
+    auto dirty_reason_opt = dirty_map.get_ref(node)
     if dirty_reason_opt.is_none() == false {
         auto res = DfsResult(
             is_dirty = true,

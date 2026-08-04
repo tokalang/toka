@@ -52,37 +52,49 @@ impl ParsedArgs {
     }
 
     pub fn get_int(self, name: string) -> i64 {
-        auto val = self.values.get(name)
-        if val.is_none() { return 0 }
-        match val.unwrap() {
-            auto FlagValue::Int(v) => return v
+        match self.values.get_ref(name) {
+            auto Option<&FlagValue>::Some(&val) => {
+                match val {
+                    auto FlagValue::Int(v) => return v
+                    _ => return 0
+                }
+            }
             _ => return 0
         }
     }
 
     pub fn get_float(self, name: string) -> f64 {
-        auto val = self.values.get(name)
-        if val.is_none() { return 0.0 }
-        match val.unwrap() {
-            auto FlagValue::Float(v) => return v
+        match self.values.get_ref(name) {
+            auto Option<&FlagValue>::Some(&val) => {
+                match val {
+                    auto FlagValue::Float(v) => return v
+                    _ => return 0.0
+                }
+            }
             _ => return 0.0
         }
     }
 
     pub fn get_bool(self, name: string) -> bool {
-        auto val = self.values.get(name)
-        if val.is_none() { return false }
-        match val.unwrap() {
-            auto FlagValue::Bool(v) => return v
+        match self.values.get_ref(name) {
+            auto Option<&FlagValue>::Some(&val) => {
+                match val {
+                    auto FlagValue::Bool(v) => return v
+                    _ => return false
+                }
+            }
             _ => return false
         }
     }
 
     pub fn get_string(self, name: string) -> string {
-        auto val = self.values.get(name)
-        if val.is_none() { return string::from("") }
-        match val.unwrap() {
-            auto FlagValue::Str(&v) => return v.clone()
+        match self.values.get_ref(name) {
+            auto Option<&FlagValue>::Some(&val) => {
+                match val {
+                    auto FlagValue::Str(&v) => return v.clone()
+                    _ => return string::from("")
+                }
+            }
             _ => return string::from("")
         }
     }
@@ -238,7 +250,10 @@ impl Parser {
         auto i# = 0:usize
         loop i < self.defs.len() {
             auto &d = self.defs.get_ref(i)
-            parsed.values#.insert(cede d.name.clone(), cede d.default_val.clone())
+            auto cloned = d.clone()
+            auto value = cloned.default_val.clone()
+            auto name = cloned.name.clone()
+            parsed.values#.insert(cede name, cede value)
             i = i + 1
         }
 

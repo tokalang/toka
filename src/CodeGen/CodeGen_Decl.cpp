@@ -2724,6 +2724,11 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 
   // 2. Handle Arguments
   for (size_t i = 0; i < expr->Args.size(); ++i) {
+    const auto *cededArg =
+        dynamic_cast<const CedeExpr *>(expr->Args[i].get());
+    const Expr *cededSource = cededArg ? cededArg->Value.get() : nullptr;
+    while (auto *cast = dynamic_cast<const CastExpr *>(cededSource))
+      cededSource = cast->Expression.get();
     bool isCaptured = false;
     size_t targetArgIdx = isStatic ? i : (i + 1);
     size_t llvmArgIdx = targetArgIdx + (isSRet ? 1 : 0);
@@ -2764,7 +2769,28 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 
     llvm::Value *argVal = nullptr;
     if (isCaptured) {
-      argVal = genAddr(expr->Args[i].get());
+      // Captured values are passed through their storage slot. In particular,
+      // a ceded local must not be materialized into an aggregate temporary:
+      // the callee receives the source storage and the caller's drop
+      // obligation is discharged below.
+      if (auto *var = dynamic_cast<const VariableExpr *>(cededSource)) {
+        const std::string baseName =
+            Type::stripMorphology(var->codegenName());
+        const auto symbol = m_Symbols.find(baseName);
+        if (symbol != m_Symbols.end() &&
+            (symbol->second.mode == AddressingMode::Reference ||
+             (symbol->second.mode == AddressingMode::Pointer &&
+              symbol->second.morphology == Morphology::None))) {
+          argVal = getEntityAddr(var->codegenName());
+        } else {
+          argVal = getIdentityAddr(var->codegenName());
+        }
+      } else if (dynamic_cast<const MemberExpr *>(cededSource) ||
+                 dynamic_cast<const ArrayIndexExpr *>(cededSource)) {
+        argVal = genAddr(cededSource);
+      }
+      if (!argVal)
+        argVal = genAddr(expr->Args[i].get());
       if (!argVal) {
         // R-Value fallback
         llvm::Value *rval = genExpr(expr->Args[i].get()).load(m_Builder);
@@ -2796,6 +2822,15 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 
     if (!argVal)
       return nullptr;
+
+    if (cededArg && isCaptured) {
+      if (auto *var = dynamic_cast<const VariableExpr *>(cededSource))
+        suppressDropForMove(var->Name);
+      else if (auto *member = dynamic_cast<const MemberExpr *>(cededSource))
+        suppressDropForPartialMove(member);
+      else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(cededSource))
+        suppressDropForPartialMove(index);
+    }
 
     // [NEW] Fat Pointer Synthesis for Strings in Method Calls
     // Method argument types might not be found in local m_Functions if defined in another module.

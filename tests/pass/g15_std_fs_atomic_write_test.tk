@@ -1,7 +1,13 @@
-import std/fs::{read_to_string, write_string_atomic}
+import std/fs::{create_dir, exists, read_to_string, write_string_atomic}
 import std/io::{println, remove_file}
 
 fn main() -> i32 {
+    auto tmp_dir = string::from("tmp")
+    if !exists(tmp_dir.clone()) {
+        create_dir(tmp_dir.clone())
+    }
+    assert(exists(tmp_dir), "atomic write fixture must create its parent directory")
+
     auto path = string::from("tmp/g15_std_fs_atomic_write.txt")
     remove_file(path.clone())
 
