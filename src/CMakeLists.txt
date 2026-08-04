@@ -23,6 +23,7 @@ set(toka_frontend_sources
     Sema/Sema_Template.cpp
     Sema/AccessPath.cpp
     Sema/Sema_AccessPath.cpp
+    Sema/CanonicalDeclarationWitness.cpp
     Sema/SemanticEvidence.cpp
     Sema/SemanticIndex.cpp
     Sema/MemorySummary.cpp

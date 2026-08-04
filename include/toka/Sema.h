@@ -22,6 +22,7 @@
 #include "toka/ComptimeValue.h"
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <ostream>
 #include <set>
 #include <string>
@@ -503,6 +504,8 @@ private:
   std::string canonicalOutcomeFunctionIdentity(FunctionDecl *fn,
                                                bool &hasCanonicalTypes);
   std::string canonicalOutcomeShapeIdentity(const ShapeDecl *shape) const;
+  std::optional<std::string>
+  canonicalOutcomeDeclarationWitness(FunctionDecl *fn) const;
   void populateOutcomeTransitionIdentities(FunctionDecl *fn);
   void recordSlice1ImplFact(ImplDecl *impl,
                             const std::string &resolvedTypeName,

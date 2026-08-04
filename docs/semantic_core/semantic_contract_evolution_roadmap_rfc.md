@@ -352,9 +352,11 @@ for `init`, Outcome, and async cleanup obligations.
 
 [`canonical_declaration_witness_rfc.md`](canonical_declaration_witness_rfc.md)
 now proposes the candidate P1 encoding and atomic comparison rules for the
-declaration-recomputed Outcome record. It remains an activation gate, not an
-enabled TKI payload: resolver-known coordinates, generic/method identities,
-structured decoding, and the full tamper matrix must close first.
+declaration-recomputed Outcome record. Its exact known-coordinate,
+non-generic, concrete first-order subset now has an encoder-only `cdw1:`
+audit probe, which remains an activation gate rather than an enabled TKI
+payload: structured decoding, declaration reconstruction/atomic comparison,
+generic/method identities, and the full tamper matrix must close first.
 
 ### 4.6 Subsequent capability RFCs
 

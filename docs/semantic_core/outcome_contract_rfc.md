@@ -412,6 +412,14 @@ nominal definition rather than a short shape name. Generic domains, strong
 aliases, anonymous records, projections, symbolic extents, and callable forms
 remain `type-domain=unavailable`; no compiler rule reads either result.
 
+For the admitted known-coordinate, non-generic concrete first-order subset,
+the exporter additionally emits a lowercase-hex `@tki v2 cdw1:` encoder probe
+for the candidate declaration-witness byte grammar. Its bytes are required to
+be stable across retained-body source-less replay, but the parser/importer
+ignore the comment entirely; it does not serialize authority or admit a
+bodyless provider. Strict decoding and independently reconstructed comparison
+remain later activation gates.
+
 An unbound or ordinary third-party TKI cannot establish body-derived
 fulfilment merely by asserting a transition. Support therefore has two
 explicit completion levels:

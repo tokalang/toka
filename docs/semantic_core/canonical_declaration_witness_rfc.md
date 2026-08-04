@@ -1,9 +1,11 @@
 # RFC: Canonical Declaration Witness
 
-**Status:** Proposed P1 schema and activation gate. This RFC changes no source
-syntax, TKI metadata, cache behavior, import decision, or object-link rule.
-The existing `@tki v2 outcome_transition:` comment is an implementation audit
-artifact, not an instance of this schema.
+**Status:** Proposed P1 schema and activation gate, with an implemented
+audit-only encoder prototype. The prototype adds an ignorable `@tki v2 cdw1:`
+hex comment for the admitted P1 subset; it changes no source syntax, metadata
+authority, cache behavior, import decision, or object-link rule. The existing
+`@tki v2 outcome_transition:` comment remains a distinct implementation audit
+artifact.
 
 **Depends on:** `semantic_manifest_envelope_rfc.md`, resolver-owned module
 coordinates, the resolved `OutcomeTransition` representation, and Level-A
@@ -172,6 +174,35 @@ identifiers and type encodings must already be the compiler's normalized
 canonical forms. No platform newline, locale, map iteration order, quoted
 display text, or filesystem spelling participates.
 
+### 5.1 Current audit-only encoder prototype
+
+The compiler now encodes this exact P1 subset when all admission gates close:
+resolver-known function and return-enum coordinates, a non-generic top-level
+function and direct non-generic enum, and complete
+`toka-outcome-type-v1` physical identities for every parameter and the result.
+It writes the raw CDW1 bytes as lowercase hexadecimal in one ignorable
+`@tki v2 cdw1:` comment. The comment is an observability carrier, not a
+manifest field or an import format.
+
+The implementation realizes the nested forms above as:
+
+```text
+FieldList = u16be(FieldCount) Field*
+Sequence  = u32be(ItemCount) (u32be(ItemByteLength) ItemBytes)*
+```
+
+It checks strictly increasing field tags, UTF-8 text, fixed-width integer
+lengths, positional parameter indices, a valid `init` outcome formal, and
+duplicate complete variant identities. Cases are sorted by their complete
+encoded variant identity, so source declaration order does not affect CDW1
+bytes. The retained-body source-less replay test requires identical emitted
+bytes; malformed, absent, or altered `cdw1:` comments remain deliberately
+ignored by the importer.
+
+There is intentionally no CDW1 decoder or importer comparison at this stage.
+The prototype therefore cannot make a declaration more acceptable, permit a
+bodyless provider, or create any caller, cleanup, or object-link authority.
+
 For `outcome-transition`, the payload order is exactly:
 
 1. Outcome-formal identity;
@@ -209,7 +240,7 @@ from its resolver-derived coordinate, even if every declaration spelling and
 byte field otherwise matches. A provider-controlled `source_path` cannot repair
 that mismatch.
 
-## 7. Relationship to the current audit record
+## 7. Relationship to the current audit records
 
 The current `@tki v2 outcome_transition:` comment establishes two useful P1
 implementation facts:
@@ -232,10 +263,12 @@ otherwise it carries `coordinate=unbound`. Ordinary local compilation remains
 valid in the latter case. This reports the P1 coordinate boundary without
 making the comment part of TKI import, caller acceptance, or cache authority.
 
-The comment is intentionally not CDW1: it is textual, has no manifest
-envelope, permits `unbound` for local test modules, and is not parsed by the
-importer. It may be used as a regression oracle while the actual encoder and
-consumer are implemented, but it must not be promoted in place.
+The textual `outcome_transition:` comment is intentionally not CDW1: it
+permits `unbound` local test modules and is not parsed by the importer. The
+separate `cdw1:` comment carries an encoder probe only for the fully admitted
+known-coordinate P1 subset. It too has no manifest envelope and is not parsed
+by the importer; an altered hexadecimal payload must have exactly the same
+current import outcome. Neither comment may be promoted in place.
 
 ## 8. Activation gate
 
@@ -244,7 +277,8 @@ Implementing CDW1 requires all of the following at one exact compiler revision:
 1. canonical type and generic-domain encodings for every admitted declaration;
 2. resolver-known coordinates and stable owner identity for every admitted
    record, with tests that reject an unbound or forged coordinate;
-3. a structured encoder/decoder independent of `@tki` comments;
+3. a structured encoder and decoder independent of `@tki` comments; the
+   encoder prototype exists, but a strict decoder remains required;
 4. importer reconstruction and atomic byte comparison before any consumer can
    observe a record;
 5. duplicate, reorder, omission, unknown-tag/version, and altered-identity
@@ -260,15 +294,16 @@ provenance and exact-object-binding rules in the Semantic Manifest Envelope.
 
 ## 9. Next decision
 
-The resolver boundary is now established for the small P1 domain: an explicit
-workspace, package, or toolchain node can provide a stable coordinate, while
-ordinary local compilation remains coordinate-unbound. The audit marker proves
-that source and retained-body source-less replay preserve this distinction; it
-does not make a coordinate mandatory or activate CDW1.
+The resolver boundary and conservative concrete-type seed are now exercised by
+the encoder prototype: an explicit workspace, package, or toolchain node can
+provide a stable coordinate, while ordinary local compilation remains
+coordinate-unbound and emits no CDW1 probe. The prototype proves deterministic
+source/retained-body source-less encoding without turning its comment into
+authority.
 
-The audit now establishes a conservative concrete-type seed and rejects every
-other form explicitly. The next implementation decision is still not "add a
-digest." It is whether to encode this exact known-coordinate, non-generic,
-first-order subset in a structured but importer-ignored CDW1 prototype, with
-source/source-less reconstruction tests, before considering generic binders,
-strong aliases, a manifest, or any bodyless-provider design.
+The next implementation decision is still not "add a digest." It is whether
+to add an independently framed strict decoder and declaration reconstruction
+comparison while preserving the importer-ignored boundary, with the full
+malformed/reordered/unknown-field test matrix. That decision remains separate
+from generic binders, strong aliases, a manifest, and every bodyless-provider
+design.

@@ -25,6 +25,10 @@ if ! grep -Fq "type-domain=unavailable;" "$TEST_DIR/lib.tki"; then
     echo "FAIL: coordinate-unbound Outcome audit did not close its type domain" >&2
     exit 1
 fi
+if grep -q '^// @tki v2 cdw1:' "$TEST_DIR/lib.tki"; then
+    echo "FAIL: coordinate-unbound Outcome interface emitted a CDW1 prototype" >&2
+    exit 1
+fi
 
 # A resolver-owned workspace coordinate makes the narrow declaration fact
 # eligible for a future witness schema.  The audit marker is still not parsed
@@ -39,6 +43,15 @@ if ! grep -Fq "coordinate=known;" "$TEST_DIR/known/lib.tki"; then
 fi
 if ! grep -Fq "type-domain=canonical-v1;" "$TEST_DIR/known/lib.tki"; then
     echo "FAIL: concrete known-coordinate Outcome types were not canonicalized" >&2
+    exit 1
+fi
+if [[ "$(grep -c '^// @tki v2 cdw1:' "$TEST_DIR/known/lib.tki")" != "1" ]]; then
+    echo "FAIL: known-coordinate Outcome interface did not emit exactly one CDW1 prototype" >&2
+    exit 1
+fi
+if ! grep -Eq '^// @tki v2 cdw1: 746f6b612e6465636c61726174696f6e2d7769746e65737300000100000001' \
+    "$TEST_DIR/known/lib.tki"; then
+    echo "FAIL: CDW1 prototype missed the canonical magic, version, or record count" >&2
     exit 1
 fi
 
@@ -67,6 +80,10 @@ cp "$CASE_DIR/lib_strong_alias.tk" "$TEST_DIR/strong-alias/lib.tk"
 if ! grep -Fq "type-domain=unavailable;" \
     "$TEST_DIR/strong-alias/lib.tki"; then
     echo "FAIL: strong-alias Outcome type was silently admitted to P1" >&2
+    exit 1
+fi
+if grep -q '^// @tki v2 cdw1:' "$TEST_DIR/strong-alias/lib.tki"; then
+    echo "FAIL: strong-alias Outcome interface emitted a CDW1 prototype" >&2
     exit 1
 fi
 
@@ -99,6 +116,14 @@ if ! cmp -s "$TEST_DIR/known/source.identity" \
     echo "FAIL: known-coordinate Outcome identity changed across source-less TKI replay" >&2
     exit 1
 fi
+grep '^// @tki v2 cdw1:' "$TEST_DIR/known/lib.tki" \
+    > "$TEST_DIR/known/source.cdw1"
+grep '^// @tki v2 cdw1:' "$TEST_DIR/known/replayed.tki" \
+    > "$TEST_DIR/known/replayed.cdw1"
+if ! cmp -s "$TEST_DIR/known/source.cdw1" "$TEST_DIR/known/replayed.cdw1"; then
+    echo "FAIL: CDW1 prototype changed across source-less TKI replay" >&2
+    exit 1
+fi
 
 "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/nominal/lib.tki" -o "$TEST_DIR/nominal/replayed.o"
@@ -111,6 +136,30 @@ if ! cmp -s "$TEST_DIR/nominal/source.identity" \
     echo "FAIL: nominal Outcome type identity changed across source-less TKI replay" >&2
     exit 1
 fi
+grep '^// @tki v2 cdw1:' "$TEST_DIR/nominal/lib.tki" \
+    > "$TEST_DIR/nominal/source.cdw1"
+grep '^// @tki v2 cdw1:' "$TEST_DIR/nominal/replayed.tki" \
+    > "$TEST_DIR/nominal/replayed.cdw1"
+if ! cmp -s "$TEST_DIR/nominal/source.cdw1" "$TEST_DIR/nominal/replayed.cdw1"; then
+    echo "FAIL: nominal CDW1 prototype changed across source-less TKI replay" >&2
+    exit 1
+fi
+
+# CDW1 is transported as an audit comment only. A malformed payload cannot
+# affect source-less retained-body replay or caller acceptance.
+cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
+sed '/^\/\/ @tki v2 cdw1:/s|.*|// @tki v2 cdw1: malformed|' \
+    "$TEST_DIR/known/lib.tki" > "$TEST_DIR/known/lib.tki.cdw.tampered"
+mv "$TEST_DIR/known/lib.tki.cdw.tampered" "$TEST_DIR/known/lib.tki"
+if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-ignored.o" \
+    > "$TEST_DIR/known/comment-ignored.out" \
+    2> "$TEST_DIR/known/comment-ignored.err"; then
+    echo "FAIL: malformed CDW1 audit comment changed caller acceptance" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/comment-ignored.err" >&2
+    exit 1
+fi
+mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 
 # A known coordinate is only an audit boundary.  It cannot turn a bodyless
 # interface into an accepted Outcome provider.

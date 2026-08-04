@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "toka/Sema.h"
+#include "toka/CanonicalDeclarationWitness.h"
 #include "toka/DiagnosticEngine.h"
 #include "toka/HandleSurfaceStats.h"
 #include "toka/SourceManager.h"
@@ -871,6 +872,63 @@ Sema::canonicalOutcomeShapeIdentity(const ShapeDecl *shape) const {
   return result;
 }
 
+std::optional<std::string>
+Sema::canonicalOutcomeDeclarationWitness(FunctionDecl *fn) const {
+  if (!fn || !fn->ResolvedOutcomeTransition)
+    return std::nullopt;
+
+  const auto &transition = *fn->ResolvedOutcomeTransition;
+  if (!transition.HasKnownDeclarationCoordinates ||
+      !transition.HasCanonicalTypeIdentities || !transition.ReturnEnum ||
+      fn->GenericParams.size() != 0 ||
+      transition.ReturnEnum->GenericParams.size() != 0)
+    return std::nullopt;
+
+  auto functionOwner = DeclarationLexicalScopes.find(fn);
+  auto enumOwner = DeclarationLexicalScopes.find(transition.ReturnEnum);
+  if (functionOwner == DeclarationLexicalScopes.end() || !functionOwner->second ||
+      enumOwner == DeclarationLexicalScopes.end() || !enumOwner->second)
+    return std::nullopt;
+
+  OutcomeDeclarationWitnessInput input;
+  input.FunctionCrateId = functionOwner->second->ShadowCrateId;
+  input.FunctionLogicalModulePath =
+      functionOwner->second->ShadowLogicalModulePath;
+  input.FunctionName = fn->Name;
+  input.FunctionGenericArity = fn->GenericParams.size();
+  input.EffectKind = static_cast<unsigned>(fn->Effect);
+  input.Parameters.reserve(fn->Args.size());
+  for (size_t index = 0; index < fn->Args.size(); ++index) {
+    std::string typeIdentity;
+    if (!canonicalOutcomeTypeIdentity(fn->Args[index].ResolvedType,
+                                      typeIdentity))
+      return std::nullopt;
+    input.Parameters.push_back({static_cast<uint32_t>(index),
+                                fn->Args[index].IsInit,
+                                fn->Args[index].IsCeded,
+                                std::move(typeIdentity)});
+  }
+  if (!canonicalOutcomeTypeIdentity(fn->ResolvedReturnType,
+                                    input.CanonicalResultType))
+    return std::nullopt;
+
+  input.OutcomeFormalIndex = static_cast<uint32_t>(transition.SubjectIndex);
+  input.ReturnEnum = {enumOwner->second->ShadowCrateId,
+                      enumOwner->second->ShadowLogicalModulePath,
+                      transition.ReturnEnum->Name,
+                      static_cast<uint32_t>(
+                          transition.ReturnEnum->GenericParams.size())};
+  input.Cases.reserve(transition.Cases.size());
+  for (const auto &entry : transition.Cases) {
+    if (!entry.Variant)
+      return std::nullopt;
+    input.Cases.push_back({entry.Variant->Name,
+                           static_cast<uint32_t>(entry.VariantOrdinal),
+                           entry.Post == OutcomePostState::Init});
+  }
+  return CanonicalDeclarationWitnessEncoder::encodeOutcomeTransition(input);
+}
+
 void Sema::populateOutcomeTransitionIdentities(FunctionDecl *fn) {
   if (!fn || !fn->ResolvedOutcomeTransition)
     return;
@@ -1620,6 +1678,10 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
     if (!fn->ResolvedOutcomeTransition)
       continue;
     const auto &transition = *fn->ResolvedOutcomeTransition;
+    if (auto cdw = canonicalOutcomeDeclarationWitness(fn.get())) {
+      M.InterfaceV2Facts.push_back(
+          "cdw1: " + CanonicalDeclarationWitnessEncoder::hexEncode(*cdw));
+    }
     std::vector<std::string> cases;
     for (const auto &entry : transition.Cases) {
       cases.push_back(entry.VariantIdentity + "post=" +

@@ -133,6 +133,15 @@ types with resolver-known nominal owners; unsupported generic, strong-alias,
 projection, anonymous-record, symbolic-extent, and callable forms report
 `type-domain=unavailable` rather than falling back to display text.
 
+For the fully admitted known-coordinate, non-generic concrete first-order
+subset, the exporter also emits one lowercase-hex `@tki v2 cdw1:` encoder
+probe. Its raw bytes follow the candidate CDW1 declaration-witness grammar and
+must remain equal across retained-body source-less replay. The parser and
+importer ignore this comment completely: missing, malformed, or altered
+hexadecimal does not change Level-A acceptance and cannot enable a bodyless
+provider. A future strict decoder and independently reconstructed comparison
+remain an activation gate.
+
 ### Shape Structure
 
 Shape definitions must preserve all structure needed for semantic checking,
