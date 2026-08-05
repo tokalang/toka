@@ -1,109 +1,78 @@
 # P-1 Current-HEAD Qualification Ledger
 
-Status: **Blocked — `f388fedb7a8d9f70ba49185f4ed2176f297174f1` is not a
-qualified P-1 baseline.** This ledger records an audit run, not a release
-approval.
+Status: **Qualified — `b937224aa3a3dc29978967097b40682ca0f6ceae` is the
+current P-1 baseline.** This ledger records the exact clean-worktree release
+gate that closed P-1; it is not a claim that later PlaceState, TCB, or manifest
+work is complete.
 
 ## Audit identity
 
-- Revision: `f388fedb7a8d9f70ba49185f4ed2176f297174f1`
-- Date: 2026-08-04
+- Revision: `b937224aa3a3dc29978967097b40682ca0f6ceae`
+- Date: 2026-08-05
 - Target: `macos-arm64`
 - Source: clean detached worktree; `source_dirty: false`
+- Configuration: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`, using the
+  default release version `0.9.9-01`
 - Runner: `tools/scripts/release_gate.py --target macos-arm64 --build-dir
-  build-p1`
+  build`
+- Report schema: `toka.release-gate` v2; `version_label: v0.9.9-01`
 
-The revision makes two baseline-only repairs found by the first P-1 pass run:
-
-- removes an invalid self-overlap transfer in
-  `lib/build/internal/support.tk`; and
-- terminates the logically non-fallthrough CSV streaming loop with
-  `unreachable` in `lib/stdx/data/csv.tk`.
-
-Neither repair adds language syntax, alters TKI authority, or changes the
-async/ownership contract under qualification.
-
-## Current evidence
+## Qualified evidence
 
 | Gate | Result at this revision |
 |---|---|
 | release build | pass |
-| release positive suite | **380 passed, 17 failed** |
-| semantic replay, source-backed vs source-less | 32 passed, 0 failed |
-| TaskHandle Lifecycle Contract v1 | pass |
-| Outcome retained-body recheck and coordinate audit | pass |
-| `@Encap` Slice 5 TKI v2 audit | pass |
-| untrusted unsafe-TKI API revalidation | pass |
+| release positive suite | 397 passed, 0 failed |
 | negative diagnostic suite | 319 passed, 0 failed |
 | warning suite | 1 passed, 0 failed |
-| `g16_init_cleanup_liveness_test.tk` | pass |
+| semantic replay, source-backed vs source-less | 32 passed, 0 failed |
+| semantic cache invalidation | 13 passed, 0 failed |
+| `@Encap` Slice 5 TKI v2 audit | pass |
+| untrusted unsafe-TKI API revalidation | pass |
+| tooling | 61 checks, 6 evaluation tasks; all pass |
+| incremental build | pass |
+| native/reference qualification | 100 cycles, 31 modules; pass |
+| QSLite reference and source-less consumer | 300 operations, 10 corruption cases, 6 toolchain stages; pass |
+| async fixtures | 6 passed, 0 failed |
+| sanitizer reliability audit | 81 checks; pass |
+| release-package smoke | 12 checks; pass |
 
-The release runner is fail-fast. Its `fail`, `warn`, replay, cache, tooling,
-incremental, native-build, QSLite, async, sanitizer, and package stages were
-therefore marked `not_run`; the directly relevant fail/warn/replay and P-1
-semantic audits above were rerun independently.
+The release gate completed all thirteen stages with exit code zero. In
+particular, the package smoke used the same default release version as the
+gate, so the packaged `tokac` and `toka` version checks are part of this single
+qualified record rather than a later substitute run.
 
-The replay result includes
-`permission_005_partial_cede_lifecycle`, so the exact/ancestor/descendant/
-unprovable existing-destination overlap rule is checked both source-backed and
-source-less at this revision. The init cleanup fixture supplies the current
-positive evidence that an `uninit` local is not dropped while a live resource
-still follows its cleanup path.
+## P-1 exit conditions
 
-## Release blockers
+The qualified run establishes the P-1 baseline conditions in the semantic
+evolution roadmap:
 
-### Loopback capability unavailable in this runner
+1. current release, replay, TaskHandle/async, Encap/unsafe, and relevant
+   pass/fail coverage run from one clean exact revision;
+2. no release-gate crash, assertion, source/TKI disagreement, or unsound
+   acceptance remained in that run;
+3. the runner's revision, target, version, and per-stage results are recorded
+   above;
+4. delayed-initialization cleanup is covered by the passing suite; and
+5. existing-destination transfer, partial-`cede` replay, and TaskScope/QSLite
+   consumer paths are covered by the passing source and source-less gates.
 
-Thirteen failures are loopback server/client fixtures. Each binds or connects
-to `127.0.0.1`; direct probing of the TaskScope result-cancellation fixture
-showed that `TcpListener::bind(127.0.0.1:0)` can return an invalid listener in
-this sandbox before its TaskScope cancellation path is entered.
+## Scope boundary
 
-- `g09_async_context_redline_test.tk`
-- `g09_async_context_timeout_integration_test.tk`
-- `g09_async_reactor_tokenization_test.tk`
-- `g10_http_phase1_test.tk`
-- `g12_stdx_http_client_server_test.tk`
-- `g12_stdx_tls_test.tk`
-- `g12_stdx_https_wss_test.tk`
-- `g12_stdx_websocket_malformed_test.tk`
-- `g12_stdx_websocket_test.tk`
-- `g13_stdx_net_zero_copy_bench.tk`
-- `g16_async_accept_context_test.tk`
-- `g16_stdx_http_server_connection_test.tk`
-- `g16_task_scope_result_cancel_test.tk`
+P-1 qualifies existing behavior only. It does **not** close the proposed
+PlaceState Core, the full bounded permission/partial-`cede` conformance
+matrix, Async TCB Phase 5/6 conformance, async/place cleanup bridging,
+Semantic Manifest Level B, Safe `unsafe` wrapper obligations, or protocol
+capabilities. Those remain ordered by
+[`semantic_contract_evolution_roadmap_rfc.md`](semantic_contract_evolution_roadmap_rfc.md).
 
-This is not an approved quarantine. A supported runner that permits loopback
-bind/connect must execute those fixtures before P-1 can close. The direct and
-nested non-network portions of `g16_task_scope_result_cancel_test.tk` completed
-in an instrumented temporary probe; that observation does not replace the
-fixture's end-to-end gate.
+The earlier blocked audit at
+`f388fedb7a8d9f70ba49185f4ed2176f297174f1` is superseded as a current-HEAD
+status record. It remains available through repository history as historical
+failure evidence; it must not be used to describe `b937224a`.
 
-### Pre-existing runtime failures requiring disposition
+## Next action
 
-Four non-network fixtures still reproduce a signal failure when compiled and
-run directly at this revision:
-
-- `g03_test_dynamic_json.tk` (after `Starting parse...`)
-- `g07_hashmap_test.tk`
-- `g07_std_set.tk` (after its success print, during cleanup)
-- `g07_test_stdx_flag.tk`
-
-Their test histories precede the 2026-08-03 P-1 requalification branch. That
-proves they were not introduced by the P-1 repairs, but does not make them
-safe to ignore. They remain baseline runtime/library blockers until each has a
-minimized reproducer and an explicit repair or stable, justified quarantine
-decision.
-
-## Decision and next action
-
-P-1 remains open. Do not start the PlaceState Core or another semantic feature
-from this evidence.
-
-1. Run the complete release gate from a clean checkout on a supported runner
-   with loopback networking enabled.
-2. Isolate and assign the four retained runtime crashes; repair them or record
-   a stable, justified quarantine with its reproducer and owning subsystem.
-3. Rerun every release stage at the exact candidate commit, then replace this
-   blocked status with a qualified-HEAD record only if all remaining gates are
-   green or explicitly accepted under the P-1 rule.
+Begin the internal PlaceState/permission-flow conformance audit from this
+qualified baseline. That work first reconciles the exact-place state, cleanup,
+and source-less replay representations; it introduces no new surface syntax.

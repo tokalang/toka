@@ -41,14 +41,14 @@ introduce a parallel informal model.
 ## 2. P-1: Re-qualify the current semantic baseline
 
 No new semantic feature may begin implementation until the current HEAD is
-again a qualified baseline.
+again a qualified baseline. P-1 is now closed at
+`b937224aa3a3dc29978967097b40682ca0f6ceae`: the clean-worktree macOS arm64
+release gate completed all thirteen stages under the default `v0.9.9-01`
+version label. The exact command, counts, and scope boundary are recorded in
+[`p1_current_head_qualification.md`](p1_current_head_qualification.md).
 
-The current release review is tied to an earlier commit and therefore cannot
-by itself certify the present HEAD. A local audit of implementation revision
-`fd3bf81d` reproduced a semantic-replay crash in a guard CodeGen path and a
-TaskHandle-lifecycle crash in an await CodeGen path, while the focused Encap
-Slice 5 and unsafe-TKI audits passed. P-1 begins from those red gates and must
-record fresh results at the exact revision eventually qualified.
+The following repair history explains why P-1 was necessary; it is not a
+current-HEAD failure claim.
 
 The requalification repair branch closes the two reproduced compiler crashes:
 source-less guard reference payloads now lower from their resolved semantic
@@ -89,7 +89,7 @@ still require full-token and reason/aggregate arbitration, a descriptor that
 can join callback completion with cancel/scope progress, helpable close
 progress, and TCB/slot retention independently of frame eligibility.
 
-### P-1 exit gate
+### P-1 exit gate (completed at `b937224a`)
 
 1. Re-run the release-review, semantic replay, TaskHandle lifecycle, Encap
    Slice 5 TKI, unsafe TKI, and relevant pass/fail runners at the exact commit
@@ -112,10 +112,9 @@ progress, and TCB/slot retention independently of frame eligibility.
    surface; an existing `TaskRef` must also keep the TCB/slot alive after frame
    eligibility.
 
-P-1 is complete only when these runners are green or their explicitly
-quarantined exceptions are stable, justified, and unrelated to the semantic
-core under change. P-1 repairs and qualifies existing behavior; it does not
-quietly introduce the PlaceState redesign below.
+All required runners are green at the qualified revision above. P-1 repairs
+and qualifies existing behavior; it does not quietly introduce the PlaceState
+redesign below.
 
 ## 3. P0: The PlaceState Core
 
