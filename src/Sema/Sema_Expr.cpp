@@ -3385,6 +3385,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             auto shapeType =
                 std::dynamic_pointer_cast<ShapeType>(RootInfo->TypeObj);
             ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+            if (!shape)
+              shape = findVisibleShapeDecl(RootInfo->TypeObj->getSoulName(),
+                                           getLoc(Member));
             if (shape && shape->HasExplicitDrop) {
               // A user drop body owns the aggregate invariant.  The compiler
               // cannot remove one field from that body safely, so this narrow
@@ -3394,8 +3397,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     shape->Name);
             } else if (shape && (shape->Kind == ShapeKind::Struct ||
                                  shape->Kind == ShapeKind::Tuple) &&
-                       shape->Members.size() <= 64 &&
-                       Member->Index >= 0 && Member->Index < 64) {
+                       shape->Members.size() <= 64) {
+              int memberIndex = Member->Index;
+              if (memberIndex < 0) {
+                for (size_t i = 0; i < shape->Members.size(); ++i) {
+                  if (stripMemberAccessMarkers(shape->Members[i].Name) ==
+                      stripMemberAccessMarkers(Member->Member)) {
+                    memberIndex = static_cast<int>(i);
+                    break;
+                  }
+                }
+              }
               bool hasSharedMember = false;
               for (const auto &shapeMember : shape->Members) {
                 if (shapeMember.IsShared) {
@@ -3403,11 +3415,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   break;
                 }
               }
-              if (hasSharedMember) {
+              if (memberIndex < 0 || memberIndex >= 64 || hasSharedMember) {
                 error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
                       Member->toString());
               } else {
-                RootInfo->InitMask &= ~(1ULL << Member->Index);
+                RootInfo->InitMask &= ~(1ULL << memberIndex);
               }
             } else {
               error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
