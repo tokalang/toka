@@ -1,7 +1,7 @@
 # RFC: Two-Mode Permission Flow
 
 **Status:** Bounded design contract frozen. The P-1 baseline is qualified at
-`b937224a`; targeted current-HEAD evidence at `5cf4b9b2` narrows the bounded
+`8d680fea`; current-HEAD evidence narrows the bounded
 partial-`cede` matrix but does not promote the historical audit's `Partial`
 rows or close the PlaceState Core. Any unlisted or unqualified generalization
 must fail closed.

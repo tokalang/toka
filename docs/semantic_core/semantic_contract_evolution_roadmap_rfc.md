@@ -42,7 +42,7 @@ introduce a parallel informal model.
 
 No new semantic feature may begin implementation until the current HEAD is
 again a qualified baseline. P-1 is now closed at
-`b937224aa3a3dc29978967097b40682ca0f6ceae`: the clean-worktree macOS arm64
+`8d680fea4a9301cec21efc310a73a15ce4eb8157`: the clean-worktree macOS arm64
 release gate completed all thirteen stages under the default `v0.9.9-01`
 version label. The exact command, counts, and scope boundary are recorded in
 [`p1_current_head_qualification.md`](p1_current_head_qualification.md).
@@ -89,7 +89,7 @@ still require full-token and reason/aggregate arbitration, a descriptor that
 can join callback completion with cancel/scope progress, helpable close
 progress, and TCB/slot retention independently of frame eligibility.
 
-### P-1 exit gate (completed at `b937224a`)
+### P-1 exit gate (completed at `8d680fea`)
 
 1. Re-run the release-review, semantic replay, TaskHandle lifecycle, Encap
    Slice 5 TKI, unsafe TKI, and relevant pass/fail runners at the exact commit

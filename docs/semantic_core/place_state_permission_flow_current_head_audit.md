@@ -1,17 +1,15 @@
 # Current-HEAD Audit: PlaceState, Permission Flow, and Bounded Partial `cede`
 
-**Status:** Targeted current-HEAD evidence at
-`5cf4b9b2df4809f73ffe223c8a2f32ac5ef3bfab`. This is a conformance audit and
-a fail-closed repair record; it does not close the PlaceState Core or replace a
-subsequent full release qualification.
+**Status:** Qualified current-HEAD evidence at
+`8d680fea4a9301cec21efc310a73a15ce4eb8157`. This is a conformance audit and
+a fail-closed repair record; it does not close the PlaceState Core.
 
 ## Audit basis
 
-The prior P-1 baseline is
-`b937224aa3a3dc29978967097b40682ca0f6ceae`, qualified by the complete
-macOS-arm64 release gate. This audit examined the next candidate revision,
-which narrows two partial-`cede` forms that were accepted beyond the frozen
-mask capability:
+The prior P-1 baseline was
+`b937224aa3a3dc29978967097b40682ca0f6ceae`. This audit qualified the next
+candidate revision, which narrows two partial-`cede` forms that were accepted
+beyond the frozen mask capability:
 
 - a constant fixed-array index in an array with more than 64 elements; and
 - a direct field of a record that contains a shared member, for which CodeGen
@@ -23,7 +21,7 @@ matrix is therefore:
 | Exact place | Admitted condition | Static state | Runtime cleanup |
 |---|---|---|---|
 | whole stable local | ordinary whole-place rules | `PlaceStateMask` (`Never`, `Live`, `Moved`) | drop/init flags |
-| direct record field | local struct/tuple, at most 64 fields, no explicit drop, no shared member | `InitMask` bit | field drop-mask bit where cleanup is non-trivial |
+| direct record field | local binding of a struct/tuple, at most 64 fields, no explicit drop, no shared member | `InitMask` bit | field drop-mask bit where cleanup is non-trivial |
 | fixed-array constant index | local fixed array, in range, at most 64 elements | `InitMask` bit | array drop-mask bit where cleanup is non-trivial |
 | any other projection | nested, dynamic, nonlocal, custom-drop, shared-member aggregate, or over-limit | rejected | not lowered |
 
@@ -39,12 +37,15 @@ source/destination overlap checks remain independent preconditions.
 | full negative diagnostic suite | 321 passed, 0 failed |
 | source-less semantic replay | 32 passed, 0 failed |
 | direct-field/fixed-array lifecycle runs | 6 passed, 0 failed |
+| complete macOS-arm64 release gate | all 13 stages passed: 397 positive, 321 negative, 32 replay, 13 cache, 100 native/reference cycles, 300 QSLite operations, 81 sanitizer checks, and 12 package checks |
 
 The replay case `permission_005_partial_cede_lifecycle` now carries both new
 negative consumers, so source-backed checking and source-less TKI replay agree
-that these unsupported forms are rejected. The positive lifecycle runs cover
-direct-field cleanup/reinitialization/branch join and fixed-array
-cleanup/return/loop paths.
+that these unsupported forms are rejected. The completion repair at `8d680fea`
+also resolves a direct field through the same visible-shape/member-name identity
+path that CodeGen uses when the local binding originated in a `match` pattern.
+The positive lifecycle runs cover direct-field cleanup/reinitialization/branch
+join and fixed-array cleanup/return/loop paths.
 
 ## Reconciliation result
 
@@ -67,10 +68,10 @@ not yet carry the RFC's full construction-origin/availability product for each
 projection.
 
 The Sema and CodeGen eligibility checks now agree on the frozen rows above,
-but they are still duplicated checks rather than one shared structured
-eligibility fact. The audit treats that duplication as a remaining engineering
-closure item, not as proof that future extensions automatically preserve the
-matrix.
+including direct fields of eligible by-value pattern bindings, but they are
+still duplicated checks rather than one shared structured eligibility fact.
+The audit treats that duplication as a remaining engineering closure item, not
+as proof that future extensions automatically preserve the matrix.
 
 ### Deliberate exclusions
 
@@ -83,10 +84,9 @@ qualified.
 ## Decision and next implementation step
 
 The bounded synchronous partial-`cede` surface is now narrower and has fresh
-source/source-less evidence, but **P0 PlaceState Core is not closed**. The next
-implementation step is internal only: replace the parallel whole
+source/source-less and full-release evidence, but **P0 PlaceState Core is not
+closed**. The next implementation step is internal only: replace the parallel whole
 `PlaceStateMask` and projection `InitMask` authority with one exact-place
 fact/eligibility representation, then prove its join and cleanup lowering
 without changing this frozen surface. A full release gate at the resulting
-candidate revision is required before this audit can become a new qualified
-baseline.
+candidate revision is required before any broader status can be claimed.

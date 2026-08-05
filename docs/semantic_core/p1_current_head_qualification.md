@@ -1,13 +1,13 @@
 # P-1 Current-HEAD Qualification Ledger
 
-Status: **Qualified — `b937224aa3a3dc29978967097b40682ca0f6ceae` is the
+Status: **Qualified — `8d680fea4a9301cec21efc310a73a15ce4eb8157` is the
 current P-1 baseline.** This ledger records the exact clean-worktree release
 gate that closed P-1; it is not a claim that later PlaceState, TCB, or manifest
 work is complete.
 
 ## Audit identity
 
-- Revision: `b937224aa3a3dc29978967097b40682ca0f6ceae`
+- Revision: `8d680fea4a9301cec21efc310a73a15ce4eb8157`
 - Date: 2026-08-05
 - Target: `macos-arm64`
 - Source: clean detached worktree; `source_dirty: false`
@@ -23,7 +23,7 @@ work is complete.
 |---|---|
 | release build | pass |
 | release positive suite | 397 passed, 0 failed |
-| negative diagnostic suite | 319 passed, 0 failed |
+| negative diagnostic suite | 321 passed, 0 failed |
 | warning suite | 1 passed, 0 failed |
 | semantic replay, source-backed vs source-less | 32 passed, 0 failed |
 | semantic cache invalidation | 13 passed, 0 failed |
@@ -66,10 +66,12 @@ Semantic Manifest Level B, Safe `unsafe` wrapper obligations, or protocol
 capabilities. Those remain ordered by
 [`semantic_contract_evolution_roadmap_rfc.md`](semantic_contract_evolution_roadmap_rfc.md).
 
-The earlier blocked audit at
+The prior qualified run at `b937224aa3a3dc29978967097b40682ca0f6ceae`
+precedes the bounded partial-`cede` repair and is superseded as the current
+baseline by this record. The earlier blocked audit at
 `f388fedb7a8d9f70ba49185f4ed2176f297174f1` is superseded as a current-HEAD
 status record. It remains available through repository history as historical
-failure evidence; it must not be used to describe `b937224a`.
+failure evidence; it must not be used to describe `8d680fea`.
 
 ## Next action
 

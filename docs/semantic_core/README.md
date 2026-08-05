@@ -106,7 +106,7 @@ change current language behavior or implementation status.
   place-cleanup closure, and a later provenance-bound semantic manifest
   payload.
 - `p1_current_head_qualification.md` is the revision-bound P-1 audit ledger.
-  It records the qualified `b937224a` baseline and keeps earlier blocked audit
+  It records the qualified `8d680fea` baseline and keeps earlier blocked audit
   evidence as history rather than treating it as current-HEAD status.
 - `place_state_core_rfc.md` proposes the candidate internal production-language
   construction-origin/availability facts, exact-place transitions, cleanup
