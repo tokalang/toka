@@ -84,6 +84,9 @@ change current language behavior or implementation status.
   fixed-array constant-index design matrix. A legacy mask slice exists, but
   conformance to the proposed PlaceState Core and the separate async bridge
   remains gated; this is not a general projection guarantee.
+- `place_state_permission_flow_current_head_audit.md` records the current
+  targeted PlaceState/permission/partial-`cede` reconciliation, including the
+  bounded `E04632` fail-closed repair and the remaining projection-state gap.
 - `scoped_borrowed_task_rfc.md` proposes a post-1.0 lexical task-scope model
   for borrowed children without weakening the detached execution boundary or
   exposing user-written lifetime syntax.

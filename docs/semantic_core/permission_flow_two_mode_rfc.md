@@ -1,10 +1,10 @@
 # RFC: Two-Mode Permission Flow
 
-**Status:** Bounded design contract frozen. Existing implementation evidence is
-uneven across the capability matrix and remains subject to the current-HEAD
-P-1 requalification gate; the historical audit's `Partial` rows are not
-promoted by this document. Any unlisted or unqualified generalization must fail
-closed.
+**Status:** Bounded design contract frozen. The P-1 baseline is qualified at
+`b937224a`; targeted current-HEAD evidence at `5cf4b9b2` narrows the bounded
+partial-`cede` matrix but does not promote the historical audit's `Partial`
+rows or close the PlaceState Core. Any unlisted or unqualified generalization
+must fail closed.
 
 **Rule IDs:** `PERM-STATIC-01`, `OWN-FLOW-01`, `OWN-FLOW-02`
 

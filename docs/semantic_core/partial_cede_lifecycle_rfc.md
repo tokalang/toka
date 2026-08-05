@@ -1,10 +1,11 @@
 # RFC: Partial `cede` Lifecycle
 
 **Status:** Bounded direct-record-field and fixed-array constant-index design
-contract frozen. A legacy `InitMask`/moved-path/drop-mask slice exists, but it
-is not yet proved conformant to the proposed PlaceState Core; current-HEAD
-conformance and exact Sema/CodeGen eligibility alignment remain subject to P-1
-requalification. Partial `cede` is not a general projection feature.
+contract frozen. A legacy `InitMask`/moved-path/drop-mask slice exists. Targeted
+current-HEAD evidence at `5cf4b9b2` aligns the admitted Sema/CodeGen matrix and
+rejects over-limit and shared-member aggregates before lowering, but the slice
+is not yet proved conformant to the proposed PlaceState Core. Partial `cede`
+is not a general projection feature.
 
 **Depends on:** [PlaceState Core](place_state_core_rfc.md), `PERM-STATIC-01`,
 `OWN-FLOW-01`, and `OWN-FLOW-02`.
@@ -217,9 +218,12 @@ until accepted-provenance, exact-object-bound attestation is qualified.
 Historical bodyless execution/replay results are evidence for those recorded
 objects, not general fulfilment trust.
 
-The current-HEAD P-1 gate must re-run these slices. Historical implementation
-evidence does not certify that Sema eligibility and CodeGen mask availability
-still agree at the revision being qualified.
+The P-1 gate at `b937224a` predates the current targeted repair and therefore
+does not certify this candidate revision. At `5cf4b9b2`, the targeted source
+and source-less runners revalidated the frozen rows and added `E04632`
+rejections for over-limit fixed arrays and shared-member records. That evidence
+does not certify the full PlaceState Core or replace the next candidate's full
+release gate.
 
 ## 6. Exit criterion
 
