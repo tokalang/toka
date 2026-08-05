@@ -1,0 +1,17 @@
+// EXPECT_ERROR: E04632
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+shape Holder(~shared: Token, owned: Token)
+
+fn main() -> i32 {
+    auto ~source# = new Token(id = 1)
+    auto holder = Holder(~shared = ~source, owned = Token(id = 2))
+    auto taken = cede holder.owned
+    return taken.id
+}

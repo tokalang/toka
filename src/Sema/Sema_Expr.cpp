@@ -3394,8 +3394,24 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     shape->Name);
             } else if (shape && (shape->Kind == ShapeKind::Struct ||
                                  shape->Kind == ShapeKind::Tuple) &&
+                       shape->Members.size() <= 64 &&
                        Member->Index >= 0 && Member->Index < 64) {
-              RootInfo->InitMask &= ~(1ULL << Member->Index);
+              bool hasSharedMember = false;
+              for (const auto &shapeMember : shape->Members) {
+                if (shapeMember.IsShared) {
+                  hasSharedMember = true;
+                  break;
+                }
+              }
+              if (hasSharedMember) {
+                error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
+                      Member->toString());
+              } else {
+                RootInfo->InitMask &= ~(1ULL << Member->Index);
+              }
+            } else {
+              error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
+                    Member->toString());
             }
           }
         }
@@ -3418,9 +3434,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               RootInfo->TypeObj->isArray()) {
             auto array =
                 std::dynamic_pointer_cast<ArrayType>(RootInfo->TypeObj);
-            if (array && constant && constant->Value < array->Size &&
-                constant->Value < 64) {
+            if (array && constant && array->Size <= 64 &&
+                constant->Value < array->Size && constant->Value < 64) {
               RootInfo->InitMask &= ~(1ULL << constant->Value);
+            } else if (array && constant && constant->Value < array->Size) {
+              error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
+                    Index->toString());
             } else {
               auto sourceSoul = innerTy ? innerTy->getSoulType() : nullptr;
               if (sourceSoul && sourceSoul->isShape() &&

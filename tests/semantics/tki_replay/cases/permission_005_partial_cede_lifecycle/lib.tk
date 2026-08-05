@@ -5,6 +5,10 @@ pub shape Pair(
     left: Token,
     right: Token
 )
+pub shape SharedPair(
+    ~shared: Token,
+    owned: Token
+)
 pub fn make_pair(drops#: i32) -> Pair <- drops { return Pair(left = Token(id = 1, &drops = &drops), right = Token(id = 2, &drops = &drops)) }
 
 pub shape EnumCell(value: i32)

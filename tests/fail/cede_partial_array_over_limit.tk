@@ -1,0 +1,14 @@
+// EXPECT_ERROR: E04632
+import core/traits::{@Encap}
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto values = [Token(id = 1); 65]:[Token; 65]
+    auto taken = cede values[0]
+    return taken.id
+}

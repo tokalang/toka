@@ -1,0 +1,9 @@
+// EXPECT_ERROR: E04632
+import ./lib::{Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto values = [Token(id = 1, &drops = &drops); 65]:[Token; 65]
+    auto taken = cede values[0]
+    return taken.id
+}

@@ -1,0 +1,10 @@
+// EXPECT_ERROR: E04632
+import ./lib::{SharedPair, Token}
+
+fn main() -> i32 {
+    auto drops# = 0
+    auto ~source# = new Token(id = 1, &drops = &drops)
+    auto pair = SharedPair(~shared = ~source, owned = Token(id = 2, &drops = &drops))
+    auto taken = cede pair.owned
+    return taken.id
+}
