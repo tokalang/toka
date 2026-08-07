@@ -113,12 +113,13 @@ The first capability matrix is intentionally bounded:
 
 Eligibility is one semantic predicate consumed by Sema, synchronous CodeGen
 cleanup, TKI replay, and diagnostics. In the P0.3 synchronous slice, Sema
-materializes it as `PartialMovePlan { kind, eligibleMask }` on the local
-declaration; CodeGen uses that plan rather than implementing a parallel shape
-predicate. A source-less retained body recomputes the plan during its own Sema
-pass. The later async/place bridge must consume the same predicate rather than
-widening it. Increasing a mask width or accepting a new AST shape is a
-capability expansion and requires new source and source-less evidence.
+materializes it as `PartialMovePlan { kind, eligibleMask }` on each eligible
+local declaration or fresh pattern binding; CodeGen uses that plan rather than
+implementing a parallel shape predicate. A source-less retained body recomputes
+the plan during its own Sema pass. The later async/place bridge must consume
+the same predicate rather than widening it. Increasing a mask width or
+accepting a new AST shape is a capability expansion and requires new source
+and source-less evidence.
 
 For an aggregate, the root is available to a whole-value operation only when
 all required owned projections are `Live`. A partial move changes the selected

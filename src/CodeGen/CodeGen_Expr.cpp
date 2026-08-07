@@ -4295,40 +4295,23 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         info.HasDrop = hasDrop;
         info.DropFunc = dropFunc;
         info.SoulName = typeName;
+        info.PartialMove = pat->PartialMove;
         if (alloca && (hasDrop || isUnique || isShared)) {
           info.DropFlag = createEntryBlockAlloca(
               llvm::Type::getInt1Ty(m_Context), nullptr, pName + ".drop.live");
           m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context),
                                 info.DropFlag);
         }
-        // A by-value pattern binder can itself be the root of a later
-        // `match cede binder.field`.  Give compiler-managed records the same
-        // field liveness mask as ordinary local declarations so that moving
-        // one field cannot make the binder's eventual cascade double-drop
-        // it.  Explicit destructors remain opaque whole-object invariants.
-        auto shapeIt = m_Shapes.find(typeName);
-        bool hasSharedMember = false;
-        if (shapeIt != m_Shapes.end()) {
-          for (const auto &member : shapeIt->second->Members) {
-            if (member.IsShared) {
-              hasSharedMember = true;
-              break;
-            }
-          }
-        }
-        if (alloca && hasDrop && shapeIt != m_Shapes.end() &&
-            !shapeIt->second->HasExplicitDrop &&
-            !hasSharedMember &&
-            (shapeIt->second->Kind == ShapeKind::Struct ||
-             shapeIt->second->Kind == ShapeKind::Tuple) &&
-            shapeIt->second->Members.size() <= 64) {
-          const size_t fieldCount = shapeIt->second->Members.size();
-          const uint64_t fullMask =
-              fieldCount == 64 ? ~0ULL : ((1ULL << fieldCount) - 1ULL);
+        // Fresh pattern binders are local bindings too. Sema already decided
+        // whether their projection cleanup is admissible; consume that exact
+        // plan instead of rebuilding the aggregate eligibility predicate.
+        if (alloca && hasDrop && info.PartialMove.isAdmitted()) {
           info.DropMask = createEntryBlockAlloca(
               llvm::Type::getInt64Ty(m_Context), nullptr,
               pName + ".drop.mask");
-          m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
+          m_Builder.CreateStore(
+              m_Builder.getInt64(info.PartialMove.eligibleMask()),
+              info.DropMask);
         }
         m_ScopeStack.back().push_back(info);
       }

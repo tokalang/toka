@@ -967,6 +967,9 @@ public:
     bool IsValueBlocked = false;
     bool IsInclusive = false; // For Range (true for ..=, false for ..<)
     BindingPermission Permission;
+    // Sema's bounded partial-move eligibility for a fresh pattern binding.
+    // Like VariableDecl::PartialMove, this is elaborated body data only.
+    PartialMovePlan PartialMove;
     std::vector<std::unique_ptr<Pattern>> SubPatterns; // For Decons, Or, and Range (SubPatterns[0] = Start, SubPatterns[1] = End)
     std::vector<std::string> SubPatternNames;          // [NEW] For named deconstruction/matching (parallel to SubPatterns)
 
@@ -1035,6 +1038,7 @@ public:
       n->IsValueBlocked = IsValueBlocked;
       n->IsInclusive = IsInclusive;
       n->Permission = Permission;
+      n->PartialMove = PartialMove;
       for (auto& sp : SubPatterns) {
           n->SubPatterns.push_back(sp->clonePattern());
       }

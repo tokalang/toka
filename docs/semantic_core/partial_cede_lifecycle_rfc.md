@@ -31,9 +31,9 @@ mechanisms:
   admitted Sema control-flow snapshots and joins; `InitMask` is derived from
   its definite-`Live` projections for that bounded matrix;
 - `PartialMovePlan { projection kind, eligible mask }` is computed once by
-  Sema for each eligible local declaration, copied to `VariableDecl`, then
-  copied to CodeGen's `VariableScopeInfo`. The plan is the shared static
-  eligibility and stable-numbering boundary: Sema derives
+  Sema for each eligible local binding, copied to its `VariableDecl` or fresh
+  pattern leaf, then copied to CodeGen's `VariableScopeInfo`. The plan is the
+  shared static eligibility and stable-numbering boundary: Sema derives
   `ProjectionFacts` from its mask, and CodeGen installs a cleanup mask only
   from that same mask. It is elaborated body data, not surface syntax or a
   TKI-exported authority claim; a source-less retained body re-runs Sema and

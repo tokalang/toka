@@ -443,6 +443,10 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     // capability rather than relying on a later use-site # to recreate it.
     Info.IsDeclaredMutable = bindingPayloadWritable;
     Info.IsDeclaredVariable = true;
+    Info.DeclLoc = Pat->Loc;
+    Info.PartialMove = admittedPartialMovePlan(Info);
+    Pat->PartialMove = Info.PartialMove;
+    initializeProjectionFacts(Info);
 
     CurrentScope->define(Pat->Name, Info);
     if (Pat->IsReference && TargetAccessPath)
