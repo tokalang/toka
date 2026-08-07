@@ -6,6 +6,7 @@
 
 import core/option::{Option}
 import core/result::{Result}
+import core/str::{bytes}
 import std/bytes::{Bytes}
 import std/net::{SocketAddrV4, TcpStream}
 import std/sync::{Mutex}
@@ -179,9 +180,9 @@ fn append_text_bulk(out#: Vec<u8>, value: str) {
     out#.push('\n' as u8)
 }
 
-fn append_binary_bulk(out#: Vec<u8>, value: Bytes) {
+fn append_binary_bulk(out#: Vec<u8>, value: bytes) {
     append_bulk_header(out, value.len())
-    auto view = value.as_slice()
+    auto view = value
     auto index# = 0:usize
     loop index < view.len() {
         out#.push(view.at(index).unwrap() as u8)
@@ -384,7 +385,9 @@ fn decode_at(buffer: Vec<u8>, start: usize, depth: usize) -> Result<RedisDecode,
 
 impl RedisArgument@Encap {
     fn drop(self#) {}
+}
 
+impl RedisArgument {
     pub fn clone(self) -> RedisArgument {
         match self {
             auto RedisArgument::Text(&value) => return RedisArgument::Text(string::from(value.as_str()))
@@ -395,7 +398,9 @@ impl RedisArgument@Encap {
 
 impl RedisCommand@Encap {
     fn drop(self#) {}
+}
 
+impl RedisCommand {
     pub fn clone(self) -> RedisCommand {
         auto copied# = Vec<RedisArgument>::with_capacity(self.args.len())
         auto index# = 0:usize
@@ -417,7 +422,9 @@ impl RedisPipeline@Encap {
 
 impl RedisValue@Encap {
     fn drop(self#) {}
+}
 
+impl RedisValue {
     pub fn clone(self) -> RedisValue {
         match self {
             auto RedisValue::SimpleString(&value) => return RedisValue::SimpleString(string::from(value.as_str()))
@@ -516,10 +523,9 @@ impl RedisCommand {
 
         auto index# = 0:usize
         loop index < self.args.len() {
-            auto argument = self.args.get(index).clone()
-            match argument {
+            match self.args.get(index) {
                 auto RedisArgument::Text(&value) => append_text_bulk(wire, value.as_str())
-                auto RedisArgument::Binary(&value) => append_binary_bulk(wire, value)
+                auto RedisArgument::Binary(&value) => append_binary_bulk(wire, value.as_slice())
             }
             index = index + 1:usize
         }
@@ -825,8 +831,11 @@ fn pool_return_client(state: Mutex<RedisPoolState>, cede client: RedisClient) {
 }
 
 impl RedisPool@Encap {
+    pub state#
     fn drop(self#) {}
+}
 
+impl RedisPool {
     pub fn clone(self#) -> RedisPool
     effects: return <- self.state {
         return RedisPool(~state = self.~state)

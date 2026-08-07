@@ -108,7 +108,7 @@ fn roundtrip_client_async(port: u16) -> async i32 {
         return 2
     }
     auto first_value = first_reply.unwrap()
-    match first_value {
+    match cede first_value {
         auto Option::Some('value) => {
             auto view = 'value.as_slice()
             if view.len() != 5:usize || (view.at(0:usize).unwrap() as u8) != 'h' as u8 ||

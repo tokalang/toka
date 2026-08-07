@@ -55,6 +55,12 @@ impl SseEvent@Encap {
 }
 
 impl SseEvent {
+    // Construct a semantic SSE event for adapters and deterministic fixtures
+    // without exposing the decoder's internal framing state.
+    pub fn new(cede event: string, cede data: string, cede id: Option<string>) -> SseEvent {
+        return SseEvent(event = cede event, data = cede data, id = cede id)
+    }
+
     pub fn clone(self) -> SseEvent {
         auto id# = Option<string>::None
         match self.id {

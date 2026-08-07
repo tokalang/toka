@@ -58,7 +58,7 @@ def main() -> int:
             "import official/openai_compat::{OpenAiCompatLimits, decode_sse_event}\n"
             "import stdx/net/sse::{SseEvent}\n\n"
             "fn main() -> i32 {\n"
-            "    auto input = SseEvent(event = string::from(\"message\"), data = string::from(\"[DONE]\"), id = Option<string>::None)\n"
+            "    auto input = SseEvent::new(cede string::from(\"message\"), cede string::from(\"[DONE]\"), cede Option<string>::None)\n"
             "    auto events = decode_sse_event(cede input, OpenAiCompatLimits::new(128:usize, 1:usize).unwrap())\n"
             "    if events.is_err() { return 1 }\n"
             "    if events.unwrap().len() != 1:usize { return 2 }\n"

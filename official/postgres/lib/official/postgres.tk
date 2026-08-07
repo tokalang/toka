@@ -1047,7 +1047,9 @@ impl PostgresColumn@Encap {
     pub name
     pub type_oid
     fn drop(self#) {}
+}
 
+impl PostgresColumn {
     pub fn clone(self) -> PostgresColumn {
         return PostgresColumn(name = string::from(self.name.as_str()), type_oid = self.type_oid)
     }
@@ -1058,7 +1060,9 @@ impl PostgresQueryResult@Encap {
     pub rows#
     pub command_tag
     fn drop(self#) {}
+}
 
+impl PostgresQueryResult {
     pub fn clone(self) -> PostgresQueryResult {
         auto columns# = Vec<PostgresColumn>::with_capacity(self.columns.len())
         auto column_index# = 0:usize
@@ -1521,7 +1525,9 @@ impl PostgresClient {
 
 impl PostgresParam@Encap {
     fn drop(self#) {}
+}
 
+impl PostgresParam {
     pub fn clone(self) -> PostgresParam {
         match self {
             auto PostgresParam::Null() => return PostgresParam::Null()
@@ -1849,8 +1855,11 @@ fn pool_return_client(state: Mutex<PostgresPoolState>, cede client: PostgresClie
 }
 
 impl PostgresPool@Encap {
+    pub state#
     fn drop(self#) {}
+}
 
+impl PostgresPool {
     pub fn clone(self#) -> PostgresPool
     effects: return <- self.state {
         return PostgresPool(~state = self.~state)

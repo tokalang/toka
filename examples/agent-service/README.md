@@ -70,7 +70,8 @@ python3 examples/agent-service/tests/qualify.py
 ```
 
 This credential-free qualification proves the public composition surface and
-the deterministic OpenAI-compatible request/NDJSON encodings. A later eligible
-loopback/Docker suite must verify the PostgreSQL and Redis path against the
-declared schema and a mock HTTPS provider before calling this a deployment
-reference.
+the deterministic split-chunk OpenAI-compatible SSE/NDJSON encodings. The
+release-evidence collector is `python3 tools/scripts/qualify_p0.py`; append
+`--real-services` only on a loopback-capable Docker runner. A `local-pass`
+report is deliberately not a publication gate: release requires the current
+Linux CI `data_access_real_service` evidence to be `pass`.

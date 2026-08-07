@@ -41,7 +41,9 @@ pub shape Router (
 
 impl RouterError@Encap {
     fn drop(self#) {}
+}
 
+impl RouterError {
     pub fn clone(self) -> RouterError {
         return RouterError(
             kind = string::from(self.kind.as_str()),
@@ -52,7 +54,9 @@ impl RouterError@Encap {
 
 impl RouteParam@Encap {
     fn drop(self#) {}
+}
 
+impl RouteParam {
     pub fn clone(self) -> RouteParam {
         return RouteParam(
             name = string::from(self.name.as_str()),
@@ -63,7 +67,9 @@ impl RouteParam@Encap {
 
 impl RouteMatch@Encap {
     fn drop(self#) {}
+}
 
+impl RouteMatch {
     pub fn clone(self) -> RouteMatch {
         auto copied# = Vec<RouteParam>::with_capacity(self.params.len())
         auto index# = 0:usize
@@ -80,7 +86,9 @@ impl RouteMatch@Encap {
 
 impl RouteSegment@Encap {
     fn drop(self#) {}
+}
 
+impl RouteSegment {
     pub fn clone(self) -> RouteSegment {
         match self {
             auto RouteSegment::Literal(&value) => return RouteSegment::Literal(string::from(value.as_str()))
@@ -91,7 +99,9 @@ impl RouteSegment@Encap {
 
 impl Route@Encap {
     fn drop(self#) {}
+}
 
+impl Route {
     pub fn clone(self) -> Route {
         auto copied# = Vec<RouteSegment>::with_capacity(self.segments.len())
         auto index# = 0:usize

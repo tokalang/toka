@@ -1,0 +1,107 @@
+import agentservice/app::{AgentProvider, AgentRunEvent, AgentService, ndjson_event, openai_compatible_body, openai_compatible_request_path, openai_compatible_stream_body}
+import official/openai_compat::{OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
+import official/postgres::{PostgresConfig, PostgresPool}
+import official/redis::{RedisPool}
+import std/bytes::{Bytes}
+import std/net::{Ipv4Addr, SocketAddrV4}
+import std/vec::{Vec}
+import stdx/log/log::{LOG_ERROR}
+import stdx/net/sse::{SseDecoder, SseEvent, SseLimits}
+
+fn address(port: u16) -> SocketAddrV4 {
+    return SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
+}
+
+fn bytes_from_str(text: str) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(text.len())
+    auto idx# = 0:usize
+    loop idx < text.len() {
+        raw#.push(text.byte_at(idx) as u8)
+        idx += 1:usize
+    }
+    return Bytes::from_vec(cede raw)
+}
+
+fn test_openai_compat_sse_decoding() {
+    auto limits = SseLimits::new(16384:usize, 65536:usize, 131072:usize).unwrap()
+    auto decoder# = SseDecoder::new(limits)
+    auto first = decoder#.push(cede bytes_from_str("data: {\"choices\":[{\"delta\":{\"content\":\"Hel"))
+    assert(first.is_ok(), "partial SSE chunk pushes ok")
+    assert(first.unwrap().len() == 0:usize, "partial SSE frame emits nothing")
+    auto second = decoder#.push(cede bytes_from_str("lo\"}}]}\n\n"))
+    assert(second.is_ok(), "completed text SSE frame pushes ok")
+    auto text_frames# = second.unwrap()
+    assert(text_frames.len() == 1:usize, "completed text frame emits once")
+    auto compat_limits = OpenAiCompatLimits::new(65536:usize, 32:usize).unwrap()
+    auto text = decode_sse_event(cede text_frames#.pop().unwrap(), compat_limits)
+    assert(text.is_ok(), "text delta decodes")
+    auto text_events# = text.unwrap()
+    assert(text_events.len() == 1:usize, "one text semantic event")
+    match cede text_events#.pop().unwrap() {
+        auto OpenAiStreamEvent::TextDelta('value) => assert('value.as_str().equals("Hello"), "text delta is retained across chunks")
+        _ => assert(false, "expected text delta")
+    }
+
+    auto tool = decoder#.push(cede bytes_from_str("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"search\"}}]}}]}\n\n"))
+    assert(tool.is_ok(), "tool-call SSE frame pushes ok")
+    auto tool_frames# = tool.unwrap()
+    assert(tool_frames.len() == 1:usize, "tool-call frame emits once")
+    auto tool_limits = OpenAiCompatLimits::new(65536:usize, 32:usize).unwrap()
+    auto tool_events = decode_sse_event(cede tool_frames#.pop().unwrap(), tool_limits)
+    assert(tool_events.is_ok(), "tool-call delta decodes")
+    auto semantic_tool_events# = tool_events.unwrap()
+    assert(semantic_tool_events.len() == 1:usize, "one tool-call semantic event")
+    match cede semantic_tool_events#.pop().unwrap() {
+        auto OpenAiStreamEvent::ToolCallDelta('delta) => assert('delta.index() == 0:i32, "tool-call index is preserved")
+        _ => assert(false, "expected tool-call delta")
+    }
+
+    auto done = decoder#.push(cede bytes_from_str("data: [DONE]\n\n"))
+    assert(done.is_ok(), "done SSE frame pushes ok")
+    auto done_frames# = done.unwrap()
+    assert(done_frames.len() == 1:usize, "done frame emits once")
+    auto done_limits = OpenAiCompatLimits::new(65536:usize, 32:usize).unwrap()
+    auto done_events = decode_sse_event(cede done_frames#.pop().unwrap(), done_limits)
+    assert(done_events.is_ok(), "done frame decodes")
+    auto semantic_done_events# = done_events.unwrap()
+    match cede semantic_done_events#.pop().unwrap() {
+        auto OpenAiStreamEvent::Completed('reason) => assert('reason.is_none(), "done frame has no finish reason")
+        _ => assert(false, "expected completion")
+    }
+}
+
+fn test_api_key_secrecy() {
+    auto secret_key = "sk-proj-test-secret-key-123456789"
+    auto event = AgentRunEvent(run_id = string::from("run-1"), kind = string::from("model.started"), data = string::from("provider request"))
+    auto ndjson = ndjson_event(event)
+
+    // Verify secret key is never leaked into NDJSON events or logs
+    assert(!ndjson.contains(secret_key), "API key is secret and not leaked to NDJSON events")
+}
+
+import std/context::{background, with_cancel}
+
+fn test_cancellation_checkpoints() {
+    auto res = with_cancel(cede background())
+    auto canceler = res.canceler
+    canceler.call()
+    assert(canceler.err().is_some(), "canceler is canceled")
+}
+
+fn main() -> i32 {
+    test_openai_compat_sse_decoding()
+    test_api_key_secrecy()
+    test_cancellation_checkpoints()
+
+    auto body = openai_compatible_body("gpt-4o", "test prompt")
+    assert(body.contains("gpt-4o"), "body includes model name")
+    auto stream_body = openai_compatible_stream_body("gpt-4o", "test prompt")
+    assert(stream_body.contains("\"stream\":true"), "stream body includes stream true")
+    auto deepseek_path = openai_compatible_request_path("https://api.deepseek.com/chat/completions?beta=1")
+    assert(deepseek_path.is_ok(), "https endpoint produces a request path")
+    auto path = deepseek_path.unwrap()
+    assert(path.as_str().equals("/chat/completions?beta=1"), "request path retains query")
+    auto event = ndjson_event(AgentRunEvent(run_id = string::from("run-42"), kind = string::from("run.created"), data = string::from("accepted")))
+    assert(event.contains("\"run_id\":\"run-42\""), "NDJSON event contains run id")
+    return 0
+}

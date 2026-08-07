@@ -33,6 +33,8 @@ def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> None:
 def make_sdk(work: Path) -> Path:
     library = work / "sdk" / "lib"
     shutil.copytree(ROOT / "lib", library)
+    if (ROOT / "build" / "lib" / "sys").is_dir():
+        shutil.copytree(ROOT / "build" / "lib" / "sys", library / "sys", dirs_exist_ok=True)
     toolchain = library / "toolchain"
     toolchain.mkdir(exist_ok=True)
     shutil.copy2(ROOT / "tools" / "scripts" / "toka_build.py", toolchain / "toka_build.py")
@@ -91,6 +93,8 @@ def main() -> int:
         work = Path(temporary)
         base_env = dict(os.environ)
         base_env.update({"TOKAC": str(tokac), "TOKA_LIB": str(make_sdk(work))})
+        exec_env = dict(base_env)
+        exec_env.pop("TOKA_LIB", None)
         # tokac currently emits support files beside its output, so keep these
         # ephemeral executables beneath the repository's existing tmp root.
         with tempfile.TemporaryDirectory(prefix="postgres-qualify-", dir=ROOT / "tmp") as test_temporary:
@@ -100,26 +104,26 @@ def main() -> int:
             include = ["-I", str(ROOT / "lib"), "-I", str(PACKAGE / "lib")]
             run([str(tokac), *include, str(PACKAGE / "tests" / "protocol_v1.tk"),
                  "-o", str(protocol)], cwd=ROOT, env=base_env)
-            run([str(protocol)], cwd=ROOT, env=base_env)
+            run([str(protocol)], cwd=ROOT, env=exec_env)
             run([str(tokac), *include, str(PACKAGE / "tests" / "client_v1.tk"),
                  "-o", str(client)], cwd=ROOT, env=base_env)
-            run([str(client)], cwd=ROOT, env=base_env)
+            run([str(client)], cwd=ROOT, env=exec_env)
             query = test_work / "query_v1"
             run([str(tokac), *include, str(PACKAGE / "tests" / "query_v1.tk"),
                  "-o", str(query)], cwd=ROOT, env=base_env)
-            run([str(query)], cwd=ROOT, env=base_env)
+            run([str(query)], cwd=ROOT, env=exec_env)
             extended = test_work / "extended_v1"
             run([str(tokac), *include, str(PACKAGE / "tests" / "extended_v1.tk"),
                  "-o", str(extended)], cwd=ROOT, env=base_env)
-            run([str(extended)], cwd=ROOT, env=base_env)
+            run([str(extended)], cwd=ROOT, env=exec_env)
             pool = test_work / "pool_v1"
             run([str(tokac), *include, str(PACKAGE / "tests" / "pool_v1.tk"),
                  "-o", str(pool)], cwd=ROOT, env=base_env)
-            run([str(pool)], cwd=ROOT, env=base_env)
+            run([str(pool)], cwd=ROOT, env=exec_env)
             pool_extended = test_work / "pool_extended_v1"
             run([str(tokac), *include, str(PACKAGE / "tests" / "pool_extended_v1.tk"),
                  "-o", str(pool_extended)], cwd=ROOT, env=base_env)
-            run([str(pool_extended)], cwd=ROOT, env=base_env)
+            run([str(pool_extended)], cwd=ROOT, env=exec_env)
 
         dependency = work / "postgres"
         shutil.copytree(PACKAGE, dependency)

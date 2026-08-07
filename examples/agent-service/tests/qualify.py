@@ -16,9 +16,12 @@ def main() -> int:
                "-I", str(ROOT / "official" / "openai_compat" / "lib"),
                "-I", str(EXAMPLE / "lib")]
     with tempfile.TemporaryDirectory(prefix="toka-agent-service-") as work:
-        executable = Path(work) / "compile_v1"
-        subprocess.run([str(tokac), *include, str(EXAMPLE / "tests" / "compile_v1.tk"), "-o", str(executable)], cwd=ROOT, check=True, timeout=120)
-        subprocess.run([str(executable)], cwd=ROOT, check=True, timeout=30)
+        work = Path(work)
+        for name in ("compile_v1", "agent_service_v1"):
+            executable = work / name
+            subprocess.run([str(tokac), *include, str(EXAMPLE / "tests" / f"{name}.tk"),
+                            "-o", str(executable)], cwd=ROOT, check=True, timeout=120)
+            subprocess.run([str(executable)], cwd=ROOT, check=True, timeout=30)
     print("agent-service qualification: PASSED")
     return 0
 

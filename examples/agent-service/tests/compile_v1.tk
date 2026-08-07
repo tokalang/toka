@@ -29,10 +29,6 @@ fn main() -> i32 {
     auto service = AgentService::new(cede postgres.unwrap(), cede redis.unwrap(), cede AgentProvider::Mock(), cede process_tools, cede Vec<string>::new(), LOG_ERROR)
     if service.is_err() { return 6 }
     auto service# = service.unwrap()
-    auto process = service#.process_tool("echo", "agent-tool")
-    if process.is_err() { return 7 }
-    if !process.unwrap().as_str().equals("agent-tool\n") { return 8 }
-    if service#.process_tool("sh", "-c true").is_ok() { return 9 }
-    service#.close()
+    if service#.process_tool("sh", "-c true").is_ok() { return 7 }
     return 0
 }

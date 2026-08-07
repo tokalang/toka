@@ -61,6 +61,8 @@ pub shape AgentService (
 
 impl OpenAiCompatibleConfig@Encap {
     fn drop(self#) {}
+}
+impl OpenAiCompatibleConfig {
     pub fn clone(self) -> OpenAiCompatibleConfig {
         return OpenAiCompatibleConfig(url = self.url.clone(), address = self.address,
             model = self.model.clone(), api_key = self.api_key.clone(), timeout_ms = self.timeout_ms)
@@ -69,6 +71,8 @@ impl OpenAiCompatibleConfig@Encap {
 
 impl AgentProvider@Encap {
     fn drop(self#) {}
+}
+impl AgentProvider {
     pub fn clone(self) -> AgentProvider {
         match self {
             auto AgentProvider::Mock() => return AgentProvider::Mock()
@@ -78,16 +82,27 @@ impl AgentProvider@Encap {
 }
 
 impl AgentRunEvent@Encap {
+    pub run_id
+    pub kind
+    pub data
     fn drop(self#) {}
+}
+impl AgentRunEvent {
     pub fn clone(self) -> AgentRunEvent {
         return AgentRunEvent(run_id = self.run_id.clone(), kind = self.kind.clone(), data = self.data.clone())
     }
 }
 
 impl AgentService@Encap {
+    pub state#
     fn drop(self#) {}
+}
+
+impl AgentService {
     pub fn clone(self#) -> AgentService
-    effects: return <- self.state { return AgentService(~state = self.~state) }
+    effects: return <- self.state {
+        return AgentService(~state = self.~state)
+    }
 }
 
 impl AgentService @Send {}
@@ -173,7 +188,7 @@ pub fn openai_compatible_request_path(endpoint: str) -> Result<string, string> {
     auto url = parsed.unwrap()
     if !url.scheme.as_str().equals("https") { return Result<string, string>::Err(string::from("OpenAI-compatible endpoint must use https")) }
     if url.host.len() == 0:usize { return Result<string, string>::Err(string::from("OpenAI-compatible endpoint must have a host")) }
-    auto path# = url.path
+    auto path# = cede url.path
     if path.len() == 0:usize { path = string::from("/") }
     if url.query.len() > 0:usize {
         path#.push_char('?')
@@ -280,8 +295,9 @@ impl AgentService {
                 if target.is_err() { return Result<string, string>::Err(target.unwrap_err()) }
                 auto parsed_endpoint = parse_url('config.url.clone())
                 if parsed_endpoint.is_err() { return Result<string, string>::Err(parsed_endpoint.unwrap_err()) }
+                auto parsed_endpoint# = parsed_endpoint.unwrap()
                 auto headers# = HeaderMap::new()
-                auto _host = headers#.insert(string::from("Host"), parsed_endpoint.unwrap().host)
+                auto _host = headers#.insert(string::from("Host"), cede parsed_endpoint.host)
                 auto _content = headers#.insert(string::from("Content-Type"), string::from("application/json"))
                 auto authorization# = string::from("Bearer ")
                 authorization#.push_str('config.api_key.as_str())
@@ -350,10 +366,13 @@ impl AgentService {
         auto command# = Command::new(string::from(program))
         command#.arg(string::from(argument))
         auto output = command#.output()
-        if output.is_err() { return Result<string, string>::Err(output.unwrap_err().message) }
+        if output.is_err() {
+            auto failure = output.unwrap_err()
+            return Result<string, string>::Err(cede failure.message)
+        }
         auto completed = output.unwrap()
         if !completed.status.success() { return Result<string, string>::Err(string::from("process tool failed")) }
-        return Result<string, string>::Ok(completed.stdout)
+        return Result<string, string>::Ok(cede completed.stdout)
     }
 
     pub fn http_tool_async(self#, url: str, address: SocketAddrV4) -> async Result<string, string> {
@@ -374,7 +393,7 @@ impl AgentService {
         if result.is_err() { return Result<string, string>::Err(result.unwrap_err()) }
         auto response = result.unwrap()
         if response.status_code < 200:i32 || response.status_code >= 300:i32 { return Result<string, string>::Err(string::from("HTTP tool returned non-success")) }
-        return Result<string, string>::Ok(response.body)
+        return Result<string, string>::Ok(response.body.clone())
     }
 
     pub fn run_async(self#, cede canceler: Canceler, prompt: str, idempotency_key: str) -> async Result<string, string> {

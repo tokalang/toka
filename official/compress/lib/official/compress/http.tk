@@ -28,16 +28,16 @@ pub shape HttpCompressionError (
 
 impl HttpCompressionError@Encap {
     fn drop(self#) {}
+}
 
+impl HttpCompressionError {
     pub fn clone(self) -> HttpCompressionError {
         return HttpCompressionError(
             kind = string::from(self.kind.as_str()),
             message = string::from(self.message.as_str())
         )
     }
-}
 
-impl HttpCompressionError {
     pub fn kind(self) -> string { return string::from(self.kind.as_str()) }
     pub fn message(self) -> string { return string::from(self.message.as_str()) }
 }
