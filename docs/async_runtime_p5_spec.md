@@ -112,6 +112,28 @@ attempt. This is not full RFC conformance for `WonPending` completion,
 reactor/timer physical unregistration, completion-progress descriptors, or the
 four cleanup-only suspension kinds.
 
+### 1.5 Current narrow implementation evidence: basic completion subscription ordering
+
+The current mutex-protected callback-list substrate has a bounded arm/terminal
+ordering: a subscription installed before terminal publication is moved into
+the publisher's snapshot and woken outside the runtime arbiter; a subscription
+that observes an already normal or canceled terminal task routes an immediate
+wake instead. An unsubscribe that acquires the list before the publisher's
+snapshot removes its entry and sends no wake. These paths reuse the parent wait
+registration's existing schedule claim, so a child completion while the parent
+is preparing becomes its one pending wake and commits through the ordinary
+`PreparingWithPendingWake -> Queued` path.
+
+`toka_async_completion_subscription` covers subscribe-before-terminal,
+normal/canceled terminal-before-subscribe, unsubscribe-before-terminal, and
+1,000 concurrent subscribe/terminal races. Every arm/terminal permutation in
+this probe yields either one pending wake or the deliberate prior unsubscribe;
+none leaves the parent wait slot live or creates a duplicate ready-queue entry.
+This is evidence for the old callback-list substrate only, **not** TCB RFC
+completion-registry conformance: it lacks full task/wait tokens, `Active ->
+Selected -> CommitClaimed -> Inactive` descriptors, independent retained
+references, group arbitration, and helpable unsubscribe progress.
+
 ---
 
 ## 2. Cancellation Linearization Architecture
