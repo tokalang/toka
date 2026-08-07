@@ -6,6 +6,7 @@
 
 using toka::PlaceState;
 using toka::PlaceStateFact;
+using toka::ProjectionPlaceFacts;
 
 int main() {
   const PlaceStateFact never = PlaceState::Never;
@@ -31,5 +32,31 @@ int main() {
   const PlaceStateFact unreachable = PlaceStateFact::bottom();
   assert(unreachable.empty());
   assert(unreachable.join(live).isExactly(PlaceState::Live));
+
+  auto projections = ProjectionPlaceFacts::fromLegacyInitMask(0x3, 0x3);
+  assert(projections.factAt(0).isExactly(PlaceState::Live));
+  projections.markMoved(0);
+  assert(projections.factAt(0).isExactly(PlaceState::Moved));
+  assert(projections.definitelyLiveMask() == 0x2);
+  projections.markLive(0);
+  assert(projections.factAt(0).isExactly(PlaceState::Live));
+  auto movedBranch = projections;
+  movedBranch.markMoved(1);
+  const auto joined = projections | movedBranch;
+  assert(joined.factAt(0).isExactly(PlaceState::Live));
+  assert(joined.factAt(1).contains(PlaceState::Live));
+  assert(joined.factAt(1).contains(PlaceState::Moved));
+  assert(joined.definitelyLiveMask() == 0x1);
+
+  const auto neverProjection =
+      ProjectionPlaceFacts::fromLegacyInitMask(0x1, 0);
+  assert(neverProjection.factAt(0).isExactly(PlaceState::Never));
+  auto movedProjection =
+      ProjectionPlaceFacts::fromLegacyInitMask(0x1, 0x1);
+  movedProjection.markMoved(0);
+  const auto absentJoin = neverProjection | movedProjection;
+  assert(absentJoin.factAt(0).contains(PlaceState::Never));
+  assert(absentJoin.factAt(0).contains(PlaceState::Moved));
+  assert(!absentJoin.factAt(0).contains(PlaceState::Live));
   return 0;
 }

@@ -1507,6 +1507,14 @@
       "description": "A direct field cede propagates field liveness through an if-branch join"
     },
     {
+      "id": "ownership_cede_direct_field_branch_reinitialize_01",
+      "path": "ownership/cede_direct_field_branch_reinitialize.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A joined direct-field transfer can be reinitialized with exactly-once cleanup"
+    },
+    {
       "id": "diag_cede_direct_field_invalidates_source_01",
       "path": "diagnostics/cede_direct_field_invalidates_source.tk",
       "type": "compile-fail",

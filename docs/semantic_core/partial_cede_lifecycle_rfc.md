@@ -1,11 +1,11 @@
 # RFC: Partial `cede` Lifecycle
 
 **Status:** Bounded direct-record-field and fixed-array constant-index design
-contract frozen. A legacy `InitMask`/moved-path/drop-mask slice exists. Targeted
-current-HEAD evidence at `8d680fea` aligns the admitted Sema/CodeGen matrix and
-rejects over-limit and shared-member aggregates before lowering, but the slice
-is not yet proved conformant to the proposed PlaceState Core. Partial `cede`
-is not a general projection feature.
+contract frozen. P0.2 gives the admitted Sema slice a static projection
+PlaceState ledger; CodeGen eligibility/cleanup and async composition remain
+separate closure work. Targeted current-HEAD evidence at `8d680fea` aligns the
+admitted Sema/CodeGen matrix and rejects over-limit and shared-member
+aggregates before lowering. Partial `cede` is not a general projection feature.
 
 **Depends on:** [PlaceState Core](place_state_core_rfc.md), `PERM-STATIC-01`,
 `OWN-FLOW-01`, and `OWN-FLOW-02`.
@@ -22,20 +22,23 @@ The separate question is lifecycle: after `cede base.field`, which parts of
 
 ## 2. Current facts
 
-The compiler already has two useful but separate mechanisms:
+The compiler has a bounded static ledger plus two compatibility/lowering
+mechanisms:
 
-- `SymbolInfo::InitMask` tracks per-member initializedness for shape values
-  (up to 64 members), checks member reads, and intersects state at control-flow
-  joins;
+- `SymbolInfo::ProjectionFacts` carries `Never`, `Live`, and `Moved` facts for
+  each admitted direct field or fixed-array element (up to 64). It follows all
+  admitted Sema control-flow snapshots and joins; `InitMask` is derived from
+  its definite-`Live` projections for that bounded matrix;
 - CodeGen `DropFlag` prevents double-dropping a complete local binding.
 
 The first slices install a runtime `i64` drop mask for a local,
 compiler-managed record with at most 64 direct fields and for a local fixed
 array with at most 64 elements. A direct field or constant array-index `cede`
-clears its bit; reassigning that projection restores it; scope unwinding drops
-only the live projections. Static `InitMask` uses the same numbering, so a
-transferred field or fixed-array element is rejected on later read while a live
-sibling or element remains usable.
+changes its ledger fact to `Moved`; reassigning that projection restores
+`Live`; scope unwinding drops only the runtime-mask's live projections. The
+derived static `InitMask` uses the same numbering, so a transferred field or
+fixed-array element is rejected on later read while a live sibling or element
+remains usable.
 
 An eligible owned `obj.field#.consuming_method()` whose receiver is declared
 `cede self` is the method-call spelling of a direct-field transfer: it clears

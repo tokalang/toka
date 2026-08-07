@@ -1,0 +1,36 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape Token(id: i32)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape Pair(
+    left: Token,
+    right: Token
+)
+
+fn branch_then_reinitialize(take_left: bool) -> i32 {
+    {
+        auto pair = Pair(left = Token(id = 1), right = Token(id = 2))
+        if take_left {
+            auto taken = cede pair.left
+            assert(taken.id == 1, "branch transfer captures the field")
+        }
+        pair.left = Token(id = 3)
+        assert(pair.left.id == 3, "reassignment restores definite liveness")
+        assert(pair.right.id == 2, "sibling stays live across the join")
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    assert(branch_then_reinitialize(true) == 0, "ceded branch")
+    assert(g_drop_count == 3, "transferred and reinitialized fields drop once")
+    return 0
+}

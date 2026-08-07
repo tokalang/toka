@@ -52,6 +52,9 @@ struct SymbolInfo {
   // The whole-place semantic fact. `InitMask` remains a temporary projection
   // liveness compatibility mask while P0 migrates eligible exact projections.
   PlaceStateFact PlaceFact = PlaceState::Live;
+  // Enabled only for the bounded local direct-field/fixed-array capability
+  // matrix. `InitMask` is derived from this ledger whenever it is active.
+  ProjectionPlaceFacts ProjectionFacts;
 
   // "Hot Potato" Tracking
   // If this symbol is a Reference (&T), this mask tracks the InitMask of the
@@ -569,6 +572,7 @@ private:
     std::map<std::string, uint64_t> InitMasks;
     std::map<std::string, bool> Moved;
     std::map<std::string, PlaceStateFact> PlaceFacts;
+    std::map<std::string, ProjectionPlaceFacts> ProjectionFacts;
     // Editor-only incompleteness state.  It follows local value flow but
     // never grants an operation or substitutes for PAL.
     std::map<std::string, std::set<uint64_t>> ConditionalTodoIds;
@@ -681,6 +685,9 @@ private:
                                   SourceLocation loc);
   ShapeDecl *findVisibleShapeDecl(const std::string &shapeName,
                                   SourceLocation loc = {});
+  uint64_t admittedProjectionMask(const SymbolInfo &info);
+  void initializeProjectionFacts(SymbolInfo &info);
+  void syncLegacyProjectionLiveness(SymbolInfo &info);
   std::string getDynTraitName(const std::string &typeName) const;
   std::string getDynTraitName(std::shared_ptr<toka::Type> type) const;
   bool validateDynTraitObjectSafety(const std::string &traitName,

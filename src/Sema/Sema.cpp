@@ -627,6 +627,50 @@ ShapeDecl *Sema::findVisibleShapeDecl(const std::string &shapeName,
   return fallback == ShapeMap.end() ? nullptr : fallback->second;
 }
 
+uint64_t Sema::admittedProjectionMask(const SymbolInfo &info) {
+  if (!info.IsDeclaredVariable || info.IsFunctionParameter ||
+      info.IsReference() || !info.TypeObj)
+    return 0;
+
+  if (info.TypeObj->isArray()) {
+    auto array = std::dynamic_pointer_cast<ArrayType>(info.TypeObj);
+    if (!array || array->Size == 0 || array->Size > 64)
+      return 0;
+    return array->Size == 64 ? ~0ULL : (1ULL << array->Size) - 1ULL;
+  }
+
+  if (!info.TypeObj->isShape())
+    return 0;
+  auto shapeType = std::dynamic_pointer_cast<ShapeType>(info.TypeObj);
+  ShapeDecl *shape = shapeType ? shapeType->Decl : nullptr;
+  if (!shape)
+    shape = findVisibleShapeDecl(info.TypeObj->getSoulName(), info.DeclLoc);
+  if (!shape || shape->HasExplicitDrop ||
+      (shape->Kind != ShapeKind::Struct && shape->Kind != ShapeKind::Tuple) ||
+      shape->Members.empty() || shape->Members.size() > 64)
+    return 0;
+  for (const auto &member : shape->Members) {
+    if (member.IsShared)
+      return 0;
+  }
+  return shape->Members.size() == 64
+             ? ~0ULL
+             : (1ULL << shape->Members.size()) - 1ULL;
+}
+
+void Sema::initializeProjectionFacts(SymbolInfo &info) {
+  if (info.ProjectionFacts.isTracking())
+    return;
+  const uint64_t mask = admittedProjectionMask(info);
+  if (mask != 0)
+    info.ProjectionFacts =
+        ProjectionPlaceFacts::fromLegacyInitMask(mask, info.InitMask);
+}
+
+void Sema::syncLegacyProjectionLiveness(SymbolInfo &info) {
+  info.InitMask = info.ProjectionFacts.applyToLegacyInitMask(info.InitMask);
+}
+
 std::string Sema::genericImplKey(const ShapeDecl *shape) {
   if (!shape)
     return {};

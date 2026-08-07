@@ -325,17 +325,26 @@ fact API intentionally admits only state construction, explicit internal
 bottom, and union; it exposes no implicit conversion back to an integer mask.
 
 This is a representation boundary, not the unified ledger required below.
-`Moved`, `InitMask`, PAL facts, authority facts, and cleanup lowering remain
-separate compatibility representations in this slice. In particular,
-`InitMask` continues to be the legacy liveness mechanism for the admitted
-direct-field and fixed-array partial-`cede` forms. P0.1 neither treats an
-unarmed cleanup bit as a `Never` state nor claims a projection
-construction-origin fact, shared eligibility object, source-less exported
-PlaceState contract, or async/place bridge.
+P0.1 alone neither treats an unarmed cleanup bit as a `Never` state nor claims
+a projection construction-origin fact, shared eligibility object, source-less
+exported PlaceState contract, or async/place bridge.
 
-The next P0 implementation slice must make the bounded projection ledger and
-its control-flow joins authoritative, then derive the legacy liveness and
-cleanup views from that ledger at their defined commit points.
+### P0.2: bounded projection ledger (implemented, not a closure claim)
+
+The admitted local direct-record-field and constant fixed-array-index forms
+now carry `ProjectionPlaceFacts`: one `PlaceStateFact` per stable projection
+number. Direct `cede` and the admitted consuming field receiver commit
+`Live -> Moved`; direct reassignment commits the projection back to `Live`.
+The ledger is captured, restored, and unioned through `if`, `guard`, loop,
+`for`, `match`, break, and continue flow. For a tracked projection,
+`InitMask` is now a compatibility liveness view derived from the ledger, so a
+`{Live, Moved}` join cannot accidentally become a definite live bit.
+
+P0.2 deliberately preserves the existing CodeGen drop-mask lowering and its
+separate eligibility checks. It does not yet make Sema and CodeGen consume one
+structured eligibility fact, bind a runtime cleanup mask to the static ledger
+at one shared commit boundary, export projection facts through TKI, or support
+the async/place bridge. Those are P0's remaining closure work.
 
 A language RFC may claim a PlaceState slice implemented only when all relevant
 gates are green at the same revision:

@@ -87,4 +87,96 @@ constexpr bool hasExactlyPlaceState(PlaceStateFact states, PlaceState state) {
   return states.isExactly(state);
 }
 
+// A bounded ledger for independent direct projections of one stable local.
+// It is enabled only for a capability slice that has a fixed <=64 projection
+// numbering shared with the legacy liveness and runtime cleanup masks.
+class ProjectionPlaceFacts {
+public:
+  constexpr ProjectionPlaceFacts() = default;
+
+  static constexpr ProjectionPlaceFacts fromLegacyInitMask(uint64_t tracked,
+                                                            uint64_t live) {
+    return ProjectionPlaceFacts(tracked, tracked & ~live, tracked & live, 0);
+  }
+
+  constexpr bool isTracking() const { return m_Tracked != 0; }
+  constexpr bool tracks(uint64_t bit) const {
+    return bit < 64 && (m_Tracked & (1ULL << bit)) != 0;
+  }
+  constexpr PlaceStateFact factAt(uint64_t bit) const {
+    if (!tracks(bit))
+      return PlaceStateFact::bottom();
+    const uint64_t mask = 1ULL << bit;
+    PlaceStateFact result = PlaceStateFact::bottom();
+    if ((m_Never & mask) != 0)
+      result |= PlaceStateFact(PlaceState::Never);
+    if ((m_Live & mask) != 0)
+      result |= PlaceStateFact(PlaceState::Live);
+    if ((m_Moved & mask) != 0)
+      result |= PlaceStateFact(PlaceState::Moved);
+    return result;
+  }
+  constexpr void markLive(uint64_t bit) { set(bit, PlaceState::Live); }
+  constexpr void markMoved(uint64_t bit) { set(bit, PlaceState::Moved); }
+  constexpr uint64_t trackedMask() const { return m_Tracked; }
+  constexpr uint64_t definitelyLiveMask() const {
+    return m_Live & ~(m_Never | m_Moved);
+  }
+  constexpr uint64_t applyToLegacyInitMask(uint64_t legacy) const {
+    return isTracking() ? (legacy & ~m_Tracked) | definitelyLiveMask()
+                        : legacy;
+  }
+
+  constexpr ProjectionPlaceFacts &operator|=(ProjectionPlaceFacts other) {
+    if (!isTracking()) {
+      *this = other;
+      return *this;
+    }
+    if (!other.isTracking())
+      return *this;
+    const uint64_t common = m_Tracked & other.m_Tracked;
+    m_Never = (m_Never | other.m_Never) & common;
+    m_Live = (m_Live | other.m_Live) & common;
+    m_Moved = (m_Moved | other.m_Moved) & common;
+    m_Tracked = common;
+    return *this;
+  }
+
+private:
+  constexpr ProjectionPlaceFacts(uint64_t tracked, uint64_t never,
+                                 uint64_t live, uint64_t moved)
+      : m_Tracked(tracked), m_Never(never), m_Live(live), m_Moved(moved) {}
+
+  constexpr void set(uint64_t bit, PlaceState state) {
+    if (!tracks(bit))
+      return;
+    const uint64_t mask = 1ULL << bit;
+    m_Never &= ~mask;
+    m_Live &= ~mask;
+    m_Moved &= ~mask;
+    switch (state) {
+    case PlaceState::Never:
+      m_Never |= mask;
+      break;
+    case PlaceState::Live:
+      m_Live |= mask;
+      break;
+    case PlaceState::Moved:
+      m_Moved |= mask;
+      break;
+    }
+  }
+
+  uint64_t m_Tracked = 0;
+  uint64_t m_Never = 0;
+  uint64_t m_Live = 0;
+  uint64_t m_Moved = 0;
+};
+
+constexpr ProjectionPlaceFacts operator|(ProjectionPlaceFacts lhs,
+                                          ProjectionPlaceFacts rhs) {
+  lhs |= rhs;
+  return lhs;
+}
+
 } // namespace toka

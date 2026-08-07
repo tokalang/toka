@@ -1279,6 +1279,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           }
         } else {
           Info->InitMask = ~0ULL;
+          Info->ProjectionFacts = ProjectionPlaceFacts{};
+          initializeProjectionFacts(*Info);
         }
       }
     } else if (auto *Memb = dynamic_cast<MemberExpr *>(LHSExpr)) {
@@ -1301,9 +1303,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
               // Find which bit to set
               uint64_t bitsToSet = 0;
+              uint64_t projectionIndex = 0;
               for (int i = 0; i < (int)SD->Members.size(); ++i) {
                 if (SD->Members[i].Name == Memb->Member) {
                   bitsToSet = (1ULL << i);
+                  projectionIndex = static_cast<uint64_t>(i);
                   break;
                 }
               }
@@ -1317,7 +1321,13 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                     propagateInit(Info->BorrowedFrom, bitsToSet, true);
                   }
                 } else {
-                  Info->InitMask |= bitsToSet;
+                  initializeProjectionFacts(*Info);
+                  if (Info->ProjectionFacts.tracks(projectionIndex)) {
+                    Info->ProjectionFacts.markLive(projectionIndex);
+                    syncLegacyProjectionLiveness(*Info);
+                  } else {
+                    Info->InitMask |= bitsToSet;
+                  }
                 }
               }
             }
@@ -1335,8 +1345,15 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         if (CurrentScope->findVariableWithDeref(Root->Name, Info, actualName) &&
             Info && Info->TypeObj && Info->TypeObj->isArray()) {
           auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
-          if (array && constant->Value < array->Size)
-            Info->InitMask |= (1ULL << constant->Value);
+          if (array && constant->Value < array->Size) {
+            initializeProjectionFacts(*Info);
+            if (Info->ProjectionFacts.tracks(constant->Value)) {
+              Info->ProjectionFacts.markLive(constant->Value);
+              syncLegacyProjectionLiveness(*Info);
+            } else {
+              Info->InitMask |= (1ULL << constant->Value);
+            }
+          }
         }
       }
     }

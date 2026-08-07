@@ -2009,6 +2009,7 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     Info.IsDeclaredVariable = true;
+    initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
     if (!Info.ConditionalTodoIds.empty()) {
       SemanticEvidence::recordConditionalFact(
