@@ -49,6 +49,31 @@ or Section 8.1 of the TCB RFC: cancellation epochs, queue-publication helping,
 subscription arbitration, cleanup aggregates, frame-access retirement, and
 the async/PlaceState bridge remain separately unqualified.
 
+### 1.2 Current narrow implementation evidence: cold cleanup before terminal
+
+New compiler output opts into a cold-finalizer handshake when it creates a
+task. A cold request first claims `Created -> ColdFinalizing`, invokes the
+coroutine destroy/cleanup callback without a runtime arbiter held, and only
+after that callback returns publishes `Pending -> Canceled` and
+`CompletedCanceled`. CodeGen defers the physical frame free on that destroy
+path so the existing promise/result ABI remains readable through terminal
+observation; the final TCB release then frees the already-cleaned frame without
+running its destroy entry twice.
+
+`TaskHandle` destruction has a distinct cold-drop entry and therefore takes
+that same no-body cancellation path. Explicit `detach` remains an activation
+operation for a cold task. Existing three-argument runtime-create ABI users
+remain compatible but do not claim this handshake until recompiled.
+
+`toka_async_cold_cancel_cleanup` proves both explicit cold cancellation and
+last-handle drop: the installed cleanup callback runs exactly once, observes a
+nonterminal task while it runs, and terminal cancellation appears only after
+it returns. The `async_cede_unique_receiver_cold_drop` and
+`async_cede_unique_field_receiver_lifecycle` language fixtures additionally
+cover compiler-generated frame ownership and exact-once resource cleanup. This
+is still a bounded evidence slice, not closure of the RFC's full cold-finalizer
+or frame-retirement gates.
+
 ---
 
 ## 2. Cancellation Linearization Architecture

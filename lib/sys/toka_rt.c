@@ -831,7 +831,8 @@ typedef enum {
     TOKA_TCB_COMPLETED = 4,
     TOKA_TCB_PREPARING = 5,
     TOKA_TCB_PREPARING_WITH_PENDING_WAKE = 6,
-    TOKA_TCB_COMPLETED_CANCELED = 7
+    TOKA_TCB_COMPLETED_CANCELED = 7,
+    TOKA_TCB_COLD_FINALIZING = 8
 } TokaTCBState;
 
 static inline int toka_tcb_is_terminal(uint32_t st) {
@@ -872,6 +873,8 @@ typedef struct TokaTCB {
     _Atomic uint8_t cancel_handled;
     _Atomic uint8_t result_owner;
     _Atomic uint8_t result_disposition;
+    _Atomic uint8_t cold_cleanup_supported;
+    _Atomic uint8_t cold_cleanup_finished;
     void (*result_drop_fn)(void *);
     _Atomic uint32_t ref_count;
     _Atomic uint8_t detached;
@@ -899,7 +902,7 @@ static int toka_task_dispose_scope_result(TokaTCB *tcb);
 static void toka_task_try_release_owner(TokaTCB *tcb) {
     if (!tcb) return;
     uint32_t st = atomic_load(&tcb->state);
-    if (atomic_load(&tcb->detached) && (toka_tcb_is_terminal(st) || st == TOKA_TCB_CREATED)) {
+    if (atomic_load(&tcb->detached) && toka_tcb_is_terminal(st)) {
         uint8_t expected = 0;
         if (atomic_compare_exchange_strong(&tcb->owner_released, &expected, 1)) {
             toka_task_release(tcb);
@@ -1132,8 +1135,9 @@ static void unregister_frame_map(void *frame) {
     toka_mutex_unlock(&g_rt_mutex);
 }
 
-void* toka_task_create_with_result_drop(void *coro_frame, void *promise,
-                                        void (*result_drop_fn)(void *)) {
+static void* toka_task_create_impl(void *coro_frame, void *promise,
+                                   void (*result_drop_fn)(void *),
+                                   uint8_t cold_cleanup_supported) {
     TokaTCB *tcb = (TokaTCB*)calloc(1, sizeof(TokaTCB));
     if (!tcb) return NULL;
 
@@ -1147,6 +1151,8 @@ void* toka_task_create_with_result_drop(void *coro_frame, void *promise,
     atomic_store(&tcb->result_owner, TOKA_RESULT_OWNER_CONSUMER);
     atomic_store(&tcb->result_disposition,
                  TOKA_RESULT_DISPOSITION_UNCLAIMED);
+    atomic_store(&tcb->cold_cleanup_supported, cold_cleanup_supported);
+    atomic_store(&tcb->cold_cleanup_finished, 0);
     tcb->result_drop_fn = result_drop_fn;
     atomic_store(&tcb->ref_count, 1);
     atomic_store(&tcb->detached, 0);
@@ -1167,6 +1173,18 @@ void* toka_task_create_with_result_drop(void *coro_frame, void *promise,
         register_frame_map(coro_frame, tcb);
     }
     return (void*)tcb;
+}
+
+void* toka_task_create_with_result_drop(void *coro_frame, void *promise,
+                                        void (*result_drop_fn)(void *)) {
+    return toka_task_create_impl(coro_frame, promise, result_drop_fn, 0);
+}
+
+// New compiler output opts into the cold-finalizer handshake. Older objects
+// retain the three-argument ABI and its legacy cleanup behavior.
+void* toka_task_create_with_result_drop_and_cold_cleanup(
+    void *coro_frame, void *promise, void (*result_drop_fn)(void *)) {
+    return toka_task_create_impl(coro_frame, promise, result_drop_fn, 1);
 }
 
 // Preserve the two-argument runtime ABI for direct C probes and older TKI
@@ -1393,6 +1411,12 @@ static int toka_task_publish_terminal(void *promise_ptr, uint8_t result_state,
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
     TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
 
+    if (tcb && atomic_load(&tcb->state) == TOKA_TCB_COLD_FINALIZING &&
+        (terminal_state != TOKA_TCB_COMPLETED_CANCELED ||
+         !atomic_load(&tcb->cold_cleanup_finished))) {
+        return 0;
+    }
+
     // The result-state transition is the terminal-publication linearization
     // point. Only its winner may expose a terminal TCB state, wake observers,
     // or release terminal ownership. In particular, a late cancellation must
@@ -1511,6 +1535,13 @@ static void toka_task_detach_owned(TokaTCB *tcb, TokaResultOwner expected_owner)
     // path while it remains enrolled.
     atomic_store(&tcb->detached, 1);
 
+    // Explicit detach keeps its historical meaning for a cold handle: it
+    // starts the task under runtime ownership. TaskHandle destruction uses the
+    // separate drop entry below, which instead claims cold cancellation.
+    if (atomic_load(&tcb->state) == TOKA_TCB_CREATED) {
+        toka_task_start(tcb);
+    }
+
     // Linearize the observability counter with terminal completion.
     toka_mutex_lock(&g_rt_mutex);
     uint32_t st = atomic_load(&tcb->state);
@@ -1532,6 +1563,42 @@ void toka_task_detach(void *tcb_ptr) {
     toka_task_detach_owned((TokaTCB*)tcb_ptr, TOKA_RESULT_OWNER_CONSUMER);
 }
 
+void toka_task_drop_handle(void *tcb_ptr) {
+    if (!tcb_ptr) return;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+
+    // A TaskHandle is the consumer's unique owner. Preserve an internal
+    // reference while its destructor transfers that ownership and any cold
+    // finalizer may run arbitrary frame cleanup.
+    atomic_fetch_add(&tcb->ref_count, 1);
+    if (atomic_load(&tcb->state) == TOKA_TCB_CREATED) {
+        uint8_t expected_owner = TOKA_RESULT_OWNER_CONSUMER;
+        if (atomic_compare_exchange_strong(&tcb->result_owner, &expected_owner,
+                                            TOKA_RESULT_OWNER_DETACHED)) {
+            atomic_store(&tcb->detached, 1);
+            toka_task_request_cancel(tcb);
+
+            // A concurrent start can turn this into ordinary detached
+            // cancellation. Count that observable live task exactly once;
+            // the terminal publisher performs the matching decrement.
+            toka_mutex_lock(&g_rt_mutex);
+            uint32_t st = atomic_load(&tcb->state);
+            if (!toka_tcb_is_terminal(st)) {
+                uint8_t expected_counted = 0;
+                if (atomic_compare_exchange_strong(&tcb->detached_counted,
+                                                    &expected_counted, 1)) {
+                    g_active_detached_task_count++;
+                }
+            }
+            toka_mutex_unlock(&g_rt_mutex);
+            toka_task_release(tcb);
+            return;
+        }
+    }
+    toka_task_release(tcb);
+    toka_task_detach_owned(tcb, TOKA_RESULT_OWNER_CONSUMER);
+}
+
 void toka_tcb_get_wait_token(void *tcb_ptr, uint64_t *out_task_id, uint64_t *out_gen) {
     if (!tcb_ptr) return;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
@@ -1548,6 +1615,17 @@ void toka_task_publish_result_state(void *promise_ptr, uint8_t state) {
     } else if (state == TOKA_RESULT_STATE_CANCELED) {
         toka_task_complete_canceled(promise_ptr);
     }
+}
+
+// The compiler's destroy path asks this before freeing a frame. A cold task
+// retains its frame after destroy returns so the promise/result ABI remains
+// readable until the final TCB reference is released.
+int toka_task_should_defer_cold_frame_free(void *promise_ptr) {
+    if (!promise_ptr) return 0;
+    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
+    TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
+    return tcb && atomic_load(&tcb->cold_cleanup_supported) &&
+           atomic_load(&tcb->state) == TOKA_TCB_COLD_FINALIZING;
 }
 
 uint8_t toka_task_get_result_state(void *promise_ptr) {
@@ -1706,7 +1784,10 @@ void toka_task_release(void *tcb_ptr) {
         }
         if (frame_to_destroy) {
             uint32_t st = atomic_load(&tcb->state);
-            if (st == TOKA_TCB_COMPLETED) {
+            if (st == TOKA_TCB_COMPLETED ||
+                (st == TOKA_TCB_COMPLETED_CANCELED &&
+                 atomic_load(&tcb->cold_cleanup_supported) &&
+                 atomic_load(&tcb->cold_cleanup_finished))) {
                 free(frame_to_destroy);
             } else {
                 destroy_coro_frame(frame_to_destroy);
@@ -2597,6 +2678,39 @@ static void toka_wait_registry_cancel_active(TokaTCB *tcb) {
     atomic_store(&tcb->active_slot_gen, 0);
 }
 
+static int toka_task_finalize_cold_cancel(TokaTCB *tcb) {
+    uint32_t expected = TOKA_TCB_CREATED;
+    if (!atomic_compare_exchange_strong(&tcb->state, &expected,
+                                        TOKA_TCB_COLD_FINALIZING)) {
+        return 0;
+    }
+
+    // Keep the TCB and its promise alive if a frame-local destructor re-enters
+    // task code or drops the final user handle.
+    atomic_fetch_add(&tcb->ref_count, 1);
+    const int runs_cleanup = atomic_load(&tcb->cold_cleanup_supported) &&
+                             tcb->coro_frame != NULL;
+    if (runs_cleanup) {
+        destroy_coro_frame(tcb->coro_frame);
+        // New CodeGen deferred physical free, so the promise remains readable
+        // after the destroy callback returns and before terminal publication.
+    }
+    // Completion is permitted only after the cleanup callback has returned.
+    // Legacy objects may not provide that callback, but still need a terminal
+    // canceled state; only new handshake objects use this bit for direct frame
+    // reclamation in toka_task_release.
+    atomic_store_explicit(&tcb->cold_cleanup_finished, 1,
+                          memory_order_release);
+
+    if (tcb->promise) {
+        toka_task_complete_canceled(tcb->promise);
+    } else {
+        atomic_store(&tcb->state, TOKA_TCB_COMPLETED_CANCELED);
+    }
+    toka_task_release(tcb);
+    return 1;
+}
+
 int toka_wait_set_cancel_group_and_wake(void *wait_set_ptr) {
     if (!wait_set_ptr) return 0;
     TokaWaitSetCancelCleanup cleanup = {0};
@@ -2678,12 +2792,9 @@ int toka_task_request_cancel(void *tcb_ptr) {
     free(cancel_scopes);
 
     toka_mutex_lock(&g_rt_mutex);
-    if (atomic_load(&tcb->state) == TOKA_TCB_CREATED && tcb->promise) {
-        // Let the promise CAS claim cold cancellation before exposing a
-        // terminal TCB state. A concurrent start may enqueue stale work, but
-        // it cannot publish a second terminal outcome.
+    if (atomic_load(&tcb->state) == TOKA_TCB_CREATED) {
         toka_mutex_unlock(&g_rt_mutex);
-        toka_task_complete_canceled(tcb->promise);
+        toka_task_finalize_cold_cancel(tcb);
         return 1;
     }
     uint32_t expected_st = TOKA_TCB_CREATED;

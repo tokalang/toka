@@ -324,10 +324,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       llvm::Function *beginFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_begin);
       m_CurrentCoroHandle = m_Builder.CreateCall(beginFn, {m_CurrentCoroId, alloc});
       
-      // Compiler-generated tasks pass the private typed result drop hook.
-      // The legacy two-argument ABI remains available to direct C probes.
+      // Compiler-generated tasks pass the private typed result drop hook and
+      // opt into the cold-finalizer handshake. Older objects retain the
+      // three-argument ABI for compatibility.
       llvm::Function *taskCreateFn =
-          m_Module->getFunction("toka_task_create_with_result_drop");
+          m_Module->getFunction(
+              "toka_task_create_with_result_drop_and_cold_cleanup");
       if (!taskCreateFn) {
           llvm::FunctionType *ft = llvm::FunctionType::get(
               m_Builder.getPtrTy(),
@@ -335,7 +337,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
               false);
           taskCreateFn = llvm::Function::Create(
               ft, llvm::Function::ExternalLinkage,
-              "toka_task_create_with_result_drop", m_Module.get());
+              "toka_task_create_with_result_drop_and_cold_cleanup",
+              m_Module.get());
       }
       llvm::Value *dropHook = resultDropFn
           ? static_cast<llvm::Value*>(resultDropFn)
@@ -732,7 +735,27 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   if (func->Effect == EffectKind::Async && m_CurrentCoroCleanupBB) {
       f->insert(f->end(), m_CurrentCoroCleanupBB);
       llvm::IRBuilder<> tmpB(m_CurrentCoroCleanupBB);
-      
+
+      llvm::Function *deferColdFreeFn =
+          m_Module->getFunction("toka_task_should_defer_cold_frame_free");
+      if (!deferColdFreeFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            tmpB.getInt32Ty(), {tmpB.getPtrTy()}, false);
+        deferColdFreeFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "toka_task_should_defer_cold_frame_free", m_Module.get());
+      }
+      llvm::Value *deferColdFree = tmpB.CreateCall(
+          deferColdFreeFn, {m_CurrentCoroPromise}, "coro.cold.defer_free");
+      llvm::Value *shouldDeferColdFree = tmpB.CreateICmpNE(
+          deferColdFree, tmpB.getInt32(0));
+      llvm::BasicBlock *freeCleanupBB = llvm::BasicBlock::Create(
+          m_Context, "coro.cleanup.free", f);
+      llvm::BasicBlock *finishCleanupBB = llvm::BasicBlock::Create(
+          m_Context, "coro.cleanup.finish", f);
+      tmpB.CreateCondBr(shouldDeferColdFree, finishCleanupBB, freeCleanupBB);
+
+      tmpB.SetInsertPoint(freeCleanupBB);
       llvm::Function *freeIdFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_free);
       llvm::Value *memToFree = tmpB.CreateCall(freeIdFn, {m_CurrentCoroId, m_CurrentCoroHandle});
       llvm::Function *freeFn = m_Module->getFunction("free");
@@ -742,7 +765,10 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         freeFn = llvm::Function::Create(freeFt, llvm::Function::ExternalLinkage, "free", m_Module.get());
       }
       tmpB.CreateCall(freeFn, memToFree);
-      
+
+      tmpB.CreateBr(finishCleanupBB);
+
+      tmpB.SetInsertPoint(finishCleanupBB);
       tmpB.CreateBr(coroEndSharedBB);
   }
 

@@ -14,6 +14,7 @@ extern fn toka_task_try_schedule(id: u64, gen: u64) -> i32
 extern fn toka_task_pop_ready(*out_id: u64, *out_gen: u64, *out_tcb: Addr) -> i32
 extern fn toka_task_schedule_frame_compat(*frame: void) -> i32
 extern fn toka_task_detach(*tcb: void) -> void
+extern fn toka_task_drop_handle(*tcb: void) -> void
 extern fn toka_task_release(*tcb: void) -> void
 extern fn toka_tcb_get_coro_frame(*tcb: void) -> *void
 extern fn toka_tcb_is_done(*tcb: void) -> bool
@@ -57,10 +58,11 @@ extern fn toka_task_scope_reap_finished(*scope: void) -> u32
 extern fn toka_task_scope_finish_close(*scope: void) -> i32
 extern fn toka_task_scope_release(*scope: void) -> void
 
-// Hook for standard library scheduler to mark task as detached
+// Hook for TaskHandle destruction. A cold handle cancels and cleans up;
+// activated tasks transfer to ordinary detached runtime ownership.
 pub fn __toka_detach_task(*handle: void) {
     if *handle != null {
-        toka_task_detach(*handle)
+        toka_task_drop_handle(*handle)
     }
 }
 
