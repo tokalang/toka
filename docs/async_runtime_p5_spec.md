@@ -94,6 +94,24 @@ bounded evidence for result-claim ordering only. It does **not** qualify the
 TCB RFC's frame pins, full-token lifetime validation, aggregate cleanup, or
 await-resolution/cancellation arbitration.
 
+### 1.4 Current narrow implementation evidence: pre-commit wait rollback
+
+`toka_task_abort_suspend` now invalidates the TCB's active singleton or
+wait-set registrations before it restores `Preparing` or
+`PreparingWithPendingWake` to `Running`. This removes their retained TCB
+references and makes late slot tokens stale; it creates no ready-queue entry
+for an attempt that never committed. Timer registration and `sleep_async` call
+the abort helper when singleton allocation fails. `race2` likewise aborts after
+pair allocation, completion-subscription, or child-cancellation-registration
+failure, after it has released the partial resources it acquired.
+
+`toka_async_suspend_rollback` covers singleton rollback and a pair that already
+has a pending wake: both leave zero live wait registrations, reject stale
+tokens, remain absent from the ready queue, and permit a new suspension
+attempt. This is not full RFC conformance for `WonPending` completion,
+reactor/timer physical unregistration, completion-progress descriptors, or the
+four cleanup-only suspension kinds.
+
 ---
 
 ## 2. Cancellation Linearization Architecture

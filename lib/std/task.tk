@@ -479,6 +479,8 @@ pub fn __toka_register_timer(*task: void, ms: i32) {
                 g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
                 unlock_queue()
                 core_task::toka_task_commit_suspend(*task)
+            } else {
+                core_task::toka_task_abort_suspend(*task)
             }
         }
     }
@@ -527,6 +529,9 @@ pub fn sleep_async(ms: i32) -> async i32 {
             g_timer_queue#.push(TimerEntry(wait_id=wait_id, slot_gen=slot_gen, expire_at=expire_time))
             unlock_queue()
             core_task::toka_task_commit_suspend(*handle)
+        } else {
+            core_task::toka_task_abort_suspend(*handle)
+            return -1
         }
     }
     __builtin_coro_suspend()

@@ -1285,10 +1285,15 @@ int toka_task_abort_suspend(void *coro_frame) {
     while (1) {
         uint32_t st = atomic_load(&tcb->state);
         if (st == TOKA_TCB_PREPARING || st == TOKA_TCB_PREPARING_WITH_PENDING_WAKE) {
+            // Roll back the logical wait installation before restoring
+            // Running. This invalidates singleton and wait-set registrations,
+            // releases their retained TCB references, and prevents a late
+            // source from scheduling an attempt that never committed.
+            toka_wait_registry_cancel_active(tcb);
             uint32_t expected = st;
             if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_RUNNING)) {
                 toka_task_release(tcb);
-                return 1; // Aborted back to RUNNING!
+                return 1;
             }
             continue;
         }

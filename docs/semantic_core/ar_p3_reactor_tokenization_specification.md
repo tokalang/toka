@@ -10,7 +10,7 @@ Async Runtime Phase 3 (AR-P3) completely eliminates raw coroutine frame pointers
 1. **Zero Raw Frame Addresses**: Operating System Reactors (`epoll`, `kqueue`, `select`) receive **only** packed 64-bit `event_key` tokens (`kevent.udata` on macOS) or file descriptors (`data.u64` on Linux with per-fd side table `g_epoll_fd_table`):
    $$\text{event\_key} = ((\text{wait\_id} \text{ as } u64) \ll 32) \mid (\text{slot\_gen} \text{ as } u64)$$
 2. **$O(1)$ Stale Event Rejection**: Late OS reactor events for closed sockets or cancelled waits hit `toka_wait_registry_try_wake(wait_id, slot_gen)` and are rejected in $O(1)$ time without inspecting or dereferencing any coroutine frame or TCB memory.
-3. **Atomic Suspend Rollback (`toka_task_abort_suspend`)**: If registration or allocation fails during `prepare_suspend`, `toka_task_abort_suspend` restores task state `PREPARING -> RUNNING` or `PREPARING_WITH_PENDING_WAKE -> RUNNING` atomically to prevent task stalling.
+3. **Atomic Suspend Rollback (`toka_task_abort_suspend`)**: If registration or allocation fails during `prepare_suspend`, `toka_task_abort_suspend` first invalidates the active WaitRegistry singleton or set (making its tokens stale and releasing its retained TCB references), then restores task state `PREPARING -> RUNNING` or `PREPARING_WITH_PENDING_WAKE -> RUNNING` without enqueuing the uncommitted attempt.
 4. **ONESHOT Reactor Semantics**: All socket readiness registrations use `ONESHOT` semantics (`EPOLLONESHOT` on Linux, `EV_ONESHOT` on macOS) to ensure strictly serialized token dispatch.
 
 ---
@@ -44,6 +44,7 @@ stateDiagram-v2
 
 ## 4. Verification Baseline
 
+- **`toka_async_suspend_rollback`**: Runtime probe for singleton and pending-pair rollback; it verifies registry cleanup, stale-token rejection, no ready-queue publication, and re-preparation.
 - **`g09_async_reactor_tokenization_test.tk`**: Real loopback TCP socket test exercising `net_async_accept`, `net_async_read`, `net_async_write`, and `connect_async` over tokenized kqueue/epoll.
 - **`g10_async_net_test.tk`**: Full TCP client/server echo suite.
 - **`g10_async_http_server_test.tk`**: Native async web server benchmark.

@@ -3,7 +3,7 @@
 // std/async.tk
 // High-level async combinators and structured concurrency.
 
-import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
 import core/result::{Result};
 import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
 import std/io::{println};
@@ -33,6 +33,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
     if prep_ok != 0 {
         auto alloc_ok = toka_wait_registry_allocate_pair(task_id, wait_gen, 1:u16, 2:u16, &id1 as *u32, &gen1 as *u32, &id2 as *u32, &gen2 as *u32)
         if alloc_ok == 0 {
+            toka_task_abort_suspend(*coro_handle)
             assert(false, "WaitRegistry pair allocation failed in race2")
         }
 
@@ -45,6 +46,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
             if sub2 { task_unsubscribe_completion<'T2>(owned_second, id2, gen2) }
             toka_wait_registry_release(id1, gen1)
             toka_wait_registry_release(id2, gen2)
+            toka_task_abort_suspend(*coro_handle)
             assert(false, "Completion subscription failed in race2")
         }
 
@@ -61,6 +63,17 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
             registered_second = toka_task_register_cancel_child(*coro_handle, *second_start_tcb) != 0
         }
         if !registered_first || !registered_second {
+            if registered_first && *first_start_tcb != null {
+                toka_task_unregister_cancel_child(*coro_handle, *first_start_tcb)
+            }
+            if registered_second && *second_start_tcb != null {
+                toka_task_unregister_cancel_child(*coro_handle, *second_start_tcb)
+            }
+            task_unsubscribe_completion<'T1>(owned_first, id1, gen1)
+            task_unsubscribe_completion<'T2>(owned_second, id2, gen2)
+            toka_wait_registry_release(id1, gen1)
+            toka_wait_registry_release(id2, gen2)
+            toka_task_abort_suspend(*coro_handle)
             assert(false, "Cancellation-child registration failed in race2")
         }
         if *first_start_tcb != null {
