@@ -1,10 +1,11 @@
 # RFC: PlaceState Core
 
-**Status:** Proposed internal semantic-core contract; P0.1 fact-boundary
-implementation is in progress. It changes no source syntax by itself. Language
-RFCs such as delayed initialization may depend on it only after the
-implementation gates in this document are satisfied for their declared
-capability slice.
+**Status:** Proposed internal semantic-core contract. P0.1 establishes typed
+whole-place facts, P0.2 adds bounded direct-projection facts, and P0.3 makes
+the synchronous cleanup boundary consume the same elaborated projection plan
+as Sema. It changes no source syntax by itself. Language RFCs such as delayed
+initialization may depend on it only after the implementation gates in this
+document are satisfied for their declared capability slice.
 
 **Purpose:** Define one exact-place state model shared by Sema flow analysis,
 PAL, ownership transfer, synchronous CodeGen cleanup, TKI, and source-less
@@ -106,16 +107,18 @@ The first capability matrix is intentionally bounded:
 | Place form | State tracking | Initial policy |
 |---|---|---|
 | stable whole local | whole-place | admitted |
-| direct named field of an eligible local record | exact projection | admitted only when Sema and cleanup use the same field numbering and eligibility predicate |
-| constant index of an eligible local fixed array | exact projection | admitted only when Sema and cleanup use the same element numbering and eligibility predicate |
+| direct named field of an eligible local record | exact projection | admitted only when Sema and cleanup consume one `PartialMovePlan` with the same field numbering and eligibility mask |
+| constant index of an eligible local fixed array | exact projection | admitted only when Sema and cleanup consume one `PartialMovePlan` with the same element numbering and eligibility mask |
 | nested projection, dynamic index, spread, enum payload, nonlocal root, custom-drop aggregate, or representation beyond the supported mask | none until proved | reject before lowering |
 
 Eligibility is one semantic predicate consumed by Sema, synchronous CodeGen
-cleanup, TKI replay, and diagnostics. The later async/place bridge must consume
-that same predicate rather than widening it. It must not be reimplemented with
-broader limits in Sema than in CodeGen. Increasing a mask width or accepting a
-new AST shape is a capability expansion and requires new source and
-source-less evidence.
+cleanup, TKI replay, and diagnostics. In the P0.3 synchronous slice, Sema
+materializes it as `PartialMovePlan { kind, eligibleMask }` on the local
+declaration; CodeGen uses that plan rather than implementing a parallel shape
+predicate. A source-less retained body recomputes the plan during its own Sema
+pass. The later async/place bridge must consume the same predicate rather than
+widening it. Increasing a mask width or accepting a new AST shape is a
+capability expansion and requires new source and source-less evidence.
 
 For an aggregate, the root is available to a whole-value operation only when
 all required owned projections are `Live`. A partial move changes the selected

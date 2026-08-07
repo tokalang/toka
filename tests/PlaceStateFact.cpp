@@ -6,6 +6,8 @@
 
 using toka::PlaceState;
 using toka::PlaceStateFact;
+using toka::PartialMovePlan;
+using toka::PartialMoveProjectionKind;
 using toka::ProjectionPlaceFacts;
 
 int main() {
@@ -58,5 +60,14 @@ int main() {
   assert(absentJoin.factAt(0).contains(PlaceState::Never));
   assert(absentJoin.factAt(0).contains(PlaceState::Moved));
   assert(!absentJoin.factAt(0).contains(PlaceState::Live));
+
+  const auto fields = PartialMovePlan::directFields(0x3);
+  assert(fields.isAdmitted());
+  assert(fields.admits(PartialMoveProjectionKind::DirectField, 1));
+  assert(!fields.admits(PartialMoveProjectionKind::FixedArrayElement, 1));
+  assert(!fields.admits(PartialMoveProjectionKind::DirectField, 2));
+  const auto elements = PartialMovePlan::fixedArrayElements(0x4);
+  assert(elements.admits(PartialMoveProjectionKind::FixedArrayElement, 2));
+  assert(!PartialMovePlan::directFields(0).isAdmitted());
   return 0;
 }

@@ -54,6 +54,7 @@ struct SymbolInfo {
   PlaceStateFact PlaceFact = PlaceState::Live;
   // Enabled only for the bounded local direct-field/fixed-array capability
   // matrix. `InitMask` is derived from this ledger whenever it is active.
+  PartialMovePlan PartialMove;
   ProjectionPlaceFacts ProjectionFacts;
 
   // "Hot Potato" Tracking
@@ -685,7 +686,7 @@ private:
                                   SourceLocation loc);
   ShapeDecl *findVisibleShapeDecl(const std::string &shapeName,
                                   SourceLocation loc = {});
-  uint64_t admittedProjectionMask(const SymbolInfo &info);
+  PartialMovePlan admittedPartialMovePlan(const SymbolInfo &info);
   void initializeProjectionFacts(SymbolInfo &info);
   void syncLegacyProjectionLiveness(SymbolInfo &info);
   std::string getDynTraitName(const std::string &typeName) const;

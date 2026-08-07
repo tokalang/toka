@@ -1678,6 +1678,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     info.IsShared = var->IsShared;
     info.HasDrop = hasDrop;
     info.DropFunc = dropFunc;
+    info.PartialMove = var->PartialMove;
     if (dropValueType && dropValueType->isArray())
       info.DropType = dropValueType;
     if (m_Symbols.count(varName)) {
@@ -1699,43 +1700,14 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                             info.InitFlag);
     }
 
-    // Direct member `cede` can be made safe for compiler-managed records: a
-    // per-field mask lets scope cleanup skip only the transferred field.  Do
-    // not install this mechanism for custom destructors, whose whole-object
-    // invariant is opaque to the compiler.
-    auto shapeIt = m_Shapes.find(info.SoulName);
-    bool hasSharedMember = false;
-    if (shapeIt != m_Shapes.end()) {
-      for (const auto &member : shapeIt->second->Members) {
-        if (member.IsShared) {
-          hasSharedMember = true;
-          break;
-        }
-      }
-    }
-    if (alloca && hasDrop && shapeIt != m_Shapes.end() &&
-        !shapeIt->second->HasExplicitDrop &&
-        !hasSharedMember &&
-        (shapeIt->second->Kind == ShapeKind::Struct ||
-         shapeIt->second->Kind == ShapeKind::Tuple) &&
-        shapeIt->second->Members.size() <= 64) {
-      const size_t fieldCount = shapeIt->second->Members.size();
-      const uint64_t fullMask =
-          fieldCount == 64 ? ~0ULL : ((1ULL << fieldCount) - 1ULL);
+    // Sema admits exactly the bounded projections whose cleanup representation
+    // CodeGen may install.  Do not recreate that eligibility predicate here:
+    // this plan is the shared Sema-to-cleanup boundary for P0.3.
+    if (alloca && hasDrop && info.PartialMove.isAdmitted()) {
       info.DropMask = createEntryBlockAlloca(
           llvm::Type::getInt64Ty(m_Context), nullptr, varName + ".drop.mask");
-      m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
-    }
-    if (alloca && hasDrop && info.DropType && info.DropType->isArray()) {
-      auto array = std::dynamic_pointer_cast<ArrayType>(info.DropType);
-      if (array && array->Size <= 64) {
-        const uint64_t fullMask =
-            array->Size == 64 ? ~0ULL : ((1ULL << array->Size) - 1ULL);
-        info.DropMask = createEntryBlockAlloca(
-            llvm::Type::getInt64Ty(m_Context), nullptr,
-            varName + ".array.drop.mask");
-        m_Builder.CreateStore(m_Builder.getInt64(fullMask), info.DropMask);
-      }
+      m_Builder.CreateStore(m_Builder.getInt64(info.PartialMove.eligibleMask()),
+                            info.DropMask);
     }
 
     m_ScopeStack.back().push_back(info);

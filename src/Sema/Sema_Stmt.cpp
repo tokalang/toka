@@ -2009,6 +2009,8 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     Info.IsDeclaredVariable = true;
+    Info.PartialMove = admittedPartialMovePlan(Info);
+    Var->PartialMove = Info.PartialMove;
     initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
     if (!Info.ConditionalTodoIds.empty()) {

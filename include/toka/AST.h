@@ -14,6 +14,7 @@
 #pragma once
 
 #include "toka/BindingPermission.h"
+#include "toka/PlaceState.h"
 #include "toka/Token.h"
 #include "toka/TypeSyntax.h"
 #include "toka/Type.h" // Added for ResolvedType
@@ -1424,6 +1425,9 @@ public:
   bool IsValueBlocked = false;    // Identifier Attribute $ (p$)
   bool IsMorphicExempt = false;   // [NEW] Exempt from strict hat rules
   BindingPermission Permission;
+  // Elaborated by Sema for the bounded partial-cede slice.  This is not
+  // source syntax and is deliberately recomputed for source-less TKI bodies.
+  PartialMovePlan PartialMove;
 
   VariableDecl(const std::string &name, std::unique_ptr<Expr> init)
       : Name(name), Init(std::move(init)) {}
@@ -1447,6 +1451,7 @@ public:
     n->IsPointerNullable = IsPointerNullable;
     n->IsValueNullable = IsValueNullable;
     n->IsRebindBlocked = IsRebindBlocked;
+    n->PartialMove = PartialMove;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

@@ -87,6 +87,53 @@ constexpr bool hasExactlyPlaceState(PlaceStateFact states, PlaceState state) {
   return states.isExactly(state);
 }
 
+// The bounded synchronous partial-move capability is an elaborated plan, not
+// an alternate source-language permission.  Sema creates it once for an
+// eligible local binding; AST/CodeGen carry the same plan to install and
+// update the corresponding cleanup mask.
+enum class PartialMoveProjectionKind : uint8_t {
+  None,
+  DirectField,
+  FixedArrayElement,
+};
+
+class PartialMovePlan {
+public:
+  constexpr PartialMovePlan() = default;
+
+  static constexpr PartialMovePlan directFields(uint64_t eligibleMask) {
+    return make(PartialMoveProjectionKind::DirectField, eligibleMask);
+  }
+
+  static constexpr PartialMovePlan fixedArrayElements(uint64_t eligibleMask) {
+    return make(PartialMoveProjectionKind::FixedArrayElement, eligibleMask);
+  }
+
+  constexpr bool isAdmitted() const {
+    return m_Kind != PartialMoveProjectionKind::None && m_EligibleMask != 0;
+  }
+  constexpr PartialMoveProjectionKind kind() const { return m_Kind; }
+  constexpr uint64_t eligibleMask() const { return m_EligibleMask; }
+  constexpr bool admits(PartialMoveProjectionKind kind, uint64_t bit) const {
+    return bit < 64 && m_Kind == kind &&
+           (m_EligibleMask & (1ULL << bit)) != 0;
+  }
+
+private:
+  constexpr PartialMovePlan(PartialMoveProjectionKind kind,
+                            uint64_t eligibleMask)
+      : m_Kind(kind), m_EligibleMask(eligibleMask) {}
+
+  static constexpr PartialMovePlan make(PartialMoveProjectionKind kind,
+                                        uint64_t eligibleMask) {
+    return eligibleMask == 0 ? PartialMovePlan()
+                             : PartialMovePlan(kind, eligibleMask);
+  }
+
+  PartialMoveProjectionKind m_Kind = PartialMoveProjectionKind::None;
+  uint64_t m_EligibleMask = 0;
+};
+
 // A bounded ledger for independent direct projections of one stable local.
 // It is enabled only for a capability slice that has a fixed <=64 projection
 // numbering shared with the legacy liveness and runtime cleanup masks.

@@ -258,31 +258,24 @@ int CodeGen::getDirectMemberDropIndex(const VariableScopeInfo &entry,
   if (!root || Type::stripMorphology(root->Name) !=
                    Type::stripMorphology(entry.Name))
     return -1;
-  if (member->Index >= 0)
-    return member->Index;
-  auto fieldsIt = m_StructFieldNames.find(entry.SoulName);
-  if (fieldsIt == m_StructFieldNames.end())
+  if (member->Index < 0 ||
+      !entry.PartialMove.admits(PartialMoveProjectionKind::DirectField,
+                                member->Index))
     return -1;
-  const std::string requested = stripMemberAccessMarkers(member->Member);
-  for (size_t i = 0; i < fieldsIt->second.size(); ++i) {
-    if (stripMemberAccessMarkers(fieldsIt->second[i]) == requested)
-      return static_cast<int>(i);
-  }
-  return -1;
+  return member->Index;
 }
 
 int CodeGen::getDirectArrayDropIndex(const VariableScopeInfo &entry,
                                      const ArrayIndexExpr *index) const {
-  if (!index || !entry.DropType || !entry.DropType->isArray() ||
-      index->Indices.size() != 1)
+  if (!index || index->Indices.size() != 1)
     return -1;
   auto *root = dynamic_cast<const VariableExpr *>(index->Array.get());
   auto *constant = dynamic_cast<const NumberExpr *>(index->Indices[0].get());
   if (!root || !constant || Type::stripMorphology(root->Name) !=
                                Type::stripMorphology(entry.Name))
     return -1;
-  auto array = std::dynamic_pointer_cast<ArrayType>(entry.DropType);
-  if (!array || constant->Value >= array->Size || constant->Value >= 64)
+  if (!entry.PartialMove.admits(
+          PartialMoveProjectionKind::FixedArrayElement, constant->Value))
     return -1;
   return static_cast<int>(constant->Value);
 }

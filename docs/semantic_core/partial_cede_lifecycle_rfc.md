@@ -2,10 +2,11 @@
 
 **Status:** Bounded direct-record-field and fixed-array constant-index design
 contract frozen. P0.2 gives the admitted Sema slice a static projection
-PlaceState ledger; CodeGen eligibility/cleanup and async composition remain
-separate closure work. Targeted current-HEAD evidence at `8d680fea` aligns the
-admitted Sema/CodeGen matrix and rejects over-limit and shared-member
-aggregates before lowering. Partial `cede` is not a general projection feature.
+PlaceState ledger. P0.3 carries one elaborated `PartialMovePlan` from Sema,
+through the local declaration AST, to synchronous CodeGen cleanup; CodeGen no
+longer re-derives the direct-field/fixed-array eligibility matrix. Async
+composition, typed per-slot drop actions, and TKI semantic witnesses remain
+separate closure work. Partial `cede` is not a general projection feature.
 
 **Depends on:** [PlaceState Core](place_state_core_rfc.md), `PERM-STATIC-01`,
 `OWN-FLOW-01`, and `OWN-FLOW-02`.
@@ -29,6 +30,14 @@ mechanisms:
   each admitted direct field or fixed-array element (up to 64). It follows all
   admitted Sema control-flow snapshots and joins; `InitMask` is derived from
   its definite-`Live` projections for that bounded matrix;
+- `PartialMovePlan { projection kind, eligible mask }` is computed once by
+  Sema for each eligible local declaration, copied to `VariableDecl`, then
+  copied to CodeGen's `VariableScopeInfo`. The plan is the shared static
+  eligibility and stable-numbering boundary: Sema derives
+  `ProjectionFacts` from its mask, and CodeGen installs a cleanup mask only
+  from that same mask. It is elaborated body data, not surface syntax or a
+  TKI-exported authority claim; a source-less retained body re-runs Sema and
+  constructs its own plan;
 - CodeGen `DropFlag` prevents double-dropping a complete local binding.
 
 The first slices install a runtime `i64` drop mask for a local,
@@ -183,10 +192,15 @@ double-drop a custom container field or silently leak its remaining fields.
    supported error/unwind edge carries the same PlaceState, direct-flow
    ceiling, PAL, and cleanup facts; a specialized merge may not omit one
    domain. Cancellation belongs to the separate async bridge.
-4. **Shared eligibility:** Sema and CodeGen consume the exact matrix in Section
-   4. Over-limit, shared-member, custom-drop, nested, nonlocal, index, spread,
-   and enum cases reject before lowering whenever the matrix does not admit
-   them.
+4. **Shared eligibility (P0.3):** Sema creates one
+   `PartialMovePlan(DirectField | FixedArrayElement, eligibleMask)` for an
+   admitted local. CodeGen consumes that plan to allocate, clear, and restore
+   the cleanup mask; it does not separately inspect aggregate shape, custom
+   drop, shared members, or array bounds to decide eligibility. Over-limit,
+   shared-member, custom-drop, nested, nonlocal, dynamic-index, spread, and
+   enum cases receive no plan and reject before lowering. Existing masked-drop
+   helpers retain defensive fallbacks for malformed internal state; they are
+   not a second admission path.
 5. **Synchronous evidence:** recorded legacy slices include fixed-array
    lifecycle/drop-mask work (`b6e37756`, `baac987e`, `b5f9823d`), direct-field
    source-less replay (`5ce0ccc2`), and consuming-field receiver closure
@@ -228,6 +242,9 @@ records. The completion repair at `8d680fea` also aligns Sema's direct member
 identity resolution for eligible by-value pattern bindings with CodeGen. The
 complete release gate at `8d680fea` requalified this candidate across all
 thirteen stages. That evidence does not certify the full PlaceState Core.
+P0.3 replaces that prior matched-but-duplicated eligibility implementation
+with the declaration-carried plan above; its source and source-less replay
+qualification is required at the revision that lands it.
 
 ## 6. Exit criterion
 

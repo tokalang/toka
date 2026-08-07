@@ -225,6 +225,7 @@ private:
     llvm::Value *DropFlag = nullptr;
     // Compiler-managed record values use this field-level liveness mask after
     // a direct member `cede`. Custom destructors retain whole-object control.
+    PartialMovePlan PartialMove;
     llvm::Value *DropMask = nullptr;
   };
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
