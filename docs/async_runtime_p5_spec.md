@@ -74,6 +74,26 @@ cover compiler-generated frame ownership and exact-once resource cleanup. This
 is still a bounded evidence slice, not closure of the RFC's full cold-finalizer
 or frame-retirement gates.
 
+### 1.3 Current narrow implementation evidence: result-disposition claim ordering
+
+For TCB-backed promises, `ReadyLive` alone is no longer enough to transfer or
+drop a result. A consumer first acquire-observes normal `Completed` and moves
+the private disposition from `Unclaimed` to `ClaimedByConsumer`, then
+release-publishes public `ReadyLive -> Taken`. Detached and scope owners first
+observe the same normal terminal state, claim `Unclaimed -> Dropping`, invoke
+the typed drop hook without a runtime arbiter held, and only then publish
+`Taken` and `Dropped`. Thus the public state records discharge only after the
+unique private transfer/drop claim; canceled completion has no payload claim.
+
+`toka_async_result_disposition` is a CTest runtime probe for rejecting a
+premature `ReadyLive` consumer take, canceled no-payload observation, consumer
+transfer, both detach/complete orderings, and scope-owned drain. Its typed drop
+hook re-enters `toka_task_take_result` while it runs and observes `ReadyLive`;
+the re-entry is rejected and cannot deadlock or steal the result. This is
+bounded evidence for result-claim ordering only. It does **not** qualify the
+TCB RFC's frame pins, full-token lifetime validation, aggregate cleanup, or
+await-resolution/cancellation arbitration.
+
 ---
 
 ## 2. Cancellation Linearization Architecture
@@ -389,11 +409,13 @@ late child is rejected before transfer. The current substrate additionally
 transfers `Consumer -> Scope` result authority during accepted enrollment and
 installs a compiler-generated, return-type-specific drop hook. `reap_finished`,
 successful `finish_close`, and scope destruction's fallback transfer to the
-detached owner publish `Unclaimed -> Dropping`, retain the TCB across the
-callback, invoke that hook only after releasing the registry arbiter, then
-release-publish `ReadyLive -> Taken` and `Dropped`. `await`, `wait`, and async
-entry result extraction claim `ReadyLive -> Taken` before moving the payload,
-so a later handle drop cannot repeat the disposition.
+detached owner first acquire-observe `Completed`, publish
+`Unclaimed -> Dropping`, retain the TCB across the callback, invoke that hook
+only after releasing the registry arbiter, then release-publish
+`ReadyLive -> Taken` and `Dropped`. `await`, `wait`, and async entry result
+extraction first acquire-observe `Completed`, claim the same private word as
+`Unclaimed -> ClaimedByConsumer`, then publish `ReadyLive -> Taken` before
+moving the payload, so a later handle drop cannot repeat the disposition.
 
 This remains a deliberately restricted result-disposition substrate, not
 Phase-5 conformance: `Dropping`/`Dropped` is only a per-TCB completion marker,

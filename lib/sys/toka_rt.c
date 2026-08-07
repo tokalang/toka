@@ -860,7 +860,11 @@ typedef enum {
 typedef enum {
     TOKA_RESULT_DISPOSITION_UNCLAIMED = 0,
     TOKA_RESULT_DISPOSITION_DROPPING = 1,
-    TOKA_RESULT_DISPOSITION_DROPPED = 2
+    TOKA_RESULT_DISPOSITION_DROPPED = 2,
+    // A consumer has transferred the typed payload. This is the private
+    // counterpart of the public ReadyLive -> Taken transition, so a later
+    // detached/scope drain cannot mistake the consumed result for unclaimed.
+    TOKA_RESULT_DISPOSITION_CLAIMED_BY_CONSUMER = 3
 } TokaResultDisposition;
 
 typedef struct TokaTCB {
@@ -1646,22 +1650,53 @@ int toka_task_take_result(void *promise_ptr) {
     if (!promise_ptr) return 0;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
     TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
-    if (tcb &&
-        (atomic_load_explicit(&tcb->result_owner, memory_order_acquire) !=
-             TOKA_RESULT_OWNER_CONSUMER ||
-         atomic_load_explicit(&tcb->result_disposition, memory_order_acquire) !=
-             TOKA_RESULT_DISPOSITION_UNCLAIMED)) {
+
+    if (!tcb) {
+        // Preserve the legacy promise-only ABI. TCB-backed promises use the
+        // private claim below; promise-only objects have only result_state as
+        // their ownership gate.
+        uint8_t result_state = atomic_load_explicit(&hdr->result_state,
+                                                    memory_order_acquire);
+        if (result_state == TOKA_RESULT_STATE_CANCELED) return -1;
+        if (result_state != TOKA_RESULT_STATE_READYLIVE) return 0;
+        uint8_t expected = TOKA_RESULT_STATE_READYLIVE;
+        return atomic_compare_exchange_strong_explicit(
+            &hdr->result_state, &expected, TOKA_RESULT_STATE_TAKEN,
+            memory_order_acq_rel, memory_order_acquire);
+    }
+
+    // A public ReadyLive byte alone is not a payload authorization: terminal
+    // publication writes it before release-publishing Completed. The consumer
+    // must first observe normal completion, then ReadyLive, and finally win the
+    // same private claim word used by scope and detached result disposal.
+    uint32_t terminal_state = atomic_load_explicit(&tcb->state,
+                                                   memory_order_acquire);
+    if (terminal_state == TOKA_TCB_COMPLETED_CANCELED) return -1;
+    if (terminal_state != TOKA_TCB_COMPLETED) return 0;
+    if (atomic_load_explicit(&tcb->result_owner, memory_order_acquire) !=
+            TOKA_RESULT_OWNER_CONSUMER) {
         return 0;
     }
-    uint8_t expected = TOKA_RESULT_STATE_READYLIVE;
-    if (atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected, TOKA_RESULT_STATE_TAKEN, memory_order_acq_rel, memory_order_acquire)) {
-        return 1;
+
+    uint8_t result_state = atomic_load_explicit(&hdr->result_state,
+                                                memory_order_acquire);
+    if (result_state == TOKA_RESULT_STATE_CANCELED) return -1;
+    if (result_state != TOKA_RESULT_STATE_READYLIVE) return 0;
+
+    uint8_t expected_disposition = TOKA_RESULT_DISPOSITION_UNCLAIMED;
+    if (!atomic_compare_exchange_strong_explicit(
+            &tcb->result_disposition, &expected_disposition,
+            TOKA_RESULT_DISPOSITION_CLAIMED_BY_CONSUMER,
+            memory_order_acq_rel, memory_order_acquire)) {
+        return 0;
     }
-    uint8_t st = atomic_load_explicit(&hdr->result_state, memory_order_acquire);
-    if (st == TOKA_RESULT_STATE_CANCELED) {
-        return -1;
-    }
-    return 0;
+
+    // The private claim excludes every other runtime disposition path. A
+    // normal terminal state already guarantees ReadyLive cannot be relabeled
+    // Canceled, so release-publishing Taken is the consumer's final commit.
+    atomic_store_explicit(&hdr->result_state, TOKA_RESULT_STATE_TAKEN,
+                          memory_order_release);
+    return 1;
 }
 
 // Both scope closing and detached completion use this one linear disposition.
@@ -1672,6 +1707,13 @@ int toka_task_take_result(void *promise_ptr) {
 static int toka_task_dispose_result_for_owner(TokaTCB *tcb,
                                               TokaResultOwner owner) {
     if (!tcb || atomic_load(&tcb->result_owner) != owner) return 0;
+    // ReadyLive becomes externally observable before the terminal publisher
+    // release-publishes Completed. A runtime owner may not claim/drop until it
+    // has observed that normal terminal state.
+    if (atomic_load_explicit(&tcb->state, memory_order_acquire) !=
+        TOKA_TCB_COMPLETED) {
+        return 0;
+    }
     if (!tcb->promise) return 1;
 
     struct TokaPromiseHeader *hdr =
@@ -1689,7 +1731,9 @@ static int toka_task_dispose_result_for_owner(TokaTCB *tcb,
             &tcb->result_disposition, &expected_disposition,
             TOKA_RESULT_DISPOSITION_DROPPING, memory_order_acq_rel,
             memory_order_acquire)) {
-        return expected_disposition == TOKA_RESULT_DISPOSITION_DROPPED;
+        return expected_disposition == TOKA_RESULT_DISPOSITION_DROPPED ||
+               expected_disposition ==
+                   TOKA_RESULT_DISPOSITION_CLAIMED_BY_CONSUMER;
     }
 
     atomic_fetch_add(&tcb->ref_count, 1);
