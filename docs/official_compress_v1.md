@@ -1,4 +1,4 @@
-# `official/compress` v1.1 — Bounded Streaming Gzip/Zlib and HTTP Policy
+# `official/compress` v1.2 — Bounded Streaming Gzip/Zlib/Zstd and HTTP Policy
 
 Status: **implemented and locally qualified through explicit native-link and
 locked/offline package evidence; not yet published**.
@@ -12,11 +12,11 @@ incrementally produce compressed or decompressed owned chunks. Its optional
 `stdx/net/http` must not acquire a reverse dependency on it. The base module
 still owns neither TCP streams, HTTP headers, files, nor archive containers.
 
-The package is intentionally native because zlib is a mature, audited format
-implementation with platform packages on the supported targets. The public
-Toka surface never exposes zlib structures or pointers. The package-private C
-bridge is the sole FFI boundary; it transfers result allocations once into
-`std::Bytes` through its documented unsafe native-adoption adapter.
+The package is intentionally native because zlib and libzstd (>= 1.4.0) are mature, audited format
+implementations with platform packages on the supported targets. The public
+Toka surface never exposes zlib/zstd structures or pointers. Package-private C
+bridges are the sole FFI boundary; they transfer result allocations once into
+`std::Bytes` through documented unsafe native-adoption adapters.
 
 ## v1 API and ownership contract
 
@@ -25,20 +25,20 @@ auto encoder# = Encoder::gzip(-1).unwrap()
 auto wire = encoder#.write(cede source_chunk).unwrap()
 auto final_wire = encoder#.finish().unwrap()
 
-auto decoder# = Decoder::gzip(64 * 1024 * 1024).unwrap()
+auto decoder# = Decoder::zstd(64 * 1024 * 1024).unwrap()
 auto plain = decoder#.write(cede wire_chunk).unwrap()
 auto final_plain = decoder#.finish().unwrap()
 ```
 
-- `Encoder::{gzip,zlib}` accept zlib levels `-1..9`.
-- `Decoder::{gzip,zlib}` require a positive maximum total decompressed byte
-  count. This is a caller-owned resource policy, not a hidden global default.
+- `Encoder::{gzip,zlib}` accept zlib levels `-1..9`. `Encoder::zstd` accepts Zstd level `-1` or `0` for default (level 3), or `1..22`.
+- `Decoder::{gzip,zlib,zstd}` require a positive maximum total decompressed byte
+  count (`max_output_bytes`). This is a caller-owned resource policy, not a hidden global default. Zstd decoders additionally enforce a fixed 128MB maximum window memory ceiling (`ZSTD_d_windowLogMax = 27`).
 - `write` consumes one `Bytes` input and returns a distinct owned `Bytes`
   output. Empty output is valid for a streaming step.
 - `finish` is the sole flush/validation point, returns final output, and closes
   the object. Any failure also closes it, preventing reuse of partial state.
-- Gzip and zlib are separate, explicit formats. v1 rejects trailing bytes and
-  concatenated gzip members rather than guessing a continuation policy.
+- Gzip, Zlib, and Zstd are separate, explicit formats. The package rejects trailing bytes and
+  concatenated frames rather than guessing a continuation policy.
 
 `CompressError` is structured as `(kind, code, message)` and distinguishes
 invalid setup, closed streams, allocation failure, malformed data, truncated
@@ -47,26 +47,25 @@ input, unsupported trailing bytes, and output-limit violations.
 ## Native and package contract
 
 `package.tk` declares `native.required`, shared `native.sources`, and a
-macOS/Linux `pkg_config = ("zlib")` target block. `toka build` verifies those
-fields against the locked package source, compiles the private bridge, and
-links zlib only for a consumer that imports the locked package. This is not a
+macOS/Linux `pkg_config = ("zlib", "libzstd")` target block requiring `libzstd >= 1.4.0`. `toka build` verifies those
+fields against the locked package source, compiles the private bridges, and
+links zlib and libzstd only for a consumer that imports the locked package. This is not a
 hidden base-runtime dependency: programs without a native package remain free
-of zlib and its toolchain requirements.
+of zlib/zstd and their toolchain requirements.
 
 Qualification proves:
 
-1. `pkg-config zlib` can compile the declared C bridge;
+1. `pkg-config zlib` and `pkg-config --atleast-version=1.4.0 libzstd` can compile the declared C bridges;
 2. public `import official/compress` builds and runs through `toka build` with
-   that bridge;
-3. split-input Gzip and Zlib round trips work;
-4. invalid, truncated, and expansion-limited input fails closed;
+   those bridges;
+3. split-input Gzip, Zlib, and Zstd round trips work across levels (including default `-1`/`0`, `1`, `19`, `22`);
+4. invalid, truncated, checksum-corrupted, trailing-byte, and expansion-limited input fails closed;
 5. `official/compress/http` negotiates, encodes, and explicitly decodes
    complete bodies with malformed, truncated, output-limit, ratio-limit, and
    duplicate-header normalization redlines;
 6. a local locked package is replayable in `TOKA_OFFLINE=1` before the native
    public-import test runs;
-7. a `stdx/net/http`-only consumer builds with zlib discovery intentionally
-   unavailable.
+7. a `stdx/net/http`-only consumer builds without zlib/zstd discovery, and negative linkage checks verify no unimported binary linkage to `libzstd`.
 
 ## v1.1 optional HTTP Content-Encoding policy
 
@@ -110,5 +109,5 @@ streaming strategy with the application.
 
 There is no implicit HTTP `Content-Encoding`, no HTTP-core dependency, no
 `AsyncStream` wrapper, no archive format, no raw DEFLATE, no concatenated-
-member policy, and no Brotli or Zstd implementation. Those each need a
+member policy, and no Brotli implementation. Those each need a
 separate format/policy decision and their own resource contracts.

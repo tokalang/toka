@@ -1,8 +1,8 @@
 // Public entry module for official/compress.
 //
-// zlib state and all raw pointers remain inside the package-private native
-// boundary. Public calls transfer owned Bytes into one stream step and return
-// a fresh owned Bytes result; no input view or native handle escapes.
+// zlib and zstd state and all raw pointers remain inside the package-private
+// native boundary. Public calls transfer owned Bytes into one stream step and
+// return a fresh owned Bytes result; no input view or native handle escapes.
 
 import core/result::{Result}
 import core/types::{Addr, ADDR0, usize}
@@ -12,6 +12,7 @@ const NATIVE_ENCODER: i32 = 0:i32
 const NATIVE_DECODER: i32 = 1:i32
 const NATIVE_GZIP: i32 = 0:i32
 const NATIVE_ZLIB: i32 = 1:i32
+const NATIVE_ZSTD: i32 = 2:i32
 
 const STATUS_INVALID: i32 = -1:i32
 const STATUS_CLOSED: i32 = -2:i32
@@ -28,9 +29,17 @@ extern fn toka_compress_output_cap(handle: Addr) -> usize
 extern fn toka_compress_take_output(handle: Addr) -> Addr
 extern fn toka_compress_free(handle: Addr) -> void
 
+extern fn toka_zstd_new(direction: i32, level: i32, output_limit: usize) -> Addr
+extern fn toka_zstd_process(handle: Addr, input: Addr, input_len: usize, finish: i32) -> i32
+extern fn toka_zstd_output_len(handle: Addr) -> usize
+extern fn toka_zstd_output_cap(handle: Addr) -> usize
+extern fn toka_zstd_take_output(handle: Addr) -> Addr
+extern fn toka_zstd_free(handle: Addr) -> void
+
 pub shape CompressionFormat (
     Gzip = 0 |
-    Zlib = 1
+    Zlib = 1 |
+    Zstd = 2
 )
 
 pub shape CompressError (
@@ -41,24 +50,18 @@ pub shape CompressError (
 
 pub shape Encoder (
     handle#: Addr,
-    closed#: bool
+    closed#: bool,
+    format#: CompressionFormat
 )
 
 pub shape Decoder (
     handle#: Addr,
-    closed#: bool
+    closed#: bool,
+    format#: CompressionFormat
 )
 
 impl CompressError@Encap {
     fn drop(self#) {}
-
-    pub fn clone(self) -> CompressError {
-        return CompressError(
-            kind = string::from(self.kind.as_str()),
-            code = self.code,
-            message = string::from(self.message.as_str())
-        )
-    }
 }
 
 impl Encoder@Encap {
@@ -73,6 +76,7 @@ fn native_format(format: CompressionFormat) -> i32 {
     match format {
         auto CompressionFormat::Gzip => return NATIVE_GZIP
         auto CompressionFormat::Zlib => return NATIVE_ZLIB
+        auto CompressionFormat::Zstd => return NATIVE_ZSTD
     }
 }
 
@@ -105,14 +109,32 @@ fn make_error(code: i32, operation: str) -> CompressError {
     return CompressError(kind = cede kind, code = code, message = cede message)
 }
 
-fn take_output(handle: Addr) -> Bytes {
-    auto len = toka_compress_output_len(handle)
-    auto cap = toka_compress_output_cap(handle)
-    auto raw = toka_compress_take_output(handle)
-    return Bytes::unsafe_from_ffi_allocation(raw, len, cap)
+fn take_output(handle: Addr, format: CompressionFormat) -> Bytes {
+    match format {
+        auto CompressionFormat::Zstd => {
+            auto len = toka_zstd_output_len(handle)
+            auto cap = toka_zstd_output_cap(handle)
+            auto raw = toka_zstd_take_output(handle)
+            return Bytes::unsafe_from_ffi_allocation(raw, len, cap)
+        }
+        _ => {
+            auto len = toka_compress_output_len(handle)
+            auto cap = toka_compress_output_cap(handle)
+            auto raw = toka_compress_take_output(handle)
+            return Bytes::unsafe_from_ffi_allocation(raw, len, cap)
+        }
+    }
 }
 
 impl CompressError {
+    pub fn clone(self) -> CompressError {
+        return CompressError(
+            kind = string::from(self.kind.as_str()),
+            code = self.code,
+            message = string::from(self.message.as_str())
+        )
+    }
+
     pub fn kind(self) -> string { return string::from(self.kind.as_str()) }
     pub fn code(self) -> i32 { return self.code }
     pub fn message(self) -> string { return string::from(self.message.as_str()) }
@@ -120,22 +142,44 @@ impl CompressError {
 
 impl Encoder {
     pub fn new(format: CompressionFormat, level: i32) -> Result<Encoder, CompressError> {
-        if level < -1:i32 || level > 9:i32 {
-            return Result<Encoder, CompressError>::Err(CompressError(
-                kind = string::from("invalid_level"),
-                code = STATUS_INVALID,
-                message = string::from("compression level must be between -1 and 9")
-            ))
+        match format {
+            auto CompressionFormat::Zstd => {
+                if level < -1:i32 || level > 22:i32 {
+                    return Result<Encoder, CompressError>::Err(CompressError(
+                        kind = string::from("invalid_level"),
+                        code = STATUS_INVALID,
+                        message = string::from("zstd compression level must be between -1 and 22")
+                    ))
+                }
+                auto handle = toka_zstd_new(NATIVE_ENCODER, level, 0:usize)
+                if handle == ADDR0 {
+                    return Result<Encoder, CompressError>::Err(CompressError(
+                        kind = string::from("backend"),
+                        code = STATUS_INVALID,
+                        message = string::from("zstd encoder backend is unavailable")
+                    ))
+                }
+                return Result<Encoder, CompressError>::Ok(Encoder(handle = handle, closed = false, format = format))
+            }
+            _ => {
+                if level < -1:i32 || level > 9:i32 {
+                    return Result<Encoder, CompressError>::Err(CompressError(
+                        kind = string::from("invalid_level"),
+                        code = STATUS_INVALID,
+                        message = string::from("zlib/gzip compression level must be between -1 and 9")
+                    ))
+                }
+                auto handle = toka_compress_new(NATIVE_ENCODER, native_format(format), level, 0:usize)
+                if handle == ADDR0 {
+                    return Result<Encoder, CompressError>::Err(CompressError(
+                        kind = string::from("backend"),
+                        code = STATUS_INVALID,
+                        message = string::from("zlib encoder backend is unavailable")
+                    ))
+                }
+                return Result<Encoder, CompressError>::Ok(Encoder(handle = handle, closed = false, format = format))
+            }
         }
-        auto handle = toka_compress_new(NATIVE_ENCODER, native_format(format), level, 0:usize)
-        if handle == ADDR0 {
-            return Result<Encoder, CompressError>::Err(CompressError(
-                kind = string::from("backend"),
-                code = STATUS_INVALID,
-                message = string::from("zlib encoder backend is unavailable")
-            ))
-        }
-        return Result<Encoder, CompressError>::Ok(Encoder(handle = handle, closed = false))
     }
 
     pub fn gzip(level: i32) -> Result<Encoder, CompressError> {
@@ -146,9 +190,16 @@ impl Encoder {
         return Encoder::new(CompressionFormat::Zlib, level)
     }
 
+    pub fn zstd(level: i32) -> Result<Encoder, CompressError> {
+        return Encoder::new(CompressionFormat::Zstd, level)
+    }
+
     fn release_native(self#) {
         if self.handle != ADDR0 {
-            toka_compress_free(self.handle)
+            match self.format {
+                auto CompressionFormat::Zstd => toka_zstd_free(self.handle)
+                _ => toka_compress_free(self.handle)
+            }
             self.handle = ADDR0
         }
         self.closed = true
@@ -161,12 +212,20 @@ impl Encoder {
         auto owned# = cede input
         auto finish_flag# = 0:i32
         if finish { finish_flag = 1:i32 }
-        auto status = toka_compress_process(self.handle, owned.unsafe_raw_ptr() as Addr, owned.len(), finish_flag)
+        auto status# = 0:i32
+        match self.format {
+            auto CompressionFormat::Zstd => {
+                status = toka_zstd_process(self.handle, owned.unsafe_raw_ptr() as Addr, owned.len(), finish_flag)
+            }
+            _ => {
+                status = toka_compress_process(self.handle, owned.unsafe_raw_ptr() as Addr, owned.len(), finish_flag)
+            }
+        }
         if status != 0:i32 {
             self#.release_native()
             return Result<Bytes, CompressError>::Err(make_error(status, "encode"))
         }
-        auto output = take_output(self.handle)
+        auto output = take_output(self.handle, self.format)
         if finish { self#.release_native() }
         return Result<Bytes, CompressError>::Ok(cede output)
     }
@@ -196,15 +255,30 @@ impl Decoder {
                 message = string::from("decoder output limit must be greater than zero")
             ))
         }
-        auto handle = toka_compress_new(NATIVE_DECODER, native_format(format), -1:i32, max_output_bytes)
-        if handle == ADDR0 {
-            return Result<Decoder, CompressError>::Err(CompressError(
-                kind = string::from("backend"),
-                code = STATUS_INVALID,
-                message = string::from("zlib decoder backend is unavailable")
-            ))
+        match format {
+            auto CompressionFormat::Zstd => {
+                auto handle = toka_zstd_new(NATIVE_DECODER, -1:i32, max_output_bytes)
+                if handle == ADDR0 {
+                    return Result<Decoder, CompressError>::Err(CompressError(
+                        kind = string::from("backend"),
+                        code = STATUS_INVALID,
+                        message = string::from("zstd decoder backend is unavailable")
+                    ))
+                }
+                return Result<Decoder, CompressError>::Ok(Decoder(handle = handle, closed = false, format = format))
+            }
+            _ => {
+                auto handle = toka_compress_new(NATIVE_DECODER, native_format(format), -1:i32, max_output_bytes)
+                if handle == ADDR0 {
+                    return Result<Decoder, CompressError>::Err(CompressError(
+                        kind = string::from("backend"),
+                        code = STATUS_INVALID,
+                        message = string::from("zlib decoder backend is unavailable")
+                    ))
+                }
+                return Result<Decoder, CompressError>::Ok(Decoder(handle = handle, closed = false, format = format))
+            }
         }
-        return Result<Decoder, CompressError>::Ok(Decoder(handle = handle, closed = false))
     }
 
     pub fn gzip(max_output_bytes: usize) -> Result<Decoder, CompressError> {
@@ -215,9 +289,16 @@ impl Decoder {
         return Decoder::new(CompressionFormat::Zlib, max_output_bytes)
     }
 
+    pub fn zstd(max_output_bytes: usize) -> Result<Decoder, CompressError> {
+        return Decoder::new(CompressionFormat::Zstd, max_output_bytes)
+    }
+
     fn release_native(self#) {
         if self.handle != ADDR0 {
-            toka_compress_free(self.handle)
+            match self.format {
+                auto CompressionFormat::Zstd => toka_zstd_free(self.handle)
+                _ => toka_compress_free(self.handle)
+            }
             self.handle = ADDR0
         }
         self.closed = true
@@ -230,12 +311,20 @@ impl Decoder {
         auto owned# = cede input
         auto finish_flag# = 0:i32
         if finish { finish_flag = 1:i32 }
-        auto status = toka_compress_process(self.handle, owned.unsafe_raw_ptr() as Addr, owned.len(), finish_flag)
+        auto status# = 0:i32
+        match self.format {
+            auto CompressionFormat::Zstd => {
+                status = toka_zstd_process(self.handle, owned.unsafe_raw_ptr() as Addr, owned.len(), finish_flag)
+            }
+            _ => {
+                status = toka_compress_process(self.handle, owned.unsafe_raw_ptr() as Addr, owned.len(), finish_flag)
+            }
+        }
         if status != 0:i32 {
             self#.release_native()
             return Result<Bytes, CompressError>::Err(make_error(status, "decode"))
         }
-        auto output = take_output(self.handle)
+        auto output = take_output(self.handle, self.format)
         if finish { self#.release_native() }
         return Result<Bytes, CompressError>::Ok(cede output)
     }

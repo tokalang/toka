@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify official/compress with native, lock, offline, and import evidence."""
+"""Qualify official/compress with native zlib and libzstd, lock, offline, import, and negative linkage evidence."""
 
 from __future__ import annotations
 
@@ -41,8 +41,17 @@ def run(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> sub
 def pkg_config(package: str, mode: str) -> list[str]:
     tool = shutil.which("pkg-config")
     if tool is None:
-        raise QualificationError("official/compress requires pkg-config for zlib qualification")
+        raise QualificationError("official/compress requires pkg-config for qualification")
     return run([tool, mode, package], cwd=ROOT).stdout.split()
+
+
+def verify_zstd_version() -> None:
+    tool = shutil.which("pkg-config")
+    if tool is None:
+        raise QualificationError("official/compress requires pkg-config for qualification")
+    res = subprocess.run([tool, "--atleast-version=1.4.0", "libzstd"], cwd=ROOT)
+    if res.returncode != 0:
+        raise QualificationError("official/compress requires libzstd >= 1.4.0 (pkg-config --atleast-version=1.4.0 libzstd failed)")
 
 
 def optional_pkg_libs(package: str) -> list[str]:
@@ -85,8 +94,10 @@ def write_consumer(project: Path, dependency: Path) -> None:
         '    if !package_name().as_str().equals("compress") { return 1 }\n'
         "    auto encoder# = Encoder::gzip(-1:i32).unwrap()\n"
         "    if encoder#.finish().is_err() { return 2 }\n"
+        "    auto zstd_enc# = Encoder::zstd(-1:i32).unwrap()\n"
+        "    if zstd_enc#.finish().is_err() { return 3 }\n"
         "    auto response# = HttpResponse::ok(string::from(\"body\"))\n"
-        "    if gzip_response(cede response, -1:i32).is_err() { return 3 }\n"
+        "    if gzip_response(cede response, -1:i32).is_err() { return 4 }\n"
         "    return 0\n"
         "}\n",
         encoding="utf-8",
@@ -130,11 +141,9 @@ def write_plain_http_consumer(project: Path) -> None:
     )
 
 
-def link_program(compiler: str, ir: Path, bridge: Path, output: Path) -> None:
-    args = [compiler, str(ir), str(bridge), str(ROOT / "lib" / "sys" / "toka_rt.o"),
-            "-o", str(output), *pkg_config("zlib", "--libs")]
-    # This is inherited runtime configuration only when the local runtime was
-    # built with optional TLS support; it is not an official/compress dep.
+def link_program(compiler: str, ir: Path, bridges: list[Path], output: Path) -> None:
+    args = [compiler, str(ir), *[str(b) for b in bridges], str(ROOT / "lib" / "sys" / "toka_rt.o"),
+            "-o", str(output), *pkg_config("zlib", "--libs"), *pkg_config("libzstd", "--libs")]
     args.extend(optional_pkg_libs("openssl"))
     if platform.system() == "Darwin":
         sdk = run(["xcrun", "--show-sdk-path"], cwd=ROOT).stdout.strip()
@@ -143,18 +152,34 @@ def link_program(compiler: str, ir: Path, bridge: Path, output: Path) -> None:
 
 
 def compile_and_run(tokac: Path, sdk: Path, package: Path, source: Path,
-                    bridge: Path, output: Path) -> None:
+                    bridges: list[Path], output: Path) -> None:
     ir = output.with_suffix(".ll")
     run([str(tokac), "-I", str(sdk), "-I", str(package / "lib"),
          "--emit-llvm", str(source), "-o", str(ir)], cwd=ROOT)
     compiler = os.environ.get("CC") or shutil.which("clang")
     if compiler is None:
         raise QualificationError("official/compress requires clang or CC for native qualification")
-    link_program(compiler, ir, bridge, output)
+    link_program(compiler, ir, bridges, output)
     run([str(output)], cwd=ROOT)
 
 
+def assert_no_zstd_linkage(program: Path) -> None:
+    if platform.system() == "Darwin":
+        tool = shutil.which("otool")
+        if tool:
+            res = run([tool, "-L", str(program)], cwd=ROOT)
+            if "zstd" in res.stdout.lower():
+                raise QualificationError("plain_http_consumer improperly linked libzstd: " + res.stdout)
+    else:
+        tool = shutil.which("ldd")
+        if tool:
+            res = run([tool, str(program)], cwd=ROOT)
+            if "zstd" in res.stdout.lower():
+                raise QualificationError("plain_http_consumer improperly linked libzstd: " + res.stdout)
+
+
 def main() -> int:
+    verify_zstd_version()
     toka = ROOT / "build" / "bin" / "toka"
     tokac = ROOT / "build" / "bin" / "tokac"
     runtime = ROOT / "lib" / "sys" / "toka_rt.o"
@@ -167,15 +192,25 @@ def main() -> int:
         sdk = make_sdk(work)
         dependency = work / "compress"
         shutil.copytree(PACKAGE, dependency)
-        bridge = work / "compress_zlib.o"
+
+        bridge_zlib = work / "compress_zlib.o"
         run([compiler, "-Wall", "-Wextra", "-Werror", "-c",
-             str(dependency / "native" / "compress_zlib.c"), "-o", str(bridge),
+             str(dependency / "native" / "compress_zlib.c"), "-o", str(bridge_zlib),
              *pkg_config("zlib", "--cflags")], cwd=ROOT)
 
+        bridge_zstd = work / "compress_zstd.o"
+        run([compiler, "-Wall", "-Wextra", "-Werror", "-c",
+             str(dependency / "native" / "compress_zstd.c"), "-o", str(bridge_zstd),
+             *pkg_config("libzstd", "--cflags")], cwd=ROOT)
+
+        bridges = [bridge_zlib, bridge_zstd]
+
         compile_and_run(tokac, sdk, dependency, dependency / "tests" / "compress_v1.tk",
-                        bridge, work / "compress_v1")
+                        bridges, work / "compress_v1")
+        compile_and_run(tokac, sdk, dependency, dependency / "tests" / "zstd_v1.tk",
+                        bridges, work / "compress_zstd_v1")
         compile_and_run(tokac, sdk, dependency, dependency / "tests" / "http_v1.tk",
-                        bridge, work / "compress_http_v1")
+                        bridges, work / "compress_http_v1")
 
         project = work / "consumer"
         write_consumer(project, dependency)
@@ -207,20 +242,24 @@ def main() -> int:
         run([str(toka), "build"], cwd=plain, env=plain_env)
         plain_program = plain / "target" / "debug" / "plain_http_consumer"
         if not plain_program.is_file():
-            raise QualificationError("plain HTTP consumer did not build without zlib package discovery")
+            raise QualificationError("plain HTTP consumer did not build without zlib/zstd package discovery")
         run([str(plain_program)], cwd=plain, env=plain_env)
+        assert_no_zstd_linkage(plain_program)
 
     print(json.dumps({
         "result": "pass",
         "schema": "toka.official-compress-package-v1",
         "stages": {
             "native_zlib_bridge": "pass",
+            "native_zstd_bridge": "pass",
             "streaming_boundary_suite": "pass",
+            "streaming_zstd_suite": "pass",
             "http_content_encoding_policy": "pass",
             "locked_local_dependency": "pass",
             "offline_lock_replay": "pass",
             "native_toka_build_run": "pass",
-            "plain_http_consumer_without_zlib": "pass",
+            "plain_http_consumer_without_zlib_zstd": "pass",
+            "negative_linkage_check": "pass",
         },
         "version": 1,
     }, sort_keys=True, separators=(",", ":")))

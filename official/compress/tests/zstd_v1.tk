@@ -1,0 +1,201 @@
+import official/compress::{Decoder, Encoder, package_name}
+import std/bytes::{Bytes}
+import std/vec::{Vec}
+
+extern fn toka_zstd_live_handle_count() -> i32
+
+fn bytes_from_text(value: str) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(value.len())
+    auto index# = 0:usize
+    loop index < value.len() {
+        raw#.push(value.byte_at(index) as u8)
+        index = index + 1:usize
+    }
+    return Bytes::from_vec(cede raw)
+}
+
+fn bytes_from_range(source: Vec<u8>, start: usize, len: usize) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(len)
+    auto index# = 0:usize
+    loop index < len {
+        raw#.push(source.get(start + index))
+        index = index + 1:usize
+    }
+    return Bytes::from_vec(cede raw)
+}
+
+fn append(target#: Vec<u8>, cede chunk: Bytes) {
+    auto owned# = cede chunk
+    auto source# = owned#.into_vec()
+    auto index# = 0:usize
+    loop index < source.len() {
+        target#.push(source.get(index))
+        index = index + 1:usize
+    }
+}
+
+fn equals_text(source: Vec<u8>, expected: str) -> bool {
+    if source.len() != expected.len() { return false }
+    auto index# = 0:usize
+    loop index < source.len() {
+        if source.get(index) != expected.byte_at(index) as u8 { return false }
+        index = index + 1:usize
+    }
+    return true
+}
+
+fn zstd_stream(level: i32) -> Vec<u8> {
+    auto opened = Encoder::zstd(level)
+    assert(opened.is_ok(), "zstd encoder opens")
+    auto encoder# = opened.unwrap()
+    auto encoded# = Vec<u8>::new()
+    auto first = encoder#.write(cede bytes_from_text("hello zstd "))
+    assert(first.is_ok(), "zstd first write")
+    append(encoded, cede first.unwrap())
+    append(encoded, cede encoder#.write(cede bytes_from_text("streaming world")).unwrap())
+    append(encoded, cede encoder#.finish().unwrap())
+    assert(encoder.is_closed(), "finish closes zstd encoder state")
+    return cede encoded
+}
+
+fn test_zstd_streaming_roundtrip() {
+    auto encoded = zstd_stream(3:i32)
+    assert(encoded.len() > 4:usize, "zstd stream has header bytes")
+    // Zstd magic number: 0xFD2FB528 (in little-endian bytes: 0x28, 0xB5, 0x2F, 0xFD)
+    assert(encoded.get(0:usize) == 40:u8 && encoded.get(1:usize) == 181:u8 &&
+           encoded.get(2:usize) == 47:u8 && encoded.get(3:usize) == 253:u8,
+           "zstd magic bytes 0xFD2FB528")
+
+    auto split = encoded.len() / 2:usize
+    auto decoder# = Decoder::zstd(1024:usize).unwrap()
+    auto decoded# = Vec<u8>::new()
+    append(decoded, cede decoder#.write(cede bytes_from_range(encoded, 0:usize, split)).unwrap())
+    append(decoded, cede decoder#.write(cede bytes_from_range(encoded, split, encoded.len() - split)).unwrap())
+    append(decoded, cede decoder#.finish().unwrap())
+    assert(decoder.is_closed(), "finish closes zstd decoder state")
+    assert(equals_text(decoded, "hello zstd streaming world"), "zstd chunked roundtrip")
+}
+
+fn test_zstd_levels_and_limits() {
+    assert(Encoder::zstd(23:i32).is_err(), "invalid zstd encoder level > 22 is rejected")
+    assert(Encoder::zstd(-2:i32).is_err(), "invalid zstd encoder level < -1 is rejected")
+    assert(Decoder::zstd(0:usize).is_err(), "zero zstd decoder limit is rejected")
+
+    // Test default levels -1 and 0
+    auto enc_default1# = Encoder::zstd(-1:i32).unwrap()
+    auto enc_default2# = Encoder::zstd(0:i32).unwrap()
+    assert(enc_default1#.finish().is_ok(), "encoder level -1 default opens and flushes")
+    assert(enc_default2#.finish().is_ok(), "encoder level 0 default opens and flushes")
+
+    auto encoded_l19 = zstd_stream(19:i32)
+    auto decoder19# = Decoder::zstd(1024:usize).unwrap()
+    auto decoded19# = Vec<u8>::new()
+    append(decoded19, cede decoder19#.write(cede bytes_from_range(encoded_l19, 0:usize, encoded_l19.len())).unwrap())
+    append(decoded19, cede decoder19#.finish().unwrap())
+    assert(equals_text(decoded19, "hello zstd streaming world"), "zstd level 19 roundtrip")
+
+    auto encoded_l22 = zstd_stream(22:i32)
+    auto decoder22# = Decoder::zstd(1024:usize).unwrap()
+    auto decoded22# = Vec<u8>::new()
+    append(decoded22, cede decoder22#.write(cede bytes_from_range(encoded_l22, 0:usize, encoded_l22.len())).unwrap())
+    append(decoded22, cede decoder22#.finish().unwrap())
+    assert(equals_text(decoded22, "hello zstd streaming world"), "zstd level 22 roundtrip")
+
+    auto invalid# = Decoder::zstd(1024:usize).unwrap()
+    auto invalid_result = invalid#.write(cede bytes_from_text("not a zstd frame payload"))
+    assert(invalid_result.is_err(), "invalid zstd payload is rejected")
+    assert(invalid.is_closed(), "failed zstd decoder is closed")
+
+    auto encoded = zstd_stream(3:i32)
+    auto limited# = Decoder::zstd(5:usize).unwrap()
+    auto limit_result = limited#.write(cede bytes_from_range(encoded, 0:usize, encoded.len()))
+    assert(limit_result.is_err(), "output exceeding limit is rejected")
+    assert(limited.is_closed(), "limit-exceeded zstd decoder is closed")
+}
+
+fn test_zstd_truncation_trailing_and_checksum() {
+    auto encoded = zstd_stream(3:i32)
+
+    // 1. Truncated input test
+    auto trunc_decoder# = Decoder::zstd(1024:usize).unwrap()
+    auto half_len = encoded.len() / 2:usize
+    auto chunk = bytes_from_range(encoded, 0:usize, half_len)
+    auto write_res = trunc_decoder#.write(cede chunk)
+    if write_res.is_ok() {
+        auto finish_res = trunc_decoder#.finish()
+        assert(finish_res.is_err(), "truncated zstd stream fails on finish")
+    }
+    assert(trunc_decoder.is_closed(), "truncated decoder is closed post-failure")
+
+    // 2. Trailing bytes / concatenated valid frame rejection test
+    auto frame1 = zstd_stream(3:i32)
+    auto frame2 = zstd_stream(3:i32)
+    auto concat# = Vec<u8>::with_capacity(frame1.len() + frame2.len())
+    auto idx# = 0:usize
+    loop idx < frame1.len() {
+        concat#.push(frame1.get(idx))
+        idx = idx + 1:usize
+    }
+    idx = 0:usize
+    loop idx < frame2.len() {
+        concat#.push(frame2.get(idx))
+        idx = idx + 1:usize
+    }
+    auto concat_decoder# = Decoder::zstd(1024:usize).unwrap()
+    auto concat_res = concat_decoder#.write(cede Bytes::from_vec(cede concat))
+    assert(concat_res.is_err(), "concatenated valid zstd frames are rejected")
+    auto concat_err = concat_res.unwrap_err()
+    assert(concat_err.kind().equals("trailing"), "concatenated frame error kind is trailing")
+    assert(concat_decoder.is_closed(), "concatenated decoder is closed")
+
+    // 3. Checksum-validated payload bitflip corruption test
+    auto payload_idx = encoded.len() - 6:usize
+    auto original_byte = encoded.get(payload_idx)
+    auto corrupt_vec# = Vec<u8>::with_capacity(encoded.len())
+    idx = 0:usize
+    loop idx < encoded.len() {
+        if idx == payload_idx {
+            corrupt_vec#.push(original_byte ^ 0xFF:u8)
+        } else {
+            corrupt_vec#.push(encoded.get(idx))
+        }
+        idx = idx + 1:usize
+    }
+
+    auto corrupt_decoder# = Decoder::zstd(1024:usize).unwrap()
+    auto corrupt_res = corrupt_decoder#.write(cede Bytes::from_vec(cede corrupt_vec))
+    if corrupt_res.is_ok() {
+        auto final_res = corrupt_decoder#.finish()
+        assert(final_res.is_err(), "checksum bitflip payload fails validation on finish")
+    } else {
+        assert(corrupt_res.is_err(), "checksum bitflip payload fails validation")
+    }
+    assert(corrupt_decoder.is_closed(), "corrupted decoder is closed")
+
+    // 4. Exceeded window log max (256 MB window > 128 MB max ceiling) test
+    // Construct Zstd frame with Window_Descriptor requesting windowLog = 28 (256 MB)
+    auto win_large# = Vec<u8>::with_capacity(16:usize)
+    win_large#.push(40:u8)   // Magic: 0x28
+    win_large#.push(181:u8)  // Magic: 0xB5
+    win_large#.push(47:u8)   // Magic: 0x2F
+    win_large#.push(253:u8)  // Magic: 0xFD
+    win_large#.push(0:u8)    // FHD: single_segment = 0, dict_id = 0
+    win_large#.push(144:u8)  // WD: 0x90 => Exponent 18 => windowLog = 10 + 18 = 28 (256 MB)
+    win_large#.push(1:u8)    // Block header byte 1
+    win_large#.push(0:u8)    // Block header byte 2
+    win_large#.push(0:u8)    // Block header byte 3
+
+    auto win_decoder# = Decoder::zstd(1024:usize).unwrap()
+    auto win_res = win_decoder#.write(cede Bytes::from_vec(cede win_large))
+    assert(win_res.is_err(), "zstd frame exceeding 128MB window ceiling is rejected")
+    assert(win_decoder.is_closed(), "window-exceeded decoder is closed")
+}
+
+fn main() -> i32 {
+    assert(package_name().equals("compress"), "compress package name")
+    test_zstd_streaming_roundtrip()
+    test_zstd_levels_and_limits()
+    test_zstd_truncation_trailing_and_checksum()
+    assert(toka_zstd_live_handle_count() == 0:i32, "no leaked zstd handles")
+    return 0
+}

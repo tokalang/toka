@@ -1,9 +1,10 @@
-# `official/compress` v1.1
+# `official/compress` v1.2
 
-`official/compress` is an opt-in zlib-backed package for streaming Gzip and
-zlib encoding/decoding. Its optional `official/compress/http` module provides
-an explicit HTTP `Content-Encoding` policy; it does not alter the HTTP core,
-act as an archive library, or become a framework.
+`official/compress` is an opt-in zlib/libzstd-backed package for streaming
+Gzip, Zlib, and Zstd encoding/decoding. Its optional
+`official/compress/http` module provides an explicit HTTP `Content-Encoding`
+policy; it does not alter the HTTP core, act as an archive library, or become
+a framework.
 
 ```toka
 import official/compress::{Decoder, Encoder}
@@ -12,7 +13,7 @@ auto encoder# = Encoder::gzip(-1).unwrap()
 auto first = encoder#.write(cede input_chunk).unwrap()
 auto trailer = encoder#.finish().unwrap()
 
-auto decoder# = Decoder::gzip(64 * 1024 * 1024).unwrap()
+auto decoder# = Decoder::zstd(64 * 1024 * 1024).unwrap()
 auto plain = decoder#.write(cede compressed_chunk).unwrap()
 auto final_plain = decoder#.finish().unwrap()
 ```
@@ -21,16 +22,18 @@ Each `write` consumes one owned `Bytes` chunk and returns only the bytes
 produced by that step. `finish` must be called once to flush an encoder or
 validate a decoder trailer; it closes the handle on both success and failure.
 The decoder requires an explicit total output limit, so compressed input never
-silently expands into an unbounded allocation.
+silently expands into an unbounded allocation. Zstd decoding additionally
+enforces a fixed 128 MiB maximum window-memory ceiling.
 
-The package uses zlib only in its private C boundary. Its public API exposes no
-native handle or raw pointer. `toka build` compiles the declared bridge and
-links zlib automatically for a locked `official/compress` consumer; base Toka
-programs do not acquire a zlib dependency.
+The package uses zlib and libzstd (>= 1.4.0) only in its private C boundaries.
+Its public API exposes no native handle or raw pointer. `toka build` compiles
+the declared bridges and links both libraries automatically for a locked
+`official/compress` consumer; base Toka programs do not acquire either native
+dependency.
 
 The base streaming module deliberately excludes automatic HTTP handling, stream
-adapters, concatenated gzip members, raw DEFLATE, archive containers, Brotli,
-Zstd, and automatic retry/recovery after a malformed compressed stream.
+adapters, concatenated frames, raw DEFLATE, archive containers, Brotli, and
+automatic retry/recovery after a malformed compressed stream.
 
 ## Optional HTTP policy
 
@@ -55,8 +58,8 @@ is never automatic: callers explicitly invoke it with both decoded-byte and
 compression-ratio limits. Malformed, truncated, oversized, or over-expanded
 gzip fails closed.
 
-The base `stdx/net/http` package remains independent of zlib. Import this
-module only in applications that choose the compression policy.
+The base `stdx/net/http` package remains independent of zlib and libzstd.
+Import this module only in applications that choose the compression policy.
 
 ## Qualification
 
