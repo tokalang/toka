@@ -1066,7 +1066,23 @@ static int toka_task_publish_queue_ticket_locked(TokaTCB *tcb, uint64_t gen) {
     return 1;
 }
 
+#ifdef TOKA_RUNTIME_TESTING
+static _Atomic uint8_t g_test_pause_next_queue_publication = 0;
+
+// The CTest uses this to model an original publisher that is preempted after
+// claiming Queued but before its physical insertion. It is absent from normal
+// runtime builds and the language ABI.
+void toka_task_pause_next_queue_publication_for_test(void) {
+    atomic_store(&g_test_pause_next_queue_publication, 1);
+}
+#endif
+
 static int toka_task_publish_queue_ticket(TokaTCB *tcb, uint64_t gen) {
+#ifdef TOKA_RUNTIME_TESTING
+    if (atomic_exchange(&g_test_pause_next_queue_publication, 0)) {
+        return 1;
+    }
+#endif
     toka_mutex_lock(&g_rt_mutex);
     int published = toka_task_publish_queue_ticket_locked(tcb, gen);
     toka_mutex_unlock(&g_rt_mutex);
@@ -1277,17 +1293,6 @@ int toka_task_start(void *tcb_ptr) {
     }
     return 0;
 }
-
-#ifdef TOKA_RUNTIME_TESTING
-// This intentionally stops after the Queued claim so the runtime CTest can
-// model preemption of the original publisher. It is not part of the normal
-// runtime build or the language ABI.
-int toka_task_start_unpublished_for_test(void *tcb_ptr) {
-    if (!tcb_ptr) return 0;
-    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
-    return toka_task_claim_start_queue_ticket(tcb);
-}
-#endif
 
 int toka_task_suspend_and_register(void *tcb_ptr) {
     if (!tcb_ptr) return 0;

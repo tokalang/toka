@@ -146,16 +146,18 @@ or treats an already published ticket as success. Worker dequeue claims
 `Queued -> Running` under that same arbiter and clears the ticket, so a late
 helper cannot republish the claimed epoch.
 
-`toka_async_queue_publication` deliberately pauses an initial start after
-`Created -> Queued` but before physical insertion, then runs eight concurrent
-helpers for 100 rounds. It proves that this forced preemption leaves one ready
-entry, one worker claim, and no late reinsertion after dequeue.
+`toka_async_queue_publication` deliberately pauses the original publisher
+after each real `Created -> Queued`, `Suspended -> Queued`, and
+`PreparingWithPendingWake -> Queued` claim, but before physical insertion. It
+then runs eight concurrent helpers for 100 rounds on each path. The probe
+proves that forced preemption leaves one ready entry, one worker claim, and no
+late reinsertion after dequeue.
 
 This is a narrow queue-publication substrate only, **not** Section 8.1 queue
 publication conformance. It uses a schedule generation rather than a full task
-token; it does not cover every admitted transition (`Suspended`, pending-wake
-commit, `WonCommitted`, or logical uninstall), checked helper retains, queue
-allocation failure, or the normative cancellation/WaitSet arbitration.
+token; it does not cover `WonCommitted` or logical uninstall, checked helper
+retains, queue allocation failure, or the normative cancellation/WaitSet
+arbitration.
 
 ---
 
