@@ -2715,6 +2715,8 @@ typedef struct {
     TokaWaitSet *wait_set_to_free;
     TokaTCB *tcb_to_release;
     uint32_t tcb_release_count;
+    TokaTCB *queue_publish_tcb;
+    uint64_t queue_publish_generation;
 } TokaWaitSetCancelCleanup;
 
 static int toka_wait_set_cancel_group_and_wake_locked(
@@ -2768,12 +2770,24 @@ static int toka_wait_set_cancel_group_and_wake_locked(
         toka_task_prepare_queue_ticket(tcb_to_wake, gen);
         uint32_t expected_st = TOKA_TCB_SUSPENDED;
         if (atomic_compare_exchange_strong(&tcb_to_wake->state, &expected_st, TOKA_TCB_QUEUED)) {
-            toka_task_publish_queue_ticket_locked(tcb_to_wake, gen);
+            // The WaitSet is now logically inactive. Carry the matching
+            // unpublished ticket out of this arbiter so a preempted original
+            // publisher can be helped before its registration retains drop.
+            cleanup->queue_publish_tcb = tcb_to_wake;
+            cleanup->queue_publish_generation = gen;
         }
     }
     cleanup->wait_set_to_free = ws;
     atomic_store(&ws->ref_count, 0);
     return 1;
+}
+
+static void toka_wait_set_publish_queue_ticket(TokaWaitSetCancelCleanup *cleanup) {
+    if (!cleanup || !cleanup->queue_publish_tcb) return;
+    toka_task_publish_queue_ticket(
+        cleanup->queue_publish_tcb, cleanup->queue_publish_generation
+    );
+    cleanup->queue_publish_tcb = NULL;
 }
 
 static void toka_wait_set_finish_cancel_cleanup(TokaWaitSetCancelCleanup *cleanup) {
@@ -2810,6 +2824,7 @@ static void toka_wait_registry_cancel_active(TokaTCB *tcb) {
     }
     toka_mutex_unlock(&g_rt_mutex);
 
+    toka_wait_set_publish_queue_ticket(&cleanup);
     toka_wait_set_finish_cancel_cleanup(&cleanup);
     if (singleton_id != TOKA_NO_WAIT_ID) {
         toka_wait_registry_release(singleton_id, singleton_gen);
@@ -2861,6 +2876,7 @@ int toka_wait_set_cancel_group_and_wake(void *wait_set_ptr) {
         0
     );
     toka_mutex_unlock(&g_rt_mutex);
+    toka_wait_set_publish_queue_ticket(&cleanup);
     toka_wait_set_finish_cancel_cleanup(&cleanup);
     return canceled;
 }
@@ -2966,6 +2982,7 @@ int toka_task_request_cancel(void *tcb_ptr) {
                 );
             }
             toka_mutex_unlock(&g_rt_mutex);
+            toka_wait_set_publish_queue_ticket(&cleanup);
             toka_wait_set_finish_cancel_cleanup(&cleanup);
             return 1;
         }

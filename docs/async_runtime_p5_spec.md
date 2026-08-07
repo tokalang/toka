@@ -149,14 +149,16 @@ helper cannot republish the claimed epoch.
 `toka_async_queue_publication` deliberately pauses the original publisher
 after each real `Created -> Queued`, `Suspended -> Queued`, and
 `PreparingWithPendingWake -> Queued` claim, but before physical insertion. It
-then runs eight concurrent helpers for 100 rounds on each path. The probe
-proves that forced preemption leaves one ready entry, one worker claim, and no
-late reinsertion after dequeue.
+also pauses publication after a two-slot WaitSet has been logically unlinked
+by task cancellation. The probe runs eight concurrent helpers for 100 rounds
+on each path. It proves that forced preemption leaves one ready entry, one
+worker claim, no late reinsertion after dequeue, and no live/stale WaitSet slot
+that can wake the selected epoch again.
 
 This is a narrow queue-publication substrate only, **not** Section 8.1 queue
 publication conformance. It uses a schedule generation rather than a full task
-token; it does not cover `WonCommitted` or logical uninstall, checked helper
-retains, queue allocation failure, or the normative cancellation/WaitSet
+token; it does not implement the normative `WonCommitted` descriptor, checked
+helper retains, queue allocation failure, or the full cancellation/WaitSet
 arbitration.
 
 ---

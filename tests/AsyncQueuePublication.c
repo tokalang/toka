@@ -10,9 +10,18 @@ extern int toka_task_suspend_and_register(void *tcb_ptr);
 extern int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_id,
                                      uint64_t *out_gen);
 extern int toka_task_commit_suspend(void *coro_frame);
+extern int toka_task_request_cancel(void *tcb_ptr);
 extern void toka_tcb_get_wait_token(void *tcb_ptr, uint64_t *out_id,
                                     uint64_t *out_gen);
 extern int toka_task_try_schedule(uint64_t task_id, uint64_t gen);
+extern int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen,
+                                            uint16_t tag1, uint16_t tag2,
+                                            uint32_t *out_id1,
+                                            uint32_t *out_gen1,
+                                            uint32_t *out_id2,
+                                            uint32_t *out_gen2);
+extern int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
+extern uint32_t toka_rt_live_wait_registry_count(void);
 extern uint32_t toka_ready_queue_count(void);
 extern int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen,
                                void **out_tcb_ptr);
@@ -153,10 +162,39 @@ static void test_pending_wake_commit_queue_claim(void) {
     }
 }
 
+static void test_wait_set_cancel_after_logical_uninstall(void) {
+    enum { ROUNDS = 100 };
+    for (int round = 0; round < ROUNDS; ++round) {
+        RunningTask task = make_running_task();
+        uint32_t first_id = 0;
+        uint32_t first_generation = 0;
+        uint32_t second_id = 0;
+        uint32_t second_generation = 0;
+        CHECK(toka_task_prepare_suspend(task.frame, &task.task_id,
+                                        &task.generation));
+        CHECK(toka_wait_registry_allocate_pair(
+            task.task_id, task.generation, 1, 2, &first_id,
+            &first_generation, &second_id, &second_generation));
+        CHECK(toka_task_commit_suspend(task.frame));
+        CHECK(toka_rt_live_wait_registry_count() == 2);
+
+        // Cancellation first unlinks the complete WaitSet, then the original
+        // publisher is preempted before it can insert the selected ticket.
+        toka_task_pause_next_queue_publication_for_test();
+        CHECK(toka_task_request_cancel(task.owner));
+        CHECK(toka_rt_live_wait_registry_count() == 0);
+        CHECK(toka_wait_registry_try_wake(first_id, first_generation) == 0);
+        CHECK(toka_wait_registry_try_wake(second_id, second_generation) == 0);
+        help_preempted_publisher_once(task.owner, task.task_id, task.generation);
+        destroy_running_task(&task);
+    }
+}
+
 int main(void) {
     test_created_queue_claim();
     test_suspended_queue_claim();
     test_pending_wake_commit_queue_claim();
+    test_wait_set_cancel_after_logical_uninstall();
     puts("async queue publication helping passed");
     return 0;
 }
