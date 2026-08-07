@@ -22,6 +22,8 @@ extern fn toka_tcb_get_wait_token(*tcb: void, *out_id: u64, *out_gen: u64) -> vo
 extern fn toka_task_prepare_suspend(*coro_frame: void, *out_id: u64, *out_gen: u64) -> i32
 extern fn toka_task_commit_suspend(*coro_frame: void) -> i32
 extern fn toka_task_abort_suspend(*coro_frame: void) -> i32
+// Compatibility hook for older compiler output. New CodeGen calls
+// toka_task_complete directly so terminal publication has one owner.
 extern fn toka_task_publish_result_state(*promise: void, state: u8) -> void
 extern fn toka_task_get_result_state(*promise: void) -> u8
 extern fn toka_task_result_value_ptr(*promise: void) -> *void

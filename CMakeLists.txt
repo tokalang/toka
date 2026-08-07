@@ -188,6 +188,25 @@ add_custom_command(
     VERBATIM
 )
 
+if(BUILD_TESTING)
+    find_package(Threads REQUIRED)
+    add_executable(toka_async_terminal_publisher
+        tests/AsyncTerminalPublisher.c
+        lib/sys/toka_rt.c)
+    target_link_libraries(toka_async_terminal_publisher PRIVATE Threads::Threads)
+    if(OpenSSL_FOUND)
+        target_compile_definitions(toka_async_terminal_publisher PRIVATE TOKA_HAS_OPENSSL=1)
+        if(OPENSSL_INCLUDE_DIR)
+            target_include_directories(toka_async_terminal_publisher PRIVATE
+                ${OPENSSL_INCLUDE_DIR})
+        endif()
+        target_link_libraries(toka_async_terminal_publisher PRIVATE
+            OpenSSL::SSL OpenSSL::Crypto)
+    endif()
+    add_test(NAME toka_async_terminal_publisher
+        COMMAND toka_async_terminal_publisher)
+endif()
+
 file(GLOB_RECURSE TOKA_TOOL_AND_LIBRARY_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/toka/*.tk"
     "${CMAKE_SOURCE_DIR}/tools/tokafmt/*.tk"

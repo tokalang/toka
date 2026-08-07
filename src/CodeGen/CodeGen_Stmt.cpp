@@ -1057,14 +1057,9 @@ void CodeGen::genCoroutineReturn(llvm::Value *retVal) {
             }
             m_Builder.CreateStore(retVal, valPtr);
         }
-        llvm::Function *pubStateFn = m_Module->getFunction("toka_task_publish_result_state");
-        if (!pubStateFn) {
-            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy(), m_Builder.getInt8Ty()}, false);
-            pubStateFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_publish_result_state", m_Module.get());
-        }
-        m_Builder.CreateCall(pubStateFn, {m_CurrentCoroPromise, m_Builder.getInt8(1)});
-        
-        // Call runtime toka_task_complete(m_CurrentCoroPromise)
+        // The runtime's Pending -> ReadyLive CAS is also the unique terminal
+        // publication claim. Do not pre-publish a result state here: a racing
+        // cancellation must not observe a payload without its finalization.
         llvm::Function *completeFn = m_Module->getFunction("toka_task_complete");
         if (!completeFn) {
             llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);

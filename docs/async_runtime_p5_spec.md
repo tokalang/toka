@@ -23,6 +23,32 @@ This record tracks the intended Phase 5 implementation and closure evidence for:
 5. **Structured Concurrency (`TaskScope`)**: Retained task lifetime management
    intended to guarantee zero orphan tasks and zero UAF (Use-After-Free).
 
+### 1.1 Current narrow implementation evidence: terminal publisher arbitration
+
+The current runtime has one deliberately limited, independently qualified
+improvement toward the TCB RFC's runtime-core gates. `Pending -> ReadyLive` and
+`Pending -> Canceled` now compete through one terminal-publication CAS in
+`toka_task_publish_terminal`. Only that CAS winner may publish the matching TCB
+terminal state, drain completion subscriptions, hand off a continuation, or run
+detached-result/owner cleanup. A normal result therefore cannot later be
+relabeled canceled merely because a cancellation request arrived late, and a
+losing terminal path is a no-op.
+
+New CodeGen emits only `toka_task_complete` after it stores a normal result.
+The former raw `toka_task_publish_result_state` C ABI symbol remains solely as
+a compatibility wrapper for older objects; it invokes the same terminal path
+instead of directly exposing `ReadyLive`. Cold task cancellation likewise lets
+the canceled terminal CAS decide the state before publishing
+`CompletedCanceled`.
+
+`toka_async_terminal_publisher` is a CTest runtime probe for normal-first and
+cancel-first sequential interleavings, the legacy compatibility entry point,
+cold cancellation, and 4,000 concurrent normal/canceled publications. This is
+evidence only for terminal-publisher arbitration. It does **not** close Phase 5
+or Section 8.1 of the TCB RFC: cancellation epochs, queue-publication helping,
+subscription arbitration, cleanup aggregates, frame-access retirement, and
+the async/PlaceState bridge remain separately unqualified.
+
 ---
 
 ## 2. Cancellation Linearization Architecture

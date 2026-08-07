@@ -1387,20 +1387,25 @@ static void toka_task_clear_await_link(TokaTCB *child_tcb, TokaTCB *parent_tcb) 
     toka_mutex_unlock(&g_rt_mutex);
 }
 
-void toka_task_complete(void *promise_ptr) {
-    if (!promise_ptr) return;
+static int toka_task_publish_terminal(void *promise_ptr, uint8_t result_state,
+                                      uint32_t terminal_state) {
+    if (!promise_ptr) return 0;
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
     TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
 
+    // The result-state transition is the terminal-publication linearization
+    // point. Only its winner may expose a terminal TCB state, wake observers,
+    // or release terminal ownership. In particular, a late cancellation must
+    // not relabel an already published normal result (or run cleanup twice).
     uint8_t expected_res = TOKA_RESULT_STATE_PENDING;
-    atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_READYLIVE, memory_order_release, memory_order_relaxed);
+    if (!atomic_compare_exchange_strong_explicit(
+            &hdr->result_state, &expected_res, result_state,
+            memory_order_acq_rel, memory_order_acquire)) {
+        return 0;
+    }
 
     if (tcb) {
-        uint32_t final_st = atomic_load(&tcb->cancel_requested) &&
-                                    !atomic_load(&tcb->cancel_handled)
-                                ? TOKA_TCB_COMPLETED_CANCELED
-                                : TOKA_TCB_COMPLETED;
-        atomic_store(&tcb->state, final_st);
+        atomic_store(&tcb->state, terminal_state);
         atomic_store(&tcb->active_child_tcb, 0);
         atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
 
@@ -1439,56 +1444,17 @@ void toka_task_complete(void *promise_ptr) {
         toka_task_try_schedule(awaiter_tcb->id, atomic_load(&awaiter_tcb->task_schedule_generation));
         toka_task_release(awaiter_tcb);
     }
+    return 1;
+}
+
+void toka_task_complete(void *promise_ptr) {
+    toka_task_publish_terminal(promise_ptr, TOKA_RESULT_STATE_READYLIVE,
+                               TOKA_TCB_COMPLETED);
 }
 
 void toka_task_complete_canceled(void *promise_ptr) {
-    if (!promise_ptr) return;
-    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
-    TokaTCB *tcb = (TokaTCB*)hdr->self_tcb;
-
-    uint8_t expected_res = TOKA_RESULT_STATE_PENDING;
-    atomic_compare_exchange_strong_explicit(&hdr->result_state, &expected_res, TOKA_RESULT_STATE_CANCELED, memory_order_release, memory_order_relaxed);
-
-    if (tcb) {
-        atomic_store(&tcb->state, TOKA_TCB_COMPLETED_CANCELED);
-        atomic_store(&tcb->active_child_tcb, 0);
-        atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
-
-        toka_mutex_lock(&g_rt_mutex);
-        uint8_t expected_counted = 1;
-        if (atomic_compare_exchange_strong(&tcb->detached_counted, &expected_counted, 0)) {
-            if (g_active_detached_task_count > 0) {
-                g_active_detached_task_count--;
-            }
-        }
-        TokaCompletionSubscriber *subs = NULL;
-        uint32_t sub_count = tcb->subscriber_count;
-        if (sub_count > 0 && tcb->subscribers) {
-            subs = tcb->subscribers;
-            tcb->subscribers = NULL;
-            tcb->subscriber_count = 0;
-            tcb->subscriber_capacity = 0;
-        }
-        toka_mutex_unlock(&g_rt_mutex);
-
-        if (subs) {
-            for (uint32_t i = 0; i < sub_count; i++) {
-                toka_wait_registry_try_wake(subs[i].wait_id, subs[i].slot_gen);
-            }
-            free(subs);
-        }
-
-        toka_task_try_drain_detached_result(tcb);
-        toka_task_try_release_owner(tcb);
-    }
-
-    uintptr_t old_cont = atomic_exchange(&hdr->continuation, 1);
-    if (old_cont > 1) {
-        TokaTCB *awaiter_tcb = (TokaTCB*)old_cont;
-        toka_task_clear_await_link(tcb, awaiter_tcb);
-        toka_task_try_schedule(awaiter_tcb->id, atomic_load(&awaiter_tcb->task_schedule_generation));
-        toka_task_release(awaiter_tcb);
-    }
+    toka_task_publish_terminal(promise_ptr, TOKA_RESULT_STATE_CANCELED,
+                               TOKA_TCB_COMPLETED_CANCELED);
 }
 
 int toka_task_await_prepare(void *child_promise_ptr, void *parent_tcb_ptr) {
@@ -1574,9 +1540,14 @@ void toka_tcb_get_wait_token(void *tcb_ptr, uint64_t *out_task_id, uint64_t *out
 }
 
 void toka_task_publish_result_state(void *promise_ptr, uint8_t state) {
-    if (!promise_ptr) return;
-    struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)promise_ptr;
-    atomic_store_explicit(&hdr->result_state, state, memory_order_release);
+    // Compatibility entry point for objects compiled before terminal
+    // publication was unified. It must not write result_state directly: that
+    // would expose ReadyLive without the matching exactly-once terminal path.
+    if (state == TOKA_RESULT_STATE_READYLIVE) {
+        toka_task_complete(promise_ptr);
+    } else if (state == TOKA_RESULT_STATE_CANCELED) {
+        toka_task_complete_canceled(promise_ptr);
+    }
 }
 
 uint8_t toka_task_get_result_state(void *promise_ptr) {
@@ -2707,14 +2678,20 @@ int toka_task_request_cancel(void *tcb_ptr) {
     free(cancel_scopes);
 
     toka_mutex_lock(&g_rt_mutex);
-    uint32_t expected_st = TOKA_TCB_CREATED;
-    if (atomic_compare_exchange_strong(&tcb->state, &expected_st, TOKA_TCB_COMPLETED_CANCELED)) {
+    if (atomic_load(&tcb->state) == TOKA_TCB_CREATED && tcb->promise) {
+        // Let the promise CAS claim cold cancellation before exposing a
+        // terminal TCB state. A concurrent start may enqueue stale work, but
+        // it cannot publish a second terminal outcome.
         toka_mutex_unlock(&g_rt_mutex);
-        if (tcb->promise) {
-            toka_task_complete_canceled(tcb->promise);
-        } else {
-            toka_task_try_release_owner(tcb);
-        }
+        toka_task_complete_canceled(tcb->promise);
+        return 1;
+    }
+    uint32_t expected_st = TOKA_TCB_CREATED;
+    if (!tcb->promise && atomic_compare_exchange_strong(
+                             &tcb->state, &expected_st,
+                             TOKA_TCB_COMPLETED_CANCELED)) {
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_task_try_release_owner(tcb);
         return 1;
     }
     uint32_t wid = atomic_load(&tcb->active_wait_id);
