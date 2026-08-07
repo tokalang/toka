@@ -872,6 +872,8 @@ typedef struct TokaTCB {
     void *coro_frame;
     void *promise;
     _Atomic uint64_t task_schedule_generation;
+    _Atomic uint64_t queue_ticket_generation;
+    _Atomic uint8_t queue_ticket_published;
     _Atomic uint32_t state;
     _Atomic uint8_t cancel_requested;
     _Atomic uint8_t cancel_handled;
@@ -1040,6 +1042,73 @@ static void push_ready_queue_locked(uint64_t task_id, uint64_t gen, TokaTCB *tcb
     g_ready_count++;
 }
 
+// A task enters Queued only after its generation has an unpublished ticket.
+// The runtime arbiter makes the ticket's first physical queue insertion the
+// single publication point, so a later scheduler can finish a preempted
+// publisher without adding a second entry.
+static void toka_task_prepare_queue_ticket(TokaTCB *tcb, uint64_t gen) {
+    atomic_store(&tcb->queue_ticket_generation, gen);
+    atomic_store(&tcb->queue_ticket_published, 0);
+}
+
+static int toka_task_publish_queue_ticket_locked(TokaTCB *tcb, uint64_t gen) {
+    if (atomic_load(&tcb->state) != TOKA_TCB_QUEUED ||
+        atomic_load(&tcb->task_schedule_generation) != gen ||
+        atomic_load(&tcb->queue_ticket_generation) != gen) {
+        return 0;
+    }
+    if (atomic_load(&tcb->queue_ticket_published)) {
+        return 1;
+    }
+
+    push_ready_queue_locked(tcb->id, gen, tcb);
+    atomic_store(&tcb->queue_ticket_published, 1);
+    return 1;
+}
+
+static int toka_task_publish_queue_ticket(TokaTCB *tcb, uint64_t gen) {
+    toka_mutex_lock(&g_rt_mutex);
+    int published = toka_task_publish_queue_ticket_locked(tcb, gen);
+    toka_mutex_unlock(&g_rt_mutex);
+    return published;
+}
+
+static int toka_task_claim_queue_ticket(TokaTCB *tcb, uint32_t source_state,
+                                        uint64_t gen) {
+    toka_mutex_lock(&g_rt_mutex);
+    int claimed = 0;
+    if (atomic_load(&tcb->task_schedule_generation) == gen &&
+        atomic_load(&tcb->state) == source_state) {
+        toka_task_prepare_queue_ticket(tcb, gen);
+        uint32_t expected = source_state;
+        claimed = atomic_compare_exchange_strong(
+            &tcb->state, &expected, TOKA_TCB_QUEUED
+        );
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return claimed;
+}
+
+static int toka_task_claim_start_queue_ticket(TokaTCB *tcb) {
+    toka_mutex_lock(&g_rt_mutex);
+    int claimed = 0;
+    if (atomic_load(&tcb->state) == TOKA_TCB_CREATED) {
+        atomic_store(&tcb->task_schedule_generation, 1);
+        toka_task_prepare_queue_ticket(tcb, 1);
+        uint32_t expected = TOKA_TCB_CREATED;
+        claimed = atomic_compare_exchange_strong(
+            &tcb->state, &expected, TOKA_TCB_QUEUED
+        );
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return claimed;
+}
+
+static void toka_task_clear_queue_ticket(TokaTCB *tcb) {
+    atomic_store(&tcb->queue_ticket_published, 0);
+    atomic_store(&tcb->queue_ticket_generation, 0);
+}
+
 uint32_t toka_ready_queue_capacity(void) {
     toka_mutex_lock(&g_rt_mutex);
     uint32_t cap = (uint32_t)g_ready_capacity;
@@ -1149,6 +1218,8 @@ static void* toka_task_create_impl(void *coro_frame, void *promise,
     tcb->coro_frame = coro_frame;
     tcb->promise = promise;
     atomic_store(&tcb->task_schedule_generation, 0);
+    atomic_store(&tcb->queue_ticket_generation, 0);
+    atomic_store(&tcb->queue_ticket_published, 0);
     atomic_store(&tcb->state, TOKA_TCB_CREATED);
     atomic_store(&tcb->cancel_requested, 0);
     atomic_store(&tcb->cancel_handled, 0);
@@ -1201,17 +1272,22 @@ int toka_task_start(void *tcb_ptr) {
     if (!tcb_ptr) return 0;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
 
-    uint32_t expected = TOKA_TCB_CREATED;
-    if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
-        atomic_store(&tcb->task_schedule_generation, 1);
-
-        toka_mutex_lock(&g_rt_mutex);
-        push_ready_queue_locked(tcb->id, 1, tcb);
-        toka_mutex_unlock(&g_rt_mutex);
-        return 1;
+    if (toka_task_claim_start_queue_ticket(tcb)) {
+        return toka_task_publish_queue_ticket(tcb, 1);
     }
     return 0;
 }
+
+#ifdef TOKA_RUNTIME_TESTING
+// This intentionally stops after the Queued claim so the runtime CTest can
+// model preemption of the original publisher. It is not part of the normal
+// runtime build or the language ABI.
+int toka_task_start_unpublished_for_test(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    return toka_task_claim_start_queue_ticket(tcb);
+}
+#endif
 
 int toka_task_suspend_and_register(void *tcb_ptr) {
     if (!tcb_ptr) return 0;
@@ -1262,12 +1338,11 @@ int toka_task_commit_suspend(void *coro_frame) {
             continue;
         }
         if (st == TOKA_TCB_PREPARING_WITH_PENDING_WAKE) {
-            uint32_t expected = TOKA_TCB_PREPARING_WITH_PENDING_WAKE;
-            if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
+            uint64_t gen = atomic_load(&tcb->task_schedule_generation);
+            if (toka_task_claim_queue_ticket(
+                    tcb, TOKA_TCB_PREPARING_WITH_PENDING_WAKE, gen)) {
                 toka_wait_registry_cancel_active(tcb);
-                toka_mutex_lock(&g_rt_mutex);
-                push_ready_queue_locked(tcb->id, atomic_load(&tcb->task_schedule_generation), tcb);
-                toka_mutex_unlock(&g_rt_mutex);
+                toka_task_publish_queue_ticket(tcb, gen);
                 toka_task_release(tcb);
                 return 1; // Immediately enqueued due to pending wake
             }
@@ -1336,15 +1411,18 @@ int toka_task_try_schedule(uint64_t task_id, uint64_t gen) {
             return 1; // Already pending wake
         }
         if (st == TOKA_TCB_SUSPENDED) {
-            uint32_t expected = TOKA_TCB_SUSPENDED;
-            if (atomic_compare_exchange_strong(&target_tcb->state, &expected, TOKA_TCB_QUEUED)) {
-                toka_mutex_lock(&g_rt_mutex);
-                push_ready_queue_locked(target_tcb->id, gen, target_tcb);
-                toka_mutex_unlock(&g_rt_mutex);
+            if (toka_task_claim_queue_ticket(target_tcb, TOKA_TCB_SUSPENDED,
+                                              gen)) {
+                int published = toka_task_publish_queue_ticket(target_tcb, gen);
                 toka_task_release(target_tcb);
-                return 1; // Scheduled
+                return published; // Scheduled
             }
             continue;
+        }
+        if (st == TOKA_TCB_QUEUED) {
+            int published = toka_task_publish_queue_ticket(target_tcb, gen);
+            toka_task_release(target_tcb);
+            return published; // Help a preempted queue publisher
         }
         toka_task_release(target_tcb);
         return 0;
@@ -1370,20 +1448,29 @@ int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen, void **out_tcb
         TokaScheduledItem item = g_ready_queue[g_ready_head];
         g_ready_head = (g_ready_head + 1) % g_ready_capacity;
         g_ready_count--;
+        if (item.tcb &&
+            atomic_load(&item.tcb->task_schedule_generation) ==
+                item.task_schedule_generation &&
+            atomic_load(&item.tcb->queue_ticket_generation) ==
+                item.task_schedule_generation &&
+            atomic_load(&item.tcb->queue_ticket_published)) {
+            uint32_t expected = TOKA_TCB_QUEUED;
+            if (atomic_compare_exchange_strong(&item.tcb->state, &expected,
+                                               TOKA_TCB_RUNNING)) {
+                toka_task_clear_queue_ticket(item.tcb);
+                toka_mutex_unlock(&g_rt_mutex);
+                g_current_tcb = item.tcb;
+                if (out_task_id) *out_task_id = item.task_id;
+                if (out_gen) *out_gen = item.task_schedule_generation;
+                if (out_tcb_ptr) *out_tcb_ptr = item.tcb;
+                return 1;
+            }
+        }
         toka_mutex_unlock(&g_rt_mutex);
 
-        if (!item.tcb) continue;
-
-        uint32_t expected = TOKA_TCB_QUEUED;
-        if (atomic_compare_exchange_strong(&item.tcb->state, &expected, TOKA_TCB_RUNNING)) {
-            g_current_tcb = item.tcb;
-            if (out_task_id) *out_task_id = item.task_id;
-            if (out_gen) *out_gen = item.task_schedule_generation;
-            if (out_tcb_ptr) *out_tcb_ptr = item.tcb;
-            return 1;
+        if (item.tcb) {
+            toka_task_release(item.tcb);
         }
-
-        toka_task_release(item.tcb);
     }
 }
 
@@ -2642,15 +2729,12 @@ static int toka_wait_set_cancel_group_and_wake_locked(
     }
 
     TokaTCB *tcb_to_wake = NULL;
-    uint64_t tid = 0, gen = 0;
     for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
         TokaWaitRegistration *reg = &g_wait_registry[i];
         if (reg->in_use && reg->wait_set == ws) {
             atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
             if (!tcb_to_wake && reg->tcb) {
                 tcb_to_wake = reg->tcb;
-                tid = reg->task_id;
-                gen = reg->task_schedule_generation;
             }
             if (reg->tcb) {
                 if (!cleanup->tcb_to_release) {
@@ -2675,9 +2759,11 @@ static int toka_wait_set_cancel_group_and_wake_locked(
     if (tcb_to_wake) {
         atomic_store(&tcb_to_wake->active_wait_id, TOKA_NO_WAIT_ID);
         atomic_store(&tcb_to_wake->active_slot_gen, 0);
+        uint64_t gen = atomic_load(&tcb_to_wake->task_schedule_generation);
+        toka_task_prepare_queue_ticket(tcb_to_wake, gen);
         uint32_t expected_st = TOKA_TCB_SUSPENDED;
         if (atomic_compare_exchange_strong(&tcb_to_wake->state, &expected_st, TOKA_TCB_QUEUED)) {
-            push_ready_queue_locked(tid, gen, tcb_to_wake);
+            toka_task_publish_queue_ticket_locked(tcb_to_wake, gen);
         }
     }
     cleanup->wait_set_to_free = ws;
@@ -2885,12 +2971,9 @@ int toka_task_request_cancel(void *tcb_ptr) {
             toka_wait_registry_try_wake(wid, wgen);
         } else {
             toka_mutex_unlock(&g_rt_mutex);
-            uint32_t expected = TOKA_TCB_SUSPENDED;
-            if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_QUEUED)) {
-                toka_mutex_lock(&g_rt_mutex);
-                uint64_t gen = atomic_load(&tcb->task_schedule_generation);
-                push_ready_queue_locked(tcb->id, gen, tcb);
-                toka_mutex_unlock(&g_rt_mutex);
+            uint64_t gen = atomic_load(&tcb->task_schedule_generation);
+            if (toka_task_claim_queue_ticket(tcb, TOKA_TCB_SUSPENDED, gen)) {
+                toka_task_publish_queue_ticket(tcb, gen);
             }
         }
         return 1;

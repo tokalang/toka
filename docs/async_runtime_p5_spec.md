@@ -134,6 +134,29 @@ completion-registry conformance: it lacks full task/wait tokens, `Active ->
 Selected -> CommitClaimed -> Inactive` descriptors, independent retained
 references, group arbitration, and helpable unsubscribe progress.
 
+### 1.6 Current narrow implementation evidence: queue-publication helping
+
+Each current `Queued` epoch carries a runtime-local schedule-generation ticket
+and `unpublished`/`published` bit. The ticket is prepared before the transition
+into `Queued`; its first insertion into the ready queue and transition to
+`published` occur while holding the runtime arbiter. A later
+`toka_task_try_schedule` that observes the same task already `Queued` repeats
+the publish attempt: it inserts an unpublished matching ticket exactly once,
+or treats an already published ticket as success. Worker dequeue claims
+`Queued -> Running` under that same arbiter and clears the ticket, so a late
+helper cannot republish the claimed epoch.
+
+`toka_async_queue_publication` deliberately pauses an initial start after
+`Created -> Queued` but before physical insertion, then runs eight concurrent
+helpers for 100 rounds. It proves that this forced preemption leaves one ready
+entry, one worker claim, and no late reinsertion after dequeue.
+
+This is a narrow queue-publication substrate only, **not** Section 8.1 queue
+publication conformance. It uses a schedule generation rather than a full task
+token; it does not cover every admitted transition (`Suspended`, pending-wake
+commit, `WonCommitted`, or logical uninstall), checked helper retains, queue
+allocation failure, or the normative cancellation/WaitSet arbitration.
+
 ---
 
 ## 2. Cancellation Linearization Architecture
