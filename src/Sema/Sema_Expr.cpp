@@ -511,13 +511,13 @@ static std::map<std::string, bool> captureVisibleMoved(Scope *ScopePtr) {
   return moved;
 }
 
-static std::map<std::string, uint8_t>
-captureVisiblePlaceStateMasks(Scope *ScopePtr) {
-  std::map<std::string, uint8_t> states;
+static std::map<std::string, PlaceStateFact>
+captureVisiblePlaceFacts(Scope *ScopePtr) {
+  std::map<std::string, PlaceStateFact> states;
   for (Scope *S = ScopePtr; S; S = S->Parent) {
     for (const auto &pair : S->Symbols) {
       if (!states.count(pair.first))
-        states[pair.first] = pair.second.PlaceStateMask;
+        states[pair.first] = pair.second.PlaceFact;
     }
   }
   return states;
@@ -548,7 +548,7 @@ static void restoreVisibleConditionalTodoIds(
 static void restoreVisibleAnalysisState(
     Scope *ScopePtr, const std::map<std::string, uint64_t> &masks,
     const std::map<std::string, bool> &moved,
-    const std::map<std::string, uint8_t> &placeStateMasks) {
+    const std::map<std::string, PlaceStateFact> &placeFacts) {
   for (const auto &pair : masks) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info)
@@ -559,10 +559,10 @@ static void restoreVisibleAnalysisState(
     if (ScopePtr->findSymbol(pair.first, info) && info)
       info->Moved = pair.second;
   }
-  for (const auto &pair : placeStateMasks) {
+  for (const auto &pair : placeFacts) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info)
-      info->PlaceStateMask = pair.second;
+      info->PlaceFact = pair.second;
   }
 }
 
@@ -570,7 +570,7 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
-  state.PlaceStateMasks = captureVisiblePlaceStateMasks(CurrentScope);
+  state.PlaceFacts = captureVisiblePlaceFacts(CurrentScope);
   state.ConditionalTodoIds = captureVisibleConditionalTodoIds(CurrentScope);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
   state.PAL = PALCheckerState.snapshot();
@@ -584,8 +584,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
   std::map<std::string, bool> mergedMoved = states.front().Moved;
-  std::map<std::string, uint8_t> mergedPlaceStateMasks =
-      states.front().PlaceStateMasks;
+  std::map<std::string, PlaceStateFact> mergedPlaceFacts =
+      states.front().PlaceFacts;
   std::map<std::string, std::set<uint64_t>> mergedConditionalTodoIds =
       states.front().ConditionalTodoIds;
   std::set<AccessPath> mergedPayloadFlowRestrictions =
@@ -615,14 +615,15 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       pair.second = pair.second || moved;
     }
 
-    for (const auto &pair : state.PlaceStateMasks) {
-      if (!mergedPlaceStateMasks.count(pair.first))
-        mergedPlaceStateMasks[pair.first] = 0;
+    for (const auto &pair : state.PlaceFacts) {
+      if (!mergedPlaceFacts.count(pair.first))
+        mergedPlaceFacts[pair.first] = PlaceStateFact::bottom();
     }
-    for (auto &pair : mergedPlaceStateMasks) {
-      uint8_t placeStates = state.PlaceStateMasks.count(pair.first)
-                                ? state.PlaceStateMasks.at(pair.first)
-                                : 0;
+    for (auto &pair : mergedPlaceFacts) {
+      PlaceStateFact placeStates =
+          state.PlaceFacts.count(pair.first)
+              ? state.PlaceFacts.at(pair.first)
+              : PlaceStateFact::bottom();
       pair.second |= placeStates;
     }
 
@@ -644,7 +645,7 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   }
 
   restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved,
-                              mergedPlaceStateMasks);
+                              mergedPlaceFacts);
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
@@ -2273,7 +2274,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!CurrentScope->findSymbol(initStateVariable->Name, infoPtr) ||
           !infoPtr)
         return;
-      infoPtr->PlaceStateMask = placeStateMask(state);
+      infoPtr->PlaceFact = state;
       infoPtr->Moved = false;
       infoPtr->InitMask = state == PlaceState::Never ? 0 : ~0ULL;
     };
@@ -2301,7 +2302,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     // uninitialized state on the reachable sibling path.
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
-    auto placeStateMasksBefore = captureVisiblePlaceStateMasks(CurrentScope);
+    auto placeFactsBefore = captureVisiblePlaceFacts(CurrentScope);
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2313,7 +2314,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto masksThen = captureVisibleInitMasks(CurrentScope);
     auto movedThen = captureVisibleMoved(CurrentScope);
-    auto placeStateMasksThen = captureVisiblePlaceStateMasks(CurrentScope);
+    auto placeFactsThen = captureVisiblePlaceFacts(CurrentScope);
     auto conditionalThen = captureVisibleConditionalTodoIds(CurrentScope);
     auto palThen = PALCheckerState.snapshot();
 
@@ -2333,7 +2334,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (ie->Else) {
       // Restore Before Else
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                  placeStateMasksBefore);
+                                  placeFactsBefore);
       restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
       PALCheckerState.restore(palBefore);
 
@@ -2348,7 +2349,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseReturns = allPathsJump(ie->Else.get());
       auto masksElse = captureVisibleInitMasks(CurrentScope);
       auto conditionalElse = captureVisibleConditionalTodoIds(CurrentScope);
-      auto placeStateMasksElse = captureVisiblePlaceStateMasks(CurrentScope);
+      auto placeFactsElse = captureVisiblePlaceFacts(CurrentScope);
       auto palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
       if (narrowsInitState)
@@ -2371,7 +2372,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       } else if (elseReturns) {
         // State is purely from Then branch
         restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen,
-                                    placeStateMasksThen);
+                                    placeFactsThen);
         restoreVisibleConditionalTodoIds(CurrentScope, conditionalThen);
         PALCheckerState.restore(palThen);
       } else {
@@ -2385,15 +2386,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           info->InitMask = thenM & elseM;
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           info->Moved = info->Moved || thenMoved;
-          uint8_t thenPlaceStates =
-              placeStateMasksThen.count(pair.first)
-                  ? placeStateMasksThen[pair.first]
-                  : 0;
-          uint8_t elsePlaceStates =
-              placeStateMasksElse.count(pair.first)
-                  ? placeStateMasksElse[pair.first]
-                  : 0;
-          info->PlaceStateMask = thenPlaceStates | elsePlaceStates;
+          PlaceStateFact thenPlaceStates =
+              placeFactsThen.count(pair.first)
+                  ? placeFactsThen[pair.first]
+                  : PlaceStateFact::bottom();
+          PlaceStateFact elsePlaceStates =
+              placeFactsElse.count(pair.first)
+                  ? placeFactsElse[pair.first]
+                  : PlaceStateFact::bottom();
+          info->PlaceFact = thenPlaceStates | elsePlaceStates;
         }
         for (const auto &pair : conditionalBefore) {
           SymbolInfo *info = nullptr;
@@ -2419,34 +2420,34 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         info->InitMask = pair.second;
         if (thenReturns) {
           info->Moved = movedBefore[pair.first];
-          info->PlaceStateMask =
-              placeStateMasksBefore.count(pair.first)
-                  ? placeStateMasksBefore[pair.first]
-                  : 0;
+          info->PlaceFact =
+              placeFactsBefore.count(pair.first)
+                  ? placeFactsBefore[pair.first]
+                  : PlaceStateFact::bottom();
           if (narrowsInitState && initStateVariable &&
               pair.first == initStateVariable->Name) {
             info->Moved = false;
-            info->PlaceStateMask = placeStateMask(PlaceState::Live);
+            info->PlaceFact = PlaceState::Live;
             info->InitMask = ~0ULL;
           }
         } else {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           info->Moved = movedBefore[pair.first] || thenMoved;
-          uint8_t beforePlaceStates =
-              placeStateMasksBefore.count(pair.first)
-                  ? placeStateMasksBefore[pair.first]
-                  : 0;
-          uint8_t thenPlaceStates =
-              placeStateMasksThen.count(pair.first)
-                  ? placeStateMasksThen[pair.first]
-                  : 0;
-          info->PlaceStateMask = beforePlaceStates | thenPlaceStates;
+          PlaceStateFact beforePlaceStates =
+              placeFactsBefore.count(pair.first)
+                  ? placeFactsBefore[pair.first]
+                  : PlaceStateFact::bottom();
+          PlaceStateFact thenPlaceStates =
+              placeFactsThen.count(pair.first)
+                  ? placeFactsThen[pair.first]
+                  : PlaceStateFact::bottom();
+          info->PlaceFact = beforePlaceStates | thenPlaceStates;
           if (narrowsInitState && initStateVariable &&
               pair.first == initStateVariable->Name) {
-            info->PlaceStateMask = thenPlaceStates |
-                                   placeStateMask(PlaceState::Live);
+            info->PlaceFact =
+                thenPlaceStates.join(PlaceState::Live);
             info->Moved = false;
-            info->InitMask = hasExactlyPlaceState(info->PlaceStateMask,
+            info->InitMask = hasExactlyPlaceState(info->PlaceFact,
                                                    PlaceState::Live)
                                  ? ~0ULL
                                  : 0;
@@ -2552,11 +2553,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
-    std::map<std::string, uint8_t> placeStateMasksBefore;
+    std::map<std::string, PlaceStateFact> placeFactsBefore;
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeStateMasksBefore[pair.first] = pair.second.PlaceStateMask;
+      placeFactsBefore[pair.first] = pair.second.PlaceFact;
     }
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2567,8 +2568,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       for (auto &pair : movedBefore) {
         CurrentScope->Symbols[pair.first].Moved = pair.second;
       }
-      for (auto &pair : placeStateMasksBefore) {
-        CurrentScope->Symbols[pair.first].PlaceStateMask = pair.second;
+      for (auto &pair : placeFactsBefore) {
+        CurrentScope->Symbols[pair.first].PlaceFact = pair.second;
       }
       PALCheckerState.restore(palBefore);
     };
@@ -2589,10 +2590,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       return moved;
     };
 
-    auto capturePlaceStateMasks = [&]() {
-      std::map<std::string, uint8_t> states;
+    auto capturePlaceFacts = [&]() {
+      std::map<std::string, PlaceStateFact> states;
       for (auto &pair : CurrentScope->Symbols) {
-        states[pair.first] = pair.second.PlaceStateMask;
+        states[pair.first] = pair.second.PlaceFact;
       }
       return states;
     };
@@ -2601,11 +2602,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool elseJumps = false;
     std::map<std::string, uint64_t> masksThen;
     std::map<std::string, bool> movedThen;
-    std::map<std::string, uint8_t> placeStateMasksThen;
+    std::map<std::string, PlaceStateFact> placeFactsThen;
     std::map<std::string, uint64_t> masksElse = masksBefore;
     std::map<std::string, bool> movedElse = movedBefore;
-    std::map<std::string, uint8_t> placeStateMasksElse =
-        placeStateMasksBefore;
+    std::map<std::string, PlaceStateFact> placeFactsElse = placeFactsBefore;
     PALChecker palThen = palBefore;
     PALChecker palElse = palBefore;
 
@@ -2643,7 +2643,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();
       movedThen = captureMoved();
-      placeStateMasksThen = capturePlaceStateMasks();
+      placeFactsThen = capturePlaceFacts();
       palThen = PALCheckerState.snapshot();
     } else {
       bool isPtrNullable = false;
@@ -2667,7 +2667,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();
       movedThen = captureMoved();
-      placeStateMasksThen = capturePlaceStateMasks();
+      placeFactsThen = capturePlaceFacts();
       palThen = PALCheckerState.snapshot();
     }
 
@@ -2679,7 +2679,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseJumps = allPathsJump(guard->Else.get());
       masksElse = captureMasks();
       movedElse = captureMoved();
-      placeStateMasksElse = capturePlaceStateMasks();
+      placeFactsElse = capturePlaceFacts();
       palElse = PALCheckerState.snapshot();
     }
 
@@ -2692,8 +2692,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             pair.second.InitMask = masksElse[pair.first];
           if (movedElse.count(pair.first))
             pair.second.Moved = movedElse[pair.first];
-          if (placeStateMasksElse.count(pair.first))
-            pair.second.PlaceStateMask = placeStateMasksElse[pair.first];
+          if (placeFactsElse.count(pair.first))
+            pair.second.PlaceFact = placeFactsElse[pair.first];
         }
         PALCheckerState.restore(palElse);
       } else if (elseJumps) {
@@ -2702,8 +2702,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             pair.second.InitMask = masksThen[pair.first];
           if (movedThen.count(pair.first))
             pair.second.Moved = movedThen[pair.first];
-          if (placeStateMasksThen.count(pair.first))
-            pair.second.PlaceStateMask = placeStateMasksThen[pair.first];
+          if (placeFactsThen.count(pair.first))
+            pair.second.PlaceFact = placeFactsThen[pair.first];
         }
         PALCheckerState.restore(palThen);
       } else {
@@ -2714,15 +2714,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           bool elseMoved = movedElse.count(pair.first) ? movedElse[pair.first] : false;
           pair.second.Moved = thenMoved || elseMoved;
-          uint8_t thenPlaceStates =
-              placeStateMasksThen.count(pair.first)
-                  ? placeStateMasksThen[pair.first]
-                  : 0;
-          uint8_t elsePlaceStates =
-              placeStateMasksElse.count(pair.first)
-                  ? placeStateMasksElse[pair.first]
-                  : 0;
-          pair.second.PlaceStateMask = thenPlaceStates | elsePlaceStates;
+          PlaceStateFact thenPlaceStates =
+              placeFactsThen.count(pair.first)
+                  ? placeFactsThen[pair.first]
+                  : PlaceStateFact::bottom();
+          PlaceStateFact elsePlaceStates =
+              placeFactsElse.count(pair.first)
+                  ? placeFactsElse[pair.first]
+                  : PlaceStateFact::bottom();
+          pair.second.PlaceFact = thenPlaceStates | elsePlaceStates;
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
       }
@@ -2737,15 +2737,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           bool entryMoved = movedBefore.count(pair.first) ? movedBefore[pair.first] : false;
           pair.second.Moved = thenMoved || entryMoved;
-          uint8_t thenPlaceStates =
-              placeStateMasksThen.count(pair.first)
-                  ? placeStateMasksThen[pair.first]
-                  : 0;
-          uint8_t entryPlaceStates =
-              placeStateMasksBefore.count(pair.first)
-                  ? placeStateMasksBefore[pair.first]
-                  : 0;
-          pair.second.PlaceStateMask = thenPlaceStates | entryPlaceStates;
+          PlaceStateFact thenPlaceStates =
+              placeFactsThen.count(pair.first)
+                  ? placeFactsThen[pair.first]
+                  : PlaceStateFact::bottom();
+          PlaceStateFact entryPlaceStates =
+              placeFactsBefore.count(pair.first)
+                  ? placeFactsBefore[pair.first]
+                  : PlaceStateFact::bottom();
+          pair.second.PlaceFact = thenPlaceStates | entryPlaceStates;
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
       }
@@ -2818,11 +2818,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
-    std::map<std::string, uint8_t> placeStateMasksBefore;
+    std::map<std::string, PlaceStateFact> placeFactsBefore;
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeStateMasksBefore[pair.first] = pair.second.PlaceStateMask;
+      placeFactsBefore[pair.first] = pair.second.PlaceFact;
     }
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
@@ -2856,11 +2856,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (le->Condition) {
       std::map<std::string, uint64_t> masksBody;
       std::map<std::string, bool> movedBody;
-      std::map<std::string, uint8_t> placeStateMasksBody;
+      std::map<std::string, PlaceStateFact> placeFactsBody;
       for (auto &pair : CurrentScope->Symbols) {
         masksBody[pair.first] = pair.second.InitMask;
         movedBody[pair.first] = pair.second.Moved;
-        placeStateMasksBody[pair.first] = pair.second.PlaceStateMask;
+        placeFactsBody[pair.first] = pair.second.PlaceFact;
       }
       auto palBody = PALCheckerState.snapshot();
 
@@ -2876,15 +2876,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         bool bodyMoved =
             movedBody.count(pair.first) ? movedBody[pair.first] : false;
         pair.second.Moved = entryMoved || bodyMoved;
-        uint8_t entryPlaceStates =
-            placeStateMasksBefore.count(pair.first)
-                ? placeStateMasksBefore[pair.first]
-                : 0;
-        uint8_t bodyPlaceStates =
-            placeStateMasksBody.count(pair.first)
-                ? placeStateMasksBody[pair.first]
-                : 0;
-        pair.second.PlaceStateMask = entryPlaceStates | bodyPlaceStates;
+        PlaceStateFact entryPlaceStates =
+            placeFactsBefore.count(pair.first)
+                ? placeFactsBefore[pair.first]
+                : PlaceStateFact::bottom();
+        PlaceStateFact bodyPlaceStates =
+            placeFactsBody.count(pair.first)
+                ? placeFactsBody[pair.first]
+                : PlaceStateFact::bottom();
+        pair.second.PlaceFact = entryPlaceStates | bodyPlaceStates;
       }
       PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
     }
@@ -3092,7 +3092,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     auto masksBefore = captureVisibleInitMasks(CurrentScope);
     auto movedBefore = captureVisibleMoved(CurrentScope);
-    auto placeStateMasksBefore = captureVisiblePlaceStateMasks(CurrentScope);
+    auto placeFactsBefore = captureVisiblePlaceFacts(CurrentScope);
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
     auto palBefore = PALCheckerState.snapshot();
@@ -3175,7 +3175,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     exitScope();
     auto masksBody = captureVisibleInitMasks(CurrentScope);
     auto movedBody = captureVisibleMoved(CurrentScope);
-    auto placeStateMasksBody = captureVisiblePlaceStateMasks(CurrentScope);
+    auto placeFactsBody = captureVisiblePlaceFacts(CurrentScope);
     auto palBody = PALCheckerState.snapshot();
 
     std::string elseType = NoProducedValue;
@@ -3183,12 +3183,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool elseJumps = false;
     std::map<std::string, uint64_t> masksElse = masksBefore;
     std::map<std::string, bool> movedElse = movedBefore;
-    std::map<std::string, uint8_t> placeStateMasksElse =
-        placeStateMasksBefore;
+    std::map<std::string, PlaceStateFact> placeFactsElse = placeFactsBefore;
     PALChecker palElse = palBefore;
     if (fe->ElseBody) {
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                  placeStateMasksBefore);
+                                  placeFactsBefore);
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
@@ -3198,7 +3197,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseJumps = allPathsJump(fe->ElseBody.get());
       masksElse = captureVisibleInitMasks(CurrentScope);
       movedElse = captureVisibleMoved(CurrentScope);
-      placeStateMasksElse = captureVisiblePlaceStateMasks(CurrentScope);
+      placeFactsElse = captureVisiblePlaceFacts(CurrentScope);
       palElse = PALCheckerState.snapshot();
       m_ControlFlowStack.pop_back();
     }
@@ -3206,15 +3205,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (fe->ElseBody) {
       if (!bodyContinuesLoop && elseJumps) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                    placeStateMasksBefore);
+                                    placeFactsBefore);
         PALCheckerState.restore(palBefore);
       } else if (!bodyContinuesLoop) {
         restoreVisibleAnalysisState(CurrentScope, masksElse, movedElse,
-                                    placeStateMasksElse);
+                                    placeFactsElse);
         PALCheckerState.restore(palElse);
       } else if (elseJumps) {
         restoreVisibleAnalysisState(CurrentScope, masksBody, movedBody,
-                                    placeStateMasksBody);
+                                    placeFactsBody);
         PALCheckerState.restore(palBody);
       } else {
         for (auto &pair : masksBefore) {
@@ -3231,22 +3230,22 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool elseMoved =
               movedElse.count(pair.first) ? movedElse[pair.first] : false;
           info->Moved = bodyMoved || elseMoved;
-          uint8_t bodyPlaceStates =
-              placeStateMasksBody.count(pair.first)
-                  ? placeStateMasksBody[pair.first]
-                  : 0;
-          uint8_t elsePlaceStates =
-              placeStateMasksElse.count(pair.first)
-                  ? placeStateMasksElse[pair.first]
-                  : 0;
-          info->PlaceStateMask = bodyPlaceStates | elsePlaceStates;
+          PlaceStateFact bodyPlaceStates =
+              placeFactsBody.count(pair.first)
+                  ? placeFactsBody[pair.first]
+                  : PlaceStateFact::bottom();
+          PlaceStateFact elsePlaceStates =
+              placeFactsElse.count(pair.first)
+                  ? placeFactsElse[pair.first]
+                  : PlaceStateFact::bottom();
+          info->PlaceFact = bodyPlaceStates | elsePlaceStates;
         }
         PALCheckerState.mergeBranches(palBefore, palBody, true, palElse, true);
       }
     } else {
       if (!bodyContinuesLoop) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                    placeStateMasksBefore);
+                                    placeFactsBefore);
         PALCheckerState.restore(palBefore);
       } else {
         for (auto &pair : masksBefore) {
@@ -3262,15 +3261,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool bodyMoved =
               movedBody.count(pair.first) ? movedBody[pair.first] : false;
           info->Moved = entryMoved || bodyMoved;
-          uint8_t entryPlaceStates =
-              placeStateMasksBefore.count(pair.first)
-                  ? placeStateMasksBefore[pair.first]
-                  : 0;
-          uint8_t bodyPlaceStates =
-              placeStateMasksBody.count(pair.first)
-                  ? placeStateMasksBody[pair.first]
-                  : 0;
-          info->PlaceStateMask = entryPlaceStates | bodyPlaceStates;
+          PlaceStateFact entryPlaceStates =
+              placeFactsBefore.count(pair.first)
+                  ? placeFactsBefore[pair.first]
+                  : PlaceStateFact::bottom();
+          PlaceStateFact bodyPlaceStates =
+              placeFactsBody.count(pair.first)
+                  ? placeFactsBody[pair.first]
+                  : PlaceStateFact::bottom();
+          info->PlaceFact = entryPlaceStates | bodyPlaceStates;
         }
         PALCheckerState.mergeBranches(palBefore, palBody, true, palBefore, true);
       }
@@ -3645,7 +3644,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (const auto &context : m_InitBlockContexts) {
       SymbolInfo *target = nullptr;
       if (!CurrentScope->findSymbol(context.PlaceName, target) || !target ||
-          !hasExactlyPlaceState(target->PlaceStateMask, PlaceState::Live)) {
+          !hasExactlyPlaceState(target->PlaceFact, PlaceState::Live)) {
         error(awaitEx, DiagID::ERR_INIT_BLOCK_SUSPEND, context.PlaceName);
       }
     }
@@ -4810,17 +4809,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
-    std::map<std::string, uint8_t> placeStateMasksBefore;
+    std::map<std::string, PlaceStateFact> placeFactsBefore;
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeStateMasksBefore[pair.first] = pair.second.PlaceStateMask;
+      placeFactsBefore[pair.first] = pair.second.PlaceFact;
     }
     auto palBefore = PALCheckerState.snapshot();
     bool hasReachableArm = false;
     std::map<std::string, uint64_t> mergedMasks;
     std::map<std::string, bool> mergedMoved;
-    std::map<std::string, uint8_t> mergedPlaceStateMasks;
+    std::map<std::string, PlaceStateFact> mergedPlaceFacts;
     PALChecker mergedPAL = palBefore;
 
     auto restoreMatchEntryState = [&]() {
@@ -4830,8 +4829,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       for (auto &pair : movedBefore) {
         CurrentScope->Symbols[pair.first].Moved = pair.second;
       }
-      for (auto &pair : placeStateMasksBefore) {
-        CurrentScope->Symbols[pair.first].PlaceStateMask = pair.second;
+      for (auto &pair : placeFactsBefore) {
+        CurrentScope->Symbols[pair.first].PlaceFact = pair.second;
       }
       PALCheckerState.restore(palBefore);
     };
@@ -4858,8 +4857,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (CurrentScope->findSymbol(outcomePlace, placeInfo) && placeInfo) {
             const bool isLive = transition->Post == OutcomePostState::Init;
             placeInfo->InitMask = isLive ? ~0ULL : 0;
-            placeInfo->PlaceStateMask = placeStateMask(
-                isLive ? PlaceState::Live : PlaceState::Never);
+            placeInfo->PlaceFact =
+                isLive ? PlaceState::Live : PlaceState::Never;
           }
         }
       }
@@ -4896,7 +4895,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           for (auto &pair : CurrentScope->Symbols) {
             mergedMasks[pair.first] = pair.second.InitMask;
             mergedMoved[pair.first] = pair.second.Moved;
-            mergedPlaceStateMasks[pair.first] = pair.second.PlaceStateMask;
+            mergedPlaceFacts[pair.first] = pair.second.PlaceFact;
           }
           mergedPAL = PALCheckerState.snapshot();
           hasReachableArm = true;
@@ -4914,11 +4913,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             else
               mergedMoved[pair.first] = armMoved;
 
-            uint8_t armPlaceStates = pair.second.PlaceStateMask;
-            if (mergedPlaceStateMasks.count(pair.first))
-              mergedPlaceStateMasks[pair.first] |= armPlaceStates;
+            PlaceStateFact armPlaceStates = pair.second.PlaceFact;
+            if (mergedPlaceFacts.count(pair.first))
+              mergedPlaceFacts[pair.first] |= armPlaceStates;
             else
-              mergedPlaceStateMasks[pair.first] = armPlaceStates;
+              mergedPlaceFacts[pair.first] = armPlaceStates;
           }
 
           PALChecker nextMerged = mergedPAL;
@@ -4947,8 +4946,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           pair.second.InitMask = mergedMasks[pair.first];
         if (mergedMoved.count(pair.first))
           pair.second.Moved = mergedMoved[pair.first];
-        if (mergedPlaceStateMasks.count(pair.first))
-          pair.second.PlaceStateMask = mergedPlaceStateMasks[pair.first];
+        if (mergedPlaceFacts.count(pair.first))
+          pair.second.PlaceFact = mergedPlaceFacts[pair.first];
       }
       PALCheckerState.restore(mergedPAL);
     } else {

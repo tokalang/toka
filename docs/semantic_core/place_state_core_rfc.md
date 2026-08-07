@@ -1,9 +1,10 @@
 # RFC: PlaceState Core
 
-**Status:** Proposed internal semantic-core contract. It changes no source
-syntax by itself. Language RFCs such as delayed initialization may depend on it
-only after the implementation gates in this document are satisfied for their
-declared capability slice.
+**Status:** Proposed internal semantic-core contract; P0.1 fact-boundary
+implementation is in progress. It changes no source syntax by itself. Language
+RFCs such as delayed initialization may depend on it only after the
+implementation gates in this document are satisfied for their declared
+capability slice.
 
 **Purpose:** Define one exact-place state model shared by Sema flow analysis,
 PAL, ownership transfer, synchronous CodeGen cleanup, TKI, and source-less
@@ -313,6 +314,28 @@ a prerequisite for Level-A declaration/signature replay, and an interface must
 never self-assert body fulfilment into safe authority.
 
 ## 8. Implementation and verification gates
+
+### P0.1: whole-place fact boundary (implemented, not a closure claim)
+
+The first implementation slice gives each whole local a `PlaceStateFact`, a
+non-coercible representation of the three concrete states and their CFG join.
+Sema snapshot, restore, branch/loop/match merge, contract completion, and
+call-candidate rollback carry that fact rather than an untyped state mask. The
+fact API intentionally admits only state construction, explicit internal
+bottom, and union; it exposes no implicit conversion back to an integer mask.
+
+This is a representation boundary, not the unified ledger required below.
+`Moved`, `InitMask`, PAL facts, authority facts, and cleanup lowering remain
+separate compatibility representations in this slice. In particular,
+`InitMask` continues to be the legacy liveness mechanism for the admitted
+direct-field and fixed-array partial-`cede` forms. P0.1 neither treats an
+unarmed cleanup bit as a `Never` state nor claims a projection
+construction-origin fact, shared eligibility object, source-less exported
+PlaceState contract, or async/place bridge.
+
+The next P0 implementation slice must make the bounded projection ledger and
+its control-flow joins authoritative, then derive the legacy liveness and
+cleanup views from that ledger at their defined commit points.
 
 A language RFC may claim a PlaceState slice implemented only when all relevant
 gates are green at the same revision:

@@ -133,14 +133,20 @@ if(BUILD_TESTING)
         tests/TypeSyntaxCanonicalization.cpp)
     add_executable(toka_canonical_declaration_witness
         tests/CanonicalDeclarationWitness.cpp)
+    add_executable(toka_place_state_fact
+        tests/PlaceStateFact.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_place_state_fact PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     add_test(NAME toka_typesyntax_canonicalization
         COMMAND toka_typesyntax_canonicalization)
     add_test(NAME toka_canonical_declaration_witness
         COMMAND toka_canonical_declaration_witness)
+    add_test(NAME toka_place_state_fact
+        COMMAND toka_place_state_fact)
 endif()
 
 add_subdirectory(src)

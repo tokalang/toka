@@ -185,9 +185,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         m_InitBlockContexts.back().PlaceName == target->Name &&
         CurrentScope->findSymbol(target->Name, targetInfo) && targetInfo &&
         targetInfo->IsDeclaredVariable &&
-        hasPlaceState(targetInfo->PlaceStateMask, PlaceState::Never) &&
-        hasPlaceState(targetInfo->PlaceStateMask, PlaceState::Live) &&
-        !hasPlaceState(targetInfo->PlaceStateMask, PlaceState::Moved);
+        hasPlaceState(targetInfo->PlaceFact, PlaceState::Never) &&
+        hasPlaceState(targetInfo->PlaceFact, PlaceState::Live) &&
+        !hasPlaceState(targetInfo->PlaceFact, PlaceState::Moved);
     if (!isOwningMaybeTarget) {
       error(Bin, DiagID::ERR_INIT_STATE_PREDICATE,
             target ? target->Name : "<place>",
@@ -403,7 +403,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     isUnsetInit = true;
     if (!isWholePlainLocal || initTargetInfo->Moved ||
         initTargetInfo->InitMask != 0 ||
-        !hasExactlyPlaceState(initTargetInfo->PlaceStateMask,
+        !hasExactlyPlaceState(initTargetInfo->PlaceFact,
                               PlaceState::Never)) {
       error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
             initTarget ? initTarget->Name : "<place>");
@@ -413,7 +413,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       initTargetInfo->HasBeenUsed = true;
     }
   } else if (isAssign && isWholePlainLocal &&
-             hasPlaceState(initTargetInfo->PlaceStateMask,
+             hasPlaceState(initTargetInfo->PlaceFact,
                            PlaceState::Never)) {
     error(Bin, DiagID::ERR_INIT_REQUIRES_EXPLICIT, initTarget->Name,
           initTarget->Name);

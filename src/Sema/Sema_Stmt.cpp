@@ -467,7 +467,7 @@ void Sema::checkStmt(Stmt *S) {
         !targetInfo->IsDeclaredMutable;
     const bool hasInitAuthority =
         isWholePlainLocal && !targetInfo->Moved && targetInfo->InitMask == 0 &&
-        hasExactlyPlaceState(targetInfo->PlaceStateMask, PlaceState::Never);
+        hasExactlyPlaceState(targetInfo->PlaceFact, PlaceState::Never);
     if (!hasInitAuthority)
       error(InitBlock, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
             InitBlock->PlaceName);
@@ -481,7 +481,7 @@ void Sema::checkStmt(Stmt *S) {
       SymbolInfo *postState = nullptr;
       if (!CurrentScope->findSymbol(InitBlock->PlaceName, postState) ||
           !postState ||
-          !hasExactlyPlaceState(postState->PlaceStateMask, PlaceState::Live)) {
+          !hasExactlyPlaceState(postState->PlaceFact, PlaceState::Live)) {
         error(InitBlock, DiagID::ERR_INIT_BLOCK_UNFULFILLED,
               InitBlock->PlaceName, InitBlock->PlaceName);
       }
@@ -630,7 +630,7 @@ void Sema::checkStmt(Stmt *S) {
                 ? PlaceState::Never
                 : PlaceState::Live;
         if (!CurrentScope->findSymbol(Arg.Name, Info) || !Info ||
-            !hasExactlyPlaceState(Info->PlaceStateMask, requiredState)) {
+            !hasExactlyPlaceState(Info->PlaceFact, requiredState)) {
           if (outcome) {
             DiagnosticEngine::report(
                 getLoc(Ret), DiagID::ERR_OUTCOME_RETURN_STATE, outcomeVariant,
@@ -1986,9 +1986,8 @@ void Sema::checkStmt(Stmt *S) {
     } else {
       Info.InitMask = 0;
     }
-    Info.PlaceStateMask = Info.InitMask == 0
-                              ? placeStateMask(PlaceState::Never)
-                              : placeStateMask(PlaceState::Live);
+    Info.PlaceFact =
+        Info.InitMask == 0 ? PlaceState::Never : PlaceState::Live;
 
     // Rule: Numeric Substitution (Constant variables)
     if (Var->Init && Var->TypeName == "i32" && !Var->IsValueMutable) {

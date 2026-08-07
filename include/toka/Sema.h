@@ -16,6 +16,7 @@
 #include "toka/AST.h"
 #include "toka/AccessPath.h"
 #include "toka/DiagnosticEngine.h"
+#include "toka/PlaceState.h"
 #include "toka/Type.h"
 #include "toka/PAL_Checker.h"
 #include "toka/SemanticEvidence.h"
@@ -29,28 +30,6 @@
 #include <vector>
 
 namespace toka {
-
-// A whole-place fact is a set of reachable construction states.  `Never |
-// Live` is the RFC's private `Maybe` fact.  It deliberately sits beside the
-// legacy per-member InitMask: the latter still describes aggregate slots,
-// while this one distinguishes first construction from a moved-out value.
-enum class PlaceState : uint8_t {
-  Never = 1 << 0,
-  Live = 1 << 1,
-  Moved = 1 << 2,
-};
-
-constexpr uint8_t placeStateMask(PlaceState state) {
-  return static_cast<uint8_t>(state);
-}
-
-constexpr bool hasPlaceState(uint8_t states, PlaceState state) {
-  return (states & placeStateMask(state)) != 0;
-}
-
-constexpr bool hasExactlyPlaceState(uint8_t states, PlaceState state) {
-  return states == placeStateMask(state);
-}
 
 struct SymbolInfo {
   // New Type Object (Source of Truth)
@@ -70,7 +49,9 @@ struct SymbolInfo {
   SourceLocation MoveLoc;
   uint64_t InitMask =
       ~0ULL; // 0=uninitialized, 1=initialized. For shapes, each bit corresponds to a member.
-  uint8_t PlaceStateMask = placeStateMask(PlaceState::Live);
+  // The whole-place semantic fact. `InitMask` remains a temporary projection
+  // liveness compatibility mask while P0 migrates eligible exact projections.
+  PlaceStateFact PlaceFact = PlaceState::Live;
 
   // "Hot Potato" Tracking
   // If this symbol is a Reference (&T), this mask tracks the InitMask of the
@@ -290,7 +271,7 @@ public:
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
       ptr->Moved = true;
-      ptr->PlaceStateMask = placeStateMask(PlaceState::Moved);
+      ptr->PlaceFact = PlaceState::Moved;
       if (Loc.isValid())
         ptr->MoveLoc = Loc;
       return true;
@@ -303,7 +284,7 @@ public:
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
       ptr->Moved = false;
-      ptr->PlaceStateMask = placeStateMask(PlaceState::Live);
+      ptr->PlaceFact = PlaceState::Live;
       ptr->MoveLoc = {};
       return true;
     }
@@ -587,7 +568,7 @@ private:
   struct AnalysisState {
     std::map<std::string, uint64_t> InitMasks;
     std::map<std::string, bool> Moved;
-    std::map<std::string, uint8_t> PlaceStateMasks;
+    std::map<std::string, PlaceStateFact> PlaceFacts;
     // Editor-only incompleteness state.  It follows local value flow but
     // never grants an operation or substitutes for PAL.
     std::map<std::string, std::set<uint64_t>> ConditionalTodoIds;

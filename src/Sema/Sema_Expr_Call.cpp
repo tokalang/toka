@@ -717,18 +717,18 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     struct FlowSnapshot {
       Scope *ScopePtr;
       std::map<std::string, bool> Moved;
-      std::map<std::string, uint8_t> PlaceStateMasks;
+      std::map<std::string, PlaceStateFact> PlaceFacts;
     };
     std::vector<FlowSnapshot> movedSnapshot;
     for (Scope *scope = CurrentScope; scope; scope = scope->Parent) {
       std::map<std::string, bool> moved;
-      std::map<std::string, uint8_t> placeStateMasks;
+      std::map<std::string, PlaceStateFact> placeFacts;
       for (const auto &entry : scope->Symbols) {
         moved[entry.first] = entry.second.Moved;
-        placeStateMasks[entry.first] = entry.second.PlaceStateMask;
+        placeFacts[entry.first] = entry.second.PlaceFact;
       }
       movedSnapshot.push_back(
-          {scope, std::move(moved), std::move(placeStateMasks)});
+          {scope, std::move(moved), std::move(placeFacts)});
     }
 
     auto restoreMoved = [&]() {
@@ -740,10 +740,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             it->second.Moved = moved.second;
           }
         }
-        for (const auto &placeState : entry.PlaceStateMasks) {
+        for (const auto &placeState : entry.PlaceFacts) {
           auto it = scope->Symbols.find(placeState.first);
           if (it != scope->Symbols.end())
-            it->second.PlaceStateMask = placeState.second;
+            it->second.PlaceFact = placeState.second;
         }
       }
     };
@@ -2024,7 +2024,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           placeInfo->IsDeclaredVariable && !placeInfo->IsDeclaredMutable &&
           !placeInfo->Moved &&
           placeInfo->InitMask == 0 &&
-          hasExactlyPlaceState(placeInfo->PlaceStateMask, PlaceState::Never);
+          hasExactlyPlaceState(placeInfo->PlaceFact, PlaceState::Never);
       if (!isWholePlainLocal) {
         error(Call->Args[i].get(), DiagID::ERR_INIT_ARGUMENT_INVALID,
               Fn->Args[i].Name);
@@ -2402,11 +2402,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   for (SymbolInfo *place : completedInitPlaces) {
     if (hasRecheckedOutcomeContract) {
       place->InitMask = 0;
-      place->PlaceStateMask = placeStateMask(PlaceState::Never) |
-                              placeStateMask(PlaceState::Live);
+      place->PlaceFact =
+          PlaceStateFact(PlaceState::Never).join(PlaceState::Live);
     } else {
       place->InitMask = ~0ULL;
-      place->PlaceStateMask = placeStateMask(PlaceState::Live);
+      place->PlaceFact = PlaceState::Live;
     }
   }
 
