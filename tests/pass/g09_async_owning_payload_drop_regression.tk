@@ -1,0 +1,135 @@
+// P0 regression: ownership transferred through async await / wait must be
+// dropped exactly once after the consumer scope ends.
+
+import std/io::{println};
+import std/bytes::{Bytes};
+import std/task::{block_on};
+import std/vec::{Vec};
+import core/option::{Option};
+import core/result::{Result};
+
+auto global_owned_drop_count# = 0:i32;
+
+shape Owned(marker: i32)
+impl Owned@Encap {
+    fn drop(self#) {
+        global_owned_drop_count = global_owned_drop_count + 1;
+    }
+}
+
+fn make_owned(v: i32) -> Owned {
+    return Owned(marker = v);
+}
+
+fn make_bytes(input: str) -> Bytes {
+    auto raw# = Vec<u8>::with_capacity(input.len());
+    auto index# = 0:usize;
+    loop index < input.len() {
+        raw#.push(input.byte_at(index) as u8);
+        index = index + 1:usize;
+    }
+    return Bytes::from_vec(cede raw);
+}
+
+fn child_owned() -> async Owned {
+    return make_owned(11);
+}
+
+fn child_opt_owned() -> async Option<Owned> {
+    return Option<Owned>::Some(make_owned(22));
+}
+
+fn child_result_opt_owned() -> async Result<Option<Owned>, str> {
+    return Result<Option<Owned>, str>::Ok(Option<Owned>::Some(make_owned(33)));
+}
+
+// 4) enum with Owned payload across await
+pub shape Payload (
+    Empty = 0 |
+    Bulk(Owned) = 1
+)
+
+fn child_enum_payload() -> async Payload {
+    return Payload::Bulk(make_owned(44));
+}
+
+fn child_bytes() -> async Bytes {
+    return make_bytes("owned async bytes");
+}
+
+// Each parent awaits an owning child result, so this exercises both the async
+// `await` move and the synchronous `wait` move used by block_on.
+fn async_returns_owned() -> async Owned {
+    return child_owned().await;
+}
+
+fn async_returns_opt_owned() -> async Option<Owned> {
+    return child_opt_owned().await;
+}
+
+fn async_returns_result_opt_owned() -> async Result<Option<Owned>, str> {
+    return child_result_opt_owned().await;
+}
+
+fn async_returns_enum_payload() -> async Payload {
+    return child_enum_payload().await;
+}
+
+fn async_returns_bytes() -> async Bytes {
+    return child_bytes().await;
+}
+
+fn consume_owned() {
+    auto h = async_returns_owned().start;
+    auto b = block_on<Owned>(h);
+    assert(b.marker == 11, "owned value");
+}
+
+fn consume_opt_owned() {
+    auto h = async_returns_opt_owned().start;
+    auto ob = block_on<Option<Owned>>(h);
+    assert(ob.is_some(), "Option payload");
+}
+
+fn consume_result_opt_owned() {
+    auto h = async_returns_result_opt_owned().start;
+    auto rb = block_on<Result<Option<Owned>, str>>(h);
+    assert(rb.is_ok(), "Result payload");
+}
+
+fn consume_enum_payload() {
+    auto h = async_returns_enum_payload().start;
+    auto p = block_on<Payload>(h);
+    match cede p {
+        auto Payload::Bulk('value) => {
+            assert('value.marker == 44, "enum payload")
+        }
+        _ => {
+            assert(false, "enum payload missing")
+        }
+    }
+}
+
+fn consume_bytes() {
+    auto h = async_returns_bytes().start;
+    auto value = block_on<Bytes>(h);
+    auto view = value.as_slice();
+    assert(view.len() == 17:usize, "Bytes payload length");
+    assert((view.at(0:usize).unwrap() as u8) == 'o' as u8,
+           "Bytes payload content");
+}
+
+fn main() -> i32 {
+    auto before = global_owned_drop_count;
+    consume_owned();
+    assert(global_owned_drop_count == before + 1, "Owned dropped exactly once");
+    consume_opt_owned();
+    assert(global_owned_drop_count == before + 2, "Option<Owned> dropped exactly once");
+    consume_result_opt_owned();
+    assert(global_owned_drop_count == before + 3, "Result<Option<Owned>> dropped exactly once");
+    consume_enum_payload();
+    assert(global_owned_drop_count == before + 4, "enum payload dropped exactly once");
+    consume_bytes();
+    println("P0 owning-payload await regression: PASS");
+    return 0;
+}
