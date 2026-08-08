@@ -1430,23 +1430,32 @@ void Sema::checkStmt(Stmt *S) {
       // the direct source expression's resolved type rather than trying to
       // recover provenance from an earlier owner.
       if (auto *cede = dynamic_cast<CedeExpr *>(Var->Init.get())) {
+        // In `auto local = cede source:T`, the inner AST node is an
+        // ascription of `source`, but it is the explicit destination contract
+        // for the transfer.  Consult its resolved nullability alongside an
+        // ordinary written declaration.
+        const auto *destinationAscription =
+            dynamic_cast<const CastExpr *>(cede->Value.get());
+        const bool ascriptionAllowsNull =
+            destinationAscription &&
+            destinationAscription->Kind == CastKind::Ascription &&
+            isNullableCedeDestination(destinationAscription->ResolvedType);
         auto targetSoul =
             declTargetTy ? declTargetTy->getSoulType() : nullptr;
         const bool targetAllowsNull =
             Var->IsPointerNullable || Var->IsValueNullable ||
             (declTargetTy &&
              (declTargetTy->IsNullable ||
-              (targetSoul && targetSoul->IsNullable)));
+              (targetSoul && targetSoul->IsNullable))) ||
+            ascriptionAllowsNull;
         // `auto value = cede nullable` infers a nullable value.  Any written
         // value type or handle morphology is a destination declaration and
         // must therefore state whether it accepts nullability explicitly.
-        const auto *sourceAscription =
-            dynamic_cast<const CastExpr *>(cede->Value.get());
         const bool hasDeclaredDestination =
             !inferredType || Var->IsRawPointer || Var->IsUnique ||
             Var->IsShared || Var->IsReference ||
-            (sourceAscription &&
-             sourceAscription->Kind == CastKind::Ascription);
+            (destinationAscription &&
+             destinationAscription->Kind == CastKind::Ascription);
         const bool sourceIsNullable = isNullableCedeSource(cede);
         if (hasDeclaredDestination && !targetAllowsNull && sourceIsNullable) {
           DiagnosticEngine::report(

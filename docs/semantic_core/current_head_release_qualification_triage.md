@@ -57,6 +57,11 @@ That evidence does not substitute for a current-HEAD release qualification.
   which current Toka treats as references to existing bindings.  Its five
   fresh `Some` payload bindings now spell `auto value`; the focused run test
   passes.  This changes neither iterator nor ownership semantics.
+- `ownership_cede_nullable_member_explicit_nullable_destination_01`: the
+  nullable-destination check omitted the type ascription nested under the
+  `cede` AST node.  `cede source:T?` now admits that explicit nullable
+  contract; the corresponding explicit `:Token` negative case still reports
+  `E04599`.
 
 ## Execution order
 
