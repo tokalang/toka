@@ -1,10 +1,10 @@
 # RFC: Semantic Manifest Envelope
 
-**Status:** Proposed envelope and trust model. P1.0/P1.2 implement an
+**Status:** Proposed envelope and trust model. P1.0/P1.3 implement an
 independent compiler-owned sidecar carrier, replay-surface closure, and an
 explicit default-off validation profile for a narrow declaration-recomputed
-CDW1 prototype. They change no source syntax or TKI grammar, and do not freeze
-a body-attested payload.
+CDW1 prototype, including project-build propagation. They change no source
+syntax or TKI grammar, and do not freeze a body-attested payload.
 
 **Depends on:** resolver-owned module identity, TKI semantic replay, current
 Encap/Copy/Dup/drop facts, and the existing object-bound trusted-memory-
@@ -62,6 +62,12 @@ decision changes. In particular, neither mode changes Level-A retained-body
 replay or the bodyless Outcome `E04631` boundary. A closure that cannot be
 constructed still omits emission, while profile validation of an admitted
 source-less interface fails rather than inventing a fallback.
+
+P1.3 makes the same profile available as
+`toka build --validate-semantic-manifests`. It forwards the resolver identity
+context to the project build and executes a no-write semantic check even when
+the incremental build plan is clean. The option is invocation-scoped: it adds
+no `package.tk` dialect, lockfile claim, or default requirement.
 
 Whichever layout is selected, the manifest is logically distinct from:
 

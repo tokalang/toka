@@ -23,6 +23,7 @@ manifest payload.
 | independent semantic envelope carrier | complete | P1.0/P1.1 `.tki.tsm` + replay-surface closure |
 | importer-visible declaration comparison | complete in explicit profile | `--validate-semantic-manifests` |
 | atomic declaration/tamper failure matrix | complete for P1 profile | valid, missing, non-canonical, record-mismatched, and bodyless gates |
+| project-build propagation and clean-cache check | complete | `toka build --validate-semantic-manifests` qualification |
 
 ## Artifact boundary
 
@@ -71,8 +72,9 @@ Envelope RFC.
 
 ## Remaining design decision
 
-The next decision is whether a future release should make this P1 profile part
-of a package/build policy. That requires a migration story for legacy TKI and
+The profile is now available as an invocation-scoped `toka build` policy. The
+next decision is whether a future release should make it package-declared or
+default-required. That requires a migration story for legacy TKI and
 equivalent identity coverage for methods and generics. It does not authorize
 embedding CDW1 in a source comment, trusting a provider object, or changing
 the bodyless `E04631` boundary.

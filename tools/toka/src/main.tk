@@ -24,6 +24,7 @@ fn print_help() {
     println("  todo-goals   Emit typed-todo requirement evidence JSON")
     println("  conditional-facts Emit typed-todo conditional binding facts JSON")
     println("  index        Emit compiler-owned semantic index JSON for API tooling")
+    println("  build --validate-semantic-manifests  Validate admitted source-less TKI sidecars")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
     println("  test         Run all tests in the tests/ directory")
@@ -513,12 +514,20 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         
         auto executable# = string::from(".toka_build_exe")
         if check_is_windows() { executable#.push_str(".exe") }
+        auto validate_semantic_manifests# = false
+        auto profile_index# = 0:usize
+        loop profile_index < extra_args.len() {
+            if extra_args.get_ref(profile_index).eq(string::from("--validate-semantic-manifests")) {
+                validate_semantic_manifests = true
+            }
+            profile_index += 1
+        }
         auto compile# = Command::new(cede tokac_path.clone())
         compile#.arg(string::from("-I"))
         compile#.arg(cede default_lib.clone())
         if !workspace_node.is_empty() {
             compile#.arg(string::from("--workspace-node"))
-            compile#.arg(cede workspace_node)
+            compile#.arg(cede workspace_node.clone())
             compile#.arg(string::from("--workspace-root"))
             compile#.arg(env::current_dir())
         }
@@ -533,6 +542,9 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
             compile#.arg(string::from("--pkg-node"))
             compile#.arg(cede pkg_node_mappings.get_ref(node_index).clone())
             node_index += 1
+        }
+        if validate_semantic_manifests {
+            compile#.arg(string::from("--validate-semantic-manifests"))
         }
         compile#.arg(cede build_file.clone())
         compile#.arg(string::from("-o"))
@@ -553,6 +565,18 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         run#.arg(cede tokac_path.clone())
         run#.arg(string::from("--toka-lib"))
         run#.arg(cede default_lib.clone())
+        if !workspace_node.is_empty() {
+            run#.arg(string::from("--workspace-node"))
+            run#.arg(cede workspace_node)
+            run#.arg(string::from("--workspace-root"))
+            run#.arg(env::current_dir())
+        }
+        auto run_node_index# = 0:usize
+        loop run_node_index < pkg_node_mappings.len() {
+            run#.arg(string::from("--pkg-node"))
+            run#.arg(cede pkg_node_mappings.get_ref(run_node_index).clone())
+            run_node_index += 1
+        }
         auto idx_extra# = 0:usize
         loop idx_extra < extra_args.len() {
             run#.arg(cede extra_args.get_ref(idx_extra).clone())

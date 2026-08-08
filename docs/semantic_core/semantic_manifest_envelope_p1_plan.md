@@ -1,8 +1,9 @@
 # Semantic Manifest Envelope P1 Execution Plan
 
-**Status:** P1.0/P1.2 implemented. P1.2 is an explicit, default-off compiler
-validation profile for the admitted source-less TKI subset; it does not alter
-ordinary retained-body import compatibility.
+**Status:** P1.0/P1.3 implemented. P1.2 is an explicit, default-off compiler
+validation profile for the admitted source-less TKI subset; P1.3 carries that
+profile through `toka build` without altering ordinary retained-body import
+compatibility.
 
 ## Objective
 
@@ -142,6 +143,24 @@ cleanup, caller, or CodeGen authority.
 The qualification runner covers a valid sidecar, a missing sidecar under both
 default and profile modes, a non-canonical tampered sidecar, a canonical but
 declaration-mismatched record, and the unchanged bodyless `E04631` boundary.
+
+### P1.3 — build-profile propagation
+
+`toka build --validate-semantic-manifests` is an invocation-scoped build
+policy, not `package.tk` syntax and not a lockfile field. The outer CLI passes
+the resolver-owned workspace and locked-package node identities to the executed
+`build.tk`, validates that script under the same profile, and `lib/build` then
+passes the identities and profile to the incremental driver. This ensures the
+source-less TKI selected during either build layer has the same coordinate
+domain as the sidecar producer.
+
+The incremental driver performs a no-write `tokac --check-only` validation
+using the exact final compiler arguments before it returns a plan or accepts a
+clean build. Thus a sidecar tampered after a successful build cannot hide
+behind the clean-cache shortcut. The default invocation omits the profile and
+preserves legacy behavior. The build-profile qualification exercises a valid
+known-coordinate source-less provider, default acceptance after sidecar
+tampering, and `E04633` rejection on the subsequent profile clean build.
 
 ## Explicit exclusions
 

@@ -622,6 +622,13 @@ if ! run_without_test_cache bash tools/scripts/test_outcome_body_recheck.sh; the
 fi
 
 echo ""
+echo "Running Semantic Manifest build-profile test..."
+if ! run_without_test_cache bash tools/scripts/test_semantic_manifest_build_profile.sh; then
+    echo -e "${RED}Semantic Manifest build-profile test failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic Cache Invalidation tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_cache_invalidation.sh; then
     echo -e "${RED}Semantic Cache Invalidation tests failed!${NC}"

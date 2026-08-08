@@ -540,6 +540,12 @@ def main():
     # Resolve the graph before native metadata so the native cache incorporates
     # the exact Toka target triple rather than only host-local package inputs.
     current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
+    if "--validate-semantic-manifests" in c_args:
+        validation_status = run_tokac_compile(
+            args.tokac, ["--check-only"] + c_args, args.entry_files, env=env
+        )
+        if validation_status != 0:
+            sys.exit(validation_status)
     native_targets = [
         info["target_triple"]
         for info in current_graph.get("modules", {}).values()
