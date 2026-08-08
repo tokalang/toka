@@ -2606,13 +2606,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
-    std::map<std::string, PlaceStateFact> placeFactsBefore;
-    std::map<std::string, ProjectionPlaceFacts> projectionFactsBefore;
+    std::map<std::string, ExactPlaceFacts> exactPlacesBefore;
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeFactsBefore[pair.first] = pair.second.placeFact();
-      projectionFactsBefore[pair.first] = pair.second.projectionFacts();
+      exactPlacesBefore[pair.first] = pair.second.ExactPlace;
     }
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2623,12 +2621,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       for (auto &pair : movedBefore) {
         CurrentScope->Symbols[pair.first].Moved = pair.second;
       }
-      for (auto &pair : placeFactsBefore) {
-        CurrentScope->Symbols[pair.first].placeFact() = pair.second;
-      }
-      for (auto &pair : projectionFactsBefore) {
+      for (auto &pair : exactPlacesBefore) {
         auto &info = CurrentScope->Symbols[pair.first];
-        info.projectionFacts() = pair.second;
+        info.ExactPlace = pair.second;
         info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
       }
       PALCheckerState.restore(palBefore);
@@ -2650,18 +2645,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       return moved;
     };
 
-    auto capturePlaceFacts = [&]() {
-      std::map<std::string, PlaceStateFact> states;
-      for (auto &pair : CurrentScope->Symbols) {
-        states[pair.first] = pair.second.placeFact();
-      }
-      return states;
-    };
-
-    auto captureProjectionFacts = [&]() {
-      std::map<std::string, ProjectionPlaceFacts> facts;
+    auto captureExactPlaceFacts = [&]() {
+      std::map<std::string, ExactPlaceFacts> facts;
       for (auto &pair : CurrentScope->Symbols)
-        facts[pair.first] = pair.second.projectionFacts();
+        facts[pair.first] = pair.second.ExactPlace;
       return facts;
     };
 
@@ -2669,13 +2656,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool elseJumps = false;
     std::map<std::string, uint64_t> masksThen;
     std::map<std::string, bool> movedThen;
-    std::map<std::string, PlaceStateFact> placeFactsThen;
-    std::map<std::string, ProjectionPlaceFacts> projectionFactsThen;
+    std::map<std::string, ExactPlaceFacts> exactPlacesThen;
     std::map<std::string, uint64_t> masksElse = masksBefore;
     std::map<std::string, bool> movedElse = movedBefore;
-    std::map<std::string, PlaceStateFact> placeFactsElse = placeFactsBefore;
-    std::map<std::string, ProjectionPlaceFacts> projectionFactsElse =
-        projectionFactsBefore;
+    std::map<std::string, ExactPlaceFacts> exactPlacesElse = exactPlacesBefore;
     PALChecker palThen = palBefore;
     PALChecker palElse = palBefore;
 
@@ -2713,8 +2697,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();
       movedThen = captureMoved();
-      placeFactsThen = capturePlaceFacts();
-      projectionFactsThen = captureProjectionFacts();
+      exactPlacesThen = captureExactPlaceFacts();
       palThen = PALCheckerState.snapshot();
     } else {
       bool isPtrNullable = false;
@@ -2738,8 +2721,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();
       movedThen = captureMoved();
-      placeFactsThen = capturePlaceFacts();
-      projectionFactsThen = captureProjectionFacts();
+      exactPlacesThen = captureExactPlaceFacts();
       palThen = PALCheckerState.snapshot();
     }
 
@@ -2751,8 +2733,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       elseJumps = allPathsJump(guard->Else.get());
       masksElse = captureMasks();
       movedElse = captureMoved();
-      placeFactsElse = capturePlaceFacts();
-      projectionFactsElse = captureProjectionFacts();
+      exactPlacesElse = captureExactPlaceFacts();
       palElse = PALCheckerState.snapshot();
     }
 
@@ -2765,10 +2746,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             pair.second.InitMask = masksElse[pair.first];
           if (movedElse.count(pair.first))
             pair.second.Moved = movedElse[pair.first];
-          if (placeFactsElse.count(pair.first))
-            pair.second.placeFact() = placeFactsElse[pair.first];
-          if (projectionFactsElse.count(pair.first)) {
-            pair.second.projectionFacts() = projectionFactsElse[pair.first];
+          if (exactPlacesElse.count(pair.first)) {
+            pair.second.ExactPlace = exactPlacesElse[pair.first];
             syncLegacyProjectionLiveness(pair.second);
           }
         }
@@ -2779,10 +2758,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             pair.second.InitMask = masksThen[pair.first];
           if (movedThen.count(pair.first))
             pair.second.Moved = movedThen[pair.first];
-          if (placeFactsThen.count(pair.first))
-            pair.second.placeFact() = placeFactsThen[pair.first];
-          if (projectionFactsThen.count(pair.first)) {
-            pair.second.projectionFacts() = projectionFactsThen[pair.first];
+          if (exactPlacesThen.count(pair.first)) {
+            pair.second.ExactPlace = exactPlacesThen[pair.first];
             syncLegacyProjectionLiveness(pair.second);
           }
         }
@@ -2795,22 +2772,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           bool elseMoved = movedElse.count(pair.first) ? movedElse[pair.first] : false;
           pair.second.Moved = thenMoved || elseMoved;
-          PlaceStateFact thenPlaceStates =
-              placeFactsThen.count(pair.first)
-                  ? placeFactsThen[pair.first]
-                  : PlaceStateFact::bottom();
-          PlaceStateFact elsePlaceStates =
-              placeFactsElse.count(pair.first)
-                  ? placeFactsElse[pair.first]
-                  : PlaceStateFact::bottom();
-          pair.second.placeFact() = thenPlaceStates | elsePlaceStates;
-          ProjectionPlaceFacts projectionFacts =
-              projectionFactsThen.count(pair.first)
-                  ? projectionFactsThen[pair.first]
-                  : ProjectionPlaceFacts{};
-          if (projectionFactsElse.count(pair.first))
-            projectionFacts |= projectionFactsElse[pair.first];
-          pair.second.projectionFacts() = projectionFacts;
+          ExactPlaceFacts exactPlaces =
+              exactPlacesThen.count(pair.first)
+                  ? exactPlacesThen[pair.first]
+                  : ExactPlaceFacts::bottom();
+          if (exactPlacesElse.count(pair.first))
+            exactPlaces |= exactPlacesElse[pair.first];
+          pair.second.ExactPlace = exactPlaces;
           syncLegacyProjectionLiveness(pair.second);
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
@@ -2826,22 +2794,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           bool thenMoved = movedThen.count(pair.first) ? movedThen[pair.first] : false;
           bool entryMoved = movedBefore.count(pair.first) ? movedBefore[pair.first] : false;
           pair.second.Moved = thenMoved || entryMoved;
-          PlaceStateFact thenPlaceStates =
-              placeFactsThen.count(pair.first)
-                  ? placeFactsThen[pair.first]
-                  : PlaceStateFact::bottom();
-          PlaceStateFact entryPlaceStates =
-              placeFactsBefore.count(pair.first)
-                  ? placeFactsBefore[pair.first]
-                  : PlaceStateFact::bottom();
-          pair.second.placeFact() = thenPlaceStates | entryPlaceStates;
-          ProjectionPlaceFacts projectionFacts =
-              projectionFactsThen.count(pair.first)
-                  ? projectionFactsThen[pair.first]
-                  : ProjectionPlaceFacts{};
-          if (projectionFactsBefore.count(pair.first))
-            projectionFacts |= projectionFactsBefore[pair.first];
-          pair.second.projectionFacts() = projectionFacts;
+          ExactPlaceFacts exactPlaces =
+              exactPlacesThen.count(pair.first)
+                  ? exactPlacesThen[pair.first]
+                  : ExactPlaceFacts::bottom();
+          if (exactPlacesBefore.count(pair.first))
+            exactPlaces |= exactPlacesBefore[pair.first];
+          pair.second.ExactPlace = exactPlaces;
           syncLegacyProjectionLiveness(pair.second);
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
