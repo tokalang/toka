@@ -535,6 +535,21 @@ captureVisibleProjectionFacts(Scope *ScopePtr) {
   return facts;
 }
 
+static std::map<std::string, ExactPlaceFacts>
+captureVisibleExactPlaceFacts(Scope *ScopePtr) {
+  std::map<std::string, ExactPlaceFacts> facts;
+  for (Scope *S = ScopePtr; S; S = S->Parent) {
+    for (const auto &pair : S->Symbols) {
+      if (!facts.count(pair.first)) {
+        facts[pair.first] = ExactPlaceFacts::fromLegacy(
+            pair.second.PlaceFact, pair.second.PartialMove,
+            pair.second.ProjectionFacts);
+      }
+    }
+  }
+  return facts;
+}
+
 static std::map<std::string, std::set<uint64_t>>
 captureVisibleConditionalTodoIds(Scope *ScopePtr) {
   std::map<std::string, std::set<uint64_t>> dependencies;
@@ -590,8 +605,7 @@ Sema::AnalysisState Sema::captureAnalysisState() {
   AnalysisState state;
   state.InitMasks = captureVisibleInitMasks(CurrentScope);
   state.Moved = captureVisibleMoved(CurrentScope);
-  state.PlaceFacts = captureVisiblePlaceFacts(CurrentScope);
-  state.ProjectionFacts = captureVisibleProjectionFacts(CurrentScope);
+  state.ExactPlaces = captureVisibleExactPlaceFacts(CurrentScope);
   state.ConditionalTodoIds = captureVisibleConditionalTodoIds(CurrentScope);
   state.PayloadFlowRestrictedPaths = m_PayloadFlowRestrictedPaths;
   state.PAL = PALCheckerState.snapshot();
@@ -605,10 +619,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
 
   std::map<std::string, uint64_t> mergedMasks = states.front().InitMasks;
   std::map<std::string, bool> mergedMoved = states.front().Moved;
-  std::map<std::string, PlaceStateFact> mergedPlaceFacts =
-      states.front().PlaceFacts;
-  std::map<std::string, ProjectionPlaceFacts> mergedProjectionFacts =
-      states.front().ProjectionFacts;
+  std::map<std::string, ExactPlaceFacts> mergedExactPlaces =
+      states.front().ExactPlaces;
   std::map<std::string, std::set<uint64_t>> mergedConditionalTodoIds =
       states.front().ConditionalTodoIds;
   std::set<AccessPath> mergedPayloadFlowRestrictions =
@@ -638,25 +650,16 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
       pair.second = pair.second || moved;
     }
 
-    for (const auto &pair : state.PlaceFacts) {
-      if (!mergedPlaceFacts.count(pair.first))
-        mergedPlaceFacts[pair.first] = PlaceStateFact::bottom();
+    for (const auto &pair : state.ExactPlaces) {
+      if (!mergedExactPlaces.count(pair.first))
+        mergedExactPlaces[pair.first] = ExactPlaceFacts::bottom();
     }
-    for (auto &pair : mergedPlaceFacts) {
-      PlaceStateFact placeStates =
-          state.PlaceFacts.count(pair.first)
-              ? state.PlaceFacts.at(pair.first)
-              : PlaceStateFact::bottom();
-      pair.second |= placeStates;
-    }
-
-    for (const auto &pair : state.ProjectionFacts) {
-      if (!mergedProjectionFacts.count(pair.first))
-        mergedProjectionFacts[pair.first] = ProjectionPlaceFacts{};
-    }
-    for (auto &pair : mergedProjectionFacts) {
-      if (state.ProjectionFacts.count(pair.first))
-        pair.second |= state.ProjectionFacts.at(pair.first);
+    for (auto &pair : mergedExactPlaces) {
+      const ExactPlaceFacts facts =
+          state.ExactPlaces.count(pair.first)
+              ? state.ExactPlaces.at(pair.first)
+              : ExactPlaceFacts::bottom();
+      pair.second |= facts;
     }
 
     for (const auto &pair : state.ConditionalTodoIds) {
@@ -676,8 +679,15 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
     mergedPAL = PALCheckerState.snapshot();
   }
 
-  restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved,
-                              mergedPlaceFacts, mergedProjectionFacts);
+  restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved, {}, {});
+  for (const auto &pair : mergedExactPlaces) {
+    SymbolInfo *info = nullptr;
+    if (CurrentScope->findSymbol(pair.first, info) && info) {
+      info->PlaceFact = pair.second.whole();
+      info->ProjectionFacts = pair.second.projections();
+      info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
+    }
+  }
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);

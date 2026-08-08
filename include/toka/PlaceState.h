@@ -226,4 +226,106 @@ constexpr ProjectionPlaceFacts operator|(ProjectionPlaceFacts lhs,
   return lhs;
 }
 
+// The internal fact for one stable root and its admitted direct projections.
+// It deliberately owns only PlaceState plus the eligibility plan that gives a
+// projection its stable coordinate. PAL, authority, diagnostic move locations,
+// and runtime cleanup remain separate sorts.
+class ExactPlaceFacts {
+public:
+  constexpr ExactPlaceFacts() = default;
+  constexpr explicit ExactPlaceFacts(PlaceStateFact whole) : m_Whole(whole) {}
+
+  static constexpr ExactPlaceFacts bottom() {
+    return ExactPlaceFacts(PlaceStateFact::bottom());
+  }
+
+  static constexpr ExactPlaceFacts fromLegacy(
+      PlaceStateFact whole, PartialMovePlan plan,
+      ProjectionPlaceFacts projections) {
+    ExactPlaceFacts facts(whole);
+    facts.m_Plan = plan;
+    facts.m_Projections = plan.isAdmitted() ? projections
+                                             : ProjectionPlaceFacts{};
+    return facts;
+  }
+
+  constexpr bool empty() const { return m_Whole.empty(); }
+  constexpr const PlaceStateFact &whole() const { return m_Whole; }
+  constexpr const PartialMovePlan &plan() const { return m_Plan; }
+  constexpr const ProjectionPlaceFacts &projections() const {
+    return m_Projections;
+  }
+
+  constexpr void setWhole(PlaceStateFact whole) { m_Whole = whole; }
+  constexpr void setPlan(PartialMovePlan plan, uint64_t legacyInitMask) {
+    m_Plan = plan;
+    m_Projections = plan.isAdmitted()
+                        ? ProjectionPlaceFacts::fromLegacyInitMask(
+                              plan.eligibleMask(), legacyInitMask)
+                        : ProjectionPlaceFacts{};
+  }
+  constexpr void setProjectionFacts(ProjectionPlaceFacts projections) {
+    m_Projections = m_Plan.isAdmitted() ? projections
+                                         : ProjectionPlaceFacts{};
+  }
+  constexpr uint64_t applyToLegacyInitMask(uint64_t legacy) const {
+    return m_Projections.applyToLegacyInitMask(legacy);
+  }
+  constexpr bool transitionProjection(PartialMoveProjectionKind kind,
+                                      uint64_t bit, PlaceState state) {
+    if (!m_Plan.admits(kind, bit) || !m_Projections.tracks(bit))
+      return false;
+    switch (state) {
+    case PlaceState::Never:
+      return false;
+    case PlaceState::Live:
+      m_Projections.markLive(bit);
+      return true;
+    case PlaceState::Moved:
+      m_Projections.markMoved(bit);
+      return true;
+    }
+    return false;
+  }
+
+  constexpr ExactPlaceFacts &operator|=(ExactPlaceFacts other) {
+    if (other.empty())
+      return *this;
+    if (empty()) {
+      *this = other;
+      return *this;
+    }
+
+    m_Whole |= other.m_Whole;
+    if (!m_Plan.isAdmitted() && !other.m_Plan.isAdmitted())
+      return *this;
+    if (!samePlan(m_Plan, other.m_Plan)) {
+      // A declaration has one stable plan. Reaching a mismatched plan is an
+      // internal inconsistency, so drop projection tracking rather than
+      // manufacturing a coordinate from either branch.
+      m_Plan = PartialMovePlan{};
+      m_Projections = ProjectionPlaceFacts{};
+      return *this;
+    }
+    m_Projections |= other.m_Projections;
+    return *this;
+  }
+
+private:
+  static constexpr bool samePlan(PartialMovePlan lhs, PartialMovePlan rhs) {
+    return lhs.kind() == rhs.kind() &&
+           lhs.eligibleMask() == rhs.eligibleMask();
+  }
+
+  PlaceStateFact m_Whole = PlaceState::Live;
+  PartialMovePlan m_Plan;
+  ProjectionPlaceFacts m_Projections;
+};
+
+constexpr ExactPlaceFacts operator|(ExactPlaceFacts lhs,
+                                     ExactPlaceFacts rhs) {
+  lhs |= rhs;
+  return lhs;
+}
+
 } // namespace toka

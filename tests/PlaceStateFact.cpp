@@ -6,9 +6,16 @@
 
 using toka::PlaceState;
 using toka::PlaceStateFact;
+using toka::ExactPlaceFacts;
 using toka::PartialMovePlan;
 using toka::PartialMoveProjectionKind;
 using toka::ProjectionPlaceFacts;
+
+#define CHECK(condition)                                                       \
+  do {                                                                         \
+    if (!(condition))                                                         \
+      return __LINE__;                                                        \
+  } while (false)
 
 int main() {
   const PlaceStateFact never = PlaceState::Never;
@@ -69,5 +76,29 @@ int main() {
   const auto elements = PartialMovePlan::fixedArrayElements(0x4);
   assert(elements.admits(PartialMoveProjectionKind::FixedArrayElement, 2));
   assert(!PartialMovePlan::directFields(0).isAdmitted());
+
+  auto exact = ExactPlaceFacts::fromLegacy(
+      never, fields, ProjectionPlaceFacts::fromLegacyInitMask(0x3, 0x3));
+  CHECK(exact.whole().isExactly(PlaceState::Never));
+  CHECK(exact.plan().admits(PartialMoveProjectionKind::DirectField, 1));
+  CHECK(exact.transitionProjection(PartialMoveProjectionKind::DirectField, 0,
+                                   PlaceState::Live));
+  CHECK(exact.projections().factAt(0).isExactly(PlaceState::Live));
+  CHECK(!exact.transitionProjection(
+      PartialMoveProjectionKind::FixedArrayElement, 0, PlaceState::Moved));
+
+  auto exactMoved = exact;
+  CHECK(exactMoved.transitionProjection(PartialMoveProjectionKind::DirectField,
+                                        0, PlaceState::Moved));
+  const auto exactJoined = exact | exactMoved;
+  CHECK(exactJoined.projections().factAt(0).contains(PlaceState::Live));
+  CHECK(exactJoined.projections().factAt(0).contains(PlaceState::Moved));
+  CHECK(exactJoined.applyToLegacyInitMask(0) == 0x2);
+
+  const auto mismatchedPlan = ExactPlaceFacts::fromLegacy(
+      live, elements, ProjectionPlaceFacts::fromLegacyInitMask(0x4, 0x4));
+  const auto failClosedJoin = exact | mismatchedPlan;
+  CHECK(!failClosedJoin.plan().isAdmitted());
+  CHECK(!failClosedJoin.projections().isTracking());
   return 0;
 }

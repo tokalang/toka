@@ -572,8 +572,7 @@ private:
   struct AnalysisState {
     std::map<std::string, uint64_t> InitMasks;
     std::map<std::string, bool> Moved;
-    std::map<std::string, PlaceStateFact> PlaceFacts;
-    std::map<std::string, ProjectionPlaceFacts> ProjectionFacts;
+    std::map<std::string, ExactPlaceFacts> ExactPlaces;
     // Editor-only incompleteness state.  It follows local value flow but
     // never grants an operation or substitutes for PAL.
     std::map<std::string, std::set<uint64_t>> ConditionalTodoIds;

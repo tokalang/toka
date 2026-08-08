@@ -1,8 +1,11 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
-**Status:** Planned internal migration. This document adds no source syntax,
-does not widen the bounded partial-`cede` matrix, and does not qualify the
-async/place bridge.
+**Status:** Active internal migration. The first P0.4a entry has introduced
+`ExactPlaceFacts` and moved the central `AnalysisState` capture/merge path to
+it. `SymbolInfo` and the remaining explicit CFG snapshots still carry the
+legacy parallel fields, so this is not yet a P0.4a completion claim. This
+document adds no source syntax, does not widen the bounded partial-`cede`
+matrix, and does not qualify the async/place bridge.
 
 **Authority:** [`place_state_core_rfc.md`](place_state_core_rfc.md) defines
 the PlaceState contract. [`partial_cede_lifecycle_rfc.md`](partial_cede_lifecycle_rfc.md)
@@ -60,6 +63,14 @@ the exact-place fact.
 ## 3. Migration slices
 
 ### P0.4a: Symbol and analysis-state consolidation
+
+The initial implementation is deliberately narrower: `ExactPlaceFacts` owns
+the whole fact, plan, and projection facts in the model layer, and
+`AnalysisState` uses that one value for its capture/merge path. Its unit test
+now covers projection transitions, joins, legacy-liveness derivation, and
+fail-closed mismatched plans. The next P0.4a commit must move the corresponding
+`SymbolInfo` fields and remaining ad-hoc snapshots; until then they remain
+compatibility mirrors rather than evidence of a unified semantic authority.
 
 Replace the parallel whole/projection fact fields on `SymbolInfo` and the
 parallel `PlaceFacts`/`ProjectionFacts` maps in `AnalysisState` with one
