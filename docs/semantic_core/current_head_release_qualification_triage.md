@@ -50,7 +50,13 @@ That evidence does not substitute for a current-HEAD release qualification.
 ### Run behavior failures
 
 - `ownership_cede_nullable_member_explicit_nullable_destination_01`
-- `std_owned_lazy_iterator_01`
+
+### Resolved during this requalification
+
+- `std_owned_lazy_iterator_01`: the fixture used bare identifier patterns,
+  which current Toka treats as references to existing bindings.  Its five
+  fresh `Some` payload bindings now spell `auto value`; the focused run test
+  passes.  This changes neither iterator nor ownership semantics.
 
 ## Execution order
 

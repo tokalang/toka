@@ -46,15 +46,15 @@ fn main() -> i32 {
     auto mapped# = map(cede source, cede counter)
 
     match mapped#.next() {
-        Option<i32>::Some(value) => { if value != 2 { return 1 } }
+        Option<i32>::Some(auto value) => { if value != 2 { return 1 } }
         Option<i32>::None => return 2
     }
     match mapped#.next() {
-        Option<i32>::Some(value) => { if value != 4 { return 3 } }
+        Option<i32>::Some(auto value) => { if value != 4 { return 3 } }
         Option<i32>::None => return 4
     }
     match mapped#.next() {
-        Option<i32>::Some(value) => { if value != 6 { return 5 } }
+        Option<i32>::Some(auto value) => { if value != 6 { return 5 } }
         Option<i32>::None => return 6
     }
     match mapped#.next() {
@@ -70,7 +70,7 @@ fn main() -> i32 {
     auto is_four# = IsFour()
     auto second# = map(cede first, cede is_four)
     match second#.next() {
-        Option<bool>::Some(value) => { if !value { return 8 } }
+        Option<bool>::Some(auto value) => { if !value { return 8 } }
         Option<bool>::None => return 9
     }
 
@@ -91,7 +91,7 @@ fn main() -> i32 {
     }:fn#(i32) -> i32
     auto closure_map# = map(cede closure_source, cede increment)
     match closure_map#.next() {
-        Option<i32>::Some(value) => { if value != 4 { return 11 } }
+        Option<i32>::Some(auto value) => { if value != 4 { return 11 } }
         Option<i32>::None => return 12
     }
 
