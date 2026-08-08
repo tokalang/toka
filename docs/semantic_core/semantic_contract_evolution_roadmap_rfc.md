@@ -177,7 +177,8 @@ flowchart TD
     PF["Bounded permission flow + partial cede closure"]
     IN["init P1"]
     OC["Outcome Contracts"]
-    AS["Async TCB / result / cancel closure"]
+    RB["Async runtime baseline (bounded; frozen)"]
+    AS["Long-horizon: full Async TCB / result / cancel closure"]
     AB["Async/place cleanup bridge"]
     TS["Lexical TaskScope cleanup"]
     SB["Scoped Borrowed Tasks"]
@@ -187,7 +188,8 @@ flowchart TD
     PC["Restricted protocol capabilities"]
 
     Q --> PS --> PF --> IN --> OC
-    Q --> AS
+    Q --> RB
+    RB -. later qualification .-> AS
     PS --> AB
     PF --> AB
     AS --> AB --> TS --> SB
@@ -293,7 +295,23 @@ and body-stripping adversarial test cover both boundaries. A canonical
 declaration-witness wire format and any bodyless object-attested Level B remain
 behind the semantic-manifest payload gate.
 
-### 4.4 Async closure and scoped children
+### 4.4 Async runtime baseline, future closure, and scoped children
+
+The current async implementation has a deliberately bounded runtime baseline,
+recorded in [`async_runtime_p5_spec.md`](../async_runtime_p5_spec.md) Sections
+1.1--1.7. It is a stable substrate for the existing task surface, not a claim
+of TCB conformance. P0 does not advance by adding a new Phase-5 implementation
+slice for every remaining cancellation or wake interleaving. Such a change is
+reserved for a reproduced violation of a recorded baseline invariant, or for a
+separately accepted feature with its own bounded gate.
+
+Accordingly, the next P0 implementation target remains the internal
+exact-place fact/eligibility unification identified by
+[`place_state_permission_flow_current_head_audit.md`](place_state_permission_flow_current_head_audit.md), rather
+than the full-token or cleanup-descriptor work below. This does not weaken the
+TCB contract: it makes its completion a distinct long-horizon qualification
+track with a real, finite entry gate instead of an implicit blocker for every
+other semantic dependency.
 
 The normative [`async TCB RFC`](../async_runtime_tcb_rfc.md) defines
 cancellation, wake linearization, result consumption, and frame-owned cleanup

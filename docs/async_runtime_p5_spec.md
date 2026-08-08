@@ -1,7 +1,9 @@
 # Toka Async Runtime P5 Specification: Task Cancellation, Join Substrate & Structured Concurrency
 
-**Document Status**: Implementation/closure record; conformance and
-current-HEAD requalification pending.
+**Document Status**: Bounded runtime-baseline record; full Phase 5
+conformance and current-HEAD requalification remain pending. Sections 1.1--1.6
+record discrete implementation evidence; they are not an open-ended mandate to
+implement the whole TCB RFC one interleaving at a time.
 
 **Historical Target**: Toka v0.9.5-P5
 
@@ -169,6 +171,33 @@ publication conformance. It uses a schedule generation rather than a full task
 token; it does not implement the normative `WonCommitted` descriptor, checked
 helper retains, queue allocation failure, or the full cancellation/WaitSet
 arbitration.
+
+### 1.7 Execution boundary: freeze the runtime baseline
+
+For the P0 language roadmap, Sections 1.1--1.6 form the current async runtime
+baseline. They establish only the following bounded properties at their
+respective test gates:
+
+- one terminal publisher and cold cleanup before canceled publication;
+- one result-disposition claimant before payload transfer or typed dropping;
+- no live registration or ready-queue publication after an aborted suspend;
+- bounded completion-subscription arm/terminal ordering; and
+- one queue insertion for a claimed scheduled epoch, including the covered
+  cancellation and natural WaitSet-winner paths.
+
+The default next implementation step is **not** another Phase-5 slice merely
+because a normative TCB interleaving remains unimplemented. A new runtime
+change belongs on this baseline only when it fixes a reproduced violation of
+one property above, or when a separately accepted feature supplies its own
+narrow invariant, failure matrix, and acceptance gate. Otherwise the work
+belongs to the long-horizon TCB closure track.
+
+In particular, full tokens and checked retains, cancellation epochs and
+aggregates, `WonCommitted`/completion descriptors, frame-access retirement,
+and helpable scope close remain coordinated Section 8.1/8.2 closure work. They
+are neither implied by this baseline nor a blocker for the synchronous P0
+PlaceState-core work. This boundary does not qualify `TaskScope` cleanup or
+Scoped Borrowed Tasks; their stated prerequisites remain unchanged.
 
 ---
 
