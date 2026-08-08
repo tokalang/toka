@@ -661,7 +661,7 @@ static std::vector<std::string> collectLoopEscapingMoves(
       continue;
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info && info->IsUnique() &&
-        info->Moved) {
+        hasPlaceState(info->placeFact(), PlaceState::Moved)) {
       names.push_back(pair.first);
     }
   }
@@ -1594,7 +1594,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
       return toka::Type::fromString("unknown");
     }
-    if (Info.Moved && !m_InLHS) {
+    if (hasPlaceState(Info.placeFact(), PlaceState::Moved) && !m_InLHS) {
       error(ve, DiagID::ERR_USE_MOVED, actualName);
       recordDecision(ve, SemanticRuleID::OwnMove001,
                      SemanticOperation::OwnershipTransfer,

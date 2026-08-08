@@ -935,7 +935,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // A callable invocation is still a use of its binding.  It must observe
     // the same cede invalidation state as a field read or ordinary variable
     // expression; otherwise a transferred callback could be invoked again.
-    if (symPtr->Moved) {
+    if (hasPlaceState(symPtr->placeFact(), PlaceState::Moved)) {
       error(Call, DiagID::ERR_USE_MOVED, actualCallName);
       recordDecision(Call, SemanticRuleID::OwnMove001,
                      SemanticOperation::OwnershipTransfer,
@@ -2025,8 +2025,6 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           !place->IsValueNullable && !place->IsValueBlocked &&
           CurrentScope->findSymbol(place->Name, placeInfo) && placeInfo &&
           placeInfo->IsDeclaredVariable && !placeInfo->IsDeclaredMutable &&
-          !placeInfo->Moved &&
-          placeInfo->InitMask == 0 &&
           hasExactlyPlaceState(placeInfo->placeFact(), PlaceState::Never);
       if (!isWholePlainLocal) {
         error(Call->Args[i].get(), DiagID::ERR_INIT_ARGUMENT_INVALID,

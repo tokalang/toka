@@ -298,7 +298,7 @@ public:
   bool resetMoved(const std::string &Name) {
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
-      if (!ptr->Moved)
+      if (!hasExactlyPlaceState(ptr->placeFact(), PlaceState::Moved))
         return true;
       if (!ptr->ExactPlace.transitionWhole(PlaceState::Moved,
                                            PlaceState::Live))

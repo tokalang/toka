@@ -401,8 +401,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       !initTargetInfo->IsDeclaredMutable;
   if (isExplicitInit) {
     isUnsetInit = true;
-    if (!isWholePlainLocal || initTargetInfo->Moved ||
-        initTargetInfo->InitMask != 0 ||
+    if (!isWholePlainLocal ||
         !hasExactlyPlaceState(initTargetInfo->placeFact(),
                               PlaceState::Never)) {
       error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,

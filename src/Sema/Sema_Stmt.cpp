@@ -466,7 +466,7 @@ void Sema::checkStmt(Stmt *S) {
         targetInfo && targetInfo->IsDeclaredVariable &&
         !targetInfo->IsDeclaredMutable;
     const bool hasInitAuthority =
-        isWholePlainLocal && !targetInfo->Moved && targetInfo->InitMask == 0 &&
+        isWholePlainLocal &&
         hasExactlyPlaceState(targetInfo->placeFact(), PlaceState::Never);
     if (!hasInitAuthority)
       error(InitBlock, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
@@ -2037,7 +2037,8 @@ void Sema::checkStmt(Stmt *S) {
         std::string actName;
         if (CurrentScope->findVariableWithDeref(RHSVar->Name, SourceInfoPtr, actName)) {
           if (SourceInfoPtr->IsUnique()) {
-            if (!SourceInfoPtr->Moved) {
+            if (!hasPlaceState(SourceInfoPtr->placeFact(),
+                               PlaceState::Moved)) {
               if (!moveCheckedByExpression) {
                 auto conflict = PALCheckerState.verifyInvalidation(
                     canonicalizeAccessPath(makeAccessPath(actName)));
