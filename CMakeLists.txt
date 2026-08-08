@@ -135,6 +135,8 @@ if(BUILD_TESTING)
         tests/CanonicalDeclarationWitness.cpp)
     add_executable(toka_semantic_manifest_envelope
         tests/SemanticManifestEnvelope.cpp)
+    add_executable(toka_semantic_manifest_attestation
+        tests/SemanticManifestAttestation.cpp)
     add_executable(toka_semantic_dependency_closure
         tests/SemanticDependencyClosure.cpp)
     add_executable(toka_place_state_fact
@@ -144,6 +146,8 @@ if(BUILD_TESTING)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_semantic_manifest_envelope PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_semantic_manifest_attestation PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_semantic_dependency_closure PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
@@ -155,6 +159,8 @@ if(BUILD_TESTING)
         COMMAND toka_canonical_declaration_witness)
     add_test(NAME toka_semantic_manifest_envelope
         COMMAND toka_semantic_manifest_envelope)
+    add_test(NAME toka_semantic_manifest_attestation
+        COMMAND toka_semantic_manifest_attestation)
     add_test(NAME toka_semantic_dependency_closure
         COMMAND toka_semantic_dependency_closure)
     add_test(NAME toka_place_state_fact
@@ -167,6 +173,7 @@ if(BUILD_TESTING)
     target_link_libraries(toka_typesyntax_canonicalization PRIVATE toka_frontend)
     target_link_libraries(toka_canonical_declaration_witness PRIVATE toka_frontend)
     target_link_libraries(toka_semantic_manifest_envelope PRIVATE toka_frontend)
+    target_link_libraries(toka_semantic_manifest_attestation PRIVATE toka_frontend)
     target_link_libraries(toka_semantic_dependency_closure PRIVATE toka_frontend)
 endif()
 

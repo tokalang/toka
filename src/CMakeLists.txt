@@ -26,6 +26,7 @@ set(toka_frontend_sources
     Sema/CanonicalDeclarationWitness.cpp
     Sema/SemanticDependencyClosure.cpp
     Sema/SemanticManifestEnvelope.cpp
+    Sema/SemanticManifestAttestation.cpp
     Sema/SemanticEvidence.cpp
     Sema/SemanticIndex.cpp
     Sema/MemorySummary.cpp
