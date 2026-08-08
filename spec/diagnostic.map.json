@@ -428,6 +428,12 @@
       "message": "Call argument '{}' aliases '{}' with incompatible PAL access",
       "description": "A function call declares all parameter borrows simultaneously; overlapping arguments conflict when either side requires exclusive or invalidating access."
     },
+    "E04633": {
+      "id": "ERR_SEMANTIC_MANIFEST_VALIDATION",
+      "level": "Error",
+      "message": "Semantic manifest validation failed for '{}': {}",
+      "description": "An explicitly validated source-less interface has no matching canonical semantic manifest."
+    },
     "E0447": {
       "id": "ERR_NULL_ACCESS",
       "level": "Error",

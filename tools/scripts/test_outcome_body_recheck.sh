@@ -107,6 +107,103 @@ mv "$TEST_DIR/known/lib.tk" "$TEST_DIR/known/lib.tk.source-hidden"
 mv "$TEST_DIR/nominal/lib.tk" "$TEST_DIR/nominal/lib.tk.source-hidden"
 cp "$CASE_DIR/pass_replay.tk" "$TEST_DIR/known/main.tk"
 
+# P1.2 is an explicit validation profile.  A resolver-selected source-less
+# known-coordinate TKI must match its sidecar atomically, while the default
+# retained-body Level-A path remains compatible with sidecar-free interfaces.
+if ! "$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/manifest-valid.o" \
+    > "$TEST_DIR/known/manifest-valid.out" \
+    2> "$TEST_DIR/known/manifest-valid.err"; then
+    echo "FAIL: valid semantic manifest rejected a source-less Outcome interface" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/manifest-valid.err" >&2
+    exit 1
+fi
+
+cp "$TEST_DIR/known/lib.tki.tsm" "$TEST_DIR/known/lib.tki.tsm.good"
+mv "$TEST_DIR/known/lib.tki.tsm" "$TEST_DIR/known/lib.tki.tsm.missing"
+if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/manifest-default.o" \
+    > "$TEST_DIR/known/manifest-default.out" \
+    2> "$TEST_DIR/known/manifest-default.err"; then
+    echo "FAIL: missing semantic manifest changed default Level-A acceptance" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/manifest-default.err" >&2
+    exit 1
+fi
+if "$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/manifest-missing.o" \
+    > "$TEST_DIR/known/manifest-missing.out" \
+    2> "$TEST_DIR/known/manifest-missing.err"; then
+    echo "FAIL: validation profile accepted a missing semantic manifest" >&2
+    exit 1
+fi
+if ! grep -Fq "E04633" "$TEST_DIR/known/manifest-missing.err"; then
+    echo "FAIL: missing semantic manifest did not report E04633" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/manifest-missing.err" >&2
+    exit 1
+fi
+mv "$TEST_DIR/known/lib.tki.tsm.missing" "$TEST_DIR/known/lib.tki.tsm"
+
+sed 's/$/ /' "$TEST_DIR/known/lib.tki.tsm.good" \
+    > "$TEST_DIR/known/lib.tki.tsm.tampered"
+mv "$TEST_DIR/known/lib.tki.tsm.tampered" "$TEST_DIR/known/lib.tki.tsm"
+if "$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/manifest-tampered.o" \
+    > "$TEST_DIR/known/manifest-tampered.out" \
+    2> "$TEST_DIR/known/manifest-tampered.err"; then
+    echo "FAIL: validation profile accepted a tampered semantic manifest" >&2
+    exit 1
+fi
+if ! grep -Fq "E04633" "$TEST_DIR/known/manifest-tampered.err"; then
+    echo "FAIL: tampered semantic manifest did not report E04633" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/manifest-tampered.err" >&2
+    exit 1
+fi
+
+# Keep the envelope canonical and every identity/digest binding valid, but
+# replace the same-length function subject inside its raw CDW1 record.  This
+# reaches the final declaration-reconstructed record-set comparison rather
+# than only a loader rejection.
+python3 - "$TEST_DIR/known/lib.tki.tsm.good" \
+    "$TEST_DIR/known/lib.tki.tsm" <<'PY'
+import hashlib
+import json
+import struct
+import sys
+
+source, destination = sys.argv[1:]
+with open(source, encoding="utf-8") as handle:
+    document = json.load(handle)
+record = document["records"][0]["cdw1"]
+replacement = record.replace("7472795f6275696c64", "7472795f6f74686572", 1)
+assert replacement != record
+document["records"][0]["cdw1"] = replacement
+records = [bytes.fromhex(item["cdw1"]) for item in document["records"]]
+payload = b"toka.semantic-manifest-payload-v1" + struct.pack(">I", len(records))
+for item in records:
+    payload += struct.pack(">I", len(item)) + item
+document["payload_sha256"] = hashlib.sha256(payload).hexdigest()
+with open(destination, "w", encoding="utf-8", newline="") as handle:
+    handle.write(json.dumps(document, separators=(",", ":")) + "\n")
+PY
+if "$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/manifest-mismatch.o" \
+    > "$TEST_DIR/known/manifest-mismatch.out" \
+    2> "$TEST_DIR/known/manifest-mismatch.err"; then
+    echo "FAIL: validation profile accepted a declaration-mismatched manifest" >&2
+    exit 1
+fi
+if ! grep -Fq "semantic manifest CDW1 records do not match" \
+    "$TEST_DIR/known/manifest-mismatch.err"; then
+    echo "FAIL: declaration-mismatched manifest did not reach record comparison" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/manifest-mismatch.err" >&2
+    exit 1
+fi
+mv "$TEST_DIR/known/lib.tki.tsm.good" "$TEST_DIR/known/lib.tki.tsm"
+
 # The audit identity is recomputed from declarations during source-less TKI
 # replay.  It must not depend on AST addresses or the provider source path.
 "$TOKAC" -c "$TEST_DIR/lib.tki" -o "$TEST_DIR/replayed.o"
@@ -209,9 +306,8 @@ if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
 fi
 mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 
-# Missing and repeated audit comments are equally non-authoritative.  They
-# cannot change retained-body source-less caller acceptance before a distinct
-# manifest carrier and atomic declaration-comparison gate exist.
+# Missing and repeated audit comments remain non-authoritative.  The explicit
+# validation profile consumes only the adjacent semantic-manifest sidecar.
 cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
 sed '/^\/\/ @tki v2 cdw1:/d' "$TEST_DIR/known/lib.tki" \
     > "$TEST_DIR/known/lib.tki.cdw.missing"
@@ -244,7 +340,8 @@ mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 sed -n '1,/^    Err => out: uninit$/p' "$TEST_DIR/known/lib.tki" \
     > "$TEST_DIR/known/lib.tki.stripped"
 mv "$TEST_DIR/known/lib.tki.stripped" "$TEST_DIR/known/lib.tki"
-if "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+if "$TOKAC" --validate-semantic-manifests \
+    --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/main.o" \
     > "$TEST_DIR/known/bodyless.out" 2> "$TEST_DIR/known/bodyless.err"; then
     echo "FAIL: known-coordinate bodyless Outcome interface unexpectedly compiled" >&2

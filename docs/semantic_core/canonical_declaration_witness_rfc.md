@@ -1,10 +1,11 @@
 # RFC: Canonical Declaration Witness
 
-**Status:** Proposed P1 schema and activation gate, with an implemented
-audit-only codec prototype. The prototype adds an ignorable `@tki v2 cdw1:`
-hex comment for the admitted P1 subset; it changes no source syntax, metadata
-authority, cache behavior, import decision, or object-link rule. The existing
-`@tki v2 outcome_transition:` comment remains a distinct implementation audit
+**Status:** Proposed P1 schema with an implemented audit codec and explicit
+validation profile. The profile validates a separate `.tki.tsm` sidecar for
+the admitted P1 subset only when `--validate-semantic-manifests` is selected;
+the `@tki v2 cdw1:` comment remains ignorable. Neither changes source syntax,
+metadata authority, object-link rules, or the bodyless-provider boundary. The
+existing `@tki v2 outcome_transition:` comment remains a distinct audit
 artifact.
 
 **Depends on:** `semantic_manifest_envelope_rfc.md`, resolver-owned module
@@ -72,8 +73,12 @@ resolve the same identities, reconstruct the record, canonicalize it, and
 compare bytes. A matching record adds no capability; a bodyless callee still
 requires Level B and otherwise fails closed.
 
-Before activation, no importer reads or requires this record. The current
-Level-A retained-body path remains the only enabled source-less Outcome path.
+The default importer neither reads nor requires this record. The explicit
+P1.2 validation profile reads only the strict sidecar for a resolver-selected,
+known-coordinate source-less TKI, reconstructs the complete CDW1 set from
+declarations, and compares the canonical bytes atomically. The current
+Level-A retained-body path remains the only enabled source-less Outcome
+fulfilment path.
 
 ## 4. Identity domain
 
@@ -214,9 +219,10 @@ them.
 The prototype therefore cannot make a declaration more acceptable, permit a
 bodyless provider, or create any caller, cleanup, or object-link authority.
 The retained-body replay audit additionally proves that malformed, missing, or
-repeated `cdw1:` comments leave Level-A caller acceptance unchanged. Those are
-non-authority boundary checks only; the stronger activation tamper matrix still
-requires a distinct manifest carrier and atomic declaration comparison.
+repeated `cdw1:` comments leave Level-A caller acceptance unchanged. P1.2 adds
+the separate manifest carrier and atomic comparison under an explicit profile;
+missing or non-canonical sidecars fail that profile with `E04633`, but comments
+remain non-authoritative in every mode.
 
 For `outcome-transition`, the payload order is exactly:
 
@@ -233,7 +239,7 @@ record.
 
 ## 6. Comparison and failure policy
 
-When this schema is eventually activated for a known-coordinate interface, the
+For a known-coordinate interface in the explicit P1.2 validation profile, the
 consumer performs one atomic comparison:
 
 ```text
@@ -281,9 +287,9 @@ making the comment part of TKI import, caller acceptance, or cache authority.
 The textual `outcome_transition:` comment is intentionally not CDW1: it
 permits `unbound` local test modules and is not parsed by the importer. The
 separate `cdw1:` comment carries an encoder probe only for the fully admitted
-known-coordinate P1 subset. It too has no manifest envelope and is not parsed
-by the importer; an altered hexadecimal payload must have exactly the same
-current import outcome. Neither comment may be promoted in place.
+known-coordinate P1 subset. It is still not parsed by the profile or default
+importer; an altered hexadecimal payload has no import effect. Neither comment
+may be promoted in place.
 
 ## 8. Activation gate
 
@@ -295,9 +301,9 @@ Implementing CDW1 requires all of the following at one exact compiler revision:
 3. a structured encoder and strict decoder independent of `@tki` comments;
    the audit-only codec prototype now meets this representation boundary;
 4. importer reconstruction and atomic byte comparison before any consumer can
-   observe a record;
+   observe a record; P1.2 meets this for its explicit profile;
 5. duplicate, reorder, omission, unknown-tag/version, and altered-identity
-   tamper tests;
+   tamper tests; P1.2 covers the sidecar schema and profile boundary;
 6. source, retained-body source-less, and declaration-recomputed replay
    equality for caller acceptance, rejection, place state, and cleanup; and
 7. an explicit decision whether P1 remains top-level/non-generic or grows only
@@ -316,14 +322,11 @@ coordinate-unbound and emits no CDW1 probe. The prototype proves deterministic
 source/retained-body source-less encoding without turning its comment into
 authority.
 
-The next implementation decision is still not "add a digest." It is whether
-to introduce any importer-visible declaration comparison. The current test-only
-path already compares exported raw bytes, standalone codec canonicalization,
-and declaration-reconstructed source-less bytes without granting authority.
-Any importer integration must first define its diagnostic/failure behavior and
-the complete declaration-boundary tamper matrix; it remains separate from
-generic binders, strong aliases, a manifest, and every bodyless-provider
-design.
+The next implementation decision is not "add a digest." The P1.2 profile has
+an importer-visible declaration comparison with `E04633` failure behavior, but
+its default-off compatibility boundary stays frozen. Any broader package policy
+or activation remains separate from generic binders, strong aliases, and every
+bodyless-provider design.
 
 The current artifact boundary and the remaining activation gates are recorded
 in [`canonical_declaration_witness_activation_audit.md`](canonical_declaration_witness_activation_audit.md).

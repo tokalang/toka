@@ -119,6 +119,7 @@ void printHelp() {
       << "  --check-json                    Emit JSON Lines diagnostics\n"
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
+      << "  --validate-semantic-manifests   Fail-closed validation of admitted source-less TKI sidecars\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
       << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
@@ -201,6 +202,65 @@ static bool readExactFile(const std::string &path, std::string &content) {
     content.assign(std::istreambuf_iterator<char>(input),
                    std::istreambuf_iterator<char>());
     return true;
+}
+
+static bool validateSemanticManifestImports(
+    const std::vector<std::unique_ptr<toka::Module>> &astModules) {
+  std::vector<toka::Module *> resolvedModules;
+  resolvedModules.reserve(astModules.size());
+  for (const auto &ast : astModules)
+    resolvedModules.push_back(ast.get());
+
+  for (const auto &ast : astModules) {
+    if (!ast->IsInterface || !ast->ShadowCoordinateKnown ||
+        ast->CanonicalOutcomeDeclarationWitnesses.empty())
+      continue;
+
+    std::string reason;
+    std::vector<std::string> closureErrors;
+    auto closure = toka::SemanticDependencyClosure::calculate(
+        *ast, resolvedModules, closureErrors);
+    if (!closure) {
+      reason = "semantic dependency closure could not be reconstructed";
+      if (!closureErrors.empty())
+        reason += ": " + closureErrors.front();
+    } else {
+      std::string interfaceContent;
+      if (!readExactFile(ast->ResolvedPath, interfaceContent)) {
+        reason = "resolved interface could not be read";
+      } else {
+        std::vector<std::string> records;
+        std::string manifestClosure;
+        const std::string manifestPath =
+            toka::SemanticManifestEnvelope::sidecarPath(ast->ResolvedPath);
+        const auto manifestStatus = toka::SemanticManifestEnvelope::load(
+            manifestPath, interfaceContent,
+            {ast->ShadowCrateId, ast->ShadowLogicalModulePath},
+            toka::Parser::TargetTriple, *closure, records, manifestClosure,
+            reason);
+        if (manifestStatus == toka::SemanticManifestEnvelopeStatus::Valid) {
+          std::vector<std::string> expected =
+              ast->CanonicalOutcomeDeclarationWitnesses;
+          std::sort(expected.begin(), expected.end());
+          if (records != expected)
+            reason =
+                "semantic manifest CDW1 records do not match reconstructed declarations";
+          else
+            reason.clear();
+        } else {
+          reason = std::string(toka::toString(manifestStatus)) + ": " +
+                   reason;
+        }
+      }
+    }
+
+    if (!reason.empty()) {
+      toka::DiagnosticEngine::report(
+          ast->Loc, toka::DiagID::ERR_SEMANTIC_MANIFEST_VALIDATION,
+          ast->ResolvedPath, reason);
+    }
+  }
+  return !toka::DiagnosticEngine::hasErrors();
 }
 
 struct TokaProfile {
@@ -542,6 +602,7 @@ int main(int argc, char **argv) {
   bool dumpSemanticContext = false;
   bool structuredDiagnostics = false;
   bool checkOnly = false;
+  bool validateSemanticManifests = false;
   bool explainJson = false;
   std::string semanticQuery;
   std::string explainCode;
@@ -592,6 +653,8 @@ int main(int argc, char **argv) {
       toka::DiagnosticEngine::setPrintingEnabled(false);
     } else if (arg == "--check-only") {
       checkOnly = true;
+    } else if (arg == "--validate-semantic-manifests") {
+      validateSemanticManifests = true;
     } else if (arg == "--explain" || arg == "--explain=json") {
       if (i + 1 >= argc) {
         llvm::errs() << arg << " requires a diagnostic code\n";
@@ -1172,6 +1235,14 @@ int main(int argc, char **argv) {
     return 1;
   }
   profile.mark("sema_check");
+
+  if (validateSemanticManifests &&
+      !validateSemanticManifestImports(astModules)) {
+    llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to semantic manifest validation errors.\n";
+    return 1;
+  }
+  if (validateSemanticManifests)
+    profile.mark("semantic_manifest_validation");
 
   if (dumpEncapSlice1Facts) {
     sema.dumpEncapSlice1FactsJSON(std::cout);

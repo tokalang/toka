@@ -1,10 +1,10 @@
 # RFC: Semantic Manifest Envelope
 
-**Status:** Proposed envelope and trust model. P1.0/P1.1 implement an
-independent compiler-owned sidecar carrier and replay-surface closure for a
-narrow declaration-recomputed CDW1 prototype. They change no source syntax or
-TKI grammar, and deliberately do not make a manifest record import authority
-or freeze a body-attested payload.
+**Status:** Proposed envelope and trust model. P1.0/P1.2 implement an
+independent compiler-owned sidecar carrier, replay-surface closure, and an
+explicit default-off validation profile for a narrow declaration-recomputed
+CDW1 prototype. They change no source syntax or TKI grammar, and do not freeze
+a body-attested payload.
 
 **Depends on:** resolver-owned module identity, TKI semantic replay, current
 Encap/Copy/Dup/drop facts, and the existing object-bound trusted-memory-
@@ -54,12 +54,14 @@ an ordinary TKI comment cannot substitute for it.
 
 P1.0 defines the strict writer/validator; P1.1 writes a sidecar only for a
 root with admitted CDW1 records and a resolver-complete replay-surface closure.
-Until a later resolver slice explicitly consumes it, a missing or invalid
-`.tsm` changes no existing import decision. In particular, it cannot change
-Level-A retained-body replay or the bodyless Outcome rejection boundary. A
-closure that cannot be constructed omits the sidecar rather than changing
-compilation acceptance. The later compatibility policy must be decided before
-any resolver consumer makes it required.
+P1.2 adds `--validate-semantic-manifests`: an explicit profile that validates a
+resolver-selected, known-coordinate source-less `.tki` with reconstructed P1
+CDW1 records against its adjacent sidecar. In that profile, a missing or
+invalid `.tsm` fails closed with `E04633`; outside it, no existing import
+decision changes. In particular, neither mode changes Level-A retained-body
+replay or the bodyless Outcome `E04631` boundary. A closure that cannot be
+constructed still omits emission, while profile validation of an admitted
+source-less interface fails rather than inventing a fallback.
 
 Whichever layout is selected, the manifest is logically distinct from:
 

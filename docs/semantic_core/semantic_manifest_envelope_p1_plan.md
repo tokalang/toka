@@ -1,8 +1,8 @@
 # Semantic Manifest Envelope P1 Execution Plan
 
-**Status:** P1.0/P1.1 implemented; resolver integration remains deliberately
-pending. This plan freezes the carrier and its non-authority boundary before
-any resolver integration.
+**Status:** P1.0/P1.2 implemented. P1.2 is an explicit, default-off compiler
+validation profile for the admitted source-less TKI subset; it does not alter
+ordinary retained-body import compatibility.
 
 ## Objective
 
@@ -12,7 +12,7 @@ P1 gives CDW1 a strict compiler-owned transport outside ordinary TKI comments:
 compiler semantic facts + exact emitted .tki bytes
     -> adjacent .tki.tsm envelope
     -> strict standalone validation
-    -> (later, separately gated) resolver comparison with reconstructed CDW1
+    -> (P1.2 profile) atomic comparison with reconstructed CDW1
 ```
 
 It does **not** make CDW1 a body fulfilment proof. A matching record is only a
@@ -113,17 +113,35 @@ construct this optional carrier omits it (with a verbose diagnostic) rather
 than changing compilation acceptance; an I/O failure after a qualified carrier
 has been selected remains an output failure.
 
-### P1.2 — resolver activation decision
+### P1.2 — explicit validation profile
 
-Before consuming a record, decide and document which imports are in the
-activated profile and how legacy/no-sidecar interfaces behave. The importer
-must obtain the sidecar through resolver-owned identity, strict-decode exactly
-one required record, reconstruct CDW1 from declarations, compare atomically,
-and retain no partial fact on failure.
+`--validate-semantic-manifests` validates only a resolver-selected source-less
+`.tki` module with a known coordinate and one or more declaration-reconstructed
+admitted P1 CDW1 records. It is deliberately default-off, so a legacy or
+sidecar-free retained-body Level-A interface keeps its existing import result.
 
-No default importer policy is chosen by this plan. In particular, a sidecar
-must not become a silent compatibility break for ordinary retained-body Level-A
-interfaces.
+For each activated module, the compiler:
+
+1. reconstructs the replay-surface dependency closure from the complete
+   resolver graph;
+2. reads the exact resolver-selected `.tki` bytes and its adjacent `.tsm`;
+3. strictly validates schema, compiler/interface version, target, coordinate,
+   exact-interface digest, closure digest, classification, canonical payload,
+   and record framing; and
+4. compares the complete canonical CDW1 record set with the declarations that
+   Sema reconstructed from that `.tki`.
+
+Any missing, unreadable, stale, malformed, non-canonical, wrong-coordinate,
+wrong-target, closure-mismatched, or declaration-mismatched sidecar fails the
+profile with `E04633`; no partial record becomes visible. The profile runs
+after ordinary semantic analysis and before `--check-only` exits. A bodyless
+Outcome provider still fails first at the retained-body semantic boundary with
+`E04631`; P1.2 neither accepts it nor turns a manifest into fulfilment,
+cleanup, caller, or CodeGen authority.
+
+The qualification runner covers a valid sidecar, a missing sidecar under both
+default and profile modes, a non-canonical tampered sidecar, a canonical but
+declaration-mismatched record, and the unchanged bodyless `E04631` boundary.
 
 ## Explicit exclusions
 
