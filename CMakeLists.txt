@@ -133,11 +133,15 @@ if(BUILD_TESTING)
         tests/TypeSyntaxCanonicalization.cpp)
     add_executable(toka_canonical_declaration_witness
         tests/CanonicalDeclarationWitness.cpp)
+    add_executable(toka_semantic_manifest_envelope
+        tests/SemanticManifestEnvelope.cpp)
     add_executable(toka_place_state_fact
         tests/PlaceStateFact.cpp)
     target_include_directories(toka_typesyntax_canonicalization PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_canonical_declaration_witness PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(toka_semantic_manifest_envelope PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(toka_place_state_fact PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
@@ -145,6 +149,8 @@ if(BUILD_TESTING)
         COMMAND toka_typesyntax_canonicalization)
     add_test(NAME toka_canonical_declaration_witness
         COMMAND toka_canonical_declaration_witness)
+    add_test(NAME toka_semantic_manifest_envelope
+        COMMAND toka_semantic_manifest_envelope)
     add_test(NAME toka_place_state_fact
         COMMAND toka_place_state_fact)
 endif()
@@ -154,6 +160,7 @@ add_subdirectory(src)
 if(BUILD_TESTING)
     target_link_libraries(toka_typesyntax_canonicalization PRIVATE toka_frontend)
     target_link_libraries(toka_canonical_declaration_witness PRIVATE toka_frontend)
+    target_link_libraries(toka_semantic_manifest_envelope PRIVATE toka_frontend)
 endif()
 
 # Build the native runtime and the user-facing tools into one SDK layout.  The

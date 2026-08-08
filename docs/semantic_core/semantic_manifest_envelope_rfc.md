@@ -1,8 +1,10 @@
 # RFC: Semantic Manifest Envelope
 
-**Status:** Proposed envelope and trust model only. This document changes no
-source syntax, TKI format, cache format, or compiler behavior, and deliberately
-does not freeze the semantic payload.
+**Status:** Proposed envelope and trust model. P1 selects an independent,
+compiler-owned sidecar carrier for a narrow declaration-recomputed CDW1
+prototype. It changes no source syntax or TKI grammar, and it deliberately
+does not make a manifest record import authority or freeze a body-attested
+payload.
 
 **Depends on:** resolver-owned module identity, TKI semantic replay, current
 Encap/Copy/Dup/drop facts, and the existing object-bound trusted-memory-
@@ -44,9 +46,17 @@ This envelope is not:
 ## 3. Artifact relationship
 
 Ordinary `.tki` remains a semantic replay interface. Its declarations remain
-the source from which declaration-recomputable facts are derived. A manifest
-may eventually be embedded in TKI or stored in a separate compiler-owned
-sidecar; this RFC intentionally does not choose that physical layout.
+the source from which declaration-recomputable facts are derived. The initial
+carrier is an adjacent compiler-owned sidecar named by appending `.tsm` to the
+resolved interface path, for example `net.tki.tsm`. The sidecar has its own
+schema and is neither TKI text nor TKI metadata: the lexer never sees it and
+an ordinary TKI comment cannot substitute for it.
+
+P1.0 defines only a strict writer/validator for this carrier. Until a later
+resolver slice explicitly consumes it, a missing or invalid `.tsm` changes no
+existing import decision. In particular, it cannot change Level-A retained-body
+replay or the bodyless Outcome rejection boundary. The later compatibility
+policy must be decided before any resolver consumer makes it required.
 
 Whichever layout is selected, the manifest is logically distinct from:
 
@@ -56,8 +66,9 @@ Whichever layout is selected, the manifest is logically distinct from:
 - dependency-manifest cache status; and
 - trusted optimizer memory evidence in `.tke`.
 
-No file extension, path, filename, source path, or metadata field establishes
-trust by itself.
+The sidecar's adjacency only identifies a candidate artifact for compiler-owned
+resolution; it does not establish trust by itself. No file extension, path,
+filename, source path, or metadata field establishes trust by itself.
 
 ## 4. Stable identity requirements
 
