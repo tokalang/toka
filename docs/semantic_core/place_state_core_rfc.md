@@ -366,10 +366,10 @@ eligibility handoff and CodeGen cleanup remain as specified above. P0.4a
 therefore does not widen the surface or satisfy a P0 closure gate.
 
 The first P0.4b CFG slices move ordinary `if`/`else`, `guard`, conditional
-`loop`, and `for` capture, restore, reachable-branch selection, and join to
-the same `ExactPlaceFacts` value. They preserve the PAL and compatibility
-transactions alongside that value; break/continue use the central
-`AnalysisState` path. The remaining match, rollback, and outcome-arm paths
+`loop`, `for`, and `match` capture, restore, reachable-branch selection, and
+join to the same `ExactPlaceFacts` value. They preserve the PAL and
+compatibility transactions alongside that value; break/continue use the
+central `AnalysisState` path. The remaining rollback and outcome-arm paths
 remain explicitly unqualified.
 
 A language RFC may claim a PlaceState slice implemented only when all relevant

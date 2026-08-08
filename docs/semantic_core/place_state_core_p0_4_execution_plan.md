@@ -3,7 +3,7 @@
 **Status:** Active internal migration. P0.4a has introduced
 `ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
 capture/merge path to it. P0.4b has begun: ordinary `if`/`else`, `guard`,
-`loop`, and `for` now snapshot, restore, and join that one value. The
+`loop`, `for`, and `match` now snapshot, restore, and join that one value. The
 remaining explicit CFG snapshots still copy compatibility views separately, so
 this is not a P0.4 completion claim.
 This document adds no source syntax, does not widen the bounded partial-`cede`
@@ -90,15 +90,15 @@ in this slice.
 
 ### P0.4b: CFG ownership of the fact (in progress)
 
-The ordinary `if`/`else`, `guard`, conditional `loop`, and `for` capture,
-restore, reachable-branch selection, and join paths now carry
+The ordinary `if`/`else`, `guard`, conditional `loop`, `for`, and `match`
+capture, restore, reachable-branch selection, and join paths now carry
 `ExactPlaceFacts` as one value. They keep PAL, conditional-editor facts where
 applicable, `InitMask`, and `Moved` compatibility snapshots in the same
 transaction; the admitted whole/projection join no longer rebuilds from
 separate maps. `break` and `continue` already use the central `AnalysisState`
 path.
 
-Migrate the remaining `match`, call-candidate rollback, and outcome-arm
+Migrate the remaining call-candidate rollback and outcome-arm
 capture/restore/join paths to the same shape. Each path continues to snapshot
 PAL and direct-flow ceilings in the same transaction; no specialized merge may
 recreate a direct `InitMask`-only path for an admitted coordinate.
