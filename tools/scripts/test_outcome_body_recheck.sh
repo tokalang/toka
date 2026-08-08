@@ -184,6 +184,36 @@ if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
 fi
 mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 
+# Missing and repeated audit comments are equally non-authoritative.  They
+# cannot change retained-body source-less caller acceptance before a distinct
+# manifest carrier and atomic declaration-comparison gate exist.
+cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
+sed '/^\/\/ @tki v2 cdw1:/d' "$TEST_DIR/known/lib.tki" \
+    > "$TEST_DIR/known/lib.tki.cdw.missing"
+mv "$TEST_DIR/known/lib.tki.cdw.missing" "$TEST_DIR/known/lib.tki"
+if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-missing.o" \
+    > "$TEST_DIR/known/comment-missing.out" \
+    2> "$TEST_DIR/known/comment-missing.err"; then
+    echo "FAIL: missing CDW1 audit comment changed caller acceptance" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/comment-missing.err" >&2
+    exit 1
+fi
+mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
+
+cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
+grep '^// @tki v2 cdw1:' "$TEST_DIR/known/lib.tki" \
+    >> "$TEST_DIR/known/lib.tki"
+if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
+    -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-duplicate.o" \
+    > "$TEST_DIR/known/comment-duplicate.out" \
+    2> "$TEST_DIR/known/comment-duplicate.err"; then
+    echo "FAIL: duplicate CDW1 audit comments changed caller acceptance" >&2
+    sed 's/^/  | /' "$TEST_DIR/known/comment-duplicate.err" >&2
+    exit 1
+fi
+mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
+
 # A known coordinate is only an audit boundary.  It cannot turn a bodyless
 # interface into an accepted Outcome provider.
 sed -n '1,/^    Err => out: uninit$/p' "$TEST_DIR/known/lib.tki" \

@@ -213,6 +213,10 @@ them.
 
 The prototype therefore cannot make a declaration more acceptable, permit a
 bodyless provider, or create any caller, cleanup, or object-link authority.
+The retained-body replay audit additionally proves that malformed, missing, or
+repeated `cdw1:` comments leave Level-A caller acceptance unchanged. Those are
+non-authority boundary checks only; the stronger activation tamper matrix still
+requires a distinct manifest carrier and atomic declaration comparison.
 
 For `outcome-transition`, the payload order is exactly:
 
