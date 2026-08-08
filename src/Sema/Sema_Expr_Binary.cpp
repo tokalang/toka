@@ -717,12 +717,11 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
             }
         }
 
-        // [Unset Safety] allow initialization
-        if (InfoPtr->InitMask != ~0ULL)
-          isLHSWritable = true;
-
         if (InfoPtr->IsReference()) {
           if (InfoPtr->DirtyReferentMask != ~0ULL)
+            isLHSWritable = true;
+        } else if (InfoPtr->partialMovePlan().isAdmitted()) {
+          if (!InfoPtr->ExactPlace.isDefinitelyLive())
             isLHSWritable = true;
         } else {
           if (InfoPtr->InitMask != ~0ULL)
@@ -862,8 +861,18 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                 std::string sanMemb = toka::Type::stripMorphology(M->Member);
                 if (sanDef == sanMemb) {
                   uint64_t bit = (1ULL << i);
-                  bool isUnset = !(EffectiveInfo->InitMask & bit) &&
-                                 !(EffectiveInfo->DirtyReferentMask & bit);
+                  bool isUnset = false;
+                  if (!EffectiveInfo->IsReference() &&
+                      EffectiveInfo->partialMovePlan().admits(
+                          PartialMoveProjectionKind::DirectField, i)) {
+                    isUnset = !hasExactlyPlaceState(
+                        EffectiveInfo->ExactPlace.projectionFact(
+                            PartialMoveProjectionKind::DirectField, i),
+                        PlaceState::Live);
+                  } else {
+                    isUnset = !(EffectiveInfo->InitMask & bit) &&
+                              !(EffectiveInfo->DirtyReferentMask & bit);
+                  }
 
                   if (isUnset) {
                     isLHSUnset = true;

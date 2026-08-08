@@ -1807,11 +1807,18 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     // Unset Check: Only check if NOT in LHS
     // A member path needs the selected field to be initialized, not every
-    // field of its aggregate base.  Whole-value reads remain subject to the
-    // full InitMask check below.
+    // field of its aggregate base. For an admitted local projection plan, the
+    // exact fact decides whole-value availability; legacy aggregate shapes
+    // retain their mask path below.
     if (!m_InLHS && !m_IsMemberBase && !m_InIntermediatePath) {
       bool isFullyInit = true;
-      if (Info.InitMask == 0) {
+      const bool hasExactWholeAvailability =
+          !Info.IsReference() &&
+          (Info.partialMovePlan().isAdmitted() || !Info.TypeObj ||
+           (!Info.TypeObj->isShape() && !Info.TypeObj->isArray()));
+      if (hasExactWholeAvailability) {
+        isFullyInit = Info.ExactPlace.isDefinitelyLive();
+      } else if (Info.InitMask == 0) {
         isFullyInit = false;
       } else if (Info.TypeObj && Info.TypeObj->isShape()) {
         // Check all bits for struct and enum-payload record shapes

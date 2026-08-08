@@ -147,8 +147,8 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
       std::string actualObjName = objVar->Name;
       if (CurrentScope->findVariableWithDeref(objVar->Name, Info, actualObjName)) {
         if (Info->TypeObj && Info->TypeObj->isShape()) {
-          // Determine which mask to check: InitMask (for values) or
-          // DirtyReferentMask (for references)
+          // An admitted local projection uses its exact fact. References and
+          // non-admitted aggregate forms retain their legacy mask boundary.
           uint64_t maskToCheck = Info->InitMask;
           if (Info->IsReference()) {
             maskToCheck = Info->DirtyReferentMask;
@@ -164,7 +164,18 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             for (int i = 0; i < (int)SD->Members.size(); ++i) {
               if (stripMemberAccessMarkers(SD->Members[i].Name) ==
                   stripMemberAccessMarkers(Memb->Member)) {
-                if (i < 64 && !(maskToCheck & (1ULL << i))) {
+                const bool usesExactProjection =
+                    !Info->IsReference() &&
+                    Info->partialMovePlan().admits(
+                        PartialMoveProjectionKind::DirectField, i);
+                const bool isLive =
+                    usesExactProjection
+                        ? hasExactlyPlaceState(
+                              Info->ExactPlace.projectionFact(
+                                  PartialMoveProjectionKind::DirectField, i),
+                              PlaceState::Live)
+                        : (i >= 64 || (maskToCheck & (1ULL << i)) != 0);
+                if (!isLive) {
                   DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_USE_UNSET,
                                            objVar->Name + "." + Memb->Member);
                   HasError = true;
@@ -524,8 +535,21 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
           Idx->Indices.size() == 1) {
         if (auto *constant = dynamic_cast<NumberExpr *>(Idx->Indices[0].get())) {
           auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
+          const bool usesExactProjection =
+              !Info->IsReference() && Info->partialMovePlan().admits(
+                                           PartialMoveProjectionKind::FixedArrayElement,
+                                           constant->Value);
+          const bool isLive =
+              usesExactProjection
+                  ? hasExactlyPlaceState(
+                        Info->ExactPlace.projectionFact(
+                            PartialMoveProjectionKind::FixedArrayElement,
+                            constant->Value),
+                        PlaceState::Live)
+                  : (constant->Value < 64 &&
+                     (Info->InitMask & (1ULL << constant->Value)) != 0);
           if (array && constant->Value < array->Size && constant->Value < 64 &&
-              !(Info->InitMask & (1ULL << constant->Value))) {
+              !isLive) {
             error(Idx->Array.get(), DiagID::ERR_USE_UNSET,
                   actualName + "[" + std::to_string(constant->Value) + "]");
           }

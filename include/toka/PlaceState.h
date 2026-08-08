@@ -303,6 +303,16 @@ public:
     }
     return false;
   }
+  constexpr PlaceStateFact projectionFact(PartialMoveProjectionKind kind,
+                                          uint64_t bit) const {
+    return m_Plan.admits(kind, bit) ? m_Projections.factAt(bit)
+                                    : PlaceStateFact::bottom();
+  }
+  constexpr bool isDefinitelyLive() const {
+    return m_Whole.isExactly(PlaceState::Live) &&
+           (!m_Plan.isAdmitted() ||
+            m_Projections.definitelyLiveMask() == m_Plan.eligibleMask());
+  }
   constexpr void repopulateAllProjections() {
     m_Projections = m_Plan.isAdmitted()
                         ? ProjectionPlaceFacts::fromLegacyInitMask(

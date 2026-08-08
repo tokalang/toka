@@ -89,12 +89,16 @@ int main() {
   CHECK(exact.transitionProjection(PartialMoveProjectionKind::DirectField, 0,
                                    PlaceState::Live));
   CHECK(exact.projections().factAt(0).isExactly(PlaceState::Live));
+  CHECK(exact.projectionFact(PartialMoveProjectionKind::DirectField, 0)
+            .isExactly(PlaceState::Live));
+  CHECK(exact.isDefinitelyLive());
   CHECK(!exact.transitionProjection(
       PartialMoveProjectionKind::FixedArrayElement, 0, PlaceState::Moved));
 
   auto exactMoved = exact;
   CHECK(exactMoved.transitionProjection(PartialMoveProjectionKind::DirectField,
                                         0, PlaceState::Moved));
+  CHECK(!exactMoved.isDefinitelyLive());
   const auto exactJoined = exact | exactMoved;
   CHECK(exactJoined.projections().factAt(0).contains(PlaceState::Live));
   CHECK(exactJoined.projections().factAt(0).contains(PlaceState::Moved));
@@ -102,6 +106,7 @@ int main() {
 
   exactMoved.repopulateAllProjections();
   CHECK(exactMoved.projections().definitelyLiveMask() == 0x3);
+  CHECK(exactMoved.isDefinitelyLive());
 
   const auto mismatchedPlan = ExactPlaceFacts::fromLegacy(
       live, elements, ProjectionPlaceFacts::fromLegacyInitMask(0x4, 0x4));
