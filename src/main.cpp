@@ -25,6 +25,7 @@
 #include "toka/SemanticIndex.h"
 #include "toka/SemanticEvidence.h"
 #include "toka/SemanticManifestEnvelope.h"
+#include "toka/SemanticManifestAttestation.h"
 #include "toka/TopologyCacheEval.h"
 #include "toka/TKIExporter.h"
 #include "toka/SourceLocation.h"
@@ -120,6 +121,8 @@ void printHelp() {
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
       << "  --validate-semantic-manifests   Fail-closed validation of admitted source-less TKI sidecars\n"
+      << "  --semantic-manifest-provenance-dir <dir>\n"
+      << "                                  Emit local object-bound Outcome attestations into .tki.tsm\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
       << "  --semantic-evidence=json        Emit public semantic evidence v1\n"
       << "  --cede-obligations=json         Emit cede obligation evidence v1\n"
@@ -262,6 +265,11 @@ static bool validateSemanticManifestImports(
   }
   return !toka::DiagnosticEngine::hasErrors();
 }
+
+struct PendingSemanticManifestAttestation {
+  std::string InterfacePath;
+  toka::SemanticManifestAttestationPrepared Prepared;
+};
 
 struct TokaProfile {
     using Clock = std::chrono::steady_clock;
@@ -603,6 +611,7 @@ int main(int argc, char **argv) {
   bool structuredDiagnostics = false;
   bool checkOnly = false;
   bool validateSemanticManifests = false;
+  std::string semanticManifestProvenanceDirectory;
   bool explainJson = false;
   std::string semanticQuery;
   std::string explainCode;
@@ -655,6 +664,12 @@ int main(int argc, char **argv) {
       checkOnly = true;
     } else if (arg == "--validate-semantic-manifests") {
       validateSemanticManifests = true;
+    } else if (arg == "--semantic-manifest-provenance-dir") {
+      if (i + 1 >= argc || std::string(argv[i + 1]).empty()) {
+        llvm::errs() << "--semantic-manifest-provenance-dir requires an absolute directory\n";
+        return 1;
+      }
+      semanticManifestProvenanceDirectory = argv[++i];
     } else if (arg == "--explain" || arg == "--explain=json") {
       if (i + 1 >= argc) {
         llvm::errs() << arg << " requires a diagnostic code\n";
@@ -1278,6 +1293,8 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  std::vector<PendingSemanticManifestAttestation>
+      pendingSemanticManifestAttestations;
   if (emitInterface) {
     std::vector<toka::Module *> resolvedModules;
     resolvedModules.reserve(astModules.size());
@@ -1312,11 +1329,26 @@ int main(int argc, char **argv) {
         }
 
         if (!ast->CanonicalOutcomeDeclarationWitnesses.empty()) {
+          const bool emitP2Attestation =
+              !semanticManifestProvenanceDirectory.empty();
           if (!ast->ShadowCoordinateKnown) {
+            if (emitP2Attestation) {
+              llvm::errs() << "Semantic manifest attestation requires a "
+                           << "resolver-known module coordinate for " << outPath
+                           << "\n";
+              return 1;
+            }
             if (verboseMode)
               llvm::errs() << "Semantic manifest omitted for " << outPath
                            << ": admitted CDW1 record lacks a module coordinate\n";
             continue;
+          }
+          if (emitP2Attestation &&
+              (!compileOnly || !emitObj || ast->IsInterface)) {
+            llvm::errs() << "Semantic manifest attestation requires a source "
+                         << "provider compiled with -c and --emit-interface: "
+                         << outPath << "\n";
+            return 1;
           }
           std::vector<std::string> closureErrors;
           auto closure = toka::SemanticDependencyClosure::calculate(
@@ -1336,26 +1368,51 @@ int main(int argc, char **argv) {
                          << " for semantic manifest\n";
             return 1;
           }
-          toka::SemanticManifestEnvelopeInput manifest;
-          manifest.TargetTriple = toka::Parser::TargetTriple;
-          manifest.Module = {ast->ShadowCrateId, ast->ShadowLogicalModulePath};
-          manifest.InterfaceContent = std::move(interfaceContent);
-          manifest.SemanticDependencyClosureDigest = std::move(*closure);
-          manifest.CDW1Records = ast->CanonicalOutcomeDeclarationWitnesses;
-          std::vector<std::string> manifestErrors;
-          const std::string manifestPath =
-              toka::SemanticManifestEnvelope::sidecarPath(outPath);
-          if (!toka::SemanticManifestEnvelope::write(manifestPath, manifest,
-                                                      manifestErrors)) {
-            llvm::errs() << "Error writing semantic manifest " << manifestPath;
-            for (const std::string &error : manifestErrors)
-              llvm::errs() << ": " << error;
-            llvm::errs() << "\n";
-            return 1;
+          if (emitP2Attestation) {
+            toka::SemanticManifestAttestationInput attestation;
+            attestation.TargetTriple = toka::Parser::TargetTriple;
+            attestation.Module = {ast->ShadowCrateId,
+                                  ast->ShadowLogicalModulePath};
+            attestation.InterfaceContent = std::move(interfaceContent);
+            attestation.SemanticDependencyClosureDigest = std::move(*closure);
+            attestation.CDW1Records = ast->CanonicalOutcomeDeclarationWitnesses;
+            PendingSemanticManifestAttestation pending;
+            pending.InterfacePath = outPath;
+            std::vector<std::string> attestationErrors;
+            if (!toka::SemanticManifestAttestation::prepare(
+                    attestation, pending.Prepared, attestationErrors)) {
+              llvm::errs() << "Error preparing semantic manifest attestation "
+                           << outPath;
+              for (const std::string &error : attestationErrors)
+                llvm::errs() << ": " << error;
+              llvm::errs() << "\n";
+              return 1;
+            }
+            pendingSemanticManifestAttestations.push_back(std::move(pending));
+          } else {
+            toka::SemanticManifestEnvelopeInput manifest;
+            manifest.TargetTriple = toka::Parser::TargetTriple;
+            manifest.Module = {ast->ShadowCrateId,
+                               ast->ShadowLogicalModulePath};
+            manifest.InterfaceContent = std::move(interfaceContent);
+            manifest.SemanticDependencyClosureDigest = std::move(*closure);
+            manifest.CDW1Records = ast->CanonicalOutcomeDeclarationWitnesses;
+            std::vector<std::string> manifestErrors;
+            const std::string manifestPath =
+                toka::SemanticManifestEnvelope::sidecarPath(outPath);
+            if (!toka::SemanticManifestEnvelope::write(manifestPath, manifest,
+                                                        manifestErrors)) {
+              llvm::errs() << "Error writing semantic manifest " << manifestPath;
+              for (const std::string &error : manifestErrors)
+                llvm::errs() << ": " << error;
+              llvm::errs() << "\n";
+              return 1;
+            }
           }
         }
       }
     }
+
   }
   profile.mark("interface_export");
 
@@ -1455,6 +1512,22 @@ int main(int argc, char **argv) {
   codegen.finalizeGlobals();
   codegen.finalizeDebugInfo();
   profile.mark("codegen_generate");
+
+  // The object does not exist until native emission, but the payload marker
+  // must be retained in IR before optimization so the final sidecar can bind
+  // its exact object bytes to the checked Outcome records.
+  for (const auto &pending : pendingSemanticManifestAttestations) {
+    std::vector<std::string> attestationErrors;
+    if (!toka::SemanticManifestAttestation::bindObjectMarker(
+            *codegen.getModule(), pending.Prepared, attestationErrors)) {
+      llvm::errs() << "Error binding semantic manifest attestation marker "
+                   << pending.InterfacePath;
+      for (const std::string &error : attestationErrors)
+        llvm::errs() << ": " << error;
+      llvm::errs() << "\n";
+      return 1;
+    }
+  }
 
   if (codegen.hasErrors() || toka::DiagnosticEngine::hasErrors()) {
     llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted during code generation.\n";
@@ -1642,6 +1715,21 @@ int main(int argc, char **argv) {
                          << evidenceError << '\n';
           return 1;
         }
+      }
+    }
+    for (const auto &pending : pendingSemanticManifestAttestations) {
+      std::vector<std::string> attestationErrors;
+      const std::string manifestPath =
+          toka::SemanticManifestEnvelope::sidecarPath(pending.InterfacePath);
+      if (!toka::SemanticManifestAttestation::write(
+              manifestPath, objFile, pending.Prepared,
+              semanticManifestProvenanceDirectory, attestationErrors)) {
+        llvm::errs() << "Error writing semantic manifest attestation "
+                     << manifestPath;
+        for (const std::string &error : attestationErrors)
+          llvm::errs() << ": " << error;
+        llvm::errs() << "\n";
+        return 1;
       }
     }
     if (verboseMode) fprintf(stderr, "Object file emitted successfully.\n");
