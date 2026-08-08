@@ -2874,13 +2874,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     std::map<std::string, uint64_t> masksBefore;
     std::map<std::string, bool> movedBefore;
-    std::map<std::string, PlaceStateFact> placeFactsBefore;
-    std::map<std::string, ProjectionPlaceFacts> projectionFactsBefore;
+    std::map<std::string, ExactPlaceFacts> exactPlacesBefore;
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeFactsBefore[pair.first] = pair.second.placeFact();
-      projectionFactsBefore[pair.first] = pair.second.projectionFacts();
+      exactPlacesBefore[pair.first] = pair.second.ExactPlace;
     }
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
@@ -2914,13 +2912,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (le->Condition) {
       std::map<std::string, uint64_t> masksBody;
       std::map<std::string, bool> movedBody;
-      std::map<std::string, PlaceStateFact> placeFactsBody;
-      std::map<std::string, ProjectionPlaceFacts> projectionFactsBody;
+      std::map<std::string, ExactPlaceFacts> exactPlacesBody;
       for (auto &pair : CurrentScope->Symbols) {
         masksBody[pair.first] = pair.second.InitMask;
         movedBody[pair.first] = pair.second.Moved;
-        placeFactsBody[pair.first] = pair.second.placeFact();
-        projectionFactsBody[pair.first] = pair.second.projectionFacts();
+        exactPlacesBody[pair.first] = pair.second.ExactPlace;
       }
       auto palBody = PALCheckerState.snapshot();
 
@@ -2936,22 +2932,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         bool bodyMoved =
             movedBody.count(pair.first) ? movedBody[pair.first] : false;
         pair.second.Moved = entryMoved || bodyMoved;
-        PlaceStateFact entryPlaceStates =
-            placeFactsBefore.count(pair.first)
-                ? placeFactsBefore[pair.first]
-                : PlaceStateFact::bottom();
-        PlaceStateFact bodyPlaceStates =
-            placeFactsBody.count(pair.first)
-                ? placeFactsBody[pair.first]
-                : PlaceStateFact::bottom();
-        pair.second.placeFact() = entryPlaceStates | bodyPlaceStates;
-        ProjectionPlaceFacts projectionFacts =
-            projectionFactsBefore.count(pair.first)
-                ? projectionFactsBefore[pair.first]
-                : ProjectionPlaceFacts{};
-        if (projectionFactsBody.count(pair.first))
-          projectionFacts |= projectionFactsBody[pair.first];
-        pair.second.projectionFacts() = projectionFacts;
+        ExactPlaceFacts exactPlaces =
+            exactPlacesBefore.count(pair.first)
+                ? exactPlacesBefore[pair.first]
+                : ExactPlaceFacts::bottom();
+        if (exactPlacesBody.count(pair.first))
+          exactPlaces |= exactPlacesBody[pair.first];
+        pair.second.ExactPlace = exactPlaces;
         syncLegacyProjectionLiveness(pair.second);
       }
       PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
