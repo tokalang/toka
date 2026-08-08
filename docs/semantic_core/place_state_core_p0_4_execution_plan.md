@@ -159,6 +159,12 @@ source-less retained-body replay, and exact-once cleanup matrices. The next
 gate is the ordinary full release qualification at a candidate revision; it
 does not enlarge P0.4 coverage.
 
+The full manifest was run after this migration and reported **203 passed / 23
+failed**. It is therefore not a release-pass claim. The remaining failures
+include diagnostic code/span expectations, a nullable-cede expectation, and
+an iterator-pattern fixture; they require separate release-gate triage rather
+than an expansion of the frozen exact-place model.
+
 ## 4. Completion conditions
 
 P0.4 is complete only when all are true:
