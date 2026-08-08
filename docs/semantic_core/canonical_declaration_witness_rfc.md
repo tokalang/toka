@@ -324,3 +324,6 @@ Any importer integration must first define its diagnostic/failure behavior and
 the complete declaration-boundary tamper matrix; it remains separate from
 generic binders, strong aliases, a manifest, and every bodyless-provider
 design.
+
+The current artifact boundary and the remaining activation gates are recorded
+in [`canonical_declaration_witness_activation_audit.md`](canonical_declaration_witness_activation_audit.md).
