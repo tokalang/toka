@@ -229,13 +229,19 @@ if(BUILD_TESTING)
     add_executable(toka_async_queue_publication
         tests/AsyncQueuePublication.c
         lib/sys/toka_rt.c)
+    add_executable(toka_async_identity_exhaustion
+        tests/AsyncIdentityExhaustion.c
+        lib/sys/toka_rt.c)
     target_link_libraries(toka_async_terminal_publisher PRIVATE Threads::Threads)
     target_link_libraries(toka_async_cold_cancel_cleanup PRIVATE Threads::Threads)
     target_link_libraries(toka_async_result_disposition PRIVATE Threads::Threads)
     target_link_libraries(toka_async_suspend_rollback PRIVATE Threads::Threads)
     target_link_libraries(toka_async_completion_subscription PRIVATE Threads::Threads)
     target_link_libraries(toka_async_queue_publication PRIVATE Threads::Threads)
+    target_link_libraries(toka_async_identity_exhaustion PRIVATE Threads::Threads)
     target_compile_definitions(toka_async_queue_publication
+        PRIVATE TOKA_RUNTIME_TESTING=1)
+    target_compile_definitions(toka_async_identity_exhaustion
         PRIVATE TOKA_RUNTIME_TESTING=1)
     if(OpenSSL_FOUND)
         target_compile_definitions(toka_async_terminal_publisher PRIVATE TOKA_HAS_OPENSSL=1)
@@ -244,6 +250,7 @@ if(BUILD_TESTING)
         target_compile_definitions(toka_async_suspend_rollback PRIVATE TOKA_HAS_OPENSSL=1)
         target_compile_definitions(toka_async_completion_subscription PRIVATE TOKA_HAS_OPENSSL=1)
         target_compile_definitions(toka_async_queue_publication PRIVATE TOKA_HAS_OPENSSL=1)
+        target_compile_definitions(toka_async_identity_exhaustion PRIVATE TOKA_HAS_OPENSSL=1)
         if(OPENSSL_INCLUDE_DIR)
             target_include_directories(toka_async_terminal_publisher PRIVATE
                 ${OPENSSL_INCLUDE_DIR})
@@ -256,6 +263,8 @@ if(BUILD_TESTING)
             target_include_directories(toka_async_completion_subscription PRIVATE
                 ${OPENSSL_INCLUDE_DIR})
             target_include_directories(toka_async_queue_publication PRIVATE
+                ${OPENSSL_INCLUDE_DIR})
+            target_include_directories(toka_async_identity_exhaustion PRIVATE
                 ${OPENSSL_INCLUDE_DIR})
         endif()
         target_link_libraries(toka_async_terminal_publisher PRIVATE
@@ -270,6 +279,8 @@ if(BUILD_TESTING)
             OpenSSL::SSL OpenSSL::Crypto)
         target_link_libraries(toka_async_queue_publication PRIVATE
             OpenSSL::SSL OpenSSL::Crypto)
+        target_link_libraries(toka_async_identity_exhaustion PRIVATE
+            OpenSSL::SSL OpenSSL::Crypto)
     endif()
     add_test(NAME toka_async_terminal_publisher
         COMMAND toka_async_terminal_publisher)
@@ -283,6 +294,8 @@ if(BUILD_TESTING)
         COMMAND toka_async_completion_subscription)
     add_test(NAME toka_async_queue_publication
         COMMAND toka_async_queue_publication)
+    add_test(NAME toka_async_identity_exhaustion
+        COMMAND toka_async_identity_exhaustion)
 endif()
 
 file(GLOB_RECURSE TOKA_TOOL_AND_LIBRARY_SOURCES CONFIGURE_DEPENDS

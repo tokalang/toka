@@ -927,6 +927,40 @@ void toka_task_release(void *tcb_ptr);
 static toka_mutex_t g_rt_mutex = TOKA_MUTEX_INIT;
 static _Atomic uint64_t g_next_task_id = 1;
 
+// Task and suspension identities are authority carriers, not counters whose
+// wraparound may make an old token name a new task.  The caller may publish a
+// new value only after this helper succeeds; exhaustion is therefore a
+// fail-closed allocation/suspension failure rather than a partial transition.
+static int toka_allocate_nonzero_u64(_Atomic uint64_t *counter,
+                                     uint64_t *out_value) {
+    uint64_t current = atomic_load_explicit(counter, memory_order_acquire);
+    while (current != UINT64_MAX) {
+        const uint64_t next = current + 1;
+        if (atomic_compare_exchange_weak_explicit(
+                counter, &current, next, memory_order_acq_rel,
+                memory_order_acquire)) {
+            if (out_value) *out_value = current;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int toka_advance_schedule_generation(_Atomic uint64_t *generation,
+                                            uint64_t *out_generation) {
+    uint64_t current = atomic_load_explicit(generation, memory_order_acquire);
+    while (current != UINT64_MAX) {
+        const uint64_t next = current + 1;
+        if (atomic_compare_exchange_weak_explicit(
+                generation, &current, next, memory_order_acq_rel,
+                memory_order_acquire)) {
+            if (out_generation) *out_generation = next;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // This is deliberately a runtime-owned registry rather than a library Vec:
 // enrollment and the Open -> Closing transition must share one arbiter.  It is
 // only the first structured-scope substrate; typed result disposition and
@@ -1230,7 +1264,10 @@ static void* toka_task_create_impl(void *coro_frame, void *promise,
     TokaTCB *tcb = (TokaTCB*)calloc(1, sizeof(TokaTCB));
     if (!tcb) return NULL;
 
-    tcb->id = atomic_fetch_add(&g_next_task_id, 1);
+    if (!toka_allocate_nonzero_u64(&g_next_task_id, &tcb->id)) {
+        free(tcb);
+        return NULL;
+    }
     tcb->coro_frame = coro_frame;
     tcb->promise = promise;
     atomic_store(&tcb->task_schedule_generation, 0);
@@ -1284,6 +1321,27 @@ void* toka_task_create(void *coro_frame, void *promise) {
     return toka_task_create_with_result_drop(coro_frame, promise, NULL);
 }
 
+#ifdef TOKA_RUNTIME_TESTING
+int toka_rt_test_set_next_task_id(uint64_t next_id) {
+    if (next_id == 0) return 0;
+    atomic_store_explicit(&g_next_task_id, next_id, memory_order_release);
+    return 1;
+}
+
+int toka_rt_test_set_schedule_generation(void *tcb_ptr, uint64_t generation) {
+    if (!tcb_ptr || generation == 0) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    toka_mutex_lock(&g_rt_mutex);
+    const int running = atomic_load(&tcb->state) == TOKA_TCB_RUNNING;
+    if (running) {
+        atomic_store_explicit(&tcb->task_schedule_generation, generation,
+                              memory_order_release);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return running;
+}
+#endif
+
 int toka_task_start(void *tcb_ptr) {
     if (!tcb_ptr) return 0;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
@@ -1298,21 +1356,31 @@ int toka_task_suspend_and_register(void *tcb_ptr) {
     if (!tcb_ptr) return 0;
     TokaTCB *tcb = (TokaTCB*)tcb_ptr;
 
+    toka_mutex_lock(&g_rt_mutex);
+    uint64_t ignored_generation = 0;
     uint32_t expected = TOKA_TCB_RUNNING;
-    if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_SUSPENDED)) {
-        atomic_fetch_add(&tcb->task_schedule_generation, 1);
-        return 1;
+    const int advanced = toka_advance_schedule_generation(
+        &tcb->task_schedule_generation, &ignored_generation);
+    const int suspended = advanced && atomic_compare_exchange_strong(
+        &tcb->state, &expected, TOKA_TCB_SUSPENDED);
+    if (advanced && !suspended) {
+        atomic_fetch_sub(&tcb->task_schedule_generation, 1);
     }
-    return 0;
+    toka_mutex_unlock(&g_rt_mutex);
+    return suspended;
 }
 
 int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id, uint64_t *out_gen) {
     TokaTCB *tcb = lookup_tcb_by_frame_retained(coro_frame);
     if (!tcb) return 0;
 
+    toka_mutex_lock(&g_rt_mutex);
+    uint64_t new_gen = 0;
     uint32_t expected = TOKA_TCB_RUNNING;
-    if (atomic_compare_exchange_strong(&tcb->state, &expected, TOKA_TCB_PREPARING)) {
-        uint64_t new_gen = atomic_fetch_add(&tcb->task_schedule_generation, 1) + 1;
+    if (toka_advance_schedule_generation(&tcb->task_schedule_generation,
+                                         &new_gen) &&
+        atomic_compare_exchange_strong(&tcb->state, &expected,
+                                       TOKA_TCB_PREPARING)) {
         if (out_task_id) *out_task_id = tcb->id;
         if (out_gen) *out_gen = new_gen;
 
@@ -1321,9 +1389,14 @@ int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id, uint64_t 
             atomic_compare_exchange_strong(&tcb->state, &prep_st, TOKA_TCB_PREPARING_WITH_PENDING_WAKE);
         }
 
+        toka_mutex_unlock(&g_rt_mutex);
         toka_task_release(tcb);
         return 1;
     }
+    if (new_gen != 0) {
+        atomic_fetch_sub(&tcb->task_schedule_generation, 1);
+    }
+    toka_mutex_unlock(&g_rt_mutex);
     toka_task_release(tcb);
     return 0;
 }
@@ -1587,19 +1660,27 @@ int toka_task_await_prepare(void *child_promise_ptr, void *parent_tcb_ptr) {
     struct TokaPromiseHeader *hdr = (struct TokaPromiseHeader*)child_promise_ptr;
     TokaTCB *parent_tcb = (TokaTCB*)parent_tcb_ptr;
 
+    toka_mutex_lock(&g_rt_mutex);
+    uint64_t ignored_generation = 0;
     uint32_t expected_state = TOKA_TCB_RUNNING;
-    if (!atomic_compare_exchange_strong(&parent_tcb->state, &expected_state, TOKA_TCB_SUSPENDED)) {
+    const int advanced = toka_advance_schedule_generation(
+        &parent_tcb->task_schedule_generation, &ignored_generation);
+    const int suspended = advanced && atomic_compare_exchange_strong(
+        &parent_tcb->state, &expected_state, TOKA_TCB_SUSPENDED);
+    if (!suspended) {
+        if (advanced) {
+            atomic_fetch_sub(&parent_tcb->task_schedule_generation, 1);
+        }
+        toka_mutex_unlock(&g_rt_mutex);
         return 0;
     }
-    atomic_fetch_add(&parent_tcb->task_schedule_generation, 1);
 
     atomic_fetch_add(&parent_tcb->ref_count, 1);
     if (hdr->self_tcb) {
-        toka_mutex_lock(&g_rt_mutex);
         atomic_store(&parent_tcb->active_child_tcb, (uintptr_t)hdr->self_tcb);
         atomic_store(&((TokaTCB*)hdr->self_tcb)->parent_tcb, (uintptr_t)parent_tcb);
-        toka_mutex_unlock(&g_rt_mutex);
     }
+    toka_mutex_unlock(&g_rt_mutex);
 
     uintptr_t expected_cont = 0;
     uintptr_t desired_cont = (uintptr_t)parent_tcb;

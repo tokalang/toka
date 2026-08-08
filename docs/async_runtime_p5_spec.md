@@ -206,6 +206,23 @@ It deliberately freezes no external runtime ABI.
 
 ---
 
+### 1.8 Closure-track entry evidence: identity exhaustion
+
+The separately accepted Async/Place Contract Closure program begins by making
+the current task allocator and suspension generation fail closed at `u64` task
+or schedule-epoch exhaustion. A failed allocation installs no TCB or frame-map
+entry; a failed suspend preparation leaves the task runnable and installs no
+wait registration or queue ticket. `toka_async_identity_exhaustion` forces
+both boundaries through test-only hooks.
+
+This is deliberately only an AS.0 entry fact. It does not make the current
+task id a full reusable task-instance token, does not cover wait-slot or
+cancellation-epoch exhaustion, and does not qualify checked task retains or
+frame retirement. It is therefore not a claim that TCB RFC 8.1.5—or any other
+8.1 gate—is complete.
+
+---
+
 ## 2. Cancellation Linearization Architecture
 
 ### 2.1 TCB State Machine & Active Registration Link
