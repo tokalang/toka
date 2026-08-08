@@ -219,6 +219,12 @@ async/place bridge after both this closure and the async TCB are qualified.
 This work intentionally closes a bounded model; it does not generalize every
 projection form merely because a syntax can name it.
 
+The next implementation sequence is frozen in
+[`place_state_core_p0_4_execution_plan.md`](place_state_core_p0_4_execution_plan.md):
+it consolidates existing whole and admitted-projection facts plus their one
+eligibility plan, without adding a new typestate surface or beginning the
+async/place bridge.
+
 ### 4.2 Delayed initialization P1
 
 The [`init` RFC](init_contract_rfc.md) depends on PlaceState Core. P1 is
