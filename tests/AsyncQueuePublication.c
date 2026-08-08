@@ -21,6 +21,8 @@ extern int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen,
                                             uint32_t *out_id2,
                                             uint32_t *out_gen2);
 extern int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
+extern int toka_wait_registry_is_winner(uint32_t wait_id, uint32_t slot_gen);
+extern int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen);
 extern uint32_t toka_rt_live_wait_registry_count(void);
 extern uint32_t toka_ready_queue_count(void);
 extern int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen,
@@ -190,11 +192,76 @@ static void test_wait_set_cancel_after_logical_uninstall(void) {
     }
 }
 
+static void test_wait_set_source_winner_after_logical_uninstall(void) {
+    enum { ROUNDS = 100 };
+    for (int round = 0; round < ROUNDS; ++round) {
+        RunningTask task = make_running_task();
+        uint32_t first_id = 0;
+        uint32_t first_generation = 0;
+        uint32_t second_id = 0;
+        uint32_t second_generation = 0;
+        CHECK(toka_task_prepare_suspend(task.frame, &task.task_id,
+                                        &task.generation));
+        CHECK(toka_wait_registry_allocate_pair(
+            task.task_id, task.generation, 1, 2, &first_id,
+            &first_generation, &second_id, &second_generation));
+        CHECK(toka_task_commit_suspend(task.frame));
+        CHECK(toka_rt_live_wait_registry_count() == 2);
+
+        toka_task_pause_next_queue_publication_for_test();
+        CHECK(toka_wait_registry_try_wake(first_id, first_generation) == 2);
+        CHECK(toka_rt_live_wait_registry_count() == 0);
+        CHECK(toka_wait_registry_is_winner(first_id, first_generation));
+        CHECK(!toka_wait_registry_is_winner(second_id, second_generation));
+        CHECK(toka_wait_registry_try_wake(first_id, first_generation) == 3);
+        CHECK(toka_wait_registry_try_wake(second_id, second_generation) == 4);
+
+        help_preempted_publisher_once(task.owner, task.task_id, task.generation);
+        CHECK(toka_wait_registry_release(first_id, first_generation));
+        CHECK(toka_wait_registry_release(second_id, second_generation));
+        CHECK(toka_wait_registry_try_wake(first_id, first_generation) == 0);
+        CHECK(toka_wait_registry_try_wake(second_id, second_generation) == 0);
+        destroy_running_task(&task);
+    }
+}
+
+static void test_wait_set_source_winner_before_commit(void) {
+    enum { ROUNDS = 100 };
+    for (int round = 0; round < ROUNDS; ++round) {
+        RunningTask task = make_running_task();
+        uint32_t first_id = 0;
+        uint32_t first_generation = 0;
+        uint32_t second_id = 0;
+        uint32_t second_generation = 0;
+        CHECK(toka_task_prepare_suspend(task.frame, &task.task_id,
+                                        &task.generation));
+        CHECK(toka_wait_registry_allocate_pair(
+            task.task_id, task.generation, 1, 2, &first_id,
+            &first_generation, &second_id, &second_generation));
+
+        // A source can select the group before the coroutine has committed
+        // its suspension. The later commit owns the corresponding ticket.
+        CHECK(toka_wait_registry_try_wake(second_id, second_generation) == 2);
+        CHECK(toka_rt_live_wait_registry_count() == 0);
+        CHECK(!toka_wait_registry_is_winner(first_id, first_generation));
+        CHECK(toka_wait_registry_is_winner(second_id, second_generation));
+
+        toka_task_pause_next_queue_publication_for_test();
+        CHECK(toka_task_commit_suspend(task.frame));
+        help_preempted_publisher_once(task.owner, task.task_id, task.generation);
+        CHECK(toka_wait_registry_release(first_id, first_generation));
+        CHECK(toka_wait_registry_release(second_id, second_generation));
+        destroy_running_task(&task);
+    }
+}
+
 int main(void) {
     test_created_queue_claim();
     test_suspended_queue_claim();
     test_pending_wake_commit_queue_claim();
     test_wait_set_cancel_after_logical_uninstall();
+    test_wait_set_source_winner_after_logical_uninstall();
+    test_wait_set_source_winner_before_commit();
     puts("async queue publication helping passed");
     return 0;
 }

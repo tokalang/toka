@@ -2295,8 +2295,9 @@ typedef struct {
     _Atomic uint32_t state;
     uint16_t source_tag;
     void *wait_set; // Reserved for AR-P5 WaitSet
-    TokaTCB *tcb;   // Retained strong TCB pointer while registration active
-    uint8_t in_use;
+    TokaTCB *tcb;   // Retained through the active wait or outcome query
+    uint8_t in_use; // Physical slot reservation, retained through outcome read
+    uint8_t active; // Event-eligible registry membership
 } TokaWaitRegistration;
 
 static TokaWaitRegistration *g_wait_registry = NULL;
@@ -2392,6 +2393,7 @@ int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen, uint16_t source_
     reg->tcb = tcb;
     atomic_store(&tcb->active_wait_id, reg->token.wait_id);
     atomic_store(&tcb->active_slot_gen, reg->token.wait_slot_generation);
+    reg->active = 1;
     g_wait_registry_count++;
 
     if (out_wait_id) *out_wait_id = reg->token.wait_id;
@@ -2456,6 +2458,7 @@ int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t ta
     reg1->source_tag = tag1;
     reg1->wait_set = ws;
     reg1->tcb = tcb;
+    reg1->active = 1;
     g_wait_registry_count++;
 
     TokaWaitRegistration *reg2 = &g_wait_registry[slot2];
@@ -2466,6 +2469,7 @@ int toka_wait_registry_allocate_pair(uint64_t task_id, uint64_t gen, uint16_t ta
     reg2->source_tag = tag2;
     reg2->wait_set = ws;
     reg2->tcb = tcb;
+    reg2->active = 1;
     g_wait_registry_count++;
 
     atomic_store(&tcb->active_wait_id, reg1->token.wait_id);
@@ -2532,6 +2536,7 @@ int toka_wait_registry_allocate_nway(uint64_t task_id, uint64_t gen, uint16_t ta
         reg->source_tag = tag_base + (uint16_t)k;
         reg->wait_set = ws;
         reg->tcb = tcb;
+        reg->active = 1;
         g_wait_registry_count++;
 
         out_ids[k] = reg->token.wait_id;
@@ -2553,6 +2558,95 @@ typedef enum {
     TOKA_WAKE_PAIR_LOST = 4
 } TokaWakeOutcome;
 
+typedef struct {
+    TokaWaitSet *wait_set_to_free;
+    TokaTCB *queue_publish_tcb;
+    uint64_t queue_publish_generation;
+} TokaWaitSetWinnerCleanup;
+
+static void toka_wait_set_finish_winner_cleanup(
+    TokaWaitSetWinnerCleanup *cleanup
+) {
+    if (!cleanup) return;
+    if (cleanup->queue_publish_tcb) {
+        toka_task_publish_queue_ticket(
+            cleanup->queue_publish_tcb, cleanup->queue_publish_generation
+        );
+    }
+    free(cleanup->wait_set_to_free);
+}
+
+static int toka_wait_set_select_source_locked(
+    TokaWaitRegistration *winner,
+    TokaWaitSet *ws,
+    uint32_t wait_id,
+    TokaWaitSetWinnerCleanup *cleanup
+) {
+    if (!winner || !ws || !cleanup || !winner->tcb || !winner->active ||
+        atomic_load(&winner->state) != TOKA_WAIT_STATE_WAITING) {
+        return TOKA_WAKE_PAIR_LOST;
+    }
+
+    uint64_t gen = winner->task_schedule_generation;
+    TokaTCB *tcb = winner->tcb;
+    if (atomic_load(&tcb->task_schedule_generation) != gen) {
+        return TOKA_WAKE_STALE;
+    }
+
+    uint32_t target_winner = wait_id + 1;
+    uint32_t current_winner = atomic_load(&ws->winner_wait_id);
+    if (current_winner == TOKA_WAKE_GROUP_CANCELLED) {
+        return TOKA_WAKE_PAIR_LOST;
+    }
+    if (current_winner == target_winner) {
+        return TOKA_WAKE_PAIR_DUPLICATE;
+    }
+    uint32_t expected_winner = 0;
+    if (!atomic_compare_exchange_strong(&ws->winner_wait_id,
+                                        &expected_winner, target_winner)) {
+        return TOKA_WAKE_PAIR_LOST;
+    }
+
+    // A selected source owns the group teardown. Keep the physical slots only
+    // long enough for the resumed coroutine to query the winner and release
+    // their retained TCB references; they are no longer event-eligible.
+    for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+        TokaWaitRegistration *member = &g_wait_registry[i];
+        if (!member->in_use || !member->active || member->wait_set != ws) {
+            continue;
+        }
+        atomic_store(&member->state,
+                     member == winner ? TOKA_WAIT_STATE_WON
+                                      : TOKA_WAIT_STATE_CANCELLED);
+        member->wait_set = NULL;
+        member->active = 0;
+        g_wait_registry_count--;
+    }
+    atomic_store(&tcb->active_wait_id, TOKA_NO_WAIT_ID);
+    atomic_store(&tcb->active_slot_gen, 0);
+    atomic_store(&ws->ref_count, 0);
+    cleanup->wait_set_to_free = ws;
+
+    uint32_t st = atomic_load(&tcb->state);
+    if (st == TOKA_TCB_PREPARING) {
+        uint32_t expected = TOKA_TCB_PREPARING;
+        atomic_compare_exchange_strong(&tcb->state, &expected,
+                                       TOKA_TCB_PREPARING_WITH_PENDING_WAKE);
+    } else if (st == TOKA_TCB_SUSPENDED) {
+        toka_task_prepare_queue_ticket(tcb, gen);
+        uint32_t expected = TOKA_TCB_SUSPENDED;
+        if (atomic_compare_exchange_strong(&tcb->state, &expected,
+                                           TOKA_TCB_QUEUED)) {
+            cleanup->queue_publish_tcb = tcb;
+            cleanup->queue_publish_generation = gen;
+        }
+    } else if (st == TOKA_TCB_QUEUED) {
+        cleanup->queue_publish_tcb = tcb;
+        cleanup->queue_publish_generation = gen;
+    }
+    return TOKA_WAKE_PAIR_WON;
+}
+
 int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
     toka_mutex_lock(&g_rt_mutex);
     if (wait_id >= g_wait_registry_capacity) {
@@ -2565,28 +2659,23 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
         return TOKA_WAKE_STALE;
     }
 
+    if (!reg->active) {
+        int outcome = atomic_load(&reg->state) == TOKA_WAIT_STATE_WON
+                        ? TOKA_WAKE_PAIR_DUPLICATE
+                        : TOKA_WAKE_PAIR_LOST;
+        toka_mutex_unlock(&g_rt_mutex);
+        return outcome;
+    }
+
     if (reg->wait_set) {
         TokaWaitSet *ws = (TokaWaitSet*)reg->wait_set;
-        uint32_t target_winner = wait_id + 1;
-        uint32_t current_winner = atomic_load(&ws->winner_wait_id);
-
-        if (current_winner == TOKA_WAKE_GROUP_CANCELLED) {
-            atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
-            toka_mutex_unlock(&g_rt_mutex);
-            return TOKA_WAKE_PAIR_LOST;
-        }
-
-        if (current_winner == target_winner) {
-            toka_mutex_unlock(&g_rt_mutex);
-            return TOKA_WAKE_PAIR_DUPLICATE;
-        }
-
-        uint32_t expected = 0;
-        if (!atomic_compare_exchange_strong(&ws->winner_wait_id, &expected, target_winner)) {
-            atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
-            toka_mutex_unlock(&g_rt_mutex);
-            return TOKA_WAKE_PAIR_LOST;
-        }
+        TokaWaitSetWinnerCleanup cleanup = {0};
+        int outcome = toka_wait_set_select_source_locked(
+            reg, ws, wait_id, &cleanup
+        );
+        toka_mutex_unlock(&g_rt_mutex);
+        toka_wait_set_finish_winner_cleanup(&cleanup);
+        return outcome;
     }
 
     uint32_t expected = TOKA_WAIT_STATE_WAITING;
@@ -2607,6 +2696,7 @@ int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen) {
         }
         tcb_to_release = reg->tcb;
         reg->tcb = NULL;
+        reg->active = 0;
         reg->in_use = 0;
         reg->token.wait_slot_generation++;
         if (reg->token.wait_slot_generation == 0) {
@@ -2632,7 +2722,8 @@ int toka_wait_registry_invalidate(uint32_t wait_id, uint32_t slot_gen) {
         return 0;
     }
     TokaWaitRegistration *reg = &g_wait_registry[wait_id];
-    if (!reg->in_use || reg->token.wait_slot_generation != slot_gen) {
+    if (!reg->in_use || !reg->active ||
+        reg->token.wait_slot_generation != slot_gen) {
         toka_mutex_unlock(&g_rt_mutex);
         return 0;
     }
@@ -2681,6 +2772,7 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
         return 0;
     }
 
+    int was_active = reg->active;
     TokaWaitSet *ws_to_free = NULL;
     if (reg->wait_set) {
         TokaWaitSet *ws = (TokaWaitSet*)reg->wait_set;
@@ -2696,12 +2788,15 @@ int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen) {
     }
     TokaTCB *tcb_to_release = reg->tcb;
     reg->tcb = NULL;
+    reg->active = 0;
     reg->in_use = 0;
     reg->token.wait_slot_generation++;
     if (reg->token.wait_slot_generation == 0) {
         reg->token.wait_slot_generation = 1;
     }
-    g_wait_registry_count--;
+    if (was_active) {
+        g_wait_registry_count--;
+    }
     toka_mutex_unlock(&g_rt_mutex);
 
     if (ws_to_free) free(ws_to_free);
@@ -2738,7 +2833,7 @@ static int toka_wait_set_cancel_group_and_wake_locked(
     TokaTCB *tcb_to_wake = NULL;
     for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
         TokaWaitRegistration *reg = &g_wait_registry[i];
-        if (reg->in_use && reg->wait_set == ws) {
+        if (reg->in_use && reg->active && reg->wait_set == ws) {
             atomic_store(&reg->state, TOKA_WAIT_STATE_CANCELLED);
             if (!tcb_to_wake && reg->tcb) {
                 tcb_to_wake = reg->tcb;
@@ -2754,6 +2849,7 @@ static int toka_wait_set_cancel_group_and_wake_locked(
             }
             reg->tcb = NULL;
             reg->wait_set = NULL;
+            reg->active = 0;
             reg->in_use = 0;
             reg->token.wait_slot_generation++;
             if (reg->token.wait_slot_generation == 0) {
@@ -2809,7 +2905,8 @@ static void toka_wait_registry_cancel_active(TokaTCB *tcb) {
     uint32_t wgen = atomic_load(&tcb->active_slot_gen);
     if (wid != TOKA_NO_WAIT_ID && wid < g_wait_registry_capacity) {
         TokaWaitRegistration *reg = &g_wait_registry[wid];
-        if (reg->in_use && reg->token.wait_slot_generation == wgen) {
+        if (reg->in_use && reg->active &&
+            reg->token.wait_slot_generation == wgen) {
             if (reg->wait_set) {
                 toka_wait_set_cancel_group_and_wake_locked(
                     (TokaWaitSet*)reg->wait_set,
@@ -2966,7 +3063,7 @@ int toka_task_request_cancel(void *tcb_ptr) {
     uint32_t st = atomic_load(&tcb->state);
     if (wid != TOKA_NO_WAIT_ID && wid < g_wait_registry_capacity) {
         TokaWaitRegistration *reg = &g_wait_registry[wid];
-        if (reg->in_use && reg->wait_set) {
+        if (reg->in_use && reg->active && reg->wait_set) {
             TokaWaitSetCancelCleanup cleanup = {0};
             toka_wait_set_cancel_group_and_wake_locked(
                 (TokaWaitSet*)reg->wait_set,

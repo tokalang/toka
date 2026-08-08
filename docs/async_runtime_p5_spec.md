@@ -150,10 +150,19 @@ helper cannot republish the claimed epoch.
 after each real `Created -> Queued`, `Suspended -> Queued`, and
 `PreparingWithPendingWake -> Queued` claim, but before physical insertion. It
 also pauses publication after a two-slot WaitSet has been logically unlinked
-by task cancellation. The probe runs eight concurrent helpers for 100 rounds
-on each path. It proves that forced preemption leaves one ready entry, one
-worker claim, no late reinsertion after dequeue, and no live/stale WaitSet slot
-that can wake the selected epoch again.
+by task cancellation and after a natural source winner has selected a two-slot
+WaitSet, both while the parent is preparing and after it has suspended. The
+probe runs eight concurrent helpers for 100 rounds on each path. It proves that
+forced preemption leaves one ready entry, one worker claim, no late reinsertion
+after dequeue, and no active WaitSet slot that can wake the selected epoch
+again.
+
+For the old pair/n-way API, source selection leaves each physical slot reserved
+only as a retired outcome record: the resumed consumer can still query which
+token won and explicitly release its retained TCB reference, but neither the
+winner nor loser is event-eligible and the active registry count is already
+zero. The selected source unlinks the complete group before queue publication;
+the `TokaWaitSet` itself is freed after the source's scheduler handoff.
 
 This is a narrow queue-publication substrate only, **not** Section 8.1 queue
 publication conformance. It uses a schedule generation rather than a full task
