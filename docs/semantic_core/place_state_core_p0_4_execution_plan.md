@@ -1,9 +1,10 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
-**Status:** Active internal migration. The first P0.4a entry has introduced
+**Status:** Active internal migration. P0.4a has introduced
 `ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
-capture/merge path to it. The remaining explicit CFG snapshots still copy
-compatibility views separately, so this is not yet a P0.4a completion claim.
+capture/merge path to it. P0.4b has begun: ordinary `if`/`else` now snapshots,
+restores, and joins that one value. The remaining explicit CFG snapshots still
+copy compatibility views separately, so this is not a P0.4 completion claim.
 This document adds no source syntax, does not widen the bounded partial-`cede`
 matrix, and does not qualify the async/place bridge.
 
@@ -64,14 +65,13 @@ the exact-place fact.
 
 ### P0.4a: Symbol and analysis-state consolidation
 
-The initial implementation has completed the model and storage half:
+The initial implementation completed the model and storage half:
 `ExactPlaceFacts` owns the whole fact, plan, and projection facts on
 `SymbolInfo`, and `AnalysisState` uses that one value for its capture/merge
 path. Its unit test covers projection transitions, joins, legacy-liveness
-derivation, and fail-closed mismatched plans. The next P0.4a commit must move
-the remaining ad-hoc CFG snapshots to that same value; their copied
-`InitMask`/whole/projection compatibility views are not yet evidence of a
-unified join authority.
+derivation, and fail-closed mismatched plans. The remaining ad-hoc CFG
+snapshots belong to P0.4b; their copied `InitMask`/whole/projection
+compatibility views are not evidence of a unified join authority.
 
 Replace the parallel whole/projection fact fields on `SymbolInfo` and the
 parallel `PlaceFacts`/`ProjectionFacts` maps in `AnalysisState` with one
@@ -87,13 +87,18 @@ independence, `Never` versus `Moved`, branch joins, plan-kind mismatch, and
 unsupported-coordinate cases. No user-visible diagnostic or lowering changes
 in this slice.
 
-### P0.4b: CFG ownership of the fact
+### P0.4b: CFG ownership of the fact (in progress)
 
-Migrate the existing `if`, `guard`, loop, `for`, `match`, `break`, `continue`,
-call-candidate rollback, and outcome-arm capture/restore/join paths to carry
-the single fact value. Each path continues to snapshot PAL and direct-flow
-ceilings in the same transaction; no specialized merge may recreate a direct
-`InitMask`-only path for an admitted coordinate.
+The ordinary `if`/`else` capture, restore, and join path now carries
+`ExactPlaceFacts` as one value. It keeps PAL, conditional-editor facts,
+`InitMask`, and `Moved` compatibility snapshots in the same transaction; the
+admitted whole/projection join no longer rebuilds from separate maps.
+
+Migrate the remaining `guard`, loop, `for`, `match`, call-candidate rollback,
+and outcome-arm capture/restore/join paths to the same shape. Each path
+continues to snapshot PAL and direct-flow ceilings in the same transaction; no
+specialized merge may recreate a direct `InitMask`-only path for an admitted
+coordinate.
 
 This slice may retain compatibility-mask synchronization at legacy consumers,
 but no admitted exact-place join may derive its answer by intersecting the
