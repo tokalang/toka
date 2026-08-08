@@ -365,12 +365,14 @@ copy legacy compatibility views and are not yet a single join authority;
 eligibility handoff and CodeGen cleanup remain as specified above. P0.4a
 therefore does not widen the surface or satisfy a P0 closure gate.
 
-The first P0.4b CFG slices move ordinary `if`/`else`, `guard`, conditional
-`loop`, `for`, and `match` capture, restore, reachable-branch selection, and
-join to the same `ExactPlaceFacts` value. They preserve the PAL and
-compatibility transactions alongside that value; break/continue use the
-central `AnalysisState` path. The remaining rollback and outcome-arm paths
-remain explicitly unqualified.
+P0.4b moves ordinary `if`/`else`, `guard`, conditional `loop`, `for`, and
+`match` capture, restore, reachable-branch selection, and join to the same
+`ExactPlaceFacts` value. It also moves call-candidate rollback to that value;
+Outcome arms use the migrated `match` transaction rather than a separate
+snapshot carrier. These paths preserve the PAL and compatibility transactions
+alongside the fact, and break/continue use the central `AnalysisState` path.
+This completes the P0.4b carrier migration only; operation/lowering handoff
+and compatibility retirement remain P0.4c/P0.4d work.
 
 A language RFC may claim a PlaceState slice implemented only when all relevant
 gates are green at the same revision:

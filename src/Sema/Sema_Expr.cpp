@@ -511,30 +511,6 @@ static std::map<std::string, bool> captureVisibleMoved(Scope *ScopePtr) {
   return moved;
 }
 
-static std::map<std::string, PlaceStateFact>
-captureVisiblePlaceFacts(Scope *ScopePtr) {
-  std::map<std::string, PlaceStateFact> states;
-  for (Scope *S = ScopePtr; S; S = S->Parent) {
-    for (const auto &pair : S->Symbols) {
-      if (!states.count(pair.first))
-        states[pair.first] = pair.second.placeFact();
-    }
-  }
-  return states;
-}
-
-static std::map<std::string, ProjectionPlaceFacts>
-captureVisibleProjectionFacts(Scope *ScopePtr) {
-  std::map<std::string, ProjectionPlaceFacts> facts;
-  for (Scope *S = ScopePtr; S; S = S->Parent) {
-    for (const auto &pair : S->Symbols) {
-      if (!facts.count(pair.first))
-        facts[pair.first] = pair.second.projectionFacts();
-    }
-  }
-  return facts;
-}
-
 static std::map<std::string, ExactPlaceFacts>
 captureVisibleExactPlaceFacts(Scope *ScopePtr) {
   std::map<std::string, ExactPlaceFacts> facts;
@@ -572,8 +548,7 @@ static void restoreVisibleConditionalTodoIds(
 static void restoreVisibleAnalysisState(
     Scope *ScopePtr, const std::map<std::string, uint64_t> &masks,
     const std::map<std::string, bool> &moved,
-    const std::map<std::string, PlaceStateFact> &placeFacts,
-    const std::map<std::string, ProjectionPlaceFacts> &projectionFacts) {
+    const std::map<std::string, ExactPlaceFacts> &exactPlaces) {
   for (const auto &pair : masks) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info)
@@ -584,23 +559,6 @@ static void restoreVisibleAnalysisState(
     if (ScopePtr->findSymbol(pair.first, info) && info)
       info->Moved = pair.second;
   }
-  for (const auto &pair : placeFacts) {
-    SymbolInfo *info = nullptr;
-    if (ScopePtr->findSymbol(pair.first, info) && info)
-      info->placeFact() = pair.second;
-  }
-  for (const auto &pair : projectionFacts) {
-    SymbolInfo *info = nullptr;
-    if (ScopePtr->findSymbol(pair.first, info) && info) {
-      info->projectionFacts() = pair.second;
-      info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
-    }
-  }
-}
-
-static void restoreVisibleExactPlaceFacts(
-    Scope *ScopePtr,
-    const std::map<std::string, ExactPlaceFacts> &exactPlaces) {
   for (const auto &pair : exactPlaces) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info) {
@@ -688,14 +646,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
     mergedPAL = PALCheckerState.snapshot();
   }
 
-  restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved, {}, {});
-  for (const auto &pair : mergedExactPlaces) {
-    SymbolInfo *info = nullptr;
-    if (CurrentScope->findSymbol(pair.first, info) && info) {
-      info->ExactPlace = pair.second;
-      info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
-    }
-  }
+  restoreVisibleAnalysisState(CurrentScope, mergedMasks, mergedMoved,
+                              mergedExactPlaces);
   restoreVisibleConditionalTodoIds(CurrentScope, mergedConditionalTodoIds);
   m_PayloadFlowRestrictedPaths = std::move(mergedPayloadFlowRestrictions);
   PALCheckerState.restore(mergedPAL);
@@ -2384,8 +2336,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (ie->Else) {
       // Restore Before Else
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                  {}, {});
-      restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesBefore);
+                                  exactPlacesBefore);
       restoreVisibleConditionalTodoIds(CurrentScope, conditionalBefore);
       PALCheckerState.restore(palBefore);
 
@@ -2422,8 +2373,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         PALCheckerState.restore(palElse);
       } else if (elseReturns) {
         // State is purely from Then branch
-        restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen, {}, {});
-        restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesThen);
+        restoreVisibleAnalysisState(CurrentScope, masksThen, movedThen,
+                                    exactPlacesThen);
         restoreVisibleConditionalTodoIds(CurrentScope, conditionalThen);
         PALCheckerState.restore(palThen);
       } else {
@@ -3242,8 +3193,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     PALChecker palElse = palBefore;
     if (fe->ElseBody) {
       restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                  {}, {});
-      restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesBefore);
+                                  exactPlacesBefore);
       PALCheckerState.restore(palBefore);
 
       m_ControlFlowStack.push_back({"", NoProducedValue, nullptr, false, isReceiver});
@@ -3261,18 +3211,15 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (fe->ElseBody) {
       if (!bodyContinuesLoop && elseJumps) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                    {}, {});
-        restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesBefore);
+                                    exactPlacesBefore);
         PALCheckerState.restore(palBefore);
       } else if (!bodyContinuesLoop) {
         restoreVisibleAnalysisState(CurrentScope, masksElse, movedElse,
-                                    {}, {});
-        restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesElse);
+                                    exactPlacesElse);
         PALCheckerState.restore(palElse);
       } else if (elseJumps) {
         restoreVisibleAnalysisState(CurrentScope, masksBody, movedBody,
-                                    {}, {});
-        restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesBody);
+                                    exactPlacesBody);
         PALCheckerState.restore(palBody);
       } else {
         for (auto &pair : masksBefore) {
@@ -3303,8 +3250,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
       if (!bodyContinuesLoop) {
         restoreVisibleAnalysisState(CurrentScope, masksBefore, movedBefore,
-                                    {}, {});
-        restoreVisibleExactPlaceFacts(CurrentScope, exactPlacesBefore);
+                                    exactPlacesBefore);
         PALCheckerState.restore(palBefore);
       } else {
         for (auto &pair : masksBefore) {

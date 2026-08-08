@@ -717,22 +717,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     struct FlowSnapshot {
       Scope *ScopePtr;
       std::map<std::string, bool> Moved;
-      std::map<std::string, PlaceStateFact> PlaceFacts;
+      std::map<std::string, ExactPlaceFacts> ExactPlaces;
     };
-    std::vector<FlowSnapshot> movedSnapshot;
+    std::vector<FlowSnapshot> flowSnapshot;
     for (Scope *scope = CurrentScope; scope; scope = scope->Parent) {
       std::map<std::string, bool> moved;
-      std::map<std::string, PlaceStateFact> placeFacts;
+      std::map<std::string, ExactPlaceFacts> exactPlaces;
       for (const auto &entry : scope->Symbols) {
         moved[entry.first] = entry.second.Moved;
-        placeFacts[entry.first] = entry.second.placeFact();
+        exactPlaces[entry.first] = entry.second.ExactPlace;
       }
-      movedSnapshot.push_back(
-          {scope, std::move(moved), std::move(placeFacts)});
+      flowSnapshot.push_back(
+          {scope, std::move(moved), std::move(exactPlaces)});
     }
 
-    auto restoreMoved = [&]() {
-      for (auto &entry : movedSnapshot) {
+    auto restoreFlow = [&]() {
+      for (auto &entry : flowSnapshot) {
         Scope *scope = entry.ScopePtr;
         for (const auto &moved : entry.Moved) {
           auto it = scope->Symbols.find(moved.first);
@@ -740,10 +740,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             it->second.Moved = moved.second;
           }
         }
-        for (const auto &placeState : entry.PlaceFacts) {
-          auto it = scope->Symbols.find(placeState.first);
-          if (it != scope->Symbols.end())
-            it->second.placeFact() = placeState.second;
+        for (const auto &exactPlace : entry.ExactPlaces) {
+          auto it = scope->Symbols.find(exactPlace.first);
+          if (it != scope->Symbols.end()) {
+            it->second.ExactPlace = exactPlace.second;
+            it->second.InitMask =
+                exactPlace.second.applyToLegacyInitMask(it->second.InitMask);
+          }
         }
       }
     };
@@ -775,7 +778,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         break;
       }
     }
-    restoreMoved();
+    restoreFlow();
     return accepts;
   };
 

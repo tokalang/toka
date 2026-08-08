@@ -1,13 +1,14 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
-**Status:** Active internal migration. P0.4a has introduced
+**Status:** Active internal migration. P0.4a and P0.4b are implemented for
+the frozen exact-place carrier. P0.4c and P0.4d remain before any P0.4
+completion claim. P0.4a introduced
 `ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
-capture/merge path to it. P0.4b has begun: ordinary `if`/`else`, `guard`,
-`loop`, `for`, and `match` now snapshot, restore, and join that one value. The
-remaining explicit CFG snapshots still copy compatibility views separately, so
-this is not a P0.4 completion claim.
-This document adds no source syntax, does not widen the bounded partial-`cede`
-matrix, and does not qualify the async/place bridge.
+capture/merge path to it. P0.4b moves ordinary `if`/`else`, `guard`, `loop`,
+`for`, `match`, and call-candidate rollback to the same value; `break` and
+`continue` use the central carrier. This document adds no source syntax, does
+not widen the bounded partial-`cede` matrix, and does not qualify the
+async/place bridge.
 
 **Authority:** [`place_state_core_rfc.md`](place_state_core_rfc.md) defines
 the PlaceState contract. [`partial_cede_lifecycle_rfc.md`](partial_cede_lifecycle_rfc.md)
@@ -88,7 +89,7 @@ independence, `Never` versus `Moved`, branch joins, plan-kind mismatch, and
 unsupported-coordinate cases. No user-visible diagnostic or lowering changes
 in this slice.
 
-### P0.4b: CFG ownership of the fact (in progress)
+### P0.4b: CFG ownership of the fact (implemented, not P0.4 closure)
 
 The ordinary `if`/`else`, `guard`, conditional `loop`, `for`, and `match`
 capture, restore, reachable-branch selection, and join paths now carry
@@ -96,12 +97,14 @@ capture, restore, reachable-branch selection, and join paths now carry
 applicable, `InitMask`, and `Moved` compatibility snapshots in the same
 transaction; the admitted whole/projection join no longer rebuilds from
 separate maps. `break` and `continue` already use the central `AnalysisState`
-path.
+path. Call-candidate rollback now restores the same full fact. Outcome arms
+are the `match` arm transaction rather than a separate snapshot carrier, and
+therefore use the migrated `match` path. The old separated
+whole/projection snapshot helpers have been removed.
 
-Migrate the remaining call-candidate rollback and outcome-arm
-capture/restore/join paths to the same shape. Each path continues to snapshot
-PAL and direct-flow ceilings in the same transaction; no specialized merge may
-recreate a direct `InitMask`-only path for an admitted coordinate.
+Each path continues to snapshot PAL and direct-flow ceilings in the same
+transaction; no specialized merge may recreate a direct `InitMask`-only path
+for an admitted coordinate.
 
 This slice may retain compatibility-mask synchronization at legacy consumers,
 but no admitted exact-place join may derive its answer by intersecting the
