@@ -1,8 +1,8 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
-**Status:** Active internal migration. P0.4a, P0.4b, and P0.4c are
-implemented for the frozen exact-place carrier. P0.4d remains before any
-P0.4 completion claim. P0.4a introduced
+**Status:** The four implementation slices are complete for the frozen
+exact-place carrier. The remaining work is candidate-level release
+qualification, not another P0.4 feature slice. P0.4a introduced
 `ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
 capture/merge path to it. P0.4b moves ordinary `if`/`else`, `guard`, `loop`,
 `for`, `match`, and call-candidate rollback to the same value; `break` and
@@ -135,17 +135,29 @@ repopulation runs cover the handoff; this slice does not redesign drop
 lowering. Unsupported custom-drop, shared-member, dynamic, nested, nonlocal,
 and over-64 forms remain rejected before CodeGen.
 
-### P0.4d: Compatibility retirement and qualification
+### P0.4d: Compatibility retirement and qualification (implemented)
 
-Retire semantic reads of `InitMask` and `Moved` for the admitted exact-place
-matrix. Any residual use must be either a documented legacy/reference boundary
-or diagnostic location metadata, never the deciding state authority. Record
-the remaining non-admitted uses explicitly rather than silently treating them
-as P0.4 coverage.
+The frozen matrix no longer decides availability or transitions from
+`InitMask`/`Moved`:
 
-Re-run the bounded partial-`cede`, delayed-init, Outcome, source-less retained
-body replay, and exact-once cleanup matrices, followed by the full release
-qualification at the candidate revision.
+| Surface | Deciding fact |
+|---|---|
+| direct `init`, lexical `init` block, synchronous `init` formal, Outcome post-state | exact whole fact |
+| whole `cede`, callable/variable use after cede, cede-formal consumption | exact whole fact; `MoveLoc` remains diagnostic metadata |
+| admitted direct-field/fixed-index read, partial `cede`, and reinitialization | exact projection fact plus its elaborated `PartialMovePlan` |
+| whole value read/write of an admitted aggregate | exact whole fact plus all eligible projections Live |
+
+The residual `InitMask` paths are intentionally outside that matrix: reference
+`DirtyReferentMask` propagation, custom-drop/dynamic/nested/nonlocal or
+over-64 aggregates that were never admitted, expression construction
+(`m_LastInitMask`), and compatibility snapshots/TKI boundaries. `Moved` is
+still propagated beside exact facts only as a compatibility/diagnostic marker;
+it no longer supplies a frozen-surface semantic decision.
+
+Qualification reruns the bounded partial-`cede`, delayed-init, Outcome,
+source-less retained-body replay, and exact-once cleanup matrices. The next
+gate is the ordinary full release qualification at a candidate revision; it
+does not enlarge P0.4 coverage.
 
 ## 4. Completion conditions
 
