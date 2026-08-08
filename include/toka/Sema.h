@@ -283,8 +283,10 @@ public:
   bool markMoved(const std::string &Name, SourceLocation Loc = {}) {
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
+      if (!ptr->ExactPlace.transitionWhole(PlaceState::Live,
+                                           PlaceState::Moved))
+        return false;
       ptr->Moved = true;
-      ptr->placeFact() = PlaceState::Moved;
       if (Loc.isValid())
         ptr->MoveLoc = Loc;
       return true;
@@ -296,8 +298,12 @@ public:
   bool resetMoved(const std::string &Name) {
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
+      if (!ptr->Moved)
+        return true;
+      if (!ptr->ExactPlace.transitionWhole(PlaceState::Moved,
+                                           PlaceState::Live))
+        return false;
       ptr->Moved = false;
-      ptr->placeFact() = PlaceState::Live;
       ptr->MoveLoc = {};
       return true;
     }

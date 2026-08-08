@@ -2404,12 +2404,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
   for (SymbolInfo *place : completedInitPlaces) {
     if (hasRecheckedOutcomeContract) {
-      place->InitMask = 0;
-      place->placeFact() =
+      const PlaceStateFact pending =
           PlaceStateFact(PlaceState::Never).join(PlaceState::Live);
+      if (place->ExactPlace.transitionWhole(PlaceState::Never, pending))
+        place->InitMask = 0;
     } else {
-      place->InitMask = ~0ULL;
-      place->placeFact() = PlaceState::Live;
+      if (place->ExactPlace.transitionWhole(PlaceState::Never,
+                                            PlaceState::Live))
+        place->InitMask = ~0ULL;
     }
   }
 

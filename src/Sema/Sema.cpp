@@ -4182,7 +4182,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       // An init formal aliases caller storage.  It begins unavailable to
       // ordinary reads and becomes Live only through `init param = ...`.
       Info.InitMask = 0;
-      Info.placeFact() = PlaceState::Never;
+      Info.ExactPlace.setWhole(PlaceState::Never);
       // The contract itself consumes the formal's place authority; this also
       // keeps bodyless TKI declarations from reporting a spurious unused
       // value warning for a parameter that cannot be read.

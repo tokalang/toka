@@ -1,8 +1,8 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
-**Status:** Active internal migration. P0.4a and P0.4b are implemented for
-the frozen exact-place carrier. P0.4c and P0.4d remain before any P0.4
-completion claim. P0.4a introduced
+**Status:** Active internal migration. P0.4a, P0.4b, and P0.4c are
+implemented for the frozen exact-place carrier. P0.4d remains before any
+P0.4 completion claim. P0.4a introduced
 `ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
 capture/merge path to it. P0.4b moves ordinary `if`/`else`, `guard`, `loop`,
 `for`, `match`, and call-candidate rollback to the same value; `break` and
@@ -110,15 +110,28 @@ This slice may retain compatibility-mask synchronization at legacy consumers,
 but no admitted exact-place join may derive its answer by intersecting the
 legacy mask first.
 
-### P0.4c: Operation and lowering handoff
+### P0.4c: Operation and lowering handoff (implemented, not P0.4 closure)
 
-Migrate the frozen operations to the fact API: direct `init`, synchronous
-`init` formal completion, Outcome P1 post-state application, whole `cede`,
-admitted partial `cede`, and admitted repopulation. Their Sema transition and
-CodeGen cleanup-mask update must use the same elaborated plan and one defined
-non-suspending commit boundary.
+`ExactPlaceFacts` now exposes the whole-place transitions used by the frozen
+surface and the exact-plan operation that restores all admitted projections to
+Live. Direct `init` commits `Never -> Live`; synchronous `init`-formal calls
+commit either `Never -> Live` or the private Outcome `{Never, Live}` state;
+an Outcome arm commits that private state to its declared post-state. Whole
+`cede` commits `Live -> Moved` through the scope transition, while admitted
+direct-field and fixed-array transfers and their assignments use the matching
+projection transition. A full repopulation uses the already-elaborated plan;
+it does not rebuild eligibility from the aggregate type.
 
-The CodeGen change is deliberately a handoff audit, not a redesign of drop
+The compatibility `InitMask`/`Moved` updates remain in the same synchronous
+Sema operation as those commits. This is the defined non-suspending boundary;
+the async/place bridge is still excluded.
+
+The CodeGen handoff audit confirms that `VariableDecl` and pattern binders
+copy that same AST-carried `PartialMovePlan`, seed `DropMask` from its eligible
+mask, and check that plan again before clearing or restoring a concrete drop
+bit. CodeGen does not recompute shape, custom-drop, sharing, array-bound, or
+projection eligibility. Existing direct-field/fixed-index cleanup and
+repopulation runs cover the handoff; this slice does not redesign drop
 lowering. Unsupported custom-drop, shared-member, dynamic, nested, nonlocal,
 and over-64 forms remain rejected before CodeGen.
 

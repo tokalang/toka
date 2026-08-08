@@ -53,6 +53,9 @@ public:
   constexpr bool isExactly(PlaceState state) const {
     return m_States == placeStateMask(state);
   }
+  constexpr bool equals(PlaceStateFact other) const {
+    return m_States == other.m_States;
+  }
   constexpr PlaceStateFact join(PlaceStateFact other) const {
     return PlaceStateFact(static_cast<uint8_t>(m_States | other.m_States),
                           RawBits{});
@@ -271,6 +274,16 @@ public:
     m_Projections = m_Plan.isAdmitted() ? projections
                                          : ProjectionPlaceFacts{};
   }
+  constexpr bool transitionWhole(PlaceStateFact expected,
+                                 PlaceStateFact state) {
+    if (!m_Whole.equals(expected))
+      return false;
+    m_Whole = state;
+    return true;
+  }
+  constexpr bool transitionWhole(PlaceState expected, PlaceState state) {
+    return transitionWhole(PlaceStateFact(expected), PlaceStateFact(state));
+  }
   constexpr uint64_t applyToLegacyInitMask(uint64_t legacy) const {
     return m_Projections.applyToLegacyInitMask(legacy);
   }
@@ -289,6 +302,12 @@ public:
       return true;
     }
     return false;
+  }
+  constexpr void repopulateAllProjections() {
+    m_Projections = m_Plan.isAdmitted()
+                        ? ProjectionPlaceFacts::fromLegacyInitMask(
+                              m_Plan.eligibleMask(), m_Plan.eligibleMask())
+                        : ProjectionPlaceFacts{};
   }
 
   constexpr ExactPlaceFacts &operator|=(ExactPlaceFacts other) {

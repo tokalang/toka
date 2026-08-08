@@ -3423,11 +3423,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       Member->toString());
               } else {
                 initializeProjectionFacts(*RootInfo);
-                if (!RootInfo->projectionFacts().tracks(memberIndex)) {
+                if (!RootInfo->ExactPlace.transitionProjection(
+                        PartialMoveProjectionKind::DirectField, memberIndex,
+                        PlaceState::Moved)) {
                   error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
                         Member->toString());
                 } else {
-                  RootInfo->projectionFacts().markMoved(memberIndex);
                   syncLegacyProjectionLiveness(*RootInfo);
                 }
               }
@@ -3459,11 +3460,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (array && constant && array->Size <= 64 &&
                 constant->Value < array->Size && constant->Value < 64) {
               initializeProjectionFacts(*RootInfo);
-              if (!RootInfo->projectionFacts().tracks(constant->Value)) {
+              if (!RootInfo->ExactPlace.transitionProjection(
+                      PartialMoveProjectionKind::FixedArrayElement,
+                      constant->Value, PlaceState::Moved)) {
                 error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
                       Index->toString());
               } else {
-                RootInfo->projectionFacts().markMoved(constant->Value);
                 syncLegacyProjectionLiveness(*RootInfo);
               }
             } else if (array && constant && constant->Value < array->Size) {
@@ -4096,8 +4098,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                             stripMemberAccessMarkers(member->Member)) {
                           if (i < 64) {
                             initializeProjectionFacts(*rootInfo);
-                            if (rootInfo->projectionFacts().tracks(i)) {
-                              rootInfo->projectionFacts().markMoved(i);
+                            if (rootInfo->ExactPlace.transitionProjection(
+                                    PartialMoveProjectionKind::DirectField,
+                                    i, PlaceState::Moved)) {
                               syncLegacyProjectionLiveness(*rootInfo);
                               supportedDirectField = true;
                             }
@@ -4880,9 +4883,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           SymbolInfo *placeInfo = nullptr;
           if (CurrentScope->findSymbol(outcomePlace, placeInfo) && placeInfo) {
             const bool isLive = transition->Post == OutcomePostState::Init;
-            placeInfo->InitMask = isLive ? ~0ULL : 0;
-            placeInfo->placeFact() =
-                isLive ? PlaceState::Live : PlaceState::Never;
+            const PlaceStateFact pending =
+                PlaceStateFact(PlaceState::Never).join(PlaceState::Live);
+            if (placeInfo->ExactPlace.transitionWhole(
+                    pending, isLive ? PlaceStateFact(PlaceState::Live)
+                                    : PlaceStateFact(PlaceState::Never)))
+              placeInfo->InitMask = isLive ? ~0ULL : 0;
           }
         }
       }

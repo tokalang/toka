@@ -1279,8 +1279,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           }
         } else {
           Info->InitMask = ~0ULL;
-          Info->projectionFacts() = ProjectionPlaceFacts{};
-          initializeProjectionFacts(*Info);
+          if (isExplicitInit && Info == initTargetInfo)
+            Info->ExactPlace.transitionWhole(PlaceState::Never,
+                                             PlaceState::Live);
+          Info->ExactPlace.repopulateAllProjections();
         }
       }
     } else if (auto *Memb = dynamic_cast<MemberExpr *>(LHSExpr)) {
@@ -1322,8 +1324,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                   }
                 } else {
                   initializeProjectionFacts(*Info);
-                  if (Info->projectionFacts().tracks(projectionIndex)) {
-                    Info->projectionFacts().markLive(projectionIndex);
+                  if (Info->ExactPlace.transitionProjection(
+                          PartialMoveProjectionKind::DirectField,
+                          projectionIndex, PlaceState::Live)) {
                     syncLegacyProjectionLiveness(*Info);
                   } else {
                     Info->InitMask |= bitsToSet;
@@ -1347,8 +1350,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
           if (array && constant->Value < array->Size) {
             initializeProjectionFacts(*Info);
-            if (Info->projectionFacts().tracks(constant->Value)) {
-              Info->projectionFacts().markLive(constant->Value);
+            if (Info->ExactPlace.transitionProjection(
+                    PartialMoveProjectionKind::FixedArrayElement,
+                    constant->Value, PlaceState::Live)) {
               syncLegacyProjectionLiveness(*Info);
             } else {
               Info->InitMask |= (1ULL << constant->Value);
