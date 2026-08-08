@@ -49,13 +49,22 @@ struct SymbolInfo {
   SourceLocation MoveLoc;
   uint64_t InitMask =
       ~0ULL; // 0=uninitialized, 1=initialized. For shapes, each bit corresponds to a member.
-  // The whole-place semantic fact. `InitMask` remains a temporary projection
-  // liveness compatibility mask while P0 migrates eligible exact projections.
-  PlaceStateFact PlaceFact = PlaceState::Live;
-  // Enabled only for the bounded local direct-field/fixed-array capability
-  // matrix. `InitMask` is derived from this ledger whenever it is active.
-  PartialMovePlan PartialMove;
-  ProjectionPlaceFacts ProjectionFacts;
+  // The one semantic fact for the whole local and, when admitted, its direct
+  // projections. `InitMask` remains a compatibility liveness view until its
+  // legacy consumers are retired; it is not a second exact-place authority.
+  ExactPlaceFacts ExactPlace;
+
+  PlaceStateFact &placeFact() { return ExactPlace.whole(); }
+  const PlaceStateFact &placeFact() const { return ExactPlace.whole(); }
+  PartialMovePlan &partialMovePlan() { return ExactPlace.plan(); }
+  const PartialMovePlan &partialMovePlan() const { return ExactPlace.plan(); }
+  ProjectionPlaceFacts &projectionFacts() { return ExactPlace.projections(); }
+  const ProjectionPlaceFacts &projectionFacts() const {
+    return ExactPlace.projections();
+  }
+  void installPartialMovePlan(PartialMovePlan plan) {
+    ExactPlace.setPlan(plan, InitMask);
+  }
 
   // "Hot Potato" Tracking
   // If this symbol is a Reference (&T), this mask tracks the InitMask of the
@@ -275,7 +284,7 @@ public:
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
       ptr->Moved = true;
-      ptr->PlaceFact = PlaceState::Moved;
+      ptr->placeFact() = PlaceState::Moved;
       if (Loc.isValid())
         ptr->MoveLoc = Loc;
       return true;
@@ -288,7 +297,7 @@ public:
     SymbolInfo *ptr = nullptr;
     if (findSymbol(Name, ptr)) {
       ptr->Moved = false;
-      ptr->PlaceFact = PlaceState::Live;
+      ptr->placeFact() = PlaceState::Live;
       ptr->MoveLoc = {};
       return true;
     }

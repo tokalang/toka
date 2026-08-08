@@ -1,10 +1,10 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
 **Status:** Active internal migration. The first P0.4a entry has introduced
-`ExactPlaceFacts` and moved the central `AnalysisState` capture/merge path to
-it. `SymbolInfo` and the remaining explicit CFG snapshots still carry the
-legacy parallel fields, so this is not yet a P0.4a completion claim. This
-document adds no source syntax, does not widen the bounded partial-`cede`
+`ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
+capture/merge path to it. The remaining explicit CFG snapshots still copy
+compatibility views separately, so this is not yet a P0.4a completion claim.
+This document adds no source syntax, does not widen the bounded partial-`cede`
 matrix, and does not qualify the async/place bridge.
 
 **Authority:** [`place_state_core_rfc.md`](place_state_core_rfc.md) defines
@@ -64,13 +64,14 @@ the exact-place fact.
 
 ### P0.4a: Symbol and analysis-state consolidation
 
-The initial implementation is deliberately narrower: `ExactPlaceFacts` owns
-the whole fact, plan, and projection facts in the model layer, and
-`AnalysisState` uses that one value for its capture/merge path. Its unit test
-now covers projection transitions, joins, legacy-liveness derivation, and
-fail-closed mismatched plans. The next P0.4a commit must move the corresponding
-`SymbolInfo` fields and remaining ad-hoc snapshots; until then they remain
-compatibility mirrors rather than evidence of a unified semantic authority.
+The initial implementation has completed the model and storage half:
+`ExactPlaceFacts` owns the whole fact, plan, and projection facts on
+`SymbolInfo`, and `AnalysisState` uses that one value for its capture/merge
+path. Its unit test covers projection transitions, joins, legacy-liveness
+derivation, and fail-closed mismatched plans. The next P0.4a commit must move
+the remaining ad-hoc CFG snapshots to that same value; their copied
+`InitMask`/whole/projection compatibility views are not yet evidence of a
+unified join authority.
 
 Replace the parallel whole/projection fact fields on `SymbolInfo` and the
 parallel `PlaceFacts`/`ProjectionFacts` maps in `AnalysisState` with one

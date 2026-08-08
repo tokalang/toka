@@ -517,7 +517,7 @@ captureVisiblePlaceFacts(Scope *ScopePtr) {
   for (Scope *S = ScopePtr; S; S = S->Parent) {
     for (const auto &pair : S->Symbols) {
       if (!states.count(pair.first))
-        states[pair.first] = pair.second.PlaceFact;
+        states[pair.first] = pair.second.placeFact();
     }
   }
   return states;
@@ -529,7 +529,7 @@ captureVisibleProjectionFacts(Scope *ScopePtr) {
   for (Scope *S = ScopePtr; S; S = S->Parent) {
     for (const auto &pair : S->Symbols) {
       if (!facts.count(pair.first))
-        facts[pair.first] = pair.second.ProjectionFacts;
+        facts[pair.first] = pair.second.projectionFacts();
     }
   }
   return facts;
@@ -542,8 +542,8 @@ captureVisibleExactPlaceFacts(Scope *ScopePtr) {
     for (const auto &pair : S->Symbols) {
       if (!facts.count(pair.first)) {
         facts[pair.first] = ExactPlaceFacts::fromLegacy(
-            pair.second.PlaceFact, pair.second.PartialMove,
-            pair.second.ProjectionFacts);
+            pair.second.placeFact(), pair.second.partialMovePlan(),
+            pair.second.projectionFacts());
       }
     }
   }
@@ -590,12 +590,12 @@ static void restoreVisibleAnalysisState(
   for (const auto &pair : placeFacts) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info)
-      info->PlaceFact = pair.second;
+      info->placeFact() = pair.second;
   }
   for (const auto &pair : projectionFacts) {
     SymbolInfo *info = nullptr;
     if (ScopePtr->findSymbol(pair.first, info) && info) {
-      info->ProjectionFacts = pair.second;
+      info->projectionFacts() = pair.second;
       info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
     }
   }
@@ -683,8 +683,8 @@ void Sema::mergeAnalysisStates(const std::vector<AnalysisState> &states,
   for (const auto &pair : mergedExactPlaces) {
     SymbolInfo *info = nullptr;
     if (CurrentScope->findSymbol(pair.first, info) && info) {
-      info->PlaceFact = pair.second.whole();
-      info->ProjectionFacts = pair.second.projections();
+      info->placeFact() = pair.second.whole();
+      info->projectionFacts() = pair.second.projections();
       info->InitMask = pair.second.applyToLegacyInitMask(info->InitMask);
     }
   }
@@ -2316,7 +2316,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       if (!CurrentScope->findSymbol(initStateVariable->Name, infoPtr) ||
           !infoPtr)
         return;
-      infoPtr->PlaceFact = state;
+      infoPtr->placeFact() = state;
       infoPtr->Moved = false;
       infoPtr->InitMask = state == PlaceState::Never ? 0 : ~0ULL;
     };
@@ -2439,14 +2439,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeFactsElse.count(pair.first)
                   ? placeFactsElse[pair.first]
                   : PlaceStateFact::bottom();
-          info->PlaceFact = thenPlaceStates | elsePlaceStates;
+          info->placeFact() = thenPlaceStates | elsePlaceStates;
           ProjectionPlaceFacts thenProjectionFacts =
               projectionFactsThen.count(pair.first)
                   ? projectionFactsThen[pair.first]
                   : ProjectionPlaceFacts{};
           if (projectionFactsElse.count(pair.first))
             thenProjectionFacts |= projectionFactsElse[pair.first];
-          info->ProjectionFacts = thenProjectionFacts;
+          info->projectionFacts() = thenProjectionFacts;
           syncLegacyProjectionLiveness(*info);
         }
         for (const auto &pair : conditionalBefore) {
@@ -2473,11 +2473,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         info->InitMask = pair.second;
         if (thenReturns) {
           info->Moved = movedBefore[pair.first];
-          info->PlaceFact =
+          info->placeFact() =
               placeFactsBefore.count(pair.first)
                   ? placeFactsBefore[pair.first]
                   : PlaceStateFact::bottom();
-          info->ProjectionFacts =
+          info->projectionFacts() =
               projectionFactsBefore.count(pair.first)
                   ? projectionFactsBefore[pair.first]
                   : ProjectionPlaceFacts{};
@@ -2485,7 +2485,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (narrowsInitState && initStateVariable &&
               pair.first == initStateVariable->Name) {
             info->Moved = false;
-            info->PlaceFact = PlaceState::Live;
+            info->placeFact() = PlaceState::Live;
             info->InitMask = ~0ULL;
           }
         } else {
@@ -2499,21 +2499,21 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeFactsThen.count(pair.first)
                   ? placeFactsThen[pair.first]
                   : PlaceStateFact::bottom();
-          info->PlaceFact = beforePlaceStates | thenPlaceStates;
+          info->placeFact() = beforePlaceStates | thenPlaceStates;
           ProjectionPlaceFacts mergedProjectionFacts =
               projectionFactsBefore.count(pair.first)
                   ? projectionFactsBefore[pair.first]
                   : ProjectionPlaceFacts{};
           if (projectionFactsThen.count(pair.first))
             mergedProjectionFacts |= projectionFactsThen[pair.first];
-          info->ProjectionFacts = mergedProjectionFacts;
+          info->projectionFacts() = mergedProjectionFacts;
           syncLegacyProjectionLiveness(*info);
           if (narrowsInitState && initStateVariable &&
               pair.first == initStateVariable->Name) {
-            info->PlaceFact =
+            info->placeFact() =
                 thenPlaceStates.join(PlaceState::Live);
             info->Moved = false;
-            info->InitMask = hasExactlyPlaceState(info->PlaceFact,
+            info->InitMask = hasExactlyPlaceState(info->placeFact(),
                                                    PlaceState::Live)
                                  ? ~0ULL
                                  : 0;
@@ -2624,8 +2624,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeFactsBefore[pair.first] = pair.second.PlaceFact;
-      projectionFactsBefore[pair.first] = pair.second.ProjectionFacts;
+      placeFactsBefore[pair.first] = pair.second.placeFact();
+      projectionFactsBefore[pair.first] = pair.second.projectionFacts();
     }
     auto palBefore = PALCheckerState.snapshot();
 
@@ -2637,11 +2637,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         CurrentScope->Symbols[pair.first].Moved = pair.second;
       }
       for (auto &pair : placeFactsBefore) {
-        CurrentScope->Symbols[pair.first].PlaceFact = pair.second;
+        CurrentScope->Symbols[pair.first].placeFact() = pair.second;
       }
       for (auto &pair : projectionFactsBefore) {
         auto &info = CurrentScope->Symbols[pair.first];
-        info.ProjectionFacts = pair.second;
+        info.projectionFacts() = pair.second;
         info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
       }
       PALCheckerState.restore(palBefore);
@@ -2666,7 +2666,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto capturePlaceFacts = [&]() {
       std::map<std::string, PlaceStateFact> states;
       for (auto &pair : CurrentScope->Symbols) {
-        states[pair.first] = pair.second.PlaceFact;
+        states[pair.first] = pair.second.placeFact();
       }
       return states;
     };
@@ -2674,7 +2674,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto captureProjectionFacts = [&]() {
       std::map<std::string, ProjectionPlaceFacts> facts;
       for (auto &pair : CurrentScope->Symbols)
-        facts[pair.first] = pair.second.ProjectionFacts;
+        facts[pair.first] = pair.second.projectionFacts();
       return facts;
     };
 
@@ -2779,9 +2779,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (movedElse.count(pair.first))
             pair.second.Moved = movedElse[pair.first];
           if (placeFactsElse.count(pair.first))
-            pair.second.PlaceFact = placeFactsElse[pair.first];
+            pair.second.placeFact() = placeFactsElse[pair.first];
           if (projectionFactsElse.count(pair.first)) {
-            pair.second.ProjectionFacts = projectionFactsElse[pair.first];
+            pair.second.projectionFacts() = projectionFactsElse[pair.first];
             syncLegacyProjectionLiveness(pair.second);
           }
         }
@@ -2793,9 +2793,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (movedThen.count(pair.first))
             pair.second.Moved = movedThen[pair.first];
           if (placeFactsThen.count(pair.first))
-            pair.second.PlaceFact = placeFactsThen[pair.first];
+            pair.second.placeFact() = placeFactsThen[pair.first];
           if (projectionFactsThen.count(pair.first)) {
-            pair.second.ProjectionFacts = projectionFactsThen[pair.first];
+            pair.second.projectionFacts() = projectionFactsThen[pair.first];
             syncLegacyProjectionLiveness(pair.second);
           }
         }
@@ -2816,14 +2816,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeFactsElse.count(pair.first)
                   ? placeFactsElse[pair.first]
                   : PlaceStateFact::bottom();
-          pair.second.PlaceFact = thenPlaceStates | elsePlaceStates;
+          pair.second.placeFact() = thenPlaceStates | elsePlaceStates;
           ProjectionPlaceFacts projectionFacts =
               projectionFactsThen.count(pair.first)
                   ? projectionFactsThen[pair.first]
                   : ProjectionPlaceFacts{};
           if (projectionFactsElse.count(pair.first))
             projectionFacts |= projectionFactsElse[pair.first];
-          pair.second.ProjectionFacts = projectionFacts;
+          pair.second.projectionFacts() = projectionFacts;
           syncLegacyProjectionLiveness(pair.second);
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palElse, true);
@@ -2847,14 +2847,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeFactsBefore.count(pair.first)
                   ? placeFactsBefore[pair.first]
                   : PlaceStateFact::bottom();
-          pair.second.PlaceFact = thenPlaceStates | entryPlaceStates;
+          pair.second.placeFact() = thenPlaceStates | entryPlaceStates;
           ProjectionPlaceFacts projectionFacts =
               projectionFactsThen.count(pair.first)
                   ? projectionFactsThen[pair.first]
                   : ProjectionPlaceFacts{};
           if (projectionFactsBefore.count(pair.first))
             projectionFacts |= projectionFactsBefore[pair.first];
-          pair.second.ProjectionFacts = projectionFacts;
+          pair.second.projectionFacts() = projectionFacts;
           syncLegacyProjectionLiveness(pair.second);
         }
         PALCheckerState.mergeBranches(palBefore, palThen, true, palBefore, true);
@@ -2933,8 +2933,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeFactsBefore[pair.first] = pair.second.PlaceFact;
-      projectionFactsBefore[pair.first] = pair.second.ProjectionFacts;
+      placeFactsBefore[pair.first] = pair.second.placeFact();
+      projectionFactsBefore[pair.first] = pair.second.projectionFacts();
     }
     auto conditionalBefore = captureVisibleConditionalTodoIds(CurrentScope);
     auto visibleUniqueMovedBefore = captureVisibleUniqueMoved(CurrentScope);
@@ -2973,8 +2973,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       for (auto &pair : CurrentScope->Symbols) {
         masksBody[pair.first] = pair.second.InitMask;
         movedBody[pair.first] = pair.second.Moved;
-        placeFactsBody[pair.first] = pair.second.PlaceFact;
-        projectionFactsBody[pair.first] = pair.second.ProjectionFacts;
+        placeFactsBody[pair.first] = pair.second.placeFact();
+        projectionFactsBody[pair.first] = pair.second.projectionFacts();
       }
       auto palBody = PALCheckerState.snapshot();
 
@@ -2998,14 +2998,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             placeFactsBody.count(pair.first)
                 ? placeFactsBody[pair.first]
                 : PlaceStateFact::bottom();
-        pair.second.PlaceFact = entryPlaceStates | bodyPlaceStates;
+        pair.second.placeFact() = entryPlaceStates | bodyPlaceStates;
         ProjectionPlaceFacts projectionFacts =
             projectionFactsBefore.count(pair.first)
                 ? projectionFactsBefore[pair.first]
                 : ProjectionPlaceFacts{};
         if (projectionFactsBody.count(pair.first))
           projectionFacts |= projectionFactsBody[pair.first];
-        pair.second.ProjectionFacts = projectionFacts;
+        pair.second.projectionFacts() = projectionFacts;
         syncLegacyProjectionLiveness(pair.second);
       }
       PALCheckerState.mergeBranches(palBefore, palBefore, true, palBody, true);
@@ -3365,14 +3365,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeFactsElse.count(pair.first)
                   ? placeFactsElse[pair.first]
                   : PlaceStateFact::bottom();
-          info->PlaceFact = bodyPlaceStates | elsePlaceStates;
+          info->placeFact() = bodyPlaceStates | elsePlaceStates;
           ProjectionPlaceFacts projectionFacts =
               projectionFactsBody.count(pair.first)
                   ? projectionFactsBody[pair.first]
                   : ProjectionPlaceFacts{};
           if (projectionFactsElse.count(pair.first))
             projectionFacts |= projectionFactsElse[pair.first];
-          info->ProjectionFacts = projectionFacts;
+          info->projectionFacts() = projectionFacts;
           syncLegacyProjectionLiveness(*info);
         }
         PALCheckerState.mergeBranches(palBefore, palBody, true, palElse, true);
@@ -3404,14 +3404,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               placeFactsBody.count(pair.first)
                   ? placeFactsBody[pair.first]
                   : PlaceStateFact::bottom();
-          info->PlaceFact = entryPlaceStates | bodyPlaceStates;
+          info->placeFact() = entryPlaceStates | bodyPlaceStates;
           ProjectionPlaceFacts projectionFacts =
               projectionFactsBefore.count(pair.first)
                   ? projectionFactsBefore[pair.first]
                   : ProjectionPlaceFacts{};
           if (projectionFactsBody.count(pair.first))
             projectionFacts |= projectionFactsBody[pair.first];
-          info->ProjectionFacts = projectionFacts;
+          info->projectionFacts() = projectionFacts;
           syncLegacyProjectionLiveness(*info);
         }
         PALCheckerState.mergeBranches(palBefore, palBody, true, palBefore, true);
@@ -3562,11 +3562,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                       Member->toString());
               } else {
                 initializeProjectionFacts(*RootInfo);
-                if (!RootInfo->ProjectionFacts.tracks(memberIndex)) {
+                if (!RootInfo->projectionFacts().tracks(memberIndex)) {
                   error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
                         Member->toString());
                 } else {
-                  RootInfo->ProjectionFacts.markMoved(memberIndex);
+                  RootInfo->projectionFacts().markMoved(memberIndex);
                   syncLegacyProjectionLiveness(*RootInfo);
                 }
               }
@@ -3598,11 +3598,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             if (array && constant && array->Size <= 64 &&
                 constant->Value < array->Size && constant->Value < 64) {
               initializeProjectionFacts(*RootInfo);
-              if (!RootInfo->ProjectionFacts.tracks(constant->Value)) {
+              if (!RootInfo->projectionFacts().tracks(constant->Value)) {
                 error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
                       Index->toString());
               } else {
-                RootInfo->ProjectionFacts.markMoved(constant->Value);
+                RootInfo->projectionFacts().markMoved(constant->Value);
                 syncLegacyProjectionLiveness(*RootInfo);
               }
             } else if (array && constant && constant->Value < array->Size) {
@@ -3801,7 +3801,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (const auto &context : m_InitBlockContexts) {
       SymbolInfo *target = nullptr;
       if (!CurrentScope->findSymbol(context.PlaceName, target) || !target ||
-          !hasExactlyPlaceState(target->PlaceFact, PlaceState::Live)) {
+          !hasExactlyPlaceState(target->placeFact(), PlaceState::Live)) {
         error(awaitEx, DiagID::ERR_INIT_BLOCK_SUSPEND, context.PlaceName);
       }
     }
@@ -4235,8 +4235,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                             stripMemberAccessMarkers(member->Member)) {
                           if (i < 64) {
                             initializeProjectionFacts(*rootInfo);
-                            if (rootInfo->ProjectionFacts.tracks(i)) {
-                              rootInfo->ProjectionFacts.markMoved(i);
+                            if (rootInfo->projectionFacts().tracks(i)) {
+                              rootInfo->projectionFacts().markMoved(i);
                               syncLegacyProjectionLiveness(*rootInfo);
                               supportedDirectField = true;
                             }
@@ -4975,8 +4975,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     for (auto &pair : CurrentScope->Symbols) {
       masksBefore[pair.first] = pair.second.InitMask;
       movedBefore[pair.first] = pair.second.Moved;
-      placeFactsBefore[pair.first] = pair.second.PlaceFact;
-      projectionFactsBefore[pair.first] = pair.second.ProjectionFacts;
+      placeFactsBefore[pair.first] = pair.second.placeFact();
+      projectionFactsBefore[pair.first] = pair.second.projectionFacts();
     }
     auto palBefore = PALCheckerState.snapshot();
     bool hasReachableArm = false;
@@ -4994,11 +4994,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         CurrentScope->Symbols[pair.first].Moved = pair.second;
       }
       for (auto &pair : placeFactsBefore) {
-        CurrentScope->Symbols[pair.first].PlaceFact = pair.second;
+        CurrentScope->Symbols[pair.first].placeFact() = pair.second;
       }
       for (auto &pair : projectionFactsBefore) {
         auto &info = CurrentScope->Symbols[pair.first];
-        info.ProjectionFacts = pair.second;
+        info.projectionFacts() = pair.second;
         info.InitMask = pair.second.applyToLegacyInitMask(info.InitMask);
       }
       PALCheckerState.restore(palBefore);
@@ -5026,7 +5026,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           if (CurrentScope->findSymbol(outcomePlace, placeInfo) && placeInfo) {
             const bool isLive = transition->Post == OutcomePostState::Init;
             placeInfo->InitMask = isLive ? ~0ULL : 0;
-            placeInfo->PlaceFact =
+            placeInfo->placeFact() =
                 isLive ? PlaceState::Live : PlaceState::Never;
           }
         }
@@ -5064,8 +5064,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           for (auto &pair : CurrentScope->Symbols) {
             mergedMasks[pair.first] = pair.second.InitMask;
             mergedMoved[pair.first] = pair.second.Moved;
-            mergedPlaceFacts[pair.first] = pair.second.PlaceFact;
-            mergedProjectionFacts[pair.first] = pair.second.ProjectionFacts;
+            mergedPlaceFacts[pair.first] = pair.second.placeFact();
+            mergedProjectionFacts[pair.first] = pair.second.projectionFacts();
           }
           mergedPAL = PALCheckerState.snapshot();
           hasReachableArm = true;
@@ -5083,16 +5083,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             else
               mergedMoved[pair.first] = armMoved;
 
-            PlaceStateFact armPlaceStates = pair.second.PlaceFact;
+            PlaceStateFact armPlaceStates = pair.second.placeFact();
             if (mergedPlaceFacts.count(pair.first))
               mergedPlaceFacts[pair.first] |= armPlaceStates;
             else
               mergedPlaceFacts[pair.first] = armPlaceStates;
 
             if (mergedProjectionFacts.count(pair.first))
-              mergedProjectionFacts[pair.first] |= pair.second.ProjectionFacts;
+              mergedProjectionFacts[pair.first] |= pair.second.projectionFacts();
             else
-              mergedProjectionFacts[pair.first] = pair.second.ProjectionFacts;
+              mergedProjectionFacts[pair.first] = pair.second.projectionFacts();
           }
 
           PALChecker nextMerged = mergedPAL;
@@ -5122,9 +5122,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (mergedMoved.count(pair.first))
           pair.second.Moved = mergedMoved[pair.first];
         if (mergedPlaceFacts.count(pair.first))
-          pair.second.PlaceFact = mergedPlaceFacts[pair.first];
+          pair.second.placeFact() = mergedPlaceFacts[pair.first];
         if (mergedProjectionFacts.count(pair.first)) {
-          pair.second.ProjectionFacts = mergedProjectionFacts[pair.first];
+          pair.second.projectionFacts() = mergedProjectionFacts[pair.first];
           syncLegacyProjectionLiveness(pair.second);
         }
       }

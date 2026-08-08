@@ -467,7 +467,7 @@ void Sema::checkStmt(Stmt *S) {
         !targetInfo->IsDeclaredMutable;
     const bool hasInitAuthority =
         isWholePlainLocal && !targetInfo->Moved && targetInfo->InitMask == 0 &&
-        hasExactlyPlaceState(targetInfo->PlaceFact, PlaceState::Never);
+        hasExactlyPlaceState(targetInfo->placeFact(), PlaceState::Never);
     if (!hasInitAuthority)
       error(InitBlock, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
             InitBlock->PlaceName);
@@ -481,7 +481,7 @@ void Sema::checkStmt(Stmt *S) {
       SymbolInfo *postState = nullptr;
       if (!CurrentScope->findSymbol(InitBlock->PlaceName, postState) ||
           !postState ||
-          !hasExactlyPlaceState(postState->PlaceFact, PlaceState::Live)) {
+          !hasExactlyPlaceState(postState->placeFact(), PlaceState::Live)) {
         error(InitBlock, DiagID::ERR_INIT_BLOCK_UNFULFILLED,
               InitBlock->PlaceName, InitBlock->PlaceName);
       }
@@ -630,7 +630,7 @@ void Sema::checkStmt(Stmt *S) {
                 ? PlaceState::Never
                 : PlaceState::Live;
         if (!CurrentScope->findSymbol(Arg.Name, Info) || !Info ||
-            !hasExactlyPlaceState(Info->PlaceFact, requiredState)) {
+            !hasExactlyPlaceState(Info->placeFact(), requiredState)) {
           if (outcome) {
             DiagnosticEngine::report(
                 getLoc(Ret), DiagID::ERR_OUTCOME_RETURN_STATE, outcomeVariant,
@@ -1986,7 +1986,7 @@ void Sema::checkStmt(Stmt *S) {
     } else {
       Info.InitMask = 0;
     }
-    Info.PlaceFact =
+    Info.placeFact() =
         Info.InitMask == 0 ? PlaceState::Never : PlaceState::Live;
 
     // Rule: Numeric Substitution (Constant variables)
@@ -2009,8 +2009,8 @@ void Sema::checkStmt(Stmt *S) {
     }
 
     Info.IsDeclaredVariable = true;
-    Info.PartialMove = admittedPartialMovePlan(Info);
-    Var->PartialMove = Info.PartialMove;
+    Info.installPartialMovePlan(admittedPartialMovePlan(Info));
+    Var->PartialMove = Info.partialMovePlan();
     initializeProjectionFacts(Info);
     CurrentScope->define(Var->Name, Info);
     if (!Info.ConditionalTodoIds.empty()) {

@@ -185,9 +185,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         m_InitBlockContexts.back().PlaceName == target->Name &&
         CurrentScope->findSymbol(target->Name, targetInfo) && targetInfo &&
         targetInfo->IsDeclaredVariable &&
-        hasPlaceState(targetInfo->PlaceFact, PlaceState::Never) &&
-        hasPlaceState(targetInfo->PlaceFact, PlaceState::Live) &&
-        !hasPlaceState(targetInfo->PlaceFact, PlaceState::Moved);
+        hasPlaceState(targetInfo->placeFact(), PlaceState::Never) &&
+        hasPlaceState(targetInfo->placeFact(), PlaceState::Live) &&
+        !hasPlaceState(targetInfo->placeFact(), PlaceState::Moved);
     if (!isOwningMaybeTarget) {
       error(Bin, DiagID::ERR_INIT_STATE_PREDICATE,
             target ? target->Name : "<place>",
@@ -403,7 +403,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     isUnsetInit = true;
     if (!isWholePlainLocal || initTargetInfo->Moved ||
         initTargetInfo->InitMask != 0 ||
-        !hasExactlyPlaceState(initTargetInfo->PlaceFact,
+        !hasExactlyPlaceState(initTargetInfo->placeFact(),
                               PlaceState::Never)) {
       error(Bin, DiagID::ERR_INIT_REQUIRES_UNINITIALIZED,
             initTarget ? initTarget->Name : "<place>");
@@ -413,7 +413,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       initTargetInfo->HasBeenUsed = true;
     }
   } else if (isAssign && isWholePlainLocal &&
-             hasPlaceState(initTargetInfo->PlaceFact,
+             hasPlaceState(initTargetInfo->placeFact(),
                            PlaceState::Never)) {
     error(Bin, DiagID::ERR_INIT_REQUIRES_EXPLICIT, initTarget->Name,
           initTarget->Name);
@@ -1279,7 +1279,7 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           }
         } else {
           Info->InitMask = ~0ULL;
-          Info->ProjectionFacts = ProjectionPlaceFacts{};
+          Info->projectionFacts() = ProjectionPlaceFacts{};
           initializeProjectionFacts(*Info);
         }
       }
@@ -1322,8 +1322,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
                   }
                 } else {
                   initializeProjectionFacts(*Info);
-                  if (Info->ProjectionFacts.tracks(projectionIndex)) {
-                    Info->ProjectionFacts.markLive(projectionIndex);
+                  if (Info->projectionFacts().tracks(projectionIndex)) {
+                    Info->projectionFacts().markLive(projectionIndex);
                     syncLegacyProjectionLiveness(*Info);
                   } else {
                     Info->InitMask |= bitsToSet;
@@ -1347,8 +1347,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
           auto array = std::dynamic_pointer_cast<ArrayType>(Info->TypeObj);
           if (array && constant->Value < array->Size) {
             initializeProjectionFacts(*Info);
-            if (Info->ProjectionFacts.tracks(constant->Value)) {
-              Info->ProjectionFacts.markLive(constant->Value);
+            if (Info->projectionFacts().tracks(constant->Value)) {
+              Info->projectionFacts().markLive(constant->Value);
               syncLegacyProjectionLiveness(*Info);
             } else {
               Info->InitMask |= (1ULL << constant->Value);

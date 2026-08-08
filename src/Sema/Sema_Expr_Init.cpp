@@ -444,8 +444,8 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     Info.IsDeclaredMutable = bindingPayloadWritable;
     Info.IsDeclaredVariable = true;
     Info.DeclLoc = Pat->Loc;
-    Info.PartialMove = admittedPartialMovePlan(Info);
-    Pat->PartialMove = Info.PartialMove;
+    Info.installPartialMovePlan(admittedPartialMovePlan(Info));
+    Pat->PartialMove = Info.partialMovePlan();
     initializeProjectionFacts(Info);
 
     CurrentScope->define(Pat->Name, Info);

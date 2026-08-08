@@ -662,16 +662,14 @@ PartialMovePlan Sema::admittedPartialMovePlan(const SymbolInfo &info) {
 }
 
 void Sema::initializeProjectionFacts(SymbolInfo &info) {
-  if (info.ProjectionFacts.isTracking())
+  if (info.projectionFacts().isTracking())
     return;
-  if (info.PartialMove.isAdmitted())
-    info.ProjectionFacts =
-        ProjectionPlaceFacts::fromLegacyInitMask(info.PartialMove.eligibleMask(),
-                                                  info.InitMask);
+  if (info.partialMovePlan().isAdmitted())
+    info.ExactPlace.setPlan(info.partialMovePlan(), info.InitMask);
 }
 
 void Sema::syncLegacyProjectionLiveness(SymbolInfo &info) {
-  info.InitMask = info.ProjectionFacts.applyToLegacyInitMask(info.InitMask);
+  info.InitMask = info.ExactPlace.applyToLegacyInitMask(info.InitMask);
 }
 
 std::string Sema::genericImplKey(const ShapeDecl *shape) {
@@ -4184,7 +4182,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       // An init formal aliases caller storage.  It begins unavailable to
       // ordinary reads and becomes Live only through `init param = ...`.
       Info.InitMask = 0;
-      Info.PlaceFact = PlaceState::Never;
+      Info.placeFact() = PlaceState::Never;
       // The contract itself consumes the formal's place authority; this also
       // keeps bodyless TKI declarations from reporting a spurious unused
       // value warning for a parameter that cannot be read.
@@ -4224,7 +4222,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         SymbolInfo *Info = nullptr;
         SourceLocation argLoc = Arg.Loc.isValid() ? Arg.Loc : getLoc(Fn);
         if (CurrentScope->findSymbol(Arg.Name, Info) && Info &&
-            !hasExactlyPlaceState(Info->PlaceFact, PlaceState::Live)) {
+            !hasExactlyPlaceState(Info->placeFact(), PlaceState::Live)) {
           DiagnosticEngine::report(
               argLoc, DiagID::ERR_INIT_PARAMETER_UNFULFILLED, Fn->Name,
               Arg.Name);

@@ -250,8 +250,11 @@ public:
   }
 
   constexpr bool empty() const { return m_Whole.empty(); }
+  constexpr PlaceStateFact &whole() { return m_Whole; }
   constexpr const PlaceStateFact &whole() const { return m_Whole; }
+  constexpr PartialMovePlan &plan() { return m_Plan; }
   constexpr const PartialMovePlan &plan() const { return m_Plan; }
+  constexpr ProjectionPlaceFacts &projections() { return m_Projections; }
   constexpr const ProjectionPlaceFacts &projections() const {
     return m_Projections;
   }

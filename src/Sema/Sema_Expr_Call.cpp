@@ -725,7 +725,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       std::map<std::string, PlaceStateFact> placeFacts;
       for (const auto &entry : scope->Symbols) {
         moved[entry.first] = entry.second.Moved;
-        placeFacts[entry.first] = entry.second.PlaceFact;
+        placeFacts[entry.first] = entry.second.placeFact();
       }
       movedSnapshot.push_back(
           {scope, std::move(moved), std::move(placeFacts)});
@@ -743,7 +743,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         for (const auto &placeState : entry.PlaceFacts) {
           auto it = scope->Symbols.find(placeState.first);
           if (it != scope->Symbols.end())
-            it->second.PlaceFact = placeState.second;
+            it->second.placeFact() = placeState.second;
         }
       }
     };
@@ -2024,7 +2024,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           placeInfo->IsDeclaredVariable && !placeInfo->IsDeclaredMutable &&
           !placeInfo->Moved &&
           placeInfo->InitMask == 0 &&
-          hasExactlyPlaceState(placeInfo->PlaceFact, PlaceState::Never);
+          hasExactlyPlaceState(placeInfo->placeFact(), PlaceState::Never);
       if (!isWholePlainLocal) {
         error(Call->Args[i].get(), DiagID::ERR_INIT_ARGUMENT_INVALID,
               Fn->Args[i].Name);
@@ -2402,11 +2402,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   for (SymbolInfo *place : completedInitPlaces) {
     if (hasRecheckedOutcomeContract) {
       place->InitMask = 0;
-      place->PlaceFact =
+      place->placeFact() =
           PlaceStateFact(PlaceState::Never).join(PlaceState::Live);
     } else {
       place->InitMask = ~0ULL;
-      place->PlaceFact = PlaceState::Live;
+      place->placeFact() = PlaceState::Live;
     }
   }
 

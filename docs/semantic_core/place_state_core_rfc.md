@@ -353,16 +353,17 @@ the async/place bridge. Those are P0's remaining closure work.
 ### P0.4a: central exact-fact carrier (in progress)
 
 `ExactPlaceFacts` now packages a whole `PlaceStateFact`, an elaborated
-`PartialMovePlan`, and its admitted `ProjectionPlaceFacts`. The central
-`AnalysisState` capture/merge path carries that one object, so break/continue
-and the loops that consume those snapshots no longer independently merge whole
-and projection state. Its model gate covers projection transitions, joins,
-legacy-liveness derivation, and fail-closed plan mismatches.
+`PartialMovePlan`, and its admitted `ProjectionPlaceFacts` on `SymbolInfo`.
+The central `AnalysisState` capture/merge path carries that one object, so
+break/continue and the loops that consume those snapshots no longer
+independently merge whole and projection state. Its model gate covers
+projection transitions, joins, legacy-liveness derivation, and fail-closed
+plan mismatches.
 
-This is only the first migration entry. `SymbolInfo` and other explicit CFG
-snapshots still contain the legacy parallel fields and are not yet a single
-semantic authority; eligibility handoff and CodeGen cleanup remain as specified
-above. P0.4a therefore does not widen the surface or satisfy a P0 closure gate.
+This remains an in-progress migration. Other explicit CFG snapshots still
+copy legacy compatibility views and are not yet a single join authority;
+eligibility handoff and CodeGen cleanup remain as specified above. P0.4a
+therefore does not widen the surface or satisfy a P0 closure gate.
 
 A language RFC may claim a PlaceState slice implemented only when all relevant
 gates are green at the same revision:
