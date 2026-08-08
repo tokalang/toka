@@ -199,6 +199,11 @@ are neither implied by this baseline nor a blocker for the synchronous P0
 PlaceState-core work. This boundary does not qualify `TaskScope` cleanup or
 Scoped Borrowed Tasks; their stated prerequisites remain unchanged.
 
+The provisional division between this semantic baseline and the official
+default executor is recorded in
+[`async_runtime_contract_boundary.md`](async_runtime_contract_boundary.md).
+It deliberately freezes no external runtime ABI.
+
 ---
 
 ## 2. Cancellation Linearization Architecture

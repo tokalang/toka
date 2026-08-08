@@ -305,6 +305,13 @@ slice for every remaining cancellation or wake interleaving. Such a change is
 reserved for a reproduced violation of a recorded baseline invariant, or for a
 separately accepted feature with its own bounded gate.
 
+[`async_runtime_contract_boundary.md`](../async_runtime_contract_boundary.md)
+freezes the corresponding pre-ABI ownership ledger: the compiler/runtime
+semantic operations remain provisional internal contract, while queue, timer,
+reactor, and host-pump policy belong to the sole official default executor. It
+also records the one `async main` default-runner exception in CodeGen. This is
+not third-party-runtime support and must not be cited as such.
+
 Accordingly, the next P0 implementation target remains the internal
 exact-place fact/eligibility unification identified by
 [`place_state_permission_flow_current_head_audit.md`](place_state_permission_flow_current_head_audit.md), rather

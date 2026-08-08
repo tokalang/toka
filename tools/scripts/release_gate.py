@@ -278,6 +278,7 @@ def main():
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_taskhandle_lifecycle.py",
              "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_async_runtime_boundary.py"],
             [sys.executable, "tools/scripts/test_capability_pilot.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_semantic_diff_preview.py",
