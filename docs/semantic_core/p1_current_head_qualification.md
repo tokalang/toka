@@ -1,9 +1,11 @@
 # P-1 Current-HEAD Qualification Ledger
 
-Status: **Qualified — `8d680fea4a9301cec21efc310a73a15ce4eb8157` is the
-current P-1 baseline.** This ledger records the exact clean-worktree release
-gate that closed P-1; it is not a claim that later PlaceState, TCB, or manifest
-work is complete.
+Status: **Historical qualification — `8d680fea4a9301cec21efc310a73a15ce4eb8157`
+was the P-1 baseline at that revision.** This ledger records the exact
+clean-worktree release gate that closed that P-1 instance; it is not a claim
+that later PlaceState, TCB, manifest, or current-HEAD work is qualified. The
+current requalification inventory is
+[`current_head_release_qualification_triage.md`](current_head_release_qualification_triage.md).
 
 ## Audit identity
 

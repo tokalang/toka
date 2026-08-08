@@ -41,11 +41,20 @@ introduce a parallel informal model.
 ## 2. P-1: Re-qualify the current semantic baseline
 
 No new semantic feature may begin implementation until the current HEAD is
-again a qualified baseline. P-1 is now closed at
-`8d680fea4a9301cec21efc310a73a15ce4eb8157`: the clean-worktree macOS arm64
-release gate completed all thirteen stages under the default `v0.9.9-01`
-version label. The exact command, counts, and scope boundary are recorded in
+again a qualified baseline. The historical P-1 exit at
+`8d680fea4a9301cec21efc310a73a15ce4eb8157` remains valid for that exact
+revision: its clean-worktree macOS arm64 release gate completed all thirteen
+stages under the default `v0.9.9-01` version label. The exact command, counts,
+and scope boundary are recorded in
 [`p1_current_head_qualification.md`](p1_current_head_qualification.md).
+
+After the P0.4 exact-place migration, current HEAD has re-entered this
+qualification gate: the full conformance manifest reports 203 passed / 23
+failed. The active failure inventory and the rule for separating diagnostic
+expectations from behavioral regressions are in
+[`current_head_release_qualification_triage.md`](current_head_release_qualification_triage.md).
+Until that ledger is closed by a fresh exact-revision gate, no new semantic
+surface, async/runtime slice, or witness activation may begin.
 
 The following repair history explains why P-1 was necessary; it is not a
 current-HEAD failure claim.
