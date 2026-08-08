@@ -82,7 +82,9 @@ qualified.
 
 The bounded synchronous partial-`cede` surface and frozen P0 PlaceState Core
 are complete with source/source-less evidence and the current 226/0
-conformance closure. The next planned semantic implementation is delayed
-initialization P1: whole stable local places, synchronous `init` contracts,
-and lexical fulfilment blocks only. The async/place bridge, broader projection
-admission, and package release qualification remain separate tracks.
+conformance closure. The whole-place synchronous `init` P1 and narrow Outcome
+P1 are already implemented. The next decision gate is whether to make the
+Canonical Declaration Witness declaration comparison importer-visible; it must
+first close its identity and tamper-matrix audit without granting bodyless
+provider authority. The async/place bridge, broader projection admission, and
+package release qualification remain separate tracks.

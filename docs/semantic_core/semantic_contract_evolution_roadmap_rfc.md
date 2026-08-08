@@ -331,8 +331,11 @@ not third-party-runtime support and must not be cited as such.
 Accordingly, the frozen P0 exact-place fact/eligibility unification is closed,
 as recorded by
 [`place_state_permission_flow_current_head_audit.md`](place_state_permission_flow_current_head_audit.md).
-The next planned semantic implementation is the narrow delayed-initialization
-P1 in Section 4.2, rather than the full-token or cleanup-descriptor work below.
+The whole-place synchronous `init` P1 and narrow Outcome P1 in Sections 4.2
+and 4.3 are already implemented at Level A. The next decision gate is the
+Canonical Declaration Witness activation audit in Section 4.5: it may prepare
+an importer-visible declaration comparison only after its identity and
+tamper-matrix gate closes, and it cannot create bodyless-provider authority.
 This does not weaken the TCB contract: it keeps its completion a distinct
 long-horizon qualification track with a real, finite entry gate instead of an
 implicit blocker for every other semantic dependency.
