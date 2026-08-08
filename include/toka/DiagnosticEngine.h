@@ -14,7 +14,9 @@
 #pragma once
 
 #include "toka/SourceLocation.h"
+#if !defined(__EMSCRIPTEN__)
 #include "llvm/Support/JSON.h"
+#endif
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -97,7 +99,9 @@ public:
   static void reset();
   static void setPrintingEnabled(bool enabled) { PrintingEnabled = enabled; }
   static const std::vector<DiagnosticRecord> &records() { return Records; }
+#if !defined(__EMSCRIPTEN__)
   static llvm::json::Value structuredJSON();
+#endif
   static std::optional<DiagnosticExplanation>
   explain(const std::string &code);
   static const char *levelName(DiagLevel level);

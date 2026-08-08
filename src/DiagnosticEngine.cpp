@@ -158,6 +158,7 @@ DiagnosticEngine::explain(const std::string &code) {
   return result;
 }
 
+#if !defined(__EMSCRIPTEN__)
 llvm::json::Value DiagnosticEngine::structuredJSON() {
   auto position = [](int line, int column) {
     return llvm::json::Object{{"line", std::max(0, line - 1)},
@@ -212,6 +213,7 @@ llvm::json::Value DiagnosticEngine::structuredJSON() {
       {"success", ErrorCount == 0},
       {"diagnostics", std::move(diagnostics)}};
 }
+#endif
 
 const char *DiagnosticEngine::getFormatString(DiagID id) {
   switch (id) {
