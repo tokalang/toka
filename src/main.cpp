@@ -21,8 +21,10 @@
 #include "toka/MemorySummary.h"
 #include "toka/Parser.h"
 #include "toka/Sema.h"
+#include "toka/SemanticDependencyClosure.h"
 #include "toka/SemanticIndex.h"
 #include "toka/SemanticEvidence.h"
+#include "toka/SemanticManifestEnvelope.h"
 #include "toka/TopologyCacheEval.h"
 #include "toka/TKIExporter.h"
 #include "toka/SourceLocation.h"
@@ -191,6 +193,14 @@ static std::string getFinalInterfacePath(const std::string &outputFile, const st
         return toka::PathUtils::canonicalize(std::string(envBuildDir) + "/interfaces/" + calculateFNV1a(canonical) + ".tki");
     }
     return toka::PathUtils::getInterfacePath(outputFile, sourcePath);
+}
+
+static bool readExactFile(const std::string &path, std::string &content) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return false;
+    content.assign(std::istreambuf_iterator<char>(input),
+                   std::istreambuf_iterator<char>());
+    return true;
 }
 
 struct TokaProfile {
@@ -1198,6 +1208,11 @@ int main(int argc, char **argv) {
   }
 
   if (emitInterface) {
+    std::vector<toka::Module *> resolvedModules;
+    resolvedModules.reserve(astModules.size());
+    for (const auto &ast : astModules) {
+      resolvedModules.push_back(ast.get());
+    }
     for (const auto &ast : astModules) {
       std::string canonicalSourcePath =
           toka::PathUtils::canonicalize(ast->SourcePath);
@@ -1213,15 +1228,61 @@ int main(int argc, char **argv) {
 
         if (verboseMode) llvm::errs() << "Exporting TKI Interface to " << outPath << "...\n";
 
-        std::error_code EC;
-        llvm::raw_fd_ostream os(outPath, EC, llvm::sys::fs::OF_None);
-        if (EC) {
-          llvm::errs() << "Error writing TKI file " << outPath << ": " << EC.message() << "\n";
-          return 1;
+        {
+          std::error_code EC;
+          llvm::raw_fd_ostream os(outPath, EC, llvm::sys::fs::OF_None);
+          if (EC) {
+            llvm::errs() << "Error writing TKI file " << outPath << ": " << EC.message() << "\n";
+            return 1;
+          }
+
+          toka::TKIExporter exporter(os);
+          exporter.exportModule(*ast);
         }
 
-        toka::TKIExporter exporter(os);
-        exporter.exportModule(*ast);
+        if (!ast->CanonicalOutcomeDeclarationWitnesses.empty()) {
+          if (!ast->ShadowCoordinateKnown) {
+            if (verboseMode)
+              llvm::errs() << "Semantic manifest omitted for " << outPath
+                           << ": admitted CDW1 record lacks a module coordinate\n";
+            continue;
+          }
+          std::vector<std::string> closureErrors;
+          auto closure = toka::SemanticDependencyClosure::calculate(
+              *ast, resolvedModules, closureErrors);
+          if (!closure) {
+            if (verboseMode) {
+              llvm::errs() << "Semantic manifest omitted for " << outPath;
+              for (const std::string &error : closureErrors)
+                llvm::errs() << ": " << error;
+              llvm::errs() << "\n";
+            }
+            continue;
+          }
+          std::string interfaceContent;
+          if (!readExactFile(outPath, interfaceContent)) {
+            llvm::errs() << "Error reading emitted TKI file " << outPath
+                         << " for semantic manifest\n";
+            return 1;
+          }
+          toka::SemanticManifestEnvelopeInput manifest;
+          manifest.TargetTriple = toka::Parser::TargetTriple;
+          manifest.Module = {ast->ShadowCrateId, ast->ShadowLogicalModulePath};
+          manifest.InterfaceContent = std::move(interfaceContent);
+          manifest.SemanticDependencyClosureDigest = std::move(*closure);
+          manifest.CDW1Records = ast->CanonicalOutcomeDeclarationWitnesses;
+          std::vector<std::string> manifestErrors;
+          const std::string manifestPath =
+              toka::SemanticManifestEnvelope::sidecarPath(outPath);
+          if (!toka::SemanticManifestEnvelope::write(manifestPath, manifest,
+                                                      manifestErrors)) {
+            llvm::errs() << "Error writing semantic manifest " << manifestPath;
+            for (const std::string &error : manifestErrors)
+              llvm::errs() << ": " << error;
+            llvm::errs() << "\n";
+            return 1;
+          }
+        }
       }
     }
   }

@@ -1658,6 +1658,7 @@ void Sema::validateSlice4CopyAndDup(Module &M) {
 
 void Sema::recordSlice5InterfaceFacts(Module &M) {
   M.InterfaceV2Facts.clear();
+  M.CanonicalOutcomeDeclarationWitnesses.clear();
   for (const auto &shape : M.Shapes) {
     const std::string typeName = shape->Name;
     std::function<void(const ShapeMember &, const std::string &)> recordField;
@@ -1724,6 +1725,7 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
       continue;
     const auto &transition = *fn->ResolvedOutcomeTransition;
     if (auto cdw = canonicalOutcomeDeclarationWitness(fn.get())) {
+      M.CanonicalOutcomeDeclarationWitnesses.push_back(*cdw);
       M.InterfaceV2Facts.push_back(
           "cdw1: " + CanonicalDeclarationWitnessEncoder::hexEncode(*cdw));
     }

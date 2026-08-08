@@ -13,6 +13,10 @@ public:
   TKIExporter(llvm::raw_ostream &os) : m_OS(os) {}
 
   void exportModule(const Module &module);
+  // Canonical replay surface used by compiler-owned semantic closure
+  // construction. It intentionally omits @meta transport fields and @tki
+  // audit comments while retaining exactly the declarations replayed by TKI.
+  void exportSemanticReplaySurface(const Module &module);
 
 private:
   llvm::raw_ostream &m_OS;
@@ -21,6 +25,7 @@ private:
   void indent();
   void write(const std::string &str);
   void writeln(const std::string &str = "");
+  void exportDeclarations(const Module &module);
 
   // Top level declaration exporters
   void exportImport(const ImportDecl &decl);

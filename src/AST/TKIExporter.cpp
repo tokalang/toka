@@ -310,6 +310,14 @@ void TKIExporter::exportModule(const Module &module) {
         writeln("// @tki v2 " + fact);
     writeln();
 
+    exportDeclarations(module);
+}
+
+void TKIExporter::exportSemanticReplaySurface(const Module &module) {
+    exportDeclarations(module);
+}
+
+void TKIExporter::exportDeclarations(const Module &module) {
     // 1. Export Imports
     for (const auto &decl : module.Imports) {
         if (!decl->IsImplicit) {

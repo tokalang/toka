@@ -1,7 +1,8 @@
 # Semantic Manifest Envelope P1 Execution Plan
 
-**Status:** Approved P1 direction. This plan freezes the carrier and its
-non-authority boundary before any resolver integration.
+**Status:** P1.0/P1.1 implemented; resolver integration remains deliberately
+pending. This plan freezes the carrier and its non-authority boundary before
+any resolver integration.
 
 ## Objective
 
@@ -75,10 +76,42 @@ semantic acceptance.
 
 ### P1.1 — compiler emission and artifact qualification
 
-Once the producer has a real resolver-owned semantic dependency-closure digest,
-write the sidecar after the corresponding `.tki` has been closed. Qualify
-source and retained-body source-less builds for byte-identical records and
-verify sidecar-to-TKI binding and tamper rejection.
+P1.1 defines the closure rather than substituting `content_hash`, a source
+path, or an ordinary import list. For each resolver-selected module `M`:
+
+```text
+ReplaySurface(M) = metadata-free, audit-comment-free TKI replay export(M)
+
+NodeDigest(M) = SHA-256(
+  "toka.semantic-dependency-closure-v1\\0"
+  + ModuleCoordinate(M)
+  + SHA-256(ReplaySurface(M))
+  + sorted[(ModuleCoordinate(D), NodeDigest(D)) for D in imports(M)]
+)
+```
+
+The root `NodeDigest` is the envelope's
+`semantic_dependency_closure_sha256`. `ReplaySurface` deliberately retains
+declaration bodies that ordinary TKI replay retains, including the current
+Outcome Level-A body. It excludes `@meta` source hash/path fields and ignorable
+`@tki` audit comments, so source and source-less replay are compared through
+their reconstructed semantic surface rather than their carrier spelling.
+
+Every transitive node must have a resolver-known coordinate and an AST selected
+by the resolver. Missing graph nodes, duplicate coordinates, unresolved
+imports, and cycles fail closed; P1.1 emits no manifest for that root. Child
+P1 CDW1 sidecars are intentionally not inputs to this version because they are
+only declaration-recomputed redundancy. A later schema version must add any
+validated body-attested child manifest/object obligation explicitly.
+
+After the root `.tki` has been closed, the compiler writes a `.tki.tsm` only
+when that root has admitted raw CDW1 records and the closure calculation
+succeeds. Qualify source and retained-body source-less builds for
+byte-identical records and closure digests, and verify sidecar-to-TKI binding
+and tamper rejection. Since P1.1 has no resolver consumer, failure to
+construct this optional carrier omits it (with a verbose diagnostic) rather
+than changing compilation acceptance; an I/O failure after a qualified carrier
+has been selected remains an output failure.
 
 ### P1.2 — resolver activation decision
 

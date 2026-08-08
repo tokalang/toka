@@ -2282,6 +2282,9 @@ public:
   // Slice 5 emits these replay facts as TKI v2 comments.  They are derived
   // after semantic analysis; the source declarations remain authoritative.
   std::vector<std::string> InterfaceV2Facts;
+  // Raw, canonical CDW1 values for the admitted Outcome P1 subset. This is
+  // compiler semantic data, not a parsed TKI comment or an import authority.
+  std::vector<std::string> CanonicalOutcomeDeclarationWitnesses;
   std::map<std::string, FunctionMemorySummary> TrustedMemorySummaries;
   std::string MemoryEvidenceStatus = "NotApplicable";
   std::string MemoryEvidenceReason;

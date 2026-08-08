@@ -30,6 +30,10 @@ if grep -q '^// @tki v2 cdw1:' "$TEST_DIR/lib.tki"; then
     echo "FAIL: coordinate-unbound Outcome interface emitted a CDW1 prototype" >&2
     exit 1
 fi
+if [[ -e "$TEST_DIR/lib.tki.tsm" ]]; then
+    echo "FAIL: coordinate-unbound Outcome interface emitted a semantic manifest" >&2
+    exit 1
+fi
 
 # A resolver-owned workspace coordinate makes the narrow declaration fact
 # eligible for a future witness schema.  The audit marker is still not parsed
@@ -53,6 +57,15 @@ fi
 if ! grep -Eq '^// @tki v2 cdw1: 746f6b612e6465636c61726174696f6e2d7769746e65737300000100000001' \
     "$TEST_DIR/known/lib.tki"; then
     echo "FAIL: CDW1 prototype missed the canonical magic, version, or record count" >&2
+    exit 1
+fi
+if [[ ! -f "$TEST_DIR/known/lib.tki.tsm" ]]; then
+    echo "FAIL: known-coordinate Outcome interface did not emit a semantic manifest" >&2
+    exit 1
+fi
+if ! grep -Fq '"payload_schema":"toka.cdw1-recomputed-v1"' \
+    "$TEST_DIR/known/lib.tki.tsm"; then
+    echo "FAIL: semantic manifest missed the admitted CDW1 payload schema" >&2
     exit 1
 fi
 
@@ -108,6 +121,18 @@ fi
 
 "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/known/lib.tki" -o "$TEST_DIR/known/replayed.o"
+if [[ ! -f "$TEST_DIR/known/replayed.tki.tsm" ]]; then
+    echo "FAIL: source-less known-coordinate replay did not emit a semantic manifest" >&2
+    exit 1
+fi
+source_closure=$(sed -n 's/.*"semantic_dependency_closure_sha256":"\([0-9a-f][0-9a-f]*\)".*/\1/p' \
+    "$TEST_DIR/known/lib.tki.tsm")
+replayed_closure=$(sed -n 's/.*"semantic_dependency_closure_sha256":"\([0-9a-f][0-9a-f]*\)".*/\1/p' \
+    "$TEST_DIR/known/replayed.tki.tsm")
+if [[ -z "$source_closure" || "$source_closure" != "$replayed_closure" ]]; then
+    echo "FAIL: semantic dependency closure changed across source-less TKI replay" >&2
+    exit 1
+fi
 grep '^// @tki v2 outcome_transition:' "$TEST_DIR/known/lib.tki" \
     > "$TEST_DIR/known/source.identity"
 grep '^// @tki v2 outcome_transition:' "$TEST_DIR/known/replayed.tki" \
