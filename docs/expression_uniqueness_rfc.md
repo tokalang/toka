@@ -39,6 +39,54 @@ solely from their current shared lowering path.
 `auto` is the explicit introducer for a fresh pattern binding. It may prefix a
 whole pattern or an individual nested sub-pattern.
 
+### Keyword rationale: `auto`, not `let`
+
+**Decision: frozen.**
+
+Toka uses `auto` as the single explicit marker that a source form introduces
+a fresh binding. This covers initialized declarations, guard bindings,
+iteration bindings, and whole or nested match patterns:
+
+```toka
+auto value = compute()
+guard auto Option<i32>::Some(value) = result else { return 0 }
+for auto item in values { use(item) }
+match result {
+    auto Result<i32, string>::Ok(value) => { pass value }
+}
+```
+
+This is a surface-language decision, not a claim that `auto` is more powerful
+or more rigorous than `let`. Either spelling can denote the same binding and
+type rules. `let` was considered because it is familiar to users and code
+generators as a binding keyword, but it is not the canonical Toka spelling for
+the following reasons:
+
+- `auto` reads as a modifier of a pattern as well as a declaration. In
+  `auto Result::Ok(value) => ...`, it marks the identifiers admitted by the
+  pattern as fresh without implying that an initializer must follow.
+- `let` carries the common declaration-shaped reading `let Pattern = value`.
+  Consequently, `let Result::Ok(value) => ...` can visually suggest an
+  unfinished declaration: the reader may expect `=` and an initializer before
+  the arm body. Toka's explicit fresh-pattern marker must work naturally in
+  this position.
+- Ordinary Toka `auto` declarations require an initializer. Keeping the same
+  word avoids suggesting that `auto value: T` is an uninitialized local
+  declaration. A value whose initialization state matters must use an explicit
+  representation such as `uninit:T`; it is not made implicit by a bare binding
+  declaration.
+- Familiarity alone is not a sufficient reason to replace a coherent keyword.
+  Tooling and AI code generators can learn the canonical form from the syntax
+  guide, formatter output, examples, and diagnostics. Toka therefore gives
+  priority to one spelling whose role is consistent in declarations and
+  patterns.
+
+This choice does not prohibit future changes to pattern syntax itself. If a
+future design removes the need for an explicit fresh-pattern marker, that
+design may evaluate its own keyword independently. Until then, `auto` remains
+the required spelling; `let` and `var` are rejected rather than accepted as
+aliases.
+
 ```toka
 match result {
     // `value` is a fresh binding: whole-pattern shorthand.
