@@ -4,6 +4,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -19,7 +20,8 @@ class SemanticDependencyClosure {
 public:
   static std::optional<std::string>
   calculate(const Module &root, const std::vector<Module *> &modules,
-            std::vector<std::string> &errors);
+            std::vector<std::string> &errors,
+            const std::set<const Module *> &bodylessOutcomeModules = {});
 };
 
 } // namespace toka

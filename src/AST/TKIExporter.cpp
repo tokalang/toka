@@ -656,7 +656,8 @@ void TKIExporter::exportFunction(const FunctionDecl &decl, bool forceKeepBody) {
 
     bool hasGenerics = !decl.GenericParams.empty();
     if (decl.Body &&
-        (hasGenerics || forceKeepBody || decl.ResolvedOutcomeTransition)) {
+        (hasGenerics || forceKeepBody ||
+         (m_RetainOutcomeBodies && decl.ResolvedOutcomeTransition))) {
         m_OS << " ";
         exportBlock(*decl.Body);
     } else {

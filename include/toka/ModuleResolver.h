@@ -60,6 +60,8 @@ struct ModuleResolutionInfo {
     std::string SourcePath;
     std::string MemoryEvidenceStatus;
     std::string MemoryEvidenceReason;
+    std::string SemanticManifestAttestationStatus;
+    std::string SemanticManifestAttestationReason;
     ShadowModuleCoordinate ShadowCoordinate;
 };
 
@@ -73,7 +75,9 @@ public:
                    std::map<std::string, std::string> packageNodeIds = {},
                    std::string workspaceNodeId = "",
                    std::string workspaceRoot = "",
-                   std::string toolchainNodeId = "");
+                   std::string toolchainNodeId = "",
+                   bool validateSemanticManifestAttestations = false,
+                   std::string semanticManifestProvenanceDirectory = "");
 
     // Parse the entry file and all imports recursively.
     // If overrideSourceCode is non-empty, the entry file content is taken from it (used in playground).
@@ -114,6 +118,8 @@ private:
     std::string m_WorkspaceNodeId;
     std::string m_WorkspaceRoot;
     std::string m_ToolchainNodeId;
+    bool m_ValidateSemanticManifestAttestations = false;
+    std::string m_SemanticManifestProvenanceDirectory;
     std::vector<std::string> m_Roots;
     std::map<std::string, std::string> m_SourceOverrides;
     bool m_VersionedSources = false;

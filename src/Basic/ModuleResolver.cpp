@@ -1,5 +1,6 @@
 #include "toka/ModuleResolver.h"
 #include "toka/MemoryEvidence.h"
+#include "toka/SemanticManifestAttestation.h"
 #include "toka/Lexer.h"
 #include "toka/Parser.h"
 #include "toka/DiagnosticEngine.h"
@@ -26,14 +27,20 @@ ModuleResolver::ModuleResolver(SourceManager &sm,
                                std::map<std::string, std::string> packageNodeIds,
                                std::string workspaceNodeId,
                                std::string workspaceRoot,
-                               std::string toolchainNodeId)
+                               std::string toolchainNodeId,
+                               bool validateSemanticManifestAttestations,
+                               std::string semanticManifestProvenanceDirectory)
     : m_SourceManager(sm), m_SearchPaths(std::move(searchPaths)),
       m_PkgMap(std::move(pkgMap)),
       m_PackageNodeIds(std::move(packageNodeIds)),
       m_PreferSource(preferSource),
       m_WorkspaceNodeId(std::move(workspaceNodeId)),
       m_WorkspaceRoot(std::move(workspaceRoot)),
-      m_ToolchainNodeId(std::move(toolchainNodeId)) {
+      m_ToolchainNodeId(std::move(toolchainNodeId)),
+      m_ValidateSemanticManifestAttestations(
+          validateSemanticManifestAttestations),
+      m_SemanticManifestProvenanceDirectory(
+          std::move(semanticManifestProvenanceDirectory)) {
     for (const auto &root : trustedSystemRoots) {
         m_TrustedSystemRoots.push_back(PathUtils::canonicalize(root));
     }
@@ -541,6 +548,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       : originalTkPath;
   info.ShadowCoordinate = deriveShadowCoordinate(shadowIdentityPath);
   info.MemoryEvidenceStatus = "NotApplicable";
+  info.SemanticManifestAttestationStatus = "NotApplicable";
   if (finalIsInterface) {
       info.SourcePath = meta.SourcePath;
   } else {
@@ -636,6 +644,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->ShadowCoordinateOrigin = info.ShadowCoordinate.Origin;
   module->ShadowCoordinateReason = info.ShadowCoordinate.Reason;
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
+  module->BackingObjectPath = selectedCachedObjectPath;
   if (module->HasBackingObject) {
     std::string evidenceReason;
     MemoryEvidenceStatus evidenceStatus = MemoryEvidenceCache::load(
@@ -648,6 +657,47 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
     if (record != m_ResolutionRecords.end()) {
       record->second.MemoryEvidenceStatus = module->MemoryEvidenceStatus;
       record->second.MemoryEvidenceReason = evidenceReason;
+    }
+  }
+
+  if (m_ValidateSemanticManifestAttestations && finalIsInterface) {
+    bool hasBodylessOutcome = false;
+    for (const auto &function : module->Functions) {
+      if (!function || function->OutcomeContract.empty() || function->Body)
+        continue;
+      hasBodylessOutcome = true;
+      function->HasSemanticManifestAttestationCandidate = true;
+    }
+    if (hasBodylessOutcome) {
+      module->RequiresSemanticManifestAttestation = true;
+      std::string attestationReason;
+      SemanticManifestAttestationResult attestation;
+      SemanticManifestAttestationStatus attestationStatus;
+      if (!module->HasBackingObject) {
+        attestationStatus = SemanticManifestAttestationStatus::MissingObject;
+        attestationReason = "bodyless Outcome interface has no resolver-selected backing object";
+      } else if (!module->ShadowCoordinateKnown) {
+        attestationStatus = SemanticManifestAttestationStatus::IdentityMismatch;
+        attestationReason = "bodyless Outcome interface lacks a resolver-known coordinate";
+      } else {
+        attestationStatus = SemanticManifestAttestation::loadCandidate(
+            SemanticManifestEnvelope::sidecarPath(resolvedPath), code,
+            {module->ShadowCrateId, module->ShadowLogicalModulePath},
+            Parser::TargetTriple, selectedCachedObjectPath,
+            m_SemanticManifestProvenanceDirectory, attestation,
+            attestationReason);
+      }
+      module->SemanticManifestAttestationStatus = toString(attestationStatus);
+      module->SemanticManifestAttestationReason = attestationReason;
+      if (attestationStatus == SemanticManifestAttestationStatus::Valid)
+        module->SemanticManifestAttestationRecords =
+            std::move(attestation.CDW1Records);
+      auto record = m_ResolutionRecords.find(canonicalPath);
+      if (record != m_ResolutionRecords.end()) {
+        record->second.SemanticManifestAttestationStatus =
+            module->SemanticManifestAttestationStatus;
+        record->second.SemanticManifestAttestationReason = attestationReason;
+      }
     }
   }
 

@@ -1938,6 +1938,10 @@ public:
   bool IsClosureInvoke = false;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::optional<OutcomeTransition> ResolvedOutcomeTransition;
+  // Set only by the explicit P2 profile while its containing bodyless TKI is
+  // awaiting full post-Sema attestation validation. It is never serialized and
+  // cannot establish authority without that later atomic gate.
+  bool HasSemanticManifestAttestationCandidate = false;
   std::vector<GenericParam> GenericParams; // [NEW] e.g. <T>
   FunctionDecl *TemplateOrigin = nullptr;  // Tooling identity for an instance.
 
@@ -2270,6 +2274,7 @@ public:
   bool IsInterface = false;
   bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
+  std::string BackingObjectPath;
   // Slice 0 resolver evidence only; no current semantic rule consults these.
   bool ShadowCoordinateKnown = false;
   std::string ShadowCrateId;
@@ -2285,6 +2290,10 @@ public:
   // Raw, canonical CDW1 values for the admitted Outcome P1 subset. This is
   // compiler semantic data, not a parsed TKI comment or an import authority.
   std::vector<std::string> CanonicalOutcomeDeclarationWitnesses;
+  bool RequiresSemanticManifestAttestation = false;
+  std::vector<std::string> SemanticManifestAttestationRecords;
+  std::string SemanticManifestAttestationStatus = "NotApplicable";
+  std::string SemanticManifestAttestationReason;
   std::map<std::string, FunctionMemorySummary> TrustedMemorySummaries;
   std::string MemoryEvidenceStatus = "NotApplicable";
   std::string MemoryEvidenceReason;

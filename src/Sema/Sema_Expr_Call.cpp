@@ -2389,19 +2389,22 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   const bool hasOutcomeContract =
       Fn && Fn->ResolvedOutcomeTransition.has_value();
   const bool hasRecheckedOutcomeContract = hasOutcomeContract && Fn->Body;
-  if (hasOutcomeContract && !Fn->Body) {
+  const bool hasAttestedOutcomeContract =
+      hasOutcomeContract && !Fn->Body &&
+      Fn->HasSemanticManifestAttestationCandidate;
+  if (hasOutcomeContract && !Fn->Body && !hasAttestedOutcomeContract) {
     DiagnosticEngine::report(getLoc(Call),
                              DiagID::ERR_OUTCOME_BODY_RECHECK_REQUIRED,
                              Call->Callee);
     HasError = true;
   }
-  if (hasRecheckedOutcomeContract) {
+  if (hasRecheckedOutcomeContract || hasAttestedOutcomeContract) {
     Call->RequiresOutcomeMatch = true;
     Call->OutcomeMatchConsumed = false;
     m_OutcomePendingCalls.push_back(Call);
   }
   for (SymbolInfo *place : completedInitPlaces) {
-    if (hasRecheckedOutcomeContract) {
+    if (hasRecheckedOutcomeContract || hasAttestedOutcomeContract) {
       const PlaceStateFact pending =
           PlaceStateFact(PlaceState::Never).join(PlaceState::Live);
       if (place->ExactPlace.transitionWhole(PlaceState::Never, pending))

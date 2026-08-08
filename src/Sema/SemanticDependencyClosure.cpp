@@ -59,10 +59,13 @@ std::optional<std::string> coordinateKey(const Module &module) {
   return key;
 }
 
-std::optional<std::string> replaySurfaceDigest(const Module &module) {
+std::optional<std::string> replaySurfaceDigest(
+    const Module &module, const std::set<const Module *> &bodylessOutcomeModules) {
   std::string surface;
   llvm::raw_string_ostream out(surface);
   TKIExporter exporter(out);
+  exporter.setRetainOutcomeBodies(
+      bodylessOutcomeModules.count(&module) == 0);
   exporter.exportSemanticReplaySurface(module);
   out.flush();
   return sha256(surface);
@@ -75,7 +78,9 @@ enum class VisitState { Visiting, Complete };
 std::optional<std::string>
 SemanticDependencyClosure::calculate(const Module &root,
                                      const std::vector<Module *> &modules,
-                                     std::vector<std::string> &errors) {
+                                     std::vector<std::string> &errors,
+                                     const std::set<const Module *> &
+                                         bodylessOutcomeModules) {
   std::map<std::string, const Module *> modulesByPath;
   for (const Module *module : modules) {
     if (!module || module->ResolvedPath.empty()) {
@@ -170,7 +175,7 @@ SemanticDependencyClosure::calculate(const Module &root,
                 return left.Coordinate < right.Coordinate;
               });
 
-    auto surfaceDigest = replaySurfaceDigest(module);
+    auto surfaceDigest = replaySurfaceDigest(module, bodylessOutcomeModules);
     if (!surfaceDigest) {
       errors.push_back(
           "semantic dependency closure could not export replay surface");

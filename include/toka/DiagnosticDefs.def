@@ -484,6 +484,7 @@ DIAG(ERR_OUTCOME_MATCH_ARM_INVALID, Error, "E04630", "Outcome match arm must nam
 DIAG(ERR_OUTCOME_BODY_RECHECK_REQUIRED, Error, "E04631", "Outcome call '{}' requires a retained provider body for semantic rechecking")
 DIAG(ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED, Error, "E04632", "Cannot cede projection '{}' outside the supported local direct-field and fixed-array constant-index lifecycle model")
 DIAG(ERR_SEMANTIC_MANIFEST_VALIDATION, Error, "E04633", "Semantic manifest validation failed for '{}': {}")
+DIAG(ERR_SEMANTIC_MANIFEST_ATTESTATION, Error, "E04634", "Semantic manifest attestation failed for '{}': {}")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT, Error, "E0710", "Type mismatch in compound assignment")
 DIAG(ERR_CODEGEN_TYPE_MISMATCH_IN_BINARY_EXPRESSION_VS, Error, "E0711", "Type mismatch in binary expression: {} vs {}")
 DIAG(ERR_CODEGEN_INVALID_TYPE_FOR_COMPARISON_COMPARISON, Error, "E0712", "Invalid type for comparison: {}. Comparisons are only allowed for scalars (integers/pointers).")

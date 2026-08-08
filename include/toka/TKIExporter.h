@@ -12,6 +12,9 @@ class TKIExporter {
 public:
   TKIExporter(llvm::raw_ostream &os) : m_OS(os) {}
 
+  // P2 bodyless attestation signs the declaration-only replay surface. This
+  // remains an exporter policy, never a source-level annotation.
+  void setRetainOutcomeBodies(bool value) { m_RetainOutcomeBodies = value; }
   void exportModule(const Module &module);
   // Canonical replay surface used by compiler-owned semantic closure
   // construction. It intentionally omits @meta transport fields and @tki
@@ -21,6 +24,7 @@ public:
 private:
   llvm::raw_ostream &m_OS;
   int m_Indent = 0;
+  bool m_RetainOutcomeBodies = true;
 
   void indent();
   void write(const std::string &str);

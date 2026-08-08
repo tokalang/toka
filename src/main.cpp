@@ -121,6 +121,8 @@ void printHelp() {
       << "  --diagnostics-json              Emit structured diagnostics JSON\n"
       << "  --check-only                    Stop after semantic checking\n"
       << "  --validate-semantic-manifests   Fail-closed validation of admitted source-less TKI sidecars\n"
+      << "  --validate-semantic-manifest-attestations\n"
+      << "                                  Validate bodyless Outcome providers against local object attestations\n"
       << "  --semantic-manifest-provenance-dir <dir>\n"
       << "                                  Emit local object-bound Outcome attestations into .tki.tsm\n"
       << "  --explain[=json] <code>         Explain a diagnostic code\n"
@@ -261,6 +263,124 @@ static bool validateSemanticManifestImports(
       toka::DiagnosticEngine::report(
           ast->Loc, toka::DiagID::ERR_SEMANTIC_MANIFEST_VALIDATION,
           ast->ResolvedPath, reason);
+    }
+  }
+  return !toka::DiagnosticEngine::hasErrors();
+}
+
+struct SemanticManifestAttestationLinkObligation {
+  toka::SourceLocation Loc;
+  std::string InterfacePath;
+  std::string InterfaceContent;
+  toka::SemanticManifestCoordinate Module;
+  std::string TargetTriple;
+  std::string SemanticDependencyClosureDigest;
+  std::string ObjectPath;
+  std::vector<std::string> CDW1Records;
+};
+
+static bool validateSemanticManifestAttestationImports(
+    const std::vector<std::unique_ptr<toka::Module>> &astModules,
+    const std::string &provenanceStateDirectory,
+    std::vector<SemanticManifestAttestationLinkObligation> &obligations) {
+  obligations.clear();
+  std::vector<toka::Module *> resolvedModules;
+  resolvedModules.reserve(astModules.size());
+  for (const auto &ast : astModules)
+    resolvedModules.push_back(ast.get());
+
+  for (const auto &ast : astModules) {
+    if (!ast->RequiresSemanticManifestAttestation)
+      continue;
+
+    std::string reason;
+    std::vector<std::string> closureErrors;
+    const auto closure = toka::SemanticDependencyClosure::calculate(
+        *ast, resolvedModules, closureErrors,
+        std::set<const toka::Module *>{ast.get()});
+    if (!closure) {
+      reason = "semantic dependency closure could not be reconstructed";
+      if (!closureErrors.empty())
+        reason += ": " + closureErrors.front();
+    } else {
+      std::string interfaceContent;
+      if (!readExactFile(ast->ResolvedPath, interfaceContent)) {
+        reason = "resolved interface could not be read";
+      } else {
+        toka::SemanticManifestAttestationResult attestation;
+        const auto status = toka::SemanticManifestAttestation::load(
+            toka::SemanticManifestEnvelope::sidecarPath(ast->ResolvedPath),
+            interfaceContent,
+            {ast->ShadowCrateId, ast->ShadowLogicalModulePath},
+            toka::Parser::TargetTriple, *closure, ast->BackingObjectPath,
+            provenanceStateDirectory, attestation, reason);
+        if (status == toka::SemanticManifestAttestationStatus::Valid) {
+          std::vector<std::string> expected =
+              ast->CanonicalOutcomeDeclarationWitnesses;
+          std::sort(expected.begin(), expected.end());
+          if (attestation.CDW1Records != expected) {
+            reason = "Outcome fulfilment records do not match reconstructed declarations";
+          } else {
+            obligations.push_back({
+                ast->Loc,
+                ast->ResolvedPath,
+                std::move(interfaceContent),
+                {ast->ShadowCrateId, ast->ShadowLogicalModulePath},
+                toka::Parser::TargetTriple,
+                *closure,
+                ast->BackingObjectPath,
+                std::move(expected),
+            });
+            reason.clear();
+          }
+        } else {
+          reason = std::string(toka::toString(status)) + ": " + reason;
+        }
+      }
+    }
+
+    if (!reason.empty()) {
+      toka::DiagnosticEngine::report(
+          ast->Loc, toka::DiagID::ERR_SEMANTIC_MANIFEST_ATTESTATION,
+          ast->ResolvedPath, reason);
+    }
+  }
+  return !toka::DiagnosticEngine::hasErrors();
+}
+
+static bool validateSemanticManifestAttestationLinkObligations(
+    const std::vector<SemanticManifestAttestationLinkObligation> &obligations,
+    const std::vector<std::string> &objectFiles,
+    const std::string &provenanceStateDirectory) {
+  std::set<std::string> selectedObjects;
+  for (const std::string &object : objectFiles)
+    selectedObjects.insert(toka::PathUtils::canonicalize(object));
+
+  for (const auto &obligation : obligations) {
+    std::string reason;
+    if (selectedObjects.count(toka::PathUtils::canonicalize(
+            obligation.ObjectPath)) == 0) {
+      reason = "attested backing object is absent from final linker inputs";
+    } else {
+      toka::SemanticManifestAttestationResult attestation;
+      const auto status = toka::SemanticManifestAttestation::load(
+          toka::SemanticManifestEnvelope::sidecarPath(obligation.InterfacePath),
+          obligation.InterfaceContent, obligation.Module, obligation.TargetTriple,
+          obligation.SemanticDependencyClosureDigest, obligation.ObjectPath,
+          provenanceStateDirectory, attestation, reason);
+      if (status == toka::SemanticManifestAttestationStatus::Valid) {
+        if (attestation.CDW1Records != obligation.CDW1Records)
+          reason = "Outcome fulfilment records changed after import validation";
+        else
+          reason.clear();
+      } else {
+        reason = std::string(toka::toString(status)) + ": " + reason;
+      }
+    }
+    if (!reason.empty()) {
+      toka::DiagnosticEngine::report(
+          obligation.Loc, toka::DiagID::ERR_SEMANTIC_MANIFEST_ATTESTATION,
+          obligation.InterfacePath, reason);
     }
   }
   return !toka::DiagnosticEngine::hasErrors();
@@ -611,6 +731,7 @@ int main(int argc, char **argv) {
   bool structuredDiagnostics = false;
   bool checkOnly = false;
   bool validateSemanticManifests = false;
+  bool validateSemanticManifestAttestations = false;
   std::string semanticManifestProvenanceDirectory;
   bool explainJson = false;
   std::string semanticQuery;
@@ -664,6 +785,8 @@ int main(int argc, char **argv) {
       checkOnly = true;
     } else if (arg == "--validate-semantic-manifests") {
       validateSemanticManifests = true;
+    } else if (arg == "--validate-semantic-manifest-attestations") {
+      validateSemanticManifestAttestations = true;
     } else if (arg == "--semantic-manifest-provenance-dir") {
       if (i + 1 >= argc || std::string(argv[i + 1]).empty()) {
         llvm::errs() << "--semantic-manifest-provenance-dir requires an absolute directory\n";
@@ -864,6 +987,12 @@ int main(int argc, char **argv) {
   if (compileOnly) {
     emitInterface = true;
   }
+  if (validateSemanticManifestAttestations &&
+      semanticManifestProvenanceDirectory.empty()) {
+    llvm::errs() << "--validate-semantic-manifest-attestations requires "
+                 << "--semantic-manifest-provenance-dir\n";
+    return 1;
+  }
   const char *configuredBuildDir = std::getenv("TOKA_BUILD_DIR");
   bool emitTrustedMemoryEvidence =
       compileOnly && emitInterface && configuredBuildDir &&
@@ -1046,7 +1175,9 @@ int main(int argc, char **argv) {
   toka::ModuleResolver resolver(sm, searchPaths, pkgMap, preferSource,
                                 trustedSystemRoots, packageNodeIds,
                                 workspaceNodeId, workspaceRoot,
-                                toolchainNodeId);
+                                toolchainNodeId,
+                                validateSemanticManifestAttestations,
+                                semanticManifestProvenanceDirectory);
   resolver.setProvidedObjects(objectFiles);
   bool parseSuccess = true;
   for (size_t i = 0; i < sourceFiles.size(); ++i) {
@@ -1147,6 +1278,12 @@ int main(int argc, char **argv) {
                      << escapeJsonString(info.MemoryEvidenceStatus) << "\",\n";
         llvm::outs() << "      \"memory_evidence_reason\": \""
                      << escapeJsonString(info.MemoryEvidenceReason) << "\",\n";
+        llvm::outs() << "      \"semantic_manifest_attestation_status\": \""
+                     << escapeJsonString(info.SemanticManifestAttestationStatus)
+                     << "\",\n";
+        llvm::outs() << "      \"semantic_manifest_attestation_reason\": \""
+                     << escapeJsonString(info.SemanticManifestAttestationReason)
+                     << "\",\n";
         llvm::outs() << "      \"shadow_coordinate\": {\n";
         llvm::outs() << "        \"status\": \""
                      << (info.ShadowCoordinate.Known ? "known" : "unknown") << "\",\n";
@@ -1259,6 +1396,30 @@ int main(int argc, char **argv) {
   if (validateSemanticManifests)
     profile.mark("semantic_manifest_validation");
 
+  std::vector<SemanticManifestAttestationLinkObligation>
+      semanticManifestAttestationObligations;
+  if (validateSemanticManifestAttestations &&
+      !validateSemanticManifestAttestationImports(
+          astModules, semanticManifestProvenanceDirectory,
+          semanticManifestAttestationObligations)) {
+    llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to semantic manifest attestation errors.\n";
+    return 1;
+  }
+  if (validateSemanticManifestAttestations) {
+    if (!checkOnly && !semanticManifestAttestationObligations.empty() &&
+        (compileOnly || !emitObj)) {
+      for (const auto &obligation : semanticManifestAttestationObligations) {
+        toka::DiagnosticEngine::report(
+            obligation.Loc, toka::DiagID::ERR_SEMANTIC_MANIFEST_ATTESTATION,
+            obligation.InterfacePath,
+            "a bodyless Outcome provider may be consumed only by the same compiler invocation that performs final linking");
+      }
+      llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted because P2 link obligations cannot survive this output mode.\n";
+      return 1;
+    }
+    profile.mark("semantic_manifest_attestation_validation");
+  }
+
   if (dumpEncapSlice1Facts) {
     sema.dumpEncapSlice1FactsJSON(std::cout);
     std::cout << '\n';
@@ -1325,6 +1486,8 @@ int main(int argc, char **argv) {
           }
 
           toka::TKIExporter exporter(os);
+          exporter.setRetainOutcomeBodies(
+              semanticManifestProvenanceDirectory.empty());
           exporter.exportModule(*ast);
         }
 
@@ -1352,7 +1515,9 @@ int main(int argc, char **argv) {
           }
           std::vector<std::string> closureErrors;
           auto closure = toka::SemanticDependencyClosure::calculate(
-              *ast, resolvedModules, closureErrors);
+              *ast, resolvedModules, closureErrors,
+              emitP2Attestation ? std::set<const toka::Module *>{ast.get()}
+                                : std::set<const toka::Module *>{});
           if (!closure) {
             if (verboseMode) {
               llvm::errs() << "Semantic manifest omitted for " << outPath;
@@ -1804,6 +1969,12 @@ int main(int argc, char **argv) {
         objectFiles.push_back(tokaRtPath);
       }
 
+      if (!validateSemanticManifestAttestationLinkObligations(
+              semanticManifestAttestationObligations, objectFiles,
+              semanticManifestProvenanceDirectory)) {
+        llvm::errs() << "\033[1;31m[FAILED]\033[0m Linking aborted due to semantic manifest attestation errors.\n";
+        return 1;
+      }
       if (!linkWithLLD(objFile, objectFiles, linkSearchPaths, linkLibraries, linkFrameworks, finalOutput)) {
         llvm::errs() << "Linker error: LLD failed\n";
         return 1;
