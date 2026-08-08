@@ -118,8 +118,13 @@ change current language behavior or implementation status.
   cleanup conservation, and two source-less completion levels.
 - `semantic_manifest_envelope_rfc.md` proposes only stable identity, a canonical
   envelope, record criticality, trust classes, accepted producer provenance,
-  exact-object binding, and fail-closed validation. Its language payload
-  remains deferred until PlaceState, `init`, and `OutcomeTransition` are stable.
+  exact-object binding, and fail-closed validation. P1 carries
+  declaration-recomputed records, while P2 qualifies one local
+  object-attested Outcome-fulfilment payload.
+- `semantic_manifest_envelope_p2_plan.md` records the completed narrow
+  bodyless-Outcome producer, importer, final-link, build-propagation, and
+  tamper-matrix boundary, plus the explicit non-goals for distributed
+  provenance and persisted recursive link obligations.
 - `canonical_declaration_witness_rfc.md` proposes the first candidate
   declaration-recomputed record schema for a narrow Outcome signature. It is
   not activated by the current audit-only TKI identity comments and grants no

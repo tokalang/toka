@@ -264,6 +264,8 @@ def main():
             ["tools/scripts/test_semantic_replay.sh"],
             ["bash", "tools/scripts/test_outcome_body_recheck.sh"],
             ["bash", "tools/scripts/test_semantic_manifest_build_profile.sh"],
+            ["bash", "tools/scripts/test_semantic_manifest_attestation.sh"],
+            ["bash", "tools/scripts/test_semantic_manifest_attestation_build.sh"],
         )),
         ("cache_invalidation", (["tools/scripts/test_semantic_cache_invalidation.sh"],)),
         ("tooling", (

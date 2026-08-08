@@ -114,9 +114,19 @@ lowers that rechecked body instead of accepting a provider object as evidence
 of fulfilment. A bodyless interface carrying the same declaration is not a
 Level-A provider and calls through it fail with `E04631`.
 
-This is not a Semantic Witness ABI or a bodyless attestation. Canonical wire
-identities, declaration witnesses, exact-object binding, and provider
-provenance remain governed by `semantic_manifest_envelope_rfc.md`.
+P2 adds one explicit exception for the admitted non-generic Outcome subset:
+the compiler may export a bodyless TKI only with a version-2 semantic-manifest
+attestation, and an importer must select
+`--validate-semantic-manifest-attestations` plus the accepting compiler's
+local provenance state. It reconstructs the declarations, verifies the paired
+fulfilment record, exact object digest and retained marker, and rechecks that
+same object immediately before linking. A default import, arbitrary standalone
+TKI/object, or compile-only consumer remains outside that profile and fails
+closed; P2 is not a general Semantic Witness ABI.
+
+Canonical wire identities, declaration witnesses, exact-object binding, and
+provider provenance remain governed by `semantic_manifest_envelope_rfc.md` and
+`semantic_manifest_envelope_p2_plan.md`.
 
 For the later declaration-identity gate, the exporter emits an audit-only
 `@tki v2 outcome_transition:` record for every resolved top-level Outcome

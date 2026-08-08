@@ -481,6 +481,38 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       if (readTKIMetadata(resolvedPath, meta)) {
           sourceHash = meta.SourceHash;
       }
+      // A source-less package still resolves its adjacent interface first.
+      // Under the explicit compiler-cache policy, redirect that candidate to
+      // the resolver-owned cache tuple derived from its declared source
+      // identity before treating any backing object as trusted. This never
+      // grants cache provenance to the adjacent TKI itself: the selected
+      // `.tki/.o` must both be at their compiler-owned cache locations.
+      if (!selectedCachedInterfaceHasBacking && m_UseBuildCache &&
+          !meta.SourcePath.empty()) {
+          const char *envBuildDir = std::getenv("TOKA_BUILD_DIR");
+          if (envBuildDir && envBuildDir[0] != '\0') {
+              const std::string sourceIdentity =
+                  PathUtils::canonicalize(meta.SourcePath);
+              const std::string buildDir = envBuildDir;
+              const std::string cacheStem = calculateFNV1a(sourceIdentity);
+              const std::string cacheTki =
+                  PathUtils::canonicalize(buildDir + "/interfaces/" +
+                                           cacheStem + ".tki");
+              const std::string cacheObject =
+                  PathUtils::canonicalize(buildDir + "/objects/" +
+                                           cacheStem + ".o");
+              if (std::ifstream(cacheTki).good() &&
+                  std::ifstream(cacheObject).good()) {
+                  resolvedPath = cacheTki;
+                  originalTkPath = sourceIdentity;
+                  selectedCachedInterfaceHasBacking = true;
+                  selectedCachedObjectPath = cacheObject;
+                  meta = {};
+                  if (readTKIMetadata(resolvedPath, meta))
+                      sourceHash = meta.SourceHash;
+              }
+          }
+      }
       std::string reason;
       const std::string identityPath = originalTkPath.empty()
           ? resolvedPath

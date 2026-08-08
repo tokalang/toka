@@ -21,11 +21,11 @@ constexpr const char kType[] =
     "toka-outcome-type-v1;cede=1:0;writable=1:0;nullable=1:0;"
     "blocked=1:0;kind=9:primitive;name=3:i32;";
 
-std::string encode() {
+std::string encode(const std::string &name = "try_read") {
   toka::OutcomeDeclarationWitnessInput input;
   input.FunctionCrateId = "workspace-test";
   input.FunctionLogicalModulePath = "pkg/example";
-  input.FunctionName = "try_read";
+  input.FunctionName = name;
   input.Parameters = {{0, true, false, kType}};
   input.CanonicalResultType = kType;
   input.OutcomeFormalIndex = 0;
@@ -103,6 +103,49 @@ int main() {
              input.TargetTriple, object.string(), otherState.string(), result,
              reason) ==
          toka::SemanticManifestAttestationStatus::ProvenanceMismatch);
+
+  const std::string pristineManifest = readFile(manifest);
+  std::string unsupportedVersion = pristineManifest;
+  const size_t version = unsupportedVersion.find("\"version\":2");
+  assert(version != std::string::npos);
+  unsupportedVersion.replace(version, std::string("\"version\":2").size(),
+                             "\"version\":3");
+  writeFile(manifest, unsupportedVersion);
+  assert(toka::SemanticManifestAttestation::loadCandidate(
+             manifest.string(), input.InterfaceContent, input.Module,
+             input.TargetTriple, object.string(), state.string(), result,
+             reason) == toka::SemanticManifestAttestationStatus::InvalidSchema);
+
+  std::string relabelled = pristineManifest;
+  const size_t criticality = relabelled.find("SafetyRequired");
+  assert(criticality != std::string::npos);
+  relabelled.replace(criticality, std::string("SafetyRequired").size(),
+                     "OptionalOptimization");
+  writeFile(manifest, relabelled);
+  assert(toka::SemanticManifestAttestation::loadCandidate(
+             manifest.string(), input.InterfaceContent, input.Module,
+             input.TargetTriple, object.string(), state.string(), result,
+             reason) == toka::SemanticManifestAttestationStatus::InvalidRecord);
+
+  std::string alteredPayload = pristineManifest;
+  const std::string originalHex =
+      toka::CanonicalDeclarationWitnessEncoder::hexEncode(encode());
+  const std::string alteredHex =
+      toka::CanonicalDeclarationWitnessEncoder::hexEncode(encode("try_load"));
+  assert(originalHex.size() == alteredHex.size());
+  size_t record = alteredPayload.find(originalHex);
+  assert(record != std::string::npos);
+  alteredPayload.replace(record, originalHex.size(), alteredHex);
+  record = alteredPayload.find(originalHex, record + alteredHex.size());
+  assert(record != std::string::npos);
+  alteredPayload.replace(record, originalHex.size(), alteredHex);
+  writeFile(manifest, alteredPayload);
+  assert(toka::SemanticManifestAttestation::loadCandidate(
+             manifest.string(), input.InterfaceContent, input.Module,
+             input.TargetTriple, object.string(), state.string(), result,
+             reason) ==
+         toka::SemanticManifestAttestationStatus::PayloadMismatch);
+  writeFile(manifest, pristineManifest);
 
   const std::string pristineObject = readFile(object);
   writeFile(object, pristineObject + "tampered");

@@ -1,9 +1,9 @@
 # CDW1 Activation Preflight Audit
 
 **Status:** P1 declaration-recomputed activation is complete as an explicit,
-default-off validation profile. CDW1 audit comments remain ignorable; the
-profile validates only a separate sidecar and changes no caller, cleanup, or
-object-link authority.
+default-off validation profile. P2 additionally qualifies one local,
+object-attested Outcome fulfilment profile. CDW1 audit comments remain
+ignorable in both cases.
 
 ## Purpose
 
@@ -19,11 +19,13 @@ manifest payload.
 | known-coordinate, non-generic P1 record | complete | Outcome retained-body replay |
 | source/source-less reconstructed bytes | complete | `test_outcome_body_recheck.sh` |
 | audit comment cannot affect Level-A import | complete | malformed, missing, and repeated `cdw1:` checks |
-| bodyless Outcome provider remains rejected | complete | `E04631` retained-body boundary |
+| bodyless Outcome provider remains rejected in P1/default mode | complete | `E04631` retained-body boundary |
 | independent semantic envelope carrier | complete | P1.0/P1.1 `.tki.tsm` + replay-surface closure |
 | importer-visible declaration comparison | complete in explicit profile | `--validate-semantic-manifests` |
 | atomic declaration/tamper failure matrix | complete for P1 profile | valid, missing, non-canonical, record-mismatched, and bodyless gates |
 | project-build propagation and clean-cache check | complete | `toka build --validate-semantic-manifests` qualification |
+| local bodyless Outcome fulfilment | complete in explicit P2 profile | object marker, exact digest, compiler-local provenance HMAC, Sema record comparison, and final-link revalidation (`E04634`) |
+| P2 build propagation and clean-cache check | complete | `toka build --validate-semantic-manifest-attestations --semantic-manifest-provenance-dir <dir>` qualification |
 
 ## Artifact boundary
 
@@ -70,11 +72,28 @@ agreement about a declaration fact; Level-B fulfilment needs the separate
 accepted-provenance and exact-object-binding design in the Semantic Manifest
 Envelope RFC.
 
+## P2 local-attestation consequence
+
+The P2 profile now supplies that separate body-fulfilment path for the admitted
+Outcome subset only. A source provider emits a bodyless TKI and version-2
+`.tki.tsm` only when it is compiled with an explicit local provenance state
+directory. The sidecar's paired declaration/fulfilment records are bound to an
+IR-retained payload marker and exact object digest, signed by the local
+compiler-state key, compared with Sema's reconstructed declarations, and
+reloaded immediately before LLD sees the selected object. A compile-only
+consumer is rejected because it cannot preserve that link obligation.
+
+This does not promote a provider-controlled manifest into global trust: a
+copied provider does not have the accepting compiler's state key, default
+imports remain Level A and report `E04631`, and methods, generics, init,
+unsafe wrappers, async cleanup, remote provenance, and recursive persisted
+obligations remain outside P2.
+
 ## Remaining design decision
 
-The profile is now available as an invocation-scoped `toka build` policy. The
-next decision is whether a future release should make it package-declared or
-default-required. That requires a migration story for legacy TKI and
-equivalent identity coverage for methods and generics. It does not authorize
-embedding CDW1 in a source comment, trusting a provider object, or changing
-the bodyless `E04631` boundary.
+P1 and P2 are both invocation-scoped `toka build` policies. The next decision
+is a distributable provenance and persisted-link-obligation design, not
+default activation: it requires a migration story for legacy TKI, a producer
+identity policy beyond one local compiler state, and equivalent identity
+coverage for methods and generics. It does not authorize embedding CDW1 in a
+source comment or trusting a provider object merely because it carries hashes.

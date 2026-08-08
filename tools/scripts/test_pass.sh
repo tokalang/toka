@@ -629,6 +629,17 @@ if ! run_without_test_cache bash tools/scripts/test_semantic_manifest_build_prof
 fi
 
 echo ""
+echo "Running Semantic Manifest P2 attestation tests..."
+if ! run_without_test_cache bash tools/scripts/test_semantic_manifest_attestation.sh; then
+    echo -e "${RED}Semantic Manifest P2 attestation test failed!${NC}"
+    exit 1
+fi
+if ! run_without_test_cache bash tools/scripts/test_semantic_manifest_attestation_build.sh; then
+    echo -e "${RED}Semantic Manifest P2 build-profile test failed!${NC}"
+    exit 1
+fi
+
+echo ""
 echo "Running Semantic Cache Invalidation tests..."
 if ! run_without_test_cache bash tools/scripts/test_semantic_cache_invalidation.sh; then
     echo -e "${RED}Semantic Cache Invalidation tests failed!${NC}"

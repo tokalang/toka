@@ -757,6 +757,8 @@ fn run_build_impl(
         auto requested_workspace_root# = string::from("")
         auto requested_pkg_nodes# = Vec<string>::new()
         auto validate_semantic_manifests# = false
+        auto validate_semantic_manifest_attestations# = false
+        auto requested_semantic_manifest_provenance_dir# = string::from("")
         auto requested_index# = 0
         loop requested_index < env::args_count() {
             auto requested_arg = env::get_arg(requested_index)
@@ -777,6 +779,11 @@ fn run_build_impl(
                 requested_index += 1
             } else if requested_arg == "--validate-semantic-manifests" {
                 validate_semantic_manifests = true
+            } else if requested_arg == "--validate-semantic-manifest-attestations" {
+                validate_semantic_manifest_attestations = true
+            } else if requested_arg == "--semantic-manifest-provenance-dir" && requested_index + 1 < env::args_count() {
+                requested_semantic_manifest_provenance_dir = env::get_arg(requested_index + 1)
+                requested_index += 1
             }
             requested_index += 1
         }
@@ -955,6 +962,13 @@ fn run_build_impl(
         }
         if validate_semantic_manifests {
             compiler_args#.push(cede string::from("--validate-semantic-manifests"))
+        }
+        if validate_semantic_manifest_attestations {
+            compiler_args#.push(cede string::from("--validate-semantic-manifest-attestations"))
+        }
+        if !requested_semantic_manifest_provenance_dir.is_empty() {
+            compiler_args#.push(cede string::from("--semantic-manifest-provenance-dir"))
+            compiler_args#.push(cede requested_semantic_manifest_provenance_dir)
         }
 
         auto is_hybrid# = false

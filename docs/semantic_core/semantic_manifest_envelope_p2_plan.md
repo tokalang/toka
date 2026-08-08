@@ -1,9 +1,9 @@
 # Semantic Manifest Envelope P2 Execution Plan
 
-**Status:** Active implementation plan. P2 extends the P1 declaration
-comparison transport with one narrow, body-derived Outcome fulfilment record.
-It is not a general proof format, package-signature system, or a change to
-ordinary source-less replay.
+**Status:** P2.0--P2.3 implemented and qualified for the stated local
+Outcome subset. P2 extends the P1 declaration-comparison transport with one
+narrow, body-derived Outcome fulfilment record. It is not a general proof
+format, package-signature system, or a change to ordinary source-less replay.
 
 ## Objective
 
@@ -110,9 +110,19 @@ and Level-A behavior.
 Propagate both P2 options through `toka build`, including the clean-plan
 check. The qualification runner covers valid source/retained-body/bodyless
 attested parity; missing, malformed, relabelled, stale-interface,
-closure-mismatched, payload-mismatched, key/signature, marker, object, and
-post-import object-substitution failures; ordinary third-party TKI rejection;
-and the compile-only-consumer redline.
+closure-mismatched, payload-mismatched, key/signature, marker, and object
+failures; ordinary third-party TKI rejection; the compile-only-consumer
+redline; and final-link object-input omission.
+
+**Implemented evidence:** `toka build` forwards both options through its
+build-program compilation and incremental driver. The driver performs the
+same no-write `tokac --check-only` preflight under the P2 profile before a
+clean plan can return, and enables compiler-cache selection only for that
+explicit profile. `test_semantic_manifest_attestation.sh` covers the direct
+producer/importer/link path plus structural, classification, object, marker,
+provenance, default-Level-A, compile-only, and omitted-link-input failures.
+`test_semantic_manifest_attestation_build.sh` covers producer-to-clean-build
+propagation and rejects a tampered cached provider object with `E04634`.
 
 ## Explicit exclusions
 
@@ -125,3 +135,12 @@ and the compile-only-consumer redline.
 - no deferred or external linker accepting a P2 caller without a persisted,
   revalidated obligation.
 
+## P2 completion boundary
+
+P2 is complete when the local compiler-state provenance key is shared by the
+producer and accepting build. A copied `.tki + .o + .tsm` without that key
+fails closed; ordinary source-less replay still reports `E04631`. The next
+payload revision, if needed, must separately design a distributable producer
+identity (for example a public-key or registry policy), persisted recursive
+link obligations, and equivalent method/generic identities. None of those are
+implicit in the local HMAC receipt.

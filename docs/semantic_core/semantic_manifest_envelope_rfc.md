@@ -3,8 +3,8 @@
 **Status:** Proposed envelope and trust model. P1.0/P1.3 implement an
 independent compiler-owned sidecar carrier, replay-surface closure, and an
 explicit default-off validation profile for a narrow declaration-recomputed
-CDW1 prototype, including project-build propagation. P2's narrow local
-Outcome-attestation execution plan is recorded in
+CDW1 prototype, including project-build propagation. P2 implements the narrow
+local Outcome-attestation execution plan recorded in
 [`semantic_manifest_envelope_p2_plan.md`](semantic_manifest_envelope_p2_plan.md).
 It changes no source syntax or TKI grammar.
 

@@ -536,11 +536,14 @@ def main():
     build_dir = canonicalize(os.path.dirname(args.manifest) or ".")
     env = os.environ.copy()
     env["TOKA_BUILD_DIR"] = build_dir
+    if "--validate-semantic-manifest-attestations" in c_args:
+        env["TOKA_USE_LIB_CACHE"] = "1"
 
     # Resolve the graph before native metadata so the native cache incorporates
     # the exact Toka target triple rather than only host-local package inputs.
     current_graph = run_tokac_dump(args.tokac, c_args, args.entry_files, env=env)
-    if "--validate-semantic-manifests" in c_args:
+    if ("--validate-semantic-manifests" in c_args or
+            "--validate-semantic-manifest-attestations" in c_args):
         validation_status = run_tokac_compile(
             args.tokac, ["--check-only"] + c_args, args.entry_files, env=env
         )

@@ -25,6 +25,8 @@ fn print_help() {
     println("  conditional-facts Emit typed-todo conditional binding facts JSON")
     println("  index        Emit compiler-owned semantic index JSON for API tooling")
     println("  build --validate-semantic-manifests  Validate admitted source-less TKI sidecars")
+    println("  build --validate-semantic-manifest-attestations --semantic-manifest-provenance-dir <dir>")
+    println("                                      Validate bodyless Outcome provider attestations")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
     println("  test         Run all tests in the tests/ directory")
@@ -515,10 +517,16 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         auto executable# = string::from(".toka_build_exe")
         if check_is_windows() { executable#.push_str(".exe") }
         auto validate_semantic_manifests# = false
+        auto validate_semantic_manifest_attestations# = false
+        auto semantic_manifest_provenance_dir# = string::from("")
         auto profile_index# = 0:usize
         loop profile_index < extra_args.len() {
             if extra_args.get_ref(profile_index).eq(string::from("--validate-semantic-manifests")) {
                 validate_semantic_manifests = true
+            } else if extra_args.get_ref(profile_index).eq(string::from("--validate-semantic-manifest-attestations")) {
+                validate_semantic_manifest_attestations = true
+            } else if extra_args.get_ref(profile_index).eq(string::from("--semantic-manifest-provenance-dir")) && profile_index + 1:usize < extra_args.len() {
+                semantic_manifest_provenance_dir = extra_args.get_ref(profile_index + 1:usize).clone()
             }
             profile_index += 1
         }
@@ -545,6 +553,11 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         }
         if validate_semantic_manifests {
             compile#.arg(string::from("--validate-semantic-manifests"))
+        }
+        if validate_semantic_manifest_attestations {
+            compile#.arg(string::from("--validate-semantic-manifest-attestations"))
+            compile#.arg(string::from("--semantic-manifest-provenance-dir"))
+            compile#.arg(cede semantic_manifest_provenance_dir.clone())
         }
         compile#.arg(cede build_file.clone())
         compile#.arg(string::from("-o"))

@@ -111,6 +111,68 @@ if ! "$TEST_DIR/p2-app"; then
     exit 1
 fi
 
+run_p2_consumer() {
+    TOKA_BUILD_DIR="$BUILD_DIR" TOKA_USE_LIB_CACHE=1 "$TOKAC" \
+        --validate-semantic-manifest-attestations \
+        --workspace-node semantic-manifest-p2-test \
+        --workspace-root "$TEST_DIR" \
+        --semantic-manifest-provenance-dir "$TEST_DIR/state" \
+        "$TEST_DIR/main.tk" "$provider_object" -o "$1"
+}
+
+expect_p2_failure() {
+    local label="$1"
+    local expected="$2"
+    if run_p2_consumer "$TEST_DIR/$label-app" \
+        >"$TEST_DIR/$label.out" 2>"$TEST_DIR/$label.err"; then
+        echo "FAIL: P2 profile accepted $label" >&2
+        exit 1
+    fi
+    if ! grep -Fq 'E04634' "$TEST_DIR/$label.err" ||
+       ! grep -Fq "$expected" "$TEST_DIR/$label.err"; then
+        echo "FAIL: P2 profile did not report $expected for $label" >&2
+        sed 's/^/  | /' "$TEST_DIR/$label.err" >&2
+        exit 1
+    fi
+}
+
+cp "$provider_interface.tsm" "$TEST_DIR/provider.tsm.good"
+mv "$provider_interface.tsm" "$provider_interface.tsm.missing"
+expect_p2_failure missing-sidecar Missing
+mv "$provider_interface.tsm.missing" "$provider_interface.tsm"
+
+printf '{' > "$provider_interface.tsm"
+expect_p2_failure malformed-sidecar ReadError
+cp "$TEST_DIR/provider.tsm.good" "$provider_interface.tsm"
+
+sed 's/"SafetyRequired"/"OptionalOptimization"/' \
+    "$TEST_DIR/provider.tsm.good" > "$provider_interface.tsm"
+expect_p2_failure relabelled-record InvalidRecord
+cp "$TEST_DIR/provider.tsm.good" "$provider_interface.tsm"
+
+cp "$provider_object" "$TEST_DIR/provider.o.good"
+printf 'tampered' >> "$provider_object"
+expect_p2_failure tampered-object ObjectMismatch
+mv "$TEST_DIR/provider.o.good" "$provider_object"
+
+mkdir "$TEST_DIR/other-state"
+if TOKA_BUILD_DIR="$BUILD_DIR" TOKA_USE_LIB_CACHE=1 "$TOKAC" \
+    --validate-semantic-manifest-attestations \
+    --workspace-node semantic-manifest-p2-test \
+    --workspace-root "$TEST_DIR" \
+    --semantic-manifest-provenance-dir "$TEST_DIR/other-state" \
+    "$TEST_DIR/main.tk" "$provider_object" -o "$TEST_DIR/wrong-key-app" \
+    >"$TEST_DIR/wrong-key.out" 2>"$TEST_DIR/wrong-key.err"; then
+    echo "FAIL: P2 profile accepted an untrusted provenance state" >&2
+    exit 1
+fi
+if ! grep -Fq 'E04634' "$TEST_DIR/wrong-key.err" ||
+   ! grep -Fq 'ProvenanceMismatch' "$TEST_DIR/wrong-key.err"; then
+    echo "FAIL: P2 profile did not reject the wrong provenance state" >&2
+    sed 's/^/  | /' "$TEST_DIR/wrong-key.err" >&2
+    exit 1
+fi
+
 # The ordinary source-less path remains Level A only; P2 is never implicit.
 if TOKA_BUILD_DIR="$BUILD_DIR" TOKA_USE_LIB_CACHE=1 "$TOKAC" \
     --workspace-node semantic-manifest-p2-test \

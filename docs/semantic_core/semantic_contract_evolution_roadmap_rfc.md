@@ -387,23 +387,26 @@ The envelope distinguishes four trust classes:
 4. **Foreign/native assumptions:** absent a verifier, these remain explicitly
    unsafe and cannot gain safe authority merely from a manifest.
 
-The object-attested payload is frozen only after `OutcomeTransition` IR is
-stable. The resolved formal/variant representation and Level-A retained-body
-replay are the first prerequisites; they do not themselves freeze a manifest
-payload. Source-backed and retained-body-rechecked Outcome conformance does
-not wait for that payload. The payload later enables Level-B bodyless parity
-for `init`, Outcome, and async cleanup obligations.
+The first object-attested payload is now frozen for the exact known-coordinate,
+non-generic Outcome subset only. P2 pairs each reconstructed declaration
+record with an Outcome-fulfilment record, a compiler-local provenance receipt,
+an IR-retained marker, and the exact provider object; it revalidates the same
+obligation immediately before the accepting compiler invocation links. This
+enables explicit-profile Level-B bodyless Outcome parity without granting any
+authority from hashes, TKI metadata, or a copied sidecar. It does not enable
+bodyless `init`, unsafe-wrapper, or async-cleanup obligations, nor a
+distributable producer policy or persisted recursive link obligations.
 
 [`canonical_declaration_witness_rfc.md`](canonical_declaration_witness_rfc.md)
-now proposes the candidate P1 encoding and atomic comparison rules for the
-declaration-recomputed Outcome record. Its exact known-coordinate,
-non-generic, concrete first-order subset now has an encoder-only `cdw1:`
-audit probe and standalone strict decoder. It remains an activation gate rather
-than an enabled TKI payload: declaration reconstruction/atomic comparison,
-generic/method identities, and the full tamper matrix must close first.
-The current preflight confirms that `cdw1:` cannot be promoted from an
-ignorable TKI comment: an independent compiler-owned envelope carrier is a
-separate design gate.
+defines the P1 declaration-recomputed encoding and atomic comparison rules for
+the Outcome record. Its exact known-coordinate, non-generic, concrete
+first-order subset is implemented as an explicit profile; P2 reuses the same
+canonical bytes as the declaration half of its body-fulfilment pair. The
+`cdw1:` audit comment remains ignorable: the compiler-owned envelope and its
+tamper matrix, not a TKI comment, form the activation boundary. The P2 local
+receipt completion and its remaining distributed-provenance boundary are
+recorded in
+[`semantic_manifest_envelope_p2_plan.md`](semantic_manifest_envelope_p2_plan.md).
 
 ### 4.6 Subsequent capability RFCs
 

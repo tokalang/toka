@@ -3,9 +3,10 @@
 **Status:** Implemented narrow P1 at Level A. This document records the frozen
 first-slice surface spelling, semantic contract, and acceptance gates. Parser,
 semantic checking, code generation, and source-less retained-body TKI replay
-support the direct, synchronous, exhaustive-match subset. A bodyless
-`TKI + object` provider remains Level B and is deliberately rejected; later
-sections marked deferred remain design work.
+support the direct, synchronous, exhaustive-match subset. P2 additionally
+qualifies a local object-attested Level-B path for the admitted subset; ordinary
+or copied bodyless `TKI + object` providers remain deliberately rejected.
+Later sections marked deferred remain design work.
 
 **Depends on:** a qualified current baseline, the shared PlaceState Core,
 whole-place synchronous `init` P1, and structured return contracts.
@@ -430,10 +431,12 @@ explicit completion levels:
    lowers that checked body rather than linking a provider object. A bodyless
    declaration is rejected with `E04631`. This level does not depend on the
    Semantic Manifest.
-2. **Level B, object-attested source-less:** a bodyless provider may be used
-   only after the separate manifest RFC defines an accepted provenance and
-   exact-object-bound attestation for the same checked obligation. Otherwise it
-   fails closed.
+2. **Level B, local object-attested source-less:** the admitted P1 Outcome
+   subset may use a bodyless provider only under the explicit P2 semantic
+   manifest profile, which verifies a compiler-local provenance receipt, exact
+   object digest and marker, declaration-recomputed record set, and the same
+   invocation's final link input. Ordinary or copied third-party interfaces
+   still fail closed. A distributable producer policy is later work.
 
 Adding or changing an Outcome Contract changes the semantic interface digest
 and invalidates dependent caches. The interface-format version changes only
@@ -445,8 +448,7 @@ Before implementation is described as supported, the conformance matrix must
 cover:
 
 - source-backed and Level-A retained-body-rechecked source-less positive
-  `Ok`/`Err` construction, plus Level-B object-attested parity only after that
-  profile is separately enabled;
+  `Ok`/`Err` construction, plus the P2 local object-attested parity profile;
 - exact conservation of `InitAuthority(p)` on `Never`, its one-time consumption
   on `Live`, and independent discharge of call/enclosing contract obligations;
 - every callee mismatch between returned variant and place state;
