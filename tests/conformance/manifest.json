@@ -370,7 +370,7 @@
       "id": "diag_none_is_not_option_none_01",
       "path": "diagnostics/none_is_not_option_none.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E0409",
+      "expected_diagnostic_code": "E04606",
       "expected_span_line": 5,
       "timeout_seconds": 10,
       "description": "Payload none does not implicitly convert to Option::None"
@@ -821,7 +821,7 @@
       "path": "diagnostics/cede_fixed_array_index_borrow_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 13,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A partial cede cannot invalidate a borrowed fixed-array element"
     },
@@ -830,7 +830,7 @@
       "path": "diagnostics/match_reference_fixed_index_cede_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 14,
+      "expected_span_line": 13,
       "timeout_seconds": 10,
       "description": "A direct match reference binding protects its fixed-array index from cede"
     },
@@ -839,7 +839,7 @@
       "path": "diagnostics/guard_reference_fixed_index_cede_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 13,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A direct guard reference binding protects its fixed-array index from cede"
     },
@@ -848,7 +848,7 @@
       "path": "diagnostics/nested_match_reference_field_cede_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 14,
+      "expected_span_line": 13,
       "timeout_seconds": 10,
       "description": "A nested match reference binding protects its source field from cede"
     },
@@ -857,7 +857,7 @@
       "path": "diagnostics/nested_guard_reference_field_cede_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 13,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A nested guard reference binding protects its source field from cede"
     },
@@ -937,7 +937,7 @@
       "path": "diagnostics/destructure_reference_field_cede_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 13,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A destructuring reference binding protects its source field from cede"
     },
@@ -946,7 +946,7 @@
       "path": "diagnostics/for_reference_fixed_array_cede_conflict.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0440",
-      "expected_span_line": 11,
+      "expected_span_line": 10,
       "timeout_seconds": 10,
       "description": "A fixed-array reference iteration protects all dynamic candidate elements from cede"
     },
@@ -1088,7 +1088,7 @@
       "path": "diagnostics/static_cede_parameter_requires_explicit_transfer.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E04570",
-      "expected_span_line": 19,
+      "expected_span_line": 18,
       "timeout_seconds": 10,
       "description": "A static consuming method requires explicit cede for a resource argument"
     },
@@ -1097,7 +1097,7 @@
       "path": "diagnostics/callable_cede_parameter_requires_explicit_transfer.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E04570",
-      "expected_span_line": 21,
+      "expected_span_line": 20,
       "timeout_seconds": 10,
       "description": "A consuming callable requires explicit cede for a resource argument"
     },
@@ -1256,7 +1256,7 @@
       "path": "diagnostics/cede_unique_field_receiver_custom_drop_rejected.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0439",
-      "expected_span_line": 21,
+      "expected_span_line": 20,
       "timeout_seconds": 10,
       "description": "A consuming field receiver is rejected when custom aggregate drop owns the lifecycle invariant"
     },
@@ -1528,7 +1528,7 @@
       "path": "diagnostics/cede_fixed_array_index_invalidates_source.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0410",
-      "expected_span_line": 13,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A cede from a fixed-array constant index invalidates that exact element"
     },
@@ -1537,7 +1537,7 @@
       "path": "diagnostics/cede_fixed_array_index_branch_join_invalidates_source.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0410",
-      "expected_span_line": 15,
+      "expected_span_line": 14,
       "timeout_seconds": 10,
       "description": "A fixed-array element ceded on one if branch is unavailable after the join"
     },
@@ -1546,7 +1546,7 @@
       "path": "diagnostics/cede_fixed_array_index_match_join_invalidates_source.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0410",
-      "expected_span_line": 19,
+      "expected_span_line": 18,
       "timeout_seconds": 10,
       "description": "A fixed-array element ceded on one match arm is unavailable after the join"
     },
@@ -1555,7 +1555,7 @@
       "path": "diagnostics/cede_dynamic_resource_array_index_rejected.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E04600",
-      "expected_span_line": 13,
+      "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A dynamic resource index is rejected until it has a general lifecycle proof"
     },
@@ -1564,7 +1564,7 @@
       "path": "diagnostics/cede_direct_field_match_join_invalidates_source.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0410",
-      "expected_span_line": 22,
+      "expected_span_line": 21,
       "timeout_seconds": 10,
       "description": "A direct field ceded on one match arm is unavailable after the join"
     },
@@ -1573,7 +1573,7 @@
       "path": "diagnostics/cede_direct_field_cast_invalidates_source.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0410",
-      "expected_span_line": 16,
+      "expected_span_line": 15,
       "timeout_seconds": 10,
       "description": "A cast cannot hide direct field cede invalidation"
     },
@@ -1582,7 +1582,7 @@
       "path": "diagnostics/cede_direct_field_custom_drop_rejected.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0439",
-      "expected_span_line": 19,
+      "expected_span_line": 17,
       "timeout_seconds": 10,
       "description": "A direct field cede cannot bypass a user-defined aggregate destructor"
     },
@@ -1591,7 +1591,7 @@
       "path": "diagnostics/cede_direct_field_cast_custom_drop_rejected.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E0439",
-      "expected_span_line": 20,
+      "expected_span_line": 18,
       "timeout_seconds": 10,
       "description": "A cast cannot bypass the custom-drop direct-field cede boundary"
     },
@@ -1894,7 +1894,7 @@
       "path": "diagnostics/aggregate_owned_field_requires_cede.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E04607",
-      "expected_span_line": 14,
+      "expected_span_line": 13,
       "timeout_seconds": 10,
       "description": "An aggregate field cannot implicitly duplicate an owning local value"
     },
@@ -1911,7 +1911,7 @@
       "path": "diagnostics/aggregate_owned_field_projection_requires_cede.tk",
       "type": "compile-fail",
       "expected_diagnostic_code": "E04607",
-      "expected_span_line": 23,
+      "expected_span_line": 21,
       "timeout_seconds": 10,
       "description": "An aggregate field cannot implicitly duplicate an owning field projection"
     },

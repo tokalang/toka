@@ -48,13 +48,14 @@ stages under the default `v0.9.9-01` version label. The exact command, counts,
 and scope boundary are recorded in
 [`p1_current_head_qualification.md`](p1_current_head_qualification.md).
 
-After the P0.4 exact-place migration, current HEAD has re-entered this
-qualification gate: the full conformance manifest reports 203 passed / 23
-failed. The active failure inventory and the rule for separating diagnostic
-expectations from behavioral regressions are in
+After the P0.4 exact-place migration, the bounded current-HEAD conformance
+requalification is closed: the full manifest reports **226 passed / 0 failed**
+and CTest reports **9 passed / 0 failed**. The opening inventory, behavioral
+repairs, diagnostic-baseline evidence, and exact command are recorded in
 [`current_head_release_qualification_triage.md`](current_head_release_qualification_triage.md).
-Until that ledger is closed by a fresh exact-revision gate, no new semantic
-surface, async/runtime slice, or witness activation may begin.
+This reopens the planned P0 exact-place/permission-flow work. It is not a
+replacement for the historical thirteen-stage package release gate, nor does
+it by itself activate a new async/runtime slice or witness surface.
 
 The following repair history explains why P-1 was necessary; it is not a
 current-HEAD failure claim.

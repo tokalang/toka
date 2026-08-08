@@ -4,8 +4,11 @@ Status: **Historical qualification — `8d680fea4a9301cec21efc310a73a15ce4eb8157
 was the P-1 baseline at that revision.** This ledger records the exact
 clean-worktree release gate that closed that P-1 instance; it is not a claim
 that later PlaceState, TCB, manifest, or current-HEAD work is qualified. The
-current requalification inventory is
+current bounded conformance requalification is recorded, including its
+226-passed/0-failed closure, in
 [`current_head_release_qualification_triage.md`](current_head_release_qualification_triage.md).
+That closure does not replace this document's exact-revision thirteen-stage
+package-gate evidence.
 
 ## Audit identity
 

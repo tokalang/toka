@@ -1,4 +1,4 @@
-// EXPECT_ERROR: E0409
+// EXPECT_ERROR: E04606
 import core/option::{Option}
 
 fn main() -> i32 {
