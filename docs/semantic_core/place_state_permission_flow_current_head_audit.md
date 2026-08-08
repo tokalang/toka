@@ -1,8 +1,10 @@
 # Current-HEAD Audit: PlaceState, Permission Flow, and Bounded Partial `cede`
 
-**Status:** Qualified current-HEAD evidence at
-`8d680fea4a9301cec21efc310a73a15ce4eb8157`. This is a conformance audit and
-a fail-closed repair record; it does not close the PlaceState Core.
+**Status:** Historical release evidence remains at
+`8d680fea4a9301cec21efc310a73a15ce4eb8157`; the subsequent frozen P0.4
+exact-place carrier and bounded current-HEAD conformance qualification are
+complete. This remains a fail-closed repair record, not a claim about the
+async/place bridge or a future package release.
 
 ## Audit basis
 
@@ -20,9 +22,9 @@ matrix is therefore:
 
 | Exact place | Admitted condition | Static state | Runtime cleanup |
 |---|---|---|---|
-| whole stable local | ordinary whole-place rules | `PlaceStateMask` (`Never`, `Live`, `Moved`) | drop/init flags |
-| direct record field | local binding of a struct/tuple, at most 64 fields, no explicit drop, no shared member | `InitMask` bit | field drop-mask bit where cleanup is non-trivial |
-| fixed-array constant index | local fixed array, in range, at most 64 elements | `InitMask` bit | array drop-mask bit where cleanup is non-trivial |
+| whole stable local | ordinary whole-place rules | `ExactPlaceFacts::whole` | drop/init flags |
+| direct record field | local binding of a struct/tuple, at most 64 fields, no explicit drop, no shared member | admitted projection fact in `ExactPlaceFacts` | field drop-mask bit where cleanup is non-trivial |
+| fixed-array constant index | local fixed array, in range, at most 64 elements | admitted projection fact in `ExactPlaceFacts` | array drop-mask bit where cleanup is non-trivial |
 | any other projection | nested, dynamic, nonlocal, custom-drop, shared-member aggregate, or over-limit | rejected | not lowered |
 
 The new diagnostic is intentionally a capability-boundary error, not a new
@@ -49,29 +51,24 @@ join and fixed-array cleanup/return/loop paths.
 
 ## Reconciliation result
 
-### Whole places: qualified implementation substrate
+### Whole places: qualified exact-place carrier
 
-`SymbolInfo::PlaceStateMask` represents the three bounded whole-place facts,
-and Sema snapshots, restores, and unions it with move state, `InitMask`, PAL,
-and direct-flow restrictions on the admitted control-flow paths. The delayed
-initialization and Outcome P1 slices use the exact `Never` and `Live`
-preconditions; a whole `cede` records `Moved`. This is the implementation
-substrate required by the whole-place synchronous slices.
+`SymbolInfo::ExactPlace` represents the three bounded whole-place facts, and
+Sema snapshots, restores, and joins it with PAL and direct-flow restrictions
+on the admitted control-flow paths. The delayed initialization and Outcome P1
+slices use the exact `Never` and `Live` preconditions; a whole `cede` records
+`Moved`. Compatibility `InitMask` and `Moved` fields remain metadata at legacy
+boundaries rather than deciding an admitted exact-place transition.
 
-### Partial projections: bounded lifecycle slice, not PlaceState Core closure
+### Partial projections: bounded lifecycle slice in the carrier
 
-Projection liveness remains a legacy per-member `InitMask`; runtime cleanup is
-a separate `DropMask`. A cleared projection bit means that cleanup and later
-reads are suppressed, but it does not encode whether absence is
-`NeverConstructed` or `Constructed + MovedOut`. Thus the implementation does
-not yet carry the RFC's full construction-origin/availability product for each
-projection.
-
-The Sema and CodeGen eligibility checks now agree on the frozen rows above,
-including direct fields of eligible by-value pattern bindings, but they are
-still duplicated checks rather than one shared structured eligibility fact.
-The audit treats that duplication as a remaining engineering closure item, not
-as proof that future extensions automatically preserve the matrix.
+Admitted projection liveness is carried by `ExactPlaceFacts` and one
+Sema-elaborated `PartialMovePlan`; runtime cleanup remains the separate
+lowering `DropMask`. The frozen direct-field/fixed-array matrix therefore has
+one static eligibility/fact source across Sema joins and CodeGen handoff.
+`InitMask` remains a derived compatibility view, not an authority source.
+This does not extend the matrix to nested, dynamic, custom-drop, shared-member,
+or over-limit projections.
 
 ### Deliberate exclusions
 
@@ -83,10 +80,9 @@ qualified.
 
 ## Decision and next implementation step
 
-The bounded synchronous partial-`cede` surface is now narrower and has fresh
-source/source-less and full-release evidence, but **P0 PlaceState Core is not
-closed**. The next implementation step is internal only: replace the parallel whole
-`PlaceStateMask` and projection `InitMask` authority with one exact-place
-fact/eligibility representation, then prove its join and cleanup lowering
-without changing this frozen surface. A full release gate at the resulting
-candidate revision is required before any broader status can be claimed.
+The bounded synchronous partial-`cede` surface and frozen P0 PlaceState Core
+are complete with source/source-less evidence and the current 226/0
+conformance closure. The next planned semantic implementation is delayed
+initialization P1: whole stable local places, synchronous `init` contracts,
+and lexical fulfilment blocks only. The async/place bridge, broader projection
+admission, and package release qualification remain separate tracks.

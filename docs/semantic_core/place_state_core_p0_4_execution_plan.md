@@ -1,8 +1,9 @@
 # P0.4 Execution Plan: Exact-Place Fact and Eligibility Unification
 
-**Status:** The four implementation slices are complete for the frozen
-exact-place carrier. The remaining work is candidate-level release
-qualification, not another P0.4 feature slice. P0.4a introduced
+**Status:** The four implementation slices and their bounded current-HEAD
+conformance qualification are complete for the frozen exact-place carrier.
+This does not claim the historical thirteen-stage package release gate; it
+closes P0.4 rather than adding another P0.4 feature slice. P0.4a introduced
 `ExactPlaceFacts` and moved both `SymbolInfo` and the central `AnalysisState`
 capture/merge path to it. P0.4b moves ordinary `if`/`else`, `guard`, `loop`,
 `for`, `match`, and call-candidate rollback to the same value; `break` and
@@ -155,15 +156,12 @@ still propagated beside exact facts only as a compatibility/diagnostic marker;
 it no longer supplies a frozen-surface semantic decision.
 
 Qualification reruns the bounded partial-`cede`, delayed-init, Outcome,
-source-less retained-body replay, and exact-once cleanup matrices. The next
-gate is the ordinary full release qualification at a candidate revision; it
-does not enlarge P0.4 coverage.
-
-The full manifest was run after this migration and reported **203 passed / 23
-failed**. It is therefore not a release-pass claim. The remaining failures
-include diagnostic code/span expectations, a nullable-cede expectation, and
-an iterator-pattern fixture; they require separate release-gate triage rather
-than an expansion of the frozen exact-place model.
+source-less retained-body replay, and exact-once cleanup matrices. The current
+full manifest now reports **226 passed / 0 failed**; its opening 203/23
+inventory and disposition are recorded in
+[`current_head_release_qualification_triage.md`](current_head_release_qualification_triage.md).
+This bounded closure does not enlarge P0.4 coverage or substitute for a future
+package release gate.
 
 ## 4. Completion conditions
 

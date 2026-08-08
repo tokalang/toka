@@ -328,13 +328,14 @@ reactor, and host-pump policy belong to the sole official default executor. It
 also records the one `async main` default-runner exception in CodeGen. This is
 not third-party-runtime support and must not be cited as such.
 
-Accordingly, the next P0 implementation target remains the internal
-exact-place fact/eligibility unification identified by
-[`place_state_permission_flow_current_head_audit.md`](place_state_permission_flow_current_head_audit.md), rather
-than the full-token or cleanup-descriptor work below. This does not weaken the
-TCB contract: it makes its completion a distinct long-horizon qualification
-track with a real, finite entry gate instead of an implicit blocker for every
-other semantic dependency.
+Accordingly, the frozen P0 exact-place fact/eligibility unification is closed,
+as recorded by
+[`place_state_permission_flow_current_head_audit.md`](place_state_permission_flow_current_head_audit.md).
+The next planned semantic implementation is the narrow delayed-initialization
+P1 in Section 4.2, rather than the full-token or cleanup-descriptor work below.
+This does not weaken the TCB contract: it keeps its completion a distinct
+long-horizon qualification track with a real, finite entry gate instead of an
+implicit blocker for every other semantic dependency.
 
 The normative [`async TCB RFC`](../async_runtime_tcb_rfc.md) defines
 cancellation, wake linearization, result consumption, and frame-owned cleanup
