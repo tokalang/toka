@@ -70,7 +70,11 @@ remain compatible but do not claim this handshake until recompiled.
 `toka_async_cold_cancel_cleanup` proves both explicit cold cancellation and
 last-handle drop: the installed cleanup callback runs exactly once, observes a
 nonterminal task while it runs, and terminal cancellation appears only after
-it returns. The `async_cede_unique_receiver_cold_drop` and
+it returns. It also runs 2,000 start/cancel races: exactly one side claims the
+`Created` transition, so a cold-cancel winner publishes canceled without a
+ready entry, while a start winner supplies one ready task and cannot also take
+the no-body cold-finalization path. The
+`async_cede_unique_receiver_cold_drop` and
 `async_cede_unique_field_receiver_lifecycle` language fixtures additionally
 cover compiler-generated frame ownership and exact-once resource cleanup. This
 is still a bounded evidence slice, not closure of the RFC's full cold-finalizer
@@ -89,12 +93,29 @@ unique private transfer/drop claim; canceled completion has no payload claim.
 
 `toka_async_result_disposition` is a CTest runtime probe for rejecting a
 premature `ReadyLive` consumer take, canceled no-payload observation, consumer
-transfer, both detach/complete orderings, and scope-owned drain. Its typed drop
-hook re-enters `toka_task_take_result` while it runs and observes `ReadyLive`;
-the re-entry is rejected and cannot deadlock or steal the result. This is
-bounded evidence for result-claim ordering only. It does **not** qualify the
-TCB RFC's frame pins, full-token lifetime validation, aggregate cleanup, or
-await-resolution/cancellation arbitration.
+transfer, both detach/complete orderings, the forced `ReadyLive`-before-
+`Completed` detach handoff, a detached canceled terminal, and scope-owned
+drain. In that forced handoff the detach moves result ownership but cannot
+claim/drop before terminal publication; the terminal publisher later performs
+the sole detached typed drop and owner release. A detached canceled terminal
+instead exposes no payload and still releases the detached owner. Its typed
+drop hook re-enters `toka_task_take_result` while it runs
+and observes `ReadyLive`; the re-entry is rejected and cannot deadlock or steal
+the result. A 2,000-round concurrent detach/normal-terminal probe covers both
+owners racing the same private claim and proves every final TCB reference is
+released. This is bounded evidence for result-claim ordering only. The
+compiler's async-main,
+`.await`, and synchronous `wait` lowerings additionally use an internal result
+access guard: the successful private claim transfers a checked TCB retain and,
+when a frame exists, one frame pin through the typed payload load. The CTest
+probe releases the external owner during that interval and verifies that the
+guard keeps the payload readable until it is released. This is not a
+source-level API or a public runtime ABI commitment. The older
+`toka_task_take_result` compatibility entry also validates a non-null promise
+header `self_tcb` through the task registry; a stale frame-less promise header
+fails rather than falling back to the promise-only claim path. It does **not**
+qualify the TCB RFC's broader frame-retirement protocol, full-token lifetime
+validation, aggregate cleanup, or await-resolution/cancellation arbitration.
 
 ### 1.4 Current narrow implementation evidence: pre-commit wait rollback
 
@@ -159,18 +180,19 @@ forced preemption leaves one ready entry, one worker claim, no late reinsertion
 after dequeue, and no active WaitSet slot that can wake the selected epoch
 again.
 
-For the old pair/n-way API, source selection leaves each physical slot reserved
-only as a retired outcome record: the resumed consumer can still query which
-token won and explicitly release its retained TCB reference, but neither the
-winner nor loser is event-eligible and the active registry count is already
-zero. The selected source unlinks the complete group before queue publication;
-the `TokaWaitSet` itself is freed after the source's scheduler handoff.
+For the pair/n-way API, source selection leaves each physical slot reserved as
+an inactive outcome record: the resumed consumer can still query which token
+won and explicitly release its retained TCB and descriptor reference, but
+neither the winner nor loser is event-eligible and the active registry count is
+already zero. The selected source unlinks the complete group before queue
+publication. The descriptor remains alive after its committed logical
+uninstall until the last outcome slot releases it; that is distinct from
+scheduler handoff.
 
 This is a narrow queue-publication substrate only, **not** Section 8.1 queue
-publication conformance. It uses a schedule generation rather than a full task
-token; it does not implement the normative `WonCommitted` descriptor, checked
-helper retains, queue allocation failure, or the full cancellation/WaitSet
-arbitration.
+publication conformance. It uses a schedule generation rather than the full
+normative scheduler token, and it does not implement queue-allocation failure,
+the complete cancellation arbitration, or the task-wide cleanup aggregate.
 
 ### 1.7 Execution boundary: freeze the runtime baseline
 
@@ -216,10 +238,178 @@ wait registration or queue ticket. `toka_async_identity_exhaustion` forces
 both boundaries through test-only hooks.
 
 This is deliberately only an AS.0 entry fact. Exhausted wait slots are retired
-instead of returning to generation `1`, but the runtime still does not provide
-a full reusable task-instance token, cancellation-epoch exhaustion, checked
-task retains, or frame retirement. It is therefore not a claim that TCB RFC
-8.1.5—or any other 8.1 gate—is complete.
+instead of returning to generation `1`; the separate full task-token and
+checked-retain substrate is recorded below. Cancellation-epoch exhaustion and
+complete frame retirement remain unimplemented. It is therefore not a claim
+that TCB RFC 8.1.5—or any other 8.1 gate—is complete.
+
+### 1.9 Closure-track entry evidence: checked registry retains
+
+Runtime-owned lookup now enters through a private task registry protected by
+the runtime arbiter. The registry, ready item, and wait registration carry a
+full internal `TaskToken(task_id, task_instance_generation)`; the current
+standard-library suspension, timer, reactor, and `race2` paths call token-bound
+entry points. Reusing a numeric task slot advances its instance generation, so
+an old task token cannot schedule or register a wait for the new TCB. A
+successful lookup takes one checked TCB reference; zero cannot be resurrected
+and `u32` overflow returns failure without adding a queue or wait registration.
+Final release first removes that registry entry, so a later raw pointer
+comparison is stale without dereferencing freed memory. `toka_task_try_retain`
+is the failure-reporting API used by the standard library; the older void
+retain and `(task_id, generation)` entries remain fail-stop compatibility only.
+Task-facing start, cancellation, promise observation, token observation, and
+terminal-state inspectors likewise first convert their input through that
+checked registry path. Await preparation validates both its promise-associated
+child and parent before any state/link mutation; cancellation-child enrollment
+does the same before transferring its retained child authority. A stale pointer
+is a failed operation, never a fallback TCB read.
+`toka_async_identity_exhaustion` forces overflow, zero, stale pointers, and
+numeric-slot reuse through these paths.
+
+Workers, terminal publishers, typed result disposition, and cold finalizers
+now acquire a frame pin before frame access; nested default-executor turns
+restore the enclosing worker context before its pin is released. Retirement is
+still only the final-reference fail-closed substrate, not the required
+reclaimer transaction that revalidates completion, cancellation, subscription,
+scope, and cleanup guards. This is not a claim that TCB RFC 8.1.5, 8.1.12, or
+8.1.13 is complete.
+
+### 1.10 Closure-track entry evidence: installed WaitSet descriptor
+
+Pair and n-way registration now allocate one internal `WaitSet` carrying a
+nonwrapping descriptor token, the parent `TaskToken`, and the prepared schedule
+generation. Installation accepts only that exact parent in
+`Preparing|PreparingWithPendingWake` with no existing active registration; a
+second singleton or group attempt therefore fails before writing a slot. A
+group installation records the descriptor token in the parent TCB, and source
+selection or teardown clears only that exact token match.
+
+Each installed outcome slot owns one descriptor reference. A natural source
+first moves the descriptor from `Waiting` to `WonPending`, records the winner,
+and logically unlinks every member. The parent retains a progress-only set link
+that blocks nested installation until the commit point clears it. The winner
+then holds one private commit reference. The original source, a losing event that
+observes its inactive slot, a winner query, or a slot release can use that
+retained descriptor to complete the single `WonPending -> WonCommitted`
+transition. The committing helper transfers parent-bound completion teardown
+outside the runtime arbiter and only then permits the matching queue ticket to
+be published. It then release-publishes `Inactive` before any worker or
+callback visibility. The immutable winner record remains readable through the
+inactive physical outcome slots; their last release frees the descriptor.
+Cancellation may only change `Waiting -> Inactive`; it cannot overwrite an
+already-selected source winner.
+
+Releasing any still-active member also takes that same group-wide inactive
+transition: it clears every sibling before the suspended parent can be queued,
+so public member handles cannot leave a partial live WaitSet behind. Once a
+source has committed, the slots remain only as inactive outcome records until
+the consumer releases them individually.
+
+`toka_async_suspend_rollback` exercises rejected overlapping registrations,
+and the queue-publication tests cover source/cancel selection before and after
+suspension commit, active-member group teardown, a third-source n-way winner,
+and a forced `WonPending` publisher preemption: a losing source helps the same
+descriptor to `WonCommitted` and publishes exactly one parent ticket. The same
+probe verifies that a task-level cancellation request helps an already selected
+descriptor rather than bypassing it with a second wake, and that a selected
+source before `commit_suspend` is committed through the pending-wake ticket.
+`toka_async_suspend_rollback` additionally forces `abort_suspend` to encounter
+a preempted selected descriptor: it commits the existing winner, returns to
+`Running` without a ready ticket, and preserves the outcome until it is
+released. The same rollback test injects descriptor-creation failure and proves
+that pair installation exposes neither member slot, wake, nor output token
+before the caller rolls its already-prepared task back to `Running`; n-way
+candidate slots likewise remain private until descriptor installation.
+`toka_async_terminal_publisher` proves terminal publication both
+uninstalls a live group and reaps a preempted selected descriptor's inactive
+outcome slots, so a terminal task cannot retain them waiting for nonexistent
+user code; both normal and canceled terminal publication exercise that path.
+`toka_async_identity_exhaustion` also exhausts the nonwrapping WaitSet token
+and proves the rejected n-way installation exposes no slot or output token.
+`toka_async_queue_publication` retains old physical outcome slots while the
+resumed parent installs a new pair, then proves their late wake/release calls
+cannot alter that new descriptor or publish a second ticket.
+`toka_async_terminal_publisher` additionally preempts a selected ticket after
+the `Queued` claim but before physical insertion; normal and canceled terminal
+publication both make every late helper fail closed.
+This is an AS.1 entry fact only: complete completion-subscription,
+rollback-descriptor, terminal teardown, and cancellation-aggregation protocols
+remain unqualified; no TCB RFC 8.1.1, 8.1.4, or 8.1.7 closure is claimed.
+TCB RFC 8.1.6 is not owned by this descriptor substrate: it requires the
+structured `race2`/`select2`/`TaskScope` cancel-join-drain protocol tracked by
+AS.4.
+
+### 1.11 Closure-track entry evidence: completion subscription descriptors
+
+Completion notification no longer records only a reusable `(wait_id,
+slot_generation)` pair. Each active internal descriptor carries the checked
+child `TaskToken`, the parent's full token, exact wait-slot identity, and (for
+a grouped wait) its `WaitSet` token. The descriptor owns one checked child
+retain. Terminal publication and explicit unsubscription select the same node
+through `Active -> Selected(Publisher|Unsubscriber) -> CommitClaimed ->
+Inactive`; only that selected side releases the retain. A repeated arm for the
+same child and exact parent wait is idempotent, rather than adding a second
+publisher attempt. A terminal-before-arm path validates the same stored parent
+identity before routing the immediate wake.
+
+`toka_async_completion_subscription` covers normal and canceled
+terminal-before/after-arm paths, duplicate arming, subscribe-versus-terminal,
+terminal-versus-unsubscribe races, terminal publication after the external
+child-handle reference has been released, and a child terminal publisher
+racing a different member of the parent WaitSet. Selecting any other group
+member—or canceling the parent group—logically unlinks every descriptor bound
+to that exact parent WaitSet and releases its checked child retain before the
+parent ticket is published. A further 1,000-round parent-cancel versus child-
+terminal race proves those two contenders produce one parent ticket and leave
+no descriptor-held child reference. Thus an inactive parent wait cannot keep a
+nonterminal child alive as an orphan subscription.
+
+This is only an AS.3 entry fact. It has no general descriptor-helper/hazard
+protocol, no task-wide cancellation/await cleanup aggregate, and no
+source-cancellation or winner-suppression proof; therefore it does not qualify
+TCB RFC 8.1.8 or 8.1.9.
+
+### 1.12 0.x direct-await cancellation barrier experiment
+
+The current single-child await continuation now supplies one additional private
+barrier and resolution word:
+
+```text
+Idle -> Armed -> ChildNormal -> NormalClaimed -> Idle
+             -> ChildCanceled -> Idle
+             -> CancelClaimed -> Idle
+```
+
+Parent cancellation claims `CancelClaimed` while the await remains armed or
+child-terminal-but-unclaimed. A normal child terminal records `ChildNormal`,
+and compiler-generated `.await` atomically promotes it to `NormalClaimed`
+before taking the typed result; the cancellation and normal claims cannot both
+win. A canceled child yields `ChildCanceled`. The CodeGen lowering discharges
+the private word before it exposes either successor CFG. When parent
+cancellation observes an active direct-await child while the parent is
+suspended without a `WaitSet`, it requests child cancellation but does not
+separately queue the parent. The child terminal continuation remains the sole
+parent-resumption edge, after it has published its terminal/result state and
+cleared the await link.
+
+`toka_async_completion_subscription` pauses that terminal path after terminal
+publication and before the continuation, requests parent cancellation, and
+observes no ready ticket. Releasing the continuation produces exactly one
+ticket. The same C probe proves that a normal child terminal acquires exactly
+one normal claim, a later parent request cannot reselect it, and 1,000 direct
+child-terminal/parent-cancel races select cancellation before any normal claim.
+The source-level P5 redline also cancels a parent only after it has entered a
+direct child `.await`; neither the child nor parent await-successor side effect
+may execute. Its adjacent `@Encap` resource probe keeps one parent frame local
+live across that await and observes its declared drop exactly once only after
+the child cancellation reaches terminal; the child never constructs a normal
+result. The existing `.await?` conformance fixture continues to capture both
+child and current-task cancellation as `Option::None`. This is a
+deliberately narrow 0.x experiment for the service-shutdown shape; it
+introduces no public runtime ABI, source spelling, or TKI rule. It does not
+provide post-`NormalClaimed` result suppression, a cleanup aggregate, source
+cleanup, or multi-child resolution, and therefore does not qualify the full
+8.1.9 await-cleanup barrier.
 
 ---
 
