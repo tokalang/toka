@@ -105,6 +105,10 @@ change current language behavior or implementation status.
   permission/partial-cede closure, `init`, Outcome Contracts, async task and
   place-cleanup closure, and a later provenance-bound semantic manifest
   payload.
+- [`../0_x_exploration_qualification_policy.md`](../0_x_exploration_qualification_policy.md)
+  separates reversible 0.x experiments from committed contract and release
+  qualification, while requiring a continuously green mainline and named
+  dogfood evidence for either path.
 - `p1_current_head_qualification.md` is the revision-bound P-1 audit ledger.
   It records the qualified `8d680fea` baseline and keeps earlier blocked audit
   evidence as history rather than treating it as current-HEAD status.

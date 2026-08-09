@@ -70,6 +70,14 @@ jobs:
           python3 tools/scripts/test_semantic_diff_preview.py
           python3 tools/scripts/test_lsp_protocol.py
 
+      - name: Build GUI settings dogfood
+        if: runner.os == 'macOS'
+        working-directory: demos/gui-settings
+        env:
+          TOKA_LIB: ../../lib
+          TOKA_OFFLINE: "1"
+        run: ../../build/bin/toka build
+
       - name: Qualify persistent tooling at scale
         run: python3 tools/scripts/test_tooling_scale.py
 
@@ -89,6 +97,10 @@ jobs:
           python3 tools/scripts/test_verify_fail.py --exclude-file spec/ci_quarantined_fail_tests.list
           python3 tools/scripts/test_verify_warn.py
           tools/scripts/test_semantic_replay.sh
+
+      - name: Exercise service-kit dogfood
+        if: runner.os == 'Linux'
+        run: python3 examples/service-kit/tests/qualify.py
 
       - name: Qualify real data-access services (Linux loopback runner)
         if: runner.os == 'Linux'

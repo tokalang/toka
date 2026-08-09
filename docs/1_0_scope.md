@@ -27,9 +27,22 @@ Supported with restrictions. Failures in Tier 2 platforms provide qualification 
 
 ## 2. CI Gate & Qualification Tiering
 
-- **Pull Request Gate (`.github/workflows/ci.yml`)**: Automated on every PR and commit on `main`. Enforces Conformance Suite (9/9), Plaintext No-OpenSSL Script (`tools/test_no_openssl.sh`), and Runtime ASan Build Smoke (`tools/build_sanitized.sh runtime-asan`).
+- **Pull Request Gate (`.github/workflows/ci.yml`)**: Automated on every PR and
+  commit on `main`. It builds the SDK on the supported CI hosts, runs the
+  current focused compiler/tooling/conformance regressions, and exercises the
+  Linux service-kit and macOS GUI-settings dogfood paths. Exact test counts are
+  intentionally not this document's contract; `ci.yml` is authoritative for
+  the current runnable set. The gate must remain green, but it is not the
+  multi-platform release qualification.
 - **Release Candidate Gate (`.github/workflows/release.yml`)**: Automated on release candidate triggers via `tools/scripts/release_gate.py` (13-stage release qualification).
 - **Manual / Scheduled Sanitizer Gate (`tools/build_sanitized.sh`)**: `runtime-tsan` and `compiler-asan` are available for manual developer validation or dedicated scheduled builds.
+- **Windows/MSYS2 Dogfood (`.github/workflows/windows-dogfood.yml`)**: A
+  scheduled/manual Tier-2 product-feedback build of the installed SDK path; it
+  does not alter the Tier-1 release promise.
+
+The operational decision for whether a 0.x experiment needs these checks, an
+interface qualification, or an RC gate is
+[`0_x_exploration_qualification_policy.md`](0_x_exploration_qualification_policy.md).
 
 ---
 

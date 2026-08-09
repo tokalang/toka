@@ -1,0 +1,55 @@
+name: Native Windows Dogfood
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+jobs:
+  sdk-dogfood:
+    name: Windows/MSYS2 SDK path
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-clang
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-lld
+            mingw-w64-x86_64-llvm
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zstd
+
+      - name: Build SDK
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/mingw64/lib/cmake/llvm \
+            -DLLD_DIR=/mingw64/lib/cmake/lld
+          cmake --build build --parallel 2
+
+      - name: Exercise installed SDK and project workflow
+        run: |
+          set -euo pipefail
+          python3 tools/scripts/test_developer_experience.py | tee build/windows-dogfood.json
+
+      - name: Upload dogfood evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-dogfood
+          path: build/windows-dogfood.json
+          if-no-files-found: warn

@@ -333,13 +333,16 @@ as recorded by
 [`place_state_permission_flow_current_head_audit.md`](place_state_permission_flow_current_head_audit.md).
 The whole-place synchronous `init` P1 and narrow Outcome P1 in Sections 4.2
 and 4.3 are implemented at Level A, and Semantic Manifest P2 qualifies the
-stated local bodyless-Outcome path. The next core program is therefore the
-separate Async/Place Contract Closure: runtime-core TCB conformance must close
-before the compiler may carry an exact place through suspension or terminal
-cancellation. Its finite AS-to-AB sequence is frozen in
+stated local bodyless-Outcome path. The separate Async/Place Contract Closure
+remains the qualification program for carrying an exact place through
+suspension or terminal cancellation. Its finite AS-to-AB sequence is frozen in
 [`async_place_contract_closure_v1_execution_plan.md`](../async_place_contract_closure_v1_execution_plan.md).
-This retains TCB completion as a real qualification track rather than an
-implicit blocker for unrelated synchronous semantic work.
+It is not the default next implementation item: under the active
+[`0.x exploration and qualification policy`](../0_x_exploration_qualification_policy.md),
+it advances only for a reproduced baseline violation or an accepted
+product-driven capability. This retains TCB completion as a real qualification
+track without making it an implicit blocker for unrelated synchronous semantic
+or tooling work.
 
 The normative [`async TCB RFC`](../async_runtime_tcb_rfc.md) defines
 cancellation, wake linearization, result consumption, and frame-owned cleanup
