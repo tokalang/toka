@@ -267,7 +267,7 @@ pub fn __toka_spawn(*task: void) {
     }
 }
 
-import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion, toka_task_unsubscribe_completion, toka_task_retain, toka_tcb_is_canceled, toka_task_clear_current}
+import core/task::{TaskHandle, __toka_coro_resume, __toka_coro_done, __toka_coro_destroy, task_get_coro_handle, toka_task_request_cancel, toka_task_is_cancel_requested, toka_task_subscribe_completion, toka_task_unsubscribe_completion, toka_tcb_is_canceled, toka_task_clear_current}
 
 pub fn task_cancel<'T>(handle: TaskHandle<'T>) {
     auto *tcb = task_get_coro_handle<'T>(handle)
@@ -352,7 +352,7 @@ fn drain_ready_tasks() -> i32 {
         auto popped = core_task::toka_task_pop_ready(&task_id as *u64, &task_gen as *u64, &tcb_addr as *Addr)
         if popped == 0 { break }
         if tcb_addr != 0:Addr {
-            auto frame_addr = core_task::toka_tcb_get_coro_frame(tcb_addr as *void) as Addr
+            auto frame_addr = core_task::toka_task_get_current_coro_frame() as Addr
             if frame_addr != 0:Addr {
                 __toka_coro_resume(frame_addr as *void)
                 resumed += 1:i32
@@ -467,12 +467,13 @@ pub fn pump_with_host<'H: @HostEventSource>(host#: H, max_wait_millis: i32) -> R
 pub fn __toka_register_timer(*task: void, ms: i32) {
     if *task != null {
         auto task_id# = 0:u64
+        auto task_instance# = 0:u64
         auto wait_gen# = 0:u64
-        auto ok = core_task::toka_task_prepare_suspend(*task, &task_id as *u64, &wait_gen as *u64)
+        auto ok = core_task::toka_task_prepare_suspend_token(*task, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
         if ok != 0 {
             auto wait_id# = 0:u32
             auto slot_gen# = 0:u32
-            auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
+            auto alloc_ok = core_task::toka_wait_registry_allocate_token(task_id, task_instance, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
             if alloc_ok != 0 {
                 auto expire_time = current_time_ms() + (ms as i64)
                 lock_queue()
@@ -517,12 +518,13 @@ pub fn sleep_async(ms: i32) -> async i32 {
         return -1
     }
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
-    auto ok = core_task::toka_task_prepare_suspend(*handle, &task_id as *u64, &wait_gen as *u64)
+    auto ok = core_task::toka_task_prepare_suspend_token(*handle, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if ok != 0 {
         auto wait_id# = 0:u32
         auto slot_gen# = 0:u32
-        auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
+        auto alloc_ok = core_task::toka_wait_registry_allocate_token(task_id, task_instance, wait_gen, 1:u16, &wait_id as *u32, &slot_gen as *u32)
         if alloc_ok != 0 {
             auto expire_time = current_time_ms() + (ms as i64)
             lock_queue()

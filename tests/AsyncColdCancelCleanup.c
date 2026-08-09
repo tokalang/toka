@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -5,7 +6,13 @@
 
 extern void *toka_task_create_with_result_drop_and_cold_cleanup(
     void *coro_frame, void *promise, void (*result_drop_fn)(void *));
+extern void *toka_task_create(void *coro_frame, void *promise);
 extern int toka_task_request_cancel(void *tcb_ptr);
+extern void toka_task_complete_canceled(void *promise_ptr);
+extern int toka_task_start(void *tcb_ptr);
+extern int toka_task_pop_ready(uint64_t *out_task_id, uint64_t *out_gen,
+                               void **out_tcb_ptr);
+extern void toka_task_clear_current(void *tcb_ptr);
 extern void toka_task_drop_handle(void *tcb_ptr);
 extern void toka_task_release(void *tcb_ptr);
 extern int toka_tcb_is_done(void *tcb_ptr);
@@ -59,6 +66,57 @@ static ColdFrame *new_cold_frame(CleanupProbe *probe) {
     return frame;
 }
 
+typedef struct {
+    void *tcb;
+} StartCancelRace;
+
+static void *start_race_task(void *arg) {
+    StartCancelRace *race = (StartCancelRace *)arg;
+    toka_task_start(race->tcb);
+    return NULL;
+}
+
+static void *cancel_race_task(void *arg) {
+    StartCancelRace *race = (StartCancelRace *)arg;
+    toka_task_request_cancel(race->tcb);
+    return NULL;
+}
+
+static void test_start_vs_cold_cancel_arbitration(void) {
+    for (int i = 0; i < 2000; ++i) {
+        FakePromise promise = {0};
+        void *tcb = toka_task_create(NULL, &promise);
+        CHECK(tcb != NULL);
+        StartCancelRace race = { .tcb = tcb };
+        pthread_t starter;
+        pthread_t canceler;
+        CHECK(pthread_create(&starter, NULL, start_race_task, &race) == 0);
+        CHECK(pthread_create(&canceler, NULL, cancel_race_task, &race) == 0);
+        CHECK(pthread_join(starter, NULL) == 0);
+        CHECK(pthread_join(canceler, NULL) == 0);
+
+        if (toka_tcb_is_done(tcb)) {
+            // Cold cancellation won the exclusive Created finalization claim.
+            CHECK(toka_tcb_is_canceled(tcb));
+            CHECK(atomic_load(&promise.result_state) ==
+                  TOKA_RESULT_STATE_CANCELED);
+        } else {
+            // Start won. Cancellation may request the queued task, but it
+            // cannot also take the no-body cold-finalization path.
+            uint64_t task_id = 0;
+            uint64_t generation = 0;
+            void *worker = NULL;
+            CHECK(toka_task_pop_ready(&task_id, &generation, &worker));
+            CHECK(worker == tcb);
+            toka_task_complete_canceled(&promise);
+            toka_task_clear_current(worker);
+            toka_task_release(worker);
+        }
+        toka_task_release(tcb);
+    }
+    CHECK(toka_rt_live_tcb_count() == 0);
+}
+
 int main(void) {
     CleanupProbe canceled_probe = {0};
     ColdFrame *canceled_frame = new_cold_frame(&canceled_probe);
@@ -83,6 +141,8 @@ int main(void) {
     CHECK(atomic_load(&dropped_probe.cleanup_count) == 1);
     CHECK(atomic_load(&dropped_probe.terminal_seen_during_cleanup) == 0);
     CHECK(toka_rt_live_tcb_count() == 0);
+
+    test_start_vs_cold_cancel_arbitration();
 
     puts("async cold cancellation cleanup ordering passed");
     return 0;

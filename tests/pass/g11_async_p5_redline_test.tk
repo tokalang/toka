@@ -3,9 +3,33 @@ import std/io::{println};
 import std/task::{block_on, sleep_async, task_is_cancel_requested, task_is_canceled, task_cancel};
 import std/async::{race2, RaceWinner, TaskScope, spawn_into};
 import core/task::{task_get_coro_handle, toka_tcb_is_done};
+import core/traits::{@Encap};
 
 auto g_side_effect_count# = 0;
 auto g_after_cancel_await# = 0;
+auto g_parent_entered_await# = 0;
+auto g_parent_after_await# = 0;
+auto g_child_after_await# = 0;
+auto g_parent_cleanup_entered# = 0;
+auto g_parent_local_drop_count# = 0;
+auto g_child_result_constructed# = 0;
+auto g_child_result_drop_count# = 0;
+
+shape ParentAwaitGuard(id: i32)
+
+impl ParentAwaitGuard@Encap {
+    fn drop(self#) {
+        g_parent_local_drop_count += 1;
+    }
+}
+
+shape ChildAwaitValue(id: i32)
+
+impl ChildAwaitValue@Encap {
+    fn drop(self#) {
+        g_child_result_drop_count += 1;
+    }
+}
 
 fn fast_worker() -> async i32 {
     sleep_async(10).await;
@@ -104,11 +128,81 @@ fn test_cold_task_cancel_and_await() -> async i32 {
     return 1;
 }
 
+fn awaited_child_for_parent_cancel() -> async i32 {
+    sleep_async(200).await;
+    g_child_after_await += 1;
+    return 7;
+}
+
+fn parent_awaiting_child_for_cancel() -> async i32 {
+    auto child = awaited_child_for_parent_cancel().start;
+    g_parent_entered_await = 1;
+    child.await;
+    g_parent_after_await += 1;
+    return 7;
+}
+
+fn test_parent_cancel_while_awaiting_child() -> async i32 {
+    println("[Probe 5] Testing parent cancellation while a direct child await is active...");
+    auto parent = parent_awaiting_child_for_cancel().start;
+    loop g_parent_entered_await == 0 {
+        sleep_async(1).await;
+    }
+    task_cancel<i32>(parent);
+    auto *parent_tcb = task_get_coro_handle<i32>(parent);
+    loop !toka_tcb_is_done(*parent_tcb) {
+        sleep_async(1).await;
+    }
+    assert(task_is_canceled<i32>(parent), "Probe 5 failed: parent cancellation did not finish after child terminal");
+    assert(g_parent_after_await == 0, "Probe 5 failed: parent continued after canceled direct await");
+    assert(g_child_after_await == 0, "Probe 5 failed: canceled awaited child continued after its await");
+    println("[Probe 5] PASSED: direct await cancellation waited for child terminal without exposing CFG!");
+    return 1;
+}
+
+fn child_for_parent_cleanup() -> async ChildAwaitValue {
+    sleep_async(200).await;
+    g_child_result_constructed += 1;
+    return ChildAwaitValue(id = 8);
+}
+
+fn parent_with_live_local_awaiting_child() -> async i32 {
+    auto local = ParentAwaitGuard(id = 1);
+    auto child = child_for_parent_cleanup().start;
+    g_parent_cleanup_entered = 1;
+    auto result = child.await;
+    return result.id + local.id;
+}
+
+fn test_parent_cancel_drops_live_frame_local_once() -> async i32 {
+    println("[Probe 6] Testing direct-await cancellation frame-local cleanup...");
+    auto parent = parent_with_live_local_awaiting_child().start;
+    loop g_parent_cleanup_entered == 0 {
+        sleep_async(1).await;
+    }
+    task_cancel<i32>(parent);
+    auto *parent_tcb = task_get_coro_handle<i32>(parent);
+    loop !toka_tcb_is_done(*parent_tcb) {
+        sleep_async(1).await;
+    }
+    assert(task_is_canceled<i32>(parent), "Probe 6 failed: parent cancellation did not finish");
+    assert(g_parent_local_drop_count == 1,
+           "Probe 6 failed: live parent frame local was not dropped exactly once");
+    assert(g_child_result_constructed == 0,
+           "Probe 6 failed: canceled awaited child fabricated a normal result");
+    assert(g_child_result_drop_count == 0,
+           "Probe 6 failed: no child result exists to drop after cancellation");
+    println("[Probe 6] PASSED: frame-local cleanup completed after child terminal cancellation!");
+    return 1;
+}
+
 fn p5_redline_main() -> async i32 {
     test_race2_loser_cleanup_guarantee().await;
     test_task_scope_uaf_resistance().await;
     test_cancellation_stress_loop().await;
     test_cold_task_cancel_and_await().await;
+    test_parent_cancel_while_awaiting_child().await;
+    test_parent_cancel_drops_live_frame_local_once().await;
     return 0;
 }
 

@@ -16,7 +16,7 @@ fn request() -> HttpRequest {
         method = HttpMethod::GET,
         path = string::from("/health"),
         version = string::from("HTTP/1.1"),
-        headers = headers,
+        headers = cede headers,
         body = string::from("")
     )
 }

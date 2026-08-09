@@ -10,17 +10,18 @@ extern fn __toka_coro_done(*handle: void) -> bool
 extern fn __toka_coro_destroy(*handle: void) -> void
 
 extern fn toka_task_start(*tcb: void) -> i32
-extern fn toka_task_try_schedule(id: u64, gen: u64) -> i32
+extern fn toka_task_try_schedule_token(id: u64, instance: u64, gen: u64) -> i32
 extern fn toka_task_pop_ready(*out_id: u64, *out_gen: u64, *out_tcb: Addr) -> i32
 extern fn toka_task_schedule_frame_compat(*frame: void) -> i32
 extern fn toka_task_detach(*tcb: void) -> void
 extern fn toka_task_drop_handle(*tcb: void) -> void
 extern fn toka_task_release(*tcb: void) -> void
-extern fn toka_tcb_get_coro_frame(*tcb: void) -> *void
+extern fn toka_task_get_current_coro_frame() -> *void
+extern fn toka_tcb_get_promise(*tcb: void) -> *void
 extern fn toka_tcb_is_done(*tcb: void) -> bool
 extern fn toka_tcb_is_canceled(*tcb: void) -> bool
-extern fn toka_tcb_get_wait_token(*tcb: void, *out_id: u64, *out_gen: u64) -> void
-extern fn toka_task_prepare_suspend(*coro_frame: void, *out_id: u64, *out_gen: u64) -> i32
+extern fn toka_task_get_current_token(*coro_frame: void, *out_id: u64, *out_instance: u64, *out_gen: u64) -> i32
+extern fn toka_task_prepare_suspend_token(*coro_frame: void, *out_id: u64, *out_instance: u64, *out_gen: u64) -> i32
 extern fn toka_task_commit_suspend(*coro_frame: void) -> i32
 extern fn toka_task_abort_suspend(*coro_frame: void) -> i32
 // Compatibility hook for older compiler output. New CodeGen calls
@@ -32,9 +33,9 @@ extern fn toka_task_take_result(*promise: void) -> i32
 extern fn toka_task_active_detached_count() -> u32
 extern fn toka_ready_queue_capacity() -> u32
 extern fn toka_ready_queue_count() -> u32
-extern fn toka_wait_registry_allocate(task_id: u64, gen: u64, source_tag: u16, *out_wait_id: u32, *out_slot_gen: u32) -> i32
-extern fn toka_wait_registry_allocate_pair(task_id: u64, gen: u64, tag1: u16, tag2: u16, *out_id1: u32, *out_gen1: u32, *out_id2: u32, *out_gen2: u32) -> i32
-extern fn toka_wait_registry_allocate_nway(task_id: u64, gen: u64, tag_base: u16, count: u32, *out_ids: u32, *out_gens: u32) -> i32
+extern fn toka_wait_registry_allocate_token(task_id: u64, instance: u64, gen: u64, source_tag: u16, *out_wait_id: u32, *out_slot_gen: u32) -> i32
+extern fn toka_wait_registry_allocate_pair_token(task_id: u64, instance: u64, gen: u64, tag1: u16, tag2: u16, *out_id1: u32, *out_gen1: u32, *out_id2: u32, *out_gen2: u32) -> i32
+extern fn toka_wait_registry_allocate_nway_token(task_id: u64, instance: u64, gen: u64, tag_base: u16, count: u32, *out_ids: u32, *out_gens: u32) -> i32
 extern fn toka_wait_registry_try_wake(wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_wait_registry_is_winner(wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_wait_registry_invalidate(wait_id: u32, slot_gen: u32) -> i32
@@ -47,7 +48,9 @@ extern fn toka_task_is_current_canceled(*coro_frame: void) -> i32
 extern fn toka_task_mark_current_cancellation_handled(*coro_frame: void) -> i32
 extern fn toka_task_subscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
 extern fn toka_task_unsubscribe_completion(*tcb: void, wait_id: u32, slot_gen: u32) -> i32
-extern fn toka_task_retain(*tcb: void) -> void
+// This operation extends a reference already owned by a live TaskHandle or
+// runtime descriptor. It is not a way to rediscover a released task.
+extern fn toka_task_try_retain(*tcb: void) -> i32
 extern fn toka_task_scope_create() -> *void
 extern fn toka_task_clear_current(*tcb: void) -> void
 extern fn toka_task_scope_try_enroll(*scope: void, *tcb: void) -> i32

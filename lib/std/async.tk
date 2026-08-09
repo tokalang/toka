@@ -3,7 +3,7 @@
 // std/async.tk
 // High-level async combinators and structured concurrency.
 
-import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
+import core/task::{TaskHandle, task_get_coro_handle, toka_task_prepare_suspend_token, toka_task_commit_suspend, toka_task_abort_suspend, toka_wait_registry_allocate_pair_token, toka_wait_registry_is_winner, toka_wait_registry_release, toka_task_request_cancel, toka_task_register_cancel_child, toka_task_unregister_cancel_child, toka_tcb_is_done, toka_task_try_retain, toka_task_release, toka_task_start, toka_task_scope_create, toka_task_scope_try_enroll, toka_task_scope_begin_close, toka_task_scope_is_done, toka_task_scope_request_cancel_all, toka_task_scope_reap_finished, toka_task_scope_finish_close, toka_task_scope_release};
 import core/result::{Result};
 import std/task::{current_time_ms, sleep_async, task_cancel, task_is_cancel_requested, task_subscribe_completion, task_unsubscribe_completion};
 import std/io::{println};
@@ -22,6 +22,7 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
 
     auto *coro_handle = __builtin_coro_current_handle()
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
 
     auto id1# = 0:u32
@@ -29,9 +30,9 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
     auto id2# = 0:u32
     auto gen2# = 0:u32
 
-    auto prep_ok = toka_task_prepare_suspend(*coro_handle, &task_id as *u64, &wait_gen as *u64)
+    auto prep_ok = toka_task_prepare_suspend_token(*coro_handle, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if prep_ok != 0 {
-        auto alloc_ok = toka_wait_registry_allocate_pair(task_id, wait_gen, 1:u16, 2:u16, &id1 as *u32, &gen1 as *u32, &id2 as *u32, &gen2 as *u32)
+        auto alloc_ok = toka_wait_registry_allocate_pair_token(task_id, task_instance, wait_gen, 1:u16, 2:u16, &id1 as *u32, &gen1 as *u32, &id2 as *u32, &gen2 as *u32)
         if alloc_ok == 0 {
             toka_task_abort_suspend(*coro_handle)
             assert(false, "WaitRegistry pair allocation failed in race2")
@@ -96,7 +97,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         task_cancel<'T2>(owned_second)
         auto *second_tcb = task_get_coro_handle<'T2>(owned_second)
         if *second_tcb != null {
-            toka_task_retain(*second_tcb)
+            assert(toka_task_try_retain(*second_tcb) != 0,
+                   "race2 loser TaskRef retain failed")
             loop !toka_tcb_is_done(*second_tcb) {
                 sleep_async(1).await
             }
@@ -119,7 +121,8 @@ pub fn race2<'T1, 'T2>(cede first: TaskHandle<'T1>, cede second: TaskHandle<'T2>
         task_cancel<'T1>(owned_first)
         auto *first_tcb = task_get_coro_handle<'T1>(owned_first)
         if *first_tcb != null {
-            toka_task_retain(*first_tcb)
+            assert(toka_task_try_retain(*first_tcb) != 0,
+                   "race2 loser TaskRef retain failed")
             loop !toka_tcb_is_done(*first_tcb) {
                 sleep_async(1).await
             }

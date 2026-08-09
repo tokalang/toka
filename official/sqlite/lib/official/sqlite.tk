@@ -41,6 +41,36 @@ pub shape Transaction (
     active#: bool
 )
 
+impl Database@Encap {
+    fn drop(self#) {
+        if !self.closed {
+            toka_sqlite_close(self.handle)
+            self.handle = ADDR0
+            self.closed = true
+        }
+    }
+}
+
+impl Transaction@Encap {
+    fn drop(self#) {
+        if self.active {
+            auto command = string::from("ROLLBACK;")
+            toka_sqlite_execute(self.handle, command.c_str() as Addr)
+            self.active = false
+        }
+    }
+}
+
+impl Statement@Encap {
+    fn drop(self#) {
+        if !self.finalized {
+            toka_sqlite_finalize(self.handle)
+            self.handle = ADDR0
+            self.finalized = true
+        }
+    }
+}
+
 fn sqlite_error(code: i32, operation: str) -> SqliteError {
     auto message# = string::from("SQLite ")
     message#.push_str(operation)
@@ -103,13 +133,6 @@ impl Database {
         return Result<Transaction, SqliteError>::Ok(Transaction(handle = self.handle, active = true))
     }
 
-    fn drop(self#) {
-        if !self.closed {
-            toka_sqlite_close(self.handle)
-            self.handle = ADDR0
-            self.closed = true
-        }
-    }
 }
 
 impl Transaction {
@@ -139,13 +162,6 @@ impl Transaction {
         return Result<i32, SqliteError>::Ok(code)
     }
 
-    fn drop(self#) {
-        if self.active {
-            auto command = string::from("ROLLBACK;")
-            toka_sqlite_execute(self.handle, command.c_str() as Addr)
-            self.active = false
-        }
-    }
 }
 
 impl Statement {
@@ -212,13 +228,6 @@ impl Statement {
         return Result<i32, SqliteError>::Ok(code)
     }
 
-    fn drop(self#) {
-        if !self.finalized {
-            toka_sqlite_finalize(self.handle)
-            self.handle = ADDR0
-            self.finalized = true
-        }
-    }
 }
 
 pub fn package_name() -> string {

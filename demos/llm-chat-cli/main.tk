@@ -19,6 +19,9 @@ shape EndpointTarget (host: string, path: string, address: SocketAddrV4)
 
 impl ChatMessage@Encap {
     fn drop(self#) {}
+}
+
+impl ChatMessage {
     pub fn clone(self) -> ChatMessage {
         return ChatMessage(role = self.role.clone(), content = self.content.clone())
     }
@@ -120,7 +123,7 @@ fn stream_turn_async(cede api_key: string, cede endpoint: string, cede body: str
     auto authorization# = string::from("Bearer ")
     authorization#.push_str(owned_api_key.as_str())
     auto _authorization = headers#.insert(string::from("Authorization"), cede authorization)
-    auto request = HttpRequest(method = HttpMethod::POST, path = endpoint_info.path,
+    auto request = HttpRequest(method = HttpMethod::POST, path = cede endpoint_info.path,
         version = string::from("HTTP/1.1"), headers = cede headers, body = cede body)
     auto stream = HttpClient::new(60000:i32).execute_url_stream_async(request, owned_endpoint,
         endpoint_info.address).await

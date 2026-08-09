@@ -7462,12 +7462,11 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
         targetTCBPtr = m_Builder.CreateExtractValue(handleVal, 0, "await.tcb_ptr");
     }
     
-    llvm::Function *getFrameFn = m_Module->getFunction("toka_tcb_get_coro_frame");
-    if (!getFrameFn) {
+    llvm::Function *getPromiseFn = m_Module->getFunction("toka_tcb_get_promise");
+    if (!getPromiseFn) {
         llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
-        getFrameFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_tcb_get_coro_frame", m_Module.get());
+        getPromiseFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_tcb_get_promise", m_Module.get());
     }
-    llvm::Value *targetCoroHandle = m_Builder.CreateCall(getFrameFn, {targetTCBPtr}, "target.coro_handle");
 
     // Ensure target task is started if still in CREATED state
     llvm::Function *startFn = m_Module->getFunction("toka_task_start");
@@ -7477,10 +7476,9 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
     m_Builder.CreateCall(startFn, {targetTCBPtr});
 
-    llvm::Function *promiseFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_promise);
-    llvm::Value *alignment = m_Builder.getInt32(8);
-    llvm::Value *fromPromise = m_Builder.getInt1(false);
-    llvm::Value *targetPromisePtrRaw = m_Builder.CreateCall(promiseFn, {targetCoroHandle, alignment, fromPromise}, "target.promise.raw");
+    llvm::Value *targetPromisePtrRaw = m_Builder.CreateCall(
+        getPromiseFn, {targetTCBPtr}, "target.promise.raw"
+    );
     
     std::shared_ptr<Type> targetInnerTyObj =
         awaitExpr->AwaitedType ? awaitExpr->AwaitedType : awaitExpr->ResolvedType;
@@ -7507,6 +7505,23 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
         llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
         isCurrentCanceledFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_is_current_canceled", m_Module.get());
     }
+    llvm::Function *resolveAwaitFn = m_Module->getFunction("toka_task_resolve_await");
+    if (!resolveAwaitFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getInt32Ty(), {m_Builder.getPtrTy(), m_Builder.getPtrTy()}, false);
+        resolveAwaitFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage, "toka_task_resolve_await",
+            m_Module.get());
+    }
+    llvm::Function *finishAwaitFn =
+        m_Module->getFunction("toka_task_finish_await_resolution");
+    if (!finishAwaitFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+        finishAwaitFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "toka_task_finish_await_resolution", m_Module.get());
+    }
     llvm::Value *entrySelfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "entry.self.canceled");
     llvm::Value *entryIsSelfCanceled = m_Builder.CreateICmpNE(entrySelfCanceled, m_Builder.getInt32(0));
     llvm::Value *entryTargetCanceled = m_Builder.CreateICmpEQ(targetState, m_Builder.getInt8(3), "entry.target.canceled");
@@ -7531,11 +7546,23 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.CreateCondBr(condSuspend, suspendBB, postPrepareBB);
 
     m_Builder.SetInsertPoint(postPrepareBB);
+    llvm::Value *postResolution = m_Builder.CreateCall(
+        resolveAwaitFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
+        "post.await.resolution");
+    llvm::Value *postResolutionCanceled = m_Builder.CreateICmpEQ(
+        postResolution, m_Builder.getInt32(-1), "post.await.canceled");
+    llvm::Value *postResolutionPending = m_Builder.CreateICmpEQ(
+        postResolution, m_Builder.getInt32(0), "post.await.pending");
     llvm::Value *postState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "post.target.state");
     llvm::Value *postIsCanceled = m_Builder.CreateICmpEQ(postState, m_Builder.getInt8(3), "post_is_canceled");
     llvm::Value *postSelfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "post.self.canceled");
     llvm::Value *postIsSelfCanceled = m_Builder.CreateICmpNE(postSelfCanceled, m_Builder.getInt32(0));
-    llvm::Value *postCancel = m_Builder.CreateOr(postIsCanceled, postIsSelfCanceled, "post.cancel");
+    llvm::Value *postSampledCancel = m_Builder.CreateOr(
+        postIsCanceled, postIsSelfCanceled, "post.sampled.cancel");
+    llvm::Value *postFallbackCancel = m_Builder.CreateAnd(
+        postResolutionPending, postSampledCancel, "post.fallback.cancel");
+    llvm::Value *postCancel = m_Builder.CreateOr(
+        postResolutionCanceled, postFallbackCancel, "post.cancel");
     m_Builder.CreateCondBr(postCancel, canceledBB, readyBB);
 
     m_Builder.SetInsertPoint(suspendBB);
@@ -7558,16 +7585,30 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     m_Builder.CreateBr(m_CurrentCoroCleanupBB);
     
     m_Builder.SetInsertPoint(resumeContBB);
+    llvm::Value *resumeResolution = m_Builder.CreateCall(
+        resolveAwaitFn, {targetPromisePtrRaw, m_CurrentCoroTCB},
+        "resume.await.resolution");
+    llvm::Value *resumeResolutionCanceled = m_Builder.CreateICmpEQ(
+        resumeResolution, m_Builder.getInt32(-1), "resume.await.canceled");
+    llvm::Value *resumeResolutionPending = m_Builder.CreateICmpEQ(
+        resumeResolution, m_Builder.getInt32(0), "resume.await.pending");
     llvm::Value *resState = m_Builder.CreateCall(getStateFn, {targetPromisePtrRaw}, "res.target.state");
     llvm::Value *resIsCanceled = m_Builder.CreateICmpEQ(resState, m_Builder.getInt8(3), "res_is_canceled");
 
     llvm::Value *selfCanceled = m_Builder.CreateCall(isCurrentCanceledFn, {m_CurrentCoroHandle}, "self.canceled");
     llvm::Value *isSelfCanceled = m_Builder.CreateICmpNE(selfCanceled, m_Builder.getInt32(0));
 
-    llvm::Value *unwindCond = m_Builder.CreateOr(resIsCanceled, isSelfCanceled, "unwind_cond");
+    llvm::Value *resumeSampledCancel = m_Builder.CreateOr(
+        resIsCanceled, isSelfCanceled, "resume.sampled.cancel");
+    llvm::Value *resumeFallbackCancel = m_Builder.CreateAnd(
+        resumeResolutionPending, resumeSampledCancel,
+        "resume.fallback.cancel");
+    llvm::Value *unwindCond = m_Builder.CreateOr(
+        resumeResolutionCanceled, resumeFallbackCancel, "unwind_cond");
     m_Builder.CreateCondBr(unwindCond, canceledBB, readyBB);
 
     m_Builder.SetInsertPoint(canceledBB);
+    m_Builder.CreateCall(finishAwaitFn, {m_CurrentCoroTCB});
     llvm::Value *canceledOutcome = nullptr;
     if (awaitExpr->CatchesCancellation) {
         llvm::Type *outcomeTy = getLLVMType(awaitExpr->ResolvedType);
@@ -7597,25 +7638,59 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
     }
 
     m_Builder.SetInsertPoint(readyBB);
-    llvm::Function *takeResultFn = m_Module->getFunction("toka_task_take_result");
-    if (!takeResultFn) {
+    llvm::Function *takeResultAccessFn =
+        m_Module->getFunction("__toka_task_take_result_access");
+    if (!takeResultAccessFn) {
         llvm::FunctionType *ft = llvm::FunctionType::get(
-            m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
-        takeResultFn = llvm::Function::Create(
-            ft, llvm::Function::ExternalLinkage, "toka_task_take_result",
-            m_Module.get());
+            m_Builder.getInt32Ty(),
+            {m_Builder.getPtrTy(), m_Builder.getPtrTy(), m_Builder.getPtrTy()},
+            false);
+        takeResultAccessFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "__toka_task_take_result_access", m_Module.get());
     }
-    m_Builder.CreateCall(takeResultFn, {targetPromisePtrRaw});
+    llvm::Function *releaseResultAccessFn =
+        m_Module->getFunction("__toka_task_release_result_access");
+    if (!releaseResultAccessFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+        releaseResultAccessFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "__toka_task_release_result_access", m_Module.get());
+    }
+    llvm::Value *resultValueSlot = createEntryBlockAlloca(
+        m_Builder.getPtrTy(), nullptr, "await.result.value.slot");
+    llvm::Value *resultAccessSlot = createEntryBlockAlloca(
+        m_Builder.getPtrTy(), nullptr, "await.result.access.slot");
+    llvm::Value *resultAccess = m_Builder.CreateCall(
+        takeResultAccessFn,
+        {targetPromisePtrRaw, resultValueSlot, resultAccessSlot});
+    llvm::Value *resultAccessOK = m_Builder.CreateICmpEQ(
+        resultAccess, m_Builder.getInt32(1), "await.result.access.ok");
+    llvm::BasicBlock *resultAccessBB = llvm::BasicBlock::Create(
+        m_Context, "await.result.access", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *resultAccessFailureBB = llvm::BasicBlock::Create(
+        m_Context, "await.result.access.failed",
+        m_Builder.GetInsertBlock()->getParent());
+    m_Builder.CreateCondBr(resultAccessOK, resultAccessBB,
+                           resultAccessFailureBB);
+
+    m_Builder.SetInsertPoint(resultAccessFailureBB);
+    m_Builder.CreateCall(llvm::Intrinsic::getOrInsertDeclaration(
+        m_Module.get(), llvm::Intrinsic::trap));
+    m_Builder.CreateUnreachable();
+
+    m_Builder.SetInsertPoint(resultAccessBB);
+    llvm::Value *resultAccessGuard = m_Builder.CreateLoad(
+        m_Builder.getPtrTy(), resultAccessSlot, "await.result.access.guard");
     llvm::Value *readyVal = nullptr;
     if (!targetInnerTy->isVoidTy()) {
-        llvm::Function *valuePtrFn = m_Module->getFunction("toka_task_result_value_ptr");
-        if (!valuePtrFn) {
-            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
-            valuePtrFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_result_value_ptr", m_Module.get());
-        }
-        llvm::Value *targetValPtrRaw = m_Builder.CreateCall(valuePtrFn, {targetPromisePtrRaw}, "target.val.ptr");
+        llvm::Value *targetValPtrRaw = m_Builder.CreateLoad(
+            m_Builder.getPtrTy(), resultValueSlot, "target.val.ptr");
         llvm::Value *targetValPtr = m_Builder.CreatePointerCast(targetValPtrRaw, llvm::PointerType::getUnqual(targetInnerTy));
         readyVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
+        m_Builder.CreateCall(releaseResultAccessFn, {resultAccessGuard});
+        m_Builder.CreateCall(finishAwaitFn, {m_CurrentCoroTCB});
         if (!awaitExpr->CatchesCancellation) {
             return PhysEntity(readyVal, awaitExpr->ResolvedType->toString(), targetInnerTy, false);
         }
@@ -7640,9 +7715,11 @@ PhysEntity CodeGen::genAwaitExpr(const AwaitExpr *awaitExpr) {
         m_Builder.SetInsertPoint(outcomeMergeBB);
         llvm::PHINode *outcome = m_Builder.CreatePHI(outcomeTy, 2, "await.outcome.value");
         outcome->addIncoming(canceledOutcome, canceledBB);
-        outcome->addIncoming(readyOutcome, readyBB);
+        outcome->addIncoming(readyOutcome, resultAccessBB);
         return PhysEntity(outcome, awaitExpr->ResolvedType->toString(), outcomeTy, false);
     }
+    m_Builder.CreateCall(releaseResultAccessFn, {resultAccessGuard});
+    m_Builder.CreateCall(finishAwaitFn, {m_CurrentCoroTCB});
     if (awaitExpr->CatchesCancellation) {
         error(awaitExpr, DiagID::ERR_CODEGEN_INVALID_REPRESENTATION_FOR,
               "Option<void>");
@@ -7674,17 +7751,14 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
     }
     m_Builder.CreateCall(spawnFn, {targetTCBPtr});
 
-    llvm::Function *getFrameFn = m_Module->getFunction("toka_tcb_get_coro_frame");
-    if (!getFrameFn) {
+    llvm::Function *getPromiseFn = m_Module->getFunction("toka_tcb_get_promise");
+    if (!getPromiseFn) {
         llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
-        getFrameFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_tcb_get_coro_frame", m_Module.get());
+        getPromiseFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_tcb_get_promise", m_Module.get());
     }
-    llvm::Value *targetCoroHandle = m_Builder.CreateCall(getFrameFn, {targetTCBPtr}, "target.coro_handle");
-    
-    llvm::Function *promiseFn = llvm::Intrinsic::getOrInsertDeclaration(m_Module.get(), llvm::Intrinsic::coro_promise);
-    llvm::Value *alignment = m_Builder.getInt32(8);
-    llvm::Value *fromPromise = m_Builder.getInt1(false);
-    llvm::Value *targetPromisePtrRaw = m_Builder.CreateCall(promiseFn, {targetCoroHandle, alignment, fromPromise}, "target.promise.raw");
+    llvm::Value *targetPromisePtrRaw = m_Builder.CreateCall(
+        getPromiseFn, {targetTCBPtr}, "target.promise.raw"
+    );
     
     std::shared_ptr<Type> targetInnerTyObj = waitExpr->ResolvedType;
     llvm::Type *targetInnerTy = getLLVMType(targetInnerTyObj);
@@ -7711,28 +7785,61 @@ PhysEntity CodeGen::genWaitExpr(const WaitExpr *waitExpr) {
     m_Builder.CreateUnreachable();
 
     m_Builder.SetInsertPoint(readyBB);
-    llvm::Function *takeResultFn = m_Module->getFunction("toka_task_take_result");
-    if (!takeResultFn) {
+    llvm::Function *takeResultAccessFn =
+        m_Module->getFunction("__toka_task_take_result_access");
+    if (!takeResultAccessFn) {
         llvm::FunctionType *ft = llvm::FunctionType::get(
-            m_Builder.getInt32Ty(), {m_Builder.getPtrTy()}, false);
-        takeResultFn = llvm::Function::Create(
-            ft, llvm::Function::ExternalLinkage, "toka_task_take_result",
-            m_Module.get());
+            m_Builder.getInt32Ty(),
+            {m_Builder.getPtrTy(), m_Builder.getPtrTy(), m_Builder.getPtrTy()},
+            false);
+        takeResultAccessFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "__toka_task_take_result_access", m_Module.get());
     }
-    m_Builder.CreateCall(takeResultFn, {targetPromisePtrRaw});
-    
+    llvm::Function *releaseResultAccessFn =
+        m_Module->getFunction("__toka_task_release_result_access");
+    if (!releaseResultAccessFn) {
+        llvm::FunctionType *ft = llvm::FunctionType::get(
+            m_Builder.getVoidTy(), {m_Builder.getPtrTy()}, false);
+        releaseResultAccessFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage,
+            "__toka_task_release_result_access", m_Module.get());
+    }
+    llvm::Value *resultValueSlot = createEntryBlockAlloca(
+        m_Builder.getPtrTy(), nullptr, "wait.result.value.slot");
+    llvm::Value *resultAccessSlot = createEntryBlockAlloca(
+        m_Builder.getPtrTy(), nullptr, "wait.result.access.slot");
+    llvm::Value *resultAccess = m_Builder.CreateCall(
+        takeResultAccessFn,
+        {targetPromisePtrRaw, resultValueSlot, resultAccessSlot});
+    llvm::Value *resultAccessOK = m_Builder.CreateICmpEQ(
+        resultAccess, m_Builder.getInt32(1), "wait.result.access.ok");
+    llvm::BasicBlock *resultAccessBB = llvm::BasicBlock::Create(
+        m_Context, "wait.result.access", m_Builder.GetInsertBlock()->getParent());
+    llvm::BasicBlock *resultAccessFailureBB = llvm::BasicBlock::Create(
+        m_Context, "wait.result.access.failed",
+        m_Builder.GetInsertBlock()->getParent());
+    m_Builder.CreateCondBr(resultAccessOK, resultAccessBB,
+                           resultAccessFailureBB);
+
+    m_Builder.SetInsertPoint(resultAccessFailureBB);
+    m_Builder.CreateCall(llvm::Intrinsic::getOrInsertDeclaration(
+        m_Module.get(), llvm::Intrinsic::trap));
+    m_Builder.CreateUnreachable();
+
+    m_Builder.SetInsertPoint(resultAccessBB);
+    llvm::Value *resultAccessGuard = m_Builder.CreateLoad(
+        m_Builder.getPtrTy(), resultAccessSlot, "wait.result.access.guard");
     if (!targetInnerTy->isVoidTy()) {
-        llvm::Function *valuePtrFn = m_Module->getFunction("toka_task_result_value_ptr");
-        if (!valuePtrFn) {
-            llvm::FunctionType *ft = llvm::FunctionType::get(m_Builder.getPtrTy(), {m_Builder.getPtrTy()}, false);
-            valuePtrFn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "toka_task_result_value_ptr", m_Module.get());
-        }
-        llvm::Value *targetValPtrRaw = m_Builder.CreateCall(valuePtrFn, {targetPromisePtrRaw}, "target.val.ptr");
+        llvm::Value *targetValPtrRaw = m_Builder.CreateLoad(
+            m_Builder.getPtrTy(), resultValueSlot, "target.val.ptr");
         llvm::Value *targetValPtr = m_Builder.CreatePointerCast(targetValPtrRaw, llvm::PointerType::getUnqual(targetInnerTy));
         llvm::Value *targetVal = m_Builder.CreateLoad(targetInnerTy, targetValPtr, "target.val");
+        m_Builder.CreateCall(releaseResultAccessFn, {resultAccessGuard});
         return PhysEntity(targetVal, waitExpr->ResolvedType->toString(), targetInnerTy, false);
     }
-    
+
+    m_Builder.CreateCall(releaseResultAccessFn, {resultAccessGuard});
     return PhysEntity(llvm::Constant::getNullValue(m_Builder.getInt32Ty()), "void", targetInnerTy, false);
 }
 

@@ -243,6 +243,14 @@ if(BUILD_TESTING)
         PRIVATE TOKA_RUNTIME_TESTING=1)
     target_compile_definitions(toka_async_identity_exhaustion
         PRIVATE TOKA_RUNTIME_TESTING=1)
+    target_compile_definitions(toka_async_terminal_publisher
+        PRIVATE TOKA_RUNTIME_TESTING=1)
+    target_compile_definitions(toka_async_result_disposition
+        PRIVATE TOKA_RUNTIME_TESTING=1)
+    target_compile_definitions(toka_async_suspend_rollback
+        PRIVATE TOKA_RUNTIME_TESTING=1)
+    target_compile_definitions(toka_async_completion_subscription
+        PRIVATE TOKA_RUNTIME_TESTING=1)
     if(OpenSSL_FOUND)
         target_compile_definitions(toka_async_terminal_publisher PRIVATE TOKA_HAS_OPENSSL=1)
         target_compile_definitions(toka_async_cold_cancel_cleanup PRIVATE TOKA_HAS_OPENSSL=1)

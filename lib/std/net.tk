@@ -1161,12 +1161,13 @@ impl TcpListener {
 
 pub fn register_async_reactor_read_key(coro: Addr, fd: i32, *out_key: u64) -> bool {
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
-    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    auto ok = core_task::toka_task_prepare_suspend_token(coro as *void, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if ok != 0 {
         auto wait_id# = 0:u32
         auto slot_gen# = 0:u32
-        auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 2:u16, &wait_id as *u32, &slot_gen as *u32)
+        auto alloc_ok = core_task::toka_wait_registry_allocate_token(task_id, task_instance, wait_gen, 2:u16, &wait_id as *u32, &slot_gen as *u32)
         if alloc_ok != 0 {
             auto event_key = ((wait_id as u64) << 32:u64) | (slot_gen as u64)
             if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {
@@ -1191,12 +1192,13 @@ pub fn register_async_reactor_read(coro: Addr, fd: i32) -> bool {
 
 pub fn register_async_reactor_write_key(coro: Addr, fd: i32, *out_key: u64) -> bool {
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
-    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    auto ok = core_task::toka_task_prepare_suspend_token(coro as *void, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if ok != 0 {
         auto wait_id# = 0:u32
         auto slot_gen# = 0:u32
-        auto alloc_ok = core_task::toka_wait_registry_allocate(task_id, wait_gen, 3:u16, &wait_id as *u32, &slot_gen as *u32)
+        auto alloc_ok = core_task::toka_wait_registry_allocate_token(task_id, task_instance, wait_gen, 3:u16, &wait_id as *u32, &slot_gen as *u32)
         if alloc_ok != 0 {
             auto event_key = ((wait_id as u64) << 32:u64) | (slot_gen as u64)
             if !sysnet::reactor_add_write_impl(get_reactor_fd(), fd, event_key as Addr) {
@@ -1239,14 +1241,15 @@ pub fn unregister_async_reactor_write_key(fd: i32, key: u64) {
 
 fn register_async_reactor_read_timeout(coro: Addr, fd: i32, timeout_ms: i32, *out_io_id: u32, *out_io_gen: u32, *out_tm_id: u32, *out_tm_gen: u32) -> bool {
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
-    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    auto ok = core_task::toka_task_prepare_suspend_token(coro as *void, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if ok != 0 {
         auto io_id# = 0:u32
         auto io_gen# = 0:u32
         auto tm_id# = 0:u32
         auto tm_gen# = 0:u32
-        auto alloc_ok = core_task::toka_wait_registry_allocate_pair(task_id, wait_gen, 2:u16, 1:u16, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32)
+        auto alloc_ok = core_task::toka_wait_registry_allocate_pair_token(task_id, task_instance, wait_gen, 2:u16, 1:u16, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32)
         if alloc_ok != 0 {
             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
             if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {
@@ -1275,14 +1278,15 @@ fn register_async_reactor_read_timeout(coro: Addr, fd: i32, timeout_ms: i32, *ou
 
 fn register_async_reactor_write_timeout(coro: Addr, fd: i32, timeout_ms: i32, *out_io_id: u32, *out_io_gen: u32, *out_tm_id: u32, *out_tm_gen: u32) -> bool {
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
-    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    auto ok = core_task::toka_task_prepare_suspend_token(coro as *void, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if ok != 0 {
         auto io_id# = 0:u32
         auto io_gen# = 0:u32
         auto tm_id# = 0:u32
         auto tm_gen# = 0:u32
-        auto alloc_ok = core_task::toka_wait_registry_allocate_pair(task_id, wait_gen, 3:u16, 1:u16, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32)
+        auto alloc_ok = core_task::toka_wait_registry_allocate_pair_token(task_id, task_instance, wait_gen, 3:u16, 1:u16, &io_id as *u32, &io_gen as *u32, &tm_id as *u32, &tm_gen as *u32)
         if alloc_ok != 0 {
             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
             if !sysnet::reactor_add_write_impl(get_reactor_fd(), fd, event_key as Addr) {
@@ -1458,14 +1462,15 @@ pub fn net_async_read_timeout_fd(fd: i32, *buf: u8, len: usize, timeout_ms: i32)
 
 fn register_async_reactor_read_context(coro: Addr, fd: i32, canceler: Canceler, *out_io_id: u32, *out_io_gen: u32, *out_ctx_id: u32, *out_ctx_gen: u32) -> bool {
     auto task_id# = 0:u64
+    auto task_instance# = 0:u64
     auto wait_gen# = 0:u64
-    auto ok = core_task::toka_task_prepare_suspend(coro as *void, &task_id as *u64, &wait_gen as *u64)
+    auto ok = core_task::toka_task_prepare_suspend_token(coro as *void, &task_id as *u64, &task_instance as *u64, &wait_gen as *u64)
     if ok != 0 {
         auto io_id# = 0:u32
         auto io_gen# = 0:u32
         auto ctx_id# = 0:u32
         auto ctx_gen# = 0:u32
-        auto alloc_ok = core_task::toka_wait_registry_allocate_pair(task_id, wait_gen, 2:u16, 4:u16, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32)
+        auto alloc_ok = core_task::toka_wait_registry_allocate_pair_token(task_id, task_instance, wait_gen, 2:u16, 4:u16, &io_id as *u32, &io_gen as *u32, &ctx_id as *u32, &ctx_gen as *u32)
         if alloc_ok != 0 {
             auto event_key = ((io_id as u64) << 32:u64) | (io_gen as u64)
             if !sysnet::reactor_add_read_impl(get_reactor_fd(), fd, event_key as Addr) {

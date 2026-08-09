@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import core/types::{str}
+import core/types::{char, str}
 
-extern fn libc_abort() -> void
+extern fn toka_panic(*msg: char, len: i32) -> void
 
-pub fn __toka_panic_handler(_msg: str) -> never {
-    libc_abort()
+pub fn __toka_panic_handler(msg: str) -> never {
+    unsafe { toka_panic(msg.raw_ptr() as *char, msg.len() as i32) }
     unreachable
 }
