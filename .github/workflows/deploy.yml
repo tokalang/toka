@@ -29,7 +29,7 @@ jobs:
         run: |
           mkdir -p build_wasm
           cd build_wasm
-          emcc -O3 -std=c++17 \
+          em++ -O3 -std=c++17 \
             -I../include \
             ../src/wasm_api.cpp \
             ../src/Lexer/Lexer.cpp \
@@ -48,6 +48,10 @@ jobs:
             ../src/Sema/Sema_Stmt.cpp \
             ../src/Sema/Sema_Template.cpp \
             ../src/Sema/Sema_Type.cpp \
+            ../src/Sema/AccessPath.cpp \
+            ../src/Sema/Sema_AccessPath.cpp \
+            ../src/Sema/CanonicalDeclarationWitness.cpp \
+            ../src/Sema/SemanticEvidence.cpp \
             ../src/Sema/PAL_Checker.cpp \
             ../src/DiagnosticEngine.cpp \
             ../src/Basic/SourceManager.cpp \
@@ -56,6 +60,7 @@ jobs:
             ../src/AST/ASTEvaluator.cpp \
             -s WASM=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
+            -s STACK_SIZE=1048576 \
             -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "stringToUTF8", "lengthBytesUTF8", "UTF8ToString"]' \
             -s EXPORTED_FUNCTIONS='["_check_toka_code", "_malloc", "_free"]' \
             --embed-file ../lib@lib/ \

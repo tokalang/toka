@@ -1,6 +1,8 @@
 #include "toka/ModuleResolver.h"
+#if !defined(__EMSCRIPTEN__)
 #include "toka/MemoryEvidence.h"
 #include "toka/SemanticManifestAttestation.h"
+#endif
 #include "toka/Lexer.h"
 #include "toka/Parser.h"
 #include "toka/DiagnosticEngine.h"
@@ -677,6 +679,9 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
   module->ShadowCoordinateReason = info.ShadowCoordinate.Reason;
   module->HasBackingObject = finalIsInterface && selectedCachedInterfaceHasBacking;
   module->BackingObjectPath = selectedCachedObjectPath;
+#if !defined(__EMSCRIPTEN__)
+  // The browser checker validates source programs only. Cache replay and
+  // semantic-manifest attestation require native qualification artifacts.
   if (module->HasBackingObject) {
     std::string evidenceReason;
     MemoryEvidenceStatus evidenceStatus = MemoryEvidenceCache::load(
@@ -732,6 +737,7 @@ bool ModuleResolver::parseRecursive(const std::string &filename,
       }
     }
   }
+#endif
 
   // Recursively parse imports
   for (const auto &imp : module->Imports) {
