@@ -4,7 +4,6 @@
 
 import argparse
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -23,10 +22,10 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def run(command, expected, env=None):
+def run(command, expected):
     result = subprocess.run(
         [str(item) for item in command], cwd=ROOT, text=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     if result.returncode != expected:
         raise RuntimeError(
@@ -96,8 +95,6 @@ def main():
     suffix = ".exe" if sys.platform == "win32" else ""
     tokac = ROOT / args.build_dir / "bin" / ("tokac" + suffix)
     toka = ROOT / args.build_dir / "bin" / ("toka" + suffix)
-    tool_env = os.environ.copy()
-    tool_env["TOKA_LIB"] = str((ROOT / args.build_dir / "lib").resolve())
     schema = ROOT / "schemas/toka.cede-obligation-evidence.v1.schema.json"
     require(tokac.is_file() and toka.is_file(), "SDK binaries are missing")
     require(schema.is_file(), "cede obligation schema is missing")
@@ -136,7 +133,7 @@ def main():
         manager = run([
             toka, "cede-obligations", "--json", PASS_CALLER,
             "-o", temp_dir / ("manager" + suffix),
-        ], expected=0, env=tool_env)
+        ], expected=0)
         require(manager.stdout == first,
                 "toka cede-obligations does not preserve compiler output")
 

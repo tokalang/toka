@@ -1934,7 +1934,18 @@ int main(int argc, char **argv) {
         }
       }
 
-      // 2. Search in searchPaths (including TOKA_LIB and -I)
+      // 2. A CMake build keeps the runtime beside its executables under
+      //    build/lib even though that directory does not contain source
+      //    library files. Discover it directly for an out-of-tree SDK.
+      if (!hasRt && tokaRtPath.empty() && !executable.empty()) {
+        std::filesystem::path binDir = std::filesystem::path(executable).parent_path();
+        std::filesystem::path buildRuntime = binDir.parent_path() / "lib" / "sys" / rtFileName;
+        if (std::filesystem::exists(buildRuntime)) {
+          tokaRtPath = buildRuntime.string();
+        }
+      }
+
+      // 3. Search in searchPaths (including TOKA_LIB and -I)
       if (!hasRt && tokaRtPath.empty()) {
         for (const auto &p : searchPaths) {
           llvm::SmallString<128> testPath(p);
@@ -1946,7 +1957,7 @@ int main(int argc, char **argv) {
         }
       }
 
-      // 3. Absolute fallback
+      // 4. Absolute fallback
       if (!hasRt && tokaRtPath.empty()) {
         llvm::SmallString<128> fallbackPath("/usr/local/lib/toka");
         llvm::sys::path::append(fallbackPath, "sys", rtFileName);
