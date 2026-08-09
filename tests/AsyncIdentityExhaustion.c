@@ -10,12 +10,20 @@ extern int toka_task_prepare_suspend(void *coro_frame, uint64_t *out_task_id,
                                      uint64_t *out_gen);
 extern int toka_task_suspend_and_register(void *tcb_ptr);
 extern int toka_task_abort_suspend(void *coro_frame);
+extern int toka_wait_registry_allocate(uint64_t task_id, uint64_t gen,
+                                       uint16_t source_tag,
+                                       uint32_t *out_wait_id,
+                                       uint32_t *out_slot_gen);
+extern int toka_wait_registry_release(uint32_t wait_id, uint32_t slot_gen);
+extern int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
 extern void toka_task_clear_current(void *tcb_ptr);
 extern void toka_task_release(void *tcb_ptr);
 extern uint32_t toka_ready_queue_count(void);
 extern int toka_rt_test_set_next_task_id(uint64_t next_id);
 extern int toka_rt_test_set_schedule_generation(void *tcb_ptr,
                                                  uint64_t generation);
+extern int toka_rt_test_set_wait_slot_generation(uint32_t wait_id,
+                                                  uint32_t generation);
 
 #define CHECK(condition)                                                     \
     do {                                                                     \
@@ -63,8 +71,47 @@ static void test_task_identity_exhaustion_installs_nothing(void) {
     free(frame);
 }
 
+static void test_wait_slot_exhaustion_retires_the_slot(void) {
+    void *frame = calloc(1, 64);
+    CHECK(frame != NULL);
+    void *owner = toka_task_create(frame, NULL);
+    CHECK(owner != NULL);
+    CHECK(toka_task_start(owner));
+
+    uint64_t task_id = 0;
+    uint64_t generation = 0;
+    void *worker = NULL;
+    CHECK(toka_task_pop_ready(&task_id, &generation, &worker));
+    CHECK(worker == owner);
+
+    uint32_t first_id = 0;
+    uint32_t first_generation = 0;
+    CHECK(toka_task_prepare_suspend(frame, &task_id, &generation));
+    CHECK(toka_wait_registry_allocate(task_id, generation, 1, &first_id,
+                                      &first_generation));
+    CHECK(toka_rt_test_set_wait_slot_generation(first_id, UINT32_MAX));
+    CHECK(toka_wait_registry_release(first_id, UINT32_MAX));
+    CHECK(toka_wait_registry_try_wake(first_id, UINT32_MAX) == 0);
+    CHECK(toka_task_abort_suspend(frame));
+
+    uint32_t second_id = 0;
+    uint32_t second_generation = 0;
+    CHECK(toka_task_prepare_suspend(frame, &task_id, &generation));
+    CHECK(toka_wait_registry_allocate(task_id, generation, 1, &second_id,
+                                      &second_generation));
+    CHECK(second_id != first_id);
+    CHECK(toka_wait_registry_release(second_id, second_generation));
+    CHECK(toka_task_abort_suspend(frame));
+
+    toka_task_clear_current(worker);
+    toka_task_release(worker);
+    toka_task_release(owner);
+    free(frame);
+}
+
 int main(void) {
     test_schedule_generation_exhaustion_is_nontransitioning();
+    test_wait_slot_exhaustion_retires_the_slot();
     test_task_identity_exhaustion_installs_nothing();
     puts("async identity exhaustion passed");
     return 0;

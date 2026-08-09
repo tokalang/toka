@@ -215,11 +215,11 @@ entry; a failed suspend preparation leaves the task runnable and installs no
 wait registration or queue ticket. `toka_async_identity_exhaustion` forces
 both boundaries through test-only hooks.
 
-This is deliberately only an AS.0 entry fact. It does not make the current
-task id a full reusable task-instance token, does not cover wait-slot or
-cancellation-epoch exhaustion, and does not qualify checked task retains or
-frame retirement. It is therefore not a claim that TCB RFC 8.1.5—or any other
-8.1 gate—is complete.
+This is deliberately only an AS.0 entry fact. Exhausted wait slots are retired
+instead of returning to generation `1`, but the runtime still does not provide
+a full reusable task-instance token, cancellation-epoch exhaustion, checked
+task retains, or frame retirement. It is therefore not a claim that TCB RFC
+8.1.5—or any other 8.1 gate—is complete.
 
 ---
 
