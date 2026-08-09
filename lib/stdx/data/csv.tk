@@ -26,7 +26,7 @@ fn append_record(records#: Vec<Vec<string>>, cede row: Vec<string>,
         return Result<CsvWidth, CsvError>::Err(parse_error(
             line, column, string::from("inconsistent field count")))
     }
-    auto next_width = CsvWidth(columns = row.len(), established = true)
+    auto next_width# = CsvWidth(columns = row.len(), established = true)
     if width.established {
         next_width.columns = width.columns
     }
