@@ -82,10 +82,24 @@ jobs:
         run: python3 tools/scripts/test_tooling_scale.py
 
       - name: Run Toka 1.0 Discovery Conformance Suite
-        run: python3 tools/run_conformance.py
+        run: |
+          set -o pipefail
+          python3 tools/run_conformance.py 2>&1 | tee build/conformance.log
 
       - name: Verify no-OpenSSL runtime profile
-        run: ./tools/test_no_openssl.sh
+        run: |
+          set -o pipefail
+          ./tools/test_no_openssl.sh 2>&1 | tee build/no-openssl.log
+
+      - name: Upload failed qualification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-diagnostics-${{ matrix.name }}
+          path: |
+            build/conformance.log
+            build/no-openssl.log
+          if-no-files-found: ignore
 
       - name: Build ASan runtime profile
         run: ./tools/build_sanitized.sh runtime-asan
