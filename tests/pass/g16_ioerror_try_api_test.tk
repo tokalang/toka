@@ -11,7 +11,7 @@ fn main() -> i32 {
     auto missing = string::from("toka_ioerror_try_open_missing_3d9f2f.tmp")
     remove_file(missing.clone())
     auto unopened = File::try_open(missing, "r")
-    match unopened {
+    match cede unopened {
         auto Result<File, IoError>::Ok('file) => {
             return 1
         }
@@ -23,7 +23,7 @@ fn main() -> i32 {
     auto output = string::from("toka_ioerror_try_open_success_3d9f2f.tmp")
     remove_file(output.clone())
     auto opened = File::try_open(output.clone(), "w")
-    match opened {
+    match cede opened {
         auto Result<File, IoError>::Ok('file) => {
             'file.write("ok")
         }
@@ -36,7 +36,7 @@ fn main() -> i32 {
     // real kernel failure without requiring the test environment to permit a
     // local listener.
     auto refused = TcpStream::try_connect(SocketAddrV4::new(loopback, 0:u16))
-    match refused {
+    match cede refused {
         auto Result<TcpStream, IoError>::Ok('stream) => {
             return 5
         }

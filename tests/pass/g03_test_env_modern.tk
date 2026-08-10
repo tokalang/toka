@@ -3,10 +3,11 @@ import std/io::{println}
 
 pub fn main() -> i32 {
     // Test args
-    auto args = env::args()
+    auto args# = env::args()
     println("Args count: {}", args.len())
     if args.len() > 0 {
-        println("First arg: {}", args.get_opt(0).unwrap())
+        auto first = args#.pop().unwrap()
+        println("First arg: {}", first)
     }
     
     // Test env var
