@@ -1,7 +1,7 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 import core/types::{usize, Addr, ADDR0}
 import core/option::{Option}
-import sys/libc::{libc_malloc, libc_free}
+import sys/libc::{libc_malloc, libc_free, toka_atomic_write_file}
 import sys/os/abi::*
 import sys/os/base::{to_utf16, from_utf16}
 

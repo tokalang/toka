@@ -211,6 +211,10 @@ add_custom_command(
 
 if(BUILD_TESTING)
     find_package(Threads REQUIRED)
+    set(TOKA_RUNTIME_PLATFORM_LIBS "")
+    if(WIN32)
+        list(APPEND TOKA_RUNTIME_PLATFORM_LIBS ws2_32 bcrypt)
+    endif()
     add_executable(toka_async_terminal_publisher
         tests/AsyncTerminalPublisher.c
         lib/sys/toka_rt.c)
@@ -232,13 +236,13 @@ if(BUILD_TESTING)
     add_executable(toka_async_identity_exhaustion
         tests/AsyncIdentityExhaustion.c
         lib/sys/toka_rt.c)
-    target_link_libraries(toka_async_terminal_publisher PRIVATE Threads::Threads)
-    target_link_libraries(toka_async_cold_cancel_cleanup PRIVATE Threads::Threads)
-    target_link_libraries(toka_async_result_disposition PRIVATE Threads::Threads)
-    target_link_libraries(toka_async_suspend_rollback PRIVATE Threads::Threads)
-    target_link_libraries(toka_async_completion_subscription PRIVATE Threads::Threads)
-    target_link_libraries(toka_async_queue_publication PRIVATE Threads::Threads)
-    target_link_libraries(toka_async_identity_exhaustion PRIVATE Threads::Threads)
+    target_link_libraries(toka_async_terminal_publisher PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
+    target_link_libraries(toka_async_cold_cancel_cleanup PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
+    target_link_libraries(toka_async_result_disposition PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
+    target_link_libraries(toka_async_suspend_rollback PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
+    target_link_libraries(toka_async_completion_subscription PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
+    target_link_libraries(toka_async_queue_publication PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
+    target_link_libraries(toka_async_identity_exhaustion PRIVATE Threads::Threads ${TOKA_RUNTIME_PLATFORM_LIBS})
     target_compile_definitions(toka_async_queue_publication
         PRIVATE TOKA_RUNTIME_TESTING=1)
     target_compile_definitions(toka_async_identity_exhaustion
@@ -311,8 +315,8 @@ file(GLOB_RECURSE TOKA_TOOL_AND_LIBRARY_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/tokafmt/*.tk"
     "${CMAKE_SOURCE_DIR}/lib/*.tk")
 
-set(TOKA_MANAGER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/toka")
-set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt")
+set(TOKA_MANAGER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/toka${CMAKE_EXECUTABLE_SUFFIX}")
+set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt${CMAKE_EXECUTABLE_SUFFIX}")
 
 add_custom_command(
     OUTPUT "${TOKA_MANAGER}"

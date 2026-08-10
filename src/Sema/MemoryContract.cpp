@@ -5,6 +5,7 @@
 #include "toka/AST.h"
 #include "toka/MemorySummary.h"
 #include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Dominators.h"
@@ -218,7 +219,13 @@ bool hasEmittedAttribute(const llvm::Argument &argument,
                          MemoryContractKind kind) {
   switch (kind) {
   case MemoryContractKind::NoCapture:
+#if LLVM_VERSION_MAJOR >= 22
+    return argument.getAttribute(llvm::Attribute::Captures).isValid() &&
+           argument.getAttribute(llvm::Attribute::Captures).getCaptureInfo() ==
+               llvm::CaptureInfo::none();
+#else
     return argument.hasAttribute(llvm::Attribute::NoCapture);
+#endif
   case MemoryContractKind::ReadOnly:
     return argument.hasAttribute(llvm::Attribute::ReadOnly);
   case MemoryContractKind::WriteOnly:
@@ -360,7 +367,15 @@ unsigned MemoryContractShadow::emitExperimental(
       continue;
     switch (kind) {
     case MemoryContractKind::NoCapture:
+#if LLVM_VERSION_MAJOR >= 22
+      {
+        llvm::AttrBuilder attrs(function->getContext());
+        attrs.addCapturesAttr(llvm::CaptureInfo::none());
+        function->addParamAttrs(argument->getArgNo(), attrs);
+      }
+#else
       function->addParamAttr(argument->getArgNo(), llvm::Attribute::NoCapture);
+#endif
       break;
     case MemoryContractKind::ReadOnly:
       function->addParamAttr(argument->getArgNo(), llvm::Attribute::ReadOnly);

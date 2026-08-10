@@ -210,12 +210,12 @@ impl Command {
     }
 
     pub fn status(self#) -> i32 {
-        match cede self#.try_status() {
-            auto Result<ExitStatus, ProcessError>::Ok(status) => {
-                return status.legacy_code()
-            }
-            _ => return -1
+        auto result = self#.try_status()
+        if result.is_ok() {
+            auto status = result.unwrap()
+            return status.legacy_code()
         }
+        return -1
     }
 
     pub fn output(self#) -> Result<Output, ProcessError> {

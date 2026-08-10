@@ -918,7 +918,8 @@ int main(int argc, char **argv) {
     } else if (arg == "-o") {
       if (i + 1 < argc) {
         outputFile = argv[++i];
-        if (outputFile.length() > 2 && outputFile.substr(outputFile.length() - 2) == ".o") {
+        if ((outputFile.length() > 2 && outputFile.substr(outputFile.length() - 2) == ".o") ||
+            (outputFile.length() > 4 && outputFile.substr(outputFile.length() - 4) == ".obj")) {
           emitObj = true;
           compileOnly = true;
         } else if (outputFile.length() > 3 && outputFile.substr(outputFile.length() - 3) == ".ll") {
@@ -976,7 +977,9 @@ int main(int argc, char **argv) {
                    << "' (use --help for available options)\n";
       return 1;
     } else {
-      if (arg.length() > 2 && (arg.substr(arg.length() - 2) == ".o" || arg.substr(arg.length() - 2) == ".a")) {
+      if ((arg.length() > 2 &&
+           (arg.substr(arg.length() - 2) == ".o" || arg.substr(arg.length() - 2) == ".a")) ||
+          (arg.length() > 4 && arg.substr(arg.length() - 4) == ".obj")) {
         objectFiles.push_back(arg);
       } else {
         sourceFiles.push_back(arg);

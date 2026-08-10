@@ -2,7 +2,8 @@
 import std/env
 import std/io::{println, File, remove_file}
 import std/fs::{read_to_string, exists, create_dir, write_string, read_dir, metadata}
-import sys/libc::{libc_system, libc_printf, libc_getenv, libc_setenv}
+import sys/libc::{libc_system, libc_printf, libc_getenv}
+import sys/os/base as sys
 import std/vec::{Vec}
 import std/process::{Command}
 import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search, resolve_package}
@@ -48,16 +49,7 @@ fn print_help() {
 }
 
 fn check_is_windows() -> bool {
-    unsafe {
-        auto os_env = libc_getenv(c"OS") as Addr
-        if os_env != 0:Addr {
-            auto os_str = string::from_cstr(os_env as *char)
-            if os_str == string::from("Windows_NT") {
-                return true
-            }
-        }
-        return false
-    }
+    return sys::path_sep() == 92:char
 }
 
 fn shell_quote(s: string) -> string {
@@ -478,14 +470,26 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
     }
     auto tokac_path = detect_tokac_path()
     auto default_lib = detect_default_lib_path()
-    unsafe {
-        libc_setenv(c"TOKA_LIB", default_lib.c_str(), 1)
-        libc_setenv(c"TOKAC", tokac_path.c_str(), 1)
-    }
+    env::set_var(string::from("TOKA_LIB"), default_lib.clone())
+    env::set_var(string::from("TOKAC"), tokac_path.clone())
     if exists(string::from("package.tk")) {
-        auto fetch_res = cmd_fetch_quiet()
-        if fetch_res != 0 {
-            return fetch_res
+        auto resolve_dependencies# = true
+        if check_is_windows() {
+            // The generated empty dependency block needs no resolver, whose
+            // captured-output operation is outside the Windows baseline.
+            auto manifest_result = read_to_string(string::from("package.tk"))
+            if manifest_result.is_ok() {
+                auto manifest = manifest_result.unwrap()
+                if manifest.find_str("dependencies = (\n    )") != -1 {
+                    resolve_dependencies = false
+                }
+            }
+        }
+        if resolve_dependencies {
+            auto fetch_res = cmd_fetch_quiet()
+            if fetch_res != 0 {
+                return fetch_res
+            }
         }
     }
 
@@ -1076,16 +1080,16 @@ fn cmd_doctor() -> i32 {
 
     auto compiler# = Command::new(detect_tokac_path())
     compiler#.arg(string::from("--version"))
-    auto compiler_result = compiler#.output()
+    auto compiler_result = compiler#.try_status()
     if compiler_result.is_err() {
         println("  [FAIL] tokac is not executable")
         failures += 1
     } else {
-        auto compiler_output = compiler_result.unwrap()
-        if compiler_output.status.success() {
+        auto compiler_status = compiler_result.unwrap()
+        if compiler_status.success() {
             println("  [ OK ] compiler")
         } else {
-            println("  [FAIL] compiler returned {}", compiler_output.status.legacy_code())
+            println("  [FAIL] compiler returned {}", compiler_status.legacy_code())
             failures += 1
         }
     }
@@ -1104,13 +1108,13 @@ fn cmd_doctor() -> i32 {
 
     auto formatter# = Command::new(detect_tokafmt_path())
     formatter#.arg(string::from("--version"))
-    auto formatter_result = formatter#.output()
+    auto formatter_result = formatter#.try_status()
     if formatter_result.is_ok() {
-        auto formatter_output = formatter_result.unwrap()
-        if formatter_output.status.success() {
+        auto formatter_status = formatter_result.unwrap()
+        if formatter_status.success() {
             println("  [ OK ] formatter")
         } else {
-            println("  [FAIL] formatter returned {}", formatter_output.status.legacy_code())
+            println("  [FAIL] formatter returned {}", formatter_status.legacy_code())
             failures += 1
         }
     } else {
@@ -1122,13 +1126,13 @@ fn cmd_doctor() -> i32 {
     if check_is_windows() { linker_name = string::from("gcc") }
     auto linker# = Command::new(cede linker_name)
     linker#.arg(string::from("--version"))
-    auto linker_result = linker#.output()
+    auto linker_result = linker#.try_status()
     if linker_result.is_ok() {
-        auto linker_output = linker_result.unwrap()
-        if linker_output.status.success() {
+        auto linker_status = linker_result.unwrap()
+        if linker_status.success() {
             println("  [ OK ] native linker driver")
         } else {
-            println("  [FAIL] native linker driver returned {}", linker_output.status.legacy_code())
+            println("  [FAIL] native linker driver returned {}", linker_status.legacy_code())
             failures += 1
         }
     } else {

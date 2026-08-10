@@ -57,7 +57,7 @@ static std::string logicalPathFromRoot(const std::string &canonicalPath,
     std::error_code ec;
     std::filesystem::path relative = std::filesystem::relative(
         std::filesystem::path(canonicalPath), std::filesystem::path(canonicalRoot), ec);
-    if (ec || relative.empty() || relative.native().rfind("..", 0) == 0)
+    if (ec || relative.empty() || relative.generic_string().rfind("..", 0) == 0)
         return "";
     std::string logical = PathUtils::normalize(relative.string());
     for (const char *extension : {".tki", ".tk"}) {

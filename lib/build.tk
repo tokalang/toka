@@ -1056,17 +1056,38 @@ fn run_build_impl(
             return 1
         }
 
+        auto python_driver_path# = driver_path.clone()
+        auto python_tokac_path# = tokac_path.clone()
+        if is_windows && env::var(string::from("MSYSTEM")).is_some() &&
+           python_driver_path.len() >= 3:usize &&
+           python_driver_path.byte_at(1:usize) == ':' as char {
+            auto converted# = string::from("/")
+            converted#.push_char(python_driver_path.byte_at(0:usize))
+            auto tail = python_driver_path.substring(2, python_driver_path.len() as i32)
+            converted#.push_str(tail.replace('\\' as char, '/' as char).as_str())
+            python_driver_path = cede converted
+        }
+        if is_windows && env::var(string::from("MSYSTEM")).is_some() &&
+           python_tokac_path.len() >= 3:usize &&
+           python_tokac_path.byte_at(1:usize) == ':' as char {
+            auto converted# = string::from("/")
+            converted#.push_char(python_tokac_path.byte_at(0:usize))
+            auto tail = python_tokac_path.substring(2, python_tokac_path.len() as i32)
+            converted#.push_str(tail.replace('\\' as char, '/' as char).as_str())
+            python_tokac_path = cede converted
+        }
+
         // Planning must use the same authoritative driver as building. In
         // particular, that driver includes locked native-package inputs in
         // the fingerprint, whereas a graph-only plan cannot see them.
         if has_plan {
             auto plan_cmd# = Command::new(string::from("python3"))
-            plan_cmd#.arg(cede driver_path.clone())
+            plan_cmd#.arg(cede python_driver_path.clone())
             plan_cmd#.arg(string::from("--plan"))
             plan_cmd#.arg(string::from("-m"))
             plan_cmd#.arg(cede manifest_path.clone())
             plan_cmd#.arg(string::from("--tokac"))
-            plan_cmd#.arg(cede tokac_path.clone())
+            plan_cmd#.arg(cede python_tokac_path.clone())
             auto plan_arg_index# = 0:usize
             loop plan_arg_index < compiler_args.len() {
                 auto plan_arg# = string::from("--compiler-arg=")
@@ -1080,12 +1101,12 @@ fn run_build_impl(
         }
 
         auto cmd1# = Command::new(string::from("python3"))
-        cmd1#.arg(cede driver_path.clone())
+        cmd1#.arg(cede python_driver_path.clone())
         cmd1#.arg(string::from("--build"))
         cmd1#.arg(string::from("-m"))
         cmd1#.arg(cede manifest_path.clone())
         cmd1#.arg(string::from("--tokac"))
-        cmd1#.arg(cede tokac_path.clone())
+        cmd1#.arg(cede python_tokac_path.clone())
         auto driver_arg_index# = 0:usize
         loop driver_arg_index < compiler_args.len() {
             auto driver_arg# = string::from("--compiler-arg=")

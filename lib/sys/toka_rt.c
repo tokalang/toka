@@ -5552,7 +5552,7 @@ static void ensure_parent_dir_exists(const char *path) {
     if (p) {
         *p = '\0';
 #ifdef _WIN32
-        _mkdir(tmp);
+        CreateDirectoryA(tmp, NULL);
 #else
         mkdir(tmp, 0755);
 #endif
