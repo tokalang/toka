@@ -1,6 +1,6 @@
 # `official/regex` v1
 
-Status: **qualified v1 profile; not yet released**.
+Status: **v1 pilot release (`0.1.0`)**.
 
 `official/regex` is Toka's official regular-expression package. Its package
 identity and public import path are `official/regex`; its manifest short name
@@ -33,6 +33,13 @@ match; and `Regex::find_all` returns all leftmost, non-overlapping matches.
 Empty matches are reported once at each search boundary and then advance one
 byte, avoiding an infinite scan. The API owns compiled pattern data and never
 returns a view into a temporary input.
+
+## Release artifact
+
+This monorepo package is released from the exact source tag
+`official-regex-v0.1.0`. The matching GitHub Release asset is
+`regex-0.1.0.tar.gz`; the reviewed static registry catalog records its
+SHA-256 digest and is the authoritative installation record.
 
 ## v1 syntax profile
 

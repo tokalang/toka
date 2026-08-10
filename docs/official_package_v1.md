@@ -143,7 +143,12 @@ The metadata is a contract, not marketing. A capability absent from
 Public API changes follow SemVer: patch releases fix behavior without changing
 the public contract; minor releases add backward-compatible public surface;
 major releases may break it. A release records its exact `package.lock` inputs,
-license, qualification evidence, and platform/native support matrix.
+license, qualification evidence, and platform/native support matrix. A package
+root inside this monorepo uses the unambiguous source tag formed by replacing
+`/` in its identity with `-` and appending `-v<version>` (for example,
+`official-regex-v0.1.0`), and the archive name `<name>-<version>.tar.gz`. The
+catalog's `source.tag`, `tarball_url`, and SHA-256 must all describe that exact
+source release; root compiler tags are not package-release tags.
 
 Package installation and integrity continue to use the existing deterministic
 lock, content digest, staging, and atomic-install rules. This contract does not

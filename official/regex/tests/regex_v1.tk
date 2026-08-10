@@ -132,7 +132,7 @@ fn test_ascii_character_classes() {
     assert(!range.is_match("abcd"), "range class must reject bytes outside the range")
 
     auto negated = Regex::compile("^[^0-9]+$").unwrap()
-    assert(negated.is_match("toka-RE2"), "negated class must match non-digit bytes")
+    assert(negated.is_match("toka-RE"), "negated class must match non-digit bytes")
     assert(!negated.is_match("toka1"), "negated class must reject member bytes")
 
     auto punctuation = Regex::compile("^[-a\\]]+$").unwrap()

@@ -193,11 +193,10 @@ fn merge_patches(cede first: Vec<Patch>, cede second: Vec<Patch>) -> Vec<Patch> 
     return merged
 }
 
-fn patch_all(program#: Vec<NfaState>, cede patches: Vec<Patch>, target: i32) {
-    auto patch_values = cede patches
+fn patch_all(program#: Vec<NfaState>, patches: Vec<Patch>, target: i32) {
     auto index# = 0:usize
-    loop index < patch_values.len() {
-        auto patch = patch_values.get(index)
+    loop index < patches.len() {
+        auto patch = patches.get(index)
         auto state# = program.get(patch.state_id as usize)
         if patch.edge == EDGE_OUT { state.out = target }
         else { state.alt = target }
@@ -228,7 +227,7 @@ fn concat_fragments(program#: Vec<NfaState>, cede left: Fragment, cede right: Fr
     auto exits = cede left.exits
     auto next_entry = right.entry
     auto next_exits = cede right.exits
-    patch_all(program, cede exits, next_entry)
+    patch_all(program, exits, next_entry)
     return Fragment(entry = entry, exits = cede next_exits)
 }
 
@@ -245,7 +244,7 @@ fn star_fragment(program#: Vec<NfaState>, cede inner: Fragment) -> Fragment {
     auto inner_entry = inner.entry
     auto inner_exits = cede inner.exits
     auto entry = new_state(program, STATE_SPLIT, 0:u8, NO_STATE, inner_entry, NO_STATE)
-    patch_all(program, cede inner_exits, entry)
+    patch_all(program, inner_exits, entry)
     return Fragment(entry = entry, exits = one_patch(entry, EDGE_ALT))
 }
 
@@ -253,7 +252,7 @@ fn plus_fragment(program#: Vec<NfaState>, cede inner: Fragment) -> Fragment {
     auto entry = inner.entry
     auto exits = cede inner.exits
     auto split = new_state(program, STATE_SPLIT, 0:u8, NO_STATE, entry, NO_STATE)
-    patch_all(program, cede exits, split)
+    patch_all(program, exits, split)
     return Fragment(entry = entry, exits = one_patch(split, EDGE_ALT))
 }
 
@@ -715,17 +714,32 @@ fn advance_threads(program: Vec<NfaState>, classes: Vec<ByteClass>,
     }
 }
 
-fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>) -> Option<Match> {
-    auto index# = 0:usize
-    loop index < active.len() {
-        auto candidate = active.get(index)
-        if program.get(candidate.state_id as usize).kind == STATE_MATCH {
-            return Option<Match>::Some(Match(
-                begin_byte = candidate.begin_byte,
-                end_byte = candidate.end_byte
-            ))
+fn first_match(program: Vec<NfaState>, active: Vec<ActiveState>, at_end: bool) -> Option<Match> {
+    if active.len() == 0:usize {
+        return Option<Match>::None
+    }
+    // Threads retain Thompson construction order. A lower-priority branch may
+    // reach MATCH while an earlier branch at the same input position remains
+    // viable, so only the leading thread may establish a leftmost-first match.
+    auto candidate = active.get(0:usize)
+    if program.get(candidate.state_id as usize).kind == STATE_MATCH {
+        return Option<Match>::Some(Match(
+            begin_byte = candidate.begin_byte,
+            end_byte = candidate.end_byte
+        ))
+    }
+    if at_end {
+        auto index# = 1:usize
+        loop index < active.len() {
+            auto terminal = active.get(index)
+            if program.get(terminal.state_id as usize).kind == STATE_MATCH {
+                return Option<Match>::Some(Match(
+                    begin_byte = terminal.begin_byte,
+                    end_byte = terminal.end_byte
+                ))
+            }
+            index = index + 1:usize
         }
-        index = index + 1:usize
     }
     return Option<Match>::None
 }
@@ -757,7 +771,7 @@ impl Regex {
             return Result<Regex, RegexError>::Err(error(fragment.next_byte, "unexpected closing ')'"))
         }
         auto match_state = new_state(program, STATE_MATCH, 0:u8, NO_STATE, NO_STATE, NO_STATE)
-        patch_all(program, cede fragment.fragment.exits, match_state)
+        patch_all(program, fragment.fragment.exits, match_state)
         return Result<Regex, RegexError>::Ok(Regex(
             program = cede program,
             classes = cede classes,
@@ -771,7 +785,7 @@ impl Regex {
         add_start_thread(self.program, self.entry, input, start_byte, threads)
         auto cursor# = start_byte
         loop true {
-            auto found = first_match(self.program, threads.active)
+            auto found = first_match(self.program, threads.active, cursor == input.len())
             if found.is_some() { return found }
             if cursor == input.len() { break }
             auto next# = new_thread_set(self.program)
