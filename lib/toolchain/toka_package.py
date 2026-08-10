@@ -31,6 +31,7 @@ NATIVE_LIBRARY_RE = re.compile(r"^[A-Za-z0-9_+.-]+$")
 NATIVE_FRAMEWORK_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 NATIVE_RESOURCE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 NATIVE_TARGETS = ("macos", "linux", "windows")
+DEFAULT_REGISTRY_URL = "https://pkg.tokalang.dev"
 
 
 class PackageError(RuntimeError):
@@ -640,7 +641,7 @@ def _version_key(value: str) -> tuple[object, ...]:
 
 
 def registry_search(query: str) -> list[tuple[str, str, str]]:
-    base = os.environ.get("TOKA_REGISTRY_URL", "http://localhost:8080").rstrip("/")
+    base = os.environ.get("TOKA_REGISTRY_URL", DEFAULT_REGISTRY_URL).rstrip("/")
     with tempfile.TemporaryDirectory(prefix="toka-registry-search-") as directory:
         catalog_path = Path(directory) / "catalog.json"
         _download(base + "/catalog.json", catalog_path)
@@ -715,7 +716,7 @@ class Resolver:
     def _registry_release(self, dependency: Dependency, exact_version: str | None = None) -> tuple[str, str, str]:
         if self.offline:
             raise PackageError("offline resolution requires a locked registry release: " + dependency.alias)
-        base = os.environ.get("TOKA_REGISTRY_URL", "http://localhost:8080").rstrip("/")
+        base = os.environ.get("TOKA_REGISTRY_URL", DEFAULT_REGISTRY_URL).rstrip("/")
         catalog_url = base + "/catalog.json"
         temporary = self.transaction / (dependency.alias + ".catalog.json")
         _download(catalog_url, temporary)

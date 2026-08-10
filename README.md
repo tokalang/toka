@@ -78,6 +78,16 @@ tokac --version
 toka --version
 ```
 
+Install the first public official package:
+
+```bash
+toka add regex
+```
+
+The resolver uses `https://pkg.tokalang.dev` by default and verifies the
+catalog-recorded SHA-256 before extracting an archive. Set `TOKA_REGISTRY_URL`
+only to use a local or test registry.
+
 ## The Mental Model
 
 Toka is easiest to understand if you separate two layers:
