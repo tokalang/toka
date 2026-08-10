@@ -1,6 +1,7 @@
 # `official/regex` v1
 
-Status: **v1 pilot release (`0.1.0`)**.
+Status: **historical v1 pilot source (`0.1.0`)**. Successor development lives
+in [`tokalang/regex`](https://github.com/tokalang/regex).
 
 `official/regex` is Toka's official regular-expression package. Its package
 identity and public import path are `official/regex`; its manifest short name
@@ -36,7 +37,7 @@ returns a view into a temporary input.
 
 ## Release artifact
 
-This monorepo package is released from the exact source tag
+This historical monorepo package was released from the exact source tag
 `official-regex-v0.1.0`. The matching GitHub Release asset is
 `regex-0.1.0.tar.gz`; the reviewed static registry catalog records its
 SHA-256 digest and is the authoritative installation record.

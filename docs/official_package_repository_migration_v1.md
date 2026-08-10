@@ -1,6 +1,6 @@
 # Official Package Repository Migration v1
 
-Status: `Approved extraction policy; official/regex preparation in progress`
+Status: `Approved extraction policy; official/regex cut over; first standalone release pending`
 
 Official packages are publisher-owned optional libraries, not a fourth
 standard-library layer. This document defines the one-way migration from an
@@ -29,6 +29,11 @@ The first standalone repository is named `tokalang/<name>` (for example,
 the source provenance remains inspectable. The default branch advances to the
 next development version, such as `0.1.1-dev.0`; it must not manufacture a
 second `0.1.0` release.
+
+`official/regex` completed this cutover on 2026-08-10. Its successor source is
+[`tokalang/regex`](https://github.com/tokalang/regex) on `main` at
+`0.1.1-dev.0`; the original monorepo tag, release asset, and catalog entry
+remain the immutable source record for `0.1.0`.
 
 The new repository owns package CI, issues, releases, and its future source
 tags. Its first public release is a real SemVer successor, such as `v0.1.1`.
