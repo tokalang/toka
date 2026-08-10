@@ -1058,7 +1058,11 @@ fn run_build_impl(
 
         auto python_driver_path# = driver_path.clone()
         auto python_tokac_path# = tokac_path.clone()
+        // MINGW Python is a native Windows executable and therefore needs
+        // native drive paths.  Only the MSYS runtime itself accepts the
+        // POSIX /C/... spelling used below.
         if is_windows && env::var(string::from("MSYSTEM")).is_some() &&
+           env::var(string::from("MSYSTEM")).unwrap().as_str().equals("MSYS") &&
            python_driver_path.len() >= 3:usize &&
            python_driver_path.byte_at(1:usize) == ':' as char {
             auto converted# = string::from("/")
@@ -1068,6 +1072,7 @@ fn run_build_impl(
             python_driver_path = cede converted
         }
         if is_windows && env::var(string::from("MSYSTEM")).is_some() &&
+           env::var(string::from("MSYSTEM")).unwrap().as_str().equals("MSYS") &&
            python_tokac_path.len() >= 3:usize &&
            python_tokac_path.byte_at(1:usize) == ':' as char {
             auto converted# = string::from("/")
