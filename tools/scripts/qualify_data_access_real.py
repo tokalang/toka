@@ -297,9 +297,12 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="toka-data-access-real-") as temporary:
             work = Path(temporary)
             redis_fixture = work / "redis-real-service-v1"
+            redis_clone_fixture = work / "redis-clone-ownership-v1"
             postgres_fixture = work / "postgres-real-service-v1"
             compile_fixture(args.tokac.resolve(), "official/redis/lib", "official/redis/tests/real_service_v1.tk", redis_fixture)
+            compile_fixture(args.tokac.resolve(), "official/redis/lib", "official/redis/tests/clone_ownership_v1.tk", redis_clone_fixture)
             compile_fixture(args.tokac.resolve(), "official/postgres/lib", "official/postgres/tests/real_service_v1.tk", postgres_fixture)
+            command([str(redis_clone_fixture)], timeout=60)
             ca_cert, server_cert, server_key = make_certificates(work)
             redis_evidence: dict[str, dict[str, str]] = {}
             for version in REDIS_VERSIONS:

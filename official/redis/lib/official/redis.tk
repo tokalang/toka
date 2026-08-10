@@ -405,7 +405,7 @@ impl RedisCommand {
         auto copied# = Vec<RedisArgument>::with_capacity(self.args.len())
         auto index# = 0:usize
         loop index < self.args.len() {
-            copied#.push(cede self.args.get(index).clone())
+            copied#.push(cede self.args.get_ref(index).clone())
             index = index + 1:usize
         }
         return RedisCommand(
@@ -435,7 +435,7 @@ impl RedisValue {
                 auto copied# = Vec<RedisValue>::with_capacity(values.len())
                 auto index# = 0:usize
                 loop index < values.len() {
-                    copied#.push(cede values.get(index).clone())
+                    copied#.push(cede values.get_ref(index).clone())
                     index = index + 1:usize
                 }
                 return RedisValue::Array(cede copied)
@@ -478,7 +478,7 @@ impl RedisValue {
     pub fn array_at(self, index: usize) -> Option<RedisValue> {
         match self {
             auto RedisValue::Array(&values) => {
-                if index < values.len() { return Option<RedisValue>::Some(values.get(index).clone()) }
+                if index < values.len() { return Option<RedisValue>::Some(values.get_ref(index).clone()) }
                 return Option<RedisValue>::None()
             }
             _ => return Option<RedisValue>::None()
@@ -523,7 +523,8 @@ impl RedisCommand {
 
         auto index# = 0:usize
         loop index < self.args.len() {
-            match self.args.get(index) {
+            auto *argument = self.args.get_ref(index)
+            match argument {
                 auto RedisArgument::Text(&value) => append_text_bulk(wire, value.as_str())
                 auto RedisArgument::Binary(&value) => append_binary_bulk(wire, value.as_slice())
             }
@@ -721,7 +722,7 @@ impl RedisClient {
         auto wire# = Vec<u8>::new()
         auto command_index# = 0:usize
         loop command_index < expected {
-            auto command = pipeline.commands.get(command_index).clone()
+            auto command = pipeline.commands.get_ref(command_index).clone()
             auto encoded = command.into_wire()
             if encoded.is_err() { return Result<Vec<RedisValue>, RedisError>::Err(encoded.unwrap_err()) }
             append_bytes(wire, encoded.unwrap())
