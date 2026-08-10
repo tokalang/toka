@@ -1,0 +1,46 @@
+name: Developer-experience feedback
+description: Report friction in installation, documentation, tooling, or the package replication flow.
+title: "dx: "
+labels:
+  - developer-experience
+body:
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did the flow fail?
+      options:
+        - Install or upgrade
+        - Source build or `toka doctor`
+        - New project, build, test, or formatter
+        - Package search, add, lock, or offline replay
+        - AI-assisted package replication
+        - Documentation or diagnostics
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host and architecture
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What did you try?
+      description: Include the link or command that led you here and the exact command you ran.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`toka doctor` output"
+      render: text
+    validations:
+      required: true

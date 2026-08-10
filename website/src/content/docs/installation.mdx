@@ -3,7 +3,9 @@ title: Installation
 description: How to install the Toka compiler and build tool.
 ---
 
-Toka publishes prebuilt release archives for macOS, Linux, and Windows. The macOS and Linux installer downloads the latest release, installs the compiler, project manager, and standard library under `~/.toka/`, and updates your shell environment.
+Toka publishes prebuilt release archives for macOS and Linux. The installer
+downloads the latest stable release, installs the compiler, project manager,
+and standard library under `~/.toka/`, and updates your shell environment.
 
 ## Quick Install (macOS & Linux)
 
@@ -15,15 +17,26 @@ curl -fsSL https://tokalang.dev/install.sh | bash
 
 The script detects your OS and CPU architecture, downloads the current release, and configures `PATH` and `TOKA_LIB` for common shells.
 
+### Release Candidates
+
+GitHub's `latest` endpoint intentionally selects a stable release. To test a
+published release candidate, pass its exact tag:
+
+```bash
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+```
+
 ## Windows Installation
 
-Windows archives are available from GitHub Releases. Current Windows development expects an MSYS2 LLVM/Clang environment to be available on `PATH`, because `tokac.exe` uses the LLVM toolchain infrastructure.
+Windows/MSYS2 is currently a dogfood and source-build path, not a blocking
+release target and not a published SDK archive. Current Windows development
+expects an MSYS2 LLVM/Clang environment on `PATH`, because `tokac.exe` uses the
+LLVM toolchain infrastructure.
 
-1. Go to the [GitHub Releases](https://github.com/tokalang/toka/releases) page.
-2. Download the latest archive with the `Windows` suffix.
-3. Extract the archive to a directory of your choice (e.g., `C:\tokalang`).
-4. Add the `bin` folder inside the extracted directory to your system's `PATH` environment variable.
-5. Add the `lib` folder inside the extracted directory to a new system environment variable named `TOKA_LIB`.
+1. Clone the [Toka repository](https://github.com/tokalang/toka).
+2. Install the matching MSYS2 toolchain below.
+3. Configure and build with CMake from an MSYS2 UCRT64 or MinGW64 terminal.
+4. Add `build/bin` to `PATH` and set `TOKA_LIB` to the repository's `lib` directory.
 
 > [!WARNING]
 > If you run `toka build` or `toka run` on a clean Windows machine without the required LLVM DLLs, `tokac.exe` may fail to start with `0xC0000135` (`STATUS_DLL_NOT_FOUND`).

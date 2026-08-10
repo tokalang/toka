@@ -89,7 +89,7 @@ jobs:
           release_version="${{ steps.version.outputs.label }}"
           release_version="${release_version#v}"
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DTOKA_RELEASE_VERSION="$release_version" \
+            -DTOKA_RELEASE_VERSION_OVERRIDE="$release_version" \
             ${LLVM_DIR:+-DLLVM_DIR="$LLVM_DIR"} \
             ${LLD_DIR:+-DLLD_DIR="$LLD_DIR"} \
             ${ZSTD_LIBRARY:+-DZSTD_LIBRARY="$ZSTD_LIBRARY"} \

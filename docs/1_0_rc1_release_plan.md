@@ -26,18 +26,36 @@ The language surface remains frozen by
 
 ## Required Evidence Before Publication
 
-1. The candidate version migration is committed and pushed to `main`; normal
-   CI remains green on Linux x64, Linux arm64, and macOS arm64, with Windows
-   dogfood kept as non-blocking Tier 2 evidence.
-2. `.github/workflows/release.yml` is manually dispatched at that exact
+1. The candidate version migration and launch documentation are committed and
+   pushed to `main`. `tokac`, `toka`, `tokafmt`, and `tokalsp` agree on
+   `1.0.0-rc.1` after an ordinary source-tree reconfigure. Normal CI remains
+   green on Linux x64, Linux arm64, and macOS arm64, with Windows dogfood kept
+   as non-blocking Tier 2 evidence.
+2. The default installer resolves the latest stable **Toka SDK**, not a package
+   release. The installer must fail before replacing an existing SDK, and its
+   documentation must give the exact `v1.0.0-rc.1` invocation for RC testers.
+3. `.github/workflows/release.yml` is manually dispatched at that exact
    revision with `tag_name=v1.0.0-rc.1` and `publish_release=false`.
-3. Linux x64/arm64 and macOS x64/arm64 each produce a clean
+4. Linux x64/arm64 and macOS x64/arm64 each produce a clean
    `toka.release-gate` v2 report with all thirteen stages passing.
-4. The four reports, their revision, `source_dirty=false`, and their version
+5. The four reports, their revision, `source_dirty=false`, and their version
    label are reviewed together. Historical RC4 or 0.9.9 evidence cannot
    substitute for this step.
-5. Only then may maintainers separately authorize creation of annotated
+6. Only then may maintainers separately authorize creation of annotated
    `v1.0.0-rc.1` and its GitHub pre-release archives.
+
+## Evidence Before Announcement
+
+After the tagged archives exist, install the exact RC tag into a clean home on
+each available native release host. `toka doctor`, `toka new`, `toka add
+regex`, `toka run`, and an offline lock replay must succeed. This is the
+public developer's first-hour path, distinct from the compiler release gate.
+
+The release remains a GitHub pre-release: the unqualified installer continues
+to select the latest stable SDK until final 1.0 publication. The RC's public
+entry points must therefore use its explicit tag, and its package replication
+guide must describe the reviewed GitHub Release plus static-catalog path rather
+than an unauthenticated registry upload.
 
 ## Adoption Evidence
 

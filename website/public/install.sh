@@ -6,63 +6,110 @@ set -e
 
 echo "Installing Toka Language..."
 
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+OS=$(uname -s)
 ARCH=$(uname -m)
 
-if [ "$OS" = "darwin" ]; then
-  OS="macos"
-elif echo "$OS" | grep -qE "(mingw|msys|cygwin)"; then
-  OS="windows"
-fi
+case "$OS" in
+  Darwin) OS="macos" ;;
+  Linux) OS="linux" ;;
+  MINGW*|MSYS*|CYGWIN*) OS="windows" ;;
+  *)
+    echo "Unsupported operating system: $OS"
+    exit 1
+    ;;
+esac
 
 if [ "$ARCH" = "x86_64" ]; then
   ARCH="x64"
 elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
   ARCH="arm64"
+else
+  echo "Unsupported architecture: $ARCH"
+  exit 1
 fi
 
-# We use 'latest' endpoint or we let user specify version.
-# For now, it curls latest.
-RELEASE_URL="https://github.com/tokalang/toka/releases/latest/download"
-
-# To specify a specific version for beta, use the argument passed or latest
+# Pass an exact tag for a release candidate. The unqualified path deliberately
+# follows GitHub's stable Latest release instead of guessing a prerelease.
 VERSION=${1:-"latest"}
 if [ "$VERSION" = "latest" ]; then
   echo "Fetching latest version..."
-  LATEST_URL=$(curl -sL -o /dev/null -w %{url_effective} https://github.com/tokalang/toka/releases/latest)
-  VERSION=${LATEST_URL##*/}
-  if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
-    # Fallback if redirect fails
-    VERSION="v0.9.8-06"
-    echo "Warning: Could not determine latest version. Defaulting to $VERSION"
+  if ! LATEST_URL=$(curl -fsSL --retry 3 -o /dev/null -w '%{url_effective}' \
+      https://github.com/tokalang/toka/releases/latest); then
+    echo "Could not determine the latest Toka release. Pass an exact release tag instead."
+    exit 1
   fi
+  VERSION=${LATEST_URL##*/}
 fi
+
+case "$VERSION" in
+  v*) ;;
+  *)
+    echo "Invalid release tag '$VERSION'. Pass a tag such as v1.0.0-rc.1."
+    exit 1
+    ;;
+esac
 
 TARBALL="toka-${VERSION}-${OS}-${ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/tokalang/toka/releases/download/${VERSION}/${TARBALL}"
 
 TOKA_DIR="$HOME/.toka"
 TMP_DIR=$(mktemp -d)
+STAGING_DIR="${TOKA_DIR}.staging.$$"
+BACKUP_DIR="${TOKA_DIR}.backup.$$"
+
+cleanup() {
+  rm -rf "$TMP_DIR"
+  if [ -n "${STAGING_DIR:-}" ]; then
+    rm -rf "$STAGING_DIR"
+  fi
+}
+trap cleanup EXIT HUP INT TERM
 
 # Download
 echo "Downloading $TARBALL from $DOWNLOAD_URL..."
-curl -# -L -o "${TMP_DIR}/${TARBALL}" "$DOWNLOAD_URL"
+curl --fail --location --retry 3 --silent --show-error \
+  -o "${TMP_DIR}/${TARBALL}" "$DOWNLOAD_URL"
 
-# Extract
-rm -rf "${TOKA_DIR}"
-mkdir -p "${TOKA_DIR}"
-echo "Extracting..."
+# Extract and validate before touching an existing installation.
+echo "Extracting and validating..."
 tar -xzf "${TMP_DIR}/${TARBALL}" -C "$TMP_DIR" || { echo "Extraction failed."; exit 1; }
 
-# Move files to ~/.toka
-# The tarball unzips as an inner directory named toka-VERSION-OS-ARCH.
 INNER_DIR="${TMP_DIR}/toka-${VERSION}-${OS}-${ARCH}"
 if [ ! -d "$INNER_DIR" ]; then
   echo "Expected directory $INNER_DIR not found. Installation failed."
   exit 1
 fi
-cp -a "${INNER_DIR}/"* "${TOKA_DIR}/"
-rm -rf "$TMP_DIR"
+BIN_SUFFIX=""
+if [ "$OS" = "windows" ]; then
+  BIN_SUFFIX=".exe"
+fi
+for tool in tokac toka tokafmt tokalsp; do
+  if [ ! -f "${INNER_DIR}/bin/${tool}${BIN_SUFFIX}" ]; then
+    echo "Release archive is missing required SDK tool: ${tool}${BIN_SUFFIX}"
+    exit 1
+  fi
+done
+if [ ! -d "${INNER_DIR}/lib" ]; then
+  echo "Release archive is missing the Toka standard library."
+  exit 1
+fi
+
+rm -rf "$STAGING_DIR" "$BACKUP_DIR"
+mkdir -p "$STAGING_DIR"
+cp -a "${INNER_DIR}/." "$STAGING_DIR/"
+
+if [ -e "$TOKA_DIR" ] || [ -L "$TOKA_DIR" ]; then
+  mv "$TOKA_DIR" "$BACKUP_DIR"
+fi
+if ! mv "$STAGING_DIR" "$TOKA_DIR"; then
+  echo "Could not activate the new Toka installation."
+  if [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
+    mv "$BACKUP_DIR" "$TOKA_DIR"
+  fi
+  exit 1
+fi
+STAGING_DIR=""
+rm -rf "$BACKUP_DIR"
 
 echo "Toka Language has been installed to ${TOKA_DIR}."
 

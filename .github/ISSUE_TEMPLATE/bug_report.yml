@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible compiler, SDK, package, or runtime bug.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please reduce the report to the smallest command and source that still fails.
+  - type: input
+    id: version
+    attributes:
+      label: Toka version
+      description: Paste `tokac --version` and `toka --version`.
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host and architecture
+      description: For example, macOS 15 arm64, Ubuntu 24.04 x64, or MSYS2 UCRT64.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Reproduction command and minimal source
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and complete output
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`toka doctor` output"
+      render: text
+    validations:
+      required: true

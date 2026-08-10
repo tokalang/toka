@@ -86,7 +86,11 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 ## Package Management & Registry
 
-Package metadata is stored in `package.tk`. The registry and package workflow are still young, but the current CLI provides the basic commands needed for package discovery, dependency records, and publishing.
+Package metadata is stored in `package.tk`. The registry uses a reviewed,
+static catalog: a package release is a tagged GitHub Release archive plus its
+SHA-256 catalog entry. The CLI provides package discovery, dependency records,
+and archive creation without pretending that an unauthenticated public upload
+service exists.
 
 ### `toka search <keyword>`
 Searches the configured Toka package registry.
@@ -102,7 +106,11 @@ toka search ink
 ```
 
 ### `toka publish`
-Packages the current project and publishes it to the registry. Ensure that `package.tk` has valid `name`, `version`, and `description` fields before publishing.
+Creates the current package's release archive. It does not upload to the public
+registry by itself. Publish the archive in a tagged GitHub Release, then submit
+the reviewed catalog entry that records its URL and SHA-256. See the
+[package replication guide](https://github.com/tokalang/toka/blob/main/AGENTS-USER.md)
+for the complete workflow.
 
 ### `toka add <url_or_name>`
 Adds a package dependency to the current project and updates `package.tk`.

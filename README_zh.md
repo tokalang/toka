@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 候选说明](docs/release_notes_v1.0.0-rc.1.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 候选说明](docs/release_notes_v1.0.0-rc.1.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
@@ -50,29 +50,48 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 
 ## 快速开始
 
-安装最新 release：
+安装最新稳定 release：
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-从源码构建：
+待 `v1.0.0-rc.1` 发布后，试用该候选版请显式指定 tag，而不要依赖 GitHub
+对稳定版本的 Latest 选择：
 
-需要 CMake、C++17 编译器，以及 LLVM 20。
+```bash
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+```
+
+若要参与编译器开发或测试未发布改动，可从源码构建。需要 CMake、C++17
+编译器，以及 LLVM 20：
 
 ```bash
 git clone https://github.com/tokalang/toka.git
 cd toka
 cmake -S . -B build
-make -C build -j8
+cmake --build build
+export PATH="$PWD/build/bin:$PATH"
+export TOKA_LIB="$PWD/lib"
 ```
 
-检查编译器和项目管理器版本：
+检查 SDK：
 
 ```bash
-tokac --version
-toka --version
+toka doctor
 ```
+
+创建项目、解析第一个公开包并运行它：
+
+```bash
+toka new hello_toka
+cd hello_toka
+toka add regex
+toka run
+```
+
+若目标是用 AI 协助复刻生态库，请从 [AI 包复刻指南](AGENTS-USER.md) 开始；
+它说明了受支持的包发布路径，以及每次编辑后应运行的编译器检查。
 
 ## 90 秒心智模型
 

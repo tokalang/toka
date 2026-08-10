@@ -3,7 +3,8 @@ title: 安装指南
 description: 如何安装 Toka 编译器及构建工具。
 ---
 
-Toka 为 macOS、Linux 和 Windows 发布预构建 release 包。macOS 与 Linux 安装脚本会下载当前 release，将编译器、项目管理器和标准库安装到 `~/.toka/`，并配置 shell 环境。
+Toka 为 macOS 和 Linux 发布预构建 release 包。安装脚本会下载最新稳定
+release，将编译器、项目管理器和标准库安装到 `~/.toka/`，并配置 shell 环境。
 
 ## 极速安装 (macOS & Linux)
 
@@ -15,15 +16,25 @@ curl -fsSL https://tokalang.dev/install.sh | bash
 
 脚本会识别系统和 CPU 架构，下载当前 release，并为常见 shell 配置 `PATH` 和 `TOKA_LIB`。
 
+### Release Candidate
+
+GitHub 的 `latest` 端点有意只选择稳定 release。要测试已经发布的候选版，
+请显式传入其 tag：
+
+```bash
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+```
+
 ## Windows 安装
 
-Windows release 包可以从 GitHub Releases 下载。当前 Windows 开发路径仍需要系统中存在 MSYS2 LLVM/Clang 环境，因为 `tokac.exe` 依赖 LLVM 工具链基础设施。
+Windows/MSYS2 当前是 dogfood 与源码构建路径，并非阻塞发布目标，也尚未发布
+SDK archive。当前 Windows 开发要求 MSYS2 LLVM/Clang 环境已在 `PATH` 中，
+因为 `tokac.exe` 依赖 LLVM 工具链基础设施。
 
-1. 前往 [GitHub Releases](https://github.com/tokalang/toka/releases) 页面。
-2. 下载最新版本中带有 `Windows` 后缀的压缩包。
-3. 将压缩包解压到一个您希望的目录（例如 `C:\tokalang`）。
-4. 将解压目录下的 `bin` 文件夹添加至您的系统环境变量 `PATH` 中。
-5. 将解压目录下的 `lib` 文件夹路径添加至名为 `TOKA_LIB` 的系统环境变量中。
+1. clone [Toka 仓库](https://github.com/tokalang/toka)。
+2. 安装下方对应的 MSYS2 工具链。
+3. 从 MSYS2 UCRT64 或 MinGW64 终端使用 CMake 配置并构建。
+4. 将 `build/bin` 加入 `PATH`，并将仓库的 `lib` 目录设为 `TOKA_LIB`。
 
 > [!WARNING]
 > 如果在没有 LLVM DLL 的干净 Windows 环境里运行 `toka build` 或 `toka run`，`tokac.exe` 可能会以 `0xC0000135` (`STATUS_DLL_NOT_FOUND`) 失败启动。

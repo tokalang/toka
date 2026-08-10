@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 Candidate Notes](docs/release_notes_v1.0.0-rc.1.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 Candidate Notes](docs/release_notes_v1.0.0-rc.1.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -54,39 +54,53 @@ Toka therefore explores a position between C, Rust, Go, and Zig: close to the ma
 
 ## Quick Start
 
-Install the latest release:
+Install the latest stable release:
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-Build from source:
+When `v1.0.0-rc.1` is published, install that candidate explicitly rather than
+depending on GitHub's stable-release selector:
 
-Requires CMake, a C++17 compiler, and LLVM 20.
+```bash
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+```
+
+Build from source to contribute to the compiler or test unreleased changes.
+This requires CMake, a C++17 compiler, and LLVM 20:
 
 ```bash
 git clone https://github.com/tokalang/toka.git
 cd toka
 cmake -S . -B build
-make -C build -j8
+cmake --build build
+export PATH="$PWD/build/bin:$PATH"
+export TOKA_LIB="$PWD/lib"
 ```
 
-Check the compiler and project manager:
+Check the installed SDK:
 
 ```bash
-tokac --version
-toka --version
+toka doctor
 ```
 
-Install the first public official package:
+Create a project, resolve the first public package, and run it:
 
 ```bash
+toka new hello_toka
+cd hello_toka
 toka add regex
+toka run
 ```
 
 The resolver uses `https://pkg.tokalang.dev` by default and verifies the
 catalog-recorded SHA-256 before extracting an archive. Set `TOKA_REGISTRY_URL`
 only to use a local or test registry.
+
+If your goal is to help grow the ecosystem with an AI-assisted port, start
+with the [AI Package Replication Guide](AGENTS-USER.md). It defines the
+supported package-release path and the compiler checks to run after each edit.
 
 ## The Mental Model
 

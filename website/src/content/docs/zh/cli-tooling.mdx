@@ -86,7 +86,9 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 ## 包管理与注册表
 
-包元数据存放在 `package.tk` 中。当前注册表和包管理工作流仍然年轻，但 CLI 已提供包搜索、依赖记录和发布所需的基础命令。
+包元数据存放在 `package.tk` 中。注册表使用经过审核的静态 catalog：一个包
+release 由带 tag 的 GitHub Release archive 及其 SHA-256 catalog 条目组成。
+CLI 提供包搜索、依赖记录和 archive 创建能力，但不会假装存在无需授权的公开上传服务。
 
 ### `toka search <keyword>`
 搜索配置好的 Toka 包注册表。
@@ -102,7 +104,9 @@ toka search ink
 ```
 
 ### `toka publish`
-将当前项目打包并发布到注册表。发布前请确保 `package.tk` 中已正确配置 `name`、`version` 和 `description`。
+创建当前包的 release archive；它本身不会上传到公开注册表。应将 archive
+发布到带 tag 的 GitHub Release，再提交记录 URL 与 SHA-256 的审核 catalog 条目。
+完整流程参见[包复刻指南](https://github.com/tokalang/toka/blob/main/AGENTS-USER.md)。
 
 ### `toka add <url_or_name>`
 向当前项目添加包依赖，并更新 `package.tk`。

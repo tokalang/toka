@@ -28,3 +28,9 @@ must still pass the exact-revision, four-target, thirteen-stage Release Gate
 before an annotated tag or GitHub pre-release is created. The required evidence
 and publication boundary are recorded in
 [`1_0_rc1_release_plan.md`](1_0_rc1_release_plan.md).
+
+Before announcement, the tagged SDK archives also undergo the public
+first-hour check: exact-tag installation, `toka doctor`, project creation,
+verified registry resolution, execution, and offline lock replay. This is the
+developer-experience boundary for the RC; it does not reopen the frozen
+language surface.

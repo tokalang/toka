@@ -9,9 +9,16 @@ endif()
 project(TokaCompiler VERSION 1.0.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
-set(TOKA_RELEASE_VERSION "${TokaCompiler_VERSION}-rc.1" CACHE STRING
-    "Version string reported by a release build")
-set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION}")
+# Keep ordinary reconfiguration on the version declared above.  A cached
+# default here previously left an existing build tree reporting an older
+# candidate after the source version changed.  Packaging and release jobs may
+# still supply an explicit label through the separate override.
+set(TOKA_RELEASE_VERSION_OVERRIDE "" CACHE STRING
+    "Optional version string reported by an explicitly labeled release build")
+set(TOKA_VERSION_STRING "${TokaCompiler_VERSION}-rc.1")
+if(NOT TOKA_RELEASE_VERSION_OVERRIDE STREQUAL "")
+    set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION_OVERRIDE}")
+endif()
 
 # Version Control Info
 find_package(Git)

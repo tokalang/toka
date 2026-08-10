@@ -1,108 +1,112 @@
-# Toka Build Tool (`toka`) Usage Guide
+# Toka build tool (`toka`)
 
-`toka` is the official build system and project manager for the Toka programming language. It is designed to handle project configuration, compilation, and execution using a "configuration as code" approach via `Project.tk`.
+This is the current 1.0 RC guide for Toka's project manager. Older references
+to `Project.tk`, LLVM 17, or `build/src` are obsolete. The public installation
+guide is also available at [tokalang.dev](https://tokalang.dev/installation/).
 
-## Installation
+## Install or build the SDK
 
-Currently, the `toka` tool is built from source.
+For a released macOS or Linux SDK, install a stable release with:
 
-1. Ensure you have the Toka compiler (`tokac`) and `clang` (LLVM 17+) installed and in your `PATH`.
-2. Compile the tool:
-   ```bash
-   tokac tools/toka/src/main.tk > build/toka.ll
-   clang build/toka.ll -o build/toka -isysroot $(xcrun --show-sdk-path)
-   ```
-3. (Optional) Add `build/toka` to your `PATH`.
-
-### Windows Prerequisites
-
-On Windows, the core compiler `tokac.exe` relies on the **LLVM/Clang backend infrastructure** to generate machine code. Therefore, before running `toka build` or `toka run` on a native Windows machine, you must set up the MSYS2 compiler environment:
-
-1. **Install MSYS2**:
-   - Download the installer from the [official MSYS2 website](https://www.msys2.org) and install it (typically to `C:\msys64`).
-2. **Install compiler toolchain**:
-   - Open your MSYS2 terminal and run the corresponding command to install the required compiler tools (we recommend the modern **UCRT64 environment**):
-     * **MSYS2 UCRT64 Terminal** (Recommended):
-       ```bash
-       pacman -S --noconfirm mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-polly make
-       ```
-     * **MSYS2 MinGW64 Terminal**:
-       ```bash
-       pacman -S --noconfirm mingw-w64-x86_64-clang mingw-w64-x86_64-llvm mingw-w64-x86_64-lld mingw-w64-x86_64-polly make
-       ```
-3. **Configure Environment Variables**:
-   - Add the bin folder of your chosen environment (e.g. `C:\msys64\ucrt64\bin` for UCRT64 or `C:\msys64\mingw64\bin` for MinGW64) to your system `PATH` so `tokac.exe` can access the necessary LLVM DLLs (e.g. `libwinpthread-1.dll`, `libclang.dll`, etc.) and tools (`clang`, `lld`, `make`).
-   - If this environment variable is missing, running `tokac.exe` will fail with system error code `0xC0000135` (STATUS_DLL_NOT_FOUND).
-
-## Commands
-
-### `toka new <project_name>`
-Creates a new Toka project directory with a standard structure.
-
-**Example:**
-```bash
-toka new my_project
+```sh
+curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-**Created Structure:**
-- `my_project/`
-  - `Project.tk`: The build script and manifest.
-  - `src/`
-    - `main.tk`: The main entry point for your application logic.
+Use an explicit tag for a published release candidate:
 
-### `toka build`
-Compiles the current project based on the instructions in `Project.tk`.
+```sh
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+```
 
-- It executes `Project.tk` natively.
-- It generates LLVM IR for your source files.
-- It uses `clang` to link the final executable.
-- Output is located in `target/debug/`.
+To build from this repository, install CMake, a C++17 compiler, and LLVM/LLD
+20, then run:
 
-### `toka run`
-Compiles and immediately executes the project.
+```sh
+cmake -S . -B build
+cmake --build build
+export PATH="$PWD/build/bin:$PATH"
+export TOKA_LIB="$PWD/lib"
+toka doctor
+```
 
-```bash
+`toka doctor` is the supported first diagnostic. It verifies that the
+compiler, standard library, formatter, and native linker can be found.
+
+## Start a project
+
+```sh
+toka new my_app
+cd my_app
 toka run
 ```
 
-## Configuration: `Project.tk`
+This creates:
 
-Toka uses its own language for build configuration. This allows for powerful, programmable build logic.
-
-**Standard `Project.tk` template:**
-```toka
-import build::{Executable, run_build}
-
-fn main() {
-    auto app = Executable(
-        name = "app",
-        version = "0.1.0",
-        src = "src/main.tk"
-    )
-    run_build(app)
-}
+```text
+my_app/
+├── src/main.tk
+├── package.tk
+└── build.tk
 ```
 
-## Environment Variables
+Use `toka new my_lib --lib` for a library package. `toka init` creates the
+same layout in the current directory.
 
-The `toka` tool and `tokac` compiler respect the following environment variables if you need to override default behaviors:
+`package.tk` is static package metadata. `build.tk` is the project's build
+orchestration entry point. `Project.tk` is accepted only as a deprecated
+compatibility name.
 
-- `TOKA_LIB_PATH`: **CRITICAL**. Path to the Toka standard library (the `lib/` directory). Required for compiling projects from subdirectories. You can provide multiple paths separated by `:`.
-- `TOKA_CLANG`: Path to the `clang` compiler to use for linking. **Ensure this matches the LLVM version of your `tokac`** (currently LLVM 20).
-- `PATH`: Ensure `/Users/zhyi/GitDP/toka/build/src` and `/Users/zhyi/GitDP/toka/build` are in your `PATH` so `toka` and `tokac` can be found globally.
+## Common commands
 
-## Recommended Shell Configuration (.zshrc)
-
-For the best experience, add the following to your `~/.zshrc`:
-
-```bash
-export PATH="$PATH:/Users/zhyi/GitDP/toka/build/src:/Users/zhyi/GitDP/toka/build"
-export TOKA_LIB_PATH="/Users/zhyi/GitDP/toka/lib"
-export TOKA_CLANG="/usr/local/opt/llvm@20/bin/clang"
+```sh
+toka build             # resolve locked packages and build the project
+toka run               # build, then run the configured executable
+toka test              # compile and run tests under tests/
+toka fmt               # format project source
+toka check --json src/main.tk
+toka doctor
 ```
+
+For detailed machine-readable compiler interfaces, see
+[AI tooling](ai_tooling.md).
+
+## Packages
+
+Search and add a package from the verified public catalog:
+
+```sh
+toka search regex
+toka add regex
+```
+
+`toka add` records a dependency in `package.tk`, resolves it, and writes the
+exact archive digest to `package.lock`. The resolver uses
+`https://pkg.tokalang.dev` by default. `TOKA_REGISTRY_URL` is only for local
+or test registries.
+
+`toka publish` creates a release archive; it does not upload it to a public
+registry. The current public path is a tagged GitHub Release followed by a
+reviewed static catalog entry. Package replicators should follow
+[AGENTS-USER.md](../AGENTS-USER.md).
+
+## Environment
+
+Released archives configure `PATH` and `TOKA_LIB` through the installer. A
+source build needs the two exports shown above. `TOKA_CLANG` can select a
+specific compatible native linker driver, and `TOKA_PATH` can add global
+third-party import roots. Both are optional for a normal released SDK.
+
+On Windows, use an MSYS2 UCRT64 or MinGW64 shell with LLVM/Clang 20 on
+`PATH`. Windows is currently a source-build dogfood path; it does not yet ship
+a blocking-release SDK archive.
 
 ## Troubleshooting
 
-- **"Module 'build' not found"**: Ensure `TOKA_LIB_PATH` is set correctly to the absolute path of the `lib/` directory.
-- **LLVM IR Syntax Error (e.g. `nuw` or `expected type`)**: Your `clang` version is too old for the LLVM IR emitted by `tokac`. Set `TOKA_CLANG` to a version that matches the `tokac` LLVM backend (LLVM 17-20).
-- **"tokac: command not found"**: Ensure the directory containing the `tokac` binary is in your `PATH`.
+- Run `toka doctor` first; it identifies a missing compiler, standard library,
+  formatter, or native linker.
+- If a source build cannot resolve standard-library modules, export
+  `TOKA_LIB` to this repository's absolute `lib` directory.
+- If native linking fails, make sure the selected `clang` is compatible with
+  LLVM 20 and set `TOKA_CLANG` only when the automatic selection is wrong.
+- For a package-resolution failure, run `toka search <name>` and inspect the
+  exact catalog and digest error before changing `package.lock`.
