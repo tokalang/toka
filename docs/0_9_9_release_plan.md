@@ -34,9 +34,15 @@ The frozen code candidate is revision
 stages passing. This completes the 1.0 engineering-closure evidence while the
 public version remains `0.9.9-01`; it is not a final 1.0 release act.
 
-## Next phase: 0.9.9-02 adoption validation
+## Superseded follow-up: 0.9.9-02 adoption validation
 
-The next phase validates the frozen implementation in real work rather than
+On 2026-08-10, the maintainers chose to begin the `1.0.0-rc.1` candidate
+qualification directly rather than create a further 0.9.9 release. The
+remaining adoption targets below move into
+[`1_0_rc1_release_plan.md`](1_0_rc1_release_plan.md). This does not change
+the historical 0.9.9-01 evidence recorded above.
+
+The originally planned follow-up validates the frozen implementation in real work rather than
 adding language features. Its completion targets are:
 
 - two representative internal applications build, test, package, and run on

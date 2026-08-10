@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [v0.9.9-01 发布说明](docs/release_notes_v0.9.9-01.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 候选说明](docs/release_notes_v1.0.0-rc.1.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
@@ -266,6 +266,6 @@ Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 0.9.9-01}
+  note         = {Version 1.0.0-rc.1 candidate}
 }
 ```

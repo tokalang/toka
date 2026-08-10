@@ -1,0 +1,48 @@
+# Toka 1.0.0-rc.1 Candidate Qualification Plan
+
+**Status:** In qualification. This plan starts a public 1.0 release-candidate
+line; it does not create a tag, GitHub Release, or release archive.
+
+## Decision
+
+On 2026-08-10, maintainers chose to begin `1.0.0-rc.1` directly. No new
+`0.9.9` tag will be created after the historical `v0.9.9-rc4` pre-release.
+`v0.9.9-01` remains the latest qualified public release until this candidate
+passes its own gate and maintainers explicitly authorize publication.
+
+This decision supersedes the proposed `0.9.9-02` adoption-release sequence in
+[`0_9_9_release_plan.md`](0_9_9_release_plan.md), not its historical evidence.
+The language surface remains frozen by
+[`1_0_freeze_decision_list.md`](1_0_freeze_decision_list.md).
+
+## Candidate Boundary
+
+- Public compiler, SDK, package, and diagnostic labels are `1.0.0-rc.1`.
+- `TOKA_COMPILER_INTERFACE_VERSION` remains `0.9.9-02`: it is the independent
+  `.tki` / semantic-cache compatibility key, and a release-label change alone
+  does not justify invalidating source-less interfaces.
+- No new language syntax, TKI format, or runtime contract is introduced by
+  this candidate preparation.
+
+## Required Evidence Before Publication
+
+1. The candidate version migration is committed and pushed to `main`; normal
+   CI remains green on Linux x64, Linux arm64, and macOS arm64, with Windows
+   dogfood kept as non-blocking Tier 2 evidence.
+2. `.github/workflows/release.yml` is manually dispatched at that exact
+   revision with `tag_name=v1.0.0-rc.1` and `publish_release=false`.
+3. Linux x64/arm64 and macOS x64/arm64 each produce a clean
+   `toka.release-gate` v2 report with all thirteen stages passing.
+4. The four reports, their revision, `source_dirty=false`, and their version
+   label are reviewed together. Historical RC4 or 0.9.9 evidence cannot
+   substitute for this step.
+5. Only then may maintainers separately authorize creation of annotated
+   `v1.0.0-rc.1` and its GitHub pre-release archives.
+
+## Adoption Evidence
+
+The former adoption goals remain useful RC evidence: two representative
+applications, the integration boundaries they actually require, and
+AI-assisted editing against checked-in tooling contracts. They are gathered
+during the RC period rather than represented by an unqualified 0.9.9 release.
+They do not reopen the frozen language surface.

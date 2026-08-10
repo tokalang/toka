@@ -6,10 +6,10 @@ if(APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-w")
 endif()
 
-project(TokaCompiler VERSION 0.9.9 LANGUAGES C CXX)
+project(TokaCompiler VERSION 1.0.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CTest)
-set(TOKA_RELEASE_VERSION "${TokaCompiler_VERSION}-01" CACHE STRING
+set(TOKA_RELEASE_VERSION "${TokaCompiler_VERSION}-rc.1" CACHE STRING
     "Version string reported by a release build")
 set(TOKA_VERSION_STRING "${TOKA_RELEASE_VERSION}")
 

@@ -10,7 +10,7 @@ import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, bui
 
 
 fn print_help() {
-    println("Toka {}", "0.9.9-01")
+    println("Toka {}", "1.0.0-rc.1")
     println("\nUsage: toka <command> [options]\n\nCommands:")
     println("  new <name>   Create a new Toka project (--lib for library)")
     println("  init         Initialize a new Toka project in the current directory")

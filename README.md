@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v0.9.9-01 Release Notes](docs/release_notes_v0.9.9-01.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 Candidate Notes](docs/release_notes_v1.0.0-rc.1.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -277,6 +277,6 @@ If you reference the design of the Toka language, including its explicit Hat-Sou
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 0.9.9-01}
+  note         = {Version 1.0.0-rc.1 candidate}
 }
 ```

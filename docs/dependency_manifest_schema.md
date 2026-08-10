@@ -17,8 +17,8 @@
       "cache_status": "Ok",
       "cache_status_reason": "",
       "target_triple": "x86_64-unknown-linux-gnu",
-      "compiler_version": "0.9.9-01",
-      "interface_version": "1",
+      "compiler_version": "0.9.9-02",
+      "interface_version": "2",
       "source_hash": "a4d8c52d8e412bc4",
       "content_hash": "a4d8c52d8e412bc4",
       "outputs": {
@@ -36,8 +36,8 @@
       "cache_status": "Ok",
       "cache_status_reason": "",
       "target_triple": "x86_64-unknown-linux-gnu",
-      "compiler_version": "0.9.9-01",
-      "interface_version": "1",
+      "compiler_version": "0.9.9-02",
+      "interface_version": "2",
       "source_hash": "b2f8c51a8e1329c2",
       "content_hash": "b2f8c51a8e1329c2",
       "outputs": {
@@ -101,11 +101,12 @@
 
 ### 6. `compiler_version`
 * **类型**：`string`
-* **说明**：编译该模块时对应的编译器物理版本号。
+* **说明**：编译该模块时对应的内部编译器接口版本号。它是 `.tki` /
+  cache 的兼容性键，独立于公开 SDK 的 release label。
 
 ### 7. `interface_version`
 * **类型**：`string`
-* **说明**：接口表达格式的版本，当前为常数 `"1"`。
+* **说明**：接口表达格式的版本，当前为常数 `"2"`。
 
 ### 8. `source_hash`
 * **类型**：`string` (16位 FNV-1a 64位十六进制哈希值)

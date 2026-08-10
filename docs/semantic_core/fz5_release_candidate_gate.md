@@ -6,9 +6,10 @@ Status: `Complete`
 point, deterministic evidence, and supported-platform CI. The gate machinery
 and the historical `v0.9.8-09-RC` four-target matrix are complete. SDK,
 semantic tooling, AI interfaces, and scale qualification were committed after
-that tag, so `0.9.9-01` is now the active evidence candidate. It deliberately
-does not change the public version to 1.0. Preparation alone does not create a
-tag.
+that tag, so `0.9.9-01` remains the last qualified public release. The
+`1.0.0-rc.1` candidate is now tracked by
+[`1_0_rc1_release_plan.md`](../1_0_rc1_release_plan.md); preparation alone
+does not create a tag.
 
 ## Unified Entry Point
 
@@ -149,7 +150,9 @@ passed all 13 stages with the same stable counts:
 
 The workflow was dispatched without release-publication authorization, so it
 created no tag, GitHub Release, or release archive. The qualified public
-candidate remains `0.9.9-01`, not 1.0.
+release remains `0.9.9-01`. The successor candidate's current-HEAD
+qualification is tracked separately in
+[`1_0_rc1_release_plan.md`](../1_0_rc1_release_plan.md).
 
 No unresolved language-design question remains in the iterator, callable, or
 typed error-propagation scope.
