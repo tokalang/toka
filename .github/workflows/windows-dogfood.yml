@@ -32,6 +32,7 @@ jobs:
             mingw-w64-x86_64-llvm
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-python
             mingw-w64-x86_64-zstd
 
       - name: Build SDK
