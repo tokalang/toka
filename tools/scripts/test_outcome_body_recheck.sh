@@ -324,7 +324,8 @@ mv "$TEST_DIR/known/lib.tki.cdw.good" "$TEST_DIR/known/lib.tki"
 
 cp "$TEST_DIR/known/lib.tki" "$TEST_DIR/known/lib.tki.cdw.good"
 grep '^// @tki v2 cdw1:' "$TEST_DIR/known/lib.tki" \
-    >> "$TEST_DIR/known/lib.tki"
+    > "$TEST_DIR/known/lib.tki.cdw.duplicate"
+cat "$TEST_DIR/known/lib.tki.cdw.duplicate" >> "$TEST_DIR/known/lib.tki"
 if ! "$TOKAC" --workspace-node outcome-cdw-test --workspace-root "$TEST_DIR" \
     -c "$TEST_DIR/known/main.tk" -o "$TEST_DIR/known/comment-duplicate.o" \
     > "$TEST_DIR/known/comment-duplicate.out" \
