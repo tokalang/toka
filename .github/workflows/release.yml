@@ -123,6 +123,9 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.label }}
           body_path: docs/release_notes_${{ steps.version.outputs.label }}.md
+          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
+          make_latest: false
+          fail_on_unmatched_files: true
           files: build/toka-${{ steps.version.outputs.label }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
