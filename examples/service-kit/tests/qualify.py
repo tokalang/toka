@@ -46,7 +46,11 @@ def optional_pkg_libs(package: str) -> list[str]:
 def main() -> int:
     tokac = ROOT / "build" / "bin" / "tokac"
     runtime = ROOT / "lib" / "sys" / "toka_rt.o"
-    compiler = os.environ.get("CC") or shutil.which("clang")
+    # `tokac --emit-llvm` writes LLVM 20 opaque-pointer IR.  On Linux, the
+    # runner's unversioned clang may be older, even though the SDK itself was
+    # configured against LLVM 20.  Prefer the matching driver unless callers
+    # explicitly provide one.
+    compiler = os.environ.get("CC") or shutil.which("clang-20") or shutil.which("clang")
     if not tokac.is_file() or not runtime.is_file() or compiler is None:
         raise RuntimeError("build tokac and lib/sys/toka_rt.o before qualifying service-kit")
 
