@@ -1,6 +1,10 @@
 name: Native Windows Dogfood
 
 on:
+  pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 1"
