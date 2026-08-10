@@ -187,7 +187,7 @@ def qualify_redis(
     image = f"redis:{version}"
     try:
         run_args = [
-            "docker", "run", "-d", "--rm", "--name", name,
+            "docker", "run", "-d", "--name", name,
             "-p", "127.0.0.1::6379",
             "-v", f"{certificate_dir}:/certs:ro",
             image, "redis-server", "--bind", "0.0.0.0", "--protected-mode", "no",
@@ -245,7 +245,7 @@ def qualify_postgres(
     image = build_postgres_image(version, work, server_cert, server_key)
     try:
         command([
-            "docker", "run", "-d", "--rm", "--name", name,
+            "docker", "run", "-d", "--name", name,
             "-p", "127.0.0.1::5432",
             "-e", "POSTGRES_USER=toka",
             "-e", f"POSTGRES_PASSWORD={PASSWORD}",
