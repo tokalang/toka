@@ -616,9 +616,17 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   } else {
     // Scene A: Soul Assignment
     llvm::Value *soulAddr = emitEntityAddr(lhsExpr);
-    llvm::Type *destTy = rhsVal->getType();
-    if (symLHS)
+    llvm::Type *destTy = nullptr;
+    if (symLHS) {
       destTy = symLHS->soulType;
+    } else if (lhsExpr->ResolvedType) {
+      // A member has no standalone symbol entry.  Its resolved source type,
+      // rather than the RHS literal's default width, determines the payload
+      // store width.
+      destTy = getLLVMType(lhsExpr->ResolvedType);
+    }
+    if (!destTy)
+      destTy = rhsVal->getType();
 
     // Nullable souls are stored as { T, i1 }.  Inspect the destination
     // storage type rather than the outer handle type, so a nullable payload

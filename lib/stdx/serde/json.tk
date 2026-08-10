@@ -121,8 +121,7 @@ pub fn serialize_shape<'T>('obj: T, buf#: string) -> string {
         buf#.push_view(f.name)
         buf#.push_str("\":")
         
-        auto 'val = f.get('obj)
-        buf = 'val.write_json(buf)
+        buf = f.get('obj).write_json(buf)
     }
     buf#.push_str("}")
     return buf

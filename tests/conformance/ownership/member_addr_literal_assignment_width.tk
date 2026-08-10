@@ -1,0 +1,13 @@
+shape Slot(value: Addr)
+
+fn main() -> i32 {
+    // The source literal is i32 by default, but the member payload is Addr.
+    // A narrow store would leave the high half of this value intact.
+    auto slot# = Slot(value = 0x100000000:Addr)
+    slot.value = 0:Addr
+
+    if slot.value != 0:Addr {
+        return 1
+    }
+    return 0
+}

@@ -67,6 +67,14 @@
       "description": "Borrow, cede transfer, move semantics, and destructor invocation counts"
     },
     {
+      "id": "ownership_member_addr_literal_assignment_width_01",
+      "path": "ownership/member_addr_literal_assignment_width.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Member assignment stores an Addr-sized literal payload without retaining stale high bits"
+    },
+    {
       "id": "ownership_vec_get_clone_01",
       "path": "ownership/vec_get_clone.tk",
       "type": "run",
