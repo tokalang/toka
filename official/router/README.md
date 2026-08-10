@@ -33,9 +33,19 @@ For a missing method match, call `allowed_methods(path)`: an empty result means
 
 ## Qualification
 
-Run from this package root:
+Run from a Toka source checkout:
 
 ```text
-../../build/bin/tokac -I ../../lib -I lib tests/router_v1.tk -o /tmp/router_v1 && /tmp/router_v1
-python3 tests/qualify_package.py
+TOKA_ROOT=/path/to/toka python3 tests/qualify_package.py
 ```
+
+The same command works after extraction with an installed SDK by setting the
+explicit toolchain triple instead:
+
+```text
+TOKA=/path/to/toka TOKAC=/path/to/tokac TOKA_LIB=/path/to/lib python3 tests/qualify_package.py
+```
+
+The qualification runs the deterministic router profile, then verifies a
+locked local dependency, offline lock replay, and a public-import consumer
+build and run.
