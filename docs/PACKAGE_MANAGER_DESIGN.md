@@ -74,5 +74,7 @@ Toka 的现代工程结构由三个具有高度辨识度的核心文件支撑：
   * **执行**：完成环境准备后，调用 `tokac` 编译执行 `build.tk`（或回退兼容的 `Project.tk`），并输出最终产物。
 
 ### 💡 进阶生态指令 (规划中)
-* **`toka publish`**：向官方注册表 `pkg.tokalang.dev` 打包并推送当前项目。
+* **`toka publish`**：生成当前项目的 release archive。默认发布路径是将该
+  archive 上传到 tagged GitHub Release，并通过受审查的 catalog PR 记录 URL 与
+  SHA-256；只有显式设置 `TOKA_REGISTRY_URL` 时才上传到本地/开发 gateway。
 * **`toka tree`**：在终端以树状图优雅打印当前项目锁定的所有依赖及子依赖版本结构。

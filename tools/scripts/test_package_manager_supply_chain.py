@@ -726,10 +726,22 @@ def test_toka_publish_and_consume(root: Path, toka: Path) -> None:
     registry_url = "http://127.0.0.1:%d" % server.server_port
     environment = os.environ.copy()
     environment["TOKA_LIB"] = str(ROOT / "lib")
-    environment["TOKA_REGISTRY_URL"] = registry_url
-    environment["TOKA_REGISTRY_PUBLISH_TOKEN"] = "test-token"
     suffix = ".exe" if sys.platform == "win32" else ""
     try:
+        packaged = subprocess.run(
+            [str(toka), "publish"], cwd=producer, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        if packaged.returncode != 0 or "tagged GitHub Release" not in packaged.stdout:
+            raise AssertionError(
+                "release archive preparation failed:\nstdout:\n%s\nstderr:\n%s" % (
+                    packaged.stdout, packaged.stderr,
+                )
+            )
+        assert (producer / "replica-1.0.0.tar.gz").is_file()
+
+        environment["TOKA_REGISTRY_URL"] = registry_url
+        environment["TOKA_REGISTRY_PUBLISH_TOKEN"] = "test-token"
         published = subprocess.run(
             [str(toka), "publish"], cwd=producer, env=environment,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,

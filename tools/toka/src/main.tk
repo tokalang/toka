@@ -37,7 +37,7 @@ fn print_help() {
     println("  up           Update package dependencies")
     println("  fetch        Fetch dependencies (Implicit in build)")
     println("  search <q>   Search for packages in the registry")
-    println("  publish      Package and publish to the Toka registry")
+    println("  publish      Build a release archive (upload only to a configured local registry)")
     println("  fmt          Format the current project")
     println("  doctor       Check the installed SDK and native toolchain")
     println("  clean        Clean build artifacts")

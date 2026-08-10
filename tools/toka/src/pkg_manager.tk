@@ -211,11 +211,13 @@ pub fn cmd_publish() -> i32 {
     
     println("Successfully created archive: {}-{}.tar.gz", safe_name, version)
     
-    auto url# = string::from("http://localhost:3000")
     auto env_url = (unsafe libc_getenv(c"TOKA_REGISTRY_URL")) as Addr
-    if env_url != 0:Addr {
-        url = string::from_cstr(env_url as *char)
+    if env_url == 0:Addr {
+        println("Archive is ready for a tagged GitHub Release.")
+        println("Add its SHA-256 to the reviewed static registry catalog to publish it.")
+        return 0
     }
+    auto url# = string::from_cstr(env_url as *char)
     if !url.ends_with("/") {
         url#.push_str("/")
     }
@@ -246,7 +248,7 @@ pub fn cmd_publish() -> i32 {
         return 1
     }
 
-    println("\x1b[32m[Success]\x1b[0m Package published successfully!")
+    println("\x1b[32m[Success]\x1b[0m Package uploaded to the configured local registry!")
     return 0
 }
 
