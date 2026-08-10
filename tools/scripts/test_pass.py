@@ -203,6 +203,37 @@ def rebuild_runtime(clang, clangxx, sysroot, cxxflags):
         safe_print(shim_res.stderr.decode("utf-8", errors="ignore"))
         sys.exit(1)
 
+def compile_isolated_modules(test_path, out_dir, exe_file, modules):
+    fixture_dir = os.path.join(
+        out_dir, os.path.basename(test_path).replace(".tk", "_modules"))
+    shutil.rmtree(fixture_dir, ignore_errors=True)
+    os.makedirs(fixture_dir)
+
+    main_path = os.path.join(fixture_dir, os.path.basename(test_path))
+    shutil.copy2(test_path, main_path)
+    objects = []
+    module_paths = []
+
+    for source_path, module_name in modules:
+        module_path = os.path.join(fixture_dir, module_name + ".tk")
+        object_path = os.path.join(fixture_dir, module_name + ".o")
+        shutil.copy2(source_path, module_path)
+        result = subprocess.run(
+            [TOKAC, "-c", module_path, "-o", object_path],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            return False, module_name, result.stderr.decode("utf-8", errors="ignore")
+        objects.append(object_path)
+        module_paths.append(module_path)
+
+    for module_path in module_paths:
+        os.remove(module_path)
+
+    result = subprocess.run(
+        [TOKAC, main_path, *objects, "-o", exe_file],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return result.returncode == 0, "main", result.stderr.decode("utf-8", errors="ignore")
+
 def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
     file_name = os.path.basename(test_path)
     safe_target = test_path.replace("/", "_").replace("\\", "_")
@@ -251,35 +282,19 @@ def run_single_test(test_path, clangxx, sysroot, ldflags_libs):
             return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Linking failed{NC}\n" + "\n".join("    | " + l for l in link_err.splitlines()[-5:])
             
     elif "odr_main.tk" in file_name:
-        lib_obj = os.path.join(out_dir, "tests_pass_odr_test_lib.o")
-        helper_obj = os.path.join(out_dir, "tests_pass_odr_helper.o")
-        
-        # Compile lib
-        comp_lib = [TOKAC, "-c", "tests/pass/g04_odr_test_lib.tk_lib", "-o", lib_obj]
-        res_lib = subprocess.run(comp_lib, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if res_lib.returncode != 0:
-            return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compiling odr_test_lib failed{NC}"
-            
-        # Compile helper
-        comp_helper = [TOKAC, "-c", "tests/pass/g04_odr_helper.tk_lib", "-o", helper_obj]
-        res_helper = subprocess.run(comp_helper, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if res_helper.returncode != 0:
-            return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compiling odr_helper failed{NC}"
-            
-        # Compile main
-        comp_main = [TOKAC, test_path, lib_obj, helper_obj, "-o", exe_file]
-        res_main = subprocess.run(comp_main, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        # Cleanup intermediate ODR objects
-        for obj in [lib_obj, helper_obj]:
-            try:
-                os.remove(obj)
-            except Exception:
-                pass
-                
-        if res_main.returncode != 0:
-            err_msg = res_main.stderr.decode("utf-8", errors="ignore")
-            return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compilation failed{NC}\n" + "\n".join("    | " + l for l in err_msg.splitlines()[-5:])
+        succeeded, module_name, err_msg = compile_isolated_modules(
+            test_path, out_dir, exe_file,
+            [("tests/pass/g04_odr_test_lib.tk_lib", "odr_test_lib"),
+             ("tests/pass/g04_odr_helper.tk_lib", "odr_helper")])
+        if not succeeded:
+            return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compiling {module_name} failed{NC}\n" + "\n".join("    | " + l for l in err_msg.splitlines()[-5:])
+    elif "separate_compile_test.tk" in file_name:
+        succeeded, module_name, err_msg = compile_isolated_modules(
+            test_path, out_dir, exe_file,
+            [("tests/pass/separate_compile_test_lib.tk_lib",
+              "separate_compile_test_lib")])
+        if not succeeded:
+            return False, f"[{RED}FAIL{NC}] {file_name}\n    {RED}{test_path}:1: error: Compiling {module_name} failed{NC}\n" + "\n".join("    | " + l for l in err_msg.splitlines()[-5:])
     else:
         comp_cmd = [TOKAC, test_path, "-o", exe_file]
         comp_res = subprocess.run(comp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
