@@ -8,7 +8,7 @@ pub shape User(
 
 pub fn main() -> i32 {
     unsafe {
-        auto u = User(name = "Alice", id = 42)
+        auto u# = User(name = "Alice", id = 42)
         for auto field in reflect<User>().fields {
             // we have field.name and field.type_name
             if (field.name == "name") {

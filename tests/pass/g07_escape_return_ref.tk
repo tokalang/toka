@@ -24,7 +24,7 @@ fn main() -> i32 {
     println("Big: {}", big)
 
     auto a = 11
-    auto ref_a = RefInt(&val=&a)
+    auto ref_a# = RefInt(&val=&a)
     println("RefA: {}", ref_a.val)
 
     auto b = 12

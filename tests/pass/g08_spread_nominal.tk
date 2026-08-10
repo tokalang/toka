@@ -27,7 +27,7 @@ fn main() -> i32 {
     }
 
     // 2. Self Assignment Topology (Safe Self-Override)
-    auto p3 = Point(x = 5, y = 15)
+    auto p3# = Point(x = 5, y = 15)
     p3 = Point(x = p3.x + 1, p3.*)
     if p3.x != 6 || p3.y != 15 {
         println("Fail 2: p3.x={}, p3.y={}", p3.x, p3.y)
