@@ -639,6 +639,38 @@ def _version_key(value: str) -> tuple[object, ...]:
     return tuple(parts)
 
 
+def registry_search(query: str) -> list[tuple[str, str, str]]:
+    base = os.environ.get("TOKA_REGISTRY_URL", "http://localhost:8080").rstrip("/")
+    with tempfile.TemporaryDirectory(prefix="toka-registry-search-") as directory:
+        catalog_path = Path(directory) / "catalog.json"
+        _download(base + "/catalog.json", catalog_path)
+        try:
+            data = json.loads(catalog_path.read_text(encoding="utf-8"))
+            packages = data.get("packages", [])
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise PackageError("registry catalog is malformed") from error
+    if not isinstance(packages, list):
+        raise PackageError("registry catalog is malformed")
+
+    needle = query.casefold()
+    matches: list[tuple[str, str, str]] = []
+    for package in packages:
+        if not isinstance(package, dict):
+            continue
+        name = package.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        description = package.get("description")
+        if not isinstance(description, str):
+            description = ""
+        version = package.get("latest_version", package.get("version", ""))
+        if not isinstance(version, str):
+            version = ""
+        if needle in name.casefold() or needle in description.casefold():
+            matches.append((name, version, description))
+    return matches
+
+
 class Resolver:
     def __init__(
         self,
@@ -680,29 +712,76 @@ class Resolver:
                 return None
         return entry
 
-    def _registry_version(self, dependency: Dependency) -> str:
-        if dependency.selector != "latest":
-            return dependency.selector.lstrip("v")
+    def _registry_release(self, dependency: Dependency, exact_version: str | None = None) -> tuple[str, str, str]:
         if self.offline:
-            raise PackageError("offline resolution requires a locked version: " + dependency.alias)
+            raise PackageError("offline resolution requires a locked registry release: " + dependency.alias)
         base = os.environ.get("TOKA_REGISTRY_URL", "http://localhost:8080").rstrip("/")
         catalog_url = base + "/catalog.json"
         temporary = self.transaction / (dependency.alias + ".catalog.json")
         _download(catalog_url, temporary)
         try:
             data = json.loads(temporary.read_text(encoding="utf-8"))
-            versions = [
-                str(item["version"]).lstrip("v")
-                for item in data.get("packages", [])
-                if item.get("name") == dependency.locator and item.get("version")
-            ]
+            package = next(
+                (
+                    item for item in data.get("packages", [])
+                    if item.get("name") == dependency.locator
+                ),
+                None,
+            )
         except (OSError, ValueError, TypeError, KeyError) as error:
             raise PackageError("registry catalog is malformed") from error
-        if not versions:
+        if not isinstance(package, dict):
             raise PackageError("registry package has no resolvable version: " + dependency.locator)
-        return max(versions, key=_version_key)
+        if package.get("installable") is not True:
+            raise PackageError("registry package is not installable: " + dependency.locator)
+        releases = package.get("versions")
+        if not isinstance(releases, list):
+            raise PackageError("registry package has no verified releases: " + dependency.locator)
 
-    def _registry_archive(self, dependency: Dependency, version: str, locked: LockEntry | None) -> tuple[Path, str]:
+        requested = exact_version or dependency.selector
+        if requested == "latest":
+            requested = str(package.get("latest_version", "")).lstrip("v")
+        else:
+            requested = requested.lstrip("v")
+        if not requested:
+            raise PackageError("registry package has no resolvable version: " + dependency.locator)
+
+        release = next(
+            (
+                item for item in releases
+                if str(item.get("version", "")).lstrip("v") == requested
+            ),
+            None,
+        )
+        if not isinstance(release, dict):
+            raise PackageError("registry package has no verified release: %s@%s" % (dependency.locator, requested))
+        archive_url = release.get("tarball_url")
+        expected_hash = release.get("sha256")
+        if not isinstance(archive_url, str) or not isinstance(expected_hash, str):
+            raise PackageError("registry release is missing archive metadata: %s@%s" % (dependency.locator, requested))
+        if not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+            raise PackageError("registry release has an invalid SHA-256: %s@%s" % (dependency.locator, requested))
+
+        parsed = urllib.parse.urlsplit(archive_url)
+        if archive_url.startswith("//"):
+            raise PackageError("registry release has an unsupported archive URL: " + dependency.locator)
+        if parsed.scheme:
+            if parsed.scheme not in ("https", "http", "file"):
+                raise PackageError("registry release has an unsupported archive URL: " + dependency.locator)
+        else:
+            base_parts = urllib.parse.urlsplit(catalog_url)
+            if base_parts.scheme not in ("https", "http") or not base_parts.netloc:
+                raise PackageError("registry relative archive URL requires an HTTP registry: " + dependency.locator)
+            archive_url = urllib.parse.urljoin(catalog_url, archive_url)
+        return requested, archive_url, expected_hash
+
+    def _registry_archive(
+        self,
+        dependency: Dependency,
+        archive_url: str,
+        expected_hash: str,
+        locked: LockEntry | None,
+    ) -> tuple[Path, str]:
         cache = self.state / "cache" / "archives"
         cache.mkdir(parents=True, exist_ok=True)
         if locked and locked.archive_sha256 != "-":
@@ -714,12 +793,11 @@ class Resolver:
 
         if self.offline:
             raise PackageError("offline archive is not locked: " + dependency.alias)
-        safe_name = dependency.locator.rsplit("/", 1)[-1]
-        base = os.environ.get("TOKA_REGISTRY_URL", "http://localhost:8080").rstrip("/")
-        url = "%s/%s-%s.tar.gz" % (base, safe_name, version)
         downloaded = self.transaction / (dependency.alias + ".download.tar.gz")
-        _download(url, downloaded)
+        _download(archive_url, downloaded)
         digest = file_sha256(downloaded)
+        if digest != expected_hash:
+            raise PackageError("downloaded archive does not match registry catalog: " + dependency.alias)
         if locked and digest != locked.archive_sha256:
             raise PackageError("downloaded archive does not match package.lock: " + dependency.alias)
         cached = cache / (digest + ".tar.gz")
@@ -730,16 +808,28 @@ class Resolver:
         return cached, digest
 
     def _materialize_registry(self, dependency: Dependency, locked: LockEntry | None) -> tuple[LockEntry, Path]:
-        version = locked.resolved if locked else self._registry_version(dependency)
-        placeholder = LockEntry(dependency.alias, "registry", dependency.locator, version, "-", "0" * 64, [])
-        target = self._install_path(placeholder)
-        if locked and target.is_dir():
-            actual = tree_sha256(target)
-            if actual != locked.content_sha256:
-                raise PackageError("installed package does not match package.lock: " + dependency.alias)
-            return locked, target
-
-        archive, archive_hash = self._registry_archive(dependency, version, locked)
+        if locked:
+            version = locked.resolved
+            placeholder = LockEntry(dependency.alias, "registry", dependency.locator, version, "-", "0" * 64, [])
+            target = self._install_path(placeholder)
+            if target.is_dir():
+                actual = tree_sha256(target)
+                if actual != locked.content_sha256:
+                    raise PackageError("installed package does not match package.lock: " + dependency.alias)
+                return locked, target
+            archive_url = ""
+            expected_hash = locked.archive_sha256
+            cached = self.state / "cache" / "archives" / (locked.archive_sha256 + ".tar.gz")
+            has_cached_archive = cached.is_file() and file_sha256(cached) == locked.archive_sha256
+            if not self.offline and not has_cached_archive:
+                version, archive_url, expected_hash = self._registry_release(dependency, locked.resolved)
+                if expected_hash != locked.archive_sha256:
+                    raise PackageError("registry catalog does not match package.lock: " + dependency.alias)
+        else:
+            version, archive_url, expected_hash = self._registry_release(dependency)
+            placeholder = LockEntry(dependency.alias, "registry", dependency.locator, version, "-", "0" * 64, [])
+            target = self._install_path(placeholder)
+        archive, archive_hash = self._registry_archive(dependency, archive_url, expected_hash, locked)
         extraction = self.transaction / (dependency.alias + ".extract")
         safe_extract(archive, extraction)
         root = extraction
@@ -1119,6 +1209,9 @@ def main() -> int:
     remove.add_argument("--lock", default="package.lock")
     remove.add_argument("--state", default=".toka")
 
+    search = subparsers.add_parser("registry-search")
+    search.add_argument("query")
+
     args = parser.parse_args()
     try:
         if args.command == "fetch":
@@ -1153,6 +1246,9 @@ def main() -> int:
             except BaseException:
                 manifest.write_bytes(original)
                 raise
+        elif args.command == "registry-search":
+            for name, version, description in registry_search(args.query):
+                print("%s\t%s\t%s" % (name, version, description))
         return 0
     except (ExtractionError, PackageError, OSError) as error:
         sys.stderr.write("package error: %s\n" % error)

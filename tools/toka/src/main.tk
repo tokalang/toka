@@ -6,7 +6,7 @@ import sys/libc::{libc_system, libc_printf, libc_getenv}
 import sys/os/base as sys
 import std/vec::{Vec}
 import std/process::{Command}
-import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search, resolve_package}
+import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search}
 
 
 fn print_help() {
@@ -383,17 +383,13 @@ fn cmd_add(pkg_url_or_name: string) -> i32 {
         auto pkg_url# = pkg_url_or_name.clone()
         auto pkg_alias# = string::from("")
         
-        // If it doesn't contain '/', it's a registry lookup
+        // A bare name is resolved by the authoritative package helper. Keep
+        // the CLI's manifest edit independent of the registry's evolving
+        // metadata schema; the helper locks `latest` to one verified release.
         if !pkg_url.contains("/") {
-            auto resolved = resolve_package(pkg_url_or_name)
-            if resolved.is_some() {
-                pkg_url = resolved.unwrap()
-                pkg_alias = pkg_url_or_name.clone()
-                println("\x1b[32m[Registry]\x1b[0m Resolved {} to {}", pkg_url_or_name, pkg_url)
-            } else {
-                println("\x1b[31m[Error]\x1b[0m Package '{}' not found in registry.", pkg_url_or_name)
-                return 1
-            }
+            pkg_url#.push_str(":latest")
+            pkg_alias = pkg_url_or_name.clone()
+            println("\x1b[32m[Registry]\x1b[0m Resolving {} through the verified registry catalog", pkg_url_or_name)
         } else {
             // Direct URL parsing
             auto iter# = pkg_url.split('/' as i32)

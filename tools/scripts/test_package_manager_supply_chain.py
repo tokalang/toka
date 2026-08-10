@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import io
 import argparse
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
 import os
 from pathlib import Path
 import shutil
@@ -12,6 +15,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -405,10 +409,35 @@ def test_registry_and_rollback(root: Path) -> None:
     write_package(package, "reg", [("child", '"1.0.0"')])
     archive = registry / "reg-1.0.0.tar.gz"
     make_archive(package, archive)
-    (registry / "catalog.json").write_text(
-        '{"packages":[{"name":"reg","version":"1.0.0"},{"name":"child","version":"1.0.0"}]}\n',
-        encoding="utf-8",
-    )
+    catalog = {
+        "schema_version": 1,
+        "totalPackages": 2,
+        "packages": [
+            {
+                "name": "reg",
+                "version": "1.0.0",
+                "latest_version": "1.0.0",
+                "installable": True,
+                "versions": [{
+                    "version": "1.0.0",
+                    "tarball_url": archive.as_uri(),
+                    "sha256": file_sha256(archive),
+                }],
+            },
+            {
+                "name": "child",
+                "version": "1.0.0",
+                "latest_version": "1.0.0",
+                "installable": True,
+                "versions": [{
+                    "version": "1.0.0",
+                    "tarball_url": child_archive.as_uri(),
+                    "sha256": file_sha256(child_archive),
+                }],
+            },
+        ],
+    }
+    (registry / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
     old_registry = os.environ.get("TOKA_REGISTRY_URL")
     os.environ["TOKA_REGISTRY_URL"] = registry.as_uri()
     try:
@@ -425,6 +454,12 @@ def test_registry_and_rollback(root: Path) -> None:
         assert (project / "package.lock").read_bytes() == lock_bytes
 
         shutil.rmtree(installed)
+        os.environ["TOKA_REGISTRY_URL"] = (root / "unreachable-registry").as_uri()
+        resolve(project)
+        assert installed.is_dir()
+        os.environ["TOKA_REGISTRY_URL"] = registry.as_uri()
+
+        shutil.rmtree(installed)
         resolve(project, offline=True)
         assert installed.is_dir()
         shutil.rmtree(installed)
@@ -435,6 +470,27 @@ def test_registry_and_rollback(root: Path) -> None:
         resolve(project)
         assert installed.is_dir() and file_sha256(cached) == entry.archive_sha256
 
+        original_hash = catalog["packages"][0]["versions"][0]["sha256"]
+        shutil.rmtree(installed)
+        cached.unlink()
+        catalog["packages"][0]["versions"][0]["sha256"] = "0" * 64
+        (registry / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+        expect_error(lambda: resolve(project), "registry catalog does not match package.lock")
+        assert (project / "package.lock").read_bytes() == lock_bytes
+        catalog["packages"][0]["versions"][0]["sha256"] = original_hash
+        (registry / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+        resolve(project)
+        assert installed.is_dir() and file_sha256(cached) == entry.archive_sha256
+
+        mismatch = root / "registry-digest-mismatch"
+        catalog["packages"][0]["versions"][0]["sha256"] = "0" * 64
+        (registry / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+        write_package(mismatch, "root", [("reg", '"1.0.0"')])
+        expect_error(lambda: resolve(mismatch), "does not match registry catalog")
+        assert not (mismatch / "package.lock").exists()
+        catalog["packages"][0]["versions"][0]["sha256"] = original_hash
+        (registry / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+
         (installed / "lib" / "reg" / "mod.tk").write_text("corrupt\n", encoding="utf-8")
         expect_error(lambda: resolve(project, offline=True), "does not match package.lock")
         assert (project / "package.lock").read_bytes() == lock_bytes
@@ -443,6 +499,19 @@ def test_registry_and_rollback(root: Path) -> None:
         write_package(rollback, "root", [("reg", '"1.0.0"'), ("evil", '"1.0.0"')])
         evil = registry / "evil-1.0.0.tar.gz"
         add_tar_bytes(evil, "../escaped", b"bad")
+        catalog["packages"].append({
+            "name": "evil",
+            "version": "1.0.0",
+            "latest_version": "1.0.0",
+            "installable": True,
+            "versions": [{
+                "version": "1.0.0",
+                "tarball_url": evil.as_uri(),
+                "sha256": file_sha256(evil),
+            }],
+        })
+        catalog["totalPackages"] = 3
+        (registry / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
         expect_error(lambda: resolve(rollback), "escapes")
         assert not (rollback / "package.lock").exists()
         assert not (rollback / ".toka" / "packages" / "reg-1.0.0").exists()
@@ -580,6 +649,157 @@ def test_toka_cli(root: Path, toka: Path) -> None:
     assert read_lock(project / "package.lock") == {}
 
 
+def test_toka_publish_and_consume(root: Path, toka: Path) -> None:
+    workspace = root / "publish-consume"
+    producer = workspace / "producer"
+    registry = workspace / "registry"
+    consumer = workspace / "consumer"
+    write_package(producer, "replica", [])
+    (producer / "lib" / "replica" / "mod.tk").write_text(
+        "pub fn value() -> i32 { return 42 }\n", encoding="utf-8"
+    )
+    registry.mkdir(parents=True)
+
+    class LocalRegistry(BaseHTTPRequestHandler):
+        archive = registry / "replica-1.0.0.tar.gz"
+        received_upload = False
+
+        def do_POST(self) -> None:
+            if self.path != "/api/publish":
+                self.send_error(404)
+                return
+            if self.headers.get("Authorization") != "Bearer test-token":
+                self.send_error(401)
+                return
+            payload = self.rfile.read(int(self.headers["Content-Length"]))
+            start = payload.find(b"\r\n\r\n")
+            end = payload.rfind(b"\r\n--")
+            if start < 0 or end <= start:
+                self.send_error(400, "invalid multipart upload")
+                return
+            self.__class__.archive.write_bytes(payload[start + 4:end])
+            self.__class__.received_upload = True
+            self.send_response(201)
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            if self.path == "/catalog.json":
+                if not self.__class__.archive.is_file():
+                    self.send_error(404)
+                    return
+                archive_hash = hashlib.sha256(self.__class__.archive.read_bytes()).hexdigest()
+                catalog = {
+                    "schema_version": 1,
+                    "totalPackages": 1,
+                    "packages": [{
+                        "name": "replica",
+                        "version": "1.0.0",
+                        "latest_version": "1.0.0",
+                        "installable": True,
+                        "versions": [{
+                            "version": "1.0.0",
+                            "tarball_url": "/packages/replica-1.0.0.tar.gz",
+                            "sha256": archive_hash,
+                        }],
+                    }],
+                }
+                body = json.dumps(catalog).encode("utf-8")
+                content_type = "application/json"
+            elif self.path == "/packages/replica-1.0.0.tar.gz" and self.__class__.archive.is_file():
+                body = self.__class__.archive.read_bytes()
+                content_type = "application/gzip"
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *arguments) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), LocalRegistry)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    registry_url = "http://127.0.0.1:%d" % server.server_port
+    environment = os.environ.copy()
+    environment["TOKA_LIB"] = str(ROOT / "lib")
+    environment["TOKA_REGISTRY_URL"] = registry_url
+    environment["TOKA_REGISTRY_PUBLISH_TOKEN"] = "test-token"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    try:
+        published = subprocess.run(
+            [str(toka), "publish"], cwd=producer, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        if published.returncode != 0:
+            raise AssertionError(
+                "local package publish failed:\nstdout:\n%s\nstderr:\n%s" % (
+                    published.stdout, published.stderr,
+                )
+            )
+        assert LocalRegistry.received_upload and LocalRegistry.archive.is_file()
+
+        write_package(consumer, "consumer", [])
+
+        searched = subprocess.run(
+            [str(toka), "search", "replica"], cwd=consumer, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        if searched.returncode != 0 or "replica\t1.0.0" not in searched.stdout:
+            raise AssertionError(
+                "registry search did not consume the static catalog:\nstdout:\n%s\nstderr:\n%s" % (
+                    searched.stdout, searched.stderr,
+                )
+            )
+
+        added = subprocess.run(
+            [str(toka), "add", "replica"], cwd=consumer, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        if added.returncode != 0:
+            raise AssertionError(
+                "local package consumer setup failed (exit %d):\nstdout:\n%s\nstderr:\n%s" % (
+                    added.returncode, added.stdout, added.stderr,
+                )
+            )
+        mappings = compiler_mappings(consumer / "package.lock", consumer / ".toka")
+        assert len(mappings) == 1 and mappings[0].startswith("replica="), mappings
+        (consumer / "src").mkdir()
+        (consumer / "src" / "main.tk").write_text(
+            "import replica::{value}\n\n"
+            "fn main() -> i32 {\n"
+            "    return value() - 42\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        executable = consumer / ("replica-consumer" + suffix)
+        compiled = subprocess.run(
+            [
+                str(toka.parent / ("tokac" + suffix)),
+                "-I", environment["TOKA_LIB"],
+                "--pkg", mappings[0],
+                "src/main.tk",
+                "-o", str(executable),
+            ],
+            cwd=consumer, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        if compiled.returncode != 0:
+            raise AssertionError(
+                "published package consumer did not compile:\nstdout:\n%s\nstderr:\n%s" % (
+                    compiled.stdout, compiled.stderr,
+                )
+            )
+        subprocess.run([str(executable)], cwd=consumer, env=environment, check=True)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
 def json_string(value: str) -> str:
     import json
 
@@ -603,6 +823,7 @@ def main() -> int:
         test_git_and_remove(root)
         if args.toka:
             test_toka_cli(root, args.toka.resolve())
+            test_toka_publish_and_consume(root, args.toka.resolve())
     print("PASS: package manager supply-chain qualification")
     return 0
 

@@ -1,6 +1,6 @@
 # Official Package v1 Contract
 
-Status: `Normative convention; resolver-compatible without new package-manager behavior`
+Status: `Normative convention; resolver-compatible static registry v1`
 
 This contract defines how an officially maintained package is identified,
 documented, tested, and released. It extends the existing `package.tk` /
@@ -151,8 +151,10 @@ weaken offline replay or supply-chain verification.
 
 ## 5. v1 stop boundary
 
-This contract intentionally does not standardize a public registry service,
-package signing, binary distribution, SemVer range solving, or a general
-machine-readable schema parser. `official/regex` should be the first pilot
-only after this fixture remains resolver-compatible and its package-specific
-API contract is reviewed.
+This contract standardizes only a static, reviewable registry index: a tagged
+GitHub Release archive, its SHA-256 digest, and the exact catalog entry that
+names them. It does not standardize a public upload service, package signing,
+binary distribution, SemVer range solving, or a general machine-readable
+schema parser. `official/regex` should be the first pilot only after this
+fixture remains resolver-compatible and its package-specific API contract is
+reviewed.

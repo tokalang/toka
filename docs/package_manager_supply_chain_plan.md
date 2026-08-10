@@ -24,6 +24,12 @@ Exact registry versions, Git tags/commits, and local paths are supported.
 immutable version or commit before the lock is written. Version ranges and
 backtracking resolution are Post-1.0 package-format work.
 
+An installable static-registry entry carries its exact `tarball_url` and
+lowercase SHA-256 digest. The resolver verifies that digest before cache or
+extraction; a lock replay uses its cached verified archive offline, and rejects
+a later catalog whose digest conflicts with that lock when a re-fetch is
+required.
+
 ## Lock Format
 
 The machine-generated format is UTF-8, line oriented, and deterministic:
@@ -108,8 +114,9 @@ This direction stops when all `PM-*` stages are complete, the offline
 end-to-end fixture produces byte-identical locks on two runs, every declared
 failure leaves the previous lock and package installation unchanged, and the
 normal compiler/release gates retain their previous results. Registry service
-implementation, package signing, semver ranges, binary packages, and ecosystem
-hosting are outside this closure.
+hosting remains a separate static-index concern; package signing, semver
+ranges, binary packages, and dynamic registry services are outside this
+closure.
 
 ## Final Qualification
 

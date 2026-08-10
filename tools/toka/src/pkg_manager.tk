@@ -1,10 +1,9 @@
 import std/io::{println}
 
-import std/fs::{read_to_string, exists, create_dir, write_string, metadata}
+import std/fs::{read_to_string, exists}
 import sys/libc::{libc_getenv}
 import std/process::{Command}
 import std/vec::{Vec}
-import core/option::{Option}
 
 fn package_helper_path() -> string {
     auto candidates# = Vec<string>::new()
@@ -228,10 +227,19 @@ pub fn cmd_publish() -> i32 {
     auto upload# = Command::new(string::from("curl"))
     upload#.arg(string::from("-sS"))
     upload#.arg(string::from("-L"))
+    upload#.arg(string::from("--fail"))
     upload#.arg(string::from("-X"))
     upload#.arg(string::from("POST"))
     upload#.arg(string::from("-F"))
     upload#.arg(cede form_arg)
+    auto publish_token = (unsafe libc_getenv(c"TOKA_REGISTRY_PUBLISH_TOKEN")) as Addr
+    if publish_token != 0:Addr {
+        auto token = string::from_cstr(publish_token as *char)
+        auto authorization# = string::from("Authorization: Bearer ")
+        authorization#.push_str(token.as_str())
+        upload#.arg(string::from("-H"))
+        upload#.arg(cede authorization)
+    }
     upload#.arg(cede url)
     if upload#.status() != 0 {
         println("\x1b[31m[Error]\x1b[0m Failed to publish package to registry.")
@@ -242,153 +250,21 @@ pub fn cmd_publish() -> i32 {
     return 0
 }
 
-fn refresh_catalog(catalog_path: string) -> bool {
-    if !exists(string::from(".toka")) {
-        create_dir(string::from(".toka"))
-    }
-    auto catalog_url# = string::from("https://pkg.tokalang.dev/catalog.json")
-    unsafe {
-        auto registry = libc_getenv(c"TOKA_REGISTRY_URL") as Addr
-        if registry != 0:Addr {
-            catalog_url = string::from_cstr(registry as *char)
-            if !catalog_url.ends_with("/") { catalog_url#.push_str("/") }
-            catalog_url#.push_str("catalog.json")
-        }
-    }
-    auto curl# = Command::new(string::from("curl"))
-    curl#.arg(string::from("-sS"))
-    curl#.arg(string::from("-L"))
-    curl#.arg(cede catalog_url)
-    curl#.arg(string::from("-o"))
-    curl#.arg(cede catalog_path.clone())
-    return curl#.status() == 0
-}
-
-import stdx/serde/json::{deserialize_shape, JsonRes, FromJson, json_skip_value}
-import core/result::{Result}
-
-pub shape PkgMeta(
-    name: string = string::from(""),
-    version: string = string::from(""),
-    description: string = string::from(""),
-    repository: string = string::from("")
-)
-
-impl PkgMeta@FromJson {
-    pub fn parse_json(self#, json: str) -> JsonRes {
-        auto res = deserialize_shape<PkgMeta>(json)
-        match cede res {
-            auto Result<PkgMeta, str>::Ok('obj) => {
-                self = cede 'obj
-                return json_skip_value(json)
-            }
-            _ => {
-                return JsonRes::Err("Failed")
-            }
-        }
-    }
-}
-
-pub shape Catalog(
-    packages: Vec<PkgMeta> = Vec<PkgMeta>::new()
-)
-
-pub fn resolve_package(query: string) -> Option<string> {
-    auto catalog_path = string::from(".toka/catalog.json")
-    
-    if !exists(catalog_path.clone()) {
-        if !exists(string::from(".toka")) {
-            create_dir(string::from(".toka"))
-        }
-        refresh_catalog(catalog_path.clone())
-    }
-    
-    auto res = read_to_string(catalog_path)
-    if res.is_err() {
-        return Option<string>::None
-    }
-    
-    auto content = res.unwrap()
-    auto parsed = deserialize_shape<Catalog>(content.as_view())
-    if parsed.is_err() {
-        return Option<string>::None
-    }
-    
-    auto catalog = parsed.unwrap()
-    auto i# = 0:usize
-    loop i < catalog.packages.len() {
-        auto pkg = catalog.packages.get(i)
-        if pkg.name.eq(query) {
-            auto repo = pkg.repository.clone()
-            if !repo.is_empty() {
-                auto result# = repo.clone()
-                result#.push_str(":v")
-                result#.push_str(pkg.version.as_str())
-                return Option<string>::Some(result)
-            }
-        }
-        i += 1
-    }
-    
-    return Option<string>::None
-}
-
 pub fn cmd_search(query: string) -> i32 {
     println("Searching for '{}' in registry...", query)
-    
-    auto catalog_path = string::from(".toka/catalog.json")
-    
-    if !exists(string::from(".toka")) {
-        create_dir(string::from(".toka"))
+    auto command# = package_command(string::from("registry-search"))
+    command#.arg(cede query.clone())
+    auto result = command#.output()
+    if result.is_err() { return 1 }
+    auto output = result.unwrap()
+    if !output.status.success() {
+        if !output.stderr.is_empty() { println("{}", output.stderr) }
+        return output.status.legacy_code()
     }
-    refresh_catalog(catalog_path.clone())
-    
-    auto has_catalog# = false
-    auto meta_res = metadata(catalog_path.clone())
-    if meta_res.is_ok() {
-        auto meta = meta_res.unwrap()
-        if meta.is_file() && meta.len() > 0:u64 {
-            has_catalog = true
-        }
-    }
-    if !has_catalog {
-        write_string(catalog_path, "{\"packages\":[{\"name\":\"toka_ink\",\"version\":\"0.2.1\",\"description\":\"Terminal UI components and animations\"}]}")
-    }
-    
-    auto res = read_to_string(catalog_path)
-    if res.is_err() {
-        println("Failed to read package catalog.")
-        return 1
-    }
-    
-    auto content = res.unwrap()
-    auto parsed = deserialize_shape<Catalog>(content.as_view())
-    if parsed.is_err() {
-        println("Failed to parse registry catalog.")
-        return 1
-    }
-    
-    auto catalog = parsed.unwrap()
-    auto found# = 0
-    auto i# = 0:usize
-    
-    println("\nSearch Results:")
-    println("---------------")
-    
-    loop i < catalog.packages.len() {
-        auto pkg = catalog.packages.at(i)
-        if pkg.name.contains(query.as_view()) || pkg.description.contains(query.as_view()) {
-            println("\x1b[1;32m{}\x1b[0m (\x1b[36m{}\x1b[0m)", pkg.name, pkg.version)
-            println("    {}", pkg.description)
-            println("")
-            found = found + 1
-        }
-        i = i + 1
-    }
-    
-    if found == 0 {
+    if output.stdout.is_empty() {
         println("No packages found matching '{}'.", query)
+    } else {
+        println("{}", output.stdout)
     }
-    
     return 0
 }
