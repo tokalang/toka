@@ -29,7 +29,7 @@ fn header_count(headers: HeaderMap, name: str) -> usize {
     auto count# = 0:usize
     auto index# = 0:usize
     loop index < headers.entries.len() {
-        auto entry = headers.entries.get(index).clone()
+        auto entry = headers.entries.get_ref(index).clone()
         if entry.key.as_str().eq_ignore_ascii_case(name) { count = count + 1:usize }
         index = index + 1:usize
     }

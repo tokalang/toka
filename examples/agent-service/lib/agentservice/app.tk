@@ -472,7 +472,7 @@ impl AgentService {
         auto *state# = locked.unwrap().get_ref()
         auto index# = 0:usize
         loop index < state.events.len() {
-            auto event = state.events.get(index).clone()
+            auto event = state.events.get_ref(index).clone()
             if event.run_id.as_str().equals(run_id) {
                 body#.push_str(ndjson_event(cede event).as_str())
             }

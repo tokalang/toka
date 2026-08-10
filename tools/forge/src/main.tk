@@ -76,7 +76,7 @@ fn main() -> i32 {
             workers = parse_i64(arg_list.get(idx + one)) as i32
             idx += 2
         } else if arg.as_str() == "-c" && idx + one < arg_list.len() {
-            cache_path = arg_list.get(idx + one).clone()
+            cache_path = arg_list.get_ref(idx + one).clone()
             idx += 2
         } else if arg.starts_with("-") {
             idx += 1

@@ -283,7 +283,7 @@ fn parse_value(raw: str, depth: usize) -> Result<TomlValue, string> {
 fn contains_key(entries: Vec<TomlEntry>, key: str) -> bool {
     auto index# = 0:usize
     loop index < entries.len() {
-        auto entry = entries.get(index).clone()
+        auto entry = entries.get_ref(index).clone()
         if entry.key.as_str().equals(key) { return true }
         index = index + 1:usize
     }
@@ -305,7 +305,7 @@ impl TomlValue {
                 auto copied# = Vec<TomlValue>::new()
                 auto index# = 0:usize
                 loop index < values.len() {
-                    copied#.push(cede values.get(index).clone())
+                    copied#.push(cede values.get_ref(index).clone())
                     index = index + 1:usize
                 }
                 return TomlValue::ArrayValue(cede copied)
@@ -335,7 +335,7 @@ impl TomlDocument {
         auto copied# = Vec<TomlEntry>::new()
         auto index# = 0:usize
         loop index < self.entries.len() {
-            copied#.push(cede self.entries.get(index).clone())
+            copied#.push(cede self.entries.get_ref(index).clone())
             index = index + 1:usize
         }
         return TomlDocument(entries = cede copied)
@@ -374,7 +374,7 @@ impl TomlValue {
     pub fn array_at(self, index: usize) -> Option<TomlValue> {
         match self {
             auto TomlValue::ArrayValue(&values) => {
-                if index < values.len() { return Option<TomlValue>::Some(values.get(index).clone()) }
+                if index < values.len() { return Option<TomlValue>::Some(values.get_ref(index).clone()) }
                 return Option<TomlValue>::None
             }
             _ => return Option<TomlValue>::None
@@ -439,7 +439,7 @@ impl TomlDocument {
     pub fn get(self, key: str) -> Option<TomlValue> {
         auto index# = 0:usize
         loop index < self.entries.len() {
-            auto entry = self.entries.get(index).clone()
+            auto entry = self.entries.get_ref(index).clone()
             if entry.key.as_str().equals(key) {
                 return Option<TomlValue>::Some(entry.value.clone())
             }

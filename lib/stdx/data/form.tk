@@ -132,7 +132,7 @@ pub fn format(fields: Vec<FormField>) -> string {
     auto index# = 0:usize
     loop index < fields.len() {
         if index > 0:usize { output#.push_byte_raw('&' as u8) }
-        auto field = fields.get(index).clone()
+        auto field = fields.get_ref(index).clone()
         output#.push_str(encode_component(field.name.as_str()).as_str())
         output#.push_byte_raw('=' as u8)
         output#.push_str(encode_component(field.value.as_str()).as_str())

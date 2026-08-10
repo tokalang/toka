@@ -73,7 +73,7 @@ impl JsonLogger {
 
         auto index# = 0:usize
         loop index < fields.len() {
-            auto field = fields#.get(index).clone()
+            auto field = fields#.get_ref(index).clone()
             line#.push_str(",")
             write_escaped_json_string(field.key.as_view(), line)
             line#.push_str(":")

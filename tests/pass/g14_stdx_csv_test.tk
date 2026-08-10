@@ -77,7 +77,7 @@ fn test_streaming_adapters() {
         auto record_opt = next.unwrap()
         assert(record_opt.is_some(), "streaming CSV record must read")
         auto record = record_opt.unwrap()
-        auto field = record.get(1).clone()
+        auto field = record.get_ref(1).clone()
         assert(field.as_str().equals("one\r\ntwo"), "streaming CSV field mismatch")
         auto eof = read_record<File>(reader, 64)
         assert(eof.is_ok(), "streaming CSV EOF read must not fail")

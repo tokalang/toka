@@ -241,7 +241,7 @@ fn response_headers(cede source: HeaderMap, content_length: usize, gzip: bool) -
     auto prior_vary# = string::from("")
     auto index# = 0:usize
     loop index < source.entries.len() {
-        auto entry = source.entries.get(index).clone()
+        auto entry = source.entries.get_ref(index).clone()
         if entry.key.as_str().eq_ignore_ascii_case("content-length") ||
            entry.key.as_str().eq_ignore_ascii_case("content-encoding") ||
            entry.key.as_str().eq_ignore_ascii_case("transfer-encoding") {
@@ -273,7 +273,7 @@ fn request_headers(cede source: HeaderMap, content_length: usize) -> Result<Head
     auto headers# = HeaderMap::new()
     auto index# = 0:usize
     loop index < source.entries.len() {
-        auto entry = source.entries.get(index).clone()
+        auto entry = source.entries.get_ref(index).clone()
         if entry.key.as_str().eq_ignore_ascii_case("content-length") ||
            entry.key.as_str().eq_ignore_ascii_case("content-encoding") ||
            entry.key.as_str().eq_ignore_ascii_case("transfer-encoding") {
