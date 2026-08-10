@@ -658,6 +658,12 @@ def test_toka_publish_and_consume(root: Path, toka: Path) -> None:
     (producer / "lib" / "replica" / "mod.tk").write_text(
         "pub fn value() -> i32 { return 42 }\n", encoding="utf-8"
     )
+    (producer / "README.md").write_text("# replica\n", encoding="utf-8")
+    (producer / "LICENSE").write_text("test license\n", encoding="utf-8")
+    (producer / "tests").mkdir()
+    (producer / "tests" / "qualification.tk").write_text(
+        "fn main() -> i32 { return 0 }\n", encoding="utf-8"
+    )
     registry.mkdir(parents=True)
 
     class LocalRegistry(BaseHTTPRequestHandler):
@@ -737,8 +743,11 @@ def test_toka_publish_and_consume(root: Path, toka: Path) -> None:
                 "release archive preparation failed:\nstdout:\n%s\nstderr:\n%s" % (
                     packaged.stdout, packaged.stderr,
                 )
-            )
-        assert (producer / "replica-1.0.0.tar.gz").is_file()
+        )
+        archive_path = producer / "replica-1.0.0.tar.gz"
+        assert archive_path.is_file()
+        with tarfile.open(archive_path, "r:gz") as archive:
+            assert {"README.md", "LICENSE", "tests/qualification.tk"}.issubset(archive.getnames())
 
         environment["TOKA_REGISTRY_URL"] = registry_url
         environment["TOKA_REGISTRY_PUBLISH_TOKEN"] = "test-token"

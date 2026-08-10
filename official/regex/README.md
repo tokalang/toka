@@ -79,6 +79,22 @@ Run the qualification from this package root:
 python3 tests/qualify_package.py
 ```
 
+The same command is portable to an extracted standalone checkout. Point it at
+either a built Toka source checkout:
+
+```text
+TOKA_ROOT=/path/to/toka python3 tests/qualify_package.py
+```
+
+or an installed toolchain:
+
+```text
+TOKA=/path/to/toka TOKAC=/path/to/tokac TOKA_LIB=/path/to/lib python3 tests/qualify_package.py
+```
+
+Package CI must run one of these standalone forms; it must not depend on the
+package living below Toka's `official/` source directory.
+
 The qualification suite covers accepted syntax, malformed-pattern byte
 positions, anchors/classes/quantifiers, and adversarial non-match cases that
 would make a backtracking engine exponential.

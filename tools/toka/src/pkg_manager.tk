@@ -201,8 +201,17 @@ pub fn cmd_publish() -> i32 {
     if exists(string::from("test")) {
         tar#.arg(string::from("test"))
     }
+    if exists(string::from("tests")) {
+        tar#.arg(string::from("tests"))
+    }
     if exists(string::from("build.tk")) {
         tar#.arg(string::from("build.tk"))
+    }
+    if exists(string::from("README.md")) {
+        tar#.arg(string::from("README.md"))
+    }
+    if exists(string::from("LICENSE")) {
+        tar#.arg(string::from("LICENSE"))
     }
     if tar#.status() != 0 {
         println("Error: Failed to create tar archive")

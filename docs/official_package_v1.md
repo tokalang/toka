@@ -109,10 +109,12 @@ manifest is never interpreted as raw compiler or shell arguments. See
 complete target-selection and cache-identity contract, and
 [`ffi_resource_metadata_v1.md`](ffi_resource_metadata_v1.md) for optional
 opaque-handle facts.
-`toka publish` includes a package's `native/` directory when present, so the
-same locked source that was qualified is available to a registry consumer.
-The resulting native objects and libraries are linked only into a consumer
-that locks the native package. A pure-Toka project, or one that locks only
+`toka publish` includes a package's `native/` directory when present, together
+with its static manifest, source directories, optional `test/` or `tests/`
+qualification evidence, `README.md`, and `LICENSE`. The same locked source
+that was qualified is therefore available to a registry consumer. The
+resulting native objects and libraries are linked only into a consumer that
+locks the native package. A pure-Toka project, or one that locks only
 `native.required = false` metadata, has no native package compiler or linker
 requirement.
 
@@ -149,6 +151,10 @@ root inside this monorepo uses the unambiguous source tag formed by replacing
 `official-regex-v0.1.0`), and the archive name `<name>-<version>.tar.gz`. The
 catalog's `source.tag`, `tarball_url`, and SHA-256 must all describe that exact
 source release; root compiler tags are not package-release tags.
+
+An incubating monorepo package migrates to its own canonical `tokalang/<name>`
+repository only through the extraction gate and immutable-release rules in
+[`official_package_repository_migration_v1.md`](official_package_repository_migration_v1.md).
 
 Package installation and integrity continue to use the existing deterministic
 lock, content digest, staging, and atomic-install rules. This contract does not
