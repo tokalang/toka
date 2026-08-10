@@ -11,13 +11,13 @@ fn preserve_frame_borrow() -> async i32 {
 }
 
 fn preserve_branch_init(flag: bool) -> async i32 {
-    auto value# = uninit:i32
+    auto value = uninit:i32
 
     if flag {
-        value = 11
+        init value = 11
         immediate(0).await
     } else {
-        value = 13
+        init value = 13
         immediate(0).await
     }
 
@@ -25,10 +25,10 @@ fn preserve_branch_init(flag: bool) -> async i32 {
 }
 
 fn preserve_break_init() -> async i32 {
-    auto value# = uninit:i32
+    auto value = uninit:i32
 
     loop {
-        value = 17
+        init value = 17
         immediate(0).await
         break
     }

@@ -1,10 +1,9 @@
 fn main() -> i32 {
     auto exact = 7:i32
     auto converted = (7:i64) as i32
-    auto pending# = uninit:i32
-    pending = exact + converted
+    auto pending = uninit:i32
+    init pending = exact + converted
 
-    // `unset` is an ordinary identifier now that `uninit` owns the keyword.
-    auto unset = 1:i32
-    return pending - 14:i32 + unset - 1:i32
+    auto offset = 1:i32
+    return pending - 14:i32 + offset - 1:i32
 }

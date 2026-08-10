@@ -1,11 +1,11 @@
 fn main() -> i32 {
-    auto x# = uninit:i32
+    auto x = uninit:i32
 
     for auto i in [0] {
-        x = 1
+        init x = 1
         break
     } or {
-        x = 2
+        init x = 2
     }
 
     assert(x == 1 || x == 2, "x should be initialized by break or or")

@@ -7,24 +7,18 @@ shape Point(
 )
 
 fn main() -> i32 {
-    // Case 1: Simple Init via Ref
-    auto p# = uninit:Point
-    {
-        auto &refP# = &p
-        refP.x = 10
-        refP.y = 20
-        // Now 'p' is fully initialized. 'refP' is clean.
-    } // Scope exit OK because 'p' is initialized.
+    // Case 1: explicit construction of the whole place
+    auto p = uninit:Point
+    init p = Point(x = 10, y = 20)
 
     println("p.x: {}", p.x)
     assert(p.x == 10, "p.x check")
     
-    // Case 2: Pass/Break with Clean Ref
-    auto q# = uninit:i32
+    // Case 2: use a reference only after whole-place construction
+    auto q = uninit:i32
+    init q = 100
     auto &refQ# = &q
-    refQ = 100
-    // Now Ref is clean.
-    
+
     // Using reference in Pass/If
     auto val = if true {
         pass refQ // OK because refQ is clean

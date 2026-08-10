@@ -2,12 +2,12 @@ import std/vec::Vec
 
 fn main() -> i32 {
     auto items# = Vec<i32>::with_capacity(0)
-    auto x# = uninit:i32
+    auto x = uninit:i32
 
     for auto i in items {
-        x = i
+        init x = i
     } or {
-        x = 0
+        init x = 0
     }
 
     return x

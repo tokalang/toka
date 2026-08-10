@@ -1,7 +1,7 @@
 
 pub fn main() -> i32 {
-    auto x# = uninit:i32
-    x = 42
+    auto x = uninit:i32
+    init x = 42
     // Should be initialized (mask updated)
     auto y = x
     return 0
