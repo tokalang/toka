@@ -3,3 +3,8 @@ error[E04617]: Cannot assign to uninitialized local 'value'; use 'init value = .
    |
  4 |     value = 42:i32
    |           ^
+error[E0410]: Use of uninitialized variable or member 'value'
+ --> tests/fail/g16_init_requires_explicit.tk:5:12
+   |
+ 5 |     return value
+   |            ^
