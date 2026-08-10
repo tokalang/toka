@@ -26,8 +26,8 @@ fn is_ok(value: RedisValue) -> bool {
     }
 }
 
-fn is_pong(value: RedisValue) -> bool {
-    match value {
+fn is_pong(cede value: RedisValue) -> bool {
+    match cede value {
         auto RedisValue::SimpleString('text) => return 'text.as_str().equals("PONG")
         _ => return false
     }
@@ -59,12 +59,14 @@ fn wait_for_pool_async(cede pool: RedisPool) -> async i32 {
     return 2
 }
 
-fn run_async(port: u16, password: str, ca_file: str) -> async i32 {
+fn run_async(port: u16, cede password: string, cede ca_file: string) -> async i32 {
+    auto password = cede password
+    auto ca_file = cede ca_file
     auto address = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)
-    auto created = if ca_file.equals("-") {
+    auto created = if ca_file.as_str().equals("-") {
         pass RedisPool::new(cede address, 1000:i32, 1:usize)
     } else {
-        pass RedisPool::new_tls_with_ca_file(cede address, "localhost", ca_file, 1000:i32, 1:usize)
+        pass RedisPool::new_tls_with_ca_file(cede address, "localhost", ca_file.as_str(), 1000:i32, 1:usize)
     }
     if created.is_err() { return 1 }
     auto pool# = created.unwrap()
@@ -73,7 +75,7 @@ fn run_async(port: u16, password: str, ca_file: str) -> async i32 {
         auto acquired = pool#.acquire_async(100:i32).await
         if acquired.is_err() { return 2 }
         auto lease# = acquired.unwrap()
-        if !authenticate_async(lease, password).await { return 3 }
+        if !authenticate_async(lease, password.as_str()).await { return 3 }
 
         auto set = lease#.set_async("toka:compat:key", cede value_bytes("value")).await
         if set.is_err() { return 4 }
@@ -114,7 +116,7 @@ fn run_async(port: u16, password: str, ca_file: str) -> async i32 {
         auto lease# = reused.unwrap()
         auto ping = lease#.execute_async(cede RedisCommand::new("PING")).await
         match cede ping {
-            auto Result<RedisValue, _>::Ok('value) => if !is_pong('value) { pool#.close(); return 11 }
+            auto Result<RedisValue, _>::Ok('value) => if !is_pong(cede 'value) { pool#.close(); return 11 }
             _ => { pool#.close(); return 11 }
         }
         if lease#.del_async("toka:compat:key").await.is_err() { pool#.close(); return 12 }
@@ -136,5 +138,7 @@ fn main() -> i32 {
     if parsed.is_none() { return 65 }
     auto port = parsed.unwrap()
     if port <= 0:i32 || port > 65535:i32 { return 66 }
-    return block_on(run_async(port as u16, get_arg(2:i32).as_str(), get_arg(3:i32).as_str()))
+    auto password = get_arg(2:i32)
+    auto ca_file = get_arg(3:i32)
+    return block_on(run_async(port as u16, cede password, cede ca_file))
 }

@@ -730,7 +730,8 @@ fn append_bind_message(out#: Vec<u8>, statement: str, cede params: Vec<PostgresP
     // without changing the conventional text representation for scalar data.
     auto index# = 0:usize
     loop index < values.len() {
-        match values.get(index) {
+        auto *value = values.get_ref(index)
+        match value {
             auto PostgresParam::Bytes(_) => append_u16_be(body, 1:u16)
             _ => append_u16_be(body, 0:u16)
         }
@@ -740,7 +741,8 @@ fn append_bind_message(out#: Vec<u8>, statement: str, cede params: Vec<PostgresP
     append_u16_be(body, values.len() as u16)
     index = 0:usize
     loop index < values.len() {
-        match values.get(index) {
+        auto *value = values.get_ref(index)
+        match value {
             auto PostgresParam::Null() => append_i32_be(body, -1:i32)
             auto PostgresParam::Text(&value) => {
                 if contains_nul(value.as_str()) { return Result<(), PostgresError>::Err(error("input", index, "PostgreSQL text parameter must not contain NUL")) }
@@ -1067,7 +1069,7 @@ impl PostgresQueryResult {
         auto columns# = Vec<PostgresColumn>::with_capacity(self.columns.len())
         auto column_index# = 0:usize
         loop column_index < self.columns.len() {
-            columns#.push(cede self.columns.get(column_index).clone())
+            columns#.push(cede self.columns.get_ref(column_index).clone())
             column_index = column_index + 1:usize
         }
 
@@ -1496,7 +1498,7 @@ impl PostgresClient {
                         self#.poison()
                         return Result<Vec<PostgresQueryResult>, PostgresError>::Err(drained.unwrap_err())
                     }
-                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(failure)
+                    return Result<Vec<PostgresQueryResult>, PostgresError>::Err(cede failure)
                 }
                 auto PostgresMessage::ReadyForQuery(_) => {
                     if has_row_description {
@@ -1601,7 +1603,13 @@ impl PostgresStatement {
                     }
                     bind_complete = true
                     if self.result_columns.len() > 0:usize {
-                        current_columns = self.result_columns.clone()
+                        auto copied_columns# = Vec<PostgresColumn>::with_capacity(self.result_columns.len())
+                        auto column_index# = 0:usize
+                        loop column_index < self.result_columns.len() {
+                            copied_columns#.push(cede self.result_columns.get_ref(column_index).clone())
+                            column_index = column_index + 1:usize
+                        }
+                        current_columns = cede copied_columns
                         has_row_description = true
                     }
                 }
