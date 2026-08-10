@@ -138,6 +138,9 @@ def wait_postgres_tls_ready(port: int, ca_cert: Path, *, attempts: int = 40) -> 
 
 
 def make_certificates(work: Path) -> tuple[Path, Path, Path]:
+    # Redis runs as a container user that cannot traverse TemporaryDirectory's
+    # default 0700 mode. These are one-run test certificates only.
+    work.chmod(0o755)
     ca_key = work / "ca.key"
     ca_cert = work / "ca.crt"
     server_key = work / "server.key"
@@ -168,6 +171,9 @@ def make_certificates(work: Path) -> tuple[Path, Path, Path]:
         "-out", str(server_cert), "-days", "1", "-sha256",
         "-extfile", str(extensions), "-extensions", "v3_req",
     ])
+    ca_cert.chmod(0o644)
+    server_cert.chmod(0o644)
+    server_key.chmod(0o644)
     return ca_cert, server_cert, server_key
 
 
