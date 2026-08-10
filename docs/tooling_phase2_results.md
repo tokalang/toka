@@ -15,7 +15,6 @@ The checked-in gates require:
 
 - at least 20 modules and 5,000 source lines;
 - 100 edits from seed `20260722`;
-- warm end-to-end p95 analysis latency no greater than 125 ms; and
 - child-process peak RSS no greater than 1,024 MiB.
 
 Every edit must produce a fresh semantic index, recheck exactly the changed root
@@ -28,9 +27,12 @@ printed as versioned JSON in CI.
 On the 2026-07-22 reference run (macOS arm64), the workload recorded 147.7 ms
 cold analysis, 41.6 ms warm analysis p95, 42.0 ms warm round-trip p95, and
 46.4 MiB peak RSS. These values are evidence from one machine, not portable
-performance promises. The 125 ms CI gate deliberately leaves cross-runner
-scheduling headroom while still bounding sustained warm-path regressions;
-`gates.json` is the repository qualification contract.
+performance promises. Every CI run records the warm p95 in its versioned JSON,
+but public runners do not enforce it: their CPU allocation is not a calibrated
+performance environment. The 125 ms budget in `gates.json` is enforced only by
+an explicit `--enforce-performance` reference run. This keeps the normal and
+release gates focused on correctness, cache consistency, and RSS while retaining
+a reproducible performance qualification for a stable runner.
 
 The warm path is guarded rather than optimistic: it applies only when the root
 overlay is the sole changed document, its import signature is unchanged, and

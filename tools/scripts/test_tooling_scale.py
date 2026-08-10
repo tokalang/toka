@@ -43,6 +43,9 @@ def main():
     parser.add_argument("--build-dir", default="build")
     parser.add_argument(
         "--gates", default="tests/tooling/pilot_project/gates.json")
+    parser.add_argument(
+        "--enforce-performance", action="store_true",
+        help="enforce the warm-latency gate on a calibrated reference runner")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[2]
@@ -222,10 +225,11 @@ def main():
     warm_p95_ms = percentile(warm_round_trip_ms, 0.95)
     warm_analysis_p95_ms = percentile(warm_analysis_ms, 0.95)
     require(stale_results == 0, "soak observed stale diagnostics or statistics")
-    require(warm_p95_ms <= gates["maximum_warm_p95_ms"],
-            "warm round-trip p95 %.3f ms (analysis %.3f ms) exceeds %.3f ms" %
-            (warm_p95_ms, warm_analysis_p95_ms,
-             gates["maximum_warm_p95_ms"]))
+    if args.enforce_performance:
+        require(warm_p95_ms <= gates["maximum_warm_p95_ms"],
+                "warm round-trip p95 %.3f ms (analysis %.3f ms) exceeds %.3f ms" %
+                (warm_p95_ms, warm_analysis_p95_ms,
+                 gates["maximum_warm_p95_ms"]))
     require(peak_rss_mb <= gates["maximum_rss_mb"],
             "peak RSS %.3f MiB exceeds %.3f MiB" %
             (peak_rss_mb, gates["maximum_rss_mb"]))
@@ -244,6 +248,10 @@ def main():
             "warmAnalysisP95": round(warm_analysis_p95_ms, 3),
             "warmRoundTripP95": round(warm_p95_ms, 3),
             "warmRoundTripMax": round(max(warm_round_trip_ms), 3),
+        },
+        "performanceGate": {
+            "enforced": args.enforce_performance,
+            "maximumWarmP95Ms": gates["maximum_warm_p95_ms"],
         },
         "peakRssMiB": round(peak_rss_mb, 3),
         "machine": {"system": platform.system(),
