@@ -166,6 +166,9 @@ This contract standardizes only a static, reviewable registry index: a tagged
 GitHub Release archive, its SHA-256 digest, and the exact catalog entry that
 names them. It does not standardize a public upload service, package signing,
 binary distribution, SemVer range solving, or a general machine-readable
-schema parser. `official/regex` should be the first pilot only after this
-fixture remains resolver-compatible and its package-specific API contract is
-reviewed.
+schema parser. `official/regex` completed the first pilot after this fixture
+remained resolver-compatible and its package-specific API contract was
+reviewed. Its standalone
+[`v0.1.1`](https://github.com/tokalang/regex/releases/tag/v0.1.1) release;
+the retained consumer fixture is
+[`examples/registry_regex_consumer`](../examples/registry_regex_consumer).
