@@ -356,10 +356,15 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
 
   // Check Body (this will recursively call checkExpr which populates m_AccessedVariables)
   if (Clo->Body) {
+      // This pass discovers captures only.  It must not leave ownership or
+      // borrow transitions on the outer declarations: the invoke-body pass
+      // below replays those transitions against the fresh capture bindings.
+      const AnalysisState precomputeState = captureAnalysisState();
       bool oldPrecompute = m_IsPrecomputingCaptures;
       m_IsPrecomputingCaptures = true;
       checkStmt(Clo->Body.get());
       m_IsPrecomputingCaptures = oldPrecompute;
+      mergeAnalysisStates({precomputeState}, precomputeState.PAL);
   }
 
   // Determine Captures
