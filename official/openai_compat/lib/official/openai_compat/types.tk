@@ -1,0 +1,85 @@
+import core/option::{Option}
+
+pub shape OpenAiCompatError (kind: string, message: string)
+pub shape OpenAiCompatLimits (max_json_bytes: usize, max_tool_calls_per_chunk: usize)
+pub shape OpenAiToolCallDelta (index: i32, id: Option<string>, name: Option<string>, arguments_delta: Option<string>)
+pub shape OpenAiApiError (message: string, kind: Option<string>, code: Option<string>)
+pub shape OpenAiStreamEvent (
+    TextDelta(string) = 0 |
+    ToolCallDelta(OpenAiToolCallDelta) = 1 |
+    Completed(Option<string>) = 2 |
+    ApiError(OpenAiApiError) = 3
+)
+
+fn clone_option_string(value: Option<string>) -> Option<string> {
+    match value {
+        auto Option<string>::Some('text) => return Option<string>::Some('text.clone())
+        _ => return Option<string>::None
+    }
+}
+
+impl OpenAiCompatError@Encap { fn drop(self#) {} }
+impl OpenAiCompatError {
+    pub fn new(kind: str, message: str) -> OpenAiCompatError {
+        return OpenAiCompatError(kind = string::from(kind), message = string::from(message))
+    }
+    pub fn clone(self) -> OpenAiCompatError {
+        return OpenAiCompatError(kind = self.kind.clone(), message = self.message.clone())
+    }
+    pub fn kind(self) -> string { return self.kind.clone() }
+    pub fn message(self) -> string { return self.message.clone() }
+}
+
+impl OpenAiCompatLimits@Encap { fn drop(self#) {} }
+impl OpenAiCompatLimits {
+    pub fn new(max_json_bytes: usize, max_tool_calls_per_chunk: usize) -> Result<OpenAiCompatLimits, OpenAiCompatError> {
+        if max_json_bytes == 0:usize || max_tool_calls_per_chunk == 0:usize {
+            return Result<OpenAiCompatLimits, OpenAiCompatError>::Err(OpenAiCompatError::new("input", "OpenAI-compatible limits must be positive"))
+        }
+        return Result<OpenAiCompatLimits, OpenAiCompatError>::Ok(OpenAiCompatLimits(max_json_bytes = max_json_bytes, max_tool_calls_per_chunk = max_tool_calls_per_chunk))
+    }
+    pub fn clone(self) -> OpenAiCompatLimits {
+        return OpenAiCompatLimits(max_json_bytes = self.max_json_bytes, max_tool_calls_per_chunk = self.max_tool_calls_per_chunk)
+    }
+    pub fn max_json_bytes(self) -> usize { return self.max_json_bytes }
+    pub fn max_tool_calls_per_chunk(self) -> usize { return self.max_tool_calls_per_chunk }
+}
+
+impl OpenAiToolCallDelta@Encap { fn drop(self#) {} }
+impl OpenAiToolCallDelta {
+    pub fn new(index: i32, cede id: Option<string>, cede name: Option<string>, cede arguments_delta: Option<string>) -> OpenAiToolCallDelta {
+        return OpenAiToolCallDelta(index = index, id = cede id, name = cede name, arguments_delta = cede arguments_delta)
+    }
+    pub fn clone(self) -> OpenAiToolCallDelta {
+        return OpenAiToolCallDelta(index = self.index, id = clone_option_string(self.id), name = clone_option_string(self.name), arguments_delta = clone_option_string(self.arguments_delta))
+    }
+    pub fn index(self) -> i32 { return self.index }
+    pub fn id(self) -> Option<string> { return clone_option_string(self.id) }
+    pub fn name(self) -> Option<string> { return clone_option_string(self.name) }
+    pub fn arguments_delta(self) -> Option<string> { return clone_option_string(self.arguments_delta) }
+}
+
+impl OpenAiApiError@Encap { fn drop(self#) {} }
+impl OpenAiApiError {
+    pub fn new(cede message: string, cede kind: Option<string>, cede code: Option<string>) -> OpenAiApiError {
+        return OpenAiApiError(message = cede message, kind = cede kind, code = cede code)
+    }
+    pub fn clone(self) -> OpenAiApiError {
+        return OpenAiApiError(message = self.message.clone(), kind = clone_option_string(self.kind), code = clone_option_string(self.code))
+    }
+    pub fn message(self) -> string { return self.message.clone() }
+    pub fn kind(self) -> Option<string> { return clone_option_string(self.kind) }
+    pub fn code(self) -> Option<string> { return clone_option_string(self.code) }
+}
+
+impl OpenAiStreamEvent@Encap { fn drop(self#) {} }
+impl OpenAiStreamEvent {
+    pub fn clone(self) -> OpenAiStreamEvent {
+        match self {
+            auto OpenAiStreamEvent::TextDelta(&text) => return OpenAiStreamEvent::TextDelta(text.clone())
+            auto OpenAiStreamEvent::ToolCallDelta(&delta) => return OpenAiStreamEvent::ToolCallDelta(delta.clone())
+            auto OpenAiStreamEvent::Completed(&reason) => return OpenAiStreamEvent::Completed(clone_option_string(reason))
+            auto OpenAiStreamEvent::ApiError(&failure) => return OpenAiStreamEvent::ApiError(failure.clone())
+        }
+    }
+}
