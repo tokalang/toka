@@ -5,12 +5,12 @@ chat-completions endpoint. It keeps conversation history only in memory.
 
 ```sh
 cmake --build build --parallel 2
-build/bin/tokac demos/llm-chat-cli/main.tk \
-  -I lib -I official/openai_compat/lib \
-  -o build/llm-chat-cli
-source ~/.zshrc
-build/llm-chat-cli
+python3 demos/llm-chat-cli/qualify.py
 ```
+
+The qualification resolves the immutable public
+`official/openai_compat@0.1.1` fixture before compiling the demo, so it does
+not depend on a monorepo package directory.
 
 It requires `DEEPSEEK_API_KEY`. By default it uses:
 

@@ -1,0 +1,7 @@
+pub const PACKAGE = (
+    name = "registry_openai_compat_consumer",
+    version = "0.1.0",
+    dependencies = (
+        openai_compat = "openai_compat:0.1.1",
+    )
+)

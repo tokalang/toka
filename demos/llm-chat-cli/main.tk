@@ -14,16 +14,16 @@ import stdx/net/sse::{SseDecoder, SseEvent, SseLimits, read_http_chunk_async}
 import stdx/net/url::{parse_url}
 import stdx/serde/json::{to_json}
 
-shape ChatMessage (role: string, content: string)
+shape HistoryMessage (role: string, content: string)
 shape EndpointTarget (host: string, path: string, address: SocketAddrV4)
 
-impl ChatMessage@Encap {
+impl HistoryMessage@Encap {
     fn drop(self#) {}
 }
 
-impl ChatMessage {
-    pub fn clone(self) -> ChatMessage {
-        return ChatMessage(role = self.role.clone(), content = self.content.clone())
+impl HistoryMessage {
+    pub fn clone(self) -> HistoryMessage {
+        return HistoryMessage(role = self.role.clone(), content = self.content.clone())
     }
 }
 
@@ -78,7 +78,7 @@ fn request_path(endpoint: str) -> Result<EndpointTarget, string> {
         address = SocketAddrV4::new(resolved.unwrap(), url.effective_port())))
 }
 
-fn streaming_body(model: str, history: Vec<ChatMessage>, prompt: str) -> string {
+fn streaming_body(model: str, history: Vec<HistoryMessage>, prompt: str) -> string {
     auto body# = string::from("{\"model\":")
     body#.push_str(to_json(string::from(model)).as_str())
     body#.push_str(",\"stream\":true,\"messages\":[")
@@ -166,9 +166,12 @@ fn stream_turn_async(cede api_key: string, cede endpoint: string, cede body: str
                     loop semantic_events.len() > 0:usize { ordered_semantic#.push(cede semantic_events#.pop().unwrap()) }
                     loop ordered_semantic.len() > 0:usize {
                         match cede ordered_semantic#.pop().unwrap() {
+                            auto OpenAiStreamEvent::RoleDelta(_) => {}
                             auto OpenAiStreamEvent::TextDelta('text) => { stdout('text.as_str()); answer#.push_str('text.as_str()) }
+                            auto OpenAiStreamEvent::RefusalDelta('text) => { stdout('text.as_str()); answer#.push_str('text.as_str()) }
                             auto OpenAiStreamEvent::ToolCallDelta(_) => {}
                             auto OpenAiStreamEvent::Completed(_) => completed = true
+                            auto OpenAiStreamEvent::Usage(_) => {}
                             auto OpenAiStreamEvent::ApiError('failure) => { stream#.close(); return Result<string, string>::Err('failure.message()) }
                         }
                     }
@@ -202,7 +205,7 @@ fn main() -> i32 {
     }
     auto endpoint = env_or_default("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     auto model = env_or_default("DEEPSEEK_MODEL", "deepseek-v4-flash")
-    auto history# = Vec<ChatMessage>::new()
+    auto history# = Vec<HistoryMessage>::new()
     auto input = stdin_file()
     stdout("Toka LLM chat. Type /reset to clear history, /quit to exit.\n\n")
     loop true {
@@ -231,8 +234,8 @@ fn main() -> i32 {
         }
         auto reply = reply.unwrap()
         stdout("\n")
-        history#.push(cede ChatMessage(role = string::from("user"), content = cede prompt))
-        history#.push(cede ChatMessage(role = string::from("assistant"), content = cede reply))
+        history#.push(cede HistoryMessage(role = string::from("user"), content = cede prompt))
+        history#.push(cede HistoryMessage(role = string::from("assistant"), content = cede reply))
     }
     return 0
 }

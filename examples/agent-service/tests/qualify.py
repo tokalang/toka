@@ -18,9 +18,11 @@ def main() -> int:
         work = Path(work)
         router_library = materialize_locked_library(
             ROOT, "registry_router_consumer", "router", work)
+        openai_compat_library = materialize_locked_library(
+            ROOT, "registry_openai_compat_consumer", "openai_compat", work)
         include = ["-I", str(ROOT / "lib"), "-I", str(ROOT / "official" / "postgres" / "lib"),
                    "-I", str(ROOT / "official" / "redis" / "lib"), "-I", str(router_library),
-                   "-I", str(ROOT / "official" / "openai_compat" / "lib"),
+                   "-I", str(openai_compat_library),
                    "-I", str(EXAMPLE / "lib")]
         for name in ("compile_v1", "agent_service_v1"):
             executable = work / name
