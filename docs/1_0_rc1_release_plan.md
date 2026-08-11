@@ -23,6 +23,9 @@ The language surface remains frozen by
   does not justify invalidating source-less interfaces.
 - No new language syntax, TKI format, or runtime contract is introduced by
   this candidate preparation.
+- `toka test` is explicitly Preview for RC1. It is an experimental
+  source-tree scanner, not the stable project-test contract and not release
+  evidence; packages continue to name their own qualification command.
 
 ## Required Evidence Before Publication
 

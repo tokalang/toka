@@ -4,6 +4,28 @@ Toka 1.0 exposes deterministic compiler facts for editors and AI coding tools.
 These interfaces report compiler semantics; consumers do not need to infer
 symbols or repairs from rendered terminal text.
 
+## JSON stdout contract
+
+For the JSON CLI commands named below, standard output is exactly one JSON
+object on both semantic success and semantic failure. The exit status remains
+authoritative: a nonzero result means the checked program or requested fact was
+not accepted. Rendered diagnostics belong on standard error and must never be
+mixed into the JSON stream; tools must not scrape or depend on that
+human-facing channel.
+
+This contract applies to a valid command shape: a command still needs its
+documented source file, query position, or diagnostic code. Invalid command
+usage is outside this semantic protocol; clients must validate command shape
+before expecting a semantic response.
+
+`tests/tooling/json_cli_contract.golden.json` and
+`tools/scripts/test_json_cli_contract.py` freeze this boundary for `check`,
+`explain`, `index`, `context`, `query`, `evidence`, `cede-obligations`,
+`capabilities`, `todo-goals`, and `conditional-facts`. The gate checks both
+successful and rejected semantic inputs, verifies that stdout parses as one
+object with no trailing data or ANSI escapes, and anchors each protocol to a
+small checked-in semantic fact.
+
 ## Check and repair
 
 ```sh
@@ -170,6 +192,7 @@ Run the interface contracts and the fixed AI-coding task set after building:
 
 ```sh
 python3 tools/scripts/test_ai_tooling.py
+python3 tools/scripts/test_json_cli_contract.py
 python3 tools/scripts/evaluate_ai_coding.py
 ```
 

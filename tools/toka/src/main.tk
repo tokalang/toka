@@ -30,7 +30,7 @@ fn print_help() {
     println("                                      Validate bodyless Outcome provider attestations")
     println("  preview      Compare base/candidate snapshots without writing either one")
     println("  query        Run a compiler semantic query (definition, references, rename)")
-    println("  test         Run all tests in the tests/ directory")
+    println("  test         Preview: experimental source-tree test scanner")
     println("  doc          Generate API documentation")
     println("  add <url>    Add a package dependency")
     println("  rm <pkg>     Remove a package dependency")
@@ -932,7 +932,9 @@ fn cmd_query(argc: i32, shift: i32) -> i32 {
 }
 
 fn cmd_test() -> i32 {
-    println("Running Toka tests...")
+    println("Preview: 'toka test' is an experimental source-tree scanner, not the stable project test contract.")
+    println("Use the package's documented test command for release qualification.")
+    println("Running preview Toka test scan...")
     
     auto default_lib = detect_default_lib_path()
     auto script# = string::from("set -e\npassed=0\nfailed=0\n")

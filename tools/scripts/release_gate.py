@@ -273,6 +273,8 @@ def main():
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_ai_tooling.py",
              "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_json_cli_contract.py",
+             "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/evaluate_ai_coding.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_semantic_index.py",

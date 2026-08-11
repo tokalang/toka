@@ -61,7 +61,7 @@ compatibility name.
 ```sh
 toka build             # resolve locked packages and build the project
 toka run               # build, then run the configured executable
-toka test              # compile and run tests under tests/
+toka test              # Preview only; use the package's documented test command
 toka fmt               # format project source
 toka check --json src/main.tk
 toka doctor

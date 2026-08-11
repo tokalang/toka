@@ -1,0 +1,92 @@
+{
+  "schema": "toka.json-cli-contract-golden",
+  "version": 1,
+  "cases": {
+    "check_success": {
+      "exit": 0,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": true}
+    },
+    "check_failure": {
+      "exit": 1,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": false},
+      "contains": {"diagnostics": [{"code": "E0440", "severity": "error"}]}
+    },
+    "explain": {
+      "exit": 0,
+      "schema": "toka.diagnostic-explanation",
+      "version": 1,
+      "equals": {"code": "E0438", "id": "ERR_USE_MOVED"}
+    },
+    "index": {
+      "exit": 0,
+      "schema": "toka.semantic-index",
+      "version": 1,
+      "contains": {"symbols": [{"name": "identity", "kind": "function"}]}
+    },
+    "context": {
+      "exit": 0,
+      "schema": "toka.semantic-query",
+      "version": 1,
+      "equals": {"query": "context", "result.symbol.name": "identity"}
+    },
+    "query_references": {
+      "exit": 0,
+      "schema": "toka.semantic-query",
+      "version": 1,
+      "equals": {"query": "references"},
+      "minimum_lengths": {"result": 2}
+    },
+    "evidence": {
+      "exit": 1,
+      "schema": "toka.semantic-evidence",
+      "version": 1,
+      "contains": {
+        "records": [{
+          "rule": "PAL-CALL-001",
+          "decision": "Reject",
+          "reason": "OverlappingExclusiveAccess"
+        }]
+      }
+    },
+    "cede_obligations": {
+      "exit": 1,
+      "schema": "toka.cede-obligation-evidence",
+      "version": 1,
+      "contains": {
+        "records": [{
+          "stage": "caller-transfer",
+          "status": "violated",
+          "reason": "MissingExplicitCede"
+        }]
+      }
+    },
+    "capabilities": {
+      "exit": 1,
+      "schema": "toka.capability-pilot",
+      "version": 1,
+      "contains": {
+        "records": [{
+          "callee": "overwrite",
+          "subject": "handle_only",
+          "granted": {"handle_rebind": false, "payload_write": false}
+        }]
+      }
+    },
+    "todo_goals": {
+      "exit": 1,
+      "schema": "toka.todo-goals",
+      "version": 1,
+      "contains": {"goals": [{"id": 1, "status": "incomplete"}]}
+    },
+    "conditional_facts": {
+      "exit": 1,
+      "schema": "toka.conditional-facts",
+      "version": 1,
+      "contains": {"facts": [{"symbol": "answer", "status": "conditional"}]}
+    }
+  }
+}
