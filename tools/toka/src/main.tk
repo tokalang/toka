@@ -306,6 +306,7 @@ fn cmd_new(name: string, is_lib: bool) -> i32 {
         println("Error: Directory '{}' already exists! Aborting.", name)
         return 1
     }
+    auto project_name = get_basename(name.clone())
     
     if is_lib {
         // 先建母体目录，再建子目录
@@ -316,13 +317,13 @@ fn cmd_new(name: string, is_lib: bool) -> i32 {
         create_dir(lib_dir.clone())
         
         lib_dir#.push_str("/")
-        lib_dir#.push_str(name.as_str())
+        lib_dir#.push_str(project_name.as_str())
         create_dir(lib_dir.clone())
         
         lib_dir#.push_str("/mod.tk")
         write_string(lib_dir, "// Library module\n\npub fn hello() {\n    // TODO: implement\n}\n")
         
-        generate_project_files(name.clone(), name.clone(), is_lib)
+        generate_project_files(project_name, name.clone(), is_lib)
         println("Created new Toka library: {}", name)
     } else {
         // 先建母体目录，再建子目录
@@ -335,7 +336,7 @@ fn cmd_new(name: string, is_lib: bool) -> i32 {
         src_dir#.push_str("/main.tk")
         write_string(src_dir, "import std/io::{println, File}\nimport std/fs::{read_to_string}\n\nfn main() -> i32 {\n    println(\"Hello, Toka!\")\n    return 0\n}\n")
         
-        generate_project_files(name.clone(), name.clone(), is_lib)
+        generate_project_files(project_name, name.clone(), is_lib)
         println("Created new Toka project: {}", name)
     }
     return 0

@@ -126,8 +126,15 @@ def main():
         run([installed_toka, "new", "smoke"], temp_root, env=env)
         output = run([installed_toka, "run"], temp_root / "smoke", env=env)
         require("Hello, Toka!" in output.stdout, "installed toka project did not run")
+
+        absolute_project = temp_root / "absolute_smoke"
+        run([installed_toka, "new", absolute_project], temp_root, env=env)
+        output = run([installed_toka, "run"], absolute_project, env=env)
+        require("Hello, Toka!" in output.stdout,
+                "installed toka absolute-path project did not run")
         checks.extend(("cmake-install", "toka-doctor", "installed-compile-run",
-                       "tokac-dwarf-metadata", "installed-new-run"))
+                       "tokac-dwarf-metadata", "installed-new-run",
+                       "installed-new-absolute-path-run"))
 
     print(json.dumps({
         "checks": checks,
