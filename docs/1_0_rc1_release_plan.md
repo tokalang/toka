@@ -53,6 +53,10 @@ The published release and its four platform archives are available at
 Any commit after `05ba0852` requires a distinct candidate label and a new
 four-target gate; an existing RC tag is never moved or reused.
 
+The immutable release identity, published archive digests, native first-hour
+replay, and retained-report boundary are recorded in
+[`release_audits/v1.0.0-rc.1.md`](release_audits/v1.0.0-rc.1.md).
+
 ## Evidence Before Announcement
 
 After the tagged archives exist, install the exact RC tag into a clean home on

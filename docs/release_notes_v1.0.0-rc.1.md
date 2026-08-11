@@ -33,3 +33,6 @@ The tagged SDK archives are the public developer-experience boundary: exact
 archive installation, `toka doctor`, project creation, verified registry
 resolution, execution, and offline lock replay. This does not reopen the
 frozen language surface.
+
+See the [RC1 release audit](release_audits/v1.0.0-rc.1.md) for the immutable
+tag, gate, archive-digest, and native first-hour evidence.
