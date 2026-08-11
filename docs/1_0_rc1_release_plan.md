@@ -1,14 +1,15 @@
 # Toka 1.0.0-rc.1 Candidate Qualification Plan
 
-**Status:** In qualification. This plan starts a public 1.0 release-candidate
-line; it does not create a tag, GitHub Release, or release archive.
+**Status:** Published historical candidate. `v1.0.0-rc.1` is the annotated
+tag at `05ba085252977d945d5f4e11ecfad363147388d8`, published as a GitHub
+pre-release on 2026-08-10. This plan records that candidate's qualification
+boundary; it does not qualify later commits on `main`.
 
 ## Decision
 
 On 2026-08-10, maintainers chose to begin `1.0.0-rc.1` directly. No new
-`0.9.9` tag will be created after the historical `v0.9.9-rc4` pre-release.
-`v0.9.9-01` remains the latest qualified public release until this candidate
-passes its own gate and maintainers explicitly authorize publication.
+`0.9.9` tag was created after the historical `v0.9.9-rc4` pre-release. RC1 is
+a GitHub pre-release and does not replace the latest stable SDK selection.
 
 This decision supersedes the proposed `0.9.9-02` adoption-release sequence in
 [`0_9_9_release_plan.md`](0_9_9_release_plan.md), not its historical evidence.
@@ -27,7 +28,7 @@ The language surface remains frozen by
   source-tree scanner, not the stable project-test contract and not release
   evidence; packages continue to name their own qualification command.
 
-## Required Evidence Before Publication
+## Pre-publication evidence boundary
 
 1. The candidate version migration and launch documentation are committed and
    pushed to `main`. `tokac`, `toka`, `tokafmt`, and `tokalsp` agree on
@@ -46,6 +47,11 @@ The language surface remains frozen by
    substitute for this step.
 6. Only then may maintainers separately authorize creation of annotated
    `v1.0.0-rc.1` and its GitHub pre-release archives.
+
+The published release and its four platform archives are available at
+[`v1.0.0-rc.1`](https://github.com/tokalang/toka/releases/tag/v1.0.0-rc.1).
+Any commit after `05ba0852` requires a distinct candidate label and a new
+four-target gate; an existing RC tag is never moved or reused.
 
 ## Evidence Before Announcement
 

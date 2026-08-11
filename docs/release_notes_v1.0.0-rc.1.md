@@ -1,7 +1,8 @@
 # Toka v1.0.0-rc.1 Candidate Notes
 
-**Status:** In qualification. This document describes the source candidate;
-`v1.0.0-rc.1` has not yet been tagged, published, or made the latest release.
+**Status:** Published pre-release. `v1.0.0-rc.1` was tagged at
+`05ba085252977d945d5f4e11ecfad363147388d8` and published on 2026-08-10. It
+remains a pre-release and is not the latest stable SDK.
 
 ## Purpose
 
@@ -21,16 +22,14 @@ unfinished candidate as a final 1.0 release.
   existing internal compiler-interface version. The public RC label alone
   does not alter their format.
 
-## Qualification Status
+## Historical qualification boundary
 
-The current source has passed its normal CI and Windows dogfood checks. It
-must still pass the exact-revision, four-target, thirteen-stage Release Gate
-before an annotated tag or GitHub pre-release is created. The required evidence
-and publication boundary are recorded in
-[`1_0_rc1_release_plan.md`](1_0_rc1_release_plan.md).
+The release was created only from its tagged revision. The exact-revision,
+four-target, thirteen-stage boundary and release process are recorded in
+[`1_0_rc1_release_plan.md`](1_0_rc1_release_plan.md). Later commits on `main`
+are not part of this RC and require a distinct candidate label before release.
 
-Before announcement, the tagged SDK archives also undergo the public
-first-hour check: exact-tag installation, `toka doctor`, project creation,
-verified registry resolution, execution, and offline lock replay. This is the
-developer-experience boundary for the RC; it does not reopen the frozen
-language surface.
+The tagged SDK archives are the public developer-experience boundary: exact
+archive installation, `toka doctor`, project creation, verified registry
+resolution, execution, and offline lock replay. This does not reopen the
+frozen language surface.

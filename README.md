@@ -60,8 +60,8 @@ Install the latest stable release:
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-When `v1.0.0-rc.1` is published, install that candidate explicitly rather than
-depending on GitHub's stable-release selector:
+To install the published `v1.0.0-rc.1` candidate, name it explicitly rather
+than depending on GitHub's stable-release selector:
 
 ```bash
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1

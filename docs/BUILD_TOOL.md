@@ -12,7 +12,7 @@ For a released macOS or Linux SDK, install a stable release with:
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-Use an explicit tag for a published release candidate:
+Use an explicit tag for the published release candidate:
 
 ```sh
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
