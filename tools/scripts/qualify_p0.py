@@ -14,12 +14,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_SUITES = (
     ("agent_service", ROOT / "examples" / "agent-service" / "tests" / "qualify.py"),
+    # Migrated packages qualify in their canonical repositories.
     ("compress", ROOT / "official" / "compress" / "tests" / "qualify_package.py"),
     ("postgres", ROOT / "official" / "postgres" / "tests" / "qualify_package.py"),
     ("redis", ROOT / "official" / "redis" / "tests" / "qualify_package.py"),
-    ("router", ROOT / "official" / "router" / "tests" / "qualify_package.py"),
     ("unicode", ROOT / "official" / "unicode" / "tests" / "qualify_package.py"),
-    ("regex", ROOT / "official" / "regex" / "tests" / "qualify_package.py"),
     ("openai_compat", ROOT / "official" / "openai_compat" / "tests" / "qualify_package.py"),
 )
 

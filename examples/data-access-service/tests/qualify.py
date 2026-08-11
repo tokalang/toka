@@ -5,11 +5,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = ROOT / "examples" / "data-access-service"
+sys.path.insert(0, str(ROOT / "tools" / "scripts"))
+from registry_fixture import materialize_locked_library
 
 
 def run(argv: list[str]) -> subprocess.CompletedProcess[str]:
@@ -27,14 +30,16 @@ def main() -> int:
     tokac = ROOT / "build" / "bin" / "tokac"
     if not tokac.is_file():
         raise RuntimeError("build tokac before qualifying data-access-service")
-    include = ["-I", str(ROOT / "lib"),
-               "-I", str(ROOT / "official" / "postgres" / "lib"),
-               "-I", str(ROOT / "official" / "redis" / "lib"),
-               "-I", str(ROOT / "official" / "router" / "lib"),
-               "-I", str(EXAMPLE / "lib")]
     with tempfile.TemporaryDirectory(prefix="toka-data-access-service-") as work:
+        work = Path(work)
+        router_library = materialize_locked_library(
+            ROOT, "registry_router_consumer", "router", work)
+        include = ["-I", str(ROOT / "lib"),
+                   "-I", str(ROOT / "official" / "postgres" / "lib"),
+                   "-I", str(ROOT / "official" / "redis" / "lib"),
+                   "-I", str(router_library), "-I", str(EXAMPLE / "lib")]
         for name in ("compile_v1", "loopback_v1"):
-            executable = Path(work) / name
+            executable = work / name
             run([str(tokac), *include, str(EXAMPLE / "tests" / (name + ".tk")),
                  "-o", str(executable)])
             result = run([str(executable)])

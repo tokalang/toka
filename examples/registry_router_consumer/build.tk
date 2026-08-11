@@ -1,0 +1,6 @@
+import build::{Executable, run_build}
+
+fn main() -> i32 {
+    auto app# = Executable::make(c"registry_router_consumer", c"src/main.tk")
+    return run_build(app)
+}

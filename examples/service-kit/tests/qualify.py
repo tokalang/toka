@@ -8,13 +8,15 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[3]
 SQLITE = ROOT / "official" / "sqlite"
-ROUTER = ROOT / "official" / "router"
 SERVICE_KIT = ROOT / "examples" / "service-kit"
+sys.path.insert(0, str(ROOT / "tools" / "scripts"))
+from registry_fixture import materialize_locked_library
 
 
 def run(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -56,6 +58,8 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="toka-service-kit-") as temporary:
         work = Path(temporary)
+        router_library = materialize_locked_library(
+            ROOT, "registry_router_consumer", "router", work)
         bridge_object = work / "sqlite_bridge.o"
         run([compiler, "-c", str(SQLITE / "native" / "sqlite_preflight.c"),
              "-o", str(bridge_object), *pkg_config("sqlite3", "--cflags")], cwd=ROOT)
@@ -63,7 +67,7 @@ def main() -> int:
             program_ir = work / (source_name + ".ll")
             program = work / source_name
             run([str(tokac), "-I", str(ROOT / "lib"), "-I", str(SQLITE / "lib"),
-                 "-I", str(ROUTER / "lib"),
+                 "-I", str(router_library),
                  "-I", str(SERVICE_KIT / "lib"), "--emit-llvm",
                  str(SERVICE_KIT / "tests" / (source_name + ".tk")), "-o", str(program_ir)], cwd=ROOT)
             link_args = [compiler, str(program_ir), str(bridge_object), str(runtime),

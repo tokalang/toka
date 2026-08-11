@@ -1,6 +1,6 @@
 # Official Package Repository Migration v1
 
-Status: `Approved extraction policy; official/regex migration complete`
+Status: `Approved extraction policy; official/regex and official/router migrations complete`
 
 Official packages are publisher-owned optional libraries, not a fourth
 standard-library layer. This document defines the one-way migration from an
@@ -28,13 +28,20 @@ The first standalone repository is named `tokalang/<name>` (for example,
 `tokalang/regex`). Its history should be derived from the package subtree so
 the source provenance remains inspectable. The default branch advances to the
 next development version, such as `0.1.1-dev.0`; it must not manufacture a
-second `0.1.0` release.
+second `0.1.0` release. An incubating root with no prior public monorepo
+release may instead make its first standalone public release `0.1.0`.
 
 `official/regex` completed this cutover on 2026-08-10. Its successor source is
 [`tokalang/regex`](https://github.com/tokalang/regex), whose first standalone
 release is [`v0.1.1`](https://github.com/tokalang/regex/releases/tag/v0.1.1).
 The original monorepo tag, release asset, and catalog entry remain the
 immutable source record for `0.1.0`.
+
+`official/router` completed the same cutover on 2026-08-11. Its successor
+source is [`tokalang/router`](https://github.com/tokalang/router), whose first
+public release is [`v0.1.0`](https://github.com/tokalang/router/releases/tag/v0.1.0).
+It had no prior public monorepo release, so this is its first source and
+release record.
 
 The new repository owns package CI, issues, releases, and its future source
 tags. Its first public release is a real SemVer successor, such as `v0.1.1`.
@@ -53,4 +60,9 @@ dual canonical source is allowed.
 `official/regex@0.1.1` passed the standalone Linux/macOS qualification and a
 fresh default-registry consumer replay before its historical monorepo root was
 removed. [`examples/registry_regex_consumer`](../examples/registry_regex_consumer)
+is the retained exact-version consumer fixture.
+
+`official/router@0.1.0` passed standalone Linux and macOS qualification and a
+fresh public-registry/offline consumer replay before its monorepo root was
+removed. [`examples/registry_router_consumer`](../examples/registry_router_consumer)
 is the retained exact-version consumer fixture.

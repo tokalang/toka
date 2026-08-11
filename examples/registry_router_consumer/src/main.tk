@@ -1,0 +1,21 @@
+import core/option::{Option}
+import official/router::{Router}
+import std/io::{println}
+import stdx/net/http::{HttpMethod}
+
+fn main() -> i32 {
+    auto router# = Router::new()
+    if router#.add(HttpMethod::GET, "/items/:id", "items.show").is_err() {
+        return 1
+    }
+    match cede router.recognize(HttpMethod::GET, "/items/7?source=registry") {
+        auto Option::Some('matched) => {
+            if !'matched.param("id").unwrap().as_str().equals("7") {
+                return 2
+            }
+            println("public router registry consumer passed")
+            return 0
+        }
+        _ => return 3
+    }
+}

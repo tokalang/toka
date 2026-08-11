@@ -1,6 +1,6 @@
 # `official/router` v1 — Deterministic Route Recognition
 
-Status: **implementation proposal; v1 stops at method/path recognition**.
+Status: **released v0.1.0; v1 stops at method/path recognition**.
 
 ## Role and boundary
 
@@ -10,6 +10,10 @@ name plus owned path parameters. It does not own sockets, request parsing,
 response generation, handler execution, middleware, authentication, or
 application state. Those boundaries already belong to `std`, `stdx`, and the
 application respectively.
+
+Its canonical source and release history are maintained in
+[`tokalang/router`](https://github.com/tokalang/router); this document retains
+the package contract used by compiler-repository consumers.
 
 This narrow boundary makes it usable by the existing service-kit without
 turning that reference application into a framework.
