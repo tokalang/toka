@@ -1,0 +1,155 @@
+// Transport-neutral Chat Completions request values and deterministic JSON.
+
+import core/option::{Option}
+import core/result::{Result}
+import official/openai_compat/types::{OpenAiCompatError}
+import std/vec::{Vec}
+import stdx/serde/json::{JsonNode, json_skip_whitespace, write_escaped_json_string}
+
+pub shape ChatMessage (role: string, content: string, tool_call_id: Option<string>)
+pub shape ChatTool (name: string, description: Option<string>, parameters_json: string)
+pub shape ChatRequest (model: string, messages#: Vec<ChatMessage>, tools#: Vec<ChatTool>, stream: bool, include_usage: bool)
+
+fn clone_option_string(value: Option<string>) -> Option<string> {
+    match value {
+        auto Option<string>::Some('text) => return Option<string>::Some('text.clone())
+        _ => return Option<string>::None
+    }
+}
+
+fn valid_tool_name(value: str) -> bool {
+    if value.len() == 0:usize || value.len() > 64:usize { return false }
+    auto index# = 0:usize
+    loop index < value.len() {
+        auto byte = value.byte_at(index)
+        auto alpha = (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z')
+        auto digit = byte >= '0' && byte <= '9'
+        if !alpha && !digit && byte != '_' && byte != '-' { return false }
+        index += 1:usize
+    }
+    return true
+}
+
+fn validate_schema(schema: str) -> bool {
+    auto root# = JsonNode::NullNode(0)
+    auto parsed = root#.parse_json(schema)
+    if parsed.is_err() { return false }
+    if json_skip_whitespace(parsed.unwrap()).len() != 0:usize { return false }
+    match cede root {
+        auto JsonNode::ObjectNode(_) => return true
+        _ => return false
+    }
+}
+
+fn append_message(cede value: ChatMessage, out#: string) {
+    auto message = cede value
+    out#.push_str("{\"role\":")
+    write_escaped_json_string(message.role.as_str(), out)
+    out#.push_str(",\"content\":")
+    write_escaped_json_string(message.content.as_str(), out)
+    match cede message.tool_call_id() {
+        auto Option<string>::Some('id) => {
+            out#.push_str(",\"tool_call_id\":")
+            write_escaped_json_string('id.as_str(), out)
+        }
+        _ => {}
+    }
+    out#.push_str("}")
+}
+
+fn append_tool(cede value: ChatTool, out#: string) {
+    auto tool = cede value
+    out#.push_str("{\"type\":\"function\",\"function\":{\"name\":")
+    write_escaped_json_string(tool.name.as_str(), out)
+    match cede tool.description() {
+        auto Option<string>::Some('description) => {
+            out#.push_str(",\"description\":")
+            write_escaped_json_string('description.as_str(), out)
+        }
+        _ => {}
+    }
+    out#.push_str(",\"parameters\":")
+    out#.push_str(tool.parameters_json.as_str())
+    out#.push_str("}}")
+}
+
+impl ChatMessage@Encap { fn drop(self#) {} }
+impl ChatMessage {
+    fn text(role: str, content: str) -> ChatMessage {
+        return ChatMessage(role = string::from(role), content = string::from(content), tool_call_id = Option<string>::None)
+    }
+    pub fn system(content: str) -> ChatMessage { return ChatMessage::text("system", content) }
+    pub fn developer(content: str) -> ChatMessage { return ChatMessage::text("developer", content) }
+    pub fn user(content: str) -> ChatMessage { return ChatMessage::text("user", content) }
+    pub fn assistant(content: str) -> ChatMessage { return ChatMessage::text("assistant", content) }
+    pub fn tool_result(tool_call_id: str, content: str) -> Result<ChatMessage, OpenAiCompatError> {
+        if tool_call_id.len() == 0:usize { return Result<ChatMessage, OpenAiCompatError>::Err(OpenAiCompatError::new("input", "tool result requires a non-empty tool_call_id")) }
+        return Result<ChatMessage, OpenAiCompatError>::Ok(ChatMessage(role = string::from("tool"), content = string::from(content), tool_call_id = Option<string>::Some(string::from(tool_call_id))))
+    }
+    pub fn clone(self) -> ChatMessage {
+        return ChatMessage(role = self.role.clone(), content = self.content.clone(), tool_call_id = clone_option_string(self.tool_call_id))
+    }
+    pub fn role(self) -> string { return self.role.clone() }
+    pub fn content(self) -> string { return self.content.clone() }
+    pub fn tool_call_id(self) -> Option<string> { return clone_option_string(self.tool_call_id) }
+}
+
+impl ChatTool@Encap { fn drop(self#) {} }
+impl ChatTool {
+    pub fn new(name: str, parameters_json: str) -> Result<ChatTool, OpenAiCompatError> {
+        if !valid_tool_name(name) { return Result<ChatTool, OpenAiCompatError>::Err(OpenAiCompatError::new("input", "tool name must be 1..64 ASCII letters, digits, underscore, or hyphen")) }
+        if !validate_schema(parameters_json) { return Result<ChatTool, OpenAiCompatError>::Err(OpenAiCompatError::new("input", "tool parameters must be one complete JSON object")) }
+        return Result<ChatTool, OpenAiCompatError>::Ok(ChatTool(name = string::from(name), description = Option<string>::None, parameters_json = string::from(parameters_json)))
+    }
+    pub fn describe(self#, description: str) {
+        if description.len() == 0:usize { self.description = Option<string>::None }
+        else { self.description = Option<string>::Some(string::from(description)) }
+    }
+    pub fn clone(self) -> ChatTool {
+        return ChatTool(name = self.name.clone(), description = clone_option_string(self.description), parameters_json = self.parameters_json.clone())
+    }
+    pub fn name(self) -> string { return self.name.clone() }
+    pub fn description(self) -> Option<string> { return clone_option_string(self.description) }
+}
+
+impl ChatRequest@Encap { fn drop(self#) {} }
+impl ChatRequest {
+    pub fn new(model: str) -> Result<ChatRequest, OpenAiCompatError> {
+        if model.len() == 0:usize { return Result<ChatRequest, OpenAiCompatError>::Err(OpenAiCompatError::new("input", "model must not be empty")) }
+        return Result<ChatRequest, OpenAiCompatError>::Ok(ChatRequest(model = string::from(model), messages = Vec<ChatMessage>::new(), tools = Vec<ChatTool>::new(), stream = false, include_usage = false))
+    }
+    pub fn add_message(self#, cede message: ChatMessage) { self.messages#.push(cede message) }
+    pub fn add_tool(self#, cede tool: ChatTool) { self.tools#.push(cede tool) }
+    pub fn set_stream(self#, enabled: bool, include_usage: bool) {
+        self.stream = enabled
+        self.include_usage = enabled && include_usage
+    }
+    pub fn to_json(self) -> Result<string, OpenAiCompatError> {
+        if self.messages.len() == 0:usize { return Result<string, OpenAiCompatError>::Err(OpenAiCompatError::new("input", "chat request needs at least one message")) }
+        auto out# = string::from("{\"model\":")
+        write_escaped_json_string(self.model.as_str(), out)
+        out#.push_str(",\"stream\":")
+        if self.stream { out#.push_str("true") } else { out#.push_str("false") }
+        if self.include_usage { out#.push_str(",\"stream_options\":{\"include_usage\":true}") }
+        out#.push_str(",\"messages\":[")
+        auto index# = 0:usize
+        loop index < self.messages.len() {
+            if index > 0:usize { out#.push_char(',') }
+            append_message(cede self.messages.get(index).clone(), out)
+            index += 1:usize
+        }
+        out#.push_str("]")
+        if self.tools.len() > 0:usize {
+            out#.push_str(",\"tools\":[")
+            index = 0:usize
+            loop index < self.tools.len() {
+                if index > 0:usize { out#.push_char(',') }
+                append_tool(cede self.tools.get(index).clone(), out)
+                index += 1:usize
+            }
+            out#.push_str("]")
+        }
+        out#.push_str("}")
+        return Result<string, OpenAiCompatError>::Ok(cede out)
+    }
+}

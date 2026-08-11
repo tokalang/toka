@@ -3,7 +3,7 @@
 
 import core/option::{Option}
 import core/result::{Result}
-import official/openai_compat::{OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
+import official/openai_compat::{ChatMessage, ChatRequest, OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
 import official/postgres::{PostgresParam, PostgresPool, PostgresQueryLimits}
 import official/redis::{RedisCommand, RedisPool, RedisValue}
 import official/router::{Router}
@@ -161,22 +161,23 @@ pub fn ndjson_event(event: AgentRunEvent) -> string {
     return line
 }
 
-pub fn openai_compatible_body(model: str, prompt: str) -> string {
-    auto body# = string::from("{\"model\":")
-    body#.push_str(to_json(string::from(model)).as_str())
-    body#.push_str(",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":")
-    body#.push_str(to_json(string::from(prompt)).as_str())
-    body#.push_str("}]}")
-    return body
+fn openai_request_body(model: str, prompt: str, stream: bool) -> Result<string, string> {
+    auto request = ChatRequest::new(model)
+    if request.is_err() { return Result<string, string>::Err(request.unwrap_err().message()) }
+    auto request# = request.unwrap()
+    request#.add_message(cede ChatMessage::user(prompt))
+    request#.set_stream(stream, stream)
+    auto encoded = request#.to_json()
+    if encoded.is_err() { return Result<string, string>::Err(encoded.unwrap_err().message()) }
+    return Result<string, string>::Ok(cede encoded.unwrap())
 }
 
-pub fn openai_compatible_stream_body(model: str, prompt: str) -> string {
-    auto body# = string::from("{\"model\":")
-    body#.push_str(to_json(string::from(model)).as_str())
-    body#.push_str(",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":")
-    body#.push_str(to_json(string::from(prompt)).as_str())
-    body#.push_str("}]}")
-    return body
+pub fn openai_compatible_body(model: str, prompt: str) -> Result<string, string> {
+    return openai_request_body(model, prompt, false)
+}
+
+pub fn openai_compatible_stream_body(model: str, prompt: str) -> Result<string, string> {
+    return openai_request_body(model, prompt, true)
 }
 
 // The HTTP client uses the endpoint URL for TLS and Host selection, while the
@@ -302,9 +303,11 @@ impl AgentService {
                 auto authorization# = string::from("Bearer ")
                 authorization#.push_str('config.api_key.as_str())
                 auto _authorization = headers#.insert(string::from("Authorization"), cede authorization)
+                auto body = openai_compatible_stream_body('config.model.as_str(), prompt)
+                if body.is_err() { return Result<string, string>::Err(body.unwrap_err()) }
                 auto request = HttpRequest(method = HttpMethod::POST, path = target.unwrap(),
                     version = string::from("HTTP/1.1"), headers = cede headers,
-                    body = openai_compatible_stream_body('config.model.as_str(), prompt))
+                    body = body.unwrap())
                 auto result = HttpClient::new('config.timeout_ms).execute_url_stream_async(request, 'config.url, 'config.address).await
                 if result.is_err() { return Result<string, string>::Err(result.unwrap_err()) }
                 auto response# = result.unwrap()

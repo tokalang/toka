@@ -94,9 +94,11 @@ fn main() -> i32 {
     test_cancellation_checkpoints()
 
     auto body = openai_compatible_body("gpt-4o", "test prompt")
-    assert(body.contains("gpt-4o"), "body includes model name")
+    assert(body.is_ok(), "body builds through openai compatibility package")
+    assert(body.unwrap().contains("gpt-4o"), "body includes model name")
     auto stream_body = openai_compatible_stream_body("gpt-4o", "test prompt")
-    assert(stream_body.contains("\"stream\":true"), "stream body includes stream true")
+    assert(stream_body.is_ok(), "stream body builds through openai compatibility package")
+    assert(stream_body.unwrap().contains("\"stream\":true"), "stream body includes stream true")
     auto deepseek_path = openai_compatible_request_path("https://api.deepseek.com/chat/completions?beta=1")
     assert(deepseek_path.is_ok(), "https endpoint produces a request path")
     auto path = deepseek_path.unwrap()

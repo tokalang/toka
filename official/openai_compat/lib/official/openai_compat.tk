@@ -7,4 +7,5 @@ pub import official/openai_compat/types::{
     OpenAiStreamEvent,
     OpenAiToolCallDelta
 }
+pub import official/openai_compat/request::{ChatMessage, ChatRequest, ChatTool}
 pub import official/openai_compat/stream::{decode_sse_event}

@@ -45,10 +45,10 @@ lib/official/openai_compat.tk
   stable facade; re-exports the supported public surface
 
 lib/official/openai_compat/types.tk
-  errors, limits, roles, messages, tools, usage, turns, and stream values
+  errors, limits, usage, turns, and stream values
 
 lib/official/openai_compat/request.tk
-  request construction and deterministic JSON encoding
+  messages, tools, request construction, and deterministic JSON encoding
 
 lib/official/openai_compat/response.tk
   non-streaming completion and provider-error decoding

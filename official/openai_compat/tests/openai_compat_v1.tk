@@ -1,4 +1,4 @@
-import official/openai_compat::{OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
+import official/openai_compat::{ChatMessage, ChatRequest, ChatTool, OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
 import std/bytes::{Bytes}
 import std/vec::{Vec}
 import stdx/net/sse::{SseDecoder, SseEvent, SseLimits}
@@ -58,5 +58,22 @@ fn main() -> i32 {
 
     auto malformed_limits = OpenAiCompatLimits::new(4096:usize, 1:usize).unwrap()
     if decode_sse_event(cede event("{\"choices\":["), malformed_limits).is_ok() { return 19 }
+
+    auto request# = ChatRequest::new("example-model").unwrap()
+    request#.add_message(cede ChatMessage::system("be concise"))
+    request#.add_message(cede ChatMessage::user("weather in Tokyo"))
+    auto tool# = ChatTool::new("weather_lookup", "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}").unwrap()
+    tool#.describe("Look up one city's weather")
+    request#.add_tool(cede tool)
+    request#.set_stream(true, true)
+    auto encoded = request#.to_json()
+    if encoded.is_err() { return 20 }
+    auto body = encoded.unwrap()
+    if !body.contains("\"model\":\"example-model\"") { return 21 }
+    if !body.contains("\"stream_options\":{\"include_usage\":true}") { return 22 }
+    if !body.contains("\"role\":\"system\"") || !body.contains("\"name\":\"weather_lookup\"") { return 23 }
+    if ChatTool::new("bad tool", "{}").is_ok() || ChatTool::new("valid", "[]").is_ok() { return 24 }
+    auto empty# = ChatRequest::new("example-model").unwrap()
+    if empty#.to_json().is_ok() { return 25 }
     return 0
 }
