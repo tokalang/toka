@@ -45,6 +45,7 @@ the limits enforced by `stdx/net/sse`.
 
 Run `tests/qualify_package.py`. In the monorepo it discovers the adjacent Toka
 toolchain. In a standalone checkout set `TOKA_ROOT` to a built Toka source
-checkout. The gate exercises direct compilation, locked local dependency
-resolution, offline lock replay, and public-import build/run behavior without
-network calls or a model account.
+checkout, or set `TOKA`, `TOKAC`, and `TOKA_LIB` to an installed toolchain.
+The gate exercises direct compilation, locked local dependency resolution,
+offline lock replay, and public-import build/run behavior without network calls
+or a model account.

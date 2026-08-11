@@ -65,6 +65,13 @@ From a standalone checkout, point `TOKA_ROOT` at a built Toka source checkout:
 TOKA_ROOT=/path/to/toka python3 tests/qualify_package.py
 ```
 
+Or supply an installed toolchain explicitly:
+
+```sh
+TOKA=/path/to/toka TOKAC=/path/to/tokac TOKA_LIB=/path/to/lib \
+  python3 tests/qualify_package.py
+```
+
 The fixture covers request encoding, normal and streamed completions, indexed
 fragmented tool arguments, `[DONE]`, provider API errors, malformed JSON,
 conflicting tool state, and configured bounds. It requires no credential,
