@@ -20,8 +20,9 @@ the `.tki` compatibility format.
   now emit one `toka.diagnostics` v2 JSON object, matching the public
   machine-output contract.
 - Release archives package the preview helper and prove `toka preview` from a
-  clean extraction. `toka test` now returns a nonzero exit status when its
-  preview scan finds a failure.
+  clean extraction, and carry the release-matched AI Completion Card v0.2.
+  `toka test` now returns a nonzero exit status when its preview scan finds a
+  failure.
 - Publication waits for all four architecture archives before one aggregate
   job creates the GitHub pre-release.
 - The new AI Authoring Friction Baseline v1 documents and tests four recurring

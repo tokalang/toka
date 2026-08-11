@@ -21,8 +21,9 @@ grammar, PAL, CodeGen, TKI-format, or runtime behavior changes.
   JSON object for accepted and rejected semantic inputs. Failed index/context/
   query requests use `toka.diagnostics` v2.
 - The release archive includes `semantic_diff_preview.py`; archive smoke
-  executes `toka preview` from a clean extraction. A failing `toka test`
-  command exits nonzero.
+  executes `toka preview` from a clean extraction and verifies the packaged,
+  release-matched AI Completion Card v0.2. A failing `toka test` command exits
+  nonzero.
 - Matrix jobs only produce private artifacts. One post-matrix publisher
   verifies all four archives and creates or updates the GitHub pre-release
   once, so no partial release becomes public.

@@ -27,9 +27,10 @@ auto iter# = values.iter()
 auto item = iter#.next_ref()
 ```
 
-Never write `total# = ...`, `done# = ...`, or `return total#`. `#` belongs on
-the declaration and on an explicit mutable method receiver, not on ordinary
-expressions.
+Never write `total# = ...`, `done# = ...`, or `return total#`: ordinary
+payload expressions use the bare binding. A declaration defines its H/P
+authority. In a handle-selecting call or pattern, `#` can only request that
+already-declared authority; it never upgrades the declaration.
 
 ## Shapes, shared authority, and `cede`
 
@@ -129,7 +130,7 @@ Reject an empty input before the loop. The limit check must occur before
 | Compiler symptom | First check |
 | --- | --- |
 | Mutable payload capability needed | Declare `auto name# = ...`; use `name#.method()` for its mutating method |
-| `#` illegal in an everyday expression | Remove it from assignment, return, and arithmetic; retain it at declaration/mutable receiver |
+| `#` illegal in an everyday expression | Remove it from assignment, return, and arithmetic; for a handle call or pattern, inspect the declaration before requesting H/P authority |
 | `&value` does not name a variable | Use `auto Alias::Some(&value)` |
 | Cede obligation incomplete | Forward, store, consume, or `return cede value` on every required path |
 | Moved `Result` | Check `is_err()` in its own statement, then consume once with `unwrap()` or a match |
