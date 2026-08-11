@@ -4,6 +4,21 @@ Toka 1.0 exposes deterministic compiler facts for editors and AI coding tools.
 These interfaces report compiler semantics; consumers do not need to infer
 symbols or repairs from rendered terminal text.
 
+## Completion context
+
+The experimental [AI Completion Card v0.1](ai_completion_card_v0.1.md) is the
+release-matched, compact language context for a coding agent. Load it once
+before an edit. It describes common source forms; the JSON protocols below
+remain the compiler-authoritative evidence for the candidate program.
+
+For a sustained agent session, keep only the completion card and one or two
+relevant compiler-verified code examples. Do not replay raw failed diagnostics
+or an entire previous conversation into every request. A focused workflow is:
+
+```text
+completion card -> index contract -> edit -> check --json -> focused evidence -> project tests
+```
+
 ## JSON stdout contract
 
 For the JSON CLI commands named below, standard output is exactly one JSON

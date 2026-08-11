@@ -21,6 +21,9 @@ new language syntax or a new `.tki` compatibility format.
   path in generated package or executable names.
 - Installed `toka add` and `toka fetch` locate their package helper through
   the SDK's own library root; users do not need to export `TOKA_LIB` first.
+- The SDK includes the experimental, release-matched AI Completion Card v0.1
+  for coding agents; compiler JSON evidence and project tests remain
+  authoritative for every proposed edit.
 - The four blocking release architectures are explicit: Linux x64/arm64 and
   macOS x64/arm64. Windows/MSYS2 remains non-blocking dogfood evidence.
 

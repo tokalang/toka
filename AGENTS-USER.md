@@ -35,6 +35,26 @@ toka build
 It resolves `official/regex` from the public catalog and records the exact
 archive digest in `package.lock`.
 
+## 1.1 Give the coding agent the release-matched language card
+
+Before the first Toka edit, provide the coding agent with the installed
+[AI Completion Card](docs/ai_completion_card_v0.1.md). It gives compact,
+versioned syntax and semantic patterns for mutation, borrowing, shared field
+authority, and `cede`; it does not override the compiler or a package contract.
+
+Use this order for a focused edit:
+
+1. load the release-matched completion card once;
+2. inspect the relevant declaration with `toka index --json`;
+3. make the smallest edit;
+4. use `toka check --json` and a focused evidence command when ownership or
+   permissions are involved; and
+5. run the package qualification command.
+
+For a continuing project, retain at most one or two relevant, compiler-verified
+code examples. Do not keep raw failed compiler output or an unbounded chat
+history as the agent's memory.
+
 ## 2. Define a narrow package boundary
 
 Before writing implementation code, record:
