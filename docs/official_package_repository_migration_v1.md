@@ -43,6 +43,13 @@ public release is [`v0.1.0`](https://github.com/tokalang/router/releases/tag/v0.
 It had no prior public monorepo release, so this is its first source and
 release record.
 
+`official/openai_compat` completed the same cutover on 2026-08-11. Its
+successor source is [`tokalang/openai_compat`](https://github.com/tokalang/openai_compat),
+whose first registry-eligible release is
+[`v0.1.1`](https://github.com/tokalang/openai_compat/releases/tag/v0.1.1).
+The preceding `v0.1.0` source snapshot is deliberately absent from the catalog:
+its archive did not use the required `toka publish` package-root layout.
+
 The new repository owns package CI, issues, releases, and its future source
 tags. Its first public release is a real SemVer successor, such as `v0.1.1`.
 That release receives a GitHub archive and a new immutable catalog version
@@ -65,4 +72,9 @@ is the retained exact-version consumer fixture.
 `official/router@0.1.0` passed standalone Linux and macOS qualification and a
 fresh public-registry/offline consumer replay before its monorepo root was
 removed. [`examples/registry_router_consumer`](../examples/registry_router_consumer)
+is the retained exact-version consumer fixture.
+
+`official/openai_compat@0.1.1` passed standalone Linux and macOS qualification
+and a fresh public-registry/offline consumer replay before its monorepo root was
+removed. [`examples/registry_openai_compat_consumer`](../examples/registry_openai_compat_consumer)
 is the retained exact-version consumer fixture.

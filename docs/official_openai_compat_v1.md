@@ -1,8 +1,13 @@
 # `official/openai_compat` v1 — Chat Completions Protocol Package
 
-Status: **incubating v1 implementation**. The source-package and locked-local
-consumer acceptance matrix passes; standalone extraction and public release
-remain separate gates.
+Status: **released v1**. The canonical source is
+[`tokalang/openai_compat`](https://github.com/tokalang/openai_compat), whose
+first registry-eligible release is
+[`v0.1.1`](https://github.com/tokalang/openai_compat/releases/tag/v0.1.1).
+It passed standalone Linux/macOS qualification and fresh public-registry plus
+offline-consumer replay. The preceding `v0.1.0` source snapshot is intentionally
+not a catalog release because its archive did not use the required package-root
+layout.
 
 `official/openai_compat` is an optional, transport-neutral package for the
 OpenAI-compatible `/v1/chat/completions` protocol. It owns typed request and
