@@ -3,7 +3,7 @@
 
 import core/option::{Option}
 import core/result::{Result}
-import official/openai_compat/types::{OpenAiApiError, OpenAiCompatError, OpenAiCompatLimits, OpenAiStreamEvent, OpenAiToolCallDelta}
+import official/openai_compat/types::{OpenAiApiError, OpenAiCompatError, OpenAiCompatLimits, OpenAiStreamEvent, OpenAiToolCallDelta, OpenAiUsage}
 import std/vec::{Vec}
 import stdx/net/sse::{SseEvent}
 import stdx/serde/json::{JsonNode, json_skip_whitespace}
@@ -25,6 +25,40 @@ fn integer_node(cede value: JsonNode) -> Option<i32> {
     }
 }
 
+fn usage_number(cede value: JsonNode) -> Option<usize> {
+    match cede value {
+        auto JsonNode::NumNode(number) => {
+            if number < 0.0 || number > 2147483647.0 { return Option<usize>::None }
+            auto whole = number as i32
+            if whole as f64 != number { return Option<usize>::None }
+            return Option<usize>::Some(whole as usize)
+        }
+        _ => return Option<usize>::None
+    }
+}
+
+fn decode_usage(cede value: JsonNode) -> Result<OpenAiUsage, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::ObjectNode('raw_usage) => {
+            auto usage# = cede 'raw_usage
+            auto prompt = usage#.remove(string::from("prompt_tokens"))
+            auto completion = usage#.remove(string::from("completion_tokens"))
+            auto total = usage#.remove(string::from("total_tokens"))
+            if prompt.is_none() || completion.is_none() || total.is_none() {
+                return Result<OpenAiUsage, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible usage is missing token counts"))
+            }
+            auto prompt = usage_number(cede prompt.unwrap())
+            auto completion = usage_number(cede completion.unwrap())
+            auto total = usage_number(cede total.unwrap())
+            if prompt.is_none() || completion.is_none() || total.is_none() {
+                return Result<OpenAiUsage, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible usage token counts must be non-negative integers"))
+            }
+            return OpenAiUsage::new(prompt.unwrap(), completion.unwrap(), total.unwrap())
+        }
+        _ => return Result<OpenAiUsage, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible usage must be an object"))
+    }
+}
+
 // JsonNode and its maps own recursive storage. We therefore destructively
 // remove fields from a consumed object rather than using HashMap::get(), which
 // would copy a non-encapsulated JsonNode out of its owner.
@@ -38,7 +72,11 @@ fn decode_tool_call(cede value: JsonNode) -> Result<OpenAiToolCallDelta, OpenAiC
             if index.is_none() { return Result<OpenAiToolCallDelta, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool call index must be a non-negative integer")) }
             auto id_value = object#.remove(string::from("id"))
             auto id# = Option<string>::None
-            if id_value.is_some() { id = string_node(cede id_value.unwrap()) }
+            if id_value.is_some() {
+                auto decoded_id = string_node(cede id_value.unwrap())
+                if decoded_id.is_none() { return Result<OpenAiToolCallDelta, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool call id must be string")) }
+                id = decoded_id
+            }
             auto name# = Option<string>::None
             auto arguments# = Option<string>::None
             auto function_value = object#.remove(string::from("function"))
@@ -47,9 +85,17 @@ fn decode_tool_call(cede value: JsonNode) -> Result<OpenAiToolCallDelta, OpenAiC
                     auto JsonNode::ObjectNode('raw_function) => {
                         auto function# = cede 'raw_function
                         auto name_value = function#.remove(string::from("name"))
-                        if name_value.is_some() { name = string_node(cede name_value.unwrap()) }
+                        if name_value.is_some() {
+                            auto decoded_name = string_node(cede name_value.unwrap())
+                            if decoded_name.is_none() { return Result<OpenAiToolCallDelta, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool function name must be string")) }
+                            name = decoded_name
+                        }
                         auto arguments_value = function#.remove(string::from("arguments"))
-                        if arguments_value.is_some() { arguments = string_node(cede arguments_value.unwrap()) }
+                        if arguments_value.is_some() {
+                            auto decoded_arguments = string_node(cede arguments_value.unwrap())
+                            if decoded_arguments.is_none() { return Result<OpenAiToolCallDelta, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool function arguments must be string")) }
+                            arguments = decoded_arguments
+                        }
                     }
                     _ => return Result<OpenAiToolCallDelta, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool function must be an object"))
                 }
@@ -64,15 +110,38 @@ fn decode_choice(cede value: JsonNode, limit: usize, events#: Vec<OpenAiStreamEv
     match cede value {
         auto JsonNode::ObjectNode('raw_choice) => {
             auto choice# = cede 'raw_choice
+            auto choice_index = choice#.remove(string::from("index"))
+            if choice_index.is_some() {
+                auto index = integer_node(cede choice_index.unwrap())
+                if index.is_none() {
+                    return Result<(), OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 supports only choice index zero"))
+                }
+                if index.unwrap() != 0:i32 {
+                    return Result<(), OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 supports only choice index zero"))
+                }
+            }
             auto delta_value = choice#.remove(string::from("delta"))
             if delta_value.is_some() {
                 match cede delta_value.unwrap() {
                     auto JsonNode::ObjectNode('raw_delta) => {
                         auto delta# = cede 'raw_delta
+                        auto role_value = delta#.remove(string::from("role"))
+                        if role_value.is_some() {
+                            auto role = string_node(cede role_value.unwrap())
+                            if role.is_none() { return Result<(), OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible delta role must be string")) }
+                            events#.push(cede OpenAiStreamEvent::RoleDelta(role.unwrap()))
+                        }
                         auto content_value = delta#.remove(string::from("content"))
                         if content_value.is_some() {
                             auto content = string_node(cede content_value.unwrap())
-                            if content.is_some() { events#.push(cede OpenAiStreamEvent::TextDelta(content.unwrap())) }
+                            if content.is_none() { return Result<(), OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible delta content must be string")) }
+                            events#.push(cede OpenAiStreamEvent::TextDelta(content.unwrap()))
+                        }
+                        auto refusal_value = delta#.remove(string::from("refusal"))
+                        if refusal_value.is_some() {
+                            auto refusal = string_node(cede refusal_value.unwrap())
+                            if refusal.is_none() { return Result<(), OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible delta refusal must be string")) }
+                            events#.push(cede OpenAiStreamEvent::RefusalDelta(refusal.unwrap()))
                         }
                         auto calls_value = delta#.remove(string::from("tool_calls"))
                         if calls_value.is_some() {
@@ -143,10 +212,18 @@ pub fn decode_sse_event(cede input: SseEvent, limits: OpenAiCompatLimits) -> Res
                         if message.is_none() { return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible error message must be string")) }
                         auto kind_value = failure#.remove(string::from("type"))
                         auto kind# = Option<string>::None
-                        if kind_value.is_some() { kind = string_node(cede kind_value.unwrap()) }
+                        if kind_value.is_some() {
+                            auto decoded_kind = string_node(cede kind_value.unwrap())
+                            if decoded_kind.is_none() { return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible error type must be string")) }
+                            kind = decoded_kind
+                        }
                         auto code_value = failure#.remove(string::from("code"))
                         auto code# = Option<string>::None
-                        if code_value.is_some() { code = string_node(cede code_value.unwrap()) }
+                        if code_value.is_some() {
+                            auto decoded_code = string_node(cede code_value.unwrap())
+                            if decoded_code.is_none() { return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible error code must be string")) }
+                            code = decoded_code
+                        }
                         auto api_events# = Vec<OpenAiStreamEvent>::new()
                         api_events#.push(cede OpenAiStreamEvent::ApiError(OpenAiApiError::new(cede message.unwrap(), cede kind, cede code)))
                         return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Ok(cede api_events)
@@ -154,12 +231,21 @@ pub fn decode_sse_event(cede input: SseEvent, limits: OpenAiCompatLimits) -> Res
                     _ => return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible error must be an object"))
                 }
             }
+            auto events# = Vec<OpenAiStreamEvent>::new()
+            auto usage_value = root#.remove(string::from("usage"))
+            if usage_value.is_some() {
+                auto usage = decode_usage(cede usage_value.unwrap())
+                if usage.is_err() { return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(usage.unwrap_err()) }
+                events#.push(cede OpenAiStreamEvent::Usage(usage.unwrap()))
+            }
             auto choices_value = root#.remove(string::from("choices"))
             if choices_value.is_none() { return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible chunk is missing choices")) }
-            auto events# = Vec<OpenAiStreamEvent>::new()
             match cede choices_value.unwrap() {
                 auto JsonNode::ArrayNode('values) => {
                     auto values# = cede 'values
+                    if values.len() > 1:usize {
+                        return Result<Vec<OpenAiStreamEvent>, OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 supports one choice per stream chunk"))
+                    }
                     // Preserve the provider's choice order while consuming JsonNode
                     // values without copying their recursive storage.
                     auto ordered_choices# = Vec<JsonNode>::new()

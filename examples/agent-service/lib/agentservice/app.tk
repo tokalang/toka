@@ -3,7 +3,7 @@
 
 import core/option::{Option}
 import core/result::{Result}
-import official/openai_compat::{ChatMessage, ChatRequest, OpenAiCompatLimits, OpenAiStreamEvent, decode_sse_event}
+import official/openai_compat::{ChatMessage, ChatRequest, OpenAiAssemblyLimits, OpenAiCompatLimits, OpenAiStreamEvent, StreamAssembler, decode_sse_event}
 import official/postgres::{PostgresParam, PostgresPool, PostgresQueryLimits}
 import official/redis::{RedisCommand, RedisPool, RedisValue}
 import official/router::{Router}
@@ -321,8 +321,9 @@ impl AgentService {
                 auto compat_limits = OpenAiCompatLimits::new(65536:usize, 32:usize)
                 if compat_limits.is_err() { response#.close(); return Result<string, string>::Err(string::from("agent OpenAI-compatible policy is invalid")) }
                 auto compat_limits = compat_limits.unwrap()
-                auto answer# = string::from("")
-                auto completed# = false
+                auto assembly_limits = OpenAiAssemblyLimits::new(262144:usize, 32:usize, 65536:usize)
+                if assembly_limits.is_err() { response#.close(); return Result<string, string>::Err(string::from("agent OpenAI-compatible assembly policy is invalid")) }
+                auto assembler# = StreamAssembler::new(cede assembly_limits.unwrap())
                 loop true {
                     auto framed = read_http_chunk_async(response, decoder, 'config.timeout_ms).await
                     if framed.is_err() { response#.close(); return Result<string, string>::Err(string::from("OpenAI-compatible SSE stream failed")) }
@@ -341,11 +342,18 @@ impl AgentService {
                                 auto ordered_semantic# = Vec<OpenAiStreamEvent>::new()
                                 loop semantic_events.len() > 0:usize { ordered_semantic#.push(cede semantic_events#.pop().unwrap()) }
                                 loop ordered_semantic.len() > 0:usize {
-                                    match cede ordered_semantic#.pop().unwrap() {
-                                        auto OpenAiStreamEvent::TextDelta('text) => { answer#.push_str('text.as_str()); self#.emit(run_id, "model.delta", 'text.as_str()) }
+                                    auto event# = ordered_semantic#.pop().unwrap()
+                                    auto assembly_event# = event.clone()
+                                    auto assembled = assembler#.push(assembly_event)
+                                    if assembled.is_err() { response#.close(); return Result<string, string>::Err(assembled.unwrap_err().message()) }
+                                    match cede event {
+                                        auto OpenAiStreamEvent::RoleDelta('role) => self#.emit(run_id, "model.role", 'role.as_str())
+                                        auto OpenAiStreamEvent::TextDelta('text) => self#.emit(run_id, "model.delta", 'text.as_str())
                                         auto OpenAiStreamEvent::ToolCallDelta('delta) => { self#.emit(run_id, "model.tool_call_delta", "received") }
-                                        auto OpenAiStreamEvent::Completed(_) => completed = true
-                                        auto OpenAiStreamEvent::ApiError('failure) => { response#.close(); return Result<string, string>::Err('failure.message()) }
+                                        auto OpenAiStreamEvent::RefusalDelta('text) => self#.emit(run_id, "model.refusal_delta", 'text.as_str())
+                                        auto OpenAiStreamEvent::Usage(_) => self#.emit(run_id, "model.usage", "received")
+                                        auto OpenAiStreamEvent::Completed(_) => self#.emit(run_id, "model.stream.completed", "received")
+                                        auto OpenAiStreamEvent::ApiError(_) => {}
                                     }
                                 }
                             }
@@ -353,8 +361,17 @@ impl AgentService {
                     }
                 }
                 response#.close()
-                if !completed { return Result<string, string>::Err(string::from("OpenAI-compatible SSE stream ended without completion")) }
-                return Result<string, string>::Ok(cede answer)
+                auto assembled = assembler#.finish()
+                if assembled.is_err() { return Result<string, string>::Err(assembled.unwrap_err().message()) }
+                auto turn = assembled.unwrap()
+                if turn.tool_calls().len() > 0:usize {
+                    return Result<string, string>::Err(string::from("agent service does not execute model tool calls in this provider path"))
+                }
+                auto refusal = turn.refusal()
+                if refusal.is_some() { return Result<string, string>::Err(refusal.unwrap()) }
+                auto answer = turn.content()
+                if answer.is_none() { return Result<string, string>::Err(string::from("OpenAI-compatible completion has no text content")) }
+                return Result<string, string>::Ok(cede answer.unwrap())
             }
         }
     }

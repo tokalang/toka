@@ -1,0 +1,236 @@
+// One non-streaming Chat Completions JSON response -> owned protocol result.
+
+import core/option::{Option}
+import core/result::{Result}
+import official/openai_compat/types::{OpenAiApiError, OpenAiAssistantTurn, OpenAiCompatError, OpenAiCompatLimits, OpenAiCompletion, OpenAiToolCall, OpenAiUsage}
+import std/vec::{Vec}
+import stdx/serde/json::{JsonNode, json_skip_whitespace}
+
+fn required_string(cede value: JsonNode, field: str) -> Result<string, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::StrNode('text) => return Result<string, OpenAiCompatError>::Ok(cede 'text)
+        _ => return Result<string, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", field))
+    }
+}
+
+fn optional_string(cede value: JsonNode, field: str) -> Result<Option<string>, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::NullNode(_) => return Result<Option<string>, OpenAiCompatError>::Ok(Option<string>::None)
+        auto JsonNode::StrNode('text) => return Result<Option<string>, OpenAiCompatError>::Ok(Option<string>::Some(cede 'text))
+        _ => return Result<Option<string>, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", field))
+    }
+}
+
+fn usage_number(cede value: JsonNode) -> Option<usize> {
+    match cede value {
+        auto JsonNode::NumNode(number) => {
+            if number < 0.0 || number > 2147483647.0 { return Option<usize>::None }
+            auto whole = number as i32
+            if whole as f64 != number { return Option<usize>::None }
+            return Option<usize>::Some(whole as usize)
+        }
+        _ => return Option<usize>::None
+    }
+}
+
+fn decode_usage(cede value: JsonNode) -> Result<OpenAiUsage, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::ObjectNode('raw_usage) => {
+            auto usage# = cede 'raw_usage
+            auto prompt = usage#.remove(string::from("prompt_tokens"))
+            auto completion = usage#.remove(string::from("completion_tokens"))
+            auto total = usage#.remove(string::from("total_tokens"))
+            if prompt.is_none() || completion.is_none() || total.is_none() {
+                return Result<OpenAiUsage, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible usage is missing token counts"))
+            }
+            auto prompt = usage_number(cede prompt.unwrap())
+            auto completion = usage_number(cede completion.unwrap())
+            auto total = usage_number(cede total.unwrap())
+            if prompt.is_none() || completion.is_none() || total.is_none() {
+                return Result<OpenAiUsage, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible usage token counts must be non-negative integers"))
+            }
+            return OpenAiUsage::new(prompt.unwrap(), completion.unwrap(), total.unwrap())
+        }
+        _ => return Result<OpenAiUsage, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible usage must be an object"))
+    }
+}
+
+fn decode_tool_call(cede value: JsonNode) -> Result<OpenAiToolCall, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::ObjectNode('raw_call) => {
+            auto call# = cede 'raw_call
+            auto id_value = call#.remove(string::from("id"))
+            auto type_value = call#.remove(string::from("type"))
+            auto function_value = call#.remove(string::from("function"))
+            if id_value.is_none() || type_value.is_none() || function_value.is_none() {
+                return Result<OpenAiToolCall, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool call is missing id, type, or function"))
+            }
+            auto id = required_string(cede id_value.unwrap(), "OpenAI-compatible tool call id must be string")
+            auto kind = required_string(cede type_value.unwrap(), "OpenAI-compatible tool call type must be string")
+            if id.is_err() { return Result<OpenAiToolCall, OpenAiCompatError>::Err(id.unwrap_err()) }
+            if kind.is_err() { return Result<OpenAiToolCall, OpenAiCompatError>::Err(kind.unwrap_err()) }
+            if !kind.unwrap().as_str().equals("function") {
+                return Result<OpenAiToolCall, OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 supports only function tool calls"))
+            }
+            match cede function_value.unwrap() {
+                auto JsonNode::ObjectNode('raw_function) => {
+                    auto function# = cede 'raw_function
+                    auto name_value = function#.remove(string::from("name"))
+                    auto arguments_value = function#.remove(string::from("arguments"))
+                    if name_value.is_none() || arguments_value.is_none() {
+                        return Result<OpenAiToolCall, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool function is missing name or arguments"))
+                    }
+                    auto name = required_string(cede name_value.unwrap(), "OpenAI-compatible tool name must be string")
+                    auto arguments = required_string(cede arguments_value.unwrap(), "OpenAI-compatible tool arguments must be string")
+                    if name.is_err() { return Result<OpenAiToolCall, OpenAiCompatError>::Err(name.unwrap_err()) }
+                    if arguments.is_err() { return Result<OpenAiToolCall, OpenAiCompatError>::Err(arguments.unwrap_err()) }
+                    return OpenAiToolCall::new(id.unwrap().as_str(), name.unwrap().as_str(), arguments.unwrap().as_str())
+                }
+                _ => return Result<OpenAiToolCall, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool function must be an object"))
+            }
+        }
+        _ => return Result<OpenAiToolCall, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible tool call must be an object"))
+    }
+}
+
+fn decode_message(cede value: JsonNode, limits: OpenAiCompatLimits) -> Result<OpenAiAssistantTurn, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::ObjectNode('raw_message) => {
+            auto message# = cede 'raw_message
+            auto role_value = message#.remove(string::from("role"))
+            auto content_value = message#.remove(string::from("content"))
+            if role_value.is_none() || content_value.is_none() {
+                return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible message is missing role or content"))
+            }
+            auto role = required_string(cede role_value.unwrap(), "OpenAI-compatible message role must be string")
+            if role.is_err() { return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(role.unwrap_err()) }
+            auto role = role.unwrap()
+            if !role.as_str().equals("assistant") {
+                return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 completion message role must be assistant"))
+            }
+            auto content = optional_string(cede content_value.unwrap(), "OpenAI-compatible message content must be string or null")
+            if content.is_err() { return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(content.unwrap_err()) }
+            auto refusal# = Option<string>::None
+            auto refusal_value = message#.remove(string::from("refusal"))
+            if refusal_value.is_some() {
+                auto decoded_refusal = optional_string(cede refusal_value.unwrap(), "OpenAI-compatible message refusal must be string or null")
+                if decoded_refusal.is_err() { return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(decoded_refusal.unwrap_err()) }
+                refusal = decoded_refusal.unwrap()
+            }
+            auto calls# = Vec<OpenAiToolCall>::new()
+            auto calls_value = message#.remove(string::from("tool_calls"))
+            if calls_value.is_some() {
+                match cede calls_value.unwrap() {
+                    auto JsonNode::ArrayNode('raw_calls) => {
+                        auto raw_calls# = cede 'raw_calls
+                        if raw_calls.len() > limits.max_tool_calls_per_chunk() {
+                            return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(OpenAiCompatError::new("limit", "OpenAI-compatible completion has too many tool calls"))
+                        }
+                        auto ordered# = Vec<JsonNode>::new()
+                        loop raw_calls.len() > 0:usize { ordered#.push(cede raw_calls#.pop().unwrap()) }
+                        loop ordered.len() > 0:usize {
+                            auto decoded = decode_tool_call(cede ordered#.pop().unwrap())
+                            if decoded.is_err() { return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(decoded.unwrap_err()) }
+                            calls#.push(cede decoded.unwrap())
+                        }
+                    }
+                    _ => return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible message tool_calls must be an array"))
+                }
+            }
+            return Result<OpenAiAssistantTurn, OpenAiCompatError>::Ok(OpenAiAssistantTurn::new(Option<string>::Some(cede role), cede content.unwrap(), cede refusal, cede calls, Option<string>::None, Option<OpenAiUsage>::None))
+        }
+        _ => return Result<OpenAiAssistantTurn, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible choice message must be an object"))
+    }
+}
+
+fn decode_provider_error(cede value: JsonNode) -> Result<OpenAiApiError, OpenAiCompatError> {
+    match cede value {
+        auto JsonNode::ObjectNode('raw_error) => {
+            auto error# = cede 'raw_error
+            auto message_value = error#.remove(string::from("message"))
+            if message_value.is_none() { return Result<OpenAiApiError, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible error is missing message")) }
+            auto message = required_string(cede message_value.unwrap(), "OpenAI-compatible error message must be string")
+            if message.is_err() { return Result<OpenAiApiError, OpenAiCompatError>::Err(message.unwrap_err()) }
+            auto kind# = Option<string>::None
+            auto kind_value = error#.remove(string::from("type"))
+            if kind_value.is_some() {
+                auto decoded_kind = optional_string(cede kind_value.unwrap(), "OpenAI-compatible error type must be string or null")
+                if decoded_kind.is_err() { return Result<OpenAiApiError, OpenAiCompatError>::Err(decoded_kind.unwrap_err()) }
+                kind = decoded_kind.unwrap()
+            }
+            auto code# = Option<string>::None
+            auto code_value = error#.remove(string::from("code"))
+            if code_value.is_some() {
+                auto decoded_code = optional_string(cede code_value.unwrap(), "OpenAI-compatible error code must be string or null")
+                if decoded_code.is_err() { return Result<OpenAiApiError, OpenAiCompatError>::Err(decoded_code.unwrap_err()) }
+                code = decoded_code.unwrap()
+            }
+            return Result<OpenAiApiError, OpenAiCompatError>::Ok(OpenAiApiError::new(cede message.unwrap(), cede kind, cede code))
+        }
+        _ => return Result<OpenAiApiError, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible error must be an object"))
+    }
+}
+
+pub fn decode_completion_json(input: str, limits: OpenAiCompatLimits) -> Result<OpenAiCompletion, OpenAiCompatError> {
+    if input.len() > limits.max_json_bytes() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("limit", "OpenAI-compatible completion JSON exceeds configured byte limit")) }
+    auto root# = JsonNode::NullNode(0)
+    auto parsed = root#.parse_json(input)
+    if parsed.is_err() {
+        return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("json", "OpenAI-compatible completion is invalid JSON"))
+    }
+    if json_skip_whitespace(parsed.unwrap()).len() != 0:usize {
+        return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("json", "OpenAI-compatible completion is invalid JSON"))
+    }
+    match cede root {
+        auto JsonNode::ObjectNode('raw_root) => {
+            auto root# = cede 'raw_root
+            auto error_value = root#.remove(string::from("error"))
+            if error_value.is_some() {
+                auto provider_error = decode_provider_error(cede error_value.unwrap())
+                if provider_error.is_err() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(provider_error.unwrap_err()) }
+                return Result<OpenAiCompletion, OpenAiCompatError>::Ok(OpenAiCompletion::ApiError(provider_error.unwrap()))
+            }
+            auto choices_value = root#.remove(string::from("choices"))
+            if choices_value.is_none() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible completion is missing choices")) }
+            match cede choices_value.unwrap() {
+                auto JsonNode::ArrayNode('raw_choices) => {
+                    auto choices# = cede 'raw_choices
+                    if choices.len() != 1:usize { return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 completion requires exactly one choice")) }
+                    match cede choices#.pop().unwrap() {
+                        auto JsonNode::ObjectNode('raw_choice) => {
+                            auto choice# = cede 'raw_choice
+                            auto index_value = choice#.remove(string::from("index"))
+                            if index_value.is_some() {
+                                match cede index_value.unwrap() {
+                                    auto JsonNode::NumNode(index) => {
+                                        if index != 0.0 { return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("scope", "OpenAI-compatible v1 supports only choice index zero")) }
+                                    }
+                                    _ => return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible choice index must be zero"))
+                                }
+                            }
+                            auto message_value = choice#.remove(string::from("message"))
+                            auto finish_value = choice#.remove(string::from("finish_reason"))
+                            if message_value.is_none() || finish_value.is_none() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible completion choice is missing message or finish_reason")) }
+                            auto turn = decode_message(cede message_value.unwrap(), limits.clone())
+                            if turn.is_err() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(turn.unwrap_err()) }
+                            auto reason = optional_string(cede finish_value.unwrap(), "OpenAI-compatible finish_reason must be string or null")
+                            if reason.is_err() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(reason.unwrap_err()) }
+                            auto usage# = Option<OpenAiUsage>::None
+                            auto usage_value = root#.remove(string::from("usage"))
+                            if usage_value.is_some() {
+                                auto decoded_usage = decode_usage(cede usage_value.unwrap())
+                                if decoded_usage.is_err() { return Result<OpenAiCompletion, OpenAiCompatError>::Err(decoded_usage.unwrap_err()) }
+                                usage = Option<OpenAiUsage>::Some(decoded_usage.unwrap())
+                            }
+                            auto result = turn.unwrap()
+                            return Result<OpenAiCompletion, OpenAiCompatError>::Ok(OpenAiCompletion::AssistantTurn(OpenAiAssistantTurn::new(result.role(), result.content(), result.refusal(), cede result.tool_calls(), cede reason.unwrap(), cede usage)))
+                        }
+                        _ => return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible completion choice must be an object"))
+                    }
+                }
+                _ => return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible completion choices must be an array"))
+            }
+        }
+        _ => return Result<OpenAiCompletion, OpenAiCompatError>::Err(OpenAiCompatError::new("protocol", "OpenAI-compatible completion root must be an object"))
+    }
+}

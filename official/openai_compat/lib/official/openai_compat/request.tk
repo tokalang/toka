@@ -10,13 +10,6 @@ pub shape ChatMessage (role: string, content: string, tool_call_id: Option<strin
 pub shape ChatTool (name: string, description: Option<string>, parameters_json: string)
 pub shape ChatRequest (model: string, messages#: Vec<ChatMessage>, tools#: Vec<ChatTool>, stream: bool, include_usage: bool)
 
-fn clone_option_string(value: Option<string>) -> Option<string> {
-    match value {
-        auto Option<string>::Some('text) => return Option<string>::Some('text.clone())
-        _ => return Option<string>::None
-    }
-}
-
 fn valid_tool_name(value: str) -> bool {
     if value.len() == 0:usize || value.len() > 64:usize { return false }
     auto index# = 0:usize
@@ -61,13 +54,7 @@ fn append_tool(cede value: ChatTool, out#: string) {
     auto tool = cede value
     out#.push_str("{\"type\":\"function\",\"function\":{\"name\":")
     write_escaped_json_string(tool.name.as_str(), out)
-    match cede tool.description() {
-        auto Option<string>::Some('description) => {
-            out#.push_str(",\"description\":")
-            write_escaped_json_string('description.as_str(), out)
-        }
-        _ => {}
-    }
+    tool.append_description(out)
     out#.push_str(",\"parameters\":")
     out#.push_str(tool.parameters_json.as_str())
     out#.push_str("}}")
@@ -87,11 +74,21 @@ impl ChatMessage {
         return Result<ChatMessage, OpenAiCompatError>::Ok(ChatMessage(role = string::from("tool"), content = string::from(content), tool_call_id = Option<string>::Some(string::from(tool_call_id))))
     }
     pub fn clone(self) -> ChatMessage {
-        return ChatMessage(role = self.role.clone(), content = self.content.clone(), tool_call_id = clone_option_string(self.tool_call_id))
+        auto tool_call_id# = Option<string>::None
+        match self.tool_call_id {
+            auto Option<string>::Some(&value) => tool_call_id = Option<string>::Some(value.clone())
+            _ => {}
+        }
+        return ChatMessage(role = self.role.clone(), content = self.content.clone(), tool_call_id = cede tool_call_id)
     }
     pub fn role(self) -> string { return self.role.clone() }
     pub fn content(self) -> string { return self.content.clone() }
-    pub fn tool_call_id(self) -> Option<string> { return clone_option_string(self.tool_call_id) }
+    pub fn tool_call_id(self) -> Option<string> {
+        match self.tool_call_id {
+            auto Option<string>::Some(&value) => return Option<string>::Some(value.clone())
+            _ => return Option<string>::None
+        }
+    }
 }
 
 impl ChatTool@Encap { fn drop(self#) {} }
@@ -105,11 +102,30 @@ impl ChatTool {
         if description.len() == 0:usize { self.description = Option<string>::None }
         else { self.description = Option<string>::Some(string::from(description)) }
     }
+    fn append_description(self, out#: string) {
+        match self.description {
+            auto Option<string>::Some(&description) => {
+                out#.push_str(",\"description\":")
+                write_escaped_json_string(description.as_str(), out)
+            }
+            _ => {}
+        }
+    }
     pub fn clone(self) -> ChatTool {
-        return ChatTool(name = self.name.clone(), description = clone_option_string(self.description), parameters_json = self.parameters_json.clone())
+        auto description# = Option<string>::None
+        match self.description {
+            auto Option<string>::Some(&value) => description = Option<string>::Some(value.clone())
+            _ => {}
+        }
+        return ChatTool(name = self.name.clone(), description = cede description, parameters_json = self.parameters_json.clone())
     }
     pub fn name(self) -> string { return self.name.clone() }
-    pub fn description(self) -> Option<string> { return clone_option_string(self.description) }
+    pub fn description(self) -> Option<string> {
+        match self.description {
+            auto Option<string>::Some(&value) => return Option<string>::Some(value.clone())
+            _ => return Option<string>::None
+        }
+    }
 }
 
 impl ChatRequest@Encap { fn drop(self#) {} }

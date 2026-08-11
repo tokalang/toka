@@ -2,10 +2,16 @@
 
 pub import official/openai_compat/types::{
     OpenAiApiError,
+    OpenAiAssistantTurn,
     OpenAiCompatError,
+    OpenAiCompletion,
     OpenAiCompatLimits,
     OpenAiStreamEvent,
+    OpenAiToolCall,
+    OpenAiUsage,
     OpenAiToolCallDelta
 }
 pub import official/openai_compat/request::{ChatMessage, ChatRequest, ChatTool}
+pub import official/openai_compat/assemble::{OpenAiAssemblyLimits, StreamAssembler}
+pub import official/openai_compat/response::{decode_completion_json}
 pub import official/openai_compat/stream::{decode_sse_event}

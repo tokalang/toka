@@ -13,9 +13,9 @@ pub const PACKAGE = (
 
 pub const AI_CONTRACT = (
     schema = "toka-official-package-v1",
-    summary = "Transport-neutral OpenAI-compatible Chat Completions request and SSE data semantics.",
-    capabilities = ("encode owned text/tool-result chat messages", "encode validated function tools", "decode text deltas", "decode tool-call deltas", "recognize provider [DONE]", "surface structured provider API errors"),
+    summary = "Transport-neutral OpenAI-compatible Chat Completions protocol values, codecs, and bounded stream assembly.",
+    capabilities = ("encode owned text/tool-result chat messages", "encode validated function tools", "decode normal completion turns", "decode text/refusal/tool-call stream deltas", "assemble bounded assistant turns", "recognize provider [DONE]", "surface structured provider API errors"),
     non_goals = ("HTTP transport", "SSE framing", "credential storage", "tool execution", "responses API", "JSON-RPC"),
-    safety = ("function schemas are complete JSON objects; JSON and per-chunk tool-call limits are explicit; malformed provider JSON is a typed failure; API errors remain semantic events rather than transport failures"),
+    safety = ("function schemas are complete JSON objects; completion and stream decoding are one-choice fail-closed; JSON, output, tool-count, and tool-argument limits are explicit; conflicting tool identities are rejected; malformed provider JSON is a typed failure; API errors remain protocol values rather than transport failures"),
     qualification = ("python3 tests/qualify_package.py")
 )

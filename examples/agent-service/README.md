@@ -19,10 +19,13 @@ query become the outbound request target, so it supports both
 `/v1/chat/completions` and compatible endpoints such as DeepSeek's
 `/chat/completions`. The key is placed only in the outbound Authorization
 header and is never added to an event or log. The adapter requests a streaming
-response, frames it with `stdx/net/sse`, and interprets it through
-`official/openai_compat`; text deltas become retained NDJSON progress events.
-Provider tool-call deltas are observable but are not executable instructions,
-and durable event replay remains out of scope.
+response, frames it with `stdx/net/sse`, interprets it through
+`official/openai_compat`, then boundedly assembles it; text deltas become
+retained NDJSON progress events. Only a completed assistant turn becomes the
+provider result. Provider tool-call deltas are observable but are not
+executable instructions: this path returns an explicit error for a completed
+tool call rather than silently executing it. Durable event replay remains out
+of scope.
 
 PostgreSQL is expected to provide `agent_runs`, `agent_messages`, and
 `agent_tool_audit` tables. The example writes all three through explicit,

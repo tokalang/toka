@@ -1,7 +1,8 @@
 # `official/openai_compat` v1 — Chat Completions Protocol Package
 
-Status: **approved implementation plan; not releasable until the acceptance
-matrix below passes**.
+Status: **incubating v1 implementation**. The source-package and locked-local
+consumer acceptance matrix passes; standalone extraction and public release
+remain separate gates.
 
 `official/openai_compat` is an optional, transport-neutral package for the
 OpenAI-compatible `/v1/chat/completions` protocol. It owns typed request and
@@ -77,21 +78,20 @@ promise that every internal helper is public API.
 | Request roles | `system`, `developer`, `user`, `assistant`, and `tool` are typed and encoded. |
 | Request content | Owned text content and tool-result text are encoded; multimodal parts are rejected by scope rather than guessed. |
 | Function tools | Name, optional description, and validated JSON-object parameter schema are encoded; execution is never owned. |
-| Non-stream completion | Typed assistant text/refusal/tool calls, finish reason, and usage are decoded. |
-| Streaming completion | Role, text, refusal, indexed tool-call deltas, finish reason, usage, `[DONE]`, and API-error payloads are interpreted in wire order. |
-| Stream assembly | A caller pushes ordered semantic events; bounds prevent unbounded text, tool-call count, or tool-argument growth. Completion requires an explicit terminal event. |
+| Non-stream completion | `decode_completion_json` returns either a typed assistant text/refusal/tool-call turn or a structured provider API error. Exactly one choice at index `0` is supported. |
+| Streaming completion | Role, text, refusal, indexed tool-call deltas, finish reason, usage, `[DONE]`, and API-error payloads are interpreted in wire order. A chunk has at most one choice; usage-only terminal chunks may have no choice. |
+| Stream assembly | A caller lends ordered semantic events to `StreamAssembler::push`; the assembler copies only the state it retains. Bounds prevent unbounded text, tool-call count, or tool-argument growth. Completion requires an explicit terminal event. |
 | Malformed input | Invalid JSON, incompatible shape, invalid field type, duplicate/conflicting tool state, or an exceeded limit returns `OpenAiCompatError`. |
 | Provider extensions | Not interpreted in v1. The decoder may ignore unknown fields only when doing so cannot hide malformed data for a supported field. |
 
 ## Acceptance gate
 
-Before standalone extraction, the package must provide deterministic fixtures
-for each matrix row, including request JSON, a normal non-stream response,
-streamed text, refusal, fragmented tool arguments, usage, `[DONE]`, provider
-API errors, malformed shapes, and all configured bounds. The
-`examples/agent-service` fixture must construct a request through the package
-and assemble a streamed assistant turn through it while keeping HTTP and tool
-policy in the application.
+The in-repository qualification now covers every matrix row: request JSON, a
+normal non-stream response, streamed text, refusal, fragmented tool arguments,
+usage, `[DONE]`, provider API errors, malformed shapes, conflicting tool
+identity, and configured assembly bounds. The `examples/agent-service` fixture
+constructs its request and assembles its streamed turn through this package
+while retaining HTTP and tool policy in the application.
 
 After those checks pass, the normal standalone-package gate applies: source
 checkout qualification, tagged archive digest, public registry consumer,
