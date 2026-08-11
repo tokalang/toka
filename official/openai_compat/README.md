@@ -48,15 +48,21 @@ per decoded chunk. `OpenAiAssemblyLimits` additionally bounds accumulated
 output, tool-call count, and tool-argument bytes. These limits are in addition
 to the lower SSE line/event/buffer limits.
 
-The in-repository source and locked-local package gates pass. The authoritative
-scope and compatibility matrix are in
-[`docs/official_openai_compat_v1.md`](../../docs/official_openai_compat_v1.md);
-standalone extraction and public registry release remain later gates.
+The package-local scope and compatibility matrix are in
+[`docs/openai_compat_v1.md`](docs/openai_compat_v1.md). The in-repository
+source and locked-local package gates pass; standalone extraction and public
+registry release remain later gates.
 
 ## Qualification
 
 ```sh
 python3 official/openai_compat/tests/qualify_package.py
+```
+
+From a standalone checkout, point `TOKA_ROOT` at a built Toka source checkout:
+
+```sh
+TOKA_ROOT=/path/to/toka python3 tests/qualify_package.py
 ```
 
 The fixture covers request encoding, normal and streamed completions, indexed

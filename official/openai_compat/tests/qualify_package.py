@@ -11,8 +11,14 @@ import subprocess
 import tempfile
 
 
-ROOT = Path(__file__).resolve().parents[3]
-PACKAGE = ROOT / "official" / "openai_compat"
+PACKAGE = Path(__file__).resolve().parents[1]
+DEFAULT_TOKA_ROOT = PACKAGE.parents[1]
+
+
+def toka_root() -> Path:
+    """Return the source checkout that supplies the Toka toolchain and SDK."""
+    configured = os.environ.get("TOKA_ROOT")
+    return Path(configured).resolve() if configured else DEFAULT_TOKA_ROOT
 
 
 def run(argv: list[str], cwd: Path, env: dict[str, str]) -> None:
@@ -24,16 +30,20 @@ def run(argv: list[str], cwd: Path, env: dict[str, str]) -> None:
 
 
 def main() -> int:
-    toka = ROOT / "build" / "bin" / "toka"
-    tokac = ROOT / "build" / "bin" / "tokac"
+    root = toka_root()
+    toka = root / "build" / "bin" / "toka"
+    tokac = root / "build" / "bin" / "tokac"
     if not toka.is_file() or not tokac.is_file():
-        raise RuntimeError("build toka and tokac before qualifying official/openai_compat")
+        raise RuntimeError(
+            "build toka and tokac before qualifying openai_compat "
+            "(set TOKA_ROOT when running from a standalone checkout)"
+        )
     with tempfile.TemporaryDirectory(prefix="toka-openai-compat-") as temporary:
         work = Path(temporary)
         sdk = work / "sdk" / "lib"
-        shutil.copytree(ROOT / "lib", sdk)
+        shutil.copytree(root / "lib", sdk)
         (sdk / "toolchain").mkdir(exist_ok=True)
-        shutil.copy2(ROOT / "tools" / "scripts" / "toka_build.py", sdk / "toolchain" / "toka_build.py")
+        shutil.copy2(root / "tools" / "scripts" / "toka_build.py", sdk / "toolchain" / "toka_build.py")
         dependency = work / "openai_compat"
         shutil.copytree(PACKAGE, dependency)
         env = dict(os.environ)
