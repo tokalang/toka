@@ -10,7 +10,7 @@ import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, bui
 
 
 fn print_help() {
-    println("Toka {}", "1.0.0-rc.1")
+    println("Toka {}", "1.0.0-rc.2")
     println("\nUsage: toka <command> [options]\n\nCommands:")
     println("  new <name>   Create a new Toka project (--lib for library)")
     println("  init         Initialize a new Toka project in the current directory")
@@ -1148,6 +1148,10 @@ fn cmd_doctor() -> i32 {
 }
 
 fn main() -> i32 {
+    // Package commands run before cmd_build, so establish the installed SDK's
+    // library root once for every command rather than relying on the caller to
+    // export TOKA_LIB.
+    env::set_var(string::from("TOKA_LIB"), detect_default_lib_path())
     auto argc = env::args_count()
     if argc < 2 {
         print_help()

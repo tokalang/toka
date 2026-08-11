@@ -10,11 +10,11 @@ with one useful capability rather than a wholesale compatibility claim.
 
 ## 1. Prove the SDK before editing
 
-Install a stable SDK normally. To test a published release candidate, use its
-exact tag:
+Install a stable SDK normally. After `v1.0.0-rc.2` is published, test that
+release candidate with its exact tag:
 
 ```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.2
 toka doctor
 toka search regex
 ```
@@ -71,11 +71,13 @@ Use `index` to read the declared API contract before changing a caller. Use
 ownership, transfer, borrowing, or a requested mutable call. They are facts
 reported by the compiler, not permission to bypass a rejected program.
 
-Then run the package's focused test command and, before release, verify a
-consumer can resolve the lock offline:
+`toka test` is optional Preview feedback only; it is not the package's
+qualification command. Run the package's documented focused test command and,
+before release, verify a consumer can resolve the lock offline:
 
 ```sh
-toka test
+toka test # optional Preview scanner
+# package's documented qualification command
 toka build
 TOKA_OFFLINE=1 toka build
 ```

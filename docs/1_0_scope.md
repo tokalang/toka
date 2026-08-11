@@ -13,6 +13,7 @@
 Full 1.0 release guarantee. Every PR must pass the PR Gate checks; every release candidate must pass the defined Release Candidate Gate.
 - **Linux `x86_64`** (glibc / POSIX)
 - **Linux `aarch64`** (ARM64 glibc / POSIX)
+- **macOS `x86_64`** (Intel macOS 15)
 - **macOS `aarch64`** (Apple Silicon ARM64 macOS 12+)
 
 ### Tier 2: Secondary Qualification Platforms

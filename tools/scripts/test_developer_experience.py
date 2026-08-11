@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,12 @@ def run(command, cwd, env=None, expected=0):
 def require(value, message):
     if not value:
         raise RuntimeError(message)
+
+
+def release_version(output, tool):
+    match = re.search(r"\bversion ([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\b", output)
+    require(match is not None, tool + " did not report a release version")
+    return match.group(1)
 
 
 def main():
@@ -65,18 +72,32 @@ def main():
     require(required_fields.issubset(records[0]), "tokac JSON diagnostic schema is incomplete")
     checks.append("tokac-json-diagnostics")
 
-    require("Usage: toka" in run([toka, "--help"], root).stdout, "toka help is incomplete")
+    tokac_version = release_version(run([tokac, "--version"], root).stdout, "tokac")
+    toka_help = run([toka, "--help"], root).stdout
+    require("Usage: toka" in toka_help, "toka help is incomplete")
+    require("Toka " + tokac_version in toka_help,
+            "toka help version does not agree with tokac")
+    toka_version = release_version(run([toka, "--version"], root).stdout, "toka")
     run([toka, "--not-a-real-command"], root, expected=1)
+    tokafmt_version = release_version(run([tokafmt, "--version"], root).stdout, "tokafmt")
     require("tokafmt version" in run([tokafmt, "--version"], root).stdout, "tokafmt version is missing")
     run([tokafmt, "--not-a-real-option"], root, expected=1)
     require("Usage: tokalsp" in run([tokalsp, "--help"], root).stdout,
             "tokalsp help is incomplete")
+    tokalsp_version = release_version(run([tokalsp, "--version"], root).stdout, "tokalsp")
+    require({tokac_version, toka_version, tokafmt_version, tokalsp_version} == {tokac_version},
+            "SDK binaries do not agree on the release version")
     run([tokalsp, "--not-a-real-option"], root, expected=1)
     checks.extend(("toka-help", "toka-unknown-command", "tokafmt-cli",
-                   "tokalsp-cli"))
+                   "tokalsp-cli", "sdk-version-agreement"))
 
     with tempfile.TemporaryDirectory(prefix="toka-developer-experience-") as temp:
         temp_root = Path(temp)
+        preview = run([toka, "test"], temp_root)
+        require("Preview:" in preview.stdout and "not the stable project test contract" in preview.stdout,
+                "toka test is not clearly marked Preview")
+        checks.append("toka-test-preview")
+
         source_dir = temp_root / "project" / "src" / "nested"
         source_dir.mkdir(parents=True)
         source = source_dir / "main.tk"
@@ -127,6 +148,22 @@ def main():
         output = run([installed_toka, "run"], temp_root / "smoke", env=env)
         require("Hello, Toka!" in output.stdout, "installed toka project did not run")
 
+        dependency = temp_root / "local_dependency"
+        dependency_module = dependency / "lib" / "dependency" / "mod.tk"
+        dependency_module.parent.mkdir(parents=True)
+        (dependency / "package.tk").write_text(
+            'pub const PACKAGE = (name = "dependency", version = "1.0.0", dependencies = ())\n',
+            encoding="utf-8",
+        )
+        dependency_module.write_text(
+            "pub fn value() -> i32 { return 1 }\n", encoding="utf-8"
+        )
+        smoke = temp_root / "smoke"
+        run([installed_toka, "add", dependency], smoke, env=env)
+        offline_env = env.copy()
+        offline_env["TOKA_OFFLINE"] = "1"
+        run([installed_toka, "fetch"], smoke, env=offline_env)
+
         absolute_project = temp_root / "absolute_smoke"
         run([installed_toka, "new", absolute_project], temp_root, env=env)
         output = run([installed_toka, "run"], absolute_project, env=env)
@@ -134,6 +171,7 @@ def main():
                 "installed toka absolute-path project did not run")
         checks.extend(("cmake-install", "toka-doctor", "installed-compile-run",
                        "tokac-dwarf-metadata", "installed-new-run",
+                       "installed-package-helper-discovery",
                        "installed-new-absolute-path-run"))
 
     print(json.dumps({

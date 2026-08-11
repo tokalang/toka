@@ -51,8 +51,8 @@ Runs package resolution, compiles `build.tk`, and lets the build script produce 
 
 ## Testing & Quality Assurance
 
-### 1. `toka test`
-Discovers `.tk` files under `tests/`, compiles each test against the project and standard library paths, runs the resulting executables, and prints a compact pass/fail summary.
+### 1. `toka test` (Preview)
+Discovers `.tk` files under `tests/`, compiles each test against the project and standard library paths, runs the resulting executables, and prints a compact pass/fail summary. This is an experimental source-tree scanner, not Toka's stable project-test contract or a package release-qualification command. Each package must document its own qualification command.
 
 ```bash
 toka test

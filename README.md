@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.1 Candidate Notes](docs/release_notes_v1.0.0-rc.1.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.2 Candidate Notes](docs/release_notes_v1.0.0-rc.2.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -60,11 +60,11 @@ Install the latest stable release:
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-To install the published `v1.0.0-rc.1` candidate, name it explicitly rather
+When `v1.0.0-rc.2` is published, install that candidate explicitly rather
 than depending on GitHub's stable-release selector:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.1
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.2
 ```
 
 Build from source to contribute to the compiler or test unreleased changes.
@@ -301,6 +301,6 @@ If you reference the design of the Toka language, including its explicit Hat-Sou
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.1 candidate}
+  note         = {Version 1.0.0-rc.2 candidate}
 }
 ```
