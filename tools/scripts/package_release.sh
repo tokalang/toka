@@ -2,7 +2,7 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v1.0.0-rc.2"}
+VERSION=${1:-"v1.0.0-rc.3"}
 OS=${OS:-""}
 ARCH=${ARCH:-""}
 UNAME_S=$(uname -s)
@@ -73,12 +73,15 @@ cp -a lib/* "${PACKAGE_DIR}/lib/"
 find "${PACKAGE_DIR}" -type d -name __pycache__ -prune -exec rm -rf {} +
 find "${PACKAGE_DIR}" -type f -name '*.pyc' -delete
 
-# The native build module invokes this same-version incremental driver.
-if [ ! -f "tools/scripts/toka_build.py" ]; then
-    echo "Error: Required build driver 'tools/scripts/toka_build.py' not found!"
-    exit 1
-fi
-cp -a tools/scripts/toka_build.py "${PACKAGE_DIR}/lib/toolchain/"
+# These SDK helpers are invoked by the installed manager. Keep the release
+# archive's toolchain directory in lockstep with CMake install().
+for helper in toka_build.py semantic_diff_preview.py; do
+    if [ ! -f "tools/scripts/${helper}" ]; then
+        echo "Error: Required SDK helper 'tools/scripts/${helper}' not found!"
+        exit 1
+    fi
+    cp -a "tools/scripts/${helper}" "${PACKAGE_DIR}/lib/toolchain/"
+done
 
 # Copy meta files
 cp README.md "${PACKAGE_DIR}/" || true

@@ -13,6 +13,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 OPERATIONS = {"create", "activate", "await", "await-outcome", "cancel", "drop", "detach"}
 RESULT_STATES = {"pending", "ready-live", "taken", "canceled"}
+QUALIFICATION_FIELDS = {
+    "status", "qualified_scope", "known_behavior", "unqualified_targets",
+    "native_evidence",
+}
 
 
 def require(condition, message):
@@ -39,7 +43,7 @@ def main():
     require(schema["properties"]["version"] == {"const": 1},
             "lifecycle schema version is not frozen")
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
-    require(set(contract) == {"schema", "version", "operations", "result_states", "redline_tests"},
+    require(set(contract) == {"schema", "version", "qualification", "operations", "result_states", "redline_tests"},
             "lifecycle contract fields changed")
     require(contract["schema"] == "toka.taskhandle-lifecycle" and contract["version"] == 1,
             "lifecycle contract identity changed")
@@ -49,11 +53,31 @@ def main():
             "result-state contract is incomplete or changed")
     require({item["value"] for item in contract["result_states"]} == {0, 1, 2, 3},
             "result-state values changed")
+    qualification = contract["qualification"]
+    require(set(qualification) == QUALIFICATION_FIELDS,
+            "qualification record fields changed")
+    require(qualification["status"] == "qualified-subset",
+            "lifecycle contract must state its qualified-subset status")
+    for field in ("qualified_scope", "known_behavior", "unqualified_targets"):
+        require(isinstance(qualification[field], list) and qualification[field],
+                "qualification field is empty: " + field)
+    unqualified = "\n".join(qualification["unqualified_targets"])
+    for target in ("post-normal-claim cancellation suppression",
+                   "cancel-join-drain", "TaskScope", "PlaceState"):
+        require(target in unqualified,
+                "qualification target is not explicitly deferred: " + target)
+    native_evidence = qualification["native_evidence"]
+    require(isinstance(native_evidence, list) and native_evidence,
+            "qualification native evidence is empty")
     for operation in contract["operations"]:
         require(set(operation) == {"name", "source_states", "target_states", "handle_obligation", "result_obligation", "guarantees"},
                 "operation record fields changed")
         require(operation["source_states"] and operation["target_states"] and operation["guarantees"],
                 "operation record is empty")
+        guarantees = "\n".join(operation["guarantees"])
+        require("cancel-join-drain" not in guarantees and
+                "suppress source-visible delivery" not in guarantees,
+                "operation still overstates an unqualified cancellation guarantee")
     for state in contract["result_states"]:
         require(set(state) == {"name", "value", "meaning", "successor_states"},
                 "result-state fields changed")
@@ -85,6 +109,21 @@ def main():
             require(run_result.returncode == 0,
                     "redline failed: %s\n%s%s" %
                     (source, run_result.stdout, run_result.stderr))
+
+    for evidence in native_evidence:
+        require(set(evidence) == {"target", "path", "proves"} and
+                evidence["target"] and evidence["proves"],
+                "native evidence record changed")
+        source = ROOT / evidence["path"]
+        require(source.is_file(), "native evidence source is missing: %s" % source)
+        result = subprocess.run(
+            ["ctest", "--test-dir", str(ROOT / args.build_dir),
+             "--output-on-failure", "-R", "^%s$" % evidence["target"]],
+            cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        require(result.returncode == 0,
+                "native lifecycle evidence failed: %s\n%s%s" %
+                (evidence["target"], result.stdout, result.stderr))
 
     print("TaskHandle Lifecycle Contract v1 gate PASSED")
 

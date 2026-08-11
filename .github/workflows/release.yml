@@ -21,7 +21,7 @@ jobs:
     name: RC gate (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +79,7 @@ jobs:
             label="${{ github.ref_name }}"
           fi
           if [ -z "$label" ] || [ "$label" = "main" ]; then
-            label="v1.0.0-rc.2"
+            label="v1.0.0-rc.3"
           fi
           echo "label=$label" >> "$GITHUB_OUTPUT"
 
@@ -117,8 +117,59 @@ jobs:
             build/release-gate-work-${{ matrix.name }}/logs
           if-no-files-found: error
 
-      - name: Upload release archive
+      - name: Upload release archive artifact
         if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archive-${{ matrix.name }}
+          path: build/toka-${{ steps.version.outputs.label }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish complete release
+    needs: release-gate
+    if: >-
+      needs.release-gate.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release)
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version label
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          label="${{ inputs.tag_name }}"
+          if [ -z "$label" ]; then
+            label="${{ github.ref_name }}"
+          fi
+          if [ -z "$label" ] || [ "$label" = "main" ]; then
+            label="v1.0.0-rc.3"
+          fi
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+
+      - name: Download all release archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-archive-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify complete archive set
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=4
+          actual=$(find release-assets -maxdepth 1 -name 'toka-*.tar.gz' -type f | wc -l | tr -d ' ')
+          if [ "$actual" -ne "$expected" ]; then
+            echo "expected $expected release archives, found $actual" >&2
+            exit 1
+          fi
+
+      - name: Publish complete release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.label }}
@@ -126,6 +177,6 @@ jobs:
           prerelease: ${{ contains(steps.version.outputs.label, '-') }}
           make_latest: false
           fail_on_unmatched_files: true
-          files: build/toka-${{ steps.version.outputs.label }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          files: release-assets/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

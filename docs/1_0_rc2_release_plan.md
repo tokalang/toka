@@ -1,14 +1,19 @@
 # Toka 1.0.0-rc.2 Candidate Qualification Plan
 
-**Status:** In qualification. This plan creates neither a tag nor a public
-release. `v1.0.0-rc.1` remains an immutable, published historical candidate.
+**Status:** Withdrawn. This is a historical qualification plan, not an active
+publication path. `v1.0.0-rc.1` remains an immutable, published historical
+candidate.
 
 ## Decision
 
 On 2026-08-11, maintainers chose `1.0.0-rc.2` for the next public candidate
 from `main`. The candidate keeps the frozen 1.0 language surface and carries
 the post-RC1 developer-experience fixes and machine-interface qualification.
-It does not create syntax, TKI-format, or runtime-contract changes.
+It did not create syntax, TKI-format, or runtime-contract changes. A later
+release audit found that the candidate's public async contract, JSON failure
+paths, package preview path, test exit status, and release publication path
+were not yet honest or complete. The pushed `v1.0.0-rc.2` tag is retained only
+as a withdrawn historical candidate; it must never be moved or published.
 
 ## Candidate Boundary
 
@@ -42,6 +47,7 @@ It does not create syntax, TKI-format, or runtime-contract changes.
    native release-host extraction through `toka doctor`, `toka new`, registry
    resolution, `toka run`, and offline lock replay before announcement.
 
-The result is recorded after qualification in
-[`release_audits/v1.0.0-rc.2.md`](release_audits/v1.0.0-rc.2.md). It is a
-separate historical record from the [RC1 audit](release_audits/v1.0.0-rc.1.md).
+The qualification record remains in
+[`release_audits/v1.0.0-rc.2.md`](release_audits/v1.0.0-rc.2.md), with its
+withdrawal noted. RC3 has a distinct plan in
+[`1_0_rc3_release_plan.md`](1_0_rc3_release_plan.md).

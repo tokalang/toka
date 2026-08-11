@@ -58,7 +58,8 @@ def main():
                 raise SystemExit("missing packaged binary: %s" % binary.name)
             checks.append("binary:" + name)
 
-        for name in ("toka_package.py", "toka_safe_extract.py"):
+        for name in ("toka_package.py", "toka_safe_extract.py",
+                     "semantic_diff_preview.py"):
             helper = package_root / "lib" / "toolchain" / name
             if not helper.is_file():
                 raise SystemExit("missing packaged package helper: %s" % name)
@@ -91,6 +92,30 @@ def main():
         if "Hello, Toka!" not in output:
             raise SystemExit("packaged toka run did not produce expected output")
         checks.append("toka-new-run")
+
+        preview_base = root / "preview_base.tk"
+        preview_candidate = root / "preview_candidate.tk"
+        preview_base.write_text(
+            "pub fn value() -> i32 { return 1 }\n",
+            encoding="utf-8",
+        )
+        preview_candidate.write_text(
+            "pub fn value(value#: i32) -> i32 {\n"
+            "    value = value + 1\n"
+            "    return value\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        preview = run([str(toka), "preview", "--base", preview_base,
+                       "--candidate", preview_candidate], root, env)
+        try:
+            preview_document = json.loads(preview)
+        except json.JSONDecodeError as error:
+            raise SystemExit("packaged toka preview did not emit JSON") from error
+        if preview_document.get("schema") != "toka.semantic-diff-preview" or \
+                preview_document.get("version") != 1:
+            raise SystemExit("packaged toka preview schema changed")
+        checks.append("toka-preview")
 
         dependency = root / "local dependency"
         dependency_module = dependency / "lib" / "dep" / "mod.tk"

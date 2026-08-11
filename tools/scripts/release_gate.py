@@ -183,7 +183,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--version", default="v1.0.0-rc.2")
+    parser.add_argument("--version", default="v1.0.0-rc.3")
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--work-dir", default="/tmp/toka-release-gate")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -271,7 +271,10 @@ def main():
         ("tooling", (
             [sys.executable, "tools/scripts/test_developer_experience.py",
              "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_release_workflow.py"],
             [sys.executable, "tools/scripts/test_ai_tooling.py",
+             "--build-dir", str(build_dir)],
+            [sys.executable, "tools/scripts/test_ai_authoring_friction.py",
              "--build-dir", str(build_dir)],
             [sys.executable, "tools/scripts/test_json_cli_contract.py",
              "--build-dir", str(build_dir)],

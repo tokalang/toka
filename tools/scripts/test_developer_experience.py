@@ -96,7 +96,18 @@ def main():
         preview = run([toka, "test"], temp_root)
         require("Preview:" in preview.stdout and "not the stable project test contract" in preview.stdout,
                 "toka test is not clearly marked Preview")
-        checks.append("toka-test-preview")
+        failed_test_root = temp_root / "failed_preview_test"
+        (failed_test_root / "tests").mkdir(parents=True)
+        (failed_test_root / "tests" / "compile_error.tk").write_text(
+            "fn main() -> i32 {\n"
+            "    auto value = 1\n"
+            "    auto ^moved = ^value\n"
+            "    return value\n"
+            "}\n", encoding="utf-8")
+        failed_preview = run([toka, "test"], failed_test_root, expected=1)
+        require("[FAILED (Compile)]" in failed_preview.stdout,
+                "toka test did not report the preview fixture failure")
+        checks.extend(("toka-test-preview", "toka-test-preview-failure-exit"))
 
         source_dir = temp_root / "project" / "src" / "nested"
         source_dir.mkdir(parents=True)

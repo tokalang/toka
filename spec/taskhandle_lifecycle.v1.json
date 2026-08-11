@@ -1,6 +1,34 @@
 {
   "schema": "toka.taskhandle-lifecycle",
   "version": 1,
+  "qualification": {
+    "status": "qualified-subset",
+    "qualified_scope": [
+      "cold task creation and cold-handle cleanup",
+      "single direct-await result claim after normal terminal publication",
+      "explicit .await? cancellation capture without a fabricated payload",
+      "detached result drain before default-runtime shutdown"
+    ],
+    "known_behavior": [
+      "After a direct await has claimed a normal child result, a later parent cancellation request preserves that normal claim; it does not suppress source-visible normal delivery."
+    ],
+    "unqualified_targets": [
+      "post-normal-claim cancellation suppression",
+      "cancel-join-drain across every await, TaskScope, race2, and select2 path",
+      "task-wide cleanup aggregation and structured-scope close progress",
+      "exact PlaceState/init/cede cleanup across await and terminal cancellation"
+    ],
+    "native_evidence": [
+      {
+        "target": "toka_async_completion_subscription",
+        "path": "tests/AsyncCompletionSubscription.c",
+        "proves": [
+          "direct normal await claim is one-shot",
+          "a later cancellation request preserves the established normal claim"
+        ]
+      }
+    ]
+  },
   "operations": [
     {
       "name": "create",
@@ -16,7 +44,7 @@
       "target_states": ["queued", "running", "suspended", "completed", "completed-canceled"],
       "handle_obligation": "start, await, and wait may activate a created handle; a repeated start of an already activated or terminal handle preserves its state and does not create a second execution.",
       "result_obligation": "First activation leaves the result pending until terminal completion; repeated activation preserves the existing result state and cannot republish or reclaim it.",
-      "guarantees": ["start queues work and never inlines the task body on the caller stack.", "If a structured scope consumes a cold handle, lifecycle and result authority transfer and registry linking commit before activation; ordinary consumed-handle drop cannot intervene."]
+      "guarantees": ["start queues work and never inlines the task body on the caller stack."]
     },
     {
       "name": "await",
@@ -24,7 +52,7 @@
       "target_states": ["completed", "completed-canceled"],
       "handle_obligation": "The awaiter is resumed exactly once after the child becomes terminal.",
       "result_obligation": "After acquire-observing normal terminal completion, one claimant may privately claim and consume the ready-live result; a canceled result propagates cancellation and does not fabricate a payload.",
-      "guarantees": ["Completion before continuation registration remains linearized.", "Normal child-result disposition and parent cancellation share one resolution claim; the awaiting frame uniquely owns a normal-claimed result, while a cancellation that wins first enters the cancel-join-drain path.", "A cancellation admitted after normal disposition cannot double-claim the child result, but remains pending for the immediate boundary after mandatory cleanup and may suppress source-visible delivery.", "If parent cancellation wins while the child is active, an internal cancel-join-drain barrier reaches child terminal and discharges its result before user continuation or parent finalization."]
+      "guarantees": ["Completion before direct continuation registration remains linearized.", "A normal child-result claim is one-shot and remains normal when a later cancellation request arrives."]
     },
     {
       "name": "await-outcome",
@@ -32,7 +60,7 @@
       "target_states": ["completed", "completed-canceled"],
       "handle_obligation": "The awaiter is resumed exactly once after the child becomes terminal.",
       "result_obligation": "After acquire-observing normal terminal completion, one claimant may privately claim and consume the ready-live result as Some(T); a canceled result is represented as None without fabricating T.",
-      "guarantees": ["Cancellation capture is explicit at the .await? boundary.", "Normal child-result disposition and parent cancellation share one resolution claim; the awaiting frame uniquely owns a normal-claimed result, while a cancellation that wins first enters the cancel-join-drain path.", "A cancellation admitted after normal disposition cannot double-claim the child result, but remains pending for the immediate boundary after mandatory cleanup and may suppress source-visible delivery.", "If parent cancellation wins while the child is active, an internal cancel-join-drain barrier reaches child terminal and discharges its result before returning None."]
+      "guarantees": ["Cancellation capture is explicit at the .await? boundary.", "A normal child-result claim is one-shot and remains Some(T) when a later cancellation request arrives."]
     },
     {
       "name": "cancel",
@@ -40,7 +68,7 @@
       "target_states": ["queued", "running", "suspended", "completed", "completed-canceled"],
       "handle_obligation": "Cancellation requests one observation epoch, wakes or queues suspended work, and may leave a running task running until its next observation boundary.",
       "result_obligation": "Unhandled cancellation publishes canceled with no readable payload; explicit current-task cancellation capture may consume that request and later publish an ordinary normal result.",
-      "guarantees": ["Cancellation admitted against an ordinary wait wakes or queues that task and cancels the matching active registrations; a repeated request during AwaitCleanup, ResolutionCleanup, SourceCleanup, or ScopeCleanup coalesces and may help retained work but does not uninstall or win the cleanup-only wait.", "Cancellation is inherited by an awaited child through the cancel-join-drain obligation.", "The .await? boundary consumes a captured current-task cancellation once and may continue to normal completion."]
+      "guarantees": ["A cancellation request is observable at the current task's cancellation boundary.", "The .await? boundary consumes a captured current-task cancellation once and may continue to normal completion."]
     },
     {
       "name": "drop",
@@ -85,10 +113,6 @@
     {
       "path": "tests/pass/g11_async_cancel_join_test.tk",
       "proves": ["cancellation is observable", "completion subscription is safe"]
-    },
-    {
-      "path": "tests/pass/g11_async_p5_redline_test.tk",
-      "proves": ["race loser cleanup", "TaskScope retained lifetime", "canceled await has no fabricated payload"]
     },
     {
       "path": "tests/conformance/async/await_cancellation_outcome.tk",

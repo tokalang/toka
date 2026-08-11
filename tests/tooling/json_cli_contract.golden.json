@@ -27,11 +27,25 @@
       "version": 1,
       "contains": {"symbols": [{"name": "identity", "kind": "function"}]}
     },
+    "index_failure": {
+      "exit": 1,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": false},
+      "contains": {"diagnostics": [{"code": "E0440", "severity": "error"}]}
+    },
     "context": {
       "exit": 0,
       "schema": "toka.semantic-query",
       "version": 1,
       "equals": {"query": "context", "result.symbol.name": "identity"}
+    },
+    "context_failure": {
+      "exit": 1,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": false},
+      "contains": {"diagnostics": [{"code": "E0440", "severity": "error"}]}
     },
     "query_references": {
       "exit": 0,
@@ -39,6 +53,13 @@
       "version": 1,
       "equals": {"query": "references"},
       "minimum_lengths": {"result": 2}
+    },
+    "query_references_failure": {
+      "exit": 1,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": false},
+      "contains": {"diagnostics": [{"code": "E0440", "severity": "error"}]}
     },
     "evidence": {
       "exit": 1,

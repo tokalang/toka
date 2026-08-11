@@ -1,0 +1,51 @@
+{
+  "schema": "toka.ai-authoring-friction",
+  "version": 1,
+  "status": "baseline",
+  "cases": [
+    {
+      "id": "existing-binding-does-not-amplify-payload",
+      "dimension": "declaration-vs-assignment",
+      "path": "tests/conformance/diagnostics/cede_shared_existing_lhs_cannot_amplify_payload.tk",
+      "expected": {"exit": 1, "code": "E04573"},
+      "intent": "Assigning a value cannot widen the authority declared for an existing binding.",
+      "repair_directions": [
+        "Keep the existing binding read-only and do not write its payload.",
+        "Declare or obtain a source and destination whose payload authority matches the intended mutation."
+      ]
+    },
+    {
+      "id": "payload-only-call-cannot-rebind-handle",
+      "dimension": "handle-vs-payload",
+      "path": "tests/conformance/diagnostics/call_payload_only_cannot_supply_rebind.tk",
+      "expected": {"exit": 1, "code": "E04571"},
+      "intent": "Payload write permission does not imply permission to rebind the handle.",
+      "repair_directions": [
+        "Keep the callee payload-only if it only mutates the payload.",
+        "Pass a declaration that explicitly grants handle rebinding when replacement is required."
+      ]
+    },
+    {
+      "id": "handle-only-call-cannot-write-payload",
+      "dimension": "call-site-request-vs-declaration-authority",
+      "path": "tests/conformance/diagnostics/call_handle_only_cannot_supply_payload.tk",
+      "expected": {"exit": 1, "code": "E04571"},
+      "intent": "A call-site H/P request cannot grant payload authority absent from the argument declaration.",
+      "repair_directions": [
+        "Keep the callee handle-only if it does not write the payload.",
+        "Change the declaration or API contract before requesting payload write authority at the call."
+      ]
+    },
+    {
+      "id": "option-borrowed-pattern-cannot-amplify-payload",
+      "dimension": "option-borrowed-pattern",
+      "path": "tests/conformance/diagnostics/pattern_shared_view_cannot_amplify_payload.tk",
+      "expected": {"exit": 1, "code": "E04573"},
+      "intent": "A pattern binding inherits the borrowed Option view; adding # cannot turn a shared payload into a writable one.",
+      "repair_directions": [
+        "Treat Option<&T> pattern payloads as read-only views.",
+        "Design the API around Option<&T#> when mutation through the matched borrow is required."
+      ]
+    }
+  ]
+}

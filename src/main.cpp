@@ -190,6 +190,18 @@ private:
   bool &Enabled;
 };
 
+class MachineFailureDiagnosticsDumpGuard {
+public:
+  explicit MachineFailureDiagnosticsDumpGuard(bool &enabled) : Enabled(enabled) {}
+  ~MachineFailureDiagnosticsDumpGuard() {
+    if (Enabled && toka::DiagnosticEngine::hasErrors())
+      llvm::outs() << toka::DiagnosticEngine::structuredJSON() << '\n';
+  }
+
+private:
+  bool &Enabled;
+};
+
 } // namespace
 
 static std::string getFinalInterfacePath(const std::string &outputFile, const std::string &sourcePath) {
@@ -742,12 +754,15 @@ int main(int argc, char **argv) {
   unsigned queryCharacter = 0;
   bool experimentalNoCapture = false;
   bool experimentalReadOnly = false;
+  bool machineFailureDiagnostics = false;
   SemanticEvidenceDumpGuard semanticEvidenceGuard(dumpCedeObligations,
                                                    dumpCapabilities,
                                                    dumpTodoGoals,
                                                    dumpConditionalFacts);
   StructuredDiagnosticsDumpGuard structuredDiagnosticsGuard(
       structuredDiagnostics);
+  MachineFailureDiagnosticsDumpGuard machineFailureDiagnosticsGuard(
+      machineFailureDiagnostics);
   bool runTopologyEval = false;
   llvm::OptimizationLevel optLevel = llvm::OptimizationLevel::O0;
   std::string outputFile = "";
@@ -1145,6 +1160,11 @@ int main(int argc, char **argv) {
     llvm::errs() << "error: no input files (use --help for usage)\n";
     return 1;
   }
+
+  machineFailureDiagnostics =
+      dumpSemanticIndex || dumpSemanticContext || !semanticQuery.empty();
+  if (machineFailureDiagnostics)
+    toka::DiagnosticEngine::setPrintingEnabled(false);
 
   std::string resolvedTargetTriple = llvm::sys::getDefaultTargetTriple();
   if (!cliTargetTriple.empty()) {

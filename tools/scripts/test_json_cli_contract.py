@@ -98,13 +98,26 @@ def main():
         "check_failure": ["check", "--json", ROOT / "tests/fail/borrow_move.tk"],
         "explain": ["explain", "E0438", "--json"],
         "index": ["index", "--json", workspace],
+        "index_failure": [
+            "index", "--json", ROOT / "tests/fail/borrow_move.tk",
+        ],
         "context": [
             "context", workspace, "--query-file", workspace,
             "--line", "13", "--character", "12",
         ],
+        "context_failure": [
+            "context", ROOT / "tests/fail/borrow_move.tk",
+            "--query-file", ROOT / "tests/fail/borrow_move.tk",
+            "--line", "19", "--character", "15",
+        ],
         "query_references": [
             "query", "references", workspace, "--query-file", workspace,
             "--line", "13", "--character", "12", "--json",
+        ],
+        "query_references_failure": [
+            "query", "references", ROOT / "tests/fail/borrow_move.tk",
+            "--query-file", ROOT / "tests/fail/borrow_move.tk",
+            "--line", "19", "--character", "15", "--json",
         ],
         "evidence": [
             "evidence", "--json", "--check-only",

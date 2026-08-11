@@ -10,7 +10,7 @@ import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, bui
 
 
 fn print_help() {
-    println("Toka {}", "1.0.0-rc.2")
+    println("Toka {}", "1.0.0-rc.3")
     println("\nUsage: toka <command> [options]\n\nCommands:")
     println("  new <name>   Create a new Toka project (--lib for library)")
     println("  init         Initialize a new Toka project in the current directory")
@@ -973,7 +973,10 @@ fn cmd_test() -> i32 {
         }
         
         remove_file(string::from(".toka_test_runner.sh"))
-        return res
+        if res != 0 {
+            return 1
+        }
+        return 0
     }
 }
 

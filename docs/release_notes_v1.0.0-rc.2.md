@@ -1,14 +1,15 @@
 # Toka v1.0.0-rc.2 Candidate Notes
 
-**Status:** In qualification. This document describes the source candidate;
-`v1.0.0-rc.2` is not tagged or published until its exact revision passes the
-four-platform release gate.
+**Status:** Withdrawn; never publicly released. This document is retained as
+historical candidate notes. The immutable `v1.0.0-rc.2` tag must not be moved,
+reused, or published.
 
 ## Purpose
 
-`1.0.0-rc.2` is the next public 1.0 release candidate from the frozen language
-surface. It qualifies the current SDK and developer workflow without claiming
-new language syntax or a new `.tki` compatibility format.
+`1.0.0-rc.2` was a pre-public candidate from the frozen language surface. A
+post-qualification audit withdrew it before release because several public
+contracts were stronger than their implementation or package behavior. RC3
+supersedes it with a new revision and fresh qualification.
 
 ## Candidate Improvements
 
@@ -29,15 +30,6 @@ new language syntax or a new `.tki` compatibility format.
 
 ## Qualification Boundary
 
-The candidate must pass the exact-revision, four-target, thirteen-stage
-Release Gate before a tag or GitHub pre-release is created. The required
-reports, archive digests, and native first-hour replay are defined in
-[`1_0_rc2_release_plan.md`](1_0_rc2_release_plan.md). A later `main` revision
-is not part of this candidate and requires a new label and gate.
-
-When published, install `v1.0.0-rc.2` explicitly rather than relying on
-GitHub's stable-release selector:
-
-```sh
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.2
-```
+The current candidate and publication path are documented in
+[`release_notes_v1.0.0-rc.3.md`](release_notes_v1.0.0-rc.3.md) and
+[`1_0_rc3_release_plan.md`](1_0_rc3_release_plan.md).

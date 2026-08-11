@@ -33,6 +33,12 @@ documented source file, query position, or diagnostic code. Invalid command
 usage is outside this semantic protocol; clients must validate command shape
 before expecting a semantic response.
 
+`check` always uses the `toka.diagnostics` version 2 envelope. `index`,
+`context`, and `query` return their respective semantic schema on success, and
+return that same diagnostics envelope with `success: false` when semantic
+analysis rejects the request. This is a deliberate tagged-by-`schema` result
+boundary, not an absent result that clients must reconstruct from stderr.
+
 `tests/tooling/json_cli_contract.golden.json` and
 `tools/scripts/test_json_cli_contract.py` freeze this boundary for `check`,
 `explain`, `index`, `context`, `query`, `evidence`, `cede-obligations`,
