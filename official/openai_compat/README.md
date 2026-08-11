@@ -56,7 +56,8 @@ registry release remain later gates.
 ## Qualification
 
 ```sh
-python3 official/openai_compat/tests/qualify_package.py
+cd official/openai_compat
+python3 tests/qualify_package.py
 ```
 
 From a standalone checkout, point `TOKA_ROOT` at a built Toka source checkout:
