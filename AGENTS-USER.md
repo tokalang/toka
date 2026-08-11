@@ -38,9 +38,10 @@ archive digest in `package.lock`.
 ## 1.1 Give the coding agent the release-matched language card
 
 Before the first Toka edit, provide the coding agent with the installed
-[AI Completion Card](docs/ai_completion_card_v0.1.md). It gives compact,
+[AI Completion Card v0.2](docs/ai_completion_card_v0.2.md). It gives compact,
 versioned syntax and semantic patterns for mutation, borrowing, shared field
-authority, and `cede`; it does not override the compiler or a package contract.
+authority, `cede`, and checked `Result` parsing; it does not override the
+compiler or a package contract.
 
 Use this order for a focused edit:
 
