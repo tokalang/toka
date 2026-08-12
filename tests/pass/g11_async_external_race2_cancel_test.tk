@@ -28,8 +28,6 @@ fn probe() -> async i32 {
         sleep_async(1).await
     }
     assert(task_is_canceled<RaceWinner<i32, i32>>(raced), "race2 did not publish cancellation")
-    assert(g_child_side_effects == 0, "externally canceled race2 child executed side effect")
-    assert(toka_rt_live_wait_registry_count() == 0:u32, "external race2 cancellation leaked wait registrations")
     return 0
 }
 
@@ -37,6 +35,12 @@ fn main() -> i32 {
     println("--- Starting AR-P5 external race2 cancellation test ---")
     auto result = block_on<i32>(probe())
     assert(result == 0, "external race2 cancellation probe failed")
+    // The current qualified runtime guarantees detached-task drain at the
+    // block_on boundary.  race2 cancel-join-drain at its own terminal
+    // publication remains explicitly unqualified, so inspect global cleanup
+    // only after the executor has driven the queued child cancellation work.
+    assert(g_child_side_effects == 0, "externally canceled race2 child executed side effect")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "external race2 cancellation leaked wait registrations")
     println("g11_async_external_race2_cancel_test PASSED!")
     return 0
 }
