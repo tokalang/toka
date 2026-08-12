@@ -1,0 +1,16 @@
+import core/string::{string}
+import core/traits::{@Encap}
+import std/vec::{Vec}
+
+shape Resource(name: string)
+
+impl Resource@Encap {
+    pub name
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto values# = Vec<Resource>::new()
+    values#.resize(2:usize, Resource(name = string::from("duplicated")))
+    return values.len() as i32
+}

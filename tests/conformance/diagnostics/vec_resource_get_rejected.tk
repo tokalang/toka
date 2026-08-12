@@ -1,0 +1,17 @@
+import core/string::{string}
+import core/traits::{@Encap}
+import std/vec::{Vec}
+
+shape Resource(name: string)
+
+impl Resource@Encap {
+    pub name
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto values# = Vec<Resource>::new()
+    values#.push(cede Resource(name = string::from("owned")))
+    auto copied = values.get(0:usize)
+    return copied.name.len() as i32
+}

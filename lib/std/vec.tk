@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
+import core/traits::{@Copy, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
 import sys/libc::*
 import core/option::{Option}
 
@@ -40,7 +40,7 @@ impl<'T: @Sync> Vec<'T> @Sync {}
 
 // This is an ordinary library operation. Copy eligibility is provided by the
 // compiler's structural proof, not by the method name.
-impl<'T> Vec<'T> {
+impl<'T: @Copy> Vec<'T> {
     pub fn clone(self) -> Vec<'T> {
         unsafe {
             if self.cap == 0 {
@@ -59,8 +59,8 @@ impl<'T> Vec<'T> {
 
 // Copying operations are intentionally kept out of the move-only core impl.
 // Vec itself remains a capsule; these APIs are ordinary library operations.
-impl<'T> Vec<'T> {
-    // Get element at index (Returns Copy/Move)
+impl<'T: @Copy> Vec<'T> {
+    // Get element at index by copy.
     pub fn get(self, index: usize) -> 'T {
         unsafe {
              if index >= self.len {
@@ -120,7 +120,7 @@ impl<'T> Vec<'T> {
         unsafe {
             loop self.len > 0 {
                 self.len -= 1
-                Option<'T>::Some(cede self.buf[self.len])
+                auto _old = Option<'T>::Some(cede self.buf[self.len])
             }
         }
     }
@@ -318,14 +318,17 @@ impl<'T> Vec<'T> {
     pub fn set(self#, index: usize, cede 'val: T) {
         unsafe {
              if index < self.len {
+                 auto _old = Option<'T>::Some(cede self.buf[index])
                  self.buf[index] = cede 'val
+             } else {
+                 auto _unused = Option<'T>::Some(cede 'val)
              }
         }
     }
 
 }
 
-impl<'T> Vec<'T> {
+impl<'T: @Copy> Vec<'T> {
     // Resize vector by cloning the fill value into each new element.
     pub fn resize(self#, new_len: usize, 'val: T) {
         unsafe {
@@ -409,7 +412,7 @@ impl<'T> VecIterator<'T> {
 }
 
 // Concrete Implementation
-impl<'T> VecIterator<'T>@Iterator {
+impl<'T: @Copy> VecIterator<'T>@Iterator {
     type Item = 'T
 
     pub fn next(self#) -> Option<Item> {

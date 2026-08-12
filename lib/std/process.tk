@@ -182,10 +182,10 @@ impl Command {
     pub fn args(self#, args: Vec<string>) {
         auto iter# = args.iter()
         loop true {
-            match iter#.next() {
-                auto Option<string>::Some(&val) => self.args#.push(cede val.clone())
-                _ => break
-            }
+            auto next = iter#.next_ref()
+            if next.is_none() { break }
+            auto &val = next.unwrap()
+            self.args#.push(cede val.clone())
         }
     }
 

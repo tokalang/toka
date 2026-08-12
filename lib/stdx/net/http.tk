@@ -1058,10 +1058,17 @@ impl HttpResponseStream@Encap {
 
 impl HttpResponseStream {
     pub fn clone(self) -> HttpResponseStream {
+        auto headers# = Vec<HttpHeaderView>::new()
+        auto index# = 0:usize
+        loop index < self.headers.len() {
+            auto header = self.headers.get_ref(index).clone()
+            headers#.push(cede header)
+            index += 1
+        }
         return HttpResponseStream(
             status_code = self.status_code,
             raw_header_buf = self.raw_header_buf.clone(),
-            headers = self.headers.clone(),
+            headers = cede headers,
             stream = AsyncStream::from_tcp(TcpStream(fd=-1, closed=true)),
             content_length_remaining = self.content_length_remaining,
             chunk_remaining = self.chunk_remaining,

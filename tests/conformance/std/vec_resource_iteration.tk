@@ -1,0 +1,67 @@
+import core/string::{string}
+import core/traits::{@Encap}
+import std/vec::{Vec}
+
+auto g_drop_count# = 0:i32
+
+shape Resource(id: i32, name: string)
+
+impl Resource@Encap {
+    pub id, name
+
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn main() -> i32 {
+    auto values# = Vec<Resource>::new()
+    values#.push(cede Resource(id = 1, name = string::from("one")))
+    values#.push(cede Resource(id = 2, name = string::from("two")))
+    values#.push(cede Resource(id = 3, name = string::from("three")))
+
+    auto total# = 0
+    auto iter# = values.iter()
+    loop true {
+        auto next = iter#.next_ref()
+        if next.is_none() { break }
+        auto &value = next.unwrap()
+        total += value.id
+    }
+    if total != 6 || g_drop_count != 0:i32 { return 1 }
+
+    auto source# = values.into_iter()
+    {
+        auto first = source#.next().unwrap()
+        if first.id != 1 || !first.name.as_str().equals("one") { return 2 }
+    }
+    if g_drop_count != 1:i32 { return 3 }
+
+    {
+        auto second = source#.next().unwrap()
+        if second.id != 2 || !second.name.as_str().equals("two") { return 4 }
+    }
+    if g_drop_count != 2:i32 { return 5 }
+
+    {
+        auto third = source#.next().unwrap()
+        if third.id != 3 || !third.name.as_str().equals("three") { return 6 }
+    }
+    if g_drop_count != 3:i32 { return 7 }
+    if !source#.next().is_none() { return 8 }
+
+    {
+        auto partial# = Vec<Resource>::new()
+        partial#.push(cede Resource(id = 4, name = string::from("four")))
+        partial#.push(cede Resource(id = 5, name = string::from("five")))
+        partial#.push(cede Resource(id = 6, name = string::from("six")))
+        auto owned# = partial.into_iter()
+        {
+            auto first = owned#.next().unwrap()
+            if first.id != 4 { return 9 }
+        }
+        if g_drop_count != 4:i32 { return 10 }
+    }
+    if g_drop_count != 6:i32 { return 11 }
+    return 0
+}

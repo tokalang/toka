@@ -1,0 +1,31 @@
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(10)
+    values#.push(20)
+    values#.resize(6:usize, 9)
+
+    if values.get(0:usize) != 10 { return 1 }
+    if values.at(1:usize) != 20 { return 2 }
+    if values.get_opt(2:usize).unwrap() != 9 { return 3 }
+
+    auto copied# = values.clone()
+    copied#.resize(3:usize, 0)
+    if copied.len() != 3:usize || values.len() != 6:usize { return 4 }
+
+    {
+        auto cursor# = copied.iter()
+        if cursor#.next().unwrap() != 10 { return 5 }
+        if cursor#.next().unwrap() != 20 { return 6 }
+        if cursor#.next().unwrap() != 9 { return 7 }
+        if !cursor#.next().is_none() { return 8 }
+    }
+
+    auto total# = 0
+    for auto value in copied {
+        total += value
+    }
+    if total != 39 { return 9 }
+    return 0
+}

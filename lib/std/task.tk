@@ -319,26 +319,18 @@ fn collect_detached_tasks() {
     lock_queue()
     auto i# = 0:usize
     loop i < g_detached_tasks.len() {
-        auto task = g_detached_tasks.get(i)
-        if __toka_coro_done(task.addr as *void) {
-            completed#.push(task)
-            auto len = g_detached_tasks.len()
-            auto k# = i + 1
-            loop k < len {
-                g_detached_tasks#.set(k - 1, g_detached_tasks.get(k))
-                k += 1
-            }
-            g_detached_tasks#.pop()
+        if __toka_coro_done(g_detached_tasks.get_ref(i).addr as *void) {
+            auto task = g_detached_tasks#.remove(i).unwrap()
+            completed#.push(cede task)
         } else {
             i += 1
         }
     }
     unlock_queue()
 
-    auto j# = 0:usize
-    loop j < completed.len() {
-        __toka_coro_destroy(completed.get(j).addr as *void)
-        j += 1
+    loop !completed.is_empty() {
+        auto task = completed#.remove(0).unwrap()
+        __toka_coro_destroy(task.addr as *void)
     }
 }
 

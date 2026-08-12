@@ -135,7 +135,7 @@ impl<'T: @ToJson> Vec<'T>@ToJson {
         loop i < self.len() {
             if !first { buf#.push_str(",") }
             first = false
-            buf = self.at(i).write_json(buf)
+            buf = self.get_ref(i).write_json(buf)
             i = i + 1
         }
         buf#.push_str("]")

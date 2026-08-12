@@ -35,9 +35,9 @@ fn print_json_node(val: JsonNode) {
             auto arr_iter# = arr_ptr.iter()
             auto first# = true
             loop true {
-                auto item_opt = arr_iter#.next()
+                auto item_opt = arr_iter#.next_ref()
                 if item_opt.is_none() { break }
-                auto item = item_opt.unwrap()
+                auto &item = item_opt.unwrap()
                 print_json_node(item)
                 first = false
             }
@@ -85,9 +85,9 @@ fn print_json_node_ptr(*val_ptr: JsonNode) {
             auto arr_iter# = arr_ptr.iter()
             auto first# = true
             loop true {
-                auto item_opt = arr_iter#.next()
+                auto item_opt = arr_iter#.next_ref()
                 if item_opt.is_none() { break }
-                auto item = item_opt.unwrap()
+                auto &item = item_opt.unwrap()
                 print_json_node(item)
                 if !first { put(string::from(", ")) }
                 first = false

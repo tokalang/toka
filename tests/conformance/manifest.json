@@ -99,6 +99,101 @@
       "description": "String growth and Result<Vec<string>> transfer clean up rejected and returned owned buffers"
     },
     {
+      "id": "std_vec_copy_surface_01",
+      "path": "std/vec_copy_surface.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Copy-safe Vec elements retain clone, indexed copy, resize, cursor next, and value iteration"
+    },
+    {
+      "id": "std_vec_resource_move_lifecycle_01",
+      "path": "std/vec_resource_move_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Move-only resources survive Vec growth, middle removal, pop, clear, reuse, and exactly-once drop"
+    },
+    {
+      "id": "std_vec_resource_iteration_01",
+      "path": "std/vec_resource_iteration.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Move-only Vec elements support borrowed next_ref iteration and consuming into_iter without duplication"
+    },
+    {
+      "id": "std_vec_set_resource_replacement_01",
+      "path": "std/vec_set_resource_replacement.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec::set transfers the replacement and drops the old owner exactly once"
+    },
+    {
+      "id": "diag_vec_resource_get_rejected_01",
+      "path": "diagnostics/vec_resource_get_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "Vec::get cannot bit-copy a move-only resource element"
+    },
+    {
+      "id": "diag_vec_resource_at_rejected_01",
+      "path": "diagnostics/vec_resource_at_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "Vec::at cannot bit-copy a move-only resource element"
+    },
+    {
+      "id": "diag_vec_resource_get_opt_rejected_01",
+      "path": "diagnostics/vec_resource_get_opt_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "Vec::get_opt cannot wrap a bit-copied move-only resource element"
+    },
+    {
+      "id": "diag_vec_resource_clone_rejected_01",
+      "path": "diagnostics/vec_resource_clone_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "Vec::clone is unavailable when its element type is not Copy"
+    },
+    {
+      "id": "diag_vec_resource_resize_rejected_01",
+      "path": "diagnostics/vec_resource_resize_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 14,
+      "timeout_seconds": 10,
+      "description": "Vec::resize cannot duplicate a move-only fill resource"
+    },
+    {
+      "id": "diag_vec_resource_iterator_next_rejected_01",
+      "path": "diagnostics/vec_resource_iterator_next_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "A borrowed Vec cursor cannot return move-only elements by value"
+    },
+    {
+      "id": "diag_vec_resource_value_iteration_rejected_01",
+      "path": "diagnostics/vec_resource_value_iteration_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04498",
+      "expected_span_line": 15,
+      "timeout_seconds": 10,
+      "description": "Borrowed for-value iteration is unavailable for move-only Vec elements"
+    },
+    {
       "id": "std_unicode_scalar_boundaries_01",
       "path": "std/unicode_scalar_boundaries.tk",
       "type": "run",

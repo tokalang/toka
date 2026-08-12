@@ -262,7 +262,7 @@ impl Parser {
         auto only_positional# = false
 
         loop arg_idx < args.len() {
-            auto arg = args.get(arg_idx)
+            auto arg = args.get_ref(arg_idx).clone()
             
             if only_positional {
                 parsed.pos_args#.push(cede arg)
@@ -329,7 +329,7 @@ impl Parser {
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             arg_idx = arg_idx + 1
-                            val_str = args.get(arg_idx)
+                            val_str = args.get_ref(arg_idx).clone()
                         }
                         auto parse_res = Parser::parse_i64(val_str)
                         if parse_res.is_err() {
@@ -349,7 +349,7 @@ impl Parser {
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             arg_idx = arg_idx + 1
-                            val_str = args.get(arg_idx)
+                            val_str = args.get_ref(arg_idx).clone()
                         }
                         auto parse_res = val_str.parse_f64()
                         if parse_res.is_err() {
@@ -368,7 +368,7 @@ impl Parser {
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             arg_idx = arg_idx + 1
-                            val_str = args.get(arg_idx)
+                            val_str = args.get_ref(arg_idx).clone()
                         }
                         parsed.values#.insert(cede def.name.clone(), FlagValue::Str(cede val_str))
                     }
@@ -433,7 +433,7 @@ impl Parser {
                                     return Result<ParsedArgs, string>::Err(err_msg)
                                 }
                                 arg_idx = arg_idx + 1
-                                val_str = args.get(arg_idx)
+                                val_str = args.get_ref(arg_idx).clone()
                             }
                             
                             auto parse_res = Parser::parse_i64(val_str)
@@ -459,7 +459,7 @@ impl Parser {
                                     return Result<ParsedArgs, string>::Err(err_msg)
                                 }
                                 arg_idx = arg_idx + 1
-                                val_str = args.get(arg_idx)
+                                val_str = args.get_ref(arg_idx).clone()
                             }
                             
                             auto parse_res = val_str.parse_f64()
@@ -484,7 +484,7 @@ impl Parser {
                                     return Result<ParsedArgs, string>::Err(err_msg)
                                 }
                                 arg_idx = arg_idx + 1
-                                val_str = args.get(arg_idx)
+                                val_str = args.get_ref(arg_idx).clone()
                             }
                             parsed.values#.insert(cede def.name.clone(), FlagValue::Str(cede val_str))
                         }

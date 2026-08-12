@@ -38,7 +38,7 @@ fn main() -> i32 {
     match cede packet_vec {
         auto PacketVec::One('items) => {
             assert('items.len() == 1:usize, "nested cede preserves vector ownership")
-            assert('items.get(0:usize).text.equals("vector"),
+            assert('items.get_ref(0:usize).text.equals("vector"),
                    "resource element remains readable before scope cleanup")
         }
     }
@@ -51,7 +51,7 @@ fn main() -> i32 {
     match cede decoded {
         auto Decode::Complete('frame) => match cede 'frame.message {
             auto Message::Rows('items) => {
-                assert('items.get(0:usize).text.equals("framed"),
+                assert('items.get_ref(0:usize).text.equals("framed"),
                        "multi-level cede preserves nested resource ownership")
             }
         }
