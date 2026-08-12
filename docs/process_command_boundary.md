@@ -27,6 +27,19 @@ The old `spawn()`, `status()`, and `wait_exit()` entry points remain as
 compatibility adapters. They return `-1` for boundary failure and normalized
 child status otherwise.
 
+## Per-child configuration
+
+`Command::current_dir()` and `Command::env()` apply only in the forked child:
+they never change the caller's working directory or environment. `stdin`,
+`stdout`, and `stderr` accept `STDIO_INHERIT` (the default) or `STDIO_NULL`.
+`output()` captures inherited stdout/stderr as before, while an explicitly null
+stream is discarded and returned as an empty string.
+
+Each spawned child carries a `CancelPolicy`. `request_cancel()` sends the
+configured signal (`CANCEL_TERMINATE` by default, or `CANCEL_KILL`) to that
+child PID only, returns without waiting, and preserves the caller's explicit
+`wait_status()` responsibility. `CANCEL_NONE` rejects cancellation requests.
+
 `Child` drop remains non-blocking. Callers that spawn must explicitly wait;
 automatic waiting would introduce hidden blocking into ownership cleanup.
 

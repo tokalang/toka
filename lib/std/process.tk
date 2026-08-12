@@ -5,13 +5,30 @@ import std/vec::{Vec}
 
 extern fn libc_free(*ptr: void) -> void
 extern fn toka_process_spawn_packed(*argv_blob: char, blob_len: usize, argc: usize) -> i32
+extern fn toka_process_spawn_config_packed(*argv_blob: char, blob_len: usize, argc: usize,
+                                           *cwd: char, *env_blob: char, env_blob_len: usize,
+                                           env_count: usize, stdin_mode: i32, stdout_mode: i32,
+                                           stderr_mode: i32) -> i32
 extern fn toka_process_wait(pid: i32, *exit_code: i32, *signal: i32) -> i32
 extern fn toka_process_status_packed(*argv_blob: char, blob_len: usize, argc: usize,
                                      *exit_code: i32, *signal: i32) -> i32
+extern fn toka_process_status_config_packed(*argv_blob: char, blob_len: usize, argc: usize,
+                                            *cwd: char, *env_blob: char, env_blob_len: usize,
+                                            env_count: usize, stdin_mode: i32, stdout_mode: i32,
+                                            stderr_mode: i32, *exit_code: i32,
+                                            *signal: i32) -> i32
 extern fn toka_process_output_packed(*argv_blob: char, blob_len: usize, argc: usize,
                                      *stdout_data: Addr, *stdout_len: usize,
                                      *stderr_data: Addr, *stderr_len: usize,
                                      *exit_code: i32, *signal: i32) -> i32
+extern fn toka_process_output_config_packed(*argv_blob: char, blob_len: usize, argc: usize,
+                                            *cwd: char, *env_blob: char, env_blob_len: usize,
+                                            env_count: usize, stdin_mode: i32, stdout_mode: i32,
+                                            stderr_mode: i32, *stdout_data: Addr,
+                                            *stdout_len: usize, *stderr_data: Addr,
+                                            *stderr_len: usize, *exit_code: i32,
+                                            *signal: i32) -> i32
+extern fn toka_process_cancel(pid: i32, policy: i32) -> i32
 
 pub shape ProcessError(
     code: i32,
@@ -48,9 +65,29 @@ pub shape Output(
     stderr: string
 )
 
+// `output()` captures inherited stdout/stderr.  `STDIO_NULL` explicitly
+// discards a stream for every execution mode; stream handles are deliberately
+// not exposed by `try_spawn`, so there is no unsafe, undrained pipe state.
+pub alias Stdio = i32
+pub const STDIO_INHERIT: Stdio = 0
+pub const STDIO_NULL: Stdio = 1
+
+// Cancellation is explicit and non-blocking. It never changes `Child`'s wait
+// right, so callers still wait to reclaim the OS child deterministically.
+pub alias CancelPolicy = i32
+pub const CANCEL_NONE: CancelPolicy = 0
+pub const CANCEL_TERMINATE: CancelPolicy = 1
+pub const CANCEL_KILL: CancelPolicy = 2
+
+pub shape Environment(
+    key: string,
+    value: string
+)
+
 pub shape Child(
     pid#: i32,
-    reaped#: bool = false
+    reaped#: bool = false,
+    cancel_policy: CancelPolicy = CANCEL_TERMINATE
 )
 
 impl Child@Encap {
@@ -100,17 +137,42 @@ impl Child {
     pub fn is_valid(self) -> bool {
         return !self.reaped && self.pid > 0
     }
+
+    pub fn request_cancel(self#) -> Result<(), ProcessError> {
+        if !self.is_valid() {
+            return Result<(), ProcessError>::Err(ProcessError(
+                code = 22,
+                message = string::from("child has already been waited or is invalid")
+            ))
+        }
+        unsafe {
+            auto error = toka_process_cancel(self.pid, self.cancel_policy)
+            if error != 0 {
+                return Result<(), ProcessError>::Err(ProcessError(
+                    code = error,
+                    message = string::from("failed to cancel child process")
+                ))
+            }
+        }
+        return Result<(), ProcessError>::Ok(())
+    }
 }
 
 pub shape Command(
     program: string,
-    args#: Vec<string>
+    args#: Vec<string>,
+    working_dir: string = string::from(""),
+    environment#: Vec<Environment> = Vec<Environment>::new(),
+    stdin_mode: Stdio = STDIO_INHERIT,
+    stdout_mode: Stdio = STDIO_INHERIT,
+    stderr_mode: Stdio = STDIO_INHERIT,
+    cancel_policy: CancelPolicy = CANCEL_TERMINATE
 )
 
 impl Command {
     pub fn new(program: string) -> Command {
         auto args# = Vec<string>::new()
-        return Command(program = program.clone(), args = cede args)
+        return Command(program = program.clone(), args = cede args, ..)
     }
 
     pub fn arg(self#, arg: string) {
@@ -125,6 +187,30 @@ impl Command {
                 _ => break
             }
         }
+    }
+
+    pub fn current_dir(self#, path: string) {
+        self.working_dir = path.clone()
+    }
+
+    pub fn env(self#, key: string, value: string) {
+        self.environment#.push(Environment(key = key.clone(), value = value.clone()))
+    }
+
+    pub fn stdin(self#, mode: Stdio) {
+        self.stdin_mode = mode
+    }
+
+    pub fn stdout(self#, mode: Stdio) {
+        self.stdout_mode = mode
+    }
+
+    pub fn stderr(self#, mode: Stdio) {
+        self.stderr_mode = mode
+    }
+
+    pub fn cancel_policy(self#, policy: CancelPolicy) {
+        self.cancel_policy = policy
     }
 
     fn packed_argv(self) -> Result<string, ProcessError> {
@@ -164,11 +250,83 @@ impl Command {
         return Result<string, ProcessError>::Ok(cede argv_blob)
     }
 
+    fn packed_environment(self) -> Result<string, ProcessError> {
+        if self.working_dir.len() > 0:usize {
+            auto cwd_view = self.working_dir.as_str()
+            auto cwd_index# = 0:usize
+            loop cwd_index < cwd_view.len() {
+                if cwd_view.byte_at(cwd_index) == 0 {
+                    return Result<string, ProcessError>::Err(ProcessError(
+                        code = 22,
+                        message = string::from("process working directory cannot contain NUL bytes")
+                    ))
+                }
+                cwd_index += 1
+            }
+        }
+        if self.stdin_mode != STDIO_INHERIT && self.stdin_mode != STDIO_NULL || self.stdout_mode != STDIO_INHERIT && self.stdout_mode != STDIO_NULL || self.stderr_mode != STDIO_INHERIT && self.stderr_mode != STDIO_NULL {
+            return Result<string, ProcessError>::Err(ProcessError(
+                code = 22,
+                message = string::from("invalid process stdio mode")
+            ))
+        }
+        if self.cancel_policy != CANCEL_NONE && self.cancel_policy != CANCEL_TERMINATE && self.cancel_policy != CANCEL_KILL {
+            return Result<string, ProcessError>::Err(ProcessError(
+                code = 22,
+                message = string::from("invalid process cancellation policy")
+            ))
+        }
+
+        auto env_blob# = string::from("")
+        auto index# = 0:usize
+        loop index < self.environment.len() {
+            auto &entry = self.environment.get_ref(index)
+            auto key = entry.key.as_str()
+            if key.len() == 0:usize {
+                return Result<string, ProcessError>::Err(ProcessError(
+                    code = 22,
+                    message = string::from("process environment key cannot be empty")
+                ))
+            }
+            auto key_index# = 0:usize
+            loop key_index < key.len() {
+                auto byte = key.byte_at(key_index)
+                if byte == 0 as char || byte == '=' {
+                    return Result<string, ProcessError>::Err(ProcessError(
+                        code = 22,
+                        message = string::from("process environment key contains NUL or '='")
+                    ))
+                }
+                key_index += 1
+            }
+            auto value = entry.value.as_str()
+            auto value_index# = 0:usize
+            loop value_index < value.len() {
+                if value.byte_at(value_index) == 0 {
+                    return Result<string, ProcessError>::Err(ProcessError(
+                        code = 22,
+                        message = string::from("process environment value cannot contain NUL bytes")
+                    ))
+                }
+                value_index += 1
+            }
+            env_blob#.push_str(key)
+            env_blob#.push_char(0 as char)
+            env_blob#.push_str(value)
+            env_blob#.push_char(0 as char)
+            index += 1
+        }
+        return Result<string, ProcessError>::Ok(cede env_blob)
+    }
+
     pub fn try_spawn(self#) -> Result<Child, ProcessError> {
         auto argv_blob = self.packed_argv()!
+        auto env_blob = self.packed_environment()!
         unsafe {
-            auto pid = toka_process_spawn_packed(
-                argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize
+            auto pid = toka_process_spawn_config_packed(
+                argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize,
+                self.working_dir.c_str(), env_blob.c_str(), env_blob.len(),
+                self.environment.len(), self.stdin_mode, self.stdout_mode, self.stderr_mode
             )
             if pid < 0 {
                 return Result<Child, ProcessError>::Err(ProcessError(
@@ -176,7 +334,8 @@ impl Command {
                     message = string::from("failed to spawn process")
                 ))
             }
-            return Result<Child, ProcessError>::Ok(Child(pid = pid, ..))
+            return Result<Child, ProcessError>::Ok(Child(
+                pid = pid, cancel_policy = self.cancel_policy, ..))
         }
     }
 
@@ -190,11 +349,14 @@ impl Command {
 
     pub fn try_status(self#) -> Result<ExitStatus, ProcessError> {
         auto argv_blob = self.packed_argv()!
+        auto env_blob = self.packed_environment()!
         unsafe {
             auto exit_code# = -1
             auto signal# = 0
-            auto error = toka_process_status_packed(
+            auto error = toka_process_status_config_packed(
                 argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize,
+                self.working_dir.c_str(), env_blob.c_str(), env_blob.len(),
+                self.environment.len(), self.stdin_mode, self.stdout_mode, self.stderr_mode,
                 &exit_code as *i32, &signal as *i32
             )
             if error != 0 {
@@ -220,6 +382,7 @@ impl Command {
 
     pub fn output(self#) -> Result<Output, ProcessError> {
         auto argv_blob = self.packed_argv()!
+        auto env_blob = self.packed_environment()!
         unsafe {
             auto stdout_data# = 0:Addr
             auto stdout_len# = 0:usize
@@ -227,8 +390,10 @@ impl Command {
             auto stderr_len# = 0:usize
             auto exit_code# = -1
             auto signal# = 0
-            auto error = toka_process_output_packed(
+            auto error = toka_process_output_config_packed(
                 argv_blob.c_str(), argv_blob.len(), self.args.len() + 1:usize,
+                self.working_dir.c_str(), env_blob.c_str(), env_blob.len(),
+                self.environment.len(), self.stdin_mode, self.stdout_mode, self.stderr_mode,
                 &stdout_data as *Addr, &stdout_len as *usize,
                 &stderr_data as *Addr, &stderr_len as *usize,
                 &exit_code as *i32, &signal as *i32

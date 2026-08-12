@@ -1,7 +1,7 @@
 import core/str::{bytes}
 import std/bytes::{Bytes, bytes_from_array}
 import stdx/crypto/constant_time
-import stdx/crypto/hmac::{hmac_sha256_hex, hmac_sha256_verify}
+import stdx/crypto/hmac::{hmac_sha1_hex, hmac_sha1_verify, hmac_sha256_hex, hmac_sha256_verify, hmac_sha512_hex, hmac_sha512_verify}
 import stdx/encoding/hex
 
 fn repeated_byte_20(value: u8) -> [u8; 20] {
@@ -19,6 +19,14 @@ fn repeated_byte_131(value: u8) -> [u8; 131] {
 fn assert_hmac(key: bytes, message: bytes, expected: str) {
     auto actual = hmac_sha256_hex(key, message)
     assert(actual.as_str().equals(expected), "HMAC-SHA-256 vector mismatch")
+}
+
+fn assert_hmac_sha1(key: bytes, message: bytes, expected: str) {
+    assert(hmac_sha1_hex(key, message).as_str().equals(expected), "HMAC-SHA-1 vector mismatch")
+}
+
+fn assert_hmac_sha512(key: bytes, message: bytes, expected: str) {
+    assert(hmac_sha512_hex(key, message).as_str().equals(expected), "HMAC-SHA-512 vector mismatch")
 }
 
 fn main() -> i32 {
@@ -62,6 +70,30 @@ fn main() -> i32 {
     assert(!hmac_sha256_verify(key2.as_str().as_bytes(), message2.as_str().as_bytes(),
                                "short".as_bytes()),
            "wrong-length HMAC must fail verification")
+
+    // RFC 2202, case 1 and case 3 (including binary key/message input).
+    assert_hmac_sha1(bytes_from_array<20>(key1), message1.as_str().as_bytes(),
+                     "b617318655057264e28bc0b6fb378c8ef146be00")
+    assert_hmac_sha1(bytes_from_array<20>(key3), bytes_from_array<50>(message3),
+                     "125d7342b9ac11cd91a39af48aa17b4f63f175d3")
+    auto sha1_expected = Bytes::from_vec(cede hex::decode(
+        "b617318655057264e28bc0b6fb378c8ef146be00").unwrap())
+    assert(hmac_sha1_verify(bytes_from_array<20>(key1), message1.as_str().as_bytes(),
+                            sha1_expected.as_slice()),
+           "matching HMAC-SHA-1 must verify")
+
+    // RFC 4231, case 1 and case 6 (SHA-512 uses a 128-byte HMAC block).
+    assert_hmac_sha512(
+        bytes_from_array<20>(key1), message1.as_str().as_bytes(),
+        "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854")
+    assert_hmac_sha512(
+        bytes_from_array<131>(key4), message4.as_str().as_bytes(),
+        "80b24263c7c1a3ebb71493c1dd7be8b49b46d1f41b4aeec1121b013783f8f3526b56d037e05f2598bd0fd2215d6a1e5295e64f73f63f0aec8b915a985d786598")
+    auto sha512_expected = Bytes::from_vec(cede hex::decode(
+        "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854").unwrap())
+    assert(hmac_sha512_verify(bytes_from_array<20>(key1), message1.as_str().as_bytes(),
+                              sha512_expected.as_slice()),
+           "matching HMAC-SHA-512 must verify")
 
     assert(constant_time::equal("same".as_bytes(), "same".as_bytes()),
            "equal byte views must compare equal")

@@ -1,4 +1,5 @@
 
+import core/str::{bytes}
 import stdx/encoding/hex
 
 pub shape Sha1 (
@@ -90,6 +91,20 @@ impl Sha1 {
         auto len = usize(data.len())
         auto *ptr# = data.buf() as *[u8]
         self#.update_bytes(*ptr, len)
+    }
+
+    pub fn update_view(self#, input: bytes) {
+        auto i# = 0:usize
+        loop i < input.len() {
+            self.data[self.datalen] = input.at(i).unwrap() as u8
+            self.datalen = self.datalen + 1
+            if self.datalen == 64 {
+                self#.process_block()
+                self.bitlen = self.bitlen + 512
+                self.datalen = 0
+            }
+            i = i + 1:usize
+        }
     }
 
     pub fn update_bytes(self#, *buf: [u8], len: usize) {

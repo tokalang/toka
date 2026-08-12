@@ -411,6 +411,21 @@ static int toka_unpack_process_argv(const char *packed, size_t packed_len,
     return 0;
 }
 
+enum toka_process_stdio {
+    TOKA_PROCESS_STDIO_INHERIT = 0,
+    TOKA_PROCESS_STDIO_NULL = 1,
+};
+
+struct toka_process_config {
+    const char *cwd;
+    const char *env_blob;
+    size_t env_blob_len;
+    size_t env_count;
+    int stdin_mode;
+    int stdout_mode;
+    int stderr_mode;
+};
+
 #if !defined(_WIN32) && !defined(__wasi__)
 
 #include <fcntl.h>
@@ -464,18 +479,89 @@ static int toka_process_make_exec_pipe(int pipefd[2]) {
     return 0;
 }
 
-static void toka_process_child_exec(char **argv, int exec_error_fd) {
+static int toka_process_apply_environment(const struct toka_process_config *config) {
+    if (!config->env_blob && config->env_count != 0) return EINVAL;
+    size_t offset = 0;
+    for (size_t i = 0; i < config->env_count; ++i) {
+        if (offset >= config->env_blob_len) return EINVAL;
+        const char *key = config->env_blob + offset;
+        const char *key_end = memchr(key, '\0', config->env_blob_len - offset);
+        if (!key_end || key == key_end || memchr(key, '=', (size_t)(key_end - key)))
+            return EINVAL;
+        offset = (size_t)(key_end - config->env_blob) + 1;
+        if (offset >= config->env_blob_len) return EINVAL;
+        const char *value = config->env_blob + offset;
+        const char *value_end = memchr(value, '\0', config->env_blob_len - offset);
+        if (!value_end) return EINVAL;
+        offset = (size_t)(value_end - config->env_blob) + 1;
+        if (setenv(key, value, 1) != 0) return errno;
+    }
+    return offset == config->env_blob_len ? 0 : EINVAL;
+}
+
+static int toka_process_redirect_null(int fd, int flags) {
+    int null_fd = open("/dev/null", flags);
+    if (null_fd < 0) return errno;
+    if (dup2(null_fd, fd) < 0) {
+        int error = errno;
+        close(null_fd);
+        return error;
+    }
+    close(null_fd);
+    return 0;
+}
+
+static int toka_process_apply_context(const struct toka_process_config *config) {
+    if (config->cwd && config->cwd[0] != '\0' && chdir(config->cwd) != 0)
+        return errno;
+    return toka_process_apply_environment(config);
+}
+
+static int toka_process_apply_stdio(const struct toka_process_config *config) {
+    const int modes[3] = {
+        config->stdin_mode, config->stdout_mode, config->stderr_mode,
+    };
+    for (int fd = 0; fd < 3; ++fd) {
+        if (modes[fd] == TOKA_PROCESS_STDIO_INHERIT) continue;
+        if (modes[fd] != TOKA_PROCESS_STDIO_NULL) return EINVAL;
+        int flags = fd == STDIN_FILENO ? O_RDONLY : O_WRONLY;
+        int error = toka_process_redirect_null(fd, flags);
+        if (error != 0) return error;
+    }
+    return 0;
+}
+
+static void toka_process_exec(char **argv, int exec_error_fd) {
     execvp(argv[0], argv);
     int error = errno;
     while (write(exec_error_fd, &error, sizeof(error)) < 0 && errno == EINTR) {}
     _exit(127);
 }
 
-int toka_process_spawn_packed(const char *packed, size_t packed_len,
-                              size_t argc) {
+static void toka_process_child_exec(char **argv, int exec_error_fd,
+                                    const struct toka_process_config *config) {
+    int error = toka_process_apply_context(config);
+    if (error == 0) error = toka_process_apply_stdio(config);
+    if (error != 0) {
+        while (write(exec_error_fd, &error, sizeof(error)) < 0 && errno == EINTR) {}
+        _exit(127);
+    }
+    toka_process_exec(argv, exec_error_fd);
+}
+
+int toka_process_spawn_config_packed(const char *packed, size_t packed_len,
+                                     size_t argc, const char *cwd,
+                                     const char *env_blob, size_t env_blob_len,
+                                     size_t env_count, int stdin_mode,
+                                     int stdout_mode, int stderr_mode) {
     char **argv = NULL;
     int error = toka_unpack_process_argv(packed, packed_len, argc, &argv);
     if (error != 0) return -error;
+
+    const struct toka_process_config config = {
+        cwd, env_blob, env_blob_len, env_count,
+        stdin_mode, stdout_mode, stderr_mode,
+    };
 
     int exec_pipe[2];
     error = toka_process_make_exec_pipe(exec_pipe);
@@ -494,7 +580,7 @@ int toka_process_spawn_packed(const char *packed, size_t packed_len,
     }
     if (pid == 0) {
         close(exec_pipe[0]);
-        toka_process_child_exec(argv, exec_pipe[1]);
+        toka_process_child_exec(argv, exec_pipe[1], &config);
     }
 
     close(exec_pipe[1]);
@@ -516,6 +602,14 @@ int toka_process_spawn_packed(const char *packed, size_t packed_len,
         return -error;
     }
     return (int)pid;
+}
+
+int toka_process_spawn_packed(const char *packed, size_t packed_len,
+                              size_t argc) {
+    return toka_process_spawn_config_packed(
+        packed, packed_len, argc, NULL, NULL, 0, 0,
+        TOKA_PROCESS_STDIO_INHERIT, TOKA_PROCESS_STDIO_INHERIT,
+        TOKA_PROCESS_STDIO_INHERIT);
 }
 
 int toka_process_wait(int pid, int *out_exit_code, int *out_signal) {
@@ -540,11 +634,27 @@ int toka_process_status_packed(const char *packed, size_t packed_len,
     return toka_process_wait(pid, out_exit_code, out_signal);
 }
 
-int toka_process_output_packed(const char *packed, size_t packed_len,
-                               size_t argc, char **out_stdout,
-                               size_t *out_stdout_len, char **out_stderr,
-                               size_t *out_stderr_len, int *out_exit_code,
-                               int *out_signal) {
+int toka_process_status_config_packed(const char *packed, size_t packed_len,
+                                      size_t argc, const char *cwd,
+                                      const char *env_blob, size_t env_blob_len,
+                                      size_t env_count, int stdin_mode,
+                                      int stdout_mode, int stderr_mode,
+                                      int *out_exit_code, int *out_signal) {
+    int pid = toka_process_spawn_config_packed(
+        packed, packed_len, argc, cwd, env_blob, env_blob_len, env_count,
+        stdin_mode, stdout_mode, stderr_mode);
+    if (pid < 0) return -pid;
+    return toka_process_wait(pid, out_exit_code, out_signal);
+}
+
+int toka_process_output_config_packed(const char *packed, size_t packed_len,
+                                      size_t argc, const char *cwd,
+                                      const char *env_blob, size_t env_blob_len,
+                                      size_t env_count, int stdin_mode,
+                                      int stdout_mode, int stderr_mode,
+                                      char **out_stdout, size_t *out_stdout_len,
+                                      char **out_stderr, size_t *out_stderr_len,
+                                      int *out_exit_code, int *out_signal) {
     if (!out_stdout || !out_stdout_len || !out_stderr || !out_stderr_len ||
         !out_exit_code || !out_signal) return EINVAL;
     *out_stdout = NULL;
@@ -555,6 +665,11 @@ int toka_process_output_packed(const char *packed, size_t packed_len,
     char **argv = NULL;
     int error = toka_unpack_process_argv(packed, packed_len, argc, &argv);
     if (error != 0) return error;
+
+    const struct toka_process_config config = {
+        cwd, env_blob, env_blob_len, env_count,
+        stdin_mode, stdout_mode, stderr_mode,
+    };
 
     int stdout_pipe[2];
     int stderr_pipe[2];
@@ -591,16 +706,36 @@ int toka_process_output_packed(const char *packed, size_t packed_len,
         close(stdout_pipe[0]);
         close(stderr_pipe[0]);
         close(exec_pipe[0]);
-        if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0 ||
-            dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
-            int child_error = errno;
+        int child_error = toka_process_apply_context(&config);
+        if (child_error == 0 && config.stdin_mode == TOKA_PROCESS_STDIO_NULL)
+            child_error = toka_process_redirect_null(STDIN_FILENO, O_RDONLY);
+        if (child_error == 0 && config.stdin_mode != TOKA_PROCESS_STDIO_INHERIT &&
+            config.stdin_mode != TOKA_PROCESS_STDIO_NULL)
+            child_error = EINVAL;
+        if (child_error == 0 && config.stdout_mode == TOKA_PROCESS_STDIO_NULL)
+            child_error = toka_process_redirect_null(STDOUT_FILENO, O_WRONLY);
+        if (child_error == 0 && config.stdout_mode == TOKA_PROCESS_STDIO_INHERIT &&
+            dup2(stdout_pipe[1], STDOUT_FILENO) < 0)
+            child_error = errno;
+        if (child_error == 0 && config.stdout_mode != TOKA_PROCESS_STDIO_INHERIT &&
+            config.stdout_mode != TOKA_PROCESS_STDIO_NULL)
+            child_error = EINVAL;
+        if (child_error == 0 && config.stderr_mode == TOKA_PROCESS_STDIO_NULL)
+            child_error = toka_process_redirect_null(STDERR_FILENO, O_WRONLY);
+        if (child_error == 0 && config.stderr_mode == TOKA_PROCESS_STDIO_INHERIT &&
+            dup2(stderr_pipe[1], STDERR_FILENO) < 0)
+            child_error = errno;
+        if (child_error == 0 && config.stderr_mode != TOKA_PROCESS_STDIO_INHERIT &&
+            config.stderr_mode != TOKA_PROCESS_STDIO_NULL)
+            child_error = EINVAL;
+        if (child_error != 0) {
             while (write(exec_pipe[1], &child_error, sizeof(child_error)) < 0 &&
                    errno == EINTR) {}
             _exit(127);
         }
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
-        toka_process_child_exec(argv, exec_pipe[1]);
+        toka_process_exec(argv, exec_pipe[1]);
     }
 
     close(stdout_pipe[1]);
@@ -679,6 +814,25 @@ int toka_process_output_packed(const char *packed, size_t packed_len,
     return 0;
 }
 
+int toka_process_output_packed(const char *packed, size_t packed_len,
+                               size_t argc, char **out_stdout,
+                               size_t *out_stdout_len, char **out_stderr,
+                               size_t *out_stderr_len, int *out_exit_code,
+                               int *out_signal) {
+    return toka_process_output_config_packed(
+        packed, packed_len, argc, NULL, NULL, 0, 0,
+        TOKA_PROCESS_STDIO_INHERIT, TOKA_PROCESS_STDIO_INHERIT,
+        TOKA_PROCESS_STDIO_INHERIT, out_stdout, out_stdout_len,
+        out_stderr, out_stderr_len, out_exit_code, out_signal);
+}
+
+int toka_process_cancel(int pid, int policy) {
+    if (pid <= 0) return EINVAL;
+    int signal_number = policy == 1 ? SIGTERM : policy == 2 ? SIGKILL : 0;
+    if (signal_number == 0) return EINVAL;
+    return kill((pid_t)pid, signal_number) == 0 ? 0 : errno;
+}
+
 #else
 
 #ifdef _WIN32
@@ -727,6 +881,60 @@ int toka_process_output_packed(const char *packed, size_t packed_len,
     (void)out_stdout; (void)out_stdout_len;
     (void)out_stderr; (void)out_stderr_len;
     (void)out_exit_code; (void)out_signal;
+    return ENOSYS;
+}
+
+int toka_process_spawn_config_packed(const char *packed, size_t packed_len,
+                                     size_t argc, const char *cwd,
+                                     const char *env_blob, size_t env_blob_len,
+                                     size_t env_count, int stdin_mode,
+                                     int stdout_mode, int stderr_mode) {
+    if ((!cwd || cwd[0] == '\0') && env_blob_len == 0 && env_count == 0 &&
+        stdin_mode == TOKA_PROCESS_STDIO_INHERIT &&
+        stdout_mode == TOKA_PROCESS_STDIO_INHERIT &&
+        stderr_mode == TOKA_PROCESS_STDIO_INHERIT)
+        return toka_process_spawn_packed(packed, packed_len, argc);
+    (void)env_blob;
+    return -ENOSYS;
+}
+
+int toka_process_status_config_packed(const char *packed, size_t packed_len,
+                                      size_t argc, const char *cwd,
+                                      const char *env_blob, size_t env_blob_len,
+                                      size_t env_count, int stdin_mode,
+                                      int stdout_mode, int stderr_mode,
+                                      int *out_exit_code, int *out_signal) {
+    if ((!cwd || cwd[0] == '\0') && env_blob_len == 0 && env_count == 0 &&
+        stdin_mode == TOKA_PROCESS_STDIO_INHERIT &&
+        stdout_mode == TOKA_PROCESS_STDIO_INHERIT &&
+        stderr_mode == TOKA_PROCESS_STDIO_INHERIT)
+        return toka_process_status_packed(
+            packed, packed_len, argc, out_exit_code, out_signal);
+    (void)env_blob;
+    return ENOSYS;
+}
+
+int toka_process_output_config_packed(const char *packed, size_t packed_len,
+                                      size_t argc, const char *cwd,
+                                      const char *env_blob, size_t env_blob_len,
+                                      size_t env_count, int stdin_mode,
+                                      int stdout_mode, int stderr_mode,
+                                      char **out_stdout, size_t *out_stdout_len,
+                                      char **out_stderr, size_t *out_stderr_len,
+                                      int *out_exit_code, int *out_signal) {
+    if ((!cwd || cwd[0] == '\0') && env_blob_len == 0 && env_count == 0 &&
+        stdin_mode == TOKA_PROCESS_STDIO_INHERIT &&
+        stdout_mode == TOKA_PROCESS_STDIO_INHERIT &&
+        stderr_mode == TOKA_PROCESS_STDIO_INHERIT)
+        return toka_process_output_packed(
+            packed, packed_len, argc, out_stdout, out_stdout_len, out_stderr,
+            out_stderr_len, out_exit_code, out_signal);
+    (void)env_blob;
+    return ENOSYS;
+}
+
+int toka_process_cancel(int pid, int policy) {
+    (void)pid; (void)policy;
     return ENOSYS;
 }
 

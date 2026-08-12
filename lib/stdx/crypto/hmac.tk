@@ -3,7 +3,9 @@
 import core/str::{bytes}
 import std/bytes::{bytes_from_array}
 import stdx/crypto/constant_time
+import stdx/crypto/sha1::{Sha1}
 import stdx/crypto/sha256::{Sha256}
+import stdx/crypto/sha512::{Sha512}
 import stdx/encoding/hex
 
 const BLOCK_LEN: usize = 64
@@ -60,4 +62,102 @@ pub fn hmac_sha256_hex(key: bytes, message: bytes) -> string {
 pub fn hmac_sha256_verify(key: bytes, message: bytes, expected: bytes) -> bool {
     auto digest = hmac_sha256(key, message)
     return constant_time::equal(bytes_from_array<32>(digest), expected)
+}
+
+fn normalized_key_sha1(key: bytes) -> [u8; 64] {
+    auto block# = [0:u8; 64]:[u8; 64]
+    if key.len() > BLOCK_LEN {
+        auto hash# = Sha1::new()
+        hash#.update_view(key)
+        auto digest = hash#.finalize()
+        auto index# = 0:usize
+        loop index < 20:usize {
+            block[index] = digest[index]
+            index += 1
+        }
+        return block
+    }
+    auto index# = 0:usize
+    loop index < key.len() {
+        block[index] = key.at(index).unwrap() as u8
+        index += 1
+    }
+    return block
+}
+
+pub fn hmac_sha1(key: bytes, message: bytes) -> [u8; 20] {
+    auto key_block = normalized_key_sha1(key)
+    auto inner_pad# = [0:u8; 64]:[u8; 64]
+    auto outer_pad# = [0:u8; 64]:[u8; 64]
+    auto index# = 0:usize
+    loop index < BLOCK_LEN {
+        inner_pad[index] = key_block[index] ^ 0x36:u8
+        outer_pad[index] = key_block[index] ^ 0x5c:u8
+        index += 1
+    }
+    auto inner# = Sha1::new()
+    inner#.update_view(bytes_from_array<64>(inner_pad))
+    inner#.update_view(message)
+    auto inner_digest = inner#.finalize()
+    auto outer# = Sha1::new()
+    outer#.update_view(bytes_from_array<64>(outer_pad))
+    outer#.update_view(bytes_from_array<20>(inner_digest))
+    return outer#.finalize()
+}
+
+pub fn hmac_sha1_hex(key: bytes, message: bytes) -> string {
+    return hex::encode_fixed20(hmac_sha1(key, message))
+}
+
+pub fn hmac_sha1_verify(key: bytes, message: bytes, expected: bytes) -> bool {
+    return constant_time::equal(bytes_from_array<20>(hmac_sha1(key, message)), expected)
+}
+
+fn normalized_key_sha512(key: bytes) -> [u8; 128] {
+    auto block# = [0:u8; 128]:[u8; 128]
+    if key.len() > 128:usize {
+        auto hash# = Sha512::new()
+        hash#.update_view(key)
+        auto digest = hash#.finalize()
+        auto index# = 0:usize
+        loop index < 64:usize {
+            block[index] = digest[index]
+            index += 1
+        }
+        return block
+    }
+    auto index# = 0:usize
+    loop index < key.len() {
+        block[index] = key.at(index).unwrap() as u8
+        index += 1
+    }
+    return block
+}
+
+pub fn hmac_sha512(key: bytes, message: bytes) -> [u8; 64] {
+    auto key_block = normalized_key_sha512(key)
+    auto inner_pad# = [0:u8; 128]:[u8; 128]
+    auto outer_pad# = [0:u8; 128]:[u8; 128]
+    auto index# = 0:usize
+    loop index < 128:usize {
+        inner_pad[index] = key_block[index] ^ 0x36:u8
+        outer_pad[index] = key_block[index] ^ 0x5c:u8
+        index += 1
+    }
+    auto inner# = Sha512::new()
+    inner#.update_view(bytes_from_array<128>(inner_pad))
+    inner#.update_view(message)
+    auto inner_digest = inner#.finalize()
+    auto outer# = Sha512::new()
+    outer#.update_view(bytes_from_array<128>(outer_pad))
+    outer#.update_view(bytes_from_array<64>(inner_digest))
+    return outer#.finalize()
+}
+
+pub fn hmac_sha512_hex(key: bytes, message: bytes) -> string {
+    return hex::encode_fixed64(hmac_sha512(key, message))
+}
+
+pub fn hmac_sha512_verify(key: bytes, message: bytes, expected: bytes) -> bool {
+    return constant_time::equal(bytes_from_array<64>(hmac_sha512(key, message)), expected)
 }

@@ -1,4 +1,4 @@
-import std/process::{Command}
+import std/process::{Command, STDIO_NULL, CANCEL_TERMINATE}
 
 fn main() -> i32 {
     auto literal# = Command::new(string::from("printf"))
@@ -63,6 +63,36 @@ fn main() -> i32 {
     assert(large_output.status.success(), "large output command failed")
     assert(large_output.stdout.len() == 30000:usize, "large stdout was truncated")
     assert(large_output.stderr.len() == 30000:usize, "large stderr was truncated")
+
+    auto configured# = Command::new(string::from("/bin/sh"))
+    configured#.arg(string::from("-c"))
+    configured#.arg(string::from("printf '%s:%s' \"$PWD\" \"$TOKA_PROCESS_ENV\""))
+    configured#.current_dir(string::from("/tmp"))
+    configured#.env(string::from("TOKA_PROCESS_ENV"), string::from("child-only"))
+    auto configured_output# = configured#.output().unwrap()
+    assert((configured_output.stdout.starts_with("/tmp:") ||
+            configured_output.stdout.starts_with("/private/tmp:")) &&
+           configured_output.stdout.ends_with(":child-only"),
+           "per-child working directory or environment was not applied")
+
+    auto quiet# = Command::new(string::from("/bin/sh"))
+    quiet#.arg(string::from("-c"))
+    quiet#.arg(string::from("printf out; printf err >&2"))
+    quiet#.stdout(STDIO_NULL)
+    quiet#.stderr(STDIO_NULL)
+    auto quiet_output# = quiet#.output().unwrap()
+    assert(quiet_output.stdout.is_empty() && quiet_output.stderr.is_empty(),
+           "null stdio policy did not discard child output")
+
+    auto cancellable# = Command::new(string::from("/bin/sh"))
+    cancellable#.arg(string::from("-c"))
+    cancellable#.arg(string::from("while :; do :; done"))
+    cancellable#.cancel_policy(CANCEL_TERMINATE)
+    auto child# = cancellable#.try_spawn().unwrap()
+    child#.request_cancel().unwrap()
+    auto canceled_status = child#.wait_status().unwrap()
+    assert(canceled_status.signaled() && canceled_status.signal == 15,
+           "configured child cancellation did not send SIGTERM")
 
     return 0
 }
