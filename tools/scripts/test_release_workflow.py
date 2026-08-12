@@ -14,6 +14,8 @@ WORKFLOW = ROOT / ".github/workflows/release.yml"
 PROMOTION = ROOT / ".github/workflows/promote_release.yml"
 QUALIFICATION = ROOT / "tools/scripts/verify_release_qualification.py"
 ASSETS = ROOT / "tools/scripts/verify_release_assets.py"
+ACTIVE_CANDIDATE = "v1.0.0-rc.4"
+ACTIVE_RELEASE_NOTES = ROOT / ("docs/release_notes_%s.md" % ACTIVE_CANDIDATE)
 TARGETS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64")
 STAGES = (
     "build", "pass", "fail", "warn", "semantic_replay", "cache_invalidation",
@@ -66,7 +68,7 @@ def exercise_verifiers():
         evidence = root / "evidence"
         evidence.mkdir()
         revision = "a" * 40
-        label = "v1.0.0-rc.3"
+        label = ACTIVE_CANDIDATE
         for target in TARGETS:
             (evidence / ("release-gate-%s.json" % target)).write_text(
                 json.dumps(report(target, revision, label)), encoding="utf-8")
@@ -115,6 +117,8 @@ def main():
 
     require("publish_release" not in text,
             "manual qualification must not have an automatic publish switch")
+    require(ACTIVE_RELEASE_NOTES.is_file(),
+            "active candidate is missing tag-release notes: " + str(ACTIVE_RELEASE_NOTES))
     require("softprops/action-gh-release" not in gate,
             "matrix gate must not publish a release directly")
     require("contents: read" in gate,

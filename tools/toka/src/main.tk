@@ -10,7 +10,7 @@ import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, bui
 
 
 fn print_help() {
-    println("Toka {}", "1.0.0-rc.3")
+    println("Toka {}", manager_release_version())
     println("\nUsage: toka <command> [options]\n\nCommands:")
     println("  new <name>   Create a new Toka project (--lib for library)")
     println("  init         Initialize a new Toka project in the current directory")
@@ -46,6 +46,23 @@ fn print_help() {
     println("  -V, --version  Show version information")
     println("  -v, --verbose  Enable verbose compiler output")
     println("  -f, --forge    Enable forge multi-threaded parallel incremental build engine")
+}
+
+fn manager_release_version() -> string {
+    auto compiler# = Command::new(detect_tokac_path())
+    compiler#.arg(string::from("--version"))
+    auto result = compiler#.output()
+    if result.is_ok() {
+        auto output = result.unwrap()
+        if output.status.success() {
+            auto start = output.stdout.find_str("toka version ")
+            auto end = output.stdout.find_str(" (Built:")
+            if start != -1 && end > start + 13 {
+                return output.stdout.substring(start + 13, end)
+            }
+        }
+    }
+    return string::from("unavailable")
 }
 
 fn check_is_windows() -> bool {

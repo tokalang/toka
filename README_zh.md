@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.3 候选说明](docs/release_notes_v1.0.0-rc.3.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.4 候选说明](docs/release_notes_v1.0.0-rc.4.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
@@ -56,11 +56,11 @@ Toka 组合了几类机制来接近这个目标。设计上，它试图让日常
 curl -fsSL https://tokalang.dev/install.sh | bash
 ```
 
-待 `v1.0.0-rc.3` 发布后，试用该候选版请显式指定 tag，而不要依赖 GitHub
+待 `v1.0.0-rc.4` 发布后，试用该候选版请显式指定 tag，而不要依赖 GitHub
 对稳定版本的 Latest 选择：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.3
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.4
 ```
 
 若要参与编译器开发或测试未发布改动，可从源码构建。需要 CMake、C++17
@@ -285,6 +285,6 @@ Toka 受 C / C++ 的表示控制和确定性资源管理启发，也受 Rust 的
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.3 candidate}
+  note         = {Version 1.0.0-rc.4 candidate}
 }
 ```

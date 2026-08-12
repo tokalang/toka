@@ -1,8 +1,8 @@
 # Toka v1.0.0-rc.3 Candidate Notes
 
-**Status:** In qualification. `v1.0.0-rc.3` is not tagged or published until
-its exact revision passes the four-platform release gate and maintainers
-authorize publication.
+**Status:** Historical, non-qualified tag. `v1.0.0-rc.3` was tagged, but its
+tag gate did not qualify and created neither a draft nor a public release. It
+must not be promoted or reused as release evidence.
 
 ## Purpose
 

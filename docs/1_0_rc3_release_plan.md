@@ -1,8 +1,9 @@
 # Toka 1.0.0-rc.3 Candidate Qualification Plan
 
-**Status:** In qualification. This plan creates neither a tag nor a public
-release. `v1.0.0-rc.1` remains the published historical candidate; the
-immutable `v1.0.0-rc.2` tag is withdrawn and must not be reused.
+**Status:** Historical, non-qualified tag. The immutable `v1.0.0-rc.3` tag
+failed its tag gate before draft creation and must not be reused. `v1.0.0-rc.1`
+remains the published historical candidate; the immutable `v1.0.0-rc.2` tag is
+also withdrawn.
 
 ## Decision and boundary
 
