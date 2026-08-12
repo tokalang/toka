@@ -570,6 +570,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
   // Construct synthetic ShapeDecl
   auto SyntheticShape = std::make_unique<ShapeDecl>(
       false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct, members);
+  SyntheticShape->IsCompilerSynthesized = true;
   SyntheticShape->Loc = Clo->Loc;
   
   auto retTy = std::make_shared<toka::ShapeType>(UniqueName);

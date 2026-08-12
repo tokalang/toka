@@ -1425,6 +1425,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto SyntheticShape = std::make_unique<ShapeDecl>(
         false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct,
         members);
+    SyntheticShape->IsCompilerSynthesized = true;
 
     // Important: Register in ShapeMap so MemberExpr can find it
     ShapeMap[UniqueName] = SyntheticShape.get();

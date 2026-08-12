@@ -403,7 +403,7 @@ void TKIExporter::exportTypeAlias(const TypeAliasDecl &decl) {
 }
 
 void TKIExporter::exportShape(const ShapeDecl &decl) {
-    if (decl.Name.rfind("__Toka_Anon_Rec_", 0) == 0) return;
+    if (decl.IsCompilerSynthesized) return;
     indent();
     if (decl.IsPub) m_OS << "pub ";
     m_OS << "shape " << decl.Name;

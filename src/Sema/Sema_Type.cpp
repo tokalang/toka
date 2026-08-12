@@ -204,6 +204,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
         auto SyntheticShape = std::make_unique<ShapeDecl>(
             false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct,
             std::move(members));
+        SyntheticShape->IsCompilerSynthesized = true;
         ShapeMap[UniqueName] = SyntheticShape.get();
         SyntheticShapes.push_back(std::move(SyntheticShape));
 
@@ -285,6 +286,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
       auto SyntheticShape = std::make_unique<ShapeDecl>(
           false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct,
           members);
+      SyntheticShape->IsCompilerSynthesized = true;
       ShapeMap[UniqueName] = SyntheticShape.get();
       SyntheticShapes.push_back(std::move(SyntheticShape));
       
@@ -335,6 +337,8 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
 
               if (!ShapeMap.count(mangledName)) {
                 auto cloned = new ShapeDecl(*targetSh->Decl);
+                cloned->NominalId.reset();
+                cloned->IsCompilerSynthesized = true;
                 cloned->Name = mangledName;
                 cloned->CodegenName = mangledName;
                 cloned->GenericParams.clear();
@@ -408,6 +412,8 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
           if (auto targetSh = std::dynamic_pointer_cast<ShapeType>(targetTy)) {
             if (targetSh->Decl) {
               auto cloned = new ShapeDecl(*targetSh->Decl);
+              cloned->NominalId.reset();
+              cloned->IsCompilerSynthesized = true;
               cloned->Name = shape->Name;
               cloned->CodegenName = shape->Name;
               ShapeMap[cloned->Name] = cloned;
@@ -541,6 +547,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   auto NewDecl = std::make_unique<ShapeDecl>(
       Template->IsPub, mangledName, std::vector<GenericParam>{}, Template->Kind,
       std::vector<ShapeMember>{});
+  NewDecl->IsCompilerSynthesized = true;
   NewDecl->CodegenName = mangledName;
   NewDecl->Loc = Template->Loc;
 

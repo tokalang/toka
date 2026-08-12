@@ -29,6 +29,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace toka {
@@ -2577,8 +2578,38 @@ void Sema::exitScope() {
   PALCheckerState.popScope();
   delete Old;
 }
+
+std::optional<NominalShapeId>
+Sema::makeDeclaredShapeId(const Module &module,
+                          const ShapeDecl &shape) const {
+  if (module.ShadowCoordinateKnown) {
+    if (module.ShadowCrateId.empty() ||
+        module.ShadowLogicalModulePath.empty())
+      return std::nullopt;
+    return NominalShapeId::fromResolverCoordinate(
+        module.ShadowCrateId, module.ShadowLogicalModulePath, shape.Name,
+        shape.GenericParams.size());
+  }
+
+  std::string sourcePath = module.SourcePath;
+  if (sourcePath.empty())
+    sourcePath = module.ResolvedPath;
+  if (sourcePath.empty() && module.Loc.isValid()) {
+    sourcePath =
+        DiagnosticEngine::SrcMgr->getFullSourceLoc(module.Loc).FileName;
+  }
+  if (sourcePath.empty())
+    return std::nullopt;
+  return NominalShapeId::fromSourcePath(
+      toka::PathUtils::canonicalize(sourcePath), shape.Name,
+      shape.GenericParams.size());
+}
+
 void Sema::declareGlobals(Module &M) {
   recordHandleSurfaceModule(M);
+  if (std::find(DeclaredModules.begin(), DeclaredModules.end(), &M) ==
+      DeclaredModules.end())
+    DeclaredModules.push_back(&M);
 
   std::string fileName = !M.ResolvedPath.empty()
       ? toka::PathUtils::canonicalize(M.ResolvedPath)
@@ -2661,6 +2692,20 @@ void Sema::declareGlobals(Module &M) {
   // 3. Register Shapes
   for (auto &St : M.Shapes) {
     DeclarationLexicalScopes[St.get()] = &ms;
+    if (St->IsCompilerSynthesized) {
+      St->NominalId.reset();
+    } else {
+      St->NominalId = makeDeclaredShapeId(M, *St);
+      if (!St->NominalId) {
+        DiagnosticEngine::report(
+            St->Loc, DiagID::ERR_GENERIC_SEMA,
+            "Cannot establish a stable nominal identity for shape '" +
+                St->Name + "'");
+        HasError = true;
+      } else {
+        DeclaredShapeIdentityRecords.push_back({&M, St.get()});
+      }
+    }
     if (St->CodegenName.empty())
       St->CodegenName = St->Name;
     auto existingShape = ShapeMap.find(St->Name);
@@ -4457,6 +4502,335 @@ void Sema::checkImpl(ImplDecl *Impl) {
 }
 
 void Sema::checkShapeSovereignty() {
+  std::map<NominalShapeId, const ShapeDecl *> owners;
+  std::map<const ShapeDecl *, const Module *> declarationOwners;
+  std::set<const ShapeDecl *> visited;
+  auto reportViolation = [&](SourceLocation loc, const std::string &message) {
+    DiagnosticEngine::report(loc, DiagID::ERR_GENERIC_SEMA, message);
+    HasError = true;
+  };
+  for (const auto &record : DeclaredShapeIdentityRecords) {
+    if (!record.Owner || !record.Decl) {
+      reportViolation(SourceLocation{},
+                      "Invalid declared shape identity record");
+      continue;
+    }
+
+    const auto member = std::find_if(
+        record.Owner->Shapes.begin(), record.Owner->Shapes.end(),
+        [&](const std::unique_ptr<ShapeDecl> &candidate) {
+          return candidate.get() == record.Decl;
+        });
+    if (member == record.Owner->Shapes.end()) {
+      reportViolation(
+          record.Owner->Loc,
+          "A declared shape identity no longer belongs to its module");
+      continue;
+    }
+
+    auto [ownerIt, ownerInserted] =
+        declarationOwners.emplace(record.Decl, record.Owner);
+    if (!ownerInserted && ownerIt->second != record.Owner) {
+      reportViolation(record.Decl->Loc,
+                      "A shape declaration is owned by more than one module");
+      continue;
+    }
+    if (!visited.insert(record.Decl).second)
+      continue;
+
+    const ShapeDecl *shape = record.Decl;
+    const auto expected = makeDeclaredShapeId(*record.Owner, *shape);
+    std::string violation;
+    if (!shape->NominalId) {
+      violation = "Shape '" + shape->Name +
+                  "' is missing its declared nominal identity";
+    } else if (!expected || *shape->NominalId != *expected) {
+      violation = "Shape '" + shape->Name +
+                  "' changed nominal identity after declaration";
+    } else if (!DeclarationLexicalScopes.count(shape)) {
+      violation = "Shape '" + shape->Name +
+                  "' has no declaration lexical scope";
+    } else {
+      ModuleScope *ownerScope = nullptr;
+      if (!record.Owner->ResolvedPath.empty())
+        ownerScope = getModule(record.Owner->ResolvedPath);
+      if (!ownerScope && !record.Owner->SourcePath.empty())
+        ownerScope = getModule(record.Owner->SourcePath);
+      if (!ownerScope && record.Owner->Loc.isValid())
+        ownerScope = getLexicalModule(record.Owner->Loc);
+      if (!ownerScope || DeclarationLexicalScopes.at(shape) != ownerScope) {
+        violation = "Shape '" + shape->Name +
+                    "' has a declaration scope outside its owning module";
+      }
+    }
+
+    if (violation.empty()) {
+      auto [it, inserted] = owners.emplace(*shape->NominalId, shape);
+      if (!inserted && it->second != shape) {
+        violation = "Distinct shape declarations share nominal identity '" +
+                    shape->NominalId->canonical() + "'";
+      }
+    }
+
+    if (!violation.empty()) {
+      reportViolation(shape->Loc, violation);
+    }
+  }
+
+  auto registeredShape = [](ModuleScope *scope,
+                            const SymbolInfo &symbol) -> ShapeDecl * {
+    auto find = [&](ModuleScope *candidate) -> ShapeDecl * {
+      if (!candidate || !symbol.ASTPtr)
+        return nullptr;
+      for (const auto &[_, shape] : candidate->Shapes) {
+        if (shape == symbol.ASTPtr)
+          return shape;
+      }
+      return nullptr;
+    };
+    if (ShapeDecl *shape = find(scope))
+      return shape;
+    return find(static_cast<ModuleScope *>(symbol.ReferencedModule));
+  };
+
+  auto visibleShape = [&](ModuleScope *scope,
+                          const std::string &name) -> ShapeDecl * {
+    if (!scope)
+      return nullptr;
+    ModuleScope *target = scope;
+    std::string localName = name;
+    const size_t separator = name.find("::");
+    if (separator != std::string::npos) {
+      auto module = scope->LexicalSymbols.find(name.substr(0, separator));
+      if (module == scope->LexicalSymbols.end() ||
+          !module->second.ReferencedModule)
+        return nullptr;
+      target = static_cast<ModuleScope *>(module->second.ReferencedModule);
+      localName = name.substr(separator + 2);
+    }
+
+    auto symbol = target->LexicalTypes.find(localName);
+    if (symbol == target->LexicalTypes.end() ||
+        !symbol->second.IsTypeName || symbol->second.IsTraitName)
+      return nullptr;
+    return registeredShape(target, symbol->second);
+  };
+
+  std::set<const ShapeDecl *> declaredShapes;
+  for (const auto &record : DeclaredShapeIdentityRecords) {
+    if (record.Decl)
+      declaredShapes.insert(record.Decl);
+  }
+
+  using AuditedTypeKey =
+      std::tuple<const Type *, const TypeSyntax *, const ModuleScope *>;
+  std::set<AuditedTypeKey> auditedTypes;
+  std::set<std::pair<const ShapeDecl *, const ModuleScope *>>
+      auditedSyntheticShapes;
+  std::function<void(const ShapeDecl *, ModuleScope *, SourceLocation)>
+      auditSyntheticShape;
+  std::function<void(const std::shared_ptr<Type> &, const TypeSyntaxPtr &,
+                     ModuleScope *, SourceLocation)>
+      auditType;
+  auditType = [&](const std::shared_ptr<Type> &type,
+                  const TypeSyntaxPtr &syntax, ModuleScope *scope,
+                  SourceLocation loc) {
+    if (!type)
+      return;
+    if (!auditedTypes.emplace(type.get(), syntax.get(), scope).second)
+      return;
+
+    TypeSyntaxPtr soulSyntax = syntax;
+    while (soulSyntax &&
+           soulSyntax->NodeKind == TypeSyntax::Kind::Morphology)
+      soulSyntax = soulSyntax->Subject;
+
+    if (auto pointer = std::dynamic_pointer_cast<PointerType>(type)) {
+      auditType(pointer->PointeeType, soulSyntax, scope, loc);
+      return;
+    }
+    if (auto array = std::dynamic_pointer_cast<ArrayType>(type)) {
+      TypeSyntaxPtr element =
+          soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Array
+              ? soulSyntax->Subject
+              : nullptr;
+      auditType(array->ElementType, element, scope, loc);
+      return;
+    }
+    if (auto slice = std::dynamic_pointer_cast<SliceType>(type)) {
+      TypeSyntaxPtr element =
+          soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Slice
+              ? soulSyntax->Subject
+              : nullptr;
+      auditType(slice->ElementType, element, scope, loc);
+      return;
+    }
+    if (auto uninit = std::dynamic_pointer_cast<UninitType>(type)) {
+      TypeSyntaxPtr inner;
+      if (soulSyntax &&
+          soulSyntax->NodeKind == TypeSyntax::Kind::GenericApplication &&
+          !soulSyntax->Arguments.empty() &&
+          soulSyntax->Arguments[0].ArgumentKind ==
+              TypeArgumentSyntax::Kind::Type)
+        inner = soulSyntax->Arguments[0].Type;
+      auditType(uninit->InnerType, inner, scope, loc);
+      return;
+    }
+    if (auto function = std::dynamic_pointer_cast<FunctionType>(type)) {
+      for (size_t i = 0; i < function->ParamTypes.size(); ++i) {
+        TypeSyntaxPtr parameter;
+        if (soulSyntax &&
+            soulSyntax->NodeKind == TypeSyntax::Kind::Function &&
+            i < soulSyntax->Elements.size())
+          parameter = soulSyntax->Elements[i];
+        auditType(function->ParamTypes[i], parameter, scope, loc);
+      }
+      TypeSyntaxPtr result =
+          soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Function
+              ? soulSyntax->Result
+              : nullptr;
+      auditType(function->ReturnType, result, scope, loc);
+      return;
+    }
+    if (auto function = std::dynamic_pointer_cast<DynFnType>(type)) {
+      for (size_t i = 0; i < function->ParamTypes.size(); ++i) {
+        TypeSyntaxPtr parameter;
+        if (soulSyntax &&
+            soulSyntax->NodeKind == TypeSyntax::Kind::Function &&
+            i < soulSyntax->Elements.size())
+          parameter = soulSyntax->Elements[i];
+        auditType(function->ParamTypes[i], parameter, scope, loc);
+      }
+      TypeSyntaxPtr result =
+          soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Function
+              ? soulSyntax->Result
+              : nullptr;
+      auditType(function->ReturnType, result, scope, loc);
+      return;
+    }
+
+    auto shapeType = std::dynamic_pointer_cast<ShapeType>(type);
+    if (!shapeType)
+      return;
+    for (size_t i = 0; i < shapeType->GenericArgs.size(); ++i) {
+      TypeSyntaxPtr argumentSyntax;
+      if (soulSyntax &&
+          soulSyntax->NodeKind == TypeSyntax::Kind::GenericApplication &&
+          i < soulSyntax->Arguments.size() &&
+          soulSyntax->Arguments[i].ArgumentKind ==
+              TypeArgumentSyntax::Kind::Type)
+        argumentSyntax = soulSyntax->Arguments[i].Type;
+      auditType(shapeType->GenericArgs[i], argumentSyntax, scope, loc);
+    }
+
+    std::string surfaceName;
+    if (soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Named) {
+      surfaceName = soulSyntax->Text;
+    } else if (soulSyntax &&
+               soulSyntax->NodeKind == TypeSyntax::Kind::GenericApplication &&
+               soulSyntax->Subject &&
+               soulSyntax->Subject->NodeKind == TypeSyntax::Kind::Named) {
+      surfaceName = soulSyntax->Subject->Text;
+    }
+
+    if (!shapeType->Decl) {
+      if (!surfaceName.empty() && visibleShape(scope, surfaceName)) {
+        reportViolation(loc, "Shape type '" + surfaceName +
+                                 "' lost its nominal declaration binding");
+      }
+      return;
+    }
+    if (shapeType->Decl->IsCompilerSynthesized) {
+      auditSyntheticShape(shapeType->Decl, scope, loc);
+      return;
+    }
+    if (!declaredShapes.count(shapeType->Decl) ||
+        !shapeType->Decl->NominalId) {
+      reportViolation(loc, "Shape type '" + shapeType->Name +
+                               "' refers to an unregistered nominal "
+                               "declaration");
+      return;
+    }
+
+    ShapeDecl *expected =
+        surfaceName.empty() ? nullptr : visibleShape(scope, surfaceName);
+    if (expected && expected != shapeType->Decl) {
+      reportViolation(loc, "Shape type '" + surfaceName +
+                               "' is bound to the wrong nominal declaration");
+    }
+  };
+
+  std::function<void(const ShapeMember &, ModuleScope *, SourceLocation)>
+      auditMember;
+  auditMember = [&](const ShapeMember &member, ModuleScope *scope,
+                    SourceLocation fallbackLoc) {
+    const SourceLocation memberLoc =
+        member.Loc.isValid() ? member.Loc : fallbackLoc;
+    if (member.TypeSyntax && !member.ResolvedType) {
+      reportViolation(memberLoc,
+                      "A concrete shape member has no resolved semantic type");
+    } else {
+      auditType(member.ResolvedType, member.TypeSyntax, scope, memberLoc);
+    }
+    for (const auto &subMember : member.SubMembers)
+      auditMember(subMember, scope, memberLoc);
+  };
+
+  auditSyntheticShape = [&](const ShapeDecl *shape, ModuleScope *scope,
+                            SourceLocation loc) {
+    if (!shape || !auditedSyntheticShapes.emplace(shape, scope).second)
+      return;
+    for (const auto &member : shape->Members)
+      auditMember(member, scope, loc);
+  };
+
+  std::set<const ShapeDecl *> auditedShapes;
+  for (const auto &record : DeclaredShapeIdentityRecords) {
+    if (!record.Decl || !auditedShapes.insert(record.Decl).second ||
+        record.Decl->IsCompilerSynthesized ||
+        !record.Decl->GenericParams.empty())
+      continue;
+    auto scope = DeclarationLexicalScopes.find(record.Decl);
+    if (scope == DeclarationLexicalScopes.end())
+      continue;
+    for (const auto &member : record.Decl->Members)
+      auditMember(member, scope->second, record.Decl->Loc);
+  }
+
+  for (const Module *module : DeclaredModules) {
+    if (!module)
+      continue;
+    ModuleScope *ownerScope = nullptr;
+    if (!module->ResolvedPath.empty())
+      ownerScope = getModule(module->ResolvedPath);
+    if (!ownerScope && !module->SourcePath.empty())
+      ownerScope = getModule(module->SourcePath);
+    if (!ownerScope && module->Loc.isValid())
+      ownerScope = getLexicalModule(module->Loc);
+    for (const auto &shape : module->Shapes) {
+      if (!shape->IsCompilerSynthesized)
+        continue;
+      auto lexicalScope = DeclarationLexicalScopes.find(shape.get());
+      auditSyntheticShape(
+          shape.get(), lexicalScope == DeclarationLexicalScopes.end()
+                           ? ownerScope
+                           : lexicalScope->second,
+          shape->Loc);
+    }
+  }
+
+  if (GenericInstancesModule) {
+    for (const auto &shape : GenericInstancesModule->Shapes) {
+      if (!shape->IsCompilerSynthesized)
+        continue;
+      auto lexicalScope = DeclarationLexicalScopes.find(shape.get());
+      auditSyntheticShape(
+          shape.get(), lexicalScope == DeclarationLexicalScopes.end()
+                           ? nullptr
+                           : lexicalScope->second,
+          shape->Loc);
+    }
+  }
 }
 
 void Sema::analyzeShapes(Module &M) {

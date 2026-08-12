@@ -555,6 +555,14 @@ private:
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
   std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;
+  struct DeclaredShapeIdentityRecord {
+    const Module *Owner = nullptr;
+    const ShapeDecl *Decl = nullptr;
+  };
+  std::vector<const Module *> DeclaredModules;
+  std::vector<DeclaredShapeIdentityRecord> DeclaredShapeIdentityRecords;
+  std::optional<NominalShapeId>
+  makeDeclaredShapeId(const Module &module, const ShapeDecl &shape) const;
   std::map<const FunctionDecl *, ModuleScope *> InstantiationLexicalScopes;
   std::map<const FunctionDecl *, std::set<std::string>>
       InstantiationTypeNames;

@@ -20,6 +20,7 @@
 #include "toka/Type.h" // Added for ResolvedType
 #include "toka/ComptimeValue.h"
 #include "toka/MemorySummary.h"
+#include "toka/NominalShapeId.h"
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -1613,6 +1614,11 @@ public:
   bool IsPub = false;
   std::string Name;
   std::string CodegenName;
+  std::optional<NominalShapeId> NominalId;
+  // Compiler-derived declarations are implementation artifacts rather than
+  // source-level nominal definitions.  This survives AST reuse so a later
+  // semantic-analysis revision does not assign them a source identity.
+  bool IsCompilerSynthesized = false;
   // struct GenericParam moved to top-level
   std::vector<GenericParam> GenericParams; // [UPDATED] e.g. <T, N_: usize>
   ShapeKind Kind;
@@ -2275,7 +2281,8 @@ public:
   bool IsTrustedSystemModule = false; // Resolver provenance; never serialized.
   bool HasBackingObject = false;
   std::string BackingObjectPath;
-  // Slice 0 resolver evidence only; no current semantic rule consults these.
+  // Resolver evidence used by stable nominal declaration identities.  A
+  // source_path alone never grants a resolver coordinate.
   bool ShadowCoordinateKnown = false;
   std::string ShadowCrateId;
   std::string ShadowLogicalModulePath;
