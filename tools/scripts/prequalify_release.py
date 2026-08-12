@@ -189,7 +189,7 @@ def run_docker(source, output, target, revision, version, docker_cores, dry_run)
     image = docker_image(target)
     dockerfile = source / "tools/docker/Dockerfile.release-qualification"
     build_image = [
-        "docker", "build", "--platform", platform_name,
+        "docker", "build", "--quiet", "--platform", platform_name,
         "--build-arg", "BASE_IMAGE=" + base, "--tag", image,
         "--file", str(dockerfile), str(dockerfile.parent),
     ]

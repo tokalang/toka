@@ -51,7 +51,7 @@ def main():
     text = DOCKERFILE.read_text(encoding="utf-8")
     require("ARG BASE_IMAGE=ubuntu:24.04" in text,
             "Docker qualification image must support the ARM64 runner base")
-    require("llvm.sh ${LLVM_VERSION}" in text and "libssl-dev" in text,
+    require("llvm.sh ${LLVM_VERSION}" in text and "curl" in text and "libssl-dev" in text,
             "Docker qualification image must install the CI LLVM and package prerequisites")
     print("Local release prequalification contract PASSED")
 
