@@ -7,7 +7,7 @@ RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
     apt-get update -o Acquire::Retries=5; \
     apt-get install -y --no-install-recommends \
-        build-essential ca-certificates cmake git ninja-build lsb-release \
+        build-essential ca-certificates cmake curl git ninja-build lsb-release \
         python3 software-properties-common wget; \
     wget --timeout=15 --tries=3 -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh; \
     chmod +x /tmp/llvm.sh; \
