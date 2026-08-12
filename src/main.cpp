@@ -1114,7 +1114,18 @@ int main(int argc, char **argv) {
   if (!explainCode.empty()) {
     auto explanation = toka::DiagnosticEngine::explain(explainCode);
     if (!explanation) {
-      llvm::errs() << "error: unknown diagnostic code '" << explainCode << "'\n";
+      if (explainJson) {
+        llvm::outs() << llvm::json::Object{
+                            {"schema", "toka.command-error"},
+                            {"version", 1},
+                            {"success", false},
+                            {"command", "explain"},
+                            {"kind", "unknown-diagnostic-code"},
+                            {"requested", explainCode}}
+                     << '\n';
+      } else {
+        llvm::errs() << "error: unknown diagnostic code '" << explainCode << "'\n";
+      }
       return 1;
     }
     if (explainJson) {
