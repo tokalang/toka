@@ -409,10 +409,11 @@ struct TokaProfile {
     bool Enabled = false;
     Clock::time_point Start;
     Clock::time_point Last;
+    Clock::time_point DetailLast;
     std::vector<std::pair<std::string, double>> Entries;
 
     explicit TokaProfile(bool enabled)
-        : Enabled(enabled), Start(Clock::now()), Last(Start) {}
+        : Enabled(enabled), Start(Clock::now()), Last(Start), DetailLast(Start) {}
 
     void mark(const std::string &name) {
         if (!Enabled) return;
@@ -420,6 +421,15 @@ struct TokaProfile {
         std::chrono::duration<double, std::milli> elapsed = now - Last;
         Entries.push_back({name, elapsed.count()});
         Last = now;
+        DetailLast = now;
+    }
+
+    void detail(const std::string &name) {
+        if (!Enabled) return;
+        auto now = Clock::now();
+        std::chrono::duration<double, std::milli> elapsed = now - DetailLast;
+        Entries.push_back({name, elapsed.count()});
+        DetailLast = now;
     }
 
     void finish(const std::string &label) {
@@ -1412,6 +1422,8 @@ int main(int argc, char **argv) {
       llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to previous semantic errors.\n";
       return 1;
     }
+    if (profile.Enabled)
+      profile.detail("sema_module:" + ast->ResolvedPath);
   }
 
   // Pass 3: Run global shape sovereignty checks once all modules are resolved
@@ -1420,6 +1432,8 @@ int main(int argc, char **argv) {
     llvm::errs() << "\033[1;31m[FAILED]\033[0m Compilation aborted due to previous semantic errors.\n";
     return 1;
   }
+  if (profile.Enabled)
+    profile.detail("sema_shape_sovereignty");
   profile.mark("sema_check");
 
   if (validateSemanticManifests &&
