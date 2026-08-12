@@ -113,11 +113,10 @@ static PreparedParent make_prepared_parent(void) {
     return parent;
 }
 
-static ChildTask make_child(void) {
-    ChildTask child = {0};
-    child.tcb = toka_task_create(NULL, &child.promise);
-    CHECK(child.tcb != NULL);
-    return child;
+static void make_child(ChildTask *child) {
+    *child = (ChildTask){0};
+    child->tcb = toka_task_create(NULL, &child->promise);
+    CHECK(child->tcb != NULL);
 }
 
 static PreparedPairParent make_prepared_pair_parent(void) {
@@ -192,7 +191,8 @@ static void finish_woken_pair_parent(PreparedPairParent *parent,
 
 static void test_subscribe_before_terminal(void) {
     PreparedParent parent = make_prepared_parent();
-    ChildTask child = make_child();
+    ChildTask child;
+    make_child(&child);
     CHECK(toka_task_subscribe_completion(child.tcb, parent.wait_id,
                                          parent.slot_generation));
     CHECK(toka_task_subscribe_completion(child.tcb, parent.wait_id,
@@ -205,7 +205,8 @@ static void test_subscribe_before_terminal(void) {
 
 static void test_subscription_retain_survives_handle_release(void) {
     PreparedParent parent = make_prepared_parent();
-    ChildTask child = make_child();
+    ChildTask child;
+    make_child(&child);
     CHECK(toka_task_subscribe_completion(child.tcb, parent.wait_id,
                                          parent.slot_generation));
     // The subscription owns the remaining checked child reference. Its
@@ -219,7 +220,8 @@ static void test_subscription_retain_survives_handle_release(void) {
 
 static void test_terminal_before_subscribe(void) {
     PreparedParent normal_parent = make_prepared_parent();
-    ChildTask normal_child = make_child();
+    ChildTask normal_child;
+    make_child(&normal_child);
     toka_task_complete(&normal_child.promise);
     CHECK(toka_task_subscribe_completion(normal_child.tcb,
                                          normal_parent.wait_id,
@@ -229,7 +231,8 @@ static void test_terminal_before_subscribe(void) {
     toka_task_release(normal_child.tcb);
 
     PreparedParent canceled_parent = make_prepared_parent();
-    ChildTask canceled_child = make_child();
+    ChildTask canceled_child;
+    make_child(&canceled_child);
     toka_task_complete_canceled(&canceled_child.promise);
     CHECK(toka_task_subscribe_completion(canceled_child.tcb,
                                          canceled_parent.wait_id,
@@ -241,7 +244,8 @@ static void test_terminal_before_subscribe(void) {
 
 static void test_unsubscribe_wins_before_terminal(void) {
     PreparedParent parent = make_prepared_parent();
-    ChildTask child = make_child();
+    ChildTask child;
+    make_child(&child);
     CHECK(toka_task_subscribe_completion(child.tcb, parent.wait_id,
                                          parent.slot_generation));
     CHECK(toka_task_unsubscribe_completion(child.tcb, parent.wait_id,
@@ -254,7 +258,8 @@ static void test_unsubscribe_wins_before_terminal(void) {
 
 static void test_other_group_winner_unsubscribes_child(void) {
     PreparedPairParent parent = make_prepared_pair_parent();
-    ChildTask child = make_child();
+    ChildTask child;
+    make_child(&child);
     CHECK(toka_task_subscribe_completion(child.tcb, parent.first_wait_id,
                                          parent.first_slot_generation));
 
@@ -271,7 +276,8 @@ static void test_other_group_winner_unsubscribes_child(void) {
 
 static void test_parent_cancel_unsubscribes_child(void) {
     PreparedPairParent parent = make_prepared_pair_parent();
-    ChildTask child = make_child();
+    ChildTask child;
+    make_child(&child);
     CHECK(toka_task_subscribe_completion(child.tcb, parent.first_wait_id,
                                          parent.first_slot_generation));
 
@@ -307,7 +313,8 @@ static void *complete_worker(void *arg) {
 static void test_subscribe_terminal_race(void) {
     for (int i = 0; i < 1000; ++i) {
         PreparedParent parent = make_prepared_parent();
-        ChildTask child = make_child();
+        ChildTask child;
+        make_child(&child);
         SubscribeRace race = {
             .child = &child,
             .wait_id = parent.wait_id,
@@ -354,7 +361,8 @@ static void *unsubscribe_worker(void *arg) {
 static void test_terminal_unsubscribe_race(void) {
     for (int i = 0; i < 1000; ++i) {
         PreparedParent parent = make_prepared_parent();
-        ChildTask child = make_child();
+        ChildTask child;
+        make_child(&child);
         CHECK(toka_task_subscribe_completion(child.tcb, parent.wait_id,
                                              parent.slot_generation));
         UnsubscribeRace race = {
@@ -398,7 +406,8 @@ static void *wake_other_group_source_worker(void *arg) {
 static void test_child_terminal_vs_other_group_winner(void) {
     for (int i = 0; i < 1000; ++i) {
         PreparedPairParent parent = make_prepared_pair_parent();
-        ChildTask child = make_child();
+        ChildTask child;
+        make_child(&child);
         CHECK(toka_task_subscribe_completion(child.tcb,
                                              parent.first_wait_id,
                                              parent.first_slot_generation));
@@ -440,7 +449,8 @@ static void *cancel_parent_worker(void *arg) {
 static void test_parent_cancel_vs_child_terminal(void) {
     for (int i = 0; i < 1000; ++i) {
         PreparedPairParent parent = make_prepared_pair_parent();
-        ChildTask child = make_child();
+        ChildTask child;
+        make_child(&child);
         CHECK(toka_task_subscribe_completion(child.tcb, parent.first_wait_id,
                                              parent.first_slot_generation));
         ParentCancelTerminalRace race = {
