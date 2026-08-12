@@ -1,0 +1,20 @@
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
+
+ARG LLVM_VERSION=20
+
+RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
+    apt-get update -o Acquire::Retries=5; \
+    apt-get install -y --no-install-recommends \
+        build-essential ca-certificates cmake git ninja-build lsb-release \
+        python3 software-properties-common wget; \
+    wget --timeout=15 --tries=3 -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh; \
+    chmod +x /tmp/llvm.sh; \
+    /tmp/llvm.sh ${LLVM_VERSION}; \
+    apt-get install -y --no-install-recommends \
+        liblld-${LLVM_VERSION}-dev lld-${LLVM_VERSION} libpolly-${LLVM_VERSION}-dev \
+        libssl-dev libzstd-dev; \
+    rm -rf /var/lib/apt/lists/* /tmp/llvm.sh
+
+ENV PATH="/usr/lib/llvm-20/bin:${PATH}"

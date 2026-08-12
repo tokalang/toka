@@ -41,6 +41,7 @@
 | **`std/random.tk`** | `secure_random_bytes`, `fill_secure_random_bytes` | **Tier 2: Core/Std 1.0** | OS-backed cryptographic entropy; separate from deterministic PRNGs. |
 | **`std/io.tk`** | `File::open`, `read_to_string()`, `write()`, `close()` | **Tier 2: Core/Std 1.0** | Synchronous file I/O operations. |
 | **`std/fs.tk`** | `write_string_atomic` | **Tier 2: Core/Std 1.0** | Atomic reader visibility on supported platforms; not a durability transaction. |
+| **`std/process.tk`** | `Command`, `Child`, per-child cwd/env/stdio, explicit cancellation | **Tier 2: Core/Std 1.0** | Structured argv and explicit wait ownership. Per-child configuration and TERM/KILL cancellation are POSIX-only; Windows/WASI reject non-default configuration rather than silently changing process-global state. |
 | **`stdx/net/http.tk`** | `HttpRequest`, `HttpResponse`, `HttpResponseStream` | **Tier 3: Stdx 1.0** | Owner-carrying HTTP/1.1 framing. |
 | **`stdx/net/http.tk`** | `HttpServer::accept_async`, `HttpServerConnection` | **Tier 3: Stdx 1.0** | Safe server-side request framing and complete response writes; routing remains above this layer. |
 | **`stdx/net/http.tk`** | `HttpHeaderView`, `name()`, `value()` | **Tier 3: Stdx 1.0** | Non-owning borrowed offset views. |
@@ -49,7 +50,7 @@
 | **`stdx/net/cookie.tk`** | single `Set-Cookie` value parser and formatter | **Tier 3: Stdx 1.0** | Value type only; no cookie jar, `Expires` date parser, domain matching, or public-suffix policy. |
 | **`stdx/encoding/*`** | safe hex, Base64, percent codecs | **Tier 3: Stdx 1.0** | Binary-safe `bytes` input, owned decode output, structured errors. |
 | **`stdx/data/form.tk`** | ordered `application/x-www-form-urlencoded` fields | **Tier 3: Stdx 1.0** | Preserves duplicates and ordering; form `+` semantics are confined to this module. |
-| **`stdx/crypto/{hmac,constant_time}.tk`** | HMAC-SHA-256 and equal-length timing-safe comparison | **Tier 3: Stdx 1.0** | Safe `bytes` views for MAC generation and verification; length is not treated as secret. |
+| **`stdx/crypto/{sha1,sha256,sha512,hmac,constant_time}.tk`** | SHA-1/SHA-256/SHA-512, HMAC, equal-length timing-safe comparison | **Tier 3: Stdx 1.0** | Safe `bytes` views for SHA-1/SHA-256/SHA-512 MAC generation and verification; length is not treated as secret. |
 | **`stdx/crypto/token.tk`** | OS-random hexadecimal and Base64URL tokens | **Tier 3: Stdx 1.0** | Delegates entropy to `std/random`; does not impose session or expiry policy. |
 | **`stdx/crypto/hkdf.tk`** | HKDF-SHA-256 extract, expand, derive | **Tier 3: Stdx 1.0** | RFC 5869 key derivation; no protocol-specific key schedule policy. |
 | **`stdx/crypto/pbkdf2.tk`** | PBKDF2-HMAC-SHA-256 derivation | **Tier 3: Stdx 1.0** | RFC 8018 derivation with explicit work factor and bounded output; protocol adapters choose their own password policy. |

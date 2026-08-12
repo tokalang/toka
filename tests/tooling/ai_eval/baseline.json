@@ -1,6 +1,7 @@
 {
   "schema": "toka.ai-coding-baseline",
-  "version": 1,
+  "version": 2,
+  "cost_metric": "normalized-json-output-bytes-v1",
   "minimum_rates": {
     "compile_success": 1.0,
     "diagnostic_success": 1.0,
@@ -13,6 +14,6 @@
     "tool_calls": 8,
     "repair_rounds": 2,
     "input_bytes": 10000,
-    "output_bytes": 50000
+    "normalized_output_bytes": 50000
   }
 }

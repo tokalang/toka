@@ -28,6 +28,14 @@ def apply_edit(source, edit):
     return "".join(lines)
 
 
+def normalize_machine_output(output, path_aliases):
+    """Remove host-specific absolute paths before enforcing payload budgets."""
+    normalized = output
+    for path, alias in sorted(path_aliases.items(), key=lambda item: len(item[0]), reverse=True):
+        normalized = normalized.replace(path, alias)
+    return normalized
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", default="build")
@@ -44,9 +52,14 @@ def main():
             "Toka SDK binaries are missing; build the SDK first")
     require(baseline_path.is_file(), "AI coding baseline is missing")
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    require(baseline.get("schema") == "toka.ai-coding-baseline" and
+            baseline.get("version") == 2 and
+            baseline.get("cost_metric") == "normalized-json-output-bytes-v1",
+            "AI coding baseline must declare the normalized output-byte metric")
 
     cost = {"tool_calls": 0, "repair_rounds": 0,
-            "input_bytes": 0, "output_bytes": 0}
+            "input_bytes": 0, "normalized_output_bytes": 0}
+    path_aliases = {str(root.resolve()): "<repo>"}
 
     def run(command, expected=0, source_bytes=0):
         result = subprocess.run(
@@ -55,7 +68,8 @@ def main():
         )
         cost["tool_calls"] += 1
         cost["input_bytes"] += source_bytes
-        cost["output_bytes"] += len(result.stdout.encode("utf-8"))
+        normalized = normalize_machine_output(result.stdout, path_aliases)
+        cost["normalized_output_bytes"] += len(normalized.encode("utf-8"))
         if result.returncode != expected:
             raise RuntimeError(
                 "expected exit %d, got %d: %s\n%s%s" %
@@ -78,6 +92,7 @@ def main():
     repair_successes = 0
     precise_edits = 0
     with tempfile.TemporaryDirectory(prefix="toka-ai-eval-") as temp:
+        path_aliases[str(Path(temp).resolve())] = "<temporary>"
         for index, (source_path, expected_code) in enumerate(repair_cases):
             source = source_path.read_text(encoding="utf-8")
             document = json.loads(run(
@@ -150,7 +165,7 @@ def main():
 
     print(json.dumps({
         "schema": "toka.ai-coding-evaluation",
-        "version": 1,
+        "version": 2,
         "tasks": 6,
         "rates": rates,
         "cost": cost,

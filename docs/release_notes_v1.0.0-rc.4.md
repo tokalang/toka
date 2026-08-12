@@ -8,8 +8,8 @@ authorize draft creation.
 
 RC4 is the next public 1.0 release candidate from Toka's frozen language
 surface. It corrects release evidence and SDK version propagation found while
-preparing RC3; it adds no source syntax, PAL rule, TKI-format, CodeGen, or
-runtime behavior.
+preparing RC3, and includes bounded standard-library additions. It adds no
+source syntax, PAL rule, TKI-format, or CodeGen semantic change.
 
 ## Candidate improvements
 
@@ -23,6 +23,17 @@ runtime behavior.
 - The active release label, diagnostic map, installer guidance, website
   candidate banner, packaging default, and release workflow examples now name
   `v1.0.0-rc.4`.
+- `std/process::Command` now has POSIX-only per-child working-directory,
+  environment, inherited/null stdio, and explicit non-blocking cancellation
+  configuration. `Child::wait_status()` remains the sole reclamation boundary;
+  Windows/WASI reject custom configuration rather than silently widening
+  authority.
+- `stdx/crypto` now includes pure-Toka SHA-512 plus HMAC-SHA-1 and HMAC-SHA-512
+  with hexadecimal and constant-time verification helpers, qualified against
+  RFC 2202 and RFC 4231 vectors.
+- Local RC prequalification can now run an isolated committed checkout through
+  the native macOS/Linux gate and Docker Linux ARM64/AMD64 preflights before
+  GitHub's authoritative four-target qualification.
 - `v1.0.0-rc.3` is retained as an immutable, non-qualified historical tag. Its
   tag gate did not create a draft or public release and it cannot be promoted.
 
