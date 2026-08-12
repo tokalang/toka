@@ -1,0 +1,31 @@
+fn parse_decimal(text: string) -> Result<i32, string> {
+    if text.len() == 0:usize {
+        return Result<i32, string>::Err(string::from("empty"))
+    }
+    auto total# = 0:i32
+    auto index# = 0:usize
+    auto bytes = text.as_str().as_bytes()
+    loop index < text.len() {
+        auto code = bytes.at(index).unwrap() as i32
+        if code < 48 || code > 57 {
+            return Result<i32, string>::Err(string::from("non-digit"))
+        }
+        auto digit = code - 48
+        if total > 214748364 || (total == 214748364 && digit > 7) {
+            return Result<i32, string>::Err(string::from("overflow"))
+        }
+        total = total * 10 + digit
+        index = index + 1
+    }
+    return Result<i32, string>::Ok(total)
+}
+
+fn main() -> i32 {
+    auto valid = parse_decimal(string::from("214"))
+    if valid.is_err() { return 1 }
+    auto value = valid.unwrap()
+    if value != 214:i32 { return 1 }
+    if parse_decimal(string::from("2x")).is_ok() { return 2 }
+    if parse_decimal(string::from("2147483648")).is_ok() { return 3 }
+    return 0
+}

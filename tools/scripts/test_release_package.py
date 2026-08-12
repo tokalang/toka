@@ -11,6 +11,9 @@ import tempfile
 import tarfile
 
 
+ROOT = Path(__file__).resolve().parents[2]
+
+
 def run(command, cwd, env):
     result = subprocess.run(
         command,
@@ -37,7 +40,12 @@ def main():
     if not archive.is_file():
         raise SystemExit("release archive not found: %s" % archive)
 
-    checks = []
+    package_script = (ROOT / "tools/scripts/package_release.sh").read_text(encoding="utf-8")
+    if "tools/scripts/test_pass.py --prepare-runtime-only" not in package_script or \
+            "lib/sys/toka_rt.o" not in package_script or "lib/sys/llvm_shim.o" not in package_script:
+        raise SystemExit("release package script must explicitly prepare SDK runtime objects")
+
+    checks = ["runtime-object-preflight"]
     with tempfile.TemporaryDirectory(prefix="toka-package-smoke-") as temp:
         root = Path(temp)
         with tarfile.open(str(archive), "r:gz") as package:

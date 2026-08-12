@@ -65,6 +65,7 @@ jobs:
         run: |
           python3 tools/scripts/test_developer_experience.py
           python3 tools/scripts/test_ai_tooling.py
+          python3 tools/scripts/test_ai_completion_card.py
           python3 tools/scripts/test_json_cli_contract.py
           python3 tools/scripts/evaluate_ai_coding.py
           python3 tools/scripts/test_semantic_index.py

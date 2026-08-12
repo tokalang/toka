@@ -21,6 +21,12 @@
       "version": 1,
       "equals": {"code": "E0438", "id": "ERR_USE_MOVED"}
     },
+    "explain_failure": {
+      "exit": 1,
+      "schema": "toka.command-error",
+      "version": 1,
+      "equals": {"success": false, "command": "explain", "kind": "unknown-diagnostic-code", "requested": "NOT_A_CODE"}
+    },
     "index": {
       "exit": 0,
       "schema": "toka.semantic-index",

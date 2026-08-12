@@ -100,15 +100,17 @@ if result.is_err() { return 1 }
 auto value = result.unwrap()
 ```
 
-For an owned `string`, use `text.len()` for the byte length. A bounded byte
-lookup is `text.as_str().at(index).unwrap() as i32`. ASCII decimal bytes are
+For an owned `string`, use `text.len()` for the byte length. `str.at()` indexes
+Unicode scalars, not bytes. A bounded byte lookup is
+`text.as_str().as_bytes().at(index).unwrap() as i32`. ASCII decimal bytes are
 48 through 57. Reject any other value before using it as a digit.
 
 ```toka
 auto total# = 0:i32
 auto index# = 0:usize
+auto bytes = text.as_str().as_bytes()
 loop index < text.len() {
-    auto code = text.as_str().at(index).unwrap() as i32
+    auto code = bytes.at(index).unwrap() as i32
     if code < 48 || code > 57 {
         return Result<i32, string>::Err(string::from("non-digit"))
     }

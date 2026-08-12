@@ -37,6 +37,19 @@ PACKAGE_DIR="build/${PACKAGE_NAME}"
 
 echo "Packaging ${PACKAGE_NAME}..."
 
+# A release archive needs the source-side runtime objects consumed by the
+# installed SDK. Prepare them explicitly instead of depending on a prior test
+# helper having populated lib/sys.
+if [ ! -f "lib/sys/toka_rt.o" ] || [ ! -f "lib/sys/llvm_shim.o" ]; then
+    python3 tools/scripts/test_pass.py --prepare-runtime-only
+fi
+for runtime_object in lib/sys/toka_rt.o lib/sys/llvm_shim.o; do
+    if [ ! -f "$runtime_object" ]; then
+        echo "Error: required runtime object '$runtime_object' was not prepared."
+        exit 1
+    fi
+done
+
 # Clean old directory
 rm -rf "${PACKAGE_DIR}"
 mkdir -p "${PACKAGE_DIR}/bin"

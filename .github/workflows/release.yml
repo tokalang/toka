@@ -1,17 +1,16 @@
-name: Release Gate
+name: Release Qualification
 
 on:
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: Optional release tag/version label
-        required: false
+      candidate_ref:
+        description: Exact immutable candidate SHA to qualify
+        required: true
         type: string
-      publish_release:
-        description: Publish archives to the named release after the gate passes
-        required: false
-        default: false
-        type: boolean
+      tag_name:
+        description: Candidate version label, for example v1.0.0-rc.3
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -45,6 +44,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref || github.ref }}
 
       - name: Install LLVM 20 (Linux)
         if: runner.os == 'Linux'
@@ -74,13 +75,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          label="${{ inputs.tag_name }}"
-          if [ -z "$label" ]; then
-            label="${{ github.ref_name }}"
-          fi
-          if [ -z "$label" ] || [ "$label" = "main" ]; then
-            label="v1.0.0-rc.3"
-          fi
+          label="${{ inputs.tag_name || github.ref_name }}"
+          case "$label" in v*) ;; *) echo "release label must begin with v" >&2; exit 1 ;; esac
           echo "label=$label" >> "$GITHUB_OUTPUT"
 
       - name: Configure compiler
@@ -114,69 +110,112 @@ jobs:
           name: release-gate-${{ matrix.name }}
           path: |
             build/release-gate-${{ matrix.name }}.json
+            build/taskhandle-lifecycle-conformance-${{ matrix.name }}.json
             build/release-gate-work-${{ matrix.name }}/logs
           if-no-files-found: error
 
-      - name: Upload release archive artifact
-        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release)
+      - name: Upload tagged archive artifact
+        if: success() && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: release-archive-${{ matrix.name }}
           path: build/toka-${{ steps.version.outputs.label }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
-  publish-release:
-    name: Publish complete release
+  qualification-summary:
+    name: Verify four-target qualification
     needs: release-gate
+    if: always()
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref || github.ref }}
+
+      - name: Resolve candidate identity
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          label="${{ inputs.tag_name || github.ref_name }}"
+          case "$label" in v*) ;; *) echo "release label must begin with v" >&2; exit 1 ;; esac
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+
+      - name: Download all gate evidence
+        if: always()
+        run: mkdir -p qualification-evidence
+
+      - name: Download all gate evidence
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-gate-*
+          path: qualification-evidence
+
+      - name: Verify exact qualification reports
+        if: always()
+        run: |
+          python3 tools/scripts/verify_release_qualification.py \
+            --evidence-dir qualification-evidence \
+            --revision "${{ steps.candidate.outputs.revision }}" \
+            --version-label "${{ steps.candidate.outputs.label }}" \
+            --output build/release-qualification-summary.json
+
+      - name: Upload qualification summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-qualification-summary
+          path: build/release-qualification-summary.json
+          if-no-files-found: error
+
+  create-draft-release:
+    name: Create complete draft release
+    needs: qualification-summary
     if: >-
-      needs.release-gate.result == 'success' &&
-      (startsWith(github.ref, 'refs/tags/v') || inputs.publish_release)
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.qualification-summary.result == 'success'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       - name: Resolve version label
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          label="${{ inputs.tag_name }}"
-          if [ -z "$label" ]; then
-            label="${{ github.ref_name }}"
-          fi
-          if [ -z "$label" ] || [ "$label" = "main" ]; then
-            label="v1.0.0-rc.3"
-          fi
-          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "label=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-      - name: Download all release archives
+      - name: Download all tagged archives
         uses: actions/download-artifact@v4
         with:
           pattern: release-archive-*
           path: release-assets
           merge-multiple: true
 
-      - name: Verify complete archive set
-        shell: bash
+      - name: Verify exact assets and write checksums
         run: |
-          set -euo pipefail
-          expected=4
-          actual=$(find release-assets -maxdepth 1 -name 'toka-*.tar.gz' -type f | wc -l | tr -d ' ')
-          if [ "$actual" -ne "$expected" ]; then
-            echo "expected $expected release archives, found $actual" >&2
-            exit 1
-          fi
+          python3 tools/scripts/verify_release_assets.py \
+            --assets-dir release-assets \
+            --version-label "${{ steps.version.outputs.label }}" \
+            --checksums-output release-assets/SHA256SUMS
 
-      - name: Publish complete release
-        uses: softprops/action-gh-release@v2
+      - name: Create draft release
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.label }}
           body_path: docs/release_notes_${{ steps.version.outputs.label }}.md
-          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
+          draft: true
+          prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
-          files: release-assets/*.tar.gz
+          files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

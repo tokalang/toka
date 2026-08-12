@@ -46,9 +46,11 @@ change current language behavior or implementation status.
 - [`../cede_obligation_evidence_v1.md`](../cede_obligation_evidence_v1.md)
   freezes the narrower, repair-oriented protocol for caller transfer, callee
   consumption, and `cede` return obligations.
-- [`../taskhandle_lifecycle_v1.md`](../taskhandle_lifecycle_v1.md) freezes the
-  versioned TaskHandle operation, resource, result-consumption, and redline
-  test contract used by async repair tooling.
+- [`../taskhandle_lifecycle_v2.md`](../taskhandle_lifecycle_v2.md) records the
+  current qualified TaskHandle operation, result-consumption, redline, and
+  exact-revision conformance protocol used by async repair tooling.
+  [`../taskhandle_lifecycle_v1.md`](../taskhandle_lifecycle_v1.md) is retained
+  only as a historical public protocol.
 - [`../async_runtime_tcb_rfc.md`](../async_runtime_tcb_rfc.md) is the normative
   async TCB, wait-token, cancellation, result-discharge, and frame-reclamation
   design contract; implementation conformance remains gated at the current

@@ -1,0 +1,75 @@
+name: Promote Verified Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing draft tag to publish, for example v1.0.0-rc.3
+        required: true
+        type: string
+      first_hour_receipt:
+        description: URL or audit reference for successful clean-asset first-hour replay
+        required: true
+        type: string
+
+jobs:
+  promote:
+    name: Verify draft assets and publish
+    runs-on: ubuntu-22.04
+    environment: release-publication
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      - name: Verify draft state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "${{ inputs.tag_name }}" --json isDraft --jq .isDraft)" = "true"
+          test "$(gh release view "${{ inputs.tag_name }}" --json isPrerelease --jq .isPrerelease)" = "true"
+
+      - name: Verify exact draft asset names
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected_assets=$(printf '%s\n' \
+            SHA256SUMS \
+            "toka-${{ inputs.tag_name }}-linux-arm64.tar.gz" \
+            "toka-${{ inputs.tag_name }}-linux-x64.tar.gz" \
+            "toka-${{ inputs.tag_name }}-macos-arm64.tar.gz" \
+            "toka-${{ inputs.tag_name }}-macos-x64.tar.gz")
+          actual_assets=$(gh release view "${{ inputs.tag_name }}" --json assets \
+            --jq '.assets[].name' | LC_ALL=C sort)
+          if [ "$actual_assets" != "$expected_assets" ]; then
+            echo "draft asset names do not match the required release set" >&2
+            exit 1
+          fi
+
+      - name: Download and verify published draft assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release download "${{ inputs.tag_name }}" --dir release-assets \
+            --pattern 'toka-*.tar.gz' --pattern SHA256SUMS
+          python3 tools/scripts/verify_release_assets.py \
+            --assets-dir release-assets \
+            --version-label "${{ inputs.tag_name }}" \
+            --checksums-output release-assets/SHA256SUMS \
+            --require-checksums
+
+      - name: Publish reviewed pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "${{ inputs.tag_name }}" --draft=false --prerelease --latest=false
+          {
+            echo "Published after first-hour replay receipt:"
+            echo "${{ inputs.first_hour_receipt }}"
+          } >> "$GITHUB_STEP_SUMMARY"

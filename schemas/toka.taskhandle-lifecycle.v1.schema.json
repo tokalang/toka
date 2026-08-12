@@ -4,11 +4,10 @@
   "title": "Toka TaskHandle Lifecycle Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "version", "qualification", "operations", "result_states", "redline_tests"],
+  "required": ["schema", "version", "operations", "result_states", "redline_tests"],
   "properties": {
     "schema": { "const": "toka.taskhandle-lifecycle" },
     "version": { "const": 1 },
-    "qualification": { "$ref": "#/$defs/qualification" },
     "operations": {
       "type": "array",
       "items": { "$ref": "#/$defs/operation" }
@@ -54,28 +53,6 @@
       "properties": {
         "path": { "type": "string" },
         "proves": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "qualification": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["status", "qualified_scope", "known_behavior", "unqualified_targets", "native_evidence"],
-      "properties": {
-        "status": { "const": "qualified-subset" },
-        "qualified_scope": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "known_behavior": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "unqualified_targets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "native_evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/native_evidence" } }
-      }
-    },
-    "native_evidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["target", "path", "proves"],
-      "properties": {
-        "target": { "type": "string" },
-        "path": { "type": "string" },
-        "proves": { "type": "array", "minItems": 1, "items": { "type": "string" } }
       }
     }
   }

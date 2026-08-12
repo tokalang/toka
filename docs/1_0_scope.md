@@ -35,7 +35,12 @@ Supported with restrictions. Failures in Tier 2 platforms provide qualification 
   intentionally not this document's contract; `ci.yml` is authoritative for
   the current runnable set. The gate must remain green, but it is not the
   multi-platform release qualification.
-- **Release Candidate Gate (`.github/workflows/release.yml`)**: Automated on release candidate triggers via `tools/scripts/release_gate.py` (13-stage release qualification).
+- **Release Candidate Gate (`.github/workflows/release.yml`)**: Manual exact-SHA
+  qualification and tag-triggered requalification via
+  `tools/scripts/release_gate.py` (13-stage, four-target release evidence).
+  A tag creates only a verified draft; `.github/workflows/promote_release.yml`
+  is the separately protected, explicit public-promotion step after first-hour
+  replay.
 - **Manual / Scheduled Sanitizer Gate (`tools/build_sanitized.sh`)**: `runtime-tsan` and `compiler-asan` are available for manual developer validation or dedicated scheduled builds.
 - **Windows/MSYS2 Dogfood (`.github/workflows/windows-dogfood.yml`)**: A
   scheduled/manual Tier-2 product-feedback build of the installed SDK path; it

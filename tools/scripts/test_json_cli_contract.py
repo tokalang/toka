@@ -97,6 +97,7 @@ def main():
         "check_success": ["check", "--json", ROOT / "tests/pass/g03_println.tk"],
         "check_failure": ["check", "--json", ROOT / "tests/fail/borrow_move.tk"],
         "explain": ["explain", "E0438", "--json"],
+        "explain_failure": ["explain", "NOT_A_CODE", "--json"],
         "index": ["index", "--json", workspace],
         "index_failure": [
             "index", "--json", ROOT / "tests/fail/borrow_move.tk",

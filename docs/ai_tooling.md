@@ -33,7 +33,10 @@ documented source file, query position, or diagnostic code. Invalid command
 usage is outside this semantic protocol; clients must validate command shape
 before expecting a semantic response.
 
-`check` always uses the `toka.diagnostics` version 2 envelope. `index`,
+`check` always uses the `toka.diagnostics` version 2 envelope. `explain`
+returns `toka.diagnostic-explanation` on a known code and
+`toka.command-error` version 1 for a syntactically valid but unknown code.
+`index`,
 `context`, and `query` return their respective semantic schema on success, and
 return that same diagnostics envelope with `success: false` when semantic
 analysis rejects the request. This is a deliberate tagged-by-`schema` result
@@ -63,7 +66,8 @@ message. The command exits nonzero when the program has an error.
 
 `toka explain` describes the language rule behind a code and gives repair
 guidance. Its JSON form uses the versioned `toka.diagnostic-explanation`
-schema.
+schema on success. A valid lookup of an unknown code emits the structured
+`toka.command-error` envelope rather than leaving machine stdout empty.
 
 ## Bounded semantic context
 
@@ -164,10 +168,11 @@ location. It is deliberately narrower than Public Semantic Evidence: use it
 to make the smallest ownership repair, then re-check and test the candidate.
 
 For async ownership or cancellation edits, consult the machine-readable
-[TaskHandle Lifecycle Contract v1](taskhandle_lifecycle_v1.md) before changing
-`.start`, `.await`, cancellation, drop, or detach behavior. Its redline gate
-turns the lifecycle promises into executable checks rather than a prose-only
-runtime claim.
+[TaskHandle Lifecycle Contract v2](taskhandle_lifecycle_v2.md) before changing
+`.start`, `.await`, cancellation, drop, or detach behavior. Its exact-revision
+conformance record turns only qualified lifecycle facts into executable
+evidence. [v1](taskhandle_lifecycle_v1.md) is historical and must not be used
+as a current runtime claim.
 
 For a rejected or sensitive mutable call, request the bounded H/P explanation:
 

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toka-lang.org/schemas/toka.taskhandle-lifecycle.v2.schema.json",
+  "title": "Toka TaskHandle Lifecycle Contract v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "qualification", "qualified_guarantees", "operations", "result_states", "redline_tests"],
+  "properties": {
+    "schema": { "const": "toka.taskhandle-lifecycle" },
+    "version": { "const": 2 },
+    "qualification": { "$ref": "#/$defs/qualification" },
+    "qualified_guarantees": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/guarantee" } },
+    "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+    "result_states": { "type": "array", "items": { "$ref": "#/$defs/result_state" } },
+    "redline_tests": { "type": "array", "items": { "$ref": "#/$defs/redline_test" } }
+  },
+  "$defs": {
+    "guarantee": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "statement"],
+      "properties": { "id": { "type": "string", "pattern": "^TH-G[0-9]+$" }, "statement": { "type": "string" } }
+    },
+    "operation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "source_states", "target_states", "handle_obligation", "result_obligation", "guarantees"],
+      "properties": {
+        "name": { "enum": ["create", "activate", "await", "await-outcome", "cancel", "drop", "detach"] },
+        "source_states": { "type": "array", "items": { "type": "string" } },
+        "target_states": { "type": "array", "items": { "type": "string" } },
+        "handle_obligation": { "type": "string" }, "result_obligation": { "type": "string" },
+        "guarantees": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "result_state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "value", "meaning", "successor_states"],
+      "properties": {
+        "name": { "enum": ["pending", "ready-live", "taken", "canceled"] },
+        "value": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "meaning": { "type": "string" }, "successor_states": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "redline_test": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "proves", "guarantee_ids"],
+      "properties": {
+        "path": { "type": "string" }, "proves": { "type": "array", "items": { "type": "string" } },
+        "guarantee_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^TH-G[0-9]+$" } }
+      }
+    },
+    "qualification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "qualified_scope", "known_behavior", "unqualified_targets", "native_evidence"],
+      "properties": {
+        "status": { "const": "qualified-subset" },
+        "qualified_scope": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "known_behavior": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "unqualified_targets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "native_evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/native_evidence" } }
+      }
+    },
+    "native_evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target", "path", "proves", "guarantee_ids"],
+      "properties": {
+        "target": { "type": "string" }, "path": { "type": "string" },
+        "proves": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "guarantee_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^TH-G[0-9]+$" } }
+      }
+    }
+  }
+}
