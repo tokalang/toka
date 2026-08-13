@@ -1,0 +1,25 @@
+import core/option::{Option}
+import std/vec::{Vec}
+
+shape Match (
+    begin_byte: usize,
+    end_byte: usize
+)
+
+fn main() -> i32 {
+    auto matches# = Vec<Option<Match>>::new()
+    matches#.push(Option<Match>::Some(
+        Match(begin_byte = 2:usize, end_byte = 7:usize)))
+    matches#.push(Option<Match>::None)
+
+    auto first = matches.get(0:usize)
+    assert(first.is_some(),
+           "a nested transparent generic must inherit its concrete Copy witness")
+    auto first_match = first.unwrap()
+    assert(first_match.begin_byte == 2:usize &&
+           first_match.end_byte == 7:usize,
+           "nested generic copying must preserve the payload")
+    assert(matches.get(1:usize).is_none(),
+           "nested generic copying must preserve unit variants")
+    return 0
+}

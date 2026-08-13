@@ -1,0 +1,19 @@
+import core/option::{Option}
+import std/vec::{Vec}
+
+shape Resource (
+    value: i32
+)
+
+impl Resource@Encap {
+    pub value
+
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto values# = Vec<Option<Resource>>::new()
+    values#.push(Option<Resource>::Some(Resource(value = 1)))
+    auto copied = values.get(0:usize)
+    return 0
+}

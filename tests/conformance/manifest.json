@@ -107,6 +107,14 @@
       "description": "Copy-safe Vec elements retain clone, indexed copy, resize, cursor next, and value iteration"
     },
     {
+      "id": "std_vec_nested_generic_copy_witness_01",
+      "path": "std/vec_nested_generic_copy_witness.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec<Option<transparent Copy shape>>::get preserves concrete enum payloads and unit variants"
+    },
+    {
       "id": "std_vec_explicit_dup_clone_01",
       "path": "std/vec_explicit_dup_clone.tk",
       "type": "run",
@@ -146,6 +154,24 @@
       "expected_span_line": 15,
       "timeout_seconds": 10,
       "description": "Vec::get cannot bit-copy a move-only resource element"
+    },
+    {
+      "id": "diag_vec_nested_generic_resource_get_rejected_01",
+      "path": "diagnostics/vec_nested_generic_resource_get_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 17,
+      "timeout_seconds": 10,
+      "description": "Vec<Option<Resource>>::get remains unavailable when the concrete nested payload is non-Copy"
+    },
+    {
+      "id": "diag_vec_recursive_enum_get_rejected_01",
+      "path": "diagnostics/vec_recursive_enum_get_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0417",
+      "expected_span_line": 11,
+      "timeout_seconds": 10,
+      "description": "A direct-value recursive enum is never optimistically proven Copy"
     },
     {
       "id": "diag_vec_resource_at_rejected_01",

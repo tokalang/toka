@@ -1410,6 +1410,12 @@ bool Sema::proveSlice4CopyType(std::shared_ptr<toka::Type> type) {
     return proveSlice4CopyType(type->getArrayElementType());
   if (!type->isShape())
     return false;
+  auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(type);
+  if (shapeType && shapeType->Decl &&
+      (shapeType->GenericArgs.empty() ||
+       shapeType->Decl->InstantiationTemplate)) {
+    return proveSlice4Copy(shapeType->Decl);
+  }
   const std::string name = type->getSoulName();
   auto shape = ShapeMap.find(name);
   return shape != ShapeMap.end() && proveSlice4Copy(shape->second);
@@ -1433,7 +1439,11 @@ bool Sema::proveSlice4Copy(const ShapeDecl *shape) {
   for (const auto &member : shape->Members) {
     if (!copyable)
       break;
-    copyable = proveSlice4CopyType(getPhysicalType(member));
+    // Enum members are variant shells, not stored values.  Only their
+    // payload fields participate in the by-value Copy graph; unit variants
+    // contribute no edge at all.
+    if (shape->Kind != ShapeKind::Enum)
+      copyable = proveSlice4CopyType(getPhysicalType(member));
     for (const auto &submember : member.SubMembers) {
       if (!copyable)
         break;
@@ -1504,8 +1514,10 @@ Sema::deriveSlice4CopyRecipeType(std::shared_ptr<toka::Type> type,
   }
 
   auto shapeType = std::dynamic_pointer_cast<toka::ShapeType>(type);
-  ShapeDecl *nested = findVisibleShapeDecl(
-      typeName, context ? context->Loc : SourceLocation());
+  ShapeDecl *nested = shapeType && shapeType->Decl
+      ? shapeType->Decl
+      : findVisibleShapeDecl(typeName,
+                             context ? context->Loc : SourceLocation());
   if (!nested)
     return dependent("unresolved field type " + typeName);
   if (nested->GenericParams.empty())
@@ -1573,8 +1585,11 @@ Sema::Slice4CopyRecipe Sema::deriveSlice4CopyRecipe(const ShapeDecl *shape) {
     };
     std::function<void(const ShapeMember &)> collect =
         [&](const ShapeMember &member) {
-          combine(deriveSlice4CopyRecipeType(
-              toka::Type::fromString(synthesizePhysicalType(member)), shape));
+          if (shape->Kind != ShapeKind::Enum) {
+            combine(deriveSlice4CopyRecipeType(
+                toka::Type::fromString(synthesizePhysicalType(member)),
+                shape));
+          }
           for (const auto &submember : member.SubMembers)
             collect(submember);
         };

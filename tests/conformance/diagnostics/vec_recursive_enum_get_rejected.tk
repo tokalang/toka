@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+
+shape Recursive (
+    Next(Recursive) = 1 |
+    End = 0
+)
+
+fn main() -> i32 {
+    auto values# = Vec<Recursive>::new()
+    values#.push(Recursive::End)
+    auto copied = values.get(0:usize)
+    return 0
+}
