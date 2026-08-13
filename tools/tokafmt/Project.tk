@@ -1,6 +1,11 @@
 import build::{Executable, run_build}
+import std/env
 
 fn main() -> i32 {
-    auto proj# = Executable::make("tokafmt" as *char, "src/main.tk" as *char)
+    env::set_var(
+        string::from("TOKA_PKG_ARGS"),
+        string::from("-I ../../build/generated")
+    )
+    auto proj# = Executable::make(c"tokafmt", c"src/main.tk")
     return run_build(proj)
 }

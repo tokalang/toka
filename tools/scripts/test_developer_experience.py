@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -119,7 +120,23 @@ def main():
         run([tokafmt, "--check", temp_root / "project"], root)
         run([tokafmt, "--write", temp_root / "project"], root)
         require(first == source.read_bytes(), "tokafmt is not idempotent")
-        checks.append("tokafmt-project-idempotence")
+
+        source_workspace = temp_root / "source-workspace"
+        tokafmt_source = source_workspace / "tools/tokafmt"
+        tokafmt_source.mkdir(parents=True)
+        (tokafmt_source / "Project.tk").write_bytes(
+            (root / "tools/tokafmt/Project.tk").read_bytes()
+        )
+        shutil.copytree(root / "tools/tokafmt/src", tokafmt_source / "src")
+        shutil.copytree(build_dir / "generated",
+                        source_workspace / "build/generated")
+        source_build_env = os.environ.copy()
+        source_build_env["PATH"] = str(build_dir / "bin") + os.pathsep + source_build_env.get("PATH", "")
+        source_build_env["TOKA_LIB"] = str(root / "lib")
+        run([toka, "build"], tokafmt_source, env=source_build_env)
+        require((tokafmt_source / ("target/debug/tokafmt" + suffix)).is_file(),
+                "tokafmt Project.tk source build did not produce its executable")
+        checks.extend(("tokafmt-project-idempotence", "tokafmt-project-source-build"))
 
         prefix = temp_root / "sdk"
         run(["cmake", "--install", build_dir, "--prefix", prefix], root)
