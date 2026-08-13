@@ -88,7 +88,7 @@ pub fn getenv_impl(name: string) -> Option<string> {
         auto res = from_utf16(*buf)
         libc_free(*wname as *void)
         libc_free(*buf as *void)
-        return Option<string>::Some(res)
+        return Option<string>::Some(cede res)
     }
 }
 
