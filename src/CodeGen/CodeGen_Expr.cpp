@@ -2219,6 +2219,26 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
   bool isCeded = dynamic_cast<const CedeExpr*>(expr->Target.get()) != nullptr;
 
+  std::function<bool(const Expr *)> isTargetLValue =
+      [&](const Expr *target) -> bool {
+    if (!target)
+      return false;
+    if (dynamic_cast<const VariableExpr *>(target))
+      return true;
+    if (auto *member = dynamic_cast<const MemberExpr *>(target))
+      return isTargetLValue(member->Object.get());
+    if (auto *index = dynamic_cast<const ArrayIndexExpr *>(target))
+      return isTargetLValue(index->Array.get());
+    if (auto *unary = dynamic_cast<const UnaryExpr *>(target))
+      return unary->Op == TokenType::Star;
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(target))
+      return postfix->Op == TokenType::TokenWrite &&
+             isTargetLValue(postfix->LHS.get());
+    return false;
+  };
+  const bool ownsTargetTemporary =
+      expr->Target && !isTargetLValue(expr->Target.get());
+
   bool hasDirectReferencePattern = false;
   for (const auto &arm : expr->Arms) {
     if (arm->Pat && arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
@@ -2276,7 +2296,6 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   }
 
   // Use the physical address if it already exists, otherwise create a temporary staging block
-  bool isNewlyAllocated = false;
   if (targetAddr) {
       // Direct reference pattern uses the original lvalue address above.
   } else if (targetValEnt.isAddress) {
@@ -2284,13 +2303,13 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   } else {
       targetAddr = createEntryBlockAlloca(targetType, nullptr, "match_target_addr");
       m_Builder.CreateStore(targetVal, targetAddr);
-      isNewlyAllocated = true;
   }
 
   // [New] Temporary Lifetime Extension
   // If the target is an RValue temporary and needs its lifetime extended,
   // register it in the current scope so it survives until the end of the block.
-  if (expr->Target && expr->Target->ExtendLifetime && isNewlyAllocated && !m_ScopeStack.empty()) {
+  if (expr->Target && expr->Target->ExtendLifetime && ownsTargetTemporary &&
+      !m_ScopeStack.empty()) {
       bool hasDrop = false;
       std::string baseShapeName = shapeName;
       if (baseShapeName.find('<') != std::string::npos) {
@@ -2342,6 +2361,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           vsi.IsShared = isShared;
           vsi.HasDrop = true;
           vsi.SoulName = shapeName; // Original full shape name
+          vsi.DropType = expr->Target->ResolvedType;
           m_ScopeStack.back().push_back(vsi);
       }
   }

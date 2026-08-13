@@ -1,0 +1,64 @@
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape BigToken(
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64
+)
+
+impl BigToken@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape BigOutcome(
+    Ok(BigToken) |
+    Err(i32)
+)
+
+fn make_token(value: i64) -> BigOutcome {
+    return BigOutcome::Ok(BigToken(
+        a = value,
+        b = value + 1,
+        c = value + 2,
+        d = value + 3
+    ))
+}
+
+fn main() -> i32 {
+    match make_token(10) {
+        auto BigOutcome::Ok(&token) => {
+            assert(token.d == 13, "sret temporary remains live in match arm")
+        }
+        auto BigOutcome::Err(_) => return 1
+    }
+    assert(g_drop_count == 1, "sret match temporary drops exactly once")
+
+    {
+        auto held = make_token(20)
+        match held {
+            auto BigOutcome::Ok(&token) => {
+                assert(token.d == 23, "lvalue remains live in match arm")
+            }
+            auto BigOutcome::Err(_) => return 2
+        }
+        assert(g_drop_count == 1, "lvalue match does not drop its source")
+    }
+    assert(g_drop_count == 2, "lvalue source drops at its owning scope")
+
+    {
+        auto owned = make_token(30)
+        match cede owned {
+            auto BigOutcome::Ok('token) => {
+                assert('token.d == 33, "cede match transfers its payload")
+            }
+            auto BigOutcome::Err(_) => return 3
+        }
+    }
+    assert(g_drop_count == 3, "cede match payload drops exactly once")
+    return 0
+}
