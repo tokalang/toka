@@ -17,9 +17,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="toka-agent-service-") as work:
         work = Path(work)
         router_library = materialize_locked_library(
-            ROOT, "registry_router_consumer", "router", work)
+            ROOT, ROOT / "tests" / "fixtures" / "registry_router", "router", work)
         openai_compat_library = materialize_locked_library(
-            ROOT, "registry_openai_compat_consumer", "openai_compat", work)
+            ROOT, ROOT / "tests" / "fixtures" / "registry_openai_compat",
+            "openai_compat", work)
         postgres_library = materialize_locked_package(
             ROOT, ROOT / "tests" / "fixtures" / "registry_postgres",
             "postgres", work) / "lib"

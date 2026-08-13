@@ -38,10 +38,9 @@ def materialize_locked_package(root: Path, fixture: Path, dependency: str,
     return package
 
 
-def materialize_locked_library(root: Path, fixture_name: str, dependency: str,
+def materialize_locked_library(root: Path, fixture: Path, dependency: str,
                                work: Path) -> Path:
-    """Fetch one example fixture's locked dependency and return its library."""
-    fixture = root / "examples" / fixture_name
+    """Fetch one immutable fixture's locked dependency and return its library."""
     library = materialize_locked_package(root, fixture, dependency, work) / "lib"
     if not library.is_dir():
         raise RuntimeError(f"registry fixture did not install {dependency}'s library")

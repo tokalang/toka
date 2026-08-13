@@ -1,5 +1,5 @@
 pub const PACKAGE = (
-    name = "registry_router_consumer",
+    name = "registry_router_fixture",
     version = "0.1.0",
     dependencies = (
         router = "router:0.1.0",

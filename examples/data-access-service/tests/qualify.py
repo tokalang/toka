@@ -33,7 +33,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="toka-data-access-service-") as work:
         work = Path(work)
         router_library = materialize_locked_library(
-            ROOT, "registry_router_consumer", "router", work)
+            ROOT, ROOT / "tests" / "fixtures" / "registry_router", "router", work)
         postgres_library = materialize_locked_package(
             ROOT, ROOT / "tests" / "fixtures" / "registry_postgres",
             "postgres", work) / "lib"
