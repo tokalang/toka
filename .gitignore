@@ -88,6 +88,8 @@ test_output*.txt
 test_pkg_demo/
 
 *.vsix
+/tools/tokalsp/test_body
+/tools/tokalsp/test_main
 
 scratch/
 toka-registry/
