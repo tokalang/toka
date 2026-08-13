@@ -15,8 +15,9 @@
 import core/types::{char, str}
 
 extern fn toka_panic(*msg: char, len: i32) -> void
+extern fn __toka_str_raw_ptr(s: str) -> *char
 
 pub fn __toka_panic_handler(msg: str) -> never {
-    unsafe { toka_panic(msg.raw_ptr() as *char, msg.len() as i32) }
+    unsafe { toka_panic(__toka_str_raw_ptr(msg), msg.len as i32) }
     unreachable
 }
