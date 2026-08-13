@@ -774,6 +774,10 @@ private:
   std::shared_ptr<toka::Type>
   checkIndexExpr(ArrayIndexExpr *Idx);                       // New Object API
   std::shared_ptr<toka::Type> checkCallExpr(CallExpr *Call); // New Object API
+  void validateAtomicOrderingArguments(
+      const FunctionDecl *Fn,
+      const std::vector<std::unique_ptr<Expr>> &Arguments,
+      size_t omittedLeadingArguments = 0);
   void checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     AccessCapability SourceCapability,
                     const std::string &TargetPath = "",

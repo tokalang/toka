@@ -232,6 +232,12 @@ static bool isTrustedAtomicModule(const Module &module) {
          module.ShadowLogicalModulePath == "core/intrinsics/atomic";
 }
 
+static bool isTrustedStdAtomicModule(const Module &module) {
+  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
+         module.ShadowCoordinateOrigin == "toolchain" &&
+         module.ShadowLogicalModulePath == "std/atomic";
+}
+
 static bool isAtomicIntrinsicDeclaration(const Module &module,
                                          const FunctionDecl &function) {
   static const std::set<std::string> Names = {
@@ -250,7 +256,21 @@ static bool isAtomicWrapperDeclaration(const Module &module,
       "load",      "store",     "fetch_add", "fetch_sub",
       "fetch_and", "fetch_or",  "fetch_xor", "swap",
       "compare_exchange", "fence", "fence_acquire", "fence_release"};
-  return isTrustedAtomicModule(module) && Names.count(function.Name) != 0;
+  if (isTrustedAtomicModule(module))
+    return Names.count(function.Name) != 0;
+  return isTrustedStdAtomicModule(module) && function.Name == "fence";
+}
+
+static bool isStdAtomicMethodDeclaration(const Module &module,
+                                         const ImplDecl &impl,
+                                         const FunctionDecl &function) {
+  static const std::set<std::string> Owners = {
+      "AtomicI32", "AtomicUsize", "AtomicI64", "AtomicBool"};
+  static const std::set<std::string> Methods = {
+      "load", "store", "compare_exchange"};
+  return isTrustedStdAtomicModule(module) && impl.TraitName.empty() &&
+         Owners.count(Type::stripMorphology(impl.TypeName)) != 0 &&
+         Methods.count(function.Name) != 0;
 }
 
 static bool supportsAtomicIntrinsicType(
@@ -3197,8 +3217,11 @@ void Sema::declareGlobals(Module &M) {
         : "module:" + ms.Name;
     Slice1ImplDefinitionIds[Impl.get()] =
         owner + ";impl-index:" + std::to_string(implIndex++);
-    for (auto &Method : Impl->Methods)
+    for (auto &Method : Impl->Methods) {
       DeclarationLexicalScopes[Method.get()] = &ms;
+      if (isStdAtomicMethodDeclaration(M, *Impl, *Method))
+        TrustedAtomicWrapperDeclarations.insert(Method.get());
+    }
     declareImpl(Impl.get());
   }
 }
@@ -3251,8 +3274,11 @@ void Sema::registerGlobals(Module &M) {
     DeclarationLexicalScopes[G.get()] = &ms;
   for (auto &Impl : M.Impls) {
     DeclarationLexicalScopes[Impl.get()] = &ms;
-    for (auto &Method : Impl->Methods)
+    for (auto &Method : Impl->Methods) {
       DeclarationLexicalScopes[Method.get()] = &ms;
+      if (isStdAtomicMethodDeclaration(M, *Impl, *Method))
+        TrustedAtomicWrapperDeclarations.insert(Method.get());
+    }
   }
 
   // Case A: Register local symbols in the ModuleScope

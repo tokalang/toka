@@ -1,0 +1,6 @@
+import std/atomic::{fence, Ordering}
+
+fn main() -> i32 {
+    fence(Ordering::Relaxed) // EXPECT: error[E0620]
+    return 0
+}

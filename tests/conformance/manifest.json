@@ -2241,6 +2241,49 @@
       "description": "The trusted direct atomic hook rejects the same invalid load literal as its public wrapper"
     },
     {
+      "id": "diag_std_atomic_load_release_order_01",
+      "path": "diagnostics/std_atomic_load_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic AtomicI32.load rejects a direct Release ordering literal"
+    },
+    {
+      "id": "diag_std_atomic_store_acquire_order_01",
+      "path": "diagnostics/std_atomic_store_acquire_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic AtomicUsize.store rejects a direct Acquire ordering literal"
+    },
+    {
+      "id": "diag_std_atomic_compare_exchange_failure_release_order_01",
+      "path": "diagnostics/std_atomic_compare_exchange_failure_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic AtomicBool.compare_exchange rejects Release failure ordering"
+    },
+    {
+      "id": "diag_std_atomic_fence_relaxed_order_01",
+      "path": "diagnostics/std_atomic_fence_relaxed_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 4,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic fence rejects a direct Relaxed ordering literal"
+    },
+    {
+      "id": "compile_atomic_user_method_not_trusted_01",
+      "path": "diagnostics/atomic_user_method_not_trusted.tk",
+      "type": "compile-pass",
+      "timeout_seconds": 10,
+      "description": "User methods named load and store do not inherit trusted atomic Ordering diagnostics"
+    },
+    {
       "id": "ir_generic_iterator_scope_drop_01",
       "path": "codegen/generic_iterator_scope_drop.tk",
       "type": "ir-verify",

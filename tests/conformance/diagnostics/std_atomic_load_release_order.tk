@@ -1,0 +1,7 @@
+import std/atomic::{AtomicI32, Ordering}
+
+fn main() -> i32 {
+    auto value = AtomicI32::new(1)
+    value.load(Ordering::Release)
+    return 0
+}

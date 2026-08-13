@@ -107,6 +107,107 @@ static bool isNullableCedeDestination(const std::shared_ptr<Type> &type) {
   return type->IsNullable || (soul && soul->IsNullable);
 }
 
+void Sema::validateAtomicOrderingArguments(
+    const FunctionDecl *Fn,
+    const std::vector<std::unique_ptr<Expr>> &Arguments,
+    size_t omittedLeadingArguments) {
+  const FunctionDecl *atomicDecl = Fn;
+  while (atomicDecl && atomicDecl->TemplateOrigin)
+    atomicDecl = atomicDecl->TemplateOrigin;
+
+  const bool trustedAtomicDeclaration =
+      atomicDecl && (atomicDecl->IsTrustedAtomicIntrinsic ||
+                     TrustedAtomicWrapperDeclarations.count(atomicDecl));
+  if (!trustedAtomicDeclaration)
+    return;
+
+  std::string atomicOperation = atomicDecl->Name;
+  if (atomicOperation.rfind("__toka_atomic_", 0) == 0)
+    atomicOperation.erase(0, 14);
+
+  static const std::set<std::string> AtomicOperations = {
+      "load",       "store",      "fetch_add", "fetch_sub",
+      "fetch_and",  "fetch_or",   "fetch_xor", "swap",
+      "compare_exchange", "fence", "fence_acquire", "fence_release"};
+  if (!AtomicOperations.count(atomicOperation))
+    return;
+
+  static const std::array<const char *, 5> OrderingNames = {
+      "Relaxed", "Release", "Acquire", "AcqRel", "SeqCst"};
+
+  auto argumentIndex = [&](size_t formalIndex) -> std::optional<size_t> {
+    if (formalIndex < omittedLeadingArguments)
+      return std::nullopt;
+    const size_t index = formalIndex - omittedLeadingArguments;
+    if (index >= Arguments.size())
+      return std::nullopt;
+    return index;
+  };
+
+  auto literalOrderingTag = [&](size_t formalIndex)
+      -> std::optional<unsigned> {
+    auto index = argumentIndex(formalIndex);
+    if (!index)
+      return std::nullopt;
+    auto *member = dynamic_cast<MemberExpr *>(Arguments[*index].get());
+    if (!member || !member->IsStatic || member->Index < 0 ||
+        member->Index >= static_cast<int>(OrderingNames.size()) ||
+        member->Member != OrderingNames[member->Index] ||
+        !member->ResolvedType)
+      return std::nullopt;
+
+    auto shape = std::dynamic_pointer_cast<ShapeType>(
+        member->ResolvedType->getSoulType());
+    if (!shape || !shape->Decl || shape->Decl->Name != "Ordering")
+      return std::nullopt;
+    return static_cast<unsigned>(member->Index);
+  };
+
+  auto rejectOrdering = [&](size_t formalIndex, unsigned tag,
+                            const std::string &reason) {
+    auto index = argumentIndex(formalIndex);
+    if (!index)
+      return;
+    error(Arguments[*index].get(), DiagID::ERR_ATOMIC_ORDERING_INVALID,
+          atomicOperation, OrderingNames[tag], reason);
+  };
+
+  if (atomicOperation == "load") {
+    if (auto tag = literalOrderingTag(1); tag && (*tag == 1 || *tag == 3))
+      rejectOrdering(1, *tag,
+                     "load permits Relaxed, Acquire, or SeqCst");
+  } else if (atomicOperation == "store") {
+    if (auto tag = literalOrderingTag(2); tag && (*tag == 2 || *tag == 3))
+      rejectOrdering(2, *tag,
+                     "store permits Relaxed, Release, or SeqCst");
+  } else if (atomicOperation == "fence") {
+    if (auto tag = literalOrderingTag(0); tag && *tag == 0)
+      rejectOrdering(
+          0, *tag,
+          "fence permits Acquire, Release, AcqRel, or SeqCst");
+  } else if (atomicOperation == "compare_exchange") {
+    auto success = literalOrderingTag(3);
+    auto failure = literalOrderingTag(4);
+    if (failure && (*failure == 1 || *failure == 3)) {
+      rejectOrdering(
+          4, *failure,
+          "failure ordering permits Relaxed, Acquire, or SeqCst");
+    } else if (success && failure) {
+      static const bool ValidFailure[5][5] = {
+          {true, false, false, false, false},
+          {true, false, false, false, false},
+          {true, false, true, false, false},
+          {true, false, true, false, false},
+          {true, false, true, false, true}};
+      if (!ValidFailure[*success][*failure])
+        rejectOrdering(
+            4, *failure,
+            std::string("failure ordering must not be stronger than success ordering '") +
+                OrderingNames[*success] + "'");
+    }
+  }
+}
+
 // Stage 5c: Object-Oriented Call Expression Check
 std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
@@ -2488,91 +2589,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   // Trusted atomic wrappers preserve Ordering as a runtime enum value, but a
   // direct enum literal can be rejected here with a stable source diagnostic.
   // Dynamic values are validated by the operation-specific CodeGen switch.
-  if (Fn) {
-    const FunctionDecl *atomicDecl = Fn;
-    while (atomicDecl && atomicDecl->TemplateOrigin)
-      atomicDecl = atomicDecl->TemplateOrigin;
-
-    const bool trustedAtomicDeclaration =
-        atomicDecl && (atomicDecl->IsTrustedAtomicIntrinsic ||
-                       TrustedAtomicWrapperDeclarations.count(atomicDecl));
-
-    std::string atomicOperation = atomicDecl ? atomicDecl->Name : "";
-    if (atomicOperation.rfind("__toka_atomic_", 0) == 0)
-      atomicOperation.erase(0, 14);
-
-    static const std::set<std::string> AtomicOperations = {
-        "load",       "store",      "fetch_add", "fetch_sub",
-        "fetch_and",  "fetch_or",   "fetch_xor", "swap",
-        "compare_exchange", "fence", "fence_acquire", "fence_release"};
-
-    if (trustedAtomicDeclaration && AtomicOperations.count(atomicOperation)) {
-      static const std::array<const char *, 5> OrderingNames = {
-          "Relaxed", "Release", "Acquire", "AcqRel", "SeqCst"};
-
-      auto literalOrderingTag = [&](Expr *expr) -> std::optional<unsigned> {
-        auto *member = dynamic_cast<MemberExpr *>(expr);
-        if (!member || !member->IsStatic || member->Index < 0 ||
-            member->Index >= static_cast<int>(OrderingNames.size()) ||
-            member->Member != OrderingNames[member->Index] ||
-            !member->ResolvedType)
-          return std::nullopt;
-
-        auto shape = std::dynamic_pointer_cast<ShapeType>(
-            member->ResolvedType->getSoulType());
-        if (!shape || !shape->Decl || shape->Decl->Name != "Ordering")
-          return std::nullopt;
-        return static_cast<unsigned>(member->Index);
-      };
-
-      auto rejectOrdering = [&](size_t index, unsigned tag,
-                                const std::string &reason) {
-        if (index >= Call->Args.size())
-          return;
-        error(Call->Args[index].get(), DiagID::ERR_ATOMIC_ORDERING_INVALID,
-              atomicOperation, OrderingNames[tag], reason);
-      };
-
-      if (atomicOperation == "load" && Call->Args.size() > 1) {
-        if (auto tag = literalOrderingTag(Call->Args[1].get());
-            tag && (*tag == 1 || *tag == 3))
-          rejectOrdering(1, *tag,
-                         "load permits Relaxed, Acquire, or SeqCst");
-      } else if (atomicOperation == "store" && Call->Args.size() > 2) {
-        if (auto tag = literalOrderingTag(Call->Args[2].get());
-            tag && (*tag == 2 || *tag == 3))
-          rejectOrdering(2, *tag,
-                         "store permits Relaxed, Release, or SeqCst");
-      } else if (atomicOperation == "fence" && !Call->Args.empty()) {
-        if (auto tag = literalOrderingTag(Call->Args[0].get());
-            tag && *tag == 0)
-          rejectOrdering(
-              0, *tag,
-              "fence permits Acquire, Release, AcqRel, or SeqCst");
-      } else if (atomicOperation == "compare_exchange" &&
-                 Call->Args.size() > 4) {
-        auto success = literalOrderingTag(Call->Args[3].get());
-        auto failure = literalOrderingTag(Call->Args[4].get());
-        if (failure && (*failure == 1 || *failure == 3)) {
-          rejectOrdering(
-              4, *failure,
-              "failure ordering permits Relaxed, Acquire, or SeqCst");
-        } else if (success && failure) {
-          static const bool ValidFailure[5][5] = {
-              {true, false, false, false, false},
-              {true, false, false, false, false},
-              {true, false, true, false, false},
-              {true, false, true, false, false},
-              {true, false, true, false, true}};
-          if (!ValidFailure[*success][*failure])
-            rejectOrdering(
-                4, *failure,
-                std::string("failure ordering must not be stronger than success ordering '") +
-                    OrderingNames[*success] + "'");
-        }
-      }
-    }
-  }
+  validateAtomicOrderingArguments(Fn, Call->Args);
 
   // An ordinary synchronous init call establishes Live at the caller
   // boundary.  An Outcome Contract instead leaves the exact place in a

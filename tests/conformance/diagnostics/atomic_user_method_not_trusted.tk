@@ -1,0 +1,22 @@
+import std/atomic::Ordering
+
+shape AtomicI32 (
+    value: i32
+)
+
+impl AtomicI32 {
+    fn load(self, _order: Ordering) -> i32 {
+        return self.value
+    }
+
+    fn store(self, value: i32, _order: Ordering) -> i32 {
+        return value
+    }
+}
+
+fn main() -> i32 {
+    auto value = AtomicI32(value = 1)
+    value.load(Ordering::Release)
+    value.store(2, Ordering::Acquire)
+    return 0
+}

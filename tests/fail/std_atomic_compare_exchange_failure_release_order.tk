@@ -1,0 +1,8 @@
+import std/atomic::{AtomicBool, Ordering}
+
+fn main() -> i32 {
+    auto value = AtomicBool::new(false)
+    value.compare_exchange(false, true, Ordering::SeqCst,
+                           Ordering::Release) // EXPECT: error[E0620]
+    return 0
+}
