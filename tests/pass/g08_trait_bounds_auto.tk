@@ -3,16 +3,16 @@ shape SafeData (
     flag: bool
 )
 
-fn process_send<T: @Send>(val: ^T) {}
-fn process_sync<T: @Sync>(val: ^T) {}
+fn process_send<T: @Send>(^val: T) {}
+fn process_sync<T: @Sync>(^val: T) {}
 
 pub fn main() -> i32 {
     auto ^s = new SafeData(value = 42, flag = true)
-    process_send<SafeData>(s) // Should pass
-    process_sync<SafeData>(s) // Should pass
+    process_send<SafeData>(^s) // Should pass
+    process_sync<SafeData>(^s) // Should pass
 
     auto ^num = new i32(100)
-    process_send<i32>(num)   // Should pass (i32 is Send)
+    process_send<i32>(^num)   // Should pass (i32 is Send)
     
     return 0
 }

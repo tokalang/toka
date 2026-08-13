@@ -8,11 +8,11 @@ shape Data (
 impl Data @Send {
 }
 
-fn process<T: @Send>(val: ^T) {
+fn process<T: @Send>(^val: T) {
 }
 
 pub fn main() -> i32 {
     auto ^d = new Data(value = 42)
-    process<Data>(d)
+    process<Data>(^d)
     return 0
 }
