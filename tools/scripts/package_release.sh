@@ -2,7 +2,7 @@
 set -e
 
 # Usage: ./package_release.sh [version]
-VERSION=${1:-"v1.0.0-rc.4"}
+VERSION=${1:-"v1.0.0-rc.5"}
 OS=${OS:-""}
 ARCH=${ARCH:-""}
 UNAME_S=$(uname -s)

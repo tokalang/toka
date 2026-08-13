@@ -1,8 +1,13 @@
 # Toka 1.0.0-rc.4 Candidate Qualification Plan
 
-**Status:** In qualification. This plan creates neither a tag nor a public
-release. `v1.0.0-rc.1` remains the published historical candidate; immutable
-`v1.0.0-rc.2` and `v1.0.0-rc.3` tags are non-qualified and must not be reused.
+**Status:** Historical plan. Annotated tag object
+`ad9499d18cf98bcfd930c7ea7b999191155550db` points to candidate commit
+`5c9cb77b5708d2ce598720821da97b683c0edf9f`, and the GitHub pre-release was
+published at `2026-08-12T12:33:33Z`. The repository has no recorded
+protected-promotion workflow run or clean first-hour replay receipt for RC4,
+so those original requirements remain unverified. When this plan was written,
+`v1.0.0-rc.1` was the published historical candidate; immutable
+`v1.0.0-rc.2` and `v1.0.0-rc.3` tags were non-qualified and could not be reused.
 
 ## Decision and boundary
 
