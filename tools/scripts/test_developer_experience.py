@@ -18,7 +18,8 @@ def run(command, cwd, env=None, expected=0):
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != expected:
         sys.stderr.write(result.stdout)
