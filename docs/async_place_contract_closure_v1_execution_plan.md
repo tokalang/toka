@@ -56,11 +56,13 @@ No AS or AB completion claim may be inferred from P5 test success alone.
 
 ### 2.1 Product-driver check: service shutdown cleanup
 
-The service-kit shutdown qualifier is a retained end-to-end driver for this
-program. It cancels a worker suspended in an HTTP read, waits for the
-structured scope to drain, and then observes the SQLite bridge's live
-statement and handle counts. The qualifier exposed an old SQLite wrapper
-spelling that placed native-resource `drop` methods in ordinary `impl` blocks.
+The independently maintained
+[`toka-examples/service-kit` shutdown qualifier](https://github.com/tokalang/toka-examples/tree/main/service-kit)
+is a retained end-to-end driver for this program. It cancels a worker suspended
+in an HTTP read, waits for the structured scope to drain, and then observes the
+SQLite bridge's live statement and handle counts. The qualifier exposed an old
+SQLite wrapper spelling that placed native-resource `drop` methods in ordinary
+`impl` blocks.
 That spelling is outside the current lifecycle contract: the bridge now
 declares its hooks in `impl T@Encap`, so compiler-generated frame cleanup and
 normal lexical cleanup use the same declared resource fact.

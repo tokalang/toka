@@ -15,8 +15,9 @@ Its canonical source and release history are maintained in
 [`tokalang/router`](https://github.com/tokalang/router); this document retains
 the package contract used by compiler-repository consumers.
 
-This narrow boundary makes it usable by the existing service-kit without
-turning that reference application into a framework.
+This narrow boundary makes it usable by the existing
+[`toka-examples/service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit)
+without turning that reference application into a framework.
 
 ## v1 matching contract
 

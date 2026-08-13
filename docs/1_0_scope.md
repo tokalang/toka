@@ -31,9 +31,11 @@ Supported with restrictions. Failures in Tier 2 platforms provide qualification 
 - **Pull Request Gate (`.github/workflows/ci.yml`)**: Automated on every PR and
   commit on `main`. It builds the SDK on the supported CI hosts, runs the
   current focused compiler/tooling/conformance regressions, and exercises the
-  Linux service-kit and macOS GUI-settings dogfood paths. Exact test counts are
-  intentionally not this document's contract; `ci.yml` is authoritative for
-  the current runnable set. The gate must remain green, but it is not the
+  macOS GUI-settings dogfood path. The independently maintained
+  [`toka-examples/service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit)
+  owns its Linux qualification. Exact test counts are intentionally not this
+  document's contract; `ci.yml` is authoritative for the compiler repository's
+  current runnable set. The gate must remain green, but it is not the
   multi-platform release qualification.
 - **Release Candidate Gate (`.github/workflows/release.yml`)**: Manual exact-SHA
   qualification and tag-triggered requalification via
