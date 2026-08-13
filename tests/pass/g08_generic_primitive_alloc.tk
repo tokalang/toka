@@ -29,5 +29,14 @@ fn main() -> i32 {
     if allocator.alloc_in_impl(42) != 42 {
         return 2
     }
+
+    if alloc_in_function<char>(65:char) != 65:char {
+        return 3
+    }
+
+    auto byte_allocator = Allocator<byte>()
+    if byte_allocator.alloc_in_impl(66:byte) != 66:byte {
+        return 4
+    }
     return 0
 }

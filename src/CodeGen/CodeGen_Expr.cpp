@@ -4675,11 +4675,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   }
 
   // Primitives as constructors: i32(42)
-  if (call->Callee == "i32" || call->Callee == "u32" || call->Callee == "i64" ||
-      call->Callee == "u64" || call->Callee == "f32" || call->Callee == "f64" ||
-      call->Callee == "i16" || call->Callee == "u16" || call->Callee == "i8" ||
-      call->Callee == "u8" || call->Callee == "usize" ||
-      call->Callee == "isize" || call->Callee == "bool") {
+  if (isPrimitiveValueConstructorName(call->Callee)) {
     llvm::Type *targetTy = resolveType(call->Callee, false);
     if (call->Args.empty())
       return llvm::Constant::getNullValue(targetTy);

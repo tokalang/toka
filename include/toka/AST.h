@@ -641,6 +641,7 @@ public:
   std::string TypeName;
   TypeSyntaxPtr TypeSyntax;
   std::unique_ptr<Expr> Initializer;
+  bool InitializerIsArgumentList = false;
   bool IsArray = false;
   std::unique_ptr<Expr> ArraySize;
 
@@ -656,6 +657,7 @@ public:
     auto n = std::make_unique<AllocExpr>(TypeName, cloneNode(Initializer),
                                          IsArray, cloneNode(ArraySize));
     n->TypeSyntax = TypeSyntax;
+    n->InitializerIsArgumentList = InitializerIsArgumentList;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

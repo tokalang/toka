@@ -132,7 +132,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         typeAlias.TypeObj) {
       auto aliasType = resolveType(typeAlias.TypeObj);
       if (auto aliasPrimitive = std::dynamic_pointer_cast<PrimitiveType>(
-              aliasType ? aliasType->getSoulType() : nullptr)) {
+              aliasType ? aliasType->getSoulType() : nullptr);
+          aliasPrimitive &&
+          isPrimitiveValueConstructorName(aliasPrimitive->Name)) {
         CallName = aliasPrimitive->Name;
         Call->Callee = CallName;
       }
@@ -140,11 +142,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   // 1. Primitives (Constructors/Casts) e.g. i32(42)
-  if (CallName == "i32" || CallName == "u32" || CallName == "i64" ||
-      CallName == "u64" || CallName == "f32" || CallName == "f64" ||
-      CallName == "i16" || CallName == "u16" || CallName == "i8" ||
-      CallName == "u8" || CallName == "usize" || CallName == "isize" ||
-      CallName == "bool") {
+  if (isPrimitiveValueConstructorName(CallName)) {
     for (auto &Arg : Call->Args) {
       Arg = foldGenericConstant(std::move(Arg)); // [FIX]
       checkExpr(Arg.get());

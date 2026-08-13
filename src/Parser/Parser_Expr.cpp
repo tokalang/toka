@@ -1281,6 +1281,7 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
   std::string typeName = canonicalType(typeSyntax);
 
   std::unique_ptr<Expr> init = nullptr;
+  bool initializerIsArgumentList = false;
   if (match(TokenType::LParen)) {
     // Check if it's named field initialization: Hero(id = 1, hp = 2)
     if (isNamedInitList()) {
@@ -1315,6 +1316,7 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
         match(TokenType::Comma);
       }
       init = std::make_unique<InitStructExpr>(typeName, std::move(fields));
+      initializerIsArgumentList = true;
     } else if (!check(TokenType::RParen)) {
       // Positional args
       std::vector<std::unique_ptr<Expr>> args;
@@ -1322,6 +1324,7 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
         args.push_back(parseExpr());
       } while (match(TokenType::Comma));
       init = std::make_unique<CallExpr>(typeName, std::move(args));
+      initializerIsArgumentList = true;
     }
     consume(TokenType::RParen, DiagID::ERR_EXPECTED_RPAREN);
   }
@@ -1329,6 +1332,7 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
   auto node = std::make_unique<AllocExpr>(typeName, std::move(init), isArray,
                                           std::move(arraySize));
   node->TypeSyntax = std::move(typeSyntax);
+  node->InitializerIsArgumentList = initializerIsArgumentList;
   node->setLocation(tok, m_CurrentFile);
   return node;
 }

@@ -33,6 +33,8 @@ enum class CallableReceiverMode { Shared, Mutable, Consuming };
 // does not alter a type's public spelling.
 enum class ValueOwnership { Trivial, BorrowedView, SharedHandle, Owned };
 
+bool isPrimitiveValueConstructorName(const std::string &name);
+
 class Type : public std::enable_shared_from_this<Type> {
 public:
   enum Kind {
@@ -241,7 +243,8 @@ public:
   bool isInteger() const override {
     return Name == "i32" || Name == "i64" || Name == "u32" || Name == "u64" ||
            Name == "i8" || Name == "u8" || Name == "i16" || Name == "u16" ||
-           Name == "usize" || Name == "char" || Name == "byte";
+           Name == "isize" || Name == "usize" || Name == "char" ||
+           Name == "byte";
   }
   bool isSignedInteger() const override {
     return Name == "i32" || Name == "i64" || Name == "i8" || Name == "i16" ||
