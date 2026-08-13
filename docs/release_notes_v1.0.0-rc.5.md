@@ -1,12 +1,14 @@
-# Toka v1.0.0-rc.5 Candidate Notes
+# Toka v1.0.0-rc.5 Release Candidate Notes
 
-**Status:** Preparation only. `v1.0.0-rc.5` has no selected candidate SHA and
-is not tagged, drafted, or published. These notes describe the proposed
-candidate source; they do not claim qualification.
+These notes describe the contents associated with `v1.0.0-rc.5`; they are not
+qualification or publication evidence. The immutable candidate, gate reports,
+asset digests, clean-replay receipts, and current release state belong in the
+[RC5 qualification audit](release_audits/v1.0.0-rc.5.md) and the corresponding
+GitHub Release record.
 
 ## Purpose
 
-RC5 is the next proposed 1.0 release candidate from Toka's frozen language
+RC5 is a 1.0 release candidate from Toka's frozen language
 surface. It recovers compiler and SDK regressions found after RC4 and makes
 the compiler-interface cache boundary explicit. It adds no new source-syntax
 or PAL guarantee.
@@ -38,8 +40,8 @@ archive digests, and clean installed first-hour replay are defined in
 promotion remains a separate, protected maintainer action after the replay
 receipt is recorded.
 
-If RC5 is eventually published, install it explicitly rather than relying on
-GitHub's stable-release selector:
+Install RC5 explicitly rather than relying on GitHub's stable-release
+selector:
 
 ```sh
 curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.5
