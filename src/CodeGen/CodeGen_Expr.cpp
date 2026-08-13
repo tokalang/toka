@@ -6101,6 +6101,14 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
   // [NEW] Native LLVM Atomics Intercept
   std::string fname = call->Callee;
+  const FunctionDecl *sourceDecl =
+      funcDecl && funcDecl->TemplateOrigin ? funcDecl->TemplateOrigin
+                                           : funcDecl;
+  const bool isTrustedAtomicIntrinsic =
+      sourceDecl && sourceDecl->IsTrustedAtomicIntrinsic;
+  if (isTrustedAtomicIntrinsic) {
+    fname = sourceDecl->Name;
+  }
 
   if (!fname.empty()) {
     if (fname == "__toka_str_raw_ptr" || fname == "__toka_bytes_raw_ptr") {
@@ -6137,7 +6145,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         m_Builder.CreateCall(destroyFn->getFunctionType(), destroyFn, argsV);
         return PhysEntity(llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0), "void", m_Builder.getVoidTy(), false);
     }
-    if (fname.find("__toka_atomic_") == 0) {
+    if (isTrustedAtomicIntrinsic) {
       fname = fname.substr(14); // strip prefix
       
     // Helper to extract Ordering from Argument Value

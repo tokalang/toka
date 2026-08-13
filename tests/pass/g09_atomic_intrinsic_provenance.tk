@@ -1,0 +1,23 @@
+fn __toka_atomic_fetch_add<T>(ptr#: T, val: T, _order: i32) -> T {
+    return val
+}
+
+fn __toka_atomic_fetch_sub(ptr#: i32, val: i32, _order: i32) -> i32 {
+    unsafe {
+        auto old = ptr
+        ptr = old - val - 1
+        return old + 7
+    }
+}
+
+pub fn main() -> i32 {
+    auto value# = 10
+    auto add_result = __toka_atomic_fetch_add(value, 5, 0)
+    assert(add_result == 5, "generic user function was lowered as an intrinsic")
+    assert(value == 10, "generic user function body did not execute")
+
+    auto sub_result = __toka_atomic_fetch_sub(value, 3, 0)
+    assert(sub_result == 17, "user function was lowered as an intrinsic")
+    assert(value == 6, "user function body did not execute")
+    return 0
+}

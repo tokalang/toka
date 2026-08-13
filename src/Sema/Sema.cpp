@@ -226,6 +226,21 @@ static std::string functionCodegenName(const Module &M,
   return moduleScopedCodegenName(M, fn.Name);
 }
 
+static bool isAtomicIntrinsicDeclaration(const Module &module,
+                                         const FunctionDecl &function) {
+  static const std::set<std::string> Names = {
+      "__toka_atomic_load",       "__toka_atomic_store",
+      "__toka_atomic_fetch_add",  "__toka_atomic_fetch_sub",
+      "__toka_atomic_fetch_and",  "__toka_atomic_fetch_or",
+      "__toka_atomic_fetch_xor",  "__toka_atomic_swap",
+      "__toka_atomic_compare_exchange", "__toka_atomic_fence",
+      "__toka_atomic_fence_acquire", "__toka_atomic_fence_release"};
+  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
+         module.ShadowCoordinateOrigin == "toolchain" &&
+         module.ShadowLogicalModulePath == "core/intrinsics/atomic" &&
+         Names.count(function.Name) != 0;
+}
+
 static std::string shapeCodegenName(const Module &M,
                                     const std::string &name) {
   std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
@@ -2824,6 +2839,8 @@ void Sema::declareGlobals(Module &M) {
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
+    Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
+                                   isAtomicIntrinsicDeclaration(M, *Fn);
     Fn->CodegenName = functionCodegenName(M, *Fn);
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
@@ -3194,6 +3211,8 @@ void Sema::registerGlobals(Module &M) {
 
   // Case A: Register local symbols in the ModuleScope
   for (auto &Fn : M.Functions) {
+    Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
+                                   isAtomicIntrinsicDeclaration(M, *Fn);
     Fn->CodegenName = functionCodegenName(M, *Fn);
     ms.Functions[Fn->Name] = Fn.get();
     auto &overloads = ms.FunctionOverloads[Fn->Name];

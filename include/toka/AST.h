@@ -1950,6 +1950,9 @@ public:
 
   bool IsVariadic = false;
   bool IsClosureInvoke = false;
+  // Set by Sema only for declarations resolved from the trusted
+  // core/intrinsics/atomic toolchain module.
+  bool IsTrustedAtomicIntrinsic = false;
   CallableReceiverMode ClosureReceiver = CallableReceiverMode::Shared;
   std::optional<OutcomeTransition> ResolvedOutcomeTransition;
   // Set only by the explicit P2 profile while its containing bodyless TKI is
@@ -2030,6 +2033,7 @@ public:
     n->MemberDependencies = MemberDependencies;
     n->IsVariadic = IsVariadic;
     n->IsClosureInvoke = IsClosureInvoke;
+    n->IsTrustedAtomicIntrinsic = IsTrustedAtomicIntrinsic;
     n->ClosureReceiver = ClosureReceiver;
     n->TemplateOrigin = TemplateOrigin;
     n->Loc = Loc;

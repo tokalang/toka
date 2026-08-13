@@ -2005,6 +2005,15 @@
       "description": "LLVM IR verification for aggregate SRET attribute emission (GAP-COMP-01)"
     },
     {
+      "id": "ir_generic_atomic_intrinsic_lowering_01",
+      "path": "codegen/generic_atomic_intrinsic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw add",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "A trusted generic atomic hook retains its intrinsic identity after instantiation"
+    },
+    {
       "id": "ir_sret_native_extern_direct_return_01",
       "path": "codegen/sret_native_extern_call.tk",
       "type": "ir-verify",
