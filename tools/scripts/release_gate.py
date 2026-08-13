@@ -270,6 +270,7 @@ def main():
         )),
         ("cache_invalidation", (
             ["tools/scripts/test_tki_unsafe_revalidation.sh"],
+            ["tools/scripts/test_tki_cache_validation.sh"],
             ["tools/scripts/test_semantic_cache_invalidation.sh"],
             ["tools/scripts/test_mixed_core_cache.sh"],
         )),
