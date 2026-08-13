@@ -3828,7 +3828,11 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   m_ScopeStack.push_back({});
   size_t iteratorScopeDepth = m_ScopeStack.size() - 1;
   if (!isArray && iterAlloca) {
-    std::string iteratorType = fe->IteratorType;
+    std::shared_ptr<Type> iteratorDropType =
+        fe->ResolvedIterFn ? fe->ResolvedIterFn->ResolvedReturnType : nullptr;
+    std::string iteratorType = ownerLinkName(iteratorDropType);
+    if (iteratorType.empty())
+      iteratorType = fe->IteratorType;
     if (iteratorType.empty() &&
         m_TypeToName.count(iterAlloca->getAllocatedType())) {
       iteratorType = m_TypeToName[iterAlloca->getAllocatedType()];
@@ -3844,6 +3848,7 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     iteratorInfo.HasDrop = dropFn != nullptr;
     iteratorInfo.DropFunc = dropFn ? dropName : "";
     iteratorInfo.SoulName = iteratorType;
+    iteratorInfo.DropType = iteratorDropType;
     m_ScopeStack.back().push_back(iteratorInfo);
   }
 
@@ -4867,6 +4872,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                   }
               } else {
                   std::string soulTy = Type::stripMorphology(argExpr->ResolvedType ? argExpr->ResolvedType->getSoulName() : "");
+                  std::string ownerTy = ownerLinkName(argExpr->ResolvedType);
+                  if (ownerTy.empty())
+                      ownerTy = soulTy;
 
               if (soulTy == "String" || soulTy == "string" || soulTy == "str") {
                   llvm::Value *finalArg = argVal;
@@ -4938,15 +4946,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                   }
               }
               else {
-                  std::string funcName = soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+                  std::string funcName = ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
                   llvm::Function *toStrFn = m_Module->getFunction(funcName);
                   if (!toStrFn) {
                       std::string traitPrefix = isFmt ? "ToFormat_" : "ToString_";
-                      toStrFn = m_Module->getFunction(traitPrefix + soulTy + (isFmt ? "_to_string_fmt" : "_to_string"));
+                      toStrFn = m_Module->getFunction(traitPrefix + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string"));
                   }
                   if (!toStrFn) {
                       for (auto const &[traitName, traitDecl] : m_Traits) {
-                          std::string traitFunc = traitName + "_" + soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+                          std::string traitFunc = traitName + "_" + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
                           toStrFn = m_Module->getFunction(traitFunc);
                           if (toStrFn) break;
                       }
@@ -5128,6 +5136,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
         if (argIndex < (int)call->Args.size()) {
             std::string soulTy = Type::stripMorphology(call->Args[argIndex]->ResolvedType ? call->Args[argIndex]->ResolvedType->getSoulName() : "");
+            std::string ownerTy = ownerLinkName(call->Args[argIndex]->ResolvedType);
+            if (ownerTy.empty())
+                ownerTy = soulTy;
             PhysEntity argEnt = genExpr(call->Args[argIndex].get());
             llvm::Value *argVal = argEnt.load(m_Builder);
 
@@ -5135,16 +5146,16 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             if (isFmt) {
                 formatSpecifier = formatSpecifier.substr(1);
             }
-            std::string funcName = soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+            std::string funcName = ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
 
             llvm::Function *toStrFn = m_Module->getFunction(funcName);
             if (!toStrFn) {
                 std::string traitPrefix = isFmt ? "ToFormat_" : "ToString_";
-                toStrFn = m_Module->getFunction(traitPrefix + soulTy + (isFmt ? "_to_string_fmt" : "_to_string"));
+                toStrFn = m_Module->getFunction(traitPrefix + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string"));
             }
             if (!toStrFn) {
                 for (auto const &[traitName, traitDecl] : m_Traits) {
-                    std::string traitFunc = traitName + "_" + soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+                    std::string traitFunc = traitName + "_" + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
                     toStrFn = m_Module->getFunction(traitFunc);
                     if (toStrFn) break;
                 }
@@ -5978,29 +5989,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         std::string concreteName = "";
         const Expr *argExpr = call->Args[i].get();
 
-        // [New] Annotated AST: Use ResolvedType
-        if (argExpr->ResolvedType) {
-          auto rt = argExpr->ResolvedType;
-          // Strip pointer/reference layers to get the core Shape/Value
-          // implementation (Traits are usually implemented on value types)
-          while (rt && (rt->isPointer() || rt->isReference() ||
-                        rt->isSmartPointer())) {
-            if (auto inner = rt->getPointeeType())
-              rt = inner;
-            else
-              break;
-          }
-          if (rt) {
-            concreteName = rt->toString();
-            // Strip suffixes (#, ?, !) from the resulting name to match
-            // VTable expectation
-            while (!concreteName.empty() &&
-                   (concreteName.back() == '#' || concreteName.back() == '?' ||
-                    concreteName.back() == '!')) {
-              concreteName.pop_back();
-            }
-          }
-        }
+        // The vtable is emitted against the semantic owner's stable linkage
+        // identity, not the source spelling of the concrete type.
+        concreteName = ownerLinkName(argExpr->ResolvedType);
 
         // Legacy Fallback / Refinement
         if (concreteName.empty() || concreteName == "void") {
