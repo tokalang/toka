@@ -103,12 +103,12 @@ is the retained exact-version consumer fixture.
 
 `official/router@0.1.0` passed standalone Linux and macOS qualification and a
 fresh public-registry/offline consumer replay before its monorepo root was
-removed. [`examples/registry_router_consumer`](../examples/registry_router_consumer)
+removed. [`toka-examples/registry_router_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_router_consumer)
 is the retained exact-version consumer fixture.
 
 `official/openai_compat@0.1.1` passed standalone Linux and macOS qualification
 and a fresh public-registry/offline consumer replay before its monorepo root was
-removed. [`examples/registry_openai_compat_consumer`](../examples/registry_openai_compat_consumer)
+removed. [`toka-examples/registry_openai_compat_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_openai_compat_consumer)
 is the retained exact-version consumer fixture.
 
 `official/compress@0.1.0` passed standalone Linux and macOS qualification and a

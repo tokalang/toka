@@ -16,7 +16,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="toka-llm-chat-cli-") as work:
         work = Path(work)
         openai_compat_library = materialize_locked_library(
-            ROOT, "registry_openai_compat_consumer", "openai_compat", work)
+            ROOT, ROOT / "tests" / "fixtures" / "registry_openai_compat",
+            "openai_compat", work)
         executable = work / "llm-chat-cli"
         subprocess.run([str(tokac), str(ROOT / "demos" / "llm-chat-cli" / "main.tk"),
                         "-I", str(ROOT / "lib"), "-I", str(openai_compat_library),

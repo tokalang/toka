@@ -173,4 +173,4 @@ package-specific API contracts were reviewed. Their standalone releases are
 [`router v0.1.0`](https://github.com/tokalang/router/releases/tag/v0.1.0);
 the retained consumer fixtures are
 [`toka-examples/registry_regex_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_regex_consumer) and
-[`examples/registry_router_consumer`](../examples/registry_router_consumer).
+[`toka-examples/registry_router_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_router_consumer).
