@@ -1,11 +1,14 @@
 # Service Kit Reference Application Plan
 
-Status: `Complete`
+Status: `Complete; canonical source moved to toka-examples`
 
-`examples/service-kit` is a bounded production-composition reference
-application. It consumes existing Toka libraries before requesting new surface
-area. Its purpose is to prove that an ordinary stateful HTTP service can be
-built from the 1.0 substrate, not to establish a web framework.
+[`toka-examples/service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit)
+is a bounded production-composition reference application. Its source, locked
+Router/SQLite dependencies, and independent qualification are owned by
+`tokalang/toka-examples`; this document retains the composition contract used
+as Toka product evidence. It consumes existing Toka libraries before requesting
+new surface area. Its purpose is to prove that an ordinary stateful HTTP service
+can be built from the 1.0 substrate, not to establish a web framework.
 
 ## Product boundary
 

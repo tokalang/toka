@@ -55,7 +55,7 @@ The following are active product users, not just qualification artifacts:
 | Dogfood user | What it can veto |
 |---|---|
 | `toka build` and the native builder | project creation/build, package resolution, incremental and source-less workflows |
-| `examples/service-kit` | cancellation, cleanup, network I/O, and service shutdown behavior |
+| [`toka-examples/service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit) | cancellation, cleanup, network I/O, and service shutdown behavior |
 | `demos/gui-settings` | host-event integration, application packaging, and ordinary GUI ownership flow |
 | Native Windows/MSYS2 project build | platform/toolchain installation and generated native executable behavior |
 
@@ -71,9 +71,11 @@ It builds the SDK and exercises installed `doctor`, `new`, compile, and `run`
 flows. Its result is product feedback, not a new release-blocking platform
 promise; promotion remains an explicit `1_0_scope.md` decision.
 
-The normal PR gate runs the service-kit qualifier on Linux and the offline GUI
-settings build on macOS. These are focused product checks, not a replacement
-for the RC gate or an instruction to run every qualification locally.
+The compiler repository's normal PR gate runs the offline GUI settings build on
+macOS. The independently maintained service-kit workflow runs its Linux
+qualification from locked package releases. These are focused product checks,
+not a replacement for the RC gate or an instruction to run every qualification
+locally.
 
 ## Escalation and deletion
 

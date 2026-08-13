@@ -120,10 +120,6 @@ jobs:
           tools/scripts/test_semantic_replay.sh
           tools/scripts/test_mixed_core_cache.sh
 
-      - name: Exercise service-kit dogfood
-        if: runner.os == 'Linux'
-        run: python3 examples/service-kit/tests/qualify.py
-
       - name: Qualify real data-access services (Linux loopback runner)
         if: runner.os == 'Linux'
         run: |

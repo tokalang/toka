@@ -98,12 +98,14 @@ policy. W3C TraceContext and OpenTelemetry exporters remain out of scope.
 
 ### Implemented composition
 
-The bounded `examples/service-kit` now supplies
-`serve_until_canceled_async`.  It owns the listener, accepts through the
-cancellation-aware HTTP adapter, transfers each worker into the scope through
-`spawn_into`, reaps completed worker references between accepts, and invokes
-`TaskScope.shutdown_async` after cancellation.  The application supplies the
-`Canceler`; it may obtain it from `std/signal` or any other explicit source.
+The bounded
+[`toka-examples/service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit)
+supplies `serve_until_canceled_async`.  It owns the listener, accepts through
+the cancellation-aware HTTP adapter, transfers each worker into the scope
+through `spawn_into`, reaps completed worker references between accepts, and
+invokes `TaskScope.shutdown_async` after cancellation.  The application
+supplies the `Canceler`; it may obtain it from `std/signal` or any other
+explicit source.
 
 ## Non-goals
 
@@ -123,9 +125,11 @@ cancellation-aware HTTP adapter, transfers each worker into the scope through
    qualification independently proves deadline-triggered cancel-and-join;
 4. JSON log escaping/filtering and Prometheus rendering have deterministic unit
    tests;
-5. existing async, HTTP, and service-kit qualifications remain green.
+5. existing async and HTTP qualifications plus the independently owned
+   service-kit qualification remain green.
 
 All five gates are implemented by `shutdown_signal_runtime`,
 `g16_shutdown_signal_test`, `g16_async_accept_context_test`,
 `g11_async_task_scope_test`, `g16_service_telemetry_test`, the HTTP
-qualification, and the three-program service-kit qualification.
+qualification, and the independently maintained three-program service-kit
+qualification.
