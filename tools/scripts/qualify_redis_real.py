@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify Toka's Redis and PostgreSQL clients against real loopback services.
+"""Qualify Toka's Redis client against real loopback services.
 
 This is interoperability evidence, not a replacement for the deterministic
 protocol fixtures.  It deliberately fails closed: a runner that cannot bind
@@ -23,7 +23,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 REDIS_VERSIONS = ("7.4-alpine", "8.2-alpine")
-POSTGRES_VERSIONS = ("16-bookworm", "17-bookworm")
 PASSWORD = "toka-password"
 
 
@@ -109,32 +108,6 @@ def wait_ready(args: list[str], *, attempts: int = 40) -> None:
         last_error = completed.stdout.strip()
         time.sleep(0.25)
     raise QualificationFailure(f"service did not become ready: {' '.join(args)}\n{last_error}")
-
-
-def wait_postgres_tls_ready(port: int, ca_cert: Path, *, attempts: int = 40) -> None:
-    last_error = ""
-    for _ in range(attempts):
-        completed = subprocess.run(
-            [
-                "openssl", "s_client", "-starttls", "postgres",
-                "-connect", f"127.0.0.1:{port}",
-                "-CAfile", str(ca_cert), "-verify_return_error", "-brief",
-            ],
-            cwd=ROOT,
-            input="",
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            check=False,
-            timeout=15,
-        )
-        if completed.returncode == 0:
-            return
-        last_error = completed.stdout.strip()
-        time.sleep(0.25)
-    raise QualificationFailure(
-        f"PostgreSQL TCP/TLS endpoint did not become ready on 127.0.0.1:{port}\n{last_error}"
-    )
 
 
 def make_certificates(work: Path) -> tuple[Path, Path, Path]:
@@ -227,57 +200,6 @@ def qualify_redis(
         cleanup_command(["docker", "rm", "-f", name])
 
 
-def build_postgres_image(version: str, work: Path, server_cert: Path, server_key: Path) -> str:
-    context = work / f"postgres-{version.replace(':', '-')}"
-    context.mkdir()
-    shutil.copy2(server_cert, context / "server.crt")
-    shutil.copy2(server_key, context / "server.key")
-    (context / "Dockerfile").write_text(
-        f"FROM postgres:{version}\n"
-        "COPY server.crt /tls/server.crt\n"
-        "COPY server.key /tls/server.key\n"
-        "RUN chown postgres:postgres /tls/server.crt /tls/server.key && chmod 600 /tls/server.key\n",
-        encoding="utf-8",
-    )
-    image = docker_name(f"postgres-{version.replace('.', '-')}")
-    command(["docker", "build", "-t", image, str(context)], timeout=300)
-    return image
-
-
-def qualify_postgres(
-    fixture: Path, version: str, *, work: Path, ca_cert: Path, server_cert: Path, server_key: Path
-) -> dict[str, str]:
-    name = docker_name("postgres")
-    image = build_postgres_image(version, work, server_cert, server_key)
-    try:
-        command([
-            "docker", "run", "-d", "--name", name,
-            "-p", "127.0.0.1::5432",
-            "-e", "POSTGRES_USER=toka",
-            "-e", f"POSTGRES_PASSWORD={PASSWORD}",
-            "-e", "POSTGRES_DB=toka",
-            "-e", "POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256",
-            image, "postgres",
-            "-c", "ssl=on",
-            "-c", "ssl_cert_file=/tls/server.crt",
-            "-c", "ssl_key_file=/tls/server.key",
-            "-c", "password_encryption=scram-sha-256",
-        ], timeout=180)
-        wait_ready(["docker", "exec", name, "pg_isready", "-U", "toka", "-d", "toka"])
-        port = published_port(name, 5432)
-        wait_postgres_tls_ready(port, ca_cert)
-        command([str(fixture), str(port), str(ca_cert)], timeout=90)
-        version_text = command([
-            "docker", "exec", name, "psql", "-U", "toka", "-d", "toka", "-Atc", "SHOW server_version",
-        ], timeout=20)
-        return {"server": version_text, "transport": "tls-private-ca-scram-sha-256"}
-    except Exception as error:
-        raise QualificationFailure(f"PostgreSQL {version} failed: {error}\n{service_log(name)}") from error
-    finally:
-        cleanup_command(["docker", "rm", "-f", name])
-        cleanup_command(["docker", "image", "rm", image])
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tokac", type=Path, default=ROOT / "build/bin/tokac")
@@ -285,9 +207,8 @@ def main() -> int:
     args = parser.parse_args()
     report_path = args.report.resolve() if args.report else None
     report: dict[str, Any] = {
-        "contract": "data-access-real-service-v1",
+        "contract": "redis-real-service-v1",
         "redis_images": list(REDIS_VERSIONS),
-        "postgres_images": list(POSTGRES_VERSIONS),
         "status": "not-run",
     }
 
@@ -300,16 +221,14 @@ def main() -> int:
     report["docker_server"] = prerequisite
 
     try:
-        with tempfile.TemporaryDirectory(prefix="toka-data-access-real-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="toka-redis-real-") as temporary:
             work = Path(temporary)
             redis_fixture = work / "redis-real-service-v1"
             redis_clone_fixture = work / "redis-clone-ownership-v1"
-            postgres_fixture = work / "postgres-real-service-v1"
             compile_fixture(args.tokac.resolve(), "official/redis/lib", "official/redis/tests/real_service_v1.tk", redis_fixture)
             compile_fixture(args.tokac.resolve(), "official/redis/lib", "official/redis/tests/clone_ownership_v1.tk", redis_clone_fixture)
-            compile_fixture(args.tokac.resolve(), "official/postgres/lib", "official/postgres/tests/real_service_v1.tk", postgres_fixture)
             command([str(redis_clone_fixture)], timeout=60)
-            ca_cert, server_cert, server_key = make_certificates(work)
+            ca_cert, _, _ = make_certificates(work)
             redis_evidence: dict[str, dict[str, str]] = {}
             for version in REDIS_VERSIONS:
                 redis_evidence[f"{version}:tcp-auth"] = qualify_redis(
@@ -318,17 +237,10 @@ def main() -> int:
                 redis_evidence[f"{version}:tls-private-ca"] = qualify_redis(
                     redis_fixture, version, tls=True, certificate_dir=work, ca_cert=ca_cert
                 )
-            postgres_evidence: dict[str, dict[str, str]] = {}
-            for version in POSTGRES_VERSIONS:
-                postgres_evidence[version] = qualify_postgres(
-                    postgres_fixture, version, work=work, ca_cert=ca_cert,
-                    server_cert=server_cert, server_key=server_key
-                )
         report["redis"] = redis_evidence
-        report["postgres"] = postgres_evidence
         report["status"] = "passed"
         record(report_path, report)
-        print("PASS: real Redis/PostgreSQL compatibility matrix")
+        print("PASS: real Redis compatibility matrix")
         return 0
     except Exception as error:
         report["status"] = "failed"

@@ -14,11 +14,11 @@
 4. **Tier 4: Qualified Official Packages**: Independently versioned packages
    with executable package qualification. `official/redis` and
    `official/postgres` expose bounded, dedicated connection pools here; this
-   does not stabilize a generic pooling abstraction. Their real-service
-   interoperability evidence additionally requires the loopback-capable
-   runner defined in
-   [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md);
-   a restricted-sandbox `EPERM` is `not-run`, never green.
+   does not stabilize a generic pooling abstraction. Redis interoperability
+   additionally requires the loopback-capable runner defined in
+   [`redis_real_service_compatibility_v1.md`](redis_real_service_compatibility_v1.md);
+   PostgreSQL owns its equivalent gate in its canonical repository. A
+   restricted-sandbox `EPERM` is `not-run`, never green.
 5. **Tier 5: Legacy / Deprecated Shims**: Pre-1.0 C-style raw pointer APIs (`read_async(*buf, len)`, `to_u8_ptr`). Retained temporarily for low-level compatibility; NO new implementation in `stdx` may rely on Legacy APIs.
 6. **Tier 6: Experimental / Post-1.0**: Parameterized task spawning, generic
    connection pools, HTTP/2, structured task scopes, advanced async
@@ -56,7 +56,7 @@
 | **`stdx/crypto/pbkdf2.tk`** | PBKDF2-HMAC-SHA-256 derivation | **Tier 3: Stdx 1.0** | RFC 8018 derivation with explicit work factor and bounded output; protocol adapters choose their own password policy. |
 | **`official/compress`** | [`v0.1.0`](https://github.com/tokalang/compress/releases/tag/v0.1.0) streaming Gzip/Zlib plus optional `official/compress/http` policy | **Tier 4: Qualified Official** | Canonical source is [`tokalang/compress`](https://github.com/tokalang/compress), with an exact-version fixture in [`toka-examples`](https://github.com/tokalang/toka-examples/tree/main/registry_compress_consumer). zlib remains package-private and optional. The HTTP module composes `HttpRequest`/`HttpResponse`, explicitly negotiates gzip/identity, completes gzip before emitting headers, and requires decoded-byte plus ratio limits; `stdx/net/http` has no zlib dependency. |
 | **`official/redis`** | RESP2 client, ordered pipelines, `RedisPool` / exclusive `RedisLease` | **Tier 4: Qualified Official** | Dedicated package pool, not `Pool<T>`; cancellation, protocol, and reply-alignment failures poison a client before lease return. Real service rows: Redis 7.4.x/8.2.x TCP `AUTH` and private-CA TLS. |
-| **`official/postgres`** | PostgreSQL queries, transactions, `PostgresPool` / exclusive `PostgresPoolLease` | **Tier 4: Qualified Official** | Dedicated package pool, not `Pool<T>`; query results are bounded and owned, and a failed, canceled, or active-transaction client is not reused. Real service rows: PostgreSQL 16.x/17.x private-CA TLS + SCRAM. |
+| **`official/postgres`** | [`v0.1.0`](https://github.com/tokalang/postgres/releases/tag/v0.1.0) PostgreSQL queries, transactions, `PostgresPool` / exclusive `PostgresPoolLease` | **Tier 4: Qualified Official** | Canonical source is [`tokalang/postgres`](https://github.com/tokalang/postgres), with an exact-version fixture in [`toka-examples`](https://github.com/tokalang/toka-examples/tree/main/registry_postgres_consumer). Dedicated package pool, not `Pool<T>`; query results are bounded and owned, and a failed, canceled, or active-transaction client is not reused. Its tag gate owns the PostgreSQL 16.x/17.x private-CA TLS + SCRAM rows. |
 | **Data-access service reference** | Router → Redis cache → PostgreSQL transaction → correlated JSON events/metrics/shutdown | **Tier 4 composition evidence** | [`examples/data-access-service`](../examples/data-access-service) demonstrates an application-level `X-Request-Id` convention and scrape-neutral `/metrics`; it adds no web framework, tracing protocol, or generic pool API. |
 | **Legacy Shims** | `read_async(*buf, len)`, `to_u8_ptr` | **Tier 5: Legacy** | Retained as compatibility shims; new stdx code prohibited from depending on them. |
 | **Async Extensions** | Async blocks, TaskScope, generic connection pools | **Tier 6: Experimental** | Dedicated official package pools are excluded; generic pooling remains deferred. |

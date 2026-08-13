@@ -120,18 +120,18 @@ jobs:
           tools/scripts/test_semantic_replay.sh
           tools/scripts/test_mixed_core_cache.sh
 
-      - name: Qualify real data-access services (Linux loopback runner)
+      - name: Qualify Redis real service (Linux loopback runner)
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          python3 tools/scripts/qualify_data_access_real.py \
+          python3 tools/scripts/qualify_redis_real.py \
             --tokac build/bin/tokac \
-            --report build/data-access-real-service.json
+            --report build/redis-real-service.json
 
-      - name: Upload real data-access evidence
+      - name: Upload Redis real-service evidence
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: data-access-real-service
-          path: build/data-access-real-service.json
+          name: redis-real-service
+          path: build/redis-real-service.json
           if-no-files-found: error

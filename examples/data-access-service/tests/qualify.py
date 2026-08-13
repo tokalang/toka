@@ -12,7 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = ROOT / "examples" / "data-access-service"
 sys.path.insert(0, str(ROOT / "tools" / "scripts"))
-from registry_fixture import materialize_locked_library
+from registry_fixture import materialize_locked_library, materialize_locked_package
 
 
 def run(argv: list[str]) -> subprocess.CompletedProcess[str]:
@@ -34,8 +34,11 @@ def main() -> int:
         work = Path(work)
         router_library = materialize_locked_library(
             ROOT, "registry_router_consumer", "router", work)
+        postgres_library = materialize_locked_package(
+            ROOT, ROOT / "tests" / "fixtures" / "registry_postgres",
+            "postgres", work) / "lib"
         include = ["-I", str(ROOT / "lib"),
-                   "-I", str(ROOT / "official" / "postgres" / "lib"),
+                   "-I", str(postgres_library),
                    "-I", str(ROOT / "official" / "redis" / "lib"),
                    "-I", str(router_library), "-I", str(EXAMPLE / "lib")]
         for name in ("compile_v1", "loopback_v1"):

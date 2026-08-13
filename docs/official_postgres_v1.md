@@ -1,9 +1,15 @@
 # `official/postgres` v1 — PostgreSQL v3 Client RFC
 
-Status: **bounded PostgreSQL v3 client, verified TLS/SCRAM startup, simple and
-extended queries, transactions, and a dedicated bounded pool are implemented.
-Publication additionally requires a current green real-service matrix
-artifact.**
+Status: **released as standalone
+[`tokalang/postgres` v0.1.0](https://github.com/tokalang/postgres/releases/tag/v0.1.0),
+with deterministic Linux/macOS qualification, PostgreSQL 16/17 TLS/SCRAM tag
+evidence, and public-registry/offline consumer replay.**
+
+This compiler repository retains the API and scope contract below. Canonical
+source, package CI, real-service qualification, and releases live in
+[`tokalang/postgres`](https://github.com/tokalang/postgres). The retained
+exact-version cross-repository fixture is
+[`toka-examples/registry_postgres_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_postgres_consumer).
 
 ## 1. Role and placement
 
@@ -49,10 +55,11 @@ Delivery is intentionally ordered as follows:
 5. **Dedicated pool — complete.** `PostgresPool` and exclusive leases bound
    concurrency without introducing a generic `Pool<T>` surface. A failed,
    canceled, or active transaction client is discarded before return.
-6. **Compatibility evidence — required for publication.** Deterministic mocks
-   remain correctness gates. The real PostgreSQL 16.x/17.x private-CA
-   TLS/SCRAM matrix is CI release evidence, not a replacement for them; see
-   [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
+6. **Compatibility evidence — complete.** Deterministic mocks remain
+   correctness gates. The standalone tag workflow's PostgreSQL 16.x/17.x
+   private-CA TLS/SCRAM matrix is release evidence, not a replacement for
+   them; see the canonical repository's
+   [`qualify_real_service.py`](https://github.com/tokalang/postgres/blob/main/tests/qualify_real_service.py).
 
 ## 3. Phase 1 contract
 
@@ -73,5 +80,5 @@ COPY, notifications/listen, cursors, replication, pool-side prepared-statement
 caching, client-certificate/GSS/SSPI authentication, full SASLprep Unicode
 normalization, and ORM behavior are outside this v1 surface. The running
 service evidence is intentionally bounded to private-CA verified TLS and
-ASCII-profile SCRAM against PostgreSQL 16.x and 17.x; a current runner artifact
-is required before claiming that evidence for a release.
+ASCII-profile SCRAM against PostgreSQL 16.x and 17.x; the canonical package
+workflow owns that evidence for each release.

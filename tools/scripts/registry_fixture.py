@@ -8,10 +8,9 @@ import subprocess
 import sys
 
 
-def materialize_locked_library(root: Path, fixture_name: str, dependency: str,
+def materialize_locked_package(root: Path, fixture: Path, dependency: str,
                                work: Path) -> Path:
-    """Fetch one fixture's locked dependency into ``work`` and return its lib."""
-    fixture = root / "examples" / fixture_name
+    """Fetch one immutable fixture dependency into ``work`` and return its root."""
     lock = fixture / "package.lock"
     resolved = ""
     for line in lock.read_text(encoding="utf-8").splitlines()[1:]:
@@ -20,9 +19,9 @@ def materialize_locked_library(root: Path, fixture_name: str, dependency: str,
             resolved = fields[4]
             break
     if not resolved:
-        raise RuntimeError(f"{fixture_name} does not lock {dependency}")
+        raise RuntimeError(f"{fixture} does not lock {dependency}")
 
-    project = work / fixture_name
+    project = work / fixture.name
     project.mkdir()
     for name in ("package.tk", "package.lock"):
         shutil.copy2(fixture / name, project / name)
@@ -33,7 +32,17 @@ def materialize_locked_library(root: Path, fixture_name: str, dependency: str,
         check=True,
         timeout=120,
     )
-    library = project / ".toka" / "packages" / f"{dependency}-{resolved}" / "lib"
-    if not library.is_dir():
+    package = project / ".toka" / "packages" / f"{dependency}-{resolved}"
+    if not package.is_dir():
         raise RuntimeError(f"registry fixture did not install {dependency}@{resolved}")
+    return package
+
+
+def materialize_locked_library(root: Path, fixture_name: str, dependency: str,
+                               work: Path) -> Path:
+    """Fetch one example fixture's locked dependency and return its library."""
+    fixture = root / "examples" / fixture_name
+    library = materialize_locked_package(root, fixture, dependency, work) / "lib"
+    if not library.is_dir():
+        raise RuntimeError(f"registry fixture did not install {dependency}'s library")
     return library

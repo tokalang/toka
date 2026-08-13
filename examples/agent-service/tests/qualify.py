@@ -8,7 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = ROOT / "examples" / "agent-service"
 sys.path.insert(0, str(ROOT / "tools" / "scripts"))
-from registry_fixture import materialize_locked_library
+from registry_fixture import materialize_locked_library, materialize_locked_package
 
 def main() -> int:
     tokac = ROOT / "build" / "bin" / "tokac"
@@ -20,7 +20,10 @@ def main() -> int:
             ROOT, "registry_router_consumer", "router", work)
         openai_compat_library = materialize_locked_library(
             ROOT, "registry_openai_compat_consumer", "openai_compat", work)
-        include = ["-I", str(ROOT / "lib"), "-I", str(ROOT / "official" / "postgres" / "lib"),
+        postgres_library = materialize_locked_package(
+            ROOT, ROOT / "tests" / "fixtures" / "registry_postgres",
+            "postgres", work) / "lib"
+        include = ["-I", str(ROOT / "lib"), "-I", str(postgres_library),
                    "-I", str(ROOT / "official" / "redis" / "lib"), "-I", str(router_library),
                    "-I", str(openai_compat_library),
                    "-I", str(EXAMPLE / "lib")]

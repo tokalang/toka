@@ -1,6 +1,6 @@
 # Official Package Repository Migration v1
 
-Status: `Approved extraction policy; regex, router, openai_compat, compress, and sqlite migrations complete`
+Status: `Approved extraction policy; regex, router, openai_compat, compress, sqlite, and postgres migrations complete`
 
 Official packages are publisher-owned optional libraries, not a fourth
 standard-library layer. This document defines the one-way migration from an
@@ -62,6 +62,12 @@ public release is
 [`v0.1.0`](https://github.com/tokalang/sqlite/releases/tag/v0.1.0). It had no
 prior public monorepo release, so this is its first source and release record.
 
+`official/postgres` completed the same cutover on 2026-08-13. Its canonical
+source is [`tokalang/postgres`](https://github.com/tokalang/postgres), whose
+first public release is
+[`v0.1.0`](https://github.com/tokalang/postgres/releases/tag/v0.1.0). It had no
+prior public monorepo release, so this is its first source and release record.
+
 The new repository owns package CI, issues, releases, and its future source
 tags. Its first public release is a real SemVer successor, such as `v0.1.1`.
 That release receives a GitHub archive and a new immutable catalog version
@@ -102,3 +108,10 @@ removed. [`toka-examples/registry_sqlite_consumer`](https://github.com/tokalang/
 is the retained exact-version native consumer fixture; the independently
 qualified [`service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit)
 is its retained application-level consumer.
+
+`official/postgres@0.1.0` passed standalone deterministic Linux/macOS
+qualification, the PostgreSQL 16/17 TLS/SCRAM tag gate, and a fresh
+public-registry/offline replay before its monorepo root was removed.
+[`toka-examples/registry_postgres_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_postgres_consumer)
+is the retained exact-version consumer fixture. Toka's data-access and agent
+reference services materialize the same immutable lock for composition tests.
