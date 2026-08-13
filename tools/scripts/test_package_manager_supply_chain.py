@@ -97,6 +97,21 @@ def expect_error(function, text: str) -> None:
         raise AssertionError("expected failure containing: " + text)
 
 
+def test_windows_absolute_path_dependency(root: Path) -> None:
+    manifest_path = root / "windows-absolute-path.tk"
+    manifest_path.write_text(
+        manifest(
+            "windows_path",
+            [("dependency", '"D:/toka/packages/child/../dependency"')],
+        ),
+        encoding="utf-8",
+    )
+    dependency = parse_manifest(manifest_path)[0]
+    assert dependency.kind == "path"
+    assert dependency.locator == "D:/toka/packages/dependency"
+    assert dependency.selector == "-"
+
+
 def test_hash_and_lock(root: Path) -> None:
     vector = root / "sha256-vector"
     vector.write_bytes(b"abc")
@@ -834,6 +849,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="toka-package-supply-chain-") as temporary:
         root = Path(temporary)
         test_hash_and_lock(root)
+        test_windows_absolute_path_dependency(root)
         test_safe_extract(root)
         test_path_graph(root)
         test_official_mapping(root)
