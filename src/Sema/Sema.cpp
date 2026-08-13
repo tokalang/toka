@@ -241,6 +241,38 @@ static bool isAtomicIntrinsicDeclaration(const Module &module,
          Names.count(function.Name) != 0;
 }
 
+static bool supportsAtomicIntrinsicType(
+    const std::string &functionName, const std::shared_ptr<Type> &type,
+    std::string &expectedDomain) {
+  const auto *primitive =
+      type ? dynamic_cast<const PrimitiveType *>(type.get()) : nullptr;
+  const bool isInteger = primitive && primitive->isInteger();
+  const bool isFloating = primitive && primitive->isFloatingPoint();
+
+  if (functionName == "__toka_atomic_fetch_add" ||
+      functionName == "__toka_atomic_fetch_sub") {
+    expectedDomain = "an integer or floating-point scalar";
+    return isInteger || isFloating;
+  }
+  if (functionName == "__toka_atomic_fetch_and" ||
+      functionName == "__toka_atomic_fetch_or" ||
+      functionName == "__toka_atomic_fetch_xor") {
+    expectedDomain = "an integer scalar";
+    return isInteger;
+  }
+  if (functionName == "__toka_atomic_compare_exchange") {
+    expectedDomain = "an integer scalar";
+    return isInteger;
+  }
+  if (functionName == "__toka_atomic_load" ||
+      functionName == "__toka_atomic_store" ||
+      functionName == "__toka_atomic_swap") {
+    expectedDomain = "an integer or floating-point scalar";
+    return isInteger || isFloating;
+  }
+  return true;
+}
+
 static std::string shapeCodegenName(const Module &M,
                                     const std::string &name) {
   std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
@@ -5583,6 +5615,19 @@ FunctionDecl *Sema::instantiateGenericFunction(
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name, Template->GenericParams.size(), Args.size());
     HasError = true;
     return nullptr;
+  }
+
+  if (Template->IsTrustedAtomicIntrinsic && !Args.empty()) {
+    auto valueType = resolveType(Args.front());
+    std::string expectedDomain;
+    if (!supportsAtomicIntrinsicType(Template->Name, valueType,
+                                     expectedDomain)) {
+      error(CallSite ? static_cast<ASTNode *>(CallSite)
+                     : static_cast<ASTNode *>(Template),
+            DiagID::ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN, Template->Name,
+            valueType ? valueType->toString() : "unknown", expectedDomain);
+      return nullptr;
+    }
   }
 
   // [NEW] Check Trait Bounds

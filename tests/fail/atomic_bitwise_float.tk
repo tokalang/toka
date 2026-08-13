@@ -1,0 +1,7 @@
+import core/intrinsics/atomic::{__toka_atomic_fetch_and, Ordering}
+
+fn main() -> i32 {
+    auto value# = 1.0:f32
+    __toka_atomic_fetch_and(value, 1.0:f32, Ordering::Relaxed) // EXPECT: error[E0619]
+    return 0
+}

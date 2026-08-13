@@ -2014,6 +2014,24 @@
       "description": "A trusted generic atomic hook retains its intrinsic identity after instantiation"
     },
     {
+      "id": "ir_generic_atomic_float_add_lowering_01",
+      "path": "codegen/generic_atomic_float_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw fadd",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "Floating-point atomic addition uses LLVM's floating atomic operation"
+    },
+    {
+      "id": "ir_generic_atomic_float_sub_lowering_01",
+      "path": "codegen/generic_atomic_float_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw fsub",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "Floating-point atomic subtraction uses LLVM's floating atomic operation"
+    },
+    {
       "id": "ir_generic_iterator_scope_drop_01",
       "path": "codegen/generic_iterator_scope_drop.tk",
       "type": "ir-verify",

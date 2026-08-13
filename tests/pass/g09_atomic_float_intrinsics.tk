@@ -1,0 +1,22 @@
+import core/intrinsics/atomic::{fetch_add, fetch_sub, load, store, swap, Ordering}
+
+pub fn main() -> i32 {
+    auto value# = 1.5:f32
+
+    auto old_add = fetch_add(value, 0.5:f32, Ordering::Relaxed)
+    assert(old_add == 1.5:f32, "floating fetch_add returned the wrong prior value")
+    assert(value == 2.0:f32, "floating fetch_add did not update the target")
+
+    auto old_sub = fetch_sub(value, 0.25:f32, Ordering::Relaxed)
+    assert(old_sub == 2.0:f32, "floating fetch_sub returned the wrong prior value")
+    assert(value == 1.75:f32, "floating fetch_sub did not update the target")
+
+    auto old_swap = swap(value, 4.0:f32, Ordering::SeqCst)
+    assert(old_swap == 1.75:f32, "floating swap returned the wrong prior value")
+    assert(value == 4.0:f32, "floating swap did not update the target")
+
+    store(value, 8.0:f32, Ordering::Release)
+    assert(load(value, Ordering::Acquire) == 8.0:f32,
+           "floating store/load did not preserve the value")
+    return 0
+}

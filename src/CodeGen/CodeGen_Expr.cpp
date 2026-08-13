@@ -6158,6 +6158,20 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     }
     if (isTrustedAtomicIntrinsic) {
       fname = fname.substr(14); // strip prefix
+
+    auto invalidAtomicType = [&](llvm::Type *type,
+                                 const std::string &expected) -> PhysEntity {
+      std::string actual;
+      llvm::raw_string_ostream stream(actual);
+      if (type)
+        type->print(stream);
+      else
+        stream << "unknown";
+      stream.flush();
+      error(call, DiagID::ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN,
+            "__toka_atomic_" + fname, actual, expected);
+      return PhysEntity();
+    };
       
     // Helper to extract Ordering from Argument Value
     auto getOrder = [&](llvm::Value *v) -> std::pair<llvm::AtomicOrdering, bool> {
@@ -6186,6 +6200,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     if (fname.find("load") == 0) {
       auto order = getOrder(argsV.back());
       llvm::Type *valTy = callee->getFunctionType()->getReturnType();
+      if ((!valTy->isIntegerTy() || valTy->isIntegerTy(1)) &&
+          !valTy->isFloatingPointTy())
+        return invalidAtomicType(
+            valTy,
+            "a byte-sized integer or floating-point scalar");
       llvm::LoadInst *li = m_Builder.CreateLoad(valTy, argsV[0], "atomic_load");
       li->setAtomic(order.first);
       if (li->getOrdering() == llvm::AtomicOrdering::NotAtomic) li->setAtomic(llvm::AtomicOrdering::Monotonic);
@@ -6200,6 +6219,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     if (fname.find("store") == 0) {
       auto order = getOrder(argsV.back());
       llvm::Type *valTy = argsV[1]->getType();
+      if ((!valTy->isIntegerTy() || valTy->isIntegerTy(1)) &&
+          !valTy->isFloatingPointTy())
+        return invalidAtomicType(
+            valTy,
+            "a byte-sized integer or floating-point scalar");
       llvm::StoreInst *si = m_Builder.CreateStore(argsV[1], argsV[0]);
       llvm::AtomicOrdering o = order.second ? llvm::AtomicOrdering::SequentiallyConsistent : order.first;
       if (o == llvm::AtomicOrdering::Acquire || o == llvm::AtomicOrdering::AcquireRelease) o = llvm::AtomicOrdering::Release; // Store cannot be Acquire or AcqRel
@@ -6223,6 +6247,10 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       if (success == llvm::AtomicOrdering::Acquire && fail == llvm::AtomicOrdering::SequentiallyConsistent) fail = llvm::AtomicOrdering::Acquire;
 
       llvm::Type *valTy = argsV[1]->getType();
+      if (!valTy->isIntegerTy() || valTy->isIntegerTy(1))
+        return invalidAtomicType(
+            valTy,
+            "a byte-sized integer scalar");
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
@@ -6245,6 +6273,29 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     if (isRMW) {
       auto order = getOrder(argsV.back());
       llvm::Type *valTy = argsV[1]->getType();
+      const bool isFloatAddSub =
+          valTy->isFloatingPointTy() &&
+          (fname.find("fetch_add") == 0 || fname.find("fetch_sub") == 0);
+      const bool isIntegerRMW =
+          valTy->isIntegerTy() && !valTy->isIntegerTy(1);
+      const bool isFloatSwap =
+          valTy->isFloatingPointTy() && fname.find("swap") == 0;
+      if (!isIntegerRMW && !isFloatAddSub && !isFloatSwap) {
+        std::string expected =
+            fname.find("fetch_add") == 0 || fname.find("fetch_sub") == 0
+                ? "a byte-sized integer or floating-point scalar"
+                : (fname.find("swap") == 0
+                       ? "a byte-sized integer or floating-point scalar"
+                       : "a byte-sized integer scalar");
+        return invalidAtomicType(valTy, expected);
+      }
+      if (isFloatAddSub) {
+        rop = fname.find("fetch_add") == 0
+                  ? llvm::AtomicRMWInst::FAdd
+                  : llvm::AtomicRMWInst::FSub;
+      } else if (valTy->isFloatingPointTy() && fname.find("swap") == 0) {
+        rop = llvm::AtomicRMWInst::Xchg;
+      }
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
