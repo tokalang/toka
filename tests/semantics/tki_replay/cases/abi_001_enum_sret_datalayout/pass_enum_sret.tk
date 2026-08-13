@@ -1,0 +1,60 @@
+// SOURCE_BACKED_RUNTIME
+// EXPECT_REPLAY_IR: declare %Enum15 @make_enum15(i8)
+// EXPECT_REPLAY_IR: declare %Enum16 @make_enum16(i8)
+// EXPECT_REPLAY_IR: declare void @make_enum17(ptr sret(%Enum17), i8)
+// EXPECT_REPLAY_IR: declare void @make_vec_option(ptr sret(%Option_M_Vec_M_i32_A), i1)
+// EXPECT_REPLAY_IR: declare void @make_vec_result(ptr sret(%Result_M_Vec_M_i32_A_i32), i1)
+// EXPECT_REPLAY_IR: call %Enum15 @make_enum15(i8 15)
+// EXPECT_REPLAY_IR: call %Enum16 @make_enum16(i8 16)
+// EXPECT_REPLAY_IR: call void @make_enum17(ptr sret(%Enum17)
+// EXPECT_REPLAY_IR: call void @make_vec_option(ptr sret(%Option_M_Vec_M_i32_A)
+// EXPECT_REPLAY_IR: call void @make_vec_result(ptr sret(%Result_M_Vec_M_i32_A_i32)
+import ./lib::{Enum15, Enum16, Enum17, make_enum15, make_enum16,
+              make_enum17, make_vec_option, make_vec_result}
+
+fn main() -> i32 {
+    match make_enum15(15:u8) {
+        auto Enum15::Bytes(bytes) => {
+            if bytes[0] != 15:u8 || bytes[13] != 15:u8 { return 1 }
+        }
+        _ => return 2
+    }
+
+    match make_enum16(16:u8) {
+        auto Enum16::Bytes(bytes) => {
+            if bytes[0] != 16:u8 || bytes[14] != 16:u8 { return 3 }
+        }
+        _ => return 4
+    }
+
+    match make_enum17(17:u8) {
+        auto Enum17::Bytes(bytes) => {
+            if bytes[0] != 17:u8 || bytes[15] != 17:u8 { return 5 }
+        }
+        _ => return 6
+    }
+
+    auto optional# = make_vec_option(true)
+    if optional.is_none() { return 7 }
+    auto option_values# = (cede optional).unwrap()
+    if option_values.len() != 2:usize ||
+       option_values.get(0:usize) != 41 ||
+       option_values.get(1:usize) != 42 {
+        return 8
+    }
+
+    auto result# = make_vec_result(true)
+    if result.is_err() { return 9 }
+    auto result_values# = (cede result).unwrap()
+    if result_values.len() != 2:usize ||
+       result_values.get(0:usize) != 51 ||
+       result_values.get(1:usize) != 52 {
+        return 10
+    }
+
+    auto error# = make_vec_result(false)
+    if !error.is_err() { return 11 }
+    auto error_code# = (cede error).unwrap_err()
+    if error_code != 73 { return 12 }
+    return 0
+}

@@ -5556,7 +5556,11 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   if (funcDecl && funcDecl->Effect == EffectKind::Async) isAsync = true;
   if (extDecl && extDecl->Effect == EffectKind::Async) isAsync = true;
 
-  bool isSRet = call->ResolvedType && shouldReturnSRet(call->ResolvedType) && !isAsync;
+  // Direct calls must follow the declaration that LLVM will lower.  Toka
+  // functions carry an explicit StructRet parameter when required, while
+  // native extern declarations keep their platform C ABI aggregate return.
+  bool isSRet = !isAsync && callee->arg_size() > 0 &&
+                callee->hasParamAttribute(0, llvm::Attribute::StructRet);
 
   std::vector<llvm::Value *> argsV;
   std::vector<llvm::Value *> cededNullablePayloadShells;

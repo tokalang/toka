@@ -22,7 +22,6 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
-#include <set>
 #include <typeinfo>
 
 extern bool verboseMode;
@@ -491,115 +490,20 @@ void CodeGen::generate(const Module &ast) {
 
 void CodeGen::print(llvm::raw_ostream &os) { m_Module->print(os, nullptr); }
 
-
-
-uint64_t CodeGen::estimateTypeSize(std::shared_ptr<Type> type, std::set<std::string> &visited) {
-  if (!type) return 0;
-
-  uint64_t ptrSize = 8;
-  if (getIntPtrTy() == llvm::Type::getInt32Ty(m_Context)) {
-    ptrSize = 4;
-  }
-
-  // Handle nullable wrapper: { T, bool } aligned
-  if (type->IsNullable && !type->isPointer() && !type->isSmartPointer() &&
-      !type->isReference() && !type->isVoid()) {
-    auto baseTyObj = type->withAttributes(type->IsWritable, false, type->IsBlocked);
-    return estimateTypeSize(baseTyObj, visited) + ptrSize;
-  }
-
-  if (type->typeKind == Type::Primitive) {
-    auto prim = std::static_pointer_cast<PrimitiveType>(type);
-    if (prim->Name == "i8" || prim->Name == "u8" || prim->Name == "byte" || prim->Name == "char" || prim->Name == "bool" || prim->Name == "i1")
-      return 1;
-    if (prim->Name == "i16" || prim->Name == "u16")
-      return 2;
-    if (prim->Name == "i32" || prim->Name == "u32" || prim->Name == "int" || prim->Name == "f32" || prim->Name == "float")
-      return 4;
-    if (prim->Name == "usize" || prim->Name == "isize" || prim->Name == "cstring" || prim->Name == "Addr" || prim->Name == "OAddr" || prim->Name == "null")
-      return ptrSize;
-    return 8; // i64, u64, double, etc.
-  }
-
-  if (type->typeKind == Type::Void) return 0;
-
-  if (type->typeKind == Type::RawPtr || type->typeKind == Type::UniquePtr || type->typeKind == Type::Reference) {
-    if (type->isFatPointer()) return ptrSize * 2;
-    return ptrSize;
-  }
-
-  if (type->typeKind == Type::SharedPtr) return ptrSize * 2;
-
-  if (type->typeKind == Type::UninitWrapper) {
-    auto uninit = std::static_pointer_cast<UninitType>(type);
-    return estimateTypeSize(uninit->InnerType, visited);
-  }
-
-  if (type->typeKind == Type::Slice) return ptrSize * 2; // passed by fat pointer reference or similar
-
-  if (type->typeKind == Type::Array) {
-    auto arrType = std::static_pointer_cast<ArrayType>(type);
-    return estimateTypeSize(arrType->ElementType, visited) * arrType->Size;
-  }
-
-  if (type->typeKind == Type::Shape) {
-    auto shapeType = std::static_pointer_cast<ShapeType>(type);
-    std::string shapeName = shapeType->Name;
-
-    // Break cycle if visited
-    if (visited.count(shapeName)) return 8; // fallback to pointer size to prevent cycles
-    visited.insert(shapeName);
-
-    const ShapeDecl *sh = nullptr;
-    if (shapeType->Decl) sh = shapeType->Decl;
-    else if (m_Shapes.count(shapeName)) sh = m_Shapes[shapeName];
-
-    if (sh) {
-      if (sh->Kind == ShapeKind::Struct || sh->Kind == ShapeKind::Tuple) {
-        uint64_t totalSize = 0;
-        for (const auto &member : sh->Members) {
-          std::shared_ptr<Type> membType = member.ResolvedType;
-          totalSize += membType ? estimateTypeSize(membType, visited) : 8;
-        }
-        visited.erase(shapeName);
-        return totalSize;
-      } else if (sh->Kind == ShapeKind::Array) {
-        std::shared_ptr<Type> elemTy = sh->Members[0].ResolvedType;
-        uint64_t elemSize = elemTy ? estimateTypeSize(elemTy, visited) : 8;
-        visited.erase(shapeName);
-        return elemSize * sh->ArraySize;
-      } else if (sh->Kind == ShapeKind::Union) {
-        uint64_t maxSize = 0;
-        for (const auto &member : sh->Members) {
-          std::shared_ptr<Type> membType = member.ResolvedType;
-          uint64_t s = membType ? estimateTypeSize(membType, visited) : 8;
-          if (s > maxSize) maxSize = s;
-        }
-        visited.erase(shapeName);
-        return maxSize;
-      }
-    }
-    visited.erase(shapeName);
-  }
-
-  if (type->typeKind == Type::Function) return 16;
-  if (type->typeKind == Type::DynFn) return 24;
-
-  return 8;
-}
-
 bool CodeGen::shouldReturnSRet(std::shared_ptr<Type> retTypeObj) {
-  if (!retTypeObj)
+  if (!retTypeObj || retTypeObj->isPointer())
     return false;
-  if (retTypeObj->isPointer())
-    return false;
+
   auto soul = retTypeObj->getSoulType();
-  if (soul->isShape() || soul->isArray()) {
-    std::set<std::string> visited;
-    uint64_t size = estimateTypeSize(soul, visited);
-    return size > 16;
-  }
-  return false;
+  if (!soul || (!soul->isShape() && !soul->isArray()))
+    return false;
+
+  llvm::Type *llvmType = getLLVMType(retTypeObj);
+  if (!llvmType || !llvmType->isSized())
+    return false;
+
+  const llvm::DataLayout &dataLayout = m_Module->getDataLayout();
+  return dataLayout.getTypeAllocSize(llvmType).getFixedValue() > 16;
 }
 
 CodeGen::GenContext CodeGen::saveContext() {

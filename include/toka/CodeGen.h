@@ -180,7 +180,6 @@ private:
   llvm::Value *m_CurrentSRetPtr = nullptr;
   llvm::Type *m_CurrentSRetTy = nullptr;
   bool shouldReturnSRet(std::shared_ptr<Type> retTypeObj);
-  uint64_t estimateTypeSize(std::shared_ptr<Type> type, std::set<std::string> &visited);
   void genCoroutineReturn(llvm::Value *retVal);
   void genCoroutineCancelReturn();
   // Although m_ValueElementTypes is redundant with m_Symbols for Variables, it

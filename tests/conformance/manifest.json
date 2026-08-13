@@ -1953,6 +1953,24 @@
       "description": "LLVM IR verification for aggregate SRET attribute emission (GAP-COMP-01)"
     },
     {
+      "id": "ir_sret_native_extern_direct_return_01",
+      "path": "codegen/sret_native_extern_call.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "call %WideNativeResult @native_wide_result()",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "A native extern returning a wide aggregate keeps its declared platform ABI at a direct call"
+    },
+    {
+      "id": "ir_sret_toka_internal_explicit_return_01",
+      "path": "codegen/sret_native_extern_call.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "call void @toka_wide_result(ptr sret(%WideNativeResult)",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "A Toka function returning the same wide aggregate still uses the explicit sret convention"
+    },
+    {
       "id": "json_serde_conformance_01",
       "path": "std/json_serde_conformance.tk",
       "type": "run",

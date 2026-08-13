@@ -1,0 +1,66 @@
+import core/option::{Option}
+import core/result::{Result}
+import std/vec::{Vec}
+
+// The tag plus byte-array payloads have exact alloc sizes 15, 16, and 17.
+// EXPECT_PROVIDER_IR: %Enum15 = type { i8, [14 x i8] }
+// EXPECT_PROVIDER_IR: %Enum16 = type { i8, [15 x i8] }
+// EXPECT_PROVIDER_IR: %Enum17 = type { i8, [16 x i8] }
+// EXPECT_PROVIDER_IR: %Vec_M_i32 = type { ptr, i64, i64 }
+// EXPECT_PROVIDER_IR: %Option_M_Vec_M_i32_A = type { i8, [3 x i64] }
+// EXPECT_PROVIDER_IR: %Result_M_Vec_M_i32_A_i32 = type { i8, [3 x i64] }
+// EXPECT_PROVIDER_IR: define %Enum15 @make_enum15(i8
+// EXPECT_PROVIDER_IR: define %Enum16 @make_enum16(i8
+// EXPECT_PROVIDER_IR: define void @make_enum17(ptr sret(%Enum17)
+// EXPECT_PROVIDER_IR: define void @make_vec_option(ptr sret(%Option_M_Vec_M_i32_A)
+// EXPECT_PROVIDER_IR: define void @make_vec_result(ptr sret(%Result_M_Vec_M_i32_A_i32)
+
+pub shape Enum15(
+    Bytes([u8; 14]) |
+    Empty
+)
+
+pub shape Enum16(
+    Bytes([u8; 15]) |
+    Empty
+)
+
+pub shape Enum17(
+    Bytes([u8; 16]) |
+    Empty
+)
+
+pub fn make_enum15(value: u8) -> Enum15 {
+    return Enum15::Bytes([value; 14]:[u8; 14])
+}
+
+pub fn make_enum16(value: u8) -> Enum16 {
+    return Enum16::Bytes([value; 15]:[u8; 15])
+}
+
+pub fn make_enum17(value: u8) -> Enum17 {
+    return Enum17::Bytes([value; 16]:[u8; 16])
+}
+
+fn make_vec(first: i32, second: i32) -> Vec<i32> {
+    auto values# = Vec<i32>::new()
+    values#.push(first)
+    values#.push(second)
+    return cede values
+}
+
+pub fn make_vec_option(enabled: bool) -> Option<Vec<i32>> {
+    if !enabled {
+        return Option<Vec<i32>>::None
+    }
+    auto values# = make_vec(41, 42)
+    return Option<Vec<i32>>::Some(cede values)
+}
+
+pub fn make_vec_result(ok: bool) -> Result<Vec<i32>, i32> {
+    if !ok {
+        return Result<Vec<i32>, i32>::Err(73)
+    }
+    auto values# = make_vec(51, 52)
+    return Result<Vec<i32>, i32>::Ok(cede values)
+}

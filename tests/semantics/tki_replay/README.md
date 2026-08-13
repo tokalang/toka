@@ -26,6 +26,12 @@ each fixed-string fragment to appear in the generated interface. Use these for
 semantic markers whose downstream effect does not yet have a discriminating
 consumer test.
 
+ABI replay cases may additionally use `EXPECT_PROVIDER_IR: text` in `lib.tk`
+and `EXPECT_REPLAY_IR: text` in a consumer. The runner checks those fixed-string
+fragments in the provider IR and in consumer IR generated from the source-less
+interface. Add `SOURCE_BACKED_RUNTIME` to a passing consumer when the same
+executable must also be built and run while the provider source is visible.
+
 Run with:
 
 ```bash

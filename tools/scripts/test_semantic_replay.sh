@@ -40,6 +40,16 @@ extract_expected_tki() {
     sed -n 's/.*EXPECT_TKI:[[:space:]]*//p' "$file"
 }
 
+extract_expected_provider_ir() {
+    local file="$1"
+    sed -n 's/.*EXPECT_PROVIDER_IR:[[:space:]]*//p' "$file"
+}
+
+extract_expected_replay_ir() {
+    local file="$1"
+    sed -n 's/.*EXPECT_REPLAY_IR:[[:space:]]*//p' "$file"
+}
+
 run_case() {
     local case_dir="$1"
     local case_name
@@ -64,6 +74,28 @@ run_case() {
         echo "FAIL $case_name: provider did not emit lib.tki"
         failed=$((failed + 1))
         return
+    fi
+
+    local provider_ir_expectations
+    provider_ir_expectations="$(extract_expected_provider_ir "$lib_src")"
+    if [ -n "$provider_ir_expectations" ]; then
+        local provider_ir="$work_dir/lib.ll"
+        if ! "$TOKAC_ABS" --emit-llvm -c "$lib_src" -o "$provider_ir" \
+            > "$work_dir/lib.ir.out" 2> "$work_dir/lib.ir.err"; then
+            echo "FAIL $case_name: provider IR compilation failed"
+            sed 's/^/  | /' "$work_dir/lib.ir.err"
+            failed=$((failed + 1))
+            return
+        fi
+        local expected_provider_ir
+        while IFS= read -r expected_provider_ir; do
+            [ -n "$expected_provider_ir" ] || continue
+            if ! grep -Fq -- "$expected_provider_ir" "$provider_ir"; then
+                echo "FAIL $case_name: provider IR is missing: $expected_provider_ir"
+                failed=$((failed + 1))
+                return
+            fi
+        done <<< "$provider_ir_expectations"
     fi
 
     local expected_tki
@@ -93,6 +125,26 @@ run_case() {
             sed 's/^/  | /' "$work_dir/$source_stem.source.err"
             failed=$((failed + 1))
             return
+        fi
+        if grep -q "SOURCE_BACKED_RUNTIME" "$source_consumer"; then
+            local source_exe="$work_dir/$source_stem.source.exe"
+            if ! TOKA_BUILD_DIR="$work_dir/source-build" TOKA_USE_LIB_CACHE=0 \
+                "$TOKAC_ABS" "$source_consumer" "$lib_obj" -o "$source_exe" \
+                > "$work_dir/$source_stem.source.run-build.out" \
+                2> "$work_dir/$source_stem.source.run-build.err"; then
+                echo "FAIL $case_name/$source_stem: source-backed runtime build failed"
+                sed 's/^/  | /' "$work_dir/$source_stem.source.run-build.err"
+                failed=$((failed + 1))
+                return
+            fi
+            if ! "$source_exe" \
+                > "$work_dir/$source_stem.source.run.out" \
+                2> "$work_dir/$source_stem.source.run.err"; then
+                echo "FAIL $case_name/$source_stem: source-backed executable returned failure"
+                sed 's/^/  | /' "$work_dir/$source_stem.source.run.err"
+                failed=$((failed + 1))
+                return
+            fi
         fi
     done
 
@@ -150,6 +202,33 @@ run_case() {
             sed 's/^/  | /' "$work_dir/$stem.err"
             case_failed=1
             continue
+        fi
+        local replay_ir_expectations
+        replay_ir_expectations="$(extract_expected_replay_ir "$consumer")"
+        if [ -n "$replay_ir_expectations" ]; then
+            local replay_ir="$work_dir/$stem.replay.ll"
+            mkdir -p "$work_dir/replay-ir-build/interfaces" \
+                "$work_dir/replay-ir-build/objects"
+            if ! TOKA_BUILD_DIR="$work_dir/replay-ir-build" TOKA_USE_LIB_CACHE=0 \
+                "$TOKAC_ABS" --emit-llvm -c "$consumer" -o "$replay_ir" \
+                > "$work_dir/$stem.replay-ir.out" \
+                2> "$work_dir/$stem.replay-ir.err"; then
+                echo "FAIL $case_name/$stem: replay IR compilation failed"
+                sed 's/^/  | /' "$work_dir/$stem.replay-ir.err"
+                case_failed=1
+                continue
+            fi
+            local expected_replay_ir
+            while IFS= read -r expected_replay_ir; do
+                [ -n "$expected_replay_ir" ] || continue
+                if ! grep -Fq -- "$expected_replay_ir" "$replay_ir"; then
+                    echo "FAIL $case_name/$stem: replay IR is missing: $expected_replay_ir"
+                    case_failed=1
+                fi
+            done <<< "$replay_ir_expectations"
+            if [ "$case_failed" -ne 0 ]; then
+                continue
+            fi
         fi
         if ! python3 "$EVIDENCE_COMPARE" \
             "$work_dir/$stem.source.out" "$work_dir/$stem.out" "$consumer"; then

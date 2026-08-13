@@ -1,0 +1,23 @@
+// A native extern keeps its aggregate return in the platform C ABI, while a
+// Toka function returning the same >16-byte shape uses Toka's explicit sret.
+
+shape WideNativeResult (
+    first: i64,
+    second: i64,
+    third: i64
+)
+
+extern fn native_wide_result() -> WideNativeResult
+
+fn toka_wide_result() -> WideNativeResult {
+    return WideNativeResult(first = 1, second = 2, third = 3)
+}
+
+fn main() -> i32 {
+    auto ext_value = native_wide_result()
+    auto toka_value = toka_wide_result()
+    if ext_value.first == toka_value.first {
+        return 0
+    }
+    return 1
+}
