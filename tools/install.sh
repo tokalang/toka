@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Toka Language Installer
+# Canonical Toka Language Installer
 # This script installs the Toka language toolchain (tokac, toka, tokafmt + stdlib).
 
 echo "Installing Toka Language..."

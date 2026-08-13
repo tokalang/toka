@@ -53,7 +53,9 @@ jobs:
 
       - name: Build Astro 🚀
         working-directory: ./website
-        run: npm run build
+        run: |
+          cp ../tools/install.sh public/install.sh
+          npm run build
 
       - name: Deploy 🚀
         uses: peaceiris/actions-gh-pages@v4
