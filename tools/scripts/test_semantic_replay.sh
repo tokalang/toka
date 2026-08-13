@@ -5,8 +5,17 @@ set -euo pipefail
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
 CASE_ROOT="${CASE_ROOT:-tests/semantics/tki_replay/cases}"
-WORK_ROOT="${WORK_ROOT:-/tmp/toka_semantic_replay}"
 EVIDENCE_COMPARE="${EVIDENCE_COMPARE:-tools/scripts/compare_semantic_evidence.py}"
+
+work_root_is_temporary=0
+if [ -z "${WORK_ROOT:-}" ]; then
+    WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/toka_semantic_replay.XXXXXX")"
+    work_root_is_temporary=1
+    cleanup_work_root() {
+        rm -rf "$WORK_ROOT"
+    }
+    trap cleanup_work_root EXIT
+fi
 
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
@@ -24,7 +33,9 @@ if [ ! -x "$TOKAC_ABS" ]; then
     exit 1
 fi
 
-rm -rf "$WORK_ROOT"
+if [ "$work_root_is_temporary" -eq 0 ]; then
+    rm -rf "$WORK_ROOT"
+fi
 mkdir -p "$WORK_ROOT"
 
 passed=0
