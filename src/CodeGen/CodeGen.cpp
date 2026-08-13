@@ -441,7 +441,7 @@ std::string CodeGen::ownerLinkName(const std::shared_ptr<Type> &type) const {
 
   if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul);
       shape && shape->Decl) {
-    if (!shape->Decl->OwnerLinkName.empty())
+    if (shape->Decl->OwnerLinkName.rfind("__toka_owner_", 0) == 0)
       return shape->Decl->OwnerLinkName;
     if (!shape->Decl->CodegenName.empty())
       return shape->Decl->CodegenName;
