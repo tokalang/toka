@@ -127,7 +127,8 @@ def main() -> int:
         compile_source(generic_dup, expect_success=True)
         generic_dup_ir = generic_dup.with_suffix(".ll").read_text(encoding="utf-8")
         wrapper_calls = re.findall(
-            r"\bcall\b[^\n]*@Dup_Wrapper_M_Resource_dup\(", generic_dup_ir)
+            r"\bcall\b[^\n]*@Dup___toka_owner_N[0-9a-f]+"
+            r"_M_[0-9]+_[0-9A-Za-z]+_dup\(", generic_dup_ir)
         assert len(wrapper_calls) == 1, generic_dup_ir
 
         reject(root, "generic_dup_unsatisfied_bound.tk",
@@ -225,7 +226,9 @@ def main() -> int:
             "}\n", encoding="utf-8")
         compile_source(dup_capture, expect_success=True)
         dup_ir = dup_capture.with_suffix(".ll").read_text(encoding="utf-8")
-        dup_calls = re.findall(r"\bcall\b[^\n]*@Dup_Resource_dup\(", dup_ir)
+        dup_calls = re.findall(
+            r"\bcall\b[^\n]*@Dup___toka_owner_N[0-9a-f]+_dup\(",
+            dup_ir)
         assert len(dup_calls) == 1, dup_ir
 
         reject(root, "dup_capture_without_provider.tk",

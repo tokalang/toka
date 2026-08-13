@@ -106,11 +106,10 @@ def assert_migrated_text() -> None:
         assert "pub field" in text, document
         assert "rejected" in text or "拒绝" in text, document
 
-    marker = (ROOT / "lib" / "core" / "marker.tk").read_text(encoding="utf-8")
     traits = (ROOT / "lib" / "core" / "traits.tk").read_text(encoding="utf-8")
     vec = (ROOT / "lib" / "std" / "vec.tk").read_text(encoding="utf-8")
-    assert "pub trait @Copy {}" in marker
-    assert "pub trait @Dup" in marker and "pub fn dup(self) -> Self" in marker
+    assert "pub trait @Copy {}" in traits
+    assert "pub trait @Dup" in traits and "pub fn dup(self) -> Self" in traits
     assert "pub trait @Encap {}" in traits
     assert "impl<'T> Vec<'T>@Encap" in vec
     assert "impl<'T: @Copy> Vec<'T>@Encap" not in vec
