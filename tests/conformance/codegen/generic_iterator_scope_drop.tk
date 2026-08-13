@@ -1,0 +1,13 @@
+import std/vec::{Vec}
+
+pub fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+
+    for auto &value in values {
+        if value == 1 {
+            break
+        }
+    }
+    return 0
+}

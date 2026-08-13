@@ -3850,14 +3850,26 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   if (!isArray && iterAlloca) {
     std::shared_ptr<Type> iteratorDropType =
         fe->ResolvedIterFn ? fe->ResolvedIterFn->ResolvedReturnType : nullptr;
-    std::string iteratorType = ownerLinkName(iteratorDropType);
+    std::string iteratorType;
+    std::string dropName;
+    if (iteratorDropType) {
+      auto soul = iteratorDropType->getSoulType();
+      if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul);
+          shape && shape->Decl) {
+        dropName = shape->Decl->MangledDestructorName;
+        iteratorType = !shape->Decl->CodegenName.empty()
+                           ? shape->Decl->CodegenName
+                           : shape->Decl->Name;
+      }
+    }
     if (iteratorType.empty())
       iteratorType = fe->IteratorType;
     if (iteratorType.empty() &&
         m_TypeToName.count(iterAlloca->getAllocatedType())) {
       iteratorType = m_TypeToName[iterAlloca->getAllocatedType()];
     }
-    std::string dropName = "Encap_" + iteratorType + "_drop";
+    if (dropName.empty() && !iteratorType.empty())
+      dropName = "Encap_" + iteratorType + "_drop";
     llvm::Function *dropFn = m_Module->getFunction(dropName);
     VariableScopeInfo iteratorInfo;
     iteratorInfo.Name = "__for_iterator";
