@@ -344,7 +344,8 @@ set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt${CMAKE_EXECUTABLE_
 
 add_custom_command(
     OUTPUT "${TOKA_MANAGER}"
-    COMMAND $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
+    COMMAND ${CMAKE_COMMAND} -E env "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib"
+            $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
             --workspace-root "${CMAKE_SOURCE_DIR}" -I "${CMAKE_SOURCE_DIR}/lib"
             -I "${TOKA_GENERATED_MODULE_DIR}"
             -I "${CMAKE_SOURCE_DIR}/tools/toka"
@@ -358,7 +359,8 @@ add_custom_command(
 )
 add_custom_command(
     OUTPUT "${TOKA_FORMATTER}"
-    COMMAND $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
+    COMMAND ${CMAKE_COMMAND} -E env "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib"
+            $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
             --workspace-root "${CMAKE_SOURCE_DIR}" -I "${CMAKE_SOURCE_DIR}/lib"
             -I "${TOKA_GENERATED_MODULE_DIR}"
             -I "${CMAKE_SOURCE_DIR}/tools/tokafmt"
