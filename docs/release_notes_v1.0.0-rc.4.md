@@ -1,12 +1,14 @@
 # Toka v1.0.0-rc.4 Candidate Notes
 
-**Status:** In qualification. `v1.0.0-rc.4` is not tagged or published until
-its exact revision passes the four-platform release gate and maintainers
-authorize draft creation.
+**Status:** Published as a GitHub pre-release at `2026-08-12T12:33:33Z`.
+Annotated tag object `ad9499d18cf98bcfd930c7ea7b999191155550db`
+points to candidate commit `5c9cb77b5708d2ce598720821da97b683c0edf9f`.
+The historical audit does not contain a protected-promotion workflow run or a
+clean first-hour replay receipt.
 
 ## Purpose
 
-RC4 is the next public 1.0 release candidate from Toka's frozen language
+RC4 was the next public 1.0 release candidate from Toka's frozen language
 surface. It corrects release evidence and SDK version propagation found while
 preparing RC3, and includes bounded standard-library additions. It adds no
 source syntax, PAL rule, TKI-format, or CodeGen semantic change.
@@ -45,7 +47,7 @@ defined in [`1_0_rc4_release_plan.md`](1_0_rc4_release_plan.md). A tag may
 create only a complete draft; public pre-release promotion remains a separate,
 explicit maintainer authorization.
 
-When published, install RC4 explicitly rather than relying on GitHub's stable
+Install the published RC4 explicitly rather than relying on GitHub's stable
 release selector:
 
 ```sh
