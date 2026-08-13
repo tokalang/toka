@@ -269,6 +269,7 @@ def main():
             ["bash", "tools/scripts/test_semantic_manifest_attestation_build.sh"],
         )),
         ("cache_invalidation", (
+            ["tools/scripts/test_tki_unsafe_revalidation.sh"],
             ["tools/scripts/test_semantic_cache_invalidation.sh"],
             ["tools/scripts/test_mixed_core_cache.sh"],
         )),
