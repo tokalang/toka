@@ -17,7 +17,6 @@ LOCAL_SUITES = (
     # Extracted releases qualify in their canonical repositories; incubating
     # package roots remain in this monorepo suite.
     ("redis", ROOT / "official" / "redis" / "tests" / "qualify_package.py"),
-    ("unicode", ROOT / "official" / "unicode" / "tests" / "qualify_package.py"),
 )
 
 

@@ -1,6 +1,6 @@
 # Official Package Repository Migration v1
 
-Status: `Approved extraction policy; regex, router, openai_compat, compress, sqlite, and postgres migrations complete`
+Status: `Approved extraction policy; regex, router, openai_compat, compress, sqlite, postgres, unicode, and gui migrations complete`
 
 Official packages are publisher-owned optional libraries, not a fourth
 standard-library layer. This document defines the one-way migration from an
@@ -68,6 +68,20 @@ first public release is
 [`v0.1.0`](https://github.com/tokalang/postgres/releases/tag/v0.1.0). It had no
 prior public monorepo release, so this is its first source and release record.
 
+`official/unicode` completed the same cutover on 2026-08-13. Its canonical
+source is [`tokalang/unicode`](https://github.com/tokalang/unicode). The
+registry-qualified
+[`v0.1.1`](https://github.com/tokalang/unicode/releases/tag/v0.1.1)
+maintenance release preserves the `v0.1.0` API, Unicode 17.0.0 data, generated
+tables, and corpus while adding the complete license and reproducibility
+material required by the package archive.
+
+`official/gui` completed the same cutover on 2026-08-13. Its canonical source
+is [`tokalang/gui`](https://github.com/tokalang/gui), whose first public
+release is [`v0.1.0`](https://github.com/tokalang/gui/releases/tag/v0.1.0).
+The canonical repository also owns the imported editor and settings demos;
+release archives deliberately exclude those applications.
+
 The new repository owns package CI, issues, releases, and its future source
 tags. Its first public release is a real SemVer successor, such as `v0.1.1`.
 That release receives a GitHub archive and a new immutable catalog version
@@ -115,3 +129,19 @@ public-registry/offline replay before its monorepo root was removed.
 [`toka-examples/registry_postgres_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_postgres_consumer)
 is the retained exact-version consumer fixture. Toka's data-access and agent
 reference services materialize the same immutable lock for composition tests.
+
+`official/unicode@0.1.1` passed standalone qualification and a fresh exact-lock
+public-registry/archive-only replay before its monorepo root was removed.
+[`toka-examples/registry_unicode_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_unicode_consumer)
+is the retained consumer fixture. Its immutable release archive SHA-256 is
+`c68569e6efbd9eb9bf85226eca68de3a0187d4300e320aeb13857be73b5ad28a`.
+
+`official/gui@0.1.0` passed standalone macOS package qualification. Both
+canonical-repository demos and
+[`toka-examples/registry_gui_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_gui_consumer)
+resolve exact GUI and Unicode locks, rebuild from only those two release
+archives, rebuild the Objective-C source, and verify AppKit, Metal, and
+QuartzCore linkage. Its immutable release archive SHA-256 is
+`b17fb7d4ce6bcb8c3a533216e40ca2c63ab95e0263ceffac8e2636d2f97ce85d`.
+These hosted gates do not open a window, establish a usable Metal device, or
+qualify interactive input or IME behavior.

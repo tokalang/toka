@@ -1,13 +1,17 @@
 # RFC: `official/unicode` Grapheme Segmentation v1
 
-Status: **qualified v1 profile; not yet released**
+Status: **released standalone as `v0.1.1`; compiler-facing contract retained**
 
 ## Decision
 
 Toka's fixed `core` remains responsible only for UTF-8 scalar decoding and
 explicit scalar-index/byte-offset conversion. Full user-perceived-character
-segmentation will be an independently versioned `official/unicode` package,
+segmentation is an independently versioned `official/unicode` package,
 not a partial `core` helper and not a platform ICU binding.
+
+The canonical source, generated data, qualification, and releases live in
+[`tokalang/unicode`](https://github.com/tokalang/unicode). The compiler
+repository retains this boundary document, not a second package source.
 
 The first qualified profile targets **Unicode 17.0.0, UAX #29 revision 47,
 extended grapheme clusters**. The package version and generated data metadata
@@ -46,10 +50,10 @@ This preserves a useful split:
 ```text
 core/str: scalar/byte primitives and explicit validation
 official/unicode: validated UAX #29 segmentation
-GUI: caller state expressed in scalar positions until grapheme APIs qualify
+GUI: a package adapter may map scalar state only at qualified grapheme boundaries
 ```
 
-## Proposed v1 API
+## v1 API
 
 ```toka
 import official/unicode::{UnicodeError}
@@ -86,14 +90,15 @@ normalization stays a separate future profile.
 
 ## Data and reproducibility contract
 
-The package will vendor the Unicode 17.0.0 source files used by its generator
-under `official/unicode/data/17.0.0/`, including their upstream version and
-checksums. A checked-in generator emits compact, sorted, non-overlapping Toka
-range tables under `lib/official/unicode/generated/`. Qualification must fail
-when regeneration changes generated output or when the source-data checksums
-do not match the lock metadata. Building a consumer never downloads Unicode
-data and never depends on ICU, CoreFoundation, or the local system Unicode
-version.
+The canonical package vendors the Unicode 17.0.0 source files used by its
+generator under
+[`data/17.0.0/`](https://github.com/tokalang/unicode/tree/main/data/17.0.0),
+including their upstream version and checksums. Its checked-in generator emits
+compact, sorted, non-overlapping Toka range tables under
+`lib/official/unicode/generated/`. Qualification must fail when regeneration
+changes generated output or when the source-data checksums do not match the
+lock metadata. Building a consumer never downloads Unicode data and never
+depends on ICU, CoreFoundation, or the local system Unicode version.
 
 ## Required qualification
 
@@ -105,8 +110,16 @@ version.
    boundary result.
 4. Qualify a locked offline package consumer on each supported platform; its
    output must be identical because segmentation is pure Toka data/code.
-5. Only after the corpus is green may `official/gui` add a grapheme-selection
-   adapter or claim CJK text-cursor completion.
+5. A GUI adapter may claim grapheme-boundary behavior only after this corpus is
+   green. The released `official/gui@0.1.0` adapter satisfies that dependency
+   gate; it does not establish shaping, interactive IME, or CJK end-to-end
+   qualification.
+
+The standalone `v0.1.1` release and
+[`toka-examples/registry_unicode_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_unicode_consumer)
+retain the package and exact-lock archive-only evidence. The immutable release
+archive SHA-256 is
+`c68569e6efbd9eb9bf85226eca68de3a0187d4300e320aeb13857be73b5ad28a`.
 
 ## Non-goals
 

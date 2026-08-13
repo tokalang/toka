@@ -56,7 +56,7 @@ The following are active product users, not just qualification artifacts:
 |---|---|
 | `toka build` and the native builder | project creation/build, package resolution, incremental and source-less workflows |
 | [`toka-examples/service-kit`](https://github.com/tokalang/toka-examples/tree/main/service-kit) | cancellation, cleanup, network I/O, and service shutdown behavior |
-| `demos/gui-settings` | host-event integration, application packaging, and ordinary GUI ownership flow |
+| [`tokalang/gui` locked editor and settings demos](https://github.com/tokalang/gui/tree/main/demos) | host-event integration, application packaging, and ordinary GUI ownership flow |
 | Native Windows/MSYS2 project build | platform/toolchain installation and generated native executable behavior |
 
 A proposed language or runtime change that cannot remove a specific pain in one
@@ -71,11 +71,15 @@ It builds the SDK and exercises installed `doctor`, `new`, compile, and `run`
 flows. Its result is product feedback, not a new release-blocking platform
 promise; promotion remains an explicit `1_0_scope.md` decision.
 
-The compiler repository's normal PR gate runs the offline GUI settings build on
-macOS. The independently maintained service-kit workflow runs its Linux
-qualification from locked package releases. These are focused product checks,
-not a replacement for the RC gate or an instruction to run every qualification
-locally.
+The independently maintained GUI workflow builds both exact-release demos on
+macOS from an empty registry cache and then from only the two locked GUI and
+Unicode archives. The
+[`toka-examples/registry_gui_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_gui_consumer)
+workflow independently replays the public consumer boundary. Neither gate opens
+a window or claims interactive desktop qualification. The service-kit workflow
+runs its Linux qualification from locked package releases. These are focused
+product checks, not a replacement for the RC gate or an instruction to run
+every qualification locally.
 
 ## Escalation and deletion
 
