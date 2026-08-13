@@ -200,7 +200,7 @@ Control-flow costs are intended to stay visible. `async` marks yielding function
 
 ### Native and AI Tooling
 
-The `toka` CLI supports project workflows such as `toka new`, `toka run`, `toka build`, package resolution, and build orchestration through `package.tk` / `build.tk`. The compiler also emits dependency metadata used by the incremental build path. `tokalsp` provides diagnostics, hover, definition, references, completion, and rename over standard LSP transport; see [LSP support](docs/lsp.md).
+The `toka` CLI supports project workflows such as `toka new`, `toka run`, `toka build`, package resolution, and build orchestration through `package.tk` / `build.tk`. The compiler also emits dependency metadata used by the incremental build path. `tokalsp` provides diagnostics, hover, definition, references, completion, and rename over standard LSP transport; see [LSP support](docs/lsp.md). The [Toka VS Code extension](https://github.com/tokalang/toka-vscode) is maintained in its own repository.
 
 Beyond diagnostics, Toka exposes versioned machine-readable semantic protocols.
 They currently cover public compiler decisions, `cede` transfer obligations,
