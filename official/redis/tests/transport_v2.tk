@@ -98,11 +98,13 @@ fn pipeline_client_async(port: u16) -> async i32 {
     if replies.is_err() { client#.close(); return 2 }
     auto values = replies.unwrap()
     if values.len() != 2:usize { client#.close(); return 3 }
-    match values.get(0:usize) {
+    auto *first_value = values.get_ref(0:usize)
+    match first_value {
         auto RedisValue::SimpleString(&text) => if !text.as_str().equals("PONG") { client#.close(); return 4 }
         _ => { client#.close(); return 4 }
     }
-    match values.get(1:usize) {
+    auto *second_value = values.get_ref(1:usize)
+    match second_value {
         auto RedisValue::Integer(value) => if value != 2:i64 { client#.close(); return 5 }
         _ => { client#.close(); return 5 }
     }
