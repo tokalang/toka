@@ -1,0 +1,17 @@
+trait @DynMarker {}
+
+shape Marked(value: i32)
+
+impl Marked@DynMarker {}
+
+fn accept_marked(_value: dyn @DynMarker) -> i32 {
+    return 7
+}
+
+pub fn main() -> i32 {
+    auto value = Marked(value = 1)
+    if accept_marked(value) != 7 {
+        return 1
+    }
+    return 0
+}
