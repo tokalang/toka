@@ -25,14 +25,12 @@ qualification.
 
 ### Data-access interoperability evidence
 
-- **Real-service runner (`tools/scripts/qualify_data_access_real.py`)**:
-  Docker-based maintainer and CI evidence for the Tier-4 `official/redis` and
-  `official/postgres` compatibility rows. It exercises Redis 7.4.x/8.2.x
-  (password TCP and private-CA TLS) and PostgreSQL 16.x/17.x (private-CA TLS
-  and SCRAM-SHA-256), recording exact container patches in the
-  `data-access-real-service` artifact. A successful local Docker execution is
-  `maintainer-run green`; the Linux CI copy is the reproducible release-gate
-  artifact, not a different execution mechanism.
+- **Redis real-service runner (`tools/scripts/qualify_redis_real.py`)**:
+  Docker-based maintainer and CI evidence for the Tier-4 `official/redis`
+  compatibility rows. It exercises Redis 7.4.x/8.2.x over password TCP and
+  private-CA TLS, recording exact patches in the `redis-real-service`
+  artifact. PostgreSQL 16/17 TLS/SCRAM evidence is owned by the standalone
+  [`tokalang/postgres`](https://github.com/tokalang/postgres) tag workflow.
 - **Runner eligibility is evidence, not product behavior**: a missing Docker
   daemon or a restricted sandbox that returns `EPERM` while publishing a
   loopback service exits `2` as `not-run`; it is neither a passing row nor a
@@ -41,15 +39,17 @@ qualification.
 - **Scope**: `RedisPool` / `RedisLease` and `PostgresPool` /
   `PostgresPoolLease` remain dedicated package pools. The data-access service
   example is composition evidence, not a new generic `Pool<T>` or web
-  framework contract. The complete matrix and release procedure are in
-  [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
+  framework contract. The retained Redis matrix and release procedure are in
+  [`redis_real_service_compatibility_v1.md`](redis_real_service_compatibility_v1.md).
 - **Recorded maintainer evidence (2026-07-30, `c6cb0b73`)**: the full
   conformance runner completed `214 Passed, 0 Failed`; the TaskHandle
-  lifecycle, cede-obligation, and H/P capability ABI gates passed; and
-  `build/data-access-real-service.json` reported `status: passed`. The Docker
+  lifecycle, cede-obligation, and H/P capability ABI gates passed; and the
+  former combined runner's JSON report recorded `status: passed`. The Docker
   matrix recorded Redis 7.4.10/8.2.8 (password TCP and private-CA TLS) and
   PostgreSQL 16.14/17.10 (private-CA TLS and SCRAM-SHA-256). This is
   `maintainer-run green`, not a substitute for the required Linux CI artifact.
+  This remains historical evidence from the former combined runner; current
+  PostgreSQL evidence is maintained with its standalone release.
 
 ---
 

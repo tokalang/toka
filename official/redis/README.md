@@ -89,8 +89,8 @@ release-gate artifact. A runner that cannot publish loopback ports is reported
 as `not-run`, never as a passing package test.
 
 ```text
-python3 tools/scripts/qualify_data_access_real.py --tokac build/bin/tokac --report build/data-access-real-service.json
+python3 tools/scripts/qualify_redis_real.py --tokac build/bin/tokac --report build/redis-real-service.json
 ```
 
 Run that command from the repository root. The exact scope and artifact policy
-are documented in [`docs/data_access_real_service_compatibility_v1.md`](../../docs/data_access_real_service_compatibility_v1.md).
+are documented in [`docs/redis_real_service_compatibility_v1.md`](../../docs/redis_real_service_compatibility_v1.md).

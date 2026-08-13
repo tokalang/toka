@@ -48,6 +48,10 @@ From the repository root:
 python3 examples/data-access-service/tests/qualify.py
 ```
 
+The qualifier materializes the committed exact `postgres@0.1.0` registry lock;
+the canonical package and its PostgreSQL 16/17 real-service gate are owned by
+[`tokalang/postgres`](https://github.com/tokalang/postgres).
+
 On a runner that permits loopback binds, the deterministic loopback suite
 drives health, a 404, and the cache miss/fill/hit path; verifies a PostgreSQL
 parameterized transaction; checks request-correlated JSON events and metrics;

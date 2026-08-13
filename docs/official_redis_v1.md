@@ -95,7 +95,7 @@ users and mutual TLS are outside it.
    fragmented frames, binary bulk payloads, typed GET/SET/DEL wrappers, nested arrays, malformed lengths,
    EOF, timeout, and cancellation after a write. The real Redis 7.4.x/8.2.x
    matrix is required release evidence and does not replace deterministic
-   tests; see [`data_access_real_service_compatibility_v1.md`](data_access_real_service_compatibility_v1.md).
+   tests; see [`redis_real_service_compatibility_v1.md`](redis_real_service_compatibility_v1.md).
 4. **Package release** — the existing `package.tk`, `AI_CONTRACT`, public
    import smoke, and lock/offline replay are locally qualified. A published
    version, registry archive, and real-service compatibility gate remain

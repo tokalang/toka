@@ -1,0 +1,7 @@
+pub const PACKAGE = (
+    name = "registry_postgres_fixture",
+    version = "0.1.0",
+    dependencies = (
+        postgres = "postgres:0.1.0",
+    )
+)

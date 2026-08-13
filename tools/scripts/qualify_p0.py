@@ -16,7 +16,6 @@ LOCAL_SUITES = (
     ("agent_service", ROOT / "examples" / "agent-service" / "tests" / "qualify.py"),
     # Extracted releases qualify in their canonical repositories; incubating
     # package roots remain in this monorepo suite.
-    ("postgres", ROOT / "official" / "postgres" / "tests" / "qualify_package.py"),
     ("redis", ROOT / "official" / "redis" / "tests" / "qualify_package.py"),
     ("unicode", ROOT / "official" / "unicode" / "tests" / "qualify_package.py"),
 )
@@ -36,7 +35,7 @@ def run(argv: list[str]) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--real-services", action="store_true",
-                        help="run the Docker PostgreSQL/Redis compatibility matrix")
+                        help="run the Docker Redis compatibility matrix")
     parser.add_argument("--report", type=Path, default=ROOT / "build" / "p0-qualification.json")
     args = parser.parse_args()
 
@@ -47,17 +46,17 @@ def main() -> int:
     release_gate = "not-run"
     if args.real_services:
         with tempfile.TemporaryDirectory(prefix="toka-p0-real-services-") as temporary:
-            service_report = Path(temporary) / "data-access-real-service.json"
-            result = run([sys.executable, str(ROOT / "tools" / "scripts" / "qualify_data_access_real.py"),
+            service_report = Path(temporary) / "redis-real-service.json"
+            result = run([sys.executable, str(ROOT / "tools" / "scripts" / "qualify_redis_real.py"),
                           "--tokac", str(ROOT / "build" / "bin" / "tokac"),
                           "--report", str(service_report)])
             if service_report.is_file():
                 result["evidence"] = json.loads(service_report.read_text(encoding="utf-8"))
-            stages["data_access_real_service"] = result
+            stages["redis_real_service"] = result
             release_gate = "pass" if result["status"] == "pass" else "not-run" if result["exit_code"] == 2 else "failed"
 
     local_passed = all(stage["status"] == "pass" for name, stage in stages.items()
-                       if name != "data_access_real_service")
+                       if name != "redis_real_service")
     result = "pass" if local_passed and release_gate == "pass" else "local-pass" if local_passed else "failed"
     report = {
         "schema": "toka.p0-qualification-v1",

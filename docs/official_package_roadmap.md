@@ -16,12 +16,12 @@ on them.
 | `official/sqlite` | released [`0.1.0`](https://github.com/tokalang/sqlite/releases/tag/v0.1.0) standalone Phase 1 native lifecycle bridge | tagged GitHub Release archive, immutable catalog digest, standalone Linux/macOS qualification, and fresh public-registry/offline consumer replay | maintain the package in [`tokalang/sqlite`](https://github.com/tokalang/sqlite); expand only through separately scoped statement/transaction slices |
 | `official/regex` | released `0.1.0` historical monorepo source and [`0.1.1`](https://github.com/tokalang/regex/releases/tag/v0.1.1) standalone successor | profile suite, tagged release archives, immutable catalog digests, standalone Linux/macOS CI, and fresh public-registry/offline consumer replay | maintain the package in [`tokalang/regex`](https://github.com/tokalang/regex); expand compatibility only through a separately scoped release |
 | `official/unicode` | qualified Unicode 17.0.0 UAX #29 revision 47 extended-grapheme segmenter; not yet released | locked UCD source checksums, generated tables, complete `GraphemeBreakTest.txt` corpus, and locked/offline local-consumer import replay pass | retain qualification evidence through publication; keep normalization and layout out of v1 |
-| `official/redis` | bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and dedicated bounded pool; maintainer-qualified, pending release | deterministic codec/TCP cancellation, pipeline, and pool reuse/poison suites plus locked/offline local-consumer import replay pass; current-revision Docker matrix is maintainer-run green | retain a green current-revision Linux CI `data-access-real-service` artifact before publication |
+| `official/redis` | bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and dedicated bounded pool; maintainer-qualified, pending release | deterministic codec/TCP cancellation, pipeline, and pool reuse/poison suites plus locked/offline local-consumer import replay pass; current-revision Docker matrix is maintainer-run green | retain a green current-revision Linux CI `redis-real-service` artifact before publication |
 | `official/router` | released [`0.1.0`](https://github.com/tokalang/router/releases/tag/v0.1.0) standalone package | tagged GitHub Release archive, immutable catalog digest, Linux/macOS qualification, and fresh public-registry/offline consumer replay | maintain the package in [`tokalang/router`](https://github.com/tokalang/router); expand compatibility only through a separately scoped release |
 | `official/compress` | released [`0.1.0`](https://github.com/tokalang/compress/releases/tag/v0.1.0) standalone package | tagged GitHub Release archive, immutable catalog digest, standalone Linux/macOS qualification, fresh public-registry/offline consumer replay, streaming and decode-limit suites, and a no-zlib/libzstd `stdx/net/http` consumer pass | maintain the package in [`tokalang/compress`](https://github.com/tokalang/compress); do not add an HTTP-core dependency |
 | `official/openai_compat` | released [`0.1.1`](https://github.com/tokalang/openai_compat/releases/tag/v0.1.1) standalone package | tagged `toka publish` archive, immutable catalog digest, Linux/macOS qualification, and fresh public-registry/offline consumer replay | maintain the package in [`tokalang/openai_compat`](https://github.com/tokalang/openai_compat); expand compatibility only through a separately scoped release |
-| `official/postgres` | bounded PostgreSQL v3 client with secure TLS/SCRAM startup, simple and extended queries, transactions, and a dedicated bounded pool; maintainer-qualified, pending release | deterministic protocol/SCRAM/TLS/query/extended-query/pool suites plus locked/offline local-consumer import replay pass; current-revision Docker matrix is maintainer-run green | retain a green current-revision Linux CI `data-access-real-service` artifact before publication |
-| data-access service reference | router → Redis cache → PostgreSQL transaction, correlated JSON events, scrape-neutral metrics, and shutdown | `examples/data-access-service` compile and loopback fixture; runtime requires a loopback-capable runner | retain the same real-service artifact; this is composition evidence, not a framework surface |
+| `official/postgres` | released [`0.1.0`](https://github.com/tokalang/postgres/releases/tag/v0.1.0) standalone bounded PostgreSQL v3 client | tagged GitHub Release archive, immutable catalog digest, standalone Linux/macOS deterministic qualification, PostgreSQL 16/17 TLS/SCRAM tag gate, and fresh public-registry/offline consumer replay | maintain the package in [`tokalang/postgres`](https://github.com/tokalang/postgres); expand compatibility only through a separately scoped release |
+| data-access service reference | router → Redis cache → PostgreSQL transaction, correlated JSON events, scrape-neutral metrics, and shutdown | `examples/data-access-service` compile and loopback fixture using the exact `postgres@0.1.0` lock; runtime requires a loopback-capable runner | retain the Redis real-service artifact and locked PostgreSQL composition fixture; this is composition evidence, not a framework surface |
 
 Regex is a bounded byte-oriented RE2 profile, not a claim of full RE2
 compatibility. No official package should claim a stronger release status than
@@ -33,11 +33,11 @@ its executable evidence supports.
    `official/openai_compat` in `examples/agent-service` against a deterministic
    streaming provider fixture. Keep credential ownership, HTTP endpoint policy,
    cancellation, and audit persistence at the application boundary.
-2. **Real-service release evidence** — retain a current-revision Linux CI copy
-   of the already green Redis/PostgreSQL matrix before publication. The
-   maintainer qualification remains valid while this non-code release artifact
-   is pending; the contract and runner are in
-   [data_access_real_service_compatibility_v1.md](data_access_real_service_compatibility_v1.md).
+2. **Redis real-service release evidence** — retain a current-revision Linux
+   CI copy of the already green Redis matrix before publication. PostgreSQL
+   owns its completed 16/17 tag gate in `tokalang/postgres`. The remaining
+   contract and runner are in
+   [redis_real_service_compatibility_v1.md](redis_real_service_compatibility_v1.md).
 3. **Observability evolution** — use repeated application code, rather than
    anticipation, to decide whether router middleware, labels, histograms, or
    a tracing protocol is justified. The current service intentionally keeps a

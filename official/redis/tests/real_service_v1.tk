@@ -1,4 +1,4 @@
-// Contract exercised by tools/scripts/qualify_data_access_real.py against a
+// Contract exercised by tools/scripts/qualify_redis_real.py against a
 // loopback Redis server.  Argument 3 is "-" for plaintext, otherwise it is
 // the PEM CA file used for verified TLS.
 
