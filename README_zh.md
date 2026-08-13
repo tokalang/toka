@@ -241,6 +241,7 @@ Toka 还没有自举。生态仍然年轻。近期最重要的工程工作仍然
 ## 文档与资源
 
 - 官方网站：[tokalang.dev/zh](https://tokalang.dev/zh)
+- 网站源码：[tokalang/toka-web](https://github.com/tokalang/toka-web)
 - 在线 Playground：[tokalang.dev/playground](https://tokalang.dev/playground)
 - 学术论文：[arXiv:2606.01974](https://arxiv.org/abs/2606.01974)
 - 语法参考：[docs/syntax_zh.md](docs/syntax_zh.md)

@@ -70,12 +70,6 @@ target/
 *.dwo
 include/toka/Version.h
 
-# website artifacts
-website/node_modules/
-website/.astro/
-website/dist/
-website/npm-debug.log*
-
 # Temp and Log Files
 *.log
 *.ll
@@ -107,7 +101,6 @@ promo/
 __pycache__/
 *.pyc
 
-# Local WebAssembly playground build assets
+# Local WebAssembly compiler build assets
 /playground/tokacheck.js
 /playground/tokacheck.wasm
-/website/public/playground/
