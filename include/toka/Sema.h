@@ -644,6 +644,8 @@ private:
   // Anonymous Records
   int AnonRecordCounter = 0;
   std::vector<std::unique_ptr<ShapeDecl>> SyntheticShapes;
+  std::map<std::string, std::shared_ptr<toka::Type>>
+      ParenthesizedRecordTypeCache;
   std::map<std::string, std::shared_ptr<toka::Type>> ParenthesizedRecordTypes;
 
   // Path Narrowing

@@ -2310,9 +2310,7 @@ void Sema::checkStmt(Stmt *S) {
           // A destructured field's declaration is its authority.  Build the
           // physical type directly from that declaration rather than using a
           // cache as the permission source.
-          std::string fullType =
-              synthesizePhysicalType(SD->Members[memberIndex]);
-          auto baseTypeObj = toka::Type::fromString(fullType);
+          auto baseTypeObj = getPhysicalType(SD->Members[memberIndex]);
           AccessCapability fieldCapability =
               deriveDestructureFieldCapability(initCapability, baseTypeObj);
           auto soulType = baseTypeObj->withAttributes(
