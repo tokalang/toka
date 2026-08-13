@@ -68,4 +68,4 @@ Status: `Phase 1 Async Suspension & Coroutine Lifetime Closure Complete`
   `tests/fail/trait_async_method_cross_module.tk` lock the local and imported
   async-trait exclusion with `E0618`.
 - `tests/pass/g09_async_phase1_qualification_tests.tk` proves 20,000-deep await chain, timer bridge, and completion-before-registration.
-- `playground/repro_created_drop_fixture.tk` and `tests/pass/g09_async_created_drop_reclaim_test.tk` verify unstarted Created handle drop parameter reclamation without executing task body (`body_run_count == 0`, `global_drop_count == 1`).
+- `tests/pass/g09_async_created_drop_reclaim_test.tk` verifies unstarted Created-handle parameter reclamation without executing the task body (`body_run_count == 0`, `global_drop_count == 1`).

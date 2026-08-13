@@ -63,4 +63,4 @@ This guarantees $O(1)$ zero-indirection lookup and zero memory allocations.
 
 1. **Step 1**: `WaitRegistry` Core & Slot Lifetime (`allocate_slot`, `validate_and_retain`, `try_wake`, `invalidate`, `release`).
 2. **Step 2**: `TimerHeap` Tokenization (`deadline + sequence + WaitToken`), $O(1)$ logical cancellation, and Tombstone memory compaction.
-3. **Step 3**: Concurrency Redline Verification (20,000-iteration controlled permutation race probe, ASan/TSan clean).
+3. **Step 3**: Instance-token concurrency verification through the registered `toka_async_queue_publication`, `toka_async_suspend_rollback`, `toka_async_identity_exhaustion`, and `toka_async_cold_cancel_cleanup` native probes.

@@ -1,5 +1,22 @@
 // Copyright (c) 2026 YiZhonghua<zhyi@dpai.com>. All rights reserved.
-const Module = require('./tokacheck.js');
+const fs = require('fs');
+const path = require('path');
+
+if (process.argv.length !== 3) {
+    console.error('usage: node browser_compiler_self_test.js <tokacheck.js>');
+    process.exit(2);
+}
+
+const checkerPath = path.resolve(process.argv[2]);
+const wasmPath = checkerPath.endsWith('.js')
+    ? checkerPath.slice(0, -3) + '.wasm'
+    : checkerPath + '.wasm';
+if (!fs.existsSync(checkerPath) || !fs.existsSync(wasmPath)) {
+    console.error(`browser compiler artifacts are missing: ${checkerPath}, ${wasmPath}`);
+    process.exit(2);
+}
+
+const Module = require(checkerPath);
 
 const EXAMPLES = {
     "hello": `import std/io::println
@@ -95,8 +112,11 @@ fn main() -> i32 {
     return 0
 }`;
 
-Module.onRuntimeInitialized = function() {
-    console.log("=== Starting Playground WASM Self-Test ===");
+let hasRun = false;
+function runSelfTest() {
+    if (hasRun) return;
+    hasRun = true;
+    console.log("=== Starting Browser Compiler WASM Self-Test ===");
     let passed = true;
 
     for (const [name, code] of Object.entries(EXAMPLES)) {
@@ -127,10 +147,13 @@ Module.onRuntimeInitialized = function() {
     }
 
     if (passed) {
-        console.log("=== Playground WASM Self-Test: SUCCESS ===");
+        console.log("=== Browser Compiler WASM Self-Test: SUCCESS ===");
         process.exit(0);
     } else {
-        console.error("=== Playground WASM Self-Test: FAILED ===");
+        console.error("=== Browser Compiler WASM Self-Test: FAILED ===");
         process.exit(1);
     }
-};
+}
+
+Module.onRuntimeInitialized = runSelfTest;
+if (Module.calledRun) runSelfTest();

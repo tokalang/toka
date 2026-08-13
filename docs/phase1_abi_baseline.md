@@ -30,7 +30,7 @@ The Unified Parameter Ownership Matrix is **FULLY APPROVED AND LOCKED**:
 | `g09_async_phase1_qualification_tests.tk` | 20,000-deep Await Chain & Timer Bridge | **PASSED 100% (1.8s)** |
 | `g09_async_two_phase_suspension_test.tk` | Prepare / Commit / Pending-Wake Handshake | **PASSED** |
 | `g09_async_ready_queue_expansion_test.tk` | Dynamic Ready Queue Auto-Expansion (256 -> 2048) | **PASSED** |
-| `playground/repro_detached_concurrency_race.c` | 20,000-iteration Concurrent Detach/Completion Race Probe | **PASSED (0 Underflow, 0 UAF)** |
+| `tests/AsyncResultDisposition.c::test_concurrent_detach_and_terminal_drain` | 2,000-iteration Concurrent Detach/Terminal Race Probe | **PASSED (single result disposal, no stale retain)** |
 
 ---
 

@@ -1,4 +1,4 @@
-// Comprehensive Cross-Platform OS Reactor & Side-Table Redline Concurrency Probe
+// Cross-platform OS reactor key-isolation qualification probe.
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

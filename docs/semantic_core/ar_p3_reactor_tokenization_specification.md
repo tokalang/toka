@@ -45,6 +45,7 @@ stateDiagram-v2
 ## 4. Verification Baseline
 
 - **`toka_async_suspend_rollback`**: Runtime probe for singleton and pending-pair rollback; it verifies registry cleanup, stale-token rejection, no ready-queue publication, and re-preparation.
+- **`tests/runtime/manual/reactor_key_isolation.c`**: Manual Linux/macOS probe for key-conditional direction disarm, dual-readiness rearm with `max_events == 1`, and stale-event filtering.
 - **`g09_async_reactor_tokenization_test.tk`**: Real loopback TCP socket test exercising `net_async_accept`, `net_async_read`, `net_async_write`, and `connect_async` over tokenized kqueue/epoll.
 - **`g10_async_net_test.tk`**: Full TCP client/server echo suite.
 - **`g10_async_http_server_test.tk`**: Native async web server benchmark.

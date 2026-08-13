@@ -98,7 +98,7 @@ gap. The recorded RC4 candidate passed the Tier 1 multi-platform Release Review 
 | ID | Title & Summary | Domain | Priority | Scope in 1.0? | Status | Evidence Reference |
 |---|---|---|---|---|---|---|
 | **GAP-RNTM-01** | **Socket Fragmentation & Chunked Streaming**<br>TCP socket reads fragmenting across CRLF, chunk headers, and trailer headers must resume cleanly without memory leaks. | Runtime | `P0` | Yes | `closed` | `tests/pass/g12_stdx_http_client_server_test.tk#Chunked Server` |
-| **GAP-RNTM-02** | **Stale Wakeup & Race Condition Stress**<br>WaitRegistry generation increments must prevent stale wakeups under task concurrency. | Runtime | `P0` | Yes | `closed` | [repro_wait_registry_race.c](file:///Users/zhyi/GitDP/toka/playground/repro_wait_registry_race.c) & `playground/repro_concurrency_gate_race.c` |
+| **GAP-RNTM-02** | **Instance-Scoped Wakeup & Race Safety**<br>WaitRegistry tokens must reject stale task instances and generations, publish one ready-queue entry under concurrent helpers, and select one terminal source under cancellation races. | Runtime | `P0` | Yes | `closed` | `tests/AsyncQueuePublication.c`, `tests/AsyncSuspendRollback.c`, `tests/AsyncIdentityExhaustion.c`, and `tests/AsyncColdCancelCleanup.c` |
 | **GAP-RNTM-03** | **Sanitizer Build Smoke Verification**<br>Compile C runtime objects (`toka_rt.c`) and `tokac` compiler with AddressSanitizer and ThreadSanitizer flags. | Runtime | `P1` | Yes | `closed` | [build_sanitized.sh](file:///Users/zhyi/GitDP/toka/tools/build_sanitized.sh) & `.github/workflows/ci.yml` |
 
 ### D. Standard Library (`core`/`std`/`stdx`)

@@ -100,7 +100,3 @@ promo/
 *.tar.gz
 __pycache__/
 *.pyc
-
-# Local WebAssembly compiler build assets
-/playground/tokacheck.js
-/playground/tokacheck.wasm
