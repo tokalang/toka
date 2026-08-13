@@ -1,0 +1,11 @@
+import std/atomic::{AtomicI32, Ordering}
+
+fn dynamic_release() -> Ordering {
+    return Ordering::Release
+}
+
+pub fn main() -> i32 {
+    auto value = AtomicI32::new(1)
+    value.load(dynamic_release())
+    return 0
+}

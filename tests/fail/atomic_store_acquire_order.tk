@@ -1,0 +1,7 @@
+import core/intrinsics/atomic::{store, Ordering}
+
+fn main() -> i32 {
+    auto value# = 1:i32
+    store(value, 2, Ordering::Acquire) // EXPECT: error[E0620]
+    return 0
+}

@@ -1,0 +1,66 @@
+import core/intrinsics/atomic::{compare_exchange, fence, fetch_add, load, store, Ordering}
+
+fn order_from_tag(tag: i32) -> Ordering {
+    if tag == 0 { return Ordering::Relaxed }
+    if tag == 1 { return Ordering::Release }
+    if tag == 2 { return Ordering::Acquire }
+    if tag == 3 { return Ordering::AcqRel }
+    return Ordering::SeqCst
+}
+
+pub fn main() -> i32 {
+    auto value# = 0:i32
+
+    // Both calls reuse fetch_add<i32>; only the runtime enum tag differs.
+    assert(fetch_add(value, 1, order_from_tag(0)) == 0,
+           "dynamic Relaxed fetch_add returned the wrong prior value")
+    assert(fetch_add(value, 1, order_from_tag(4)) == 1,
+           "dynamic SeqCst fetch_add returned the wrong prior value")
+    assert(fetch_add(value, 1, order_from_tag(1)) == 2,
+           "dynamic Release fetch_add returned the wrong prior value")
+    assert(fetch_add(value, 1, order_from_tag(2)) == 3,
+           "dynamic Acquire fetch_add returned the wrong prior value")
+    assert(fetch_add(value, 1, order_from_tag(3)) == 4,
+           "dynamic AcqRel fetch_add returned the wrong prior value")
+
+    store(value, 10, order_from_tag(0))
+    store(value, 10, order_from_tag(1))
+    store(value, 10, order_from_tag(4))
+    assert(load(value, order_from_tag(0)) == 10, "dynamic Relaxed load failed")
+    assert(load(value, order_from_tag(2)) == 10, "dynamic Acquire load failed")
+    assert(load(value, order_from_tag(4)) == 10, "dynamic SeqCst load failed")
+
+    fence(order_from_tag(1))
+    fence(order_from_tag(2))
+    fence(order_from_tag(3))
+    fence(order_from_tag(4))
+
+    auto (old0 = .old, ok0 = .success) = compare_exchange(
+        value, 10, 11, order_from_tag(0), order_from_tag(0))
+    assert(old0 == 10 && ok0, "Relaxed/Relaxed compare_exchange failed")
+    auto (old1 = .old, ok1 = .success) = compare_exchange(
+        value, 11, 12, order_from_tag(1), order_from_tag(0))
+    assert(old1 == 11 && ok1, "Release/Relaxed compare_exchange failed")
+    auto (old2 = .old, ok2 = .success) = compare_exchange(
+        value, 12, 13, order_from_tag(2), order_from_tag(0))
+    assert(old2 == 12 && ok2, "Acquire/Relaxed compare_exchange failed")
+    auto (old3 = .old, ok3 = .success) = compare_exchange(
+        value, 13, 14, order_from_tag(2), order_from_tag(2))
+    assert(old3 == 13 && ok3, "Acquire/Acquire compare_exchange failed")
+    auto (old4 = .old, ok4 = .success) = compare_exchange(
+        value, 14, 15, order_from_tag(3), order_from_tag(0))
+    assert(old4 == 14 && ok4, "AcqRel/Relaxed compare_exchange failed")
+    auto (old5 = .old, ok5 = .success) = compare_exchange(
+        value, 15, 16, order_from_tag(3), order_from_tag(2))
+    assert(old5 == 15 && ok5, "AcqRel/Acquire compare_exchange failed")
+    auto (old6 = .old, ok6 = .success) = compare_exchange(
+        value, 16, 17, order_from_tag(4), order_from_tag(0))
+    assert(old6 == 16 && ok6, "SeqCst/Relaxed compare_exchange failed")
+    auto (old7 = .old, ok7 = .success) = compare_exchange(
+        value, 17, 18, order_from_tag(4), order_from_tag(2))
+    assert(old7 == 17 && ok7, "SeqCst/Acquire compare_exchange failed")
+    auto (old8 = .old, ok8 = .success) = compare_exchange(
+        value, 18, 19, order_from_tag(4), order_from_tag(4))
+    assert(old8 == 18 && ok8, "SeqCst/SeqCst compare_exchange failed")
+    return 0
+}

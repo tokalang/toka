@@ -226,6 +226,12 @@ static std::string functionCodegenName(const Module &M,
   return moduleScopedCodegenName(M, fn.Name);
 }
 
+static bool isTrustedAtomicModule(const Module &module) {
+  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
+         module.ShadowCoordinateOrigin == "toolchain" &&
+         module.ShadowLogicalModulePath == "core/intrinsics/atomic";
+}
+
 static bool isAtomicIntrinsicDeclaration(const Module &module,
                                          const FunctionDecl &function) {
   static const std::set<std::string> Names = {
@@ -235,10 +241,16 @@ static bool isAtomicIntrinsicDeclaration(const Module &module,
       "__toka_atomic_fetch_xor",  "__toka_atomic_swap",
       "__toka_atomic_compare_exchange", "__toka_atomic_fence",
       "__toka_atomic_fence_acquire", "__toka_atomic_fence_release"};
-  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
-         module.ShadowCoordinateOrigin == "toolchain" &&
-         module.ShadowLogicalModulePath == "core/intrinsics/atomic" &&
-         Names.count(function.Name) != 0;
+  return isTrustedAtomicModule(module) && Names.count(function.Name) != 0;
+}
+
+static bool isAtomicWrapperDeclaration(const Module &module,
+                                       const FunctionDecl &function) {
+  static const std::set<std::string> Names = {
+      "load",      "store",     "fetch_add", "fetch_sub",
+      "fetch_and", "fetch_or",  "fetch_xor", "swap",
+      "compare_exchange", "fence", "fence_acquire", "fence_release"};
+  return isTrustedAtomicModule(module) && Names.count(function.Name) != 0;
 }
 
 static bool supportsAtomicIntrinsicType(
@@ -2873,6 +2885,8 @@ void Sema::declareGlobals(Module &M) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
     Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
                                    isAtomicIntrinsicDeclaration(M, *Fn);
+    if (isAtomicWrapperDeclaration(M, *Fn))
+      TrustedAtomicWrapperDeclarations.insert(Fn.get());
     Fn->CodegenName = functionCodegenName(M, *Fn);
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
@@ -3245,6 +3259,8 @@ void Sema::registerGlobals(Module &M) {
   for (auto &Fn : M.Functions) {
     Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
                                    isAtomicIntrinsicDeclaration(M, *Fn);
+    if (isAtomicWrapperDeclaration(M, *Fn))
+      TrustedAtomicWrapperDeclarations.insert(Fn.get());
     Fn->CodegenName = functionCodegenName(M, *Fn);
     ms.Functions[Fn->Name] = Fn.get();
     auto &overloads = ms.FunctionOverloads[Fn->Name];

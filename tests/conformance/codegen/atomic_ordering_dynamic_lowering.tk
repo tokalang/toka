@@ -1,0 +1,22 @@
+import core/intrinsics/atomic::{compare_exchange, fence, fetch_add, load, store, Ordering}
+
+fn order_from_tag(tag: i32) -> Ordering {
+    if tag == 0 { return Ordering::Relaxed }
+    if tag == 1 { return Ordering::Release }
+    if tag == 2 { return Ordering::Acquire }
+    if tag == 3 { return Ordering::AcqRel }
+    return Ordering::SeqCst
+}
+
+pub fn main() -> i32 {
+    auto value# = 0:i32
+    fetch_add(value, 1, order_from_tag(0))
+    fetch_add(value, 1, order_from_tag(4))
+    store(value, 2, order_from_tag(1))
+    load(value, order_from_tag(2))
+    fence(order_from_tag(3))
+    auto (old = .old, ok = .success) = compare_exchange(
+        value, 2, 3, order_from_tag(4), order_from_tag(2))
+    assert(old == 2 && ok, "dynamic compare_exchange failed")
+    return 0
+}

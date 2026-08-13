@@ -109,6 +109,15 @@ def main():
                         failed_count += 1
                         continue
 
+                missing_patterns = [
+                    pattern for pattern in item.get("expected_ir_patterns", [])
+                    if pattern not in ir_content
+                ]
+                if missing_patterns:
+                    print(f"[FAILED] [{test_id}] Expected IR patterns not found: {missing_patterns}")
+                    failed_count += 1
+                    continue
+
                 print(f"[PASSED] [{test_id}] LLVM IR pattern '{exp_pattern}' verified cleanly.")
                 passed_count += 1
 
@@ -138,7 +147,7 @@ def main():
                 print(f"[PASSED] [{test_id}] Compile-fail verified cleanly with code '{exp_code}'.")
                 passed_count += 1
 
-            elif test_type in ("run", "compile-pass"):
+            elif test_type in ("run", "run-fail", "compile-pass"):
                 cmd = [tokac_bin, test_full_path, "-o", out_bin]
                 res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
                 if res.returncode != 0:
@@ -154,6 +163,14 @@ def main():
 
                 # Execute binary with timeout
                 run_res = subprocess.run([out_bin], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec, env=tool_env)
+                if test_type == "run-fail":
+                    if run_res.returncode == 0:
+                        print(f"[FAILED] [{test_id}] Expected fail-closed runtime termination but execution succeeded.")
+                        failed_count += 1
+                        continue
+                    print(f"[PASSED] [{test_id}] Fail-closed runtime termination verified (exit code {run_res.returncode}).")
+                    passed_count += 1
+                    continue
                 exp_exit = item.get("expected_exit_code", 0)
                 if run_res.returncode != exp_exit:
                     print(f"[FAILED] [{test_id}] Execution exit code mismatch: got {run_res.returncode}, expected {exp_exit}")

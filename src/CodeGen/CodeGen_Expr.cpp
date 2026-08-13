@@ -6173,79 +6173,166 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       return PhysEntity();
     };
       
-    // Helper to extract Ordering from Argument Value
-    auto getOrder = [&](llvm::Value *v) -> std::pair<llvm::AtomicOrdering, bool> {
-      if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(v)) {
-        int tag = ci->getSExtValue();
-        switch (tag) {
-          case 0: return {llvm::AtomicOrdering::Monotonic, false}; // Relaxed
-          case 1: return {llvm::AtomicOrdering::Release, false};
-          case 2: return {llvm::AtomicOrdering::Acquire, false};
-          case 3: return {llvm::AtomicOrdering::AcquireRelease, false};
-          case 4: default: return {llvm::AtomicOrdering::SequentiallyConsistent, false};
+    using AtomicOrderCase =
+        std::pair<unsigned, llvm::AtomicOrdering>;
+    const std::vector<AtomicOrderCase> allAtomicOrders = {
+        {0, llvm::AtomicOrdering::Monotonic},
+        {1, llvm::AtomicOrdering::Release},
+        {2, llvm::AtomicOrdering::Acquire},
+        {3, llvm::AtomicOrdering::AcquireRelease},
+        {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+
+    // Ordering is a unit-enum aggregate whose first field is its i8 tag.  ABI
+    // lowering may pass that aggregate either by value or through an opaque
+    // pointer, so recover the tag from both representations.  An unexpected
+    // representation deliberately produces an invalid tag and reaches the
+    // same trap path as an invalid runtime enum value.
+    auto getOrderingTag = [&](size_t index) -> llvm::Value * {
+      if (index >= argsV.size())
+        return llvm::ConstantInt::get(m_Builder.getInt8Ty(), 0xff);
+      llvm::Value *value = argsV[index];
+      if (value->getType()->isIntegerTy())
+        return value;
+      if (value->getType()->isStructTy())
+        return m_Builder.CreateExtractValue(value, 0, "atomic.order.tag");
+      if (value->getType()->isPointerTy() && index < call->Args.size() &&
+          call->Args[index]->ResolvedType) {
+        llvm::Type *logicalType =
+            getLLVMType(call->Args[index]->ResolvedType->getSoulType());
+        if (auto *structType = llvm::dyn_cast_or_null<llvm::StructType>(
+                logicalType)) {
+          if (structType->getNumElements() > 0 &&
+              structType->getElementType(0)->isIntegerTy()) {
+            llvm::Value *tagAddress = m_Builder.CreateStructGEP(
+                structType, value, 0, "atomic.order.tag.addr");
+            return m_Builder.CreateLoad(structType->getElementType(0),
+                                        tagAddress, "atomic.order.tag");
+          }
         }
       }
-      // Dynamic fallback
-      return {llvm::AtomicOrdering::SequentiallyConsistent, true};
+      return llvm::ConstantInt::get(m_Builder.getInt8Ty(), 0xff);
+    };
+
+    auto dispatchAtomicOrder =
+        [&](llvm::Value *tag, const std::vector<AtomicOrderCase> &orders,
+            llvm::Type *resultType, const std::string &name,
+            const std::function<llvm::Value *(llvm::AtomicOrdering)> &emit)
+        -> llvm::Value * {
+      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+      llvm::BasicBlock *invalidBlock = llvm::BasicBlock::Create(
+          m_Context, name + ".invalid", function);
+      llvm::BasicBlock *mergeBlock = llvm::BasicBlock::Create(
+          m_Context, name + ".cont", function);
+      llvm::SwitchInst *orderSwitch = m_Builder.CreateSwitch(
+          tag, invalidBlock, static_cast<unsigned>(orders.size()));
+
+      std::vector<std::pair<llvm::Value *, llvm::BasicBlock *>> incoming;
+      incoming.reserve(orders.size());
+      for (const auto &[tagValue, ordering] : orders) {
+        llvm::BasicBlock *caseBlock = llvm::BasicBlock::Create(
+            m_Context, name + ".case", function);
+        orderSwitch->addCase(llvm::ConstantInt::get(
+                                 llvm::cast<llvm::IntegerType>(tag->getType()),
+                                 tagValue),
+                             caseBlock);
+        m_Builder.SetInsertPoint(caseBlock);
+        llvm::Value *result = emit(ordering);
+        llvm::BasicBlock *resultBlock = m_Builder.GetInsertBlock();
+        if (!resultBlock->getTerminator())
+          m_Builder.CreateBr(mergeBlock);
+        if (resultType)
+          incoming.push_back({result, resultBlock});
+      }
+
+      m_Builder.SetInsertPoint(invalidBlock);
+      llvm::Function *trap = llvm::Intrinsic::getOrInsertDeclaration(
+          m_Module.get(), llvm::Intrinsic::trap);
+      m_Builder.CreateCall(trap);
+      m_Builder.CreateUnreachable();
+
+      m_Builder.SetInsertPoint(mergeBlock);
+      if (!resultType)
+        return nullptr;
+      llvm::PHINode *result = m_Builder.CreatePHI(
+          resultType, static_cast<unsigned>(incoming.size()), name + ".value");
+      for (const auto &[value, block] : incoming)
+        result->addIncoming(value, block);
+      return result;
     };
 
     if (fname.find("fence") == 0) {
       if (fname == "fence_acquire") m_Builder.CreateFence(llvm::AtomicOrdering::Acquire);
       else if (fname == "fence_release") m_Builder.CreateFence(llvm::AtomicOrdering::Release);
-      else if (argsV.size() > 0) m_Builder.CreateFence(getOrder(argsV.back()).first);
-      else m_Builder.CreateFence(llvm::AtomicOrdering::SequentiallyConsistent);
+      else {
+        const std::vector<AtomicOrderCase> fenceOrders = {
+            {1, llvm::AtomicOrdering::Release},
+            {2, llvm::AtomicOrdering::Acquire},
+            {3, llvm::AtomicOrdering::AcquireRelease},
+            {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+        dispatchAtomicOrder(
+            getOrderingTag(0), fenceOrders, nullptr, "atomic.fence",
+            [&](llvm::AtomicOrdering order) -> llvm::Value * {
+              m_Builder.CreateFence(order);
+              return nullptr;
+            });
+      }
       return llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0);
     }
 
     if (fname.find("load") == 0) {
-      auto order = getOrder(argsV.back());
       llvm::Type *valTy = callee->getFunctionType()->getReturnType();
       if ((!valTy->isIntegerTy() || valTy->isIntegerTy(1)) &&
           !valTy->isFloatingPointTy())
         return invalidAtomicType(
             valTy,
             "a byte-sized integer or floating-point scalar");
-      llvm::LoadInst *li = m_Builder.CreateLoad(valTy, argsV[0], "atomic_load");
-      li->setAtomic(order.first);
-      if (li->getOrdering() == llvm::AtomicOrdering::NotAtomic) li->setAtomic(llvm::AtomicOrdering::Monotonic);
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
-      li->setAlignment(llvm::Align(alignVal));
-      return li;
+      const std::vector<AtomicOrderCase> loadOrders = {
+          {0, llvm::AtomicOrdering::Monotonic},
+          {2, llvm::AtomicOrdering::Acquire},
+          {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+      return dispatchAtomicOrder(
+          getOrderingTag(1), loadOrders, valTy, "atomic.load",
+          [&](llvm::AtomicOrdering order) -> llvm::Value * {
+            llvm::LoadInst *load =
+                m_Builder.CreateLoad(valTy, argsV[0], "atomic_load");
+            load->setAtomic(order);
+            load->setAlignment(llvm::Align(alignVal));
+            return load;
+          });
     }
 
     if (fname.find("store") == 0) {
-      auto order = getOrder(argsV.back());
       llvm::Type *valTy = argsV[1]->getType();
       if ((!valTy->isIntegerTy() || valTy->isIntegerTy(1)) &&
           !valTy->isFloatingPointTy())
         return invalidAtomicType(
             valTy,
             "a byte-sized integer or floating-point scalar");
-      llvm::StoreInst *si = m_Builder.CreateStore(argsV[1], argsV[0]);
-      llvm::AtomicOrdering o = order.second ? llvm::AtomicOrdering::SequentiallyConsistent : order.first;
-      if (o == llvm::AtomicOrdering::Acquire || o == llvm::AtomicOrdering::AcquireRelease) o = llvm::AtomicOrdering::Release; // Store cannot be Acquire or AcqRel
-      if (o == llvm::AtomicOrdering::NotAtomic) o = llvm::AtomicOrdering::Monotonic;
-      si->setAtomic(o);
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
-      si->setAlignment(llvm::Align(alignVal));
+      const std::vector<AtomicOrderCase> storeOrders = {
+          {0, llvm::AtomicOrdering::Monotonic},
+          {1, llvm::AtomicOrdering::Release},
+          {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+      dispatchAtomicOrder(
+          getOrderingTag(2), storeOrders, nullptr, "atomic.store",
+          [&](llvm::AtomicOrdering order) -> llvm::Value * {
+            llvm::StoreInst *store =
+                m_Builder.CreateStore(argsV[1], argsV[0]);
+            store->setAtomic(order);
+            store->setAlignment(llvm::Align(alignVal));
+            return nullptr;
+          });
       return llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0);
     }
 
     if (fname.find("compare_exchange") == 0) {
-      auto success = getOrder(argsV[3]).first;
-      auto fail = getOrder(argsV[4]).first;
-      if (fail == llvm::AtomicOrdering::Release || fail == llvm::AtomicOrdering::AcquireRelease) fail = llvm::AtomicOrdering::Acquire;
-      // LLVM CmpXchg Failure cannot be stronger than Success
-      if (success == llvm::AtomicOrdering::Monotonic && fail != llvm::AtomicOrdering::Monotonic) fail = llvm::AtomicOrdering::Monotonic;
-      if (success == llvm::AtomicOrdering::Release && fail != llvm::AtomicOrdering::Monotonic) fail = llvm::AtomicOrdering::Monotonic;
-      if (success == llvm::AtomicOrdering::Acquire && fail == llvm::AtomicOrdering::SequentiallyConsistent) fail = llvm::AtomicOrdering::Acquire;
-
       llvm::Type *valTy = argsV[1]->getType();
       if (!valTy->isIntegerTy() || valTy->isIntegerTy(1))
         return invalidAtomicType(
@@ -6256,8 +6343,31 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
       llvm::Align align(alignVal);
-      llvm::AtomicCmpXchgInst *cxi = m_Builder.CreateAtomicCmpXchg(argsV[0], argsV[1], argsV[2], llvm::MaybeAlign(align), success, fail);
-      return cxi; // Exact {T, i1} signature match!
+      llvm::Type *resultTy = llvm::StructType::get(
+          m_Context, {valTy, m_Builder.getInt1Ty()});
+      llvm::Value *successTag = getOrderingTag(3);
+      llvm::Value *failureTag = getOrderingTag(4);
+      return dispatchAtomicOrder(
+          successTag, allAtomicOrders, resultTy, "atomic.cmpxchg.success",
+          [&](llvm::AtomicOrdering success) -> llvm::Value * {
+            std::vector<AtomicOrderCase> failureOrders = {
+                {0, llvm::AtomicOrdering::Monotonic}};
+            if (success == llvm::AtomicOrdering::Acquire ||
+                success == llvm::AtomicOrdering::AcquireRelease ||
+                success == llvm::AtomicOrdering::SequentiallyConsistent)
+              failureOrders.push_back({2, llvm::AtomicOrdering::Acquire});
+            if (success == llvm::AtomicOrdering::SequentiallyConsistent)
+              failureOrders.push_back(
+                  {4, llvm::AtomicOrdering::SequentiallyConsistent});
+            return dispatchAtomicOrder(
+                failureTag, failureOrders, resultTy,
+                "atomic.cmpxchg.failure",
+                [&](llvm::AtomicOrdering failure) -> llvm::Value * {
+                  return m_Builder.CreateAtomicCmpXchg(
+                      argsV[0], argsV[1], argsV[2], llvm::MaybeAlign(align),
+                      success, failure);
+                });
+          });
     }
 
     llvm::AtomicRMWInst::BinOp rop = llvm::AtomicRMWInst::Add;
@@ -6271,7 +6381,6 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     else isRMW = false;
 
     if (isRMW) {
-      auto order = getOrder(argsV.back());
       llvm::Type *valTy = argsV[1]->getType();
       const bool isFloatAddSub =
           valTy->isFloatingPointTy() &&
@@ -6301,10 +6410,12 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
       llvm::Align align(alignVal);
-      llvm::AtomicOrdering o = order.second ? llvm::AtomicOrdering::SequentiallyConsistent : order.first;
-      if (o == llvm::AtomicOrdering::NotAtomic) o = llvm::AtomicOrdering::Monotonic;
-      llvm::AtomicRMWInst *rmw = m_Builder.CreateAtomicRMW(rop, argsV[0], argsV[1], llvm::MaybeAlign(align), o);
-      return rmw;
+      return dispatchAtomicOrder(
+          getOrderingTag(2), allAtomicOrders, valTy, "atomic.rmw",
+          [&](llvm::AtomicOrdering order) -> llvm::Value * {
+            return m_Builder.CreateAtomicRMW(
+                rop, argsV[0], argsV[1], llvm::MaybeAlign(align), order);
+          });
     }
   }
   }

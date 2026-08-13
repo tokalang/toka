@@ -556,6 +556,7 @@ private:
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
   std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;
+  std::set<const FunctionDecl *> TrustedAtomicWrapperDeclarations;
   struct DeclaredShapeIdentityRecord {
     const Module *Owner = nullptr;
     const ShapeDecl *Decl = nullptr;
