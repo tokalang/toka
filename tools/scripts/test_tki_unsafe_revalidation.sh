@@ -5,6 +5,8 @@ set -euo pipefail
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
 TEST_DIR="${TEST_DIR:-./tmp/tki_unsafe_revalidation_test}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SDK_LIB="$ROOT_DIR/lib"
 
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
@@ -182,6 +184,80 @@ if ! TOKA_LIB="$TEST_DIR/trusted" "$TOKAC_ABS" \
     > "$TEST_DIR/trusted.out" 2> "$TEST_DIR/trusted.err"; then
     echo "FAIL: compiler-configured system interface was not trusted"
     cat "$TEST_DIR/trusted.err"
+    exit 1
+fi
+
+write_atomic_module() {
+    local root="$1"
+    mkdir -p "$root/core/intrinsics"
+    cat > "$root/core/intrinsics/atomic.tk" <<'EOF'
+pub shape Ordering(Relaxed | Release | Acquire | AcqRel | SeqCst)
+
+pub fn __toka_atomic_fetch_add<T>(ptr#: T, val: T, _order: Ordering) -> T {
+    unsafe {
+        auto old = ptr
+        ptr = old + val
+        return old
+    }
+}
+EOF
+}
+
+write_atomic_consumer() {
+    local root="$1"
+    cat > "$root/main.tk" <<'EOF'
+import core/intrinsics/atomic::{__toka_atomic_fetch_add, Ordering}
+
+pub fn main() -> i32 {
+    auto value# = 1
+    return __toka_atomic_fetch_add(value, 1, Ordering::Relaxed)
+}
+EOF
+}
+
+mkdir -p "$TEST_DIR/atomic-trusted"
+write_atomic_consumer "$TEST_DIR/atomic-trusted"
+if ! (cd "$TEST_DIR/atomic-trusted" && \
+    TOKA_LIB="$SDK_LIB" "$TOKAC_ABS" --emit-llvm -c main.tk \
+        -o trusted.ll > trusted.out 2> trusted.err); then
+    echo "FAIL: genuine TOKA_LIB atomic intrinsic did not compile"
+    cat "$TEST_DIR/atomic-trusted/trusted.err"
+    exit 1
+fi
+if ! grep -Fq "atomicrmw add" "$TEST_DIR/atomic-trusted/trusted.ll"; then
+    echo "FAIL: genuine TOKA_LIB atomic intrinsic was not trusted"
+    exit 1
+fi
+
+mkdir -p "$TEST_DIR/atomic-local-shadow"
+write_atomic_module "$TEST_DIR/atomic-local-shadow/lib"
+write_atomic_consumer "$TEST_DIR/atomic-local-shadow"
+if ! (cd "$TEST_DIR/atomic-local-shadow" && \
+    TOKA_LIB="$SDK_LIB" "$TOKAC_ABS" --emit-llvm -c main.tk \
+        -o local-shadow.ll > local-shadow.out 2> local-shadow.err); then
+    echo "FAIL: local lib atomic shadow did not compile as ordinary code"
+    cat "$TEST_DIR/atomic-local-shadow/local-shadow.err"
+    exit 1
+fi
+if grep -Fq "atomicrmw add" "$TEST_DIR/atomic-local-shadow/local-shadow.ll"; then
+    echo "FAIL: local lib atomic shadow incorrectly gained system trust"
+    exit 1
+fi
+
+mkdir -p "$TEST_DIR/atomic-package-spoof"
+write_atomic_module "$TEST_DIR/atomic-package-spoof/package/lib"
+write_atomic_consumer "$TEST_DIR/atomic-package-spoof"
+if ! (cd "$TEST_DIR/atomic-package-spoof" && \
+    TOKA_LIB="$SDK_LIB" "$TOKAC_ABS" --emit-llvm -c main.tk \
+        --pkg "core/intrinsics/atomic=$TEST_DIR_ABS/atomic-package-spoof/package/lib/core/intrinsics/atomic" \
+        --pkg-node core/intrinsics/atomic=atomic-package-spoof-v1 \
+        -o package-spoof.ll > package-spoof.out 2> package-spoof.err); then
+    echo "FAIL: package atomic spoof did not compile as ordinary code"
+    cat "$TEST_DIR/atomic-package-spoof/package-spoof.err"
+    exit 1
+fi
+if grep -Fq "atomicrmw add" "$TEST_DIR/atomic-package-spoof/package-spoof.ll"; then
+    echo "FAIL: package atomic spoof incorrectly gained system trust"
     exit 1
 fi
 
