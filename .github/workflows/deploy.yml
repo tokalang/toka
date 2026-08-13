@@ -24,62 +24,32 @@ jobs:
 
       - name: Setup Emscripten ⚙️
         uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '6.0.6'
 
       - name: Compile Toka Playground (Wasm) 🛠️
         run: |
-          mkdir -p build_wasm
-          cd build_wasm
-          em++ -O3 -std=c++17 \
-            -I../include \
-            ../src/wasm_api.cpp \
-            ../src/Lexer/Lexer.cpp \
-            ../src/Parser/Parser.cpp \
-            ../src/Parser/Parser_Decl.cpp \
-            ../src/Parser/Parser_Expr.cpp \
-            ../src/Parser/Parser_Stmt.cpp \
-            ../src/Sema/Sema.cpp \
-            ../src/Sema/Sema_Expr.cpp \
-            ../src/Sema/Sema_Expr_Member.cpp \
-            ../src/Sema/Sema_Expr_Unary.cpp \
-            ../src/Sema/Sema_Expr_Binary.cpp \
-            ../src/Sema/Sema_Expr_Call.cpp \
-            ../src/Sema/Sema_Expr_Init.cpp \
-            ../src/Sema/Sema_Expr_Closure.cpp \
-            ../src/Sema/Sema_Stmt.cpp \
-            ../src/Sema/Sema_Template.cpp \
-            ../src/Sema/Sema_Type.cpp \
-            ../src/Sema/AccessPath.cpp \
-            ../src/Sema/Sema_AccessPath.cpp \
-            ../src/Sema/CanonicalDeclarationWitness.cpp \
-            ../src/Sema/SemanticEvidence.cpp \
-            ../src/Sema/PAL_Checker.cpp \
-            ../src/DiagnosticEngine.cpp \
-            ../src/Basic/SourceManager.cpp \
-            ../src/Basic/ModuleResolver.cpp \
-            ../src/Type.cpp \
-            ../src/AST/ASTEvaluator.cpp \
-            -s WASM=1 \
-            -s ALLOW_MEMORY_GROWTH=1 \
-            -s STACK_SIZE=1048576 \
-            -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "stringToUTF8", "lengthBytesUTF8", "UTF8ToString"]' \
-            -s EXPORTED_FUNCTIONS='["_check_toka_code", "_malloc", "_free"]' \
-            --embed-file ../lib@lib/ \
-            -o tokacheck.js
-          cp tokacheck.js ../playground/
-          cp tokacheck.wasm ../playground/
+          tools/scripts/build_browser_compiler.sh build_wasm
+          cp build_wasm/tokacheck.js playground/
+          cp build_wasm/tokacheck.wasm playground/
           
           # Run self-test to ensure compiler behavior is correct and all playground samples pass
-          cd ../playground
+          cd playground
           node self_test.js
-          cd ../build_wasm
+          cd ..
           
           # Move playground to Astro public directory so it gets served under /playground
-          mkdir -p ../website/public/playground
-          cp -r ../playground/* ../website/public/playground/
+          mkdir -p website/public/playground
+          cp playground/app.js website/public/playground/
+          cp playground/index.html website/public/playground/
+          cp playground/style.css website/public/playground/
+          cp playground/toka_mode.js website/public/playground/
+          cp playground/tokacheck.js website/public/playground/
+          cp playground/tokacheck.wasm website/public/playground/
 
       - name: Install dependencies 📦
         working-directory: ./website
-        run: npm install
+        run: npm ci
 
       - name: Build Astro 🚀
         working-directory: ./website
