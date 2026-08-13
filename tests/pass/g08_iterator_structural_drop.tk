@@ -1,0 +1,54 @@
+import core/option::{Option}
+import core/traits::{@Encap, @Iterable, @Iterator}
+
+auto iterator_field_drop_count# = 0
+
+shape IteratorDropToken(id: i32)
+shape StructuralValues(source_value: i32)
+shape StructuralIterator(
+    cursor_value: i32,
+    done#: bool,
+    token: IteratorDropToken
+)
+
+impl IteratorDropToken@Encap {
+    fn drop(self#) {
+        iterator_field_drop_count += 1
+    }
+}
+
+impl StructuralValues@Iterable {
+    type Iter = StructuralIterator
+
+    pub fn iter(self) -> Iter <- self {
+        return StructuralIterator(
+            cursor_value = self.source_value,
+            done = false,
+            token = IteratorDropToken(id = 7)
+        )
+    }
+}
+
+impl StructuralIterator@Iterator {
+    type Item = i32
+
+    pub fn next(self#) -> Option<Item> {
+        if self.done {
+            return Option<Item>::None
+        }
+        self.done = true
+        return Option<Item>::Some(self.cursor_value)
+    }
+}
+
+pub fn main() -> i32 {
+    auto values = StructuralValues(source_value = 1)
+    for auto value in values {
+        if value == 1 {
+            break
+        }
+    }
+    assert(iterator_field_drop_count == 1,
+           "iterator fields receive structural cleanup at loop exit")
+    return 0
+}

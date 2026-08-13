@@ -3852,10 +3852,12 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
         fe->ResolvedIterFn ? fe->ResolvedIterFn->ResolvedReturnType : nullptr;
     std::string iteratorType;
     std::string dropName;
+    bool iteratorShapeKnown = false;
     if (iteratorDropType) {
       auto soul = iteratorDropType->getSoulType();
       if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul);
           shape && shape->Decl) {
+        iteratorShapeKnown = true;
         dropName = shape->Decl->MangledDestructorName;
         iteratorType = !shape->Decl->CodegenName.empty()
                            ? shape->Decl->CodegenName
@@ -3871,13 +3873,14 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
     if (dropName.empty() && !iteratorType.empty())
       dropName = "Encap_" + iteratorType + "_drop";
     llvm::Function *dropFn = m_Module->getFunction(dropName);
+    iteratorShapeKnown = iteratorShapeKnown || m_Shapes.count(iteratorType);
     VariableScopeInfo iteratorInfo;
     iteratorInfo.Name = "__for_iterator";
     iteratorInfo.Alloca = iterAlloca;
     iteratorInfo.AllocType = iterAlloca->getAllocatedType();
     iteratorInfo.IsUniquePointer = false;
     iteratorInfo.IsShared = false;
-    iteratorInfo.HasDrop = dropFn != nullptr;
+    iteratorInfo.HasDrop = iteratorShapeKnown || dropFn != nullptr;
     iteratorInfo.DropFunc = dropFn ? dropName : "";
     iteratorInfo.SoulName = iteratorType;
     iteratorInfo.DropType = iteratorDropType;
