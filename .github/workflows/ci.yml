@@ -124,6 +124,6 @@ jobs:
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: redis-real-service
+          name: redis-real-service-${{ matrix.name }}
           path: build/redis-real-service.json
           if-no-files-found: error
