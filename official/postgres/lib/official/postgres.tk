@@ -871,7 +871,7 @@ fn data_row_bytes(values: Vec<Option<Bytes>>) -> usize {
 fn contains_mechanism(values: Vec<string>, expected: str) -> bool {
     auto index# = 0:usize
     loop index < values.len() {
-        if values.get(index).equals(expected) { return true }
+        if values.get_ref(index).as_str().equals(expected) { return true }
         index = index + 1:usize
     }
     return false
@@ -1766,7 +1766,7 @@ fn transaction_command_async(client#: PostgresClient, sql: str, expected_tag: st
     auto executed = client#.simple_query_async(sql, limits).await
     if executed.is_err() { return Result<(), PostgresError>::Err(executed.unwrap_err()) }
     auto results = executed.unwrap()
-    if results.len() != 1:usize || !results.get(0:usize).command_tag.as_str().equals(expected_tag) {
+    if results.len() != 1:usize || !results.get_ref(0:usize).command_tag.as_str().equals(expected_tag) {
         return Result<(), PostgresError>::Err(protocol_error(0:usize, "PostgreSQL transaction command returned an unexpected result"))
     }
     return Result<(), PostgresError>::Ok(())

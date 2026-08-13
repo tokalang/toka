@@ -213,7 +213,7 @@ fn extended_client_async(port: u16) -> async i32 {
     auto result = prepared#.execute_async(client, cede params, PostgresQueryLimits::new(1:usize, 2:usize, 64:usize).unwrap()).await
     if result.is_err() { client#.close(); return 5 }
     auto results = result.unwrap()
-    if results.len() != 1:usize || results.get(0:usize).rows.len() != 1:usize || !results.get(0:usize).command_tag.as_str().equals("SELECT 1") { client#.close(); return 6 }
+    if results.len() != 1:usize || results.get_ref(0:usize).rows.len() != 1:usize || !results.get_ref(0:usize).command_tag.as_str().equals("SELECT 1") { client#.close(); return 6 }
     auto closed = prepared#.close_async(client).await
     if closed.is_err() || !prepared.is_closed() { client#.close(); return 7 }
 

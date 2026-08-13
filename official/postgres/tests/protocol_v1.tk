@@ -89,7 +89,7 @@ fn test_authentication_and_fragmentation() {
         auto PostgresDecode::Complete('decoded) => match cede 'decoded.message {
             auto PostgresMessage::AuthenticationSasl('mechanisms) => {
                 assert('mechanisms.len() == 1:usize, "one offered SASL mechanism")
-                assert('mechanisms.get(0:usize).equals("SCRAM-SHA-256"), "SCRAM mechanism name")
+                assert('mechanisms.get_ref(0:usize).as_str().equals("SCRAM-SHA-256"), "SCRAM mechanism name")
             }
             _ => assert(false, "authentication SASL frame")
         }
@@ -107,7 +107,7 @@ fn test_manual_nested_message_ownership() {
     match cede decoded {
         auto PostgresDecode::Complete('frame) => match cede 'frame.message {
             auto PostgresMessage::RowDescription('items) => {
-                assert('items.get(0:usize).name.equals("manual"),
+                assert('items.get_ref(0:usize).name.equals("manual"),
                        "nested PostgreSQL resource ownership")
             }
             _ => assert(false, "manual RowDescription message")
@@ -130,8 +130,8 @@ fn test_rows_errors_and_limits() {
         auto PostgresDecode::Complete('decoded) => match cede 'decoded.message {
             auto PostgresMessage::RowDescription('columns) => {
                 assert('columns.len() == 1:usize, "row description column count")
-                assert('columns.get(0:usize).name.equals("id"), "row description column name")
-                assert('columns.get(0:usize).type_oid == 23:u32, "row description OID")
+                assert('columns.get_ref(0:usize).name.equals("id"), "row description column name")
+                assert('columns.get_ref(0:usize).type_oid == 23:u32, "row description OID")
             }
             _ => assert(false, "expected RowDescription")
         }
@@ -156,7 +156,7 @@ fn test_rows_errors_and_limits() {
                     }
                     _ => assert(false, "first data row value")
                 }
-                assert('values.get(1:usize).is_none(), "data row preserves null")
+                assert('values.get_ref(1:usize).is_none(), "data row preserves null")
             }
             _ => assert(false, "expected DataRow")
         }
