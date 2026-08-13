@@ -2149,6 +2149,18 @@ void CodeGen::genExtern(const ExternDecl *ext) {
     llvmName = llvmName.substr(5);
   }
 
+  if (llvm::Function *existing = m_Module->getFunction(llvmName)) {
+    if (existing->getFunctionType() != ft) {
+      std::string existingType;
+      std::string requestedType;
+      llvm::raw_string_ostream(existingType) << *existing->getFunctionType();
+      llvm::raw_string_ostream(requestedType) << *ft;
+      error(ext, DiagID::ERR_CODEGEN_EXTERN_SIGNATURE_CONFLICT, llvmName,
+            existingType, requestedType);
+    }
+    return;
+  }
+
   llvm::Function::Create(ft, llvm::Function::ExternalLinkage, llvmName,
                          m_Module.get());
 }

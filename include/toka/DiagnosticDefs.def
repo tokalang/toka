@@ -534,3 +534,4 @@ DIAG(ERR_CODEGEN_METHOD_NOT_FOUND_FOR_TYPE_MANGLED, Error, "E0755", "Method '{}'
 DIAG(ERR_CODEGEN_FAILED_TO_RESOLVE_MEMBER_IN, Error, "E0756", "Failed to resolve member '{}' in {}")
 DIAG(ERR_CODEGEN_CANNOT_DETERMINE_SIZE_OF_INCOMPLETE_TY, Error, "E0757", "Cannot determine size of incomplete type: {}")
 DIAG(ERR_CODEGEN_COMPILE_TIME_FIELD_ITERATION_VARIABLES, Error, "E0758", "Compile-time field iteration variables cannot be used contextually where runtime values are expected (must be folded statically).")
+DIAG(ERR_CODEGEN_EXTERN_SIGNATURE_CONFLICT, Error, "E0759", "Conflicting extern declarations for '{}': existing LLVM type '{}', requested '{}'")

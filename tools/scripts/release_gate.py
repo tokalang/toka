@@ -267,7 +267,10 @@ def main():
             ["bash", "tools/scripts/test_semantic_manifest_attestation.sh"],
             ["bash", "tools/scripts/test_semantic_manifest_attestation_build.sh"],
         )),
-        ("cache_invalidation", (["tools/scripts/test_semantic_cache_invalidation.sh"],)),
+        ("cache_invalidation", (
+            ["tools/scripts/test_semantic_cache_invalidation.sh"],
+            ["tools/scripts/test_mixed_core_cache.sh"],
+        )),
         ("tooling", (
             [sys.executable, "tools/scripts/test_developer_experience.py",
              "--build-dir", str(build_dir)],

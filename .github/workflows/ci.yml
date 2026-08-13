@@ -118,6 +118,7 @@ jobs:
           python3 tools/scripts/test_verify_fail.py --exclude-file spec/ci_quarantined_fail_tests.list
           python3 tools/scripts/test_verify_warn.py
           tools/scripts/test_semantic_replay.sh
+          tools/scripts/test_mixed_core_cache.sh
 
       - name: Exercise service-kit dogfood
         if: runner.os == 'Linux'

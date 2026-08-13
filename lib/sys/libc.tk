@@ -173,10 +173,6 @@ extern fn libc_setsockopt(sockfd: i32, level: i32, optname: i32, *optval: void, 
 extern fn libc_shutdown(sockfd: i32, how: i32) -> i32
 extern fn libc_inet_pton(af: i32, *src: char, *dst: void) -> i32
 extern fn libc_htons(hostshort: u16) -> u16
-extern fn libc_recv(sockfd: i32, *buf: void, len: usize, flags: i32) -> i64
-extern fn libc_send(sockfd: i32, *buf: void, len: usize, flags: i32) -> i64
-extern fn libc_recvfrom(sockfd: i32, *buf: void, len: usize, flags: i32, *src_addr: void, *addrlen: u32) -> i64
-extern fn libc_sendto(sockfd: i32, *buf: void, len: usize, flags: i32, *dest_addr: void, addrlen: u32) -> i64
 extern fn toka_resolve_ipv4(*host: char) -> u32
 
 // Threads (macOS/POSIX)

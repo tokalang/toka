@@ -31,7 +31,7 @@ extern fn GetEnvironmentVariableW(*lpName: u16, *lpBuffer: u16, nSize: DWORD) ->
 extern fn SetEnvironmentVariableW(*lpName: u16, *lpValue: u16) -> BOOL
 
 extern fn ExitProcess(uExitCode: u32) -> void
-extern fn toka_panic(msg_ptr: Addr, len: i32) -> void
+extern fn toka_panic(*msg_ptr: char, len: i32) -> void
 extern fn toka_clock_realtime(ts: Addr) -> i32
 extern fn toka_clock_monotonic(ts: Addr) -> i32
 

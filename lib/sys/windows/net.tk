@@ -299,7 +299,7 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
         // Strict boundary check (Max 64 concurrent descriptors in Windows select)
         if r.count >= 64 {
             auto msg = "Windows Select Reactor capacity exceeded (Max 64 concurrent descriptors)":str
-            toka_panic(msg.raw_ptr() as Addr, msg.len() as i32)
+            toka_panic(msg.raw_ptr() as *char, msg.len() as i32)
             return false
         }
 

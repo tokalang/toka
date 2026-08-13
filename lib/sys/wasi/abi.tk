@@ -11,7 +11,7 @@ extern fn toka_stat_size(handle: Addr) -> u64
 extern fn toka_stat_mtime(handle: Addr) -> i64
 extern fn toka_stat_free(handle: Addr) -> void
 
-extern fn toka_panic(msg_ptr: Addr, len: i32) -> void
+extern fn toka_panic(*msg_ptr: char, len: i32) -> void
 extern fn toka_get_last_error() -> i32
 
 extern fn toka_wasi_argc() -> i32

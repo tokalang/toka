@@ -14,7 +14,7 @@ extern fn toka_stat_size(handle: Addr) -> u64
 extern fn toka_stat_mtime(handle: Addr) -> i64
 extern fn toka_stat_free(handle: Addr) -> void
 
-extern fn toka_panic(msg_ptr: Addr, len: i32) -> void
+extern fn toka_panic(*msg_ptr: char, len: i32) -> void
 extern fn toka_get_last_error() -> i32
 
 extern fn bind(fd: i32, *addr: void, len: u32) -> i32
@@ -23,6 +23,10 @@ extern fn accept(fd: i32, *addr: void, *len: u32) -> i32
 extern fn listen(fd: i32, backlog: i32) -> i32
 extern fn getsockopt(fd: i32, level: i32, optname: i32, *optval: void, *optlen: u32) -> i32
 extern fn getsockname(fd: i32, *addr: void, *addrlen: u32) -> i32
+extern fn libc_recv(fd: i32, *buf: void, len: usize, flags: i32) -> i64
+extern fn libc_send(fd: i32, *buf: void, len: usize, flags: i32) -> i64
+extern fn libc_recvfrom(fd: i32, *buf: void, len: usize, flags: i32, *src_addr: void, *addrlen: u32) -> i64
+extern fn libc_sendto(fd: i32, *buf: void, len: usize, flags: i32, *dest_addr: void, addrlen: u32) -> i64
 
 extern fn kqueue() -> i32
 extern fn kevent(kq: i32, *changelist: void, nchanges: i32, *eventlist: void, nevents: i32, *timeout: void) -> i32
