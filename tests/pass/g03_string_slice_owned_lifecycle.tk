@@ -1,0 +1,77 @@
+import core/result::{Result}
+import core/string::{string}
+import std/vec::{Vec}
+
+fn copy_after_source_scope() -> string {
+    auto source# = string::from("scope:alpha-beta")
+    auto copied# = source.as_str().slice(6, 11).to_string()
+    return cede copied
+}
+
+fn copy_after_source_rebind() -> string {
+    auto source# = string::from("before:stable")
+    auto copied# = source.as_str().slice(7, 13).to_string()
+    source = string::from("after:changed")
+    if !source.as_str().equals("after:changed") {
+        return string::from("bad source rebind")
+    }
+    return cede copied
+}
+
+fn copy_through_result() -> Result<string, i32> {
+    auto source# = string::from("result:owned-copy")
+    auto copied# = source.as_str().slice(7, 17).to_string()
+    source = string::from("result:replacement")
+    return Result<string, i32>::Ok(cede copied)
+}
+
+fn main() -> i32 {
+    auto ascii_source# = string::from("0123456789")
+    auto ascii_copy# = ascii_source.as_str().substr(2:usize, 5:usize).to_string()
+    if !ascii_copy.as_str().equals("23456") { return 1 }
+
+    // slice() indexes Unicode scalar values rather than UTF-8 bytes.
+    auto unicode_source# = string::from("A你🙂Z")
+    auto unicode_copy# = unicode_source.as_str().slice(1, 3).to_string()
+    if !unicode_copy.as_str().equals("你🙂") { return 2 }
+
+    auto empty_copy# = ascii_source.as_str().slice(4, 4).to_string()
+    if !empty_copy.as_str().equals("") { return 3 }
+    auto clamped_copy# = ascii_source.as_str().slice(-100, 100).to_string()
+    if !clamped_copy.as_str().equals("0123456789") { return 4 }
+    auto end_copy# = ascii_source.as_str().slice(10, 20).to_string()
+    if !end_copy.as_str().equals("") { return 5 }
+
+    auto scoped_copy# = copy_after_source_scope()
+    if !scoped_copy.as_str().equals("alpha") { return 6 }
+    auto rebound_copy# = copy_after_source_rebind()
+    if !rebound_copy.as_str().equals("stable") { return 7 }
+
+    // The owned copy and its source must not share their writable allocation.
+    auto independent_source# = string::from("left")
+    auto independent_copy# = independent_source.as_str().to_string()
+    independent_source#.push_str("-source")
+    if !independent_copy.as_str().equals("left") { return 8 }
+    independent_copy#.push_str("-copy")
+    if !independent_source.as_str().equals("left-source") { return 9 }
+    if !independent_copy.as_str().equals("left-copy") { return 10 }
+
+    auto result = copy_through_result()
+    if result.is_err() { return 11 }
+    auto result_copy# = result.unwrap()
+    if !result_copy.as_str().equals("owned-copy") { return 12 }
+
+    auto values# = Vec<string>::new()
+    values#.push(cede scoped_copy)
+    values#.push(cede rebound_copy)
+    values#.push(cede result_copy)
+    auto removed_first# = values#.remove(0:usize).unwrap()
+    if !removed_first.as_str().equals("alpha") { return 13 }
+    auto removed_second# = values#.remove(0:usize).unwrap()
+    if !removed_second.as_str().equals("stable") { return 14 }
+    auto removed_third# = values#.remove(0:usize).unwrap()
+    if !removed_third.as_str().equals("owned-copy") { return 15 }
+    if values.len() != 0:usize { return 16 }
+
+    return 0
+}

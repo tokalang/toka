@@ -1,0 +1,101 @@
+import stdx/net/http::{HeaderMap, parse_http_request, parse_http_response}
+
+fn test_header_map_empty_value() {
+    auto headers# = HeaderMap::new()
+    assert(headers#.insert(string::from("X-Before"), string::from("before")).is_ok(), "neighbor header insert failed")
+    assert(headers#.insert(string::from("X-Empty"), string::from("")).is_ok(), "empty header value insert failed")
+    assert(headers#.insert(string::from("X-After"), string::from("after")).is_ok(), "neighbor header insert failed")
+
+    auto empty_value = headers#.get("x-empty")
+    assert(empty_value.is_some(), "empty HeaderMap value must remain present")
+    assert(empty_value.unwrap().as_str().equals(""), "empty HeaderMap value must remain empty")
+    assert(headers#.get("x-before").unwrap().as_str().equals("before"), "header before empty value was corrupted")
+    assert(headers#.get("x-after").unwrap().as_str().equals("after"), "header after empty value was corrupted")
+
+    auto round# = 0:usize
+    loop round < 32:usize {
+        if round % 2:usize == 0:usize {
+            assert(headers#.insert(string::from("X-Switch"), string::from("")).is_ok(), "alternating empty insert failed")
+            auto current = headers#.get("x-switch")
+            assert(current.is_some(), "alternating empty value must remain present")
+            assert(current.unwrap().as_str().equals(""), "alternating empty value changed")
+        } else {
+            assert(headers#.insert(string::from("X-Switch"), string::from("ready")).is_ok(), "alternating non-empty insert failed")
+            assert(headers#.get("x-switch").unwrap().as_str().equals("ready"), "alternating non-empty value changed")
+        }
+        assert(headers#.get("x-before").unwrap().as_str().equals("before"), "alternating insert corrupted preceding header")
+        assert(headers#.get("x-after").unwrap().as_str().equals("after"), "alternating insert corrupted following header")
+        round += 1:usize
+    }
+}
+
+fn test_request_empty_values() {
+    auto round# = 0:usize
+    loop round < 32:usize {
+        auto raw# = string::from("")
+        if round % 2:usize == 0:usize {
+            raw = string::from("GET /empty HTTP/1.1\r\nHost: example.test\r\nX-Before: before\r\nX-Empty:\r\nX-Ows: \t\r\nX-Switch:\r\nX-After: after\r\n\r\n")
+        } else {
+            raw = string::from("GET /empty HTTP/1.1\r\nHost: example.test\r\nX-Before: before\r\nX-Empty:\r\nX-Ows: \t\r\nX-Switch: ready\r\nX-After: after\r\n\r\n")
+        }
+
+        auto parsed = parse_http_request(cede raw)
+        assert(parsed.is_ok(), "request with empty header values must parse")
+        auto request = parsed.unwrap()
+        auto empty_value = request.headers#.get("x-empty")
+        auto ows_value = request.headers#.get("x-ows")
+        assert(empty_value.is_some(), "empty request header must remain present")
+        assert(ows_value.is_some(), "OWS-only request header must remain present")
+        assert(empty_value.unwrap().as_str().equals(""), "empty request header must have an empty value")
+        assert(ows_value.unwrap().as_str().equals(""), "OWS-only request header must normalize to an empty value")
+        assert(request.headers#.get("x-before").unwrap().as_str().equals("before"), "request header before empty value was corrupted")
+        assert(request.headers#.get("x-after").unwrap().as_str().equals("after"), "request header after empty value was corrupted")
+        if round % 2:usize == 0:usize {
+            auto switched = request.headers#.get("x-switch")
+            assert(switched.is_some(), "alternating empty request header must remain present")
+            assert(switched.unwrap().as_str().equals(""), "alternating empty request value changed")
+        } else {
+            assert(request.headers#.get("x-switch").unwrap().as_str().equals("ready"), "alternating non-empty request value changed")
+        }
+        round += 1:usize
+    }
+}
+
+fn test_response_empty_values() {
+    auto round# = 0:usize
+    loop round < 32:usize {
+        auto raw# = string::from("")
+        if round % 2:usize == 0:usize {
+            raw = string::from("HTTP/1.1 204 No Content\r\nX-Before: before\r\nX-Empty:\r\nX-Ows: \t\r\nX-Switch:\r\nX-After: after\r\nContent-Length: 0\r\n\r\n")
+        } else {
+            raw = string::from("HTTP/1.1 204 No Content\r\nX-Before: before\r\nX-Empty:\r\nX-Ows: \t\r\nX-Switch: ready\r\nX-After: after\r\nContent-Length: 0\r\n\r\n")
+        }
+
+        auto parsed = parse_http_response(cede raw)
+        assert(parsed.is_ok(), "response with empty header values must parse")
+        auto response = parsed.unwrap()
+        auto empty_value = response.headers#.get("x-empty")
+        auto ows_value = response.headers#.get("x-ows")
+        assert(empty_value.is_some(), "empty response header must remain present")
+        assert(ows_value.is_some(), "OWS-only response header must remain present")
+        assert(empty_value.unwrap().as_str().equals(""), "empty response header must have an empty value")
+        assert(ows_value.unwrap().as_str().equals(""), "OWS-only response header must normalize to an empty value")
+        assert(response.headers#.get("x-before").unwrap().as_str().equals("before"), "response header before empty value was corrupted")
+        assert(response.headers#.get("x-after").unwrap().as_str().equals("after"), "response header after empty value was corrupted")
+        if round % 2:usize == 0:usize {
+            auto switched = response.headers#.get("x-switch")
+            assert(switched.is_some(), "alternating empty response header must remain present")
+            assert(switched.unwrap().as_str().equals(""), "alternating empty response value changed")
+        } else {
+            assert(response.headers#.get("x-switch").unwrap().as_str().equals("ready"), "alternating non-empty response value changed")
+        }
+        round += 1:usize
+    }
+}
+
+pub fn main() -> i32 {
+    test_header_map_empty_value()
+    test_request_empty_values()
+    test_response_empty_values()
+    return 0
+}
