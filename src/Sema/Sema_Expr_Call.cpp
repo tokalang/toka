@@ -122,6 +122,23 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       m_IsConsumingEffect = true;
   }
 
+  // Generic bodies keep type-parameter spellings in expression syntax.  If
+  // an instantiated parameter names a primitive, normalize the synthetic
+  // constructor call (for example the `T(value)` inside `unsafe alloc
+  // T(value)`) before the ordinary primitive-constructor path below.
+  if (CurrentScope) {
+    SymbolInfo typeAlias;
+    if (CurrentScope->lookup(CallName, typeAlias) && typeAlias.IsTypeAlias &&
+        typeAlias.TypeObj) {
+      auto aliasType = resolveType(typeAlias.TypeObj);
+      if (auto aliasPrimitive = std::dynamic_pointer_cast<PrimitiveType>(
+              aliasType ? aliasType->getSoulType() : nullptr)) {
+        CallName = aliasPrimitive->Name;
+        Call->Callee = CallName;
+      }
+    }
+  }
+
   // 1. Primitives (Constructors/Casts) e.g. i32(42)
   if (CallName == "i32" || CallName == "u32" || CallName == "i64" ||
       CallName == "u64" || CallName == "f32" || CallName == "f64" ||
