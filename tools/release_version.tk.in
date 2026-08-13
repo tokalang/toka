@@ -1,0 +1,3 @@
+pub fn release_version() -> string {
+    return string::from("@TOKA_VERSION_STRING@")
+}

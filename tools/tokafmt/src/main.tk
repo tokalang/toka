@@ -1,8 +1,7 @@
 import std/env
 import std/io::{File, print, println}
 import std/fs
-import std/process::{Command}
-import sys/os/base as sys
+import toka_build/release_version::{release_version}
 
 import core/str::{str}
 
@@ -20,46 +19,8 @@ pub shape TokenKind(
     EOF
 )
 
-fn get_dirname(path: string) -> string {
-    auto forward = path.as_str().last_index_of('/' as char)
-    auto backward = path.as_str().last_index_of('\\' as char)
-    auto last# = -1:i32
-    if forward.is_some() { last = forward.unwrap() as i32 }
-    if backward.is_some() {
-        auto backward_pos = backward.unwrap() as i32
-        if backward_pos > last {
-            last = backward_pos
-        }
-    }
-    if last > 0 { return path.substring(0, last) }
-    return string::from(".")
-}
-
 fn compiler_release_version() -> string {
-    auto compiler_path# = string::from("tokac")
-    auto executable = env::get_arg(0)
-    if !executable.is_empty() {
-        compiler_path = get_dirname(executable)
-        if sys::path_sep() == 92:char {
-            compiler_path#.push_str("\\tokac.exe")
-        } else {
-            compiler_path#.push_str("/tokac")
-        }
-    }
-    auto compiler# = Command::new(cede compiler_path)
-    compiler#.arg(string::from("--version"))
-    auto result = compiler#.output()
-    if result.is_ok() {
-        auto output = result.unwrap()
-        if output.status.success() {
-            auto start = output.stdout.find_str("toka version ")
-            auto end = output.stdout.find_str(" (Built:")
-            if start != -1 && end > start + 13 {
-                return output.stdout.substring(start + 13, end)
-            }
-        }
-    }
-    return string::from("unavailable")
+    return release_version()
 }
 
 pub shape Token (

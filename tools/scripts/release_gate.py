@@ -241,12 +241,13 @@ def main():
     audit_timeout = "30"
     archive = build_dir / ("toka-%s-%s-%s.tar.gz" % (args.version, os_name, arch))
     toka_command = [
-        env["TOKAC"], "-I", "lib", "-I", "tools/toka",
+        env["TOKAC"], "-I", "lib", "-I", str(build_dir / "generated"),
+        "-I", "tools/toka",
         "tools/toka/src/main.tk", "-o", str(build_dir / "bin" / "toka"),
         "-O3",
     ]
     package_tool_commands = (
-        [env["TOKAC"], "-I", "lib", "-I", "tools/tokafmt", "tools/tokafmt/src/main.tk", "-o", str(build_dir / "bin" / "tokafmt"), "-O3"],
+        [env["TOKAC"], "-I", "lib", "-I", str(build_dir / "generated"), "-I", "tools/tokafmt", "tools/tokafmt/src/main.tk", "-o", str(build_dir / "bin" / "tokafmt"), "-O3"],
         ["cmake", "--build", str(build_dir), "--target", "tokalsp"],
     )
     stages = (

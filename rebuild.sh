@@ -86,7 +86,7 @@ echo "2. Building Toka CLI Tool (toka)"
 echo "====================================="
 cd tools/toka
 echo "   -> Compiling and Linking tools/toka/src/main.tk with internal LLD..."
-tokac -I "$ROOT_DIR/lib" -I src src/main.tk "$ROOT_DIR/lib/sys/toka_rt.o" -o toka
+tokac -I "$ROOT_DIR/lib" -I "$ROOT_DIR/build/generated" -I src src/main.tk "$ROOT_DIR/lib/sys/toka_rt.o" -o toka
 
 echo "   -> Installing toka to $BIN_DIR/toka..."
 mkdir -p "$BIN_DIR"
@@ -104,7 +104,7 @@ echo "3. Building Toka Formatter (tokafmt)"
 echo "====================================="
 cd tools/tokafmt
 echo "   -> Compiling and Linking tools/tokafmt/src/main.tk with internal LLD..."
-tokac -I "$ROOT_DIR/lib" src/main.tk "$ROOT_DIR/lib/sys/toka_rt.o" -o tokafmt
+tokac -I "$ROOT_DIR/lib" -I "$ROOT_DIR/build/generated" src/main.tk "$ROOT_DIR/lib/sys/toka_rt.o" -o tokafmt
 
 echo "   -> Installing tokafmt to $BIN_DIR/tokafmt..."
 cp tokafmt "$BIN_DIR/tokafmt"

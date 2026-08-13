@@ -25,7 +25,7 @@ else
 fi
 
 echo "--- Compiling Toka Build Tool ---"
-$TOKAC -I tools/toka tools/toka/src/main.tk > build/toka.ll
+$TOKAC -I build/generated -I tools/toka tools/toka/src/main.tk > build/toka.ll
 
 echo "Generating toka native binary via $CLANG..."
 if [ "$(uname)" == "Darwin" ]; then
