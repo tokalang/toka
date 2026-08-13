@@ -1,0 +1,6 @@
+shape Value(raw: i32)
+
+fn main() -> i32 {
+    auto ^value = new Value(raw = 7)
+    return value.dup().raw
+}

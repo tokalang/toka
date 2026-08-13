@@ -107,6 +107,14 @@
       "description": "Copy-safe Vec elements retain clone, indexed copy, resize, cursor next, and value iteration"
     },
     {
+      "id": "std_vec_explicit_dup_clone_01",
+      "path": "std/vec_explicit_dup_clone.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec clone performs source-preserving Dup for Copy values, strings, and explicit resource providers"
+    },
+    {
       "id": "std_vec_resource_move_lifecycle_01",
       "path": "std/vec_resource_move_lifecycle.tk",
       "type": "run",
@@ -164,7 +172,25 @@
       "expected_diagnostic_code": "E0417",
       "expected_span_line": 15,
       "timeout_seconds": 10,
-      "description": "Vec::clone is unavailable when its element type is not Copy"
+      "description": "Vec::clone is unavailable when its element type has neither Copy nor an explicit Dup provider"
+    },
+    {
+      "id": "diag_dup_owned_pointer_rejected_01",
+      "path": "diagnostics/dup_owned_pointer_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0406",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Intrinsic Dup cannot duplicate an owning smart-pointer handle"
+    },
+    {
+      "id": "diag_dup_cede_receiver_rejected_01",
+      "path": "diagnostics/dup_cede_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0406",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Dup rejects a consuming receiver even when a cast wraps the cede expression"
     },
     {
       "id": "diag_vec_resource_resize_rejected_01",

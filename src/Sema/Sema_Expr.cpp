@@ -3905,7 +3905,35 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                    ? objectShape->Decl->Name
                    : objectShape->Decl->CodegenName)
             : Type::stripMorphology(ObjType);
-    if (!(MethodMap.count(soulType) &&
+    const bool isDupCall = Met->Method == "dup";
+    if (isDupCall &&
+        (!Met->Args.empty() ||
+         dynamic_cast<CedeExpr *>(
+             unwrapCedeDirectSource(Met->Object.get())) ||
+         (ObjTypeObj && ObjTypeObj->isSmartPointer()))) {
+      DiagnosticEngine::report(
+          getLoc(Met), DiagID::ERR_GENERIC_SEMA,
+          ".dup() requires a non-consuming, non-owning receiver and no arguments");
+      HasError = true;
+      return toka::Type::fromString("unknown");
+    }
+    auto duplicatedBase =
+        ObjTypeObj && (ObjTypeObj->isRawPointer() || ObjTypeObj->isReference())
+            ? ObjTypeObj->getPointeeType()
+            : ObjTypeObj;
+    const bool hasCopyDup =
+        isDupCall && duplicatedBase && proveSlice4CopyType(duplicatedBase);
+    if (hasCopyDup) {
+      Met->IsIntrinsicCopyDup = true;
+      auto duplicated = duplicatedBase->withAttributes(
+          false, duplicatedBase->IsNullable, false);
+      duplicated->IsBlocked = false;
+      duplicated->IsCede = false;
+      return duplicated;
+    }
+
+    if (isDupCall ||
+        !(MethodMap.count(soulType) &&
           MethodMap[soulType].count(Met->Method))) {
       // [NEW] Lazy Impl Instantiation
       // [Fix] Use fully resolved/mangled name for lazy instantiation lookup
@@ -3944,10 +3972,28 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
-    if (MethodMap.count(soulType) && MethodMap[soulType].count(Met->Method)) {
-      if (MethodDecls.count(soulType) &&
-          MethodDecls[soulType].count(Met->Method)) {
-        FunctionDecl *FD = MethodDecls[soulType][Met->Method];
+    FunctionDecl *dupProvider = nullptr;
+    if (isDupCall) {
+      auto dupImpl = ImplMap.find(soulType + "@Dup");
+      if (dupImpl != ImplMap.end()) {
+        auto method = dupImpl->second.find("dup");
+        if (method != dupImpl->second.end())
+          dupProvider = method->second;
+      }
+      if (!dupProvider) {
+        error(Met, DiagID::ERR_NO_SUCH_MEMBER, ObjType, Met->Method);
+        return toka::Type::fromString("unknown");
+      }
+    }
+
+    if (dupProvider ||
+        (MethodMap.count(soulType) &&
+         MethodMap[soulType].count(Met->Method))) {
+      if (dupProvider ||
+          (MethodDecls.count(soulType) &&
+           MethodDecls[soulType].count(Met->Method))) {
+        FunctionDecl *FD = dupProvider ? dupProvider
+                                       : MethodDecls[soulType][Met->Method];
         Met->ResolvedFn = FD;
         
         // [Effect] Concurrency Check for Method Call
@@ -4333,7 +4379,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         auto retType =
             FD && FD->ResolvedReturnType
                 ? FD->ResolvedReturnType
-                : toka::Type::fromString(MethodMap[soulType][Met->Method]);
+                : FD ? toka::Type::fromString(FD->ReturnType)
+                     : toka::Type::fromString(
+                           MethodMap[soulType][Met->Method]);
 
         if (FD) {
             bool hasExplicitDeps = !FD->LifeDependencies.empty();

@@ -1,0 +1,87 @@
+import core/string::{string}
+import core/traits::{@Dup, @Encap}
+import std/vec::{Vec}
+
+auto g_drop_count# = 0:i32
+
+shape CopyValue(raw: i32)
+
+impl CopyValue {
+    pub fn dup(self) -> Self {
+        return CopyValue(raw = self.raw + 100:i32)
+    }
+}
+
+shape Resource(value: string)
+
+impl Resource@Encap {
+    pub value
+
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+impl Resource@Dup {
+    pub fn dup(self) -> Self {
+        return Resource(value = self.value.clone())
+    }
+}
+
+fn main() -> i32 {
+    auto scalar = 17:i32
+    auto scalar_copy = scalar.dup()
+    if scalar != 17:i32 || scalar_copy != 17:i32 { return 1 }
+
+    auto copy_value = CopyValue(raw = 23:i32)
+    auto copy_value_dup = copy_value.dup()
+    if copy_value_dup.raw != 23:i32 { return 2 }
+    auto &copy_value_ref = &copy_value
+    auto copy_value_ref_dup = copy_value_ref.dup()
+    if copy_value_ref_dup.raw != 23:i32 { return 3 }
+
+    {
+        auto resource = Resource(value = string::from("borrowed"))
+        auto &resource_ref = &resource
+        auto resource_copy = resource_ref.dup()
+        if resource_copy.value.as_str() != "borrowed" { return 4 }
+    }
+    if g_drop_count != 2:i32 { return 5 }
+
+    {
+        auto values# = Vec<string>::new()
+        values#.push(cede string::from("alpha"))
+        values#.push(cede string::from("beta"))
+        auto copied# = values.clone()
+        values#.clear()
+
+        if copied.len() != 2:usize { return 6 }
+        if copied.get_ref(0:usize).as_str() != "alpha" { return 7 }
+        if copied.get_ref(1:usize).as_str() != "beta" { return 8 }
+
+        auto duplicated# = copied.dup()
+        copied#.clear()
+        if duplicated.get_ref(0:usize).as_str() != "alpha" { return 9 }
+        duplicated#.clear()
+
+        auto first = string::from("direct")
+        auto first_copy = first.dup()
+        if first.as_str() != "direct" || first_copy.as_str() != "direct" {
+            return 10
+        }
+    }
+
+    {
+        auto resources# = Vec<Resource>::new()
+        resources#.push(cede Resource(value = string::from("owned")))
+        auto copied# = resources.dup()
+        resources#.clear()
+
+        if g_drop_count != 3:i32 { return 11 }
+        if copied.get_ref(0:usize).value.as_str() != "owned" { return 12 }
+        copied#.clear()
+        if g_drop_count != 4:i32 { return 13 }
+    }
+
+    return g_drop_count - 4:i32
+}

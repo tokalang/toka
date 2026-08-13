@@ -792,6 +792,7 @@ public:
   std::vector<std::unique_ptr<Expr>> Args;
   bool IsCompilerInternal = false; // Compiler-synthesized calls may bypass visibility.
   bool ObjectIsPrechecked = false; // Synthesized wrapper reuses receiver Sema
+  bool IsIntrinsicCopyDup = false; // @Copy supplies the intrinsic @Dup operation.
   FunctionDecl *ResolvedFn = nullptr;
 
   MethodCallExpr(std::unique_ptr<Expr> obj, const std::string &method,
@@ -806,6 +807,7 @@ public:
     n->ResolvedType = ResolvedType;
     n->IsCompilerInternal = IsCompilerInternal;
     n->ObjectIsPrechecked = ObjectIsPrechecked;
+    n->IsIntrinsicCopyDup = IsIntrinsicCopyDup;
     n->ResolvedFn = nullptr;
     return n;
   }

@@ -2447,6 +2447,17 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
 }
 
 PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
+  if (expr->IsIntrinsicCopyDup) {
+    PhysEntity source = genExpr(expr->Object.get());
+    llvm::Value *value = source.load(m_Builder);
+    auto resultType = expr->ResolvedType ? expr->ResolvedType
+                                         : expr->Object->ResolvedType;
+    llvm::Type *llvmType = resultType ? getLLVMType(resultType)
+                                      : (value ? value->getType() : nullptr);
+    return PhysEntity(value, resultType ? resultType->toString() : source.typeName,
+                      llvmType, false);
+  }
+
   // [Intrinsic] unset & unwrap
   if (expr->Method == "unset") {
     PhysEntity obj = genExpr(expr->Object.get());

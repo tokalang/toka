@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import core/types::{usize, Addr, ADDR0}
-import core/traits::{@Copy, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
+import core/traits::{@Copy, @Dup, @Encap, @Iterable, @Iterator, @IntoIterable, @BorrowIterator}
 import sys/libc::*
 import core/option::{Option}
 
@@ -38,9 +38,10 @@ pub shape Vec<'T> (
 impl<'T: @Send> Vec<'T> @Send {}
 impl<'T: @Sync> Vec<'T> @Sync {}
 
-// This is an ordinary library operation. Copy eligibility is provided by the
-// compiler's structural proof, not by the method name.
-impl<'T: @Copy> Vec<'T> {
+// `clone` remains as a compatibility spelling, but duplication is provided by
+// the explicit @Dup capability. Copy types receive the intrinsic Dup witness;
+// resource types must provide their own source-preserving duplication recipe.
+impl<'T: @Dup> Vec<'T> {
     pub fn clone(self) -> Vec<'T> {
         unsafe {
             if self.cap == 0 {
@@ -49,11 +50,17 @@ impl<'T: @Copy> Vec<'T> {
             auto *new_buf# = unsafe alloc [self.cap] 'T
             auto ctr# = Counter(val=0)
             loop ctr.val < self.len {
-                new_buf[ctr.val] = self.buf[ctr.val]
+                new_buf[ctr.val] = self.buf[ctr.val].dup()
                 ctr#.inc()
             }
             return Vec<'T>(*buf=*new_buf, len=self.len, cap=self.cap)
         }
+    }
+}
+
+impl<'T: @Dup> Vec<'T>@Dup {
+    pub fn dup(self) -> Self {
+        return self.clone()
     }
 }
 
