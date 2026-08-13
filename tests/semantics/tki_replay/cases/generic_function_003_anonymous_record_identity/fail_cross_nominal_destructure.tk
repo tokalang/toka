@@ -1,0 +1,22 @@
+// EXPECT_ERROR: E04571
+
+import ./lib as remote
+
+shape Item(
+    local: i32,
+    marker: u8
+)
+
+fn pack<T>(value: T) -> (item: T, success: bool) {
+    return (item = value, success = true)
+}
+
+fn main() -> i32 {
+    auto (local = .item, ok = .success) = pack<Item>(
+        Item(local = 17, marker = 1:u8)
+    )
+    if !ok {
+        return 1
+    }
+    return remote::read_item(local):i32
+}

@@ -8,14 +8,14 @@ shape Data (
 impl Data @Send {}
 impl Data @Sync {}
 
-fn process<T: @{Send, Sync}>(val: ^T) {
+fn process<T: @{Send, Sync}>(^val: T) {
 }
 
-fn clone_item<T: @{Send, Copy}>(val: ^T) {
+fn clone_item<T: @{Send, Copy}>(^val: T) {
 }
 
 pub fn main() -> i32 {
     auto ^d = new Data(value = 42)
-    process<Data>(d)
+    process<Data>(^d)
     return 0
 }

@@ -1,0 +1,19 @@
+// SOURCE_BACKED_RUNTIME
+
+import ./lib::{alloc_plain, alloc_nested, alloc_named, alloc_nested_named}
+
+fn main() -> i32 {
+    if alloc_plain<i32>(11) != 11 {
+        return 1
+    }
+    if alloc_nested<char>(65:char) != 65:char {
+        return 2
+    }
+    if alloc_named<byte>(66:byte) != 66:byte {
+        return 3
+    }
+    if alloc_nested_named<i32>(19) != 19 {
+        return 4
+    }
+    return 0
+}

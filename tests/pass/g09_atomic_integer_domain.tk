@@ -1,0 +1,25 @@
+import core/intrinsics/atomic::{fetch_add, fetch_and, load, store, swap, Ordering}
+
+pub fn main() -> i32 {
+    auto signed_size# = 1:isize
+    assert(fetch_add(signed_size, 2:isize, Ordering::Relaxed) == 1:isize,
+           "isize fetch_add returned the wrong prior value")
+    assert(signed_size == 3:isize, "isize fetch_add did not update the target")
+
+    auto unsigned_size# = 7:usize
+    assert(fetch_and(unsigned_size, 3:usize, Ordering::Relaxed) == 7:usize,
+           "usize fetch_and returned the wrong prior value")
+    assert(unsigned_size == 3:usize,
+           "usize fetch_and did not update the target")
+
+    auto character# = 65:char
+    assert(swap(character, 66:char, Ordering::SeqCst) == 65:char,
+           "char swap returned the wrong prior value")
+    assert(character == 66:char, "char swap did not update the target")
+
+    auto octet# = 1:byte
+    store(octet, 9:byte, Ordering::Release)
+    assert(load(octet, Ordering::Acquire) == 9:byte,
+           "byte store/load did not preserve the value")
+    return 0
+}

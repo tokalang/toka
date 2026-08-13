@@ -657,7 +657,7 @@ static std::string normalizePath(const std::string &path) {
 int main(int argc, char **argv) {
   toka::DiagnosticEngine::reset();
   std::vector<std::string> searchPaths;
-  std::vector<std::string> trustedSystemRoots = {"lib", "../lib"};
+  std::vector<std::string> trustedSystemRoots;
   auto splitEnvPaths = [&](const char* envName, std::vector<std::string> &out) {
     if (const char* env_p = std::getenv(envName)) {
       std::string envStr(env_p);
@@ -710,6 +710,7 @@ int main(int argc, char **argv) {
         binDir.parent_path() / "lib" / "toka",
         binDir.parent_path() / "lib",
         binDir / "lib",
+        binDir.parent_path().parent_path() / "lib",
     };
     for (const auto &candidate : bundledLibs) {
       if (std::filesystem::exists(candidate / "core" / "prelude.tk")) {

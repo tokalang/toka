@@ -556,6 +556,7 @@ private:
   std::map<std::string, ModuleScope> ModuleMap; // FullPath -> Scope
   std::map<std::string, ModuleScope *> ModulePathAliases;
   std::map<const ASTNode *, ModuleScope *> DeclarationLexicalScopes;
+  std::set<const FunctionDecl *> TrustedAtomicWrapperDeclarations;
   struct DeclaredShapeIdentityRecord {
     const Module *Owner = nullptr;
     const ShapeDecl *Decl = nullptr;
@@ -644,6 +645,8 @@ private:
   // Anonymous Records
   int AnonRecordCounter = 0;
   std::vector<std::unique_ptr<ShapeDecl>> SyntheticShapes;
+  std::map<std::string, std::shared_ptr<toka::Type>>
+      ParenthesizedRecordTypeCache;
   std::map<std::string, std::shared_ptr<toka::Type>> ParenthesizedRecordTypes;
 
   // Path Narrowing
@@ -771,6 +774,10 @@ private:
   std::shared_ptr<toka::Type>
   checkIndexExpr(ArrayIndexExpr *Idx);                       // New Object API
   std::shared_ptr<toka::Type> checkCallExpr(CallExpr *Call); // New Object API
+  void validateAtomicOrderingArguments(
+      const FunctionDecl *Fn,
+      const std::vector<std::unique_ptr<Expr>> &Arguments,
+      size_t omittedLeadingArguments = 0);
   void checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
                     AccessCapability SourceCapability,
                     const std::string &TargetPath = "",

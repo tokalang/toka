@@ -1,0 +1,10 @@
+import core/intrinsics/atomic::{fence, Ordering}
+
+fn dynamic_relaxed() -> Ordering {
+    return Ordering::Relaxed
+}
+
+pub fn main() -> i32 {
+    fence(dynamic_relaxed())
+    return 0
+}

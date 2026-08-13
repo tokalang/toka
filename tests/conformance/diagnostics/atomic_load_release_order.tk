@@ -1,0 +1,7 @@
+import core/intrinsics/atomic::{load, Ordering}
+
+fn main() -> i32 {
+    auto value# = 1:i32
+    load(value, Ordering::Release)
+    return 0
+}

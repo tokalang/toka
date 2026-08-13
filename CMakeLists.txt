@@ -56,6 +56,16 @@ configure_file(
     ${CMAKE_BINARY_DIR}/include/toka/Version.h
 )
 
+set(TOKA_GENERATED_MODULE_DIR "${CMAKE_BINARY_DIR}/generated")
+set(TOKA_GENERATED_RELEASE_VERSION_MODULE
+    "${TOKA_GENERATED_MODULE_DIR}/toka_build/release_version.tk")
+file(MAKE_DIRECTORY "${TOKA_GENERATED_MODULE_DIR}/toka_build")
+configure_file(
+    ${CMAKE_SOURCE_DIR}/tools/release_version.tk.in
+    ${TOKA_GENERATED_RELEASE_VERSION_MODULE}
+    @ONLY
+)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -334,23 +344,31 @@ set(TOKA_FORMATTER "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/tokafmt${CMAKE_EXECUTABLE_
 
 add_custom_command(
     OUTPUT "${TOKA_MANAGER}"
-    COMMAND $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
+    COMMAND ${CMAKE_COMMAND} -E env "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib"
+            $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
             --workspace-root "${CMAKE_SOURCE_DIR}" -I "${CMAKE_SOURCE_DIR}/lib"
+            -I "${TOKA_GENERATED_MODULE_DIR}"
             -I "${CMAKE_SOURCE_DIR}/tools/toka"
             "${CMAKE_SOURCE_DIR}/tools/toka/src/main.tk"
             "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_MANAGER}" -O3
-    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}" ${TOKA_TOOL_AND_LIBRARY_SOURCES}
+    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}"
+            "${TOKA_GENERATED_RELEASE_VERSION_MODULE}"
+            ${TOKA_TOOL_AND_LIBRARY_SOURCES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     VERBATIM
 )
 add_custom_command(
     OUTPUT "${TOKA_FORMATTER}"
-    COMMAND $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
+    COMMAND ${CMAKE_COMMAND} -E env "TOKA_LIB=${CMAKE_SOURCE_DIR}/lib"
+            $<TARGET_FILE:tokac> --workspace-node toka-tools-v1
             --workspace-root "${CMAKE_SOURCE_DIR}" -I "${CMAKE_SOURCE_DIR}/lib"
+            -I "${TOKA_GENERATED_MODULE_DIR}"
             -I "${CMAKE_SOURCE_DIR}/tools/tokafmt"
             "${CMAKE_SOURCE_DIR}/tools/tokafmt/src/main.tk"
             "${TOKA_RUNTIME_OBJECT}" -o "${TOKA_FORMATTER}" -O3
-    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}" ${TOKA_TOOL_AND_LIBRARY_SOURCES}
+    DEPENDS tokac "${TOKA_RUNTIME_OBJECT}"
+            "${TOKA_GENERATED_RELEASE_VERSION_MODULE}"
+            ${TOKA_TOOL_AND_LIBRARY_SOURCES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     VERBATIM
 )

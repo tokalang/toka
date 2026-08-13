@@ -22,6 +22,14 @@
 
 namespace toka {
 
+bool isPrimitiveValueConstructorName(const std::string &name) {
+  return name == "i8" || name == "u8" || name == "i16" || name == "u16" ||
+         name == "i32" || name == "u32" || name == "i64" || name == "u64" ||
+         name == "isize" || name == "usize" || name == "f32" ||
+         name == "f64" || name == "bool" || name == "char" ||
+         name == "byte";
+}
+
 bool Type::equals(const toka::Type &other) const {
   if (typeKind != other.typeKind)
     return false;

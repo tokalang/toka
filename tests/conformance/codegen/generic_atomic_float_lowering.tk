@@ -1,0 +1,8 @@
+import core/intrinsics/atomic::{fetch_add, fetch_sub, Ordering}
+
+pub fn main() -> i32 {
+    auto value# = 1.0:f32
+    fetch_add(value, 0.5:f32, Ordering::Relaxed)
+    fetch_sub(value, 0.25:f32, Ordering::Relaxed)
+    return 0
+}

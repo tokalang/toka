@@ -34,6 +34,26 @@ static bool isAnonymousRecord(const std::shared_ptr<toka::Type> &type) {
   return shapeT->Name.rfind("__Toka_Anon_Rec_", 0) == 0;
 }
 
+static void appendAnonymousRecordKeyPart(std::string &key,
+                                         const std::string &part) {
+  key += std::to_string(part.size());
+  key += ':';
+  key += part;
+  key += ';';
+}
+
+static std::string
+anonymousRecordSemanticKey(const std::vector<ShapeMember> &members) {
+  std::string key = "anonymous-record:" + std::to_string(members.size()) + ";";
+  for (const auto &member : members) {
+    appendAnonymousRecordKeyPart(key, member.Name);
+    appendAnonymousRecordKeyPart(
+        key, member.ResolvedType ? member.ResolvedType->canonicalIdentity()
+                                 : "null");
+  }
+  return key;
+}
+
 std::shared_ptr<toka::Type>
 Sema::lowerAliasTarget(const AliasInfo &alias) const {
   return alias.TargetSyntax ? toka::Type::fromSyntax(alias.TargetSyntax)
@@ -216,10 +236,44 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
     }
     if (!shape->Name.empty() && shape->Name.front() == '(' && shape->Name.back() == ')') {
       std::string nameStr = shape->Name;
-      if (ParenthesizedRecordTypes.count(nameStr)) {
-        auto cached = ParenthesizedRecordTypes[nameStr];
-        return cached->withAttributes(type->IsWritable, type->IsNullable, type->IsBlocked);
-      }
+      auto finishRecord = [&](std::vector<ShapeMember> members) {
+        const std::string semanticKey =
+            anonymousRecordSemanticKey(members);
+        std::shared_ptr<toka::Type> resolvedShapeType;
+        auto cached = ParenthesizedRecordTypeCache.find(semanticKey);
+        if (cached != ParenthesizedRecordTypeCache.end()) {
+          resolvedShapeType = cached->second;
+        } else {
+          std::string UniqueName =
+              "__Toka_Anon_Rec_" + std::to_string(AnonRecordCounter++);
+          auto SyntheticShape = std::make_unique<ShapeDecl>(
+              false, UniqueName, std::vector<GenericParam>{},
+              ShapeKind::Struct, std::move(members));
+          SyntheticShape->IsCompilerSynthesized = true;
+          ShapeMap[UniqueName] = SyntheticShape.get();
+          SyntheticShapes.push_back(std::move(SyntheticShape));
+
+          auto concreteShapeType = std::make_shared<ShapeType>(UniqueName);
+          concreteShapeType->resolve(ShapeMap[UniqueName]);
+          resolvedShapeType = concreteShapeType;
+          ParenthesizedRecordTypeCache.emplace(semanticKey,
+                                                resolvedShapeType);
+        }
+
+        // Raw source spelling is retained only as a CodeGen compatibility
+        // alias.  If one spelling denotes two semantic records, fail closed
+        // instead of allowing the most recent instantiation to win.
+        auto rawAlias = ParenthesizedRecordTypes.find(nameStr);
+        if (rawAlias == ParenthesizedRecordTypes.end()) {
+          ParenthesizedRecordTypes.emplace(nameStr, resolvedShapeType);
+        } else if (rawAlias->second &&
+                   rawAlias->second != resolvedShapeType) {
+          rawAlias->second.reset();
+        }
+
+        return resolvedShapeType->withAttributes(
+            type->IsWritable, type->IsNullable, type->IsBlocked);
+      };
 
       if (shape->SourceSyntax &&
           shape->SourceSyntax->NodeKind == TypeSyntax::Kind::AnonymousRecord) {
@@ -235,22 +289,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
                                             force);
           members.push_back(std::move(member));
         }
-
-        std::string UniqueName =
-            "__Toka_Anon_Rec_" + std::to_string(AnonRecordCounter++);
-        auto SyntheticShape = std::make_unique<ShapeDecl>(
-            false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct,
-            std::move(members));
-        SyntheticShape->IsCompilerSynthesized = true;
-        ShapeMap[UniqueName] = SyntheticShape.get();
-        SyntheticShapes.push_back(std::move(SyntheticShape));
-
-        auto resolvedShapeType = std::make_shared<ShapeType>(UniqueName);
-        resolvedShapeType->resolve(ShapeMap[UniqueName]);
-        ParenthesizedRecordTypes[nameStr] = resolvedShapeType;
-        return resolvedShapeType->withAttributes(type->IsWritable,
-                                                 type->IsNullable,
-                                                 type->IsBlocked);
+        return finishRecord(std::move(members));
       }
 
       std::string inner = nameStr.substr(1, nameStr.size() - 2);
@@ -319,18 +358,7 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
         }
       }
 
-      std::string UniqueName = "__Toka_Anon_Rec_" + std::to_string(AnonRecordCounter++);
-      auto SyntheticShape = std::make_unique<ShapeDecl>(
-          false, UniqueName, std::vector<GenericParam>{}, ShapeKind::Struct,
-          members);
-      SyntheticShape->IsCompilerSynthesized = true;
-      ShapeMap[UniqueName] = SyntheticShape.get();
-      SyntheticShapes.push_back(std::move(SyntheticShape));
-      
-      auto resolvedShapeType = std::make_shared<ShapeType>(UniqueName);
-      resolvedShapeType->resolve(ShapeMap[UniqueName]);
-      ParenthesizedRecordTypes[nameStr] = resolvedShapeType;
-      return resolvedShapeType->withAttributes(type->IsWritable, type->IsNullable, type->IsBlocked);
+      return finishRecord(std::move(members));
     }
 
     // [NEW] Local Scope Alias Lookup (for T -> i32)

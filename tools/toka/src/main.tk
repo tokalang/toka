@@ -6,6 +6,7 @@ import sys/libc::{libc_system, libc_printf, libc_getenv}
 import sys/os/base as sys
 import std/vec::{Vec}
 import std/process::{Command}
+import toka_build/release_version::{release_version}
 import src/pkg_manager::{cmd_fetch, cmd_fetch_quiet, cmd_update, cmd_remove, build_pkg_mappings, build_pkg_node_mappings, build_workspace_node, cmd_publish, cmd_search}
 
 
@@ -49,20 +50,7 @@ fn print_help() {
 }
 
 fn manager_release_version() -> string {
-    auto compiler# = Command::new(detect_tokac_path())
-    compiler#.arg(string::from("--version"))
-    auto result = compiler#.output()
-    if result.is_ok() {
-        auto output = result.unwrap()
-        if output.status.success() {
-            auto start = output.stdout.find_str("toka version ")
-            auto end = output.stdout.find_str(" (Built:")
-            if start != -1 && end > start + 13 {
-                return output.stdout.substring(start + 13, end)
-            }
-        }
-    }
-    return string::from("unavailable")
+    return release_version()
 }
 
 fn check_is_windows() -> bool {
@@ -234,17 +222,7 @@ fn detect_semantic_preview_path() -> string {
 }
 
 fn print_manager_version() {
-    auto compiler# = Command::new(detect_tokac_path())
-    compiler#.arg(string::from("--version"))
-    auto result = compiler#.output()
-    if result.is_ok() {
-        auto output = result.unwrap()
-        if output.status.success() {
-            println("toka manager {}", output.stdout)
-            return
-        }
-    }
-    println("toka manager version unavailable")
+    println("toka manager version {}", manager_release_version())
 }
 
 fn get_basename(path: string) -> string {

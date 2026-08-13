@@ -1,0 +1,40 @@
+// SOURCE_BACKED_RUNTIME
+
+import ./lib::{Item as RemoteItem, make_item}
+
+shape Item(
+    local: i32,
+    marker: u8
+)
+
+fn pack<T>(value: T, stamp: i32) -> (item: T, stamp: i32) {
+    return (item = value, stamp = stamp)
+}
+
+fn repack<T>(value: T, stamp: i32) -> (item: T, stamp: i32) {
+    return (item = value, stamp = stamp)
+}
+
+fn main() -> i32 {
+    auto (local_a = .item, stamp_a = .stamp) = pack<Item>(
+        Item(local = 11, marker = 1:u8), 101
+    )
+    if local_a.local != 11 || local_a.marker != 1:u8 || stamp_a != 101 {
+        return 1
+    }
+
+    auto (remote = .item, stamp_b = .stamp) = pack<RemoteItem>(
+        make_item(22:i64), 202
+    )
+    if remote.remote != 22:i64 || stamp_b != 202 {
+        return 2
+    }
+
+    auto (local_b = .item, stamp_c = .stamp) = repack<Item>(
+        Item(local = 33, marker = 3:u8), 303
+    )
+    if local_b.local != 33 || local_b.marker != 3:u8 || stamp_c != 303 {
+        return 3
+    }
+    return 0
+}

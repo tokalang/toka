@@ -1,0 +1,11 @@
+import core/intrinsics/atomic::{store, Ordering}
+
+fn dynamic_acquire() -> Ordering {
+    return Ordering::Acquire
+}
+
+pub fn main() -> i32 {
+    auto value# = 1:i32
+    store(value, 2, dynamic_acquire())
+    return 0
+}

@@ -1,0 +1,7 @@
+import core/intrinsics/atomic::{__toka_atomic_load, Ordering}
+
+fn main() -> i32 {
+    auto value# = 1:i32
+    __toka_atomic_load(value, Ordering::Release) // EXPECT: error[E0620]
+    return 0
+}

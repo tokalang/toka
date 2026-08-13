@@ -923,9 +923,9 @@ fn run_build_impl(
             compiler_args#.push(cede string::from("-I"))
             compiler_args#.push(cede string::from(".tokapkg"))
         }
-        auto env_pkg_args = libc_getenv(c"TOKA_PKG_ARGS") as Addr
-        if env_pkg_args != 0:Addr {
-            auto pkg_args = string::from_cstr(env_pkg_args as *char)
+        auto env_pkg_args = env::var(string::from("TOKA_PKG_ARGS"))
+        if env_pkg_args.is_some() {
+            auto pkg_args = env_pkg_args.unwrap()
             c_args#.push_str(pkg_args)
             c_args#.push_str(" ")
             auto pkg_arg_iter = pkg_args.split(' ' as i32)
@@ -936,9 +936,9 @@ fn run_build_impl(
                 }
             }
         }
-        auto env_pkg_map = libc_getenv(c"TOKA_PKG_MAP_V1") as Addr
-        if env_pkg_map != 0:Addr {
-            auto pkg_map = string::from_cstr(env_pkg_map as *char)
+        auto env_pkg_map = env::var(string::from("TOKA_PKG_MAP_V1"))
+        if env_pkg_map.is_some() {
+            auto pkg_map = env_pkg_map.unwrap()
             auto mapping_iter = pkg_map.split('\n' as i32)
             loop !mapping_iter.is_done() {
                 auto mapping = mapping_iter#.next()

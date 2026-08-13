@@ -2437,20 +2437,35 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
         }
       }
 
-      if (!vtableMethods.empty()) {
-        llvm::ArrayType *arrTy =
-            llvm::ArrayType::get(voidPtrTy, vtableMethods.size());
-        llvm::Constant *init = llvm::ConstantArray::get(arrTy, vtableMethods);
-        std::string vtableName =
-            "_VTable_" + ownerLinkName + "_" + decl->TraitName;
-        auto *vtableGV = new llvm::GlobalVariable(*m_Module, arrTy, true,
-                                 llvm::GlobalValue::ExternalLinkage, init,
-                                 vtableName);
-        vtableGV->setLinkage(llvm::GlobalValue::LinkOnceODRLinkage);
-        llvm::Triple triple(m_Module->getTargetTriple());
-        if (triple.supportsCOMDAT()) {
-          vtableGV->setComdat(m_Module->getOrInsertComdat(vtableName));
+      llvm::ArrayType *arrTy =
+          llvm::ArrayType::get(voidPtrTy, vtableMethods.size());
+      llvm::Constant *init = llvm::ConstantArray::get(arrTy, vtableMethods);
+      std::string vtableName =
+          "_VTable_" + ownerLinkName + "_" + decl->TraitName;
+      llvm::GlobalVariable *vtableGV =
+          m_Module->getGlobalVariable(vtableName);
+      if (vtableGV && vtableGV->isDeclaration()) {
+        if (vtableGV->getValueType() == arrTy) {
+          vtableGV->setInitializer(init);
+          vtableGV->setConstant(true);
+        } else {
+          auto *replacement = new llvm::GlobalVariable(
+              *m_Module, arrTy, true, llvm::GlobalValue::ExternalLinkage, init,
+              vtableName + ".definition");
+          vtableGV->replaceAllUsesWith(replacement);
+          vtableGV->eraseFromParent();
+          replacement->setName(vtableName);
+          vtableGV = replacement;
         }
+      } else if (!vtableGV) {
+        vtableGV = new llvm::GlobalVariable(
+            *m_Module, arrTy, true, llvm::GlobalValue::ExternalLinkage, init,
+            vtableName);
+      }
+      vtableGV->setLinkage(llvm::GlobalValue::LinkOnceODRLinkage);
+      llvm::Triple triple(m_Module->getTargetTriple());
+      if (triple.supportsCOMDAT()) {
+        vtableGV->setComdat(m_Module->getOrInsertComdat(vtableName));
       }
     }
   }

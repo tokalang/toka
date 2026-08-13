@@ -1,0 +1,24 @@
+import std/vec::{Vec}
+
+trait @DynLength {
+    pub fn dyn_length(self) -> usize
+}
+
+impl<'T> Vec<'T>@DynLength {
+    pub fn dyn_length(self) -> usize {
+        return self.len()
+    }
+}
+
+fn length_of(value: dyn @DynLength) -> usize {
+    return value.dyn_length()
+}
+
+pub fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    values#.push(1)
+    if length_of(values) != 1:usize {
+        return 1
+    }
+    return 0
+}

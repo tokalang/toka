@@ -24,14 +24,34 @@ else
     CLANG=$(which clang)
 fi
 
+OPENSSL_LIBS=""
+if command -v pkg-config >/dev/null 2>&1; then
+    OPENSSL_LIBS="$(pkg-config --libs openssl 2>/dev/null || true)"
+fi
+if [ -z "$OPENSSL_LIBS" ] && [ -n "${OPENSSL_ROOT_DIR:-}" ]; then
+    OPENSSL_LIBS="-L$OPENSSL_ROOT_DIR/lib -lssl -lcrypto"
+fi
+if [ -z "$OPENSSL_LIBS" ]; then
+    for openssl_prefix in \
+        "$(brew --prefix openssl@3 2>/dev/null || true)" \
+        "/opt/homebrew/opt/openssl@3" \
+        "/usr/local/opt/openssl@3" \
+        "/usr/local/opt/openssl"; do
+        if [ -n "$openssl_prefix" ] && [ -f "$openssl_prefix/include/openssl/ssl.h" ]; then
+            OPENSSL_LIBS="-L$openssl_prefix/lib -lssl -lcrypto"
+            break
+        fi
+    done
+fi
+
 echo "--- Compiling Toka Build Tool ---"
-$TOKAC -I tools/toka tools/toka/src/main.tk > build/toka.ll
+$TOKAC -I build/generated -I tools/toka tools/toka/src/main.tk > build/toka.ll
 
 echo "Generating toka native binary via $CLANG..."
 if [ "$(uname)" == "Darwin" ]; then
-    $CLANG build/toka.ll lib/sys/toka_rt.o -lm -isysroot $(xcrun --show-sdk-path) -o build/toka
+    $CLANG build/toka.ll lib/sys/toka_rt.o -lm -isysroot $(xcrun --show-sdk-path) $OPENSSL_LIBS -o build/toka
 else
-    $CLANG build/toka.ll lib/sys/toka_rt.o -lm -o build/toka
+    $CLANG build/toka.ll lib/sys/toka_rt.o -lm $OPENSSL_LIBS -o build/toka
 fi
 
 echo "--- Testing 'toka new test_project' ---"

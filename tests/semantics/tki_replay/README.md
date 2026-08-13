@@ -26,6 +26,10 @@ each fixed-string fragment to appear in the generated interface. Use these for
 semantic markers whose downstream effect does not yet have a discriminating
 consumer test.
 
+A provider marked `EXPECT_TKI_ROUNDTRIP` is also re-emitted twice from its
+source-less interface. Both generated interfaces must remain byte-identical to
+the original `.tki`.
+
 ABI replay cases may additionally use `EXPECT_PROVIDER_IR: text` in `lib.tk`
 and `EXPECT_REPLAY_IR: text` in a consumer. The runner checks those fixed-string
 fragments in the provider IR and in consumer IR generated from the source-less

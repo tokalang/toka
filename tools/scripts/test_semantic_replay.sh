@@ -5,8 +5,17 @@ set -euo pipefail
 
 TOKAC="${TOKAC:-./build/bin/tokac}"
 CASE_ROOT="${CASE_ROOT:-tests/semantics/tki_replay/cases}"
-WORK_ROOT="${WORK_ROOT:-/tmp/toka_semantic_replay}"
 EVIDENCE_COMPARE="${EVIDENCE_COMPARE:-tools/scripts/compare_semantic_evidence.py}"
+
+work_root_is_temporary=0
+if [ -z "${WORK_ROOT:-}" ]; then
+    WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/toka_semantic_replay.XXXXXX")"
+    work_root_is_temporary=1
+    cleanup_work_root() {
+        rm -rf "$WORK_ROOT"
+    }
+    trap cleanup_work_root EXIT
+fi
 
 if [[ "$TOKAC" = /* ]]; then
     TOKAC_ABS="$TOKAC"
@@ -24,7 +33,9 @@ if [ ! -x "$TOKAC_ABS" ]; then
     exit 1
 fi
 
-rm -rf "$WORK_ROOT"
+if [ "$work_root_is_temporary" -eq 0 ]; then
+    rm -rf "$WORK_ROOT"
+fi
 mkdir -p "$WORK_ROOT"
 
 passed=0
@@ -107,6 +118,41 @@ run_case() {
             return
         fi
     done < <(extract_expected_tki "$lib_src")
+
+    if grep -q "EXPECT_TKI_ROUNDTRIP" "$lib_src"; then
+        local roundtrip_obj="$work_dir/lib.roundtrip.o"
+        local roundtrip_tki="$work_dir/lib.roundtrip.tki"
+        local second_roundtrip_obj="$work_dir/lib.roundtrip.second.o"
+        local second_roundtrip_tki="$work_dir/lib.roundtrip.second.tki"
+        if ! "$TOKAC_ABS" -c --emit-interface "$lib_tki" \
+            -o "$roundtrip_obj" > "$work_dir/lib.roundtrip.out" \
+            2> "$work_dir/lib.roundtrip.err"; then
+            echo "FAIL $case_name: first interface round-trip failed"
+            sed 's/^/  | /' "$work_dir/lib.roundtrip.err"
+            failed=$((failed + 1))
+            return
+        fi
+        if ! cmp -s "$lib_tki" "$roundtrip_tki"; then
+            echo "FAIL $case_name: first interface round-trip changed lib.tki"
+            diff -u "$lib_tki" "$roundtrip_tki" | sed 's/^/  | /' || true
+            failed=$((failed + 1))
+            return
+        fi
+        if ! "$TOKAC_ABS" -c --emit-interface "$roundtrip_tki" \
+            -o "$second_roundtrip_obj" > "$work_dir/lib.roundtrip.second.out" \
+            2> "$work_dir/lib.roundtrip.second.err"; then
+            echo "FAIL $case_name: second interface round-trip failed"
+            sed 's/^/  | /' "$work_dir/lib.roundtrip.second.err"
+            failed=$((failed + 1))
+            return
+        fi
+        if ! cmp -s "$lib_tki" "$second_roundtrip_tki"; then
+            echo "FAIL $case_name: second interface round-trip changed lib.tki"
+            diff -u "$lib_tki" "$second_roundtrip_tki" | sed 's/^/  | /' || true
+            failed=$((failed + 1))
+            return
+        fi
+    fi
 
     local held_tki="$work_dir/lib.tki.replay-held"
     mv "$lib_tki" "$held_tki"

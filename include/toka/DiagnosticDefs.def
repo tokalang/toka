@@ -151,6 +151,8 @@ DIAG(ERR_ASSOC_TYPE_IN_INHERENT_IMPL, Error,   "E0614", "Associated type '{}' ca
 DIAG(ERR_ASSOC_TYPE_PROJECTION_NOT_FOUND, Error,   "E0615", "Associated type projection '{}' is not bound")
 DIAG(ERR_ASSOC_TYPE_NAME_CONFLICTS_WITH_GENERIC, Error,   "E0616", "Associated type '{}' conflicts with a generic parameter of trait '@{}'")
 DIAG(ERR_DYN_TRAIT_NOT_OBJECT_SAFE, Error,   "E0617", "Trait '@{}' cannot be used as 'dyn @{}': {}")
+DIAG(ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN, Error,   "E0619", "Atomic intrinsic '{}' does not support type '{}'; expected {} (bool uses i1 and must be represented by a byte-sized integer, as std/atomic::AtomicBool does)")
+DIAG(ERR_ATOMIC_ORDERING_INVALID, Error,   "E0620", "Atomic operation '{}' rejects ordering '{}': {}")
 
 // --- Parser Errors ---
 DIAG(ERR_EXPECTED_SEMI,           Error,   "E0101", "Expected ';' or newline after statement")
@@ -474,7 +476,7 @@ DIAG(ERR_INIT_STATE_PREDICATE, Error, "E04620", "'{} is uninit' is only valid as
 DIAG(ERR_INIT_PARAMETER_INVALID, Error, "E04621", "'init {}' parameter must be a plain immutable parameter of a synchronous ordinary function")
 DIAG(ERR_INIT_ARGUMENT_REQUIRED, Error, "E04622", "Parameter '{}' requires an explicit 'init' place argument")
 DIAG(ERR_INIT_ARGUMENT_INVALID, Error, "E04623", "'init' argument for '{}' must be a definite uninitialized immutable local place")
-DIAG(ERR_INIT_PARAMETER_UNFULFILLED, Error, "E04624", "Function '{}' can return before initializing parameter '{}'" )
+DIAG(ERR_INIT_PARAMETER_UNFULFILLED, Error, "E04624", "Function '{}' can return before initializing parameter '{}'")
 DIAG(ERR_INIT_ARGUMENT_UNEXPECTED, Error, "E04625", "Argument {} is marked 'init' but parameter '{}' is not an init parameter")
 DIAG(ERR_INIT_BLOCK_SUSPEND, Error, "E04626", "Cannot suspend while 'init {}' still has an unresolved construction obligation")
 DIAG(ERR_OUTCOME_CONTRACT_INVALID, Error, "E04627", "Invalid outcomes contract for '{}': {}")

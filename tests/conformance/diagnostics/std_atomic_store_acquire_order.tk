@@ -1,0 +1,7 @@
+import std/atomic::{AtomicUsize, Ordering}
+
+fn main() -> i32 {
+    auto value = AtomicUsize::new(1)
+    value.store(2, Ordering::Acquire)
+    return 0
+}

@@ -2219,6 +2219,26 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
 
   bool isCeded = dynamic_cast<const CedeExpr*>(expr->Target.get()) != nullptr;
 
+  std::function<bool(const Expr *)> isTargetLValue =
+      [&](const Expr *target) -> bool {
+    if (!target)
+      return false;
+    if (dynamic_cast<const VariableExpr *>(target))
+      return true;
+    if (auto *member = dynamic_cast<const MemberExpr *>(target))
+      return isTargetLValue(member->Object.get());
+    if (auto *index = dynamic_cast<const ArrayIndexExpr *>(target))
+      return isTargetLValue(index->Array.get());
+    if (auto *unary = dynamic_cast<const UnaryExpr *>(target))
+      return unary->Op == TokenType::Star;
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(target))
+      return postfix->Op == TokenType::TokenWrite &&
+             isTargetLValue(postfix->LHS.get());
+    return false;
+  };
+  const bool ownsTargetTemporary =
+      expr->Target && !isTargetLValue(expr->Target.get());
+
   bool hasDirectReferencePattern = false;
   for (const auto &arm : expr->Arms) {
     if (arm->Pat && arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
@@ -2276,7 +2296,6 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   }
 
   // Use the physical address if it already exists, otherwise create a temporary staging block
-  bool isNewlyAllocated = false;
   if (targetAddr) {
       // Direct reference pattern uses the original lvalue address above.
   } else if (targetValEnt.isAddress) {
@@ -2284,13 +2303,13 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   } else {
       targetAddr = createEntryBlockAlloca(targetType, nullptr, "match_target_addr");
       m_Builder.CreateStore(targetVal, targetAddr);
-      isNewlyAllocated = true;
   }
 
   // [New] Temporary Lifetime Extension
   // If the target is an RValue temporary and needs its lifetime extended,
   // register it in the current scope so it survives until the end of the block.
-  if (expr->Target && expr->Target->ExtendLifetime && isNewlyAllocated && !m_ScopeStack.empty()) {
+  if (expr->Target && expr->Target->ExtendLifetime && ownsTargetTemporary &&
+      !m_ScopeStack.empty()) {
       bool hasDrop = false;
       std::string baseShapeName = shapeName;
       if (baseShapeName.find('<') != std::string::npos) {
@@ -2342,6 +2361,7 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
           vsi.IsShared = isShared;
           vsi.HasDrop = true;
           vsi.SoulName = shapeName; // Original full shape name
+          vsi.DropType = expr->Target->ResolvedType;
           m_ScopeStack.back().push_back(vsi);
       }
   }
@@ -3828,22 +3848,42 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
   m_ScopeStack.push_back({});
   size_t iteratorScopeDepth = m_ScopeStack.size() - 1;
   if (!isArray && iterAlloca) {
-    std::string iteratorType = fe->IteratorType;
+    std::shared_ptr<Type> iteratorDropType =
+        fe->ResolvedIterFn ? fe->ResolvedIterFn->ResolvedReturnType : nullptr;
+    std::string iteratorType;
+    std::string dropName;
+    bool iteratorShapeKnown = false;
+    if (iteratorDropType) {
+      auto soul = iteratorDropType->getSoulType();
+      if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul);
+          shape && shape->Decl) {
+        iteratorShapeKnown = true;
+        dropName = shape->Decl->MangledDestructorName;
+        iteratorType = !shape->Decl->CodegenName.empty()
+                           ? shape->Decl->CodegenName
+                           : shape->Decl->Name;
+      }
+    }
+    if (iteratorType.empty())
+      iteratorType = fe->IteratorType;
     if (iteratorType.empty() &&
         m_TypeToName.count(iterAlloca->getAllocatedType())) {
       iteratorType = m_TypeToName[iterAlloca->getAllocatedType()];
     }
-    std::string dropName = "Encap_" + iteratorType + "_drop";
+    if (dropName.empty() && !iteratorType.empty())
+      dropName = "Encap_" + iteratorType + "_drop";
     llvm::Function *dropFn = m_Module->getFunction(dropName);
+    iteratorShapeKnown = iteratorShapeKnown || m_Shapes.count(iteratorType);
     VariableScopeInfo iteratorInfo;
     iteratorInfo.Name = "__for_iterator";
     iteratorInfo.Alloca = iterAlloca;
     iteratorInfo.AllocType = iterAlloca->getAllocatedType();
     iteratorInfo.IsUniquePointer = false;
     iteratorInfo.IsShared = false;
-    iteratorInfo.HasDrop = dropFn != nullptr;
+    iteratorInfo.HasDrop = iteratorShapeKnown || dropFn != nullptr;
     iteratorInfo.DropFunc = dropFn ? dropName : "";
     iteratorInfo.SoulName = iteratorType;
+    iteratorInfo.DropType = iteratorDropType;
     m_ScopeStack.back().push_back(iteratorInfo);
   }
 
@@ -4635,11 +4675,7 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
   }
 
   // Primitives as constructors: i32(42)
-  if (call->Callee == "i32" || call->Callee == "u32" || call->Callee == "i64" ||
-      call->Callee == "u64" || call->Callee == "f32" || call->Callee == "f64" ||
-      call->Callee == "i16" || call->Callee == "u16" || call->Callee == "i8" ||
-      call->Callee == "u8" || call->Callee == "usize" ||
-      call->Callee == "isize" || call->Callee == "bool") {
+  if (isPrimitiveValueConstructorName(call->Callee)) {
     llvm::Type *targetTy = resolveType(call->Callee, false);
     if (call->Args.empty())
       return llvm::Constant::getNullValue(targetTy);
@@ -4867,6 +4903,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                   }
               } else {
                   std::string soulTy = Type::stripMorphology(argExpr->ResolvedType ? argExpr->ResolvedType->getSoulName() : "");
+                  std::string ownerTy = ownerLinkName(argExpr->ResolvedType);
+                  if (ownerTy.empty())
+                      ownerTy = soulTy;
 
               if (soulTy == "String" || soulTy == "string" || soulTy == "str") {
                   llvm::Value *finalArg = argVal;
@@ -4938,15 +4977,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                   }
               }
               else {
-                  std::string funcName = soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+                  std::string funcName = ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
                   llvm::Function *toStrFn = m_Module->getFunction(funcName);
                   if (!toStrFn) {
                       std::string traitPrefix = isFmt ? "ToFormat_" : "ToString_";
-                      toStrFn = m_Module->getFunction(traitPrefix + soulTy + (isFmt ? "_to_string_fmt" : "_to_string"));
+                      toStrFn = m_Module->getFunction(traitPrefix + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string"));
                   }
                   if (!toStrFn) {
                       for (auto const &[traitName, traitDecl] : m_Traits) {
-                          std::string traitFunc = traitName + "_" + soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+                          std::string traitFunc = traitName + "_" + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
                           toStrFn = m_Module->getFunction(traitFunc);
                           if (toStrFn) break;
                       }
@@ -5128,6 +5167,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
         if (argIndex < (int)call->Args.size()) {
             std::string soulTy = Type::stripMorphology(call->Args[argIndex]->ResolvedType ? call->Args[argIndex]->ResolvedType->getSoulName() : "");
+            std::string ownerTy = ownerLinkName(call->Args[argIndex]->ResolvedType);
+            if (ownerTy.empty())
+                ownerTy = soulTy;
             PhysEntity argEnt = genExpr(call->Args[argIndex].get());
             llvm::Value *argVal = argEnt.load(m_Builder);
 
@@ -5135,16 +5177,16 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
             if (isFmt) {
                 formatSpecifier = formatSpecifier.substr(1);
             }
-            std::string funcName = soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+            std::string funcName = ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
 
             llvm::Function *toStrFn = m_Module->getFunction(funcName);
             if (!toStrFn) {
                 std::string traitPrefix = isFmt ? "ToFormat_" : "ToString_";
-                toStrFn = m_Module->getFunction(traitPrefix + soulTy + (isFmt ? "_to_string_fmt" : "_to_string"));
+                toStrFn = m_Module->getFunction(traitPrefix + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string"));
             }
             if (!toStrFn) {
                 for (auto const &[traitName, traitDecl] : m_Traits) {
-                    std::string traitFunc = traitName + "_" + soulTy + (isFmt ? "_to_string_fmt" : "_to_string");
+                    std::string traitFunc = traitName + "_" + ownerTy + (isFmt ? "_to_string_fmt" : "_to_string");
                     toStrFn = m_Module->getFunction(traitFunc);
                     if (toStrFn) break;
                 }
@@ -5978,29 +6020,9 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         std::string concreteName = "";
         const Expr *argExpr = call->Args[i].get();
 
-        // [New] Annotated AST: Use ResolvedType
-        if (argExpr->ResolvedType) {
-          auto rt = argExpr->ResolvedType;
-          // Strip pointer/reference layers to get the core Shape/Value
-          // implementation (Traits are usually implemented on value types)
-          while (rt && (rt->isPointer() || rt->isReference() ||
-                        rt->isSmartPointer())) {
-            if (auto inner = rt->getPointeeType())
-              rt = inner;
-            else
-              break;
-          }
-          if (rt) {
-            concreteName = rt->toString();
-            // Strip suffixes (#, ?, !) from the resulting name to match
-            // VTable expectation
-            while (!concreteName.empty() &&
-                   (concreteName.back() == '#' || concreteName.back() == '?' ||
-                    concreteName.back() == '!')) {
-              concreteName.pop_back();
-            }
-          }
-        }
+        // The vtable is emitted against the semantic owner's stable linkage
+        // identity, not the source spelling of the concrete type.
+        concreteName = ownerLinkName(argExpr->ResolvedType);
 
         // Legacy Fallback / Refinement
         if (concreteName.empty() || concreteName == "void") {
@@ -6090,6 +6112,14 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
 
   // [NEW] Native LLVM Atomics Intercept
   std::string fname = call->Callee;
+  const FunctionDecl *sourceDecl =
+      funcDecl && funcDecl->TemplateOrigin ? funcDecl->TemplateOrigin
+                                           : funcDecl;
+  const bool isTrustedAtomicIntrinsic =
+      sourceDecl && sourceDecl->IsTrustedAtomicIntrinsic;
+  if (isTrustedAtomicIntrinsic) {
+    fname = sourceDecl->Name;
+  }
 
   if (!fname.empty()) {
     if (fname == "__toka_str_raw_ptr" || fname == "__toka_bytes_raw_ptr") {
@@ -6126,80 +6156,218 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
         m_Builder.CreateCall(destroyFn->getFunctionType(), destroyFn, argsV);
         return PhysEntity(llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0), "void", m_Builder.getVoidTy(), false);
     }
-    if (fname.find("__toka_atomic_") == 0) {
+    if (isTrustedAtomicIntrinsic) {
       fname = fname.substr(14); // strip prefix
+
+    auto invalidAtomicType = [&](llvm::Type *type,
+                                 const std::string &expected) -> PhysEntity {
+      std::string actual;
+      llvm::raw_string_ostream stream(actual);
+      if (type)
+        type->print(stream);
+      else
+        stream << "unknown";
+      stream.flush();
+      error(call, DiagID::ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN,
+            "__toka_atomic_" + fname, actual, expected);
+      return PhysEntity();
+    };
       
-    // Helper to extract Ordering from Argument Value
-    auto getOrder = [&](llvm::Value *v) -> std::pair<llvm::AtomicOrdering, bool> {
-      if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(v)) {
-        int tag = ci->getSExtValue();
-        switch (tag) {
-          case 0: return {llvm::AtomicOrdering::Monotonic, false}; // Relaxed
-          case 1: return {llvm::AtomicOrdering::Release, false};
-          case 2: return {llvm::AtomicOrdering::Acquire, false};
-          case 3: return {llvm::AtomicOrdering::AcquireRelease, false};
-          case 4: default: return {llvm::AtomicOrdering::SequentiallyConsistent, false};
+    using AtomicOrderCase =
+        std::pair<unsigned, llvm::AtomicOrdering>;
+    const std::vector<AtomicOrderCase> allAtomicOrders = {
+        {0, llvm::AtomicOrdering::Monotonic},
+        {1, llvm::AtomicOrdering::Release},
+        {2, llvm::AtomicOrdering::Acquire},
+        {3, llvm::AtomicOrdering::AcquireRelease},
+        {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+
+    // Ordering is a unit-enum aggregate whose first field is its i8 tag.  ABI
+    // lowering may pass that aggregate either by value or through an opaque
+    // pointer, so recover the tag from both representations.  An unexpected
+    // representation deliberately produces an invalid tag and reaches the
+    // same trap path as an invalid runtime enum value.
+    auto getOrderingTag = [&](size_t index) -> llvm::Value * {
+      if (index >= argsV.size())
+        return llvm::ConstantInt::get(m_Builder.getInt8Ty(), 0xff);
+      llvm::Value *value = argsV[index];
+      if (value->getType()->isIntegerTy())
+        return value;
+      if (value->getType()->isStructTy())
+        return m_Builder.CreateExtractValue(value, 0, "atomic.order.tag");
+      if (value->getType()->isPointerTy() && index < call->Args.size() &&
+          call->Args[index]->ResolvedType) {
+        llvm::Type *logicalType =
+            getLLVMType(call->Args[index]->ResolvedType->getSoulType());
+        if (auto *structType = llvm::dyn_cast_or_null<llvm::StructType>(
+                logicalType)) {
+          if (structType->getNumElements() > 0 &&
+              structType->getElementType(0)->isIntegerTy()) {
+            llvm::Value *tagAddress = m_Builder.CreateStructGEP(
+                structType, value, 0, "atomic.order.tag.addr");
+            return m_Builder.CreateLoad(structType->getElementType(0),
+                                        tagAddress, "atomic.order.tag");
+          }
         }
       }
-      // Dynamic fallback
-      return {llvm::AtomicOrdering::SequentiallyConsistent, true};
+      return llvm::ConstantInt::get(m_Builder.getInt8Ty(), 0xff);
+    };
+
+    auto dispatchAtomicOrder =
+        [&](llvm::Value *tag, const std::vector<AtomicOrderCase> &orders,
+            llvm::Type *resultType, const std::string &name,
+            const std::function<llvm::Value *(llvm::AtomicOrdering)> &emit)
+        -> llvm::Value * {
+      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+      llvm::BasicBlock *invalidBlock = llvm::BasicBlock::Create(
+          m_Context, name + ".invalid", function);
+      llvm::BasicBlock *mergeBlock = llvm::BasicBlock::Create(
+          m_Context, name + ".cont", function);
+      llvm::SwitchInst *orderSwitch = m_Builder.CreateSwitch(
+          tag, invalidBlock, static_cast<unsigned>(orders.size()));
+
+      std::vector<std::pair<llvm::Value *, llvm::BasicBlock *>> incoming;
+      incoming.reserve(orders.size());
+      for (const auto &[tagValue, ordering] : orders) {
+        llvm::BasicBlock *caseBlock = llvm::BasicBlock::Create(
+            m_Context, name + ".case", function);
+        orderSwitch->addCase(llvm::ConstantInt::get(
+                                 llvm::cast<llvm::IntegerType>(tag->getType()),
+                                 tagValue),
+                             caseBlock);
+        m_Builder.SetInsertPoint(caseBlock);
+        llvm::Value *result = emit(ordering);
+        llvm::BasicBlock *resultBlock = m_Builder.GetInsertBlock();
+        if (!resultBlock->getTerminator())
+          m_Builder.CreateBr(mergeBlock);
+        if (resultType)
+          incoming.push_back({result, resultBlock});
+      }
+
+      m_Builder.SetInsertPoint(invalidBlock);
+      llvm::Function *trap = llvm::Intrinsic::getOrInsertDeclaration(
+          m_Module.get(), llvm::Intrinsic::trap);
+      m_Builder.CreateCall(trap);
+      m_Builder.CreateUnreachable();
+
+      m_Builder.SetInsertPoint(mergeBlock);
+      if (!resultType)
+        return nullptr;
+      llvm::PHINode *result = m_Builder.CreatePHI(
+          resultType, static_cast<unsigned>(incoming.size()), name + ".value");
+      for (const auto &[value, block] : incoming)
+        result->addIncoming(value, block);
+      return result;
     };
 
     if (fname.find("fence") == 0) {
       if (fname == "fence_acquire") m_Builder.CreateFence(llvm::AtomicOrdering::Acquire);
       else if (fname == "fence_release") m_Builder.CreateFence(llvm::AtomicOrdering::Release);
-      else if (argsV.size() > 0) m_Builder.CreateFence(getOrder(argsV.back()).first);
-      else m_Builder.CreateFence(llvm::AtomicOrdering::SequentiallyConsistent);
+      else {
+        const std::vector<AtomicOrderCase> fenceOrders = {
+            {1, llvm::AtomicOrdering::Release},
+            {2, llvm::AtomicOrdering::Acquire},
+            {3, llvm::AtomicOrdering::AcquireRelease},
+            {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+        dispatchAtomicOrder(
+            getOrderingTag(0), fenceOrders, nullptr, "atomic.fence",
+            [&](llvm::AtomicOrdering order) -> llvm::Value * {
+              m_Builder.CreateFence(order);
+              return nullptr;
+            });
+      }
       return llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0);
     }
 
     if (fname.find("load") == 0) {
-      auto order = getOrder(argsV.back());
       llvm::Type *valTy = callee->getFunctionType()->getReturnType();
-      llvm::LoadInst *li = m_Builder.CreateLoad(valTy, argsV[0], "atomic_load");
-      li->setAtomic(order.first);
-      if (li->getOrdering() == llvm::AtomicOrdering::NotAtomic) li->setAtomic(llvm::AtomicOrdering::Monotonic);
+      if ((!valTy->isIntegerTy() || valTy->isIntegerTy(1)) &&
+          !valTy->isFloatingPointTy())
+        return invalidAtomicType(
+            valTy,
+            "a byte-sized integer or floating-point scalar");
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
-      li->setAlignment(llvm::Align(alignVal));
-      return li;
+      const std::vector<AtomicOrderCase> loadOrders = {
+          {0, llvm::AtomicOrdering::Monotonic},
+          {2, llvm::AtomicOrdering::Acquire},
+          {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+      return dispatchAtomicOrder(
+          getOrderingTag(1), loadOrders, valTy, "atomic.load",
+          [&](llvm::AtomicOrdering order) -> llvm::Value * {
+            llvm::LoadInst *load =
+                m_Builder.CreateLoad(valTy, argsV[0], "atomic_load");
+            load->setAtomic(order);
+            load->setAlignment(llvm::Align(alignVal));
+            return load;
+          });
     }
 
     if (fname.find("store") == 0) {
-      auto order = getOrder(argsV.back());
       llvm::Type *valTy = argsV[1]->getType();
-      llvm::StoreInst *si = m_Builder.CreateStore(argsV[1], argsV[0]);
-      llvm::AtomicOrdering o = order.second ? llvm::AtomicOrdering::SequentiallyConsistent : order.first;
-      if (o == llvm::AtomicOrdering::Acquire || o == llvm::AtomicOrdering::AcquireRelease) o = llvm::AtomicOrdering::Release; // Store cannot be Acquire or AcqRel
-      if (o == llvm::AtomicOrdering::NotAtomic) o = llvm::AtomicOrdering::Monotonic;
-      si->setAtomic(o);
+      if ((!valTy->isIntegerTy() || valTy->isIntegerTy(1)) &&
+          !valTy->isFloatingPointTy())
+        return invalidAtomicType(
+            valTy,
+            "a byte-sized integer or floating-point scalar");
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
-      si->setAlignment(llvm::Align(alignVal));
+      const std::vector<AtomicOrderCase> storeOrders = {
+          {0, llvm::AtomicOrdering::Monotonic},
+          {1, llvm::AtomicOrdering::Release},
+          {4, llvm::AtomicOrdering::SequentiallyConsistent}};
+      dispatchAtomicOrder(
+          getOrderingTag(2), storeOrders, nullptr, "atomic.store",
+          [&](llvm::AtomicOrdering order) -> llvm::Value * {
+            llvm::StoreInst *store =
+                m_Builder.CreateStore(argsV[1], argsV[0]);
+            store->setAtomic(order);
+            store->setAlignment(llvm::Align(alignVal));
+            return nullptr;
+          });
       return llvm::ConstantInt::get(m_Builder.getInt32Ty(), 0);
     }
 
     if (fname.find("compare_exchange") == 0) {
-      auto success = getOrder(argsV[3]).first;
-      auto fail = getOrder(argsV[4]).first;
-      if (fail == llvm::AtomicOrdering::Release || fail == llvm::AtomicOrdering::AcquireRelease) fail = llvm::AtomicOrdering::Acquire;
-      // LLVM CmpXchg Failure cannot be stronger than Success
-      if (success == llvm::AtomicOrdering::Monotonic && fail != llvm::AtomicOrdering::Monotonic) fail = llvm::AtomicOrdering::Monotonic;
-      if (success == llvm::AtomicOrdering::Release && fail != llvm::AtomicOrdering::Monotonic) fail = llvm::AtomicOrdering::Monotonic;
-      if (success == llvm::AtomicOrdering::Acquire && fail == llvm::AtomicOrdering::SequentiallyConsistent) fail = llvm::AtomicOrdering::Acquire;
-
       llvm::Type *valTy = argsV[1]->getType();
+      if (!valTy->isIntegerTy() || valTy->isIntegerTy(1))
+        return invalidAtomicType(
+            valTy,
+            "a byte-sized integer scalar");
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
       llvm::Align align(alignVal);
-      llvm::AtomicCmpXchgInst *cxi = m_Builder.CreateAtomicCmpXchg(argsV[0], argsV[1], argsV[2], llvm::MaybeAlign(align), success, fail);
-      return cxi; // Exact {T, i1} signature match!
+      llvm::Type *resultTy = llvm::StructType::get(
+          m_Context, {valTy, m_Builder.getInt1Ty()});
+      llvm::Value *successTag = getOrderingTag(3);
+      llvm::Value *failureTag = getOrderingTag(4);
+      return dispatchAtomicOrder(
+          successTag, allAtomicOrders, resultTy, "atomic.cmpxchg.success",
+          [&](llvm::AtomicOrdering success) -> llvm::Value * {
+            std::vector<AtomicOrderCase> failureOrders = {
+                {0, llvm::AtomicOrdering::Monotonic}};
+            if (success == llvm::AtomicOrdering::Acquire ||
+                success == llvm::AtomicOrdering::AcquireRelease ||
+                success == llvm::AtomicOrdering::SequentiallyConsistent)
+              failureOrders.push_back({2, llvm::AtomicOrdering::Acquire});
+            if (success == llvm::AtomicOrdering::SequentiallyConsistent)
+              failureOrders.push_back(
+                  {4, llvm::AtomicOrdering::SequentiallyConsistent});
+            return dispatchAtomicOrder(
+                failureTag, failureOrders, resultTy,
+                "atomic.cmpxchg.failure",
+                [&](llvm::AtomicOrdering failure) -> llvm::Value * {
+                  return m_Builder.CreateAtomicCmpXchg(
+                      argsV[0], argsV[1], argsV[2], llvm::MaybeAlign(align),
+                      success, failure);
+                });
+          });
     }
 
     llvm::AtomicRMWInst::BinOp rop = llvm::AtomicRMWInst::Add;
@@ -6213,17 +6381,41 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     else isRMW = false;
 
     if (isRMW) {
-      auto order = getOrder(argsV.back());
       llvm::Type *valTy = argsV[1]->getType();
+      const bool isFloatAddSub =
+          valTy->isFloatingPointTy() &&
+          (fname.find("fetch_add") == 0 || fname.find("fetch_sub") == 0);
+      const bool isIntegerRMW =
+          valTy->isIntegerTy() && !valTy->isIntegerTy(1);
+      const bool isFloatSwap =
+          valTy->isFloatingPointTy() && fname.find("swap") == 0;
+      if (!isIntegerRMW && !isFloatAddSub && !isFloatSwap) {
+        std::string expected =
+            fname.find("fetch_add") == 0 || fname.find("fetch_sub") == 0
+                ? "a byte-sized integer or floating-point scalar"
+                : (fname.find("swap") == 0
+                       ? "a byte-sized integer or floating-point scalar"
+                       : "a byte-sized integer scalar");
+        return invalidAtomicType(valTy, expected);
+      }
+      if (isFloatAddSub) {
+        rop = fname.find("fetch_add") == 0
+                  ? llvm::AtomicRMWInst::FAdd
+                  : llvm::AtomicRMWInst::FSub;
+      } else if (valTy->isFloatingPointTy() && fname.find("swap") == 0) {
+        rop = llvm::AtomicRMWInst::Xchg;
+      }
       unsigned bits = valTy->getPrimitiveSizeInBits();
       if (bits == 0 && valTy->isPointerTy()) bits = 64;
       unsigned alignVal = bits / 8;
       if (alignVal == 0) alignVal = 4;
       llvm::Align align(alignVal);
-      llvm::AtomicOrdering o = order.second ? llvm::AtomicOrdering::SequentiallyConsistent : order.first;
-      if (o == llvm::AtomicOrdering::NotAtomic) o = llvm::AtomicOrdering::Monotonic;
-      llvm::AtomicRMWInst *rmw = m_Builder.CreateAtomicRMW(rop, argsV[0], argsV[1], llvm::MaybeAlign(align), o);
-      return rmw;
+      return dispatchAtomicOrder(
+          getOrderingTag(2), allAtomicOrders, valTy, "atomic.rmw",
+          [&](llvm::AtomicOrdering order) -> llvm::Value * {
+            return m_Builder.CreateAtomicRMW(
+                rop, argsV[0], argsV[1], llvm::MaybeAlign(align), order);
+          });
     }
   }
   }

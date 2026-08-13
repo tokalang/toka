@@ -28,7 +28,8 @@ All test cases are registered in [`manifest.json`](manifest.json) using the foll
 {
   "id": "unique_test_identifier",
   "path": "relative/path/to/test.tk",
-  "type": "compile-pass | compile-fail | run | ir-verify",
+  "type": "compile-pass | compile-fail | run | run-fail | ir-verify",
+  "expected_ir_patterns": ["optional", "literal", "IR", "substrings"],
   "expected_exit_code": 0,
   "expected_diagnostic_code": "E####",
   "expected_span_line": 15,
@@ -39,9 +40,12 @@ All test cases are registered in [`manifest.json`](manifest.json) using the foll
 
 ### Test Modalities
 - `run`: Compiles with `tokac`, executes the output binary, asserts `expected_exit_code` (default: `0`), and cleans up temporary binaries.
+- `run-fail`: Compiles successfully, executes the output binary, and asserts fail-closed non-zero termination.
 - `compile-pass`: Compiles with `tokac`, asserts return code `0`.
 - `compile-fail`: Compiles with `tokac`, asserts non-zero return code, and verifies that `expected_diagnostic_code` (e.g. `E0443`) appears in compiler output.
 - `ir-verify`: Compiles to LLVM IR and checks for required IR attributes (e.g. `sret`).
+  `expected_ir_pattern` remains the single-pattern compatibility field;
+  `expected_ir_patterns` may add required literal substrings from the same IR.
 
 ---
 

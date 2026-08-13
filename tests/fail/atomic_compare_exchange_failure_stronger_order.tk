@@ -1,0 +1,8 @@
+import core/intrinsics/atomic::{compare_exchange, Ordering}
+
+fn main() -> i32 {
+    auto value# = 1:i32
+    compare_exchange(value, 1, 2, Ordering::AcqRel,
+                     Ordering::SeqCst) // EXPECT: error[E0620]
+    return 0
+}

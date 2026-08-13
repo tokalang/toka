@@ -4376,6 +4376,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
         }
 
+        // Method-call syntax omits the receiver from Met->Args.  Preserve the
+        // declaration's formal indices so trusted std/atomic methods share the
+        // same Ordering legality table as the core wrappers.
+        validateAtomicOrderingArguments(FD, Met->Args, 1);
+
         auto retType =
             FD && FD->ResolvedReturnType
                 ? FD->ResolvedReturnType

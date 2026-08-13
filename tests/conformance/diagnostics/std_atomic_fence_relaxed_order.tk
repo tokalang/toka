@@ -1,0 +1,6 @@
+import std/atomic::{fence, Ordering}
+
+fn main() -> i32 {
+    fence(Ordering::Relaxed)
+    return 0
+}

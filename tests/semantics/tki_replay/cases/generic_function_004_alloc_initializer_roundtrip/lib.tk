@@ -1,0 +1,46 @@
+// EXPECT_TKI_ROUNDTRIP
+// EXPECT_TKI: unsafe alloc T(value)
+// EXPECT_TKI: unsafe alloc T(T(value))
+// EXPECT_TKI: unsafe alloc Box<T>(value = value, marker = 7)
+// EXPECT_TKI: unsafe alloc Box<T>(Box<T>(value = value, marker = 9))
+
+pub shape Box<T>(
+    value: T,
+    marker: i32
+)
+
+pub fn alloc_plain<T>(value: T) -> T {
+    unsafe {
+        auto *ptr = unsafe alloc T(value)
+        auto result = ptr
+        free *ptr
+        return result
+    }
+}
+
+pub fn alloc_nested<T>(value: T) -> T {
+    unsafe {
+        auto *ptr = unsafe alloc T(T(value))
+        auto result = ptr
+        free *ptr
+        return result
+    }
+}
+
+pub fn alloc_named<T>(value: T) -> T {
+    unsafe {
+        auto *ptr = unsafe alloc Box<T>(value = value, marker = 7)
+        auto result = ptr.value
+        free *ptr
+        return result
+    }
+}
+
+pub fn alloc_nested_named<T>(value: T) -> T {
+    unsafe {
+        auto *ptr = unsafe alloc Box<T>(Box<T>(value = value, marker = 9))
+        auto result = ptr.value
+        free *ptr
+        return result
+    }
+}

@@ -428,12 +428,6 @@
       "message": "Call argument '{}' aliases '{}' with incompatible PAL access",
       "description": "A function call declares all parameter borrows simultaneously; overlapping arguments conflict when either side requires exclusive or invalidating access."
     },
-    "E04633": {
-      "id": "ERR_SEMANTIC_MANIFEST_VALIDATION",
-      "level": "Error",
-      "message": "Semantic manifest validation failed for '{}': {}",
-      "description": "An explicitly validated source-less interface has no matching canonical semantic manifest."
-    },
     "E0447": {
       "id": "ERR_NULL_ACCESS",
       "level": "Error",
@@ -697,6 +691,18 @@
       "level": "Error",
       "message": "Async method '{}' in trait '@{}' is outside the frozen Toka 1.0 surface",
       "description": "Async trait methods are outside the frozen Toka 1.0 surface"
+    },
+    "E0619": {
+      "id": "ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN",
+      "level": "Error",
+      "message": "Atomic intrinsic '{}' does not support type '{}'; expected {} (bool uses i1 and must be represented by a byte-sized integer, as std/atomic::AtomicBool does)",
+      "description": "Atomic intrinsic '{}' does not support type '{}'; expected {} (bool uses i1 and must be represented by a byte-sized integer, as std/atomic::AtomicBool does)"
+    },
+    "E0620": {
+      "id": "ERR_ATOMIC_ORDERING_INVALID",
+      "level": "Error",
+      "message": "Atomic operation '{}' rejects ordering '{}': {}",
+      "description": "Atomic operation '{}' rejects ordering '{}': {}"
     },
     "E0101": {
       "id": "ERR_EXPECTED_SEMI",
@@ -2669,6 +2675,90 @@
       "message": "'{} is uninit' is only valid as the direct condition for its owning 'init {}' block while construction is unresolved",
       "description": "The predicate observes a private Maybe construction fact. It is not a value comparison and cannot be used outside the lexical init proof boundary."
     },
+    "E04621": {
+      "id": "ERR_INIT_PARAMETER_INVALID",
+      "level": "Error",
+      "message": "'init {}' parameter must be a plain immutable parameter of a synchronous ordinary function",
+      "description": "Init parameters are limited to plain immutable parameters of synchronous ordinary functions."
+    },
+    "E04622": {
+      "id": "ERR_INIT_ARGUMENT_REQUIRED",
+      "level": "Error",
+      "message": "Parameter '{}' requires an explicit 'init' place argument",
+      "description": "A parameter declared init requires the caller to pass an explicit init place."
+    },
+    "E04623": {
+      "id": "ERR_INIT_ARGUMENT_INVALID",
+      "level": "Error",
+      "message": "'init' argument for '{}' must be a definite uninitialized immutable local place",
+      "description": "An init argument must name a definitely uninitialized immutable local place."
+    },
+    "E04624": {
+      "id": "ERR_INIT_PARAMETER_UNFULFILLED",
+      "level": "Error",
+      "message": "Function '{}' can return before initializing parameter '{}'",
+      "description": "Every normal return path must initialize an init parameter."
+    },
+    "E04625": {
+      "id": "ERR_INIT_ARGUMENT_UNEXPECTED",
+      "level": "Error",
+      "message": "Argument {} is marked 'init' but parameter '{}' is not an init parameter",
+      "description": "Only an init parameter accepts an argument marked init."
+    },
+    "E04626": {
+      "id": "ERR_INIT_BLOCK_SUSPEND",
+      "level": "Error",
+      "message": "Cannot suspend while 'init {}' still has an unresolved construction obligation",
+      "description": "An unresolved initialization obligation cannot cross a suspension point."
+    },
+    "E04627": {
+      "id": "ERR_OUTCOME_CONTRACT_INVALID",
+      "level": "Error",
+      "message": "Invalid outcomes contract for '{}': {}",
+      "description": "An outcomes contract must satisfy the declared outcome and parameter rules."
+    },
+    "E04628": {
+      "id": "ERR_OUTCOME_RETURN_STATE",
+      "level": "Error",
+      "message": "Return variant '{}' requires outcome parameter '{}' to be {}",
+      "description": "Each return variant must satisfy the declared state for its outcome parameter."
+    },
+    "E04629": {
+      "id": "ERR_OUTCOME_MATCH_REQUIRED",
+      "level": "Error",
+      "message": "Outcome call '{}' must be consumed immediately by a direct exhaustive match",
+      "description": "An outcome-producing call requires immediate consumption by a direct exhaustive match."
+    },
+    "E04630": {
+      "id": "ERR_OUTCOME_MATCH_ARM_INVALID",
+      "level": "Error",
+      "message": "Outcome match arm must name one direct declared result variant",
+      "description": "An outcome match arm must name exactly one direct declared result variant."
+    },
+    "E04631": {
+      "id": "ERR_OUTCOME_BODY_RECHECK_REQUIRED",
+      "level": "Error",
+      "message": "Outcome call '{}' requires a retained provider body for semantic rechecking",
+      "description": "Source-less outcome rechecking requires the provider body to remain available."
+    },
+    "E04632": {
+      "id": "ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED",
+      "level": "Error",
+      "message": "Cannot cede projection '{}' outside the supported local direct-field and fixed-array constant-index lifecycle model",
+      "description": "Partial cede supports only local direct fields and fixed-array constant-index lifecycle projections."
+    },
+    "E04633": {
+      "id": "ERR_SEMANTIC_MANIFEST_VALIDATION",
+      "level": "Error",
+      "message": "Semantic manifest validation failed for '{}': {}",
+      "description": "An explicitly validated source-less interface has no matching canonical semantic manifest."
+    },
+    "E04634": {
+      "id": "ERR_SEMANTIC_MANIFEST_ATTESTATION",
+      "level": "Error",
+      "message": "Semantic manifest attestation failed for '{}': {}",
+      "description": "Semantic manifest attestation must validate the object-bound manifest evidence."
+    },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
       "level": "Error",
@@ -2962,6 +3052,12 @@
       "level": "Error",
       "message": "Compile-time field iteration variables cannot be used contextually where runtime values are expected (must be folded statically).",
       "description": "Compile-time field iteration variables cannot be used contextually where runtime values are expected (must be folded statically)."
+    },
+    "E0759": {
+      "id": "ERR_CODEGEN_EXTERN_SIGNATURE_CONFLICT",
+      "level": "Error",
+      "message": "Conflicting extern declarations for '{}': existing LLVM type '{}', requested '{}'",
+      "description": "All declarations for one extern symbol must lower to the same LLVM function type."
     }
   }
 }

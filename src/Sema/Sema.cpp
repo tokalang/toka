@@ -226,6 +226,85 @@ static std::string functionCodegenName(const Module &M,
   return moduleScopedCodegenName(M, fn.Name);
 }
 
+static bool isTrustedAtomicModule(const Module &module) {
+  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
+         module.ShadowCoordinateOrigin == "toolchain" &&
+         module.ShadowLogicalModulePath == "core/intrinsics/atomic";
+}
+
+static bool isTrustedStdAtomicModule(const Module &module) {
+  return module.IsTrustedSystemModule && module.ShadowCoordinateKnown &&
+         module.ShadowCoordinateOrigin == "toolchain" &&
+         module.ShadowLogicalModulePath == "std/atomic";
+}
+
+static bool isAtomicIntrinsicDeclaration(const Module &module,
+                                         const FunctionDecl &function) {
+  static const std::set<std::string> Names = {
+      "__toka_atomic_load",       "__toka_atomic_store",
+      "__toka_atomic_fetch_add",  "__toka_atomic_fetch_sub",
+      "__toka_atomic_fetch_and",  "__toka_atomic_fetch_or",
+      "__toka_atomic_fetch_xor",  "__toka_atomic_swap",
+      "__toka_atomic_compare_exchange", "__toka_atomic_fence",
+      "__toka_atomic_fence_acquire", "__toka_atomic_fence_release"};
+  return isTrustedAtomicModule(module) && Names.count(function.Name) != 0;
+}
+
+static bool isAtomicWrapperDeclaration(const Module &module,
+                                       const FunctionDecl &function) {
+  static const std::set<std::string> Names = {
+      "load",      "store",     "fetch_add", "fetch_sub",
+      "fetch_and", "fetch_or",  "fetch_xor", "swap",
+      "compare_exchange", "fence", "fence_acquire", "fence_release"};
+  if (isTrustedAtomicModule(module))
+    return Names.count(function.Name) != 0;
+  return isTrustedStdAtomicModule(module) && function.Name == "fence";
+}
+
+static bool isStdAtomicMethodDeclaration(const Module &module,
+                                         const ImplDecl &impl,
+                                         const FunctionDecl &function) {
+  static const std::set<std::string> Owners = {
+      "AtomicI32", "AtomicUsize", "AtomicI64", "AtomicBool"};
+  static const std::set<std::string> Methods = {
+      "load", "store", "compare_exchange"};
+  return isTrustedStdAtomicModule(module) && impl.TraitName.empty() &&
+         Owners.count(Type::stripMorphology(impl.TypeName)) != 0 &&
+         Methods.count(function.Name) != 0;
+}
+
+static bool supportsAtomicIntrinsicType(
+    const std::string &functionName, const std::shared_ptr<Type> &type,
+    std::string &expectedDomain) {
+  const auto *primitive =
+      type ? dynamic_cast<const PrimitiveType *>(type.get()) : nullptr;
+  const bool isInteger = primitive && primitive->isInteger();
+  const bool isFloating = primitive && primitive->isFloatingPoint();
+
+  if (functionName == "__toka_atomic_fetch_add" ||
+      functionName == "__toka_atomic_fetch_sub") {
+    expectedDomain = "an integer or floating-point scalar";
+    return isInteger || isFloating;
+  }
+  if (functionName == "__toka_atomic_fetch_and" ||
+      functionName == "__toka_atomic_fetch_or" ||
+      functionName == "__toka_atomic_fetch_xor") {
+    expectedDomain = "an integer scalar";
+    return isInteger;
+  }
+  if (functionName == "__toka_atomic_compare_exchange") {
+    expectedDomain = "an integer scalar";
+    return isInteger;
+  }
+  if (functionName == "__toka_atomic_load" ||
+      functionName == "__toka_atomic_store" ||
+      functionName == "__toka_atomic_swap") {
+    expectedDomain = "an integer or floating-point scalar";
+    return isInteger || isFloating;
+  }
+  return true;
+}
+
 static std::string shapeCodegenName(const Module &M,
                                     const std::string &name) {
   std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
@@ -2824,6 +2903,10 @@ void Sema::declareGlobals(Module &M) {
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
+    Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
+                                   isAtomicIntrinsicDeclaration(M, *Fn);
+    if (isAtomicWrapperDeclaration(M, *Fn))
+      TrustedAtomicWrapperDeclarations.insert(Fn.get());
     Fn->CodegenName = functionCodegenName(M, *Fn);
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
@@ -3134,8 +3217,11 @@ void Sema::declareGlobals(Module &M) {
         : "module:" + ms.Name;
     Slice1ImplDefinitionIds[Impl.get()] =
         owner + ";impl-index:" + std::to_string(implIndex++);
-    for (auto &Method : Impl->Methods)
+    for (auto &Method : Impl->Methods) {
       DeclarationLexicalScopes[Method.get()] = &ms;
+      if (isStdAtomicMethodDeclaration(M, *Impl, *Method))
+        TrustedAtomicWrapperDeclarations.insert(Method.get());
+    }
     declareImpl(Impl.get());
   }
 }
@@ -3188,12 +3274,19 @@ void Sema::registerGlobals(Module &M) {
     DeclarationLexicalScopes[G.get()] = &ms;
   for (auto &Impl : M.Impls) {
     DeclarationLexicalScopes[Impl.get()] = &ms;
-    for (auto &Method : Impl->Methods)
+    for (auto &Method : Impl->Methods) {
       DeclarationLexicalScopes[Method.get()] = &ms;
+      if (isStdAtomicMethodDeclaration(M, *Impl, *Method))
+        TrustedAtomicWrapperDeclarations.insert(Method.get());
+    }
   }
 
   // Case A: Register local symbols in the ModuleScope
   for (auto &Fn : M.Functions) {
+    Fn->IsTrustedAtomicIntrinsic = Fn->IsTrustedAtomicIntrinsic ||
+                                   isAtomicIntrinsicDeclaration(M, *Fn);
+    if (isAtomicWrapperDeclaration(M, *Fn))
+      TrustedAtomicWrapperDeclarations.insert(Fn.get());
     Fn->CodegenName = functionCodegenName(M, *Fn);
     ms.Functions[Fn->Name] = Fn.get();
     auto &overloads = ms.FunctionOverloads[Fn->Name];
@@ -5564,6 +5657,19 @@ FunctionDecl *Sema::instantiateGenericFunction(
     DiagnosticEngine::report(getLoc(CallSite), DiagID::NOTE_GENERIC, Template->Name, Template->GenericParams.size(), Args.size());
     HasError = true;
     return nullptr;
+  }
+
+  if (Template->IsTrustedAtomicIntrinsic && !Args.empty()) {
+    auto valueType = resolveType(Args.front());
+    std::string expectedDomain;
+    if (!supportsAtomicIntrinsicType(Template->Name, valueType,
+                                     expectedDomain)) {
+      error(CallSite ? static_cast<ASTNode *>(CallSite)
+                     : static_cast<ASTNode *>(Template),
+            DiagID::ERR_ATOMIC_INTRINSIC_TYPE_DOMAIN, Template->Name,
+            valueType ? valueType->toString() : "unknown", expectedDomain);
+      return nullptr;
+    }
   }
 
   // [NEW] Check Trait Bounds

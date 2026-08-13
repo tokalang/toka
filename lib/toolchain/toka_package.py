@@ -7,8 +7,9 @@ import argparse
 from dataclasses import dataclass
 import hashlib
 import json
+import ntpath
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import shutil
 import subprocess
@@ -404,10 +405,15 @@ def _parse_dependency(alias: str, expression: str, base: Path) -> Dependency:
     if not (expression.startswith('"') and expression.endswith('"')):
         raise PackageError("dependency must be a string or Git(...): " + alias)
     value = _decode_string(expression)
+    path = Path(value)
+    if path.is_absolute():
+        return Dependency(alias, "path", str(path.resolve()), "-")
+    windows_path = PureWindowsPath(value)
+    if windows_path.is_absolute():
+        normalized = PureWindowsPath(ntpath.normpath(str(windows_path))).as_posix()
+        return Dependency(alias, "path", normalized, "-")
     if value.startswith(".") or value.startswith("/"):
-        path = Path(value)
-        if not path.is_absolute():
-            path = base / path
+        path = base / path
         return Dependency(alias, "path", str(path.resolve()), "-")
 
     if "/" in value and ":" in value:

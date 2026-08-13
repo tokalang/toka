@@ -1,0 +1,42 @@
+fn alloc_in_function<T>(value: T) -> T {
+    unsafe {
+        auto *ptr = unsafe alloc T(value)
+        auto result = ptr
+        free *ptr
+        return result
+    }
+}
+
+shape Allocator<T>()
+
+impl<T> Allocator<T> {
+    fn alloc_in_impl(self, value: T) -> T {
+        unsafe {
+            auto *ptr = unsafe alloc T(value)
+            auto result = ptr
+            free *ptr
+            return result
+        }
+    }
+}
+
+fn main() -> i32 {
+    if alloc_in_function<i32>(41) != 41 {
+        return 1
+    }
+
+    auto allocator = Allocator<u64>()
+    if allocator.alloc_in_impl(42) != 42 {
+        return 2
+    }
+
+    if alloc_in_function<char>(65:char) != 65:char {
+        return 3
+    }
+
+    auto byte_allocator = Allocator<byte>()
+    if byte_allocator.alloc_in_impl(66:byte) != 66:byte {
+        return 4
+    }
+    return 0
+}

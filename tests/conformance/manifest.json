@@ -2005,6 +2005,294 @@
       "description": "LLVM IR verification for aggregate SRET attribute emission (GAP-COMP-01)"
     },
     {
+      "id": "ir_generic_atomic_intrinsic_lowering_01",
+      "path": "codegen/generic_atomic_intrinsic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw add",
+      "expected_ir_pattern_count": 5,
+      "timeout_seconds": 10,
+      "description": "A trusted generic atomic hook retains its intrinsic identity and emits all runtime Ordering cases after instantiation"
+    },
+    {
+      "id": "ir_generic_atomic_float_add_lowering_01",
+      "path": "codegen/generic_atomic_float_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw fadd",
+      "expected_ir_pattern_count": 5,
+      "timeout_seconds": 10,
+      "description": "Floating-point atomic addition uses LLVM's floating atomic operation"
+    },
+    {
+      "id": "ir_generic_atomic_float_sub_lowering_01",
+      "path": "codegen/generic_atomic_float_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw fsub",
+      "expected_ir_pattern_count": 5,
+      "timeout_seconds": 10,
+      "description": "Floating-point atomic subtraction uses LLVM's floating atomic operation"
+    },
+    {
+      "id": "run_atomic_ordering_dynamic_matrix_01",
+      "path": "codegen/atomic_ordering_dynamic_lowering.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "One generic atomic instance preserves dynamic Relaxed and SeqCst calls and all nine legal compare-exchange ordering pairs"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_rmw_01",
+      "path": "codegen/atomic_ordering_dynamic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomicrmw add",
+      "expected_ir_pattern_count": 5,
+      "expected_ir_patterns": [
+        "atomicrmw add ptr %ptr.peel_soul, i32 %0 monotonic",
+        "atomicrmw add ptr %ptr.peel_soul, i32 %0 release",
+        "atomicrmw add ptr %ptr.peel_soul, i32 %0 acquire",
+        "atomicrmw add ptr %ptr.peel_soul, i32 %0 acq_rel",
+        "atomicrmw add ptr %ptr.peel_soul, i32 %0 seq_cst",
+        "call void @llvm.trap()"
+      ],
+      "timeout_seconds": 10,
+      "description": "Dynamic RMW Ordering emits one LLVM instruction for each of the five legal tags"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_load_01",
+      "path": "codegen/atomic_ordering_dynamic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "load atomic i32",
+      "expected_ir_pattern_count": 3,
+      "expected_ir_patterns": [
+        "load atomic i32, ptr %ptr.peel_soul monotonic",
+        "load atomic i32, ptr %ptr.peel_soul acquire",
+        "load atomic i32, ptr %ptr.peel_soul seq_cst",
+        "call void @llvm.trap()"
+      ],
+      "timeout_seconds": 10,
+      "description": "Dynamic load Ordering emits only Relaxed, Acquire, and SeqCst cases"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_store_01",
+      "path": "codegen/atomic_ordering_dynamic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "store atomic i32",
+      "expected_ir_pattern_count": 3,
+      "expected_ir_patterns": [
+        "store atomic i32 %0, ptr %ptr.peel_soul monotonic",
+        "store atomic i32 %0, ptr %ptr.peel_soul release",
+        "store atomic i32 %0, ptr %ptr.peel_soul seq_cst",
+        "call void @llvm.trap()"
+      ],
+      "timeout_seconds": 10,
+      "description": "Dynamic store Ordering emits only Relaxed, Release, and SeqCst cases"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_fence_01",
+      "path": "codegen/atomic_ordering_dynamic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "switch i8 %atomic.order.tag, label %atomic.fence.invalid",
+      "expected_ir_pattern_count": 1,
+      "expected_ir_patterns": [
+        "i8 1, label %atomic.fence.case",
+        "i8 2, label %atomic.fence.case",
+        "i8 3, label %atomic.fence.case",
+        "i8 4, label %atomic.fence.case",
+        "fence release",
+        "fence acquire",
+        "fence acq_rel",
+        "fence seq_cst",
+        "call void @llvm.trap()"
+      ],
+      "timeout_seconds": 10,
+      "description": "Dynamic fence Ordering emits Release, Acquire, AcqRel, and SeqCst cases"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_cmpxchg_01",
+      "path": "codegen/atomic_ordering_dynamic_lowering.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "cmpxchg ptr",
+      "expected_ir_pattern_count": 9,
+      "expected_ir_patterns": [
+        "monotonic monotonic",
+        "release monotonic",
+        "acquire monotonic",
+        "acquire acquire",
+        "acq_rel monotonic",
+        "acq_rel acquire",
+        "seq_cst monotonic",
+        "seq_cst acquire",
+        "seq_cst seq_cst",
+        "call void @llvm.trap()"
+      ],
+      "timeout_seconds": 10,
+      "description": "Dynamic compare-exchange emits exactly the nine legal success/failure ordering pairs"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_invalid_load_trap_01",
+      "path": "codegen/atomic_ordering_dynamic_invalid_load.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomic.load.invalid",
+      "timeout_seconds": 10,
+      "description": "A dynamic Release load reaches a trap-only invalid switch destination"
+    },
+    {
+      "id": "run_atomic_ordering_dynamic_invalid_load_trap_01",
+      "path": "codegen/atomic_ordering_dynamic_invalid_load.tk",
+      "type": "run-fail",
+      "timeout_seconds": 10,
+      "description": "A dynamic Release load terminates through the fail-closed trap path"
+    },
+    {
+      "id": "run_atomic_ordering_dynamic_invalid_store_trap_01",
+      "path": "codegen/atomic_ordering_dynamic_invalid_store.tk",
+      "type": "run-fail",
+      "timeout_seconds": 10,
+      "description": "A dynamic Acquire store terminates through the fail-closed trap path"
+    },
+    {
+      "id": "run_atomic_ordering_dynamic_invalid_fence_trap_01",
+      "path": "codegen/atomic_ordering_dynamic_invalid_fence.tk",
+      "type": "run-fail",
+      "timeout_seconds": 10,
+      "description": "A dynamic Relaxed fence terminates through the fail-closed trap path"
+    },
+    {
+      "id": "ir_atomic_ordering_dynamic_invalid_cmpxchg_trap_01",
+      "path": "codegen/atomic_ordering_dynamic_invalid_cmpxchg.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomic.cmpxchg.failure.invalid",
+      "timeout_seconds": 10,
+      "description": "A dynamic AcqRel/SeqCst compare-exchange reaches a trap-only invalid pair destination"
+    },
+    {
+      "id": "run_atomic_ordering_dynamic_invalid_cmpxchg_trap_01",
+      "path": "codegen/atomic_ordering_dynamic_invalid_cmpxchg.tk",
+      "type": "run-fail",
+      "timeout_seconds": 10,
+      "description": "A dynamic AcqRel/SeqCst compare-exchange terminates through the fail-closed trap path"
+    },
+    {
+      "id": "ir_std_atomic_ordering_dynamic_invalid_load_trap_01",
+      "path": "codegen/std_atomic_ordering_dynamic_invalid_load.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "atomic.load.invalid",
+      "timeout_seconds": 10,
+      "description": "std/atomic methods forward dynamic order values to the same fail-closed intrinsic switch"
+    },
+    {
+      "id": "run_std_atomic_ordering_dynamic_invalid_load_trap_01",
+      "path": "codegen/std_atomic_ordering_dynamic_invalid_load.tk",
+      "type": "run-fail",
+      "timeout_seconds": 10,
+      "description": "std/atomic AtomicI32.load forwards dynamic Release to fail-closed non-zero termination"
+    },
+    {
+      "id": "diag_atomic_load_release_order_01",
+      "path": "diagnostics/atomic_load_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Atomic load rejects a direct Release ordering literal"
+    },
+    {
+      "id": "diag_atomic_store_acquire_order_01",
+      "path": "diagnostics/atomic_store_acquire_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Atomic store rejects a direct Acquire ordering literal"
+    },
+    {
+      "id": "diag_atomic_fence_relaxed_order_01",
+      "path": "diagnostics/atomic_fence_relaxed_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 4,
+      "timeout_seconds": 10,
+      "description": "Atomic fence rejects a direct Relaxed ordering literal"
+    },
+    {
+      "id": "diag_atomic_compare_exchange_failure_release_order_01",
+      "path": "diagnostics/atomic_compare_exchange_failure_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Compare-exchange failure ordering rejects Release"
+    },
+    {
+      "id": "diag_atomic_compare_exchange_failure_stronger_order_01",
+      "path": "diagnostics/atomic_compare_exchange_failure_stronger_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Compare-exchange rejects SeqCst failure as stronger than AcqRel success"
+    },
+    {
+      "id": "diag_atomic_direct_hook_load_release_order_01",
+      "path": "diagnostics/atomic_direct_hook_load_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "The trusted direct atomic hook rejects the same invalid load literal as its public wrapper"
+    },
+    {
+      "id": "diag_std_atomic_load_release_order_01",
+      "path": "diagnostics/std_atomic_load_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic AtomicI32.load rejects a direct Release ordering literal"
+    },
+    {
+      "id": "diag_std_atomic_store_acquire_order_01",
+      "path": "diagnostics/std_atomic_store_acquire_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic AtomicUsize.store rejects a direct Acquire ordering literal"
+    },
+    {
+      "id": "diag_std_atomic_compare_exchange_failure_release_order_01",
+      "path": "diagnostics/std_atomic_compare_exchange_failure_release_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 5,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic AtomicBool.compare_exchange rejects Release failure ordering"
+    },
+    {
+      "id": "diag_std_atomic_fence_relaxed_order_01",
+      "path": "diagnostics/std_atomic_fence_relaxed_order.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0620",
+      "expected_span_line": 4,
+      "timeout_seconds": 10,
+      "description": "Trusted std/atomic fence rejects a direct Relaxed ordering literal"
+    },
+    {
+      "id": "compile_atomic_user_method_not_trusted_01",
+      "path": "diagnostics/atomic_user_method_not_trusted.tk",
+      "type": "compile-pass",
+      "timeout_seconds": 10,
+      "description": "User methods named load and store do not inherit trusted atomic Ordering diagnostics"
+    },
+    {
+      "id": "ir_generic_iterator_scope_drop_01",
+      "path": "codegen/generic_iterator_scope_drop.tk",
+      "type": "ir-verify",
+      "expected_ir_pattern": "call void @Encap_VecIterator_M_i32_drop(ptr %iter_state)",
+      "expected_ir_pattern_count": 1,
+      "timeout_seconds": 10,
+      "description": "A generic iterator scope calls the instantiated iterator destructor exactly once"
+    },
+    {
       "id": "ir_sret_native_extern_direct_return_01",
       "path": "codegen/sret_native_extern_call.tk",
       "type": "ir-verify",

@@ -1,0 +1,15 @@
+// EXPECT_TKI: pub shape Item(remote: i64)
+// EXPECT_TKI: pub fn make_item(value: i64) -> Item
+// EXPECT_TKI: pub fn read_item(value: Item) -> i64
+
+pub shape Item(
+    remote: i64
+)
+
+pub fn make_item(value: i64) -> Item {
+    return Item(remote = value)
+}
+
+pub fn read_item(value: Item) -> i64 {
+    return value.remote
+}

@@ -1,0 +1,15 @@
+import core/intrinsics/atomic::{compare_exchange, Ordering}
+
+fn dynamic_acqrel() -> Ordering {
+    return Ordering::AcqRel
+}
+
+fn dynamic_seqcst() -> Ordering {
+    return Ordering::SeqCst
+}
+
+pub fn main() -> i32 {
+    auto value# = 1:i32
+    compare_exchange(value, 1, 2, dynamic_acqrel(), dynamic_seqcst())
+    return 0
+}

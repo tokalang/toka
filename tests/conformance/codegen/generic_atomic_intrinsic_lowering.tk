@@ -1,0 +1,13 @@
+import core/intrinsics/atomic::{fetch_add, Ordering}
+
+pub fn add_one(ptr#: u64) -> u64 {
+    return fetch_add(ptr, 1, Ordering::Relaxed)
+}
+
+pub fn main() -> i32 {
+    auto value# = 0:u64
+    auto old = add_one(value)
+    assert(old == 0, "fetch_add returned the wrong prior value")
+    assert(value == 1, "fetch_add did not update the target")
+    return 0
+}

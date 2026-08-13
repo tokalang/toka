@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+
+trait @DynMarker {}
+
+impl<'T> Vec<'T>@DynMarker {}
+
+fn accept_marked(_value: dyn @DynMarker) -> i32 {
+    return 7
+}
+
+pub fn main() -> i32 {
+    auto values# = Vec<i32>::new()
+    if accept_marked(values) != 7 {
+        return 1
+    }
+    return 0
+}

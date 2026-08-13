@@ -6,7 +6,7 @@ shape Data(value: i32)
 impl Data@Send {}
 impl Data@Sync {}
 
-fn process<T>(val: ^T)
+fn process<T>(^val: T)
 where:
     T: @{Send, Sync}
 {
@@ -14,6 +14,6 @@ where:
 
 pub fn main() -> i32 {
     auto ^d = new Data(value = 42)
-    process<Data>(d)
+    process<Data>(^d)
     return 0
 }

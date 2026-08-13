@@ -23,7 +23,7 @@ impl Values {
 pub fn main() -> i32 {
     auto values = Values()
     for auto value in values {
-        if value == -1 {
+        if value == 2 {
             return 1
         }
     }

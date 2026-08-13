@@ -431,6 +431,26 @@ CodeGen::lowerTypeSyntax(const TypeSyntaxPtr &syntax,
   return Type::fromString(legacy);
 }
 
+std::string CodeGen::ownerLinkName(const std::shared_ptr<Type> &type) const {
+  if (!type)
+    return {};
+
+  auto soul = type->getSoulType();
+  if (!soul)
+    return {};
+
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul);
+      shape && shape->Decl) {
+    if (shape->Decl->OwnerLinkName.rfind("__toka_owner_", 0) == 0)
+      return shape->Decl->OwnerLinkName;
+    if (!shape->Decl->CodegenName.empty())
+      return shape->Decl->CodegenName;
+    return shape->Decl->Name;
+  }
+
+  return Type::stripMorphology(soul->getSoulName());
+}
+
 void CodeGen::resolveSignatures(const Module &ast) {
   m_AST = &ast;
 

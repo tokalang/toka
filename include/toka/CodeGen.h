@@ -261,6 +261,7 @@ private:
   llvm::Type *resolveType(const std::string &baseType, bool hasPointer);
   std::shared_ptr<Type> lowerTypeSyntax(const TypeSyntaxPtr &syntax,
                                         const std::string &legacy) const;
+  std::string ownerLinkName(const std::shared_ptr<Type> &type) const;
   llvm::Type *getLLVMType(std::shared_ptr<Type> type);
 
   // --- Member Access CodeGen Refactoring Helpers ---

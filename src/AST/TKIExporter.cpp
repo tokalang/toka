@@ -913,7 +913,27 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         m_OS << exportTypeSyntax(alloc->TypeSyntax, alloc->TypeName);
         if (alloc->Initializer) {
             m_OS << "(";
-            exportExpr(alloc->Initializer.get());
+            if (alloc->InitializerIsArgumentList) {
+              if (auto call = dynamic_cast<const CallExpr *>(alloc->Initializer.get())) {
+                for (size_t i = 0; i < call->Args.size(); ++i) {
+                    if (i > 0) m_OS << ", ";
+                    if (call->isInitArgument(i)) m_OS << "init ";
+                    exportExpr(call->Args[i].get());
+                }
+              } else if (auto init = dynamic_cast<const InitStructExpr *>(
+                             alloc->Initializer.get())) {
+                for (size_t i = 0; i < init->Members.size(); ++i) {
+                  if (i > 0) m_OS << ", ";
+                  if (init->Members[i].first != "..")
+                    m_OS << init->Members[i].first << " = ";
+                  exportExpr(init->Members[i].second.get());
+                }
+              } else {
+                exportExpr(alloc->Initializer.get());
+              }
+            } else {
+                exportExpr(alloc->Initializer.get());
+            }
             m_OS << ")";
         }
     } else if (auto init = dynamic_cast<const InitStructExpr *>(expr)) {
