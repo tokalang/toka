@@ -1,0 +1,25 @@
+import ./lib as remote
+import std/vec::{Vec}
+
+shape Item(
+    local: i32,
+    marker: u8
+)
+
+fn main() -> i32 {
+    auto local_items# = Vec<Item>::new()
+    local_items#.push(cede Item(local = 11, marker = 2))
+
+    auto remote_items# = remote::make_items()
+    if local_items.len() != 1:usize ||
+       local_items.get_ref(0:usize).local != 11 ||
+       local_items.get_ref(0:usize).marker != 2 {
+        return 1
+    }
+    if remote_items.len() != 1:usize ||
+       remote_items.get_ref(0:usize).remote != 73 ||
+       !remote_items.get_ref(0:usize).label.as_str().equals("remote") {
+        return 2
+    }
+    return 0
+}

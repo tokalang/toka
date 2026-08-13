@@ -464,23 +464,38 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
     std::string VariantName = CallName.substr(pos + 2);
 
+    auto staticType =
+        staticTypeVisible
+            ? resolveType(toka::Type::fromString(RawPrefix))
+            : nullptr;
+    auto staticShapeType = std::dynamic_pointer_cast<ShapeType>(
+        staticType ? staticType->getSoulType() : nullptr);
     ShapeDecl *staticShape =
-        staticTypeVisible ? findVisibleShapeDecl(ShapeName, getLoc(Call))
-                          : nullptr;
+        staticShapeType ? staticShapeType->Decl : nullptr;
+    if (!staticShape) {
+      staticShape = staticTypeVisible
+                        ? findVisibleShapeDecl(ShapeName, getLoc(Call))
+                        : nullptr;
+    }
     if (!staticShape && staticTypeVisible)
       staticShape = findVisibleShapeDecl(RawPrefix, getLoc(Call));
     if (staticShape) {
+      const std::string methodKey =
+          staticShape->CodegenName.empty() ? staticShape->Name
+                                           : staticShape->CodegenName;
       // Update CallName and Callee for subsequent lookup and CodeGen
-      CallName = ShapeName + "::" + VariantName;
+      CallName = methodKey + "::" + VariantName;
       Call->Callee = CallName;
 
       // Static Method
-      if (MethodMap.count(ShapeName) &&
-          MethodMap[ShapeName].count(VariantName)) {
+      if (MethodMap.count(methodKey) &&
+          MethodMap[methodKey].count(VariantName)) {
         FunctionDecl *MetAST = nullptr;
-        if (MethodDecls.count(ShapeName) && MethodDecls[ShapeName].count(VariantName)) {
-            MetAST = MethodDecls[ShapeName][VariantName];
+        if (MethodDecls.count(methodKey) &&
+            MethodDecls[methodKey].count(VariantName)) {
+            MetAST = MethodDecls[methodKey][VariantName];
         }
+        Call->ResolvedFn = MetAST;
 
         if (MetAST) {
             size_t expectedArgs = MetAST->Args.size();
@@ -496,12 +511,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
           std::shared_ptr<toka::Type> expectedTy = nullptr;
           if (MetAST && i < MetAST->Args.size()) {
-              std::string tyStr = MetAST->Args[i].Type;
-              if (MetAST->Args[i].IsRawPointer) tyStr = "*" + tyStr;
-              else if (MetAST->Args[i].IsUnique) tyStr = "^" + tyStr;
-              else if (MetAST->Args[i].IsShared) tyStr = "~" + tyStr;
-              else if (MetAST->Args[i].IsReference) tyStr = "&" + tyStr;
-              expectedTy = resolveType(toka::Type::fromString(tyStr), false);
+              expectedTy = MetAST->Args[i].ResolvedType;
+              if (!expectedTy) {
+                std::string tyStr = MetAST->Args[i].Type;
+                if (MetAST->Args[i].IsRawPointer) tyStr = "*" + tyStr;
+                else if (MetAST->Args[i].IsUnique) tyStr = "^" + tyStr;
+                else if (MetAST->Args[i].IsShared) tyStr = "~" + tyStr;
+                else if (MetAST->Args[i].IsReference) tyStr = "&" + tyStr;
+                expectedTy = resolveType(toka::Type::fromString(tyStr), false);
+              }
           }
           auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
           if (MetAST && i < MetAST->Args.size()) {
@@ -543,13 +561,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               HasError = true;
           }
         }
-        auto retObj = toka::Type::fromString(MethodMap[ShapeName][VariantName]);
-        auto resolvedRet = resolveType(retObj);
+        auto resolvedRet =
+            MetAST && MetAST->ResolvedReturnType
+                ? resolveType(MetAST->ResolvedReturnType)
+                : resolveType(toka::Type::fromString(
+                      MethodMap[methodKey][VariantName]));
         
         // [FIX] Check if Static Method is async and wrap in TaskHandle
         if (MetAST && MetAST->Effect == EffectKind::Async) {
-            std::string tName = "TaskHandle<" + resolvedRet->toString() + ">";
-            return toka::Type::fromString(tName);
+            return resolveType(std::make_shared<ShapeType>(
+                "TaskHandle",
+                std::vector<std::shared_ptr<toka::Type>>{resolvedRet}));
         }
         return resolvedRet;
       } else {
@@ -562,31 +584,38 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           if (GenericImplMap.count(implKey)) {
             // [FIX] Pass generic arguments to instantiateGenericImpl
             std::vector<std::shared_ptr<toka::Type>> genericArgs;
-            auto parsed = Type::fromString(RawPrefix);
-            if (auto *ST = dynamic_cast<ShapeType *>(parsed.get())) {
+            if (staticShape && !staticShape->InstantiationArgs.empty())
+              genericArgs = staticShape->InstantiationArgs;
+            else if (auto parsed = Type::fromString(RawPrefix);
+                     auto *ST = dynamic_cast<ShapeType *>(parsed.get()))
               genericArgs = ST->GenericArgs;
-            }
             for (auto *ImplTemplate : GenericImplMap[implKey]) {
-              instantiateGenericImpl(ImplTemplate, RawPrefix, genericArgs);
+              instantiateGenericImpl(ImplTemplate, ShapeName, genericArgs,
+                                     staticShape);
             }
             // Retry lookup
-            if (MethodMap.count(ShapeName) &&
-                MethodMap[ShapeName].count(VariantName)) {
+            if (MethodMap.count(methodKey) &&
+                MethodMap[methodKey].count(VariantName)) {
               FunctionDecl *MetAST = nullptr;
-              if (MethodDecls.count(ShapeName) && MethodDecls[ShapeName].count(VariantName)) {
-                  MetAST = MethodDecls[ShapeName][VariantName];
+              if (MethodDecls.count(methodKey) &&
+                  MethodDecls[methodKey].count(VariantName)) {
+                  MetAST = MethodDecls[methodKey][VariantName];
               }
+              Call->ResolvedFn = MetAST;
 
               for (size_t i = 0; i < Call->Args.size(); ++i) {
                 Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
                 std::shared_ptr<toka::Type> expectedTy = nullptr;
                 if (MetAST && i < MetAST->Args.size()) {
-                    std::string tyStr = MetAST->Args[i].Type;
-                    if (MetAST->Args[i].IsRawPointer) tyStr = "*" + tyStr;
-                    else if (MetAST->Args[i].IsUnique) tyStr = "^" + tyStr;
-                    else if (MetAST->Args[i].IsShared) tyStr = "~" + tyStr;
-                    else if (MetAST->Args[i].IsReference) tyStr = "&" + tyStr;
-                    expectedTy = resolveType(toka::Type::fromString(tyStr), false);
+                    expectedTy = MetAST->Args[i].ResolvedType;
+                    if (!expectedTy) {
+                      std::string tyStr = MetAST->Args[i].Type;
+                      if (MetAST->Args[i].IsRawPointer) tyStr = "*" + tyStr;
+                      else if (MetAST->Args[i].IsUnique) tyStr = "^" + tyStr;
+                      else if (MetAST->Args[i].IsShared) tyStr = "~" + tyStr;
+                      else if (MetAST->Args[i].IsReference) tyStr = "&" + tyStr;
+                      expectedTy = resolveType(toka::Type::fromString(tyStr), false);
+                    }
                 }
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
                 if (MetAST && i < MetAST->Args.size()) {
@@ -630,14 +659,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     HasError = true;
                 }
               }
-              auto retObj =
-                  toka::Type::fromString(MethodMap[ShapeName][VariantName]);
-              auto resolvedRet = resolveType(retObj);
+              auto resolvedRet =
+                  MetAST && MetAST->ResolvedReturnType
+                      ? resolveType(MetAST->ResolvedReturnType)
+                      : resolveType(toka::Type::fromString(
+                            MethodMap[methodKey][VariantName]));
               
               // [FIX] Check if Static Method is async and wrap in TaskHandle
               if (MetAST && MetAST->Effect == EffectKind::Async) {
-                  std::string tName = "TaskHandle<" + resolvedRet->toString() + ">";
-                  return toka::Type::fromString(tName);
+                  return resolveType(std::make_shared<ShapeType>(
+                      "TaskHandle",
+                      std::vector<std::shared_ptr<toka::Type>>{resolvedRet}));
               }
               return resolvedRet;
             }
@@ -676,8 +708,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
             // Set ResolvedShape for CodeGen
             Call->ResolvedShape = SD;
-
-            return toka::Type::fromString(ShapeName);
+            auto result = std::make_shared<toka::ShapeType>(ShapeName);
+            result->resolve(SD);
+            return result;
           }
         }
       }
@@ -691,6 +724,28 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   FunctionDecl *Fn = nullptr;
   ExternDecl *Ext = nullptr;
   ShapeDecl *Sh = nullptr; // Constructor
+
+  // A generic body retains its type-parameter spelling and resolves it
+  // through the exact alias installed by the instantiation scope.  Constructor
+  // calls such as `T(..)` must therefore consult that alias before treating
+  // the callee as an ordinary value/function name.
+  if (CurrentScope) {
+    SymbolInfo typeAlias;
+    if (CurrentScope->lookup(CallName, typeAlias) && typeAlias.IsTypeAlias &&
+        typeAlias.TypeObj) {
+      auto aliasType = resolveType(typeAlias.TypeObj);
+      if (auto aliasShape = std::dynamic_pointer_cast<ShapeType>(
+              aliasType ? aliasType->getSoulType() : nullptr)) {
+        if (aliasShape->Decl) {
+          Sh = aliasShape->Decl;
+          CallName = aliasShape->Decl->CodegenName.empty()
+                         ? aliasShape->Decl->Name
+                         : aliasShape->Decl->CodegenName;
+          Call->Callee = CallName;
+        }
+      }
+    }
+  }
 
   auto functionAcceptsCall = [&](FunctionDecl *Candidate) -> bool {
     if (!Candidate) {
@@ -964,7 +1019,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // share the same receiver-permission path.
     if (!Fn && !Ext && !Sh && sym.TypeObj) {
       if (auto sTy = std::dynamic_pointer_cast<ShapeType>(sym.TypeObj)) {
-        std::string shapeName = sTy->getSoulName();
+        std::string shapeName =
+            sTy->Decl ? (sTy->Decl->CodegenName.empty()
+                             ? sTy->Decl->Name
+                             : sTy->Decl->CodegenName)
+                      : sTy->getSoulName();
         bool hasCall = MethodDecls.count(shapeName) &&
                        MethodDecls[shapeName].count("call");
         bool isCallable = ImplMap.count(shapeName + "@Callable") != 0;
@@ -1293,7 +1352,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           // mangling
           TypeArgs.push_back(toka::Type::fromString(argStr));
         } else {
-          TypeArgs.push_back(toka::Type::fromString(resolveType(argStr)));
+          std::shared_ptr<toka::Type> explicitType;
+          if (i < Call->GenericArgSyntax.size() &&
+              Call->GenericArgSyntax[i].ArgumentKind ==
+                  TypeArgumentSyntax::Kind::Type &&
+              Call->GenericArgSyntax[i].Type) {
+            explicitType =
+                toka::Type::fromSyntax(Call->GenericArgSyntax[i].Type);
+          } else {
+            explicitType = toka::Type::fromString(argStr);
+          }
+          TypeArgs.push_back(resolveType(explicitType));
         }
       }
     } else {
@@ -1363,13 +1432,33 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
               auto argType = checkExpr(Call->Args[i].get());
               precheckedArgTypes[i] = argType;
-              const std::string argName =
-                  argType ? Type::stripMorphology(argType->toString()) : "";
-              const std::string prefix = outer + "_M_";
-              if (argType && !argType->isUnknown() &&
-                  argName.rfind(prefix, 0) == 0) {
-                auto candidate = toka::Type::fromString(
-                    resolveType(argName.substr(prefix.size())));
+              std::shared_ptr<toka::Type> candidate;
+              auto argShape = std::dynamic_pointer_cast<ShapeType>(
+                  argType ? argType->getSoulType() : nullptr);
+              if (argShape && argShape->Decl &&
+                  argShape->Decl->InstantiationTemplate &&
+                  (argShape->Decl->InstantiationTemplate->Name == outer ||
+                   argShape->Decl->InstantiationTemplate->CodegenName ==
+                       outer) &&
+                  argShape->Decl->InstantiationArgs.size() == 1) {
+                candidate = argShape->Decl->InstantiationArgs.front();
+              } else if (argShape && argShape->Name == outer &&
+                         argShape->GenericArgs.size() == 1) {
+                candidate = argShape->GenericArgs.front();
+              }
+
+              // Compatibility fallback for legacy primitive instances whose
+              // physical name remains reversibly encoded as Outer_M_T.
+              if (!candidate && argType && !argType->isUnknown()) {
+                const std::string argName =
+                    Type::stripMorphology(argType->toString());
+                const std::string prefix = outer + "_M_";
+                if (argName.rfind(prefix, 0) == 0) {
+                  candidate = resolveType(toka::Type::fromString(
+                      argName.substr(prefix.size())));
+                }
+              }
+              if (candidate) {
                 candidate = candidate->withAttributes(
                     false, candidate->IsNullable, candidate->IsBlocked);
                 if (Deduced.count(matchedGeneric)) {
@@ -1486,14 +1575,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   if (Fn) {
     Call->ResolvedFn = Fn;
     for (auto &arg : Fn->Args) {
-      // A resolved Shape carries declaration identity. Other parameter kinds
-      // are rebuilt from syntax plus binding permissions so generic pointer
-      // parameters retain their established handle ABI.
-      ParamTypes.push_back(arg.ResolvedType &&
-                                  arg.ResolvedType->typeKind == toka::Type::Shape
-                              ? arg.ResolvedType
-                              : resolveType(
-                                    Sema::synthesizePhysicalTypeObject(arg)));
+      ParamTypes.push_back(arg.ResolvedType
+                               ? resolveType(arg.ResolvedType)
+                               : resolveType(
+                                     Sema::synthesizePhysicalTypeObject(arg)));
     }
     ReturnType = Fn->ResolvedReturnType
                      ? Fn->ResolvedReturnType
@@ -1753,7 +1838,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
       Call->Args = std::move(resolvedArgs);
 
-      auto res = toka::Type::fromString(Sh->Name);
+      std::shared_ptr<toka::Type> res =
+          std::make_shared<toka::ShapeType>(Sh->Name);
+      std::dynamic_pointer_cast<toka::ShapeType>(res)->resolve(Sh);
 
       if (TypeAliasMap.count(OriginalName) &&
           TypeAliasMap[OriginalName].IsStrong) {
@@ -2589,8 +2676,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
   }
 
   if (isAsync) {
-    std::string tName = "TaskHandle<" + ReturnType->toString() + ">";
-    return toka::Type::fromString(tName);
+    return resolveType(std::make_shared<ShapeType>(
+        "TaskHandle",
+        std::vector<std::shared_ptr<toka::Type>>{ReturnType}));
   }
   return ReturnType;
 }

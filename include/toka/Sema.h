@@ -381,7 +381,8 @@ private:
 
   void instantiateGenericImpl(
       ImplDecl *Template, const std::string &ConcreteTypeName,
-      const std::vector<std::shared_ptr<toka::Type>> &GenericArgs);
+      const std::vector<std::shared_ptr<toka::Type>> &GenericArgs,
+      ShapeDecl *ConcreteOwner = nullptr);
   std::string genericImplKey(const std::string &typeName,
                              SourceLocation loc = {});
   static std::string genericImplKey(const ShapeDecl *shape);
@@ -708,6 +709,7 @@ private:
                                   SourceLocation loc);
   ShapeDecl *findVisibleShapeDecl(const std::string &shapeName,
                                   SourceLocation loc = {});
+  ShapeDecl *resolveImplOwner(ImplDecl *impl);
   PartialMovePlan admittedPartialMovePlan(const SymbolInfo &info);
   void initializeProjectionFacts(SymbolInfo &info);
   void syncLegacyProjectionLiveness(SymbolInfo &info);
@@ -810,7 +812,8 @@ private:
 
   bool checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 
                         const std::vector<std::string> &TraitBounds, 
-                        const std::string &ConcreteType, bool isSilent = false,
+                        const std::shared_ptr<toka::Type> &ConcreteType,
+                        bool isSilent = false,
                         SourceLocation BoundLoc = SourceLocation());
   std::vector<std::string> substituteTraitBounds(
       const std::vector<std::string> &Bounds,

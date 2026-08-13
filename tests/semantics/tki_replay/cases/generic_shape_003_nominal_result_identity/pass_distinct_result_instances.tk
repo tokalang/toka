@@ -1,0 +1,26 @@
+import ./lib as remote
+import core/result::{Result}
+import core/string::{string}
+
+shape Item(
+    local: i32,
+    marker: u8
+)
+
+fn main() -> i32 {
+    auto local_result = Result<Item, string>::Ok(
+        Item(local = 11, marker = 2)
+    )
+    auto local_item = local_result.unwrap()
+    if local_item.local != 11 || local_item.marker != 2 {
+        return 1
+    }
+
+    auto remote_result = remote::make_result()
+    auto remote_item = remote_result.unwrap()
+    if remote_item.remote != 73 ||
+       !remote_item.label.as_str().equals("remote") {
+        return 2
+    }
+    return 0
+}

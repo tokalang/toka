@@ -3680,6 +3680,23 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     m_IsConsumingEffect = true;
     auto innerType = checkExpr(awaitEx->Expression.get());
     m_IsConsumingEffect = oldConsuming;
+
+    auto taskShape = std::dynamic_pointer_cast<ShapeType>(
+        innerType ? innerType->getSoulType() : nullptr);
+    if (taskShape && taskShape->Decl &&
+        taskShape->Decl->InstantiationTemplate &&
+        taskShape->Decl->InstantiationTemplate->Name == "TaskHandle" &&
+        taskShape->Decl->InstantiationArgs.size() == 1) {
+      awaitEx->AwaitedType = taskShape->Decl->InstantiationArgs.front();
+      if (awaitEx->CatchesCancellation) {
+        awaitEx->ResolvedType = resolveType(std::make_shared<ShapeType>(
+            "Option", std::vector<std::shared_ptr<toka::Type>>{
+                          awaitEx->AwaitedType}));
+      } else {
+        awaitEx->ResolvedType = awaitEx->AwaitedType;
+      }
+      return awaitEx->ResolvedType;
+    }
     
     std::string tName = innerType->toString();
     if (tName.find("TaskHandle_M_") != std::string::npos) {
@@ -3710,6 +3727,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     m_IsConsumingEffect = true;
     auto innerType = checkExpr(waitEx->Expression.get());
     m_IsConsumingEffect = oldConsuming;
+
+    auto taskShape = std::dynamic_pointer_cast<ShapeType>(
+        innerType ? innerType->getSoulType() : nullptr);
+    if (taskShape && taskShape->Decl &&
+        taskShape->Decl->InstantiationTemplate &&
+        taskShape->Decl->InstantiationTemplate->Name == "TaskHandle" &&
+        taskShape->Decl->InstantiationArgs.size() == 1) {
+      waitEx->ResolvedType = taskShape->Decl->InstantiationArgs.front();
+      return waitEx->ResolvedType;
+    }
     
     std::string tName = innerType->toString();
     if (tName.find("TaskHandle_M_") != std::string::npos) {
@@ -3821,7 +3848,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           : checkExpr(Met->Object.get());
     m_AllowPermissionSuffix = oldAllow;
     
-    std::string ObjType = resolveType(ObjTypeObj->toString());
+    auto resolvedObjType = resolveType(ObjTypeObj);
+    std::string ObjType =
+        resolvedObjType ? resolvedObjType->toString() : "unknown";
 
     // Check for Dynamic Trait Object
     if (ObjType.size() >= 4 && ObjType.substr(0, 3) == "dyn") {
@@ -3868,24 +3897,39 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
-    std::string soulType = Type::stripMorphology(ObjType);
+    auto objectShape = std::dynamic_pointer_cast<ShapeType>(
+        resolvedObjType ? resolvedObjType->getSoulType() : nullptr);
+    std::string soulType =
+        objectShape && objectShape->Decl
+            ? (objectShape->Decl->CodegenName.empty()
+                   ? objectShape->Decl->Name
+                   : objectShape->Decl->CodegenName)
+            : Type::stripMorphology(ObjType);
     if (!(MethodMap.count(soulType) &&
           MethodMap[soulType].count(Met->Method))) {
       // [NEW] Lazy Impl Instantiation
       // [Fix] Use fully resolved/mangled name for lazy instantiation lookup
-      std::string resolveName = resolveType(ObjTypeObj->toString());
-      std::string ConcreteTypeName = Type::stripMorphology(resolveName);
-      std::string BaseName = ConcreteTypeName;
+      std::string ConcreteTypeName = soulType;
+      std::string BaseName =
+          objectShape && objectShape->Decl &&
+                  objectShape->Decl->InstantiationTemplate
+              ? objectShape->Decl->InstantiationTemplate->Name
+              : ConcreteTypeName;
       size_t lt = BaseName.find('<');
       if (lt != std::string::npos) {
         BaseName = BaseName.substr(0, lt);
-        const std::string implKey = genericImplKey(BaseName, getLoc(Met));
-        if (GenericImplMap.count(implKey)) {
+      }
+      const std::string implKey = genericImplKey(BaseName, getLoc(Met));
+      if (GenericImplMap.count(implKey)) {
           // [FIX] Pass generic arguments to instantiateGenericImpl
           std::vector<std::shared_ptr<toka::Type>> genericArgs;
-          auto soulType = ObjTypeObj->getSoulType();
-          if (auto *ST = dynamic_cast<ShapeType *>(soulType.get())) {
-            genericArgs = ST->GenericArgs;
+          if (objectShape) {
+            auto *ST = objectShape.get();
+            genericArgs =
+                ST->GenericArgs.empty() && ST->Decl &&
+                        ST->Decl->InstantiationTemplate
+                    ? ST->Decl->InstantiationArgs
+                    : ST->GenericArgs;
           } else {
             // Fallback: parse from string
             auto parsed = Type::fromString(ConcreteTypeName);
@@ -3894,9 +3938,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
           }
           for (auto *ImplTemplate : GenericImplMap[implKey]) {
-            instantiateGenericImpl(ImplTemplate, ConcreteTypeName, genericArgs);
+            instantiateGenericImpl(ImplTemplate, ConcreteTypeName, genericArgs,
+                                   objectShape ? objectShape->Decl : nullptr);
           }
-        }
       }
     }
 
@@ -4179,7 +4223,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 Met->Args[i] = foldGenericConstant(std::move(Met->Args[i]));
                 std::shared_ptr<toka::Type> expectedParamTy = nullptr;
                 if (i < expectedArgs) {
-                    expectedParamTy = toka::Type::fromString(Sema::synthesizePhysicalType(FD->Args[i + 1]));
+                    expectedParamTy = FD->Args[i + 1].ResolvedType
+                                          ? FD->Args[i + 1].ResolvedType
+                                          : resolveType(
+                                                Sema::synthesizePhysicalTypeObject(
+                                                    FD->Args[i + 1]));
                 }
                 
                 auto argTy = checkExpr(Met->Args[i].get(), expectedParamTy);
@@ -4282,7 +4330,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             }
         }
 
-        auto retType = toka::Type::fromString(MethodMap[soulType][Met->Method]);
+        auto retType =
+            FD && FD->ResolvedReturnType
+                ? FD->ResolvedReturnType
+                : toka::Type::fromString(MethodMap[soulType][Met->Method]);
 
         if (FD) {
             bool hasExplicitDeps = !FD->LifeDependencies.empty();
@@ -4428,8 +4479,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
 
         if (FD && FD->Effect == EffectKind::Async) {
-            std::string tName = "TaskHandle<" + retType->toString() + ">";
-            return toka::Type::fromString(tName);
+            return resolveType(std::make_shared<ShapeType>(
+                "TaskHandle",
+                std::vector<std::shared_ptr<toka::Type>>{retType}));
         }
         return retType;
       }

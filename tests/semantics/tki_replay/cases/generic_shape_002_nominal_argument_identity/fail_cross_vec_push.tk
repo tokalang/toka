@@ -1,0 +1,14 @@
+// EXPECT_ERROR: E04510
+
+import ./lib as remote
+
+shape Item(
+    local: i32,
+    marker: u8
+)
+
+fn main() -> i32 {
+    auto remote_items# = remote::make_items()
+    remote_items#.push(cede Item(local = 11, marker = 2))
+    return 0
+}

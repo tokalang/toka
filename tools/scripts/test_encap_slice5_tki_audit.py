@@ -84,9 +84,12 @@ def main() -> int:
                 "// @tki v2 dup_provider: NonZero = intrinsic-copy",
                 "// @tki v2 copy_recipe: Capsule = all(T:@Copy)",
                 "// @tki v2 dup_provider: Resource = user",
-                "// @tki v2 custom_drop: Tracked = Encap_Tracked_drop",
         ):
             assert expected in text, expected
+        tracked_drop = re.search(
+            r"// @tki v2 custom_drop: Tracked = "
+            r"(Encap___toka_owner_N[0-9a-f]+_drop)", text)
+        assert tracked_drop, text
         assert "structural_drop" not in text
 
         provider.rename(root / "lib.tk.source-hidden")
@@ -125,7 +128,9 @@ def main() -> int:
             "}\n", encoding="utf-8")
         compile_source(dup_consumer, root, expect_success=True, emit_llvm=True)
         dup_ir = dup_consumer.with_suffix(".ll").read_text(encoding="utf-8")
-        dup_calls = re.findall(r"\bcall\b[^\n]*@Dup_Resource_dup\(", dup_ir)
+        dup_calls = re.findall(
+            r"\bcall\b[^\n]*@Dup___toka_owner_N[0-9a-f]+_dup\(",
+            dup_ir)
         assert len(dup_calls) == 1, dup_ir
 
         generic_dup_consumer = root / "generic_dup_main.tk"
@@ -142,7 +147,8 @@ def main() -> int:
         generic_dup_ir = generic_dup_consumer.with_suffix(".ll").read_text(
             encoding="utf-8")
         generic_dup_calls = re.findall(
-            r"\bcall\b[^\n]*@Dup_Wrapper_M_Resource_dup\(",
+            r"\bcall\b[^\n]*@Dup___toka_owner_N[0-9a-f]+"
+            r"_M_[0-9]+_[0-9A-Za-z]+_dup\(",
             generic_dup_ir)
         assert len(generic_dup_calls) == 1, generic_dup_ir
 

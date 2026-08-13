@@ -187,6 +187,8 @@ private:
   // might be used elsewhere. But m_StructTypes, m_Shapes, etc. are absolutely
   // required.
   std::map<std::string, llvm::StructType *> m_StructTypes;
+  std::map<const ShapeDecl *, llvm::StructType *> m_StructTypesByDecl;
+  std::map<llvm::StructType *, const ShapeDecl *> m_StructDeclsByType;
   std::map<std::string, std::vector<std::string>> m_StructFieldNames;
   std::map<std::string, std::shared_ptr<Type>> m_TypeAliases;
   std::map<std::string, const ShapeDecl *> m_Shapes;

@@ -1614,11 +1614,17 @@ public:
   bool IsPub = false;
   std::string Name;
   std::string CodegenName;
+  // Stable physical owner identity for impl/drop linkage.  CodegenName keeps
+  // its legacy LLVM-layout role; OwnerLinkName must not depend on which other
+  // modules happen to be present in the current compilation graph.
+  std::string OwnerLinkName;
   std::optional<NominalShapeId> NominalId;
   // Compiler-derived declarations are implementation artifacts rather than
   // source-level nominal definitions.  This survives AST reuse so a later
   // semantic-analysis revision does not assign them a source identity.
   bool IsCompilerSynthesized = false;
+  ShapeDecl *InstantiationTemplate = nullptr;
+  std::vector<std::shared_ptr<toka::Type>> InstantiationArgs;
   // struct GenericParam moved to top-level
   std::vector<GenericParam> GenericParams; // [UPDATED] e.g. <T, N_: usize>
   ShapeKind Kind;
@@ -2213,6 +2219,10 @@ struct AssociatedTypeDecl {
   std::string Name;
   std::string Type;
   TypeSyntaxPtr TypeSyntax;
+  // Exact semantic RHS for materialized generic impls. Source spelling is
+  // retained for diagnostics/TKI, but cannot carry a cross-module nominal
+  // ShapeDecl through a T -> Item substitution.
+  std::shared_ptr<toka::Type> ResolvedType;
   bool IsPer = false;
   SourceLocation Loc;
 };
@@ -2226,6 +2236,13 @@ struct ImplHeaderSyntax {
 
 class ImplDecl : public ASTNode {
 public:
+  // Non-null only for a materialized generic impl.  Its method signatures
+  // have already been substituted with resolved semantic Types and must not
+  // be rebuilt from their lossy source spelling.
+  ImplDecl *TemplateOrigin = nullptr;
+  // Exact semantic owner of this impl after declaration resolution.  Short
+  // TypeName remains source/diagnostic spelling only.
+  ShapeDecl *ResolvedOwner = nullptr;
   std::string TypeName;
   ImplHeaderSyntax HeaderSyntax;
   std::string TraitName;

@@ -731,11 +731,28 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
           currBB = contBB;
         }
       } else if (it->HasDrop && it->Alloca) {
-        if (it->DropType && it->DropType->isArray()) {
-          if (it->DropMask)
+        if (it->DropType) {
+          if (it->DropMask && it->DropType->isArray()) {
             emitDropForTypeWithMask(it->Alloca, it->DropType, it->DropMask);
-          else
+          } else if (it->DropMask) {
+            auto shape = std::dynamic_pointer_cast<ShapeType>(
+                it->DropType->getSoulType());
+            if (shape && shape->Decl) {
+              const std::string &dropIdentity =
+                  shape->Decl->OwnerLinkName.empty()
+                      ? (shape->Decl->CodegenName.empty()
+                             ? shape->Decl->Name
+                             : shape->Decl->CodegenName)
+                      : shape->Decl->OwnerLinkName;
+              emitDropCascadeWithMask(it->Alloca, dropIdentity,
+                                      it->DropMask);
+            } else {
+              emitDropCascadeWithMask(it->Alloca, it->SoulName,
+                                      it->DropMask);
+            }
+          } else {
             emitDropForType(it->Alloca, it->DropType);
+          }
         } else {
           std::string cleanName = it->SoulName;
           if (it->DropMask)

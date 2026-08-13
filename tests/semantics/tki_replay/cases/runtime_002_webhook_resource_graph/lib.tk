@@ -1,0 +1,138 @@
+import core/option::{Option}
+import core/result::{Result}
+import core/string::{string}
+import core/traits::{@Encap}
+import std/vec::{Vec}
+
+pub shape FileBinding(
+    ordinal: i64,
+    source: string,
+    enabled: bool,
+    target: string,
+    tail: i32
+)
+
+impl FileBinding@Encap {
+    pub ordinal, source, enabled, target, tail
+    fn drop(self#) {}
+}
+
+pub shape TriggerRule(
+    Leaf(string) |
+    And(Vec<TriggerRule>)
+)
+
+impl TriggerRule@Encap {
+    fn drop(self#) {}
+}
+
+impl TriggerRule {
+    pub fn score(self) -> i32 {
+        match self {
+            auto TriggerRule::Leaf(&text) => return text.len() as i32
+            auto TriggerRule::And(&children) => {
+                auto total# = 100:i32
+                auto index# = 0:usize
+                loop index < children.len() {
+                    total += children.get_ref(index).score()
+                    index += 1:usize
+                }
+                return total
+            }
+        }
+    }
+}
+
+pub shape Hook(
+    prefix: i64,
+    name: string,
+    bindings: Vec<FileBinding>,
+    rule: TriggerRule,
+    suffix: i32
+)
+
+impl Hook@Encap {
+    pub prefix, name, bindings, rule, suffix
+    fn drop(self#) {}
+}
+
+impl Hook {
+    pub fn rule_score(self) -> i32 {
+        return self.rule.score()
+    }
+}
+
+fn binding(ordinal: i64, source: str, enabled: bool,
+           target: str, tail: i32) -> FileBinding {
+    return FileBinding(
+        ordinal = ordinal,
+        source = string::from(source),
+        enabled = enabled,
+        target = string::from(target),
+        tail = tail
+    )
+}
+
+fn nested_rule() -> TriggerRule {
+    auto nested# = Vec<TriggerRule>::new()
+    nested#.push(cede TriggerRule::Leaf(string::from("nested")))
+
+    auto outer# = Vec<TriggerRule>::new()
+    outer#.push(cede TriggerRule::Leaf(string::from("allow")))
+    outer#.push(cede TriggerRule::And(cede nested))
+    outer#.push(cede TriggerRule::Leaf(string::from("deny")))
+    return TriggerRule::And(cede outer)
+}
+
+fn hook(seed: i32, base: i64, name: str, first_source: str,
+        second_source: str, suffix_base: i32) -> Hook {
+    auto bindings# = Vec<FileBinding>::new()
+    bindings#.push(cede binding(
+        base + seed as i64,
+        first_source,
+        true,
+        "/srv/first",
+        suffix_base + seed
+    ))
+    bindings#.push(cede binding(
+        base + 100:i64 + seed as i64,
+        second_source,
+        false,
+        "/srv/second",
+        suffix_base + 100:i32 + seed
+    ))
+    return Hook(
+        prefix = base * 10:i64 + seed as i64,
+        name = string::from(name),
+        bindings = cede bindings,
+        rule = nested_rule(),
+        suffix = suffix_base + seed
+    )
+}
+
+pub fn make_hooks(seed: i32) -> Result<Vec<Hook>, string> {
+    if seed < 0:i32 {
+        return Result<Vec<Hook>, string>::Err(string::from("negative seed"))
+    }
+
+    auto hooks# = Vec<Hook>::new()
+    hooks#.push(cede hook(seed, 1000:i64, "alpha-hook", "/tmp/a", "/tmp/b", 10:i32))
+    hooks#.push(cede hook(seed, 2000:i64, "beta-hook", "/tmp/c", "/tmp/d", 20:i32))
+    return Result<Vec<Hook>, string>::Ok(cede hooks)
+}
+
+pub fn make_optional_hook(seed: i32) -> Option<Hook> {
+    if seed < 0:i32 { return Option<Hook>::None }
+    auto value# = hook(seed, 3000:i64, "optional-hook", "/tmp/e", "/tmp/f", 30:i32)
+    return Option<Hook>::Some(cede value)
+}
+
+pub fn roundtrip_hook(cede value: Hook) -> Option<Hook> {
+    auto owned# = cede value
+    return Option<Hook>::Some(cede owned)
+}
+
+pub fn roundtrip_hooks(cede values: Vec<Hook>) -> Result<Vec<Hook>, string> {
+    auto owned# = cede values
+    return Result<Vec<Hook>, string>::Ok(cede owned)
+}

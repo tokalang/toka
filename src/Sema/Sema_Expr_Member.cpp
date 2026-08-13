@@ -309,6 +309,19 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
         std::shared_ptr<toka::Type> fieldType;
         if (requestedMorphicIdentity && Field.ResolvedType) {
           fieldType = Field.ResolvedType;
+        } else if (Field.ResolvedType &&
+                   (Field.ResolvedType->isShape() ||
+                    Field.ResolvedType->isPointer() ||
+                    Field.ResolvedType->isArray() ||
+                    Field.ResolvedType->isSlice() ||
+                    Field.ResolvedType->isUninit() ||
+                    Field.ResolvedType->isFunction() ||
+                    Field.ResolvedType->isDynFn())) {
+          std::string fullType = Sema::synthesizePhysicalType(Field);
+          auto surfaceType = toka::Type::fromString(fullType);
+          fieldType = Field.ResolvedType->withAttributes(
+              surfaceType->IsWritable, surfaceType->IsNullable,
+              surfaceType->IsBlocked);
         } else {
           std::string fullType = Sema::synthesizePhysicalType(Field);
           fieldType = toka::Type::fromString(fullType);

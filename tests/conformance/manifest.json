@@ -1993,6 +1993,14 @@
       "description": "Borrowed iterator next_ref() lifetime and ref matching"
     },
     {
+      "id": "std_generic_impl_const_value_01",
+      "path": "std/generic_impl_const_value.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Const generic impl values remain compile-time symbols in return and repeated-array expressions"
+    },
+    {
       "id": "diag_aggregate_owned_field_requires_cede_01",
       "path": "diagnostics/aggregate_owned_field_requires_cede.tk",
       "type": "compile-fail",

@@ -19,7 +19,7 @@ fn main() -> i32 {
        local.tag() != 11 {
         return 1
     }
-    if imported.remote != 73 || imported.item != 9 {
+    if imported.remote != 73 || imported.item != 9 || imported.tag() != 73 {
         return 2
     }
     if remote::read_box(imported) != 73 {

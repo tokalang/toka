@@ -93,18 +93,27 @@ static TypeSyntaxPtr substituteTypeSyntax(
 // here.
 class GenericInstantiator {
   const std::map<std::string, std::shared_ptr<toka::Type>> &Replacements;
+  const std::map<std::string, std::shared_ptr<toka::Type>> &BodyReplacements;
   const std::set<std::string> &MorphicParams;
+  bool InBody = false;
+
+  const std::map<std::string, std::shared_ptr<toka::Type>> &active() const {
+    return InBody ? BodyReplacements : Replacements;
+  }
 
 public:
   GenericInstantiator(const std::map<std::string,
                                     std::shared_ptr<toka::Type>> &map,
+                      const std::map<std::string,
+                                     std::shared_ptr<toka::Type>> &bodyMap,
                       const std::set<std::string> &morphicParams)
-      : Replacements(map), MorphicParams(morphicParams) {}
+      : Replacements(map), BodyReplacements(bodyMap),
+        MorphicParams(morphicParams) {}
 
   std::string sub(const std::string &s) {
     if (s.empty())
       return "";
-    return substituteTextualName(s, Replacements);
+    return substituteTextualName(s, active());
   }
 
   void sub(TypeSyntaxPtr &syntax, std::string &spelling) {
@@ -112,7 +121,7 @@ public:
       spelling = sub(spelling);
       return;
     }
-    syntax = substituteTypeSyntax(syntax, Replacements);
+    syntax = substituteTypeSyntax(syntax, active());
     spelling = syntax->toCanonicalString();
   }
 
@@ -121,8 +130,9 @@ public:
       sub(argument.Type, spelling);
       return;
     }
-    auto it = Replacements.find(argument.ConstantText);
-    if (it != Replacements.end())
+    const auto &replacements = active();
+    auto it = replacements.find(argument.ConstantText);
+    if (it != replacements.end())
       argument.ConstantText = it->second ? it->second->toString() : "unknown";
     spelling = argument.toCanonicalString();
   }
@@ -130,7 +140,9 @@ public:
   void visitPattern(MatchArm::Pattern *Pat) {
     if (!Pat)
       return;
-    Pat->Name = sub(Pat->Name);
+    // Pattern names are variants or bindings, never type/const syntax. A
+    // const-generic replacement here would turn a binding such as `N_` into
+    // the identifier `4` rather than a literal expression.
     for (auto &Sub : Pat->SubPatterns) {
       visitPattern(Sub.get());
     }
@@ -145,11 +157,12 @@ public:
         Arg.Permission.MorphicExempt = true;
       }
       sub(Arg.TypeSyntax, Arg.Type);
-      // Reset ResolvedType to allow Sema to re-resolve it
       Arg.ResolvedType = nullptr;
     }
     if (Fn->Body) {
+      InBody = true;
       visitStmt(Fn->Body.get());
+      InBody = false;
     }
     // GenericParams of the function itself?
     // If impl<T> fn foo<U>(), T is substituted, U remains.
@@ -227,8 +240,10 @@ public:
       visitExpr(Addr->Expression.get());
     } else if (auto *Mem = dynamic_cast<MemberExpr *>(E)) {
       visitExpr(Mem->Object.get());
-    } else if (auto *VarE = dynamic_cast<VariableExpr *>(E)) {
-      VarE->Name = sub(VarE->Name);
+    } else if (dynamic_cast<VariableExpr *>(E)) {
+      // Keep value identifiers intact. Const parameters are exact compile-time
+      // symbols in the instance scope; spelling substitution would create a
+      // VariableExpr named "4" instead of a numeric literal.
     } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
       // Call->Callee could rely on T? e.g. T::new() -> i32::new()
       // T::new is parsed as "T::new" string in Callee.
@@ -275,6 +290,22 @@ public:
     } else if (auto *Rep = dynamic_cast<RepeatedArrayExpr *>(E)) {
       visitExpr(Rep->Value.get());
       visitExpr(Rep->Count.get());
+      if (auto *count = dynamic_cast<VariableExpr *>(Rep->Count.get())) {
+        auto replacement = active().find(count->Name);
+        if (replacement != active().end() && replacement->second) {
+          const std::string spelling = replacement->second->toString();
+          try {
+            size_t consumed = 0;
+            uint64_t value = std::stoull(spelling, &consumed);
+            if (consumed == spelling.size()) {
+              auto literal = std::make_unique<NumberExpr>(value);
+              literal->Loc = count->Loc;
+              Rep->Count = std::move(literal);
+            }
+          } catch (...) {
+          }
+        }
+      }
     } else if (auto *Match = dynamic_cast<MatchExpr *>(E)) {
       visitExpr(Match->Target.get());
       for (auto &Arm : Match->Arms) {
@@ -301,7 +332,8 @@ public:
 
 void Sema::instantiateGenericImpl(
     ImplDecl *Template, const std::string &ConcreteTypeName,
-    const std::vector<std::shared_ptr<toka::Type>> &GenericArgs) {
+    const std::vector<std::shared_ptr<toka::Type>> &GenericArgs,
+    ShapeDecl *ConcreteOwner) {
   // 1. Verify generic args count
   if (GenericArgs.size() != Template->GenericParams.size()) {
     return;
@@ -314,7 +346,7 @@ void Sema::instantiateGenericImpl(
           Template->GenericParams[i].TraitBounds, Template->GenericParams,
           GenericArgs);
       if (!checkTraitBounds(Template->Loc, Template->GenericParams[i].Name,
-                            bounds, GenericArgs[i]->toString(),
+                            bounds, GenericArgs[i],
                             true /* isSilent */)) {
         return; // SFINAE: Silently filter out this impl block
       }
@@ -351,9 +383,37 @@ void Sema::instantiateGenericImpl(
     if (!k.empty() && k[0] == '\'')
       Replacements[k.substr(1)] = GenericArgs[i];
   }
+  std::shared_ptr<toka::Type> concreteSelf;
+  if (ConcreteOwner) {
+    auto exactSelf = std::make_shared<toka::ShapeType>(ConcreteOwner->Name);
+    exactSelf->resolve(ConcreteOwner);
+    concreteSelf = exactSelf;
+  } else {
+    concreteSelf = resolveType(toka::Type::fromString(ConcreteTypeName));
+  }
+  if (concreteSelf)
+    Replacements["Self"] = concreteSelf;
+
+  // The instantiated body is checked with exact aliases for generic type
+  // parameters.  Keep those names in its source syntax so a bound nominal
+  // Type never passes through the lossy Type::toSyntax() representation.
+  // Self is already a concrete materialized shape and const parameters must
+  // still be substituted into array extents and other type-level constants.
+  std::map<std::string, std::shared_ptr<toka::Type>> BodyReplacements;
+  if (concreteSelf)
+    BodyReplacements["Self"] = concreteSelf;
+  for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
+    const auto &parameter = Template->GenericParams[i];
+    if (!parameter.IsConst)
+      continue;
+    BodyReplacements[parameter.Name] = GenericArgs[i];
+    if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+      BodyReplacements[parameter.Name.substr(1)] = GenericArgs[i];
+  }
 
   // 3. Clone and Substitute
-  GenericInstantiator Instantiator(Replacements, MorphicParams);
+  GenericInstantiator Instantiator(Replacements, BodyReplacements,
+                                   MorphicParams);
   SourceLocation instantiationLoc =
       CurrentFunction && CurrentFunction->Loc.isValid()
           ? CurrentFunction->Loc
@@ -378,6 +438,21 @@ void Sema::instantiateGenericImpl(
 
     // Apply Substitution
     Instantiator.visitFunction(ClonedFn.get());
+    auto semanticReturn =
+        Method->ReturnTypeSyntax
+            ? toka::Type::fromSyntax(Method->ReturnTypeSyntax)
+            : toka::Type::fromString(Method->ReturnType);
+    ClonedFn->ResolvedReturnType =
+        semanticReturn ? semanticReturn->substitute(Replacements) : nullptr;
+    for (size_t i = 0; i < Method->Args.size() &&
+                       i < ClonedFn->Args.size();
+         ++i) {
+      auto semanticArgument =
+          Sema::synthesizePhysicalTypeObject(Method->Args[i], false);
+      ClonedFn->Args[i].ResolvedType =
+          semanticArgument ? semanticArgument->substitute(Replacements)
+                           : nullptr;
+    }
     InstantiationLexicalScopes[ClonedFn.get()] = instantiationScope;
     auto definition = DeclarationLexicalScopes.find(Method.get());
     if (definition != DeclarationLexicalScopes.end())
@@ -393,7 +468,17 @@ void Sema::instantiateGenericImpl(
 
   std::vector<AssociatedTypeDecl> NewAssociatedTypes =
       Template->AssociatedTypes;
-  for (auto &Assoc : NewAssociatedTypes) {
+  for (size_t i = 0; i < NewAssociatedTypes.size(); ++i) {
+    auto &Assoc = NewAssociatedTypes[i];
+    const auto &TemplateAssoc = Template->AssociatedTypes[i];
+    auto semanticType =
+        TemplateAssoc.ResolvedType
+            ? TemplateAssoc.ResolvedType
+            : TemplateAssoc.TypeSyntax
+                  ? toka::Type::fromSyntax(TemplateAssoc.TypeSyntax)
+                  : toka::Type::fromString(TemplateAssoc.Type);
+    Assoc.ResolvedType =
+        semanticType ? semanticType->substitute(Replacements) : nullptr;
     Instantiator.visitAssociatedType(Assoc);
   }
 
@@ -407,6 +492,13 @@ void Sema::instantiateGenericImpl(
   // Copy encapsulation entries if any (generics might affect them?)
   NewImpl->EncapEntries = Template->EncapEntries;
   NewImpl->AssociatedTypes = std::move(NewAssociatedTypes);
+  NewImpl->TemplateOrigin = Template;
+  NewImpl->ResolvedOwner = ConcreteOwner;
+  if (!NewImpl->ResolvedOwner) {
+    if (auto concreteShape =
+            std::dynamic_pointer_cast<ShapeType>(concreteSelf))
+      NewImpl->ResolvedOwner = concreteShape->Decl;
+  }
   NewImpl->Loc = Template->Loc; // rough loc
 
   // 5. Register and Check
@@ -436,12 +528,54 @@ void Sema::instantiateGenericImpl(
   }
   registerSlice4Impl(RawPtr);
 
+  enterScope();
+  for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
+    const auto &parameter = Template->GenericParams[i];
+    const auto &argument = GenericArgs[i];
+    if (parameter.IsConst) {
+      SymbolInfo constInfo;
+      constInfo.TypeObj = toka::Type::fromString(
+          parameter.Type.empty() ? "usize" : parameter.Type);
+      uint64_t value = 0;
+      bool hasValue = false;
+      try {
+        const std::string spelling = argument ? argument->toString() : "";
+        size_t consumed = 0;
+        value = std::stoull(spelling, &consumed);
+        hasValue = consumed == spelling.size();
+      } catch (...) {
+      }
+      constInfo.HasConstValue = hasValue;
+      if (hasValue) {
+        constInfo.ConstValue = value;
+        constInfo.ConstValObj = ComptimeValue(value);
+      }
+      CurrentScope->define(parameter.Name, constInfo);
+      if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+        CurrentScope->define(parameter.Name.substr(1), constInfo);
+    } else {
+      SymbolInfo aliasInfo;
+      aliasInfo.TypeObj = argument;
+      aliasInfo.IsTypeAlias = true;
+      CurrentScope->define(parameter.Name, aliasInfo);
+      if (!parameter.Name.empty() && parameter.Name.front() == '\'')
+        CurrentScope->define(parameter.Name.substr(1), aliasInfo);
+    }
+  }
+  if (concreteSelf) {
+    SymbolInfo selfInfo;
+    selfInfo.TypeObj = concreteSelf;
+    selfInfo.IsTypeAlias = true;
+    CurrentScope->define("Self", selfInfo);
+  }
+
   // Now Register it!
   registerImpl(RawPtr);
 
   // Now Check it!
   // This will check method bodies
   checkImpl(RawPtr);
+  exitScope();
 
   // Done.
 }
@@ -466,15 +600,27 @@ std::vector<std::string> Sema::substituteTraitBounds(
 
 bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 
                             const std::vector<std::string> &TraitBounds, 
-                            const std::string &ConcreteType, bool isSilent,
+                            const std::shared_ptr<toka::Type> &ConcreteType,
+                            bool isSilent,
                             SourceLocation BoundLoc) {
   bool success = true;
-  std::string resolvedConcreteType = resolveType(ConcreteType);
+  auto resolvedConcreteType = resolveType(ConcreteType);
+  const std::string concreteTypeName =
+      resolvedConcreteType ? resolvedConcreteType->toString() : "unknown";
   // A morphic argument can carry its value-mutable suffix through template
   // substitution (for example `TaskPtr#`). Trait facts are nominal and are
   // registered on `TaskPtr`, so normalize only the lookup/proof key.
   std::string nominalConcreteType =
-      toka::Type::stripMorphology(resolvedConcreteType);
+      toka::Type::stripMorphology(concreteTypeName);
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(
+          resolvedConcreteType ? resolvedConcreteType->getSoulType()
+                               : nullptr)) {
+    if (shape->Decl) {
+      nominalConcreteType = shape->Decl->CodegenName.empty()
+                                ? shape->Decl->Name
+                                : shape->Decl->CodegenName;
+    }
+  }
 
   for (const auto &bound : TraitBounds) {
     SourceLocation visibilityLoc = BoundLoc.isValid() ? BoundLoc : Loc;
@@ -484,29 +630,29 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
     if (ImplMap.count(implKey)) continue;
 
     if (getTraitFamilyName(canonicalBound) == "Copy") {
-      if (proveSlice4CopyType(toka::Type::fromString(nominalConcreteType)))
+      if (proveSlice4CopyType(resolvedConcreteType))
         continue;
     }
     if (getTraitFamilyName(canonicalBound) == "Dup") {
-      if (proveSlice4CopyType(toka::Type::fromString(nominalConcreteType)))
+      if (proveSlice4CopyType(resolvedConcreteType))
         continue;
     }
 
     // [NEW] Fallback for Auto Traits
     if (getTraitFamilyName(canonicalBound) == "Callable") {
-      auto typeObj = toka::Type::fromString(resolvedConcreteType);
-      if (typeObj && (typeObj->isFunction() || typeObj->isDynFn()))
+      if (resolvedConcreteType &&
+          (resolvedConcreteType->isFunction() ||
+           resolvedConcreteType->isDynFn()))
         continue;
     } else if (canonicalBound == "Send") {
-      auto typeObj = toka::Type::fromString(resolvedConcreteType);
-      if (typeObj && typeObj->isSend(this)) continue;
+      if (resolvedConcreteType && resolvedConcreteType->isSend(this)) continue;
     } else if (canonicalBound == "Sync") {
-      auto typeObj = toka::Type::fromString(resolvedConcreteType);
-      if (typeObj && typeObj->isSync(this)) continue;
+      if (resolvedConcreteType && resolvedConcreteType->isSync(this)) continue;
     }
 
     if (!isSilent) {
-      DiagnosticEngine::report(Loc, DiagID::ERR_TRAIT_BOUND_UNSATISFIED, ConcreteType, bound, ParamName);
+      DiagnosticEngine::report(Loc, DiagID::ERR_TRAIT_BOUND_UNSATISFIED,
+                               concreteTypeName, bound, ParamName);
       HasError = true;
     }
     success = false;

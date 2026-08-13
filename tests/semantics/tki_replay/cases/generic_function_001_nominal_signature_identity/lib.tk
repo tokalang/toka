@@ -1,0 +1,24 @@
+pub shape Item(
+    remote: i64
+)
+
+pub shape Box<'T>(
+    'value: T
+)
+
+impl<'T> Box<'T> {
+    pub fn echo(value: T) -> T {
+        auto local_value = value : T
+        return local_value
+    }
+}
+
+pub fn identity<T>(value: T) -> T {
+    auto local_value = value : T
+    return local_value
+}
+
+pub fn accept_box<'T>(cede box: Box<'T>) -> i32 {
+    auto owned = cede box
+    return 29
+}

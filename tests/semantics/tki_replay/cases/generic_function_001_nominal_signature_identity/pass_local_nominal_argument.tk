@@ -1,0 +1,23 @@
+import ./lib::{Box, identity, accept_box}
+
+shape Item(
+    local: i32
+)
+
+fn main() -> i32 {
+    auto result = identity<Item>(Item(local = 17))
+    if result.local != 17 {
+        return 1
+    }
+
+    auto echoed = Box<Item>::echo(Item(local = 19))
+    if echoed.local != 19 {
+        return 2
+    }
+
+    auto boxed = Box<Item>(value = cede Item(local = 23))
+    if accept_box(cede boxed) != 29 {
+        return 3
+    }
+    return 0
+}

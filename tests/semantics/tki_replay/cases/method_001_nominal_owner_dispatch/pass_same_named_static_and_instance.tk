@@ -1,0 +1,26 @@
+import ./lib::{Item as RemoteItem}
+
+shape Item(local: i32, marker: u8)
+
+impl Item {
+    fn value(self) -> i32 {
+        return self.local
+    }
+
+    fn make() -> Item {
+        return Item(local = 101, marker = 7:u8)
+    }
+}
+
+fn main() -> i32 {
+    auto local = Item::make()
+    auto imported = RemoteItem::make()
+
+    if local.local != 101 || local.marker != 7:u8 || local.value() != 101 {
+        return 1
+    }
+    if imported.remote != 202 || imported.value() != 202 {
+        return 2
+    }
+    return 0
+}

@@ -363,6 +363,16 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
     }
   }
 
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+      shape && shape->Decl) {
+    const std::string &dropIdentity =
+        shape->Decl->OwnerLinkName.empty()
+            ? (shape->Decl->CodegenName.empty() ? shape->Decl->Name
+                                                : shape->Decl->CodegenName)
+            : shape->Decl->OwnerLinkName;
+    emitDropCascade(ptrAddr, dropIdentity);
+    return;
+  }
   emitDropCascade(ptrAddr, type->getSoulName());
 }
 
@@ -745,6 +755,7 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
     // [Feature] Drop before Free for Raw Pointers
     // Check if the type being freed has a drop method
     std::string typeName = "";
+    std::shared_ptr<Type> semanticDropType;
     bool isArray = false;
     uint64_t arraySize = 0;
     llvm::Value *dynamicCount = nullptr;
@@ -758,10 +769,12 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
         if (exprTy->isArray() || exprTy->isSlice()) {
           auto elemTyObj = exprTy->getArrayElementType();
           if (elemTyObj) {
+            semanticDropType = elemTyObj;
             typeName = elemTyObj->getSoulName();
             isArray = true;
           }
         } else {
+          semanticDropType = exprTy;
           typeName = exprTy->getSoulName();
         }
       }
@@ -820,7 +833,9 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
     if (!typeName.empty()) {
       if (isArray) {
         // We need the element size
-        llvm::Type *elemTy = resolveType(typeName, false);
+        llvm::Type *elemTy = semanticDropType
+                                 ? getLLVMType(semanticDropType)
+                                 : resolveType(typeName, false);
 
         if (elemTy) {
           llvm::Value *countVal = dynamicCount;
@@ -860,7 +875,10 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
           llvm::Value *elemPtr =
               m_Builder.CreateInBoundsGEP(elemTy, typedBase, iVar);
 
-          emitDropCascade(elemPtr, typeName);
+          if (semanticDropType)
+            emitDropForType(elemPtr, semanticDropType);
+          else
+            emitDropCascade(elemPtr, typeName);
 
           llvm::Value *nextI = m_Builder.CreateAdd(
               iVar,
@@ -875,7 +893,10 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
 
       } else {
         // Single drop
-        emitDropCascade(ptrAddr, typeName);
+        if (semanticDropType)
+          emitDropForType(ptrAddr, semanticDropType);
+        else
+          emitDropCascade(ptrAddr, typeName);
       }
     }
 

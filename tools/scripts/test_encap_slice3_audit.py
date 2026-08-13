@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -45,7 +46,9 @@ def main() -> int:
             "}\n", encoding="utf-8")
         compile_source(source, expect_success=True)
         ir = source.with_suffix(".ll").read_text(encoding="utf-8")
-        assert "Encap_Capsule_drop" in ir
+        custom_drop_symbols = set(re.findall(
+            r"Encap___toka_owner_N[0-9a-f]+_drop", ir))
+        assert len(custom_drop_symbols) == 1, custom_drop_symbols
         assert "Encap_Inner_drop" not in ir
 
         forbidden_operations = root / "forbidden_operations.tk"

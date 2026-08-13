@@ -4252,8 +4252,21 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
 
     std::string dropFunc = "";
     bool hasDrop = false;
+    ShapeDecl *exactDropShape = nullptr;
+    if (targetTypeObj) {
+      auto soul = targetTypeObj;
+      while (soul && (soul->isPointer() || soul->isReference() ||
+                      soul->isSmartPointer())) {
+        soul = soul->getPointeeType();
+      }
+      if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul))
+        exactDropShape = shape->Decl;
+    }
 
-    if (!typeName.empty()) {
+    if (exactDropShape) {
+      hasDrop = true;
+      dropFunc = exactDropShape->MangledDestructorName;
+    } else if (!typeName.empty()) {
       if (m_Shapes.count(typeName)) {
         dropFunc = m_Shapes[typeName]->MangledDestructorName;
       }
@@ -4304,6 +4317,8 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         info.DropFunc = dropFunc;
         info.SoulName = typeName;
         info.PartialMove = pat->PartialMove;
+        if (targetTypeObj)
+          info.DropType = targetTypeObj;
         if (alloca && (hasDrop || isUnique || isShared)) {
           info.DropFlag = createEntryBlockAlloca(
               llvm::Type::getInt1Ty(m_Context), nullptr, pName + ".drop.live");
@@ -7416,6 +7431,12 @@ PhysEntity CodeGen::genClosureExpr(const ClosureExpr *expr) {
            if (isDup && member.ResolvedType && member.ResolvedType->isShape()) {
                std::string typeName = toka::Type::stripMorphology(
                    member.ResolvedType->getSoulName());
+               auto soul = member.ResolvedType->getSoulType();
+               if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul)) {
+                   if (shape->Decl &&
+                       shape->Decl->OwnerLinkName.rfind("__toka_owner_", 0) == 0)
+                       typeName = shape->Decl->OwnerLinkName;
+               }
                std::string providerName = "Dup_" + typeName + "_dup";
                if (llvm::Function *provider = m_Module->getFunction(providerName)) {
                    auto receiver = std::make_unique<VariableExpr>(member.Name);

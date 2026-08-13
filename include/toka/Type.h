@@ -74,6 +74,11 @@ public:
   virtual std::string toString() const = 0;
   virtual bool equals(const Type &other) const;
 
+  // Exact structural identity for semantic caches.  Unlike toString(), this
+  // retains resolved nominal declarations through nested aggregate types.
+  std::string canonicalIdentity() const;
+  std::string canonicalMangledName() const;
+
   virtual bool isSend(class Sema* S = nullptr) const;
   virtual bool isSync(class Sema* S = nullptr) const;
 
@@ -148,21 +153,7 @@ public:
   bool isShape() const { return typeKind == Shape; }
   virtual std::string getSoulName() const { return toString(); }
 
-  virtual std::string getMangledName() const {
-    std::string argStr = toString();
-    for (char &c : argStr) {
-      if (c == '^') c = 'U';
-      else if (c == '*') c = 'R';
-      else if (c == '~') c = 'S';
-      else if (c == '&') c = 'B';
-      else if (c == '?') c = 'O';
-      else if (c == '#') c = 'M';
-      else if (c == '!') c = 'K';
-      else if (!std::isalnum(c) && c != '_')
-        c = '_';
-    }
-    return argStr;
-  }
+  virtual std::string getMangledName() const;
 
   virtual bool isStringType() const { return false; }
   virtual bool isAddrType() const { return false; }
@@ -397,6 +388,7 @@ public:
   void resolve(ShapeDecl *decl);
   bool isResolved() const { return Decl != nullptr; }
   std::string toString() const override;
+  std::string getMangledName() const override;
   bool equals(const Type &other) const override;
   std::shared_ptr<Type> withAttributes(bool w, bool n,
                                        bool b = false) const override;

@@ -1,0 +1,16 @@
+// EXPECT_TKI: pub shape Item(remote: i64, label: string)
+// EXPECT_TKI: pub fn make_items() -> Vec<Item>
+
+import core/string::{string}
+import std/vec::{Vec}
+
+pub shape Item(
+    remote: i64,
+    label: string
+)
+
+pub fn make_items() -> Vec<Item> {
+    auto items# = Vec<Item>::new()
+    items#.push(cede Item(remote = 73, label = string::from("remote")))
+    return cede items
+}

@@ -1,0 +1,15 @@
+// EXPECT_TKI: pub shape Item(remote: i32)
+// EXPECT_TKI: pub fn value(self: Item) -> i32
+// EXPECT_TKI: pub fn make() -> Item
+
+pub shape Item(remote: i32)
+
+impl Item {
+    pub fn value(self) -> i32 {
+        return self.remote
+    }
+
+    pub fn make() -> Item {
+        return Item(remote = 202)
+    }
+}

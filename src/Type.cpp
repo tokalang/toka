@@ -29,6 +29,225 @@ bool Type::equals(const toka::Type &other) const {
          IsBlocked == other.IsBlocked && IsCede == other.IsCede;
 }
 
+namespace {
+
+void appendIdentityPart(std::string &out, const char *tag,
+                        const std::string &value) {
+  out += tag;
+  out += std::to_string(value.size());
+  out += ':';
+  out += value;
+  out += ';';
+}
+
+std::string shapeDeclIdentity(const ShapeDecl *decl) {
+  if (!decl)
+    return {};
+  if (decl->NominalId)
+    return "nominal:" + decl->NominalId->canonical();
+  if (decl->InstantiationTemplate) {
+    std::string result = "instance{";
+    appendIdentityPart(result, "template", shapeDeclIdentity(
+                                               decl->InstantiationTemplate));
+    for (const auto &argument : decl->InstantiationArgs)
+      appendIdentityPart(result, "argument",
+                         argument ? argument->canonicalIdentity() : "null");
+    result += '}';
+    return result;
+  }
+  std::string result = "synthetic:";
+  appendIdentityPart(result, "name", decl->CodegenName.empty()
+                                              ? decl->Name
+                                              : decl->CodegenName);
+  return result;
+}
+
+} // namespace
+
+std::string Type::canonicalIdentity() const {
+  std::string result = "type{";
+  appendIdentityPart(result, "kind", std::to_string(typeKind));
+  appendIdentityPart(result, "attributes",
+                     std::string(IsWritable ? "1" : "0") +
+                         (IsNullable ? "1" : "0") +
+                         (IsBlocked ? "1" : "0") +
+                         (IsCede ? "1" : "0"));
+
+  if (auto primitive = dynamic_cast<const PrimitiveType *>(this)) {
+    appendIdentityPart(result, "primitive", primitive->Name);
+  } else if (auto unresolved = dynamic_cast<const UnresolvedType *>(this)) {
+    appendIdentityPart(result, "unresolved", unresolved->Name);
+  } else if (auto uninit = dynamic_cast<const UninitType *>(this)) {
+    appendIdentityPart(result, "inner", uninit->InnerType
+                                                ? uninit->InnerType
+                                                      ->canonicalIdentity()
+                                                : "null");
+  } else if (auto pointer = dynamic_cast<const PointerType *>(this)) {
+    appendIdentityPart(result, "pointee", pointer->PointeeType
+                                                  ? pointer->PointeeType
+                                                        ->canonicalIdentity()
+                                                  : "null");
+  } else if (auto array = dynamic_cast<const ArrayType *>(this)) {
+    appendIdentityPart(result, "element", array->ElementType
+                                                  ? array->ElementType
+                                                        ->canonicalIdentity()
+                                                  : "null");
+    appendIdentityPart(result, "extent", array->SymbolicSize.empty()
+                                                 ? std::to_string(array->Size)
+                                                 : array->SymbolicSize);
+  } else if (auto slice = dynamic_cast<const SliceType *>(this)) {
+    appendIdentityPart(result, "element", slice->ElementType
+                                                  ? slice->ElementType
+                                                        ->canonicalIdentity()
+                                                  : "null");
+  } else if (auto shape = dynamic_cast<const ShapeType *>(this)) {
+    appendIdentityPart(result, shape->Decl ? "bound" : "unbound",
+                       shape->Decl ? shapeDeclIdentity(shape->Decl)
+                                   : shape->Name);
+    const auto &arguments =
+        shape->GenericArgs.empty() && shape->Decl &&
+                shape->Decl->InstantiationTemplate
+            ? shape->Decl->InstantiationArgs
+            : shape->GenericArgs;
+    for (const auto &argument : arguments)
+      appendIdentityPart(result, "argument",
+                         argument ? argument->canonicalIdentity() : "null");
+    appendIdentityPart(result, "variant", shape->VariantSuffix);
+  } else if (auto function = dynamic_cast<const FunctionType *>(this)) {
+    appendIdentityPart(result, "receiver",
+                       std::to_string(static_cast<int>(function->ReceiverMode)));
+    appendIdentityPart(result, "variadic",
+                       function->IsVariadic ? "1" : "0");
+    for (const auto &parameter : function->ParamTypes)
+      appendIdentityPart(result, "parameter",
+                         parameter ? parameter->canonicalIdentity() : "null");
+    appendIdentityPart(result, "result", function->ReturnType
+                                               ? function->ReturnType
+                                                     ->canonicalIdentity()
+                                               : "null");
+  } else if (auto function = dynamic_cast<const DynFnType *>(this)) {
+    appendIdentityPart(result, "receiver",
+                       std::to_string(static_cast<int>(function->ReceiverMode)));
+    for (const auto &parameter : function->ParamTypes)
+      appendIdentityPart(result, "parameter",
+                         parameter ? parameter->canonicalIdentity() : "null");
+    appendIdentityPart(result, "result", function->ReturnType
+                                               ? function->ReturnType
+                                                     ->canonicalIdentity()
+                                               : "null");
+  }
+  result += '}';
+  return result;
+}
+
+std::string Type::canonicalMangledName() const {
+  static constexpr char Hex[] = "0123456789abcdef";
+  const std::string identity = canonicalIdentity();
+  std::string result;
+  result.reserve(1 + identity.size() * 2);
+  result += 'T';
+  for (unsigned char byte : identity) {
+    result += Hex[byte >> 4];
+    result += Hex[byte & 0x0f];
+  }
+  return result;
+}
+
+std::string Type::getMangledName() const {
+  auto attributes = [&](const Type &type) {
+    std::string result;
+    if (type.IsCede)
+      result += 'C';
+    if (type.IsWritable)
+      result += 'M';
+    if (type.IsNullable)
+      result += 'O';
+    if (type.IsBlocked)
+      result += 'K';
+    return result;
+  };
+  auto framed = [](const std::string &value) {
+    return std::to_string(value.size()) + "_" + value;
+  };
+
+  if (auto pointer = dynamic_cast<const PointerType *>(this)) {
+    char kind = 'R';
+    if (typeKind == UniquePtr)
+      kind = 'U';
+    else if (typeKind == SharedPtr)
+      kind = 'S';
+    else if (typeKind == Reference)
+      kind = 'B';
+    const std::string pointee =
+        pointer->PointeeType ? pointer->PointeeType->getMangledName()
+                             : "unknown";
+    return std::string(1, kind) + attributes(*this) + framed(pointee);
+  }
+  if (auto uninit = dynamic_cast<const UninitType *>(this)) {
+    const std::string inner =
+        uninit->InnerType ? uninit->InnerType->getMangledName() : "unknown";
+    return "I" + attributes(*this) + framed(inner);
+  }
+  if (auto array = dynamic_cast<const ArrayType *>(this)) {
+    const std::string element =
+        array->ElementType ? array->ElementType->getMangledName() : "unknown";
+    const std::string extent = array->SymbolicSize.empty()
+                                   ? std::to_string(array->Size)
+                                   : array->SymbolicSize;
+    return "A" + attributes(*this) + framed(extent) + framed(element);
+  }
+  if (auto slice = dynamic_cast<const SliceType *>(this)) {
+    const std::string element =
+        slice->ElementType ? slice->ElementType->getMangledName() : "unknown";
+    return "L" + attributes(*this) + framed(element);
+  }
+  if (auto function = dynamic_cast<const FunctionType *>(this)) {
+    std::string result =
+        "F" + attributes(*this) +
+        std::to_string(static_cast<int>(function->ReceiverMode)) + "_" +
+        (function->IsVariadic ? "1_" : "0_");
+    for (const auto &parameter : function->ParamTypes)
+      result += framed(parameter ? parameter->getMangledName() : "unknown");
+    result += framed(function->ReturnType
+                         ? function->ReturnType->getMangledName()
+                         : "unknown");
+    return result;
+  }
+  if (auto function = dynamic_cast<const DynFnType *>(this)) {
+    std::string result =
+        "D" + attributes(*this) +
+        std::to_string(static_cast<int>(function->ReceiverMode)) + "_";
+    for (const auto &parameter : function->ParamTypes)
+      result += framed(parameter ? parameter->getMangledName() : "unknown");
+    result += framed(function->ReturnType
+                         ? function->ReturnType->getMangledName()
+                         : "unknown");
+    return result;
+  }
+
+  std::string result = toString();
+  for (char &character : result) {
+    if (character == '^')
+      character = 'U';
+    else if (character == '*')
+      character = 'R';
+    else if (character == '~')
+      character = 'S';
+    else if (character == '&')
+      character = 'B';
+    else if (character == '?')
+      character = 'O';
+    else if (character == '#')
+      character = 'M';
+    else if (character == '!')
+      character = 'K';
+    else if (!std::isalnum(static_cast<unsigned char>(character)) &&
+             character != '_')
+      character = '_';
+  }
+  return result;
+}
+
 bool Type::isSend(class Sema *S) const { return false; }
 bool Type::isSync(class Sema *S) const { return false; }
 
@@ -445,6 +664,7 @@ bool ArrayType::equals(const Type &other) const {
     return false;
   const auto *otherArr = dynamic_cast<const ArrayType *>(&other);
   return otherArr && Size == otherArr->Size &&
+         SymbolicSize == otherArr->SymbolicSize &&
          ElementType->equals(*otherArr->ElementType);
 }
 
@@ -453,6 +673,7 @@ bool ArrayType::isCompatibleWith(const Type &target) const {
     return false;
   const auto *otherArr = dynamic_cast<const ArrayType *>(&target);
   return otherArr && Size == otherArr->Size &&
+         SymbolicSize == otherArr->SymbolicSize &&
          ElementType->isCompatibleWith(*otherArr->ElementType);
 }
 
@@ -490,15 +711,74 @@ std::string ShapeType::toString() const {
   return s;
 }
 
+std::string ShapeType::getMangledName() const {
+  std::string result;
+  bool hasStableBase = false;
+  if (Decl && Decl->NominalId) {
+    result = Decl->NominalId->mangled();
+    hasStableBase = true;
+  } else if (Decl && Decl->InstantiationTemplate &&
+             !Decl->CodegenName.empty()) {
+    result = Decl->CodegenName;
+    hasStableBase = true;
+  } else {
+    result = Type::getMangledName();
+  }
+
+  if (hasStableBase) {
+    result += "_A";
+    if (IsCede)
+      result += 'C';
+    if (IsWritable)
+      result += 'M';
+    if (IsNullable)
+      result += 'O';
+    if (IsBlocked)
+      result += 'K';
+    if (!VariantSuffix.empty()) {
+      static constexpr char Hex[] = "0123456789abcdef";
+      result += "_V";
+      for (unsigned char byte : VariantSuffix) {
+        result += Hex[byte >> 4];
+        result += Hex[byte & 0x0f];
+      }
+    }
+  }
+
+  if (!GenericArgs.empty()) {
+    result += "_G";
+    for (const auto &argument : GenericArgs)
+      result += "_" +
+                (argument ? argument->getMangledName() : std::string("unknown"));
+  }
+  return result;
+}
+
 bool ShapeType::equals(const Type &other) const {
   if (!Type::equals(other))
     return false;
   const auto *otherSh = dynamic_cast<const ShapeType *>(&other);
   if (!otherSh)
     return false;
-  if (Decl && otherSh->Decl)
-    return Decl == otherSh->Decl;
-  return Name == otherSh->Name;
+  if (static_cast<bool>(Decl) != static_cast<bool>(otherSh->Decl))
+    return false;
+  const bool sameFamily =
+      Decl && otherSh->Decl
+          ? shapeDeclIdentity(Decl) == shapeDeclIdentity(otherSh->Decl)
+          : Name == otherSh->Name;
+  if (!sameFamily || VariantSuffix != otherSh->VariantSuffix)
+    return false;
+  if (GenericArgs.size() != otherSh->GenericArgs.size())
+    return false;
+  for (size_t i = 0; i < GenericArgs.size(); ++i) {
+    if (!GenericArgs[i] || !otherSh->GenericArgs[i]) {
+      if (GenericArgs[i] != otherSh->GenericArgs[i])
+        return false;
+    } else if (!GenericArgs[i]->equals(*otherSh->GenericArgs[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool ShapeType::isCompatibleWith(const Type &target) const {
@@ -506,11 +786,26 @@ bool ShapeType::isCompatibleWith(const Type &target) const {
   if (otherSh) {
     if (otherSh->Name.rfind("dyn@", 0) == 0)
       return true;
-    if (Decl && otherSh->Decl && Decl != otherSh->Decl)
+    if (static_cast<bool>(Decl) != static_cast<bool>(otherSh->Decl))
       return false;
-    if (Name == otherSh->Name)
-      return Type::isCompatibleWith(target);
-    return false;
+    if (Decl && otherSh->Decl
+            ? shapeDeclIdentity(Decl) != shapeDeclIdentity(otherSh->Decl)
+            : Name != otherSh->Name) {
+      return false;
+    }
+    if (VariantSuffix != otherSh->VariantSuffix ||
+        GenericArgs.size() != otherSh->GenericArgs.size())
+      return false;
+    for (size_t i = 0; i < GenericArgs.size(); ++i) {
+      if (!GenericArgs[i] || !otherSh->GenericArgs[i]) {
+        if (GenericArgs[i] != otherSh->GenericArgs[i])
+          return false;
+      } else if (!GenericArgs[i]->isCompatibleWith(
+                     *otherSh->GenericArgs[i])) {
+        return false;
+      }
+    }
+    return Type::isCompatibleWith(target);
   }
   return false;
 }
@@ -563,9 +858,16 @@ bool FunctionType::equals(const Type &other) const {
     return false;
   const auto *otherFn = dynamic_cast<const FunctionType *>(&other);
   if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
+      IsVariadic != otherFn->IsVariadic ||
       ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
-  return ReturnType->equals(*otherFn->ReturnType);
+  if (!ReturnType->equals(*otherFn->ReturnType))
+    return false;
+  for (size_t i = 0; i < ParamTypes.size(); ++i) {
+    if (!ParamTypes[i]->equals(*otherFn->ParamTypes[i]))
+      return false;
+  }
+  return true;
 }
 
 bool FunctionType::isCompatibleWith(const Type &target) const {
@@ -573,6 +875,7 @@ bool FunctionType::isCompatibleWith(const Type &target) const {
     return false;
   const auto *otherFn = dynamic_cast<const FunctionType *>(&target);
   if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
+      IsVariadic != otherFn->IsVariadic ||
       ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
   if (!ReturnType->isCompatibleWith(*otherFn->ReturnType))
@@ -617,7 +920,13 @@ bool DynFnType::equals(const Type &other) const {
   if (!otherFn || ReceiverMode != otherFn->ReceiverMode ||
       ParamTypes.size() != otherFn->ParamTypes.size())
     return false;
-  return ReturnType->equals(*otherFn->ReturnType);
+  if (!ReturnType->equals(*otherFn->ReturnType))
+    return false;
+  for (size_t i = 0; i < ParamTypes.size(); ++i) {
+    if (!ParamTypes[i]->equals(*otherFn->ParamTypes[i]))
+      return false;
+  }
+  return true;
 }
 
 bool DynFnType::isCompatibleWith(const Type &target) const {
@@ -689,6 +998,7 @@ std::shared_ptr<Type> ShapeType::substitute(const std::map<std::string, std::sha
   if (substMap.count(Name)) {
     // Substitute base. Does not usually have VariantSuffix but we can append it if needed, or just return.
     auto substituted = substMap.at(Name)->withAttributes(IsWritable, IsNullable, IsBlocked);
+    substituted->IsCede = substituted->IsCede || IsCede;
     if (!VariantSuffix.empty()) {
       if (auto st = std::dynamic_pointer_cast<ShapeType>(substituted)) {
         st->VariantSuffix += VariantSuffix;

@@ -1,0 +1,19 @@
+shape Fixed<N_: usize>(data: [i32; N_])
+
+impl<N_: usize> Fixed<N_> {
+    fn size(self) -> usize {
+        return N_
+    }
+
+    fn filled(self) -> [i32; N_] {
+        return [7; N_]
+    }
+}
+
+fn main() -> i32 {
+    auto value = Fixed<3>(data = [1, 2, 3])
+    if value.size() != 3 { return 1 }
+    auto filled = value.filled()
+    if filled[0] != 7 || filled[2] != 7 { return 2 }
+    return 0
+}

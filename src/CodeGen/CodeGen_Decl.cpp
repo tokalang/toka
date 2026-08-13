@@ -616,8 +616,12 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
         auto soul = argDecl.ResolvedType->getSoulType();
         soulName = soul->getSoulName();
         // Check authoritative metadata from Sema
-        if (m_Shapes.count(soulName)) {
-          auto SD = m_Shapes[soulName];
+        const ShapeDecl *SD = nullptr;
+        if (auto exactShape = std::dynamic_pointer_cast<ShapeType>(soul))
+          SD = exactShape->Decl;
+        if (!SD && m_Shapes.count(soulName))
+          SD = m_Shapes[soulName];
+        if (SD) {
           if (!SD->MangledDestructorName.empty()) {
             argHasDrop = true;
             argDropFunc = SD->MangledDestructorName;
@@ -634,6 +638,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
       info.HasDrop = isOwnedParam && argHasDrop;
       info.DropFunc = isOwnedParam ? argDropFunc : "";
       info.SoulName = soulName;
+      if (isOwnedParam)
+        info.DropType = typeObj;
       if (finalStorage && isOwnedParam && (argHasDrop || argDecl.IsUnique || argDecl.IsShared || (typeObj && (typeObj->isUniquePtr() || typeObj->isSharedPtr())))) {
         info.DropFlag = createEntryBlockAlloca(
             llvm::Type::getInt1Ty(m_Context), nullptr, argName + ".drop.live");
@@ -1654,10 +1660,25 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
           if (candidate->isRawPointer() || candidate->isReference())
             return false;
           const auto soul = candidate->getSoulType();
-          return soul && m_Shapes.count(soul->getSoulName());
+          if (!soul)
+            return false;
+          if (auto exactShape = std::dynamic_pointer_cast<ShapeType>(soul))
+            return exactShape->Decl != nullptr ||
+                   m_Shapes.count(soul->getSoulName()) != 0;
+          return m_Shapes.count(soul->getSoulName()) != 0;
         };
 
-    if (!typeName.empty()) {
+    const ShapeDecl *exactDropShape = nullptr;
+    if (dropValueType) {
+      auto soul = dropValueType->getSoulType();
+      if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul))
+        exactDropShape = shape->Decl;
+    }
+
+    if (exactDropShape) {
+      hasDrop = true;
+      dropFunc = exactDropShape->MangledDestructorName;
+    } else if (!typeName.empty()) {
       if (m_Shapes.count(typeName)) {
         dropFunc = m_Shapes[typeName]->MangledDestructorName;
       }
@@ -1723,7 +1744,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     info.HasDrop = hasDrop;
     info.DropFunc = dropFunc;
     info.PartialMove = var->PartialMove;
-    if (dropValueType && dropValueType->isArray())
+    if (dropValueType)
       info.DropType = dropValueType;
     if (m_Symbols.count(varName)) {
         auto soul = m_Symbols[varName].soulTypeObj;
@@ -2138,13 +2159,19 @@ void CodeGen::genShape(const ShapeDecl *sh) {
 
   const std::string shapeName =
       sh->CodegenName.empty() ? sh->Name : sh->CodegenName;
-  if (m_StructTypes.count(shapeName))
+  if (m_StructTypesByDecl.count(sh))
     return;
 
   llvm::StructType *st = llvm::StructType::create(m_Context, shapeName);
+  m_StructTypesByDecl[sh] = st;
+  m_StructDeclsByType[st] = sh;
   m_Shapes[sh->Name] = sh;
   m_Shapes[shapeName] = sh;
   m_StructTypes[shapeName] = st;
+  if (!sh->OwnerLinkName.empty()) {
+    m_Shapes[sh->OwnerLinkName] = sh;
+    m_StructTypes[sh->OwnerLinkName] = st;
+  }
   m_TypeToName[st] = shapeName;
 
   std::vector<llvm::Type *> body;
@@ -2316,18 +2343,29 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
     return;
   }
 
-  m_CurrentSelfType = decl->TypeName;
+  const std::string ownerTypeName =
+      decl->ResolvedOwner
+          ? (decl->ResolvedOwner->CodegenName.empty()
+                 ? decl->ResolvedOwner->Name
+                 : decl->ResolvedOwner->CodegenName)
+          : decl->TypeName;
+  const std::string ownerLinkName =
+      decl->ResolvedOwner &&
+              decl->ResolvedOwner->OwnerLinkName.rfind("__toka_owner_", 0) == 0
+          ? decl->ResolvedOwner->OwnerLinkName
+          : ownerTypeName;
+  m_CurrentSelfType = ownerTypeName;
   std::set<std::string> implementedMethods;
 
   // Methods defined in Impl block
   for (const auto &method : decl->Methods) {
     std::string mangledName;
-    if (method->IsClosureInvoke && !method->CodegenName.empty()) {
+    if (!method->CodegenName.empty()) {
       mangledName = method->CodegenName;
     } else if (!decl->TraitName.empty()) {
-      mangledName = decl->TraitName + "_" + decl->TypeName + "_" + method->Name;
+      mangledName = decl->TraitName + "_" + ownerLinkName + "_" + method->Name;
     } else {
-      mangledName = decl->TypeName + "_" + method->Name;
+      mangledName = ownerLinkName + "_" + method->Name;
     }
     genFunction(method.get(), mangledName, declOnly);
     implementedMethods.insert(method->Name);
@@ -2351,7 +2389,7 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
         if (method->Body) {
           // Generate default implementation
           std::string mangledName =
-              decl->TraitName + "_" + decl->TypeName + "_" + method->Name;
+              decl->TraitName + "_" + ownerLinkName + "_" + method->Name;
           genFunction(method.get(), mangledName, declOnly);
         } else {
 
@@ -2366,10 +2404,19 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
     if (trait && !declOnly) {
       std::vector<llvm::Constant *> vtableMethods;
       llvm::Type *voidPtrTy =
-          llvm::PointerType::getUnqual(m_Context);
+      llvm::PointerType::getUnqual(m_Context);
       for (const auto &method : trait->Methods) {
-        std::string implFuncName =
-            decl->TraitName + "_" + decl->TypeName + "_" + method->Name;
+        std::string implFuncName;
+        for (const auto &implemented : decl->Methods) {
+          if (implemented->Name == method->Name &&
+              !implemented->CodegenName.empty()) {
+            implFuncName = implemented->CodegenName;
+            break;
+          }
+        }
+        if (implFuncName.empty())
+          implFuncName = decl->TraitName + "_" + ownerLinkName + "_" +
+                         method->Name;
         llvm::Function *f = m_Module->getFunction(implFuncName);
         if (f) {
           vtableMethods.push_back(llvm::ConstantExpr::getBitCast(f, voidPtrTy));
@@ -2383,7 +2430,7 @@ void toka::CodeGen::genImpl(const toka::ImplDecl *decl, bool declOnly) {
             llvm::ArrayType::get(voidPtrTy, vtableMethods.size());
         llvm::Constant *init = llvm::ConstantArray::get(arrTy, vtableMethods);
         std::string vtableName =
-            "_VTable_" + decl->TypeName + "_" + decl->TraitName;
+            "_VTable_" + ownerLinkName + "_" + decl->TraitName;
         auto *vtableGV = new llvm::GlobalVariable(*m_Module, arrTy, true,
                                  llvm::GlobalValue::ExternalLinkage, init,
                                  vtableName);
@@ -2609,13 +2656,26 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
     return nullptr;
   }
 
-  std::string funcName = typeName + "_" + expr->Method;
+  std::string methodOwnerName = typeName;
+  if (expr->Object->ResolvedType) {
+    auto soul = expr->Object->ResolvedType->getSoulType();
+    if (auto shape = std::dynamic_pointer_cast<ShapeType>(soul)) {
+      if (shape->Decl &&
+          shape->Decl->OwnerLinkName.rfind("__toka_owner_", 0) == 0)
+        methodOwnerName = shape->Decl->OwnerLinkName;
+    }
+  }
+  std::string funcName =
+      expr->ResolvedFn && !expr->ResolvedFn->CodegenName.empty()
+          ? expr->ResolvedFn->CodegenName
+          : methodOwnerName + "_" + expr->Method;
   llvm::Function *callee = m_Module->getFunction(funcName);
 
   // Check Traits
   if (!callee) {
     for (auto const &[traitName, traitDecl] : m_Traits) {
-      std::string traitFunc = traitName + "_" + typeName + "_" + expr->Method;
+      std::string traitFunc =
+          traitName + "_" + methodOwnerName + "_" + expr->Method;
       callee = m_Module->getFunction(traitFunc);
       if (callee) {
         funcName = traitFunc;
@@ -2627,7 +2687,8 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   }
 
   if (!callee) {
-    std::string traitImplSuffix = "_" + typeName + "_" + expr->Method;
+    std::string traitImplSuffix =
+        "_" + methodOwnerName + "_" + expr->Method;
     for (const auto &[candidateName, candidateDecl] : m_Functions) {
       if (candidateName.size() <= traitImplSuffix.size())
         continue;
@@ -3346,6 +3407,17 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   // Handle Shapes (Structs) via Name Lookup
   if (type->typeKind == Type::Shape) {
     auto shapeType = std::static_pointer_cast<ShapeType>(type);
+    if (shapeType->Decl) {
+      auto declIt = m_StructTypesByDecl.find(shapeType->Decl);
+      if (declIt != m_StructTypesByDecl.end())
+        return declIt->second;
+
+      genShape(shapeType->Decl);
+      declIt = m_StructTypesByDecl.find(shapeType->Decl);
+      if (declIt != m_StructTypesByDecl.end())
+        return declIt->second;
+    }
+
     std::string shapeName = shapeType->Name;
     if (shapeType->Decl && !shapeType->Decl->CodegenName.empty())
       shapeName = shapeType->Decl->CodegenName;
@@ -3361,11 +3433,7 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
       return m_StructTypes[shapeName];
     }
     // [Fix] On-Demand Generation for Synthetic Shapes (Dependencies)
-    if (shapeType->Decl) {
-      genShape(shapeType->Decl);
-      if (m_StructTypes.count(shapeName))
-        return m_StructTypes[shapeName];
-    } else if (m_Shapes.count(shapeName)) {
+    if (m_Shapes.count(shapeName)) {
       genShape(m_Shapes[shapeName]);
       if (m_StructTypes.count(shapeName))
         return m_StructTypes[shapeName];

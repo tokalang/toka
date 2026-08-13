@@ -1,0 +1,97 @@
+import ./lib as remote
+import core/traits::{@Encap}
+import std/vec::{Vec}
+
+auto g_local_drop_count# = 0:i32
+
+shape Item(
+    tag: u8,
+    value: i32
+)
+
+impl Item@Encap {
+    pub tag, value
+
+    fn drop(self#) {
+        g_local_drop_count += 1:i32
+    }
+}
+
+fn main() -> i32 {
+    {
+        auto remote_items# = remote::make_items()
+        auto local_items# = Vec<Item>::new()
+        local_items#.push(cede Item(tag = 1:u8, value = 10:i32))
+        local_items#.push(cede Item(tag = 2:u8, value = 20:i32))
+        local_items#.push(cede Item(tag = 3:u8, value = 30:i32))
+        local_items#.push(cede Item(tag = 4:u8, value = 40:i32))
+        local_items#.push(cede Item(tag = 5:u8, value = 50:i32))
+        local_items#.push(cede Item(tag = 6:u8, value = 60:i32))
+        local_items#.push(cede Item(tag = 7:u8, value = 70:i32))
+        local_items#.push(cede Item(tag = 8:u8, value = 80:i32))
+        local_items#.push(cede Item(tag = 9:u8, value = 90:i32))
+
+        if remote_items.len() != 9:usize || local_items.len() != 9:usize {
+            return 1
+        }
+        if remote_items.get_ref(0:usize).prefix != 101:i64 ||
+           remote_items.get_ref(8:usize).suffix != 99:i32 ||
+           !remote_items.get_ref(8:usize).label.as_str().equals("nine") {
+            return 2
+        }
+        if local_items.get_ref(0:usize).tag != 1:u8 ||
+           local_items.get_ref(8:usize).value != 90:i32 {
+            return 3
+        }
+
+        {
+            auto removed = remote_items#.remove(3:usize).unwrap()
+            if removed.prefix != 404:i64 || removed.suffix != 44:i32 ||
+               !removed.label.as_str().equals("four") {
+                return 4
+            }
+        }
+        {
+            auto removed = local_items#.remove(3:usize).unwrap()
+            if removed.tag != 4:u8 || removed.value != 40:i32 {
+                return 5
+            }
+        }
+        if remote::drop_count() != 1:i32 {
+            return 6
+        }
+        if g_local_drop_count != 1:i32 { return 7 }
+        if remote_items.get_ref(3:usize).prefix != 505:i64 ||
+           !remote_items.get_ref(3:usize).label.as_str().equals("five") ||
+           local_items.get_ref(3:usize).value != 50:i32 {
+            return 8
+        }
+
+        {
+            auto popped = remote_items#.pop().unwrap()
+            if popped.prefix != 909:i64 || popped.suffix != 99:i32 {
+                return 9
+            }
+        }
+        {
+            auto popped = local_items#.pop().unwrap()
+            if popped.tag != 9:u8 || popped.value != 90:i32 {
+                return 10
+            }
+        }
+        if remote::drop_count() != 2:i32 { return 11 }
+        if g_local_drop_count != 2:i32 { return 12 }
+
+        remote_items#.clear()
+        local_items#.clear()
+        if !remote_items.is_empty() || !local_items.is_empty() {
+            return 13
+        }
+        if remote::drop_count() != 9:i32 { return 14 }
+        if g_local_drop_count != 9:i32 { return 15 }
+    }
+
+    if remote::drop_count() != 9:i32 { return 16 }
+    if g_local_drop_count != 9:i32 { return 17 }
+    return 0
+}

@@ -55,6 +55,7 @@ int main() {
   const auto right = NominalShapeId::fromSourcePath(
       toka::PathUtils::canonicalize("/workspace/right/model.tk"), "Model", 0);
   CHECK(left != right);
+  CHECK(left.mangled() != right.mangled());
 
   const auto normalized = NominalShapeId::fromSourcePath(
       toka::PathUtils::canonicalize("/workspace/left/../left/model.tk"),
@@ -77,6 +78,94 @@ int main() {
       "crate", "a:module;b", "Shape", 1);
   CHECK(delimitedA != delimitedB);
 
+  auto leftTypeDecl = shape("Model");
+  leftTypeDecl->NominalId = left;
+  auto rightTypeDecl = shape("Model");
+  rightTypeDecl->NominalId = right;
+  auto replayTypeDecl = shape("Model");
+  replayTypeDecl->NominalId = left;
+  auto leftType = std::make_shared<toka::ShapeType>("Model");
+  leftType->resolve(leftTypeDecl.get());
+  auto rightType = std::make_shared<toka::ShapeType>("Model");
+  rightType->resolve(rightTypeDecl.get());
+  auto replayType = std::make_shared<toka::ShapeType>("Model");
+  replayType->resolve(replayTypeDecl.get());
+  auto unresolvedType = std::make_shared<toka::ShapeType>("Model");
+  CHECK(!leftType->equals(*rightType));
+  CHECK(leftType->canonicalIdentity() != rightType->canonicalIdentity());
+  CHECK(leftType->canonicalMangledName() !=
+        rightType->canonicalMangledName());
+  CHECK(leftType->equals(*replayType));
+  CHECK(leftType->canonicalIdentity() == replayType->canonicalIdentity());
+  CHECK(leftType->canonicalMangledName() ==
+        replayType->canonicalMangledName());
+  CHECK(!leftType->equals(*unresolvedType));
+  CHECK(!leftType->isCompatibleWith(*unresolvedType));
+  CHECK(leftType->canonicalIdentity() != unresolvedType->canonicalIdentity());
+  CHECK(leftType->canonicalMangledName() !=
+        unresolvedType->canonicalMangledName());
+  auto writableLeft = leftType->withAttributes(true, false, false);
+  auto nullableLeft = leftType->withAttributes(false, true, false);
+  auto blockedLeft = leftType->withAttributes(false, false, true);
+  auto cededLeft = leftType->withAttributes(false, false, false);
+  cededLeft->IsCede = true;
+  auto variantLeft = std::make_shared<toka::ShapeType>("Model");
+  variantLeft->resolve(leftTypeDecl.get());
+  variantLeft->VariantSuffix = "::Variant";
+  CHECK(writableLeft->getMangledName() != leftType->getMangledName());
+  CHECK(nullableLeft->getMangledName() != leftType->getMangledName());
+  CHECK(blockedLeft->getMangledName() != leftType->getMangledName());
+  CHECK(cededLeft->getMangledName() != leftType->getMangledName());
+  CHECK(variantLeft->getMangledName() != leftType->getMangledName());
+
+  auto leftPointer = std::make_shared<toka::UniquePointerType>(leftType);
+  auto rightPointer = std::make_shared<toka::UniquePointerType>(rightType);
+  CHECK(leftPointer->canonicalIdentity() !=
+        rightPointer->canonicalIdentity());
+  auto leftArray = std::make_shared<toka::ArrayType>(leftType, 4);
+  auto rightArray = std::make_shared<toka::ArrayType>(rightType, 4);
+  CHECK(leftArray->canonicalIdentity() != rightArray->canonicalIdentity());
+  auto symbolicArrayA =
+      std::make_shared<toka::ArrayType>(leftType, 0, "N_");
+  auto symbolicArrayB =
+      std::make_shared<toka::ArrayType>(leftType, 0, "M_");
+  CHECK(!symbolicArrayA->equals(*symbolicArrayB));
+  CHECK(!symbolicArrayA->isCompatibleWith(*symbolicArrayB));
+  auto leftSlice = std::make_shared<toka::SliceType>(leftType);
+  auto rightSlice = std::make_shared<toka::SliceType>(rightType);
+  CHECK(leftSlice->canonicalIdentity() != rightSlice->canonicalIdentity());
+  auto leftUninit = std::make_shared<toka::UninitType>(leftType);
+  auto rightUninit = std::make_shared<toka::UninitType>(rightType);
+  CHECK(leftUninit->canonicalIdentity() != rightUninit->canonicalIdentity());
+
+  auto leftBox = std::make_shared<toka::ShapeType>(
+      "Box", std::vector<std::shared_ptr<toka::Type>>{leftType});
+  auto rightBox = std::make_shared<toka::ShapeType>(
+      "Box", std::vector<std::shared_ptr<toka::Type>>{rightType});
+  CHECK(leftBox->canonicalIdentity() != rightBox->canonicalIdentity());
+
+  auto returnType = std::make_shared<toka::PrimitiveType>("i32");
+  auto leftFunction = std::make_shared<toka::FunctionType>(
+      std::vector<std::shared_ptr<toka::Type>>{leftType}, returnType);
+  auto rightFunction = std::make_shared<toka::FunctionType>(
+      std::vector<std::shared_ptr<toka::Type>>{rightType}, returnType);
+  CHECK(!leftFunction->equals(*rightFunction));
+  CHECK(leftFunction->canonicalIdentity() !=
+        rightFunction->canonicalIdentity());
+  auto variadicFunction = std::make_shared<toka::FunctionType>(
+      std::vector<std::shared_ptr<toka::Type>>{leftType}, returnType, true);
+  CHECK(!leftFunction->equals(*variadicFunction));
+  CHECK(!leftFunction->isCompatibleWith(*variadicFunction));
+  CHECK(leftFunction->canonicalIdentity() !=
+        variadicFunction->canonicalIdentity());
+  auto leftDynFunction = std::make_shared<toka::DynFnType>(
+      std::vector<std::shared_ptr<toka::Type>>{leftType}, returnType);
+  auto rightDynFunction = std::make_shared<toka::DynFnType>(
+      std::vector<std::shared_ptr<toka::Type>>{rightType}, returnType);
+  CHECK(!leftDynFunction->equals(*rightDynFunction));
+  CHECK(leftDynFunction->canonicalIdentity() !=
+        rightDynFunction->canonicalIdentity());
+
   toka::Module leftModule;
   setPath(leftModule, "/workspace/left/model.tk");
   leftModule.Shapes.push_back(shape("Model"));
@@ -91,6 +180,10 @@ int main() {
   CHECK(rightModule.Shapes[0]->NominalId.has_value());
   CHECK(*leftModule.Shapes[0]->NominalId !=
         *rightModule.Shapes[0]->NominalId);
+  CHECK(!leftModule.Shapes[0]->OwnerLinkName.empty());
+  CHECK(!rightModule.Shapes[0]->OwnerLinkName.empty());
+  CHECK(leftModule.Shapes[0]->OwnerLinkName !=
+        rightModule.Shapes[0]->OwnerLinkName);
   sourceSema.checkShapeSovereignty();
   CHECK(!sourceSema.hasErrors());
 
@@ -113,6 +206,8 @@ int main() {
   CHECK(interfaceTransport.Shapes[0]->NominalId.has_value());
   CHECK(*sourceTransport.Shapes[0]->NominalId ==
         *interfaceTransport.Shapes[0]->NominalId);
+  CHECK(sourceTransport.Shapes[0]->OwnerLinkName ==
+        interfaceTransport.Shapes[0]->OwnerLinkName);
 
   toka::Module incremental;
   setPath(incremental, "/workspace/incremental.tk");

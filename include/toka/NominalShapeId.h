@@ -34,6 +34,21 @@ public:
   Origin origin() const noexcept { return OriginValue; }
   const std::string &canonical() const noexcept { return Canonical; }
 
+  // Exact, symbol-safe encoding used in generic instance and ABI names.  Hex
+  // is intentionally used instead of a digest so nominal identity cannot be
+  // collapsed by a hash collision.
+  std::string mangled() const {
+    static constexpr char Hex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(1 + Canonical.size() * 2);
+    result += 'N';
+    for (unsigned char byte : Canonical) {
+      result += Hex[byte >> 4];
+      result += Hex[byte & 0x0f];
+    }
+    return result;
+  }
+
   friend bool operator==(const NominalShapeId &lhs,
                          const NominalShapeId &rhs) noexcept {
     return lhs.OriginValue == rhs.OriginValue && lhs.Canonical == rhs.Canonical;

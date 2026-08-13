@@ -1,0 +1,16 @@
+// EXPECT_TKI: pub shape Item(remote: i64, label: string)
+// EXPECT_TKI: pub fn make_result() -> Result<Item,string>
+
+import core/result::{Result}
+import core/string::{string}
+
+pub shape Item(
+    remote: i64,
+    label: string
+)
+
+pub fn make_result() -> Result<Item, string> {
+    return Result<Item, string>::Ok(
+        Item(remote = 73, label = string::from("remote"))
+    )
+}

@@ -179,6 +179,53 @@ static std::string moduleScopedCodegenName(const Module &M,
          sanitizeSymbolPart(name);
 }
 
+static void appendStableIdentityPart(std::string &out,
+                                     const std::string &value) {
+  out += std::to_string(value.size());
+  out += ':';
+  out += value;
+  out += ';';
+}
+
+static std::string exactSymbolEncoding(const std::string &identity) {
+  static constexpr char Hex[] = "0123456789abcdef";
+  std::string result;
+  result.reserve(identity.size() * 2);
+  for (unsigned char byte : identity) {
+    result += Hex[byte >> 4];
+    result += Hex[byte & 0x0f];
+  }
+  return result;
+}
+
+static std::string genericFunctionCodegenName(const Module &M,
+                                              const FunctionDecl &fn) {
+  std::string identity = "toka.generic-function.v1;";
+  if (M.ShadowCoordinateKnown && !M.ShadowCrateId.empty() &&
+      !M.ShadowLogicalModulePath.empty()) {
+    appendStableIdentityPart(identity, "resolver");
+    appendStableIdentityPart(identity, M.ShadowCrateId);
+    appendStableIdentityPart(identity, M.ShadowLogicalModulePath);
+  } else {
+    std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
+    if (path.empty() && M.Loc.isValid() && DiagnosticEngine::SrcMgr) {
+      path = DiagnosticEngine::SrcMgr->getFullSourceLoc(M.Loc).FileName;
+    }
+    appendStableIdentityPart(identity, "source");
+    appendStableIdentityPart(identity, toka::PathUtils::canonicalize(path));
+  }
+  appendStableIdentityPart(identity, fn.Name);
+  appendStableIdentityPart(identity, std::to_string(fn.GenericParams.size()));
+  return "__toka_gfn_" + exactSymbolEncoding(identity);
+}
+
+static std::string functionCodegenName(const Module &M,
+                                       const FunctionDecl &fn) {
+  if (!fn.GenericParams.empty())
+    return genericFunctionCodegenName(M, fn);
+  return moduleScopedCodegenName(M, fn.Name);
+}
+
 static std::string shapeCodegenName(const Module &M,
                                     const std::string &name) {
   std::string path = M.SourcePath.empty() ? M.ResolvedPath : M.SourcePath;
@@ -626,6 +673,80 @@ ShapeDecl *Sema::findVisibleShapeDecl(const std::string &shapeName,
 
   auto fallback = ShapeMap.find(shapeName);
   return fallback == ShapeMap.end() ? nullptr : fallback->second;
+}
+
+ShapeDecl *Sema::resolveImplOwner(ImplDecl *impl) {
+  if (!impl)
+    return nullptr;
+
+  std::shared_ptr<toka::Type> surfaceType =
+      impl->HeaderSyntax.Type
+          ? toka::Type::fromSyntax(impl->HeaderSyntax.Type)
+          : toka::Type::fromString(impl->TypeName);
+  auto surfaceShape = std::dynamic_pointer_cast<ShapeType>(
+      surfaceType ? surfaceType->getSoulType() : nullptr);
+  std::string surfaceName =
+      surfaceShape ? surfaceShape->Name
+                   : Type::stripMorphology(impl->TypeName);
+  if (const size_t generic = surfaceName.find('<');
+      generic != std::string::npos) {
+    surfaceName.resize(generic);
+  }
+
+  auto findRegistered = [](ModuleScope *scope,
+                           const void *declaration) -> ShapeDecl * {
+    if (!scope || !declaration)
+      return nullptr;
+    for (const auto &[_, shape] : scope->Shapes) {
+      if (shape == declaration)
+        return shape;
+    }
+    return nullptr;
+  };
+
+  auto findInScope = [&](ModuleScope *scope,
+                         const std::string &name) -> ShapeDecl * {
+    if (!scope || name.empty())
+      return nullptr;
+    const size_t qualifier = name.find("::");
+    if (qualifier != std::string::npos) {
+      const std::string moduleName = name.substr(0, qualifier);
+      const std::string targetName = name.substr(qualifier + 2);
+      auto moduleSymbol = scope->LexicalSymbols.find(moduleName);
+      if (moduleSymbol == scope->LexicalSymbols.end() ||
+          !moduleSymbol->second.ReferencedModule)
+        return nullptr;
+      auto *target = static_cast<ModuleScope *>(
+          moduleSymbol->second.ReferencedModule);
+      auto shape = target->Shapes.find(targetName);
+      return shape == target->Shapes.end() ? nullptr : shape->second;
+    }
+
+    auto symbol = scope->LexicalTypes.find(name);
+    if (symbol == scope->LexicalTypes.end() || !symbol->second.IsTypeName ||
+        symbol->second.IsTraitName || !symbol->second.ASTPtr)
+      return nullptr;
+    if (ShapeDecl *shape = findRegistered(scope, symbol->second.ASTPtr))
+      return shape;
+    return findRegistered(
+        static_cast<ModuleScope *>(symbol->second.ReferencedModule),
+        symbol->second.ASTPtr);
+  };
+
+  auto lexical = DeclarationLexicalScopes.find(impl);
+  if (lexical != DeclarationLexicalScopes.end()) {
+    if (ShapeDecl *owner = findInScope(lexical->second, surfaceName))
+      return owner;
+  }
+  if (impl->Loc.isValid()) {
+    if (ShapeDecl *owner = findInScope(getLexicalModule(impl->Loc), surfaceName))
+      return owner;
+  }
+
+  // Materialized generic impls receive their exact owner directly from the
+  // instantiation path; their synthetic concrete spelling is intentionally
+  // absent from the source module's lexical table.
+  return impl->TemplateOrigin ? impl->ResolvedOwner : nullptr;
 }
 
 PartialMovePlan Sema::admittedPartialMovePlan(const SymbolInfo &info) {
@@ -2049,7 +2170,12 @@ void Sema::recordInstantiationType(FunctionDecl *function,
   if (auto *shape = dynamic_cast<ShapeType *>(type.get())) {
     InstantiationTypeNames[function].insert(
         Type::stripMorphology(shape->Name));
-    for (const auto &arg : shape->GenericArgs)
+    const auto &arguments =
+        shape->GenericArgs.empty() && shape->Decl &&
+                shape->Decl->InstantiationTemplate
+            ? shape->Decl->InstantiationArgs
+            : shape->GenericArgs;
+    for (const auto &arg : arguments)
       recordInstantiationType(function, arg);
   }
 }
@@ -2266,9 +2392,13 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
     if (!hasOutput) {
       for (const auto &method : Impl->Methods) {
         if (method && method->Name == "call") {
-          Impl->AssociatedTypes.push_back(
-              AssociatedTypeDecl{"Output", method->ReturnType,
-                                 method->ReturnTypeSyntax, false, method->Loc});
+          AssociatedTypeDecl output;
+          output.Name = "Output";
+          output.Type = method->ReturnType;
+          output.TypeSyntax = method->ReturnTypeSyntax;
+          output.ResolvedType = method->ResolvedReturnType;
+          output.Loc = method->Loc;
+          Impl->AssociatedTypes.push_back(std::move(output));
           break;
         }
       }
@@ -2325,8 +2455,14 @@ Sema::registerAssociatedTypes(ImplDecl *Impl, TraitDecl *Trait,
                                  knownName, knownType);
     }
     std::shared_ptr<toka::Type> resolvedAssoc =
-        resolvedAssocSyntax ? toka::Type::fromSyntax(resolvedAssocSyntax)
-                           : toka::Type::fromString(resolvedAssocType);
+        implAssoc->ResolvedType
+            ? implAssoc->ResolvedType
+            : resolvedAssocSyntax ? toka::Type::fromSyntax(resolvedAssocSyntax)
+                                  : toka::Type::fromString(resolvedAssocType);
+    for (const auto &[knownName, knownType] : replacements) {
+      if (resolvedAssoc)
+        resolvedAssoc = resolvedAssoc->substitute({{knownName, knownType}});
+    }
     resolvedAssoc = resolveType(resolvedAssoc);
     resolvedAssocType = resolvedAssoc ? resolvedAssoc->toString() : "unknown";
     replacements[name] = resolvedAssoc;
@@ -2365,10 +2501,19 @@ void Sema::applyAssociatedTypeSubstitutions(
       substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                   name, ty);
       Method->syncReturnContractTypeCache();
-      Method->ResolvedReturnType = nullptr;
+      if (Impl->TemplateOrigin && Method->ResolvedReturnType) {
+        Method->ResolvedReturnType =
+            Method->ResolvedReturnType->substitute({{name, ty}});
+      } else {
+        Method->ResolvedReturnType = nullptr;
+      }
       for (auto &Arg : Method->Args) {
         substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, name, ty);
-        Arg.ResolvedType = nullptr;
+        if (Impl->TemplateOrigin && Arg.ResolvedType) {
+          Arg.ResolvedType = Arg.ResolvedType->substitute({{name, ty}});
+        } else {
+          Arg.ResolvedType = nullptr;
+        }
       }
     }
   }
@@ -2394,7 +2539,18 @@ std::string Sema::resolveAssociatedTypeProjection(const std::string &typeName,
     return "";
   }
 
-  std::string resolvedSelf = resolveType(selfType, force);
+  auto resolvedSelfType =
+      resolveType(toka::Type::fromString(selfType), force);
+  std::string resolvedSelf =
+      resolvedSelfType ? resolvedSelfType->toString() : selfType;
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(
+          resolvedSelfType ? resolvedSelfType->getSoulType() : nullptr)) {
+    if (shape->Decl) {
+      resolvedSelf = shape->Decl->CodegenName.empty()
+                         ? shape->Decl->Name
+                         : shape->Decl->CodegenName;
+    }
+  }
   std::string exactTrait = traitName;
   if (!exactTrait.empty() && exactTrait[0] == '@') {
     exactTrait = exactTrait.substr(1);
@@ -2453,7 +2609,15 @@ Sema::resolveAssociatedTypeProjection(const TypeSyntaxPtr &syntax,
   auto selfType = resolveType(toka::Type::fromSyntax(syntax->Subject), force);
   if (!selfType)
     return nullptr;
-  const std::string resolvedSelf = selfType->toString();
+  std::string resolvedSelf = selfType->toString();
+  if (auto shape = std::dynamic_pointer_cast<ShapeType>(
+          selfType->getSoulType())) {
+    if (shape->Decl) {
+      resolvedSelf = shape->Decl->CodegenName.empty()
+                         ? shape->Decl->Name
+                         : shape->Decl->CodegenName;
+    }
+  }
 
   std::string exactTrait = syntax->Text;
   if (!exactTrait.empty() && exactTrait.front() == '@')
@@ -2488,6 +2652,8 @@ Sema::resolveAssociatedTypeProjection(const TypeSyntaxPtr &syntax,
     if (impl != ImplMap.end()) {
       auto call = impl->second.find("call");
       if (call != impl->second.end() && call->second) {
+        if (call->second->ResolvedReturnType)
+          return resolveType(call->second->ResolvedReturnType, force);
         if (call->second->ReturnTypeSyntax)
           return resolveType(
               toka::Type::fromSyntax(call->second->ReturnTypeSyntax), force);
@@ -2643,7 +2809,7 @@ void Sema::declareGlobals(Module &M) {
   // 1. Register local Functions
   for (auto &Fn : M.Functions) {
     DeclarationLexicalScopes[Fn.get()] = &ms;
-    Fn->CodegenName = moduleScopedCodegenName(M, Fn->Name);
+    Fn->CodegenName = functionCodegenName(M, *Fn);
     for (const auto &Arg : Fn->Args) {
       debugCheckBindingPermission(Arg);
       debugCheckBindingTypeString("function argument", Arg.Name, Arg.Type,
@@ -2708,6 +2874,14 @@ void Sema::declareGlobals(Module &M) {
     }
     if (St->CodegenName.empty())
       St->CodegenName = St->Name;
+    if (St->OwnerLinkName.empty()) {
+      if (!M.IsTrustedSystemModule && !St->IsCompilerSynthesized &&
+          St->NominalId) {
+        St->OwnerLinkName = "__toka_owner_" + St->NominalId->mangled();
+      } else {
+        St->OwnerLinkName = St->CodegenName;
+      }
+    }
     auto existingShape = ShapeMap.find(St->Name);
     if (existingShape != ShapeMap.end() && existingShape->second != St.get()) {
       existingShape->second->CodegenName =
@@ -3005,7 +3179,7 @@ void Sema::registerGlobals(Module &M) {
 
   // Case A: Register local symbols in the ModuleScope
   for (auto &Fn : M.Functions) {
-    Fn->CodegenName = moduleScopedCodegenName(M, Fn->Name);
+    Fn->CodegenName = functionCodegenName(M, *Fn);
     ms.Functions[Fn->Name] = Fn.get();
     auto &overloads = ms.FunctionOverloads[Fn->Name];
     if (std::find(overloads.begin(), overloads.end(), Fn.get()) ==
@@ -3681,7 +3855,30 @@ void Sema::registerGlobals(Module &M) {
 }
 
 void Sema::registerImpl(ImplDecl *Impl) {
-  std::string resolvedTypeName = resolveType(Impl->TypeName);
+  if (ShapeDecl *owner = resolveImplOwner(Impl))
+    Impl->ResolvedOwner = owner;
+  std::shared_ptr<toka::Type> resolvedSelfType;
+  if (Impl->ResolvedOwner) {
+    auto exactSelf = std::make_shared<ShapeType>(Impl->ResolvedOwner->Name);
+    exactSelf->resolve(Impl->ResolvedOwner);
+    resolvedSelfType = exactSelf;
+  } else {
+    resolvedSelfType =
+        resolveType(Impl->HeaderSyntax.Type
+                        ? toka::Type::fromSyntax(Impl->HeaderSyntax.Type)
+                        : toka::Type::fromString(Impl->TypeName));
+  }
+  auto resolvedSelfShape = std::dynamic_pointer_cast<ShapeType>(
+      resolvedSelfType ? resolvedSelfType->getSoulType() : nullptr);
+  if (!Impl->ResolvedOwner && resolvedSelfShape)
+    Impl->ResolvedOwner = resolvedSelfShape->Decl;
+  std::string resolvedTypeName =
+      Impl->ResolvedOwner
+          ? (Impl->ResolvedOwner->CodegenName.empty()
+                 ? Impl->ResolvedOwner->Name
+                 : Impl->ResolvedOwner->CodegenName)
+          : resolvedSelfType ? resolvedSelfType->toString()
+                             : resolveType(Impl->TypeName);
   TraitDecl *traitDecl =
       Impl->TraitName.empty()
           ? nullptr
@@ -3732,10 +3929,12 @@ void Sema::registerImpl(ImplDecl *Impl) {
     substituteSourceTypeSyntax(Method->ReturnTypeSyntax, Method->ReturnType,
                                 "Self", selfTy);
     Method->syncReturnContractTypeCache();
-    Method->ResolvedReturnType = nullptr;
+    if (!Impl->TemplateOrigin)
+      Method->ResolvedReturnType = nullptr;
     for (auto &Arg : Method->Args) {
       substituteSourceTypeSyntax(Arg.TypeSyntax, Arg.Type, "Self", selfTy);
-      Arg.ResolvedType = nullptr;
+      if (!Impl->TemplateOrigin)
+        Arg.ResolvedType = nullptr;
     }
   }
   applyAssociatedTypeSubstitutions(Impl, associatedTypeSubstitutions);
@@ -3766,16 +3965,21 @@ void Sema::registerImpl(ImplDecl *Impl) {
   if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
     requireSelfDependency("next_ref");
 
+  const std::string methodOwnerName =
+      Impl->ResolvedOwner &&
+              Impl->ResolvedOwner->OwnerLinkName.rfind("__toka_owner_", 0) == 0
+          ? Impl->ResolvedOwner->OwnerLinkName
+          : resolvedTypeName;
   std::set<std::string> implemented;
   for (auto &Method : Impl->Methods) {
+    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "Encap" &&
+                            Method->Name == "drop";
     if (!Method->IsClosureInvoke) {
       Method->CodegenName =
           Impl->TraitName.empty()
-              ? resolvedTypeName + "_" + Method->Name
-              : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
+              ? methodOwnerName + "_" + Method->Name
+              : canonicalTrait + "_" + methodOwnerName + "_" + Method->Name;
     }
-    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "Encap" &&
-                            Method->Name == "drop";
     if (!isDropHook) {
       MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
       MethodDecls[resolvedTypeName][Method->Name] = Method.get();
@@ -3862,9 +4066,16 @@ void Sema::registerImpl(ImplDecl *Impl) {
     if (implemented.count("drop")) {
       m_ShapeProps[resolvedTypeName].HasDrop = true;
       // [Single Source of Truth] Store the authoritative mangled name
-      if (ShapeMap.count(resolvedTypeName)) {
-        ShapeMap[resolvedTypeName]->MangledDestructorName =
-            "Encap_" + resolvedTypeName + "_drop";
+      ShapeDecl *owner = Impl->ResolvedOwner;
+      if (!owner && ShapeMap.count(resolvedTypeName))
+        owner = ShapeMap[resolvedTypeName];
+      if (owner) {
+        for (const auto &method : Impl->Methods) {
+          if (method->Name == "drop") {
+            owner->MangledDestructorName = method->CodegenName;
+            break;
+          }
+        }
       }
     }
   }
@@ -3905,7 +4116,30 @@ void Sema::declareImpl(ImplDecl *Impl) {
   }
 
   std::set<std::string> implemented;
-  std::string resolvedTypeName = resolveType(Impl->TypeName);
+  if (ShapeDecl *owner = resolveImplOwner(Impl))
+    Impl->ResolvedOwner = owner;
+  std::shared_ptr<toka::Type> resolvedSelfType;
+  if (Impl->ResolvedOwner) {
+    auto exactSelf = std::make_shared<ShapeType>(Impl->ResolvedOwner->Name);
+    exactSelf->resolve(Impl->ResolvedOwner);
+    resolvedSelfType = exactSelf;
+  } else {
+    resolvedSelfType =
+        resolveType(Impl->HeaderSyntax.Type
+                        ? toka::Type::fromSyntax(Impl->HeaderSyntax.Type)
+                        : toka::Type::fromString(Impl->TypeName));
+  }
+  auto resolvedSelfShape = std::dynamic_pointer_cast<ShapeType>(
+      resolvedSelfType ? resolvedSelfType->getSoulType() : nullptr);
+  if (!Impl->ResolvedOwner && resolvedSelfShape)
+    Impl->ResolvedOwner = resolvedSelfShape->Decl;
+  std::string resolvedTypeName =
+      Impl->ResolvedOwner
+          ? (Impl->ResolvedOwner->CodegenName.empty()
+                 ? Impl->ResolvedOwner->Name
+                 : Impl->ResolvedOwner->CodegenName)
+          : resolvedSelfType ? resolvedSelfType->toString()
+                             : resolveType(Impl->TypeName);
   TraitDecl *traitDecl =
       Impl->TraitName.empty()
           ? nullptr
@@ -3936,15 +4170,20 @@ void Sema::declareImpl(ImplDecl *Impl) {
     requireSelfDependency("iter");
   if (getTraitFamilyName(canonicalTrait) == "BorrowIterator")
     requireSelfDependency("next_ref");
+  const std::string methodOwnerName =
+      Impl->ResolvedOwner &&
+              Impl->ResolvedOwner->OwnerLinkName.rfind("__toka_owner_", 0) == 0
+          ? Impl->ResolvedOwner->OwnerLinkName
+          : resolvedTypeName;
   for (auto &Method : Impl->Methods) {
+    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "Encap" &&
+                            Method->Name == "drop";
     if (!Method->IsClosureInvoke) {
       Method->CodegenName =
           Impl->TraitName.empty()
-              ? resolvedTypeName + "_" + Method->Name
-              : canonicalTrait + "_" + resolvedTypeName + "_" + Method->Name;
+              ? methodOwnerName + "_" + Method->Name
+              : canonicalTrait + "_" + methodOwnerName + "_" + Method->Name;
     }
-    const bool isDropHook = getTraitFamilyName(canonicalTrait) == "Encap" &&
-                            Method->Name == "drop";
     if (!isDropHook) {
       MethodMap[resolvedTypeName][Method->Name] = Method->ReturnType;
       MethodDecls[resolvedTypeName][Method->Name] = Method.get();
@@ -3965,9 +4204,16 @@ void Sema::declareImpl(ImplDecl *Impl) {
   if (getTraitFamilyName(canonicalTrait) == "Encap") {
     if (implemented.count("drop")) {
       m_ShapeProps[resolvedTypeName].HasDrop = true;
-      if (ShapeMap.count(resolvedTypeName)) {
-        ShapeMap[resolvedTypeName]->MangledDestructorName =
-            "Encap_" + resolvedTypeName + "_drop";
+      ShapeDecl *owner = Impl->ResolvedOwner;
+      if (!owner && ShapeMap.count(resolvedTypeName))
+        owner = ShapeMap[resolvedTypeName];
+      if (owner) {
+        for (const auto &method : Impl->Methods) {
+          if (method->Name == "drop") {
+            owner->MangledDestructorName = method->CodegenName;
+            break;
+          }
+        }
       }
     }
   }
@@ -4027,9 +4273,12 @@ void Sema::checkFunction(FunctionDecl *Fn) {
   if (resultKind != ReturnResultKind::AbiVoid) {
     validateTypeVisibilityInType(Fn->ReturnType, getLoc(Fn));
     validateDynTraitObjectSafetyInType(Fn->ReturnType, getLoc(Fn));
-    Fn->ResolvedReturnType = resolveType(
-        Fn->ReturnTypeSyntax ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax)
-                             : toka::Type::fromString(Fn->ReturnType));
+    Fn->ResolvedReturnType =
+        resolveType(Fn->ResolvedReturnType
+                        ? Fn->ResolvedReturnType
+                        : Fn->ReturnTypeSyntax
+                              ? toka::Type::fromSyntax(Fn->ReturnTypeSyntax)
+                              : toka::Type::fromString(Fn->ReturnType));
   } else {
     Fn->ResolvedReturnType = toka::Type::fromString("void");
   }
@@ -4178,7 +4427,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     // Preserve full generic-substituted Arg.Type values like "&i32".
     // [Fix] Preserve pre-resolved Types (e.g. Synthetic Closures)
     if (Arg.ResolvedType) {
-      Info.TypeObj = Arg.ResolvedType;
+      Info.TypeObj = resolveType(Arg.ResolvedType);
+      Arg.ResolvedType = Info.TypeObj;
     } else {
       Info.TypeObj =
           resolveType(Sema::synthesizePhysicalTypeObject(Arg, false));
@@ -4428,6 +4678,11 @@ void Sema::checkImpl(ImplDecl *Impl) {
                         : findTraitDecl(Impl->TraitName);
     if (TD) {
       std::string resolvedTypeName = resolveType(Impl->TypeName);
+      if (Impl->ResolvedOwner) {
+        resolvedTypeName = Impl->ResolvedOwner->CodegenName.empty()
+                               ? Impl->ResolvedOwner->Name
+                               : Impl->ResolvedOwner->CodegenName;
+      }
       for (const auto &bound : TD->SelfTraitBounds) {
         TraitDecl *boundDecl = findVisibleTraitDecl(bound, TD->Loc);
         std::string canonicalBound = canonicalTraitName(bound, boundDecl);
@@ -4466,10 +4721,13 @@ void Sema::checkImpl(ImplDecl *Impl) {
 
   // Create a Type Object for the Impl's Target
   // We use Type::fromString but we might want to resolve aliases.
-  SelfType = toka::Type::fromString(Impl->TypeName);
-
-  // If we can resolve it deeper (e.g. valid shape), do so.
-  SelfType = resolveType(SelfType);
+  if (Impl->ResolvedOwner) {
+    auto exactSelf = std::make_shared<ShapeType>(Impl->ResolvedOwner->Name);
+    exactSelf->resolve(Impl->ResolvedOwner);
+    SelfType = exactSelf;
+  } else {
+    SelfType = resolveType(toka::Type::fromString(Impl->TypeName));
+  }
 
   // 2. Define "Self" in the Scope
   if (SelfType) {
@@ -5302,21 +5560,27 @@ FunctionDecl *Sema::instantiateGenericFunction(
       if (!checkTraitBounds(CallSite ? getLoc(CallSite) : Template->Loc, 
                             Template->GenericParams[i].Name, 
                             bounds,
-                            Args[i]->toString(), false, Template->Loc)) {
+                            Args[i], false, Template->Loc)) {
         return nullptr;
       }
     }
   }
 
-  // Mangling: Name_M_Arg1_Arg2
-  std::string mangledName = Template->Name + "_M";
+  // Semantic cache identity and object linkage are deliberately separate.
+  // Both use the template's module-scoped codegen name, while the cache key
+  // additionally uses the exact structural identity of each argument.
+  const std::string templateIdentity = Template->CodegenName.empty()
+                                           ? Template->Name
+                                           : Template->CodegenName;
+  std::string cacheKey = templateIdentity + "_M";
+  std::string mangledName = templateIdentity + "_M";
   for (auto &Arg : Args) {
     if (!Arg)
       continue;
     auto resolvedArg = resolveType(Arg);
-    std::string argStr =
-        resolvedArg ? resolvedArg->getMangledName() : Arg->getMangledName();
-    mangledName += "_" + argStr;
+    auto semanticArg = resolvedArg ? resolvedArg : Arg;
+    cacheKey += "_" + semanticArg->canonicalMangledName();
+    mangledName += "_" + semanticArg->getMangledName();
   }
 
   // Recursion Guard
@@ -5327,8 +5591,8 @@ FunctionDecl *Sema::instantiateGenericFunction(
   }
 
   // Check Cache
-  if (InstantiationCache.count(mangledName)) {
-    return InstantiationCache[mangledName];
+  if (InstantiationCache.count(cacheKey)) {
+    return InstantiationCache[cacheKey];
   }
 
   // Instantiate
@@ -5359,13 +5623,18 @@ FunctionDecl *Sema::instantiateGenericFunction(
 
       // [NEW] Set Const Value for Expression Evaluation
       uint64_t val = 0;
+      bool hasValue = false;
       try {
-        val = std::stoull(SubstVal);
+        size_t consumed = 0;
+        val = std::stoull(SubstVal, &consumed);
+        hasValue = consumed == SubstVal.size();
       } catch (...) {
       }
-      constInfo.HasConstValue = true;
-      constInfo.ConstValue = val;
-      constInfo.ConstValObj = ComptimeValue(val);
+      constInfo.HasConstValue = hasValue;
+      if (hasValue) {
+        constInfo.ConstValue = val;
+        constInfo.ConstValObj = ComptimeValue(val);
+      }
 
       // NOTE: We don't set IsTypeAlias. Semantically it's a value.
       // But we need CodeGen to see it.
@@ -5490,10 +5759,84 @@ FunctionDecl *Sema::instantiateGenericFunction(
       Arg.Permission.MorphicExempt = true;
     }
     applyTypeSyntaxSubst(Arg.TypeSyntax, Arg.Type);
-    Arg.ResolvedType = nullptr;
   }
   applyTypeSyntaxSubst(Instance->ReturnTypeSyntax, Instance->ReturnType);
   Instance->syncReturnContractTypeCache();
+
+  // Source syntax is retained for diagnostics and TKI export, but a bound
+  // nominal argument cannot survive a toSyntax()/toString() round-trip.  The
+  // instantiated signature therefore keeps semantic Types substituted from
+  // the original template declaration.
+  for (size_t i = 0; i < Template->Args.size() && i < Instance->Args.size();
+       ++i) {
+    auto semanticArgument = Template->Args[i].ResolvedType
+                                ? Template->Args[i].ResolvedType
+                                : Sema::synthesizePhysicalTypeObject(
+                                      Template->Args[i], false);
+    Instance->Args[i].ResolvedType =
+        semanticArgument ? semanticArgument->substitute(substMap) : nullptr;
+  }
+  auto semanticReturn =
+      Template->ResolvedReturnType
+          ? Template->ResolvedReturnType
+          : Template->ReturnTypeSyntax
+                ? toka::Type::fromSyntax(Template->ReturnTypeSyntax)
+                : toka::Type::fromString(Template->ReturnType);
+  Instance->ResolvedReturnType =
+      semanticReturn ? semanticReturn->substitute(substMap) : nullptr;
+
+  // Body type parameters remain written as T/Vec<T>.  They are resolved
+  // through the exact Type aliases installed in the surrounding
+  // instantiation scope below.  Replacing them with Type::toSyntax() would
+  // erase a bound shape's Decl and let a same-named declaration in the
+  // template module capture the body.  Const parameters still require
+  // structural source substitution for array extents and sizeof.
+  std::map<std::string, std::shared_ptr<toka::Type>> bodySubstMap;
+  for (size_t i = 0; i < Template->GenericParams.size(); ++i) {
+    const auto &parameter = Template->GenericParams[i];
+    if (!parameter.IsConst)
+      continue;
+    auto replacement = resolveType(Args[i]);
+    bodySubstMap[parameter.Name] = replacement;
+    if (parameter.IsMorphic && !parameter.Name.empty() &&
+        parameter.Name.front() == '\'') {
+      bodySubstMap[parameter.Name.substr(1)] = replacement;
+    }
+  }
+
+  auto applyBodySubst = [&](std::string &spelling) {
+    for (const auto &[name, replacement] : bodySubstMap)
+      replaceTypeNameToken(spelling, name,
+                           replacement ? replacement->toString() : "unknown");
+  };
+  auto applyBodyTypeSyntaxSubst = [&](TypeSyntaxPtr &syntax,
+                                      std::string &spelling) {
+    if (!syntax) {
+      applyBodySubst(spelling);
+      return;
+    }
+    std::map<std::string, TypeSyntaxPtr> typed;
+    for (const auto &[name, replacement] : bodySubstMap) {
+      if (replacement)
+        typed.emplace(name,
+                      replacement->toSyntax(syntax->Begin, syntax->End));
+    }
+    syntax = syntax->substitute(typed);
+    spelling = syntax->toCanonicalString();
+  };
+  auto applyBodyTypeArgumentSubst = [&](TypeArgumentSyntax &argument,
+                                        std::string &spelling) {
+    if (argument.ArgumentKind == TypeArgumentSyntax::Kind::Type) {
+      applyBodyTypeSyntaxSubst(argument.Type, spelling);
+      return;
+    }
+    auto replacement = bodySubstMap.find(argument.ConstantText);
+    if (replacement != bodySubstMap.end())
+      argument.ConstantText = replacement->second
+                                  ? replacement->second->toString()
+                                  : "unknown";
+    spelling = argument.toCanonicalString();
+  };
 
   // [NEW] Substitute types in Body (Recursive Traversal)
   // We need to traverse Stmt and Expr to find nodes that store type strings:
@@ -5519,17 +5862,17 @@ FunctionDecl *Sema::instantiateGenericFunction(
       e->ResolvedType = nullptr;
 
       if (auto *ne = dynamic_cast<NewExpr *>(e)) {
-        applyTypeSyntaxSubst(ne->TypeSyntax, ne->Type);
+        applyBodyTypeSyntaxSubst(ne->TypeSyntax, ne->Type);
         if (ne->Initializer)
           visitExpr(ne->Initializer.get());
       } else if (auto *ae = dynamic_cast<AllocExpr *>(e)) {
-        applyTypeSyntaxSubst(ae->TypeSyntax, ae->TypeName);
+        applyBodyTypeSyntaxSubst(ae->TypeSyntax, ae->TypeName);
         if (ae->Initializer)
           visitExpr(ae->Initializer.get());
         if (ae->ArraySize)
           visitExpr(ae->ArraySize.get());
       } else if (auto *ce = dynamic_cast<CastExpr *>(e)) {
-        applyTypeSyntaxSubst(ce->TargetTypeSyntax, ce->TargetType);
+        applyBodyTypeSyntaxSubst(ce->TargetTypeSyntax, ce->TargetType);
         if (ce->Expression)
           visitExpr(ce->Expression.get());
       } else if (auto *se = dynamic_cast<SizeOfExpr *>(e)) {
@@ -5537,21 +5880,20 @@ FunctionDecl *Sema::instantiateGenericFunction(
         // `sizeof([u8; N_])`.  Leaving this spelling symbolic makes CodeGen
         // materialize a zero-length array even though the function instance
         // itself was specialized (for example bytes_from_array<32>).
-        applyTypeSyntaxSubst(se->TypeSyntax, se->TypeStr);
+        applyBodyTypeSyntaxSubst(se->TypeSyntax, se->TypeStr);
       } else if (auto *ise = dynamic_cast<InitStructExpr *>(e)) {
-        applySubst(ise->ShapeName);
         for (auto &m : ise->Members)
           visitExpr(m.second.get());
       } else if (auto *call = dynamic_cast<CallExpr *>(e)) {
         // Function Name (if it has generics embedded?) - Usually handled by
         // Parser logic putting generics in name? If so, applySubst on Callee.
-        applySubst(call->Callee);
+        applyBodySubst(call->Callee);
         for (size_t i = 0; i < call->GenericArgs.size(); ++i) {
           if (i < call->GenericArgSyntax.size())
-            applyTypeArgumentSubst(call->GenericArgSyntax[i],
-                                   call->GenericArgs[i]);
+            applyBodyTypeArgumentSubst(call->GenericArgSyntax[i],
+                                       call->GenericArgs[i]);
           else
-            applySubst(call->GenericArgs[i]);
+            applyBodySubst(call->GenericArgs[i]);
         }
         for (auto &arg : call->Args)
           visitExpr(arg.get());
@@ -5562,12 +5904,12 @@ FunctionDecl *Sema::instantiateGenericFunction(
         for (auto &arg : mc->Args)
           visitExpr(arg.get());
       } else if (auto *are = dynamic_cast<AnonymousRecordExpr *>(e)) {
-        applySubst(are->AssignedTypeName);
+        applyBodySubst(are->AssignedTypeName);
         for (auto &m : are->Fields)
           if (m.second)
             visitExpr(m.second.get());
       } else if (auto *arrayInit = dynamic_cast<ArrayInitExpr *>(e)) {
-        applyTypeSyntaxSubst(arrayInit->TypeSyntax, arrayInit->Type);
+        applyBodyTypeSyntaxSubst(arrayInit->TypeSyntax, arrayInit->Type);
         if (arrayInit->Initializer)
           visitExpr(arrayInit->Initializer.get());
         if (arrayInit->ArraySize)
@@ -5601,7 +5943,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
         visitExpr(fore->Collection.get());
         visitStmt(fore->Body.get());
       } else if (auto *clo = dynamic_cast<ClosureExpr *>(e)) {
-        applySubst(clo->ReturnType);
+        applyBodySubst(clo->ReturnType);
         if (clo->Body) visitStmt(clo->Body.get());
       } else if (auto *rep = dynamic_cast<RepeatedArrayExpr *>(e)) {
         visitExpr(rep->Value.get());
@@ -5649,7 +5991,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
       } else if (auto *initBlock = dynamic_cast<InitBlockStmt *>(s)) {
         visitStmt(initBlock->Body.get());
       } else if (auto *vd = dynamic_cast<VariableDecl *>(s)) {
-        applyTypeSyntaxSubst(vd->DeclaredTypeSyntax, vd->TypeName);
+        applyBodyTypeSyntaxSubst(vd->DeclaredTypeSyntax, vd->TypeName);
         vd->ResolvedType = nullptr; // Clear cache
         if (vd->Init)
           visitExpr(vd->Init.get());
@@ -5665,7 +6007,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
         if (fs->Count)
           visitExpr(fs->Count.get());
       } else if (auto *dd = dynamic_cast<DestructuringDecl *>(s)) {
-        applySubst(dd->TypeName);
+        applyBodySubst(dd->TypeName);
         if (dd->Init)
           visitExpr(dd->Init.get());
       } else if (auto *us = dynamic_cast<UnsafeStmt *>(s)) {
@@ -5715,6 +6057,7 @@ FunctionDecl *Sema::instantiateGenericFunction(
   exitScope();
   RecursionDepth--;
 
+  InstantiationCache[cacheKey] = Instance;
   InstantiationCache[mangledName] = Instance;
   return Instance;
 }
