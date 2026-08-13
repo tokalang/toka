@@ -1,6 +1,12 @@
 # `official/gui` Completion Scope
 
-Status: proposed acceptance contract for Toka 1.0.
+Status: retained compiler-facing acceptance contract; standalone macOS
+`v0.1.0` released, GUI 1.0 incomplete.
+
+The canonical package source, qualification, release, and imported demos now
+live in [`tokalang/gui`](https://github.com/tokalang/gui). This document keeps
+the package boundary that Toka's compiler and standard library must support; it
+is not a second package roadmap or implementation source.
 
 ## Product boundary
 
@@ -15,10 +21,10 @@ compatibility target.
 
 ## Release gates
 
-### macOS reference release
+### macOS completion release
 
-The first supported release targets macOS and must provide all of the
-following:
+A release satisfying this completion contract must provide all of the
+following on macOS:
 
 1. App and window lifecycle: multiple windows, blocking run loop, redraw
    coalescing, resize, and deterministic close/drop behavior.
@@ -30,9 +36,9 @@ following:
    scrolling.
 5. Text entry: selection, cursor movement, clipboard, Unicode input, and the
    macOS IME path needed for CJK input.
-6. Production evidence: an in-repository Toka settings/inspector reference
-   application, package/offline-build replay, lifecycle redlines, and rendered
-   smoke coverage.
+6. Production evidence: canonical-repository settings/editor references,
+   package/offline-build replay, lifecycle redlines, and rendered smoke
+   coverage.
 
 ### Toka 1.0 portability gate
 
@@ -63,36 +69,27 @@ The work is done only when these checks are green on every supported platform:
 4. The reference application is built only with public `official/gui` APIs and
    runs in the same qualification suite.
 
-## Current progress
+## Released 0.1 evidence
 
-The macOS spike has completed the first part of item 1 and the first renderer
-slice: a non-cloneable window resource, AppKit event delivery, Metal frames,
-rectangles, composable nested bounds layout, redraw coalescing, and a small
-retained scene with static UTF-8 text, nested frame clipping, and local raster
-images plus SVG icons. Ordered retained scene nodes and flexible container
-layout are complete. Nested containers, wheel events, and virtual-list range
-calculation are complete. Scroll offsets, focus ids, and button interaction
-state are complete. Toggles, modifier-aware key events, and shortcut dispatch
-are complete. The macOS committed-text and IME-composition event pipeline is
-complete, and logical selection ranges plus clipboard access are available.
-Unicode grapheme cursor editing and CJK end-to-end acceptance remain. The
-current `TextSelection` unit is a Unicode scalar position, with explicit
-scalar-to-byte conversion in `core/str`; it is never an arbitrary UTF-8 byte
-offset. Scrollbar geometry/drag mapping and global-or-local shortcut dispatch
-are complete. Scrollbar visuals, inertia, and nested shortcut-scope propagation
-are the next slices, before any widget design.
+The standalone `v0.1.0` package qualification compiles its Toka fixtures,
+Objective-C bridge, and AppKit framework smoke, checks AppKit, Metal, and
+QuartzCore linkage, and replays the exact `unicode@0.1.1` dependency from only
+its locked archive. The canonical repository's editor and settings demos and
+the independent
+[`toka-examples/registry_gui_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_gui_consumer)
+resolve exact GUI and Unicode locks from an empty registry cache and rebuild
+offline from only those two archives.
 
-An initial `examples/settings.tk` reference application now type-checks through
-the package-consumer qualification path using only public APIs. Its interactive
-manual-run acceptance, alongside CJK text-entry acceptance, remains required
-before this counts as production evidence.
+Those hosted gates do not run the applications, open a real window, establish a
+usable Metal device or drawable, or qualify interactive input, IME, and CJK
+behavior. Linux parity is also absent. The released slice therefore supplies
+package/build/FFI evidence, not completion of the macOS completion-release list
+or the GUI 1.0 portability gate above.
 
-The application event loop may now participate in `std/task` through the
-bounded `@HostEventSource` adapter implemented by `App`.  This is a
-thread-local, opt-in executor turn: it lets ready tasks, timers, non-blocking
-socket readiness, and one AppKit wait cooperate without making `std` depend on
-GUI or moving AppKit objects across threads. `std/task::host_mailbox` now
-supplies the companion data-only worker-to-UI path: `@Send` updates can cross
-threads, while the inbox remains on the App thread. It is not a cross-platform
-co-wait backend, a wakeable native dispatcher, or a closure/callback path into
-AppKit.
+The compiler-facing integration is the bounded `@HostEventSource` adapter
+implemented by `App`. It lets ready tasks, timers, non-blocking socket
+readiness, and one AppKit wait cooperate without making `std` depend on GUI or
+moving AppKit objects across threads. `std/task::host_mailbox` supplies the
+companion data-only worker-to-UI path: `@Send` updates can cross threads while
+the inbox remains on the App thread. This is not a cross-platform co-wait
+backend, a wakeable native dispatcher, or a closure/callback path into AppKit.
