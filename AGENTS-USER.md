@@ -26,8 +26,8 @@ Do not begin a port when `toka doctor` is not clean.
 The retained public-registry consumer is the shortest end-to-end reference:
 
 ```sh
-git clone https://github.com/tokalang/toka.git
-cd toka/examples/registry_regex_consumer
+git clone https://github.com/tokalang/toka-examples.git
+cd toka-examples/registry_regex_consumer
 toka build
 ./target/debug/registry_regex_consumer
 ```

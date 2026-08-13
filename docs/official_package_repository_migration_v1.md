@@ -60,13 +60,13 @@ resolve their original archive.
 
 After the first standalone release passes its package qualification and a
 fresh registry consumer replay, delete the incubating package root from
-`tokalang/toka`. The compiler repository retains only the package contract and
-a small cross-repository consumer fixture. No long-lived mirror, submodule, or
-dual canonical source is allowed.
+`tokalang/toka`. The compiler repository retains the package contract, while
+the public `tokalang/toka-examples` repository owns cross-repository consumer
+fixtures. No long-lived mirror, submodule, or dual canonical source is allowed.
 
 `official/regex@0.1.1` passed the standalone Linux/macOS qualification and a
 fresh default-registry consumer replay before its historical monorepo root was
-removed. [`examples/registry_regex_consumer`](../examples/registry_regex_consumer)
+removed. [`toka-examples/registry_regex_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_regex_consumer)
 is the retained exact-version consumer fixture.
 
 `official/router@0.1.0` passed standalone Linux and macOS qualification and a
