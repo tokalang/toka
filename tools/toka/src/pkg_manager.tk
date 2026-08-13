@@ -1,5 +1,6 @@
 import std/io::{println}
 
+import std/env
 import std/fs::{read_to_string, exists}
 import sys/libc::{libc_getenv}
 import std/process::{Command}
@@ -17,16 +18,14 @@ fn package_helper_path() -> string {
         if exists(candidate.clone()) { return candidate }
         i += 1
     }
-    unsafe {
-        auto toka_lib = libc_getenv(c"TOKA_LIB") as Addr
-        if toka_lib != 0:Addr {
-            auto candidate# = string::from_cstr(toka_lib as *char)
-            if !candidate.ends_with("/") && !candidate.ends_with("\\") {
-                candidate#.push_str("/")
-            }
-            candidate#.push_str("toolchain/toka_package.py")
-            if exists(candidate.clone()) { return candidate }
+    auto toka_lib = env::var(string::from("TOKA_LIB"))
+    if toka_lib.is_some() {
+        auto candidate# = toka_lib.unwrap()
+        if !candidate.ends_with("/") && !candidate.ends_with("\\") {
+            candidate#.push_str("/")
         }
+        candidate#.push_str("toolchain/toka_package.py")
+        if exists(candidate.clone()) { return candidate }
     }
     return string::from("")
 }
