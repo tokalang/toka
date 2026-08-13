@@ -14,8 +14,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_SUITES = (
     ("agent_service", ROOT / "examples" / "agent-service" / "tests" / "qualify.py"),
-    # Migrated packages qualify in their canonical repositories.
-    ("compress", ROOT / "official" / "compress" / "tests" / "qualify_package.py"),
+    # Extracted releases qualify in their canonical repositories; incubating
+    # package roots remain in this monorepo suite.
     ("postgres", ROOT / "official" / "postgres" / "tests" / "qualify_package.py"),
     ("redis", ROOT / "official" / "redis" / "tests" / "qualify_package.py"),
     ("unicode", ROOT / "official" / "unicode" / "tests" / "qualify_package.py"),

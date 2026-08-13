@@ -1,7 +1,14 @@
 # `official/compress` v1.2 — Bounded Streaming Gzip/Zlib/Zstd and HTTP Policy
 
-Status: **implemented and locally qualified through explicit native-link and
-locked/offline package evidence; not yet published**.
+Status: **released as standalone
+[`tokalang/compress` v0.1.0](https://github.com/tokalang/compress/releases/tag/v0.1.0),
+with Linux/macOS qualification and public-registry/offline consumer evidence**.
+
+This compiler repository retains the API and scope contract below. Canonical
+source, package CI, and releases live in
+[`tokalang/compress`](https://github.com/tokalang/compress). The retained
+exact-version cross-repository fixture is
+[`toka-examples/registry_compress_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_compress_consumer).
 
 ## Role and boundary
 
@@ -53,7 +60,7 @@ links zlib and libzstd only for a consumer that imports the locked package. This
 hidden base-runtime dependency: programs without a native package remain free
 of zlib/zstd and their toolchain requirements.
 
-Qualification proves:
+The standalone release qualification proves:
 
 1. `pkg-config zlib` and `pkg-config --atleast-version=1.4.0 libzstd` can compile the declared C bridges;
 2. public `import official/compress` builds and runs through `toka build` with
