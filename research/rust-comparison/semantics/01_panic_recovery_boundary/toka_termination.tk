@@ -1,4 +1,0 @@
-fn main() -> i32 {
-    panic("comparison panic")
-    return 0
-}

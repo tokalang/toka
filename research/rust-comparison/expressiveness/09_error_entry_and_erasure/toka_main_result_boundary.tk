@@ -1,5 +1,0 @@
-fn main() -> Result<i32, string> {
-    return Result<i32, string>::Err(string::from("entry failure"))
-}
-
-// EXPECT: error[E04596]

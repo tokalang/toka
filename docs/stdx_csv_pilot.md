@@ -96,11 +96,12 @@ property. `tools/scripts/test_ai_tooling.py` also checks the public semantic
 contracts of `parse_records`, `read_record`, and `write_record`, including the
 mutable buffered endpoint and `cede` record transfer.
 
-`examples/csv_transform` is a minimal buildable project that copies records
-from an input file to an output file through the public streaming API:
+[`toka-examples/csv-transform`](https://github.com/tokalang/toka-examples/tree/main/csv-transform)
+is a minimal buildable project that copies records from an input file to an
+output file through the public streaming API:
 
 ```text
-cd examples/csv_transform
-TOKA_LIB=../../lib ../../build/bin/toka build
+cd toka-examples/csv-transform
+toka build
 ./target/debug/csv_transform input.csv output.csv
 ```
