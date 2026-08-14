@@ -1,8 +1,0 @@
-import build::{Executable, run_build}
-
-fn main() -> i32 {
-    auto proj# = Executable::make("my_colored_demo" as *char, "src/main.tk" as *char)
-    proj#.add_dep("pkg.tokalang.dev/zhyi/ansi" as *char)
-    
-    return run_build(proj)
-}

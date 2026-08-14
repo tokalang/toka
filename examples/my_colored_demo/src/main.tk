@@ -1,9 +1,0 @@
-import std/io::{println}
-import ansi::{red}
-
-fn main() -> i32 {
-    red("Hi! This is pure Toka Native Package Manager!")
-    println("This was printed using the high-level ansi wrapper!")
-    
-    return 0
-}
