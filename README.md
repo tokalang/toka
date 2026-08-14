@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [Public Preview Status](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Public Preview Status](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -58,7 +58,7 @@ Toka is currently a public preview. Use an exact published release candidate
 for a repeatable install:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.4
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.5
 toka doctor
 ```
 
@@ -258,7 +258,6 @@ Toka may not be the right choice yet if you need:
 
 - Website: [tokalang.dev](https://tokalang.dev)
 - Website source: [tokalang/toka-web](https://github.com/tokalang/toka-web)
-- Playground: [tokalang.dev/playground](https://tokalang.dev/playground)
 - Paper: [arXiv:2606.01974](https://arxiv.org/abs/2606.01974)
 - Syntax reference: [docs/syntax.md](docs/syntax.md)
 - AI completion card: [docs/ai_completion_card.md](docs/ai_completion_card.md)

@@ -1,4 +1,4 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [在线尝鲜 (Playground)](https://tokalang.dev/playground) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
@@ -54,7 +54,7 @@ Toka 当前处于 Public Preview。为获得可复现的安装，请使用一个
 release candidate：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.4
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.5
 toka doctor
 ```
 
@@ -241,7 +241,6 @@ Toka 还没有自举。生态仍然年轻。近期最重要的工程工作仍然
 
 - 官方网站：[tokalang.dev/zh](https://tokalang.dev/zh)
 - 网站源码：[tokalang/toka-web](https://github.com/tokalang/toka-web)
-- 在线 Playground：[tokalang.dev/playground](https://tokalang.dev/playground)
 - 学术论文：[arXiv:2606.01974](https://arxiv.org/abs/2606.01974)
 - 语法参考：[docs/syntax_zh.md](docs/syntax_zh.md)
 - 构建工具说明：[docs/BUILD_TOOL.md](docs/BUILD_TOOL.md)
