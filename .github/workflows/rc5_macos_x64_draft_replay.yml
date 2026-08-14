@@ -58,7 +58,12 @@ jobs:
           rm -f .toka_build_exe
           test "$(find .toka -type f | wc -l | tr -d ' ')" = 1
           echo "PASS: local retained one archive"
+          set +e
           TOKA_OFFLINE=1 toka fetch
+          local_offline_status=$?
+          set -e
+          echo "local offline fetch exit=$local_offline_status"
+          test "$local_offline_status" = 0
           echo "PASS: local offline fetch"
           if ! cmp -s package.lock ../local-online.lock; then
             diff -u ../local-online.lock package.lock || true
@@ -92,7 +97,12 @@ jobs:
           rm -f .toka_build_exe
           test "$(find .toka -type f | wc -l | tr -d ' ')" = 1
           echo "PASS: registry retained one archive"
+          set +e
           TOKA_OFFLINE=1 toka fetch
+          registry_offline_status=$?
+          set -e
+          echo "registry offline fetch exit=$registry_offline_status"
+          test "$registry_offline_status" = 0
           echo "PASS: registry offline fetch"
           if ! cmp -s package.lock ../registry-online.lock; then
             diff -u ../registry-online.lock package.lock || true
