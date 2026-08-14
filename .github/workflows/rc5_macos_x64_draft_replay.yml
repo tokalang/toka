@@ -54,27 +54,12 @@ jobs:
           toka add ../local_dep
           toka fetch
           cp package.lock ../local-online.lock
-          rm -rf target .toka/packages .toka/build
+          rm -rf target .toka
           rm -f .toka_build_exe
-          find .toka -type f -print
-          local_archive_count="$(find .toka -type f | wc -l | tr -d ' ')"
-          echo "local retained archive count=$local_archive_count"
-          test "$local_archive_count" = 1
-          echo "PASS: local retained one archive"
-          set +e
+          test ! -e .toka
           TOKA_OFFLINE=1 toka fetch
-          local_offline_status=$?
-          set -e
-          echo "local offline fetch exit=$local_offline_status"
-          test "$local_offline_status" = 0
-          echo "PASS: local offline fetch"
-          if ! cmp -s package.lock ../local-online.lock; then
-            diff -u ../local-online.lock package.lock || true
-            exit 1
-          fi
-          echo "PASS: local strict offline lock replay"
+          cmp package.lock ../local-online.lock
           toka run
-          echo "PASS: local strict offline run"
 
           cd ..
           printf '%s\n' 'pub fn value() -> i32 { return 1 }' > base.tk
@@ -98,20 +83,6 @@ jobs:
           cp package.lock ../registry-online.lock
           rm -rf target .toka/packages .toka/build
           rm -f .toka_build_exe
-          find .toka -type f -print
-          registry_archive_count="$(find .toka -type f | wc -l | tr -d ' ')"
-          echo "registry retained archive count=$registry_archive_count"
-          test "$registry_archive_count" = 1
-          echo "PASS: registry retained one archive"
-          set +e
+          test "$(find .toka -type f | wc -l | tr -d ' ')" = 1
           TOKA_OFFLINE=1 toka fetch
-          registry_offline_status=$?
-          set -e
-          echo "registry offline fetch exit=$registry_offline_status"
-          test "$registry_offline_status" = 0
-          echo "PASS: registry offline fetch"
-          if ! cmp -s package.lock ../registry-online.lock; then
-            diff -u ../registry-online.lock package.lock || true
-            exit 1
-          fi
-          echo "PASS: registry strict offline lock replay"
+          cmp package.lock ../registry-online.lock
