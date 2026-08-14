@@ -98,12 +98,12 @@ done
 
 # The release-matched completion card is the compact, offline entry point for
 # AI-assisted authors. Keep the README link valid in a release archive.
-if [ ! -f "docs/ai_completion_card_v0.2.md" ]; then
-    echo "Error: Required AI completion card 'docs/ai_completion_card_v0.2.md' not found!"
+if [ ! -f "docs/ai_completion_card.md" ]; then
+    echo "Error: Required AI completion card 'docs/ai_completion_card.md' not found!"
     exit 1
 fi
 mkdir -p "${PACKAGE_DIR}/docs"
-cp -a docs/ai_completion_card_v0.2.md "${PACKAGE_DIR}/docs/"
+cp -a docs/ai_completion_card.md "${PACKAGE_DIR}/docs/"
 
 # Copy meta files
 cp README.md "${PACKAGE_DIR}/" || true

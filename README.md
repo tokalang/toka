@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.5 Candidate Notes](docs/release_notes_v1.0.0-rc.5.md) | [AI Completion Card](docs/ai_completion_card_v0.2.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.5 Candidate Notes](docs/release_notes_v1.0.0-rc.5.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -261,7 +261,7 @@ Toka may not be the right choice yet if you need:
 - Playground: [tokalang.dev/playground](https://tokalang.dev/playground)
 - Paper: [arXiv:2606.01974](https://arxiv.org/abs/2606.01974)
 - Syntax reference: [docs/syntax.md](docs/syntax.md)
-- AI completion card: [docs/ai_completion_card_v0.2.md](docs/ai_completion_card_v0.2.md)
+- AI completion card: [docs/ai_completion_card.md](docs/ai_completion_card.md)
 - Build tool notes: [docs/BUILD_TOOL.md](docs/BUILD_TOOL.md)
 
 ## Ecosystem And Community

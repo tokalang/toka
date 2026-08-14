@@ -10,7 +10,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CARD = ROOT / "docs/ai_completion_card_v0.2.md"
+CARD = ROOT / "docs/ai_completion_card.md"
 FIXTURE = ROOT / "tests/tooling/ai_completion_card/checked_decimal_parse.tk"
 
 

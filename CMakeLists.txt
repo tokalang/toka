@@ -394,6 +394,5 @@ install(PROGRAMS "${CMAKE_SOURCE_DIR}/tools/scripts/toka_build.py"
                  "${CMAKE_SOURCE_DIR}/tools/scripts/semantic_diff_preview.py"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/toka/lib/toolchain")
 install(FILES README.md README_zh.md LICENSE
-              "${CMAKE_SOURCE_DIR}/docs/ai_completion_card_v0.1.md"
-              "${CMAKE_SOURCE_DIR}/docs/ai_completion_card_v0.2.md"
+              "${CMAKE_SOURCE_DIR}/docs/ai_completion_card.md"
     DESTINATION "${CMAKE_INSTALL_DOCDIR}")

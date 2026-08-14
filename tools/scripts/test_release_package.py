@@ -73,8 +73,8 @@ def main():
                 raise SystemExit("missing packaged package helper: %s" % name)
             checks.append("package-helper:" + name)
 
-        completion_card = package_root / "docs" / "ai_completion_card_v0.2.md"
-        if not completion_card.is_file() or "Toka AI Completion Card v0.2" not in \
+        completion_card = package_root / "docs" / "ai_completion_card.md"
+        if not completion_card.is_file() or "# Toka AI Completion Card" not in \
                 completion_card.read_text(encoding="utf-8"):
             raise SystemExit("missing or invalid packaged AI completion card")
         checks.append("ai-completion-card")

@@ -6,8 +6,8 @@ symbols or repairs from rendered terminal text.
 
 ## Completion context
 
-The experimental [AI Completion Card v0.2](ai_completion_card_v0.2.md) is the
-release-matched, compact language context for a coding agent. Load it once
+The [AI Completion Card](ai_completion_card.md) is the release-matched,
+compact language context for a coding agent. Load it once
 before an edit. It describes common source forms; the JSON protocols below
 remain the compiler-authoritative evidence for the candidate program.
 
