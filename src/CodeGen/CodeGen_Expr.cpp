@@ -5431,7 +5431,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                     llvm::Value *av = genExpr(call->Args[i].get()).load(m_Builder);
                     llvm::Type *expectedTy = getLLVMType(paramTypes[i]);
                     
-                    if (av && expectedTy->isPointerTy() && av->getType()->isStructTy()) {
+                    // [Closure ABI] Aggregate values (structs, str, shapes) are passed by pointer reference
+                    if (av && av->getType()->isStructTy()) {
                        llvm::AllocaInst *tmp = createEntryBlockAlloca(av->getType(), nullptr, "arg_tmp_byref");
                        m_Builder.CreateStore(av, tmp);
                        av = tmp;
