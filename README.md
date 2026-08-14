@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [v1.0.0-rc.5 Candidate Notes](docs/release_notes_v1.0.0-rc.5.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Try Toka Online (Playground)](https://tokalang.dev/playground) | [Public Preview Status](docs/release_notes_v1.0.0-rc.5.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -54,18 +54,18 @@ Toka therefore explores a position between C, Rust, Go, and Zig: close to the ma
 
 ## Quick Start
 
-Install the latest stable release:
+Toka is currently a public preview. Use an exact published release candidate
+for a repeatable install:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.4
+toka doctor
 ```
 
-When `v1.0.0-rc.5` is published, install that candidate explicitly rather
-than depending on GitHub's stable-release selector:
-
-```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.5
-```
+Before replacing the tag, check the
+[GitHub releases page](https://github.com/tokalang/toka/releases). The bare
+installer intentionally follows GitHub's stable-release selector and is not
+the recommended public-preview path.
 
 Build from source to contribute to the compiler or test unreleased changes.
 This requires CMake, a C++17 compiler, and LLVM 20:
