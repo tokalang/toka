@@ -1,0 +1,596 @@
+import std/io::{println}
+import std/vec::{Vec}
+import std/hashmap::{HashMap}
+import core/result::{Result}
+import core/option::{Option}
+
+pub shape TemplateError (
+    message: string,
+    line: usize,
+    column: usize
+)
+
+impl TemplateError {
+    pub fn new(cede message: string, line: usize, column: usize) -> TemplateError {
+        return TemplateError(
+            message = cede message,
+            line = line,
+            column = column
+        )
+    }
+
+    pub fn to_string(self) -> string {
+        auto out# = string::from(self.message.as_str())
+        out#.push_str(" at line ")
+        out#.push_str(string::from_int(self.line as i32).as_str())
+        out#.push_str(", column ")
+        out#.push_str(string::from_int(self.column as i32).as_str())
+        return cede out
+    }
+}
+
+pub shape FuncHandler (
+    name: string,
+    func_ptr: fn(str) -> Result<string, string>
+)
+
+pub shape TemplateContext (
+    vars: HashMap<string, string>,
+    lists: HashMap<string, Vec<string>>,
+    funcs: Vec<FuncHandler>,
+    strict_vars: bool
+)
+
+impl TemplateContext {
+    pub fn new() -> TemplateContext {
+        return TemplateContext(
+            vars = cede HashMap<string, string>::new(),
+            lists = cede HashMap<string, Vec<string>>::new(),
+            funcs = cede Vec<FuncHandler>::new(),
+            strict_vars = false
+        )
+    }
+
+    pub fn set_strict_vars(self#, strict: bool) {
+        self.strict_vars = strict
+    }
+
+    pub fn set(self#, cede key: string, cede val: string) {
+        self.vars#.insert(cede key, cede val)
+    }
+
+    pub fn set_list(self#, cede key: string, cede list: Vec<string>) {
+        self.lists#.insert(cede key, cede list)
+    }
+
+    pub fn register_func(self#, cede name: string, handler: fn(str) -> Result<string, string>) {
+        self.funcs#.push(FuncHandler(name = cede name, func_ptr = handler))
+    }
+
+    pub fn get_var(self, key: str) -> Option<string> {
+        auto k = string::from(key)
+        if self.vars.contains_key(string::from(k.as_str())) {
+            auto &val_ref = self.vars.get_ref(k).unwrap()
+            auto res = string::from(val_ref.as_str())
+            return Option<string>::Some(cede res)
+        }
+        return Option<string>::None
+    }
+
+    pub fn get_list(self, key: str) -> Option<Vec<string>> {
+        auto k = string::from(key)
+        if self.lists.contains_key(string::from(k.as_str())) {
+            auto &list_ref = self.lists.get_ref(k).unwrap()
+            auto copy_list# = Vec<string>::new()
+            auto i# = 0:usize
+            loop i < list_ref.len() {
+                auto &item_ref = list_ref.get_ref(i).unwrap()
+                copy_list#.push(cede string::from(item_ref.as_str()))
+                i = i + 1:usize
+            }
+            return Option<Vec<string>>::Some(cede copy_list)
+        }
+        return Option<Vec<string>>::None
+    }
+
+    pub fn has_func(self, name: str) -> bool {
+        if name.equals("lower") || name.equals("upper") || name.equals("trim") {
+            return true
+        }
+        auto i# = 0:usize
+        loop i < self.funcs.len() {
+            auto &fh = self.funcs.get_ref(i).unwrap()
+            if fh.name.as_str().equals(name) {
+                return true
+            }
+            i = i + 1:usize
+        }
+        return false
+    }
+
+    pub fn call_func(self#, cede name: string, cede arg: string) -> Result<string, string> {
+        if name.as_str().equals("lower") {
+            auto res = to_lower_str(arg.as_str())
+            auto _discard = cede arg
+            auto _discard_name = cede name
+            return Result<string, string>::Ok(cede res)
+        }
+        if name.as_str().equals("upper") {
+            auto res = to_upper_str(arg.as_str())
+            auto _discard = cede arg
+            auto _discard_name = cede name
+            return Result<string, string>::Ok(cede res)
+        }
+        if name.as_str().equals("trim") {
+            auto res = trim_str(arg.as_str())
+            auto _discard = cede arg
+            auto _discard_name = cede name
+            return Result<string, string>::Ok(cede res)
+        }
+
+        // Check registered function handlers
+        auto i# = 0:usize
+        loop i < self.funcs.len() {
+            auto &fh = self.funcs.get_ref(i).unwrap()
+            if fh.name.as_str().equals(name.as_str()) {
+                auto f_ptr = fh.func_ptr
+                auto res = f_ptr(arg.as_str())
+                auto _discard_arg = cede arg
+                auto _discard_name = cede name
+                return res
+            }
+            i = i + 1:usize
+        }
+
+        auto _discard_arg = cede arg
+        auto err_msg# = string::from("unknown function '")
+        err_msg#.push_str(name.as_str())
+        err_msg#.push_str("'")
+        auto _discard_name = cede name
+        return Result<string, string>::Err(cede err_msg)
+    }
+}
+
+pub shape TemplateNode (
+    content: string,
+    node_type: i32
+)
+
+pub const NODE_TEXT: i32 = 0
+pub const NODE_ACTION: i32 = 1
+
+pub shape Template (
+    source: string,
+    nodes: Vec<TemplateNode>
+)
+
+impl Template {
+    pub fn parse(source_str: str) -> Result<Template, TemplateError> {
+        auto nodes# = Vec<TemplateNode>::new()
+        auto source_len = source_str.len()
+        auto i# = 0:usize
+
+        // Track open blocks for tag balance check
+        auto open_if_count# = 0:i32
+        auto open_range_count# = 0:i32
+
+        auto line# = 1:usize
+        auto col# = 1:usize
+
+        loop i < source_len {
+            if source_str.byte_at(i) as u8 == '\n' as u8 {
+                line = line + 1:usize
+                col = 1:usize
+            } else {
+                col = col + 1:usize
+            }
+
+            if i + 1:usize < source_len && source_str.byte_at(i) as u8 == '{' as u8 && source_str.byte_at(i + 1:usize) as u8 == '{' as u8 {
+                // Find closing '}}'
+                auto close_idx# = i + 2:usize
+                auto found_close# = false
+                loop close_idx + 1:usize < source_len {
+                    if source_str.byte_at(close_idx) as u8 == '}' as u8 && source_str.byte_at(close_idx + 1:usize) as u8 == '}' as u8 {
+                        found_close = true
+                        break
+                    }
+                    close_idx = close_idx + 1:usize
+                }
+
+                if !found_close {
+                    return Result<Template, TemplateError>::Err(
+                        TemplateError::new(cede string::from("unclosed tag action, expected '}}'"), line, col)
+                    )
+                }
+
+                // Extract action body
+                auto tag_body = trim_str(copy_substr(source_str, i + 2:usize, close_idx).as_str())
+
+                // Tag syntax validation
+                if tag_body.as_str().starts_with("if ") || tag_body.as_str().equals("if") {
+                    open_if_count = open_if_count + 1
+                } else if tag_body.as_str().starts_with("range ") || tag_body.as_str().equals("range") {
+                    open_range_count = open_range_count + 1
+                } else if tag_body.as_str().equals("end") {
+                    if open_if_count > 0 {
+                        open_if_count = open_if_count - 1
+                    } else if open_range_count > 0 {
+                        open_range_count = open_range_count - 1
+                    } else {
+                        return Result<Template, TemplateError>::Err(
+                            TemplateError::new(cede string::from("unmatched 'end' tag without preceding block"), line, col)
+                        )
+                    }
+                }
+
+                nodes#.push(TemplateNode(content = cede tag_body, node_type = NODE_ACTION))
+                i = close_idx + 2:usize
+            } else {
+                // Text node until next '{{' or EOF
+                auto text_start = i
+                loop i < source_len {
+                    if i + 1:usize < source_len && source_str.byte_at(i) as u8 == '{' as u8 && source_str.byte_at(i + 1:usize) as u8 == '{' as u8 {
+                        break
+                    }
+                    if source_str.byte_at(i) as u8 == '\n' as u8 {
+                        line = line + 1:usize
+                        col = 1:usize
+                    } else {
+                        col = col + 1:usize
+                    }
+                    i = i + 1:usize
+                }
+                auto text_chunk = copy_substr(source_str, text_start, i)
+                nodes#.push(TemplateNode(content = cede text_chunk, node_type = NODE_TEXT))
+            }
+        }
+
+        if open_if_count > 0 || open_range_count > 0 {
+            return Result<Template, TemplateError>::Err(
+                TemplateError::new(cede string::from("unclosed block statement (missing 'end')"), line, col)
+            )
+        }
+
+        return Result<Template, TemplateError>::Ok(
+            Template(source = string::from(source_str), nodes = cede nodes)
+        )
+    }
+
+    pub fn render(self, ctx#: TemplateContext) -> Result<string, TemplateError> {
+        auto out# = string::from("")
+        auto i# = 0:usize
+        loop i < self.nodes.len() {
+            auto &node = self.nodes.get_ref(i).unwrap()
+            if node.node_type == NODE_TEXT {
+                out#.push_str(node.content.as_str())
+                i = i + 1:usize
+            } else {
+                auto trimmed = trim_str(node.content.as_str())
+                if trimmed.as_str().starts_with("if ") {
+                    auto cond_expr = trim_str(copy_substr(trimmed.as_str(), 3:usize, trimmed.len()).as_str())
+                    auto cond_res = eval_conditional_block(cond_expr.as_str(), ctx, 1:usize, 1:usize)
+                    if cond_res.is_err() { return Result<string, TemplateError>::Err(cond_res.unwrap_err()) }
+                    auto is_true = cond_res.unwrap().as_str().equals("true")
+
+                    // Skip to true or false block
+                    i = i + 1:usize
+                    auto in_else# = false
+                    loop i < self.nodes.len() {
+                        auto &sub = self.nodes.get_ref(i).unwrap()
+                        if sub.node_type == NODE_ACTION {
+                            auto sub_trimmed = trim_str(sub.content.as_str())
+                            if sub_trimmed.as_str().equals("else") {
+                                in_else = true
+                                i = i + 1:usize
+                                continue
+                            }
+                            if sub_trimmed.as_str().equals("end") {
+                                i = i + 1:usize
+                                break
+                            }
+                        }
+                        auto should_render# = false
+                        if is_true && !in_else {
+                            should_render = true
+                        }
+                        if !is_true && in_else {
+                            should_render = true
+                        }
+                        if should_render {
+                            if sub.node_type == NODE_TEXT {
+                                out#.push_str(sub.content.as_str())
+                            } else {
+                                auto val_res = eval_expression(sub.content.as_str(), ctx, 1:usize, 1:usize)
+                                if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
+                                auto val_str = val_res.unwrap()
+                                out#.push_str(val_str.as_str())
+                            }
+                        }
+                        i = i + 1:usize
+                    }
+                } else if trimmed.as_str().starts_with("range ") {
+                    auto list_var = strip_dot(trim_str(copy_substr(trimmed.as_str(), 6:usize, trimmed.len()).as_str()).as_str())
+                    auto list_opt = ctx.get_list(list_var.as_str())
+
+                    // Collect body nodes
+                    auto body_start = i + 1:usize
+                    auto body_end# = body_start
+                    loop body_end < self.nodes.len() {
+                        auto &sub = self.nodes.get_ref(body_end).unwrap()
+                        if sub.node_type == NODE_ACTION && trim_str(sub.content.as_str()).as_str().equals("end") {
+                            break
+                        }
+                        body_end = body_end + 1:usize
+                    }
+
+                    if list_opt.is_some() {
+                        auto items = list_opt.unwrap()
+                        auto item_idx# = 0:usize
+                        loop item_idx < items.len() {
+                            auto &item_val = items.get_ref(item_idx).unwrap()
+                            auto sub_ctx# = TemplateContext::new()
+                            sub_ctx#.set(cede string::from("."), cede string::from(item_val.as_str()))
+                            
+                            auto b_idx# = body_start
+                            loop b_idx < body_end {
+                                auto &b_node = self.nodes.get_ref(b_idx).unwrap()
+                                if b_node.node_type == NODE_TEXT {
+                                    out#.push_str(b_node.content.as_str())
+                                } else {
+                                    auto val_res = eval_expression(b_node.content.as_str(), sub_ctx, 1:usize, 1:usize)
+                                    if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
+                                    auto val_str = val_res.unwrap()
+                                    out#.push_str(val_str.as_str())
+                                }
+                                b_idx = b_idx + 1:usize
+                            }
+                            item_idx = item_idx + 1:usize
+                        }
+                    }
+                    i = body_end + 1:usize
+                } else {
+                    auto val_res = eval_expression(trimmed.as_str(), ctx, 1:usize, 1:usize)
+                    if val_res.is_err() { return Result<string, TemplateError>::Err(val_res.unwrap_err()) }
+                    auto val_str = val_res.unwrap()
+                    out#.push_str(val_str.as_str())
+                    i = i + 1:usize
+                }
+            }
+        }
+        return Result<string, TemplateError>::Ok(cede out)
+    }
+}
+
+impl TemplateNode {
+    pub fn render(self, ctx#: TemplateContext, start_idx: usize) -> Result<string, TemplateError> {
+        if self.node_type == NODE_TEXT {
+            return Result<string, TemplateError>::Ok(string::from(self.content.as_str()))
+        }
+        return eval_action(self.content.as_str(), ctx, 1:usize, 1:usize)
+    }
+}
+
+fn eval_action(action: str, ctx#: TemplateContext, tag_line: usize, tag_col: usize) -> Result<string, TemplateError> {
+    auto trimmed = trim_str(action)
+    if trimmed.as_str().starts_with("if ") {
+        auto cond_expr = trim_str(copy_substr(trimmed.as_str(), 3:usize, trimmed.len()).as_str())
+        return eval_conditional_block(cond_expr.as_str(), ctx, tag_line, tag_col)
+    }
+    auto eval_res = eval_expression(action, ctx, tag_line, tag_col)
+    return eval_res
+}
+
+fn eval_conditional_block(cond_expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize) -> Result<string, TemplateError> {
+    auto cond_val = eval_expression(cond_expr, ctx, line_no, col_no)
+    if cond_val.is_err() {
+        return Result<string, TemplateError>::Err(cond_val.unwrap_err())
+    }
+    auto val_str = cond_val.unwrap()
+    auto is_true = !val_str.as_str().equals("") && !val_str.as_str().equals("false") && !val_str.as_str().equals("0")
+    if is_true {
+        return Result<string, TemplateError>::Ok(string::from("true"))
+    }
+    return Result<string, TemplateError>::Ok(string::from("false"))
+}
+
+fn is_space_byte(b: u8) -> bool {
+    return b == ' ' as u8 || b == '\t' as u8 || b == '\n' as u8 || b == '\r' as u8
+}
+
+fn trim_str(s: str) -> string {
+    auto start# = 0:usize
+    auto end# = s.len()
+    loop start < end && is_space_byte(s.byte_at(start) as u8) {
+        start = start + 1:usize
+    }
+    loop end > start && is_space_byte(s.byte_at(end - 1:usize) as u8) {
+        end = end - 1:usize
+    }
+    return copy_substr(s, start, end)
+}
+
+fn to_lower_str(s: str) -> string {
+    auto out# = string::from("")
+    auto i# = 0:usize
+    loop i < s.len() {
+        auto b = s.byte_at(i) as u8
+        if b >= 'A' as u8 && b <= 'Z' as u8 {
+            out#.push_char((b + 32:u8) as char)
+        } else {
+            out#.push_char(b as char)
+        }
+        i = i + 1:usize
+    }
+    return cede out
+}
+
+fn to_upper_str(s: str) -> string {
+    auto out# = string::from("")
+    auto i# = 0:usize
+    loop i < s.len() {
+        auto b = s.byte_at(i) as u8
+        if b >= 'a' as u8 && b <= 'z' as u8 {
+            out#.push_char((b - 32:u8) as char)
+        } else {
+            out#.push_char(b as char)
+        }
+        i = i + 1:usize
+    }
+    return cede out
+}
+
+fn copy_substr(input: str, start: usize, end: usize) -> string {
+    if start >= end || start >= input.len() {
+        return string::from("")
+    }
+    auto real_end# = end
+    if real_end > input.len() {
+        real_end = input.len()
+    }
+    auto sub = input.substring(start, real_end)
+    return string::from(sub)
+}
+
+fn parse_single_arg(raw: str, ctx#: TemplateContext) -> string {
+    auto s = trim_str(raw)
+    // 1. Quoted string "val"
+    if s.len() >= 2:usize && s.as_str().byte_at(0:usize) as u8 == '"' as u8 && s.as_str().byte_at(s.len() - 1:usize) as u8 == '"' as u8 {
+        return copy_substr(s.as_str(), 1:usize, s.len() - 1:usize)
+    }
+    // 2. Variable reference .val or val
+    auto var_name = strip_dot(s.as_str())
+    auto var_opt = ctx.get_var(var_name.as_str())
+    if var_opt.is_some() {
+        return var_opt.unwrap()
+    }
+    auto res = string::from(s.as_str())
+    return cede res
+}
+
+fn strip_dot(s: str) -> string {
+    if s.len() > 0:usize && s.byte_at(0:usize) as u8 == '.' as u8 {
+        return copy_substr(s, 1:usize, s.len())
+    }
+    auto out = string::from(s)
+    return cede out
+}
+
+fn eval_expression(expr: str, ctx#: TemplateContext, line_no: usize, col_no: usize) -> Result<string, TemplateError> {
+    auto trimmed = trim_str(expr)
+    if trimmed.len() == 0:usize {
+        return Result<string, TemplateError>::Ok(string::from(""))
+    }
+
+    // Check pipeline '|'
+    auto pipe_idx# = 0:usize
+    loop pipe_idx < trimmed.len() {
+        if trimmed.as_str().byte_at(pipe_idx) as u8 == '|' as u8 {
+            auto left = trim_str(copy_substr(trimmed.as_str(), 0:usize, pipe_idx).as_str())
+            auto right = trim_str(copy_substr(trimmed.as_str(), pipe_idx + 1:usize, trimmed.len()).as_str())
+
+            auto left_res = eval_expression(left.as_str(), ctx, line_no, col_no)
+            if left_res.is_err() {
+                auto err_val = left_res.unwrap_err()
+                return Result<string, TemplateError>::Err(cede err_val)
+            }
+            auto left_str = left_res.unwrap()
+
+            auto func_name = trim_str(right.as_str())
+
+            if !ctx.has_func(func_name.as_str()) {
+                auto err_m# = string::from("unknown pipeline function '")
+                err_m#.push_str(func_name.as_str())
+                err_m#.push_str("'")
+                return Result<string, TemplateError>::Err(TemplateError::new(cede err_m, line_no, col_no))
+            }
+
+            auto call_res = ctx#.call_func(cede string::from(func_name.as_str()), cede left_str)
+            if call_res.is_err() {
+                auto err_val = call_res.unwrap_err()
+                auto err_msg# = string::from("function '")
+                err_msg#.push_str(func_name.as_str())
+                err_msg#.push_str("' failed: ")
+                err_msg#.push_str(err_val.as_str())
+                auto _discard_err = cede err_val
+                return Result<string, TemplateError>::Err(TemplateError::new(cede err_msg, line_no, col_no))
+            }
+            auto ok_val = call_res.unwrap()
+            return Result<string, TemplateError>::Ok(cede ok_val)
+        }
+        pipe_idx = pipe_idx + 1:usize
+    }
+
+    // String literal "hello"
+    if trimmed.len() >= 2:usize && trimmed.as_str().byte_at(0:usize) as u8 == '"' as u8 && trimmed.as_str().byte_at(trimmed.len() - 1:usize) as u8 == '"' as u8 {
+        return Result<string, TemplateError>::Ok(copy_substr(trimmed.as_str(), 1:usize, trimmed.len() - 1:usize))
+    }
+
+    // Function call: func "arg1"
+    auto first_space# = 0:usize
+    loop first_space < trimmed.len() && !is_space_byte(trimmed.as_str().byte_at(first_space) as u8) {
+        first_space = first_space + 1:usize
+    }
+
+    if first_space < trimmed.len() {
+        auto possible_func = copy_substr(trimmed.as_str(), 0:usize, first_space)
+        if ctx.has_func(possible_func.as_str()) {
+            auto raw_arg = copy_substr(trimmed.as_str(), first_space + 1:usize, trimmed.len())
+            auto parsed_arg = parse_single_arg(raw_arg.as_str(), ctx)
+
+            auto call_res = ctx#.call_func(cede string::from(possible_func.as_str()), cede parsed_arg)
+            if call_res.is_err() {
+                auto err_val = call_res.unwrap_err()
+                auto err_msg# = string::from("function '")
+                err_msg#.push_str(possible_func.as_str())
+                err_msg#.push_str("' failed: ")
+                err_msg#.push_str(err_val.as_str())
+                auto _discard_err = cede err_val
+                return Result<string, TemplateError>::Err(TemplateError::new(cede err_msg, line_no, col_no))
+            }
+            auto ok_val = call_res.unwrap()
+            return Result<string, TemplateError>::Ok(cede ok_val)
+        } else {
+            auto err_msg# = string::from("unknown function '")
+            err_msg#.push_str(possible_func.as_str())
+            err_msg#.push_str("'")
+            return Result<string, TemplateError>::Err(TemplateError::new(cede err_msg, line_no, col_no))
+        }
+    }
+
+    // Function call without args: func
+    if ctx.has_func(trimmed.as_str()) {
+        auto empty_arg = string::from("")
+        auto call_res = ctx#.call_func(cede string::from(trimmed.as_str()), cede empty_arg)
+        if call_res.is_ok() {
+            auto ok_val = call_res.unwrap()
+            return Result<string, TemplateError>::Ok(cede ok_val)
+        } else {
+            auto err_val = call_res.unwrap_err()
+            auto err_msg# = string::from("function '")
+            err_msg#.push_str(trimmed.as_str())
+            err_msg#.push_str("' failed: ")
+            err_msg#.push_str(err_val.as_str())
+            auto _discard_err = cede err_val
+            return Result<string, TemplateError>::Err(TemplateError::new(cede err_msg, line_no, col_no))
+        }
+    }
+
+    // Variable lookup .var or .foo.bar
+    auto var_name# = strip_dot(trimmed.as_str())
+    if var_name.len() == 0:usize {
+        var_name = string::from(".")
+    }
+    auto var_opt = ctx.get_var(var_name.as_str())
+    if var_opt.is_some() {
+        return Result<string, TemplateError>::Ok(var_opt.unwrap())
+    }
+
+    if ctx.strict_vars {
+        auto err_msg# = string::from("missing variable '")
+        err_msg#.push_str(var_name.as_str())
+        err_msg#.push_str("'")
+        return Result<string, TemplateError>::Err(TemplateError::new(cede err_msg, line_no, col_no))
+    }
+
+    return Result<string, TemplateError>::Ok(string::from(""))
+}

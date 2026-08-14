@@ -1,0 +1,149 @@
+import std/io::{println, print_line}
+import std/vec::{Vec}
+import core/result::{Result}
+import stdx/text/template::{Template, TemplateContext}
+
+fn mock_getenv_impl(arg: str) -> Result<string, string> {
+    if arg.equals("PORT") {
+        return Result<string, string>::Ok(string::from("8080"))
+    }
+    if arg.equals("ENV") {
+        return Result<string, string>::Ok(string::from("production"))
+    }
+    return Result<string, string>::Err(string::from("env var not set"))
+}
+
+fn mock_cat_impl(arg: str) -> Result<string, string> {
+    if arg.equals("/etc/secret") {
+        return Result<string, string>::Ok(string::from("s3cr3t_token"))
+    }
+    return Result<string, string>::Err(string::from("file not found"))
+}
+
+fn test_basic_variable_interpolation() {
+    auto source = "Hello {{ .name }}! App: {{ .app_name }}"
+    auto parsed = Template::parse(source)
+    assert(parsed.is_ok(), "Template parse must return Ok")
+
+    auto ctx# = TemplateContext::new()
+    ctx#.set(cede string::from("name"), cede string::from("Toka User"))
+    ctx#.set(cede string::from("app_name"), cede string::from("webhook-service"))
+
+    auto rendered_res = parsed.unwrap().render(ctx)
+    assert(rendered_res.is_ok(), "Template render must return Ok")
+    auto result = rendered_res.unwrap()
+
+    assert(result.as_str().equals("Hello Toka User! App: webhook-service"), "Rendered string must match expected output")
+}
+
+fn test_conditional_if_else() {
+    auto source = "{{ if .is_prod }}prod-deploy{{ else }}dev-deploy{{ end }}"
+
+    // 1. Test is_prod = true
+    auto parsed_prod = Template::parse(source)
+    auto ctx_prod# = TemplateContext::new()
+    ctx_prod#.set(cede string::from("is_prod"), cede string::from("true"))
+    auto res_prod = parsed_prod.unwrap().render(ctx_prod).unwrap()
+    assert(res_prod.as_str().equals("prod-deploy"), "Conditional true branch must output prod-deploy")
+
+    // 2. Test is_prod = false
+    auto parsed_dev = Template::parse(source)
+    auto ctx_dev# = TemplateContext::new()
+    ctx_dev#.set(cede string::from("is_prod"), cede string::from("false"))
+    auto res_dev = parsed_dev.unwrap().render(ctx_dev).unwrap()
+    assert(res_dev.as_str().equals("dev-deploy"), "Conditional false branch must output dev-deploy")
+}
+
+fn test_range_loop() {
+    auto source = "items: {{ range .args }}[{{ . }}] {{ end }}"
+    auto parsed = Template::parse(source)
+    assert(parsed.is_ok(), "Range template parse must return Ok")
+
+    auto list# = Vec<string>::new()
+    list#.push(cede string::from("alpha"))
+    list#.push(cede string::from("beta"))
+    list#.push(cede string::from("gamma"))
+
+    auto ctx# = TemplateContext::new()
+    ctx#.set_list(cede string::from("args"), cede list)
+
+    auto rendered = parsed.unwrap().render(ctx).unwrap()
+    assert(rendered.as_str().equals("items: [alpha] [beta] [gamma] "), "Range loop must output all items")
+}
+
+fn test_pipeline_functions() {
+    auto source = "Lower: {{ .val | lower }}, Upper: {{ .val | upper }}"
+    auto parsed = Template::parse(source)
+    assert(parsed.is_ok(), "Pipeline template parse must return Ok")
+
+    auto ctx# = TemplateContext::new()
+    ctx#.set(cede string::from("val"), cede string::from("TokaTemplate"))
+
+    auto rendered = parsed.unwrap().render(ctx).unwrap()
+    assert(rendered.as_str().equals("Lower: tokatemplate, Upper: TOKATEMPLATE"), "Pipeline functions must transform string")
+}
+
+fn test_custom_function_injection() {
+    auto source = "Port: {{ getenv \"PORT\" }}, Env: {{ getenv \"ENV\" }}, Secret: {{ cat \"/etc/secret\" }}"
+    auto parsed = Template::parse(source)
+    assert(parsed.is_ok(), "Template parse with custom functions must return Ok")
+
+    auto f_getenv = { arg => mock_getenv_impl(arg) }: fn(str) -> Result<string, string>
+    auto f_cat = { arg => mock_cat_impl(arg) }: fn(str) -> Result<string, string>
+
+    auto ctx# = TemplateContext::new()
+    ctx#.register_func(cede string::from("getenv"), f_getenv)
+    ctx#.register_func(cede string::from("cat"), f_cat)
+
+    auto rendered_res = parsed.unwrap().render(ctx)
+    if rendered_res.is_ok() {
+        auto rendered = rendered_res.unwrap()
+        assert(rendered.as_str().equals("Port: 8080, Env: production, Secret: s3cr3t_token"), "Registered custom functions must render accurately")
+    } else {
+        auto err_str = rendered_res.unwrap_err().to_string()
+        print_line(err_str)
+        assert(false, "Render must succeed for registered functions")
+    }
+}
+
+fn test_custom_function_error_propagation() {
+    auto source = "Val: {{ getenv \"MISSING_VAR\" }}"
+    auto parsed = Template::parse(source)
+    assert(parsed.is_ok(), "Template parse must return Ok")
+
+    auto f_getenv = { arg => mock_getenv_impl(arg) }: fn(str) -> Result<string, string>
+
+    auto ctx# = TemplateContext::new()
+    ctx#.register_func(cede string::from("getenv"), f_getenv)
+
+    auto rendered_res = parsed.unwrap().render(ctx)
+    assert(rendered_res.is_err(), "Rendering failing custom function must return TemplateError")
+}
+
+fn test_strict_parse_validation_and_unknown_func() {
+    // 1. Unclosed block tag parse error
+    auto unclosed_source = "{{ if .is_prod }}missing end"
+    auto res_unclosed = Template::parse(unclosed_source)
+    assert(res_unclosed.is_err(), "Template::parse must reject unclosed if block")
+
+    // 2. Unknown function render error
+    auto unknown_fn_source = "Val: {{ undefined_fn \"arg\" }}"
+    auto parsed_unknown = Template::parse(unknown_fn_source)
+    assert(parsed_unknown.is_ok(), "Syntax is valid, but render must check unknown functions")
+
+    auto ctx# = TemplateContext::new()
+    auto res_render = parsed_unknown.unwrap().render(ctx)
+    assert(res_render.is_err(), "Rendering unknown function must return TemplateError")
+}
+
+fn main() -> i32 {
+    test_basic_variable_interpolation()
+    test_conditional_if_else()
+    test_range_loop()
+    test_pipeline_functions()
+    test_custom_function_injection()
+    test_custom_function_error_propagation()
+    test_strict_parse_validation_and_unknown_func()
+    println("g18_stdx_template_test PASSED!")
+    return 0
+}
