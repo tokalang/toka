@@ -62,7 +62,9 @@ jobs:
             diff -u ../local-online.lock package.lock || true
             exit 1
           fi
+          echo "PASS: local strict offline lock replay"
           toka run
+          echo "PASS: local strict offline run"
 
           cd ..
           printf '%s\n' 'pub fn value() -> i32 { return 1 }' > base.tk
@@ -92,3 +94,4 @@ jobs:
             diff -u ../registry-online.lock package.lock || true
             exit 1
           fi
+          echo "PASS: registry strict offline lock replay"
