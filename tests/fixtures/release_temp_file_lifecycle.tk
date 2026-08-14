@@ -1,0 +1,56 @@
+import core/result::{Result}
+import std/error::{IoError}
+import std/fs::{Metadata, TempFile, create_temp_file, create_temp_file_system, exists, metadata, read_to_string}
+
+fn drop_owned_temp_file() -> Result<string, i32> {
+    auto created = create_temp_file_system()
+    match cede created {
+        auto Result<TempFile, IoError>::Ok('file) => {
+            auto file# = cede 'file
+            auto path = file.path()
+            if file#.write("drop payload").is_err() {
+                return Result<string, i32>::Err(1)
+            }
+            if file#.close().is_err() {
+                return Result<string, i32>::Err(2)
+            }
+            return Result<string, i32>::Ok(cede path)
+        }
+        _ => {
+            return Result<string, i32>::Err(3)
+        }
+    }
+}
+
+fn main() -> i32 {
+    auto created = create_temp_file(string::from("/tmp"))
+    if created.is_err() { return 1 }
+    auto file# = (cede created).unwrap()
+    auto path = file.path()
+
+    auto written = file#.write("temporary payload")
+    if written.is_err() { return 2 }
+    if written.unwrap() != 17:usize { return 3 }
+    if file#.close().is_err() { return 4 }
+    if !exists(path.clone()) { return 5 }
+
+    auto info = metadata(path.clone())
+    match info {
+        auto Result<Metadata, string>::Ok(value) => {
+            auto permissions = value.mode & 511:u32
+            if permissions != 384:u32 { return 6 }
+        }
+        _ => { return 7 }
+    }
+
+    auto content = read_to_string(path.clone())
+    if content.is_err() { return 8 }
+    if !content.unwrap().as_str().equals("temporary payload") { return 9 }
+    if file#.remove().is_err() { return 10 }
+    if exists(path) { return 11 }
+
+    auto dropped = drop_owned_temp_file()
+    if dropped.is_err() { return 12 }
+    if exists(dropped.unwrap()) { return 13 }
+    return 0
+}

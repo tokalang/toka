@@ -101,6 +101,12 @@ extern fn libc_fflush(*stream: void) -> i32
 extern fn libc_remove(*filename: char) -> i32
 extern fn libc_rename(*old_path: char, *new_path: char) -> i32
 extern fn toka_atomic_write_file(*path: char, *data: u8, len: usize) -> i32
+extern fn toka_temp_file_create(*directory: char) -> Addr
+extern fn toka_temp_file_path(handle: Addr) -> *char
+extern fn toka_temp_file_write(handle: Addr, *data: u8, len: usize) -> i64
+extern fn toka_temp_file_close(handle: Addr) -> i32
+extern fn toka_temp_file_remove(handle: Addr) -> i32
+extern fn toka_temp_file_destroy(handle: Addr) -> void
 extern fn toka_random_bytes(*buf: void, len: usize) -> i32
 extern fn libc_fread(*ptr: void, size: usize, nmemb: usize, *stream: void) -> usize
 extern fn libc_fwrite(*ptr: void, size: usize, nmemb: usize, *stream: void) -> usize

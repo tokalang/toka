@@ -48,6 +48,28 @@ pub fn path_exists(path: Addr) -> bool {
     }
 }
 
+pub fn temp_file_create_impl(directory: string) -> Addr {
+    return ADDR0
+}
+
+pub fn temp_file_path_impl(handle: Addr) -> Option<string> {
+    return Option<string>::None
+}
+
+pub fn temp_file_write_impl(handle: Addr, content: str) -> i64 {
+    return -1:i64
+}
+
+pub fn temp_file_close_impl(handle: Addr) -> i32 {
+    return -1:i32
+}
+
+pub fn temp_file_remove_impl(handle: Addr) -> i32 {
+    return -1:i32
+}
+
+pub fn temp_file_destroy_impl(handle: Addr) {}
+
 // WASI currently has no stable same-directory atomic replacement adapter.
 pub fn atomic_write_string_impl(path: string, content: string) -> bool {
     auto *path_ptr# = path.c_str()

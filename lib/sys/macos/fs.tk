@@ -57,6 +57,41 @@ pub fn atomic_write_string_impl(path: string, content: string) -> bool {
     return unsafe toka_atomic_write_file(*path_ptr, *data_ptr, content.len()) == 0
 }
 
+pub fn temp_file_create_impl(directory: string) -> Addr {
+    auto *directory_ptr# = directory.c_str()
+    return unsafe toka_temp_file_create(*directory_ptr)
+}
+
+pub fn temp_file_path_impl(handle: Addr) -> Option<string> {
+    unsafe {
+        auto *path = toka_temp_file_path(handle)
+        if *path == (ADDR0 as *char) {
+            return Option<string>::None
+        }
+        return Option<string>::Some(string::from_cstr(*path))
+    }
+}
+
+pub fn temp_file_write_impl(handle: Addr, content: str) -> i64 {
+    auto owned_content = string::from(content)
+    auto *data_ptr# = owned_content.c_str() as *u8
+    return unsafe toka_temp_file_write(handle, *data_ptr, owned_content.len())
+}
+
+pub fn temp_file_close_impl(handle: Addr) -> i32 {
+    return unsafe toka_temp_file_close(handle)
+}
+
+pub fn temp_file_remove_impl(handle: Addr) -> i32 {
+    return unsafe toka_temp_file_remove(handle)
+}
+
+pub fn temp_file_destroy_impl(handle: Addr) {
+    unsafe {
+        toka_temp_file_destroy(handle)
+    }
+}
+
 pub fn stat_impl(path: Addr) -> Addr {
     unsafe { return toka_stat_impl(path) }
 }

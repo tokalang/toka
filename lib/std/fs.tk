@@ -14,6 +14,8 @@
 import sys/os/fs as sys
 
 import std/io::{File, IoStringResult, println}
+import std/env as env
+import std/error::{IoError}
 import core/result::{Result}
 import core/option::{Option}
 import core/traits::{@Iterator}
@@ -200,4 +202,136 @@ pub fn write_string_atomic(path: string, content: str) -> Result<bool, string> {
         return Result<bool, string>::Err(string::from("Atomic file replacement is unavailable or failed"))
     }
     return Result<bool, string>::Ok(true)
+}
+
+/**
+ * An exclusively-created temporary file. Its path remains available after
+ * `close()` so another process can read it; dropping the resource closes and
+ * removes the file if the caller has not already done so.
+ */
+pub shape TempFile(
+    handle: Addr,
+    location: string,
+    opened#: bool,
+    removed#: bool
+)
+
+impl TempFile@Encap {
+    fn drop(self#) {
+        if self.handle != ADDR0 {
+            sys::temp_file_destroy_impl(self.handle)
+            self.handle = ADDR0
+            self.opened = false
+            self.removed = true
+        }
+    }
+}
+
+impl TempFile {
+    /** Returns an owned copy of the path created by the secure primitive. */
+    pub fn path(self) -> string {
+        return string::from(self.location.as_str())
+    }
+
+    /** Writes bytes through the open temporary-file handle. */
+    pub fn write(self#, content: str) -> Result<usize, IoError> {
+        if !self.opened || self.handle == ADDR0 {
+            return Result<usize, IoError>::Err(
+                IoError::new("temp_file_write", 0:i32, "temporary file is closed")
+            )
+        }
+        auto written = sys::temp_file_write_impl(self.handle, content)
+        if written < 0:i64 {
+            return Result<usize, IoError>::Err(
+                IoError::new("temp_file_write", 0:i32, "failed to write temporary file")
+            )
+        }
+        return Result<usize, IoError>::Ok(written as usize)
+    }
+
+    /** Flushes and closes the writable handle while retaining the path. */
+    pub fn close(self#) -> Result<bool, IoError> {
+        if !self.opened {
+            return Result<bool, IoError>::Ok(true)
+        }
+        auto status = sys::temp_file_close_impl(self.handle)
+        self.opened = false
+        if status != 0:i32 {
+            return Result<bool, IoError>::Err(
+                IoError::new("temp_file_close", 0:i32, "failed to close temporary file")
+            )
+        }
+        return Result<bool, IoError>::Ok(true)
+    }
+
+    /** Closes, removes, and retains no filesystem entry for this resource. */
+    pub fn remove(self#) -> Result<bool, IoError> {
+        if self.removed {
+            return Result<bool, IoError>::Ok(true)
+        }
+        if self.opened {
+            auto closed = self#.close()
+            match cede closed {
+                auto Result<bool, IoError>::Err('error) => {
+                    return Result<bool, IoError>::Err(cede 'error)
+                }
+                _ => {}
+            }
+        }
+        if sys::temp_file_remove_impl(self.handle) != 0:i32 {
+            return Result<bool, IoError>::Err(
+                IoError::new("temp_file_remove", 0:i32, "failed to remove temporary file")
+            )
+        }
+        self.removed = true
+        return Result<bool, IoError>::Ok(true)
+    }
+}
+
+/**
+ * Securely creates an empty 0600 temporary file in `directory` using atomic
+ * exclusive creation on Linux and macOS. Unsupported hosts return `Err`.
+ * The returned resource owns cleanup.
+ */
+pub fn create_temp_file(directory: string) -> Result<TempFile, IoError> {
+    auto handle = sys::temp_file_create_impl(directory)
+    if handle == ADDR0 {
+        return Result<TempFile, IoError>::Err(
+            IoError::new("temp_file_create", 0:i32, "secure temporary-file creation is unavailable or failed")
+        )
+    }
+    auto path_result = sys::temp_file_path_impl(handle)
+    match cede path_result {
+        auto Option<string>::Some('path) => {
+            return Result<TempFile, IoError>::Ok(TempFile(
+                handle = handle,
+                location = cede 'path,
+                opened = true,
+                removed = false
+            ))
+        }
+        _ => {
+            sys::temp_file_destroy_impl(handle)
+            return Result<TempFile, IoError>::Err(
+                IoError::new("temp_file_create", 0:i32, "temporary file has no path")
+            )
+        }
+    }
+}
+
+/**
+ * Creates a secure Linux/macOS temporary file under TMPDIR, or /tmp when it
+ * is unset. Unsupported hosts return `Err`.
+ */
+pub fn create_temp_file_system() -> Result<TempFile, IoError> {
+    auto configured = env::var(string::from("TMPDIR"))
+    match cede configured {
+        auto Option<string>::Some('directory) => {
+            if 'directory.len() > 0:usize {
+                return create_temp_file(cede 'directory)
+            }
+        }
+        _ => {}
+    }
+    return create_temp_file(string::from("/tmp"))
 }

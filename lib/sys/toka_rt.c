@@ -174,6 +174,151 @@ int toka_atomic_write_file(const char *path, const unsigned char *data, size_t l
 #endif
 }
 
+// A live, exclusively-created temporary file for APIs that must hand a path to
+// another process. Unlike toka_atomic_write_file, this keeps the file open for
+// the caller and leaves removal under the resource owner's control.
+typedef struct {
+    FILE *stream;
+    char *path;
+} toka_temp_file;
+
+void *toka_temp_file_create(const char *directory) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)directory;
+    return NULL;
+#else
+    if (!directory || directory[0] == '\0') {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    static const char suffix[] = ".toka-tmp-XXXXXX";
+    size_t directory_len = strlen(directory);
+    int needs_separator = directory[directory_len - 1] != '/';
+    size_t path_len = directory_len + (size_t)needs_separator + sizeof(suffix);
+    char *path = malloc(path_len);
+    if (!path) return NULL;
+
+    memcpy(path, directory, directory_len);
+    size_t offset = directory_len;
+    if (needs_separator) path[offset++] = '/';
+    memcpy(path + offset, suffix, sizeof(suffix));
+
+    int fd = mkstemp(path);
+    if (fd < 0) {
+        free(path);
+        return NULL;
+    }
+    if (fchmod(fd, S_IRUSR | S_IWUSR) != 0) {
+        close(fd);
+        unlink(path);
+        free(path);
+        return NULL;
+    }
+
+    FILE *stream = fdopen(fd, "wb");
+    if (!stream) {
+        close(fd);
+        unlink(path);
+        free(path);
+        return NULL;
+    }
+
+    toka_temp_file *file = malloc(sizeof(*file));
+    if (!file) {
+        fclose(stream);
+        unlink(path);
+        free(path);
+        return NULL;
+    }
+    file->stream = stream;
+    file->path = path;
+    return file;
+#endif
+}
+
+const char *toka_temp_file_path(void *handle) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)handle;
+    return NULL;
+#else
+    toka_temp_file *file = handle;
+    return file ? file->path : NULL;
+#endif
+}
+
+long long toka_temp_file_write(void *handle, const unsigned char *data, size_t len) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)handle;
+    (void)data;
+    (void)len;
+    return -1;
+#else
+    toka_temp_file *file = handle;
+    if (!file || !file->stream || (!data && len != 0)) {
+        errno = EINVAL;
+        return -1;
+    }
+    size_t written = 0;
+    while (written < len) {
+        size_t count = fwrite(data + written, 1, len - written, file->stream);
+        if (count > 0) {
+            written += count;
+            continue;
+        }
+        if (ferror(file->stream)) return -1;
+        errno = EIO;
+        return -1;
+    }
+    return (long long)written;
+#endif
+}
+
+int toka_temp_file_close(void *handle) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)handle;
+    return -1;
+#else
+    toka_temp_file *file = handle;
+    if (!file || !file->stream) {
+        errno = EINVAL;
+        return -1;
+    }
+    FILE *stream = file->stream;
+    file->stream = NULL;
+    return fclose(stream);
+#endif
+}
+
+int toka_temp_file_remove(void *handle) {
+#if defined(_WIN32) || defined(__wasi__)
+    (void)handle;
+    return -1;
+#else
+    toka_temp_file *file = handle;
+    if (!file || !file->path || file->stream) {
+        errno = EINVAL;
+        return -1;
+    }
+    return unlink(file->path);
+#endif
+}
+
+void toka_temp_file_destroy(void *handle) {
+#if !defined(_WIN32) && !defined(__wasi__)
+    toka_temp_file *file = handle;
+    if (!file) return;
+    if (file->stream) fclose(file->stream);
+    if (file->path) {
+        unlink(file->path);
+        free(file->path);
+    }
+    free(file);
+#else
+    (void)handle;
+#endif
+}
+
 void* toka_gmtime_r(const time_t *timep, struct tm *result) {
 #ifdef _WIN32
     if (gmtime_s(result, timep) == 0) { return result; }

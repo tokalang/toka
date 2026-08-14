@@ -101,6 +101,35 @@ def main():
         run([str(direct_exe)], root, env)
         checks.append("tokac-compile-run")
 
+        resource_case_source = ROOT / "tests/semantics/tki_replay/cases" / \
+            "runtime_002_webhook_resource_graph"
+        if not (resource_case_source / "lib.tk").is_file() or \
+                not (resource_case_source / "pass_resource_graph.tk").is_file():
+            raise SystemExit("missing source-less resource graph fixture")
+        resource_case = root / "source-less-resource-graph"
+        shutil.copytree(resource_case_source, resource_case)
+        resource_library = resource_case / "lib.tk"
+        resource_object = resource_case / "lib.o"
+        run([str(tokac), "-c", str(resource_library), "-o", str(resource_object)],
+            resource_case, env)
+        resource_library.rename(resource_case / "lib-source-hidden.tk")
+        resource_exe = resource_case / ("resource-graph" + suffix)
+        run([str(tokac), str(resource_case / "pass_resource_graph.tk"),
+             str(resource_object), "-o", str(resource_exe)], resource_case, env)
+        run([str(resource_exe)], resource_case, env)
+        checks.append("source-less-resource-graph")
+
+        if sys.platform in ("darwin", "linux"):
+            temp_file_fixture = ROOT / "tests/fixtures/release_temp_file_lifecycle.tk"
+            if not temp_file_fixture.is_file():
+                raise SystemExit("missing POSIX temporary-file fixture")
+            temp_file_source = root / "temp-file-lifecycle.tk"
+            shutil.copy2(temp_file_fixture, temp_file_source)
+            temp_file_exe = root / ("temp-file-lifecycle" + suffix)
+            run([str(tokac), str(temp_file_source), "-o", str(temp_file_exe)], root, env)
+            run([str(temp_file_exe)], root, env)
+            checks.append("posix-temp-file-lifecycle")
+
         run([str(toka), "new", "smoke_app"], root, env)
         output = run([str(toka), "run"], root / "smoke_app", env)
         if "Hello, Toka!" not in output:
