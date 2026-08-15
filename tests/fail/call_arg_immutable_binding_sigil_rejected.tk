@@ -1,0 +1,13 @@
+shape Counter(value#: i32)
+
+fn mutate(c#: Counter) {
+    c.value = c.value + 1
+}
+
+fn main() -> i32 {
+    auto immutable_counter = Counter(value = 0)
+    mutate(immutable_counter#)
+    return 0
+}
+
+// EXPECT: error[E04571]

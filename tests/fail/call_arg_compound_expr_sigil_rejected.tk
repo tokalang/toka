@@ -1,0 +1,11 @@
+fn calculate(a: i32) -> i32 {
+    return a * 2
+}
+
+fn main() -> i32 {
+    auto x# = 10
+    auto res = calculate(x# + 1)
+    return res
+}
+
+// EXPECT: error[E0461]

@@ -172,6 +172,13 @@ static bool proveDistinctArrayElements(const ArrayIndexExpr *destination,
 
 // Stage 5: Object-Oriented Binary Expression Check
 std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
+  struct SuffixGuard {
+    bool &flag;
+    bool oldVal;
+    SuffixGuard(bool &f, bool newVal) : flag(f), oldVal(f) { flag = newVal; }
+    ~SuffixGuard() { flag = oldVal; }
+  } suffixGuard(m_AllowPermissionSuffix, false);
+
   bool isAssign = (Bin->Op == "=" || Bin->Op == "+=" || Bin->Op == "-=" ||
                    Bin->Op == "*=" || Bin->Op == "/=" || Bin->Op == "%=");
   if (Bin->Op == "is" && dynamic_cast<UnsetExpr *>(Bin->RHS.get())) {

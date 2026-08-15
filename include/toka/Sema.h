@@ -694,6 +694,7 @@ private:
   bool isBorrowAccessAuthorized(const AccessPath &Path,
                                 const AccessPath &ConflictPath);
   std::string getPathString(Expr *E);
+  std::string getDisplayArgumentString(Expr *E);
   SymbolInfo *resolveBorrowSource(SymbolInfo *Info,
                                   std::string &EffectiveName);
   int getScopeDepth(const std::string &
@@ -815,6 +816,12 @@ private:
                         std::shared_ptr<toka::Type> Source);
   AccessCapability getAccessCapability(Expr *E, bool declarationOnly = false);
   AccessIntent getAccessIntent(Expr *E);
+  static bool hasExplicitCallArgumentWriteSigil(const Expr *E);
+  void validateCallArgumentMutSigil(Expr *arg, bool paramIsValueMutable,
+                                    const std::string &paramName,
+                                    SourceLocation paramLoc,
+                                    SourceLocation callLoc,
+                                    size_t argIndex);
   PermissionFlow getPermissionFlow(Expr *E);
 
   bool checkTraitBounds(SourceLocation Loc, const std::string &ParamName, 

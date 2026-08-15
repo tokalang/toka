@@ -1021,6 +1021,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           obj->setLocation(name, m_CurrentFile);
           auto node = std::make_unique<MemberExpr>(std::move(obj), member.Text, true);
           node->setLocation(name, m_CurrentFile);
+          node->MemberLoc = member.Loc;
           expr = std::move(node);
         }
       } else {
@@ -1117,11 +1118,12 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           expr = std::move(node);
         } else {
           // Member Access
-          auto node = std::make_unique<MemberExpr>(std::move(expr), memberName);
-          node->setLocation(dotTok, m_CurrentFile);
-
           Token nameTok =
               previous(); // The identifier matched at loop start or later?
+          auto node = std::make_unique<MemberExpr>(std::move(expr), memberName);
+          node->setLocation(dotTok, m_CurrentFile);
+          node->MemberLoc = nameTok.Loc;
+
           // Wait, 'prefix + previous().Text' was used. previous() is the
           // identifier.
           if (nameTok.HasWrite) {
@@ -1150,9 +1152,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         node->setLocation(opTok, m_CurrentFile);
         expr = std::move(node);
       } else if (prefix.empty() && match(TokenType::Integer)) {
+        Token intTok = previous();
         auto node =
-            std::make_unique<MemberExpr>(std::move(expr), previous().Text);
+            std::make_unique<MemberExpr>(std::move(expr), intTok.Text);
         node->setLocation(dotTok, m_CurrentFile);
+        node->MemberLoc = intTok.Loc;
         expr = std::move(node);
       } else {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_MEMBER_NAME_OR_INDEX_AFTER);
@@ -1163,15 +1167,19 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       error(previous(), DiagID::ERR_PARSER_ARROW_MEMBER_ACCESS_IS_ABOLISHED_USE_DO);
       return nullptr;
     } else if (match(TokenType::LBracket)) {
+      Token lbracket = previous();
       std::vector<std::unique_ptr<Expr>> indices;
       if (!check(TokenType::RBracket)) {
         do {
           indices.push_back(parseExpr());
         } while (match(TokenType::Comma));
       }
-      consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_AFTER_INDEX);
-      expr =
+      Token rbracket = consume(TokenType::RBracket, DiagID::ERR_PARSER_EXPECTED_AFTER_INDEX);
+      auto node =
           std::make_unique<ArrayIndexExpr>(std::move(expr), std::move(indices));
+      node->setLocation(lbracket, m_CurrentFile);
+      node->RBracketLoc = rbracket.Loc;
+      expr = std::move(node);
     } else if (match(TokenType::PlusPlus)) {
       expr =
           std::make_unique<PostfixExpr>(TokenType::PlusPlus, std::move(expr));

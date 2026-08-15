@@ -638,24 +638,28 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 expectedTy = resolveType(toka::Type::fromString(tyStr), false);
               }
           }
+          bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+          m_AllowPermissionSuffix =
+              hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
           auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+          m_AllowPermissionSuffix = oldAllowPermissionSuffix;
           if (MetAST && i < MetAST->Args.size()) {
             const auto &param = MetAST->Args[i];
             checkCedeArgument(Call->Args[i].get(), param, argTy, expectedTy);
-            AccessCapability argCapability =
-                getAccessCapability(Call->Args[i].get());
+            AccessCapability declaredCapability =
+                getAccessCapability(Call->Args[i].get(), true);
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
             const bool paramIsHatted =
                 param.IsRawPointer || param.IsUnique || param.IsShared ||
                 param.IsReference;
             const bool lacksHandleCapability =
                 paramIsHatted && param.IsRebindable &&
-                (!argCapability.HandleRebindable ||
+                (!declaredCapability.HandleRebindable ||
                  !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
                 param.IsValueMutable &&
                 !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
-                (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+                (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
               error(Call->Args[i].get(),
                     DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
@@ -664,6 +668,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                : "capable argument",
                     argTy ? argTy->getSoulName() : "unknown");
             }
+            validateCallArgumentMutSigil(Call->Args[i].get(),
+                                         param.IsValueMutable, param.Name,
+                                         param.Loc, Call->Loc, i);
           }
           if (MetAST && MetAST->Effect == EffectKind::Async &&
               i < MetAST->Args.size()) {
@@ -734,25 +741,29 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                       expectedTy = resolveType(toka::Type::fromString(tyStr), false);
                     }
                 }
+                bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+                m_AllowPermissionSuffix =
+                    hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 if (MetAST && i < MetAST->Args.size()) {
                   const auto &param = MetAST->Args[i];
                   checkCedeArgument(Call->Args[i].get(), param, argTy,
                                     expectedTy);
-                  AccessCapability argCapability =
-                      getAccessCapability(Call->Args[i].get());
+                  AccessCapability declaredCapability =
+                      getAccessCapability(Call->Args[i].get(), true);
                   AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
                   const bool paramIsHatted =
                       param.IsRawPointer || param.IsUnique || param.IsShared ||
                       param.IsReference;
                   const bool lacksHandleCapability =
                       paramIsHatted && param.IsRebindable &&
-                      (!argCapability.HandleRebindable ||
+                      (!declaredCapability.HandleRebindable ||
                        !argIntent.HandleRebind);
                   const bool lacksPayloadCapability =
                       param.IsValueMutable &&
                       !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
-                      (!argCapability.PayloadWritable ||
+                      (!declaredCapability.PayloadWritable ||
                        !argIntent.PayloadWrite);
                   if (lacksHandleCapability || lacksPayloadCapability) {
                     error(Call->Args[i].get(),
@@ -762,6 +773,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                      : "capable argument",
                           argTy ? argTy->getSoulName() : "unknown");
                   }
+                  validateCallArgumentMutSigil(Call->Args[i].get(),
+                                               param.IsValueMutable, param.Name,
+                                               param.Loc, Call->Loc, i);
                 }
                 if (MetAST && MetAST->Effect == EffectKind::Async &&
                     i < MetAST->Args.size()) {
@@ -940,7 +954,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         accepts = false;
         break;
       }
+      bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+      m_AllowPermissionSuffix =
+          hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
       auto argType = checkExpr(Call->Args[i].get());
+      m_AllowPermissionSuffix = oldAllowPermissionSuffix;
       if (!expectedType || !argType || expectedType->isUnknown() ||
           argType->isUnknown()) {
         continue;
@@ -1213,24 +1231,28 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                       : resolveType(
                                             Sema::synthesizePhysicalTypeObject(
                                                 invokeFn->Args[i + 1]));
+                bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+                m_AllowPermissionSuffix =
+                    hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
                 auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
+                m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 const auto &param = invokeFn->Args[i + 1];
                 checkCedeArgument(Call->Args[i].get(), param, argTy,
                                   expectedTy);
-                AccessCapability argCapability =
-                    getAccessCapability(Call->Args[i].get());
+                AccessCapability declaredCapability =
+                    getAccessCapability(Call->Args[i].get(), true);
                 AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
                 const bool paramIsHatted =
                     param.IsRawPointer || param.IsUnique || param.IsShared ||
                     param.IsReference;
                 const bool lacksHandleCapability =
                     paramIsHatted && param.IsRebindable &&
-                    (!argCapability.HandleRebindable ||
+                    (!declaredCapability.HandleRebindable ||
                      !argIntent.HandleRebind);
                 const bool lacksPayloadCapability =
                     param.IsValueMutable &&
                     !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
-                    (!argCapability.PayloadWritable ||
+                    (!declaredCapability.PayloadWritable ||
                      !argIntent.PayloadWrite);
                 if (lacksHandleCapability || lacksPayloadCapability) {
                     error(Call->Args[i].get(),
@@ -1238,6 +1260,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                           std::to_string(i + 1), expectedTy->getSoulName(),
                           argTy->getSoulName());
                 }
+                validateCallArgumentMutSigil(Call->Args[i].get(),
+                                             param.IsValueMutable, param.Name,
+                                             param.Loc, Call->Loc, i);
                 std::string expectedBase = Type::stripMorphology(invokeFn->Args[i + 1].Type);
                 std::string actualBase = argTy->getSoulName();
                 if (expectedBase != actualBase && expectedBase != "unknown" && actualBase != "unknown") {
@@ -1357,12 +1382,16 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (Call->Args.size() != fnTy->ParamTypes.size()) {
          error(Call, DiagID::ERR_SEMA_CLOSURE_EXPECTS_ARGUMENTS_BUT_GOT, std::to_string(fnTy->ParamTypes.size()), std::to_string(Call->Args.size()));
       } else {
-         for (size_t i = 0; i < Call->Args.size(); ++i) {
+          for (size_t i = 0; i < Call->Args.size(); ++i) {
             Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
             auto expectedTy = resolveType(fnTy->ParamTypes[i], false);
+            bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+            m_AllowPermissionSuffix =
+                hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
             auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
-            AccessCapability argCapability =
-                getAccessCapability(Call->Args[i].get());
+            m_AllowPermissionSuffix = oldAllowPermissionSuffix;
+            AccessCapability declaredCapability =
+                getAccessCapability(Call->Args[i].get(), true);
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
             const bool paramIsHatted =
                 expectedTy->isPointer() || expectedTy->isSmartPointer() ||
@@ -1374,17 +1403,19 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     : expectedTy->IsWritable;
             const bool lacksHandleCapability =
                 paramIsHatted && expectedTy->IsWritable &&
-                (!argCapability.HandleRebindable ||
+                (!declaredCapability.HandleRebindable ||
                  !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
                 paramNeedsPayload &&
-                (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+                (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
                 error(Call->Args[i].get(),
                       DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
                       std::to_string(i + 1), expectedTy->getSoulName(),
                       argTy->getSoulName());
             }
+            validateCallArgumentMutSigil(Call->Args[i].get(), paramNeedsPayload,
+                                         "", SourceLocation(), Call->Loc, i);
             if (!isTypeCompatible(fnTy->ParamTypes[i], argTy)) {
                 DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                          "Argument " + std::to_string(i + 1), fnTy->ParamTypes[i]->getSoulName(), argTy->getSoulName());
@@ -1401,9 +1432,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
          for (size_t i = 0; i < Call->Args.size(); ++i) {
             Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
             auto expectedTy = resolveType(fnTy->ParamTypes[i], false);
+            bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+            m_AllowPermissionSuffix =
+                hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
             auto argTy = checkExpr(Call->Args[i].get(), expectedTy);
-            AccessCapability argCapability =
-                getAccessCapability(Call->Args[i].get());
+            m_AllowPermissionSuffix = oldAllowPermissionSuffix;
+            AccessCapability declaredCapability =
+                getAccessCapability(Call->Args[i].get(), true);
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
             const bool paramIsHatted =
                 expectedTy->isPointer() || expectedTy->isSmartPointer() ||
@@ -1415,17 +1450,19 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                     : expectedTy->IsWritable;
             const bool lacksHandleCapability =
                 paramIsHatted && expectedTy->IsWritable &&
-                (!argCapability.HandleRebindable ||
+                (!declaredCapability.HandleRebindable ||
                  !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
                 paramNeedsPayload &&
-                (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+                (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
                 error(Call->Args[i].get(),
                       DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
                       std::to_string(i + 1), expectedTy->getSoulName(),
                       argTy->getSoulName());
             }
+            validateCallArgumentMutSigil(Call->Args[i].get(), paramNeedsPayload,
+                                         "", SourceLocation(), Call->Loc, i);
             if (!isTypeCompatible(fnTy->ParamTypes[i], argTy)) {
                 DiagnosticEngine::report(getLoc(Call->Args[i].get()), DiagID::ERR_TYPE_MISMATCH,
                                          "Argument " + std::to_string(i + 1), fnTy->ParamTypes[i]->getSoulName(), argTy->getSoulName());
@@ -1547,7 +1584,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
 
             if (!matchedGeneric.empty()) {
               Call->Args[i] = foldGenericConstant(std::move(Call->Args[i]));
+              bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+              m_AllowPermissionSuffix =
+                  hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
               auto argType = checkExpr(Call->Args[i].get());
+              m_AllowPermissionSuffix = oldAllowPermissionSuffix;
               precheckedArgTypes[i] = argType;
               std::shared_ptr<toka::Type> candidate;
               auto argShape = std::dynamic_pointer_cast<ShapeType>(
@@ -1604,7 +1645,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
 
         Call->Args[i] = foldGenericConstant(std::move(Call->Args[i])); // [FIX]
+        bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+        m_AllowPermissionSuffix =
+            hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
         auto argType = checkExpr(Call->Args[i].get());
+        m_AllowPermissionSuffix = oldAllowPermissionSuffix;
         precheckedArgTypes[i] = argType;
         if (!argType || argType->isUnknown())
           continue;
@@ -2253,9 +2298,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       }
       const bool oldExpectedCedeTransfer = m_ExpectedCedeTransfer;
       m_ExpectedCedeTransfer = expectedCedeTransfer;
+      bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+      m_AllowPermissionSuffix =
+          hasExplicitCallArgumentWriteSigil(Call->Args[i].get());
       argType = i < precheckedArgTypes.size() && precheckedArgTypes[i]
                     ? precheckedArgTypes[i]
                     : checkExpr(Call->Args[i].get(), paramType);
+      m_AllowPermissionSuffix = oldAllowPermissionSuffix;
       m_ExpectedCedeTransfer = oldExpectedCedeTransfer;
     }
     projectOwnedStringView(Call->Args[i], argType, paramType);
@@ -2396,17 +2445,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     bool isIndependentCedeTransfer =
         isCededParam && isCallerCeded &&
         argFlow.Kind == PermissionFlowKind::Independent;
+    AccessCapability declaredCapability =
+        getAccessCapability(Call->Args[i].get(), true);
     AccessCapability argCapability = getAccessCapability(Call->Args[i].get());
     AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
     bool lacksHandleCapability =
         paramIsHatted && paramIsRebindable &&
-        (!argCapability.HandleRebindable || !argIntent.HandleRebind);
+        (!declaredCapability.HandleRebindable || !argIntent.HandleRebind);
     bool lacksPayloadCapability =
         paramIsValueMutable && !isIndependentCedeTransfer &&
-        (!argCapability.PayloadWritable || !argIntent.PayloadWrite);
+        (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
     if (paramIsRebindable || paramIsValueMutable) {
-      AccessCapability declaredCapability =
-          getAccessCapability(Call->Args[i].get(), true);
       const bool requiredHandle = paramIsHatted && paramIsRebindable;
       const bool requiredPayload = paramIsValueMutable;
       std::string parameter = "arg" + std::to_string(i + 1);
@@ -2442,6 +2491,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             getLoc(Call->Args[i].get()), DiagID::NOTE_GENERIC,
             "handle-rebind authority comes from the binding or parameter declaration; a use-site '#' can request it but cannot create it");
       }
+    }
+
+    {
+      std::string paramName =
+          Fn && i < Fn->Args.size() ? Fn->Args[i].Name
+          : (Ext && i < Ext->Args.size() ? Ext->Args[i].Name : "");
+      validateCallArgumentMutSigil(Call->Args[i].get(), paramIsValueMutable,
+                                   paramName, cedeParamLoc, Call->Loc, i);
     }
 
     if (paramIsValueMutable && !lacksPayloadCapability) {

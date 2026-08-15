@@ -1,0 +1,26 @@
+shape Counter(value#: i32)
+shape Container(item#: Counter)
+
+fn read_counter(c: Counter) -> i32 {
+    return c.value
+}
+
+fn read_i32(v: i32) -> i32 {
+    return v
+}
+
+fn main() -> i32 {
+    auto c# = Counter(value = 0)
+    auto v = read_counter(c#)
+
+    auto container# = Container(item = Counter(value = 0))
+    auto v2 = read_counter(container.item#)
+
+    auto values# = [1, 2, 3]
+    auto v3 = read_i32(values[0]#)
+
+    return v + v2 + v3
+}
+
+// EXPECT: error[E04635]
+// EXPECT_COUNT: E04635 3

@@ -77,10 +77,11 @@ auto count# = 0
 count = count + 1
 ```
 
-`#` 出现在声明处和显式可变方法调用处。普通读取与赋值使用裸名。
+`#` 出现在声明处、显式可变方法调用处以及可变实参调用处（例如 `push(values#, 7)`）。普通读取与赋值使用裸名。
 
 ```toka
 counter#.inc()
+increment(counter#)
 counter = 3
 ```
 
@@ -212,9 +213,9 @@ fn add(a: i32, b: i32) -> i32 {
 
 在 PAL 看来，一次函数调用会同时声明一组临时借用。把 `x` 传给 payload
 参数仍然是一次借用事件，虽然源码没有写成 `&x`：`x: T` 产生临时共享 payload
-借用，`x#: T` 产生临时独占 payload 借用。整个参数列表会一起检查，因此
-只读 payload 参数下的 `read_twice(x, x)` 合法，但当任一参数需要独占 payload
-访问时，`mutate_twice(x, x)` 和 `mutate_and_read(x, x)` 都会被拒绝。`cede`
+借用（传 `read(x)`），`x#: T` 产生临时独占 payload 借用（显式传 `mutate(x#)`；传裸 `mutate(x)`
+会触发编译器警告 `W0408`）。整个参数列表会一起检查，因此只读 payload 参数下的 `read_twice(x, x)`
+合法，但当任一参数需要独占 payload 访问时，`mutate_twice(x#, x#)` 和 `mutate_and_read(x#, x)` 都会被拒绝。`cede`
 实参是失效性转移，不是借用；它会与同一次调用中其他重叠路径实参冲突。
 
 `cede` 是显式资源转移契约。

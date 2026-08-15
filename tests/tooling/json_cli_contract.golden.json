@@ -8,6 +8,62 @@
       "version": 2,
       "equals": {"success": true}
     },
+    "check_call_arg_missing_mut_sigil": {
+      "exit": 0,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": true},
+      "contains": {
+        "diagnostics": [
+          {
+            "code": "W0408",
+            "message": "Call argument 'container.item' for mutable parameter 'c' should be explicitly marked with '#' (e.g. 'container.item#')",
+            "fixes": [{
+              "applicability": "machine-applicable",
+              "title": "Add mutable argument sigil '#'",
+              "edits": [{"newText": "#"}]
+            }]
+          },
+          {
+            "code": "W0408",
+            "message": "Call argument 'values[0]' for mutable parameter 'val' should be explicitly marked with '#' (e.g. 'values[0]#')",
+            "fixes": [{
+              "applicability": "machine-applicable",
+              "title": "Add mutable argument sigil '#'",
+              "edits": [{"newText": "#"}]
+            }]
+          }
+        ]
+      }
+    },
+    "check_call_arg_unexpected_mut_sigil": {
+      "exit": 1,
+      "schema": "toka.diagnostics",
+      "version": 2,
+      "equals": {"success": false},
+      "contains": {
+        "diagnostics": [
+          {
+            "code": "E04635",
+            "message": "Call argument 'container.item' is marked with '#' but parameter 'c' is read-only",
+            "fixes": [{
+              "applicability": "machine-applicable",
+              "title": "Remove unexpected mutable argument sigil '#'",
+              "edits": [{"newText": ""}]
+            }]
+          },
+          {
+            "code": "E04635",
+            "message": "Call argument 'values[0]' is marked with '#' but parameter 'v' is read-only",
+            "fixes": [{
+              "applicability": "machine-applicable",
+              "title": "Remove unexpected mutable argument sigil '#'",
+              "edits": [{"newText": ""}]
+            }]
+          }
+        ]
+      }
+    },
     "check_failure": {
       "exit": 1,
       "schema": "toka.diagnostics",

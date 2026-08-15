@@ -113,6 +113,7 @@ DIAG(ERR_SEMA_EXEC_BOUNDARY_COPY_NON_SYNC_CAPTURE, Error,   "E0478", "Closure pa
 DIAG(ERR_TYPED_TODO_INCOMPLETE,   Error,   "E04603", "Incomplete todo requires a value satisfying '{}'")
 DIAG(ERR_TYPED_TODO_UNDERCONSTRAINED, Error,   "E04604", "Todo has no complete expected contract; add an explicit declaration, return type, or resolved parameter type")
 DIAG(ERR_TYPED_TODO_UNSUPPORTED_CONTEXT, Error,   "E04605", "Todo is not supported in this context; it is a requirement-only expression, not a place, capability, or resource")
+DIAG(ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL, Error,   "E04635", "Call argument '{}' is marked with '#' but parameter '{}' is read-only")
 
 // --- Sema: Safety Redline Boundaries ---
 DIAG(ERR_EXPOSED_UNSAFE_TYPE,     Error,   "E0480", "Public API '{}' exposes unsafe type '{}' in parameter '{}'. Use 'str' or 'String', or prefix the function name with 'unsafe_'")
@@ -328,6 +329,7 @@ DIAG(WARN_UNUSED_VARIABLE,        Warning, "W0402", "Variable '{}' is declared b
 DIAG(WARN_UNUSED_IMPORT,          Warning, "W0403", "Import '{}' is declared but never used")
 DIAG(WARN_UNUSED_RESULT,          Warning, "W0406", "Discarded Result type '{}'; errors should be explicitly handled")
 DIAG(WARN_HATTED_PARAM_HANDLE_UNUSED, Warning, "W0407", "Parameter '{}' declares a handle morphology but its handle view is never used")
+DIAG(WARN_CALL_ARG_MISSING_MUTABLE_SIGIL, Warning, "W0408", "Call argument '{}' for mutable parameter '{}' should be explicitly marked with '#' (e.g. '{}{}')")
 DIAG(WARN_UNREACHABLE_CODE,       Structural, "S0401", "Unreachable code detected after unconditional return")
 DIAG(WARN_NON_PROGRESS_LOOP,      Structural, "S0402", "Potential non-progress loop condition: variable '{}' is never mutated inside the loop body")
 

@@ -811,6 +811,15 @@
       "level": "Warning",
       "message": "Parameter '{}' declares a handle morphology but its handle view is never used"
     },
+    "W0408": {
+      "stage": "Sema",
+      "domain": "Ownership",
+      "kind": "CallSiteSigil",
+      "description": "Call argument for a mutable parameter should explicitly show the '#' sigil to indicate mutable in-place borrow at call site.",
+      "id": "WARN_CALL_ARG_MISSING_MUTABLE_SIGIL",
+      "level": "Warning",
+      "message": "Call argument '{}' for mutable parameter '{}' should be explicitly marked with '#' (e.g. '{}{}')"
+    },
     "S0401": {
       "stage": "Sema",
       "domain": "ControlFlow",
@@ -2758,6 +2767,15 @@
       "level": "Error",
       "message": "Semantic manifest attestation failed for '{}': {}",
       "description": "Semantic manifest attestation must validate the object-bound manifest evidence."
+    },
+    "E04635": {
+      "stage": "Sema",
+      "domain": "Ownership",
+      "kind": "CallSiteSigil",
+      "description": "Call argument is marked with '#' but parameter is declared read-only.",
+      "id": "ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL",
+      "level": "Error",
+      "message": "Call argument '{}' is marked with '#' but parameter '{}' is read-only"
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",

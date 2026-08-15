@@ -43,12 +43,12 @@ request already-declared authority; it never upgrades the declaration.
 ## Mutable parameters and shared fields
 
 A parameter a function writes is declared with `#` (`counter#: Counter`). The
-caller passes the bare binding; `#` never appears on a call argument. Inside
-the body, a field write uses the bare name, while a mutating method call uses
-`#` on its receiver.
+caller explicitly marks the mutable call argument with `#` (`increment(counter#)`);
+omitting `#` on a mutable argument emits warning `W0408`. Inside the body, a field
+write uses the bare name, while a mutating method call uses `#` on its receiver.
 
 ```toka
-shape Counter(value: i32)
+shape Counter(value#: i32)
 
 fn increment(counter#: Counter) -> Counter {
     counter.value += 1
@@ -56,7 +56,7 @@ fn increment(counter#: Counter) -> Counter {
 }
 
 auto counter# = Counter(value = 0)
-auto next = increment(counter)
+auto next = increment(counter#)
 ```
 
 Only a field declared with `#` may be changed through a shared view. An
@@ -223,7 +223,7 @@ return write_string_atomic(path.clone(), label.as_str())
 | --- | --- |
 | Mutable payload capability needed | Declare `auto name# = ...`; use `name#.method()` for a mutating method |
 | Cannot assign to immutable | Declare the binding or parameter with `#`; write through the bare name |
-| `#` illegal in an everyday expression | Remove it from assignment, return, arithmetic, and call arguments; inspect the declaration before requesting H/P authority |
+| `#` illegal in an everyday expression | Remove it from assignment, return, and arithmetic; for call arguments, use `#` only when the parameter requires mutable payload access |
 | `&value` does not name a variable | Use the complete arm `auto Alias::Some(&value)` |
 | Cede obligation incomplete | Forward, store, consume, or `return cede value` on every required path |
 | Moved `Result` | Check `is_err()` in its own statement, then consume once with `unwrap()` or a match |

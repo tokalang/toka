@@ -87,10 +87,11 @@ auto count# = 0
 count = count + 1
 ```
 
-`#` appears in declarations and explicit mutable method calls. Ordinary reads and assignments use the bare name.
+`#` appears in declarations, explicit mutable method calls, and mutable call arguments (such as `push(values#, 7)`). Ordinary reads and assignments use the bare name.
 
 ```toka
 counter#.inc()
+increment(counter#)
 counter = 3
 ```
 
@@ -237,9 +238,10 @@ At a call site, passing that handle itself also uses the hatted view, such as `t
 For PAL, a function call is checked as a simultaneous group of temporary
 borrows. Passing `x` to a payload parameter is still a borrow event even though
 the source does not spell `&x`: `x: T` creates a temporary shared payload
-borrow, while `x#: T` creates a temporary exclusive payload borrow. The whole
+borrow (passed as `read(x)`), while `x#: T` creates a temporary exclusive payload borrow
+(passed explicitly as `mutate(x#)`; passing bare `mutate(x)` emits warning `W0408`). The whole
 argument list is checked together, so `read_twice(x, x)` is valid for read-only
-payload parameters, but `mutate_twice(x, x)` and `mutate_and_read(x, x)` are
+payload parameters, but `mutate_twice(x#, x#)` and `mutate_and_read(x#, x)` are
 rejected when either parameter requires exclusive payload access. A `cede`
 argument is an invalidating transfer rather than a borrow and conflicts with
 any other overlapping argument in the same call.

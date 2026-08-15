@@ -1,0 +1,51 @@
+shape Counter(value#: i32)
+
+fn inc(c#: Counter) {
+    c.value = c.value + 1
+}
+
+shape Box(count#: i32)
+
+impl Box {
+    pub fn update_other(self#, other#: Counter) {
+        other.value = other.value + 10
+    }
+}
+
+shape Service()
+
+impl Service {
+    pub fn static_inc(c#: Counter) {
+        c.value = c.value + 5
+    }
+}
+
+fn add_amount(c#: Counter, delta: i32) {
+    c.value = c.value + delta
+}
+
+fn main() -> i32 {
+    auto c# = Counter(value = 0)
+    inc(c#)
+    if c.value != 1 {
+        return 1
+    }
+
+    auto box# = Box(count = 1)
+    box#.update_other(c#)
+    if c.value != 11 {
+        return 2
+    }
+
+    Service::static_inc(c#)
+    if c.value != 16 {
+        return 3
+    }
+
+    add_amount(c#, 20)
+    if c.value != 36 {
+        return 4
+    }
+
+    return 0
+}

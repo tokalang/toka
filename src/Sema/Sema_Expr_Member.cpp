@@ -540,6 +540,11 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
 
   // [Constitution] Indexing targets Identity (Pointer/Array), not Soul.
   if (auto *Var = dynamic_cast<VariableExpr *>(Idx->Array.get())) {
+    if (Var->IsValueMutable || Var->IsValueBlocked) {
+      if (!m_AllowPermissionSuffix && !m_InLHS) {
+        error(Var, DiagID::ERR_ILLEGAL_MODIFIER_SUFFIX);
+      }
+    }
     SymbolInfo *Info = nullptr;
     std::string actualName = Var->Name;
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {

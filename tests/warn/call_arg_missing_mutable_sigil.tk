@@ -1,0 +1,63 @@
+shape Counter(value#: i32)
+
+fn inc(c#: Counter) {
+    c.value = c.value + 1
+}
+
+shape Box(count#: i32)
+
+impl Box {
+    pub fn update_other(self#, other#: Counter) {
+        other.value = other.value + 10
+    }
+}
+
+shape Container(item#: Counter)
+
+shape Service()
+
+impl Service {
+    pub fn static_inc(c#: Counter) {
+        c.value = c.value + 5
+    }
+}
+
+fn mutate_i32(val#: i32) {
+    val = val + 1
+}
+
+fn take_ceded(cede c: Counter) -> Counter {
+    return cede c
+}
+
+fn main() -> i32 {
+    auto c# = Counter(value = 0)
+    inc(c)
+
+    auto box# = Box(count = 1)
+    box#.update_other(c)
+
+    Service::static_inc(c)
+
+    auto f# = { item =>
+        item.value = item.value + 20
+        return 0
+    }: fn#(Counter#) -> i32
+    f#(c)
+
+    auto container# = Container(item = Counter(value = 0))
+    inc(container.item)
+
+    auto values# = [1, 2, 3]
+    mutate_i32(values[0])
+
+    auto moved = take_ceded(cede c)
+    if moved.value != 36 {
+        return 1
+    }
+
+    return 0
+}
+
+// EXPECT: warning[W0408]
+// EXPECT_COUNT: W0408 6

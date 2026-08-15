@@ -113,6 +113,16 @@ void DiagnosticEngine::capture(DiagLoc loc, DiagID id, DiagLevel level,
     if (marker != std::string::npos && marker + 10 < message.size())
       addFix("Add the inferred pointer sigil", 0,
              std::string(1, message[marker + 10]));
+  } else if (id == DiagID::WARN_CALL_ARG_MISSING_MUTABLE_SIGIL) {
+    DiagnosticSpan editSpan{loc.File, loc.Line, loc.Col + loc.Length, 0, ""};
+    record.Fixes.push_back(
+        {"Add mutable argument sigil '#'", {{std::move(editSpan), "#"}}});
+  } else if (id == DiagID::ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL) {
+    if (loc.Length > 0) {
+      DiagnosticSpan editSpan{loc.File, loc.Line, loc.Col, loc.Length, ""};
+      record.Fixes.push_back(
+          {"Remove unexpected mutable argument sigil '#'", {{std::move(editSpan), ""}}});
+    }
   }
 
   Records.push_back(std::move(record));
@@ -149,6 +159,12 @@ DiagnosticEngine::explain(const std::string &code) {
   else if (code == "E0469")
     result.Guidance = "Return the reference handle with '&name' instead of "
                       "returning only the referenced value.";
+  else if (code == "W0408")
+    result.Guidance = "Mark the call argument with '#' to explicitly acknowledge "
+                      "the mutable in-place borrow required by the parameter.";
+  else if (code == "E04635")
+    result.Guidance = "Remove '#' from the call argument because the target "
+                      "parameter is read-only.";
   else if (code.front() == 'W')
     result.Guidance = "The program is accepted; remove the warning cause or "
                       "make the intent explicit.";

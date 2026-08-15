@@ -531,6 +531,7 @@ class MemberExpr : public Expr {
 public:
   std::unique_ptr<Expr> Object;
   std::string Member;
+  SourceLocation MemberLoc;
   bool IsStatic;
   // Set by Sema only when `receiver.start` is the TaskHandle activation
   // operation.  The parser must keep `start` available as an ordinary field
@@ -549,6 +550,7 @@ public:
                                           IsStatic);
     n->IsTaskStart = IsTaskStart;
     n->Index = Index;
+    n->MemberLoc = MemberLoc;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;
@@ -559,6 +561,7 @@ class ArrayIndexExpr : public Expr {
 public:
   std::unique_ptr<Expr> Array;
   std::vector<std::unique_ptr<Expr>> Indices;
+  SourceLocation RBracketLoc;
 
   ArrayIndexExpr(std::unique_ptr<Expr> arr,
                  std::vector<std::unique_ptr<Expr>> idxs)
@@ -576,6 +579,7 @@ public:
   std::unique_ptr<ASTNode> clone() const override {
     auto n =
         std::make_unique<ArrayIndexExpr>(cloneNode(Array), cloneVec(Indices));
+    n->RBracketLoc = RBracketLoc;
     n->Loc = Loc;
     n->ResolvedType = ResolvedType;
     return n;

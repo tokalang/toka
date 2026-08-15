@@ -32,6 +32,11 @@ def contains_subset(actual, expected):
         return (isinstance(actual, dict) and
                 all(key in actual and contains_subset(actual[key], value)
                     for key, value in expected.items()))
+    if isinstance(expected, list):
+        return (isinstance(actual, list) and
+                len(expected) <= len(actual) and
+                all(any(contains_subset(act_item, exp_item) for act_item in actual)
+                    for exp_item in expected))
     return actual == expected
 
 
@@ -95,6 +100,12 @@ def main():
     workspace = ROOT / "tests/tooling/semantic_workspace/main.tk"
     cases = {
         "check_success": ["check", "--json", ROOT / "tests/pass/g03_println.tk"],
+        "check_call_arg_missing_mut_sigil": [
+            "check", "--json", ROOT / "tests/warn/call_arg_missing_mutable_sigil.tk",
+        ],
+        "check_call_arg_unexpected_mut_sigil": [
+            "check", "--json", ROOT / "tests/fail/call_arg_unexpected_mutable_sigil.tk",
+        ],
         "check_failure": ["check", "--json", ROOT / "tests/fail/borrow_move.tk"],
         "explain": ["explain", "E0438", "--json"],
         "explain_failure": ["explain", "NOT_A_CODE", "--json"],

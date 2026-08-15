@@ -1,0 +1,11 @@
+fn mutate_i32(val#: i32) {
+    val = val + 1
+}
+
+fn main() -> i32 {
+    auto arr# = [1, 2, 3]
+    mutate_i32(arr#[0])
+    return 0
+}
+
+// EXPECT: error[E0461]

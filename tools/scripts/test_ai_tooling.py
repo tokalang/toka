@@ -80,6 +80,44 @@ def main():
         fixed.write_text("".join(lines), encoding="utf-8")
         run([tokac, "--check-only", fixed])
 
+    def test_apply_and_recompile(fixture_path, code, expect_exit, expected_snippets):
+        doc = json.loads(run([tokac, "--diagnostics-json", "--check-only", fixture_path], expected=expect_exit).stdout)
+        edits = []
+        for d in doc.get("diagnostics", []):
+            if d.get("code") == code:
+                for f in d.get("fixes", []):
+                    for e in f.get("edits", []):
+                        edits.append(e)
+        require(edits, f"no edits found for {code} in {fixture_path.name}")
+        edits.sort(key=lambda e: (e["range"]["start"]["line"], e["range"]["start"]["character"]), reverse=True)
+        lines = fixture_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        for e in edits:
+            line_idx = e["range"]["start"]["line"]
+            start_c = e["range"]["start"]["character"]
+            end_c = e["range"]["end"]["character"]
+            lines[line_idx] = lines[line_idx][:start_c] + e["newText"] + lines[line_idx][end_c:]
+        fixed_text = "".join(lines)
+        for snippet in expected_snippets:
+            require(snippet in fixed_text, f"expected snippet '{snippet}' not found in fixed source")
+        with tempfile.TemporaryDirectory(prefix=f"toka-fix-{code}-") as temp:
+            fixed = Path(temp) / "fixed.tk"
+            fixed.write_text(fixed_text, encoding="utf-8")
+            recheck = json.loads(run([tokac, "--diagnostics-json", "--check-only", fixed]).stdout)
+            require(not any(d.get("code") == code for d in recheck.get("diagnostics", [])),
+                    f"diagnostic {code} still present after applying machine-fixes")
+            run([tokac, "--check-only", fixed])
+
+    test_apply_and_recompile(
+        root / "tests/warn/call_arg_missing_mutable_sigil.tk",
+        "W0408", 0,
+        ["inc(c#)", "box#.update_other(c#)", "Service::static_inc(c#)", "f#(c#)", "inc(container.item#)", "mutate_i32(values[0]#)"]
+    )
+    test_apply_and_recompile(
+        root / "tests/fail/call_arg_unexpected_mutable_sigil.tk",
+        "E04635", 1,
+        ["read_counter(c)", "read_counter(container.item)", "read_i32(values[0])"]
+    )
+
     explanation = json.loads(run(
         [tokac, "--explain=json", "E0438"]
     ).stdout)

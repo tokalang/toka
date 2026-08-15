@@ -23,7 +23,7 @@ impl<'I: @Iterator, 'F: @Callable> Map<'I, 'F>@Iterator {
         auto next = self.source#.next()
         match cede next {
             auto Option::Some('value) => {
-                return Option<Item>::Some(invoke_mut(self.mapper, cede 'value))
+                return Option<Item>::Some(invoke_mut(self.mapper#, cede 'value))
             }
             auto Option::None => return Option<Item>::None
         }

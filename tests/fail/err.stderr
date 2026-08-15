@@ -8,3 +8,13 @@ error[E0461]: Illegal use of permission suffixes (# or $) in everyday contexts. 
     |
  41 |     c# = 10 // Error: c is immutable
     |     ^
+error[E04572]: Cannot assign to immutable entity. Missing writable token '#' or '!'.
+ --> tests/fail/err.tk:41:8
+    |
+ 41 |     c# = 10 // Error: c is immutable
+    |        ^
+error[E0443]: Cannot modify immutable entity 'i32'
+ --> tests/fail/err.tk:41:5
+    |
+ 41 |     c# = 10 // Error: c is immutable
+    |     ^

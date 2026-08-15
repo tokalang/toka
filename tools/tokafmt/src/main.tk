@@ -527,7 +527,7 @@ fn format_file(path: string, write: bool, check: bool) -> i32 {
 
     auto lexer# = Lexer::new(content.as_str())
     auto printer# = Printer::new()
-    auto formatted = printer#.format(lexer)
+    auto formatted = printer#.format(lexer#)
     if check {
         if content != formatted {
             println("Needs formatting: {}", path.as_str())

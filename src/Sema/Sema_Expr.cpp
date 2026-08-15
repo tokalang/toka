@@ -158,7 +158,7 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
           !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference() &&
           declaredPayloadWritable;
       return applyPathFlowCeiling(
-          {(declaredPayloadWritable || isPlainOwnedValue ||
+          {(declaredPayloadWritable || (!declarationOnly && isPlainOwnedValue) ||
             rawPayloadCapability) &&
                (declarationOnly || Info->PayloadFlowWritable),
            Info->Permission.IdentityRebindable ||
@@ -476,6 +476,172 @@ AccessIntent Sema::getAccessIntent(Expr *E) {
   // Fresh rvalues have no caller storage to protect, so their ownership is
   // sufficient intent for a mutable-by-value callee.
   return {true, false};
+}
+
+bool Sema::hasExplicitCallArgumentWriteSigil(const Expr *E) {
+  if (!E)
+    return false;
+  if (auto *post = dynamic_cast<const PostfixExpr *>(E)) {
+    if (post->Op == TokenType::TokenWrite)
+      return true;
+  }
+  if (auto *var = dynamic_cast<const VariableExpr *>(E)) {
+    if (var->IsValueMutable)
+      return true;
+  }
+  return false;
+}
+
+static bool isDirectPlaceExpr(const Expr *E) {
+  if (!E)
+    return false;
+  return dynamic_cast<const VariableExpr *>(E) != nullptr ||
+         dynamic_cast<const MemberExpr *>(E) != nullptr ||
+         dynamic_cast<const ArrayIndexExpr *>(E) != nullptr ||
+         dynamic_cast<const PostfixExpr *>(E) != nullptr;
+}
+
+static DiagLoc getArgumentSpan(const Expr *arg) {
+  if (!arg)
+    return {};
+
+  SourceManager *sm = DiagnosticEngine::SrcMgr;
+
+  if (auto *var = dynamic_cast<const VariableExpr *>(arg)) {
+    if (sm) {
+      FullSourceLoc full = sm->getFullSourceLoc(var->Loc);
+      return DiagLoc{full.FileName, static_cast<int>(full.Line),
+                     static_cast<int>(full.Column),
+                     static_cast<int>(var->Name.length())};
+    }
+  } else if (auto *member = dynamic_cast<const MemberExpr *>(arg)) {
+    if (sm) {
+      SourceLocation startLoc = member->Object ? member->Object->Loc : member->Loc;
+      SourceLocation endLoc = member->MemberLoc.isValid() ? member->MemberLoc : member->Loc;
+      FullSourceLoc fullStart = sm->getFullSourceLoc(startLoc);
+      FullSourceLoc fullEnd = sm->getFullSourceLoc(endLoc);
+      if (fullStart.isValid() && fullEnd.isValid()) {
+        int length = 0;
+        if (fullStart.Line == fullEnd.Line && fullEnd.Column >= fullStart.Column) {
+          length = (fullEnd.Column + member->Member.length()) - fullStart.Column;
+        } else {
+          length = member->Member.length();
+        }
+        return DiagLoc{fullStart.FileName, static_cast<int>(fullStart.Line),
+                       static_cast<int>(fullStart.Column), length};
+      }
+    }
+  } else if (auto *idx = dynamic_cast<const ArrayIndexExpr *>(arg)) {
+    if (sm) {
+      SourceLocation startLoc = idx->Array ? idx->Array->Loc : idx->Loc;
+      SourceLocation endLoc = idx->RBracketLoc.isValid() ? idx->RBracketLoc : idx->Loc;
+      FullSourceLoc fullStart = sm->getFullSourceLoc(startLoc);
+      FullSourceLoc fullEnd = sm->getFullSourceLoc(endLoc);
+      if (fullStart.isValid() && fullEnd.isValid()) {
+        int length = 0;
+        if (fullStart.Line == fullEnd.Line && fullEnd.Column >= fullStart.Column) {
+          length = (fullEnd.Column + 1) - fullStart.Column;
+        } else {
+          length = 1;
+        }
+        return DiagLoc{fullStart.FileName, static_cast<int>(fullStart.Line),
+                       static_cast<int>(fullStart.Column), length};
+      }
+    }
+  }
+
+  if (sm) {
+    FullSourceLoc full = sm->getFullSourceLoc(arg->Loc);
+    return DiagLoc{full.FileName, static_cast<int>(full.Line),
+                   static_cast<int>(full.Column), 1};
+  }
+  return {};
+}
+
+std::string Sema::getDisplayArgumentString(Expr *arg) {
+  if (!arg)
+    return "";
+  if (auto *post = dynamic_cast<PostfixExpr *>(arg)) {
+    return getDisplayArgumentString(post->LHS.get());
+  }
+  if (auto *var = dynamic_cast<VariableExpr *>(arg)) {
+    return var->Name;
+  }
+  if (auto *member = dynamic_cast<MemberExpr *>(arg)) {
+    std::string base = getDisplayArgumentString(member->Object.get());
+    return base.empty() ? member->Member : (base + "." + member->Member);
+  }
+  if (auto *idx = dynamic_cast<ArrayIndexExpr *>(arg)) {
+    std::string base = getDisplayArgumentString(idx->Array.get());
+    std::string indices;
+    for (size_t i = 0; i < idx->Indices.size(); ++i) {
+      if (i > 0)
+        indices += ", ";
+      if (idx->Indices[i])
+        indices += getDisplayArgumentString(idx->Indices[i].get());
+    }
+    return base + "[" + indices + "]";
+  }
+  if (auto *num = dynamic_cast<NumberExpr *>(arg)) {
+    return std::to_string(num->Value);
+  }
+  std::string path = getPathString(arg);
+  return path.empty() ? arg->toString() : path;
+}
+
+void Sema::validateCallArgumentMutSigil(Expr *arg, bool paramIsValueMutable,
+                                        const std::string &paramName,
+                                        SourceLocation paramLoc,
+                                        SourceLocation callLoc,
+                                        size_t argIndex) {
+  if (!arg)
+    return;
+
+  // cede ownership transfer is explicitly exempted from W0408 for now.
+  if (dynamic_cast<const CedeExpr *>(arg) != nullptr)
+    return;
+
+  const bool hasSigil = hasExplicitCallArgumentWriteSigil(arg);
+  const std::string paramStr =
+      paramName.empty() ? ("arg" + std::to_string(argIndex + 1)) : paramName;
+  std::string argStr = getDisplayArgumentString(arg);
+  if (argStr.empty())
+    argStr = arg->toString();
+
+  if (paramIsValueMutable) {
+    if (!hasSigil && isDirectPlaceExpr(arg)) {
+      AccessCapability declaredCapability = getAccessCapability(arg, true);
+      if (declaredCapability.PayloadWritable) {
+        DiagLoc reportLoc = getArgumentSpan(arg);
+        DiagnosticEngine::report(
+            reportLoc, DiagID::WARN_CALL_ARG_MISSING_MUTABLE_SIGIL,
+            argStr, paramStr, argStr, "#");
+      }
+    }
+  } else {
+    if (hasSigil) {
+      DiagLoc sigilLoc;
+      if (auto *post = dynamic_cast<const PostfixExpr *>(arg)) {
+        DiagLoc lhsSpan = getArgumentSpan(post->LHS.get());
+        sigilLoc = DiagLoc{lhsSpan.File, lhsSpan.Line, lhsSpan.Col + lhsSpan.Length, 1};
+      } else if (auto *var = dynamic_cast<const VariableExpr *>(arg)) {
+        SourceManager *sm = DiagnosticEngine::SrcMgr;
+        if (sm) {
+          FullSourceLoc full = sm->getFullSourceLoc(var->Loc);
+          sigilLoc = DiagLoc{full.FileName, static_cast<int>(full.Line),
+                             static_cast<int>(full.Column + var->Name.length()), 1};
+        }
+      }
+      if (sigilLoc.File.empty() && DiagnosticEngine::SrcMgr) {
+        FullSourceLoc full = DiagnosticEngine::SrcMgr->getFullSourceLoc(arg->Loc);
+        sigilLoc = DiagLoc{full.FileName, static_cast<int>(full.Line),
+                           static_cast<int>(full.Column), 1};
+      }
+      DiagnosticEngine::report(
+          sigilLoc, DiagID::ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL,
+          argStr, paramStr);
+    }
+  }
 }
 
 static std::map<std::string, bool> captureVisibleUniqueMoved(Scope *ScopePtr) {
@@ -1892,8 +2058,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             m_InUnsafeContext && Info.TypeObj && Info.TypeObj->isRawPointer() &&
             !Info.IsHandleRebindable();
         bool payloadCapability =
-            Info.Permission.SoulWritable || isPlainOwnedValue ||
-            rawPayloadCapability;
+            Info.Permission.SoulWritable || rawPayloadCapability;
         bool payloadIntent = ve->IsValueMutable || Info.Permission.SoulWritable;
         bool usageMutable = false;
         if (shouldCollapse) {
@@ -4276,7 +4441,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                                     FD->Args[i + 1]));
                 }
                 
+                bool oldAllowPermissionSuffix = m_AllowPermissionSuffix;
+                m_AllowPermissionSuffix =
+                    hasExplicitCallArgumentWriteSigil(Met->Args[i].get());
                 auto argTy = checkExpr(Met->Args[i].get(), expectedParamTy);
+                m_AllowPermissionSuffix = oldAllowPermissionSuffix;
                 projectOwnedStringView(Met->Args[i], argTy, expectedParamTy);
 
                 if (i < expectedArgs) {
@@ -4290,8 +4459,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   }
                   bool paramIsHatted = param.IsRawPointer || param.IsUnique ||
                                         param.IsShared || param.IsReference;
-                  AccessCapability argCapability =
-                      getAccessCapability(Met->Args[i].get());
+                  AccessCapability declaredCapability =
+                      getAccessCapability(Met->Args[i].get(), true);
                   AccessIntent argIntent =
                       getAccessIntent(Met->Args[i].get());
                   bool isIndependentCedeTransfer =
@@ -4301,11 +4470,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           PermissionFlowKind::Independent;
                   bool lacksHandleCapability =
                       paramIsHatted && param.IsRebindable &&
-                      (!argCapability.HandleRebindable ||
+                      (!declaredCapability.HandleRebindable ||
                        !argIntent.HandleRebind);
                   bool lacksPayloadCapability =
                       param.IsValueMutable && !isIndependentCedeTransfer &&
-                      (!argCapability.PayloadWritable ||
+                      (!declaredCapability.PayloadWritable ||
                        !argIntent.PayloadWrite);
                   if (lacksHandleCapability || lacksPayloadCapability) {
                     error(Met->Args[i].get(),
@@ -4315,6 +4484,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                           : "capable argument",
                           argTy ? argTy->toString() : "unknown");
                   }
+                  validateCallArgumentMutSigil(Met->Args[i].get(),
+                                               param.IsValueMutable, param.Name,
+                                               param.Loc, Met->Loc, i);
                 }
                 if (FD->Effect == EffectKind::Async && i < expectedArgs) {
                   checkStartBoundaryArgument(
@@ -4830,12 +5002,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    bool oldAllowSuffix = m_AllowPermissionSuffix;
+    m_AllowPermissionSuffix = false;
     auto lhsObj = checkExpr(Post->LHS.get());
+    m_AllowPermissionSuffix = oldAllowSuffix;
     std::string lhsInfo = lhsObj->toString();
-    if (auto *Var = dynamic_cast<VariableExpr *>(Post->LHS.get())) {
-      SymbolInfo Info;
-      if (CurrentScope->lookup(Var->Name, Info) && !Info.IsSoulMutable()) {
-        error(Post, DiagID::ERR_IMMUTABLE_MOD, Var->Name);
+    if (Post->Op == TokenType::TokenWrite) {
+      if (auto *Var = dynamic_cast<VariableExpr *>(Post->LHS.get())) {
+        SymbolInfo *InfoPtr = nullptr;
+        std::string actualName = Var->Name;
+        if (CurrentScope->findVariableWithDeref(Var->Name, InfoPtr, actualName) &&
+            InfoPtr && !InfoPtr->IsSoulMutable()) {
+          error(Post, DiagID::ERR_IMMUTABLE_MOD, Var->Name);
+        }
       }
     }
     if (Post->Op == TokenType::TokenWrite) {

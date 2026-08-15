@@ -75,11 +75,16 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
   }
   bool savedNegativeLiteral = m_CheckingNegativeIntegerLiteral;
+  bool savedAllowPermissionSuffix = m_AllowPermissionSuffix;
+  if (Unary->Op == TokenType::Minus || Unary->Op == TokenType::Bang) {
+    m_AllowPermissionSuffix = false;
+  }
   if (Unary->Op == TokenType::Minus &&
       dynamic_cast<NumberExpr *>(Unary->RHS.get())) {
     m_CheckingNegativeIntegerLiteral = true;
   }
   auto rhsType = checkExpr(Unary->RHS.get());
+  m_AllowPermissionSuffix = savedAllowPermissionSuffix;
   m_CheckingNegativeIntegerLiteral = savedNegativeLiteral;
   m_DisableSoulCollapse = savedDisable;
 
