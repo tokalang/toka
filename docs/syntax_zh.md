@@ -716,7 +716,7 @@ auto Config(h = .host, ..) = cfg
 auto Config(h = .host, _ = .port, d = .debug) = cfg
 ```
 
-变体匹配：
+变体匹配与模式解构：
 
 ```toka
 match result {
@@ -724,6 +724,17 @@ match result {
     auto Result<i32, str>::Err(&e) => { pass 0 }
 }
 ```
+
+使用 `guard auto` 进行确定性的条件解构与短路守卫：
+
+```toka
+guard auto Option<&User>::Some(&user) = find_user(id) else {
+    return Result<User, str>::Err("user not found")
+}
+// 解构成功的 user 变量直接进入外层作用域
+```
+
+`guard` 的 `else` 分支在静态语义上强制要求发散（`return`、`break`、`continue` 或 `panic`），因此成功绑定的变量可安全提升至外层上下文，避免先判定状态再独立 `unwrap()` 的二次样板与潜在借用冲突。
 
 or-pattern 使用 `|`。同一个 or-pattern 中的每个分支必须绑定完全相同的名字、
 兼容的类型和相同的修饰符，因为 arm body 只能看到合并后的一套绑定环境。

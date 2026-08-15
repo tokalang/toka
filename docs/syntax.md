@@ -805,7 +805,7 @@ auto Config(h = .host, ..) = cfg
 auto Config(h = .host, _ = .port, d = .debug) = cfg
 ```
 
-Variant matching:
+Variant matching and pattern destructuring:
 
 ```toka
 match result {
@@ -813,6 +813,17 @@ match result {
     auto Result<i32, str>::Err(&e) => { pass 0 }
 }
 ```
+
+Use `guard auto` for deterministic conditional destructuring and early-exit guards:
+
+```toka
+guard auto Option<&User>::Some(&user) = find_user(id) else {
+    return Result<User, str>::Err("user not found")
+}
+// Bound variables safely enter the enclosing scope
+```
+
+Because the `else` block of a `guard` statement is statically enforced to diverge (`return`, `break`, `continue`, or `panic`), successfully bound variables enter the enclosing scope directly, eliminating the error-prone two-step status check and `.unwrap()` anti-pattern.
 
 Or-patterns use `|`. Every alternative in an or-pattern must bind the exact
 same names with compatible types and modifiers, because the arm body sees one

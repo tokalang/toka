@@ -168,14 +168,19 @@ fn compute(a: i32, b: i32) -> Result<i32, string> {
 }
 ```
 
-`unwrap()` consumes a `Result`; do not query and unwrap the same binding in one
-short-circuit expression. First branch on its status, then consume it:
+Prefer `guard auto` for early-exit unwrapping of `Result` and `Option`:
 
 ```toka
-auto result = parse_decimal(text)
-if result.is_err() { return 1 }
-auto value = result.unwrap()
+guard auto Result<i32, string>::Ok(value) = parse_decimal(text) else {
+    return 1
+}
+
+guard auto Option<&i32>::Some(&first) = values.get_ref(0) else {
+    return 0
+}
 ```
+
+Bindings created by `guard auto` enter the enclosing outer scope because the `else` block is statically required to diverge (`return`, `break`, or `panic`). Avoid the two-step `if result.is_err()` + `.unwrap()` sequence when a single `guard auto` directly binds the payload.
 
 ## String parsing: bytes, not chars
 
@@ -225,11 +230,9 @@ fn trimmed(text: str) -> str <- text {
 `string::from_int`, and pass `path.clone()` when a consumed path is reused.
 
 ```toka
-auto content = read_to_string(path.clone())
-if content.is_err() {
+guard auto Result<string, string>::Ok(text) = read_to_string(path.clone()) else {
     return Result<bool, string>::Err(string::from("read failed"))
 }
-auto text = content.unwrap()
 auto label = string::from_int(text.len() as i32)
 return write_string_atomic(path.clone(), label.as_str())
 ```
@@ -243,7 +246,7 @@ return write_string_atomic(path.clone(), label.as_str())
 | `#` illegal in an everyday expression | Remove it from assignment, return, and arithmetic; for call arguments, use `#` only when the parameter requires mutable payload access |
 | `&value` does not name a variable | Use the complete arm `auto Alias::Some(&value)` |
 | Cede obligation incomplete | Forward, store, consume, or `return cede value` on every required path |
-| Moved `Result` | Check `is_err()` in its own statement, then consume once with `unwrap()` or a match |
+| Moved `Result` / `Option` | Prefer `guard auto ... else` for early exit, or `match` for two-way handling; `unwrap()` consumes whole-value ownership |
 | `u32` versus `char` comparison | Iterate the byte view and compare integer codes 48 through 57, not `'0'` |
 
 Before broad rewrites, preserve already-correct ownership and authority markers
