@@ -1,0 +1,10 @@
+error[E042E]: Elision operator '..' provided but all arguments/fields are already present.
+ --> tests/fail/shape_redundant_elision_rejected.tk:6:15
+   |
+ 6 |     auto p1 = Point(x, y, ..)
+   |               ^
+error[E042E]: Elision operator '..' provided but all arguments/fields are already present.
+ --> tests/fail/shape_redundant_elision_rejected.tk:7:15
+   |
+ 7 |     auto p2 = Point(x = x, y = y, ..)
+   |               ^

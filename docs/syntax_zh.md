@@ -340,11 +340,21 @@ shape State(
 )
 ```
 
-Shape 字段有名字。构造 Shape 使用具名参数。
+Shape 字段有名字。构造 Shape 使用具名参数，或在多字段/混合列表中使用同名字段简写（Field Punning）：
 
 ```toka
-auto p = Point(x = 10, y = 20)
+auto x = 10
+auto y = 20
+auto p = Point(x, y)             // 同名字段 pun（展开为 x = x, y = y）
+auto p2 = Point(x, y = 99)       // pun 与显式混用
+auto cfg = Config(x, ..)         // pun 与默认值省略混用
+auto w = Wrapper(value = x)      // 单字段初始化写显式形式
 ```
+
+纯语法 pun 规则：
+- 当字段列表中包含 $\ge 2$ 个裸标识符，或已包含显式字段（`=`）/ 默认值省略（`..`）时，裸标识符读取同名局部变量。
+- 单个裸实参（例如 `Wrapper(w)`）优先保持既有同型复制构造或报错，不触发 pun。
+- 非裸标识符的位置初始化（例如 `Point(10, 20)` 或 `Point(x + 1, y)`）会被 `E042A` 严格拒绝。
 
 Shape 定义始终是编译器可见的类型契约，即使部分字段通过 `@Encap` 对用户隐藏。
 接口文件必须保留语义检查所需的完整结构事实，包括字段形态、可变性、可空性、
@@ -357,8 +367,6 @@ shape Config(host: i32, port: i32 = 80, debug: i32 = 0)
 
 auto cfg = Config(host = 127, ..)
 ```
-
-按位置初始化不是公开推荐语法；对于要求具名字段的 Shape，当前诊断会拒绝位置初始化。
 
 别名与新的名义类型：
 
@@ -690,13 +698,15 @@ auto value = match x {
 
 ## 11. 模式匹配与解构
 
-Shape 使用具名解构：
+Shape 使用具名解构或同名字段简写（声明同名局部变量）：
 
 ```toka
 shape Point(x: i32, y: i32)
 
 auto p = Point(x = 10, y = 20)
-auto Point(a = .x, b = .y) = p
+auto Point(x, y) = p                 // 同名字段 pun，声明局部变量 x, y
+auto Point(x, other = .y) = p        // pun 与显式重命名混用
+auto Point(a = .x, b = .y) = p       // 显式重命名解构
 ```
 
 使用 `..` 省略剩余字段，使用 `_` 忽略某个字段。

@@ -232,12 +232,58 @@ def main():
             write_contract["parameters"][1]["flow"] == "cede",
             "CSV writer transfer contract is incomplete")
 
+    with tempfile.TemporaryDirectory(prefix="toka-punning-replay-") as temp_dir:
+        temp_path = Path(temp_dir)
+        lib_source = temp_path / "replay_lib.tk"
+        lib_source.write_text(
+            "pub shape ReplayPoint(x: i32, y: i32)\n"
+            "pub shape ReplayConfig(x: i32, y: i32 = 99)\n\n"
+            "pub fn make_point(x: i32, y: i32) -> ReplayPoint {\n"
+            "    return ReplayPoint(x, y)\n"
+            "}\n\n"
+            "pub fn make_mixed_point(x: i32) -> ReplayPoint {\n"
+            "    return ReplayPoint(x, y = 77)\n"
+            "}\n\n"
+            "pub fn make_config(x: i32) -> ReplayConfig {\n"
+            "    return ReplayConfig(x, ..)\n"
+            "}\n",
+            encoding="utf-8"
+        )
+        lib_obj = temp_path / "replay_lib.o"
+        lib_tki = temp_path / "replay_lib.tki"
+        run([tokac, "-c", lib_source, "-o", lib_obj], cwd=temp_path)
+        require(lib_obj.is_file() and lib_tki.is_file(), "TKI/Obj compilation failed for replay_lib")
+        tki_content = lib_tki.read_text(encoding="utf-8")
+        require("pub shape ReplayPoint(x: i32, y: i32)" in tki_content, "ReplayPoint missing from TKI")
+
+        # Remove source .tk file to guarantee pure source-less replay
+        lib_source.unlink()
+        require(not lib_source.exists(), "Source was not successfully removed for source-less test")
+
+        consumer_source = temp_path / "consumer.tk"
+        consumer_source.write_text(
+            "import ./replay_lib::*\n\n"
+            "fn main() -> i32 {\n"
+            "    auto p1 = make_point(10, 20)\n"
+            "    if p1.x != 10 || p1.y != 20 { return 1 }\n"
+            "    auto p2 = make_mixed_point(15)\n"
+            "    if p2.x != 15 || p2.y != 77 { return 2 }\n"
+            "    auto cfg = make_config(42)\n"
+            "    if cfg.x != 42 || cfg.y != 99 { return 3 }\n"
+            "    return 0\n"
+            "}\n",
+            encoding="utf-8"
+        )
+        consumer_exe = temp_path / ("consumer" + suffix)
+        run([tokac, consumer_source, lib_obj, "-o", consumer_exe], cwd=temp_path)
+        run([consumer_exe], cwd=temp_path)
+
     checks = [
         "diagnostic-schema", "multi-span", "machine-fix", "fix-application",
         "compiler-explain", "unknown-code", "toka-explain", "toka-check",
         "semantic-context", "context-determinism", "context-bound",
         "api-contracts", "contract-determinism", "toka-index", "toka-query",
-        "csv-api-contracts",
+        "csv-api-contracts", "shape-punning-sourceless-replay",
     ]
     print(json.dumps({
         "checks": checks,

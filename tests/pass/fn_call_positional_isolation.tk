@@ -1,0 +1,12 @@
+fn calculate(a: i32, b: i32) -> i32 {
+    return a * 10 + b
+}
+
+fn main() -> i32 {
+    auto b = 1
+    auto a = 2
+    // Plain function call MUST remain positional: calculate(a=b, b=a) => 1 * 10 + 2 = 12
+    auto res = calculate(b, a)
+    if res != 12 { return 1 }
+    return 0
+}

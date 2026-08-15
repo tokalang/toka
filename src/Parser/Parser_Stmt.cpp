@@ -198,9 +198,6 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
       if (!match(TokenType::Comma))
         break;
     }
-    if (hasNamed && hasPositional) {
-      error(peek(), DiagID::ERR_PARSER_CANNOT_MIX_POSITIONAL_AND_NAMED_FIELDS);
-    }
     consume(TokenType::RParen, DiagID::ERR_PARSER_EXPECTED_AFTER_DESTRUCTURING);
     consume(TokenType::Equal, DiagID::ERR_PARSER_EXPECTED_FOR_DESTRUCTURING_2);
     auto init = parseExpr();

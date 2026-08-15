@@ -39,18 +39,6 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
   return Type->IsWritable;
 }
 
-static std::string ownershipSourceLabel(const Expr *expression) {
-  if (!expression)
-    return "value";
-  if (auto *variable = dynamic_cast<const VariableExpr *>(expression))
-    return Type::stripMorphology(variable->Name);
-  if (auto *member = dynamic_cast<const MemberExpr *>(expression))
-    return ownershipSourceLabel(member->Object.get()) + "." + member->Member;
-  if (auto *index = dynamic_cast<const ArrayIndexExpr *>(expression))
-    return ownershipSourceLabel(index->Array.get()) + "[...]";
-  return expression->toString();
-}
-
 // A field initializer creates a new storage slot. Its H permission belongs
 // to the field declaration, not to the source handle value. This does not
 // grant payload write authority: pointee compatibility and the direct-source
@@ -1143,6 +1131,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
   }
 
+  bool hasInvalidMember = false;
   for (size_t i = 0; i < Init->Members.size(); ++i) {
     auto &pair = Init->Members[i];
     if (pair.first == "..") {
@@ -1181,6 +1170,7 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
 
     if (!fieldFound) {
+      hasInvalidMember = true;
       error(Init, DiagID::ERR_NO_SUCH_MEMBER, resolvedName, pair.first);
       continue;
     }
@@ -1290,6 +1280,10 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         !providedFields.count("&" + defField.Name) &&
         !providedFields.count("^?" + defField.Name)) {
       
+      if (hasInvalidMember) {
+        continue;
+      }
+
       if (!hasElision) {
         if (defField.DefaultValue) {
            error(Init, DiagID::ERR_SEMA_MISSING_FIELD_IN_CONSTRUCTOR_FOR_USE_TO_E, defField.Name, Init->ShapeName);

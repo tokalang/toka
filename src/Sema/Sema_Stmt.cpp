@@ -2201,9 +2201,11 @@ void Sema::checkStmt(Stmt *S) {
         for (const auto &m : SD->Members) {
           sdMembers.insert(m.Name);
         }
+        bool hasInvalidMember = false;
         for (const auto &v : Destruct->Variables) {
           if (v.Name == "..") continue;
           if (v.FieldName != "_" && !sdMembers.count(toka::Type::stripMorphology(v.FieldName))) {
+            hasInvalidMember = true;
             DiagnosticEngine::report(getLoc(Destruct), DiagID::ERR_NO_SUCH_MEMBER, soulName, v.FieldName);
             HasError = true;
           }
@@ -2217,7 +2219,7 @@ void Sema::checkStmt(Stmt *S) {
             break;
           }
         }
-        if (!hasElision) {
+        if (!hasElision && !hasInvalidMember) {
           for (const auto &defField : SD->Members) {
             if (!seenFields.count(defField.Name)) {
               if (!defField.DefaultValue) {

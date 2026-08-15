@@ -1,0 +1,5 @@
+error[E042D]: Elision operator '..' in named initialization mode must be placed at the very end of the list.
+ --> tests/fail/shape_elision_not_at_end_rejected.tk:5:22
+   |
+ 5 |     auto c1 = Config(.., x)
+   |                      ^

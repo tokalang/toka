@@ -1,0 +1,15 @@
+error[E042A]: Positional initialization is prohibited for shape 'Point'. Struct initialization must be strictly named (e.g. 'Point(x = 1, y = 2)').
+ --> tests/fail/shape_positional_init_rejected.tk:7:21
+   |
+ 7 |     auto p1 = Point(10, 20)
+   |                     ^
+error[E042A]: Positional initialization is prohibited for shape 'Point'. Struct initialization must be strictly named (e.g. 'Point(x = 1, y = 2)').
+ --> tests/fail/shape_positional_init_rejected.tk:8:23
+   |
+ 8 |     auto p2 = Point(x + 1, y)
+   |                       ^
+error[E042A]: Positional initialization is prohibited for shape 'Wrapper'. Struct initialization must be strictly named (e.g. 'Point(x = 1, y = 2)').
+ --> tests/fail/shape_positional_init_rejected.tk:10:22
+    |
+ 10 |     auto w = Wrapper(n)
+    |                      ^

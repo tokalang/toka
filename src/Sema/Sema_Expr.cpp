@@ -589,6 +589,18 @@ std::string Sema::getDisplayArgumentString(Expr *arg) {
   return path.empty() ? arg->toString() : path;
 }
 
+std::string Sema::ownershipSourceLabel(const Expr *expression) {
+  if (!expression)
+    return "value";
+  if (auto *variable = dynamic_cast<const VariableExpr *>(expression))
+    return Type::stripMorphology(variable->Name);
+  if (auto *member = dynamic_cast<const MemberExpr *>(expression))
+    return ownershipSourceLabel(member->Object.get()) + "." + member->Member;
+  if (auto *index = dynamic_cast<const ArrayIndexExpr *>(expression))
+    return ownershipSourceLabel(index->Array.get()) + "[...]";
+  return expression->toString();
+}
+
 void Sema::validateCallArgumentMutSigil(Expr *arg, bool paramIsValueMutable,
                                         const std::string &paramName,
                                         SourceLocation paramLoc,

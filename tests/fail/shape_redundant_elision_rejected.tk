@@ -1,0 +1,9 @@
+shape Point(x: i32, y: i32)
+
+fn main() -> i32 {
+    auto x = 10
+    auto y = 20
+    auto p1 = Point(x, y, ..)
+    auto p2 = Point(x = x, y = y, ..)
+    return 0
+}

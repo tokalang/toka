@@ -1,0 +1,5 @@
+error[E0417]: Shape 'Point' has no member named 'unknown_field'
+ --> tests/fail/shape_deconstruct_punning_unknown_field_rejected.tk:5:36
+   |
+ 5 |     auto Point(x, unknown_field) = p
+   |                                    ^

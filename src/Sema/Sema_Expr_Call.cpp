@@ -1835,180 +1835,88 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           }
       }
 
-      // [Sema Defense] Enforce 100% Named Struct Initialization (Positional struct init is strictly prohibited)
-      bool allowed = false;
-      if (Sh->Members.empty()) {
-        if (Call->Args.empty()) {
-          allowed = true;
-        }
-      } else {
-        if (Call->Args.size() == 1) {
-          if (dynamic_cast<ElisionExpr *>(Call->Args[0].get())) {
-            allowed = true;
-          }
-        }
-      }
+      // Check for pun eligibility vs positional prohibition
+      // Pure-syntax rule:
+      // - 0 arguments: allowed only if Sh->Members.empty()
+      // - 1 argument:
+      //   - If BinaryExpr "=" or ElisionExpr "..": allowed
+      //   - Else: single bare argument is NEVER a pun -> report ERR_STRUCT_POSITIONAL_INIT_PROHIBITED (E042A)
+      // - >= 2 arguments:
+      //   - Each arg must be either BinaryExpr "=", ElisionExpr "..", or VariableExpr (pun).
+      //   - Any other expression (literal, binary op, etc.) -> report ERR_STRUCT_POSITIONAL_INIT_PROHIBITED (E042A).
 
-      if (!allowed) {
-        for (size_t i = 0; i < Call->Args.size(); ++i) {
-          auto *argExpr = Call->Args[i].get();
-          bool isNamed = false;
-          if (auto *bin = dynamic_cast<BinaryExpr *>(argExpr)) {
-            if (bin->Op == "=") {
-              if (dynamic_cast<VariableExpr *>(bin->LHS.get())) {
-                isNamed = true;
-              }
-            }
-          } else if (dynamic_cast<ElisionExpr *>(argExpr)) {
+      bool isSingleArg = (Call->Args.size() == 1);
+      if (isSingleArg) {
+        auto *firstArg = Call->Args[0].get();
+        bool isNamed = false;
+        if (auto *bin = dynamic_cast<BinaryExpr *>(firstArg)) {
+          if (bin->Op == "=" && dynamic_cast<VariableExpr *>(bin->LHS.get()))
             isNamed = true;
-          }
-
-          if (!isNamed) {
-            DiagnosticEngine::report(getLoc(argExpr), DiagID::ERR_STRUCT_POSITIONAL_INIT_PROHIBITED, Sh->Name);
-            HasError = true;
-            return toka::Type::fromString("unknown");
-          }
+        } else if (dynamic_cast<ElisionExpr *>(firstArg)) {
+          isNamed = true;
+        }
+        if (!isNamed) {
+          DiagnosticEngine::report(getLoc(firstArg), DiagID::ERR_STRUCT_POSITIONAL_INIT_PROHIBITED, Sh->Name);
+          HasError = true;
+          return toka::Type::fromString("unknown");
         }
       }
-      std::set<std::string> providedFields;
-      int elisionIndex = -1;
-      bool hasNamed = false;
-      bool hasPositional = false;
 
+      std::vector<std::pair<std::string, std::unique_ptr<Expr>>> members;
       for (size_t i = 0; i < Call->Args.size(); ++i) {
         auto *argExpr = Call->Args[i].get();
-        if (auto *elExpr = dynamic_cast<ElisionExpr *>(argExpr)) {
-          if (elisionIndex != -1) {
-            error(argExpr, DiagID::ERR_MULTIPLE_ELISION);
-          }
-          elisionIndex = (int)i;
-          hasPositional = true;
+        if (dynamic_cast<ElisionExpr *>(argExpr)) {
+          members.push_back({"..", std::move(Call->Args[i])});
           continue;
         }
-
-        bool isNamed = false;
         if (auto *bin = dynamic_cast<BinaryExpr *>(argExpr)) {
-          if (bin->Op == "=") isNamed = true;
-        }
-        if (isNamed) hasNamed = true;
-        else hasPositional = true;
-      }
-
-      if (hasNamed) {
-        error(Call, DiagID::ERR_STRUCT_POSITIONAL_INIT_PROHIBITED, Sh->Name);
-      }
-
-      int normalArgsCount = Call->Args.size() - (elisionIndex != -1 ? 1 : 0);
-      int elisionSkipCount = 0;
-      if (elisionIndex != -1) {
-        elisionSkipCount = (int)Sh->Members.size() - normalArgsCount;
-        if (elisionSkipCount < 0) {
-          error(Call->Args[elisionIndex].get(), DiagID::ERR_SEMA_TOO_MANY_ARGUMENTS_PROVIDED_CANNOT_ELIDE);
-        } else if (elisionSkipCount == 0) {
-          error(Call->Args[elisionIndex].get(), DiagID::ERR_REDUNDANT_ELISION);
-        }
-      } else {
-        if (normalArgsCount > (int)Sh->Members.size()) {
-          error(Call, DiagID::ERR_SEMA_TOO_MANY_ARGUMENTS_FOR_STRUCT, Sh->Name);
-        }
-      }
-
-      size_t memberIdx = 0;
-      for (size_t i = 0; i < Call->Args.size(); ++i) {
-        if ((int)i == elisionIndex) {
-          for (int k = 0; k < elisionSkipCount; ++k) {
-            auto &M = Sh->Members[memberIdx];
-            if (!M.DefaultValue) {
-              error(Call->Args[i].get(), DiagID::ERR_MISSING_DEFAULT_FOR_ELIDED, M.Name, Sh->Name);
-            }
-            memberIdx++;
-          }
-          continue;
-        }
-
-        auto &arg = Call->Args[i];
-        if (memberIdx < Sh->Members.size()) {
-          auto &M = Sh->Members[memberIdx];
-          providedFields.insert(M.Name);
-
-          auto expectedType = getPhysicalType(M);
-          auto valType = checkExpr(arg.get());
-          if (!isTypeCompatible(expectedType, valType)) {
-            error(arg.get(), DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_FIELD_EXPECTED_GOT, M.Name, expectedType->toString(), valType->toString());
-          }
-          memberIdx++;
-        }
-      }
-
-      // Inject missing defaults or elided defaults
-      std::vector<std::unique_ptr<Expr>> resolvedArgs;
-      for (const auto &M : Sh->Members) {
-        if (!providedFields.count(M.Name)) {
-          if (elisionIndex != -1 && M.DefaultValue) {
-            auto cloned = std::unique_ptr<Expr>(static_cast<Expr *>(M.DefaultValue->clone().release()));
-            auto expectedType = getPhysicalType(M);
-            auto valType = checkExpr(cloned.get(), expectedType);
-
-            if (isTypeCompatible(expectedType, valType) && !expectedType->equals(*valType)) {
-              auto origLoc = cloned->Loc;
-              cloned = std::make_unique<CastExpr>(std::move(cloned), expectedType->toString());
-              cloned->Loc = origLoc;
-              cloned->ResolvedType = expectedType;
-              valType = expectedType;
-            }
-
-            bool bypassNullStruct = false;
-            if (m_InUnsafeContext && expectedType && expectedType->isRawPointer() && valType && valType->isNullType()) {
-                bypassNullStruct = true;
-            }
-
-            if (!bypassNullStruct && !isTypeCompatible(expectedType, valType)) {
-              error(Call, DiagID::ERR_MEMBER_TYPE_MISMATCH, M.Name,
-                    expectedType->toString(), valType->toString());
-            }
-
-            auto nameVar = std::make_unique<VariableExpr>(M.Name);
-            auto bin = std::make_unique<BinaryExpr>("=", std::move(nameVar), std::move(cloned));
-            resolvedArgs.push_back(std::move(bin));
-          } else {
-            if (elisionIndex == -1) {
-              error(Call, DiagID::ERR_SEMA_MISSING_FIELD_IN_CONSTRUCTOR_FOR_USE_TO_E, M.Name, Sh->Name);
-            }
-          }
-        } else {
-          // Find the parameter in original Args that was mapped to this field
-          // It was mapped by position, skipping `elisionIndex`.
-          // We can find it by traversing Call->Args again.
-          bool found = false;
-          size_t mIdx = 0;
-          for (size_t i = 0; i < Call->Args.size(); ++i) {
-            if ((int)i == elisionIndex) {
-              mIdx += elisionSkipCount;
+          if (bin->Op == "=") {
+            if (auto *varLHS = dynamic_cast<VariableExpr *>(bin->LHS.get())) {
+              members.push_back({varLHS->Name, std::move(bin->RHS)});
               continue;
             }
-            if (Sh->Members[mIdx].Name == M.Name) {
-              // Wrap it in BinaryExpr to match CodeGen expectations for named args injection
-              auto nameVar = std::make_unique<VariableExpr>(M.Name);
-              auto bin = std::make_unique<BinaryExpr>("=", std::move(nameVar), std::move(Call->Args[i]));
-              resolvedArgs.push_back(std::move(bin));
-              found = true;
-              break;
-            }
-            mIdx++;
           }
         }
-      }
-      Call->Args = std::move(resolvedArgs);
+        if (auto *var = dynamic_cast<VariableExpr *>(argExpr)) {
+          members.push_back({var->Name, std::move(Call->Args[i])});
+          continue;
+        }
 
-      std::shared_ptr<toka::Type> res =
-          std::make_shared<toka::ShapeType>(Sh->Name);
-      std::dynamic_pointer_cast<toka::ShapeType>(res)->resolve(Sh);
+        // Positional expression prohibited
+        DiagnosticEngine::report(getLoc(argExpr), DiagID::ERR_STRUCT_POSITIONAL_INIT_PROHIBITED, Sh->Name);
+        HasError = true;
+        return toka::Type::fromString("unknown");
+      }
+
+      // Check for non-final elision (.. must be at the very end)
+      for (size_t i = 0; i < members.size(); ++i) {
+        if (members[i].first == ".." && i != members.size() - 1) {
+          error(members[i].second ? members[i].second.get() : Call, DiagID::ERR_ELISION_NOT_AT_END);
+        }
+      }
+
+      // Route through the exact single-source checkStructInit
+      InitStructExpr syntheticInit(Sh->Name, std::move(members));
+      syntheticInit.Loc = Call->Loc;
+      std::map<std::string, uint64_t> memberMasks;
+      auto resultType = checkStructInit(&syntheticInit, Sh, Sh->Name, memberMasks);
+
+      // Reconstruct Call->Args as canonical BinaryExpr("=", var, val)
+      std::vector<std::unique_ptr<Expr>> canonicalArgs;
+      for (auto &pair : syntheticInit.Members) {
+        if (pair.first == "..") continue;
+        auto nameVar = std::make_unique<VariableExpr>(pair.first);
+        auto bin = std::make_unique<BinaryExpr>("=", std::move(nameVar), std::move(pair.second));
+        canonicalArgs.push_back(std::move(bin));
+      }
+      Call->Args = std::move(canonicalArgs);
+      Call->ResolvedShape = Sh;
 
       if (TypeAliasMap.count(OriginalName) &&
           TypeAliasMap[OriginalName].IsStrong) {
-        res = toka::Type::fromString(OriginalName);
+        resultType = toka::Type::fromString(OriginalName);
       }
-      return res;
+      return resultType;
     } else if (Sh->Kind == ShapeKind::Union) {
 
       if (Call->Args.size() != 1) {

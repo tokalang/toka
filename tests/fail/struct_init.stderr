@@ -3,11 +3,6 @@ error[E0417]: Shape 'Point' has no member named 'z'
     |
  18 |     auto p1 = Point(z = 10, y = 20)
     |               ^
-error[E04537]: Missing field 'x' in constructor for 'Point' (no default value)
- --> tests/fail/struct_init.tk:18:15
-    |
- 18 |     auto p1 = Point(z = 10, y = 20)
-    |               ^
 error[E0422]: Type mismatch for member 'x': expected 'i32', but got 'str'
  --> tests/fail/struct_init.tk:22:15
     |

@@ -3,8 +3,3 @@ error[E0417]: Shape 'Point' has no member named 'x1'
    |
  5 |     auto Point(x1, y) = p
    |                         ^
-error[E042C]: Elided member 'x' of shape 'Point' does not have a default value.
- --> tests/fail/struct_destruct_typo_fail.tk:5:25
-   |
- 5 |     auto Point(x1, y) = p
-   |                         ^

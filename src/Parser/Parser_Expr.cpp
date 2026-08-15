@@ -915,6 +915,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
               auto expr = parseExpr();
               if (dynamic_cast<ElisionExpr*>(expr.get())) {
                   fields.push_back({"..", std::move(expr)});
+              } else if (auto *var = dynamic_cast<VariableExpr*>(expr.get())) {
+                  fields.push_back({var->Name, std::move(expr)});
               } else if (dynamic_cast<SpreadExpr*>(expr.get())) {
                   // Check if it's the last element (allowing trailing comma)
                   if (!check(TokenType::RParen) && !(check(TokenType::Comma) && checkAt(1, TokenType::RParen))) {

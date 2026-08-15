@@ -1,5 +1,5 @@
-error[E01119]: Cannot mix positional and named fields in destructuring
- --> tests/fail/destruct_named_mix_fail.tk:5:25
+error[E0417]: Shape 'Point' has no member named 'b'
+ --> tests/fail/destruct_named_mix_fail.tk:5:29
    |
  5 |     auto Point(a = .x, b) = p
-   |                         ^
+   |                             ^

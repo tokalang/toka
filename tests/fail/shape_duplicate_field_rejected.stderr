@@ -1,0 +1,20 @@
+error[E0424]: Duplicate field 'x' in shape initialization
+ --> tests/fail/shape_duplicate_field_rejected.tk:5:15
+   |
+ 5 |     auto p1 = Point(x, x)
+   |               ^
+error[E04537]: Missing field 'y' in constructor for 'Point' (no default value)
+ --> tests/fail/shape_duplicate_field_rejected.tk:5:15
+   |
+ 5 |     auto p1 = Point(x, x)
+   |               ^
+error[E0424]: Duplicate field 'x' in shape initialization
+ --> tests/fail/shape_duplicate_field_rejected.tk:6:15
+   |
+ 6 |     auto p2 = Point(x = 1, x = 2)
+   |               ^
+error[E04537]: Missing field 'y' in constructor for 'Point' (no default value)
+ --> tests/fail/shape_duplicate_field_rejected.tk:6:15
+   |
+ 6 |     auto p2 = Point(x = 1, x = 2)
+   |               ^

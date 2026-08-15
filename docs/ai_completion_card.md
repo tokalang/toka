@@ -77,6 +77,23 @@ record(shared)
 An ordinary parameter is a payload view, not an ownership transfer. The caller
 may keep using it unless the signature and call explicitly say `cede`.
 
+## Shape construction and deconstruction punning
+
+For shapes with multiple fields or mixed lists, prefer same-name field punning:
+
+```toka
+shape Point(x: i32, y: i32)
+
+auto x = 10
+auto y = 20
+auto p = Point(x, y)             // Preferred: same-name construction pun
+auto Point(x, y) = p             // Preferred: same-name deconstruction pun
+auto p2 = Point(x, y = 99)       // Mixed pun and explicit override
+auto Point(x, other = .y) = p2   // Mixed pun and explicit renaming
+```
+
+Single-field initialization uses the explicit form `Wrapper(value = value)`. Never use positional literals or expressions like `Point(10, 20)`; shape fields are always bound by name or pun.
+
 ## Borrowed `Vec` scan
 
 `iter()` borrows a vector. `next_ref()` advances the iterator and returns an

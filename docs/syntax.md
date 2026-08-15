@@ -396,11 +396,21 @@ shape State(
 )
 ```
 
-Shape fields are named. Shape construction uses named arguments.
+Shape fields are named. Shape construction uses named arguments or same-name field punning in multi-field / mixed argument lists:
 
 ```toka
-auto p = Point(x = 10, y = 20)
+auto x = 10
+auto y = 20
+auto p = Point(x, y)             // Field punning (desugars to x = x, y = y)
+auto p2 = Point(x, y = 99)       // Mixed pun and explicit override
+auto cfg = Config(x, ..)         // Mixed pun and default elision
+auto w = Wrapper(value = x)      // Single field requires explicit form
 ```
+
+Pure-syntax punning rules:
+- When an argument list contains $\ge 2$ bare identifiers, or contains explicit fields (`=`) / default elision (`..`), bare identifiers read same-name local bindings.
+- A single bare argument (e.g. `Wrapper(w)`) preserves existing isomorphic copy construction or diagnostics; it never triggers field punning.
+- Positional initialization using non-bare expressions (e.g. `Point(10, 20)` or `Point(x + 1, y)`) is strictly rejected with `E042A`.
 
 An initializer creates a new field owner. An existing owned local, field, or
 fixed-array element must therefore use `cede` when it initializes an owning
@@ -777,13 +787,15 @@ integer, range, or string value-domain coverage.
 
 ## 11. Pattern Matching And Destructuring
 
-Named destructuring for shapes:
+Named destructuring and same-name field punning for shapes:
 
 ```toka
 shape Point(x: i32, y: i32)
 
 auto p = Point(x = 10, y = 20)
-auto Point(a = .x, b = .y) = p
+auto Point(x, y) = p                 // Same-name pun, declares locals x, y
+auto Point(x, other = .y) = p        // Mixed pun and explicit renaming
+auto Point(a = .x, b = .y) = p       // Explicit renaming destructuring
 ```
 
 Use `..` to elide remaining fields and `_` to ignore a field.

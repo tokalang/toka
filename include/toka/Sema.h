@@ -695,6 +695,7 @@ private:
                                 const AccessPath &ConflictPath);
   std::string getPathString(Expr *E);
   std::string getDisplayArgumentString(Expr *E);
+  std::string ownershipSourceLabel(const Expr *expression);
   SymbolInfo *resolveBorrowSource(SymbolInfo *Info,
                                   std::string &EffectiveName);
   int getScopeDepth(const std::string &

@@ -1,0 +1,12 @@
+shape Point(x: i32, y: i32)
+shape Wrapper(value: i32)
+
+fn main() -> i32 {
+    auto x = 10
+    auto y = 20
+    auto p1 = Point(10, 20)
+    auto p2 = Point(x + 1, y)
+    auto n = 1
+    auto w = Wrapper(n)
+    return 0
+}

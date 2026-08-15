@@ -1,0 +1,59 @@
+shape Point(x: i32, y: i32)
+
+shape Config(x: i32, y: i32 = 42)
+
+shape Wrapper(value: i32)
+
+shape RefNode(val: i32)
+shape Container(&node: RefNode)
+
+fn test_construction_and_deconstruction_pun() -> i32 {
+    // T1: Construction pun with >= 2 bare identifiers
+    auto x = 10
+    auto y = 20
+    auto p1 = Point(x, y)
+    if p1.x != 10 || p1.y != 20 { return 1 }
+
+    // T2: Deconstruction pun
+    auto Point(x, y) = p1
+    if x != 10 || y != 20 { return 2 }
+
+    // T3: Construction mixed with explicit '='
+    auto p2 = Point(x, y = 99)
+    if p2.x != 10 || p2.y != 99 { return 3 }
+
+    // T4: Deconstruction mixed with explicit '.'
+    auto Point(x, other = .y) = p2
+    if x != 10 || other != 99 { return 4 }
+
+    // T5: Construction mixed with default elision '..'
+    auto cfg = Config(x, ..)
+    if cfg.x != 10 || cfg.y != 42 { return 5 }
+
+    // T6: Field order invariance
+    auto px = 100
+    auto py = 200
+    auto p4 = Point(y = py, x = px)
+    if p4.x != 100 || p4.y != 200 { return 6 }
+
+    // Order invariance with pun
+    auto p5 = Point(y, x)
+    if p5.x != 10 || p5.y != 20 { return 7 }
+
+    // T7: Single argument isomorphic copy constructor
+    auto w1 = Wrapper(value = 77)
+    auto w2 = Wrapper(w1)
+    if w2.value != 77 { return 8 }
+
+    // T8: Handle deconstruction with references
+    auto rn = RefNode(val = 333)
+    auto cont = Container(&node = &rn)
+    auto Container(&node) = cont
+    if node.val != 333 { return 9 }
+
+    return 0
+}
+
+fn main() -> i32 {
+    return test_construction_and_deconstruction_pun()
+}
