@@ -1,8 +1,10 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Public Preview Status](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [Public Preview Status](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
-**Toka is a no-GC systems programming language built around predictable performance, static safety, and AI-verifiable semantics. It makes real systems boundaries explicit for both programmers and tools.**
+**Toka is a no-GC systems programming language built around predictable resource costs, static safety, and AI-verifiable semantics. It makes real systems boundaries explicit for both programmers and tools.**
+
+Deterministic cleanup · PAL static checks · explicit `cede` transfer · versioned JSON semantic protocols
 
 ## Design Goal
 
@@ -10,7 +12,7 @@
 
 Toka starts from three baselines:
 
-- **Zero-cost performance:** low-level representation and resource costs should remain predictable, without a GC or hidden runtime layer becoming the default answer.
+- **No-GC, predictable resource costs:** low-level representation and resource costs should remain predictable, without a GC or hidden runtime layer becoming the default answer.
 - **Strong static safety:** dangerous paths should be explicit enough for the compiler to check, with safety treated as a requirement rather than a convenience feature.
 - **AI-verifiable semantics:** important compiler conclusions should be available as stable, machine-readable facts. An AI-assisted repair must be able to identify the relevant contract, make a minimal change, and verify the result against the compiler and targeted tests.
 

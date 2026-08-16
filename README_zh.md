@@ -1,8 +1,10 @@
-[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
+[中文官方网站 (tokalang.dev)](https://tokalang.dev/zh) | [快速开始](#快速开始) | [Public Preview 状态](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [支持](SUPPORT.md) | [AI 包复刻指南](AGENTS-USER.md) | [阅读学术论文](https://arxiv.org/abs/2606.01974) | [English](README.md)
 
 # Toka 编程语言
 
-**Toka 是一门以可预测性能、静态安全和面向 AI 的可验证语义为设计底线的无 GC 系统编程语言；它让真实系统边界同时对程序员和工具保持显式。**
+**Toka 是一门以无 GC、可预测的资源成本、静态安全和面向 AI 的可验证语义为设计底线的系统编程语言；它让真实系统边界同时对程序员和工具保持显式。**
+
+确定性清理 · PAL 静态检查 · 显式 `cede` 转移 · 带版本的 JSON 语义协议
 
 ## 设计目标
 
@@ -10,7 +12,7 @@
 
 Toka 从三项底线出发：
 
-- **零成本性能：** 底层表示和资源成本应该保持可预测，不能把 GC 或隐藏运行时层作为默认答案。
+- **无 GC、可预测的资源成本：** 底层表示和资源成本应该保持可预测，不能把 GC 或隐藏运行时层作为默认答案。
 - **强静态安全：** 危险路径必须显式到足以让编译器检查，安全性是要求，而不是为了便利可以交换掉的特性。
 - **面向 AI 的可验证语义：** 重要的编译器结论应以稳定、可机器读取的事实公开。AI 辅助修复必须能够定位相关契约、提出最小改动，并用编译器与目标测试验证结果。
 
