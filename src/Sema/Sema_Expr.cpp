@@ -4473,6 +4473,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                                         param.IsShared || param.IsReference;
                   AccessCapability declaredCapability =
                       getAccessCapability(Met->Args[i].get(), true);
+                  AccessCapability argCapability =
+                      getAccessCapability(Met->Args[i].get());
                   AccessIntent argIntent =
                       getAccessIntent(Met->Args[i].get());
                   bool isIndependentCedeTransfer =
@@ -4483,10 +4485,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   bool lacksHandleCapability =
                       paramIsHatted && param.IsRebindable &&
                       (!declaredCapability.HandleRebindable ||
+                       !argCapability.HandleRebindable ||
                        !argIntent.HandleRebind);
                   bool lacksPayloadCapability =
                       param.IsValueMutable && !isIndependentCedeTransfer &&
                       (!declaredCapability.PayloadWritable ||
+                       !argCapability.PayloadWritable ||
                        !argIntent.PayloadWrite);
                   if (lacksHandleCapability || lacksPayloadCapability) {
                     error(Met->Args[i].get(),

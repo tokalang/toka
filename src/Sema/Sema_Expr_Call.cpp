@@ -648,6 +648,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             checkCedeArgument(Call->Args[i].get(), param, argTy, expectedTy);
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
+            AccessCapability argCapability =
+                getAccessCapability(Call->Args[i].get());
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
             const bool paramIsHatted =
                 param.IsRawPointer || param.IsUnique || param.IsShared ||
@@ -655,11 +657,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             const bool lacksHandleCapability =
                 paramIsHatted && param.IsRebindable &&
                 (!declaredCapability.HandleRebindable ||
-                 !argIntent.HandleRebind);
+                 !argCapability.HandleRebindable || !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
                 param.IsValueMutable &&
                 !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
-                (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
+                (!declaredCapability.PayloadWritable ||
+                 !argCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
               error(Call->Args[i].get(),
                     DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
@@ -752,6 +755,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                     expectedTy);
                   AccessCapability declaredCapability =
                       getAccessCapability(Call->Args[i].get(), true);
+                  AccessCapability argCapability =
+                      getAccessCapability(Call->Args[i].get());
                   AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
                   const bool paramIsHatted =
                       param.IsRawPointer || param.IsUnique || param.IsShared ||
@@ -759,11 +764,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   const bool lacksHandleCapability =
                       paramIsHatted && param.IsRebindable &&
                       (!declaredCapability.HandleRebindable ||
+                       !argCapability.HandleRebindable ||
                        !argIntent.HandleRebind);
                   const bool lacksPayloadCapability =
                       param.IsValueMutable &&
                       !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
                       (!declaredCapability.PayloadWritable ||
+                       !argCapability.PayloadWritable ||
                        !argIntent.PayloadWrite);
                   if (lacksHandleCapability || lacksPayloadCapability) {
                     error(Call->Args[i].get(),
@@ -1241,6 +1248,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                                   expectedTy);
                 AccessCapability declaredCapability =
                     getAccessCapability(Call->Args[i].get(), true);
+                AccessCapability argCapability =
+                    getAccessCapability(Call->Args[i].get());
                 AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
                 const bool paramIsHatted =
                     param.IsRawPointer || param.IsUnique || param.IsShared ||
@@ -1248,11 +1257,13 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                 const bool lacksHandleCapability =
                     paramIsHatted && param.IsRebindable &&
                     (!declaredCapability.HandleRebindable ||
+                     !argCapability.HandleRebindable ||
                      !argIntent.HandleRebind);
                 const bool lacksPayloadCapability =
                     param.IsValueMutable &&
                     !isIndependentCedeTransfer(Call->Args[i].get(), param) &&
                     (!declaredCapability.PayloadWritable ||
+                     !argCapability.PayloadWritable ||
                      !argIntent.PayloadWrite);
                 if (lacksHandleCapability || lacksPayloadCapability) {
                     error(Call->Args[i].get(),
@@ -1392,6 +1403,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             m_AllowPermissionSuffix = oldAllowPermissionSuffix;
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
+            AccessCapability argCapability =
+                getAccessCapability(Call->Args[i].get());
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
             const bool paramIsHatted =
                 expectedTy->isPointer() || expectedTy->isSmartPointer() ||
@@ -1404,10 +1417,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             const bool lacksHandleCapability =
                 paramIsHatted && expectedTy->IsWritable &&
                 (!declaredCapability.HandleRebindable ||
+                 !argCapability.HandleRebindable ||
                  !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
                 paramNeedsPayload &&
-                (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
+                (!declaredCapability.PayloadWritable ||
+                 !argCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
                 error(Call->Args[i].get(),
                       DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
@@ -1439,6 +1454,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             m_AllowPermissionSuffix = oldAllowPermissionSuffix;
             AccessCapability declaredCapability =
                 getAccessCapability(Call->Args[i].get(), true);
+            AccessCapability argCapability =
+                getAccessCapability(Call->Args[i].get());
             AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
             const bool paramIsHatted =
                 expectedTy->isPointer() || expectedTy->isSmartPointer() ||
@@ -1451,10 +1468,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
             const bool lacksHandleCapability =
                 paramIsHatted && expectedTy->IsWritable &&
                 (!declaredCapability.HandleRebindable ||
+                 !argCapability.HandleRebindable ||
                  !argIntent.HandleRebind);
             const bool lacksPayloadCapability =
                 paramNeedsPayload &&
-                (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
+                (!declaredCapability.PayloadWritable ||
+                 !argCapability.PayloadWritable || !argIntent.PayloadWrite);
             if (lacksHandleCapability || lacksPayloadCapability) {
                 error(Call->Args[i].get(),
                       DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
@@ -2359,10 +2378,12 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     AccessIntent argIntent = getAccessIntent(Call->Args[i].get());
     bool lacksHandleCapability =
         paramIsHatted && paramIsRebindable &&
-        (!declaredCapability.HandleRebindable || !argIntent.HandleRebind);
+        (!declaredCapability.HandleRebindable ||
+         !argCapability.HandleRebindable || !argIntent.HandleRebind);
     bool lacksPayloadCapability =
         paramIsValueMutable && !isIndependentCedeTransfer &&
-        (!declaredCapability.PayloadWritable || !argIntent.PayloadWrite);
+        (!declaredCapability.PayloadWritable ||
+         !argCapability.PayloadWritable || !argIntent.PayloadWrite);
     if (paramIsRebindable || paramIsValueMutable) {
       const bool requiredHandle = paramIsHatted && paramIsRebindable;
       const bool requiredPayload = paramIsValueMutable;
