@@ -30,7 +30,7 @@ pub trait @ToJson {
 impl<'T: @ToJson> &'T@ToJson {
     pub fn write_json(self, buf#: string) -> string {
         // [Compiler Magic] This will call the write_json on the soul
-        return self.write_json(buf)
+        return self.write_json(buf#)
     }
 }
 
@@ -97,14 +97,14 @@ pub fn write_escaped_json_string(s: str, buf#: string) {
 
 impl str@ToJson {
     pub fn write_json(self, buf#: string) -> string {
-        write_escaped_json_string(self, buf)
+        write_escaped_json_string(self, buf#)
         return buf
     }
 }
 
 impl string@ToJson {
     pub fn write_json(self, buf#: string) -> string {
-        write_escaped_json_string(self.as_view(), buf)
+        write_escaped_json_string(self.as_view(), buf#)
         return buf
     }
 }
@@ -121,7 +121,7 @@ pub fn serialize_shape<'T>('obj: T, buf#: string) -> string {
         buf#.push_view(f.name)
         buf#.push_str("\":")
         
-        buf = f.get('obj).write_json(buf)
+        buf = f.get('obj).write_json(buf#)
     }
     buf#.push_str("}")
     return buf
@@ -135,7 +135,7 @@ impl<'T: @ToJson> Vec<'T>@ToJson {
         loop i < self.len() {
             if !first { buf#.push_str(",") }
             first = false
-            buf = self.get_ref(i).write_json(buf)
+            buf = self.get_ref(i).write_json(buf#)
             i = i + 1
         }
         buf#.push_str("]")
@@ -156,9 +156,9 @@ impl<'K: @ToJson, 'V: @ToJson> HashMap<'K, 'V>@ToJson {
             if !first { buf#.push_str(",") }
             first = false
             
-            buf = entry.key().write_json(buf)
+            buf = entry.key().write_json(buf#)
             buf#.push_str(":")
-            buf = entry.val().write_json(buf)
+            buf = entry.val().write_json(buf#)
         }
         buf#.push_str("}")
         return buf
@@ -168,7 +168,7 @@ impl<'K: @ToJson, 'V: @ToJson> HashMap<'K, 'V>@ToJson {
 impl<'T: @ToJson> Option<'T>@ToJson {
     pub fn write_json(self, buf#: string) -> string {
         match self {
-            auto Option<'T>::Some(&val) => return val.write_json(buf)
+            auto Option<'T>::Some(&val) => return val.write_json(buf#)
             _ => {
                 buf#.push_str("null")
                 return buf
@@ -183,11 +183,11 @@ impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
         match self {
             auto Result<'T, 'E>::Ok(&val) => {
                 buf#.push_str("Ok\":")
-                buf = val.write_json(buf)
+                buf = val.write_json(buf#)
             }
             auto Result<'T, 'E>::Err(&e) => {
                 buf#.push_str("Err\":")
-                buf = e.write_json(buf)
+                buf = e.write_json(buf#)
             }
         }
         buf#.push_str("}")
@@ -197,7 +197,7 @@ impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
 
 pub fn to_json<'T: @ToJson>('obj: T) -> string {
     auto res# = string::from("")
-    res = 'obj.write_json(res)
+    res = 'obj.write_json(res#)
     return res
 }
 
@@ -429,7 +429,7 @@ impl string@FromJson {
                             j += 6
                         }
                     }
-                    json_push_utf8(new_str, cp)
+                    json_push_utf8(new_str#, cp)
                 } else { new_str#.push_char(ec as char) }
             } else { new_str#.push_char(c as char) }
             j += 1
