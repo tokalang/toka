@@ -368,7 +368,7 @@ folded: >
    more
   normal
 lit: |
-  
+
   x
 cont: foo
   - bar

@@ -330,7 +330,7 @@ impl Template {
                             auto &item_val = items.get_ref(item_idx).unwrap()
                             auto sub_ctx# = TemplateContext::new()
                             sub_ctx#.set(cede string::from("."), cede string::from(item_val.as_str()))
-                            
+
                             auto b_idx# = body_start
                             loop b_idx < body_end {
                                 auto &b_node = self.nodes.get_ref(b_idx).unwrap()
