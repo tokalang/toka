@@ -1,0 +1,83 @@
+import std/io::{println}
+import std/vec::{Vec}
+import core/string::{string}
+import core/traits::{@Dup}
+
+shape CustomDup (
+    value: string,
+    counter: i32
+)
+
+impl CustomDup@Encap {
+    pub value, counter
+    fn drop(self#) {}
+}
+
+impl CustomDup@Dup {
+    pub fn dup(self) -> CustomDup {
+        return CustomDup(
+            value = string::from(self.value.as_str()),
+            counter = self.counter + 1
+        )
+    }
+}
+
+fn test_string_vec() {
+    auto v# = Vec<string>::new()
+    v#.push(cede string::from("alpha"))
+    v#.push(cede string::from("beta"))
+    v#.push(cede string::from("gamma"))
+
+    // Test get
+    auto s0 = v.get(0:usize)
+    assert(s0.as_str().equals("alpha"), "s0 mismatch")
+
+    // Test at
+    auto s1 = v.at(1:usize)
+    assert(s1.as_str().equals("beta"), "s1 mismatch")
+
+    // Test get_opt
+    auto opt2 = v.get_opt(2:usize)
+    assert(opt2.is_some(), "opt2 must be some")
+    assert(opt2.unwrap().as_str().equals("gamma"), "opt2 mismatch")
+
+    auto opt_out = v.get_opt(99:usize)
+    assert(opt_out.is_none(), "opt_out must be none")
+
+    // Verify original vector was not moved or modified
+    assert(v.len() == 3:usize, "original vec length must be 3")
+    assert(v.get(0:usize).as_str().equals("alpha"), "original element 0 preserved")
+    assert(v.get(1:usize).as_str().equals("beta"), "original element 1 preserved")
+    assert(v.get(2:usize).as_str().equals("gamma"), "original element 2 preserved")
+}
+
+fn test_custom_dup_vec() {
+    auto v# = Vec<CustomDup>::new()
+    v#.push(cede CustomDup(value = string::from("item"), counter = 10))
+
+    auto d = v.get(0:usize)
+    assert(d.value.as_str().equals("item"), "custom dup value mismatch")
+    assert(d.counter == 11, "custom dup counter should be incremented by dup()")
+
+    assert(v.len() == 1:usize, "custom dup vec length must remain 1")
+    assert(v.get(0:usize).counter == 11, "second get produces fresh dup")
+}
+
+fn test_copy_primitive_vec() {
+    auto v# = Vec<i32>::new()
+    v#.push(42)
+    v#.push(100)
+
+    assert(v.get(0:usize) == 42, "i32 get mismatch")
+    assert(v.at(1:usize) == 100, "i32 at mismatch")
+    assert(v.get_opt(0:usize).unwrap() == 42, "i32 get_opt mismatch")
+    assert(v.len() == 2:usize, "i32 vec length must remain 2")
+}
+
+fn main() -> i32 {
+    test_string_vec()
+    test_custom_dup_vec()
+    test_copy_primitive_vec()
+    println("[Conformance] Vec::get @Dup and @Copy conformance PASSED!")
+    return 0
+}

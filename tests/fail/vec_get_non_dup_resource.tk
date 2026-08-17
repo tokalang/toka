@@ -1,0 +1,17 @@
+import std/vec::{Vec}
+
+shape FileHandle (
+    fd: i32
+)
+
+impl FileHandle@Encap {
+    pub fd
+    fn drop(self#) {}
+}
+
+fn main() -> i32 {
+    auto v# = Vec<FileHandle>::new()
+    v#.push(cede FileHandle(fd = 3))
+    auto h = v.get(0:usize)
+    return 0
+}
