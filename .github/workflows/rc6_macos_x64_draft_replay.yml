@@ -1,0 +1,88 @@
+name: RC6 macOS x64 Draft Replay
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replay:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install RC6 SDK host dependencies
+        run: brew install lld@20 zstd openssl@3
+
+      - name: Replay draft archive from a clean extraction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          assets="$work_dir/assets"
+          mkdir -p "$assets"
+          gh release download v1.0.0-rc.6 --repo "$GITHUB_REPOSITORY" \
+            --dir "$assets" --pattern SHA256SUMS \
+            --pattern 'toka-v1.0.0-rc.6-*.tar.gz'
+          python3 tools/scripts/verify_release_assets.py \
+            --assets-dir "$assets" \
+            --version-label v1.0.0-rc.6 \
+            --checksums-output "$assets/SHA256SUMS" \
+            --require-checksums
+
+          tar -xzf "$assets/toka-v1.0.0-rc.6-macos-x64.tar.gz" -C "$work_dir"
+          sdk="$work_dir/toka-v1.0.0-rc.6-macos-x64"
+          export PATH="$sdk/bin:$PATH"
+          export TOKA_LIB="$sdk/lib"
+
+          toka doctor
+          cd "$work_dir"
+          toka new smoke
+          cd smoke
+          toka run
+
+          mkdir ../local_dep
+          printf '%s\n' \
+            'pub const PACKAGE = (name = "dependency", version = "1.0.0", dependencies = ())' \
+            > ../local_dep/package.tk
+          mkdir -p ../local_dep/lib/dependency
+          printf '%s\n' 'pub fn value() -> i32 { return 1 }' \
+            > ../local_dep/lib/dependency/mod.tk
+          toka add ../local_dep
+          toka fetch
+          cp package.lock ../local-online.lock
+          rm -rf target .toka
+          rm -f .toka_build_exe
+          test ! -e .toka
+          TOKA_OFFLINE=1 toka fetch
+          cmp package.lock ../local-online.lock
+          toka run
+
+          cd ..
+          printf '%s\n' 'pub fn value() -> i32 { return 1 }' > base.tk
+          printf '%s\n' \
+            'pub fn value(value#: i32) -> i32 {' \
+            '    value = value + 1' \
+            '    return value' \
+            '}' > candidate.tk
+          (
+            cd "$sdk/bin"
+            ./toka preview --base "$work_dir/base.tk" --candidate "$work_dir/candidate.tk"
+          ) > preview.json
+          python3 -c 'import json; d=json.load(open("preview.json")); assert d["schema"] == "toka.semantic-diff-preview" and d["version"] == 1'
+
+          mkdir registry
+          cd registry
+          toka new registry_smoke
+          cd registry_smoke
+          toka add unicode
+          toka fetch
+          cp package.lock ../registry-online.lock
+          rm -rf target .toka/packages .toka/build
+          rm -f .toka_build_exe
+          test "$(find .toka -type f | wc -l | tr -d ' ')" = 1
+          TOKA_OFFLINE=1 toka fetch
+          cmp package.lock ../registry-online.lock
