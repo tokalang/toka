@@ -1,4 +1,4 @@
-[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [Public Preview Status](docs/release_notes_v1.0.0-rc.5.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
+[Website (tokalang.dev)](https://tokalang.dev) | [Quick Start](#quick-start) | [Public Preview Status](docs/release_notes_v1.0.0-rc.6.md) | [Discussions](https://github.com/tokalang/toka/discussions) | [Support](SUPPORT.md) | [AI Completion Card](docs/ai_completion_card.md) | [AI Package Replication Guide](AGENTS-USER.md) | [Read the Paper](https://arxiv.org/abs/2606.01974) | [中文](README_zh.md)
 
 # Toka Programming Language
 
@@ -304,6 +304,6 @@ If you reference the design of the Toka language, including its explicit Hat-Sou
   howpublished = {GitHub repository},
   url          = {https://github.com/tokalang/toka},
   year         = {2025--2026},
-  note         = {Version 1.0.0-rc.5 candidate}
+  note         = {Version 1.0.0-rc.6 candidate}
 }
 ```
