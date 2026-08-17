@@ -1,0 +1,7 @@
+pub const PACKAGE = (
+    name = "registry_redis_fixture",
+    version = "0.1.0",
+    dependencies = (
+        redis = "redis:0.2.0",
+    )
+)

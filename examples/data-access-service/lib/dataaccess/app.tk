@@ -39,8 +39,11 @@ pub shape DataAccessService (
 )
 
 impl DataAccessService@Encap {
+    pub state#
     fn drop(self#) {}
+}
 
+impl DataAccessService {
     pub fn clone(self#) -> DataAccessService
     effects: return <- self.state {
         return DataAccessService(~state = self.~state)

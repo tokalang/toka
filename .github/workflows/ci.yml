@@ -113,19 +113,3 @@ jobs:
           tools/scripts/test_tki_cache_validation.sh
           tools/scripts/test_semantic_replay.sh
           tools/scripts/test_mixed_core_cache.sh
-
-      - name: Qualify Redis real service (Linux loopback runner)
-        if: runner.os == 'Linux'
-        run: |
-          set -euo pipefail
-          python3 tools/scripts/qualify_redis_real.py \
-            --tokac build/bin/tokac \
-            --report build/redis-real-service.json
-
-      - name: Upload Redis real-service evidence
-        if: always() && runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: redis-real-service-${{ matrix.name }}
-          path: build/redis-real-service.json
-          if-no-files-found: error

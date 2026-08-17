@@ -1,9 +1,9 @@
 # Redis real-service compatibility v1
 
-Status: **the qualification contract and Docker runner are committed. A row is
-green only when its runner JSON report says `"passed"`; its evidence level is
-either a maintainer run or a CI artifact.** This document does not convert a
-machine that cannot bind loopback ports into a passing test.
+Status: **the qualification contract and Docker runner are canonical in
+[`tokalang/redis`](https://github.com/tokalang/redis). A row is green only
+when its runner JSON report says `"passed"`; its evidence level is either a
+maintainer run or a CI artifact.**
 
 ## Qualification policy
 
@@ -13,9 +13,9 @@ evidence: a fake peer gives deterministic error, cancellation, and ownership
 coverage; the real-service runner proves that the supported Redis series
 accept the client on the wire.
 
-`tools/scripts/qualify_redis_real.py` is fail-closed. It creates short-lived
-Docker services published only as `127.0.0.1:ephemeral-port`, creates a
-per-run test CA, compiles the Redis fixtures, and writes an
+The standalone runner in `tokalang/redis` (`tests/qualify_real_service.py`) is fail-closed.
+It creates short-lived Docker services published only as `127.0.0.1:ephemeral-port`,
+creates a per-run test CA, compiles the Redis fixtures, and writes an
 evidence JSON report when `--report` is supplied.
 
 | Runner condition | Exit | Qualification meaning |
@@ -27,8 +27,8 @@ evidence JSON report when `--report` is supplied.
 Docker is the real-service execution mechanism. A local maintainer machine
 with Docker Desktop and loopback publication is an eligible runner and a
 successful report is valid `maintainer-run green` evidence. The Linux job in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) is only the
-reproducible automated host used for the release gate; it uploads
+[`tokalang/redis/.github/workflows/ci.yml`](https://github.com/tokalang/redis/blob/main/.github/workflows/ci.yml)
+is the reproducible automated host used for the release gate; it uploads
 `redis-real-service.json` whether the job passes or fails. Developers
 using a restricted desktop sandbox must run the command on an eligible host or
 read that status as `not-run`; they must not relabel it as a green integration

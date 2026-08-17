@@ -24,8 +24,11 @@ def main() -> int:
         postgres_library = materialize_locked_package(
             ROOT, ROOT / "tests" / "fixtures" / "registry_postgres",
             "postgres", work) / "lib"
+        redis_library = materialize_locked_package(
+            ROOT, ROOT / "tests" / "fixtures" / "registry_redis",
+            "redis", work) / "lib"
         include = ["-I", str(ROOT / "lib"), "-I", str(postgres_library),
-                   "-I", str(ROOT / "official" / "redis" / "lib"), "-I", str(router_library),
+                   "-I", str(redis_library), "-I", str(router_library),
                    "-I", str(openai_compat_library),
                    "-I", str(EXAMPLE / "lib")]
         for name in ("compile_v1", "agent_service_v1"):

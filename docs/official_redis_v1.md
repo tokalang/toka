@@ -1,13 +1,19 @@
 # `official/redis` v1 — Bounded RESP2 Client RFC
 
-Status: **bounded RESP2 codec, serial TCP/TLS client, ordered pipeline, and
-dedicated bounded pool implemented and qualified through deterministic,
-locked, and offline local-consumer evidence. Publication additionally requires
-a current green real-service matrix artifact.**
+Status: **released as standalone
+[`tokalang/redis` v0.2.0](https://github.com/tokalang/redis/releases/tag/v0.2.0),
+with deterministic Linux/macOS qualification, Redis 7.4.x/8.2.x TCP/TLS Docker
+service evidence, and public-registry/offline consumer replay.**
+
+This compiler repository retains the API and scope contract below. Canonical
+source, package CI, real-service qualification, and releases live in
+[`tokalang/redis`](https://github.com/tokalang/redis). The retained
+exact-version cross-repository fixture is
+[`toka-examples/registry_redis_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_redis_consumer).
 
 ## 1. Role and placement
 
-`official/redis` will be an optional pure-Toka asynchronous Redis client with
+`official/redis` is an optional pure-Toka asynchronous Redis client with
 the package identity and import path `official/redis`. It depends on exported
 `std`/`stdx` APIs only. It introduces no C dependency, no compiler hook, and no
 reverse dependency from `std` or `stdx`.

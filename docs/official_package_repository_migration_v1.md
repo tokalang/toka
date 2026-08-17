@@ -1,6 +1,6 @@
 # Official Package Repository Migration v1
 
-Status: `Approved extraction policy; regex, router, openai_compat, compress, sqlite, postgres, unicode, and gui migrations complete`
+Status: `Approved extraction policy; regex, router, openai_compat, compress, sqlite, postgres, unicode, gui, and redis migrations complete`
 
 Official packages are publisher-owned optional libraries, not a fourth
 standard-library layer. This document defines the one-way migration from an
@@ -82,6 +82,10 @@ release is [`v0.1.0`](https://github.com/tokalang/gui/releases/tag/v0.1.0).
 The canonical repository also owns the imported editor and settings demos;
 release archives deliberately exclude those applications.
 
+`official/redis` completed the same cutover on 2026-08-16. Its canonical source
+is [`tokalang/redis`](https://github.com/tokalang/redis), whose first public
+release is [`v0.2.0`](https://github.com/tokalang/redis/releases/tag/v0.2.0).
+
 The new repository owns package CI, issues, releases, and its future source
 tags. Its first public release is a real SemVer successor, such as `v0.1.1`.
 That release receives a GitHub archive and a new immutable catalog version
@@ -145,3 +149,11 @@ QuartzCore linkage. Its immutable release archive SHA-256 is
 `b17fb7d4ce6bcb8c3a533216e40ca2c63ab95e0263ceffac8e2636d2f97ce85d`.
 These hosted gates do not open a window, establish a usable Metal device, or
 qualify interactive input or IME behavior.
+
+`official/redis@0.2.0` passed standalone deterministic Linux/macOS qualification,
+the Redis 7.4.x/8.2.x TCP/TLS Docker matrix, and a fresh public-registry/offline
+replay before its monorepo root was removed.
+[`toka-examples/registry_redis_consumer`](https://github.com/tokalang/toka-examples/tree/main/registry_redis_consumer)
+is the retained exact-version consumer fixture. Its immutable release archive SHA-256 is
+`3d397581317dbab1fe8fb3acb7f85fc0c30be3c9526e1593327bf4e34df61e1f`. Toka's data-access
+and agent reference services materialize the same immutable lock for composition tests.
