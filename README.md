@@ -60,7 +60,7 @@ Toka is currently a public preview. Use an exact published release candidate
 for a repeatable install:
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.5
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.6
 toka doctor
 ```
 

@@ -56,7 +56,7 @@ Toka 当前处于 Public Preview。为获得可复现的安装，请使用一个
 release candidate：
 
 ```bash
-curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.5
+curl -fsSL https://tokalang.dev/install.sh | bash -s -- v1.0.0-rc.6
 toka doctor
 ```
 
