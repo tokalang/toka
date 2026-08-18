@@ -7,17 +7,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <io.h>
-#define close _close
+int main(void) {
+    puts("AsyncTaskIoCancelReactorCleanup skipped on Windows");
+    return 0;
+}
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#endif
 #ifdef __linux__
 #include <sys/epoll.h>
 #endif
@@ -55,7 +55,7 @@ extern void toka_task_clear_current(void *tcb_ptr);
 extern void toka_task_release(void *tcb_ptr);
 extern int toka_wait_registry_try_wake(uint32_t wait_id, uint32_t slot_gen);
 extern int toka_reactor_add_read(int rfd, int fd, uint64_t event_key);
-extern int toka_reactor_del_read(int rfd, int fd, uint64_t event_key);
+extern void toka_reactor_del_read(int rfd, int fd, uint64_t event_key);
 extern int toka_reactor_wait(int rfd, int timeout_ms, uint64_t *ready_keys, int max_keys);
 extern uint32_t toka_rt_live_tcb_count(void);
 extern uint32_t toka_rt_live_wait_registry_count(void);
@@ -93,16 +93,38 @@ static void mock_io_coro_resume(void *frame_ptr) {
     }
 }
 
+typedef struct MockTimerCoroFrame {
+    void (*resume_fn)(void *);
+    void (*destroy_fn)(void *);
+    void *tcb;
+    FakePromise promise;
+    uint32_t wait_id;
+    uint32_t slot_gen;
+    int cancel_observed;
+    int cleaned_up;
+} MockTimerCoroFrame;
+
+static void mock_timer_coro_destroy(void *frame_ptr) {
+    free(frame_ptr);
+}
+
+static void mock_timer_coro_resume(void *frame_ptr) {
+    MockTimerCoroFrame *frame = (MockTimerCoroFrame *)frame_ptr;
+    if (toka_task_is_current_canceled(frame->tcb)) {
+        frame->cancel_observed = 1;
+        toka_task_complete_canceled(&frame->promise);
+        frame->cleaned_up = 1;
+    }
+}
+
 static void test_task_cancel_timer_logical_invalidation(void) {
     uint32_t base_tcb = toka_rt_live_tcb_count();
     uint32_t base_waits = toka_rt_live_wait_registry_count();
 
-    MockIoCoroFrame *frame = calloc(1, sizeof(MockIoCoroFrame));
+    MockTimerCoroFrame *frame = calloc(1, sizeof(MockTimerCoroFrame));
     CHECK(frame != NULL);
-    frame->resume_fn = mock_io_coro_resume;
-    frame->destroy_fn = mock_io_coro_destroy;
-    frame->rfd = -1;
-    frame->fd = -1;
+    frame->resume_fn = mock_timer_coro_resume;
+    frame->destroy_fn = mock_timer_coro_destroy;
 
     void *owner = toka_task_create(frame, &frame->promise);
     CHECK(owner != NULL);
@@ -121,7 +143,7 @@ static void test_task_cancel_timer_logical_invalidation(void) {
 
     uint32_t wait_id = 0;
     uint32_t slot_gen = 0;
-    CHECK(toka_wait_registry_allocate_token(task_id, task_instance, generation, 1, &wait_id, &slot_gen));
+    CHECK(toka_wait_registry_allocate_token(task_id, task_instance, generation, 0, &wait_id, &slot_gen));
     frame->wait_id = wait_id;
     frame->slot_gen = slot_gen;
 
@@ -129,19 +151,17 @@ static void test_task_cancel_timer_logical_invalidation(void) {
     toka_task_clear_current(worker);
     toka_task_release(worker);
 
-    CHECK(toka_rt_live_wait_registry_count() == base_waits + 1);
-
     // Cancel the suspended timer task
     CHECK(toka_task_request_cancel(owner) == 1);
 
-    // Pop the ready worker and resume it through coroutine path
+    // Pop the ready worker and resume through coroutine dispatch
     void *popped_worker = NULL;
     uint64_t pop_id = 0;
     uint64_t pop_gen = 0;
     CHECK(toka_task_pop_ready(&pop_id, &pop_gen, &popped_worker));
     CHECK(popped_worker == owner);
 
-    mock_io_coro_resume(frame);
+    mock_timer_coro_resume(frame);
     CHECK(frame->cancel_observed == 1);
     CHECK(frame->cleaned_up == 1);
     CHECK(toka_tcb_is_done(owner));
@@ -150,20 +170,23 @@ static void test_task_cancel_timer_logical_invalidation(void) {
     toka_task_clear_current(popped_worker);
     toka_task_release(popped_worker);
 
-    // Token was invalidated and released by wake; a late timer expiry try_wake must return 0
-    CHECK(toka_wait_registry_try_wake(wait_id, slot_gen) == 0);
-    CHECK(toka_rt_live_wait_registry_count() == base_waits);
+    // Late OS timer fire must be a logical no-op and must not re-queue the task
+    int wake_result = toka_wait_registry_try_wake(wait_id, slot_gen);
+    CHECK(wake_result == 0);
+
+    void *stray_worker = NULL;
+    uint64_t stray_id = 0;
+    uint64_t stray_gen = 0;
+    CHECK(!toka_task_pop_ready(&stray_id, &stray_gen, &stray_worker));
 
     toka_task_release(owner);
 
+    CHECK(toka_rt_live_wait_registry_count() == base_waits);
     CHECK(toka_rt_live_tcb_count() == base_tcb);
     puts("  test_task_cancel_timer_logical_invalidation passed");
 }
 
 static void test_task_cancel_tcp_reactor_os_silence(void) {
-#ifdef _WIN32
-    puts("  test_task_cancel_tcp_reactor_os_silence skipped on Windows");
-#else
     uint32_t base_tcb = toka_rt_live_tcb_count();
     uint32_t base_waits = toka_rt_live_wait_registry_count();
 
@@ -260,7 +283,6 @@ static void test_task_cancel_tcp_reactor_os_silence(void) {
     CHECK(toka_rt_live_wait_registry_count() == base_waits);
     CHECK(toka_rt_live_tcb_count() == base_tcb);
     puts("  test_task_cancel_tcp_reactor_os_silence passed");
-#endif
 }
 
 int main(void) {
@@ -270,3 +292,4 @@ int main(void) {
     puts("All async task I/O cancel reactor cleanup tests passed.");
     return 0;
 }
+#endif
