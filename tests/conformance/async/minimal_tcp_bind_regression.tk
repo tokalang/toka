@@ -1,0 +1,100 @@
+import std/io::{println}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
+import std/task::{block_on}
+import sys/libc::{libc_close, libc_free}
+import sys/os/abi::{toka_rt_bind_with_diag, toka_rt_listen_with_diag, toka_rt_local_addr_with_diag, toka_rt_local_port_with_diag}
+import sys/os/net as sysnet
+
+fn check_environment_bind_support() -> i32 {
+    unsafe {
+        auto fd = sysnet::net_socket_impl()
+        if fd < 0 {
+            return -1
+        }
+        sysnet::net_setsockopt_reuse_impl(fd)
+        auto err# = 0:i32
+        auto *sockaddr_buf# = unsafe alloc [16] u8
+        auto ip_num = SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16).ip.to_u32()
+        auto b_res = toka_rt_bind_with_diag(fd, ip_num, 0:u16, &err as *i32, *sockaddr_buf as *u8)
+        if b_res != 0 && err == 1 {
+            libc_free(*sockaddr_buf as *void)
+            libc_close(fd)
+            return -2 // EPERM environment sandbox limitation
+        }
+        if b_res != 0 {
+            libc_free(*sockaddr_buf as *void)
+            libc_close(fd)
+            return -3 // other bind failure
+        }
+
+        // Verify that getsockname strictly returns 127.0.0.1 and valid port
+        auto out_ip# = 0:u32
+        auto out_port# = 0:u16
+        auto res_addr = toka_rt_local_addr_with_diag(fd, &out_ip as *u32, &out_port as *u16, &err as *i32)
+        assert(res_addr == 0, "getsockname must succeed")
+        assert(out_ip == ip_num, "bound address must strictly match requested 127.0.0.1")
+        assert(out_port > 0:u16, "bound port must be positive ephemeral port")
+
+        libc_free(*sockaddr_buf as *void)
+        libc_close(fd)
+        return 0 // bind permitted and verified
+    }
+}
+
+fn server_accept(cede listener: TcpListener) -> async TcpStream {
+    auto owned_listener# = cede listener
+    auto stream = owned_listener#.accept_async().await
+    assert(stream.is_valid(), "server accepted valid stream")
+    return stream
+}
+
+fn coordinator() -> async i32 {
+    auto env_support = check_environment_bind_support()
+    if env_support == -2 {
+        println("UNSUPPORTED_ENVIRONMENT: TCP bind prohibited by OS environment sandbox (errno=1)")
+        return 0:i32
+    }
+    assert(env_support == 0, "environment socket bind prerequisite satisfied")
+
+    // High-level TcpListener::bind
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    assert(listener.is_valid(), "bind listener on ephemeral port must succeed")
+    auto port = listener.local_port()
+    assert(port > 0:u16, "listener local_port must be positive ephemeral port")
+
+    // Bidirectional PING/PONG Roundtrip
+    auto server_task = server_accept(cede listener).start
+
+    auto client_stream# = TcpStream::connect_async(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)).await
+    assert(client_stream.is_valid(), "client connected to ephemeral port")
+    auto server_stream# = server_task.await
+
+    // Client -> Server PING
+    auto write_res = client_stream#.write_string_async(string::from("PING")).await
+    assert(write_res.is_ok(), "client sent PING")
+
+    unsafe {
+        auto *buf# = unsafe alloc [16] u8
+        auto read_res = server_stream#.read_async(*buf as *u8, 16:usize).await
+        assert(read_res.is_ok(), "server read PING")
+        assert(read_res.unwrap() == 4:usize, "server received 4 bytes")
+
+        // Server -> Client PONG
+        auto s_write = server_stream#.write_string_async(string::from("PONG")).await
+        assert(s_write.is_ok(), "server sent PONG")
+
+        auto c_read = client_stream#.read_async(*buf as *u8, 16:usize).await
+        assert(c_read.is_ok(), "client read PONG")
+        assert(c_read.unwrap() == 4:usize, "client received 4 bytes")
+        unsafe free [16] *#buf
+    }
+
+    client_stream#.close()
+    server_stream#.close()
+    println("minimal_tcp_bind_regression PASSED (bound port {})", port)
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

@@ -1,0 +1,88 @@
+import std/context::{background, with_cancel, Canceler}
+import std/io::{println}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_read_context, net_async_read_fd}
+import std/task::{block_on, sleep_async}
+import sys/libc::{libc_free}
+import sys/os/net as sysnet
+
+fn cancel_after_witness(cede canceler: Canceler) -> async i32 {
+    auto owned_canceler# = cede canceler
+    auto waited# = 0:i32
+    loop owned_canceler.active_token_count() == 0:usize && waited < 100:i32 {
+        sleep_async(2:i32).await
+        waited += 1:i32
+    }
+    assert(owned_canceler.active_token_count() > 0:usize, "witnessed active wait token in canceler")
+    owned_canceler.call()
+    return 0:i32
+}
+
+fn server_routine(cede listener: TcpListener) -> async i32 {
+    auto owned_listener# = cede listener
+    auto stream# = owned_listener#.accept_async().await
+    assert(stream.is_valid(), "server accepted stream")
+
+    // Wait until client gets canceled
+    sleep_async(50:i32).await
+
+    // Now write retry data to prove stream and caller buffer are intact
+    auto write_res = stream#.write_string_async(string::from("RETRY_OK")).await
+    assert(write_res.is_ok(), "server wrote retry payload")
+
+    stream#.close()
+    return 0:i32
+}
+
+fn coordinator() -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !listener.is_valid() {
+        auto err = sysnet::get_last_error()
+        if err == 1 {
+            println("UNSUPPORTED_ENVIRONMENT: TCP bind prohibited by OS environment sandbox (errno=1)")
+            return 0:i32
+        }
+    }
+    assert(listener.is_valid(), "bind listener")
+    auto port = listener.local_port()
+
+    auto server_task = server_routine(cede listener).start
+
+    auto client_stream# = TcpStream::connect_async(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)).await
+    assert(client_stream.is_valid(), "client connected")
+
+    unsafe {
+        auto *buf# = unsafe alloc [64]u8
+        auto ctx_res = with_cancel(cede background())
+        auto canceler = ctx_res.canceler
+        auto cancel_task = cancel_after_witness(cede canceler.clone()).start
+
+        // 1. Canceled read via Context Canceler
+        auto read_res = net_async_read_context(client_stream, *buf as *u8, 64:usize, canceler.clone()).await
+        cancel_task.await
+
+        match read_res {
+            auto Result::Ok(n) => {
+                assert(false, "canceled read must not succeed")
+            }
+            auto Result::Err(&err) => {
+                assert(err.equals("context canceled"), "read returned 'context canceled'")
+            }
+        }
+        assert(canceler.active_token_count() == 0:usize, "canceler tokens returned to zero")
+
+        // 2. Caller continuation: use the SAME raw buffer allocation for a second read
+        auto retry_read = net_async_read_fd(client_stream.fd, *buf as *u8, 64:usize).await
+        assert(retry_read.is_ok(), "second read on same buffer succeeded")
+        assert(retry_read.unwrap() == 8:usize, "read 8 bytes of RETRY_OK")
+
+        libc_free(*buf as *void)
+    }
+
+    client_stream#.close()
+    server_task.await
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

@@ -1,0 +1,110 @@
+import core/option::{Option}
+import core/traits::{@Encap}
+import sys/libc::{libc_free}
+import sys/os/net as sysnet
+import std/io::{println}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, net_async_read_fd}
+import std/task::{block_on, get_reactor_fd, sleep_async, task_cancel, task_is_canceled}
+
+extern fn toka_rt_test_reactor_is_fd_registered(fd: i32) -> i32
+
+auto g_drop_count# = 0:i32
+auto g_post_read_executed# = 0:i32
+
+shape Token (
+    tag: i32
+)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn worker_reading_fd(fd: i32) -> async i32 {
+    auto item = Token(tag = 99)
+    unsafe {
+        auto *buf# = unsafe alloc [64]u8
+        auto res = net_async_read_fd(fd, *buf as *u8, 64:usize).await
+        g_post_read_executed += 1:i32
+        libc_free(*buf as *void)
+    }
+    return item.tag
+}
+
+fn server_accept(cede listener: TcpListener) -> async TcpStream {
+    auto owned_listener# = cede listener
+    auto stream = owned_listener#.accept_async().await
+    assert(stream.is_valid(), "server accepted valid connection")
+    return stream
+}
+
+fn coordinator() -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !listener.is_valid() {
+        auto err = sysnet::get_last_error()
+        if err == 1 {
+            println("UNSUPPORTED_ENVIRONMENT: TCP bind prohibited by OS environment sandbox (errno=1)")
+            return 0:i32
+        }
+        println("DIAGNOSTIC: TcpListener::bind failed, errno={}", err)
+    }
+    assert(listener.is_valid(), "bind listener on ephemeral port")
+    auto port = listener.local_port()
+
+    auto server_task = server_accept(cede listener).start
+
+    auto client_stream# = TcpStream::connect_async(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)).await
+    assert(client_stream.is_valid(), "client connected successfully")
+    auto server_stream# = server_task.await
+
+    auto client_fd = client_stream.fd
+    auto worker = worker_reading_fd(client_fd).start
+
+    // Suspension witness barrier: wait until client_fd is actively registered in reactor
+    auto waited# = 0:i32
+    loop toka_rt_test_reactor_is_fd_registered(client_fd) == 0 && waited < 100:i32 {
+        sleep_async(2:i32).await
+        waited += 1:i32
+    }
+    assert(toka_rt_test_reactor_is_fd_registered(client_fd) != 0, "witnessed that client_fd was registered with reactor")
+
+    // Cancel worker while suspended in TCP read
+    task_cancel<i32>(worker)
+
+    // Drive worker to terminal canceled via .await?
+    auto outcome = worker.await?
+    match cede outcome {
+        auto Option::None => {
+            // Expected
+        }
+        _ => {
+            assert(false, "canceled TCP worker must produce None")
+        }
+    }
+
+    assert(task_is_canceled<i32>(worker), "worker must reach terminal completed-canceled")
+    assert(g_post_read_executed == 0:i32, "worker must not execute CFG after canceled read")
+    assert(g_drop_count == 1:i32, "worker Token must be dropped exactly once upon cancellation")
+    assert(toka_rt_test_reactor_is_fd_registered(client_fd) == 0, "client_fd registration must be cleared from reactor")
+
+    // OS-level silence proof on production pipeline:
+    // Write data to server_stream so client_fd has readable data in kernel.
+    auto write_res = server_stream#.write_string_async(string::from("TEST_DATA")).await
+    assert(write_res.is_ok(), "server wrote test data")
+
+    unsafe {
+        auto *out_keys# = unsafe alloc [10] u64
+        auto delivered = sysnet::reactor_wait_impl(get_reactor_fd(), 50, *out_keys as *void, 10)
+        assert(delivered == 0, "production cancellation must leave OS reactor silent for canceled FD")
+        libc_free(*out_keys as *void)
+    }
+
+    client_stream#.close()
+    server_stream#.close()
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

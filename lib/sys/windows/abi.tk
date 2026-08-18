@@ -36,6 +36,14 @@ extern fn toka_clock_realtime(ts: Addr) -> i32
 extern fn toka_clock_monotonic(ts: Addr) -> i32
 
 extern fn WSAGetLastError() -> i32
+extern fn toka_set_errno_impl(err: i32) -> void
+
+extern fn toka_rt_bind_with_diag(fd: i32, ip: u32, port: u16, *out_errno: i32, *out_sockaddr: u8) -> i32
+extern fn toka_rt_listen_with_diag(fd: i32, backlog: i32, *out_errno: i32) -> i32
+extern fn toka_rt_local_port_with_diag(fd: i32, *out_errno: i32) -> i32
+extern fn toka_rt_local_addr_with_diag(fd: i32, *out_ip: u32, *out_port: u16, *out_errno: i32) -> i32
+extern fn toka_rt_connect_with_diag(fd: i32, ip: u32, port: u16, *out_errno: i32) -> i32
+
 extern fn socket(af: i32, kind: i32, protocol: i32) -> i32
 extern fn bind(s: i32, *name: void, namelen: i32) -> i32
 extern fn listen(s: i32, backlog: i32) -> i32

@@ -1,0 +1,133 @@
+{
+  "schema": "toka.restricted-cancellation-profile",
+  "version": 1,
+  "status": "candidate",
+  "purpose": "A bounded, direct-task cancellation contract for the async APIs used by the current ecosystem. It is independent of the frozen TaskHandle lifecycle v2 contract and does not qualify general structured cancellation.",
+  "supported_scope": [
+    "a move-only TaskHandle<T> receives one cooperative task_cancel request",
+    "a direct await observes one child terminal outcome; await? represents an observed child or current-task cancellation as Option::None",
+    "cold cancellation and cold-handle drop run frame cleanup before canceled terminal publication",
+    "whole-place, direct-field, and fixed-array-index cede frame locals are covered by the named cancellation redlines",
+    "Timer and TCP read suspension points observe task_cancel and clean up frame resources and reactor registrations without subsequent user code execution",
+    "direct Context Canceler.call() returns a domain cancellation error and allows caller to continue with buffer and listener ownership intact"
+  ],
+  "guarantees": [
+    {
+      "id": "RCP-G1",
+      "statement": "task_cancel is a cooperative request: it is observable at the current supported suspension boundary and never fabricates a normal result."
+    },
+    {
+      "id": "RCP-G2",
+      "statement": "At a direct await? boundary, canceled child completion or an observed current-task cancellation yields Option::None."
+    },
+    {
+      "id": "RCP-G3",
+      "statement": "A cold cancellation or cold-handle drop runs frame-owned cleanup exactly once before canceled terminal publication."
+    },
+    {
+      "id": "RCP-G4",
+      "statement": "The named direct-field and fixed-array-index cede redlines release every covered live resource exactly once after cancellation."
+    },
+    {
+      "id": "RCP-G5",
+      "statement": "Once a direct normal-result claim has been established, a later cancellation request does not revoke that already-visible normal delivery."
+    },
+    {
+      "id": "RCP-G6a-Timer",
+      "statement": "On a supported Timer suspension boundary without Context Canceler involvement, a task_cancel request is observed; the task is woken and driven to terminal completed-canceled, timer token is invalidated, no subsequent CFG is executed, frame locals are dropped exactly once, and timer expiry causes no resumption."
+    },
+    {
+      "id": "RCP-G6a-TCP",
+      "statement": "On a supported TCP read suspension boundary on POSIX platforms without Context Canceler involvement, a task_cancel request is observed; the task is woken and driven to terminal completed-canceled, WaitRegistry and OS reactor subscriptions are deleted such that ready events are silenced, no subsequent CFG is executed, and frame locals are dropped exactly once."
+    },
+    {
+      "id": "RCP-G7a",
+      "statement": "When a raw TCP read or accept operation is canceled via direct Canceler.call() while the task itself is not cancel-requested, the operation returns the propagated cancellation error, caller control flow continues with ownership of the raw buffer or same listener instance intact, and canceler token count returns to baseline."
+    }
+  ],
+  "source_evidence": [
+    {
+      "path": "tests/conformance/async/await_cancellation_outcome.tk",
+      "guarantee_ids": ["RCP-G1", "RCP-G2"]
+    },
+    {
+      "path": "tests/conformance/async/direct_await_cancellation_race.tk",
+      "guarantee_ids": ["RCP-G1", "RCP-G2"]
+    },
+    {
+      "path": "tests/conformance/async/async_cede_direct_field_cancel_cleanup.tk",
+      "guarantee_ids": ["RCP-G3", "RCP-G4"]
+    },
+    {
+      "path": "tests/conformance/async/async_cede_fixed_array_index_cancel_cleanup.tk",
+      "guarantee_ids": ["RCP-G3", "RCP-G4"]
+    },
+    {
+      "path": "tests/pass/g11_async_cancel_join_test.tk",
+      "guarantee_ids": ["RCP-G1"]
+    },
+    {
+      "path": "tests/conformance/async/task_cancel_timer_frame_cleanup.tk",
+      "guarantee_ids": ["RCP-G6a-Timer"]
+    },
+    {
+      "path": "tests/conformance/async/task_cancel_tcp_io_cleanup.tk",
+      "guarantee_ids": ["RCP-G6a-TCP"]
+    },
+    {
+      "path": "tests/conformance/async/context_cancel_raw_buffer_continuation.tk",
+      "guarantee_ids": ["RCP-G7a"]
+    },
+    {
+      "path": "tests/conformance/async/minimal_tcp_bind_regression.tk",
+      "guarantee_ids": ["RCP-G6a-TCP"]
+    },
+    {
+      "path": "tests/conformance/async/context_cancel_tcp_accept_reuse.tk",
+      "guarantee_ids": ["RCP-G7a"]
+    }
+  ],
+  "native_evidence": [
+    {
+      "target": "toka_async_cold_cancel_cleanup",
+      "path": "tests/AsyncColdCancelCleanup.c",
+      "guarantee_ids": ["RCP-G3"]
+    },
+    {
+      "target": "toka_async_completion_subscription",
+      "path": "tests/AsyncCompletionSubscription.c",
+      "guarantee_ids": ["RCP-G2", "RCP-G5"]
+    },
+    {
+      "target": "toka_async_task_io_cancel_reactor_cleanup",
+      "path": "tests/AsyncTaskIoCancelReactorCleanup.c",
+      "guarantee_ids": ["RCP-G6a-Timer", "RCP-G6a-TCP"]
+    }
+  ],
+  "ecosystem_evidence": [
+    {
+      "path": "../redis/tests/pool_v1.tk",
+      "statement": "A canceled Redis pool waiter returns a domain pool error without acquiring a lease."
+    },
+    {
+      "path": "../postgres/tests/real_service_v1.tk",
+      "statement": "A canceled PostgreSQL pool waiter returns a domain pool error without acquiring a lease."
+    }
+  ],
+  "explicitly_deferred": [
+    "TLS cancellation paths across handshake, read, and write",
+    "Context deadline timeout error propagation (deferred to dedicated qualification)",
+    "owner-carrying async buffer restitution (e.g. read_into_async_context returning owned buffer on cancel)",
+    "concurrent dual-source cancellation (simultaneous task_cancel and Context Canceler.call)",
+    "TaskScope close, cancellation propagation, and cancel-join-drain progress",
+    "race2, select2, and any multi-source cancellation/loser-drain guarantee",
+    "borrowed scoped tasks and task values carrying PAL dependencies",
+    "dynamic projections, slices, arbitrary nested aggregates, and other unlisted async cede cleanup paths"
+  ],
+  "graduation_requirements": [
+    "Qualify direct-await and single-task I/O cancellation at one candidate revision without relying on TaskScope or race2 semantics.",
+    "Verify timer logical invalidation, TCP OS-level reactor silence, and same-listener context reuse.",
+    "Re-run every named source, native, and ecosystem evidence item from one clean candidate revision.",
+    "Record the result under candidate conformance output; do not mutate TaskHandle lifecycle v2 history."
+  ]
+}

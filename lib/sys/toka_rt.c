@@ -478,6 +478,7 @@ void toka_ensure_wsa_initialized() {
 #ifndef __wasi__
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #endif
@@ -3302,6 +3303,10 @@ int32_t toka_get_errno_impl(void) {
     return (int32_t)errno;
 }
 
+void toka_set_errno_impl(int32_t err) {
+    errno = (int)err;
+}
+
 void toka_disarm_enum(void *ptr) {
     if (ptr) {
         *(uint8_t*)ptr = 1;
@@ -5704,6 +5709,29 @@ int toka_reactor_wait(int rfd, int timeout_ms, uint64_t *out_keys, int max_event
 #endif
     return 0;
 }
+
+int toka_rt_test_reactor_is_fd_registered(int fd) {
+    if (fd < 0 || fd >= 65536) return 0;
+    toka_mutex_lock(&g_rt_mutex);
+    int registered = (g_reactor_fd_table[fd].read_key != 0 ||
+                      g_reactor_fd_table[fd].write_key != 0);
+    toka_mutex_unlock(&g_rt_mutex);
+    return registered;
+}
+
+uint32_t toka_rt_test_reactor_live_key_count(void) {
+    toka_mutex_lock(&g_rt_mutex);
+    uint32_t cnt = 0;
+    for (size_t i = 0; i < 65536; ++i) {
+        if (g_reactor_fd_table[i].read_key != 0) cnt++;
+        if (g_reactor_fd_table[i].write_key != 0) cnt++;
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    return cnt;
+}
+#else
+int toka_rt_test_reactor_is_fd_registered(int fd) { return 0; }
+uint32_t toka_rt_test_reactor_live_key_count(void) { return 0; }
 #endif
 
 #ifndef __linux__
@@ -5711,6 +5739,182 @@ void toka_linux_epoll_del_fd(int epfd, int fd) {}
 void toka_linux_epoll_del_read(int epfd, int fd, uint64_t expected_key) {}
 void toka_linux_epoll_del_write(int epfd, int fd, uint64_t expected_key) {}
 #endif
+
+int32_t toka_rt_bind_with_diag(int32_t fd, uint32_t ip, uint16_t port, int32_t *out_errno, uint8_t *out_sockaddr) {
+#ifdef __wasi__
+    if (out_errno) *out_errno = 0;
+    return -1;
+#elif defined(_WIN32)
+    toka_ensure_wsa_initialized();
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = (unsigned long)ip;
+
+    if (out_sockaddr) {
+        memcpy(out_sockaddr, &addr, sizeof(addr));
+    }
+
+    int res = bind((SOCKET)fd, (struct sockaddr*)&addr, (int)sizeof(addr));
+    int err = (res != 0) ? WSAGetLastError() : 0;
+    if (out_errno) {
+        *out_errno = (int32_t)err;
+    }
+    return (int32_t)res;
+#else
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+#ifdef __APPLE__
+    addr.sin_len = sizeof(addr);
+#endif
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = (in_addr_t)ip;
+
+    if (out_sockaddr) {
+        memcpy(out_sockaddr, &addr, sizeof(addr));
+    }
+
+    errno = 0;
+    int res = bind((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    int err = (res != 0) ? errno : 0;
+    if (out_errno) {
+        *out_errno = (int32_t)err;
+    }
+    errno = err;
+    return (int32_t)res;
+#endif
+}
+
+int32_t toka_rt_listen_with_diag(int32_t fd, int32_t backlog, int32_t *out_errno) {
+#ifdef __wasi__
+    if (out_errno) *out_errno = 0;
+    return -1;
+#elif defined(_WIN32)
+    toka_ensure_wsa_initialized();
+    int res = listen((SOCKET)fd, (int)backlog);
+    int err = (res != 0) ? WSAGetLastError() : 0;
+    if (out_errno) {
+        *out_errno = (int32_t)err;
+    }
+    return (int32_t)res;
+#else
+    errno = 0;
+    int res = listen((int)fd, (int)backlog);
+    int err = (res != 0) ? errno : 0;
+    if (out_errno) {
+        *out_errno = (int32_t)err;
+    }
+    errno = err;
+    return (int32_t)res;
+#endif
+}
+
+int32_t toka_rt_local_port_with_diag(int32_t fd, int32_t *out_errno) {
+#ifdef __wasi__
+    if (out_errno) *out_errno = 0;
+    return -1;
+#elif defined(_WIN32)
+    toka_ensure_wsa_initialized();
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    int len = sizeof(addr);
+    int res = getsockname((SOCKET)fd, (struct sockaddr*)&addr, &len);
+    if (res != 0) {
+        if (out_errno) *out_errno = (int32_t)WSAGetLastError();
+        return -1;
+    }
+    if (out_errno) *out_errno = 0;
+    return (int32_t)ntohs(addr.sin_port);
+#else
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    socklen_t len = sizeof(addr);
+    errno = 0;
+    int res = getsockname((int)fd, (struct sockaddr*)&addr, &len);
+    if (res != 0) {
+        if (out_errno) *out_errno = (int32_t)errno;
+        return -1;
+    }
+    if (out_errno) *out_errno = 0;
+    return (int32_t)ntohs(addr.sin_port);
+#endif
+}
+
+int32_t toka_rt_local_addr_with_diag(int32_t fd, uint32_t *out_ip, uint16_t *out_port, int32_t *out_errno) {
+#ifdef __wasi__
+    if (out_errno) *out_errno = 0;
+    return -1;
+#elif defined(_WIN32)
+    toka_ensure_wsa_initialized();
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    int len = sizeof(addr);
+    int res = getsockname((SOCKET)fd, (struct sockaddr*)&addr, &len);
+    if (res != 0) {
+        if (out_errno) *out_errno = (int32_t)WSAGetLastError();
+        return -1;
+    }
+    if (out_ip) *out_ip = (uint32_t)addr.sin_addr.s_addr;
+    if (out_port) *out_port = ntohs(addr.sin_port);
+    if (out_errno) *out_errno = 0;
+    return 0;
+#else
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    socklen_t len = sizeof(addr);
+    errno = 0;
+    int res = getsockname((int)fd, (struct sockaddr*)&addr, &len);
+    if (res != 0) {
+        if (out_errno) *out_errno = (int32_t)errno;
+        return -1;
+    }
+    if (out_ip) *out_ip = (uint32_t)addr.sin_addr.s_addr;
+    if (out_port) *out_port = ntohs(addr.sin_port);
+    if (out_errno) *out_errno = 0;
+    return 0;
+#endif
+}
+
+int32_t toka_rt_connect_with_diag(int32_t fd, uint32_t ip, uint16_t port, int32_t *out_errno) {
+#ifdef __wasi__
+    if (out_errno) *out_errno = 0;
+    return -1;
+#elif defined(_WIN32)
+    toka_ensure_wsa_initialized();
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = (unsigned long)ip;
+
+    int res = connect((SOCKET)fd, (struct sockaddr*)&addr, (int)sizeof(addr));
+    int err = (res != 0) ? WSAGetLastError() : 0;
+    if (out_errno) {
+        *out_errno = (int32_t)err;
+    }
+    return (int32_t)res;
+#else
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+#ifdef __APPLE__
+    addr.sin_len = sizeof(addr);
+#endif
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = (in_addr_t)ip;
+
+    errno = 0;
+    int res = connect((int)fd, (struct sockaddr*)&addr, (socklen_t)sizeof(addr));
+    int err = (res != 0) ? errno : 0;
+    if (out_errno) {
+        *out_errno = (int32_t)err;
+    }
+    errno = err;
+    return (int32_t)res;
+#endif
+}
 
 #ifdef __wasi__
 extern int __wasm_argc;

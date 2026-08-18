@@ -1,0 +1,81 @@
+import std/context::{background, with_cancel, Canceler}
+import std/io::{println}
+import std/net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream}
+import std/task::{block_on, sleep_async}
+import sys/os/net as sysnet
+
+fn cancel_after_witness(cede canceler: Canceler) -> async i32 {
+    auto owned_canceler# = cede canceler
+    // Wait until token is actively registered in context
+    auto waited# = 0:i32
+    loop owned_canceler.active_token_count() == 0:usize && waited < 100:i32 {
+        sleep_async(2:i32).await
+        waited += 1:i32
+    }
+    assert(owned_canceler.active_token_count() > 0:usize, "witnessed active wait token in canceler")
+    owned_canceler.call()
+    return 0:i32
+}
+
+fn client_connect_and_ping(port: u16) -> async i32 {
+    sleep_async(10:i32).await
+    auto stream# = TcpStream::connect_async(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), port)).await
+    assert(stream.is_valid(), "client connected to reused listener")
+    auto write_res = stream#.write_string_async(string::from("PING")).await
+    assert(write_res.is_ok(), "client sent PING")
+    stream#.close()
+    return 0:i32
+}
+
+fn coordinator() -> async i32 {
+    auto listener# = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127:u8, 0:u8, 0:u8, 1:u8), 0:u16))
+    if !listener.is_valid() {
+        auto err = sysnet::get_last_error()
+        if err == 1 {
+            println("UNSUPPORTED_ENVIRONMENT: TCP bind prohibited by OS environment sandbox (errno=1)")
+            return 0:i32
+        }
+    }
+    assert(listener.is_valid(), "bind listener")
+    auto port = listener.local_port()
+
+    // Step 1: accept_async_context with cancellation
+    auto ctx_res = with_cancel(cede background())
+    auto canceler = ctx_res.canceler
+    auto cancel_task = cancel_after_witness(cede canceler.clone()).start
+
+    auto canceled_accept = listener#.accept_async_context(canceler.clone()).await
+    cancel_task.await
+
+    match canceled_accept {
+        auto Result::Ok(&stream) => {
+            assert(false, "canceled accept must not yield a connection")
+        }
+        auto Result::Err(&err) => {
+            assert(err.equals("context canceled"), "canceled accept returned 'context canceled'")
+        }
+    }
+    assert(canceler.active_token_count() == 0:usize, "token count returned to net-zero")
+
+    // Step 2: SAME listener instance performs a regular accept_async and succeeds
+    auto client_task = client_connect_and_ping(port).start
+    auto accepted_stream# = listener#.accept_async().await
+    assert(accepted_stream.is_valid(), "reused listener accepted incoming connection successfully")
+    client_task.await
+
+    // Read the PING from client
+    unsafe {
+        auto *buf# = unsafe alloc [16]u8
+        auto read_res = accepted_stream#.read_async(*buf as *u8, 16:usize).await
+        assert(read_res.is_ok(), "reused stream read succeeded")
+        assert(read_res.unwrap() == 4:usize, "received 4 bytes from client")
+        unsafe free [16] *#buf
+    }
+
+    accepted_stream#.close()
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}

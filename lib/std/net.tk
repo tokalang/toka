@@ -363,7 +363,7 @@ impl TcpStream {
             }
 
             auto errno = sysnet::get_errno_impl()
-            if errno != 36 && errno != 115 && errno != 10035 {
+            if errno != 36 && errno != 115 && errno != 35 && errno != 11 && errno != 10035 {
                 sysnet::net_close_impl(raw_fd)
                 raw_fd = -1
                 fd_box[0] = -1

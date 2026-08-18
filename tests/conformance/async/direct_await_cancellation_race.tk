@@ -1,0 +1,95 @@
+import core/option::{Option}
+import std/task::{block_on, sleep_async, task_cancel, task_is_canceled, task_is_cancel_requested}
+
+extern fn toka_rt_live_wait_registry_count() -> u32
+
+auto g_child_running# = 0:i32
+auto g_child_executed_post_sleep# = 0:i32
+auto g_parent_awaiting# = 0:i32
+auto g_parent_executed_post_cancel# = 0:i32
+
+fn slow_child(sleep_ms: i32) -> async i32 {
+    g_child_running = 1:i32
+    sleep_async(sleep_ms).await
+    g_child_executed_post_sleep += 1:i32
+    return 42:i32
+}
+
+fn parent_await_slow_child_then_cancel_parent() -> async i32 {
+    auto child = slow_child(150:i32).start
+    g_parent_awaiting = 1:i32
+    child.await
+    g_parent_executed_post_cancel += 1:i32
+    return 100:i32
+}
+
+fn test_child_cancel_maps_to_none() -> async i32 {
+    g_child_running = 0:i32
+    auto child = slow_child(150:i32).start
+
+    // Deterministic witness barrier: wait until child is actively running
+    auto waited# = 0:i32
+    loop waited < 100:i32 {
+        if g_child_running == 1:i32 {
+            break
+        }
+        sleep_async(1:i32).await
+        waited += 1:i32
+    }
+    assert(g_child_running == 1:i32, "witnessed child is running")
+    task_cancel<i32>(child)
+
+    // Direct .await? on canceled child must produce Option::None
+    auto outcome = child.await?
+    match cede outcome {
+        auto Option::None => {
+            // Expected
+        }
+        _ => {
+            assert(false, "canceled child must produce None")
+        }
+    }
+    return 0:i32
+}
+
+fn test_parent_cancel_during_direct_await() -> async i32 {
+    g_child_running = 0:i32
+    g_parent_awaiting = 0:i32
+    auto parent = parent_await_slow_child_then_cancel_parent().start
+
+    // Deterministic witness barrier: wait until parent is actively awaiting child in wait registry
+    auto waited# = 0:i32
+    loop waited < 100:i32 {
+        if g_parent_awaiting == 1:i32 && toka_rt_live_wait_registry_count() > 0:u32 {
+            break
+        }
+        sleep_async(1:i32).await
+        waited += 1:i32
+    }
+    assert(g_parent_awaiting == 1:i32, "witnessed parent entered direct await")
+    task_cancel<i32>(parent)
+
+    // Await parent's outcome via .await?
+    auto parent_outcome = parent.await?
+    match cede parent_outcome {
+        auto Option::None => {
+            // Expected
+        }
+        _ => {
+            assert(false, "canceled parent must produce None")
+        }
+    }
+    assert(task_is_canceled<i32>(parent), "parent task must reach terminal completed-canceled")
+    assert(g_parent_executed_post_cancel == 0:i32, "parent must not execute CFG after canceled await")
+    return 0:i32
+}
+
+fn run_all() -> async i32 {
+    test_child_cancel_maps_to_none().await
+    test_parent_cancel_during_direct_await().await
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(run_all().start)
+}
