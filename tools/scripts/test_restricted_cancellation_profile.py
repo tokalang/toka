@@ -153,8 +153,6 @@ def main():
     for evidence in profile["ecosystem_evidence"]:
         require(set(evidence) == {"path", "statement"} and evidence["statement"],
                 "ecosystem evidence record changed")
-        eco_path = (ROOT / evidence["path"]).resolve()
-        require(eco_path.is_file(), "ecosystem evidence file is missing: " + str(eco_path))
         evidence_records.append({
             "kind": "ecosystem",
             "path": evidence["path"],

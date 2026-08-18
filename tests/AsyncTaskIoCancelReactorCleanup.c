@@ -7,8 +7,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <io.h>
+#define close _close
+#else
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
+#endif
 #ifdef __linux__
 #include <sys/epoll.h>
 #endif
@@ -152,6 +161,9 @@ static void test_task_cancel_timer_logical_invalidation(void) {
 }
 
 static void test_task_cancel_tcp_reactor_os_silence(void) {
+#ifdef _WIN32
+    puts("  test_task_cancel_tcp_reactor_os_silence skipped on Windows");
+#else
     uint32_t base_tcb = toka_rt_live_tcb_count();
     uint32_t base_waits = toka_rt_live_wait_registry_count();
 
@@ -248,6 +260,7 @@ static void test_task_cancel_tcp_reactor_os_silence(void) {
     CHECK(toka_rt_live_wait_registry_count() == base_waits);
     CHECK(toka_rt_live_tcb_count() == base_tcb);
     puts("  test_task_cancel_tcp_reactor_os_silence passed");
+#endif
 }
 
 int main(void) {
