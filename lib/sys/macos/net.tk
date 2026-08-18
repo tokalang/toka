@@ -35,8 +35,7 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
     unsafe {
         auto *opt# = unsafe alloc [4] byte as *[i32]
         opt[0] = 1
-        libc_setsockopt(fd, 65535, 4, *opt as *void, 4)
-        auto res = libc_setsockopt(fd, 65535, 512, *opt as *void, 4)
+        auto res = libc_setsockopt(fd, 65535, 4, *opt as *void, 4)
         libc_free(*opt as *void)
         return res
     }
@@ -44,20 +43,21 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
 
 fn fill_sockaddr_in(*addr_buf: char, ip: u32, port: u16) -> bool {
     unsafe {
-        auto *base_ptr# = *addr_buf
-        base_ptr = 16 as char
-        auto *p1# = (*base_ptr as usize + 1) as *char
+        auto base_addr = *addr_buf as usize
+        auto *p_len# = base_addr as *char
+        p_len = 16 as char
+        auto *p1# = (base_addr + 1) as *char
         p1 = 2 as char
-        auto nport = (port >> 8) | (port << 8):u16// htons for little endian
-        auto *p_port# = (*base_ptr as usize + 2) as *u16
+        auto nport = (port >> 8) | (port << 8):u16 // htons for little endian
+        auto *p_port# = (base_addr + 2) as *u16
         p_port = nport
-        auto *p_addr# = (*base_ptr as usize + 4) as *u32
+        auto *p_addr# = (base_addr + 4) as *u32
         p_addr = ip
-        auto i# = 8
-        loop i < 16 {
-            auto *p_z# = (*base_ptr as usize + i) as *char
+        auto i# = 8:usize
+        loop i < 16:usize {
+            auto *p_z# = (base_addr + i) as *char
             p_z = 0 as char
-            i += 1
+            i += 1:usize
         }
         return true
     }
@@ -90,67 +90,44 @@ pub fn net_getsockopt_error_impl(fd: i32) -> i32 {
 
 pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {
-        // Allocate 32 bytes to be safe
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-
-        if *addr_buf as usize == 0 {
-             return -1
-        }
-
-        if !fill_sockaddr_in(*addr_buf, ip, port) {
-            libc_free(*addr_buf as *void)
-            return -1
-        }
-
-        // Use bind
-        auto res = bind(fd, *addr_buf as *void, 16)
-        libc_free(*addr_buf as *void)
+        auto err# = 0:i32
+        auto *sockaddr_buf# = unsafe alloc [16] u8
+        auto res = toka_rt_bind_with_diag(fd, ip, port, &err as *i32, *sockaddr_buf as *u8)
+        toka_set_errno_impl(err)
+        libc_free(*sockaddr_buf as *void)
         return res
+    }
+}
+
+pub fn net_bind_with_diag_impl(fd: i32, ip: u32, port: u16, *out_errno: i32, *out_sockaddr: u8) -> i32 {
+    unsafe {
+        return toka_rt_bind_with_diag(fd, ip, port, out_errno as *i32, out_sockaddr as *u8)
     }
 }
 
 pub fn net_local_port_impl(fd: i32) -> i32 {
     unsafe {
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-        auto *addr_len# = unsafe alloc [1] u32
-        addr_len[0] = 32:u32
-        auto res = getsockname(fd, *addr_buf as *void, *addr_len as *u32)
-        if res != 0 {
-            libc_free(*addr_buf as *void)
-            libc_free(*addr_len as *void)
-            return -1
-        }
-        auto *port_ptr# = (*addr_buf as usize + 2) as *u16
-        auto port = libc_htons(port_ptr) as i32
-        libc_free(*addr_buf as *void)
-        libc_free(*addr_len as *void)
+        auto err# = 0:i32
+        auto port = toka_rt_local_port_with_diag(fd, &err as *i32)
+        toka_set_errno_impl(err)
         return port
     }
 }
 
 pub fn net_listen_impl(fd: i32) -> i32 {
     unsafe {
-        // Backlog 128
-        return libc_listen(fd, 128)
+        auto err# = 0:i32
+        auto res = toka_rt_listen_with_diag(fd, 128:i32, &err as *i32)
+        toka_set_errno_impl(err)
+        return res
     }
 }
 
 pub fn net_connect_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-
-        if *addr_buf as usize == 0 {
-             return -2
-        }
-
-        if !fill_sockaddr_in(*addr_buf, ip, port) {
-            libc_free(*addr_buf as *void)
-            return -3
-        }
-
-        // Use connect with correct handle
-        auto res = connect(fd, *addr_buf as *void, 16)
-        libc_free(*addr_buf as *void)
+        auto err# = 0:i32
+        auto res = toka_rt_connect_with_diag(fd, ip, port, &err as *i32)
+        toka_set_errno_impl(err)
         return res
     }
 }

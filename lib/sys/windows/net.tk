@@ -50,27 +50,27 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
 
 fn fill_sockaddr_in(*addr_buf: char, ip: usize, port: i32) -> bool {
     unsafe {
-        auto *base_ptr# = *addr_buf
+        auto base_addr = *addr_buf as usize
 
         // Offset 0: family = 2 (u16)
-        auto *p_family# = *base_ptr as *u16
+        auto *p_family# = base_addr as *u16
         p_family = 2:u16
 
         // Offset 2: port (u16)
         auto nport = libc_htons(port as u16):u16
-        auto *p_port# = (*base_ptr as usize + 2) as *u16
+        auto *p_port# = (base_addr + 2) as *u16
         p_port = nport
 
         // Offset 4: addr (u32)
-        auto *p_addr# = (*base_ptr as usize + 4) as *u32
+        auto *p_addr# = (base_addr + 4) as *u32
         p_addr = ip as u32
 
         // Offset 8..16: Zero
         auto i# = 8:usize
-        loop i < 16 {
-            auto *p_z# = (*base_ptr as usize + i) as *char
+        loop i < 16:usize {
+            auto *p_z# = (base_addr + i) as *char
             p_z = 0 as char
-            i += 1
+            i += 1:usize
         }
         return true
     }
@@ -80,16 +80,11 @@ pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {
         if fd == -1 { return -1 }
         toka_ensure_wsa_initialized()
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-        if *addr_buf as usize == 0 { return -1 }
-
-        if !fill_sockaddr_in(*addr_buf, ip as usize, port as i32) {
-            libc_free(*addr_buf as *void)
-            return -1
-        }
-
-        auto res = bind(fd, *addr_buf as *void, 16)
-        libc_free(*addr_buf as *void)
+        auto err# = 0:i32
+        auto *sockaddr_buf# = unsafe alloc [16] u8
+        auto res = toka_rt_bind_with_diag(fd, ip, port, &err as *i32, *sockaddr_buf as *u8)
+        toka_set_errno_impl(err)
+        libc_free(*sockaddr_buf as *void)
         return res
     }
 }
@@ -98,19 +93,9 @@ pub fn net_local_port_impl(fd: i32) -> i32 {
     unsafe {
         if fd == -1 { return -1 }
         toka_ensure_wsa_initialized()
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-        auto *addr_len# = unsafe alloc [1] i32
-        addr_len[0] = 32
-        auto res = getsockname(fd, *addr_buf as *void, *addr_len as *i32)
-        if res != 0 {
-            libc_free(*addr_buf as *void)
-            libc_free(*addr_len as *void)
-            return -1
-        }
-        auto *port_ptr# = (*addr_buf as usize + 2) as *u16
-        auto port = libc_htons(port_ptr) as i32
-        libc_free(*addr_buf as *void)
-        libc_free(*addr_len as *void)
+        auto err# = 0:i32
+        auto port = toka_rt_local_port_with_diag(fd, &err as *i32)
+        toka_set_errno_impl(err)
         return port
     }
 }
@@ -119,7 +104,10 @@ pub fn net_listen_impl(fd: i32) -> i32 {
     unsafe {
         if fd == -1 { return -1 }
         toka_ensure_wsa_initialized()
-        return listen(fd, 128)
+        auto err# = 0:i32
+        auto res = toka_rt_listen_with_diag(fd, 128:i32, &err as *i32)
+        toka_set_errno_impl(err)
+        return res
     }
 }
 
@@ -127,16 +115,9 @@ pub fn net_connect_impl(fd: i32, ip: u32, port: u16) -> i32 {
     unsafe {
         if fd == -1 { return -1 }
         toka_ensure_wsa_initialized()
-        auto *addr_buf# = unsafe alloc [32] byte as *char
-        if *addr_buf as usize == 0 { return -2 }
-
-        if !fill_sockaddr_in(*addr_buf, ip as usize, port as i32) {
-            libc_free(*addr_buf as *void)
-            return -3
-        }
-
-        auto res = connect(fd, *addr_buf as *void, 16)
-        libc_free(*addr_buf as *void)
+        auto err# = 0:i32
+        auto res = toka_rt_connect_with_diag(fd, ip, port, &err as *i32)
+        toka_set_errno_impl(err)
         return res
     }
 }

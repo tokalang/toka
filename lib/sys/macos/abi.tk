@@ -16,6 +16,13 @@ extern fn toka_stat_free(handle: Addr) -> void
 
 extern fn toka_panic(*msg_ptr: char, len: i32) -> void
 extern fn toka_get_last_error() -> i32
+extern fn toka_set_errno_impl(err: i32) -> void
+
+extern fn toka_rt_bind_with_diag(fd: i32, ip: u32, port: u16, *out_errno: i32, *out_sockaddr: u8) -> i32
+extern fn toka_rt_listen_with_diag(fd: i32, backlog: i32, *out_errno: i32) -> i32
+extern fn toka_rt_local_port_with_diag(fd: i32, *out_errno: i32) -> i32
+extern fn toka_rt_local_addr_with_diag(fd: i32, *out_ip: u32, *out_port: u16, *out_errno: i32) -> i32
+extern fn toka_rt_connect_with_diag(fd: i32, ip: u32, port: u16, *out_errno: i32) -> i32
 
 extern fn bind(fd: i32, *addr: void, len: u32) -> i32
 extern fn connect(fd: i32, *addr: void, len: u32) -> i32

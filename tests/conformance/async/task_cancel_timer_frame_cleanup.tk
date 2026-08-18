@@ -1,0 +1,72 @@
+import core/option::{Option}
+import core/traits::{@Encap}
+import std/task::{block_on, sleep_async, task_cancel, task_is_canceled}
+
+extern fn toka_rt_live_wait_registry_count() -> u32
+
+auto g_drop_count# = 0:i32
+auto g_post_sleep_executed# = 0:i32
+auto g_worker_entered_sleep# = 0:i32
+
+shape Token (
+    id: i32
+)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn worker_with_token() -> async i32 {
+    auto item = Token(id = 77)
+    g_worker_entered_sleep = 1:i32
+    sleep_async(150:i32).await
+    g_post_sleep_executed += 1:i32
+    return item.id
+}
+
+fn coordinator() -> async i32 {
+    auto worker = worker_with_token().start
+    // Deterministic witness barrier: wait until worker has entered sleep path and token is active in wait registry
+    auto waited# = 0:i32
+    loop waited < 100:i32 {
+        if g_worker_entered_sleep == 1:i32 && toka_rt_live_wait_registry_count() > 0:u32 {
+            break
+        }
+        sleep_async(1:i32).await
+        waited += 1:i32
+    }
+    assert(g_worker_entered_sleep == 1:i32, "witnessed worker entered sleep path")
+    assert(toka_rt_live_wait_registry_count() > 0:u32, "witnessed active timer wait token in runtime registry")
+
+    // Cancel while worker is suspended in timer
+    task_cancel<i32>(worker)
+
+    // Drive worker to terminal canceled via .await?
+    auto outcome = worker.await?
+    match cede outcome {
+        auto Option::None => {
+            // Expected
+        }
+        _ => {
+            assert(false, "canceled worker must produce None")
+        }
+    }
+
+    assert(task_is_canceled<i32>(worker), "worker must be marked task_is_canceled")
+    assert(g_post_sleep_executed == 0:i32, "worker must not execute CFG after canceled sleep")
+    assert(g_drop_count == 1:i32, "worker frame token must be dropped exactly once upon cancellation")
+    assert(toka_rt_live_wait_registry_count() == 0:u32, "wait registry token must be freed upon cancellation")
+
+    // Sleep past the original 150ms expiry point (200ms total) to prove no resurrection
+    sleep_async(200:i32).await
+    assert(g_post_sleep_executed == 0:i32, "expired timer must not resurrect canceled worker")
+    assert(g_drop_count == 1:i32, "no duplicate drops after timer expiry")
+
+    return 0:i32
+}
+
+fn main() -> i32 {
+    return block_on<i32>(coordinator().start)
+}
