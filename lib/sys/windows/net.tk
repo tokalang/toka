@@ -295,6 +295,12 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
         auto *p_is_write# = (r.is_write as usize + (r.count as usize) * 4:usize) as *i32
         p_is_write = is_w
 
+        if is_write {
+            toka_reactor_add_write(0, fd, coro as u64)
+        } else {
+            toka_reactor_add_read(0, fd, coro as u64)
+        }
+
         r.count = r.count + 1
         return true
     }
@@ -560,6 +566,13 @@ fn win_reactor_del(fd: i32, is_write_val: i32, expected_key: Addr) {
                     target_coro = last_coro
                     auto *target_is_write# = (r.is_write as usize + (i as usize) * 4:usize) as *i32
                     target_is_write = last_is_write
+                }
+                if is_write_val == 1 {
+                    toka_reactor_del_write(0, fd, expected_key as u64)
+                } else if is_write_val == 0 {
+                    toka_reactor_del_read(0, fd, expected_key as u64)
+                } else {
+                    toka_reactor_del_fd(0, fd)
                 }
                 r.count = r.count - 1
                 continue

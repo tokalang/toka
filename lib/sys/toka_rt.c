@@ -5380,7 +5380,6 @@ int toka_task_unsubscribe_completion(void *tcb_ptr, uint32_t wait_id, uint32_t s
     return 1;
 }
 
-#if defined(__linux__) || defined(__APPLE__)
 #ifdef __linux__
 #include <sys/epoll.h>
 #endif
@@ -5729,10 +5728,6 @@ uint32_t toka_rt_test_reactor_live_key_count(void) {
     toka_mutex_unlock(&g_rt_mutex);
     return cnt;
 }
-#else
-int toka_rt_test_reactor_is_fd_registered(int fd) { return 0; }
-uint32_t toka_rt_test_reactor_live_key_count(void) { return 0; }
-#endif
 
 #ifndef __linux__
 void toka_linux_epoll_del_fd(int epfd, int fd) {}

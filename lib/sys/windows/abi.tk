@@ -44,6 +44,13 @@ extern fn toka_rt_local_port_with_diag(fd: i32, *out_errno: i32) -> i32
 extern fn toka_rt_local_addr_with_diag(fd: i32, *out_ip: u32, *out_port: u16, *out_errno: i32) -> i32
 extern fn toka_rt_connect_with_diag(fd: i32, ip: u32, port: u16, *out_errno: i32) -> i32
 
+extern fn toka_reactor_del_fd(reactor_fd: i32, fd: i32) -> void
+extern fn toka_reactor_del_read(reactor_fd: i32, fd: i32, expected_key: u64) -> void
+extern fn toka_reactor_del_write(reactor_fd: i32, fd: i32, expected_key: u64) -> void
+extern fn toka_reactor_add_read(reactor_fd: i32, fd: i32, key: u64) -> i32
+extern fn toka_reactor_add_write(reactor_fd: i32, fd: i32, key: u64) -> i32
+extern fn toka_rt_test_reactor_is_fd_registered(fd: i32) -> i32
+
 extern fn socket(af: i32, kind: i32, protocol: i32) -> i32
 extern fn bind(s: i32, *name: void, namelen: i32) -> i32
 extern fn listen(s: i32, backlog: i32) -> i32
