@@ -5731,13 +5731,20 @@ uint32_t toka_rt_test_reactor_live_key_count(void) {
     return cnt;
 }
 
-static int toka_task_matches_token_or_active_child_locked(TokaTCB *root_tcb, TokaTaskToken target_token) {
+static int toka_task_matches_token_or_active_child_locked(TokaTCB *root_tcb, TokaTCB *leaf_tcb, TokaTaskToken target_token) {
     TokaTCB *curr = root_tcb;
     while (curr) {
-        if (toka_task_token_equals(curr->token, target_token)) {
+        if (toka_task_token_equals(curr->token, target_token) || curr == leaf_tcb) {
             return 1;
         }
         curr = (TokaTCB*)atomic_load(&curr->active_child_tcb);
+    }
+    curr = leaf_tcb;
+    while (curr) {
+        if (curr == root_tcb || toka_task_token_equals(curr->token, root_tcb->token)) {
+            return 1;
+        }
+        curr = (TokaTCB*)atomic_load(&curr->parent_tcb);
     }
     return 0;
 }
@@ -5753,7 +5760,7 @@ int toka_rt_test_task_has_active_timer_wait(void *tcb_ptr) {
             TokaWaitRegistration *reg = &g_wait_registry[i];
             if (reg->in_use && reg->active && reg->source_tag == TOKA_WAIT_SOURCE_TIMER) {
                 if (atomic_load(&reg->state) == TOKA_WAIT_STATE_WAITING &&
-                    toka_task_matches_token_or_active_child_locked(tcb, reg->task)) {
+                    toka_task_matches_token_or_active_child_locked(tcb, reg->tcb, reg->task)) {
                     has_timer = 1;
                     break;
                 }
