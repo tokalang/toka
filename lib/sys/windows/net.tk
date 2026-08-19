@@ -544,8 +544,8 @@ fn win_reactor_del(fd: i32, is_write_val: i32, expected_key: Addr) {
             auto *curr_fd = (r.fds as usize + (i as usize) * 4:usize) as *i32
             auto *curr_coro = (r.coros as usize + (i as usize) * 8:usize) as *Addr
             auto *curr_is_write = (r.is_write as usize + (i as usize) * 4:usize) as *i32
-            if *curr_fd == fd && (is_write_val == -1 || *curr_is_write == is_write_val) {
-                if expected_key != 0:Addr && *curr_coro != expected_key {
+            if curr_fd == fd && (is_write_val == -1 || curr_is_write == is_write_val) {
+                if expected_key != 0:Addr && curr_coro != expected_key {
                     i += 1
                     continue
                 }
