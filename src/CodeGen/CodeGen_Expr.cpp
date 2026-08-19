@@ -4972,7 +4972,8 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                       llvm::Value *selectedStr = m_Builder.CreateSelect(cond, trueStr, falseStr);
                       m_Builder.CreateCall(printStrFn, {selectedStr});
                   } else {
-                      llvm::Value *i32Val = m_Builder.CreateIntCast(argVal, m_Builder.getInt32Ty(), true);
+                      bool isSigned = !(soulTy == "u8" || soulTy == "u16" || soulTy == "u32" || soulTy == "u64" || soulTy == "usize" || soulTy == "u128");
+                      llvm::Value *i32Val = m_Builder.CreateIntCast(argVal, m_Builder.getInt32Ty(), isSigned);
                       m_Builder.CreateCall(printI32Fn, {i32Val});
                   }
               }
