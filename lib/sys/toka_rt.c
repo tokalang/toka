@@ -3810,6 +3810,8 @@ typedef struct {
     TokaCompletionSubscription *subscriptions_to_release;
 } TokaWaitSet;
 
+#define TOKA_WAIT_SOURCE_TIMER 1
+
 typedef struct {
     TokaWaitToken token;
     TokaTaskToken task;
@@ -5727,6 +5729,40 @@ uint32_t toka_rt_test_reactor_live_key_count(void) {
     }
     toka_mutex_unlock(&g_rt_mutex);
     return cnt;
+}
+
+static int toka_task_matches_token_or_active_child_locked(TokaTCB *root_tcb, TokaTaskToken target_token) {
+    TokaTCB *curr = root_tcb;
+    while (curr) {
+        if (toka_task_token_equals(curr->token, target_token)) {
+            return 1;
+        }
+        curr = (TokaTCB*)atomic_load(&curr->active_child_tcb);
+    }
+    return 0;
+}
+
+int toka_rt_test_task_has_active_timer_wait(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    if (!toka_task_try_retain(tcb_ptr)) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    int has_timer = 0;
+    toka_mutex_lock(&g_rt_mutex);
+    if (g_wait_registry != NULL) {
+        for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+            TokaWaitRegistration *reg = &g_wait_registry[i];
+            if (reg->in_use && reg->active && reg->source_tag == TOKA_WAIT_SOURCE_TIMER) {
+                if (atomic_load(&reg->state) == TOKA_WAIT_STATE_WAITING &&
+                    toka_task_matches_token_or_active_child_locked(tcb, reg->task)) {
+                    has_timer = 1;
+                    break;
+                }
+            }
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    toka_task_release(tcb);
+    return has_timer;
 }
 
 #ifndef __linux__
