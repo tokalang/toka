@@ -5729,6 +5729,30 @@ uint32_t toka_rt_test_reactor_live_key_count(void) {
     return cnt;
 }
 
+int toka_rt_test_task_has_active_timer_wait(void *tcb_ptr) {
+    if (!tcb_ptr) return 0;
+    if (!toka_task_try_retain(tcb_ptr)) return 0;
+    TokaTCB *tcb = (TokaTCB*)tcb_ptr;
+    int has_timer = 0;
+    toka_mutex_lock(&g_rt_mutex);
+    if (g_wait_registry != NULL) {
+        for (size_t i = 0; i < g_wait_registry_capacity; ++i) {
+            TokaWaitRegistration *reg = &g_wait_registry[i];
+            if (reg->in_use && reg->active && reg->source_tag == 1) {
+                if (reg->task.task_id == tcb->token.task_id &&
+                    reg->task.task_instance_generation == tcb->token.task_instance_generation &&
+                    atomic_load(&reg->state) == TOKA_WAIT_STATE_WAITING) {
+                    has_timer = 1;
+                    break;
+                }
+            }
+        }
+    }
+    toka_mutex_unlock(&g_rt_mutex);
+    toka_task_release(tcb);
+    return has_timer;
+}
+
 #ifndef __linux__
 void toka_linux_epoll_del_fd(int epfd, int fd) {}
 void toka_linux_epoll_del_read(int epfd, int fd, uint64_t expected_key) {}
