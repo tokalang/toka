@@ -107,11 +107,11 @@
   "ecosystem_evidence": [
     {
       "path": "../redis/tests/pool_v1.tk",
-      "statement": "A canceled Redis pool waiter returns a domain pool error without acquiring a lease."
+      "statement": "A canceled Redis pool waiter unwinds cleanly at the internal timer wait boundary without acquiring a lease or corrupting capacity."
     },
     {
-      "path": "../postgres/tests/real_service_v1.tk",
-      "statement": "A canceled PostgreSQL pool waiter returns a domain pool error without acquiring a lease."
+      "path": "../postgres/tests/pool_v1.tk",
+      "statement": "A canceled PostgreSQL pool waiter unwinds cleanly at the internal timer wait boundary without acquiring a lease or corrupting capacity."
     }
   ],
   "explicitly_deferred": [
@@ -122,7 +122,8 @@
     "TaskScope close, cancellation propagation, and cancel-join-drain progress",
     "race2, select2, and any multi-source cancellation/loser-drain guarantee",
     "borrowed scoped tasks and task values carrying PAL dependencies",
-    "dynamic projections, slices, arbitrary nested aggregates, and other unlisted async cede cleanup paths"
+    "dynamic projections, slices, arbitrary nested aggregates, and other unlisted async cede cleanup paths",
+    "ecosystem pool domain cancellation error translation (task cancellation unwinding without lease leakage is qualified; domain Err translation is deferred to dedicated pool Context-cancellation profile)"
   ],
   "graduation_requirements": [
     "Qualify direct-await and single-task I/O cancellation at one candidate revision without relying on TaskScope or race2 semantics.",

@@ -39,6 +39,7 @@ The profile explicitly defers:
 - Concurrent dual-source cancellation (`task_cancel` and `Canceler.call()` fired simultaneously).
 - `TaskScope` close progress, tree propagation, and multi-source `race2`/`select2` loser draining.
 - Scoped borrowed tasks, dynamic projections, slices, and arbitrary nested async `cede` cleanup.
+- Ecosystem pool domain cancellation error translation (task cancellation unwinding without lease leakage is qualified; domain error translation is deferred to dedicated pool Context-cancellation profile).
 
 ## Verification
 
