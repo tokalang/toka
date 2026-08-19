@@ -5749,6 +5749,9 @@ static int toka_task_matches_token_or_active_child_locked(TokaTCB *root_tcb, Tok
     return 0;
 }
 
+// TEST-ONLY PROBE: Unstable ABI, not part of the public Toka runtime contract.
+// Strictly intended for ecosystem qualification test witnesses (e.g. pool cancellation barrier)
+// to verify task suspension without race conditions. May be changed or removed without notice.
 int toka_rt_test_task_has_active_timer_wait(void *tcb_ptr) {
     if (!tcb_ptr) return 0;
     if (!toka_task_try_retain(tcb_ptr)) return 0;
