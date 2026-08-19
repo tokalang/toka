@@ -53,9 +53,9 @@ requalification is closed: the full manifest reports **226 passed / 0 failed**
 and CTest reports **9 passed / 0 failed**. The opening inventory, behavioral
 repairs, diagnostic-baseline evidence, and exact command are recorded in
 [`current_head_release_qualification_triage.md`](current_head_release_qualification_triage.md).
-This reopens the planned P0 exact-place/permission-flow work. It is not a
-replacement for the historical thirteen-stage package release gate, nor does
-it by itself activate a new async/runtime slice or witness surface.
+This closed the planned P0 exact-place/permission-flow unification work (P0.4).
+It is not a replacement for the historical thirteen-stage package release gate,
+nor does it by itself activate a new async/runtime slice or witness surface.
 
 The following repair history explains why P-1 was necessary; it is not a
 current-HEAD failure claim.
@@ -133,9 +133,10 @@ contract must distinguish "never constructed" from "constructed then moved".
 The internal ledger must model those facts separately for every supported exact
 place.
 
-The candidate production model to be frozen is defined by
-[`place_state_core_rfc.md`](place_state_core_rfc.md). Its minimum
-factorization is:
+The bounded production model is defined by
+[`place_state_core_rfc.md`](place_state_core_rfc.md) and completed in
+[`place_state_core_p0_4_execution_plan.md`](place_state_core_p0_4_execution_plan.md).
+Its minimum factorization is:
 
 ```text
 ConstructionOrigin = NeverConstructed | Constructed
@@ -229,11 +230,13 @@ async/place bridge after both this closure and the async TCB are qualified.
 This work intentionally closes a bounded model; it does not generalize every
 projection form merely because a syntax can name it.
 
-The next implementation sequence is frozen in
+This bounded implementation sequence is complete and closed per
 [`place_state_core_p0_4_execution_plan.md`](place_state_core_p0_4_execution_plan.md):
-it consolidates existing whole and admitted-projection facts plus their one
-eligibility plan, without adding a new typestate surface or beginning the
-async/place bridge.
+it consolidated existing whole and admitted-projection facts plus their one
+eligibility plan into `ExactPlaceFacts`, unified control-flow merge/rollback,
+and retired legacy move flags without adding an unconstrained typestate surface or
+prematurely widening the async/place bridge. General nested projections, custom drops,
+dynamic indices, and async-crossing frames remain strictly fail-closed / deferred.
 
 ### 4.2 Delayed initialization P1
 
