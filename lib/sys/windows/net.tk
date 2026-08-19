@@ -396,14 +396,7 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
         tv_usec = (timeout_ms % 1000) * 1000
 
         auto *readfds_u32 = *readfds as *u32
-        auto rf_count = readfds_u32
-        auto *socket_u64 = (*readfds as usize + 8:usize) as *u64
-        auto sock_val = socket_u64
-        libc_printf(c"reactor_wait_impl: count=%d, readfds_count=%u, socket0=%llu\n", r.count, rf_count, sock_val)
         auto res = select(0, *readfds as *void, *writefds as *void, *exceptfds as *void, *tv as *void)
-        if res < 0 {
-            libc_printf(c"select failed, error: %d\n", WSAGetLastError())
-        }
 
         auto n_out# = 0
         if res > 0 {
@@ -428,6 +421,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                             out_ev = p_coro
                             n_out = n_out + 1
                         }
+
+                        toka_reactor_del_read(0, sock_fd, p_coro as u64)
 
                         if k < r.count - 1 {
                             auto last_idx = (r.count - 1) as usize
@@ -471,6 +466,8 @@ pub fn reactor_wait_impl(reactor_fd: i32, timeout_ms: i32, *out_events: Addr, ma
                             out_ev = p_coro
                             n_out = n_out + 1
                         }
+
+                        toka_reactor_del_write(0, sock_fd, p_coro as u64)
 
                         if k < r.count - 1 {
                             auto last_idx = (r.count - 1) as usize
