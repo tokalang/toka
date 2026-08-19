@@ -1,7 +1,6 @@
 // Copyright (c) 2025 YiZhonghua<zhyi@dpai.com>. All rights reserved.
 import core/types::{char, usize, Addr, ADDR0}
-import sys/libc::{libc_malloc, libc_free}
-import sys/libc::{libc_htons, toka_ensure_wsa_initialized, libc_usleep, libc_printf}
+import sys/libc::*
 import sys/os/abi::*
 
 pub fn get_last_error() -> i32 {
