@@ -5451,7 +5451,7 @@ void toka_reactor_del_fd(int rfd, int fd) {
 void toka_reactor_del_read(int rfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
-    if (g_reactor_fd_table[fd].read_key != expected_key) {
+    if (expected_key != 0 && g_reactor_fd_table[fd].read_key != expected_key) {
         toka_mutex_unlock(&g_rt_mutex);
         return;
     }
@@ -5479,7 +5479,7 @@ void toka_reactor_del_read(int rfd, int fd, uint64_t expected_key) {
 void toka_reactor_del_write(int rfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
-    if (g_reactor_fd_table[fd].write_key != expected_key) {
+    if (expected_key != 0 && g_reactor_fd_table[fd].write_key != expected_key) {
         toka_mutex_unlock(&g_rt_mutex);
         return;
     }

@@ -271,6 +271,11 @@ fn win_reactor_add(fd: i32, coro: Addr, is_write: bool) -> bool {
             if p_fd == fd && p_is_write == expected_is_write {
                 auto *p_coro# = (r.coros as usize + (i as usize) * 8:usize) as *Addr
                 p_coro = coro
+                if is_write {
+                    toka_reactor_add_write(0, fd, coro as u64)
+                } else {
+                    toka_reactor_add_read(0, fd, coro as u64)
+                }
                 return true
             }
             i += 1
@@ -583,13 +588,22 @@ fn win_reactor_del(fd: i32, is_write_val: i32, expected_key: Addr) {
 }
 
 pub fn reactor_del_fd_impl(reactor_fd: i32, fd: i32) {
-    win_reactor_del(fd, -1, 0:Addr)
+    unsafe {
+        win_reactor_del(fd, -1, 0:Addr)
+        toka_reactor_del_fd(0, fd)
+    }
 }
 
 pub fn reactor_del_read_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
-    win_reactor_del(fd, 0, event_key)
+    unsafe {
+        win_reactor_del(fd, 0, event_key)
+        toka_reactor_del_read(0, fd, event_key as u64)
+    }
 }
 
 pub fn reactor_del_write_impl(reactor_fd: i32, fd: i32, event_key: Addr) {
-    win_reactor_del(fd, 1, event_key)
+    unsafe {
+        win_reactor_del(fd, 1, event_key)
+        toka_reactor_del_write(0, fd, event_key as u64)
+    }
 }
