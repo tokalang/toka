@@ -50,11 +50,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/scripts/test_developer_experience.py | tee build/windows-dogfood.json
+          ctest --test-dir build --output-on-failure -R "^toka_async_"
+          python3 tools/scripts/test_taskhandle_lifecycle.py
+          python3 tools/scripts/test_restricted_cancellation_profile.py --conformance-output build/toka-restricted-cancellation-windows.json
 
       - name: Upload dogfood evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-dogfood
-          path: build/windows-dogfood.json
+          path: |
+            build/windows-dogfood.json
+            build/toka-restricted-cancellation-windows.json
           if-no-files-found: warn

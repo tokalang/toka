@@ -5380,7 +5380,6 @@ int toka_task_unsubscribe_completion(void *tcb_ptr, uint32_t wait_id, uint32_t s
     return 1;
 }
 
-#if defined(__linux__) || defined(__APPLE__)
 #ifdef __linux__
 #include <sys/epoll.h>
 #endif
@@ -5452,7 +5451,7 @@ void toka_reactor_del_fd(int rfd, int fd) {
 void toka_reactor_del_read(int rfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
-    if (g_reactor_fd_table[fd].read_key != expected_key) {
+    if (expected_key != 0 && g_reactor_fd_table[fd].read_key != expected_key) {
         toka_mutex_unlock(&g_rt_mutex);
         return;
     }
@@ -5480,7 +5479,7 @@ void toka_reactor_del_read(int rfd, int fd, uint64_t expected_key) {
 void toka_reactor_del_write(int rfd, int fd, uint64_t expected_key) {
     if (fd < 0 || fd >= 65536) return;
     toka_mutex_lock(&g_rt_mutex);
-    if (g_reactor_fd_table[fd].write_key != expected_key) {
+    if (expected_key != 0 && g_reactor_fd_table[fd].write_key != expected_key) {
         toka_mutex_unlock(&g_rt_mutex);
         return;
     }
@@ -5729,10 +5728,6 @@ uint32_t toka_rt_test_reactor_live_key_count(void) {
     toka_mutex_unlock(&g_rt_mutex);
     return cnt;
 }
-#else
-int toka_rt_test_reactor_is_fd_registered(int fd) { return 0; }
-uint32_t toka_rt_test_reactor_live_key_count(void) { return 0; }
-#endif
 
 #ifndef __linux__
 void toka_linux_epoll_del_fd(int epfd, int fd) {}
