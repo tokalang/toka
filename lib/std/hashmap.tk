@@ -217,17 +217,9 @@ impl<'K, 'V> HashMap<'K, 'V> {
             }
             
             
-            if self.keys.*buf != null {
-                unsafe free [0] self.keys.*#buf
-            }
-            if self.vals.*buf != null {
-                unsafe free [0] self.vals.*#buf
-            }
-            if self.meta.*buf != null {
-                unsafe free [0] self.meta.*#buf
-            }
-            
-            // cede  new_k
+            // Resource replacement drops the three old Vec buffers exactly
+            // once. The key/value Vec lengths remain zero because their
+            // initialized slots are tracked by `meta` and moved above.
             self.keys = cede new_k
             self.vals = cede new_v
             self.meta = cede new_m
