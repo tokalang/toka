@@ -243,7 +243,8 @@ impl Parser {
         return Result<i64, string>::Ok(val * sign)
     }
 
-    pub fn parse(self, args: Vec<string>) -> Result<ParsedArgs, string> {
+    pub fn parse(self, cede args: Vec<string>) -> Result<ParsedArgs, string> {
+        auto owned_args = cede args
         auto parsed# = ParsedArgs::new()
         
         // 1. Setup defaults
@@ -261,8 +262,8 @@ impl Parser {
         auto arg_idx# = 1:usize // Skip executable name
         auto only_positional# = false
 
-        loop arg_idx < args.len() {
-            auto arg = args.get_ref(arg_idx).clone()
+        loop arg_idx < owned_args.len() {
+            auto arg = owned_args.get_ref(arg_idx).clone()
             
             if only_positional {
                 parsed.pos_args#.push(cede arg)
@@ -322,14 +323,14 @@ impl Parser {
                     auto FlagValue::Int(_) => {
                         // Requires value
                         if !has_val {
-                            if arg_idx + 1 >= args.len() {
+                            if arg_idx + 1 >= owned_args.len() {
                                 auto err_msg# = string::from("option --")
                                 err_msg#.push_str(key.as_str())
                                 err_msg#.push_str(" requires a value")
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             arg_idx = arg_idx + 1
-                            val_str = args.get_ref(arg_idx).clone()
+                            val_str = owned_args.get_ref(arg_idx).clone()
                         }
                         auto parse_res = Parser::parse_i64(val_str)
                         if parse_res.is_err() {
@@ -342,14 +343,14 @@ impl Parser {
                     auto FlagValue::Float(_) => {
                         // Requires value
                         if !has_val {
-                            if arg_idx + 1 >= args.len() {
+                            if arg_idx + 1 >= owned_args.len() {
                                 auto err_msg# = string::from("option --")
                                 err_msg#.push_str(key.as_str())
                                 err_msg#.push_str(" requires a value")
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             arg_idx = arg_idx + 1
-                            val_str = args.get_ref(arg_idx).clone()
+                            val_str = owned_args.get_ref(arg_idx).clone()
                         }
                         auto parse_res = val_str.parse_f64()
                         if parse_res.is_err() {
@@ -361,14 +362,14 @@ impl Parser {
                     }
                     auto FlagValue::Str(&_s) => {
                         if !has_val {
-                            if arg_idx + 1 >= args.len() {
+                            if arg_idx + 1 >= owned_args.len() {
                                 auto err_msg# = string::from("option --")
                                 err_msg#.push_str(key.as_str())
                                 err_msg#.push_str(" requires a value")
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             arg_idx = arg_idx + 1
-                            val_str = args.get_ref(arg_idx).clone()
+                            val_str = owned_args.get_ref(arg_idx).clone()
                         }
                         parsed.values#.insert(cede def.name.clone(), FlagValue::Str(cede val_str))
                     }
@@ -426,14 +427,14 @@ impl Parser {
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             if !has_val {
-                                if arg_idx + 1 >= args.len() {
+                                if arg_idx + 1 >= owned_args.len() {
                                     auto err_msg# = string::from("option -")
                                     err_msg#.push_char(c)
                                     err_msg#.push_str(" requires a value")
                                     return Result<ParsedArgs, string>::Err(err_msg)
                                 }
                                 arg_idx = arg_idx + 1
-                                val_str = args.get_ref(arg_idx).clone()
+                                val_str = owned_args.get_ref(arg_idx).clone()
                             }
                             
                             auto parse_res = Parser::parse_i64(val_str)
@@ -452,14 +453,14 @@ impl Parser {
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             if !has_val {
-                                if arg_idx + 1 >= args.len() {
+                                if arg_idx + 1 >= owned_args.len() {
                                     auto err_msg# = string::from("option -")
                                     err_msg#.push_char(c)
                                     err_msg#.push_str(" requires a value")
                                     return Result<ParsedArgs, string>::Err(err_msg)
                                 }
                                 arg_idx = arg_idx + 1
-                                val_str = args.get_ref(arg_idx).clone()
+                                val_str = owned_args.get_ref(arg_idx).clone()
                             }
                             
                             auto parse_res = val_str.parse_f64()
@@ -477,14 +478,14 @@ impl Parser {
                                 return Result<ParsedArgs, string>::Err(err_msg)
                             }
                             if !has_val {
-                                if arg_idx + 1 >= args.len() {
+                                if arg_idx + 1 >= owned_args.len() {
                                     auto err_msg# = string::from("option -")
                                     err_msg#.push_char(c)
                                     err_msg#.push_str(" requires a value")
                                     return Result<ParsedArgs, string>::Err(err_msg)
                                 }
                                 arg_idx = arg_idx + 1
-                                val_str = args.get_ref(arg_idx).clone()
+                                val_str = owned_args.get_ref(arg_idx).clone()
                             }
                             parsed.values#.insert(cede def.name.clone(), FlagValue::Str(cede val_str))
                         }

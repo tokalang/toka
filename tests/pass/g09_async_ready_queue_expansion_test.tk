@@ -17,7 +17,8 @@ fn test_ready_queue_auto_expansion() {
     // Enqueue 2,000 tasks concurrently to trigger multiple ring-buffer expansions (256 -> 512 -> 1024 -> 2048 -> 4096)
     auto i# = 0;
     loop i < 2000 {
-        detach_forget<i32>(cede async_batch_worker(i).start);
+        auto background = async_batch_worker(i).start
+        detach_forget<i32>(cede background);
         i += 1;
     }
 

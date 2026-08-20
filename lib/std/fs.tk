@@ -161,11 +161,12 @@ pub fn metadata(path: string) -> Result<Metadata, string> {
  * Read the entire contents of a file into a string.
  */
 pub fn read_to_string(path: string) -> IoStringResult {
-    auto f# = File::open(path, "r")
-    if !f.is_valid() {
-        return IoStringResult::Err(string::from("Failed to open file for reading"))
+    auto opened = File::try_open(path, "r")
+    if opened.is_err() {
+        auto error = opened.unwrap_err()
+        return IoStringResult::Err(error.message())
     }
-    
+    auto f# = opened.unwrap()
     auto s_res = f#.read_to_string()
     f#.close()
     

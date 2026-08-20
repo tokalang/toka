@@ -21,8 +21,9 @@ fn probe() -> async i32 {
     sleep_async(10).await
     task_cancel<RaceWinner<i32, i32>>(raced)
 
-    auto *raced_tcb = task_get_coro_handle<RaceWinner<i32, i32>>(raced)
-    loop !toka_tcb_is_done(*raced_tcb) {
+    auto nul *raced_tcb = task_get_coro_handle<RaceWinner<i32, i32>>(raced)
+    auto *live_raced_tcb = raced_tcb.unwrap()
+    loop !toka_tcb_is_done(*live_raced_tcb) {
         sleep_async(1).await
     }
     assert(task_is_canceled<RaceWinner<i32, i32>>(raced), "race2 did not publish cancellation")

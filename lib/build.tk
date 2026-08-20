@@ -484,9 +484,11 @@ fn check_dirty_recursive(
     memo#: HashMap<string, DfsResult>,
     visiting#: HashMap<string, bool>
 ) -> DfsResult {
-    auto memo_opt = memo.get_ref(node)
-    if memo_opt.is_none() == false {
-        return cede memo_opt.unwrap().clone()
+    {
+        auto memo_opt = memo.get_ref(node)
+        if memo_opt.is_none() == false {
+            return cede memo_opt.unwrap().clone()
+        }
     }
 
     auto visiting_opt = visiting.get(node)
@@ -529,7 +531,7 @@ fn check_dirty_recursive(
             i += 1
             continue
         }
-        auto dep_res = check_dirty_recursive(dep.clone(), current_graph, dirty_map, memo, visiting)
+        auto dep_res = check_dirty_recursive(dep.clone(), current_graph, dirty_map, memo#, visiting#)
         if dep_res.is_dirty {
             auto chain# = Vec<string>::new()
             chain#.push(cede dep.clone())
@@ -855,7 +857,7 @@ fn run_build_impl(
         if use_forge {
             auto forge_cmd# = Command::new(cede forge_path.clone())
             auto src_str = string::from_cstr(*s)
-            forge_cmd#.arg(cede src_str)
+            forge_cmd#.arg(src_str)
             forge_cmd#.arg(string::from("-j"))
             forge_cmd#.arg(string::from("4"))
             forge_cmd#.arg(string::from("-c"))
@@ -1097,11 +1099,11 @@ fn run_build_impl(
             loop plan_arg_index < compiler_args.len() {
                 auto plan_arg# = string::from("--compiler-arg=")
                 plan_arg#.push_str(compiler_args.get_ref(plan_arg_index).as_str())
-                plan_cmd#.arg(cede plan_arg)
+                plan_cmd#.arg(plan_arg)
                 plan_arg_index += 1
             }
             auto plan_src = string::from_cstr(*s)
-            plan_cmd#.arg(cede plan_src)
+            plan_cmd#.arg(plan_src)
             return plan_cmd#.status()
         }
 
@@ -1116,11 +1118,11 @@ fn run_build_impl(
         loop driver_arg_index < compiler_args.len() {
             auto driver_arg# = string::from("--compiler-arg=")
             driver_arg#.push_str(compiler_args.get_ref(driver_arg_index).as_str())
-            cmd1#.arg(cede driver_arg)
+            cmd1#.arg(driver_arg)
             driver_arg_index += 1
         }
         auto src_str = string::from_cstr(*s)
-        cmd1#.arg(cede src_str)
+        cmd1#.arg(src_str)
 
         auto name_str = string::from_cstr(*n)
         auto version_str = string::from_cstr(*v)
@@ -1167,7 +1169,7 @@ fn run_build_impl(
                         auto f_stem = file_stem(file)
                         c_object#.push_str(f_stem)
                         c_object#.push_str(".o")
-                        c_compile#.arg(cede c_object)
+                        c_compile#.arg(c_object)
 
                         if c_compile#.status() != 0 {
                             println("error: failed to compile C/C++ source {}", file)
@@ -1182,21 +1184,21 @@ fn run_build_impl(
                     auto library_output# = string::from("/OUT:target\\debug\\")
                     library_output#.push_cstr(*n)
                     library_output#.push_str(".lib")
-                    ar_cmd#.arg(cede library_output)
+                    ar_cmd#.arg(library_output)
                     auto toka_object# = string::from("target\\debug\\")
                     toka_object#.push_cstr(*n)
                     toka_object#.push_str(".o")
-                    ar_cmd#.arg(cede toka_object)
+                    ar_cmd#.arg(toka_object)
                 } else {
                     ar_cmd#.arg(string::from("rcs"))
                     auto library_output# = string::from("target/debug/lib")
                     library_output#.push_cstr(*n)
                     library_output#.push_str(".a")
-                    ar_cmd#.arg(cede library_output)
+                    ar_cmd#.arg(library_output)
                     auto toka_object# = string::from("target/debug/")
                     toka_object#.push_cstr(*n)
                     toka_object#.push_str(".o")
-                    ar_cmd#.arg(cede toka_object)
+                    ar_cmd#.arg(toka_object)
                 }
 
                 if c_srcs.len() > 0:usize {
@@ -1208,7 +1210,7 @@ fn run_build_impl(
                         auto c_object# = string::from("target/debug/")
                         c_object#.push_str(f_stem)
                         c_object#.push_str(".o")
-                        ar_cmd#.arg(cede c_object)
+                        ar_cmd#.arg(c_object)
                     }
                 }
                 if ar_cmd#.status() != 0 {
@@ -1282,7 +1284,7 @@ fn run_build_impl(
                 auto obj_path# = string::from("target/debug/")
                 obj_path#.push_cstr(*n)
                 obj_path#.push_str(".o")
-                cmd2#.arg(cede obj_path)
+                cmd2#.arg(obj_path)
 
                 if c_srcs.len() > 0:usize {
                     auto c_srcs_iter = c_srcs.split(',' as i32)
@@ -1346,7 +1348,7 @@ fn run_build_impl(
                             auto lib_dir# = openssl_dir.clone()
                             lib_dir#.push_str("/lib")
                             cmd2#.arg(string::from("-L"))
-                            cmd2#.arg(cede lib_dir)
+                            cmd2#.arg(lib_dir)
                             cmd2#.arg(string::from("-lssl"))
                             cmd2#.arg(string::from("-lcrypto"))
                         } else if libc_access(c"/opt/homebrew/opt/openssl@3/lib/libssl.dylib", 0) == 0 {
@@ -1370,7 +1372,7 @@ fn run_build_impl(
                 if is_windows {
                     out_path#.push_str(".exe")
                 }
-                cmd2#.arg(cede out_path)
+                cmd2#.arg(out_path)
 
                 auto res2 = cmd2#.status()
                 if res2 != 0 {
@@ -1382,7 +1384,7 @@ fn run_build_impl(
                 auto rm_path# = string::from("target/debug/")
                 rm_path#.push_cstr(*n)
                 rm_path#.push_str(".o")
-                remove_file(cede rm_path)
+                remove_file(rm_path)
             }
         }
 

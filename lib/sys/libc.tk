@@ -153,7 +153,7 @@ extern fn libc_dup(fd: i32) -> i32
 extern fn libc_dup2(oldfd: i32, newfd: i32) -> i32
 extern fn libc_kill(pid: i32, sig: i32) -> i32
 extern fn libc_getenv(*name: char) -> nul *char
-extern fn libc_time(*tloc: i64) -> i64
+extern fn libc_time(nul *tloc: i64) -> i64
 extern fn libc_localtime(*timer: i64) -> nul *void // tm struct pointer
 extern fn toka_localtime_r(*timer: i64, *result: void) -> nul *void
 extern fn toka_gmtime_r(*timer: i64, *result: void) -> nul *void

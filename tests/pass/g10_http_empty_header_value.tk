@@ -39,7 +39,7 @@ fn test_request_empty_values() {
             raw = string::from("GET /empty HTTP/1.1\r\nHost: example.test\r\nX-Before: before\r\nX-Empty:\r\nX-Ows: \t\r\nX-Switch: ready\r\nX-After: after\r\n\r\n")
         }
 
-        auto parsed = parse_http_request(cede raw)
+        auto parsed = parse_http_request(raw)
         assert(parsed.is_ok(), "request with empty header values must parse")
         auto request = parsed.unwrap()
         auto empty_value = request.headers#.get("x-empty")
@@ -71,7 +71,7 @@ fn test_response_empty_values() {
             raw = string::from("HTTP/1.1 204 No Content\r\nX-Before: before\r\nX-Empty:\r\nX-Ows: \t\r\nX-Switch: ready\r\nX-After: after\r\nContent-Length: 0\r\n\r\n")
         }
 
-        auto parsed = parse_http_response(cede raw)
+        auto parsed = parse_http_response(raw)
         assert(parsed.is_ok(), "response with empty header values must parse")
         auto response = parsed.unwrap()
         auto empty_value = response.headers#.get("x-empty")

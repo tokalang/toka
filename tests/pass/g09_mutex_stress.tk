@@ -17,7 +17,7 @@ pub fn main() -> i32 {
         loop i < 1000 {
             auto ~local = ~m1
             auto g = local.lock().unwrap()
-            auto *p# = g.get_ref()
+            auto &p# = g.get_ref()
             
             // Perform computation after acquiring the lock
             auto current = p
@@ -37,7 +37,7 @@ pub fn main() -> i32 {
         loop i < 1000 {
             auto ~local = ~m2
             auto g = local.lock().unwrap()
-            auto *p# = g.get_ref()
+            auto &p# = g.get_ref()
             auto current = p
             if i % 10 == 0 { yield_now() }
             p = current + 1
@@ -50,7 +50,7 @@ pub fn main() -> i32 {
         loop i < 1000 {
             auto ~local = ~m3
             auto g = local.lock().unwrap()
-            auto *p# = g.get_ref()
+            auto &p# = g.get_ref()
             auto current = p
             if i % 10 == 0 { yield_now() }
             p = current + 1
@@ -63,7 +63,7 @@ pub fn main() -> i32 {
         loop i < 1000 {
             auto ~local = ~m4
             auto g = local.lock().unwrap()
-            auto *p# = g.get_ref()
+            auto &p# = g.get_ref()
             auto current = p
             if i % 10 == 0 { yield_now() }
             p = current + 1
@@ -76,7 +76,7 @@ pub fn main() -> i32 {
         loop i < 1000 {
             auto ~local = ~m5
             auto g = local.lock().unwrap()
-            auto *p# = g.get_ref()
+            auto &p# = g.get_ref()
             auto current = p
             if i % 10 == 0 { yield_now() }
             p = current + 1
@@ -100,7 +100,7 @@ pub fn main() -> i32 {
     t5#.join().unwrap()
     
     auto final_lock = m.lock().unwrap()
-    auto *fp = final_lock.get_ref()
+    auto &fp = final_lock.get_ref()
     
     println("All threads finished. Final Mutex data: {}", fp)
     

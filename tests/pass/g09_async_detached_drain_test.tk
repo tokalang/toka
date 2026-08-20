@@ -10,7 +10,8 @@ fn async_bg_worker() -> async i32 {
 }
 
 fn async_main_task() -> async i32 {
-    detach_forget<i32>(cede async_bg_worker().start);
+    auto background = async_bg_worker().start
+    detach_forget<i32>(cede background);
     // Main task completes immediately, before the 50ms background worker!
     return 42;
 }

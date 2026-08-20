@@ -3,3 +3,8 @@ error[E0416]: Unknown shape type 'i32'
    |
  8 |     auto ^p = new i32(val = 10)
    |                   ^
+error[E04640]: Argument 'p' explicitly transfers ownership with 'cede', but parameter 'v' is borrowed; declare the parameter 'cede' or remove 'cede'
+ --> tests/fail/morphic_constraint_violation.tk:11:19
+    |
+ 11 |     take_val<i32>(cede p)
+    |                   ^

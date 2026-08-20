@@ -1,0 +1,5 @@
+error[E0477]: Closure passed across execution boundary 'thread_spawn' captures 'r' with a value that is not @Send
+ --> tests/fail/sync_guard_non_send.tk:11:38
+    |
+ 11 |     auto th = thread_spawn<i32>(cede f)
+    |                                      ^

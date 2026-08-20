@@ -12,7 +12,7 @@ shape Pair<T, U> (
 )
 
 // 3. Generic Enum (tagged payload)
-shape Option<T> (
+shape CustomOption<T> (
     None |
     Some(T)
 )
@@ -38,20 +38,20 @@ fn test_pair() {
 }
 
 fn test_enum() {
-    auto some = Option<i32>::Some(100)
+    auto some = CustomOption<i32>::Some(100)
     
     match some {
-        auto Option<i32>::Some(v) => {
+        auto CustomOption<i32>::Some(v) => {
             assert(v == 100, "Enum Some value match failed")
         }
-        auto Option<i32>::None => {
+        auto CustomOption<i32>::None => {
             assert(false, "Enum match hit None improperly")
         }
     }
     
-    auto none_val = Option<i32>::None()
+    auto none_val = CustomOption<i32>::None()
     match none_val {
-        auto Option<i32>::None => {
+        auto CustomOption<i32>::None => {
             assert(true, "Enum None matched")
         }
         _ => assert(false, "Enum None match failed")

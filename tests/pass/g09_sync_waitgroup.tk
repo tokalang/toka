@@ -24,7 +24,7 @@ pub fn main() -> i32 {
         auto ~local_data = ~data1
         auto ~local_wg# = ~wg1
         auto lock = local_data.lock().unwrap()
-        auto *val# = lock.get_ref()
+        auto &val# = lock.get_ref()
         val.finished_count = val.finished_count + 1
         println("Thread finished work piece")
         
@@ -36,7 +36,7 @@ pub fn main() -> i32 {
         auto ~local_data = ~data2
         auto ~local_wg# = ~wg2
         auto lock = local_data.lock().unwrap()
-        auto *val# = lock.get_ref()
+        auto &val# = lock.get_ref()
         val.finished_count = val.finished_count + 1
         println("Thread finished work piece")
         local_wg#.done()
@@ -47,7 +47,7 @@ pub fn main() -> i32 {
         auto ~local_data = ~data3
         auto ~local_wg# = ~wg3
         auto lock = local_data.lock().unwrap()
-        auto *val# = lock.get_ref()
+        auto &val# = lock.get_ref()
         val.finished_count = val.finished_count + 1
         println("Thread finished work piece")
         local_wg#.done()
@@ -59,11 +59,11 @@ pub fn main() -> i32 {
     auto t3# = thread_spawn<i32>(cede task3)
     
     println("Main thread waiting on WaitGroup...")
-    wg.wait_all()
+    wg#.wait_all()
     println("Main thread woke up from WaitGroup!")
     
     auto lock = data.lock().unwrap()
-    auto *val = lock.get_ref()
+    auto &val = lock.get_ref()
     println("Completed tasks count: {}", val.finished_count)
     assert(val.finished_count == 3, "Expected completed tasks count to be 3")
     

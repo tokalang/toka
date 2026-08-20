@@ -50,7 +50,7 @@ fn sig1(x: u32) -> u32 {
 }
 
 impl Sha256 {
-    fn process_block(self#, *k: [u32; 64]) {
+    fn process_block(self#, k: [u32; 64]) {
         auto w# = [0; 64]:[u32; 64]
         
         // Initialize first 16 words from data block
@@ -82,10 +82,7 @@ impl Sha256 {
         
         auto i3# = 0
         loop i3 < 64 {
-            auto k_val# = 0:u32
-            unsafe {
-                k_val = k[i3]
-            }
+            auto k_val = k[i3]
             auto t1 = h + ep1(e) + ch(e, f, g) + k_val + w[i3]
             auto t2 = ep0(a) + maj(a, b, c)
             h = g
@@ -134,7 +131,7 @@ impl Sha256 {
             self.data[self.datalen] = b
             self.datalen = self.datalen + 1
             if self.datalen == 64 {
-                self#.process_block(&SHA256_K)
+                self#.process_block(SHA256_K)
                 self.bitlen = self.bitlen + 512
                 self.datalen = 0
             }
@@ -153,7 +150,7 @@ impl Sha256 {
             self.data[self.datalen] = b
             self.datalen = self.datalen + 1
             if self.datalen == 64 {
-                self#.process_block(&SHA256_K)
+                self#.process_block(SHA256_K)
                 self.bitlen = self.bitlen + 512
                 self.datalen = 0
             }
@@ -174,7 +171,7 @@ impl Sha256 {
                 self.data[i] = 0x00
                 i = i + 1
             }
-            self#.process_block(&SHA256_K)
+            self#.process_block(SHA256_K)
             i = 0
         }
         
@@ -196,7 +193,7 @@ impl Sha256 {
         self.data[57] = u8(self.bitlen >> 48)
         self.data[56] = u8(self.bitlen >> 56)
         
-        self#.process_block(&SHA256_K)
+        self#.process_block(SHA256_K)
         
         auto hash# = [0; 32]:[u8; 32]
         auto j# = 0

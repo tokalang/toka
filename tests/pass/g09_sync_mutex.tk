@@ -9,27 +9,20 @@ fn main() -> i32 {
     {
         auto g = m#.lock().unwrap()
         println("Locked")
-        // g.get_ref() returns the address of target's data
-        auto *p# = g.get_ref()
-
-        println("Pointer Addr is {}", *p as OAddr)
-        if *p != null {
-            println("Data is {}", p)
-            p = 100
-            println("Modified to {}", p)
-        }
+        auto &p# = g.get_ref()
+        println("Data is {}", p)
+        p = 100
+        println("Modified to {}", p)
     }
     
     println("Before second lock")
     auto g = m#.lock().unwrap()
-    auto *p2# = g.get_ref()
-    if *p2 != null {
-        println("Second lock data is {}", p2)
-        if p2 == 100 {
-            println("Value persisted!")
-        } else {
-            return 2
-        }
+    auto &p2# = g.get_ref()
+    println("Second lock data is {}", p2)
+    if p2 == 100 {
+        println("Value persisted!")
+    } else {
+        return 2
     }
     return 0
 }

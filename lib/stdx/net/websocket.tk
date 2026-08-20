@@ -613,7 +613,7 @@ impl WsConnection {
         auto close_payload# = Vec<u8>::with_capacity(2)
         close_payload#.push(0x03:u8)
         close_payload#.push(0xEA:u8)
-        auto _w = self#.write_control_frame_async(0x08:u8, close_payload).await
+        auto _w = self#.write_control_frame_async(0x08:u8, cede close_payload).await
     }
 
     pub fn read_exact_owned_async(self#, len: usize) -> async Result<Vec<u8>, string> {
@@ -784,7 +784,7 @@ impl WsConnection {
             // Handle Control Frames (Ping 0x9, Pong 0xA, Close 0x8)
             if opcode_raw == 0x9 {
                 // Ping: send Pong auto-reply with identical payload, propagating write errors
-                auto w_pong = self#.write_control_frame_async(0x0A:u8, payload_vec).await
+                auto w_pong = self#.write_control_frame_async(0x0A:u8, cede payload_vec).await
                 if w_pong.is_err() {
                     return Result<WsMessage, string>::Err(w_pong.unwrap_err())
                 }
@@ -1044,16 +1044,18 @@ impl WsConnection {
         return Result<usize, string>::Ok(p_len)
     }
 
-    pub fn write_control_frame_async(self#, opcode: u8, payload: Vec<u8>) -> async Result<usize, string> {
-        return self#.write_control_frame_async_timeout(opcode, payload, 10000).await
+    pub fn write_control_frame_async(self#, opcode: u8, cede payload: Vec<u8>) -> async Result<usize, string> {
+        auto owned_payload = cede payload
+        return self#.write_control_frame_async_timeout(opcode, cede owned_payload, 10000).await
     }
 
-    pub fn write_control_frame_async_timeout(self#, opcode: u8, payload: Vec<u8>, timeout_ms: i32) -> async Result<usize, string> {
+    pub fn write_control_frame_async_timeout(self#, opcode: u8, cede payload: Vec<u8>, timeout_ms: i32) -> async Result<usize, string> {
+        auto owned_payload = cede payload
         if opcode != 0x8:u8 && opcode != 0x9:u8 && opcode != 0xA:u8 {
             return Result<usize, string>::Err(string::from("RFC 6455 Error: Invalid outbound control opcode"))
         }
 
-        auto p_len = payload.len()
+        auto p_len = owned_payload.len()
         if p_len > 125 {
             return Result<usize, string>::Err(string::from("RFC 6455 Error: Control frame payload MUST NOT exceed 125 bytes"))
         }
@@ -1081,13 +1083,13 @@ impl WsConnection {
             }
             auto i# = 0:usize
             loop i < p_len {
-                frame_vec#.push(payload.get(i) ^ mask_key.get(i % 4))
+                frame_vec#.push(owned_payload.get(i) ^ mask_key.get(i % 4))
                 i += 1
             }
         } else {
             auto i# = 0:usize
             loop i < p_len {
-                frame_vec#.push(payload.get(i))
+                frame_vec#.push(owned_payload.get(i))
                 i += 1
             }
         }
@@ -1101,7 +1103,7 @@ impl WsConnection {
 
     pub fn close_async(self#) -> async Result<(), string> {
         auto empty_payload = Vec<u8>::new()
-        auto w_res = self#.write_control_frame_async(0x08:u8, empty_payload).await
+        auto w_res = self#.write_control_frame_async(0x08:u8, cede empty_payload).await
         self.stream#.close()
         match w_res {
             auto Result<usize, string>::Ok(_) => {

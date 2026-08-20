@@ -35,7 +35,7 @@ impl Wrapper {
 
 fn main() -> i32 {
     unsafe {
-        auto *ptr# = libc_malloc(16) as *[i32]
+        auto *ptr# = (libc_malloc(16:usize) as nul *[i32]).unwrap()
         ptr[0] = 100
         ptr[1] = 200
         

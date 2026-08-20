@@ -117,8 +117,9 @@ fn await_canceled_cold_task() -> async i32 {
 fn test_cold_task_cancel_and_await() -> async i32 {
     println("[Probe 4] Testing true cold task cancellation and immediate .await propagation...");
     auto waiter = await_canceled_cold_task().start;
-    auto *waiter_tcb = task_get_coro_handle<i32>(waiter);
-    loop !toka_tcb_is_done(*waiter_tcb) {
+    auto nul *waiter_tcb = task_get_coro_handle<i32>(waiter);
+    auto *live_waiter_tcb = waiter_tcb.unwrap()
+    loop !toka_tcb_is_done(*live_waiter_tcb) {
         sleep_async(1).await;
     }
     assert(task_is_canceled<i32>(waiter), "Probe 4 failed: cancellation did not propagate through .await");
@@ -149,8 +150,9 @@ fn test_parent_cancel_while_awaiting_child() -> async i32 {
         sleep_async(1).await;
     }
     task_cancel<i32>(parent);
-    auto *parent_tcb = task_get_coro_handle<i32>(parent);
-    loop !toka_tcb_is_done(*parent_tcb) {
+    auto nul *parent_tcb = task_get_coro_handle<i32>(parent);
+    auto *live_parent_tcb = parent_tcb.unwrap()
+    loop !toka_tcb_is_done(*live_parent_tcb) {
         sleep_async(1).await;
     }
     assert(task_is_canceled<i32>(parent), "Probe 5 failed: parent cancellation did not finish after child terminal");
@@ -181,8 +183,9 @@ fn test_parent_cancel_drops_live_frame_local_once() -> async i32 {
         sleep_async(1).await;
     }
     task_cancel<i32>(parent);
-    auto *parent_tcb = task_get_coro_handle<i32>(parent);
-    loop !toka_tcb_is_done(*parent_tcb) {
+    auto nul *parent_tcb = task_get_coro_handle<i32>(parent);
+    auto *live_parent_tcb = parent_tcb.unwrap()
+    loop !toka_tcb_is_done(*live_parent_tcb) {
         sleep_async(1).await;
     }
     assert(task_is_canceled<i32>(parent), "Probe 6 failed: parent cancellation did not finish");

@@ -11,18 +11,20 @@ pub fn main() -> i32 {
     auto t2_tx# = pair.tx#.clone()
     
     // Thread 1
-    auto t1# = thread_spawn<i32>({ [cede t1_tx#] => 
+    auto task1# = { [cede t1_tx#] =>
         sleep_ms(10:u32)
         t1_tx#.send(cede 100)
         return cede 0
-    })
+    }:fn#() -> cede i32
+    auto t1# = thread_spawn<i32>(cede task1)
     
     // Thread 2
-    auto t2# = thread_spawn<i32>({ [cede t2_tx#] => 
+    auto task2# = { [cede t2_tx#] =>
         sleep_ms(20:u32)
         t2_tx#.send(cede 200)
         return cede 0
-    })
+    }:fn#() -> cede i32
+    auto t2# = thread_spawn<i32>(cede task2)
     
     // Receiver on Main Thread
     auto count# = 0

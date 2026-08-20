@@ -158,7 +158,7 @@ fn run_websocket_client(port: u16) -> async i32 {
     auto ping_payload# = Vec<u8>::new()
     ping_payload#.push(0x01:u8)
     ping_payload#.push(0x02:u8)
-    auto ping_res = ws#.write_control_frame_async(0x09:u8, ping_payload).await
+    auto ping_res = ws#.write_control_frame_async(0x09:u8, cede ping_payload).await
     if ping_res.is_err() {
         println("[WsClient Error] Ping frame write failed!")
         return 9

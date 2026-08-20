@@ -74,19 +74,12 @@ impl<T> SharedPtr<T> {
         // Accept new value
         self.*wrapper = rhs.*wrapper
 
-        // [Hat Rule]: Raw pointer must be explicitly unpacked (*ptr) to access members
-        if self.*wrapper != null {
-            unsafe self.wrapper.ref_count#.fetch_add()
-        }
+        unsafe self.wrapper.ref_count#.fetch_add()
     }
 
     // 3. Destructor: Strict Hat Rule version
     pub fn xdrop(self#) {
         println("enter .xdrop, shared_ptr:{} wrapper:{}", *self as OAddr, self.*wrapper as OAddr)
-        if self.*wrapper == null {   
-            return
-        }
-
         // [Hat Rule]: (*ptr).member
         unsafe self.wrapper.ref_count#.fetch_sub()
 
@@ -102,9 +95,6 @@ impl<T> SharedPtr<T> {
                 
                 // 2. Then free control block
                 unsafe free self.*wrapper
-                
-                // Nullify (null is allowed for non-null raw pointer in unsafe blocks)
-                self.*wrapper = null
             }
         }
         else

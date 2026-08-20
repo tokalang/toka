@@ -4,20 +4,18 @@ import core/str::str
 import core/str::cstr
 
 fn test_cstr(s: cstr) -> i32 {
-    unsafe {
-        match s.raw_ptr() {
-            c"hello" => {
-                println("cstr: hello matched")
-                return 1
-            }
-            c"world" => {
-                println("cstr: world matched")
-                return 2
-            }
-            _ => {
-                println("cstr: default matched")
-                return 3
-            }
+    match s.as_str() {
+        "hello" => {
+            println("cstr: hello matched")
+            return 1
+        }
+        "world" => {
+            println("cstr: world matched")
+            return 2
+        }
+        _ => {
+            println("cstr: default matched")
+            return 3
         }
     }
 }

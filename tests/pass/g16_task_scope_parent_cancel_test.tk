@@ -38,8 +38,9 @@ fn parent_with_scope() -> async i32 {
 
 fn parent_cancel_closes_scope() -> async i32 {
     auto parent = parent_with_scope().start
-    auto *parent_tcb = task_get_coro_handle<i32>(parent)
-    toka_task_start(*parent_tcb)
+    auto nul *parent_tcb = task_get_coro_handle<i32>(parent)
+    auto *live_parent_tcb = parent_tcb.unwrap()
+    toka_task_start(*live_parent_tcb)
 
     // Let parent registration and child activation commit before cancellation.
     sleep_async(10:i32).await
