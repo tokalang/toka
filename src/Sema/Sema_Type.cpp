@@ -584,7 +584,7 @@ Sema::instantiateGenericShape(std::shared_ptr<ShapeType> GenericShape) {
   // argument before materializing the nested shape.
   for (const auto &arg : GenericShape->GenericArgs) {
     const std::string name = arg ? arg->toString() : "";
-    if (!name.empty() && name.front() == '\'')
+    if (name.find('\'') != std::string::npos)
       return GenericShape;
   }
 

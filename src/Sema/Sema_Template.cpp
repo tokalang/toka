@@ -612,6 +612,81 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
   // registered on `TaskPtr`, so normalize only the lookup/proof key.
   std::string nominalConcreteType =
       toka::Type::stripMorphology(concreteTypeName);
+  auto dependentShapeProvesAutoTrait = [&](const std::string &traitFamily) {
+    auto root = std::dynamic_pointer_cast<ShapeType>(
+        resolvedConcreteType ? resolvedConcreteType->getSoulType() : nullptr);
+    if (!root)
+      return false;
+    bool isDependent = false;
+    for (const auto &argument : root->GenericArgs) {
+      if (argument && argument->toString().find('\'') != std::string::npos) {
+        isDependent = true;
+        break;
+      }
+    }
+    if (!isDependent)
+      return false;
+
+    auto hasGenericTraitImpl = [&](const std::string &typeName) {
+      for (const auto &entry : GenericImplMap) {
+        for (auto *impl : entry.second) {
+          if (!impl || getTraitFamilyName(impl->TraitName) != traitFamily)
+            continue;
+          std::string implementedType = impl->TypeName;
+          size_t generic = implementedType.find('<');
+          if (generic != std::string::npos)
+            implementedType = implementedType.substr(0, generic);
+          if (implementedType == typeName)
+            return true;
+        }
+      }
+      return false;
+    };
+
+    std::set<std::string> visiting;
+    std::function<bool(const std::shared_ptr<Type> &)> proveType =
+        [&](const std::shared_ptr<Type> &type) -> bool {
+      if (!type)
+        return false;
+      if (type->isRawPointer() || type->isReference())
+        return false;
+      if (type->isInteger() || type->isFloatingPoint() ||
+          type->isBoolean() || type->isAddrType() || type->isOAddrType())
+        return true;
+
+      auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
+      if (!shape)
+        return traitFamily == "Send" ? type->isSend(this)
+                                     : type->isSync(this);
+      std::string baseName = shape->Name;
+      size_t generic = baseName.find('<');
+      if (generic != std::string::npos)
+        baseName = baseName.substr(0, generic);
+      size_t mangled = baseName.find("_M_");
+      if (mangled != std::string::npos)
+        baseName = baseName.substr(0, mangled);
+      if (hasGenericTraitImpl(baseName))
+        return true;
+      if (!visiting.insert(baseName).second)
+        return true;
+      ShapeDecl *declaration = shape->Decl
+                                   ? shape->Decl
+                                   : findVisibleShapeDecl(baseName, Loc);
+      if (!declaration) {
+        visiting.erase(baseName);
+        return false;
+      }
+      for (const auto &member : declaration->Members) {
+        if (!proveType(getPhysicalType(member))) {
+          visiting.erase(baseName);
+          return false;
+        }
+      }
+      visiting.erase(baseName);
+      return true;
+    };
+    return proveType(root);
+  };
   if (auto shape = std::dynamic_pointer_cast<ShapeType>(
           resolvedConcreteType ? resolvedConcreteType->getSoulType()
                                : nullptr)) {
@@ -645,8 +720,10 @@ bool Sema::checkTraitBounds(SourceLocation Loc, const std::string &ParamName,
            resolvedConcreteType->isDynFn()))
         continue;
     } else if (canonicalBound == "Send") {
+      if (dependentShapeProvesAutoTrait("Send")) continue;
       if (resolvedConcreteType && resolvedConcreteType->isSend(this)) continue;
     } else if (canonicalBound == "Sync") {
+      if (dependentShapeProvesAutoTrait("Sync")) continue;
       if (resolvedConcreteType && resolvedConcreteType->isSync(this)) continue;
     }
 
