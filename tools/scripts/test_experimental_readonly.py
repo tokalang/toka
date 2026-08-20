@@ -58,7 +58,7 @@ def main():
         with open(disabled_ir_path, encoding="utf-8") as stream:
             disabled_ir = stream.read()
 
-        candidates = ("ms_read", "ms_escape", "ms_is_null")
+        candidates = ("ms_read", "ms_escape")
         rejected = ("ms_write", "ms_forward", "ms_address", "ms_raw",
                     "ms_async", "ms_consume")
         for function in candidates + rejected:

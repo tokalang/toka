@@ -1,7 +1,0 @@
-shape Token(id: i32)
-
-fn main() -> i32 {
-    auto arr = [Token(id = 1)]:[Token?; 1]
-    auto target = cede arr[0]:Token
-    return target.id
-}

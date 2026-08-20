@@ -35,24 +35,14 @@ impl Data {
     }
 }
 
-fn check_unique_ptr(nul ^ptr: Data) {
-    guard ^ptr {
-        println("Unique pointer is not null confirmed, ptr.val={}", ptr.val)
-        assert(ptr.val == 10, "Unique pointer is not null confirmed")
-    } else {
-        println("Unique pointer is null confirmed")
-        assert(false, "Unique pointer is null confirmed")
-    }
+fn check_unique_ptr(^ptr: Data) {
+    println("Unique pointer confirmed, ptr.val={}", ptr.val)
+    assert(ptr.val == 10, "Unique pointer payload")
 }
 
-fn check_shared_ptr(nul ~ptr: Data) {
-    guard ~ptr {
-        println("Shared pointer is not null confirmed, ptr.val={}", ptr.val)
-        assert(ptr.val == 20, "Shared pointer is not null confirmed")
-    } else {
-        println("Shared pointer is null confirmed")
-        assert(false, "Shared  pointer is null confirmed")
-    }
+fn check_shared_ptr(~ptr: Data) {
+    println("Shared pointer confirmed, ptr.val={}", ptr.val)
+    assert(ptr.val == 20, "Shared pointer payload")
 }
 
 fn check_raw_ptr(nul *ptr: [i32]) {
@@ -91,27 +81,18 @@ fn main() -> i32 {
         println("--- After unsafe free ---")
     }    
 
-    auto nul ~r = Data::make_shared(20)
+    auto ~r = Data::make_shared(20)
     check_shared_ptr(~r)
-    auto nul ~rr = ~r
+    auto ~rr = ~r
     check_shared_ptr(~rr)
 
 
-    auto nul ^p = Data::make_unique(10)
+    auto ^p = Data::make_unique(10)
     check_unique_ptr(^p)
-    guard ^p {
-        println("Unique pointer is not null confirmed, ptr.val={}", p.val)
-        assert(p.val == 10, "Unique pointer is not null confirmed")
-    } else {
-        println("Unique pointer is null confirmed")
-        assert(false, "Unique  pointer is null confirmed")
-    }
-    auto nul ^pp = ^p
+    println("Unique pointer confirmed, ptr.val={}", p.val)
+    assert(p.val == 10, "Unique pointer payload")
+    auto ^pp = ^p
     check_unique_ptr(^pp)
-
-
-    auto nul ~r = Data::make_shared(20)
-    check_shared_ptr(~r)
 
     return 0
 }

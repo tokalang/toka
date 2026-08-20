@@ -2,7 +2,7 @@ import std/io::println
 
 
 shape Point(x: i32, y: i32)
-shape Container(nul ^p#: Point, val: i32, immut$: i32)
+shape Container(^p#: Point, val: i32, immut$: i32)
 impl Container {
     fn drop(self#) {
         // Resources are handled by compiler, but we need the method to exist
@@ -21,9 +21,8 @@ fn main() -> i32 {
     assert(c1.val == 101, "Bloodline failed")
 
     //* 2. Single Hat Principle (Intermediate path must be bare)
-    // Legal: c1.p??.x (?? is exempt)
-    println("Success Single Hat path: {}", c1.p??.x)
-    assert(c1.p??.x == 10, "Path failed")
+    println("Success Single Hat path: {}", c1.p.x)
+    assert(c1.p.x == 10, "Path failed")
     
     //* 3. Inherent Restriction ($)
     // c1.immut# = 888 // SHOULD FAIL sema (Blocked by $)
@@ -31,9 +30,9 @@ fn main() -> i32 {
     //* 4. Insulation (Pointers break automatic inheritance)
     // c1# is writable, but c1.p.x# is NOT automatically writable because p is a pointer.
     // To modify soul of p, we need inherent privilege or explicit unwrap.
-    c1.p??.x = 55 // Defined as ^p#: Point, so p# is soul-mutable (even if c1 is immutable), thus we can modify p.x (x inherits p's mutability)
-    println("Success Insulation override: {}", c1.p??.x)
-    assert(c1.p??.x == 55, "Insulation override failed")
+    c1.p.x = 55 // Defined as ^p#: Point, so p# is soul-mutable.
+    println("Success Insulation override: {}", c1.p.x)
+    assert(c1.p.x == 55, "Insulation override failed")
 
     return 0
 }

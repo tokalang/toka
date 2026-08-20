@@ -114,6 +114,12 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
     }
   }
 
+  if (isPtrNullable && (isUnique || isShared)) {
+    DiagnosticEngine::report(
+        previous().Loc, DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+        isUnique ? "nul ^T" : "nul ~T");
+  }
+
   if (check(TokenType::LParen)) {
     Token lpTok = peek();
     consume(TokenType::LParen, DiagID::ERR_PARSER_EXPECTED_LPAREN);
@@ -492,6 +498,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     expr = std::move(node);
   } else if (match(TokenType::KwNone)) {
     Token tok = previous();
+    DiagnosticEngine::report(tok.Loc, DiagID::WARN_NONE_LITERAL_DEPRECATED);
     auto node = std::make_unique<NoneExpr>();
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);

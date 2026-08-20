@@ -867,6 +867,34 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
   }
   if (tokens.empty())
     return TypeSyntax::invalid("", peek().Loc, peek().Loc);
+
+  for (size_t index = 0; index < tokens.size(); ++index) {
+    if (tokens[index].Kind == TokenType::TokenNull) {
+      DiagnosticEngine::report(
+          tokens[index].Loc,
+          DiagID::WARN_SAFE_NULLABLE_PAYLOAD_DEPRECATED, "?");
+      continue;
+    }
+    if (tokens[index].Kind != TokenType::KwNul)
+      continue;
+    for (size_t next = index + 1; next < tokens.size(); ++next) {
+      if (tokens[next].Kind == TokenType::Caret ||
+          tokens[next].Kind == TokenType::Tilde) {
+        DiagnosticEngine::report(
+            tokens[index].Loc,
+            DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+            tokens[next].Kind == TokenType::Caret ? "nul ^T" : "nul ~T");
+      }
+      if (tokens[next].Kind == TokenType::Caret ||
+          tokens[next].Kind == TokenType::Tilde ||
+          tokens[next].Kind == TokenType::Star ||
+          tokens[next].Kind == TokenType::Ampersand ||
+          tokens[next].Kind == TokenType::Identifier ||
+          tokens[next].Kind == TokenType::KwUpperSelf)
+        break;
+    }
+  }
+
   TypeSyntaxPtr syntax = TypeSyntaxBuilder(tokens).parse();
   const bool containsNever = std::any_of(
       tokens.begin(), tokens.end(), [](const Token &token) {

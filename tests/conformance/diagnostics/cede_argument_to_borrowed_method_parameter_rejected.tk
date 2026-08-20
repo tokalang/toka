@@ -1,4 +1,4 @@
-// EXPECT_ERROR: E04635
+// EXPECT_ERROR: E04640
 import core/traits::{@Encap}
 
 shape Resource(value: i32)

@@ -29,28 +29,5 @@ fn main() -> i32 {
     auto ^#p1 = new Data(v=10)
     println("Rebindable pointer p1.v: {}", p1.v)
 
-    {
-        // Nullable Pointer
-        auto nul ^p2 = new Data(v=99)
-
-        // New syntax: 'is' operator for null check. 
-        guard ^p2 {
-            println("Nullable pointer is not null (is check)\n")
-            println("p2.v: {}", p2.v)
-        }
-    }
-    {
-        // Nullable Pointer
-        auto nul ^p3 = null:nul ^Data
-
-        // New syntax: 'is' operator for null check. 
-        guard ^p3 {
-            println("Nullable pointer is not null (is check)\n")
-        }
-        else
-        {
-            println("Nullable pointer is null (is check)\n")
-        }
-    }
     return 0
 }

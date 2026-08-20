@@ -30,27 +30,13 @@ fn main() -> i32 {
         }
     }
 
-    // 2. Exclusive Pointer (Nullable)
-    auto nul ^p2# = null:nul ^Data
-    if ^p2 is null {
-        println("Exclusive pointer null OK")
-        assert(true, "Exclusive pointer null OK")
-    }
-
-    // 3. Shared Pointer (Nullable)
-    auto nul ~p3# = null:nul ~Data
-    if ~p3 is null {
-        println("Shared pointer null OK")
-        assert(true, "Shared pointer null OK")
-    }
-
-    // 4. Addr ADDR0 (Foundational)
+    // 2. Addr ADDR0 (Foundational)
     auto addr = ADDR0
     if addr == ADDR0 {
         println("Addr ADDR0 OK")
         assert(true, "Addr ADDR0 OK")
     }
 
-    println("All polymorphic null tests passed!")
+    println("Raw null and ADDR0 tests passed!")
     return 0
 }

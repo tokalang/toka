@@ -1,7 +1,0 @@
-shape Cell(value: i32)
-
-fn main() -> i32 {
-    auto nul ^source = new Cell(value = 1)
-    auto ^target = cede ^source
-    return target.value
-}

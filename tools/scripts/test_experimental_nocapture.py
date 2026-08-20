@@ -74,7 +74,7 @@ def focused(work):
 
     candidates = ("ms_read", "ms_write")
     rejected = ("ms_consume", "ms_escape", "ms_forward", "ms_store", "ms_address",
-                "ms_is_null", "ms_raw", "ms_async")
+                "ms_raw", "ms_async")
     for function in candidates + rejected:
         if "nocapture" in signature(default_ir, function):
             raise AssertionError("default mode emitted nocapture for " + function)

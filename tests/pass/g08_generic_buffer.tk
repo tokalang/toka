@@ -7,13 +7,10 @@ shape Buffer<T, N_: usize>(
     len: usize
 )
 
-// 2. Recursive Generics (0-th order) + Nested Usage
+// 2. Nested generic usage
 shape Node<T>(
     // Nested: Node contains a Buffer, size fixed to 5
-    buf: Buffer<T, 5>, 
-    
-    // Recursive: points to the next node of the same type
-    nul ^next: Node<T> 
+    buf: Buffer<T, 5>
 )
 impl<T> Node<T>@Encap {
     pub buf
@@ -39,9 +36,7 @@ fn main() -> i32 {
     auto ^head = new Node<i32>(
         // Using array repeat initialization syntax [val; count], the compiler internally uses memset to efficiently implement array broadcast initialization
         // Here the compiler needs to recognize [0; 5] matching [i32; 5]
-        buf = Buffer<i32, 5>(data=[0,1,2,3,4], len=5), 
-        
-        ^next = null
+        buf = Buffer<i32, 5>(data=[0,1,2,3,4], len=5)
     ):^Node<i32>
     for auto i in [0,1,2,3,4] {
         println("head.buf.data[{}] = {}", i, head.buf.data[i])

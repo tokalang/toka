@@ -97,6 +97,12 @@ counter = 3
 
 ### Absence domains
 
+> Migration status: safe nullable payloads `T?` / `none` and nullable
+> unique/shared handles `nul ^T` / `nul ~T` are in their pre-removal warning
+> phase (W0409, W0411, and W0410 respectively). Their legacy lowering remains
+> temporarily available for migration. Raw `nul *T` and physical `null` are
+> outside this deprecation slice.
+
 Toka 1.0 intentionally distinguishes three meanings of absence. They may have
 isomorphic physical representations, but they are not aliases in the type
 system:

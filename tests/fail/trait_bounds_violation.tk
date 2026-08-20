@@ -2,14 +2,16 @@ trait @Send {}
 
 shape Data (
     value: i32,
-    *ptr: i32?
+    *ptr: i32
 )
 
 fn process<T: @Send>(^val: T) {
 }
 
 pub fn main() -> i32 {
-    auto ^d = new Data(value = 42, *ptr = null)
+    auto pointee# = 7:i32
+    auto *p = &pointee as *i32
+    auto ^d = new Data(value = 42, *ptr = *p)
     process<Data>(^d) // EXPECT: error[E0606]:
     return 0
 }

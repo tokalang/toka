@@ -20,16 +20,11 @@ fn unique_payload_only(^p: AuditBox) -> i32 {
     return p.val
 }
 
-fn accept_unique(nul ^p: AuditBox) -> bool {
-    guard ^p {
-        return true
-    } else {
-        return false
-    }
-    return false
+fn accept_unique(^p: AuditBox) -> bool {
+    return p.val > 0
 }
 
-fn unique_handle_forwarded(nul ^p: AuditBox) -> bool {
+fn unique_handle_forwarded(^p: AuditBox) -> bool {
     return accept_unique(^p)
 }
 
@@ -37,16 +32,11 @@ fn shared_payload_only(~p: AuditBox) -> i32 {
     return p.val
 }
 
-fn accept_shared(nul ~p: AuditBox) -> bool {
-    guard ~p {
-        return true
-    } else {
-        return false
-    }
-    return false
+fn accept_shared(~p: AuditBox) -> bool {
+    return p.val > 0
 }
 
-fn shared_handle_forwarded(nul ~p: AuditBox) -> bool {
+fn shared_handle_forwarded(~p: AuditBox) -> bool {
     return accept_shared(~p)
 }
 
@@ -55,4 +45,4 @@ fn main() -> i32 {
 }
 
 // EXPECT: warning[W0407]
-// EXPECT_COUNT: W0407 3
+// EXPECT_COUNT: W0407 5

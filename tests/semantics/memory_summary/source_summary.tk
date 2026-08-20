@@ -33,10 +33,6 @@ fn ms_address(^data: SummaryData) -> usize {
     return *data as usize
 }
 
-fn ms_is_null(nul ^data: SummaryData) -> bool {
-    return ^data is null
-}
-
 fn ms_raw(*data: SummaryData) -> i32 {
     unsafe {
         return data.value

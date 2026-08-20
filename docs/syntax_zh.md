@@ -87,6 +87,11 @@ counter = 3
 
 ### 三种缺失语义
 
+> 迁移状态：Safe nullable payload `T?` / `none` 与 nullable unique/shared
+> handle `nul ^T` / `nul ~T` 已进入移除前警告阶段，分别报告 W0409、
+> W0411 与 W0410。当前版本暂时保留旧 lowering 以便迁移；raw pointer
+> `nul *T` 和物理 `null` 不在本轮弃用范围内。
+
 Toka 1.0 刻意区分三种“无”。它们的物理表示可能同构，但在类型系统中不是别名：
 
 | 语义域 | 表层写法 | 空状态 | 含义 |

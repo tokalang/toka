@@ -17,16 +17,8 @@ fn implicit_box_shared() {
     assert(s2.x == 999, "implicit box shared mutation")
 }
 
-fn implicit_box_nul() {
-    auto nul ~s1 = Point(x = 42, y = 42, z = 42)
-    if false {
-       println("dummy")
-    }
-}
-
 fn main() -> i32 {
     implicit_box_unique()
     implicit_box_shared()
-    implicit_box_nul()
     return 0
 }

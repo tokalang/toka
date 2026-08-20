@@ -13,7 +13,7 @@
 // limitations under the License.
 shape Data (v: i32)
 fn main() -> i32 {
-    auto nul ^p = new Data(v = 42)
+    auto ^p = new Data(v = 42)
     if p is Data { // Error: Data is not a variable
         // EXPECT: error[E0406]:
         assert(false,"")

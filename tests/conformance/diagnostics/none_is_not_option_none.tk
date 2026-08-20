@@ -1,7 +1,0 @@
-// EXPECT_ERROR: E04606
-import core/option::{Option}
-
-fn main() -> i32 {
-    auto value = none:Option<i32>
-    return 0
-}

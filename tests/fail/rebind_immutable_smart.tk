@@ -1,16 +1,15 @@
 import std/io::println
 
 shape Node(
-    nul ~next: Node,
     val: i32
 )
 
 fn main() -> i32 {
-    auto ~head = new Node(next = uninit, val = 1)
+    auto ~head = new Node(val = 1)
     
     // ERROR: Use-site '#' requests rebind but cannot grant it.
     // EXPECT: error[E04572]:
-    ~#head = new Node(next = uninit, val = 2) // CHECK: error: Cannot assign to immutable entity
+    ~#head = new Node(val = 2) // CHECK: error: Cannot assign to immutable entity
     
     return 0
 }

@@ -33,7 +33,8 @@ only a live Hit owns and drops `T`.
 
 ## Compatibility boundary
 
-This slice does not change `Option<T>`, nullable handles, nullable payloads,
-or their standard-library APIs. `T | miss` and `Option<T>` have no implicit
-conversion. Later migrations must classify each API by meaning rather than
-mechanically rewriting types.
+This slice does not change `Option<T>` or the runtime representation of legacy
+nullable handles and payloads. The safe nullable surface now emits migration
+warnings before its separate removal; raw/FFI null remains outside that work.
+`T | miss` and `Option<T>` have no implicit conversion. Later migrations must
+classify each API by meaning rather than mechanically rewriting types.

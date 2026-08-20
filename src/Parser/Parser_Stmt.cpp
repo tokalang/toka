@@ -90,6 +90,12 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
     }
   }
 
+  if (isPtrNullable && (isUnique || isShared)) {
+    DiagnosticEngine::report(
+        previous().Loc, DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+        isUnique ? "nul ^T" : "nul ~T");
+  }
+
   // Check for positional destructuring: let Type(v1, v2) = ... or let (v1, v2)
   // = ...
   if ((check(TokenType::Identifier) && checkAt(1, TokenType::LParen)) ||

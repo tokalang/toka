@@ -618,6 +618,13 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
             error(previous(), DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
           }
 
+          if (isPtrNullable && (m.IsUnique || m.IsShared)) {
+            DiagnosticEngine::report(
+                previous().Loc,
+                DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+                m.IsUnique ? "nul ^T" : "nul ~T");
+          }
+
           nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           m.Name = nameTok.Text;
           m.Loc = nameTok.Loc;
@@ -809,6 +816,12 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         isRebindable = t.IsSwappablePtr;
         isRebindBlocked = t.IsBlocked;
       }
+      if (isPtrNullable && (isUnique || isShared)) {
+        DiagnosticEngine::report(
+            previous().Loc,
+            DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+            isUnique ? "nul ^T" : "nul ~T");
+      }
       Token argName;
       if (check(TokenType::Identifier) || check(TokenType::KwSelf) ||
           check(TokenType::KwUpperSelf)) {
@@ -946,6 +959,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       } else if (match(TokenType::Star)) {
         hasPointer = true;
         argPrefix = "*";
+      }
+      if (isPtrNullable && argPrefix == "^") {
+        DiagnosticEngine::report(
+            previous().Loc,
+            DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED, "nul ^T");
       }
       Token argName = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
       std::string argType = "i64"; // recovery type after a reported parse error

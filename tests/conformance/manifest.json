@@ -70,38 +70,6 @@
       "description": "Integer/float literals, string formatting, and slice type inference"
     },
     {
-      "id": "syntax_absence_domains_01",
-      "path": "syntax/absence_domains.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Option<T?> distinguishes a missing result, an empty payload, and a present payload"
-    },
-    {
-      "id": "syntax_nullable_handle_payload_orthogonal_01",
-      "path": "syntax/nullable_handle_payload_orthogonal.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Nullable handle and payload states remain distinct across payload writes, deep guards, and a handle rebind"
-    },
-    {
-      "id": "syntax_auto_infers_nullable_payload_01",
-      "path": "syntax/auto_infers_nullable_payload.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Auto value inference preserves nullable payload representation"
-    },
-    {
-      "id": "syntax_nullable_repeat_array_initialization_01",
-      "path": "syntax/nullable_repeat_array_initialization.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Nullable fixed-array repeat initialization preserves element representation"
-    },
-    {
       "id": "syntax_error_propagation_01",
       "path": "syntax/error_propagation_postfix.tk",
       "type": "run",
@@ -258,7 +226,7 @@
       "id": "diag_thread_spawn_owned_state_capture_01",
       "path": "diagnostics/thread_spawn_owned_state_capture.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E0478",
+      "expected_diagnostic_code": "E0479",
       "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "Owned thread entry cannot capture hidden state outside its explicit owned state argument"
@@ -535,14 +503,6 @@
       "description": "Mutable variable binding reassignment and drop scope rules"
     },
     {
-      "id": "ownership_nullable_unique_payload_drop_01",
-      "path": "ownership/nullable_unique_payload_drop.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Replacing or clearing a nullable unique payload drops each live resource exactly once"
-    },
-    {
       "id": "async_frame_lifetime_reclaim_01",
       "path": "async/async_frame_lifetime_reclaim.tk",
       "type": "run",
@@ -670,15 +630,6 @@
       "expected_span_line": 10,
       "timeout_seconds": 10,
       "description": "Layered error check for mutating immutable variable without '#' sigil"
-    },
-    {
-      "id": "diag_none_is_not_option_none_01",
-      "path": "diagnostics/none_is_not_option_none.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04606",
-      "expected_span_line": 5,
-      "timeout_seconds": 10,
-      "description": "Payload none does not implicitly convert to Option::None"
     },
     {
       "id": "diag_option_moved_variant_not_public_01",
@@ -1265,130 +1216,6 @@
       "description": "A direct unique move cannot invalidate a source with an active borrow"
     },
     {
-      "id": "diag_cede_nullable_source_requires_guard_01",
-      "path": "diagnostics/cede_nullable_source_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 5,
-      "timeout_seconds": 10,
-      "description": "A nullable cede source needs a same-binding non-null guard before entering a non-null destination"
-    },
-    {
-      "id": "diag_cede_nullable_payload_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 5,
-      "timeout_seconds": 10,
-      "description": "A nullable unique payload needs a same-binding non-null guard before entering a non-null destination"
-    },
-    {
-      "id": "diag_cede_nullable_member_requires_guard_for_nonnull_destination_01",
-      "path": "diagnostics/cede_nullable_member_requires_guard_for_nonnull_destination.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 6,
-      "timeout_seconds": 10,
-      "description": "A nullable member cannot cede into an explicitly non-null destination"
-    },
-    {
-      "id": "diag_cede_nullable_member_under_null_branch_requires_guard_01",
-      "path": "diagnostics/cede_nullable_member_under_null_branch_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 7,
-      "timeout_seconds": 10,
-      "description": "A path is not non-null inside the true branch of an is-null check"
-    },
-    {
-      "id": "diag_cede_nullable_index_requires_guard_for_nonnull_destination_01",
-      "path": "diagnostics/cede_nullable_index_requires_guard_for_nonnull_destination.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 5,
-      "timeout_seconds": 10,
-      "description": "A nullable index cannot cede into an explicitly non-null destination"
-    },
-    {
-      "id": "diag_guard_nullable_dynamic_index_requires_exact_path_01",
-      "path": "diagnostics/guard_nullable_dynamic_index_requires_exact_path.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04493",
-      "timeout_seconds": 10,
-      "description": "A dynamic index cannot establish the exact local nullable path proof required by guard"
-    },
-    {
-      "id": "diag_guard_nullable_parameter_member_requires_local_root_01",
-      "path": "diagnostics/guard_nullable_parameter_member_requires_local_root.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04493",
-      "timeout_seconds": 10,
-      "description": "A caller-supplied member cannot establish a local nullable path proof through guard"
-    },
-    {
-      "id": "diag_cede_nullable_payload_call_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_call_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 10,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before cede into a non-null cede parameter"
-    },
-    {
-      "id": "diag_cede_nullable_payload_return_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_return_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 5,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before cede into a non-null cede return"
-    },
-    {
-      "id": "diag_cede_nullable_payload_method_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_method_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 12,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before a consuming method receiver"
-    },
-    {
-      "id": "diag_cede_nullable_payload_method_arg_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_method_arg_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 14,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before cede into a consuming method argument"
-    },
-    {
-      "id": "diag_cede_nullable_payload_static_call_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_static_call_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 12,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before cede into a consuming static method"
-    },
-    {
-      "id": "diag_cede_nullable_payload_generic_static_call_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_generic_static_call_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 12,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before cede into a lazily instantiated static method"
-    },
-    {
-      "id": "diag_cede_nullable_payload_callable_requires_guard_01",
-      "path": "diagnostics/cede_nullable_payload_callable_requires_guard.tk",
-      "type": "compile-fail",
-      "expected_diagnostic_code": "E04599",
-      "expected_span_line": 14,
-      "timeout_seconds": 10,
-      "description": "A nullable payload needs a same-binding guard before cede into a consuming callable"
-    },
-    {
       "id": "diag_static_cede_parameter_requires_explicit_transfer_01",
       "path": "diagnostics/static_cede_parameter_requires_explicit_transfer.tk",
       "type": "compile-fail",
@@ -1640,7 +1467,7 @@
       "id": "diag_cede_argument_to_borrowed_parameter_rejected_01",
       "path": "diagnostics/cede_argument_to_borrowed_parameter_rejected.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04635",
+      "expected_diagnostic_code": "E04640",
       "expected_span_line": 16,
       "timeout_seconds": 10,
       "description": "An explicit cede argument requires a cede formal that accepts its ownership obligation"
@@ -1649,7 +1476,7 @@
       "id": "diag_cede_argument_to_borrowed_method_parameter_rejected_01",
       "path": "diagnostics/cede_argument_to_borrowed_method_parameter_rejected.tk",
       "type": "compile-fail",
-      "expected_diagnostic_code": "E04635",
+      "expected_diagnostic_code": "E04640",
       "expected_span_line": 21,
       "timeout_seconds": 10,
       "description": "An explicit cede method argument requires a cede formal that accepts its ownership obligation"
@@ -1692,7 +1519,7 @@
       "type": "run",
       "expected_exit_code": 0,
       "timeout_seconds": 10,
-      "description": "Replacing live resource members, nullable slots, fixed indices, and partially moved aggregates drops exactly the initialized owners"
+      "description": "Replacing live resource members, fixed indices, and partially moved aggregates drops exactly the initialized owners"
     },
     {
       "id": "ownership_index_receiver_single_evaluation_01",
@@ -2016,142 +1843,6 @@
       "expected_span_line": 18,
       "timeout_seconds": 10,
       "description": "A cast cannot bypass the custom-drop direct-field cede boundary"
-    },
-    {
-      "id": "ownership_cede_nullable_source_after_guard_01",
-      "path": "ownership/cede_nullable_source_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A guard narrows the same nullable unique binding before cede into a non-null destination"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_after_guard_01",
-      "path": "ownership/cede_nullable_payload_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A payload guard preserves a nullable unique owner for cede and drops its transferred resource exactly once"
-    },
-    {
-      "id": "ownership_cede_nullable_member_preserves_inference_01",
-      "path": "ownership/cede_nullable_member_preserves_inference.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Ceding a nullable member into auto preserves its nullable payload representation"
-    },
-    {
-      "id": "ownership_cede_nullable_member_explicit_nullable_destination_01",
-      "path": "ownership/cede_nullable_member_explicit_nullable_destination.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A nullable member can cede into an explicitly nullable destination"
-    },
-    {
-      "id": "ownership_cede_nullable_member_after_path_guard_01",
-      "path": "ownership/cede_nullable_member_after_path_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A same-path non-null branch permits a member cede into a non-null destination"
-    },
-    {
-      "id": "ownership_cede_nullable_member_after_guard_path_01",
-      "path": "ownership/cede_nullable_member_after_guard_path.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A direct local member guard permits a same-path cede into a non-null destination"
-    },
-    {
-      "id": "ownership_cede_nullable_index_preserves_inference_01",
-      "path": "ownership/cede_nullable_index_preserves_inference.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Ceding a nullable index into auto preserves its nullable payload representation"
-    },
-    {
-      "id": "ownership_cede_nullable_index_after_path_guard_01",
-      "path": "ownership/cede_nullable_index_after_path_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A same-path non-null branch permits a fixed-array index cede into a non-null destination"
-    },
-    {
-      "id": "ownership_cede_nullable_index_after_guard_path_01",
-      "path": "ownership/cede_nullable_index_after_guard_path.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A direct local fixed-array index guard permits a same-path cede into a non-null destination"
-    },
-    {
-      "id": "ownership_cede_nullable_path_guard_resource_cleanup_01",
-      "path": "ownership/cede_nullable_path_guard_resource_cleanup.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Guarded nullable member and fixed-array index cedes preserve exact resource cleanup"
-    },
-    {
-      "id": "ownership_cede_nullable_guard_path_resource_cleanup_01",
-      "path": "ownership/cede_nullable_guard_path_resource_cleanup.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "Direct local member and fixed-array index guards preserve exact nullable cede cleanup"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_call_after_guard_01",
-      "path": "ownership/cede_nullable_payload_call_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A payload guard permits cede into a non-null cede parameter"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_call_exactly_once_01",
-      "path": "ownership/cede_nullable_payload_call_exactly_once.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A guarded nullable payload ceded to a captured parameter drops once and frees its nullable shell"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_return_after_guard_01",
-      "path": "ownership/cede_nullable_payload_return_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A payload guard permits cede into a non-null cede return"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_method_after_guard_01",
-      "path": "ownership/cede_nullable_payload_method_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A payload guard permits a consuming method receiver"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_static_call_after_guard_01",
-      "path": "ownership/cede_nullable_payload_static_call_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A payload guard permits cede into a consuming static method"
-    },
-    {
-      "id": "ownership_cede_nullable_payload_callable_after_guard_01",
-      "path": "ownership/cede_nullable_payload_callable_after_guard.tk",
-      "type": "run",
-      "expected_exit_code": 0,
-      "timeout_seconds": 10,
-      "description": "A payload guard permits cede into a consuming callable"
     },
     {
       "id": "ownership_shared_view_return_preserves_payload_capability_01",

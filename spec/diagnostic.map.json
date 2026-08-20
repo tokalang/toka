@@ -820,6 +820,36 @@
       "level": "Warning",
       "message": "Call argument '{}' for mutable parameter '{}' should be explicitly marked with '#' (e.g. '{}{}')"
     },
+    "W0409": {
+      "stage": "Parser",
+      "domain": "Type",
+      "kind": "DeprecatedSafeNullablePayload",
+      "confidence": "Guaranteed",
+      "description": "Safe nullable payload types are being removed. Use uninit/init for construction state, T | miss for operation misses, or an explicit persistent state type.",
+      "id": "WARN_SAFE_NULLABLE_PAYLOAD_DEPRECATED",
+      "level": "Warning",
+      "message": "Safe nullable payload syntax '{}' is deprecated; use 'uninit:T' + 'init', 'T | miss', or an explicit state type"
+    },
+    "W0410": {
+      "stage": "Parser",
+      "domain": "Ownership",
+      "kind": "DeprecatedSafeNullableHandle",
+      "confidence": "Guaranteed",
+      "description": "Safe unique and shared handles are becoming permanently non-null. Raw pointer nullability remains available for unsafe and FFI boundaries.",
+      "id": "WARN_SAFE_NULLABLE_HANDLE_DEPRECATED",
+      "level": "Warning",
+      "message": "Safe nullable handle syntax '{}' is deprecated; '^T' and '~T' must designate valid objects, while physical null belongs to raw/FFI pointers"
+    },
+    "W0411": {
+      "stage": "Parser",
+      "domain": "Type",
+      "kind": "DeprecatedNoneLiteral",
+      "confidence": "Guaranteed",
+      "description": "The none payload literal is being removed with safe nullable payloads.",
+      "id": "WARN_NONE_LITERAL_DEPRECATED",
+      "level": "Warning",
+      "message": "The 'none' payload literal is deprecated; choose Init, 'T | miss', Option, or a domain state explicitly"
+    },
     "S0401": {
       "stage": "Sema",
       "domain": "ControlFlow",
@@ -2468,6 +2498,12 @@
       "message": "Closure passed across execution boundary '{}' copy-captures '{}' with a value that is not @Sync",
       "description": "Copied execution-boundary captures must satisfy @Sync"
     },
+    "E0479": {
+      "id": "ERR_SEMA_OWNED_THREAD_ENTRY_CAPTURE",
+      "level": "Error",
+      "message": "Owned thread entry must not capture '{}'; pass all state through the owned state argument",
+      "description": "Owned thread entry closures must receive all state through their explicit owned state argument."
+    },
     "E04585": {
       "id": "ERR_SEMA_WAIT_INSIDE_ASYNC",
       "level": "Error",
@@ -2776,6 +2812,36 @@
       "id": "ERR_SEMA_CALL_ARG_UNEXPECTED_MUTABLE_SIGIL",
       "level": "Error",
       "message": "Call argument '{}' is marked with '#' but parameter '{}' is read-only"
+    },
+    "E04636": {
+      "id": "ERR_MISS_RETURN_OUTSIDE_OUTCOME",
+      "level": "Error",
+      "message": "'return miss' requires a function result of the form 'T | miss'",
+      "description": "The miss contextual return is valid only for a declared miss outcome."
+    },
+    "E04637": {
+      "id": "ERR_MISS_OUTCOME_RETURN_MISMATCH",
+      "level": "Error",
+      "message": "Cannot return '{}' from '{}'; expected payload '{}' or the same miss outcome",
+      "description": "A miss outcome can be introduced only from its payload at a return boundary or transported as the same outcome type."
+    },
+    "E04638": {
+      "id": "ERR_MISS_OUTCOME_DEFAULT_FORBIDDEN",
+      "level": "Error",
+      "message": "Type '{}' has no default value; initialize it from 'uninit' or a function returning the same miss outcome",
+      "description": "Miss outcomes have no default state."
+    },
+    "E04639": {
+      "id": "ERR_MISS_OUTCOME_MATCH_INVALID",
+      "level": "Error",
+      "message": "A '{}' match must distinguish 'miss' from one fresh payload binding",
+      "description": "Miss outcome matches must cover the miss and hit states explicitly."
+    },
+    "E04640": {
+      "id": "ERR_SEMA_CEDE_ARGUMENT_TO_BORROWED_PARAMETER",
+      "level": "Error",
+      "message": "Argument '{}' explicitly transfers ownership with 'cede', but parameter '{}' is borrowed; declare the parameter 'cede' or remove 'cede'",
+      "description": "A cede argument cannot flow into a borrowed parameter."
     },
     "E0710": {
       "id": "ERR_CODEGEN_TYPE_MISMATCH_IN_COMPOUND_ASSIGNMENT",
