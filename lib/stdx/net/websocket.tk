@@ -977,8 +977,9 @@ impl WsConnection {
         return Result<usize, string>::Ok(p_len)
     }
 
-    pub fn write_binary_async(self#, payload: Vec<u8>) -> async Result<usize, string> {
-        auto p_len = payload.len()
+    pub fn write_binary_async(self#, cede payload: Vec<u8>) -> async Result<usize, string> {
+        auto owned_payload = cede payload
+        auto p_len = owned_payload.len()
         if p_len > self.max_payload_size {
             return Result<usize, string>::Err(string::from("Outbound binary payload size exceeds 16MB maximum limit"))
         }
@@ -1024,13 +1025,13 @@ impl WsConnection {
             }
             auto i# = 0:usize
             loop i < p_len {
-                frame_vec#.push(payload.get(i) ^ mask_key.get(i % 4))
+                frame_vec#.push(owned_payload.get(i) ^ mask_key.get(i % 4))
                 i += 1
             }
         } else {
             auto i# = 0:usize
             loop i < p_len {
-                frame_vec#.push(payload.get(i))
+                frame_vec#.push(owned_payload.get(i))
                 i += 1
             }
         }

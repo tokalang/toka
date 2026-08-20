@@ -72,7 +72,7 @@ fn run_websocket_server(cede listener: TcpListener) -> async i32 {
     println("[WsServer] Received binary payload of {} bytes", bin_msg.binary_data.len().to_string().as_str())
 
     // Echo binary back
-    auto w_bin = ws#.write_binary_async(bin_msg.binary_data).await
+    auto w_bin = ws#.write_binary_async(cede bin_msg.binary_data).await
     if w_bin.is_err() {
         return 9
     }
@@ -143,7 +143,7 @@ fn run_websocket_client(port: u16) -> async i32 {
     bin_vec#.push(0xBE:u8)
     bin_vec#.push(0xEF:u8)
 
-    auto w_bin = ws#.write_binary_async(bin_vec).await
+    auto w_bin = ws#.write_binary_async(cede bin_vec).await
     if w_bin.is_err() {
         return 7
     }

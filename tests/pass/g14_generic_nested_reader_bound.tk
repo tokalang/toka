@@ -1,5 +1,6 @@
 import std/io::{File, @Reader}
 import stdx/io/bufio::{BufferedReader}
+import sys/libc::{libc_remove}
 
 shape ReaderWrapper<'R: @Reader>(
     reader#: BufferedReader<'R>
@@ -12,7 +13,11 @@ impl<'R: @Reader> ReaderWrapper<'R> {
 }
 
 fn main() -> i32 {
-    auto file# = File::open(string::from("generic_reader_bound.tmp"), "r")
-    auto wrapper = ReaderWrapper<File>::new(cede file#.take())
+    auto path = string::from("/tmp/toka_generic_reader_bound.tmp")
+    {
+        auto file# = File::open(path, "w+")
+        auto wrapper = ReaderWrapper<File>::new(cede file#.take())
+    }
+    unsafe { libc_remove(path.c_str()) }
     return 0
 }
