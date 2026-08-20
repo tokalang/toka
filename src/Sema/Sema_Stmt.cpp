@@ -42,7 +42,7 @@ static std::string directOutcomeVariantName(const Expr *expr) {
   return name.substr(separator + 2);
 }
 
-static bool isNullableCedeSource(const Expr *expr) {
+static bool isMayZeroRawCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
   if (!cede || !cede->Value)
     return false;
@@ -54,16 +54,13 @@ static bool isNullableCedeSource(const Expr *expr) {
     return false;
 
   auto sourceType = source->ResolvedType;
-  auto sourceSoul = sourceType->getSoulType();
-  return sourceType->IsNullable ||
-         (sourceSoul && sourceSoul->IsNullable);
+  return sourceType->isRawPointer() && sourceType->IsNullable;
 }
 
-static bool isNullableCedeDestination(const std::shared_ptr<Type> &type) {
+static bool isMayZeroRawCedeDestination(const std::shared_ptr<Type> &type) {
   if (!type)
     return false;
-  auto soul = type->getSoulType();
-  return type->IsNullable || (soul && soul->IsNullable);
+  return type->isRawPointer() && type->IsNullable;
 }
 
 // Keep the primary typed-todo diagnostic primary while the surrounding
@@ -460,8 +457,7 @@ void Sema::checkStmt(Stmt *S) {
   if (auto *InitBlock = dynamic_cast<InitBlockStmt *>(S)) {
     SymbolInfo *targetInfo = nullptr;
     const bool isWholePlainLocal =
-        !InitBlock->IsValueMutable && !InitBlock->IsValueNullable &&
-        !InitBlock->IsValueBlocked &&
+        !InitBlock->IsValueMutable && !InitBlock->IsValueBlocked &&
         CurrentScope->findSymbol(InitBlock->PlaceName, targetInfo) &&
         targetInfo && targetInfo->IsDeclaredVariable &&
         !targetInfo->IsDeclaredMutable;
@@ -1303,10 +1299,10 @@ void Sema::checkStmt(Stmt *S) {
           DiagnosticEngine::report(originLoc, DiagID::NOTE_GENERIC,
                                    "cede return declared here");
       } else if (Ret->ReturnValue) {
-        if (isNullableCedeSource(Ret->ReturnValue.get()) &&
-            !isNullableCedeDestination(expectedRetObj)) {
+        if (isMayZeroRawCedeSource(Ret->ReturnValue.get()) &&
+            !isMayZeroRawCedeDestination(expectedRetObj)) {
           error(Ret->ReturnValue.get(),
-                DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+                DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
           HasError = true;
         }
         recordDecision(Ret, SemanticRuleID::OwnCede002,
@@ -1486,42 +1482,31 @@ void Sema::checkStmt(Stmt *S) {
         InitType = ascription->TargetType;
       }
 
-      // `cede` does not prove that a nullable source is non-null.  A guard
-      // narrows the source binding in its success scope, so this check uses
-      // the direct source expression's resolved type rather than trying to
-      // recover provenance from an earlier owner.
+      // `cede` does not prove that a may-zero raw source is non-zero.
       if (auto *cede = dynamic_cast<CedeExpr *>(Var->Init.get())) {
-        // In `auto local = cede source:T`, the inner AST node is an
-        // ascription of `source`, but it is the explicit destination contract
-        // for the transfer.  Consult its resolved nullability alongside an
-        // ordinary written declaration.
+        // An inner ascription is the explicit destination contract.
         const auto *destinationAscription =
             dynamic_cast<const CastExpr *>(cede->Value.get());
-        const bool ascriptionAllowsNull =
+        const bool ascriptionAllowsZero =
             destinationAscription &&
             destinationAscription->Kind == CastKind::Ascription &&
-            isNullableCedeDestination(destinationAscription->ResolvedType);
-        auto targetSoul =
-            declTargetTy ? declTargetTy->getSoulType() : nullptr;
-        const bool targetAllowsNull =
-            Var->IsPointerNullable || Var->IsValueNullable ||
-            (declTargetTy &&
-             (declTargetTy->IsNullable ||
-              (targetSoul && targetSoul->IsNullable))) ||
-            ascriptionAllowsNull;
-        // `auto value = cede nullable` infers a nullable value.  Any written
-        // value type or handle morphology is a destination declaration and
-        // must therefore state whether it accepts nullability explicitly.
+            isMayZeroRawCedeDestination(destinationAscription->ResolvedType);
+        const bool targetAllowsZero =
+            (Var->IsRawPointer && Var->IsPointerNullable) ||
+            (declTargetTy && declTargetTy->isRawPointer() &&
+             declTargetTy->IsNullable) ||
+            ascriptionAllowsZero;
+        // Any written raw destination must state whether it accepts zero.
         const bool hasDeclaredDestination =
             !inferredType || Var->IsRawPointer || Var->IsUnique ||
             Var->IsShared || Var->IsReference ||
             (destinationAscription &&
              destinationAscription->Kind == CastKind::Ascription);
-        const bool sourceIsNullable = isNullableCedeSource(cede);
-        if (hasDeclaredDestination && !targetAllowsNull && sourceIsNullable) {
+        const bool sourceMayBeZero = isMayZeroRawCedeSource(cede);
+        if (hasDeclaredDestination && !targetAllowsZero && sourceMayBeZero) {
           DiagnosticEngine::report(
               getLoc(Var),
-              DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+              DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
           HasError = true;
         }
       }
@@ -1614,16 +1599,12 @@ void Sema::checkStmt(Stmt *S) {
             Var->TypeName = "unknown";
             return;
           }
-          // TypeSyntax canonicalizes the nullable-handle wrapper as `nul^T`,
-          // while legacy hand-written spelling may use `nul ^T`.  Both name
-          // the same RHS type; remove only the wrapper before matching the
-          // binding's explicit handle morphology.
+          // Remove the raw may-zero wrapper before matching the binding's
+          // explicit `*` morphology.
           if (Inferred.rfind("nul ", 0) == 0) {
             Inferred = Inferred.substr(4);
           } else if (Inferred.rfind("nul", 0) == 0 &&
-                     Inferred.size() > 3 &&
-                     (Inferred[3] == '*' || Inferred[3] == '^' ||
-                      Inferred[3] == '~' || Inferred[3] == '&')) {
+                     Inferred.size() > 3 && Inferred[3] == '*') {
             Inferred = Inferred.substr(3);
           }
           if (!Inferred.empty() && (Inferred[0] == '*' || Inferred[0] == '^' ||
@@ -1959,21 +1940,12 @@ void Sema::checkStmt(Stmt *S) {
       }
 
       LocalPermission.IdentityRebindable = Var->IsRebindable;
-      LocalPermission.IdentityNullable = Var->IsPointerNullable || hadNul;
+      LocalPermission.IdentityMayBeZero = Var->IsPointerNullable || hadNul;
     }
     // Preserve the legacy local rule: without a handle morphology, # acts on
     // the soul/value rather than as a rebindable identity marker.
     LocalPermission.SoulWritable =
         Var->IsValueMutable || (morph.empty() && Var->IsRebindable);
-    // `auto` value inference preserves nullable payload representation.  This
-    // is not a permission upgrade: it keeps the `{T, present}` layout carried
-    // by the direct initializer instead of silently treating `T?` as `T`.
-    // In particular, `auto value = cede record.nullable_field` remains a
-    // nullable destination until a same-path guard proves otherwise.
-    LocalPermission.SoulNullable =
-        Var->IsValueNullable ||
-        (inferredType && morph.empty() && InitTypeObj &&
-         InitTypeObj->IsNullable);
     Info.Permission = LocalPermission;
     if (Var->Init) {
       // Shared flow is checked only against the direct initializer.  Earlier
@@ -1992,7 +1964,7 @@ void Sema::checkStmt(Stmt *S) {
     if (inferredType && morph.empty() && InitTypeObj &&
         InitTypeObj->isShape()) {
       Info.TypeObj = resolveType(InitTypeObj->withAttributes(
-          LocalPermission.SoulWritable, LocalPermission.SoulNullable), false);
+          LocalPermission.SoulWritable, false), false);
       Info.TypeObj->IsCede = false;
     } else {
       auto directType = resolveType(

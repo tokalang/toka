@@ -534,7 +534,7 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             captureInfo.IsDeclaredVariable = true;
             captureInfo.Permission.Morphology = BindingMorphology::Reference;
             captureInfo.Permission.IdentityRebindable = false;
-            captureInfo.Permission.IdentityNullable = false;
+            captureInfo.Permission.IdentityMayBeZero = false;
             captureInfo.Permission.IdentityBlocked = false;
             captureInfo.TypeObj = sm.ResolvedType;
             captureBindings[sm.Name] = std::move(captureInfo);

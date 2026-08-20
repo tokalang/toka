@@ -245,7 +245,7 @@ public:
       // symbols in the instance scope; spelling substitution would create a
       // VariableExpr named "4" instead of a numeric literal.
     } else if (auto *Call = dynamic_cast<CallExpr *>(E)) {
-      // Call->Callee could rely on T? e.g. T::new() -> i32::new()
+      // Call->Callee can rely on T, e.g. T::new() -> i32::new().
       // T::new is parsed as "T::new" string in Callee.
       Call->Callee = sub(Call->Callee);
       for (auto &Arg : Call->Args)

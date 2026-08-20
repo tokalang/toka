@@ -11,12 +11,6 @@ fn main() -> i32 {
     unsafe {
         auto c = Container(^ptr=new Point(x=10, y=20))
 
-        // Invalid: ??^
-        auto p1 = c.??^ptr.x
-
-        // Invalid: ??#
-        auto p2 = c.??#ptr.x
-
         // Invalid: repeating #
         auto p3 = c.^##ptr.x
     }

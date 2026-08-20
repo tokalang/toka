@@ -271,10 +271,11 @@ permitted only as a control-flow condition, not as a first-class `bool` that
 may be stored, returned, or escaped. The true branch narrows the place to
 `Uninitialized`; the false branch narrows it to `Initialized`.
 
-It deliberately does not reuse `guard`. A nullable `guard` proves path
-presence and requires its failure branch to diverge. An initialization-state
-test has two continuing branches whose merge must establish a new state, so
-overloading `guard` would give one keyword incompatible control-flow meanings.
+It deliberately does not reuse `guard`. A raw may-zero pointer guard proves a
+physical address is non-zero and requires its failure branch to diverge. An
+initialization-state test has two continuing branches whose merge must
+establish a new state, so overloading `guard` would give one keyword
+incompatible control-flow meanings.
 
 ### IC-05: `init` is a two-sided parameter contract
 

@@ -158,7 +158,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         bool soulMutable = rhsType->IsWritable;
 
         auto refType = std::make_shared<toka::ReferenceType>(innerType);
-        refType->IsNullable = Unary->HasNull;
+        refType->IsNullable = false;
         refType->IsWritable = handleMutable;
 
         // [Borrow Rule] Exclusive borrow logic refinement:
@@ -258,13 +258,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           }
         }
         if (physType && physType->isUniquePtr()) {
-          return physType->withAttributes(
-              handleViewWritable,
-              Unary->HasNull || physType->IsNullable);
+          return physType->withAttributes(handleViewWritable, false);
         }
         auto res = std::make_shared<toka::UniquePointerType>(rhsType);
         res->IsWritable = handleViewWritable;
-        res->IsNullable = Unary->HasNull;
+        res->IsNullable = false;
         return res;
       }
 
@@ -285,13 +283,11 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
           }
         }
         if (physType && physType->isSharedPtr()) {
-          return physType->withAttributes(
-              handleViewWritable,
-              Unary->HasNull || physType->IsNullable);
+          return physType->withAttributes(handleViewWritable, false);
         }
         auto res = std::make_shared<toka::SharedPointerType>(rhsType);
         res->IsWritable = handleViewWritable;
-        res->IsNullable = Unary->HasNull;
+        res->IsNullable = false;
         return res;
       }
     }
@@ -311,7 +307,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   }
   if (Unary->Op == TokenType::Ampersand) {
     auto refType = std::make_shared<toka::ReferenceType>(inner);
-    refType->IsNullable = Unary->HasNull;
+    refType->IsNullable = false;
     refType->IsWritable = Unary->IsRebindable;
     
     bool isExclusive = Unary->IsRebindable;
@@ -364,7 +360,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
     auto res = std::make_shared<toka::UniquePointerType>(inner);
     res->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);
-    res->IsNullable = Unary->HasNull;
+    res->IsNullable = false;
     return res;
   }
 
@@ -386,7 +382,7 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
     auto res = std::make_shared<toka::SharedPointerType>(inner);
     res->IsWritable = Unary->IsRebindable || (m_IsAssignmentTarget && inner->IsWritable);
-    res->IsNullable = Unary->HasNull;
+    res->IsNullable = false;
     return res;
   }
 

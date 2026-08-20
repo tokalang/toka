@@ -331,9 +331,13 @@ bool Type::isCompatibleWith(const Type &target) const {
   // Target Writable? Source must be Writable.
   // Mutability check removed from base: T -> T# is allowed for values (copy).
   // Strict mutability is enforced in Pointer/Reference types where it matters.
-  // Target Non-Nullable? Source must be Non-Nullable.
-  if (!target.IsNullable && IsNullable)
-    return false;
+  // May-zero is a raw-pointer-only physical attribute.
+  if (IsNullable || target.IsNullable) {
+    if (typeKind != RawPtr)
+      return false;
+    if (!target.IsNullable && IsNullable)
+      return false;
+  }
   return true;
 }
 
@@ -345,11 +349,10 @@ std::shared_ptr<Type> cloneWithAttrs(const T *original, bool w, bool n,
   clone->IsBlocked = b || original->IsBlocked;
   if (clone->IsBlocked) {
     clone->IsWritable = false;
-    clone->IsNullable = n; // Keep original/requested nullability
   } else {
     clone->IsWritable = w;
-    clone->IsNullable = n;
   }
+  clone->IsNullable = original->typeKind == Type::RawPtr ? n : false;
   return clone;
 }
 
@@ -380,13 +383,8 @@ std::string UninitType::toString() const {
   std::string s = "";
   if (IsCede) s += "cede ";
   s += "Uninit<" + InnerType->toString() + ">";
-  if (IsWritable && IsNullable) {
-    s += "?#";
-  } else {
-    if (IsNullable) s += "?";
-    if (IsWritable) s += "#";
-    if (IsBlocked) s += "$";
-  }
+  if (IsWritable) s += "#";
+  if (IsBlocked) s += "$";
   return s;
 }
 
@@ -457,14 +455,8 @@ std::string PrimitiveType::toString() const {
   s += Name;
   if (IsBlocked)
     s += "$";
-  if (IsWritable && IsNullable)
-    s += "?#";
-  else {
-    if (IsNullable)
-      s += "?";
-    if (IsWritable)
-      s += "#";
-  }
+  if (IsWritable)
+    s += "#";
   return s;
 }
 
@@ -557,9 +549,6 @@ bool RawPointerType::isSync(class Sema *S) const { return false; }
 std::string UniquePointerType::toString() const {
   std::string s = "";
   if (IsCede) s += "cede ";
-  if (IsNullable) {
-    s += "nul ";
-  }
   s += "^";
   if (IsWritable)
     s += "#";
@@ -590,9 +579,6 @@ bool UniquePointerType::isSync(class Sema *S) const { return PointeeType ? Point
 std::string SharedPointerType::toString() const {
   std::string s = "";
   if (IsCede) s += "cede ";
-  if (IsNullable) {
-    s += "nul ";
-  }
   s += "~";
   if (IsWritable)
     s += "#";
@@ -626,9 +612,6 @@ bool SharedPointerType::isSync(class Sema *S) const { return PointeeType ? (Poin
 std::string ReferenceType::toString() const {
   std::string s = "";
   if (IsCede) s += "cede ";
-  if (IsNullable) {
-    s += "nul ";
-  }
   s += "&";
   if (IsWritable)
     s += "#";
@@ -670,16 +653,10 @@ std::string ArrayType::toString() const {
     s += std::to_string(Size);
   }
   s += "]";
-  if (IsWritable && IsNullable) {
-    s += "?#";
-  } else {
-    if (IsNullable)
-      s += "?";
-    if (IsWritable)
-      s += "#";
-    if (IsBlocked)
-      s += "$";
-  }
+  if (IsWritable)
+    s += "#";
+  if (IsBlocked)
+    s += "$";
   return s;
 }
 
@@ -689,16 +666,10 @@ std::string SliceType::toString() const {
   s += "[";
   s += ElementType->toString();
   s += "]";
-  if (IsWritable && IsNullable) {
-    s += "?#";
-  } else {
-    if (IsNullable)
-      s += "?";
-    if (IsWritable)
-      s += "#";
-    if (IsBlocked)
-      s += "$";
-  }
+  if (IsWritable)
+    s += "#";
+  if (IsBlocked)
+    s += "$";
   return s;
 }
 
@@ -762,16 +733,10 @@ std::string ShapeType::toString() const {
     s += ">";
   }
   s += VariantSuffix;
-  if (IsWritable && IsNullable) {
-    s += "?#";
-  } else {
-    if (IsNullable)
-      s += "?";
-    if (IsWritable)
-      s += "#";
-    if (IsBlocked)
-      s += "$";
-  }
+  if (IsWritable)
+    s += "#";
+  if (IsBlocked)
+    s += "$";
   return s;
 }
 
@@ -795,8 +760,6 @@ std::string ShapeType::getMangledName() const {
       result += 'C';
     if (IsWritable)
       result += 'M';
-    if (IsNullable)
-      result += 'O';
     if (IsBlocked)
       result += 'K';
     if (!VariantSuffix.empty()) {
@@ -1221,7 +1184,7 @@ replacePointerPointee(const std::shared_ptr<Type> &pointer,
     return pointer;
   }
   result->IsWritable = old->IsWritable;
-  result->IsNullable = old->IsNullable;
+  result->IsNullable = old->typeKind == Type::RawPtr && old->IsNullable;
   result->IsBlocked = old->IsBlocked;
   result->IsCede = old->IsCede;
   return result;
@@ -1240,8 +1203,6 @@ bool isGeneratedCanonicalTypeLeaf(const std::string &name) {
 TypeSyntaxPtr applyTypeSyntaxAttributes(TypeSyntaxPtr syntax, const Type &type,
                                         SourceLocation begin,
                                         SourceLocation end) {
-  if (type.IsNullable)
-    syntax = TypeSyntax::morphology("?", std::move(syntax), begin, end, true);
   if (type.IsWritable)
     syntax = TypeSyntax::morphology("#", std::move(syntax), begin, end, true);
   if (type.IsBlocked)
@@ -1253,8 +1214,8 @@ TypeSyntaxPtr applyTypeSyntaxAttributes(TypeSyntaxPtr syntax, const Type &type,
 
 TypeSyntaxPtr withoutOuterTypeAttributes(TypeSyntaxPtr syntax) {
   while (syntax && syntax->NodeKind == TypeSyntax::Kind::Morphology &&
-         (syntax->Text == "?" || syntax->Text == "#" ||
-          syntax->Text == "$" || syntax->Text == "cede "))
+         (syntax->Text == "#" || syntax->Text == "$" ||
+          syntax->Text == "cede "))
     syntax = syntax->Subject;
   return syntax;
 }
@@ -1306,7 +1267,7 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
     syntax = TypeSyntax::morphology(prefix, std::move(pointee), begin, end);
     // Handle attributes are represented as leading morphology so a
     // source->semantic->source round-trip preserves which layer owns them.
-    if (pointer->IsNullable)
+    if (pointer->typeKind == Type::RawPtr && pointer->IsNullable)
       syntax = TypeSyntax::morphology("nul", std::move(syntax), begin, end);
     if (pointer->IsWritable)
       syntax = TypeSyntax::morphology("#", std::move(syntax), begin, end);
@@ -1520,10 +1481,8 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
     if (!subject)
       return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
 
-    // Legacy Type preserves pointer-handle and payload morphology as two
-    // layers: a trailing source suffix after a complete pointer spelling is
-    // a payload attribute.  Parser-built TypeSyntax normally nests this node
-    // below its pointer prefix; honour the same rule for reconstructed trees.
+    // Writable/blocked payload morphology remains structural. Nullable
+    // payload morphology is rejected below.
     const bool postfixPointer = syntax->IsPostfix && subject->isPointer();
     const auto attributeTarget =
         postfixPointer ? subject->getPointeeType() : subject;
@@ -1540,8 +1499,7 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
       return applyPostfix(true, attributeTarget->IsNullable,
                           attributeTarget->IsBlocked);
     if (syntax->Text == "?")
-      return applyPostfix(attributeTarget->IsWritable, true,
-                          attributeTarget->IsBlocked);
+      return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
     if (syntax->Text == "$")
       return applyPostfix(attributeTarget->IsWritable,
                           attributeTarget->IsNullable, true);
@@ -1557,16 +1515,14 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
       return result;
     }
     if (syntax->Text == "nul") {
-      // `nul` is meaningful only for pointer handles.  This matches the
-      // established semantic bridge while retaining the parser's diagnostic
-      // for invalid source use.
-      if (subject->isPointer()) {
+      // `nul` is a raw-pointer-only may-zero attribute.
+      if (subject->isRawPointer()) {
         auto result = subject->withAttributes(subject->IsWritable, true,
                                               subject->IsBlocked);
         result->IsCede = subject->IsCede;
         return result;
       }
-      return subject;
+      return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
     }
 
     std::shared_ptr<PointerType> pointer;
@@ -1639,6 +1595,9 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   if (s.empty())
     return std::make_shared<UnresolvedType>(rawType);
 
+  if (isNullable)
+    return std::make_shared<UnresolvedType>(rawType);
+
   bool isCede = false;
   if (s.rfind("cede ", 0) == 0) {
     isCede = true;
@@ -1657,6 +1616,9 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   if (s.empty())
     return std::make_shared<UnresolvedType>(rawType);
 
+  if (explicitPtrNullable && s[0] != '*')
+    return std::make_shared<UnresolvedType>(rawType);
+
   size_t missSuffix = std::string::npos;
   if (s.size() > 5 && s.compare(s.size() - 5, 5, "|miss") == 0)
     missSuffix = s.size() - 5;
@@ -1666,7 +1628,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
     auto outcome = std::make_shared<MissOutcomeType>(
         Type::fromString(s.substr(0, missSuffix)));
     outcome->IsWritable = isWritable;
-    outcome->IsNullable = isNullable;
+    outcome->IsNullable = false;
     outcome->IsBlocked = isBlocked;
     outcome->IsCede = isCede;
     return outcome;
@@ -1731,7 +1693,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       
       auto fnNode = std::make_shared<DynFnType>(paramTypes, retType);
       fnNode->IsWritable = isWritable;
-      fnNode->IsNullable = isNullable;
+      fnNode->IsNullable = false;
       fnNode->IsBlocked = isBlocked;
       fnNode->IsCede = isCede;
       fnNode->ReceiverMode =
@@ -1791,7 +1753,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       auto fnNode = std::make_shared<FunctionType>(paramTypes, retType);
       fnNode->IsVariadic = isVariadic;
       fnNode->IsWritable = isWritable;
-      fnNode->IsNullable = isNullable;
+      fnNode->IsNullable = false;
       fnNode->IsBlocked = isBlocked;
       fnNode->IsCede = isCede;
       fnNode->ReceiverMode =
@@ -1820,8 +1782,8 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
     }
     auto pointee = Type::fromString(s.substr(offset));
     // Duality: the outer suffixes stripped earlier belong to the soul
-    if (isWritable || isNullable || isBlocked) {
-      pointee = pointee->withAttributes(isWritable, isNullable, isBlocked);
+    if (isWritable || isBlocked) {
+      pointee = pointee->withAttributes(isWritable, false, isBlocked);
     }
 
     std::shared_ptr<PointerType> ptr;
@@ -1857,7 +1819,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       }
       auto arr = std::make_shared<ArrayType>(elem, size, symSize);
       arr->IsWritable = isWritable;
-      arr->IsNullable = isNullable;
+      arr->IsNullable = false;
       arr->IsBlocked = isBlocked;
       arr->IsCede = isCede;
       return arr;
@@ -1866,7 +1828,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
       auto elem = Type::fromString(trim(s.substr(1, close - 1)));
       auto slice = std::make_shared<SliceType>(elem);
       slice->IsWritable = isWritable;
-      slice->IsNullable = isNullable;
+      slice->IsNullable = false;
       slice->IsBlocked = isBlocked;
       slice->IsCede = isCede;
       return slice;
@@ -1882,11 +1844,11 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   if (s == "i32" || s == "i64" || s == "u32" || s == "u64" || s == "f32" ||
       s == "f64" || s == "bool" || s == "char" || s == "i8" ||
       s == "u8" || s == "i16" || s == "u16" || s == "usize" || s == "isize" ||
-      s == "byte" || s == "null" || s == "none" || s == "Addr" ||
+      s == "byte" || s == "null" || s == "Addr" ||
       s == "OAddr") {
     auto prim = std::make_shared<PrimitiveType>(s);
     prim->IsWritable = isWritable;
-    prim->IsNullable = isNullable;
+    prim->IsNullable = false;
     prim->IsBlocked = isBlocked;
     prim->IsCede = isCede;
     return prim;
@@ -1954,7 +1916,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   if (baseName == "Uninit" && genericArgs.size() == 1) {
     auto uninit = std::make_shared<UninitType>(genericArgs[0]);
     uninit->IsWritable = isWritable;
-    uninit->IsNullable = isNullable;
+    uninit->IsNullable = false;
     uninit->IsBlocked = isBlocked;
     uninit->IsCede = isCede;
     return uninit;
@@ -1962,7 +1924,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
 
   auto shape = std::make_shared<ShapeType>(baseName, genericArgs, variantSuffix);
   shape->IsWritable = isWritable;
-  shape->IsNullable = isNullable;
+  shape->IsNullable = false;
   shape->IsBlocked = isBlocked;
   shape->IsCede = isCede;
   return shape;

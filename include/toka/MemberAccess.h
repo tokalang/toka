@@ -24,7 +24,6 @@ struct MemberAccessIntent {
   std::string StrippedName;
   int AccessHats = 0;
   bool HasRebindMarker = false;
-  bool IsIdentityAssertion = false;
   bool IsIdentityOperator = false;
   bool IsMorphicIdentity = false;
   bool HasExplicitPrefix = false;
@@ -57,10 +56,7 @@ inline MemberAccessIntent parseMemberAccess(const std::string &rawName) {
   intent.Original = rawName;
 
   size_t prefixEnd = 0;
-  if (rawName.size() >= 2 && rawName.substr(0, 2) == "??") {
-    prefixEnd = 2;
-    intent.IsIdentityAssertion = true;
-  } else if (rawName.size() >= 2 && rawName.substr(0, 2) == "?!") {
+  if (rawName.size() >= 2 && rawName.substr(0, 2) == "?!") {
     prefixEnd = 2;
     intent.IsIdentityOperator = true;
   } else {

@@ -619,9 +619,10 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           }
 
           if (isPtrNullable && (m.IsUnique || m.IsShared)) {
+            HasError = true;
             DiagnosticEngine::report(
                 previous().Loc,
-                DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+                DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
                 m.IsUnique ? "nul ^T" : "nul ~T");
           }
 
@@ -817,9 +818,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
         isRebindBlocked = t.IsBlocked;
       }
       if (isPtrNullable && (isUnique || isShared)) {
+        HasError = true;
         DiagnosticEngine::report(
             previous().Loc,
-            DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+            DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
             isUnique ? "nul ^T" : "nul ~T");
       }
       Token argName;
@@ -865,7 +867,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       arg.IsReference = isRef;
       arg.IsMorphicExempt = nameIsMorphic;
       // arg.IsMutable = argName.HasWrite; // Deprecated
-      // arg.IsNullable = argName.HasNull; // Deprecated
+      // Removed nullable payload syntax is retained only in parser recovery.
 
       // New Permissions
       arg.IsUnique = isUnique;
@@ -961,9 +963,10 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
         argPrefix = "*";
       }
       if (isPtrNullable && argPrefix == "^") {
+        HasError = true;
         DiagnosticEngine::report(
             previous().Loc,
-            DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED, "nul ^T");
+            DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ^T");
       }
       Token argName = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_ARGUMENT_NAME);
       std::string argType = "i64"; // recovery type after a reported parse error

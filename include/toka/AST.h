@@ -362,11 +362,11 @@ class UnaryExpr : public Expr {
 public:
   TokenType Op;
   std::unique_ptr<Expr> RHS;
-  bool HasNull = false;      // For ^? or *?
+  bool HasNull = false;      // Raw may-zero or removed nullable recovery.
   bool IsRebindable = false; // For ^# or *#
   bool IsValueMutable =
       false; // For identifier# (unlikely in Unary op token but consistent)
-  bool IsValueNullable = false; // For identifier?
+  bool IsValueNullable = false; // Removed `T?` parser-recovery bit only.
   bool IsRebindBlocked = false; // For ^$ or *$
   bool IsValueBlocked = false;  // For identifier$
   BindingPermission Permission;
@@ -1435,8 +1435,8 @@ public:
   // Permissions (Dual-Location Attributes)
   bool IsRebindable = false;      // Pointer Attribute # (^#p)
   bool IsValueMutable = false;    // Identifier Attribute # (p#)
-  bool IsPointerNullable = false; // Pointer Attribute ? (^?p)
-  bool IsValueNullable = false;   // Identifier Attribute ? (p?)
+  bool IsPointerNullable = false; // Raw `nul *` (owning forms are errors).
+  bool IsValueNullable = false;   // Removed `T?` parser-recovery bit only.
   bool IsRebindBlocked = false;   // Pointer Attribute $ (^$p)
   bool IsValueBlocked = false;    // Identifier Attribute $ (p$)
   bool IsMorphicExempt = false;   // [NEW] Exempt from strict hat rules
@@ -1532,9 +1532,9 @@ struct ShapeMember {
   bool IsShared = false;
   bool IsReference = false;
   bool IsValueMutable = false;
-  bool IsValueNullable = false;
+  bool IsValueNullable = false;   // Removed syntax recovery only.
   bool IsRebindable = false;      // "#" handle attribute
-  bool IsPointerNullable = false; // "?" handle attribute
+  bool IsPointerNullable = false; // Raw may-zero handle attribute.
   bool IsRebindBlocked = false;   // "$" pointer attribute
   bool IsValueBlocked = false;    // "$" identifier attribute
   bool IsExplicitBound = false;   // "`" explicit lifetime binding attribute

@@ -72,6 +72,15 @@ bool expectSemanticRoundTrip(const std::string &name,
   return false;
 }
 
+bool expectRemoved(const std::string &name, const TypeSyntaxPtr &syntax) {
+  const auto lowered = toka::Type::fromSyntax(syntax);
+  if (lowered && lowered->isUnknown())
+    return true;
+  std::cerr << name << ": removed type unexpectedly lowered as '"
+            << (lowered ? lowered->toString() : "<null>") << "'\n";
+  return false;
+}
+
 } // namespace
 
 int main() {
@@ -141,6 +150,11 @@ int main() {
                                                loc(124), true);
   const auto missOutcome =
       TypeSyntax::missOutcome(i32, loc(125), loc(132));
+  const auto removedPayload =
+      TypeSyntax::morphology("?", i32, loc(133), loc(137), true);
+  const auto removedUnique = TypeSyntax::morphology(
+      "nul", TypeSyntax::morphology("^", i32, loc(138), loc(142)),
+      loc(138), loc(142));
   passed &= expectCanonical("morphology", postfix, "nul*i32#");
   passed &= expectCanonical("miss outcome", missOutcome, "i32|miss");
   passed &= expectCanonical("invalid recovery",
@@ -155,6 +169,12 @@ int main() {
   passed &= expectLowered("legacy prefix-array bridge", legacyPrefixArray);
   passed &= expectLowered("morphology direct lowering", postfix);
   passed &= expectLowered("miss outcome direct lowering", missOutcome);
+  passed &= expectRemoved("removed nullable payload", removedPayload);
+  passed &= expectRemoved("removed nullable unique", removedUnique);
+  const auto removedPayloadReplay = toka::Type::fromString("i32?");
+  const auto removedUniqueReplay = toka::Type::fromString("nul ^i32");
+  passed &= removedPayloadReplay && removedPayloadReplay->isUnknown();
+  passed &= removedUniqueReplay && removedUniqueReplay->isUnknown();
   passed &= expectSemanticRoundTrip("generic semantic reification", generic);
   passed &= expectSemanticRoundTrip("array semantic reification", array);
   passed &= expectSemanticRoundTrip("function semantic reification", function);

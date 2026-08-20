@@ -3,6 +3,60 @@
   "description": "Toka 1.0 Language Conformance Test Suite Manifest",
   "suites": [
     {
+      "id": "diag_safe_nullable_payload_removed_01",
+      "path": "diagnostics/safe_nullable_payload_removed.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0484",
+      "expected_span_line": 1,
+      "timeout_seconds": 10,
+      "description": "Safe nullable payload syntax is permanently removed"
+    },
+    {
+      "id": "diag_safe_nullable_unique_removed_01",
+      "path": "diagnostics/safe_nullable_unique_removed.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0485",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "Nullable unique handles are permanently removed"
+    },
+    {
+      "id": "diag_safe_nullable_shared_removed_01",
+      "path": "diagnostics/safe_nullable_shared_removed.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0485",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "Nullable shared handles are permanently removed"
+    },
+    {
+      "id": "diag_none_literal_removed_01",
+      "path": "diagnostics/none_literal_removed.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0486",
+      "expected_span_line": 2,
+      "timeout_seconds": 10,
+      "description": "The none payload literal is permanently removed"
+    },
+    {
+      "id": "diag_nullable_assertion_removed_01",
+      "path": "diagnostics/nullable_assertion_removed.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0487",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "The nullable assertion operator is permanently removed"
+    },
+    {
+      "id": "diag_nullable_postfix_removed_01",
+      "path": "diagnostics/nullable_postfix_removed.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0487",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "The nullable postfix operator is permanently removed outside await cancellation"
+    },
+    {
       "id": "syntax_raw_pointer_may_zero_01",
       "path": "syntax/raw_pointer_may_zero.tk",
       "type": "run",

@@ -59,9 +59,9 @@ shape todo(...)
 match value { todo => {} }
 ```
 
-`_` remains a pattern wildcard/ignore marker. `?` and `??` retain their
-nullable and nullable-assertion meanings. In particular, neither is a typed
-todo spelling.
+`_` remains a pattern wildcard/ignore marker. The former nullable `?` and
+nullable-assertion operator are removed language surfaces (E0484/E0487); they
+are not typed-todo spellings.
 
 ## Expected-contract checking
 
@@ -138,8 +138,6 @@ constant-dependent operations:
 ^todo
 *todo
 todo#
-todo?
-todo??
 todo!
 todo.field
 todo[index]

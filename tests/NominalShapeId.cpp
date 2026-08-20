@@ -105,7 +105,7 @@ int main() {
   CHECK(leftType->canonicalMangledName() !=
         unresolvedType->canonicalMangledName());
   auto writableLeft = leftType->withAttributes(true, false, false);
-  auto nullableLeft = leftType->withAttributes(false, true, false);
+  auto rejectedNullableLeft = leftType->withAttributes(false, true, false);
   auto blockedLeft = leftType->withAttributes(false, false, true);
   auto cededLeft = leftType->withAttributes(false, false, false);
   cededLeft->IsCede = true;
@@ -113,7 +113,7 @@ int main() {
   variantLeft->resolve(leftTypeDecl.get());
   variantLeft->VariantSuffix = "::Variant";
   CHECK(writableLeft->getMangledName() != leftType->getMangledName());
-  CHECK(nullableLeft->getMangledName() != leftType->getMangledName());
+  CHECK(rejectedNullableLeft->getMangledName() == leftType->getMangledName());
   CHECK(blockedLeft->getMangledName() != leftType->getMangledName());
   CHECK(cededLeft->getMangledName() != leftType->getMangledName());
   CHECK(variantLeft->getMangledName() != leftType->getMangledName());
@@ -122,6 +122,9 @@ int main() {
   auto rightPointer = std::make_shared<toka::UniquePointerType>(rightType);
   CHECK(leftPointer->canonicalIdentity() !=
         rightPointer->canonicalIdentity());
+  auto leftRaw = std::make_shared<toka::RawPointerType>(leftType);
+  auto leftMayZeroRaw = leftRaw->withAttributes(false, true, false);
+  CHECK(leftRaw->canonicalIdentity() != leftMayZeroRaw->canonicalIdentity());
   auto leftArray = std::make_shared<toka::ArrayType>(leftType, 4);
   auto rightArray = std::make_shared<toka::ArrayType>(rightType, 4);
   CHECK(leftArray->canonicalIdentity() != rightArray->canonicalIdentity());

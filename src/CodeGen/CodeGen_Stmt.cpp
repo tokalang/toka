@@ -561,10 +561,7 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
             // [Fix] Drop BEFORE Free
             llvm::Value *data = m_Builder.CreateExtractValue(sh, 0, "data_ptr");
 
-            // Check data for null (short-circuit logic if nullable)
-            // Even if it's not strictly nullable, checking data != null is safe
-            // practice here before calling drop, but crucial if morphology is
-            // '?'
+            // Shared handles can be disarmed after ownership transfer.
             llvm::Value *dataNN = m_Builder.CreateIsNotNull(data, "sh_data_nn");
 
             llvm::BasicBlock *dropBB =
@@ -622,35 +619,7 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                       m_Builder.SetInsertPoint(afterBB);
                   }
               } else {
-                  TokaSymbol *sym = nullptr;
-                  if (m_Symbols.count(it->Name))
-                    sym = &m_Symbols[it->Name];
-                  std::shared_ptr<Type> soulType =
-                      sym && sym->soulTypeObj ? sym->soulTypeObj->getSoulType()
-                                               : nullptr;
-                  if (soulType && soulType->IsNullable && sym->soulType &&
-                      sym->soulType->isStructTy()) {
-                    llvm::StructType *nullableType =
-                        llvm::cast<llvm::StructType>(sym->soulType);
-                    llvm::Value *payload = m_Builder.CreateLoad(
-                        nullableType, data,
-                        "nullable_soul.shared_scope_payload");
-                    llvm::Value *present = m_Builder.CreateExtractValue(
-                        payload, 1, "nullable_soul.shared_scope_present");
-                    llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
-                        m_Context, "nullable_soul.shared_scope_drop", f);
-                    llvm::BasicBlock *afterPayloadDropBB =
-                        llvm::BasicBlock::Create(
-                            m_Context, "nullable_soul.shared_scope_done", f);
-                    m_Builder.CreateCondBr(present, dropPayloadBB,
-                                            afterPayloadDropBB);
-                    m_Builder.SetInsertPoint(dropPayloadBB);
-                    emitDropCascade(data, cleanName);
-                    m_Builder.CreateBr(afterPayloadDropBB);
-                    m_Builder.SetInsertPoint(afterPayloadDropBB);
-                  } else {
-                    emitDropCascade(data, cleanName);
-                  }
+                  emitDropCascade(data, cleanName);
               }
             }
             m_Builder.CreateBr(realFreeBB);
@@ -678,7 +647,7 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
         llvm::Value *dataPtr = isFat ? m_Builder.CreateExtractValue(ptr, 0, "fat_data") : ptr;
         llvm::Value *lenVal = isFat ? m_Builder.CreateExtractValue(ptr, 1, "fat_len") : nullptr;
         
-        // [Fix] Nullable Short-Circuit
+        // Unique slots can be disarmed after ownership transfer.
         llvm::Value *notNull = m_Builder.CreateIsNotNull(dataPtr, "not_null");
         llvm::Function *f = currBB->getParent();
         if (f) {
@@ -740,36 +709,7 @@ void CodeGen::executeScopeUnwinding(size_t targetDepth) {
                     m_Builder.SetInsertPoint(afterBB);
                 }
             } else {
-                bool nullableSoul = false;
-                llvm::StructType *nullableType = nullptr;
-                auto symbol = m_Symbols.find(it->Name);
-                if (symbol != m_Symbols.end() && symbol->second.soulTypeObj &&
-                    symbol->second.soulTypeObj->getSoulType()->IsNullable &&
-                    symbol->second.soulType &&
-                    symbol->second.soulType->isStructTy()) {
-                  nullableSoul = true;
-                  nullableType =
-                      llvm::cast<llvm::StructType>(symbol->second.soulType);
-                }
-                if (nullableSoul) {
-                  llvm::Value *payload = m_Builder.CreateLoad(
-                      nullableType, dataPtr, "nullable_soul.scope_payload");
-                  llvm::Value *present = m_Builder.CreateExtractValue(
-                      payload, 1, "nullable_soul.scope_present");
-                  llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
-                      m_Context, "nullable_soul.scope_drop", f);
-                  llvm::BasicBlock *afterPayloadDropBB =
-                      llvm::BasicBlock::Create(m_Context,
-                                                "nullable_soul.scope_done", f);
-                  m_Builder.CreateCondBr(present, dropPayloadBB,
-                                         afterPayloadDropBB);
-                  m_Builder.SetInsertPoint(dropPayloadBB);
-                  emitDropCascade(dataPtr, cleanName);
-                  m_Builder.CreateBr(afterPayloadDropBB);
-                  m_Builder.SetInsertPoint(afterPayloadDropBB);
-                } else {
-                  emitDropCascade(dataPtr, cleanName);
-                }
+                emitDropCascade(dataPtr, cleanName);
             }
           }
 
@@ -976,17 +916,10 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
     }
   }
 
-  bool isNullableSoul = (gbs->Target && gbs->Target->ResolvedType && gbs->Target->ResolvedType->IsNullable);
-
   if (expectedTag != -1) {
     llvm::Value *tagVal = m_Builder.CreateExtractValue(targetVal, 0, "tag");
     llvm::Value *cond = m_Builder.CreateICmpEQ(
         tagVal, llvm::ConstantInt::get(tagVal->getType(), expectedTag), "guard_cond");
-    m_Builder.CreateCondBr(cond, contBB, elseBB);
-  } else if (isNullableSoul) {
-    llvm::Value *isNullVal = m_Builder.CreateExtractValue(targetVal, 1, "is_null");
-    llvm::Value *cond = m_Builder.CreateICmpEQ(
-        isNullVal, llvm::ConstantInt::get(isNullVal->getType(), 0), "guard_cond_not_null");
     m_Builder.CreateCondBr(cond, contBB, elseBB);
   } else {
     m_Builder.CreateBr(contBB);
@@ -1120,11 +1053,6 @@ llvm::Value *CodeGen::genGuardBindStmt(const GuardBindStmt *gbs) {
               genPatternBinding(gbs->Pat->SubPatterns[i].get(), fieldAddr, fieldTy, subTypeObj);
           }
       }
-  } else if (isNullableSoul && gbs->Pat->PatternKind == MatchArm::Pattern::Variable) {
-      llvm::Value *payloadAddr = m_Builder.CreateStructGEP(targetType, targetAddr, 0, "nullable_payload_addr");
-      llvm::Type *payloadType = targetType->getStructElementType(0);
-      auto subTypeObj = gbs->Target->ResolvedType->withAttributes(gbs->Target->ResolvedType->IsWritable, false, gbs->Target->ResolvedType->IsBlocked);
-      genPatternBinding(gbs->Pat.get(), payloadAddr, payloadType, subTypeObj);
   } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Variable) {
       genPatternBinding(gbs->Pat.get(), targetAddr, targetType, gbs->Target->ResolvedType);
   } else if (!variant && gbs->Pat->PatternKind == MatchArm::Pattern::Decons) {

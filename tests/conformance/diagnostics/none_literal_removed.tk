@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto value = none:i32
+    return 0
+}

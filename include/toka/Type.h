@@ -67,7 +67,7 @@ public:
 
   Kind typeKind;
   bool IsWritable = false; // '#' (Content mutation)
-  bool IsNullable = false; // '?' (Content nullability)
+  bool IsNullable = false; // RawPtr only: `nul *T` may carry address zero.
   bool IsBlocked = false;  // '$' (Inherent restriction)
   bool IsCede = false;     // 'cede' keyword for thread return/ownership transfer
 
@@ -257,7 +257,7 @@ public:
   }
   bool isAddrType() const override { return Name == "Addr"; }
   bool isOAddrType() const override { return Name == "OAddr"; }
-  bool isNullType() const override { return Name == "null" || Name == "none"; }
+  bool isNullType() const override { return Name == "null"; }
 };
 
 // --- Pointer Types ---

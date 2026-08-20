@@ -170,15 +170,12 @@
    suspension/capture 边界；后续只需覆盖新 consumer，不再重开基础闭包或
    suspension 设计。
 
-5. Nullable handle matrix
+5. Null / absence matrix
 
-   `tests/pass/g08_polymorphic_null.tk` 已覆盖 `nul *`、`nul ^`、`nul ~` 接受 `null`。本轮新增：
-
-   - `tests/fail/non_null_unique_null.tk`
-   - `tests/fail/non_null_shared_null.tk`
-   - `tests/fail/nullable_borrow_handle.tk`
-
-   这补上了非 nullable unique/shared handle 不能接收 `null`，以及 borrow handle `&` 不能被 `nul` 标记的最小反例。raw pointer 的非 nullable 反例已有 `tests/fail/non_null_nullptr.tk` / `tests/fail/strict_null_identity.tk`。
+   Safe nullable 已永久删除：`T?`、`nul ^T`、`nul ~T`、`none` 与 nullable
+   assertion operator 分别由 E0484-E0487 锁定。`nul *T` 是唯一保留的
+   may-zero handle；`*T` 非零，反向转换要求 `.unwrap()`。操作未命中由
+   `T | miss` 表达，显式零或一个存储仍可使用 `Option<T>`。
 
 6. Morphic member view contrast
 

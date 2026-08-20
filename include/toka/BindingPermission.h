@@ -29,17 +29,16 @@ enum class BindingMorphology {
 //   - morphology and identity attributes live on the binding/handle
 //   - soul attributes live on the entity behind that binding
 //
-// The legacy bool fields remain the compatibility source during the first
-// migration phase. This struct lets new code stop re-inventing the mapping.
+// Parser AST bools remain as recovery inputs for precise removed-syntax
+// diagnostics. Semantic permission carries only admitted language facts.
 struct BindingPermission {
   BindingMorphology Morphology = BindingMorphology::None;
 
   bool IdentityRebindable = false; // ^#p, *#p, &#p
-  bool IdentityNullable = false;   // nul *p, nul ^p
+  bool IdentityMayBeZero = false;  // nul *p
   bool IdentityBlocked = false;
 
   bool SoulWritable = false;       // p#
-  bool SoulNullable = false;       // T? / value noneability
   bool SoulBlocked = false;
 
   bool MorphicExempt = false;      // 'T preserves morphology
@@ -72,10 +71,10 @@ struct BindingPermission {
     permission.Morphology =
         legacyMorphology(isRawPointer, isUnique, isShared, isReference);
     permission.IdentityRebindable = isRebindable;
-    permission.IdentityNullable = isPointerNullable;
+    permission.IdentityMayBeZero = isPointerNullable;
     permission.IdentityBlocked = isRebindBlocked;
     permission.SoulWritable = isValueMutable;
-    permission.SoulNullable = isValueNullable;
+    (void)isValueNullable;
     permission.SoulBlocked = isValueBlocked;
     permission.MorphicExempt = isMorphicExempt;
     return permission;
@@ -91,10 +90,10 @@ struct BindingPermission {
                legacyMorphology(isRawPointer, isUnique, isShared,
                                 isReference) &&
            IdentityRebindable == isRebindable &&
-           IdentityNullable == isPointerNullable &&
+           IdentityMayBeZero == isPointerNullable &&
            IdentityBlocked == isRebindBlocked &&
            SoulWritable == isValueMutable &&
-           SoulNullable == isValueNullable &&
+           !isValueNullable &&
            SoulBlocked == isValueBlocked &&
            MorphicExempt == isMorphicExempt;
   }

@@ -69,7 +69,6 @@ struct TokaSymbol {
   bool isCallerHandleSlot = false;
   bool isMutable = false;    // # on entity (Writable data)
   bool isContinuous = false; // Sequence marker (alloc [N])
-  bool isNullable = false;   // ?/! marker
   std::string typeName;   // Original type string (e.g. "dyn @Shape")
   std::shared_ptr<Type> soulTypeObj; // The new Type Object source of truth
   bool hasDrop = false;
@@ -288,12 +287,14 @@ private:
   llvm::Value *emitMemberHatOffLoads(llvm::Value *addr, const MemberHatPlan &plan);
   llvm::Type *resolveMemberResultType(llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
   MemberMaterialization emitMaterializedMemberValue(llvm::Value *addr, llvm::Type *baseIrTy, const MemberHatPlan &plan, const std::shared_ptr<Type> &resolvedType);
-  MemberHatPlan resolveMemberHatPlan(const ShapeDecl *namedShape, int idx, int accessHats, bool isIdentityAssertion, bool isIdentityOperator, const std::shared_ptr<Type> &resolvedType);
+  MemberHatPlan resolveMemberHatPlan(const ShapeDecl *namedShape, int idx,
+                                     int accessHats, bool isIdentityOperator,
+                                     const std::shared_ptr<Type> &resolvedType);
 
   // Deprecated/Legacy version
   void fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
                           bool hasPointer, bool isUnique, bool isShared,
-                          bool isReference, bool isMutable, bool isNullable,
+                          bool isReference, bool isMutable,
                           llvm::Type *allocaElemTy);
 
   // New version
@@ -318,8 +319,6 @@ private:
   llvm::Value *emitEntityAddr(const Expr *expr); // "Soul" - actual data address
   llvm::Value *
   emitHandleAddr(const Expr *expr); // "Handle" - identity/sleeve (alloca)
-  llvm::Value *wrapFreshAllocationAsNullableSoul(llvm::Value *payloadPtr,
-                                                  llvm::StructType *soulType);
 
   llvm::Value *genStmt(const Stmt *stmt);
   llvm::Value *genStmtImpl(const Stmt *stmt);

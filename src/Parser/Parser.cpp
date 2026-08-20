@@ -870,9 +870,10 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
 
   for (size_t index = 0; index < tokens.size(); ++index) {
     if (tokens[index].Kind == TokenType::TokenNull) {
+      HasError = true;
       DiagnosticEngine::report(
           tokens[index].Loc,
-          DiagID::WARN_SAFE_NULLABLE_PAYLOAD_DEPRECATED, "?");
+          DiagID::ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, "?");
       continue;
     }
     if (tokens[index].Kind != TokenType::KwNul)
@@ -880,9 +881,10 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
     for (size_t next = index + 1; next < tokens.size(); ++next) {
       if (tokens[next].Kind == TokenType::Caret ||
           tokens[next].Kind == TokenType::Tilde) {
+        HasError = true;
         DiagnosticEngine::report(
             tokens[index].Loc,
-            DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+            DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
             tokens[next].Kind == TokenType::Caret ? "nul ^T" : "nul ~T");
       }
       if (tokens[next].Kind == TokenType::Caret ||

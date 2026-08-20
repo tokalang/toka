@@ -212,28 +212,7 @@ void CodeGen::emitRelease(llvm::Value *sharedHandle, const TokaSymbol &sym, std:
     if (sym.soulTypeObj) {
       cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
     }
-    std::shared_ptr<Type> soulType =
-        sym.soulTypeObj ? sym.soulTypeObj->getSoulType() : nullptr;
-    if (soulType && soulType->IsNullable && sym.soulType &&
-        sym.soulType->isStructTy()) {
-      llvm::StructType *nullableType =
-          llvm::cast<llvm::StructType>(sym.soulType);
-      llvm::Value *payload = m_Builder.CreateLoad(
-          nullableType, data, "nullable_soul.shared_release_payload");
-      llvm::Value *present = m_Builder.CreateExtractValue(
-          payload, 1, "nullable_soul.shared_release_present");
-      llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
-          m_Context, "nullable_soul.shared_release_drop", f);
-      llvm::BasicBlock *afterPayloadDropBB = llvm::BasicBlock::Create(
-          m_Context, "nullable_soul.shared_release_done", f);
-      m_Builder.CreateCondBr(present, dropPayloadBB, afterPayloadDropBB);
-      m_Builder.SetInsertPoint(dropPayloadBB);
-      emitDropCascade(data, cleanName);
-      m_Builder.CreateBr(afterPayloadDropBB);
-      m_Builder.SetInsertPoint(afterPayloadDropBB);
-    } else {
-      emitDropCascade(data, cleanName);
-    }
+    emitDropCascade(data, cleanName);
   }
 
   llvm::Function *freeFn = m_Module->getFunction("free");
@@ -345,28 +324,7 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
       if (sym.soulTypeObj) {
         cleanName = sym.soulTypeObj->getSoulType()->getSoulName();
       }
-      std::shared_ptr<Type> soulType =
-          sym.soulTypeObj ? sym.soulTypeObj->getSoulType() : nullptr;
-      if (soulType && soulType->IsNullable && sym.soulType &&
-          sym.soulType->isStructTy()) {
-        llvm::StructType *nullableType =
-            llvm::cast<llvm::StructType>(sym.soulType);
-        llvm::Value *payload = m_Builder.CreateLoad(
-            nullableType, oldVal, "nullable_soul.rebind_payload");
-        llvm::Value *present = m_Builder.CreateExtractValue(
-            payload, 1, "nullable_soul.rebind_present");
-        llvm::BasicBlock *dropPayloadBB = llvm::BasicBlock::Create(
-            m_Context, "nullable_soul.rebind_drop", f);
-        llvm::BasicBlock *afterPayloadDropBB = llvm::BasicBlock::Create(
-            m_Context, "nullable_soul.rebind_done", f);
-        m_Builder.CreateCondBr(present, dropPayloadBB, afterPayloadDropBB);
-        m_Builder.SetInsertPoint(dropPayloadBB);
-        emitDropCascade(oldVal, cleanName);
-        m_Builder.CreateBr(afterPayloadDropBB);
-        m_Builder.SetInsertPoint(afterPayloadDropBB);
-      } else {
-        emitDropCascade(oldVal, cleanName);
-      }
+      emitDropCascade(oldVal, cleanName);
     }
     llvm::Function *freeFn = m_Module->getFunction("free");
     if (freeFn) {
@@ -381,46 +339,6 @@ void CodeGen::emitEnvelopeRebind(llvm::Value *handleAddr, llvm::Value *rhsVal,
     // Raw/Ref: direct store
     markMemoryEvent(m_Builder.CreateStore(rhsVal, handleAddr), "rebind");
   }
-}
-
-llvm::Value *CodeGen::wrapFreshAllocationAsNullableSoul(
-    llvm::Value *payloadPtr, llvm::StructType *soulType) {
-  if (!payloadPtr || !payloadPtr->getType()->isPointerTy() || !soulType ||
-      soulType->getNumElements() != 2 ||
-      !soulType->getElementType(1)->isIntegerTy(1))
-    return payloadPtr;
-
-  llvm::Function *mallocFn = m_Module->getFunction("malloc");
-  if (!mallocFn) {
-    mallocFn = llvm::Function::Create(
-        llvm::FunctionType::get(m_Builder.getPtrTy(), {getIntPtrTy()}, false),
-        llvm::Function::ExternalLinkage, "malloc", m_Module.get());
-  }
-  llvm::Function *freeFn = m_Module->getFunction("free");
-  if (!freeFn) {
-    freeFn = llvm::Function::Create(
-        llvm::FunctionType::get(llvm::Type::getVoidTy(m_Context),
-                                {m_Builder.getPtrTy()}, false),
-        llvm::Function::ExternalLinkage, "free", m_Module.get());
-  }
-
-  llvm::CallInst *wrapperPtr = m_Builder.CreateCall(
-      mallocFn,
-      {llvm::ConstantInt::get(getIntPtrTy(),
-                              m_Module->getDataLayout().getTypeAllocSize(soulType))},
-      "nullable_soul_alloc");
-  markMemoryEvent(wrapperPtr, "allocate");
-
-  llvm::Value *payload = m_Builder.CreateLoad(
-      soulType->getElementType(0), payloadPtr, "nullable_soul_payload");
-  llvm::Value *payloadAddr =
-      m_Builder.CreateStructGEP(soulType, wrapperPtr, 0, "nullable_soul_value");
-  llvm::Value *presentAddr = m_Builder.CreateStructGEP(
-      soulType, wrapperPtr, 1, "nullable_soul_present");
-  m_Builder.CreateStore(payload, payloadAddr);
-  m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context), presentAddr);
-  markMemoryEvent(m_Builder.CreateCall(freeFn, {payloadPtr}), "deallocate");
-  return wrapperPtr;
 }
 
 PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
@@ -564,9 +482,7 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     return nullptr;
 
   // Sema has already classified ordinary assignments as either a handle
-  // rebind or a payload write.  Do not re-infer that decision from the LLVM
-  // shape of the RHS: `none` is represented as a null pointer, but assigning
-  // it to the nullable soul of `^#p#: T?` is still a payload write.
+  // rebind or a payload write.
   bool effectiveRebind = hasRebind;
   if (assignmentSite &&
       (assignmentSite->AssignmentKind == AssignmentSemanticKind::Payload ||
@@ -619,26 +535,6 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   }
   if (effectiveRebind && symLHS && lhsAlloca) {
     // Scene B: Envelope Rebind
-    std::shared_ptr<Type> targetSoulType =
-        symLHS->soulTypeObj ? symLHS->soulTypeObj->getSoulType() : nullptr;
-    const Expr *freshAllocation = rhsExpr;
-    while (freshAllocation) {
-      if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(freshAllocation)) {
-        freshAllocation = unsafeExpr->Expression.get();
-      } else if (auto *castExpr = dynamic_cast<const CastExpr *>(freshAllocation)) {
-        freshAllocation = castExpr->Expression.get();
-      } else {
-        break;
-      }
-    }
-    if ((dynamic_cast<const NewExpr *>(freshAllocation) ||
-         dynamic_cast<const AllocExpr *>(freshAllocation)) &&
-        targetSoulType &&
-        targetSoulType->IsNullable && symLHS->soulType &&
-        symLHS->soulType->isStructTy()) {
-      rhsVal = wrapFreshAllocationAsNullableSoul(
-          rhsVal, llvm::cast<llvm::StructType>(symLHS->soulType));
-    }
     if (symLHS->morphology == Morphology::Shared &&
         rhsVal->getType()->isPointerTy()) {
       // Correctly pass the Handle Struct type
@@ -669,13 +565,6 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     if (!destTy)
       destTy = rhsVal->getType();
 
-    std::shared_ptr<Type> targetTypeObj =
-        symLHS && symLHS->soulTypeObj ? symLHS->soulTypeObj
-                                      : lhsExpr->ResolvedType;
-    std::shared_ptr<Type> targetSoulType =
-        targetTypeObj ? targetTypeObj->getSoulType() : nullptr;
-    bool oldSoulDropHandled = false;
-
     // Replacing a live direct resource transfers a fresh value into the same
     // slot. Reclaim the previous owner first, but only on paths where its
     // scope drop flag is still live (a moved-from slot is reinitialized
@@ -683,7 +572,6 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     if (variableTarget && symLHS && symLHS->hasDrop &&
         symLHS->morphology == Morphology::None && assignmentSite &&
         !assignmentSite->IsInitialization) {
-      oldSoulDropHandled = true;
       llvm::Value *dropFlag = nullptr;
       llvm::Value *dropMask = nullptr;
       std::shared_ptr<Type> dropType;
@@ -745,7 +633,6 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
 
     if (memberTarget && memberTarget->ResolvedType && assignmentSite &&
         !assignmentSite->IsInitialization) {
-      oldSoulDropHandled = true;
       llvm::Value *dropMask = nullptr;
       int dropIndex = -1;
       for (int scopeIndex = static_cast<int>(m_ScopeStack.size()) - 1;
@@ -828,7 +715,6 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
       }
 
       if (dropMask) {
-        oldSoulDropHandled = true;
         llvm::Value *mask = m_Builder.CreateLoad(
             llvm::Type::getInt64Ty(m_Context), dropMask,
             "assign.index.mask");
@@ -856,66 +742,10 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
         // moved. Therefore a dynamic assignment to a tracked local array
         // replaces a live element even though there is no constant mask bit
         // to toggle in CodeGen.
-        oldSoulDropHandled = true;
         emitDropForType(soulAddr, indexTarget->ResolvedType);
       }
     }
 
-    // Nullable souls are stored as { T, i1 }.  Inspect the destination
-    // storage type rather than the outer handle type, so a nullable payload
-    // remains independent from a nullable/rebindable handle.
-    bool replacesNullableSoul = targetSoulType && targetSoulType->IsNullable &&
-                                symLHS && symLHS->hasDrop && destTy &&
-                                destTy->isStructTy() &&
-                                destTy->getStructNumElements() == 2 &&
-                                destTy->getStructElementType(1)->isIntegerTy(1);
-    if (replacesNullableSoul && !oldSoulDropHandled) {
-      llvm::StructType *nullableType = llvm::cast<llvm::StructType>(destTy);
-      llvm::Value *oldPayload =
-          m_Builder.CreateLoad(nullableType, soulAddr, "nullable_soul.old");
-      llvm::Value *wasPresent = m_Builder.CreateExtractValue(
-          oldPayload, 1, "nullable_soul.was_present");
-      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
-      llvm::BasicBlock *dropBB =
-          llvm::BasicBlock::Create(m_Context, "nullable_soul.drop", function);
-      llvm::BasicBlock *continueBB = llvm::BasicBlock::Create(
-          m_Context, "nullable_soul.drop_done", function);
-      m_Builder.CreateCondBr(wasPresent, dropBB, continueBB);
-      m_Builder.SetInsertPoint(dropBB);
-      emitDropCascade(soulAddr, targetSoulType->getSoulName());
-      m_Builder.CreateBr(continueBB);
-      m_Builder.SetInsertPoint(continueBB);
-    }
-    if (targetSoulType && targetSoulType->IsNullable && destTy &&
-        destTy->isStructTy() &&
-        destTy->getStructNumElements() == 2 &&
-        destTy->getStructElementType(1)->isIntegerTy(1)) {
-      llvm::Type *targetStructTy = destTy;
-      if (rhsVal->getType() != targetStructTy) {
-        // Wrapping T into { T, i1 }
-        llvm::Value *wrapped = llvm::UndefValue::get(targetStructTy);
-        if (rhsVal->getType() == targetStructTy->getStructElementType(0)) {
-          wrapped = m_Builder.CreateInsertValue(wrapped, rhsVal, {0});
-          wrapped = m_Builder.CreateInsertValue(
-              wrapped,
-              llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 1), {1});
-          rhsVal = wrapped;
-          destTy = targetStructTy;
-        } else if (dynamic_cast<const NoneExpr *>(rhsExpr) ||
-                   rhsVal->getType()->isPointerTy()) { // Handle none
-          wrapped = m_Builder.CreateInsertValue(
-              wrapped,
-              llvm::Constant::getNullValue(
-                  targetStructTy->getStructElementType(0)),
-              {0});
-          wrapped = m_Builder.CreateInsertValue(
-              wrapped,
-              llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 0), {1});
-          rhsVal = wrapped;
-          destTy = targetStructTy;
-        }
-      }
-    }
     AssignmentLoweringCarrier carrier =
         AssignmentLoweringCarrier::SoulStore;
     if (soulAddr && destTy) {
@@ -1310,19 +1140,7 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
     }
 
     // Special Case: 'expr is nullptr' (Null check)
-    if (dynamic_cast<const NullExpr *>(bin->RHS.get()) ||
-        dynamic_cast<const NoneExpr *>(bin->RHS.get())) {
-
-      // Handle Nullable Soul Wrapper ({ T, i1 })
-      if (lhsTy->isStructTy() && lhsTy->getStructNumElements() == 2 &&
-          lhsTy->getStructElementType(1)->isIntegerTy(1)) {
-        llvm::Value *isPresent = m_Builder.CreateExtractValue(lhsVal, 1, "is_present");
-        if (bin->Op == "==") {
-          return m_Builder.CreateNot(isPresent, "is_none");
-        } else {
-          return isPresent;
-        }
-      }
+    if (dynamic_cast<const NullExpr *>(bin->RHS.get())) {
 
       while (lhsVal->getType()->isStructTy() &&
              lhsVal->getType()->getStructNumElements() == 1) {
@@ -1427,25 +1245,6 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
     }
     return val;
   };
-
-  if (bin->Op == "==" || bin->Op == "!=") {
-    if (dynamic_cast<const NoneExpr *>(bin->RHS.get()) || dynamic_cast<const NullExpr *>(bin->RHS.get())) {
-      if (lhs->getType()->isStructTy() && lhs->getType()->getStructNumElements() == 2 &&
-          lhs->getType()->getStructElementType(1)->isIntegerTy(1)) {
-        llvm::Value *isPresent = m_Builder.CreateExtractValue(lhs, 1, "is_present");
-        if (bin->Op == "==") return m_Builder.CreateNot(isPresent, "is_none");
-        return isPresent;
-      }
-    }
-    if (dynamic_cast<const NoneExpr *>(bin->LHS.get()) || dynamic_cast<const NullExpr *>(bin->LHS.get())) {
-      if (rhs->getType()->isStructTy() && rhs->getType()->getStructNumElements() == 2 &&
-          rhs->getType()->getStructElementType(1)->isIntegerTy(1)) {
-        llvm::Value *isPresent = m_Builder.CreateExtractValue(rhs, 1, "is_present");
-        if (bin->Op == "==") return m_Builder.CreateNot(isPresent, "is_none");
-        return isPresent;
-      }
-    }
-  }
 
   lhs = unwrapSmartPtr(lhs, bin->LHS.get());
   rhs = unwrapSmartPtr(rhs, bin->RHS.get());
@@ -2038,14 +1837,6 @@ PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
   if (!targetType)
     return val;
 
-  // Rule: Unwrap Smart Pointer handles (like SharedPtr) if casting to
-  // integer/pointer.
-  // [Fix] Skip unwrap for Nullable Soul wrappers { T, i1 } and regular shapes.
-  if (val->getType()->isStructTy() &&
-      !val->getType()->isStructTy()) { // Original logic was here
-    // Placeholder for removal of old aggressive logic
-  }
-
   llvm::Type *srcType = val->getType();
 
   // Sema represents an owned ^T flowing into ~T as an implicit cast. A
@@ -2079,33 +1870,6 @@ PhysEntity CodeGen::genCastExpr(const CastExpr *cast) {
     }
     return PhysEntity(m_Builder.CreateIntCast(val, targetType, isSigned),
                       cast->TargetType, targetType, false);
-  }
-
-  // [Fix] Safe Nullable Soul Wrap in Cast
-  if (targetType->isStructTy() && targetType->getStructNumElements() == 2 &&
-      targetType->getStructElementType(1)->isIntegerTy(1)) {
-    // 1. T -> T?
-    if (srcType == targetType->getStructElementType(0)) {
-      llvm::Value *wrapped = llvm::UndefValue::get(targetType);
-      wrapped = m_Builder.CreateInsertValue(wrapped, val, {0});
-      wrapped = m_Builder.CreateInsertValue(
-          wrapped, llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 1),
-          {1});
-      return PhysEntity(wrapped, cast->TargetType, targetType, false);
-    }
-    // 2. none/null -> T?
-    if (dynamic_cast<const NoneExpr *>(cast->Expression.get()) ||
-        (srcType->isPointerTy() && llvm::isa<llvm::ConstantPointerNull>(val))) {
-      llvm::Value *wrapped = llvm::UndefValue::get(targetType);
-      wrapped = m_Builder.CreateInsertValue(
-          wrapped,
-          llvm::Constant::getNullValue(targetType->getStructElementType(0)),
-          {0});
-      wrapped = m_Builder.CreateInsertValue(
-          wrapped, llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 0),
-          {1});
-      return PhysEntity(wrapped, cast->TargetType, targetType, false);
-    }
   }
 
   // Floating Point Conversions
@@ -2326,8 +2090,7 @@ PhysEntity CodeGen::genLiteralExpr(const Expr *expr) {
   if (auto *bl = dynamic_cast<const BoolExpr *>(expr)) {
     return llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), bl->Value);
   }
-  if (dynamic_cast<const NullExpr *>(expr) ||
-      dynamic_cast<const NoneExpr *>(expr)) {
+  if (dynamic_cast<const NullExpr *>(expr)) {
     return llvm::ConstantPointerNull::get(m_Builder.getPtrTy());
   }
   if (auto *str = dynamic_cast<const StringExpr *>(expr)) {
@@ -3790,46 +3553,21 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   }
 
   llvm::Value *condVal = nullptr;
-  llvm::Value *deepGuardHandle = nullptr;
-  llvm::StructType *deepGuardSoulType = nullptr;
-
-  // A bare guard on a nullable handle normally denotes payload-path
-  // availability.  Do not materialize that payload before testing the handle:
-  // getEntityAddr() dereferences unique/raw handles and would otherwise load
-  // through null.  When the soul is nullable, the second branch below also
-  // checks its presence bit.
+  // A bare guard on a may-zero raw pointer tests its physical address before
+  // materializing the pointee.
   if (auto *var = dynamic_cast<const VariableExpr *>(guard->Condition.get())) {
     std::string baseName = Type::stripMorphology(var->Name);
     auto symbol = m_Symbols.find(baseName);
     if (symbol != m_Symbols.end()) {
       TokaSymbol &sym = symbol->second;
       std::shared_ptr<Type> declaredType = sym.soulTypeObj;
-      std::shared_ptr<Type> soulType =
-          declaredType ? declaredType->getSoulType() : nullptr;
-      bool checksNullableHandle = declaredType && declaredType->IsNullable;
-      bool checksNullableSoul = soulType && soulType->IsNullable;
-      if ((sym.morphology == Morphology::Unique ||
-           sym.morphology == Morphology::Raw ||
-           sym.morphology == Morphology::Shared) &&
-          (checksNullableHandle || checksNullableSoul)) {
+      bool checksMayZeroRaw = declaredType && declaredType->isRawPointer() &&
+                              declaredType->IsNullable;
+      if (sym.morphology == Morphology::Raw && checksMayZeroRaw) {
         llvm::Value *identityAddr = emitHandleAddr(var);
         if (identityAddr) {
-          if (sym.morphology == Morphology::Shared) {
-            llvm::StructType *handleType = llvm::StructType::get(
-                m_Context, {m_Builder.getPtrTy(), m_Builder.getPtrTy()});
-            llvm::Value *handle = m_Builder.CreateLoad(
-                handleType, identityAddr, "guard.shared_handle.load");
-            condVal = m_Builder.CreateExtractValue(
-                handle, 0, "guard.shared_handle.data");
-          } else {
-            condVal = m_Builder.CreateLoad(m_Builder.getPtrTy(), identityAddr,
-                                           "guard.handle.load");
-          }
-          if (checksNullableSoul && sym.soulType &&
-              sym.soulType->isStructTy()) {
-            deepGuardHandle = condVal;
-            deepGuardSoulType = llvm::cast<llvm::StructType>(sym.soulType);
-          }
+          condVal = m_Builder.CreateLoad(m_Builder.getPtrTy(), identityAddr,
+                                         "guard.handle.load");
         }
       }
     }
@@ -3879,20 +3617,7 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   emitFullExpressionTemporaryDrops();
 
   llvm::Value *condBool = nullptr;
-  bool isNullableSoul = (guard->Condition->ResolvedType && guard->Condition->ResolvedType->IsNullable && !guard->Condition->ResolvedType->isPointer());
-
-  // A nullable payload behind a handle remains in its owning wrapper.  The
-  // guard above has already proven that wrapper present; shadowing it as a
-  // stack value would both extract from a pointer and destroy the handle
-  // representation needed by `cede ^binding` in the then-branch.  Only a
-  // direct nullable value uses the temporary unwrapped symbol.
-  if (isNullableSoul && !deepGuardHandle) {
-    llvm::Value *present =
-        m_Builder.CreateExtractValue(condVal, 1, "guard_payload_present");
-    condBool = m_Builder.CreateICmpNE(
-        present, llvm::ConstantInt::get(present->getType(), 0),
-        "guard_payload_available");
-  } else if (condVal->getType()->isPointerTy()) {
+  if (condVal->getType()->isPointerTy()) {
     condBool = m_Builder.CreateIsNotNull(condVal, "guard_not_null");
   } else if (condVal->getType()->isStructTy() && condVal->getType()->getStructNumElements() == 2) {
     llvm::Value *dataPtr = m_Builder.CreateExtractValue(condVal, 0, "guard_sh_ptr");
@@ -3915,57 +3640,16 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(m_Context, "guard_else");
   llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(m_Context, "guard_cont");
 
-  if (deepGuardHandle && deepGuardSoulType) {
-    llvm::BasicBlock *payloadCheckBB =
-        llvm::BasicBlock::Create(m_Context, "guard_payload_check", f);
-    m_Builder.CreateCondBr(condBool, payloadCheckBB, elseBB);
-    m_Builder.SetInsertPoint(payloadCheckBB);
-    llvm::Value *payload = m_Builder.CreateLoad(
-        deepGuardSoulType, deepGuardHandle, "guard_payload.load");
-    llvm::Value *present =
-        m_Builder.CreateExtractValue(payload, 1, "guard_payload.present");
-    m_Builder.CreateCondBr(present, thenBB, elseBB);
-  } else {
-    m_Builder.CreateCondBr(condBool, thenBB, elseBB);
-  }
+  m_Builder.CreateCondBr(condBool, thenBB, elseBB);
 
   m_Builder.SetInsertPoint(thenBB);
   m_CFStack.push_back({"", mergeBB, nullptr, resultAddr, m_ScopeStack.size()});
-
-  TokaSymbol oldSym;
-  bool shadowed = false;
-  std::string baseName;
-  if (isNullableSoul && !deepGuardHandle) {
-      if (auto *v = dynamic_cast<const VariableExpr *>(guard->Condition.get())) {
-          baseName = v->Name;
-          while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' || baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!')) baseName = baseName.substr(1);
-          while (!baseName.empty() && (baseName.back() == '#' || baseName.back() == '?' || baseName.back() == '!')) baseName.pop_back();
-
-          if (m_Symbols.count(baseName)) {
-              oldSym = m_Symbols[baseName];
-              shadowed = true;
-              llvm::Value *payload = m_Builder.CreateExtractValue(condVal, 0, "guard_payload");
-              llvm::AllocaInst *newAlloca = createEntryBlockAlloca(payload->getType(), nullptr, baseName + "_guard");
-              m_Builder.CreateStore(payload, newAlloca);
-              TokaSymbol newSym = oldSym;
-              newSym.allocaPtr = newAlloca;
-              newSym.soulType = payload->getType();
-              newSym.mode = AddressingMode::Direct;
-              newSym.indirectionLevel = 0;
-              m_Symbols[baseName] = newSym;
-          }
-      }
-  }
 
   genStmt(guard->Then.get());
   m_CFStack.pop_back();
   llvm::BasicBlock *thenEndBB = m_Builder.GetInsertBlock();
   if (thenEndBB && !thenEndBB->getTerminator())
     m_Builder.CreateBr(mergeBB);
-
-  if (shadowed) {
-      m_Symbols[baseName] = oldSym;
-  }
 
   elseBB->insertInto(f);
   m_Builder.SetInsertPoint(elseBB);
@@ -4585,7 +4269,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     sym.allocaPtr = alloca;
     // For pattern bindings, metadata is often already inferred by Sema
     fillSymbolMetadata(sym, "", false, false, false, pat->IsReference,
-                       pat->IsValueMutable, false, targetType);
+                       pat->IsValueMutable, targetType);
     sym.isRebindable = false;
     sym.isContinuous = targetType->isArrayTy();
 
@@ -5948,7 +5632,6 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 callee->hasParamAttribute(0, llvm::Attribute::StructRet);
 
   std::vector<llvm::Value *> argsV;
-  std::vector<llvm::Value *> cededNullablePayloadShells;
   for (size_t i = 0; i < call->Args.size(); ++i) {
     const auto *cededArg =
         dynamic_cast<const CedeExpr *>(call->Args[i].get());
@@ -6126,30 +5809,6 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
       if (auto *unary = dynamic_cast<const UnaryExpr *>(cededSource))
         cededSource = unary->RHS.get();
 
-      // A guarded `^T?` is an owner slot pointing to a `{ T, present }`
-      // allocation. A captured `cede` parameter for T expects T's address,
-      // which is the nullable shell's offset-zero payload. Pass that shell
-      // directly, then release it after the callee moves out the payload.
-      if (shouldPassAddr) {
-        if (auto *var = dynamic_cast<const VariableExpr *>(cededSource)) {
-          const std::string baseName = Type::stripMorphology(var->Name);
-          auto source = m_Symbols.find(baseName);
-          std::shared_ptr<Type> sourceSoul =
-              source != m_Symbols.end() && source->second.soulTypeObj
-                  ? source->second.soulTypeObj->getSoulType()
-                  : nullptr;
-          if (source != m_Symbols.end() &&
-              source->second.morphology == Morphology::Unique && sourceSoul &&
-              sourceSoul->IsNullable) {
-            if (llvm::Value *sourceSlot = getIdentityAddr(var->codegenName())) {
-              llvm::Value *shell = m_Builder.CreateLoad(
-                  m_Builder.getPtrTy(), sourceSlot, "cede.nullable.shell");
-              val = shell;
-              cededNullablePayloadShells.push_back(shell);
-            }
-          }
-        }
-      }
     }
 
     // A captured argument is passed as the address of the caller's slot, so
@@ -6843,18 +6502,6 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
     }
   }
 
-  if (!cededNullablePayloadShells.empty()) {
-    llvm::Function *freeFn = m_Module->getFunction("free");
-    if (!freeFn) {
-      freeFn = llvm::Function::Create(
-          llvm::FunctionType::get(m_Builder.getVoidTy(),
-                                  {m_Builder.getPtrTy()}, false),
-          llvm::Function::ExternalLinkage, "free", m_Module.get());
-    }
-    for (llvm::Value *shell : cededNullablePayloadShells)
-      m_Builder.CreateCall(freeFn, {shell});
-  }
-
   if (call->CallableReceiver == CallableReceiverMode::Consuming)
     suppressDropForMove(call->Callee);
 
@@ -7090,59 +6737,6 @@ PhysEntity CodeGen::genPostfixExpr(const PostfixExpr *post) {
   if (post->Op == TokenType::TokenWrite) {
     return genExpr(post->LHS.get());
   }
-  if (post->Op == TokenType::DoubleQuestion) {
-    PhysEntity lhs_pe = genExpr(post->LHS.get());
-    llvm::Value *lhs_val = lhs_pe.value;
-    if (!lhs_val)
-      return nullptr;
-
-    bool isNullableSoul = false;
-    llvm::Type *innerType = nullptr;
-    if (lhs_pe.irType && lhs_pe.irType->isStructTy() &&
-        lhs_pe.irType->getStructNumElements() == 2 &&
-        lhs_pe.irType->getStructElementType(1)->isIntegerTy(1)) {
-      isNullableSoul = true;
-      innerType = lhs_pe.irType->getStructElementType(0);
-    }
-
-    if (lhs_pe.isAddress) {
-      if (isNullableSoul) {
-        // L-Value Propagation for Soul: { T, i1 }*
-        // 1. GEP to isPresent (index 1) and check
-        llvm::Value *isPresentPtr = m_Builder.CreateStructGEP(
-            lhs_pe.irType, lhs_val, 1, "soul.isPresentPtr");
-        llvm::Value *isPresent = m_Builder.CreateLoad(
-            m_Builder.getInt1Ty(), isPresentPtr, "soul.isPresent");
-        genNullCheck(isPresent, post);
-        // 2. GEP to data (index 0) and return its address
-        llvm::Value *dataPtr = m_Builder.CreateStructGEP(lhs_pe.irType, lhs_val,
-                                                         0, "soul.dataPtr");
-        llvm::Type *resTy = getLLVMType(post->ResolvedType);
-        return PhysEntity(dataPtr, "", resTy, true);
-      } else {
-        // Raw Pointer case: T**
-        llvm::Value *ptrVal =
-            m_Builder.CreateLoad(lhs_pe.irType, lhs_val, "nn.load");
-        genNullCheck(ptrVal, post);
-        llvm::Type *resTy = getLLVMType(post->ResolvedType);
-        return PhysEntity(ptrVal, "", resTy, true);
-      }
-    } else {
-      // R-Value (already loaded / value type)
-      if (isNullableSoul) {
-        llvm::Value *isPresent =
-            m_Builder.CreateExtractValue(lhs_val, {1}, "soul.isPresent");
-        genNullCheck(isPresent, post);
-        llvm::Value *data =
-            m_Builder.CreateExtractValue(lhs_val, {0}, "soul.data");
-        return PhysEntity(data, lhs_pe.typeName, innerType, false);
-      } else {
-        genNullCheck(lhs_val, post);
-        return lhs_pe;
-      }
-    }
-  }
-
   llvm::Value *addr = genAddr(post->LHS.get());
   if (!addr)
     return nullptr;
@@ -7264,10 +6858,6 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
     llvm::Type *targetTy = ce->ResolvedType ? getLLVMType(ce->ResolvedType)
                                              : nullptr;
 
-    // A narrowed member/index keeps its declared nullable carrier in storage
-    // even though Sema presents the exact guarded path as T.  Materializing
-    // through genExpr would use that refined T as the load type.  Recover the
-    // physical GEP element type instead, then extract the carrier payload.
     if ((dynamic_cast<const MemberExpr *>(directSource) ||
          dynamic_cast<const ArrayIndexExpr *>(directSource)) &&
         targetTy) {
@@ -7275,18 +6865,6 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
         llvm::Type *sourceTy = nullptr;
         if (auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(sourceAddr))
           sourceTy = gep->getResultElementType();
-        if (auto *carrier = llvm::dyn_cast_or_null<llvm::StructType>(sourceTy)) {
-          if (carrier->getNumElements() == 2 &&
-              carrier->getElementType(0) == targetTy &&
-              carrier->getElementType(1)->isIntegerTy(1)) {
-            llvm::Value *stored =
-                m_Builder.CreateLoad(sourceTy, sourceAddr, "cede.carrier");
-            llvm::Value *payload =
-                m_Builder.CreateExtractValue(stored, 0, "cede.nonnull");
-            return PhysEntity(payload, ce->ResolvedType->toString(), targetTy,
-                              false);
-          }
-        }
         if (sourceTy) {
           llvm::Value *stored =
               m_Builder.CreateLoad(sourceTy, sourceAddr, "cede.projected");
@@ -7299,23 +6877,6 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
     PhysEntity moved = genExpr(ce->Value.get());
     llvm::Value *movedValue = moved.load(m_Builder);
 
-    // Sema may refine an exact nullable path in a proven non-null branch.
-    // The storage retains its `{T, present}` carrier, so lower the cede by
-    // extracting T only when the semantic result is the carrier's payload.
-    // This preserves the physical representation for nullable destinations
-    // while keeping a guarded `cede values[i]` ABI-compatible with `T`.
-    if (movedValue && targetTy && movedValue->getType() != targetTy) {
-      if (auto *carrier = llvm::dyn_cast<llvm::StructType>(movedValue->getType())) {
-        if (carrier->getNumElements() == 2 &&
-            carrier->getElementType(0) == targetTy &&
-            carrier->getElementType(1)->isIntegerTy(1)) {
-          llvm::Value *payload =
-              m_Builder.CreateExtractValue(movedValue, 0, "cede.nonnull");
-          return PhysEntity(payload, ce->ResolvedType->toString(), targetTy,
-                            false);
-        }
-      }
-    }
     return moved;
   }
   return {};
@@ -7484,30 +7045,6 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
                                        : llvm::UndefValue::get(elemTy);
     } else {
       fieldVal = genExpr(f.second.get()).load(m_Builder);
-      // [Chapter 6 Extension] Nullable Soul Wrap for Init
-      if (fieldVal && fieldVal->getType() != elemTy && elemTy->isStructTy() &&
-          elemTy->getStructNumElements() == 2 &&
-          elemTy->getStructElementType(1)->isIntegerTy(1)) {
-        if (fieldVal->getType() == elemTy->getStructElementType(0)) {
-          llvm::Value *wrapped = llvm::UndefValue::get(elemTy);
-          wrapped = m_Builder.CreateInsertValue(wrapped, fieldVal, {0});
-          wrapped = m_Builder.CreateInsertValue(
-              wrapped,
-              llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 1), {1});
-          fieldVal = wrapped;
-        } else if (dynamic_cast<const NoneExpr *>(f.second.get()) ||
-                   fieldVal->getType()->isPointerTy()) {
-          llvm::Value *wrapped = llvm::UndefValue::get(elemTy);
-          wrapped = m_Builder.CreateInsertValue(
-              wrapped,
-              llvm::Constant::getNullValue(elemTy->getStructElementType(0)),
-              {0});
-          wrapped = m_Builder.CreateInsertValue(
-              wrapped,
-              llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 0), {1});
-          fieldVal = wrapped;
-        }
-      }
     }
 
     if (!fieldVal)
@@ -7813,18 +7350,7 @@ llvm::Constant *CodeGen::genConstant(const Expr *expr, llvm::Type *targetType) {
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(m_Context), flt->Value);
   }
 
-  if (dynamic_cast<const NoneExpr *>(expr) ||
-      dynamic_cast<const NullExpr *>(expr)) {
-    if (targetType && targetType->isStructTy() &&
-        targetType->getStructNumElements() == 2 &&
-        targetType->getStructElementType(1)->isIntegerTy(1)) {
-      // Nullable Soul Wrapper constant for none/nullptr
-      llvm::Type *baseTy = targetType->getStructElementType(0);
-      return llvm::ConstantStruct::get(
-          (llvm::StructType *)targetType,
-          {llvm::Constant::getNullValue(baseTy),
-           llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 0)});
-    }
+  if (dynamic_cast<const NullExpr *>(expr)) {
     return llvm::ConstantPointerNull::get(m_Builder.getPtrTy());
   }
 
@@ -7900,22 +7426,17 @@ PhysEntity CodeGen::genRepeatedArrayExpr(const RepeatedArrayExpr *expr) {
   }
   llvm::Type *elemTy = val->getType();
 
-  // The initializer expression can be a bare `T` while the declared array
-  // element is `T?`.  Preserve the semantic element layout rather than
-  // constructing `[N x T]` and leaving VariableDecl to reconcile it with
-  // `[N x {T, present}]` later.
   if (expr->ResolvedType && expr->ResolvedType->isArray()) {
     auto declaredElem = expr->ResolvedType->getArrayElementType();
     llvm::Type *declaredElemTy = getLLVMType(declaredElem);
     if (declaredElemTy && declaredElemTy != elemTy) {
-      if (declaredElemTy->isStructTy() &&
-          declaredElemTy->getStructNumElements() == 2 &&
-          declaredElemTy->getStructElementType(0) == elemTy &&
-          declaredElemTy->getStructElementType(1)->isIntegerTy(1)) {
-        llvm::Value *wrapped = llvm::UndefValue::get(declaredElemTy);
-        wrapped = m_Builder.CreateInsertValue(wrapped, val, {0});
-        val = m_Builder.CreateInsertValue(
-            wrapped, llvm::ConstantInt::getTrue(m_Context), {1});
+      if (elemTy->isIntegerTy() && declaredElemTy->isIntegerTy()) {
+        val = m_Builder.CreateIntCast(val, declaredElemTy, false,
+                                      "repeat.elem.cast");
+      } else if (elemTy->isFloatingPointTy() &&
+                 declaredElemTy->isFloatingPointTy()) {
+        val = m_Builder.CreateFPCast(val, declaredElemTy,
+                                    "repeat.elem.cast");
       }
       elemTy = declaredElemTy;
     }

@@ -62,25 +62,22 @@ body recheck, bounded partial-`cede` cleanup, and source-less semantic replay.
   which current Toka treats as references to existing bindings.  Its five
   fresh `Some` payload bindings now spell `auto value`; the focused run test
   passes.  This changes neither iterator nor ownership semantics.
-- `ownership_cede_nullable_member_explicit_nullable_destination_01`: the
-  nullable-destination check omitted the type ascription nested under the
-  `cede` AST node.  `cede source:T?` now admits that explicit nullable
-  contract; the corresponding explicit `:Token` negative case still reports
-  `E04599`.
+- `ownership_cede_nullable_member_explicit_nullable_destination_01` is
+  superseded: Safe nullable payloads are permanently removed and `T?` now
+  reports E0484 before Sema.
 - The twenty source-span fixtures retain their original primary safety error
   codes. Their manifest coordinates now name the actual primary diagnostic
   locations verified by direct compilation.
-- `diag_none_is_not_option_none_01`: `none:Option<i32>` remains rejected
-  because payload `none` is not `Option::None`; `E04606` is the more precise
-  current type-ascription mismatch in place of the older declaration-level
-  `E0409` expectation.
+- `diag_none_is_not_option_none_01` is superseded: the `none` payload literal
+  itself is permanently removed and reports E0486; `Option::None` remains the
+  explicit Option variant.
 
 ## Closure evidence
 
 1. Each of the 21 original compile-fail cases was directly compiled to capture
    its primary error code and source coordinate before the manifest changed.
-2. The two run failures were repaired and separately re-run; the explicit
-   non-null nullable-`cede` negative counterpart still reports `E04599`.
+2. The historical run failures were repaired and separately re-run; their
+   former Safe nullable cases are now superseded by E0484-E0487 removal tests.
 3. The final 226-case conformance manifest and the nine CTest targets are
    green at this revision.
 

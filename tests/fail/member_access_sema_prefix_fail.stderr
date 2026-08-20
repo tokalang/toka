@@ -1,5 +1,5 @@
-error[E0406]: Invalid member access modifier combination: '??'data'
+error[E0406]: Invalid member access modifier combination: '^'data'
  --> tests/fail/member_access_sema_prefix_fail.tk:16:22
     |
- 16 |         auto x1 = box.??'data
+ 16 |         auto x2 = box.^'data
     |                      ^

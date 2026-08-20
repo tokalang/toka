@@ -1171,6 +1171,9 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
 
     // Rule 1: Morphologies MUST match exactly in Toka 1.3
     if (targetPtr->typeKind == sourcePtr->typeKind) {
+      if (targetPtr->typeKind != toka::Type::RawPtr &&
+          (targetPtr->IsNullable || sourcePtr->IsNullable))
+        return false;
       // Rule 2: Pointee Types must be compatible
       if (isTypeCompatible(targetPtr->getPointeeType(),
                            sourcePtr->getPointeeType())) {
@@ -1196,14 +1199,6 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
       }
     }
   }
-
-  // 2. Nullability Covariance: T is compatible with T?
-  // (A non-null value can be assigned to a nullable slot)
-  // Check if Target is Nullable (Implicitly via name/attribute or
-  // Explicitly
-  // ?)
-  bool targetNullable = Target->IsNullable;
-  // Should check specific pointer types too, but let's look at the objects.
 
   // 3. Implicit Dereference (Reference -> Value)
   // If Source is Reference (&T) and Target is Value (T), allow if T is
@@ -1236,41 +1231,28 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
       return true;
   }
 
-  // 5. Pointer Nullability Subtyping (*Data compatible with *?Data)
+  // 5. Raw may-zero widening (*T compatible with nul *T).
   if (auto ptrT = std::dynamic_pointer_cast<toka::PointerType>(Target)) {
     if (auto ptrS = std::dynamic_pointer_cast<toka::PointerType>(Source)) {
-      if (ptrS->getPointeeType()->equals(*ptrT->getPointeeType())) {
-        // Same Pointee. Check nullability.
-        // We assume subtyping: NonNullable <: Nullable
-        // So if Target is Nullable, Source can be anything.
+      if (ptrT->typeKind == toka::Type::RawPtr &&
+          ptrS->typeKind == toka::Type::RawPtr &&
+          ptrS->getPointeeType()->equals(*ptrT->getPointeeType())) {
         if (ptrT->IsNullable)
-          return true; // *?T accepts *T or *?T
+          return true;
         if (!ptrS->IsNullable)
-          return true; // *T accepts *T
-        // Fallback: Raw pointers allow *?T -> *T (Unsafe) if
-        // Type::isCompatibleWith allows it. But we handle it there.
+          return true;
       }
     }
   }
 
-  // 6. Universal Null Compatibility
-  // null is compatible with any pointer or smart pointer
+  // 6. Physical null compatibility is raw-pointer-specific.
   if (S->isNullType()) {
-    if (T->isPointer() || T->isSmartPointer() || T->isReference()) {
-      if (T->IsNullable)
-        return true;
-    }
-  }
-  if (T->isNullType()) {
-    if ((S->isPointer() || S->isSmartPointer() || S->isReference()) &&
-        S->IsNullable)
+    if (T->isRawPointer() && T->IsNullable)
       return true;
   }
-
-  // [Chapter 6 Extension] Nullable Soul Compatibility (none -> T?)
-  if ((S->isVoid() || S->isNullType()) && Target->IsNullable && !Target->isPointer() &&
-      !Target->isSmartPointer() && !Target->isReference()) {
-    return true;
+  if (T->isNullType()) {
+    if (S->isRawPointer() && S->IsNullable)
+      return true;
   }
 
 

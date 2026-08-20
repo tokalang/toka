@@ -182,7 +182,7 @@ struct Token {
 
   // Attribute flags for identifiers (e.g. if identifier is "x#")
   bool HasWrite = false;
-  bool HasNull = false;
+  bool HasNull = false;          // Raw may-zero or removed syntax recovery.
   bool IsSwappablePtr = false;   // "swappable" property for pointers
   bool IsBlocked = false;        // "$" attribute for inherent restriction
   bool HasNewlineBefore = false; // Support optional semicolons

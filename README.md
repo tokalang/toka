@@ -189,7 +189,7 @@ Toka uses a compact token system:
 | Token | Role |
 | :--- | :--- |
 | `#` | Mutability for a payload binding or rebinding authority for a handle binding |
-| `?` | Legacy nullable payload state (deprecated) |
+| `?` | Removed nullable payload spelling (E0484) |
 | `&` | Borrow/reference handle |
 | `*` | Non-zero raw pointer handle |
 | `nul *` | Raw pointer handle whose physical address may be zero |

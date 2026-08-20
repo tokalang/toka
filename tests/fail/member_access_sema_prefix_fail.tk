@@ -12,13 +12,10 @@ fn main() -> i32 {
         auto pt = Point(x=10, y=20)
         auto box = Box<Point>(data=pt)
 
-        // 1. Invalid: morphic identity combined with ??
-        auto x1 = box.??'data
-
-        // 2. Invalid: morphic identity combined with hat ^
+        // 1. Invalid: morphic identity combined with hat ^
         auto x2 = box.^'data
 
-        // 3. Invalid: morphic identity combined with rebind suffix #
+        // 2. Invalid: morphic identity combined with rebind suffix #
         auto x3 = box.'data#
     }
     return 0

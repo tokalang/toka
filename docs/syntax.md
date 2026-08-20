@@ -97,15 +97,14 @@ counter = 3
 
 ### Absence domains
 
-> Migration status: safe nullable payloads `T?` / `none` and nullable
-> unique/shared handles `nul ^T` / `nul ~T` are in their pre-removal warning
-> phase (W0409, W0411, and W0410 respectively). Their legacy lowering remains
-> temporarily available for migration. Raw `nul *T` and physical `null` are
-> outside this deprecation slice.
+Safe nullable payloads and owning handles have been permanently removed:
+`T?` reports E0484, `nul ^T` / `nul ~T` report E0485, `none` reports E0486,
+and nullable postfix/assertion syntax reports E0487. The parser recognizes these
+spellings only to provide migration diagnostics; they are not language types
+or values and have no Sema or CodeGen representation.
 
-Toka distinguishes operation outcomes from physical zero addresses and from
-the retiring safe-nullable surface. They may have isomorphic physical
-representations, but they are not aliases in the type system:
+Toka distinguishes operation outcomes, explicit zero-or-one storage, and
+physical zero addresses:
 
 | Domain | Surface form | Empty state | Meaning |
 | :--- | :--- | :--- | :--- |
@@ -113,14 +112,12 @@ representations, but they are not aliases in the type system:
 | Raw non-zero address | `*T` | none | The raw address is non-zero, although dereference still requires `unsafe` |
 | Operation miss | `T \| miss` | `miss` | An operation did not produce a `T` |
 | General optional value | `Option<T>` | `Option<T>::None` | A stored value explicitly has zero-or-one cardinality |
-| Legacy safe nullable | `T?`, `nul ^T`, `nul ~T` | `none` / `null` | Retained only during the warning migration phase |
 
 For example:
 
 ```toka
 auto nul *ptr = null:nul *i32
 auto value = lookup(key) // declared T | miss
-auto maybe = none:i32?
 auto result = Option<i32>::None:Option<i32>
 ```
 
@@ -128,46 +125,30 @@ Plain `*T` cannot be constructed from, assigned from, returned from, or
 compared with `null`. `*T` widens to `nul *T`; the reverse direction requires
 the explicit checked `pointer.unwrap()`. `nul` is therefore a raw-pointer
 physical property, not a general nullable type constructor. Borrow, unique,
-and shared handles designate valid objects in new safe code.
+and shared handles always designate valid objects in Safe Toka.
 
-`T?` is not syntax sugar for `Option<T>`, `none` is not
-`Option<T>::None`, and `T | miss` is not persistent nullable storage. Toka
-does not implicitly convert or flatten these domains.
-
-The distinction is observable when an operation can successfully produce a
-nullable payload:
+When a persistent absence reason matters, define it nominally and keep the
+operation miss separate:
 
 ```toka
-fn lookup(key: str) -> Option<string?>
+shape StoredValue (
+    Empty = 1 |
+    Present(string) = 2
+)
+
+fn lookup(key: str) -> StoredValue | miss
 ```
-
-That return type has three semantically distinct states:
-
-| State | Meaning |
-| :--- | :--- |
-| `Option<string?>::None` | The key was not found |
-| `Option<string?>::Some(none)` | The key was found and its stored payload is empty |
-| `Option<string?>::Some(value)` | The key was found with a payload value |
 
 Move invalidation is not another `Option` result. A moved-from binding is
 tracked by PAL and cannot be observed by matching a public `Moved` variant;
 the standard `Option<T>` result domain consists of `Some(T)` and `None`.
 
-Control flow preserves the distinction between storage absence and result
-absence. A `??` assertion discharges only the nullable layer selected at that
-source position. A hatted guard such as `guard ^node` checks the selected
-handle layer, while a bare payload guard such as `guard node` is a path-usability
-test: it may prove every nullable handle and payload layer that must be present
-to reach that payload safely. Its failure branch deliberately coalesces those
-storage-absence causes into “the payload path is unavailable.” Code that needs
-to distinguish which layer was empty must guard the handle and payload layers
-separately.
-
-Neither guard form crosses a nominal `Option` or `Result` boundary. Postfix `!`
-applies only to `Result` and `Option`, as specified in the result-propagation
-section, and does not unwrap nullable handles or nullable payloads. A deep
-payload guard is therefore a control-flow convenience, not an implicit type
-conversion or an `Option` flattening operation.
+Raw may-zero pointers use comparison, `guard`, or `.unwrap()` explicitly.
+Postfix `!` applies only to `Result` and `Option`, as specified in the
+result-propagation section. `T | miss` is handled by return construction and
+matching; none of these mechanisms implicitly flatten another domain. The
+separate `.await?` spelling remains an async cancellation-outcome operator,
+not Safe nullable syntax.
 
 An implementation may reuse a niche or another compact layout for more than
 one absence domain. Layout equality does not create type identity, an implicit
@@ -175,9 +156,9 @@ conversion, or a stable cross-language ABI guarantee.
 
 ### `T | miss` operation outcomes
 
-`T | miss` is an operation-outcome type distinct from existing `Option<T>`,
-nullable payloads, and nullable handles. It is not a general union and is not
-an alias for `Option<T>`:
+`T | miss` is an operation-outcome type distinct from `Option<T>` and raw
+may-zero pointers. It is not a general union and is not an alias for
+`Option<T>`:
 
 ```toka
 fn find_value(hit: bool) -> i32 | miss {
@@ -239,12 +220,11 @@ p = value      // write payload
 For a handle binding that itself may be rebound, place `#` after the hat:
 
 ```toka
-shape Node(
-    val: i32,
-    nul ^next: Node
-)
+shape Node(val: i32)
 
-auto ^#head = new Node(val = 0, ^next = null)
+auto ^#head = new Node(val = 0)
+auto ^replacement = new Node(val = 1)
+^head = cede ^replacement
 ```
 
 The position of `#` is semantic. `^#p`, `*#p`, `~#p`, and `&#p` mark the handle identity as rebindable. `^p#`, `*p#`, `~p#`, and `&p#` keep `#` on the binding name / payload side; they do not grant handle rebinding authority. When both permissions are needed, write both positions, such as `^#p#`.

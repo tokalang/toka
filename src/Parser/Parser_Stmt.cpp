@@ -91,8 +91,9 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   }
 
   if (isPtrNullable && (isUnique || isShared)) {
+    HasError = true;
     DiagnosticEngine::report(
-        previous().Loc, DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+        previous().Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
         isUnique ? "nul ^T" : "nul ~T");
   }
 
@@ -260,7 +261,7 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   node->IsPub = isPub;
   node->IsConst = isConst;
   // node->IsMutable = name.HasWrite; // Deprecated
-  // node->IsNullable = name.HasNull; // Deprecated
+  // Removed nullable payload syntax is retained only in parser recovery.
   // Explicit properties mapping
   node->IsValueMutable = name.HasWrite;
   node->IsValueNullable = name.HasNull;

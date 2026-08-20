@@ -429,10 +429,10 @@
       "description": "A function call declares all parameter borrows simultaneously; overlapping arguments conflict when either side requires exclusive or invalidating access."
     },
     "E0447": {
-      "id": "ERR_NULL_ACCESS",
+      "id": "ERR_MAY_ZERO_RAW_ACCESS",
       "level": "Error",
-      "message": "Accessing member of nullable type '{}' requires explicit 'is' check",
-      "description": "Accessing member of nullable type '{}' requires explicit 'is' check"
+      "message": "Accessing a member through may-zero raw pointer '{}' requires a non-zero guard or unwrap()",
+      "description": "May-zero raw pointers must be proven non-zero before member access"
     },
     "E0448": {
       "id": "ERR_MORPHOLOGY_MISMATCH",
@@ -820,36 +820,6 @@
       "level": "Warning",
       "message": "Call argument '{}' for mutable parameter '{}' should be explicitly marked with '#' (e.g. '{}{}')"
     },
-    "W0409": {
-      "stage": "Parser",
-      "domain": "Type",
-      "kind": "DeprecatedSafeNullablePayload",
-      "confidence": "Guaranteed",
-      "description": "Safe nullable payload types are being removed. Use uninit/init for construction state, T | miss for operation misses, or an explicit persistent state type.",
-      "id": "WARN_SAFE_NULLABLE_PAYLOAD_DEPRECATED",
-      "level": "Warning",
-      "message": "Safe nullable payload syntax '{}' is deprecated; use 'uninit:T' + 'init', 'T | miss', or an explicit state type"
-    },
-    "W0410": {
-      "stage": "Parser",
-      "domain": "Ownership",
-      "kind": "DeprecatedSafeNullableHandle",
-      "confidence": "Guaranteed",
-      "description": "Safe unique and shared handles are becoming permanently non-null. Raw pointer nullability remains available for unsafe and FFI boundaries.",
-      "id": "WARN_SAFE_NULLABLE_HANDLE_DEPRECATED",
-      "level": "Warning",
-      "message": "Safe nullable handle syntax '{}' is deprecated; '^T' and '~T' must designate valid objects, while physical null belongs to raw/FFI pointers"
-    },
-    "W0411": {
-      "stage": "Parser",
-      "domain": "Type",
-      "kind": "DeprecatedNoneLiteral",
-      "confidence": "Guaranteed",
-      "description": "The none payload literal is being removed with safe nullable payloads.",
-      "id": "WARN_NONE_LITERAL_DEPRECATED",
-      "level": "Warning",
-      "message": "The 'none' payload literal is deprecated; choose Init, 'T | miss', Option, or a domain state explicitly"
-    },
     "E0483": {
       "stage": "Sema",
       "domain": "Pointer",
@@ -859,6 +829,46 @@
       "id": "ERR_NONZERO_RAW_NULL_FLOW",
       "level": "Error",
       "message": "Plain raw pointer type '{}' cannot contain or test null; use 'nul *T' for a may-zero raw address"
+    },
+    "E0484": {
+      "stage": "Parser",
+      "domain": "Type",
+      "kind": "RemovedSafeNullablePayload",
+      "confidence": "Guaranteed",
+      "description": "Safe nullable payload types have been removed. Use Init for construction state, T | miss for operation misses, Option<T> for explicit zero-or-one storage, or a domain state.",
+      "id": "ERR_SAFE_NULLABLE_PAYLOAD_REMOVED",
+      "level": "Error",
+      "message": "Safe nullable payload syntax '{}' has been removed; use Init, 'T | miss', Option<T>, or an explicit domain state"
+    },
+    "E0485": {
+      "stage": "Parser",
+      "domain": "Ownership",
+      "kind": "RemovedSafeNullableHandle",
+      "confidence": "Guaranteed",
+      "description": "Safe unique and shared handles are permanently non-null. Physical zero addresses belong only to raw nul *T pointers.",
+      "id": "ERR_SAFE_NULLABLE_HANDLE_REMOVED",
+      "level": "Error",
+      "message": "Safe nullable handle syntax '{}' has been removed; '^T' and '~T' must designate valid objects, while physical null requires 'nul *T'"
+    },
+    "E0486": {
+      "stage": "Parser",
+      "domain": "Type",
+      "kind": "RemovedNoneLiteral",
+      "confidence": "Guaranteed",
+      "description": "The none payload literal was removed with safe nullable payloads.",
+      "id": "ERR_NONE_LITERAL_REMOVED",
+      "level": "Error",
+      "message": "The 'none' payload literal has been removed; use miss, Option::None, Init, or an explicit domain state"
+    },
+    "E0487": {
+      "stage": "Parser",
+      "domain": "Type",
+      "kind": "RemovedNullableAssertion",
+      "confidence": "Guaranteed",
+      "description": "Nullable postfix and assertion operators were removed with safe nullable payload and owning-handle types. The distinct await? cancellation outcome remains available.",
+      "id": "ERR_NULLABLE_ASSERTION_REMOVED",
+      "level": "Error",
+      "message": "Nullable postfix/assertion syntax has been removed; use raw-pointer unwrap(), match 'T | miss', Option methods, or explicit state handling"
     },
     "S0401": {
       "stage": "Sema",
@@ -1941,14 +1951,14 @@
     "E04493": {
       "id": "ERR_SEMA_GUARD_CONDITION_MUST_BE_A_VARIABLE",
       "level": "Error",
-      "message": "guard condition must be a variable or direct local nullable path",
-      "description": "guard condition must be a variable or direct local nullable path"
+      "message": "guard condition must be a variable or direct local may-zero raw path",
+      "description": "Raw pointer guards require a traceable may-zero raw path"
     },
     "E04494": {
-      "id": "ERR_SEMA_GUARD_CONDITION_MUST_BE_A_NULLABLE_TYPE",
+      "id": "ERR_SEMA_GUARD_CONDITION_MUST_BE_A_MAY_ZERO_RAW_TYPE",
       "level": "Error",
-      "message": "guard condition must be a nullable type",
-      "description": "guard condition must be a nullable type"
+      "message": "guard condition must be a may-zero raw pointer",
+      "description": "Only raw may-zero pointers use presence guards"
     },
     "E04495": {
       "id": "ERR_SEMA_TOKA_1_0_DOES_NOT_SUPPORT_YIELDING_VALUES",
@@ -2599,10 +2609,10 @@
       "description": "Integer literals must fit their target type"
     },
     "E04599": {
-      "id": "ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD",
+      "id": "ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD",
       "level": "Error",
-      "message": "Cannot cede a nullable source into a non-null destination without a same-path non-null guard",
-      "description": "Nullable cede sources require a same-path non-null guard before transfer"
+      "message": "Cannot cede a may-zero raw pointer into a non-zero destination without a same-path non-zero guard",
+      "description": "May-zero raw cede sources require a same-path non-zero guard before transfer"
     },
     "E04600": {
       "id": "ERR_SEMA_CEDE_DYNAMIC_ARRAY_INDEX_UNSUPPORTED",

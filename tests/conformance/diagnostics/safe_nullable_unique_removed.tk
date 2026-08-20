@@ -1,0 +1,4 @@
+shape Cell(value: i32)
+
+fn legacy(nul ^p: Cell) -> bool { return true }
+fn main() -> i32 { return 0 }

@@ -72,6 +72,7 @@ static std::string reconstructVar(
     bool isExplicitBound, bool isMorphicExempt, bool isCeded,
     bool isValueMutable, bool isValueNullable, bool isValueBlocked
 ) {
+    (void)isValueNullable;
     std::string result = "";
     if (isCeded) {
         result += "cede ";
@@ -110,8 +111,6 @@ static std::string reconstructVar(
 
     if (isValueMutable) {
         result += "#";
-    } else if (isValueNullable) {
-        result += "?";
     } else if (isValueBlocked) {
         result += "$";
     }
@@ -810,7 +809,6 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         }
         m_OS << var->Name;
         if (var->IsValueMutable) m_OS << "#";
-        else if (var->IsValueNullable) m_OS << "?";
         else if (var->IsValueBlocked) m_OS << "$";
     } else if (auto str = dynamic_cast<const StringExpr *>(expr)) {
         m_OS << "c\"" << escapeLiteralContent(str->Value) << "\"";
@@ -1171,7 +1169,6 @@ void TKIExporter::exportStmt(const Stmt *stmt, bool indentStmt) {
                 }
                 m_OS << v.Name;
                 if (v.IsValueMutable) m_OS << "#";
-                else if (v.IsValueNullable) m_OS << "?";
                 else if (v.IsValueBlocked) m_OS << "$";
             }
         }

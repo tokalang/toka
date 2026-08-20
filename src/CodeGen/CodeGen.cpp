@@ -229,7 +229,6 @@ PhysEntity CodeGen::genExprImpl(const Expr *expr) {
       dynamic_cast<const FloatExpr *>(expr) ||
       dynamic_cast<const BoolExpr *>(expr) ||
       dynamic_cast<const NullExpr *>(expr) ||
-      dynamic_cast<const NoneExpr *>(expr) ||
       dynamic_cast<const StringExpr *>(expr) ||
       dynamic_cast<const ViewStringExpr *>(expr) ||
       dynamic_cast<const CharLiteralExpr *>(expr)) {

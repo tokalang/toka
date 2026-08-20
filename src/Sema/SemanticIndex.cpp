@@ -124,7 +124,7 @@ SemanticParameterContract parameterContract(const Arg &arg) {
   contract.HandleRebindable = arg.IsRebindable;
   contract.HandleBlocked = arg.IsRebindBlocked;
   contract.HandleNullable = arg.IsPointerNullable;
-  contract.PayloadNullable = arg.IsValueNullable;
+  contract.PayloadNullable = false;
   return contract;
 }
 
@@ -172,7 +172,7 @@ SemanticFieldContract fieldContract(const ShapeMember &member) {
   contract.HandleRebindable = member.IsRebindable;
   contract.HandleBlocked = member.IsRebindBlocked;
   contract.HandleNullable = member.IsPointerNullable;
-  contract.PayloadNullable = member.IsValueNullable;
+  contract.PayloadNullable = false;
   return contract;
 }
 

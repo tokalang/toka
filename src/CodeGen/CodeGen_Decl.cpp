@@ -1393,15 +1393,6 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     return nullptr;
   }
 
-  std::shared_ptr<Type> nullableSoulType =
-      var->ResolvedType ? var->ResolvedType->getSoulType() : nullptr;
-  if (dynamic_cast<const NewExpr *>(sourceInitExpr) && initVal &&
-      initVal->getType()->isPointerTy() && nullableSoulType &&
-      nullableSoulType->IsNullable && elemTy && elemTy->isStructTy()) {
-    initVal = wrapFreshAllocationAsNullableSoul(
-        initVal, llvm::cast<llvm::StructType>(elemTy));
-  }
-
   if (var->Init && initVal) {
     // Move Semantics for Unique
     if (var->IsUnique) {
@@ -1544,7 +1535,7 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   sym.allocaPtr = alloca;
   fillSymbolMetadata(sym, var->TypeName, var->IsRawPointer, var->IsUnique,
                      var->IsShared, var->IsReference, var->IsValueMutable,
-                     var->IsValueNullable || var->IsPointerNullable, elemTy);
+                     elemTy);
                      
   if (var->ResolvedType) {
       sym.soulTypeObj = var->ResolvedType;
@@ -1566,61 +1557,6 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
   // [Refactor] Shared Pointer Init RC Logic
   // Redundant IncRef removed because genExpr (via genVariableExpr) now
   // handle ownership transfer (Acquire) for RValues.
-
-  // A fixed array may carry nullable elements even though its literal
-  // initializer produced bare values.  Materialize each declared `{T,
-  // present}` element before the ordinary VariableDecl compatibility path.
-  if (initVal && initVal->getType() != type && type->isArrayTy() &&
-      initVal->getType()->isArrayTy()) {
-    auto *targetArrayTy = llvm::cast<llvm::ArrayType>(type);
-    auto *sourceArrayTy = llvm::cast<llvm::ArrayType>(initVal->getType());
-    llvm::Type *targetElemTy = targetArrayTy->getElementType();
-    llvm::Type *sourceElemTy = sourceArrayTy->getElementType();
-    if (targetArrayTy->getNumElements() == sourceArrayTy->getNumElements() &&
-        targetElemTy->isStructTy() &&
-        targetElemTy->getStructNumElements() == 2 &&
-        targetElemTy->getStructElementType(0) == sourceElemTy &&
-        targetElemTy->getStructElementType(1)->isIntegerTy(1)) {
-      llvm::Value *wrappedArray = llvm::UndefValue::get(targetArrayTy);
-      for (uint64_t i = 0; i < targetArrayTy->getNumElements(); ++i) {
-        llvm::Value *element =
-            m_Builder.CreateExtractValue(initVal, {static_cast<unsigned>(i)});
-        llvm::Value *wrappedElement = llvm::UndefValue::get(targetElemTy);
-        wrappedElement = m_Builder.CreateInsertValue(wrappedElement, element,
-                                                      {0});
-        wrappedElement = m_Builder.CreateInsertValue(
-            wrappedElement, llvm::ConstantInt::getTrue(m_Context), {1});
-        wrappedArray = m_Builder.CreateInsertValue(
-            wrappedArray, wrappedElement, {static_cast<unsigned>(i)});
-      }
-      initVal = wrappedArray;
-    }
-  }
-
-  // [Chapter 6 Extension] Nullable Soul Wrapper for VariableDecl
-  if (initVal && initVal->getType() != type && type->isStructTy() &&
-      type->getStructNumElements() == 2 &&
-      type->getStructElementType(1)->isIntegerTy(1)) {
-    if (initVal->getType() == type->getStructElementType(0)) {
-      llvm::Value *wrapped = llvm::UndefValue::get(type);
-      wrapped = m_Builder.CreateInsertValue(wrapped, initVal, {0});
-      wrapped = m_Builder.CreateInsertValue(
-          wrapped, llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 1),
-          {1});
-      initVal = wrapped;
-    } else if (dynamic_cast<const NoneExpr *>(var->Init.get()) ||
-               (initVal->getType()->isPointerTy() &&
-                llvm::isa<llvm::ConstantPointerNull>(initVal))) {
-      llvm::Value *wrapped = llvm::UndefValue::get(type);
-      wrapped = m_Builder.CreateInsertValue(
-          wrapped, llvm::Constant::getNullValue(type->getStructElementType(0)),
-          {0});
-      wrapped = m_Builder.CreateInsertValue(
-          wrapped, llvm::ConstantInt::get(llvm::Type::getInt1Ty(m_Context), 0),
-          {1});
-      initVal = wrapped;
-    }
-  }
 
   // Refined implicit casts
   if (initVal && initVal->getType() != type) {
@@ -2113,7 +2049,7 @@ llvm::Value *CodeGen::genDestructuringDecl(const DestructuringDecl *dest) {
     } else {
       // Use memberTy (the 'Meat') as the soul type.
       fillSymbolMetadata(sym, "", false, false, false, v.IsReference,
-                         v.IsValueMutable, v.IsValueNullable, memberTy);
+                         v.IsValueMutable, memberTy);
     }
     sym.typeName = deducedType; // Set typeName in symbol
     sym.isRebindable = false;
@@ -2208,7 +2144,7 @@ void CodeGen::genGlobal(const Stmt *stmt) {
     sym.allocaPtr = globalVar;
     fillSymbolMetadata(sym, var->TypeName, var->IsRawPointer, var->IsUnique,
                        var->IsShared, var->IsReference, var->IsValueMutable,
-                       var->IsValueNullable || var->IsPointerNullable, type);
+                       type);
     sym.isRebindable = var->IsRebindable;
     sym.isContinuous = type->isArrayTy();
     m_Symbols[var->Name] = sym;
@@ -2613,7 +2549,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
                       true); // Return address as LValue
   }
   if (expr->Method == "unwrap") {
-    // [Fix] Only allow intrinsic 'unwrap' for Pointers (Nullable sugar).
+    // Intrinsic unwrap is reserved for may-zero raw pointers.
     // Do NOT hijack 'unwrap' method on Structs (like Option<T>).
     bool isPointer = false;
     if (expr->Object->ResolvedType) {
@@ -3294,7 +3230,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 void CodeGen::fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
                                  bool hasPointer, bool isUnique, bool isShared,
                                  bool isReference, bool isMutable,
-                                 bool isNullable, llvm::Type *allocaElemTy) {
+                                 llvm::Type *allocaElemTy) {
   sym.indirectionLevel = 0;
   sym.typeName =
       typeStr; // [Fix] Store original type string for legacy/dynamic logic
@@ -3335,7 +3271,6 @@ void CodeGen::fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
 
   // 5. Semantic flags
   sym.isMutable = isMutable;
-  sym.isNullable = isNullable;
   // Note: isRebindable is usually set separately based on '#' token presence
   // but it's often linked to morphology in declarations.
 }
@@ -3507,7 +3442,7 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   }
 
   // A miss outcome is a real returned value with two states.  Keep its
-  // representation independent from nullable souls and Option: field 0 is
+  // representation independent from raw may-zero pointers and Option: field 0 is
   // the hit discriminator and field 1 is payload storage.  The payload is
   // read or dropped only when the discriminator is true.
   if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type)) {
@@ -3516,18 +3451,6 @@ llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
       return nullptr;
     return llvm::StructType::get(
         m_Context, {llvm::Type::getInt1Ty(m_Context), payload});
-  }
-
-  // [Chapter 6 Extension] Nullable Soul Wrapper: { T, i1 }
-  // Only for non-pointers. Pointers are natively nullable in LLVM.
-  if (type->IsNullable && !type->isPointer() && !type->isSmartPointer() &&
-      !type->isReference() && !type->isVoid() && !type->isNever()) {
-    // Get raw type without nullable attribute to avoid infinite recursion
-    auto baseTyObj =
-        type->withAttributes(type->IsWritable, false, type->IsBlocked);
-    llvm::Type *baseTy = getLLVMType(baseTyObj);
-    return llvm::StructType::get(m_Context,
-                                 {baseTy, llvm::Type::getInt1Ty(m_Context)});
   }
 
   // Handle Primitives
@@ -3757,7 +3680,6 @@ void CodeGen::fillSymbolMetadata(TokaSymbol &sym, std::shared_ptr<Type> typeObj,
 
   // Attributes
   sym.isMutable = typeObj->IsWritable;
-  sym.isNullable = typeObj->IsNullable;
 
   // Arrays are continuous
   if (current && current->isArray()) {

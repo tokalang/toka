@@ -97,7 +97,7 @@ static void debugCheckBindingTypeString(const char *nodeKind,
 
   bool permissionHasHandle =
       permission.Morphology != BindingMorphology::None ||
-      permission.IdentityNullable || permission.IdentityRebindable ||
+      permission.IdentityMayBeZero || permission.IdentityRebindable ||
       permission.IdentityBlocked;
 
   std::cerr << "[TOKA_DEBUG_BINDING_PERMISSION] " << nodeKind << " '"
@@ -110,7 +110,7 @@ static void debugCheckBindingTypeString(const char *nodeKind,
                       "permission")
             << ": type='" << typeName
             << "', morphology=" << debugMorphologyName(permission.Morphology)
-            << ", identityNullable=" << permission.IdentityNullable
+            << ", identityMayBeZero=" << permission.IdentityMayBeZero
             << ", identityRebindable=" << permission.IdentityRebindable
             << ", identityBlocked=" << permission.IdentityBlocked << "\n";
 }
@@ -4586,7 +4586,6 @@ void Sema::checkFunction(FunctionDecl *Fn) {
                                 !Arg.IsReference && !Arg.IsRebindable &&
                                 !Arg.IsValueMutable &&
                                 !Arg.IsPointerNullable &&
-                                !Arg.IsValueNullable &&
                                 !Arg.IsValueBlocked && Arg.Name != "self" &&
                                 Fn->Effect == EffectKind::None &&
                                 Fn->ReturnContract.ResultKind !=

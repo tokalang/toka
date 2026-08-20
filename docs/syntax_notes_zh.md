@@ -34,16 +34,15 @@
 | `auto &p#` | 可变引用 | `&`引用, `#`字段本身可变 |
 | `auto &#p` | 可重绑定 | `#`置于指针符号右侧语义为指针本身可重绑定，对所有指针形态都有效 |
 | 仅考虑指针的种类和对实体的读写权限，以上组合就是全部，该可变性完全独立于指针本身的可重绑性| 即指针对实体的读写只有2 中，只读或读写，不存在自动继承的情况 | |
-| **null、none 和 Option::None** | | |
-| `null` | 空指针的字面值 | 仅用于指针变量 |
-| `none` | 空值的字面值 |  仅用于实体变量 |
-| `Option<T>::None` | 一次操作没有产生结果 | 它不是 payload 字面量 `none`；`T?` 也不是 `Option<T>` 的语法糖 |
-| `Option<T?>` | 操作可能未命中，命中后的 payload 又可以为空 | 必须区分 `Option::None`、`Option::Some(none)` 与 `Option::Some(value)`，禁止隐式 flatten |
-| `auto x: i32? = none` | x是可空类型变量 | 实体变量可空有类型右侧的`?`表达 |
-| `auto nul *x: i32 = null` | *x是可空指针变量 |  指针本身可空有声明指针的前置 `nul` 关键字表达|
-| `auto nul ^#node#: Node? = null` | `^node` 是一个可空可重绑定的指针变量，他指向可变可空的 `Node` 实体 |  多个维度多个符号的组合表达 |
-| `if x == none` 或者 `if *ptr == null` | 检查指针或实体是否为空 |
-| `guard x` 或者 `guard *ptr` | 检查所选视图是否可用 | 带帽 guard（如 `guard ^node`）只检查选中的 handle 层；裸 payload guard（如 `guard node`）可以一次证明安全到达 payload 所需的全部 `null` / `none` 存储层，因此 `guard node { ... }` 可以直接处理 `nul ^#node#: Node?` 的可用 payload。深层 guard 的失败分支只说明路径某处为空；若需区分 handle `null` 与 payload `none`，应分层 guard。guard 不跨越 `Option` / `Result`，因此不是结果类型的隐式 flatten。|
+| **缺席与物理零地址** | | |
+| `null` | raw pointer 的物理零地址字面值 | 只能流入 `nul *T`，不能流入 `*T`、`^T`、`~T` 或 `&T` |
+| `miss` | `T | miss` 的操作未命中分支 | 只能由声明返回 `T | miss` 的函数在 `return` 中构造 |
+| `Option<T>::None` | 显式零或一个存储状态 | 不等于 `miss`，也不会被隐式 flatten |
+| `auto nul *x: i32 = null` | raw 地址可能为零 | `nul` 是 raw-pointer 专属物理属性 |
+| `T?` / `none` | 已永久删除 | 分别报告 E0484 / E0486 |
+| `nul ^T` / `nul ~T` | 已永久删除 | 报 E0485；Safe owning handle 必须指向有效对象 |
+| nullable assertion operator | 已永久删除 | 报 E0487；raw pointer 使用 `.unwrap()`，结果类型使用 match/方法 |
+| `if *ptr == null` 或 `guard *ptr` | 检查 `nul *T` 是否为零 | 不跨越 `Option`、`Result` 或 `T | miss` 边界 |
 | **未完成编辑** | | |
 | `todo` | 类型待办 | 只能作为表达式使用的保留关键字；它消耗已经确定的需求，但不是变量、值、place、能力或资源。任何可达待办都使检查/构建失败，且不产生编译产物。|
 | `auto value: i32 = todo` | 有完整需求的待办 | 报 `E04603`，并可由 `toka todo-goals --json --check-only file.tk` 输出 `i32` 需求；该 JSON 不是普通 `Allow` 证据。|

@@ -45,7 +45,6 @@ struct CodeGen::MemberHatPlan {
   int AccessHats = 0;
   int DerefCount = 0;
   bool IsHatOn = false;
-  bool IsIdentityAssertion = false;
 };
 
 struct CodeGen::MemberMaterialization {
@@ -386,34 +385,6 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
     return;
   }
 
-  if (type->IsNullable) {
-    auto *nullableType = llvm::dyn_cast<llvm::StructType>(getLLVMType(type));
-    if (nullableType && nullableType->getNumElements() == 2 &&
-        nullableType->getStructElementType(1)->isIntegerTy(1)) {
-      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
-      llvm::BasicBlock *dropPayload =
-          llvm::BasicBlock::Create(m_Context, "drop.nullable.live", function);
-      llvm::BasicBlock *dropDone =
-          llvm::BasicBlock::Create(m_Context, "drop.nullable.done", function);
-      llvm::Value *presentAddr = m_Builder.CreateStructGEP(
-          nullableType, ptrAddr, 1, "drop.nullable.present.addr");
-      llvm::Value *present = m_Builder.CreateLoad(
-          llvm::Type::getInt1Ty(m_Context), presentAddr,
-          "drop.nullable.present");
-      m_Builder.CreateCondBr(present, dropPayload, dropDone);
-      m_Builder.SetInsertPoint(dropPayload);
-      llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
-          nullableType, ptrAddr, 0, "drop.nullable.payload.addr");
-      emitDropForType(payloadAddr,
-                      type->withAttributes(type->IsWritable, false,
-                                           type->IsBlocked));
-      if (!m_Builder.GetInsertBlock()->getTerminator())
-        m_Builder.CreateBr(dropDone);
-      m_Builder.SetInsertPoint(dropDone);
-      return;
-    }
-  }
-
   if (auto shape = std::dynamic_pointer_cast<ShapeType>(type->getSoulType());
       shape && shape->Decl) {
     const std::string &dropIdentity =
@@ -693,7 +664,7 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
             memberDropType ? memberDropType->getSoulType() : nullptr;
         const bool memberNeedsDrop =
             memberDropType &&
-            (memberDropType->isArray() || memberDropType->IsNullable ||
+            (memberDropType->isArray() ||
              memberDropType->isMissOutcome() ||
              memberDropType->isUniquePtr() || memberDropType->isSharedPtr() ||
              (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
@@ -753,7 +724,7 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
     const std::string memberType = Type::stripMorphology(rawType);
     const bool memberNeedsDrop =
         memberDropType &&
-        (memberDropType->isArray() || memberDropType->IsNullable ||
+        (memberDropType->isArray() ||
          memberDropType->isMissOutcome() ||
          (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
     if (!memberNeedsDrop && !m_Shapes.count(memberType))
@@ -1238,11 +1209,9 @@ CodeGen::MemberMaterialization CodeGen::emitMaterializedMemberValue(llvm::Value 
 CodeGen::MemberHatPlan CodeGen::resolveMemberHatPlan(const ShapeDecl *namedShape,
                                                      int idx,
                                                      int accessHats,
-                                                     bool isIdentityAssertion,
                                                      bool isIdentityOperator,
                                                      const std::shared_ptr<Type> &resolvedType) {
   MemberHatPlan plan;
-  plan.IsIdentityAssertion = isIdentityAssertion;
 
   if (namedShape && idx >= 0 && idx < (int)namedShape->Members.size()) {
     const ShapeMember &member = namedShape->Members[idx];
@@ -1324,8 +1293,8 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
   llvm::Type *irTy = fieldStorage.IrTy;
 
   MemberHatPlan hatPlan = resolveMemberHatPlan(
-      namedShape, idx, memberAccess.AccessHats, memberAccess.IsIdentityAssertion,
-      memberAccess.IsIdentityAssertion || memberAccess.IsIdentityOperator,
+      namedShape, idx, memberAccess.AccessHats,
+      memberAccess.IsIdentityOperator,
       mem->ResolvedType);
 
   if (hatPlan.IsHatOn) {
@@ -1339,15 +1308,6 @@ PhysEntity CodeGen::genDynamicMemberExpr(const MemberExpr *mem) {
 
   MemberMaterialization materialized =
       emitMaterializedMemberValue(finalAddr, irTy, hatPlan, mem->ResolvedType);
-
-  if (hatPlan.IsIdentityAssertion) {
-    // Identity Assertion (Ch 6.1)
-    llvm::Value *ptrVal =
-        m_Builder.CreateLoad(materialized.IrTy, materialized.Addr, "nn.load");
-    genNullCheck(ptrVal, mem);
-    return PhysEntity(ptrVal, memberTypeName, materialized.IrTy,
-                      false); // R-Value
-  }
 
   return PhysEntity(materialized.Addr, memberTypeName, materialized.IrTy, true);
 }

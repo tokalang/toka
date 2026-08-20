@@ -115,8 +115,9 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
   }
 
   if (isPtrNullable && (isUnique || isShared)) {
+    HasError = true;
     DiagnosticEngine::report(
-        previous().Loc, DiagID::WARN_SAFE_NULLABLE_HANDLE_DEPRECATED,
+        previous().Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
         isUnique ? "nul ^T" : "nul ~T");
   }
 
@@ -498,7 +499,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     expr = std::move(node);
   } else if (match(TokenType::KwNone)) {
     Token tok = previous();
-    DiagnosticEngine::report(tok.Loc, DiagID::WARN_NONE_LITERAL_DEPRECATED);
+    error(tok, DiagID::ERR_NONE_LITERAL_REMOVED);
     auto node = std::make_unique<NoneExpr>();
     node->setLocation(tok, m_CurrentFile);
     expr = std::move(node);
@@ -1107,7 +1108,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       else if (match(TokenType::Ampersand))
         prefix = previous().Text;
       else if (match(TokenType::DoubleQuestion))
-        prefix = previous().Text;
+        {
+          Token opTok = previous();
+          error(opTok, DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
+          prefix = opTok.Text;
+        }
 
       if (match(TokenType::Identifier) || match(TokenType::KwUninit) ||
           match(TokenType::KwNull) || match(TokenType::KwSelf)) {
@@ -1197,6 +1202,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           std::make_unique<PostfixExpr>(TokenType::MinusMinus, std::move(expr));
     } else if (match(TokenType::DoubleQuestion)) {
       Token opTok = previous();
+      error(opTok, DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
       auto node = std::make_unique<PostfixExpr>(TokenType::DoubleQuestion,
                                                 std::move(expr));
       node->setLocation(opTok, m_CurrentFile);
@@ -1209,6 +1215,7 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       expr = std::move(node);
     } else if (match(TokenType::TokenNull)) {
       Token opTok = previous();
+      error(opTok, DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
       auto node =
           std::make_unique<PostfixExpr>(TokenType::TokenNull, std::move(expr));
       node->setLocation(opTok, m_CurrentFile);

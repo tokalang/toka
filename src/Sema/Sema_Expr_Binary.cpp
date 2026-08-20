@@ -661,12 +661,6 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         Traverse = Idx->Array.get();
       } else if (auto *Un = dynamic_cast<UnaryExpr *>(Traverse)) {
         Traverse = Un->RHS.get();
-      } else if (auto *Post = dynamic_cast<PostfixExpr *>(Traverse)) {
-        if (Post->Op == TokenType::DoubleQuestion) {
-          Traverse = Post->LHS.get();
-        } else {
-          break;
-        }
       } else {
         break;
       }

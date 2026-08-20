@@ -87,13 +87,12 @@ counter = 3
 
 ### 三种缺失语义
 
-> 迁移状态：Safe nullable payload `T?` / `none` 与 nullable unique/shared
-> handle `nul ^T` / `nul ~T` 已进入移除前警告阶段，分别报告 W0409、
-> W0411 与 W0410。当前版本暂时保留旧 lowering 以便迁移；raw pointer
-> `nul *T` 和物理 `null` 不在本轮弃用范围内。
+Safe nullable payload 与 owning handle 已永久删除：`T?` 报 E0484，
+`nul ^T` / `nul ~T` 报 E0485，`none` 报 E0486，nullable postfix / assertion
+syntax 报 E0487。Parser 识别这些旧拼写仅用于给出迁移诊断；它们不再是
+语言类型或值，也没有 Sema 与 CodeGen 表示。
 
-Toka 将操作未命中、物理零地址与正在退役的 Safe nullable 表层明确分开。
-它们的物理表示可能同构，但在类型系统中不是别名：
+Toka 将操作未命中、显式零或一个存储，以及物理零地址明确分开：
 
 | 语义域 | 表层写法 | 空状态 | 含义 |
 | :--- | :--- | :--- | :--- |
@@ -101,64 +100,48 @@ Toka 将操作未命中、物理零地址与正在退役的 Safe nullable 表层
 | raw 非零地址 | `*T` | 无 | 地址保证非零，但解引用仍要求 `unsafe` |
 | 操作未命中 | `T \| miss` | `miss` | 一次操作没有产生 `T` |
 | 通用可选值 | `Option<T>` | `Option<T>::None` | 被存储的值明确具有零或一个的基数 |
-| 旧 Safe nullable | `T?`、`nul ^T`、`nul ~T` | `none` / `null` | 仅在警告迁移期保留 |
 
 例如：
 
 ```toka
 auto nul *ptr = null:nul *i32
 auto value = lookup(key) // 返回类型声明为 T | miss
-auto maybe = none:i32?
 auto result = Option<i32>::None:Option<i32>
 ```
 
 普通 `*T` 不能由 `null` 构造，不能接收或返回 `null`，也不能与 `null`
 比较。`*T` 可以扩大为 `nul *T`；反向转换必须显式调用经过运行时检查的
 `pointer.unwrap()`。因此，`nul` 是 raw pointer 的物理属性，不是通用的
-nullable 类型构造器；新的 Safe 代码中，borrow、unique 与 shared handle
-都必须指向有效对象。
+nullable 类型构造器；Safe Toka 中 borrow、unique 与 shared handle 永远
+指向有效对象。
 
-`T?` 不是 `Option<T>` 的语法糖，`none` 不是 `Option<T>::None`，而
-`T | miss` 也不是持久可空存储。Toka 不在这些语义域之间隐式转换或自动
-flatten。
-
-当一次操作可以成功取得一个可空 payload 时，这个区别是可观察的：
+如果持久缺席的原因有意义，应使用名义状态，并让操作未命中保持独立：
 
 ```toka
-fn lookup(key: str) -> Option<string?>
+shape StoredValue (
+    Empty = 1 |
+    Present(string) = 2
+)
+
+fn lookup(key: str) -> StoredValue | miss
 ```
-
-这个返回类型具有三种语义不同的状态：
-
-| 状态 | 含义 |
-| :--- | :--- |
-| `Option<string?>::None` | 没有找到 key |
-| `Option<string?>::Some(none)` | 找到了 key，但它存储的 payload 为空 |
-| `Option<string?>::Some(value)` | 找到了 key，并取得 payload 值 |
 
 move 失效不是 `Option` 的另一种结果。PAL 跟踪 moved-from 绑定，用户不能通过
 匹配公开的 `Moved` 变体观察它；标准 `Option<T>` 的结果域只包含 `Some(T)`
 与 `None`。
 
-控制流必须保留“存储为空”和“操作无结果”的区别。`??` 断言每次只解除源码
-位置明确选中的 nullable 层。`guard ^node` 这类带帽 guard 只检查选中的
-handle 层；`guard node` 这类裸 payload guard 则是路径可用性检查，可以一次
-证明安全到达该 payload 所必需的全部 nullable handle 与 nullable payload
-层。它的失败分支会有意把这些存储层的失败原因合并为“payload 路径不可用”。
-如果代码需要区分究竟哪一层为空，就必须分别 guard handle 层与 payload 层。
-
-两种 guard 都不会跨越名义上的 `Option` 或 `Result` 边界。后缀 `!` 只适用于
-Result 传播一节规定的 `Result` 和 `Option`，不解开可空 handle 或可空
-payload。因此，深层 payload guard 是控制流便利语法，不是隐式类型转换，也
-不是 `Option` flatten。
+raw may-zero pointer 必须显式使用比较、`guard` 或 `.unwrap()`。后缀 `!`
+只适用于 Result 传播一节规定的 `Result` 与 `Option`；`T | miss` 通过 return
+构造与 match 处理。任何机制都不会隐式 flatten 另一个语义域。独立的
+`.await?` 仍表示 async cancellation outcome，不属于 Safe nullable 语法。
 
 实现可以让多个缺失语义域复用 niche 或其他紧凑布局。布局相同不会产生类型
 同一性、隐式转换，也不构成稳定的跨语言 ABI 保证。
 
 ### `T | miss` 动作结果
 
-`T | miss` 是与现有 `Option<T>`、nullable payload 和 nullable handle
-都不同的动作结果类型。它不是普通 union，也不是 `Option<T>` 的别名：
+`T | miss` 是与 `Option<T>` 和 raw may-zero pointer 不同的动作结果类型。
+它不是普通 union，也不是 `Option<T>` 的别名：
 
 ```toka
 fn find_value(hit: bool) -> i32 | miss {
@@ -218,12 +201,11 @@ p = value      // 写 payload
 如果 handle 绑定本身可以重绑定，把 `#` 放在帽子后面：
 
 ```toka
-shape Node(
-    val: i32,
-    nul ^next: Node
-)
+shape Node(val: i32)
 
-auto ^#head = new Node(val = 0, ^next = null)
+auto ^#head = new Node(val = 0)
+auto ^replacement = new Node(val = 1)
+^head = cede ^replacement
 ```
 
 `#` 的位置有语义差异。`^#p`、`*#p`、`~#p`、`&#p` 表示 handle identity 可重绑定；`^p#`、`*p#`、`~p#`、`&p#` 里的 `#` 仍在绑定名 / payload 侧，不授予 handle 重绑定权限。两种权限都需要时，两个位置都要写，例如 `^#p#`。

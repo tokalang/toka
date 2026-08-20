@@ -59,57 +59,14 @@ static Expr *unwrapCedeDirectSource(Expr *E) {
   return E;
 }
 
-// A bare guard observes the payload view of a binding.  When that view is
-// nullable, the then-branch must retain the binding morphology while removing
-// nullability from its terminal soul.  Clearing only the outer pointer flag
-// would leave `^T?` as a nullable payload and make a subsequent whole `cede`
-// disagree with its non-null destination representation.
-static std::shared_ptr<Type>
-narrowNullableSoul(const std::shared_ptr<Type> &type) {
-  if (!type)
-    return type;
-
-  auto pointer = std::dynamic_pointer_cast<PointerType>(type);
-  if (!pointer)
-    return type->withAttributes(type->IsWritable, false, type->IsBlocked);
-
-  auto pointee = narrowNullableSoul(pointer->PointeeType);
-  std::shared_ptr<PointerType> narrowed;
-  switch (type->typeKind) {
-  case Type::RawPtr:
-    narrowed = std::make_shared<RawPointerType>(pointee);
-    break;
-  case Type::UniquePtr:
-    narrowed = std::make_shared<UniquePointerType>(pointee);
-    break;
-  case Type::SharedPtr:
-    narrowed = std::make_shared<SharedPointerType>(pointee);
-    break;
-  case Type::Reference:
-    narrowed = std::make_shared<ReferenceType>(pointee);
-    break;
-  default:
-    return type;
-  }
-
-  narrowed->IsWritable = type->IsWritable;
-  narrowed->IsNullable = type->IsNullable;
-  narrowed->IsBlocked = type->IsBlocked;
-  narrowed->IsCede = type->IsCede;
-  return narrowed;
+static bool isMayZeroRawType(const std::shared_ptr<Type> &type) {
+  return type && type->isRawPointer() && type->IsNullable;
 }
 
-static bool isNullableType(const std::shared_ptr<Type> &type) {
-  if (!type)
-    return false;
-  auto soul = type->getSoulType();
-  return type->IsNullable || (soul && soul->IsNullable);
-}
-
-static bool isNullableCedeSource(const Expr *expr) {
+static bool isMayZeroRawCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
   auto *source = cede ? unwrapCedeDirectSource(cede->Value.get()) : nullptr;
-  return source && isNullableType(source->ResolvedType);
+  return source && isMayZeroRawType(source->ResolvedType);
 }
 
 AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
@@ -1255,8 +1212,6 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
   }
 
   if (auto *Post = dynamic_cast<PostfixExpr *>(E)) {
-    if (Post->Op == TokenType::DoubleQuestion)
-      return MorphKind::None;
     return getSyntacticMorphology(Post->LHS.get());
   }
 
@@ -1268,9 +1223,6 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
   if (auto *M = dynamic_cast<MemberExpr *>(E)) {
     if (!M->Member.empty()) {
       MemberAccessIntent access = parseMemberAccess(M->Member);
-      if (access.IsIdentityAssertion) {
-        return MorphKind::Valid; // Assertion bypasses strict checking
-      }
       if (access.IsMorphicIdentity && M->IsMorphicExempt && M->ResolvedType) {
         return morphKindFromType(M->ResolvedType);
       }
@@ -1375,8 +1327,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         handleRebind = expected->IsWritable;
         payloadWrite = soul && soul->IsWritable;
       }
-      const bool nullable = expected &&
-          (expected->IsNullable || (soul && soul->IsNullable));
+      const bool nullable =
+          expected && expected->isRawPointer() && expected->IsNullable;
       SemanticEvidence::recordTodoGoal(
           todo->TodoId, TodoGoalStatus::Incomplete, true,
           expected ? expected->toString() : m_ExpectedType->toString(),
@@ -1422,10 +1374,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
   if (auto *CFE = dynamic_cast<ComptimeFieldExpr *>(E)) {
     return toka::Type::fromString("FieldInfo");
-  }
-
-  if (auto *None = dynamic_cast<NoneExpr *>(E)) {
-    return toka::Type::fromString("none");
   }
 
   if (dynamic_cast<CharLiteralExpr *>(E)) {
@@ -2082,8 +2030,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                 !Info.TypeObj->isReference() && Info.Permission.SoulWritable);
         }
 
-        bool effectiveNull = current->IsNullable || ve->IsValueNullable;
-        return current->withAttributes(usageMutable, effectiveNull);
+        return current->withAttributes(usageMutable, current->IsNullable);
       }
     }
 
@@ -2414,8 +2361,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         }
       } else {
         const bool comparesNull =
-            dynamic_cast<NullExpr *>(bin->RHS.get()) ||
-            dynamic_cast<NoneExpr *>(bin->RHS.get());
+            dynamic_cast<NullExpr *>(bin->RHS.get());
         if (bin->Op == "is" || bin->Op == "is!") {
           narrowThen = (bin->Op == "is" && !comparesNull) ||
                         (bin->Op == "is!" && comparesNull);
@@ -2826,29 +2772,20 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     if (varExpr &&
         CurrentScope->findVariableWithDeref(varExpr->Name, infoPtr,
                                             actualName)) {
-      bool isPtrNullable = false;
-      bool isSoulNullable = false;
-      if (auto ptrT = std::dynamic_pointer_cast<toka::PointerType>(condType)) {
-        isPtrNullable = ptrT->IsNullable;
-      } else if (condType->IsNullable) {
-        isSoulNullable = true;
-      }
+      const bool isPtrNullable =
+          condType->isRawPointer() && condType->IsNullable;
 
-      if (!isPtrNullable && !isSoulNullable && !condType->isVoid()) {
-        error(guard->Condition.get(), DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_NULLABLE_TYPE);
+      if (!isPtrNullable && !condType->isVoid()) {
+        error(guard->Condition.get(),
+              DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_MAY_ZERO_RAW_TYPE);
       }
 
       enterScope();
       SymbolInfo nonNullInfo = *infoPtr;
       if (nonNullInfo.TypeObj) {
-        bool guardsHandle = condType->isPointer() || condType->isReference() ||
-                            condType->isSmartPointer();
-        nonNullInfo.TypeObj =
-            guardsHandle
-                ? nonNullInfo.TypeObj->withAttributes(
-                      nonNullInfo.TypeObj->IsWritable, false,
-                      nonNullInfo.TypeObj->IsBlocked)
-                : narrowNullableSoul(nonNullInfo.TypeObj);
+        nonNullInfo.TypeObj = nonNullInfo.TypeObj->withAttributes(
+            nonNullInfo.TypeObj->IsWritable, false,
+            nonNullInfo.TypeObj->IsBlocked);
       }
       CurrentScope->define(actualName, nonNullInfo);
 
@@ -2860,16 +2797,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       exactPlacesThen = captureExactPlaceFacts();
       palThen = PALCheckerState.snapshot();
     } else {
-      bool isPtrNullable = false;
-      bool isSoulNullable = false;
-      if (auto ptrT = std::dynamic_pointer_cast<toka::PointerType>(condType)) {
-        isPtrNullable = ptrT->IsNullable;
-      } else if (condType->IsNullable) {
-        isSoulNullable = true;
-      }
-      if (!isPtrNullable && !isSoulNullable && !condType->isVoid()) {
+      const bool isPtrNullable =
+          condType->isRawPointer() && condType->IsNullable;
+      if (!isPtrNullable && !condType->isVoid()) {
         error(guard->Condition.get(),
-              DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_NULLABLE_TYPE);
+              DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_MAY_ZERO_RAW_TYPE);
       }
       enterScope();
       if (isProjectionGuard)
@@ -4367,14 +4299,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         DiagID::ERR_SEMA_CEDE_RECEIVER_NOT_OWNED,
                         getPathString(Met->Object.get()));
                 } else {
-                const bool receiverAllowsNull =
-                    FD->Args[0].IsPointerNullable ||
-                    FD->Args[0].IsValueNullable;
-                if (!receiverAllowsNull &&
-                    isNullableType(Met->Object->ResolvedType)) {
-                  error(Met->Object.get(),
-                        DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
-                }
                 Expr *receiver = Met->Object.get();
                 while (auto *postfix =
                            dynamic_cast<PostfixExpr *>(receiver)) {
@@ -4522,11 +4446,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                           getPathString(Met->Args[i].get()), param.Name);
                   }
                   if (param.IsCeded &&
-                      isNullableCedeSource(Met->Args[i].get()) &&
-                      !param.IsPointerNullable &&
-                      !param.IsValueNullable) {
-                    error(Met->Args[i].get(),
-                          DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+                      isMayZeroRawCedeSource(Met->Args[i].get()) &&
+                      !(param.IsRawPointer && param.IsPointerNullable)) {
+          error(Met->Args[i].get(),
+                DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
                   }
                   bool paramIsHatted = param.IsRawPointer || param.IsUnique ||
                                         param.IsShared || param.IsReference;
@@ -5098,11 +5021,6 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else if (Post->Op == TokenType::TokenNull) {
       if (!lhsInfo.empty() && lhsInfo.back() != '?' && lhsInfo.back() != '!')
         lhsInfo += "?";
-    } else if (Post->Op == TokenType::DoubleQuestion) {
-      // [Ch 6.1] Soul Assertion (Postfix ??)
-      // If already non-nullable, it's redundant but valid. Result is
-      // non-nullable.
-      return lhsObj->withAttributes(lhsObj->IsWritable, false);
     }
     return toka::Type::fromString(lhsInfo);
   } else if (auto *Repeat = dynamic_cast<RepeatedArrayExpr *>(E)) {

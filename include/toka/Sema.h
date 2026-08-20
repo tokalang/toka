@@ -878,19 +878,16 @@ private:
       Signature += "#";
     if (Permission.IdentityBlocked)
       Signature += "$";
-    if (Permission.IdentityNullable)
+    if (Permission.IdentityMayBeZero)
       Signature = "nul " + Signature;
 
     // 3. Soul Type (Base Name)
     Signature += stripSoulPrefixes ? toka::Type::stripPrefixes(SoulType)
                                    : SoulType;
 
-    // 4. Soul/Object Attributes (Suffix Zone). Match Type::toString() and
-    // docs/syntax_zh.md canonical spelling: T?# when both flags are present.
+    // 4. Soul/Object attributes (suffix zone).
     if (Permission.SoulBlocked)
       Signature += "$";
-    if (Permission.SoulNullable)
-      Signature += "?";
     if (Permission.SoulWritable)
       Signature += "#";
 
@@ -934,7 +931,7 @@ private:
     // into TypeSyntax.
     soul = soul->withAttributes(
         soul->IsWritable || Permission.SoulWritable,
-        soul->IsNullable || Permission.SoulNullable,
+        false,
         soul->IsBlocked || Permission.SoulBlocked);
 
     if (Permission.Morphology == BindingMorphology::None)
@@ -961,7 +958,7 @@ private:
       return soul;
 
     physical->IsWritable = Permission.IdentityRebindable;
-    physical->IsNullable = Permission.IdentityNullable;
+    physical->IsNullable = Permission.IdentityMayBeZero;
     physical->IsBlocked = Permission.IdentityBlocked;
     return physical;
   }

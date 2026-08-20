@@ -51,7 +51,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   bool hasInvalidMix = false;
 
   // 1. 空断言排他性 (Null Assertion Exclusivity)
-  if (intent.IsIdentityAssertion || intent.IsIdentityOperator) {
+  if (intent.IsIdentityOperator) {
     if (intent.AccessHats > 0 || intent.HasRebindMarker) {
       hasInvalidMix = true;
     }
@@ -226,7 +226,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   // [Ch 6.2] LHS Write Exemption
   bool isLHSTarget = m_InLHS && m_IsAssignmentTarget;
   if (objTypeObj->IsNullable && !isLHSTarget) {
-    DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_NULL_ACCESS,
+    DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_MAY_ZERO_RAW_ACCESS,
                              objTypeObj->toString());
     HasError = true;
   }

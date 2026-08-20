@@ -46,14 +46,25 @@ static bool requiresPayloadWrite(const std::shared_ptr<toka::Type> &Type) {
 // an existing binding remain unchanged.
 static bool isFieldInitializerCompatible(
     const std::shared_ptr<toka::Type> &destination,
-    const std::shared_ptr<toka::Type> &source) {
+    const std::shared_ptr<toka::Type> &source, bool allowUnsafeRawBorrow) {
   if (!destination || !source || !destination->isPointer() ||
-      !source->isPointer() || destination->typeKind != source->typeKind)
+      !source->isPointer())
     return false;
   auto destinationPointee = destination->getPointeeType();
   auto sourcePointee = source->getPointeeType();
-  return destinationPointee && sourcePointee &&
-         (!source->IsNullable || destination->IsNullable) &&
+  if (!destinationPointee || !sourcePointee)
+    return false;
+  if (destination->isSharedPtr() && source->isUniquePtr())
+    return sourcePointee->isCompatibleWith(*destinationPointee);
+  if (allowUnsafeRawBorrow && destination->isReference() &&
+      source->isRawPointer())
+    return sourcePointee->isCompatibleWith(*destinationPointee);
+  if (destination->typeKind != source->typeKind)
+    return false;
+  if (destination->typeKind != toka::Type::RawPtr &&
+      (destination->IsNullable || source->IsNullable))
+    return false;
+  return (!source->IsNullable || destination->IsNullable) &&
          sourcePointee->isCompatibleWith(*destinationPointee);
 }
 
@@ -295,7 +306,7 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
           Pat->IsReference || Pat->IsValueMutable || Pat->IsValueBlocked ||
           Pat->Permission.Morphology != BindingMorphology::None ||
           Pat->Permission.IdentityRebindable ||
-          Pat->Permission.IdentityNullable || Pat->Permission.IdentityBlocked;
+          Pat->Permission.IdentityMayBeZero || Pat->Permission.IdentityBlocked;
       SymbolInfo *existing = nullptr;
       if (hasBindingDecorator || !CurrentScope->findSymbol(Pat->Name, existing) ||
           !existing || !existing->IsDeclaredVariable || !existing->TypeObj) {
@@ -1258,7 +1269,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     }
 
     if ((isTypeCompatible(memberTypeObj, exprTypeObj) ||
-         isFieldInitializerCompatible(memberTypeObj, exprTypeObj)) &&
+         isFieldInitializerCompatible(memberTypeObj, exprTypeObj,
+                                      m_InUnsafeContext)) &&
         !memberTypeObj->equals(*exprTypeObj)) {
       auto origLoc = pair.second->Loc;
       pair.second = std::make_unique<CastExpr>(std::move(pair.second),
@@ -1278,7 +1290,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
 
     if (!diagnosedNullStruct &&
         !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
-          isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
+          isFieldInitializerCompatible(memberTypeObj, exprTypeObj,
+                                       m_InUnsafeContext))) {
       error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, pair.first,
             memberTypeObj->toString(), exprTypeObj->toString());
     }
@@ -1347,7 +1360,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
         }
 
         if ((isTypeCompatible(memberTypeObj, exprTypeObj) ||
-             isFieldInitializerCompatible(memberTypeObj, exprTypeObj)) &&
+             isFieldInitializerCompatible(memberTypeObj, exprTypeObj,
+                                          m_InUnsafeContext)) &&
             !memberTypeObj->equals(*exprTypeObj)) {
           auto origLoc = cloned->Loc;
           cloned = std::make_unique<CastExpr>(std::move(cloned),
@@ -1368,7 +1382,8 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
 
         if (!diagnosedNullStruct &&
             !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
-              isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
+              isFieldInitializerCompatible(memberTypeObj, exprTypeObj,
+                                           m_InUnsafeContext))) {
           error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, defField.Name,
                 memberTypeObj->toString(), exprTypeObj->toString());
         }
@@ -1488,7 +1503,8 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
 
     if (!diagnosedNullStruct &&
         !(isTypeCompatible(memberTypeObj, exprTypeObj) ||
-          isFieldInitializerCompatible(memberTypeObj, exprTypeObj))) {
+          isFieldInitializerCompatible(memberTypeObj, exprTypeObj,
+                                       m_InUnsafeContext))) {
       error(Init, DiagID::ERR_MEMBER_TYPE_MISMATCH, pair.first,
             memberTypeObj->toString(), exprTypeObj->toString());
     }

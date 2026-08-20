@@ -93,7 +93,7 @@ static VariableExpr *findVariableExpr(Expr *E) {
   return nullptr;
 }
 
-static bool isNullableCedeSource(const Expr *expr) {
+static bool isMayZeroRawCedeSource(const Expr *expr) {
   auto *cede = dynamic_cast<const CedeExpr *>(expr);
   if (!cede || !cede->Value)
     return false;
@@ -105,16 +105,13 @@ static bool isNullableCedeSource(const Expr *expr) {
     return false;
 
   auto sourceType = source->ResolvedType;
-  auto sourceSoul = sourceType->getSoulType();
-  return sourceType->IsNullable ||
-         (sourceSoul && sourceSoul->IsNullable);
+  return sourceType->isRawPointer() && sourceType->IsNullable;
 }
 
-static bool isNullableCedeDestination(const std::shared_ptr<Type> &type) {
+static bool isMayZeroRawCedeDestination(const std::shared_ptr<Type> &type) {
   if (!type)
     return false;
-  auto soul = type->getSoulType();
-  return type->IsNullable || (soul && soul->IsNullable);
+  return type->isRawPointer() && type->IsNullable;
 }
 
 void Sema::validateAtomicOrderingArguments(
@@ -535,9 +532,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
           return;
 
         const bool callerCeded = dynamic_cast<CedeExpr *>(argument) != nullptr;
-        if (callerCeded && isNullableCedeSource(argument) &&
-            !isNullableCedeDestination(destinationType)) {
-          error(argument, DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+        if (callerCeded && isMayZeroRawCedeSource(argument) &&
+            !isMayZeroRawCedeDestination(destinationType)) {
+          error(argument,
+                DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
         }
 
         const bool isExempt = canImplicitlyPassToCede(argumentType);
@@ -2208,7 +2206,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       const bool isWholePlainLocal =
           place && !place->IsRawPointer && !place->IsUnique &&
           !place->IsShared && !place->IsValueMutable &&
-          !place->IsValueNullable && !place->IsValueBlocked &&
+          !place->IsValueBlocked &&
           CurrentScope->findSymbol(place->Name, placeInfo) && placeInfo &&
           placeInfo->IsDeclaredVariable && !placeInfo->IsDeclaredMutable &&
           hasExactlyPlaceState(placeInfo->placeFact(), PlaceState::Never);
@@ -2525,10 +2523,10 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     }
 
     if (isCededParam && isCallerCeded &&
-        isNullableCedeSource(Call->Args[i].get()) &&
-        !isNullableCedeDestination(paramType)) {
+        isMayZeroRawCedeSource(Call->Args[i].get()) &&
+        !isMayZeroRawCedeDestination(paramType)) {
       error(Call->Args[i].get(),
-            DiagID::ERR_SEMA_CEDE_NULLABLE_REQUIRES_GUARD);
+            DiagID::ERR_SEMA_CEDE_MAY_ZERO_RAW_REQUIRES_GUARD);
     }
     bool calleeIsAsync =
         (Fn && Fn->Effect == EffectKind::Async) ||
@@ -2622,11 +2620,17 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     } else if (Ext && i < Ext->Args.size()) {
       paramIsMorphicExempt = Ext->Args[i].IsMorphicExempt;
     }
+    bool morphologyValid = true;
     if (!paramIsMorphicExempt) {
       MorphKind targetMorph = morphKindFromType(paramType);
       MorphKind sourceMorph = getSyntacticMorphology(Call->Args[i].get());
       std::string ctx = "arg " + std::to_string(i + 1);
-      checkStrictMorphology(Call->Args[i].get(), targetMorph, sourceMorph, ctx);
+      morphologyValid = checkStrictMorphology(
+          Call->Args[i].get(), targetMorph, sourceMorph, ctx);
+      // A handle supplied where a payload value is expected still needs the
+      // concrete type-mismatch diagnostic used by the common-mistake guide.
+      if (!morphologyValid && targetMorph == MorphKind::None)
+        morphologyValid = true;
     }
 
     bool diagnosedNull = false;
@@ -2637,7 +2641,8 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       diagnosedNull = true;
     }
 
-    if (!diagnosedNull && !isTypeCompatible(paramType, argType)) {
+    if (morphologyValid && !diagnosedNull &&
+        !isTypeCompatible(paramType, argType)) {
       error(Call->Args[i].get(),
             DiagID::ERR_SEMA_TYPE_MISMATCH_FOR_ARGUMENT_EXPECTED_GOT,
             std::to_string(i + 1), diagnosticTypeName(paramType),
