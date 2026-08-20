@@ -1,0 +1,16 @@
+import core/string::{string}
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto item = string::from("outer")
+    auto values# = Vec<string>::new()
+    values#.push(cede string::from("inner"))
+
+    {
+        auto &item = values.borrow(0:usize)
+        if item.as_str() != "inner" { return 1 }
+    }
+
+    if item.as_str() != "outer" { return 2 }
+    return 0
+}

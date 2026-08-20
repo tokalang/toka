@@ -67,6 +67,14 @@
       "description": "Borrow, cede transfer, move semantics, and destructor invocation counts"
     },
     {
+      "id": "ownership_lexical_shadowing_borrow_01",
+      "path": "ownership/lexical_shadowing_borrow.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An inner borrowed binding may shadow an owned outer string without changing post-block name resolution"
+    },
+    {
       "id": "ownership_member_addr_literal_assignment_width_01",
       "path": "ownership/member_addr_literal_assignment_width.tk",
       "type": "run",

@@ -199,6 +199,8 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
 }
 
 llvm::Value *CodeGen::genBlockStmt(const BlockStmt *bs) {
+  const auto symbolsBeforeBlock = m_Symbols;
+  const auto namedValuesBeforeBlock = m_NamedValues;
   m_ScopeStack.push_back({});
   llvm::Value *lastVal = nullptr;
   for (const auto &s : bs->Statements) {
@@ -214,6 +216,8 @@ llvm::Value *CodeGen::genBlockStmt(const BlockStmt *bs) {
 
   executeScopeUnwinding(m_ScopeStack.size() - 1);
   m_ScopeStack.pop_back();
+  m_Symbols = symbolsBeforeBlock;
+  m_NamedValues = namedValuesBeforeBlock;
   return lastVal;
 }
 
