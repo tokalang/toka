@@ -360,6 +360,31 @@ void CodeGen::emitDropForType(llvm::Value *ptrAddr,
   if (type->isRawPointer() || type->isReference())
     return;
 
+  if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type)) {
+    auto *outcomeType = llvm::dyn_cast<llvm::StructType>(getLLVMType(type));
+    if (!outcomeType || outcomeType->getNumElements() != 2 ||
+        !outcome->PayloadType)
+      return;
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *dropPayload = llvm::BasicBlock::Create(
+        m_Context, "drop.miss.hit", function);
+    llvm::BasicBlock *dropDone = llvm::BasicBlock::Create(
+        m_Context, "drop.miss.done", function);
+    llvm::Value *tagAddr = m_Builder.CreateStructGEP(
+        outcomeType, ptrAddr, 0, "drop.miss.tag.addr");
+    llvm::Value *hit = m_Builder.CreateLoad(
+        llvm::Type::getInt1Ty(m_Context), tagAddr, "drop.miss.hit");
+    m_Builder.CreateCondBr(hit, dropPayload, dropDone);
+    m_Builder.SetInsertPoint(dropPayload);
+    llvm::Value *payloadAddr = m_Builder.CreateStructGEP(
+        outcomeType, ptrAddr, 1, "drop.miss.payload.addr");
+    emitDropForType(payloadAddr, outcome->PayloadType);
+    if (!m_Builder.GetInsertBlock()->getTerminator())
+      m_Builder.CreateBr(dropDone);
+    m_Builder.SetInsertPoint(dropDone);
+    return;
+  }
+
   if (type->IsNullable) {
     auto *nullableType = llvm::dyn_cast<llvm::StructType>(getLLVMType(type));
     if (nullableType && nullableType->getNumElements() == 2 &&
@@ -668,6 +693,7 @@ void CodeGen::emitDropCascade(llvm::Value *ptrAddr, const std::string &typeName)
         const bool memberNeedsDrop =
             memberDropType &&
             (memberDropType->isArray() || memberDropType->IsNullable ||
+             memberDropType->isMissOutcome() ||
              memberDropType->isUniquePtr() || memberDropType->isSharedPtr() ||
              (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
 
@@ -727,6 +753,7 @@ void CodeGen::emitDropCascadeWithMask(llvm::Value *ptrAddr,
     const bool memberNeedsDrop =
         memberDropType &&
         (memberDropType->isArray() || memberDropType->IsNullable ||
+         memberDropType->isMissOutcome() ||
          (memberSoul && m_Shapes.count(memberSoul->getSoulName())));
     if (!memberNeedsDrop && !m_Shapes.count(memberType))
       continue;

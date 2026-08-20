@@ -654,14 +654,57 @@ void Sema::checkStmt(Stmt *S) {
     }
     std::string ExprType = "()";
     std::shared_ptr<toka::Type> ExprTypeObj = toka::Type::fromString("()");
-    if (Ret->ReturnValue) {
+    auto functionOutcome = CurrentFunction
+                               ? std::dynamic_pointer_cast<MissOutcomeType>(
+                                     CurrentFunction->ResolvedReturnType)
+                               : nullptr;
+    bool isMissReturn = false;
+    if (functionOutcome && Ret->ReturnValue) {
+      if (auto *variable =
+              dynamic_cast<VariableExpr *>(Ret->ReturnValue.get())) {
+        isMissReturn = variable->Name == "miss";
+      }
+    }
+    if (isMissReturn) {
+      Ret->OutcomeKind = ReturnStmt::MissOutcomeKind::Miss;
+      ExprTypeObj = functionOutcome;
+      ExprType = functionOutcome->toString();
+    } else if (Ret->ReturnValue) {
       Ret->ReturnValue = foldGenericConstant(std::move(Ret->ReturnValue));
+      std::shared_ptr<Type> returnExpectation = functionOutcome
+                                                    ? functionOutcome->PayloadType
+                                                    : toka::Type::fromString(
+                                                          CurrentFunctionReturnType);
       m_ControlFlowStack.push_back(
           {"", CurrentFunctionReturnType, nullptr, false, true});
-      auto RetTypeObj = checkExpr(Ret->ReturnValue.get(), toka::Type::fromString(CurrentFunctionReturnType));
+      auto RetTypeObj = checkExpr(Ret->ReturnValue.get(), returnExpectation);
       ExprTypeObj = RetTypeObj;
       ExprType = RetTypeObj->toString();
       m_ControlFlowStack.pop_back();
+
+      if (functionOutcome) {
+        if (RetTypeObj && RetTypeObj->isMissOutcome() &&
+            isTypeCompatible(functionOutcome, RetTypeObj)) {
+          Ret->OutcomeKind = ReturnStmt::MissOutcomeKind::Forward;
+          ExprTypeObj = functionOutcome;
+          ExprType = functionOutcome->toString();
+        } else if (RetTypeObj && functionOutcome->PayloadType &&
+                   isTypeCompatible(functionOutcome->PayloadType,
+                                    RetTypeObj)) {
+          Ret->OutcomeKind = ReturnStmt::MissOutcomeKind::Hit;
+          ExprTypeObj = functionOutcome;
+          ExprType = functionOutcome->toString();
+        } else {
+          DiagnosticEngine::report(
+              getLoc(Ret), DiagID::ERR_MISS_OUTCOME_RETURN_MISMATCH,
+              RetTypeObj ? RetTypeObj->toString() : "unknown",
+              functionOutcome->toString(),
+              functionOutcome->PayloadType
+                  ? functionOutcome->PayloadType->toString()
+                  : "unknown");
+          HasError = true;
+        }
+      }
 
       // Escape Blockade: Check for Dirty Reference
       if (auto *Var = dynamic_cast<VariableExpr *>(Ret->ReturnValue.get())) {
@@ -688,6 +731,9 @@ void Sema::checkStmt(Stmt *S) {
           [&](std::shared_ptr<toka::Type> t) -> bool {
         if (!t)
           return false;
+        if (auto outcome =
+                std::dynamic_pointer_cast<MissOutcomeType>(t))
+          return isBorrowLikeType(outcome->PayloadType);
         if (t->isReference())
           return true;
         if (auto *shape = dynamic_cast<ShapeType *>(t.get())) {
@@ -1208,11 +1254,21 @@ void Sema::checkStmt(Stmt *S) {
         bypassNullRet = true;
     }
 
+    std::shared_ptr<Type> expectedReturnValueObj = expectedRetObj;
+    if (auto outcome =
+            std::dynamic_pointer_cast<MissOutcomeType>(expectedRetObj)) {
+      if (Ret->OutcomeKind == ReturnStmt::MissOutcomeKind::Hit)
+        expectedReturnValueObj = outcome->PayloadType;
+    }
+
     // A return signature is a declaration boundary.  A Shared direct source
     // may not promise more payload authority than it currently carries.
-    PermissionFlow returnFlow = getPermissionFlow(Ret->ReturnValue.get());
+    PermissionFlow returnFlow = isMissReturn
+                                    ? PermissionFlow{}
+                                    : getPermissionFlow(
+                                          Ret->ReturnValue.get());
     if (returnFlow.Kind == PermissionFlowKind::Shared &&
-        requiresPayloadWrite(expectedRetObj) &&
+        requiresPayloadWrite(expectedReturnValueObj) &&
         !returnFlow.DirectCapability.PayloadWritable) {
       error(Ret->ReturnValue.get(),
             DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
@@ -1286,7 +1342,7 @@ void Sema::checkStmt(Stmt *S) {
                                  CurrentFunctionReturnType);
         HasError = true;
       }
-    } else if (!HasError) {
+    } else if (!HasError && !isMissReturn) {
 
       MorphKind targetMorph =
           morphKindFromTypeString(CurrentFunctionReturnType);

@@ -1,0 +1,9 @@
+fn find_value() -> i32 | miss {
+    return miss
+}
+
+shape Saved(result: i32 | miss = find_value()) // EXPECT: error[E04638]
+
+fn main() -> i32 {
+    return 0
+}

@@ -1,0 +1,11 @@
+fn find_value(fallback: i32 | miss = find_other()) -> i32 | miss { // EXPECT: error[E04638]
+    return fallback
+}
+
+fn find_other() -> i32 | miss {
+    return miss
+}
+
+fn main() -> i32 {
+    return 0
+}

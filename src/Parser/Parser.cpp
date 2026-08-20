@@ -305,6 +305,7 @@ bool usesVoidOutsideRawPointee(const TypeSyntaxPtr &syntax,
   case TypeSyntax::Kind::Array:
   case TypeSyntax::Kind::Slice:
   case TypeSyntax::Kind::AssociatedProjection:
+  case TypeSyntax::Kind::MissOutcome:
     return usesVoidOutsideRawPointee(syntax->Subject);
   case TypeSyntax::Kind::Tuple:
   case TypeSyntax::Kind::Function:
@@ -480,6 +481,19 @@ private:
       const SourceLocation end = syntax->End;
       syntax = TypeSyntax::morphology(it->first, std::move(syntax), it->second,
                                       end);
+    }
+
+    if (match(TokenType::Pipe)) {
+      const Token *miss = peek();
+      if (!miss || miss->Kind != TokenType::Identifier ||
+          miss->Text != "miss") {
+        const SourceLocation loc = miss ? miss->Loc : syntax->End;
+        return TypeSyntax::invalid(spelling(begin, Pos), syntax->Begin, loc);
+      }
+      take();
+      const SourceLocation outcomeBegin = syntax->Begin;
+      syntax = TypeSyntax::missOutcome(std::move(syntax), outcomeBegin,
+                                       miss->Loc);
     }
     return syntax;
   }
@@ -701,6 +715,8 @@ private:
     if (!match(TokenType::RParen))
       return TypeSyntax::invalid(spelling(begin, Pos), open.Loc,
                                  Pos ? Tokens[Pos - 1].Loc : open.Loc);
+    if (elements.size() == 1)
+      return elements.front();
     return TypeSyntax::tuple(std::move(elements), open.Loc, Tokens[Pos - 1].Loc);
   }
 
@@ -794,7 +810,10 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
         (check(TokenType::Comma) || check(TokenType::RParen) ||
          check(TokenType::Equal) || isEndOfStatement() ||
          check(TokenType::LBrace) || check(TokenType::Greater) ||
-         check(TokenType::Pipe) || check(TokenType::KwFor) ||
+         (check(TokenType::Pipe) &&
+          !(checkAt(1, TokenType::Identifier) &&
+            peekAt(1).Text == "miss")) ||
+         check(TokenType::KwFor) ||
          check(TokenType::KwWhere) || check(TokenType::Dependency))))
       break;
 
@@ -830,6 +849,13 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
       }
       if (!isDynTrait && !tokens.empty() && !allowAssociatedProjection)
         break;
+    }
+
+    if (delimiters.empty() && t == TokenType::Pipe &&
+        checkAt(1, TokenType::Identifier) && peekAt(1).Text == "miss") {
+      tokens.push_back(advance());
+      tokens.push_back(advance());
+      break;
     }
 
     if (isOpeningDelimiter(t)) {

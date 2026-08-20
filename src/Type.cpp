@@ -90,6 +90,11 @@ std::string Type::canonicalIdentity() const {
                                                 ? uninit->InnerType
                                                       ->canonicalIdentity()
                                                 : "null");
+  } else if (auto outcome = dynamic_cast<const MissOutcomeType *>(this)) {
+    appendIdentityPart(result, "payload",
+                       outcome->PayloadType
+                           ? outcome->PayloadType->canonicalIdentity()
+                           : "null");
   } else if (auto pointer = dynamic_cast<const PointerType *>(this)) {
     appendIdentityPart(result, "pointee", pointer->PointeeType
                                                   ? pointer->PointeeType
@@ -196,6 +201,12 @@ std::string Type::getMangledName() const {
         uninit->InnerType ? uninit->InnerType->getMangledName() : "unknown";
     return "I" + attributes(*this) + framed(inner);
   }
+  if (auto outcome = dynamic_cast<const MissOutcomeType *>(this)) {
+    const std::string payload = outcome->PayloadType
+                                    ? outcome->PayloadType->getMangledName()
+                                    : "unknown";
+    return "O" + attributes(*this) + framed(payload);
+  }
   if (auto array = dynamic_cast<const ArrayType *>(this)) {
     const std::string element =
         array->ElementType ? array->ElementType->getMangledName() : "unknown";
@@ -269,6 +280,12 @@ ValueOwnership Type::valueOwnership(class Sema *S) const {
     return ValueOwnership::SharedHandle;
   case UniquePtr:
     return ValueOwnership::Owned;
+  case MissOutcome: {
+    const auto *outcome = dynamic_cast<const MissOutcomeType *>(this);
+    return outcome && outcome->PayloadType
+               ? outcome->PayloadType->valueOwnership(S)
+               : ValueOwnership::Trivial;
+  }
   case UninitWrapper: {
     const auto *uninit = dynamic_cast<const UninitType *>(this);
     return uninit && uninit->InnerType
@@ -393,6 +410,45 @@ std::shared_ptr<Type> UninitType::substitute(const std::map<std::string, std::sh
   auto ut = std::dynamic_pointer_cast<UninitType>(withAttributes(IsWritable, IsNullable, IsBlocked));
   if (InnerType) ut->InnerType = InnerType->substitute(substMap);
   return ut;
+}
+
+std::string MissOutcomeType::toString() const {
+  return (PayloadType ? PayloadType->toString() : "unknown") + "|miss";
+}
+
+bool MissOutcomeType::equals(const Type &other) const {
+  if (!Type::equals(other))
+    return false;
+  const auto *outcome = dynamic_cast<const MissOutcomeType *>(&other);
+  return outcome && PayloadType && outcome->PayloadType &&
+         PayloadType->equals(*outcome->PayloadType);
+}
+
+std::shared_ptr<Type>
+MissOutcomeType::withAttributes(bool w, bool n, bool b) const {
+  return cloneWithAttrs(this, w, n, b);
+}
+
+std::shared_ptr<Type> MissOutcomeType::substitute(
+    const std::map<std::string, std::shared_ptr<Type>> &substMap) const {
+  auto result = std::dynamic_pointer_cast<MissOutcomeType>(
+      withAttributes(IsWritable, IsNullable, IsBlocked));
+  if (PayloadType)
+    result->PayloadType = PayloadType->substitute(substMap);
+  return result;
+}
+
+ValueOwnership MissOutcomeType::valueOwnership(class Sema *S) const {
+  return PayloadType ? PayloadType->valueOwnership(S)
+                     : ValueOwnership::Trivial;
+}
+
+bool MissOutcomeType::isSend(class Sema *S) const {
+  return PayloadType && PayloadType->isSend(S);
+}
+
+bool MissOutcomeType::isSync(class Sema *S) const {
+  return PayloadType && PayloadType->isSync(S);
 }
 
 std::string PrimitiveType::toString() const {
@@ -1223,6 +1279,12 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
                                       ? uninit->InnerType->toSyntax(begin, end)
                                       : TypeSyntax::named("unknown", begin, end))},
         begin, end);
+  } else if (auto outcome = dynamic_cast<const MissOutcomeType *>(&type)) {
+    syntax = TypeSyntax::missOutcome(
+        outcome->PayloadType
+            ? outcome->PayloadType->toSyntax(begin, end)
+            : TypeSyntax::named("unknown", begin, end),
+        begin, end);
   } else if (auto pointer = dynamic_cast<const PointerType *>(&type)) {
     TypeSyntaxPtr pointee = pointer->PointeeType
                                 ? pointer->PointeeType->toSyntax(begin, end)
@@ -1373,6 +1435,9 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
     return std::make_shared<ShapeType>(name, std::move(arguments),
                                        syntax->PathSuffix);
   }
+
+  case TypeSyntax::Kind::MissOutcome:
+    return std::make_shared<MissOutcomeType>(fromSyntax(syntax->Subject));
 
   case TypeSyntax::Kind::Array: {
     auto element = fromSyntax(syntax->Subject);
@@ -1591,6 +1656,21 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
 
   if (s.empty())
     return std::make_shared<UnresolvedType>(rawType);
+
+  size_t missSuffix = std::string::npos;
+  if (s.size() > 5 && s.compare(s.size() - 5, 5, "|miss") == 0)
+    missSuffix = s.size() - 5;
+  else if (s.size() > 6 && s.compare(s.size() - 6, 6, "| miss") == 0)
+    missSuffix = s.size() - 6;
+  if (missSuffix != std::string::npos) {
+    auto outcome = std::make_shared<MissOutcomeType>(
+        Type::fromString(s.substr(0, missSuffix)));
+    outcome->IsWritable = isWritable;
+    outcome->IsNullable = isNullable;
+    outcome->IsBlocked = isBlocked;
+    outcome->IsCede = isCede;
+    return outcome;
+  }
 
   bool callableMutable = false;
   if (s.rfind("dyn fn#(", 0) == 0) {

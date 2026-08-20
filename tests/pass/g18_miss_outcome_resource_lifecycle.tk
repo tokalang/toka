@@ -1,0 +1,66 @@
+import core/traits::{@Encap}
+
+auto g_drops# = 0
+
+shape Token(id: i32)
+shape Receipt(result: Token | miss)
+
+impl Token@Encap {
+    fn drop(self#) {
+        g_drops += 1
+    }
+}
+
+fn make_token(hit: bool) -> Token | miss {
+    if hit {
+        return Token(id = 7)
+    }
+    return miss
+}
+
+fn relay_token(cede result: Token | miss) -> Token | miss {
+    return cede result
+}
+
+fn main() -> i32 {
+    {
+        auto receipt = Receipt(result = make_token(false))
+    }
+    if g_drops != 0 { return 5 }
+    {
+        auto receipt = Receipt(result = make_token(true))
+    }
+    if g_drops != 1 { return 6 }
+
+    {
+        auto receipt = Receipt(result = make_token(true))
+        match cede receipt.result {
+            auto 'token => {
+                if 'token.id != 7 { return 7 }
+            }
+            miss => return 8
+        }
+    }
+    if g_drops != 2 { return 9 }
+
+    {
+        auto missing = make_token(false)
+        match cede missing {
+            auto 'token => return 'token.id
+            miss => {}
+        }
+    }
+    if g_drops != 2 { return 1 }
+
+    {
+        auto found = relay_token(cede make_token(true))
+        match cede found {
+            auto 'token => {
+                if 'token.id != 7 { return 2 }
+            }
+            miss => return 3
+        }
+    }
+    if g_drops != 3 { return 4 }
+    return 0
+}

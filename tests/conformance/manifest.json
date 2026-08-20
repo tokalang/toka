@@ -3,6 +3,65 @@
   "description": "Toka 1.0 Language Conformance Test Suite Manifest",
   "suites": [
     {
+      "id": "syntax_miss_outcome_01",
+      "path": "syntax/miss_outcome.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "T | miss return-only construction, forwarding, generic substitution, field storage, uninit/init, and exhaustive matching"
+    },
+    {
+      "id": "ownership_miss_outcome_resource_lifecycle_01",
+      "path": "ownership/miss_outcome_resource_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Miss outcomes drop resource payloads exactly once only on the hit branch"
+    },
+    {
+      "id": "async_miss_outcome_01",
+      "path": "async/miss_outcome_async.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async functions preserve T | miss outcomes through task completion and await"
+    },
+    {
+      "id": "async_miss_outcome_resource_01",
+      "path": "async/miss_outcome_async_resource.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Async miss outcomes transfer and drop resource payloads exactly once"
+    },
+    {
+      "id": "diag_miss_outcome_payload_construction_01",
+      "path": "diagnostics/miss_outcome_payload_construction.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04637",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "A payload value cannot construct a miss outcome outside a return boundary"
+    },
+    {
+      "id": "diag_miss_outcome_default_01",
+      "path": "diagnostics/miss_outcome_default.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04638",
+      "expected_span_line": 3,
+      "timeout_seconds": 10,
+      "description": "Miss outcomes have no parameter default value"
+    },
+    {
+      "id": "diag_miss_outcome_match_incomplete_01",
+      "path": "diagnostics/miss_outcome_match_incomplete.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04639",
+      "expected_span_line": 4,
+      "timeout_seconds": 10,
+      "description": "Miss outcome matches must cover both payload and miss branches"
+    },
+    {
       "id": "syntax_literals_01",
       "path": "syntax/literals.tk",
       "type": "run",

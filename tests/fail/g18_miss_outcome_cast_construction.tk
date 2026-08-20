@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    auto result = 7 as i32 | miss // EXPECT: error[E0450]
+    return 0
+}

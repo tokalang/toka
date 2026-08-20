@@ -89,6 +89,30 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
   if (!Pat)
     return;
 
+  auto targetObject = resolveType(toka::Type::fromString(TargetType), false);
+  if (auto outcome =
+          std::dynamic_pointer_cast<toka::MissOutcomeType>(targetObject)) {
+    if (Pat->PatternKind == MatchArm::Pattern::Wildcard)
+      return;
+    if (Pat->PatternKind == MatchArm::Pattern::Variable &&
+        Pat->Name == "miss" && !Pat->HasAutoBinding)
+      return;
+    if (Pat->PatternKind == MatchArm::Pattern::Variable &&
+        Pat->Binding == MatchArm::Pattern::BindingOrigin::Fresh) {
+      checkPattern(Pat,
+                   outcome->PayloadType
+                       ? outcome->PayloadType->toString()
+                       : "unknown",
+                   SourceCapability, TargetPath, TargetAccessPath);
+      return;
+    }
+    DiagnosticEngine::report(getLoc(Pat),
+                             DiagID::ERR_MISS_OUTCOME_MATCH_INVALID,
+                             outcome->toString());
+    HasError = true;
+    return;
+  }
+
   SourceCapability =
       restrictPatternCapability(SourceCapability, TargetType);
 

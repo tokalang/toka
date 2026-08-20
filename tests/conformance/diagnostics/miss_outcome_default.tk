@@ -1,0 +1,7 @@
+fn find_other() -> i32 | miss { return miss }
+
+fn find_value(fallback: i32 | miss = find_other()) -> i32 | miss {
+    return fallback
+}
+
+fn main() -> i32 { return 0 }

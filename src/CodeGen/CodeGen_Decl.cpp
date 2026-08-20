@@ -725,6 +725,22 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
             argDropFunc = SD->MangledDestructorName;
           }
         }
+        if (auto outcome =
+                std::dynamic_pointer_cast<MissOutcomeType>(
+                    argDecl.ResolvedType)) {
+          auto payload = outcome->PayloadType;
+          auto payloadSoul = payload ? payload->getSoulType() : nullptr;
+          auto payloadShape =
+              std::dynamic_pointer_cast<ShapeType>(payloadSoul);
+          if ((payload &&
+               (payload->isUniquePtr() || payload->isSharedPtr())) ||
+              (payloadShape &&
+               (payloadShape->Decl ||
+                m_Shapes.count(payloadShape->getSoulName())))) {
+            argHasDrop = true;
+            argDropFunc.clear();
+          }
+        }
       }
 
       VariableScopeInfo info;
@@ -1753,6 +1769,9 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
             return false;
           if (candidate->isArray())
             return typeNeedsDrop(candidate->getArrayElementType());
+          if (auto outcome =
+                  std::dynamic_pointer_cast<MissOutcomeType>(candidate))
+            return typeNeedsDrop(outcome->PayloadType);
           if (candidate->isSharedPtr() || candidate->isUniquePtr())
             return true;
           if (candidate->isRawPointer() || candidate->isReference())
@@ -1812,6 +1831,10 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
     }
 
     if (dropValueType && dropValueType->isArray()) {
+      hasDrop = typeNeedsDrop(dropValueType);
+      dropFunc.clear();
+    }
+    if (dropValueType && dropValueType->isMissOutcome()) {
       hasDrop = typeNeedsDrop(dropValueType);
       dropFunc.clear();
     }
@@ -3481,6 +3504,18 @@ llvm::Type *CodeGen::resolveType(const std::string &baseType, bool hasPointer) {
 llvm::Type *CodeGen::getLLVMType(std::shared_ptr<Type> type) {
   if (!type) {
     return llvm::Type::getVoidTy(m_Context);
+  }
+
+  // A miss outcome is a real returned value with two states.  Keep its
+  // representation independent from nullable souls and Option: field 0 is
+  // the hit discriminator and field 1 is payload storage.  The payload is
+  // read or dropped only when the discriminator is true.
+  if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(type)) {
+    llvm::Type *payload = getLLVMType(outcome->PayloadType);
+    if (!payload || payload->isVoidTy())
+      return nullptr;
+    return llvm::StructType::get(
+        m_Context, {llvm::Type::getInt1Ty(m_Context), payload});
   }
 
   // [Chapter 6 Extension] Nullable Soul Wrapper: { T, i1 }

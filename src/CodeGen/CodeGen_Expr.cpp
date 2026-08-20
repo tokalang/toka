@@ -2622,6 +2622,92 @@ PhysEntity CodeGen::genMatchExpr(const MatchExpr *expr) {
   llvm::BasicBlock *mergeBB =
       llvm::BasicBlock::Create(m_Context, "match_merge", func);
 
+  if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(
+          expr->Target ? expr->Target->ResolvedType : nullptr)) {
+    auto *layout = llvm::dyn_cast<llvm::StructType>(targetType);
+    llvm::Value *hitTag =
+        m_Builder.CreateExtractValue(targetVal, 0, "miss.outcome.hit");
+
+    const MatchArm *hitArm = nullptr;
+    const MatchArm *missArm = nullptr;
+    const MatchArm *wildcardArm = nullptr;
+    for (const auto &arm : expr->Arms) {
+      if (!arm->Pat)
+        continue;
+      if (arm->Pat->PatternKind == MatchArm::Pattern::Wildcard) {
+        wildcardArm = arm.get();
+      } else if (arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
+                 arm->Pat->Name == "miss" &&
+                 !arm->Pat->HasAutoBinding) {
+        missArm = arm.get();
+      } else if (arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
+                 arm->Pat->Binding ==
+                     MatchArm::Pattern::BindingOrigin::Fresh) {
+        hitArm = arm.get();
+      }
+    }
+    if (!hitArm)
+      hitArm = wildcardArm;
+    if (!missArm)
+      missArm = wildcardArm;
+
+    llvm::BasicBlock *hitBB =
+        llvm::BasicBlock::Create(m_Context, "miss_hit", func);
+    llvm::BasicBlock *missBB =
+        llvm::BasicBlock::Create(m_Context, "miss_miss", func);
+    m_Builder.CreateCondBr(hitTag, hitBB, missBB);
+
+    auto emitOutcomeArm = [&](llvm::BasicBlock *block, const MatchArm *arm,
+                              bool bindsPayload) {
+      m_Builder.SetInsertPoint(block);
+      m_ScopeStack.push_back({});
+      if (arm && bindsPayload && arm->Pat &&
+          arm->Pat->PatternKind == MatchArm::Pattern::Variable &&
+          arm->Pat->Binding ==
+              MatchArm::Pattern::BindingOrigin::Fresh) {
+        llvm::Value *payloadAddr =
+            m_Builder.CreateStructGEP(layout, targetAddr, 1,
+                                      "miss.payload.addr");
+        genPatternBinding(arm->Pat.get(), payloadAddr,
+                          layout->getElementType(1), outcome->PayloadType);
+      }
+      if (arm) {
+        m_CFStack.push_back(
+            {"", mergeBB, nullptr, resultAddr, m_ScopeStack.size()});
+        genStmt(arm->Body.get());
+        m_CFStack.pop_back();
+      }
+      executeScopeUnwinding(m_ScopeStack.size() - 1);
+      m_ScopeStack.pop_back();
+      if (m_Builder.GetInsertBlock() &&
+          !m_Builder.GetInsertBlock()->getTerminator())
+        m_Builder.CreateBr(mergeBB);
+    };
+
+    emitOutcomeArm(hitBB, hitArm, true);
+    emitOutcomeArm(missBB, missArm, false);
+
+    if (mergeBB->use_empty()) {
+      mergeBB->eraseFromParent();
+      m_ScopeStack.pop_back();
+      return llvm::UndefValue::get(resultType);
+    }
+
+    m_Builder.SetInsertPoint(mergeBB);
+    executeScopeUnwinding(m_ScopeStack.size() - 1);
+    m_ScopeStack.pop_back();
+    if (!resultAddr) {
+      if (expr->ResolvedType && expr->ResolvedType->isUnit()) {
+        return PhysEntity(llvm::Constant::getNullValue(resultType), "()",
+                          resultType, false);
+      }
+      return PhysEntity(nullptr, "", llvm::Type::getVoidTy(m_Context), false);
+    }
+    return PhysEntity(
+        m_Builder.CreateLoad(resultType, resultAddr, "match_result"), "",
+        resultType, false);
+  }
+
   // For Enums, we use a Switch
   std::string baseShapeName = shapeName;
   if (baseShapeName.find('<') != std::string::npos) {

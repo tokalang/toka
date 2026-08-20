@@ -159,6 +159,43 @@ An implementation may reuse a niche or another compact layout for more than
 one absence domain. Layout equality does not create type identity, an implicit
 conversion, or a stable cross-language ABI guarantee.
 
+### `T | miss` operation outcomes
+
+`T | miss` is an operation-outcome type distinct from existing `Option<T>`,
+nullable payloads, and nullable handles. It is not a general union and is not
+an alias for `Option<T>`:
+
+```toka
+fn find_value(hit: bool) -> i32 | miss {
+    if hit { return 42:i32 }
+    return miss
+}
+```
+
+It has exactly two special construction rules:
+
+1. A new hit/miss state is introduced only at a `return` boundary of a
+   function declared with `-> T | miss`: `return value` forms a hit and
+   `return miss` forms a miss. An existing outcome follows ordinary argument,
+   field, assignment, `cede`, and forwarding rules.
+2. `T | miss` has no default value. A program may create a
+   `Never` place with `uninit:(T | miss)`, or initialize it from an expression
+   returning the same outcome type. `uninit` itself forms neither state.
+
+```toka
+auto result = uninit:(i32 | miss)
+init result = find_value(true)
+
+match cede result {
+    auto value => use(value)
+    miss => handle_miss()
+}
+```
+
+`miss` is a contextual keyword in these return and pattern positions, not an
+ordinary value or public constructor. There is no implicit conversion between
+`T | miss` and `Option<T>`; existing `Option<T>` semantics remain unchanged.
+
 ## 4. Hats And Handles
 
 Toka uses hats to expose handle identity:

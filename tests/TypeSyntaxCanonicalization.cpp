@@ -139,7 +139,10 @@ int main() {
       loc(123));
   const auto postfix = TypeSyntax::morphology("#", morphology, loc(119),
                                                loc(124), true);
+  const auto missOutcome =
+      TypeSyntax::missOutcome(i32, loc(125), loc(132));
   passed &= expectCanonical("morphology", postfix, "nul*i32#");
+  passed &= expectCanonical("miss outcome", missOutcome, "i32|miss");
   passed &= expectCanonical("invalid recovery",
                             TypeSyntax::invalid("Option<i32", loc(125), loc(134)),
                             "Option<i32");
@@ -151,6 +154,7 @@ int main() {
                           consumingFunction);
   passed &= expectLowered("legacy prefix-array bridge", legacyPrefixArray);
   passed &= expectLowered("morphology direct lowering", postfix);
+  passed &= expectLowered("miss outcome direct lowering", missOutcome);
   passed &= expectSemanticRoundTrip("generic semantic reification", generic);
   passed &= expectSemanticRoundTrip("array semantic reification", array);
   passed &= expectSemanticRoundTrip("function semantic reification", function);
@@ -161,6 +165,8 @@ int main() {
   passed &= expectSemanticRoundTrip("morphic projection semantic reification",
                                     writableProjection);
   passed &= expectSemanticRoundTrip("morphology semantic reification", postfix);
+  passed &= expectSemanticRoundTrip("miss outcome semantic reification",
+                                    missOutcome);
   const auto loweredRecord = toka::Type::fromSyntax(record);
   const auto recordShape = std::dynamic_pointer_cast<toka::ShapeType>(loweredRecord);
   const bool retainedRecordStructure =
@@ -173,6 +179,10 @@ int main() {
       {{"i32", named("u64", 10, 12)}, {"N_", named("8", 30, 31)}});
   passed &= expectCanonical("structural substitution", substituted,
                             "Buffer<u64,8>");
+  const auto substitutedOutcome = missOutcome->substitute(
+      {{"i32", named("u64", 10, 12)}});
+  passed &= expectCanonical("miss outcome substitution", substitutedOutcome,
+                            "u64|miss");
 
   return passed ? 0 : 1;
 }

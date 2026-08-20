@@ -1,0 +1,49 @@
+fn find_value(hit: bool) -> i32 | miss {
+    if hit { return 42:i32 }
+    return miss
+}
+
+fn relay(result: i32 | miss) -> i32 | miss {
+    return result
+}
+
+fn generic_value<T>(value: T) -> T | miss {
+    return value
+}
+
+shape Receipt(result: i32 | miss)
+alias Lookup = i32 | miss
+
+fn alias_miss() -> Lookup { return miss }
+
+fn ordinary_identifier(miss: i32) -> i32 { return miss }
+
+fn main() -> i32 {
+    if ordinary_identifier(5) != 5 { return 5 }
+    match alias_miss() {
+        auto value => return value
+        miss => {}
+    }
+    auto delayed = uninit:(i32 | miss)
+    init delayed = relay(find_value(true))
+    match cede delayed {
+        auto value => {
+            if value != 42 { return 1 }
+        }
+        miss => return 2
+    }
+
+    auto receipt = Receipt(result = generic_value<i32>(9))
+    match cede receipt.result {
+        auto value => {
+            if value != 9 { return 3 }
+        }
+        miss => return 4
+    }
+
+    match find_value(false) {
+        auto value => return value
+        miss => {}
+    }
+    return 0
+}

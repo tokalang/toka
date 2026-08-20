@@ -51,6 +51,7 @@ public:
     Shape,
     Function,
     DynFn,
+    MissOutcome,
     UninitWrapper,
     Unresolved // String-based placeholder
   };
@@ -117,6 +118,7 @@ public:
   bool isNever() const { return typeKind == Never; }
   bool isUnknown() const { return typeKind == Unresolved; }
   bool isUninit() const { return typeKind == UninitWrapper; }
+  bool isMissOutcome() const { return typeKind == MissOutcome; }
 
   bool isFatPointer() const {
     return false;
@@ -439,6 +441,23 @@ public:
   bool isCompatibleWith(const Type &target) const override;
   bool isSend(class Sema* S = nullptr) const override;
   bool isSync(class Sema* S = nullptr) const override;
+};
+
+class MissOutcomeType : public Type {
+public:
+  std::shared_ptr<Type> PayloadType;
+
+  explicit MissOutcomeType(std::shared_ptr<Type> payload)
+      : Type(MissOutcome), PayloadType(std::move(payload)) {}
+  std::string toString() const override;
+  bool equals(const Type &other) const override;
+  std::shared_ptr<Type> withAttributes(bool w, bool n,
+                                       bool b = false) const override;
+  std::shared_ptr<Type> substitute(
+      const std::map<std::string, std::shared_ptr<Type>> &substMap) const override;
+  ValueOwnership valueOwnership(class Sema *S = nullptr) const override;
+  bool isSend(class Sema *S = nullptr) const override;
+  bool isSync(class Sema *S = nullptr) const override;
 };
 
 inline CallableReceiverMode getCallableReceiverMode(const Type &type) {

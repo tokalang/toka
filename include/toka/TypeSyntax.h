@@ -65,6 +65,7 @@ struct TypeSyntax final {
     DynTrait,
     AssociatedProjection,
     Morphology,
+    MissOutcome,
   };
 
   struct Field {
@@ -230,6 +231,17 @@ struct TypeSyntax final {
     return result;
   }
 
+  static TypeSyntaxPtr missOutcome(TypeSyntaxPtr payload,
+                                   SourceLocation begin,
+                                   SourceLocation end) {
+    auto result = std::make_shared<TypeSyntax>();
+    result->NodeKind = Kind::MissOutcome;
+    result->Subject = std::move(payload);
+    result->Begin = begin;
+    result->End = end;
+    return result;
+  }
+
   std::string toCanonicalString() const {
     switch (NodeKind) {
     case Kind::Invalid:
@@ -295,6 +307,8 @@ struct TypeSyntax final {
       if (IsPostfix)
         return (Subject ? Subject->toCanonicalString() : "") + Text;
       return Text + (Subject ? Subject->toCanonicalString() : "");
+    case Kind::MissOutcome:
+      return (Subject ? Subject->toCanonicalString() : "") + "|miss";
     }
     return "";
   }

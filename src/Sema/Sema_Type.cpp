@@ -170,6 +170,19 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
     }
   }
 
+  if (auto outcome =
+          std::dynamic_pointer_cast<toka::MissOutcomeType>(type)) {
+    auto payload = resolveType(outcome->PayloadType, false);
+    if (payload != outcome->PayloadType) {
+      auto resolved = std::dynamic_pointer_cast<toka::MissOutcomeType>(
+          outcome->withAttributes(outcome->IsWritable,
+                                  outcome->IsNullable,
+                                  outcome->IsBlocked));
+      resolved->PayloadType = payload;
+      return resolved;
+    }
+  }
+
   if (auto fnTy = std::dynamic_pointer_cast<toka::FunctionType>(type)) {
     bool changed = false;
     std::vector<std::shared_ptr<toka::Type>> newParams;

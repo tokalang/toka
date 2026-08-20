@@ -375,6 +375,11 @@ static bool isUnsafeType(const std::shared_ptr<toka::Type>& T) {
     auto UT = std::dynamic_pointer_cast<toka::UninitType>(T);
     if (UT && isUnsafeType(UT->InnerType)) return true;
   }
+  if (T->isMissOutcome()) {
+    auto outcome = std::dynamic_pointer_cast<toka::MissOutcomeType>(T);
+    if (outcome && isUnsafeType(outcome->PayloadType))
+      return true;
+  }
   return false;
 }
 
@@ -4545,6 +4550,13 @@ void Sema::checkFunction(FunctionDecl *Fn) {
       Arg.ResolvedType = Info.TypeObj;
     }
 
+    if (Arg.DefaultValue && Info.TypeObj && Info.TypeObj->isMissOutcome()) {
+      DiagnosticEngine::report(argLoc,
+                               DiagID::ERR_MISS_OUTCOME_DEFAULT_FORBIDDEN,
+                               Info.TypeObj->toString());
+      HasError = true;
+    }
+
     bool morphicPayloadWritable = false;
     if (Arg.IsMorphicExempt && Info.TypeObj) {
       auto payloadType = Info.TypeObj;
@@ -5223,6 +5235,15 @@ void Sema::analyzeShapes(Module &M) {
         validateTypeVisibilityInType(fullTypeStr, getLoc(S.get()));
         m.ResolvedType = resolveType(Sema::synthesizePhysicalTypeObject(m));
 
+        if (m.DefaultValue && m.ResolvedType &&
+            m.ResolvedType->isMissOutcome()) {
+          DiagnosticEngine::report(
+              m.Loc.isValid() ? m.Loc : getLoc(S.get()),
+              DiagID::ERR_MISS_OUTCOME_DEFAULT_FORBIDDEN,
+              m.ResolvedType->toString());
+          HasError = true;
+        }
+
         std::shared_ptr<toka::Type> inner = m.ResolvedType;
         while (inner->isPointer() || inner->isArray()) {
           if (auto p = std::dynamic_pointer_cast<toka::PointerType>(inner))
@@ -5443,6 +5464,12 @@ void Sema::computeShapeProperties(const std::string &shapeName, Module &M) {
       if (member.IsUnique || member.IsShared || typeStr.rfind("^", 0) == 0 ||
           typeStr.rfind("~", 0) == 0) {
         props.HasDrop = true;
+      }
+      if (auto outcome = std::dynamic_pointer_cast<MissOutcomeType>(
+              member.ResolvedType)) {
+        if (outcome->PayloadType &&
+            outcome->PayloadType->requiresExplicitOwnershipTransfer(this))
+          props.HasDrop = true;
       }
 
       // Check if it's an array string "[T; N]"

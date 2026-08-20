@@ -25,7 +25,13 @@ namespace toka {
 
 llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
   llvm::Value *retVal = nullptr;
-  if (ret->ReturnValue) {
+  const bool returnsMiss =
+      ret->OutcomeKind == ReturnStmt::MissOutcomeKind::Miss;
+  const bool wrapsHit =
+      ret->OutcomeKind == ReturnStmt::MissOutcomeKind::Hit;
+  const bool forwardsOutcome =
+      ret->OutcomeKind == ReturnStmt::MissOutcomeKind::Forward;
+  if (ret->ReturnValue && !returnsMiss) {
     retVal = genExpr(ret->ReturnValue.get()).load(m_Builder);
     if (!retVal) {
     }
@@ -136,6 +142,45 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
         break;
       }
     }
+  }
+
+  if (returnsMiss || wrapsHit) {
+    llvm::Type *outcomeType = m_CurrentSRetTy;
+    if (!outcomeType && m_CurrentCoroRetTy)
+      outcomeType = m_CurrentCoroRetTy;
+    if (!outcomeType) {
+      llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+      outcomeType = function->getReturnType();
+    }
+    auto *layout = llvm::dyn_cast_or_null<llvm::StructType>(outcomeType);
+    if (layout && layout->getNumElements() == 2 &&
+        layout->getElementType(0)->isIntegerTy(1)) {
+      llvm::Value *outcome = llvm::UndefValue::get(layout);
+      outcome = m_Builder.CreateInsertValue(
+          outcome, m_Builder.getInt1(wrapsHit), 0,
+          wrapsHit ? "miss.hit.tag" : "miss.miss.tag");
+      llvm::Type *payloadType = layout->getElementType(1);
+      llvm::Value *payload = retVal;
+      if (!payload) {
+        payload = llvm::Constant::getNullValue(payloadType);
+      } else if (payload->getType() != payloadType) {
+        if (payload->getType()->isIntegerTy() && payloadType->isIntegerTy()) {
+          payload = m_Builder.CreateIntCast(payload, payloadType, false);
+        } else if (payload->getType()->isFloatingPointTy() &&
+                   payloadType->isFloatingPointTy()) {
+          payload = m_Builder.CreateFPCast(payload, payloadType);
+        } else if (payload->getType()->isPointerTy() &&
+                   payloadType->isPointerTy()) {
+          payload = m_Builder.CreatePointerCast(payload, payloadType);
+        }
+      }
+      outcome = m_Builder.CreateInsertValue(
+          outcome, payload, 1,
+          wrapsHit ? "miss.hit.payload" : "miss.miss.payload");
+      retVal = outcome;
+    }
+  } else if (forwardsOutcome) {
+    // `retVal` already carries the complete discriminator and payload.
   }
 
   // A return may be nested inside an outer control-flow expression whose

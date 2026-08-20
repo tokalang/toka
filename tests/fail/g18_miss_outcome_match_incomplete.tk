@@ -1,0 +1,9 @@
+fn find_value() -> i32 | miss {
+    return miss
+}
+
+fn main() -> i32 {
+    match find_value() { // EXPECT: error[E04639]
+        auto value => return value
+    }
+}

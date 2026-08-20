@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    auto result = uninit:(i32 | miss)
+    init result = 7:i32
+    return 0
+}

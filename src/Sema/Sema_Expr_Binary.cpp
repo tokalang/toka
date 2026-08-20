@@ -1235,7 +1235,17 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (!bypassNullAssign && !isRefAssign && !isSmartNew &&
         !isTypeCompatible(lhsCompatType, rhsType) && LHS != "unknown" &&
         RHS != "unknown") {
-      error(Bin, DiagID::ERR_TYPE_MISMATCH, RHS + " (assign)", LHS);
+      if (auto outcome =
+              std::dynamic_pointer_cast<MissOutcomeType>(lhsCompatType)) {
+        DiagnosticEngine::report(
+            getLoc(Bin), DiagID::ERR_MISS_OUTCOME_RETURN_MISMATCH,
+            rhsType ? rhsType->toString() : RHS, outcome->toString(),
+            outcome->PayloadType ? outcome->PayloadType->toString()
+                                 : "unknown");
+        HasError = true;
+      } else {
+        error(Bin, DiagID::ERR_TYPE_MISMATCH, RHS + " (assign)", LHS);
+      }
     }
 
     // Rebinding an existing indirect binding preserves its declaration but

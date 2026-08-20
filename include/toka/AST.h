@@ -1205,11 +1205,14 @@ public:
 
 class ReturnStmt : public Stmt {
 public:
+  enum class MissOutcomeKind { None, Hit, Miss, Forward };
   std::unique_ptr<Expr> ReturnValue;
+  MissOutcomeKind OutcomeKind = MissOutcomeKind::None;
   ReturnStmt(std::unique_ptr<Expr> val) : ReturnValue(std::move(val)) {}
   std::string toString() const override { return "Return"; }
   std::unique_ptr<ASTNode> clone() const override {
     auto n = std::make_unique<ReturnStmt>(cloneNode(ReturnValue));
+    n->OutcomeKind = OutcomeKind;
     n->Loc = Loc;
     return n;
   }

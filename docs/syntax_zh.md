@@ -141,6 +141,40 @@ payload。因此，深层 payload guard 是控制流便利语法，不是隐式�
 实现可以让多个缺失语义域复用 niche 或其他紧凑布局。布局相同不会产生类型
 同一性、隐式转换，也不构成稳定的跨语言 ABI 保证。
 
+### `T | miss` 动作结果
+
+`T | miss` 是与现有 `Option<T>`、nullable payload 和 nullable handle
+都不同的动作结果类型。它不是普通 union，也不是 `Option<T>` 的别名：
+
+```toka
+fn find_value(hit: bool) -> i32 | miss {
+    if hit { return 42:i32 }
+    return miss
+}
+```
+
+它只有两条特殊构造规则：
+
+1. 新的 hit/miss 状态只能在声明 `-> T | miss` 的函数 `return` 边界
+   形成；`return value` 形成 hit，`return miss` 形成 miss。已有 outcome
+   可以按普通传参、字段、赋值、`cede` 和再次返回规则传递。
+2. `T | miss` 没有缺省值。它只能由 `uninit:(T | miss)` 建立一个
+   `Never` place，或由返回同一 outcome 类型的表达式初始化；`uninit`
+   本身不构造 hit 或 miss。
+
+```toka
+auto result = uninit:(i32 | miss)
+init result = find_value(true)
+
+match cede result {
+    auto value => use(value)
+    miss => handle_miss()
+}
+```
+
+`miss` 是上述返回与匹配位置的上下文关键字，不是普通值或公开构造器。
+`T | miss` 与 `Option<T>` 之间没有隐式转换，现有 `Option<T>` 语义保持不变。
+
 ## 4. 帽子与 Handle
 
 Toka 使用帽子暴露 handle 身份：

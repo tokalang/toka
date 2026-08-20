@@ -1,0 +1,9 @@
+import ./lib::{find_value}
+
+fn main() -> i32 {
+    auto result = find_value(true)
+    match cede result {
+        auto value => return value - 23
+        miss => return 1
+    }
+}

@@ -1,0 +1,9 @@
+fn find_value() -> i32 | miss {
+    return 1:i32
+}
+
+fn main() -> i32 {
+    auto result = uninit:(i32 | miss)
+    init result = 7:i32 // EXPECT: error[E04637]
+    return 0
+}

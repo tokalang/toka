@@ -1,0 +1,26 @@
+import std/task::{block_on}
+
+fn find_async(hit: bool) -> async i32 | miss {
+    if hit { return 17:i32 }
+    return miss
+}
+
+fn run() -> async i32 {
+    auto first = find_async(true).await
+    match cede first {
+        auto value => {
+            if value != 17 { return 1 }
+        }
+        miss => return 2
+    }
+    auto second = find_async(false).await
+    match cede second {
+        auto value => return value
+        miss => {}
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    return block_on<i32>(run())
+}

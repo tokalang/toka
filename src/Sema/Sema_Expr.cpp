@@ -3944,6 +3944,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     std::string resolvedName = resolvedType ? resolvedType->toString()
                                             : New->Type;
 
+    if (resolvedType && resolvedType->isMissOutcome() &&
+        !New->Initializer) {
+      DiagnosticEngine::report(getLoc(New),
+                               DiagID::ERR_MISS_OUTCOME_DEFAULT_FORBIDDEN,
+                               resolvedType->toString());
+      HasError = true;
+    }
+
     // [New] Generic Inference for 'new'
     if (ShapeMap.count(resolvedName)) {
       ShapeDecl *SD = ShapeMap[resolvedName];
@@ -5322,6 +5330,47 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
     if (isReceiver && resultType == NoProducedValue) {
       error(me, DiagID::ERR_YIELD_VALUE_REQUIRED, "match expression");
+    }
+
+    if (auto outcome =
+            std::dynamic_pointer_cast<MissOutcomeType>(targetTypeObj)) {
+      bool coversMiss = false;
+      bool coversHit = false;
+      bool coversAll = false;
+      for (const auto &arm : me->Arms) {
+        if (!arm->Pat)
+          continue;
+        if (arm->Guard) {
+          DiagnosticEngine::report(getLoc(arm->Guard.get()),
+                                   DiagID::ERR_MISS_OUTCOME_MATCH_INVALID,
+                                   outcome->toString());
+          HasError = true;
+          continue;
+        }
+        const auto *pattern = arm->Pat.get();
+        if (pattern->PatternKind == MatchArm::Pattern::Wildcard) {
+          coversAll = true;
+          continue;
+        }
+        if (pattern->PatternKind == MatchArm::Pattern::Variable &&
+            pattern->Name == "miss" && !pattern->HasAutoBinding) {
+          coversMiss = true;
+          continue;
+        }
+        if (pattern->PatternKind == MatchArm::Pattern::Variable &&
+            pattern->Binding ==
+                MatchArm::Pattern::BindingOrigin::Fresh) {
+          coversHit = true;
+        }
+      }
+      if (!coversAll && !(coversMiss && coversHit)) {
+        DiagnosticEngine::report(getLoc(me),
+                                 DiagID::ERR_MISS_OUTCOME_MATCH_INVALID,
+                                 outcome->toString());
+        HasError = true;
+      }
+      return toka::Type::fromString(
+          resultType == NoProducedValue ? "()" : resultType);
     }
 
     // Exhaustiveness Check

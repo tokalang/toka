@@ -1,0 +1,8 @@
+// EXPECT_TKI: pub fn find_value(hit: bool) -> i32|miss
+// EXPECT_TKI_ROUNDTRIP
+pub fn find_value(hit: bool) -> i32 | miss {
+    if hit {
+        return 23:i32
+    }
+    return miss
+}

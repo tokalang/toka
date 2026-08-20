@@ -1,0 +1,37 @@
+import core/traits::{@Encap}
+import std/task::{block_on}
+
+auto g_drops# = 0
+shape Token(id: i32)
+
+impl Token@Encap {
+    fn drop(self#) { g_drops += 1 }
+}
+
+fn make_async(hit: bool) -> async Token | miss {
+    if hit { return Token(id = 8) }
+    return miss
+}
+
+fn run() -> async i32 {
+    auto missing = make_async(false).await
+    match cede missing {
+        auto 'token => return 'token.id
+        miss => {}
+    }
+    auto found = make_async(true).await
+    match cede found {
+        auto 'token => {
+            if 'token.id != 8 { return 1 }
+        }
+        miss => return 2
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    auto result = block_on<i32>(run())
+    if result != 0 { return result }
+    if g_drops != 1 { return 3 }
+    return 0
+}
