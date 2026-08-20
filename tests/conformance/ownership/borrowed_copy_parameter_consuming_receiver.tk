@@ -1,0 +1,12 @@
+import core/option::{Option}
+
+fn unwrap_copy(value: Option<u64>) -> u64 {
+    return value.unwrap()
+}
+
+fn main() -> i32 {
+    if unwrap_copy(Option<u64>::Some(7:u64)) != 7:u64 {
+        return 1
+    }
+    return 0
+}

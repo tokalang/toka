@@ -159,12 +159,12 @@ fn decode_internal(input: string, plus_as_space: bool) -> Result<string, string>
 
 pub fn url_decode(cede input: string) -> Result<string, string> {
     auto owned_input = cede input
-    return decode_internal(cede owned_input, false)
+    return decode_internal(owned_input, false)
 }
 
 pub fn query_decode(cede input: string) -> Result<string, string> {
     auto owned_input = cede input
-    return decode_internal(cede owned_input, true)
+    return decode_internal(owned_input, true)
 }
 
 pub shape Url (

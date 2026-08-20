@@ -576,7 +576,7 @@ fn cmd_build(use_forge: bool, extra_args: Vec<string>) -> i32 {
         run#.arg(cede default_lib.clone())
         if !workspace_node.is_empty() {
             run#.arg(string::from("--workspace-node"))
-            run#.arg(cede workspace_node)
+            run#.arg(workspace_node)
             run#.arg(string::from("--workspace-root"))
             run#.arg(env::current_dir())
         }
@@ -721,7 +721,7 @@ fn cmd_check(argc: i32, shift: i32) -> i32 {
         if arg.eq(string::from("--json")) {
             command#.arg(string::from("--diagnostics-json"))
         } else {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -762,7 +762,7 @@ fn cmd_context(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -782,7 +782,7 @@ fn cmd_evidence(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -802,7 +802,7 @@ fn cmd_cede_obligations(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -822,7 +822,7 @@ fn cmd_capabilities(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -842,7 +842,7 @@ fn cmd_hole_goals(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -862,7 +862,7 @@ fn cmd_conditional_facts(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -882,7 +882,7 @@ fn cmd_index(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }
@@ -920,7 +920,7 @@ fn cmd_query(argc: i32, shift: i32) -> i32 {
     loop idx < argc {
         auto arg = env::get_arg(idx)
         if !arg.eq(string::from("--json")) {
-            command#.arg(cede arg)
+            command#.arg(arg)
         }
         idx += 1
     }

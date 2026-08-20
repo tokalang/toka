@@ -3405,6 +3405,7 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
   llvm::Value *cond = cond_ent.load(m_Builder);
   if (!cond)
     return nullptr;
+  emitFullExpressionTemporaryDrops();
   if (!cond->getType()->isIntegerTy(1)) {
     cond = m_Builder.CreateICmpNE(
         cond, llvm::ConstantInt::get(cond->getType(), 0), "ifcond");
@@ -3559,6 +3560,7 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
 
   if (!condVal)
     return nullptr;
+  emitFullExpressionTemporaryDrops();
 
   llvm::Value *condBool = nullptr;
   bool isNullableSoul = (guard->Condition->ResolvedType && guard->Condition->ResolvedType->IsNullable && !guard->Condition->ResolvedType->isPointer());
@@ -3700,6 +3702,7 @@ PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {
 
     PhysEntity cond_ent = genExpr(le->Condition.get()).load(m_Builder);
     llvm::Value *cond = cond_ent.load(m_Builder);
+    emitFullExpressionTemporaryDrops();
     m_Builder.CreateCondBr(cond, loopBB, afterBB);
 
     loopBB->insertInto(f);
@@ -5783,6 +5786,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
                 createEntryBlockAlloca(rVal->getType(), nullptr, "arg_tmp");
             m_Builder.CreateStore(rVal, tmp);
             val = tmp;
+            const bool transfersOwnership =
+                (funcDecl && i < funcDecl->Args.size() &&
+                 funcDecl->Args[i].IsCeded) ||
+                (extDecl && i < extDecl->Args.size() &&
+                 extDecl->Args[i].IsCeded);
+            if (!transfersOwnership && call->Args[i]->ResolvedType) {
+              registerFullExpressionTemporary(tmp,
+                                              call->Args[i]->ResolvedType);
+            }
           }
         }
       }
@@ -6021,6 +6033,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
               val->getType(), nullptr, "arg_fallback_byref");
           m_Builder.CreateStore(val, tmp);
           val = tmp;
+          const bool transfersOwnership =
+              (funcDecl && i < funcDecl->Args.size() &&
+               funcDecl->Args[i].IsCeded) ||
+              (extDecl && i < extDecl->Args.size() &&
+               extDecl->Args[i].IsCeded);
+          if (!transfersOwnership && call->Args[i]->ResolvedType) {
+            registerFullExpressionTemporary(tmp,
+                                            call->Args[i]->ResolvedType);
+          }
         }
       }
     }
@@ -6982,6 +7003,8 @@ PhysEntity CodeGen::genBreakExpr(const BreakExpr *be) {
   llvm::Value *val = nullptr;
   if (be->Value)
     val = genExpr(be->Value.get()).load(m_Builder);
+
+  emitFullExpressionTemporaryDrops(false);
 
   CFInfo *target = nullptr;
   if (be->TargetLabel.empty()) {

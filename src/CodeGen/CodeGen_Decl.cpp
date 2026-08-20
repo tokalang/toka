@@ -106,6 +106,8 @@ llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
   m_Functions[funcName] = func;
   m_Functions[func->Name] = func;
   m_Symbols.clear();
+  m_ExpressionDepth = 0;
+  m_FullExpressionTemporaries.clear();
 
   llvm::Function *f = m_Module->getFunction(funcName);
   if (f) {
@@ -2815,6 +2817,10 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         llvm::AllocaInst *tmp = createEntryBlockAlloca(objVal->getType());
         m_Builder.CreateStore(objVal, tmp);
         finalObjVal = tmp;
+        if (!selfIsCeded && expr->Object->ResolvedType) {
+          registerFullExpressionTemporary(tmp,
+                                          expr->Object->ResolvedType);
+        }
       }
     }
   }
@@ -2919,6 +2925,13 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         llvm::AllocaInst *tmp = createEntryBlockAlloca(rval->getType());
         m_Builder.CreateStore(rval, tmp);
         argVal = tmp;
+        const bool transfersOwnership =
+            fd && targetArgIdx < fd->Args.size() &&
+            fd->Args[targetArgIdx].IsCeded;
+        if (!transfersOwnership && expr->Args[i]->ResolvedType) {
+          registerFullExpressionTemporary(tmp,
+                                          expr->Args[i]->ResolvedType);
+        }
       }
     } else {
       argVal = genExpr(expr->Args[i].get()).load(m_Builder);
@@ -2931,6 +2944,13 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
               argVal->getType(), nullptr, "arg_byref_tmp");
           m_Builder.CreateStore(argVal, tmp);
           argVal = tmp;
+          const bool transfersOwnership =
+              fd && targetArgIdx < fd->Args.size() &&
+              fd->Args[targetArgIdx].IsCeded;
+          if (!transfersOwnership && expr->Args[i]->ResolvedType) {
+            registerFullExpressionTemporary(tmp,
+                                            expr->Args[i]->ResolvedType);
+          }
         }
       }
     }

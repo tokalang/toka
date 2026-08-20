@@ -4391,7 +4391,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                   }
                 } else if (auto *var =
                                dynamic_cast<VariableExpr *>(receiver)) {
-                  CurrentScope->markMoved(var->Name, Met->Loc);
+                  SymbolInfo *receiverInfo = nullptr;
+                  std::string actualReceiverName;
+                  if (CurrentScope->findVariableWithDeref(
+                          var->Name, receiverInfo, actualReceiverName) &&
+                      receiverInfo && receiverInfo->IsFunctionParameter &&
+                      !receiverInfo->IsCeded && receiverInfo->TypeObj &&
+                      !proveSlice4CopyType(receiverInfo->TypeObj)) {
+                    error(Met->Object.get(),
+                          DiagID::ERR_SEMA_CANNOT_CEDE_NON_CEDE_PARAMETER,
+                          var->Name);
+                  } else {
+                    CurrentScope->markMoved(var->Name, Met->Loc);
+                  }
                 } else if (auto *index =
                                dynamic_cast<ArrayIndexExpr *>(receiver)) {
                   // Explicit `cede values[0]` has a separately qualified
@@ -4462,6 +4474,14 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
 
                 if (i < expectedArgs) {
                   const auto &param = FD->Args[i + 1];
+                  auto *callerCede =
+                      dynamic_cast<CedeExpr *>(Met->Args[i].get());
+                  if (!param.IsCeded && callerCede &&
+                      makeAccessPath(callerCede->Value.get())) {
+                    error(Met->Args[i].get(),
+                          DiagID::ERR_SEMA_CEDE_ARGUMENT_TO_BORROWED_PARAMETER,
+                          getPathString(Met->Args[i].get()), param.Name);
+                  }
                   if (param.IsCeded &&
                       isNullableCedeSource(Met->Args[i].get()) &&
                       !param.IsPointerNullable &&

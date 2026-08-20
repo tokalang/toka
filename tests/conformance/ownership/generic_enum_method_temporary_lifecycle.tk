@@ -1,0 +1,69 @@
+import core/option::{Option}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0
+
+shape Resource (
+    value: i32
+)
+
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1
+    }
+}
+
+shape Cache (
+    ~inner#: Resource
+)
+
+impl Cache {
+    fn clone(self) -> Cache {
+        return Cache(~inner = self.~inner)
+    }
+}
+
+impl Cache@Encap {
+    pub inner
+
+    fn drop(self#) {}
+}
+
+fn read(cache: Option<Cache>) -> i32 {
+    match cache {
+        auto Option<Cache>::Some(&entry) => return entry.inner.value
+        _ => return -1
+    }
+}
+
+fn forward(cache: Option<Cache>) -> i32 {
+    auto next# = Option<Cache>::None
+    match cache {
+        auto Option<Cache>::Some(&entry) => {
+            next = Option<Cache>::Some(entry.clone())
+        }
+        _ => {}
+    }
+    return read(next)
+}
+
+fn main() -> i32 {
+    {
+        auto ~root# = new Resource(value = 17)
+        {
+            auto cache = Cache(~inner = ~root)
+            {
+                if forward(Option<Cache>::Some(cache.clone())) != 17 {
+                    return 1
+                }
+            }
+            if g_drop_count != 0 {
+                return 2
+            }
+        }
+        if g_drop_count != 0 {
+            return 3
+        }
+    }
+    return g_drop_count - 1
+}

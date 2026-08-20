@@ -25,8 +25,9 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <vector>
 #include <set>
+#include <utility>
+#include <vector>
 
 namespace toka {
 struct MemberAccessIntent;
@@ -230,6 +231,13 @@ private:
     llvm::Value *DropMask = nullptr;
   };
   std::vector<std::vector<VariableScopeInfo>> m_ScopeStack;
+  struct FullExpressionTemporary {
+    llvm::Value *Address = nullptr;
+    std::shared_ptr<Type> TypeObj;
+    llvm::Value *LiveFlag = nullptr;
+  };
+  unsigned m_ExpressionDepth = 0;
+  std::vector<FullExpressionTemporary> m_FullExpressionTemporaries;
 
   void suppressDropForMove(const std::string &name);
   void markInitLive(const BinaryExpr *assignment);
@@ -294,6 +302,10 @@ private:
 
   void executeScopeUnwinding(size_t targetDepth);
   PhysEntity genExpr(const Expr *expr);
+  PhysEntity genExprImpl(const Expr *expr);
+  void registerFullExpressionTemporary(llvm::Value *address,
+                                       std::shared_ptr<Type> type);
+  void emitFullExpressionTemporaryDrops(bool clear = true);
   llvm::Constant *genConstant(const Expr *expr,
                               llvm::Type *targetType = nullptr);
   llvm::Value *genAddr(const Expr *expr);
@@ -310,6 +322,7 @@ private:
                                                   llvm::StructType *soulType);
 
   llvm::Value *genStmt(const Stmt *stmt);
+  llvm::Value *genStmtImpl(const Stmt *stmt);
   llvm::Function *genFunction(const FunctionDecl *func,
                               const std::string &overrideName = "",
                               bool declOnly = false);
@@ -391,6 +404,8 @@ private:
     std::string CurrentSelfType;
     std::vector<CFInfo> CFStack;
     std::vector<std::vector<VariableScopeInfo>> ScopeStack;
+    unsigned ExpressionDepth = 0;
+    std::vector<FullExpressionTemporary> FullExpressionTemporaries;
     llvm::BasicBlock *InsertBlock;
     llvm::BasicBlock::iterator InsertPoint;
     llvm::Value *CurrentCoroHandle;

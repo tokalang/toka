@@ -1561,6 +1561,65 @@
       "description": "A borrowed receiver cannot enter a by-value consuming receiver ABI"
     },
     {
+      "id": "diag_borrowed_parameter_consuming_receiver_rejected_01",
+      "path": "diagnostics/borrowed_parameter_consuming_receiver_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0473",
+      "expected_span_line": 12,
+      "timeout_seconds": 10,
+      "description": "A borrowed resource parameter cannot be consumed through a cede-self method"
+    },
+    {
+      "id": "diag_cede_argument_to_borrowed_parameter_rejected_01",
+      "path": "diagnostics/cede_argument_to_borrowed_parameter_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04635",
+      "expected_span_line": 16,
+      "timeout_seconds": 10,
+      "description": "An explicit cede argument requires a cede formal that accepts its ownership obligation"
+    },
+    {
+      "id": "diag_cede_argument_to_borrowed_method_parameter_rejected_01",
+      "path": "diagnostics/cede_argument_to_borrowed_method_parameter_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04635",
+      "expected_span_line": 21,
+      "timeout_seconds": 10,
+      "description": "An explicit cede method argument requires a cede formal that accepts its ownership obligation"
+    },
+    {
+      "id": "ownership_borrowed_copy_parameter_consuming_receiver_01",
+      "path": "ownership/borrowed_copy_parameter_consuming_receiver.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A copyable borrowed parameter may use a consuming receiver without transferring an owner"
+    },
+    {
+      "id": "ownership_owned_call_temporary_lifecycle_01",
+      "path": "ownership/owned_call_temporary_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Caller-owned resource rvalues borrowed by calls are destroyed after direct, struct, enum, method, and cstr expressions"
+    },
+    {
+      "id": "ownership_generic_enum_method_temporary_lifecycle_01",
+      "path": "ownership/generic_enum_method_temporary_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A method-returned shared owner moved into a generic enum remains live while the borrowed enum call temporary is reclaimed"
+    },
+    {
+      "id": "ownership_temp_file_tmpdir_resource_lifecycle_01",
+      "path": "ownership/temp_file_tmpdir_resource_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "TMPDIR discovery remains borrowed by temporary-file creation and its owned environment string is reclaimed"
+    },
+    {
       "id": "diag_cede_raw_receiver_rejected_01",
       "path": "diagnostics/cede_raw_receiver_rejected.tk",
       "type": "compile-fail",

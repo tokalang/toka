@@ -1,0 +1,17 @@
+// EXPECT_ERROR: E04635
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn borrow(value: Resource) -> i32 {
+    return value.value
+}
+
+fn main() -> i32 {
+    auto value = Resource(value = 7)
+    return borrow(cede value)
+}

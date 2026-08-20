@@ -2425,6 +2425,20 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
     // caller path's declared capabilities.
     bool isCallerCeded =
         dynamic_cast<CedeExpr *>(Call->Args[i].get()) != nullptr;
+    auto *callerCede =
+        dynamic_cast<CedeExpr *>(Call->Args[i].get());
+    const bool cedeMovesExistingPlace =
+        callerCede && makeAccessPath(callerCede->Value.get());
+    if (cedeMovesExistingPlace && !isCededParam) {
+      std::string parameter =
+          Fn && i < Fn->Args.size()
+              ? Fn->Args[i].Name
+              : (Ext && i < Ext->Args.size() ? Ext->Args[i].Name
+                                             : "arg" + std::to_string(i + 1));
+      error(Call->Args[i].get(),
+            DiagID::ERR_SEMA_CEDE_ARGUMENT_TO_BORROWED_PARAMETER,
+            getPathString(Call->Args[i].get()), parameter);
+    }
     PermissionFlow argFlow = getPermissionFlow(Call->Args[i].get());
     // A cede parameter receives a fresh P root only from a whole independent
     // transfer.  `cede ~view` and every other Shared/raw source still carry

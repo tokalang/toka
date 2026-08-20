@@ -678,7 +678,7 @@ pub fn parse_http_request_with_limit(req_str: string, max_header_size: usize) ->
     auto req_len = req_str.len()
     auto body_str# = string::from("")
 
-    auto parse_res = parse_http_request_headers(cede header_str)
+    auto parse_res = parse_http_request_headers(header_str)
     if parse_res.is_err() {
         return cede parse_res
     }
@@ -821,7 +821,7 @@ fn parse_http_request_headers(header_str: string) -> Result<HttpRequest, string>
             }
         }
 
-        auto ins_res = headers#.insert(cede key, cede val)
+        auto ins_res = headers#.insert(key, val)
         if ins_res.is_err() {
             return Result<HttpRequest, string>::Err(ins_res.unwrap_err())
         }
@@ -979,7 +979,7 @@ pub fn parse_http_response_with_limit(resp_str: string, max_header_size: usize) 
         auto key = string_slice(line, 0, colon_idx as usize)
         auto val = string_slice(line, colon_idx as usize + 1:usize, line.len() - colon_idx as usize - 1:usize).trim()
 
-        auto _ins = headers#.insert(cede key, cede val)
+        auto _ins = headers#.insert(key, val)
     }
 
     auto body_str# = string::from("")

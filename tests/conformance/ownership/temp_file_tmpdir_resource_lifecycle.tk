@@ -1,0 +1,20 @@
+import std/env::{remove_var, set_var}
+import std/fs::{create_temp_file_system}
+
+fn main() -> i32 {
+    if !set_var(string::from("TMPDIR"), string::from("/tmp")) {
+        return 1
+    }
+
+    auto temporary# = create_temp_file_system().unwrap()
+    auto path = temporary.path()
+    if path.len() == 0:usize {
+        return 2
+    }
+    temporary#.remove()
+
+    if !remove_var(string::from("TMPDIR")) {
+        return 3
+    }
+    return 0
+}

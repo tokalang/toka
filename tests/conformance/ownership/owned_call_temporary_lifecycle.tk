@@ -1,0 +1,68 @@
+import core/option::{Option}
+
+shape Label(text: string)
+
+shape Reader(marker: i32)
+
+impl Reader {
+    fn read_len(self, value: string) -> usize {
+        return value.len()
+    }
+}
+
+fn string_len(value: string) -> usize {
+    return value.len()
+}
+
+fn view_len(value: str) -> usize {
+    return value.len()
+}
+
+fn label_len(value: Label) -> usize {
+    return value.text.len()
+}
+
+fn option_len(value: Option<string>) -> usize {
+    match value {
+        auto Option<string>::Some(&text) => return text.len()
+        _ => return 0
+    }
+}
+
+fn view_of(value: string) -> result: str
+effects:
+    result <- value
+{
+    return value.as_str()
+}
+
+fn main() -> i32 {
+    if string_len(string::from("direct")) != 6:usize {
+        return 1
+    }
+    if label_len(Label(text = string::from("constructor"))) != 11:usize {
+        return 2
+    }
+    if option_len(Option<string>::Some(string::from("enum"))) != 4:usize {
+        return 3
+    }
+
+    auto source = string::from("method")
+    if string_len(source.clone()) != 6:usize {
+        return 4
+    }
+    if string_len(string::from_cstr(c"cstr")) != 4:usize {
+        return 5
+    }
+    auto reader = Reader(marker = 0)
+    if reader.read_len(string::from("method-argument")) != 15:usize {
+        return 6
+    }
+    if string::from("method-receiver").len() != 15:usize {
+        return 7
+    }
+    if view_len(view_of(string::from("nested-dependent"))) != 16:usize {
+        return 8
+    }
+    return 0
+}

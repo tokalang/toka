@@ -138,6 +138,11 @@ llvm::Value *CodeGen::genReturnStmt(const ReturnStmt *ret) {
     }
   }
 
+  // A return may be nested inside an outer control-flow expression whose
+  // merge performs the final full-expression cleanup. Emit the same guarded
+  // cleanup on this terminating edge without discarding the merge's plan.
+  emitFullExpressionTemporaryDrops(false);
+
   if (m_CurrentSRetPtr && m_CurrentSRetTy) {
     if (retVal) {
       if (retVal->getType() != m_CurrentSRetTy) {

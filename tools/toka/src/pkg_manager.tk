@@ -241,16 +241,16 @@ pub fn cmd_publish() -> i32 {
     upload#.arg(string::from("-X"))
     upload#.arg(string::from("POST"))
     upload#.arg(string::from("-F"))
-    upload#.arg(cede form_arg)
+    upload#.arg(form_arg)
     auto publish_token = (unsafe libc_getenv(c"TOKA_REGISTRY_PUBLISH_TOKEN")) as Addr
     if publish_token != 0:Addr {
         auto token = string::from_cstr(publish_token as *char)
         auto authorization# = string::from("Authorization: Bearer ")
         authorization#.push_str(token.as_str())
         upload#.arg(string::from("-H"))
-        upload#.arg(cede authorization)
+        upload#.arg(authorization)
     }
-    upload#.arg(cede url)
+    upload#.arg(url)
     if upload#.status() != 0 {
         println("\x1b[31m[Error]\x1b[0m Failed to publish package to registry.")
         return 1

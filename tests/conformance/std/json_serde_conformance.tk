@@ -16,7 +16,7 @@ impl TestPayload@ToJson {
 
 fn main() -> i32 {
     auto payload = TestPayload(id = 42, title = string::from("Conformance"), enabled = true)
-    auto json_str = to_json(cede payload)
+    auto json_str = to_json(payload)
     
     auto decoded_res = deserialize_shape<TestPayload>(json_str.as_view())
     assert(decoded_res.is_ok(), "deserialize_shape must succeed")

@@ -1,0 +1,18 @@
+// EXPECT_ERROR: E0473
+import core/option::{Option}
+import core/traits::{@Encap}
+
+shape Resource(value: i32)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+fn consume_borrowed(value: Option<Resource>) -> i32 {
+    auto resource = value.unwrap()
+    return resource.value
+}
+
+fn main() -> i32 {
+    return consume_borrowed(Option<Resource>::Some(Resource(value = 7)))
+}

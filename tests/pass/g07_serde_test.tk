@@ -33,7 +33,7 @@ fn main() -> i32 {
     u.tags#.push(cede string::from("rust"))
     u.tags#.push(cede string::from("toka"))
     
-    auto json = to_json(cede u)
+    auto json = to_json(u)
     println("JSON: {}", json.as_view())
     
     // Test deserialization

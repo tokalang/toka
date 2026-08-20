@@ -219,7 +219,8 @@ impl SseDecoder {
             value_start += 1:usize
             if value_start < line_len && line#.get(value_start) == ' ' as u8 { value_start += 1:usize }
         }
-        auto value = line_as_string(line, line_len).substr(value_start, line_len - value_start)
+        auto owned_value = line_as_string(line, line_len)
+        auto value = owned_value.substr(value_start, line_len - value_start)
         if field.as_str().equals("event") {
             self.event_name = string::from(value)
         } else if field.as_str().equals("data") {

@@ -330,7 +330,7 @@ pub fn create_temp_file_system() -> Result<TempFile, IoError> {
     match cede configured {
         auto Option<string>::Some('directory) => {
             if 'directory.len() > 0:usize {
-                return create_temp_file(cede 'directory)
+                return create_temp_file('directory)
             }
         }
         _ => {}

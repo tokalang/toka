@@ -22,6 +22,7 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
+#include <iterator>
 #include <typeinfo>
 
 extern bool verboseMode;
@@ -189,8 +190,19 @@ llvm::IntegerType* CodeGen::getIntPtrTy() {
   return llvm::Type::getInt64Ty(m_Context);
 }
 
-// Inside the genExpr function of src/CodeGen/CodeGen.cpp
 PhysEntity CodeGen::genExpr(const Expr *expr) {
+  const bool isOutermostExpression = m_ExpressionDepth == 0;
+  if (isOutermostExpression)
+    m_FullExpressionTemporaries.clear();
+  ++m_ExpressionDepth;
+  PhysEntity result = genExprImpl(expr);
+  --m_ExpressionDepth;
+  if (isOutermostExpression)
+    emitFullExpressionTemporaryDrops();
+  return result;
+}
+
+PhysEntity CodeGen::genExprImpl(const Expr *expr) {
   if (!expr)
     return {};
 
@@ -343,7 +355,68 @@ PhysEntity CodeGen::genExpr(const Expr *expr) {
   return {};
 }
 
+void CodeGen::registerFullExpressionTemporary(llvm::Value *address,
+                                              std::shared_ptr<Type> type) {
+  if (!address || !type || !m_Builder.GetInsertBlock())
+    return;
+
+  llvm::AllocaInst *liveFlag = createEntryBlockAlloca(
+      llvm::Type::getInt1Ty(m_Context), nullptr, "expr.tmp.live");
+  llvm::BasicBlock *entry = &liveFlag->getFunction()->getEntryBlock();
+  llvm::IRBuilder<> entryBuilder(entry, std::next(liveFlag->getIterator()));
+  entryBuilder.CreateStore(llvm::ConstantInt::getFalse(m_Context), liveFlag);
+  m_Builder.CreateStore(llvm::ConstantInt::getTrue(m_Context), liveFlag);
+  m_FullExpressionTemporaries.push_back(
+      {address, std::move(type), liveFlag});
+}
+
+void CodeGen::emitFullExpressionTemporaryDrops(bool clear) {
+  if (!m_Builder.GetInsertBlock() ||
+      m_Builder.GetInsertBlock()->getTerminator()) {
+    if (clear)
+      m_FullExpressionTemporaries.clear();
+    return;
+  }
+  for (auto temporary = m_FullExpressionTemporaries.rbegin();
+       temporary != m_FullExpressionTemporaries.rend(); ++temporary) {
+    llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *dropBlock =
+        llvm::BasicBlock::Create(m_Context, "expr.tmp.drop", function);
+    llvm::BasicBlock *doneBlock =
+        llvm::BasicBlock::Create(m_Context, "expr.tmp.done", function);
+    llvm::Value *isLive = m_Builder.CreateLoad(
+        llvm::Type::getInt1Ty(m_Context), temporary->LiveFlag,
+        "expr.tmp.is_live");
+    m_Builder.CreateCondBr(isLive, dropBlock, doneBlock);
+
+    m_Builder.SetInsertPoint(dropBlock);
+    emitDropForType(temporary->Address, temporary->TypeObj);
+    if (!m_Builder.GetInsertBlock()->getTerminator())
+      m_Builder.CreateBr(doneBlock);
+
+    m_Builder.SetInsertPoint(doneBlock);
+    m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context),
+                          temporary->LiveFlag);
+  }
+  if (clear)
+    m_FullExpressionTemporaries.clear();
+}
+
 llvm::Value *CodeGen::genStmt(const Stmt *stmt) {
+  const unsigned outerDepth = m_ExpressionDepth;
+  auto outerTemporaries = std::move(m_FullExpressionTemporaries);
+  m_ExpressionDepth = 0;
+  m_FullExpressionTemporaries.clear();
+
+  llvm::Value *result = genStmtImpl(stmt);
+  emitFullExpressionTemporaryDrops();
+
+  m_ExpressionDepth = outerDepth;
+  m_FullExpressionTemporaries = std::move(outerTemporaries);
+  return result;
+}
+
+llvm::Value *CodeGen::genStmtImpl(const Stmt *stmt) {
   if (!stmt)
     return nullptr;
 
@@ -533,6 +606,8 @@ CodeGen::GenContext CodeGen::saveContext() {
   ctx.CurrentSelfType = m_CurrentSelfType;
   ctx.CFStack = m_CFStack;
   ctx.ScopeStack = m_ScopeStack;
+  ctx.ExpressionDepth = m_ExpressionDepth;
+  ctx.FullExpressionTemporaries = m_FullExpressionTemporaries;
   ctx.InsertBlock = m_Builder.GetInsertBlock();
   if (ctx.InsertBlock)
     ctx.InsertPoint = m_Builder.GetInsertPoint();
@@ -558,6 +633,8 @@ void CodeGen::restoreContext(const GenContext &ctx) {
   m_CurrentSelfType = ctx.CurrentSelfType;
   m_CFStack = ctx.CFStack;
   m_ScopeStack = ctx.ScopeStack;
+  m_ExpressionDepth = ctx.ExpressionDepth;
+  m_FullExpressionTemporaries = ctx.FullExpressionTemporaries;
   m_CurrentCoroHandle = ctx.CurrentCoroHandle;
   m_CurrentCoroPromise = ctx.CurrentCoroPromise;
   m_CurrentCoroTCB = ctx.CurrentCoroTCB;
