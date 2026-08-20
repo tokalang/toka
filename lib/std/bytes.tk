@@ -4,6 +4,7 @@ import core/types::{usize, Addr, ADDR0, byte}
 import core/result::{Result}
 import core/option::{Option}
 import core/str::{bytes}
+import core/string::{string}
 import core/memory::{copy_memory}
 import std/vec::{Vec}
 
@@ -25,6 +26,45 @@ effects:
         auto ret = bytes(&buf = null as *[byte] as &[byte], len = sizeof([u8; N_]))
         copy_memory(&ret as Addr, &base_addr as Addr, 8)
         return ret
+    }
+}
+
+// Borrow the initialized region of a mutable byte Vec as an immutable view.
+// The dependency prevents the Vec from being moved, resized, or destroyed
+// while the returned view is live.
+pub fn bytes_from_vec(data: Vec<u8>) -> res: bytes
+effects:
+    res.&buf <- data
+{
+    unsafe {
+        if data.len() == 0:usize {
+            return bytes(&buf = null as *[byte] as &[byte], len = 0:usize)
+        }
+        auto base_addr = data.unsafe_as_raw() as Addr
+        auto ret = bytes(&buf = null as *[byte] as &[byte], len = data.len())
+        copy_memory(&ret as Addr, &base_addr as Addr, 8:usize)
+        return ret
+    }
+}
+
+// Copy an immutable byte view into an independently owned string without
+// exposing a raw pointer to the caller.
+pub fn copy_bytes_to_string(data: bytes) -> string {
+    if data.len() == 0:usize {
+        return string::from("")
+    }
+    unsafe {
+        auto *raw = data.raw_ptr() as *u8
+        return string::from_raw(*raw, data.len())
+    }
+}
+
+// Append a byte view to a mutable Vec without exposing either backing pointer.
+pub fn append_bytes_to_vec(target#: Vec<u8>, data: bytes) {
+    auto index# = 0:usize
+    loop index < data.len() {
+        target#.push(data.at(index).unwrap() as u8)
+        index += 1:usize
     }
 }
 

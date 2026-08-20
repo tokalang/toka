@@ -1,0 +1,32 @@
+import core/string::{string}
+import core/types::{byte}
+import std/bytes::{append_bytes_to_vec, bytes_from_vec, copy_bytes_to_string}
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto data# = Vec<u8>::new()
+    data#.push(65:u8)
+    data#.push(66:u8)
+    data#.push(67:u8)
+    data#.push(68:u8)
+
+    {
+        auto all = bytes_from_vec(data)
+        if all.len() != 4:usize { return 1 }
+        if all.at(0:usize).unwrap() != 65:byte { return 2 }
+
+        auto middle = all.slice_bytes(1:usize, 3:usize)
+        auto owned = copy_bytes_to_string(middle)
+        if owned.as_str() != "BC" { return 3 }
+
+        auto copied# = Vec<u8>::new()
+        append_bytes_to_vec(copied#, middle)
+        if copied.len() != 2:usize || copied.get(0:usize) != 66:u8 || copied.get(1:usize) != 67:u8 {
+            return 4
+        }
+    }
+
+    data#.push(69:u8)
+    if data.len() != 5:usize { return 5 }
+    return 0
+}

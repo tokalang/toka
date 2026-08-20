@@ -163,6 +163,23 @@
       "description": "Vec::take transfers move-only resources exactly once and leaves the source empty and reusable"
     },
     {
+      "id": "std_bytes_vec_view_01",
+      "path": "std/bytes_vec_view.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Vec byte views borrow initialized storage and copy selected ranges without exposing raw pointers"
+    },
+    {
+      "id": "diag_bytes_vec_view_blocks_mutation_01",
+      "path": "diagnostics/bytes_vec_view_blocks_mutation.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E0441",
+      "expected_span_line": 8,
+      "timeout_seconds": 10,
+      "description": "A live bytes view prevents mutation or reallocation of its source Vec"
+    },
+    {
       "id": "std_vec_lending_borrow_01",
       "path": "std/vec_lending_borrow.tk",
       "type": "run",

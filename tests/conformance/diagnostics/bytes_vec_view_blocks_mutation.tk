@@ -1,0 +1,10 @@
+import std/bytes::{bytes_from_vec}
+import std/vec::{Vec}
+
+fn main() -> i32 {
+    auto data# = Vec<u8>::new()
+    data#.push(1:u8)
+    auto view = bytes_from_vec(data)
+    data#.push(2:u8)
+    return view.len() as i32
+}
