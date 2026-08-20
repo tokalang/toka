@@ -23,45 +23,41 @@ pub shape JsonNode (
 // --- ToJson Trait ---
 
 pub trait @ToJson {
-    // Append JSON representation to the buffer and return the updated buffer
-    pub fn write_json(self, buf#: string) -> string
+    // Append JSON representation to the caller-owned buffer.
+    pub fn write_json(self, buf#: string)
 }
 
 impl<'T: @ToJson> &'T@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         // [Compiler Magic] This will call the write_json on the soul
-        return self.write_json(buf#)
+        self.write_json(buf#)
     }
 }
 
 impl i32@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         auto tmp = string::from_int(self)
         buf#.push_view(tmp.as_view())
-        return buf
     }
 }
 
 impl i64@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         auto tmp = string::from_i64(self)
         buf#.push_view(tmp.as_view())
-        return buf
     }
 }
 
 impl f64@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         auto tmp = string::from_f64(self)
         buf#.push_view(tmp.as_view())
-        return buf
     }
 }
 
 impl bool@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         if self { buf#.push_str("true") } else { buf#.push_str("false") }
-        return buf
     }
 }
 
@@ -96,21 +92,19 @@ pub fn write_escaped_json_string(s: str, buf#: string) {
 }
 
 impl str@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         write_escaped_json_string(self, buf#)
-        return buf
     }
 }
 
 impl string@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         write_escaped_json_string(self.as_view(), buf#)
-        return buf
     }
 }
 
 // Reflection-based serializer for structural Shapes
-pub fn serialize_shape<'T>('obj: T, buf#: string) -> string {
+pub fn serialize_shape<'T>('obj: T, buf#: string) {
     buf#.push_str("{")
     auto first# = true
     for auto f in reflect<'T>().fields {
@@ -121,30 +115,28 @@ pub fn serialize_shape<'T>('obj: T, buf#: string) -> string {
         buf#.push_view(f.name)
         buf#.push_str("\":")
         
-        buf = f.get('obj).write_json(buf#)
+        f.get('obj).write_json(buf#)
     }
     buf#.push_str("}")
-    return buf
 }
 
 impl<'T: @ToJson> Vec<'T>@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         buf#.push_str("[")
         auto first# = true
         auto i# = 0:usize
         loop i < self.len() {
             if !first { buf#.push_str(",") }
             first = false
-            buf = self.get_ref(i).write_json(buf#)
+            self.get_ref(i).write_json(buf#)
             i = i + 1
         }
         buf#.push_str("]")
-        return buf
     }
 }
 
 impl<'K: @ToJson, 'V: @ToJson> HashMap<'K, 'V>@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         buf#.push_str("{")
         auto first# = true
         auto iter# = self.iter()
@@ -156,48 +148,45 @@ impl<'K: @ToJson, 'V: @ToJson> HashMap<'K, 'V>@ToJson {
             if !first { buf#.push_str(",") }
             first = false
             
-            buf = entry.key().write_json(buf#)
+            entry.key().write_json(buf#)
             buf#.push_str(":")
-            buf = entry.val().write_json(buf#)
+            entry.val().write_json(buf#)
         }
         buf#.push_str("}")
-        return buf
     }
 }
 
 impl<'T: @ToJson> Option<'T>@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         match self {
-            auto Option<'T>::Some(&val) => return val.write_json(buf#)
+            auto Option<'T>::Some(&val) => val.write_json(buf#)
             _ => {
                 buf#.push_str("null")
-                return buf
             }
         }
     }
 }
 
 impl<'T: @ToJson, 'E: @ToJson> Result<'T, 'E>@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
+    pub fn write_json(self, buf#: string) {
         buf#.push_str("{\"")
         match self {
             auto Result<'T, 'E>::Ok(&val) => {
                 buf#.push_str("Ok\":")
-                buf = val.write_json(buf#)
+                val.write_json(buf#)
             }
             auto Result<'T, 'E>::Err(&e) => {
                 buf#.push_str("Err\":")
-                buf = e.write_json(buf#)
+                e.write_json(buf#)
             }
         }
         buf#.push_str("}")
-        return buf
     }
 }
 
 pub fn to_json<'T: @ToJson>('obj: T) -> string {
     auto res# = string::from("")
-    res = 'obj.write_json(res#)
+    'obj.write_json(res#)
     return res
 }
 

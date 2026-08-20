@@ -337,6 +337,14 @@
       "description": "UTF-8 scalar indices map only to valid physical byte boundaries and back"
     },
     {
+      "id": "std_string_c_str_terminator_invariant_01",
+      "path": "std/string_c_str_terminator_invariant.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "String mutators preserve the trailing NUL so c_str remains a read-only operation"
+    },
+    {
       "id": "std_slab_clear_stale_id_01",
       "path": "std/slab_clear_stale_id.tk",
       "type": "run",
@@ -1604,6 +1612,38 @@
       "description": "Caller-owned resource rvalues borrowed by calls are destroyed after direct, struct, enum, method, and cstr expressions"
     },
     {
+      "id": "ownership_member_rvalue_owner_lifecycle_01",
+      "path": "ownership/member_rvalue_owner_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "A member projection keeps an owned aggregate rvalue alive through the expression and then destroys it exactly once"
+    },
+    {
+      "id": "ownership_unused_owned_result_lifecycle_01",
+      "path": "ownership/unused_owned_result_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An ignored owned call result is destroyed at the end of its expression statement"
+    },
+    {
+      "id": "ownership_member_resource_reassign_lifecycle_01",
+      "path": "ownership/member_resource_reassign_lifecycle.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "Replacing live resource members, nullable slots, fixed indices, and partially moved aggregates drops exactly the initialized owners"
+    },
+    {
+      "id": "ownership_index_receiver_single_evaluation_01",
+      "path": "ownership/index_receiver_single_evaluation.tk",
+      "type": "run",
+      "expected_exit_code": 0,
+      "timeout_seconds": 10,
+      "description": "An indexed method receiver evaluates its index expression exactly once"
+    },
+    {
       "id": "ownership_generic_enum_method_temporary_lifecycle_01",
       "path": "ownership/generic_enum_method_temporary_lifecycle.tk",
       "type": "run",
@@ -1872,6 +1912,15 @@
       "expected_span_line": 12,
       "timeout_seconds": 10,
       "description": "A dynamic resource index is rejected until it has a general lifecycle proof"
+    },
+    {
+      "id": "diag_cede_rvalue_resource_projection_rejected_01",
+      "path": "diagnostics/cede_rvalue_resource_projection_rejected.tk",
+      "type": "compile-fail",
+      "expected_diagnostic_code": "E04632",
+      "expected_span_line": 19,
+      "timeout_seconds": 10,
+      "description": "A resource field cannot move out of an rvalue aggregate until temporary drop masks support partial moves"
     },
     {
       "id": "diag_cede_direct_field_match_join_invalidates_source_01",

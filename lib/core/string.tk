@@ -282,8 +282,6 @@ impl string {
             return null as *char
         }
         unsafe {
-            auto *b# = self.*buf
-            b[self.len] = 0:char
             return self.*buf as *char
         }
     }
@@ -330,7 +328,7 @@ impl string {
         if needed >= self.cap {
             unsafe {
                 auto new_cap = (self.cap * 2) + needed + 1
-                auto *tmp = unsafe alloc [new_cap] char
+                auto *tmp# = unsafe alloc [new_cap] char
                 if self.*buf != null {
                     libc_memcpy(*tmp as *void, self.*buf as *void, self.len)
                     // The bytes were copied into tmp, so the old backing
@@ -339,6 +337,7 @@ impl string {
                 }
                 self.*buf = *tmp
                 self.cap = new_cap
+                tmp[self.len] = 0:char
             }
         }
     }
@@ -349,6 +348,7 @@ impl string {
             auto *dst# = (self.*buf as usize + self.len) as *[char]
             dst[0] = b as char
             self.len = self.len + 1
+            dst[1] = 0:char
         }
     }
     pub fn push_buf(self#, *buf: u8, len: usize) {
@@ -359,6 +359,7 @@ impl string {
             auto *src = *buf as *void
             libc_memcpy(*dst, *src, len)
             self.len = self.len + len
+            self.buf[self.len] = 0:char
         }
     }
 
@@ -383,6 +384,7 @@ impl string {
             auto *src = s.raw_ptr() as *void
             libc_memcpy(*dst, *src, slen)
             self.len = self.len + slen
+            self.buf[self.len] = 0:char
         }
     }
 

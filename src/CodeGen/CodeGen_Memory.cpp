@@ -53,6 +53,31 @@ struct CodeGen::MemberMaterialization {
   llvm::Type *IrTy = nullptr;
 };
 
+static bool isOwnedMemberBaseRvalue(const Expr *expr) {
+  while (expr) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+      continue;
+    }
+    if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+      continue;
+    }
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+      continue;
+    }
+    break;
+  }
+  return dynamic_cast<const CedeExpr *>(expr) ||
+         dynamic_cast<const CallExpr *>(expr) ||
+         dynamic_cast<const MethodCallExpr *>(expr) ||
+         dynamic_cast<const InitStructExpr *>(expr) ||
+         dynamic_cast<const ArrayInitExpr *>(expr) ||
+         dynamic_cast<const NewExpr *>(expr) ||
+         dynamic_cast<const AllocExpr *>(expr);
+}
+
 static int getTypeHatCount(std::shared_ptr<toka::Type> type) {
   if (!type)
     return 0;
@@ -1350,7 +1375,9 @@ PhysEntity CodeGen::genIndexExpr(const ArrayIndexExpr *idxExpr) {
   if (!addr)
     return nullptr;
   if (auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(addr)) {
-    return m_Builder.CreateLoad(gep->getResultElementType(), addr);
+    std::string typeName =
+        idxExpr->ResolvedType ? idxExpr->ResolvedType->toString() : "";
+    return PhysEntity(addr, typeName, gep->getResultElementType(), true);
   }
   return nullptr;
 }
@@ -1810,8 +1837,13 @@ llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
   // If we can't get an address (e.g. n.??point or pp??), we must evaluate
   // and spill to a temporary alloca if it's a value.
   PhysEntity pe = genExpr(expr);
-  if (pe.isAddress)
+  if (pe.isAddress) {
+    // SRet calls already materialize their owned result in caller storage.
+    // That storage is still a temporary when used as a member base.
+    if (expr->ResolvedType && isOwnedMemberBaseRvalue(expr))
+      registerFullExpressionTemporary(pe.value, expr->ResolvedType);
     return pe.value;
+  }
 
   // Spill to temporary alloca
   if (!pe.value)
@@ -1822,6 +1854,11 @@ llvm::Value *CodeGen::emitEntityAddr(const Expr *expr) {
 
   llvm::Value *spill = createEntryBlockAlloca(ty, nullptr, "rval.spill");
   m_Builder.CreateStore(pe.value, spill);
+  // A member projection borrows from its aggregate base. When that base is an
+  // owned rvalue (for example `result.unwrap_err().message`), keep the spilled
+  // owner alive through the enclosing expression and reclaim it afterwards.
+  if (expr->ResolvedType && isOwnedMemberBaseRvalue(expr))
+    registerFullExpressionTemporary(spill, expr->ResolvedType);
   return spill;
 }
 

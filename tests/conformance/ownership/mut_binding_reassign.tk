@@ -1,13 +1,17 @@
 import std/io::{println}
 import core/string::{string}
 
+auto g_drop_count# = 0:i32
+
 shape Config (
     name: string
 )
 
 impl Config@Encap {
     pub name
-    fn drop(self#) {}
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
 }
 
 impl Config {
@@ -17,12 +21,16 @@ pub fn clone(self) -> Config {
 }
 
 fn main() -> i32 {
-    // 1. Stack value reassignment
-    auto c# = Config(name = string::from("Initial"))
-    assert(c.name.as_str().equals("Initial"), "Initial stack string value mismatch")
+    {
+        // 1. Stack value reassignment
+        auto c# = Config(name = string::from("Initial"))
+        assert(c.name.as_str().equals("Initial"), "Initial stack string value mismatch")
 
-    c = Config(name = string::from("Replaced"))
-    assert(c.name.as_str().equals("Replaced"), "Replaced stack string value mismatch")
+        c = Config(name = string::from("Replaced"))
+        assert(c.name.as_str().equals("Replaced"), "Replaced stack string value mismatch")
+        assert(g_drop_count == 1:i32, "Reassignment must destroy the replaced owner")
+    }
+    assert(g_drop_count == 2:i32, "Final owner must be destroyed exactly once")
 
     println("[Conformance] Variable Rebinding & Value Reassignment PASSED!")
     return 0

@@ -787,7 +787,46 @@ llvm::Value *CodeGen::genUnsafeStmt(const UnsafeStmt *us) {
 }
 
 llvm::Value *CodeGen::genExprStmt(const ExprStmt *es) {
-  return genExpr(es->Expression.get()).load(m_Builder);
+  PhysEntity result = genExpr(es->Expression.get());
+  llvm::Value *value = result.load(m_Builder);
+
+  const Expr *root = es->Expression.get();
+  while (root) {
+    if (auto *cast = dynamic_cast<const CastExpr *>(root)) {
+      root = cast->Expression.get();
+      continue;
+    }
+    if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(root)) {
+      root = unsafeExpr->Expression.get();
+      continue;
+    }
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(root)) {
+      root = postfix->LHS.get();
+      continue;
+    }
+    break;
+  }
+
+  const bool isOwnedRvalue =
+      dynamic_cast<const CedeExpr *>(root) ||
+      dynamic_cast<const AwaitExpr *>(root) ||
+      dynamic_cast<const CallExpr *>(root) ||
+      dynamic_cast<const MethodCallExpr *>(root) ||
+      dynamic_cast<const InitStructExpr *>(root) ||
+      dynamic_cast<const ArrayInitExpr *>(root) ||
+      dynamic_cast<const NewExpr *>(root) ||
+      dynamic_cast<const AllocExpr *>(root);
+  if (isOwnedRvalue && es->Expression->ResolvedType && value &&
+      !value->getType()->isVoidTy()) {
+    llvm::Value *address = result.isAddress ? result.value : nullptr;
+    if (!address) {
+      address = createEntryBlockAlloca(value->getType(), nullptr,
+                                       "unused.result.tmp");
+      m_Builder.CreateStore(value, address);
+    }
+    emitDropForType(address, es->Expression->ResolvedType);
+  }
+  return value;
 }
 
 llvm::Value *CodeGen::genUnreachableStmt(const UnreachableStmt *stmt) {

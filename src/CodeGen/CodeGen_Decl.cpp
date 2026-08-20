@@ -64,6 +64,102 @@ static bool isCoreRuntimePanicFallback(const Module *module,
   return file.find("/lib/core/internal/runtime.tk") != std::string::npos;
 }
 
+static bool hasCallBackedReceiver(const Expr *expr) {
+  while (expr) {
+    if (dynamic_cast<const CallExpr *>(expr) ||
+        dynamic_cast<const MethodCallExpr *>(expr))
+      return true;
+    if (auto *member = dynamic_cast<const MemberExpr *>(expr)) {
+      expr = member->Object.get();
+      continue;
+    }
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+      continue;
+    }
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+      continue;
+    }
+    if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
+static bool hasIndexBackedReceiver(const Expr *expr) {
+  while (expr) {
+    if (dynamic_cast<const ArrayIndexExpr *>(expr))
+      return true;
+    if (auto *member = dynamic_cast<const MemberExpr *>(expr)) {
+      expr = member->Object.get();
+      continue;
+    }
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+      continue;
+    }
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+      continue;
+    }
+    if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
+static bool isDirectCallReceiver(const Expr *expr) {
+  while (expr) {
+    if (dynamic_cast<const CallExpr *>(expr) ||
+        dynamic_cast<const MethodCallExpr *>(expr))
+      return true;
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+      continue;
+    }
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+      continue;
+    }
+    if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
+static bool isOwnedUniqueReceiverRvalue(const Expr *expr) {
+  while (expr) {
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(expr)) {
+      expr = postfix->LHS.get();
+      continue;
+    }
+    if (auto *cast = dynamic_cast<const CastExpr *>(expr)) {
+      expr = cast->Expression.get();
+      continue;
+    }
+    if (auto *unsafeExpr = dynamic_cast<const UnsafeExpr *>(expr)) {
+      expr = unsafeExpr->Expression.get();
+      continue;
+    }
+    break;
+  }
+  return dynamic_cast<const CedeExpr *>(expr) ||
+         dynamic_cast<const CallExpr *>(expr) ||
+         dynamic_cast<const MethodCallExpr *>(expr) ||
+         dynamic_cast<const NewExpr *>(expr) ||
+         dynamic_cast<const AllocExpr *>(expr);
+}
+
 llvm::Function *CodeGen::genFunction(const FunctionDecl *func,
                                      const std::string &overrideName,
                                      bool declOnly) {
@@ -2543,9 +2639,14 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   // also records a pointer-shaped IR type. Loading that entity once more
   // would read the payload bytes as a pointer.  A direct unique receiver's
   // payload address is already its method receiver value.
-  llvm::Value *objVal = receiverIsDirectUnique
-                            ? getEntityAddr(receiverVar->codegenName())
-                            : genExpr(expr->Object.get()).load(m_Builder);
+  PhysEntity receiverEntity;
+  llvm::Value *objVal = nullptr;
+  if (receiverIsDirectUnique) {
+    objVal = getEntityAddr(receiverVar->codegenName());
+  } else {
+    receiverEntity = genExpr(expr->Object.get());
+    objVal = receiverEntity.load(m_Builder);
+  }
   if (!objVal)
     return nullptr;
 
@@ -2807,7 +2908,22 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
 
   if ((selfIsMutable || targetExpectsPtr) && !receiverProvidesUniquePayload) {
     // Must pass address
-    llvm::Value *addr = genAddr(expr->Object.get());
+    // Reuse the address produced by the single receiver evaluation. Calling
+    // genAddr again for a member chain whose base is a consuming call would
+    // evaluate that call twice and duplicate the same ownership payload.
+    const bool reusesEvaluatedAddress =
+        receiverEntity.isAddress &&
+        (hasCallBackedReceiver(expr->Object.get()) ||
+         hasIndexBackedReceiver(expr->Object.get()));
+    llvm::Value *addr = reusesEvaluatedAddress ? receiverEntity.value : nullptr;
+    if (reusesEvaluatedAddress && hasCallBackedReceiver(expr->Object.get()) &&
+        !selfIsCeded &&
+        isDirectCallReceiver(expr->Object.get()) &&
+        expr->Object->ResolvedType) {
+      registerFullExpressionTemporary(addr, expr->Object->ResolvedType);
+    }
+    if (!addr)
+      addr = genAddr(expr->Object.get());
     if (addr) {
       finalObjVal = addr;
     } else {
@@ -2821,6 +2937,14 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
           registerFullExpressionTemporary(tmp,
                                           expr->Object->ResolvedType);
         }
+      } else if (!selfIsCeded && expr->Object->ResolvedType &&
+                 expr->Object->ResolvedType->isUniquePtr() &&
+                 isOwnedUniqueReceiverRvalue(expr->Object.get())) {
+        llvm::AllocaInst *tmp =
+            createEntryBlockAlloca(objVal->getType(), nullptr,
+                                   "unique.receiver.tmp");
+        m_Builder.CreateStore(objVal, tmp);
+        registerFullExpressionTemporary(tmp, expr->Object->ResolvedType);
       }
     }
   }
@@ -3087,12 +3211,16 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
           releaseTransferredUniqueHeapSlot();
         }
       }
-    } else if (dynamic_cast<const NewExpr *>(movedObject)) {
+    } else if (dynamic_cast<const NewExpr *>(movedObject) ||
+               dynamic_cast<const AllocExpr *>(movedObject) ||
+               dynamic_cast<const CallExpr *>(movedObject) ||
+               dynamic_cast<const MethodCallExpr *>(movedObject)) {
       // A fresh `new T(...)#.consume()` has no named source binding whose
-      // scope cleanup can release the allocation. The by-value receiver ABI
-      // has already copied its payload into callee-owned storage, so release
-      // that now-empty unique heap slot just as for a named unique receiver.
-      if (selfReceivesPayloadByValue && finalObjVal->getType()->isPointerTy()) {
+      // scope cleanup can release the allocation. A call returning ^T has the
+      // same caller-owned shell. The by-value receiver ABI has already copied
+      // its payload into callee-owned storage, so release only that shell.
+      if (movedObject->ResolvedType && movedObject->ResolvedType->isUniquePtr() &&
+          selfReceivesPayloadByValue && finalObjVal->getType()->isPointerTy()) {
         releaseTransferredUniqueHeapSlot();
       }
     }

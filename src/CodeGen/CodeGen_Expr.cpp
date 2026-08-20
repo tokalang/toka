@@ -445,12 +445,24 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   bool hasRebind = false;
   bool explicitRebind = false;
   const Expr *targetLHS = lhsExpr;
-  while (auto *ue = dynamic_cast<const UnaryExpr *>(targetLHS)) {
-    if (ue->IsRebindable || ue->Op == TokenType::TokenWrite) {
-      hasRebind = true;
-      explicitRebind = true;
+  while (targetLHS) {
+    if (auto *ue = dynamic_cast<const UnaryExpr *>(targetLHS)) {
+      if (ue->IsRebindable || ue->Op == TokenType::TokenWrite) {
+        hasRebind = true;
+        explicitRebind = true;
+      }
+      targetLHS = ue->RHS.get();
+      continue;
     }
-    targetLHS = ue->RHS.get();
+    if (auto *cast = dynamic_cast<const CastExpr *>(targetLHS)) {
+      targetLHS = cast->Expression.get();
+      continue;
+    }
+    if (auto *postfix = dynamic_cast<const PostfixExpr *>(targetLHS)) {
+      targetLHS = postfix->LHS.get();
+      continue;
+    }
+    break;
   }
 
   m_InLHS = true;
@@ -460,7 +472,14 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
   // 2. Resolve LHS Metadata
   TokaSymbol *symLHS = nullptr;
   llvm::Value *lhsAlloca = nullptr;
-  if (auto *varLHS = dynamic_cast<const VariableExpr *>(targetLHS)) {
+  const auto *variableTarget =
+      dynamic_cast<const VariableExpr *>(targetLHS);
+  const auto *memberTarget =
+      dynamic_cast<const MemberExpr *>(targetLHS);
+  const auto *indexTarget =
+      dynamic_cast<const ArrayIndexExpr *>(targetLHS);
+  if (variableTarget) {
+    auto *varLHS = variableTarget;
     std::string baseName = varLHS->Name;
     while (!baseName.empty() &&
            (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
@@ -650,18 +669,207 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     if (!destTy)
       destTy = rhsVal->getType();
 
+    std::shared_ptr<Type> targetTypeObj =
+        symLHS && symLHS->soulTypeObj ? symLHS->soulTypeObj
+                                      : lhsExpr->ResolvedType;
+    std::shared_ptr<Type> targetSoulType =
+        targetTypeObj ? targetTypeObj->getSoulType() : nullptr;
+    bool oldSoulDropHandled = false;
+
+    // Replacing a live direct resource transfers a fresh value into the same
+    // slot. Reclaim the previous owner first, but only on paths where its
+    // scope drop flag is still live (a moved-from slot is reinitialized
+    // without a second drop).
+    if (variableTarget && symLHS && symLHS->hasDrop &&
+        symLHS->morphology == Morphology::None && assignmentSite &&
+        !assignmentSite->IsInitialization) {
+      oldSoulDropHandled = true;
+      llvm::Value *dropFlag = nullptr;
+      llvm::Value *dropMask = nullptr;
+      std::shared_ptr<Type> dropType;
+      const std::string targetName =
+          Type::stripMorphology(variableTarget->Name);
+      for (int scopeIndex = static_cast<int>(m_ScopeStack.size()) - 1;
+           scopeIndex >= 0 && !dropFlag; --scopeIndex) {
+        for (auto entry = m_ScopeStack[scopeIndex].rbegin();
+             entry != m_ScopeStack[scopeIndex].rend(); ++entry) {
+          if (Type::stripMorphology(entry->Name) == targetName) {
+            dropFlag = entry->DropFlag;
+            dropMask = entry->DropMask;
+            dropType = entry->DropType;
+            break;
+          }
+        }
+      }
+      if (dropFlag) {
+        llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+        llvm::BasicBlock *dropBlock =
+            llvm::BasicBlock::Create(m_Context, "assign.old.drop", function);
+        llvm::BasicBlock *continueBlock = llvm::BasicBlock::Create(
+            m_Context, "assign.old.done", function);
+        llvm::Value *oldIsLive = m_Builder.CreateLoad(
+            llvm::Type::getInt1Ty(m_Context), dropFlag,
+            "assign.old.is_live");
+        m_Builder.CreateCondBr(oldIsLive, dropBlock, continueBlock);
+        m_Builder.SetInsertPoint(dropBlock);
+        m_Builder.CreateStore(llvm::ConstantInt::getFalse(m_Context),
+                              dropFlag);
+        if (dropMask && dropType) {
+          if (dropType->isArray()) {
+            emitDropForTypeWithMask(soulAddr, dropType, dropMask);
+          } else {
+            auto shape =
+                std::dynamic_pointer_cast<ShapeType>(dropType->getSoulType());
+            if (shape && shape->Decl) {
+              const std::string &dropIdentity =
+                  shape->Decl->OwnerLinkName.empty()
+                      ? (shape->Decl->CodegenName.empty()
+                             ? shape->Decl->Name
+                             : shape->Decl->CodegenName)
+                      : shape->Decl->OwnerLinkName;
+              emitDropCascadeWithMask(soulAddr, dropIdentity, dropMask);
+            } else {
+              emitDropCascadeWithMask(soulAddr,
+                                      dropType->getSoulType()->getSoulName(),
+                                      dropMask);
+            }
+          }
+        } else {
+          emitDropForType(soulAddr, symLHS->soulTypeObj);
+        }
+        if (!m_Builder.GetInsertBlock()->getTerminator())
+          m_Builder.CreateBr(continueBlock);
+        m_Builder.SetInsertPoint(continueBlock);
+      }
+    }
+
+    if (memberTarget && memberTarget->ResolvedType && assignmentSite &&
+        !assignmentSite->IsInitialization) {
+      oldSoulDropHandled = true;
+      llvm::Value *dropMask = nullptr;
+      int dropIndex = -1;
+      for (int scopeIndex = static_cast<int>(m_ScopeStack.size()) - 1;
+           scopeIndex >= 0 && !dropMask; --scopeIndex) {
+        for (auto entry = m_ScopeStack[scopeIndex].rbegin();
+             entry != m_ScopeStack[scopeIndex].rend(); ++entry) {
+          const int candidate =
+              getDirectMemberDropIndex(*entry, memberTarget);
+          if (entry->DropMask && candidate >= 0 && candidate < 64) {
+            dropMask = entry->DropMask;
+            dropIndex = candidate;
+            break;
+          }
+        }
+      }
+
+      if (dropMask) {
+        llvm::Value *mask = m_Builder.CreateLoad(
+            llvm::Type::getInt64Ty(m_Context), dropMask,
+            "assign.member.mask");
+        llvm::Value *oldIsLive = m_Builder.CreateICmpNE(
+            m_Builder.CreateAnd(mask,
+                                m_Builder.getInt64(1ULL << dropIndex)),
+            m_Builder.getInt64(0), "assign.member.is_live");
+        llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+        llvm::BasicBlock *dropBlock = llvm::BasicBlock::Create(
+            m_Context, "assign.member.drop", function);
+        llvm::BasicBlock *continueBlock = llvm::BasicBlock::Create(
+            m_Context, "assign.member.done", function);
+        m_Builder.CreateCondBr(oldIsLive, dropBlock, continueBlock);
+        m_Builder.SetInsertPoint(dropBlock);
+        llvm::Value *cleared = m_Builder.CreateAnd(
+            mask, m_Builder.getInt64(~(1ULL << dropIndex)),
+            "assign.member.mask.cleared");
+        m_Builder.CreateStore(cleared, dropMask);
+        emitDropForType(soulAddr, memberTarget->ResolvedType);
+        if (!m_Builder.GetInsertBlock()->getTerminator())
+          m_Builder.CreateBr(continueBlock);
+        m_Builder.SetInsertPoint(continueBlock);
+      } else {
+        // A member reached through a borrowed owner (notably `self.field`)
+        // has no local aggregate drop mask, but its initialized payload still
+        // owns the value being replaced.
+        emitDropForType(soulAddr, memberTarget->ResolvedType);
+      }
+    }
+
+    if (indexTarget && indexTarget->ResolvedType && assignmentSite &&
+        !assignmentSite->IsInitialization) {
+      llvm::Value *dropMask = nullptr;
+      llvm::Value *directArrayMask = nullptr;
+      bool directArrayOwnerTracked = false;
+      int dropIndex = -1;
+      auto *arrayRoot =
+          dynamic_cast<const VariableExpr *>(indexTarget->Array.get());
+      for (int scopeIndex = static_cast<int>(m_ScopeStack.size()) - 1;
+           scopeIndex >= 0 && !dropMask && !directArrayMask &&
+           !directArrayOwnerTracked;
+           --scopeIndex) {
+        for (auto entry = m_ScopeStack[scopeIndex].rbegin();
+             entry != m_ScopeStack[scopeIndex].rend(); ++entry) {
+          if (arrayRoot &&
+              Type::stripMorphology(entry->Name) ==
+                  Type::stripMorphology(arrayRoot->Name) &&
+              entry->HasDrop && entry->DropType &&
+              entry->DropType->isArray()) {
+            directArrayOwnerTracked = true;
+            if (entry->DropMask && entry->PartialMove.isAdmitted())
+              directArrayMask = entry->DropMask;
+          }
+          const int candidate = getDirectArrayDropIndex(*entry, indexTarget);
+          if (entry->DropMask && candidate >= 0 && candidate < 64) {
+            dropMask = entry->DropMask;
+            dropIndex = candidate;
+            break;
+          }
+          if (directArrayMask || directArrayOwnerTracked)
+            break;
+        }
+      }
+
+      if (dropMask) {
+        oldSoulDropHandled = true;
+        llvm::Value *mask = m_Builder.CreateLoad(
+            llvm::Type::getInt64Ty(m_Context), dropMask,
+            "assign.index.mask");
+        llvm::Value *oldIsLive = m_Builder.CreateICmpNE(
+            m_Builder.CreateAnd(mask,
+                                m_Builder.getInt64(1ULL << dropIndex)),
+            m_Builder.getInt64(0), "assign.index.is_live");
+        llvm::Function *function = m_Builder.GetInsertBlock()->getParent();
+        llvm::BasicBlock *dropBlock = llvm::BasicBlock::Create(
+            m_Context, "assign.index.drop", function);
+        llvm::BasicBlock *continueBlock = llvm::BasicBlock::Create(
+            m_Context, "assign.index.done", function);
+        m_Builder.CreateCondBr(oldIsLive, dropBlock, continueBlock);
+        m_Builder.SetInsertPoint(dropBlock);
+        llvm::Value *cleared = m_Builder.CreateAnd(
+            mask, m_Builder.getInt64(~(1ULL << dropIndex)),
+            "assign.index.mask.cleared");
+        m_Builder.CreateStore(cleared, dropMask);
+        emitDropForType(soulAddr, indexTarget->ResolvedType);
+        if (!m_Builder.GetInsertBlock()->getTerminator())
+          m_Builder.CreateBr(continueBlock);
+        m_Builder.SetInsertPoint(continueBlock);
+      } else if (directArrayMask || directArrayOwnerTracked) {
+        // PAL rejects an unknown index while any fixed element is partially
+        // moved. Therefore a dynamic assignment to a tracked local array
+        // replaces a live element even though there is no constant mask bit
+        // to toggle in CodeGen.
+        oldSoulDropHandled = true;
+        emitDropForType(soulAddr, indexTarget->ResolvedType);
+      }
+    }
+
     // Nullable souls are stored as { T, i1 }.  Inspect the destination
     // storage type rather than the outer handle type, so a nullable payload
     // remains independent from a nullable/rebindable handle.
-    std::shared_ptr<Type> targetSoulType =
-        symLHS && symLHS->soulTypeObj ? symLHS->soulTypeObj->getSoulType()
-                                      : nullptr;
     bool replacesNullableSoul = targetSoulType && targetSoulType->IsNullable &&
                                 symLHS && symLHS->hasDrop && destTy &&
                                 destTy->isStructTy() &&
                                 destTy->getStructNumElements() == 2 &&
                                 destTy->getStructElementType(1)->isIntegerTy(1);
-    if (replacesNullableSoul) {
+    if (replacesNullableSoul && !oldSoulDropHandled) {
       llvm::StructType *nullableType = llvm::cast<llvm::StructType>(destTy);
       llvm::Value *oldPayload =
           m_Builder.CreateLoad(nullableType, soulAddr, "nullable_soul.old");
@@ -722,7 +930,29 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     if (carrier == AssignmentLoweringCarrier::EnvelopeRebind)
       markMemoryEvent(store, "rebind");
     if (store) {
-      if (auto *member = dynamic_cast<const MemberExpr *>(targetLHS))
+      if (variableTarget) {
+        markInitLive(variableTarget);
+        const std::string targetName =
+            Type::stripMorphology(variableTarget->Name);
+        for (int scopeIndex = static_cast<int>(m_ScopeStack.size()) - 1;
+             scopeIndex >= 0; --scopeIndex) {
+          bool restored = false;
+          for (auto entry = m_ScopeStack[scopeIndex].rbegin();
+               entry != m_ScopeStack[scopeIndex].rend(); ++entry) {
+            if (Type::stripMorphology(entry->Name) != targetName)
+              continue;
+            if (entry->DropMask && entry->PartialMove.isAdmitted()) {
+              m_Builder.CreateStore(
+                  m_Builder.getInt64(entry->PartialMove.eligibleMask()),
+                  entry->DropMask);
+            }
+            restored = true;
+            break;
+          }
+          if (restored)
+            break;
+        }
+      } else if (auto *member = dynamic_cast<const MemberExpr *>(targetLHS))
         restoreDropForMemberAssignment(member);
       else if (auto *index = dynamic_cast<const ArrayIndexExpr *>(targetLHS))
         restoreDropForIndexAssignment(index);
@@ -6970,6 +7200,12 @@ PhysEntity CodeGen::genCedeExpr(const CedeExpr *ce) {
             return PhysEntity(payload, ce->ResolvedType->toString(), targetTy,
                               false);
           }
+        }
+        if (sourceTy) {
+          llvm::Value *stored =
+              m_Builder.CreateLoad(sourceTy, sourceAddr, "cede.projected");
+          return PhysEntity(stored, ce->ResolvedType->toString(), sourceTy,
+                            false);
         }
       }
     }

@@ -1,0 +1,21 @@
+auto g_index_calls# = 0:i32
+
+shape Cell(value: i32)
+
+impl Cell {
+    fn read(self) -> i32 {
+        return self.value
+    }
+}
+
+fn next_index() -> usize {
+    g_index_calls += 1:i32
+    return 0:usize
+}
+
+fn main() -> i32 {
+    auto cells = [Cell(value = 7:i32)]:[Cell; 1]
+    if cells[next_index()].read() != 7:i32 { return 1 }
+    if g_index_calls != 1:i32 { return 2 }
+    return 0
+}

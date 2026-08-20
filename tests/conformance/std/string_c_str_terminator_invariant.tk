@@ -1,0 +1,30 @@
+import core/string::{string}
+
+fn terminates(value: string) -> bool {
+    unsafe {
+        auto *chars = (value.c_str() as usize) as *[char]
+        return chars[value.len()] == 0:char
+    }
+}
+
+fn main() -> i32 {
+    auto value# = string::new()
+    if !terminates(value) { return 1 }
+
+    value#.push_byte_raw(65:u8)
+    if !terminates(value) { return 2 }
+
+    value#.push_str("BC")
+    if !terminates(value) { return 3 }
+
+    auto source = string::from("DEF")
+    value#.push_buf(source.c_str() as *u8, 3:usize)
+    if !terminates(value) { return 4 }
+
+    value#.pop_codepoint()
+    if !terminates(value) { return 5 }
+
+    value#.clear()
+    if !terminates(value) { return 6 }
+    return 0
+}

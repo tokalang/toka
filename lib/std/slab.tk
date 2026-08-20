@@ -38,17 +38,6 @@ shape SlabEntry<'T> (
     next_free#: usize = 0
 )
 
-// Consume a slot value before replacing it. Plain aggregate assignment does
-// not own destruction of the overwritten payload, so clear must make the
-// consumption explicit for @Encap element types.
-fn consume_slot_value<'T>(cede value: Option<'T>) -> Option<'T> {
-    match cede value {
-        auto Option<'T>::Some('dropped) => {}
-        Option<'T>::None => {}
-    }
-    return Option<'T>::None
-}
-
 pub shape Slab<'T> (
     entries#: Vec<SlabEntry<'T> > = Vec<SlabEntry<'T> >::new(),
     free_head#: usize = 0xFFFFFFFF:usize,
@@ -85,10 +74,10 @@ impl<'T> Slab<'T> {
         loop index < entry_count {
             unsafe {
                 auto *#entry# = self.entries.unsafe_get(index)
-                // Consume the old Option before storing None. Keep the slot
-                // itself so that clear cannot revive a stale SlabID by
-                // recreating generation 1.
-                entry.val = consume_slot_value<'T>(cede entry.val)
+                // Resource assignment reclaims the previous Option payload.
+                // Keep the slot itself so that clear cannot revive a stale
+                // SlabID by recreating generation 1.
+                entry.val = Option<'T>::None
                 if entry.generation < 0xFFFFFFFE:u32 {
                     entry.next_free = next_free
                     next_free = index
@@ -150,7 +139,13 @@ impl<'T> Slab<'T> {
             }
             
             auto val = cede entry.val
-            entry.val = Option<'T>::None
+            // `val` now owns the payload. Clear only the enum tag so the
+            // vacated slot is None without assigning over the moved bytes.
+            // This is the storage-level equivalent of Option::take; a plain
+            // resource assignment would correctly try to drop the stale
+            // moved representation before writing None.
+            auto *#tag_bytes# = &(entry.val) as *#[u8]
+            tag_bytes[0] = 0:u8
             if entry.generation < 0xFFFFFFFE:u32 {
                 entry.next_free = self.free_head
                 self.free_head = idx

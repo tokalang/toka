@@ -9,8 +9,8 @@ pub shape TestPayload (
 )
 
 impl TestPayload@ToJson {
-    pub fn write_json(self, buf#: string) -> string {
-        return serialize_shape(self, buf)
+    pub fn write_json(self, buf#: string) {
+        serialize_shape(self, buf#)
     }
 }
 

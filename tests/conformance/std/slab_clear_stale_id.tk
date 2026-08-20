@@ -32,5 +32,17 @@ fn main() -> i32 {
         if replacement.generation() != 2:usize { return 6 }
     }
     if g_drop_count != 2:i64 { return 7 }
+
+    {
+        auto slab# = Slab<Entry>::new()
+        auto id = slab#.insert(cede Entry(value = 11:i32))
+        {
+            auto removed = slab#.remove(id).unwrap()
+            if removed.value != 11:i32 { return 8 }
+            if g_drop_count != 2:i64 { return 9 }
+        }
+        if g_drop_count != 3:i64 { return 10 }
+    }
+    if g_drop_count != 3:i64 { return 11 }
     return 0
 }

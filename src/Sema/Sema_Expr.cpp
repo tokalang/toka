@@ -3622,6 +3622,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                     Member->toString());
             }
           }
+        } else {
+          auto sourceSoul = innerTy ? innerTy->getSoulType() : nullptr;
+          if (sourceSoul && sourceSoul->isShape() &&
+              hasDrop(sourceSoul->getSoulName())) {
+            error(ce, DiagID::ERR_SEMA_CEDE_PARTIAL_PROJECTION_UNSUPPORTED,
+                  Member->toString());
+          }
         }
       } else if (auto *Index = dynamic_cast<ArrayIndexExpr *>(underlying)) {
         // A fixed local array can share the same bounded liveness model as a

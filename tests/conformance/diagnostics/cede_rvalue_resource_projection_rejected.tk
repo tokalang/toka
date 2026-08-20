@@ -1,0 +1,21 @@
+import core/traits::{@Encap}
+
+shape Resource(value: string)
+
+impl Resource@Encap {
+    fn drop(self#) {}
+}
+
+shape Pair(left: Resource, right: Resource)
+
+fn make_pair() -> Pair {
+    return Pair(
+        left = Resource(value = string::from("left")),
+        right = Resource(value = string::from("right"))
+    )
+}
+
+fn main() -> i32 {
+    auto moved = cede make_pair().left
+    return moved.value.len() as i32
+}

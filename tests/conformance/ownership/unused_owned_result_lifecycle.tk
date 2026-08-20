@@ -1,0 +1,47 @@
+import core/result::{Result}
+import core/traits::{@Encap}
+
+auto g_drop_count# = 0:i32
+
+shape Resource(
+    value: i32,
+    first: string,
+    second: string
+)
+
+impl Resource@Encap {
+    fn drop(self#) {
+        g_drop_count += 1:i32
+    }
+}
+
+fn make_resource() -> Result<Resource, string> {
+    return Result<Resource, string>::Ok(Resource(
+        value = 7:i32,
+        first = string::from("first"),
+        second = string::from("second")
+    ))
+}
+
+fn main() -> i32 {
+    make_resource().unwrap()
+    if g_drop_count != 1:i32 {
+        return 1
+    }
+
+    {
+        auto source = Resource(
+            value = 9:i32,
+            first = string::from("cede-first"),
+            second = string::from("cede-second")
+        )
+        cede source
+        if g_drop_count != 2:i32 {
+            return 2
+        }
+    }
+    if g_drop_count != 2:i32 {
+        return 3
+    }
+    return 0
+}
